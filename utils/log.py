@@ -12,14 +12,12 @@ chlr = logging.StreamHandler()
 chlr.setFormatter(color_formatter)
 chlr.setLevel('DEBUG')
 
-fhlr = TimedRotatingFileHandler('logs/log.txt', when='H', interval=1, backupCount=24)
+fhlr = TimedRotatingFileHandler(
+    'logs/log.txt', when='H', interval=1, backupCount=24)
 fhlr.setFormatter(basic_formatter)
 fhlr.setLevel('DEBUG')
-
-logger = logging.getLogger()
-logger.setLevel('NOTSET')
-logger.addHandler(fhlr)
 
 logger = logging.getLogger(__name__)
 logger.setLevel('DEBUG')
 logger.addHandler(chlr)
+logger.addHandler(fhlr)
