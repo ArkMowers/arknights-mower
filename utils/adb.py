@@ -75,7 +75,7 @@ class ADBClientSession:
         if server is None:
             server = ('127.0.0.1', 5037)
         if server[0] == '127.0.0.1' or server[0] == '::1':
-            timeout = 1
+            timeout = 5
         self.sock = ADBSocket(server, timeout)
 
     def close(self):
