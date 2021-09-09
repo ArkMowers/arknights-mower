@@ -1,0 +1,2 @@
+numpy==1.21.2
+colorlog==6.4.1
