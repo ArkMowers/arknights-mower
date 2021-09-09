@@ -1,4 +1,5 @@
 from utils.adb import ADBConnector, KeyCode
+from utils.recognize import Recognizer
 
 
 def init():
@@ -8,8 +9,14 @@ def init():
     # adb.connect_device(devices[0])
     # adb.send_keyevent(KeyCode.KEYCODE_BACK)
     # adb.touch_swipe((820, 366), (-500, 366))
-    # adb.screencap()
-
+    f = Recognizer(adb.screencap())
+    if f.is_index():
+        f.find_index('friend')
+        f.find_index('infrastructure')
+        f.find_index('mission')
+        f.find_index('shop')
+        f.find_index('recruit')
+        f.find_index('terminal')
 
 if __name__ == '__main__':
     init()
