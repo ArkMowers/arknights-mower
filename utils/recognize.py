@@ -27,6 +27,7 @@ class Status:
     START = 2  # 启动
     MATERIEL = 3  # 物资领取确认
     ANNOUNCEMENT = 4  # 公告
+    LOADING = 5  # 场景跳转时的等待界面
     LOGIN_MAIN = 101  # 登陆页面
     LOGIN_INPUT = 102  # 登陆页面（输入）
     LOGIN_QUICKLY = 103  # 登陆页面（快速）
@@ -81,6 +82,8 @@ class Recognizer():
             self.status = Status.MATERIEL
         elif self.find('start') is not None:
             self.status = Status.START
+        elif self.find('loading') is not None:
+            self.status = Status.LOADING
         elif self.find('yes') is not None:
             self.status = Status.YES
         elif self.find('login_awake') is not None:

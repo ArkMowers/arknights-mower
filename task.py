@@ -65,7 +65,10 @@ def login(adb, recog=None):
                 adb.touch_tap((0, 0))
             tap(adb, get_pos(recog.find('login_button')), recog)
         elif recog.status == Status.LOGIN_LOADING:
-            time.sleep(5)
+            time.sleep(3)
+            recog.update()
+        elif recog.status == Status.LOADING:
+            time.sleep(3)
             recog.update()
         elif recog.status == Status.YES:
             tap(adb, get_pos(recog.find('yes')), recog)
@@ -102,6 +105,9 @@ def back_to_index(adb, recog=None):
             login()
         elif recog.status == Status.YES:
             tap(adb, get_pos(recog.find('yes')), recog)
+        elif recog.status == Status.LOADING:
+            time.sleep(3)
+            recog.update()
         else:
             retry_times -= 1
             time.sleep(3)
