@@ -6,6 +6,7 @@ import task
 if __name__ == '__main__':
     adb = ADBConnector()
     task.start_game(adb)
+    adb.save_screenshot()
     # task.complete_tasks(adb)
     # task.collect_credit(adb)
     # task.recruit(adb)

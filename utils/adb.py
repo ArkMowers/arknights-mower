@@ -238,6 +238,10 @@ class ADBConnector:
         command = 'screencap -p'
         return self.session().exec(command)
 
+    def save_screenshot(self):
+        with open(time.strftime('./screenshot/%Y%m%d%H%M%S.png',time.localtime()), 'wb') as f:
+            f.write(self.screencap())
+
 
 class KeyCode:
     KEYCODE_CALL = 5  # 拨号键
