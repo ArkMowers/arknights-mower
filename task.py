@@ -34,15 +34,17 @@ def retry(recog, call, cut=None, times=3):
     return ret
 
 
+def start_game(adb):
+    adb.start_app('com.hypergryph.arknights/com.u8.sdk.U8UnityContext')
+    time.sleep(10)
+
+
 def login(adb, recog=None):
     """
     启动游戏
     """
     if recog is None:
         recog = Recognizer(adb)
-    adb.start_app('com.hypergryph.arknights/com.u8.sdk.U8UnityContext')
-    time.sleep(10)
-    recog.update()
     retry_times = 3
     while retry_times and recog.is_index() == False:
         if recog.status == Status.LOGIN_START:
@@ -92,17 +94,17 @@ def back_to_index(adb, recog=None):
         recog = Recognizer(adb)
     retry_times = 3
     while retry_times and recog.get_status() != Status.INDEX:
-        navbutton = recog.find('navbutton')
         if recog.status == Status.NAVIGATION_BAR:
             tap(adb, get_pos(recog.find('navhome_index')), recog)
-        elif navbutton is not None:
+        navbutton = recog.find('navbutton')
+        if navbutton is not None:
             tap(adb, get_pos(navbutton), recog)
         elif recog.status == Status.ANNOUNCEMENT:
             tap(adb, get_pos(recog.find('index_close')), recog)
         elif recog.status == Status.MATERIEL:
             tap(adb, get_pos(recog.find('materiel')), recog)
         elif recog.status // 100 == 1:
-            login()
+            login(adb)
         elif recog.status == Status.YES:
             tap(adb, get_pos(recog.find('yes')), recog)
         elif recog.status == Status.LOADING:
@@ -137,12 +139,12 @@ def infra_collect(adb, recog=None):
             else:
                 break
         elif recog.status == Status.INFRA_TODOLIST:
-            bill = recog.find('infra_collect_bill')
-            if bill is not None:
-                tap(adb, get_pos(bill), recog)
             trust = recog.find('infra_collect_trust')
             if trust is not None:
                 tap(adb, get_pos(trust), recog)
+            bill = recog.find('infra_collect_bill')
+            if bill is not None:
+                tap(adb, get_pos(bill), recog)
             factory = recog.find('infra_collect_factory')
             if factory is not None:
                 tap(adb, get_pos(factory), recog)
@@ -208,7 +210,10 @@ def complete_tasks(adb, recog=None):
 #         elif recog.status == Status.FRIEND_LIST_OFF:
 #             friend_list = recog.find('friend_list')
 #             tap(adb, get_pos(friend_list), recog, ((0.0, 1.0), (0, friend_list[1][1])))
-#         elif recog.status == Status.MISSION_DAILY:
+#         elif recog.status == Status.FRIEND_LIST_ON:
+#             friend_list = recog.find('friend_list_on')
+#             friend_visit = recog.find('friend_visit')
+
 #             collect = recog.find('mission_collect')
 #             if collect is not None:
 #                 tap(adb, get_pos(collect), recog)
@@ -231,14 +236,7 @@ def complete_tasks(adb, recog=None):
 #             continue
 #         retry_times = 3
 
-
-
-
-    
-    
-    
-    # friend_visit = retry(recog, recog.find_friend_visit,
-    #                      cut=((0.5, 1.0), (0, friend_list[1][1])))
+    # 
     # tap(adb, get_pos(friend_visit), recog)
     # friend_next = retry(recog, recog.find_friend_next)
     # x = (friend_next[0][0] + friend_next[3][0]) // 2
