@@ -50,6 +50,12 @@ class FlannBasedMatcher():
             M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
             matchesMask = mask.ravel().tolist()
 
+            if M is None:
+                logger.debug('calculated transformation matrix failed')
+                if ret_square:
+                    return None
+                return False
+
             h, w = query.shape
             pts = np.float32([[0, 0], [0, h-1], [w-1, h-1],
                              [w-1, 0]]).reshape(-1, 1, 2)
