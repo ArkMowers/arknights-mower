@@ -21,4 +21,4 @@ if __name__ == '__main__':
     # adb.touch_swipe((820, 366), (-500, 366))
     # f = Recognizer(adb)
     # f.find('friend_unvisited', draw=True)
-    # Recognizer(adb).find('friend_next')
+    # Recognizer(adb).get_status()

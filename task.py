@@ -260,6 +260,8 @@ def auto_operate(adb, recog=None):
             recog.skip_sec(10)
         elif recog.status == Status.OPERATOR_FINISH:
             tap(adb, (10, 10), recog)
+        elif recog.status == Status.OPERATOR_RECOVER:
+            break
         elif recog.status == Status.LOADING:
             recog.skip_sec(3)
         elif has_nav(adb, recog):

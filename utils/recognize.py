@@ -46,6 +46,7 @@ class Status:
     OPERATOR_SELECT = 603  # 作战前，正在编队
     OPERATOR_ONGOING = 604  # 作战中
     OPERATOR_FINISH = 605  # 作战结束
+    OPERATOR_RECOVER = 606  # 恢复理智
     YES = 9999  # 确认对话框
 
 
@@ -83,7 +84,11 @@ class Recognizer():
             self.status = Status.ANNOUNCEMENT
         elif self.find('materiel') is not None:
             self.status = Status.MATERIEL
-        elif self.find('loading') is not None or self.find('loading2') is not None:
+        elif self.find('loading') is not None:
+            self.status = Status.LOADING
+        elif self.find('loading2') is not None:
+            self.status = Status.LOADING
+        elif self.find('loading3') is not None:
             self.status = Status.LOADING
         elif self.find('yes') is not None:
             self.status = Status.YES
@@ -113,7 +118,7 @@ class Recognizer():
             self.status = Status.MISSION_WEEKLY
         elif self.find('terminal_pre') is not None:
             self.status = Status.TERMINAL_MAIN
-        elif self.find('ope_marble') is not None:
+        elif self.find('ope_sanity') is not None:
             self.status = Status.OPERATOR_BEFORE
         elif self.find('ope_select_start') is not None:
             self.status = Status.OPERATOR_SELECT
@@ -121,6 +126,8 @@ class Recognizer():
             self.status = Status.OPERATOR_ONGOING
         elif self.find('ope_finish') is not None:
             self.status = Status.OPERATOR_FINISH
+        elif self.find('ope_recover') is not None:
+            self.status = Status.OPERATOR_RECOVER
         else:
             self.status = Status.UNKNOWN
             # save screencap to analyse
