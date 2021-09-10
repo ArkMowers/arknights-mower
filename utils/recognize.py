@@ -1,5 +1,6 @@
 import os
 import cv2
+import time
 import numpy as np
 
 from utils.log import logger
@@ -20,8 +21,17 @@ def threshole(img, thresh=250):
 
 
 class Status:
-    UNDEFINED = -1  # 未定义
-    INDEX = 0  # 首页
+    UNKNOWN = -1  # 未知
+    UNDEFINED = 0  # 未定义
+    INDEX = 1  # 首页
+    START = 2  # 启动
+    MATERIEL = 3  # 物资领取确认
+    ANNOUNCEMENT = 4  # 公告
+    LOGIN_MAIN = 101  # 登陆页面
+    LOGIN_INPUT = 102  # 登陆页面（输入）
+    LOGIN_QUICKLY = 103  # 登陆页面（快速）
+    LOGIN_LOADING = 104  # 登陆中
+    YES = 999  # 确认对话框
 
 
 class Recognizer():
@@ -30,8 +40,11 @@ class Recognizer():
         self.adb = adb
         self.update(cut)
 
-    def update(self, cut=None):
-        self.screencap = self.adb.screencap()
+    def update(self, cut=None, debug_screencap=None):
+        if debug_screencap is not None:
+            self.screencap = debug_screencap
+        else:
+            self.screencap = self.adb.screencap()
         data = bytes2img(self.screencap, True)
         if cut is not None:
             x1, x2 = cut[0]
@@ -57,15 +70,38 @@ class Recognizer():
     def color(self, x, y):
         return bytes2img(self.screencap)[y][x]
 
-    def is_index(self):
+    def get_status(self):
         if self.status != Status.UNDEFINED:
-            return self.status == Status.INDEX
-        logger.debug('check index')
-        if self.matcher_thres.match(threshole(loadimg('./resources/index_nav.png')), False):
+            return self.status
+        if self.find_thres('index_nav') is not None:
             self.status = Status.INDEX
-            return True
+        elif self.find('index_close') is not None:
+            self.status = Status.ANNOUNCEMENT
+        elif self.find('materiel') is not None:
+            self.status = Status.MATERIEL
+        elif self.find('start') is not None:
+            self.status = Status.START
+        elif self.find('yes') is not None:
+            self.status = Status.YES
+        elif self.find('login_awake') is not None:
+            self.status = Status.LOGIN_QUICKLY
+        elif self.find('login_account') is not None:
+            self.status = Status.LOGIN_MAIN
+        elif self.find('login_button') is not None:
+            self.status = Status.LOGIN_INPUT
+        elif self.find('login_loading') is not None:
+            self.status = Status.LOGIN_LOADING
         else:
-            return False
+            self.status = Status.UNKNOWN
+            with open(time.strftime('./screenshot/%Y%m%d%H%M%S.png', time.localtime()), 'wb') as f:
+                f.write(self.screencap)
+        logger.debug(f'status: {self.status}')
+        return self.status
+
+    def is_index(self):
+        if self.status == Status.UNDEFINED:
+            self.get_status()
+        return self.status == Status.INDEX or self.status == Status.ANNOUNCEMENT
 
     def find(self, item, draw=False):
         logger.debug(f'find {item}')

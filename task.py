@@ -1,9 +1,8 @@
 import time
 
-from numpy import array
-
 from utils.log import logger
-from utils.recognize import Recognizer
+from utils.adb import KeyCode
+from utils.recognize import Recognizer, Status
 
 
 def get_pos(poly, x_rate=0.5, y_rate=0.5):
@@ -35,8 +34,48 @@ def retry(recog, call, cut=None, times=3):
     return ret
 
 
-def start_game(adb):
+def login(adb, recog=None):
+    """
+    启动游戏
+    """
+    if recog is None:
+        recog = Recognizer(adb)
     adb.start_app('com.hypergryph.arknights/com.u8.sdk.U8UnityContext')
+    time.sleep(10)
+    retry_times = 3
+    while retry_times and recog.is_index() == False:
+        if recog.status == Status.START:
+            tap(adb, get_pos(recog.find('start')), recog)
+        elif recog.status == Status.LOGIN_QUICKLY:
+            tap(adb, get_pos(recog.find('login_awake')), recog)
+        elif recog.status == Status.LOGIN_MAIN:
+            tap(adb, get_pos(recog.find('login_account')), recog)
+        elif recog.status == Status.LOGIN_INPUT:
+            input_area = recog.find('login_username')
+            if input_area is not None:
+                logger.debug(input_area)
+                adb.touch_tap(get_pos(input_area))
+                adb.send_text(input('Enter username: ').strip())
+                adb.touch_tap((0, 0))
+            input_area = recog.find('login_password')
+            if input_area is not None:
+                logger.debug(input_area)
+                adb.touch_tap(get_pos(input_area))
+                adb.send_text(input('Enter password: ').strip())
+                adb.touch_tap((0, 0))
+            tap(adb, get_pos(recog.find('login_button')), recog)
+        elif recog.status == Status.LOGIN_LOADING:
+            time.sleep(5)
+            recog.update()
+        elif recog.status == Status.YES:
+            tap(adb, get_pos(recog.find('yes')), recog)
+        else:
+            retry_times -= 1
+            time.sleep(3)
+            recog.update()
+            continue
+        retry_times = 3
+    assert recog.is_index()
 
 
 def back_to_index(adb, recog=None):
@@ -45,14 +84,32 @@ def back_to_index(adb, recog=None):
     """
     if recog is None:
         recog = Recognizer(adb)
-    navbutton = recog.find('navbutton')
-    if navbutton is not None:
-        navhome_index = recog.find('navhome_index')
-        if navhome_index is None:
-            tap(adb, get_pos(navbutton), recog)
+
+    retry_times = 3
+    while retry_times and recog.get_status() != Status.INDEX:
+        navbutton = recog.find('navbutton')
+        if navbutton is not None:
             navhome_index = recog.find('navhome_index')
-        tap(adb, get_pos(navhome_index), recog)
-    assert retry(recog, recog.is_index)
+            if navhome_index is None:
+                tap(adb, get_pos(navbutton), recog)
+                navhome_index = recog.find('navhome_index')
+            tap(adb, get_pos(navhome_index), recog)
+        elif recog.status == Status.ANNOUNCEMENT:
+            tap(adb, get_pos(recog.find('index_close')), recog)
+        elif recog.status == Status.MATERIEL:
+            tap(adb, get_pos(recog.find('materiel')), recog)
+        elif recog.status // 100 == 1:  # 跳转到登陆界面了
+            login()
+        elif recog.status == Status.YES:
+            tap(adb, get_pos(recog.find('yes')), recog)
+        else:
+            retry_times -= 1
+            time.sleep(3)
+            recog.update()
+            continue
+        retry_times = 3
+
+    assert recog.get_status() == Status.INDEX
 
 
 def complete_tasks(adb, recog=None):
