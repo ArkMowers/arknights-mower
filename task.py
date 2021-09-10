@@ -128,8 +128,9 @@ def infra_collect(adb, recog=None):
         back_to_index(adb, recog)
     retry_times = 5
     while retry_times:
-        recog.get_status()
-        if recog.status == Status.INDEX:
+        if recog.status == Status.UNDEFINED:
+            recog.get_status()
+        elif recog.status == Status.INDEX:
             tap(adb, get_pos(recog.find('index_infrastructure')), recog)
         elif recog.status == Status.INFRA_MAIN:
             notification = recog.find('infra_notification')
@@ -173,8 +174,9 @@ def complete_tasks(adb, recog=None):
         back_to_index(adb, recog)
     retry_times = 5
     while retry_times:
-        recog.get_status()
-        if recog.status == Status.INDEX:
+        if recog.status == Status.UNDEFINED:
+            recog.get_status()
+        elif recog.status == Status.INDEX:
             tap(adb, get_pos(recog.find('index_mission')), recog)
         elif recog.status == Status.MISSION_DAILY:
             collect = recog.find('mission_collect')
@@ -215,7 +217,9 @@ def collect_credit(adb, recog=None):
         back_to_index(adb, recog)
     retry_times = 5
     while retry_times:
-        if recog.status == Status.INDEX:
+        if recog.status == Status.UNDEFINED:
+            recog.get_status()
+        elif recog.status == Status.INDEX:
             tap(adb, get_pos(recog.find('index_friend')), recog)
         elif recog.status == Status.FRIEND_LIST_OFF:
             tap(adb, get_pos(recog.find('friend_list')), recog)
