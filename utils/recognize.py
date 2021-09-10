@@ -1,4 +1,3 @@
-import os
 import cv2
 import time
 from matplotlib.pyplot import draw
@@ -42,6 +41,11 @@ class Status:
     FRIEND_VISITING = 303  # 基建内访问好友
     MISSION_DAILY = 401  # 日常任务
     MISSION_WEEKLY = 402  # 周常任务
+    TERMINAL_MAIN = 501  # 终端主界面
+    OPERATOR_BEFORE = 602  # 作战前，关卡已选定
+    OPERATOR_SELECT = 603  # 作战前，正在编队
+    OPERATOR_ONGOING = 604  # 作战中
+    OPERATOR_FINISH = 605  # 作战结束
     YES = 9999  # 确认对话框
 
 
@@ -63,6 +67,10 @@ class Recognizer():
 
     def color(self, x, y):
         return bytes2img(self.screencap)[y][x]
+
+    def skip_sec(self, interval):
+        time.sleep(interval)
+        self.update()
 
     def get_status(self):
         if self.status != Status.UNDEFINED:
@@ -103,8 +111,19 @@ class Recognizer():
             self.status = Status.MISSION_DAILY
         elif self.find('mission_weekly_on') is not None:
             self.status = Status.MISSION_WEEKLY
+        elif self.find('terminal_pre') is not None:
+            self.status = Status.TERMINAL_MAIN
+        elif self.find('ope_marble') is not None:
+            self.status = Status.OPERATOR_BEFORE
+        elif self.find('ope_select_start') is not None:
+            self.status = Status.OPERATOR_SELECT
+        elif self.find('ope_ongoing') is not None:
+            self.status = Status.OPERATOR_ONGOING
+        elif self.find('ope_finish') is not None:
+            self.status = Status.OPERATOR_FINISH
         else:
             self.status = Status.UNKNOWN
+            # save screencap to analyse
             with open(time.strftime('./screenshot/%Y%m%d%H%M%S.png', time.localtime()), 'wb') as f:
                 f.write(self.screencap)
         logger.debug(f'status: {self.status}')
