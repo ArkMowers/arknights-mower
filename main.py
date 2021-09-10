@@ -5,10 +5,11 @@ import task
 
 if __name__ == '__main__':
     adb = ADBConnector()
-    task.login(adb)
-    task.collect_credit(adb)
-    task.complete_tasks(adb)
+    # task.login(adb)
+    # task.collect_credit(adb)
+    # task.complete_tasks(adb)
     # task.recruit(adb)
+    # task.infra_collect(adb)
 
     # adb.save_screenshot()
     # adb.touch_tap((40, 40))
@@ -18,3 +19,4 @@ if __name__ == '__main__':
     # adb.touch_swipe((820, 366), (-500, 366))
     # f = Recognizer(adb)
     # f.find('friend_unvisited', draw=True)
+    Recognizer(adb).find('infra_notification', draw=True)

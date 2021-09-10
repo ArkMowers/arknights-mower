@@ -5,7 +5,7 @@ from matplotlib import pyplot as plt
 from utils.log import logger
 
 MATCHER_DEBUG = False
-MIN_MATCH_COUNT = 10
+# MIN_MATCH_COUNT = 10
 FLANN_INDEX_KDTREE = 0
 GOOD_DISTANCE_LIMIT = 0.7
 SIFT = cv2.SIFT_create()
@@ -37,8 +37,8 @@ class FlannBasedMatcher():
         for x, y in matches:
             if x.distance < GOOD_DISTANCE_LIMIT * y.distance:
                 good.append(x)
-        logger.debug(f'good matches: {len(good)} / {len(matches)}')
-        if len(good) > MIN_MATCH_COUNT:
+        logger.debug(f'matches: {len(good)} / {len(matches)} / {len(des)}')
+        if len(good) > len(des) // 2 or len(des) - len(good) <= 10:
 
             """get the coordinates of good matches"""
             src_pts = np.float32(
@@ -90,7 +90,7 @@ class FlannBasedMatcher():
                     query, kp, self.origin, self.kp, good, None)
                 plt.imshow(result, 'gray')
                 plt.show()
-            logger.debug('not enough matches are found')
+            logger.debug('not enough good matches are found')
             if ret_square:
                 return None
             return False

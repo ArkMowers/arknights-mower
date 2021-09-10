@@ -1,6 +1,7 @@
 import os
 import cv2
 import time
+from matplotlib.pyplot import draw
 import numpy as np
 
 from utils.log import logger
@@ -24,15 +25,23 @@ class Status:
     UNKNOWN = -1  # 未知
     UNDEFINED = 0  # 未定义
     INDEX = 1  # 首页
-    START = 2  # 启动
-    MATERIEL = 3  # 物资领取确认
-    ANNOUNCEMENT = 4  # 公告
-    LOADING = 5  # 场景跳转时的等待界面
+    MATERIEL = 2  # 物资领取确认
+    ANNOUNCEMENT = 3  # 公告
+    LOADING = 4  # 场景跳转时的等待界面
+    MISSION = 5  # 任务列表
+    NAVIGATION_BAR = 6 # 导航栏返回
     LOGIN_MAIN = 101  # 登陆页面
     LOGIN_INPUT = 102  # 登陆页面（输入）
     LOGIN_QUICKLY = 103  # 登陆页面（快速）
     LOGIN_LOADING = 104  # 登陆中
-    YES = 999  # 确认对话框
+    LOGIN_START = 105  # 启动
+    INFRA_MAIN = 201  # 基建全局视角
+    INFRA_TODOLIST = 202  # 基建待办事项
+    FRIEND_LIST_OFF = 301  # 好友列表（未选中）
+    FRIEND_LIST_ON = 302  # 好友列表（选中）
+    MISSION_DAILY = 401  # 日常任务
+    MISSION_WEEKLY = 402  # 周常任务
+    YES = 9999  # 确认对话框
 
 
 class Recognizer():
@@ -76,12 +85,12 @@ class Recognizer():
             return self.status
         if self.find_thres('index_nav') is not None:
             self.status = Status.INDEX
+        elif self.find('navhome_index') is not None:
+            self.status = Status.NAVIGATION_BAR
         elif self.find('index_close') is not None:
             self.status = Status.ANNOUNCEMENT
         elif self.find('materiel') is not None:
             self.status = Status.MATERIEL
-        elif self.find('start') is not None:
-            self.status = Status.START
         elif self.find('loading') is not None:
             self.status = Status.LOADING
         elif self.find('yes') is not None:
@@ -94,6 +103,20 @@ class Recognizer():
             self.status = Status.LOGIN_INPUT
         elif self.find('login_loading') is not None:
             self.status = Status.LOGIN_LOADING
+        elif self.find('start') is not None:
+            self.status = Status.LOGIN_START
+        elif self.find('infra_overview') is not None:
+            self.status = Status.INFRA_MAIN
+        elif self.find('infra_todo') is not None:
+            self.status = Status.INFRA_TODOLIST
+        elif self.find('friend_list') is not None:
+            self.status = Status.FRIEND_LIST_OFF
+        elif self.find('friend_list_on') is not None:
+            self.status = Status.FRIEND_LIST_ON
+        elif self.find('mission_daily_on') is not None:
+            self.status = Status.MISSION_DAILY
+        elif self.find('mission_weekly_on') is not None:
+            self.status = Status.MISSION_WEEKLY
         else:
             self.status = Status.UNKNOWN
             with open(time.strftime('./screenshot/%Y%m%d%H%M%S.png', time.localtime()), 'wb') as f:
