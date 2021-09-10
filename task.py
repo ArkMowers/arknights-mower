@@ -13,25 +13,10 @@ def get_pos(poly, x_rate=0.5, y_rate=0.5):
     return (int(x/2), int(y/2))
 
 
-def tap(adb, pos, recog, cut=None):
+def tap(adb, pos, recog):
     adb.touch_tap(pos)
     time.sleep(1)
-    recog.update(cut)
-
-
-def retry(recog, call, cut=None, times=3):
-    ret = call()
-    if ret is not None and ret != False:
-        return ret
-    while times:
-        times -= 1
-        logger.debug('retrying...(remain %d times)' % times)
-        time.sleep(1)
-        recog.update(cut)
-        ret = call()
-        if ret is not None and ret != False:
-            return ret
-    return ret
+    recog.update()
 
 
 def start_game(adb):
@@ -45,7 +30,7 @@ def login(adb, recog=None):
     """
     if recog is None:
         recog = Recognizer(adb)
-    retry_times = 3
+    retry_times = 5
     while retry_times and recog.is_index() == False:
         if recog.status == Status.LOGIN_START:
             tap(adb, get_pos(recog.find('start')), recog)
@@ -82,23 +67,34 @@ def login(adb, recog=None):
             time.sleep(3)
             recog.update()
             continue
-        retry_times = 3
+        retry_times = 5
     assert recog.is_index()
+
+
+def has_nav(adb, recog):
+    """
+    判断是否存在导航栏，若存在则打开
+    """
+    if recog.get_status() == Status.NAVIGATION_BAR:
+        return True
+    navbutton = recog.find('navbutton')
+    if navbutton is not None:
+        tap(adb, get_pos(navbutton), recog)
+        return True
+    return False
 
 
 def back_to_index(adb, recog=None):
     """
     返回主页
     """
+    logger.info('back to index')
     if recog is None:
         recog = Recognizer(adb)
-    retry_times = 3
+    retry_times = 5
     while retry_times and recog.get_status() != Status.INDEX:
-        if recog.status == Status.NAVIGATION_BAR:
-            tap(adb, get_pos(recog.find('navhome_index')), recog)
-        navbutton = recog.find('navbutton')
-        if navbutton is not None:
-            tap(adb, get_pos(navbutton), recog)
+        if has_nav(adb, recog):
+            tap(adb, get_pos(recog.find('nav_index')), recog)
         elif recog.status == Status.ANNOUNCEMENT:
             tap(adb, get_pos(recog.find('index_close')), recog)
         elif recog.status == Status.MATERIEL:
@@ -115,7 +111,7 @@ def back_to_index(adb, recog=None):
             time.sleep(3)
             recog.update()
             continue
-        retry_times = 3
+        retry_times = 5
 
     assert recog.get_status() == Status.INDEX
 
@@ -126,8 +122,11 @@ def infra_collect(adb, recog=None):
     """
     if recog is None:
         recog = Recognizer(adb)
-    back_to_index(adb, recog)
-    retry_times = 3
+    if has_nav(adb, recog):
+        tap(adb, get_pos(recog.find('nav_infrastructure')), recog)
+    else:
+        back_to_index(adb, recog)
+    retry_times = 5
     while retry_times:
         recog.get_status()
         if recog.status == Status.INDEX:
@@ -149,6 +148,9 @@ def infra_collect(adb, recog=None):
             if factory is not None:
                 tap(adb, get_pos(factory), recog)
             break
+        elif recog.status == Status.LOADING:
+            time.sleep(3)
+            recog.update()
         elif recog.status != Status.UNKNOWN:
             back_to_index(adb, recog)
         else:
@@ -156,7 +158,7 @@ def infra_collect(adb, recog=None):
             time.sleep(3)
             recog.update()
             continue
-        retry_times = 3
+        retry_times = 5
 
 
 def complete_tasks(adb, recog=None):
@@ -165,8 +167,11 @@ def complete_tasks(adb, recog=None):
     """
     if recog is None:
         recog = Recognizer(adb)
-    back_to_index(adb, recog)
-    retry_times = 3
+    if has_nav(adb, recog):
+        tap(adb, get_pos(recog.find('nav_mission')), recog)
+    else:
+        back_to_index(adb, recog)
+    retry_times = 5
     while retry_times:
         recog.get_status()
         if recog.status == Status.INDEX:
@@ -185,6 +190,9 @@ def complete_tasks(adb, recog=None):
                 break
         elif recog.status == Status.MATERIEL:
             tap(adb, get_pos(recog.find('materiel')), recog)
+        elif recog.status == Status.LOADING:
+            time.sleep(3)
+            recog.update()
         elif recog.status != Status.UNKNOWN:
             back_to_index(adb, recog)
         else:
@@ -192,58 +200,53 @@ def complete_tasks(adb, recog=None):
             time.sleep(3)
             recog.update()
             continue
-        retry_times = 3
+        retry_times = 5
 
 
-# def collect_credit(adb, recog=None):
-#     """
-#     走亲访友收信用
-#     """
-#     if recog is None:
-#         recog = Recognizer(adb)
-#     back_to_index(adb, recog)
-#     retry_times = 3
-#     while retry_times:
-#         recog.get_status()
-#         if recog.status == Status.INDEX:
-#             tap(adb, get_pos(recog.find('index_friend')), recog)
-#         elif recog.status == Status.FRIEND_LIST_OFF:
-#             friend_list = recog.find('friend_list')
-#             tap(adb, get_pos(friend_list), recog, ((0.0, 1.0), (0, friend_list[1][1])))
-#         elif recog.status == Status.FRIEND_LIST_ON:
-#             friend_list = recog.find('friend_list_on')
-#             friend_visit = recog.find('friend_visit')
-
-#             collect = recog.find('mission_collect')
-#             if collect is not None:
-#                 tap(adb, get_pos(collect), recog)
-#             else:
-#                 tap(adb, get_pos(recog.find('mission_weekly')), recog)
-#         elif recog.status == Status.MISSION_WEEKLY:
-#             collect = recog.find('mission_collect')
-#             if collect is not None:
-#                 tap(adb, get_pos(collect), recog)
-#             else:
-#                 break
-#         elif recog.status == Status.MATERIEL:
-#             tap(adb, get_pos(recog.find('materiel')), recog)
-#         elif recog.status != Status.UNKNOWN:
-#             back_to_index(adb, recog)
-#         else:
-#             retry_times -= 1
-#             time.sleep(3)
-#             recog.update()
-#             continue
-#         retry_times = 3
-
-    # 
-    # tap(adb, get_pos(friend_visit), recog)
-    # friend_next = retry(recog, recog.find_friend_next)
-    # x = (friend_next[0][0] + friend_next[3][0]) // 2
-    # y = (3 * friend_next[0][1] + friend_next[1][1]) // 4
-    # while friend_next is not None and recog.color(x, y)[2] > 100:
-    #     tap(adb, get_pos(friend_next), recog)
-    #     friend_next = retry(recog, recog.find_friend_next)
+def collect_credit(adb, recog=None):
+    """
+    走亲访友收信用
+    """
+    if recog is None:
+        recog = Recognizer(adb)
+    if has_nav(adb, recog):
+        tap(adb, get_pos(recog.find('nav_social')), recog)
+    else:
+        back_to_index(adb, recog)
+    retry_times = 5
+    while retry_times:
+        if recog.status == Status.INDEX:
+            tap(adb, get_pos(recog.find('index_friend')), recog)
+        elif recog.status == Status.FRIEND_LIST_OFF:
+            tap(adb, get_pos(recog.find('friend_list')), recog)
+        elif recog.status == Status.FRIEND_LIST_ON:
+            maxy = recog.find('friend_list_on')[1][1]
+            scope = [(0, 0), (100000, maxy)]
+            friend_visit = recog.find('friend_visit', scope=scope)
+            if friend_visit is not None:
+                tap(adb, get_pos(friend_visit), recog)
+            else:
+                time.sleep(1)
+                recog.update()
+        elif recog.status == Status.FRIEND_VISITING:
+            friend_next = recog.find('friend_next')
+            x = (friend_next[0][0] + friend_next[3][0]) // 2
+            y = friend_next[0][1]
+            if recog.color(x, y)[2] > 100:
+                tap(adb, get_pos(friend_next), recog)
+            else:
+                break
+        elif recog.status == Status.LOADING:
+            time.sleep(3)
+            recog.update()
+        elif recog.status != Status.UNKNOWN:
+            back_to_index(adb, recog)
+        else:
+            retry_times -= 1
+            time.sleep(3)
+            recog.update()
+            continue
+        retry_times = 5
 
 
 # def recruit(adb, recog=None):
