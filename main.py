@@ -4,10 +4,11 @@ import task
 
 
 if __name__ == '__main__':
-    adb = ADBConnector('127.0.0.1:62026')
+    adb = ADBConnector()
+    task.start_game(adb)
     # task.complete_tasks(adb)
     # task.collect_credit(adb)
-    task.recruit(adb)
+    # task.recruit(adb)
 
     # adb.touch_tap((40, 40))
     # devices = adb.get_devices()

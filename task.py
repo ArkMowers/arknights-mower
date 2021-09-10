@@ -35,6 +35,10 @@ def retry(recog, call, cut=None, times=3):
     return ret
 
 
+def start_game(adb):
+    adb.start_app('com.hypergryph.arknights/com.u8.sdk.U8UnityContext')
+
+
 def back_to_index(adb, recog=None):
     """
     返回主页

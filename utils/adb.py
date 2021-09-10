@@ -165,6 +165,8 @@ class ADBConnector:
         # self.__get_find()
         # self.__check_adb()
         # self.__check_server_alive()
+        if self.__device_id == None:
+            self.__device_id = ADBClientSession().devices()[0][0]
 
     def __start_server(self):
         logger.info('Starting adb server...')
@@ -204,6 +206,9 @@ class ADBConnector:
         logger.debug('command: %s', cmd)
         logger.debug('output: %s', repr(output))
         return output
+
+    def start_app(self, app):
+        self.run(f'am start -n {app}')
 
     def touch_tap(self, XY, offsets=(0, 0)):
         final_X = XY[0] + randint(-offsets[0], offsets[0])
