@@ -166,7 +166,10 @@ class ADBConnector:
         # self.__check_adb()
         # self.__check_server_alive()
         if self.__device_id == None:
-            self.__device_id = ADBClientSession().devices()[0][0]
+            for device in ADBClientSession().devices():
+                if device[1] == 'device':
+                    self.__device_id = device[0]
+                    break
 
     def __start_server(self):
         logger.info('Starting adb server...')
