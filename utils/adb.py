@@ -234,13 +234,19 @@ class ADBConnector:
         command = f'input keyevent {keycode}'
         self.run(command)
 
+    def send_text(self, text):
+        command = f'input text "{text}"'
+        self.run(command)
+
     def screencap(self):
         command = 'screencap -p'
         return self.session().exec(command)
 
     def save_screenshot(self):
-        with open(time.strftime('./screenshot/%Y%m%d%H%M%S.png',time.localtime()), 'wb') as f:
+        filename = time.strftime('./screenshot/%Y%m%d%H%M%S.png', time.localtime())
+        with open(filename, 'wb') as f:
             f.write(self.screencap())
+        logger.debug(f'save screenshot in {filename}')
 
 
 class KeyCode:
