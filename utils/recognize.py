@@ -39,6 +39,7 @@ class Status:
     INFRA_TODOLIST = 202  # 基建待办事项
     FRIEND_LIST_OFF = 301  # 好友列表（未选中）
     FRIEND_LIST_ON = 302  # 好友列表（选中）
+    FRIEND_VISITING = 303  # 基建内访问好友
     MISSION_DAILY = 401  # 日常任务
     MISSION_WEEKLY = 402  # 周常任务
     YES = 9999  # 确认对话框
@@ -46,33 +47,16 @@ class Status:
 
 class Recognizer():
 
-    def __init__(self, adb, cut=None):
+    def __init__(self, adb):
         self.adb = adb
-        self.update(cut)
+        self.update()
 
-    def update(self, cut=None, debug_screencap=None):
+    def update(self, debug_screencap=None):
         if debug_screencap is not None:
             self.screencap = debug_screencap
         else:
             self.screencap = self.adb.screencap()
         data = bytes2img(self.screencap, True)
-        if cut is not None:
-            x1, x2 = cut[0]
-            y1, y2 = cut[1]
-            h, w = data.shape
-            if type(x1).__name__ == 'float':
-                x1 = int(x1 * w)
-            if type(x2).__name__ == 'float':
-                x2 = int(x2 * w)
-            if type(y1).__name__ == 'float':
-                y1 = int(y1 * h)
-            if type(y2).__name__ == 'float':
-                y2 = int(y2 * h)
-            logger.debug(f'cut from ({x1}, {y1}) to ({x2}, {y2})')
-            data = data[y1:y2, x1:x2]
-            self.offset = (x1, y1)
-        else:
-            self.offset = (0, 0)
         self.matcher = FlannBasedMatcher(data)
         self.matcher_thres = FlannBasedMatcher(threshole(data))
         self.status = Status.UNDEFINED
@@ -85,13 +69,13 @@ class Recognizer():
             return self.status
         if self.find_thres('index_nav') is not None:
             self.status = Status.INDEX
-        elif self.find('navhome_index') is not None:
+        elif self.find('nav_index') is not None:
             self.status = Status.NAVIGATION_BAR
         elif self.find('index_close') is not None:
             self.status = Status.ANNOUNCEMENT
         elif self.find('materiel') is not None:
             self.status = Status.MATERIEL
-        elif self.find('loading') is not None:
+        elif self.find('loading') is not None or self.find('loading2') is not None:
             self.status = Status.LOADING
         elif self.find('yes') is not None:
             self.status = Status.YES
@@ -113,6 +97,8 @@ class Recognizer():
             self.status = Status.FRIEND_LIST_OFF
         elif self.find('friend_list_on') is not None:
             self.status = Status.FRIEND_LIST_ON
+        elif self.find('friend_next') is not None:
+            self.status = Status.FRIEND_VISITING
         elif self.find('mission_daily_on') is not None:
             self.status = Status.MISSION_DAILY
         elif self.find('mission_weekly_on') is not None:
@@ -129,23 +115,17 @@ class Recognizer():
             self.get_status()
         return self.status == Status.INDEX or self.status == Status.ANNOUNCEMENT
 
-    def find(self, item, draw=False):
+    def find(self, item, draw=False, scope=None):
         logger.debug(f'find {item}')
-        ret = self.matcher.match(loadimg(f'./resources/{item}.png'), draw=draw)
+        ret = self.matcher.match(loadimg(f'./resources/{item}.png'), draw=draw, scope=scope)
         if ret is None:
             return None
-        return [[x[i] + self.offset[i] for i in range(2)] for x in ret]
+        return ret
 
-    def find_thres(self, item, draw=False):
+    def find_thres(self, item, draw=False, scope=None):
         logger.debug(f'find {item}')
         ret = self.matcher_thres.match(
-            threshole(loadimg(f'./resources/{item}.png')), draw=draw)
+            threshole(loadimg(f'./resources/{item}.png')), draw=draw, scope=scope)
         if ret is None:
             return None
-        return [[x[i] + self.offset[i] for i in range(2)] for x in ret]
-
-    def find_friend_visit(self, draw=False):
-        return self.find('friend_visit', draw)
-
-    def find_friend_next(self, draw=False):
-        return self.find('friend_next', draw)
+        return ret
