@@ -30,6 +30,7 @@ pip3 install -r requirements.txt
 ## Todo
 
 - [ ] 处理代理失误的状态
+- [ ] 处理升级的状态
 - [ ] 引入 OCR
     - [ ] 定位主线关卡
     - [ ] 自动公招
