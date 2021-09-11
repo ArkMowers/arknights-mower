@@ -19,6 +19,14 @@ Discuss Group: https://t.me/ArknightsHelper
     - 仅限上一次作战
     - 可自动通过体力药剂和源石回复体力
 
+## Usage
+
+需要安装 ADB。
+
+```
+pip3 install -r requirements.txt
+```
+
 ## Todo
 
 - [ ] 处理代理失误的状态
