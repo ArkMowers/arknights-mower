@@ -52,9 +52,9 @@ class Status:
 
 class Recognizer():
 
-    def __init__(self, adb):
+    def __init__(self, adb, debug_screencap=None):
         self.adb = adb
-        self.update()
+        self.update(debug_screencap)
 
     def update(self, debug_screencap=None):
         if debug_screencap is not None:
