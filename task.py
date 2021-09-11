@@ -261,8 +261,8 @@ def auto_operate(adb, recog=None, potion=0, originite=0):
                 elif recovering == 2:
                     logger.info('use originite to recover sanity')
                     originite -= 1
-                else:
-                    raise RuntimeError('recovering: known type')
+                elif recovering != 0:
+                    raise RuntimeError(f'recovering: unknown type {recovering}')
                 recovering = 0
         elif recog.state == State.OPERATOR_SELECT:
             tap(adb, get_pos(recog.find('ope_select_start')), recog)
