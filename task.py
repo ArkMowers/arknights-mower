@@ -237,6 +237,8 @@ def collect_credit(adb, recog=None):
 def auto_operate(adb, recog=None, potion=0, originite=0):
     """
     自动前往上一次作战刷体力
+    :param potion: 最多使用药剂恢复体力的次数，-1 为无限制
+    :param originite: 最多使用源石恢复体力的次数，-1 为无限制
     """
     if recog is None:
         recog = Recognizer(adb)
