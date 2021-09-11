@@ -1,5 +1,13 @@
 # ArknightsHelper
 
+《明日方舟》长草助手
+
+Discuss Group: https://t.me/ArknightsHelper
+
+## Aim
+
+7*24 小时不间断长草，让你忘掉这个游戏！
+
 ## Feature
 
 - 自动打开《明日方舟》
