@@ -234,12 +234,13 @@ def collect_credit(adb, recog=None):
         retry_times = 5
 
 
-def auto_operate(adb, recog=None):
+def auto_operate(adb, recog=None, potion=0, originite=0):
     """
     自动前往上一次作战刷体力
     """
     if recog is None:
         recog = Recognizer(adb)
+    recovering = 0
     retry_times = 5
     while retry_times > 0:
         if recog.state == State.UNDEFINED:
@@ -254,6 +255,15 @@ def auto_operate(adb, recog=None):
                 tap(adb, get_pos(agency), recog)
             else:
                 tap(adb, get_pos(recog.find('ope_start')), recog)
+                if recovering == 1:
+                    logger.info('use potion to recover sanity')
+                    potion -= 1
+                elif recovering == 2:
+                    logger.info('use originite to recover sanity')
+                    originite -= 1
+                else:
+                    raise RuntimeError('recovering: known type')
+                recovering = 0
         elif recog.state == State.OPERATOR_SELECT:
             tap(adb, get_pos(recog.find('ope_select_start')), recog)
         elif recog.state == State.OPERATOR_ONGOING:
@@ -262,9 +272,30 @@ def auto_operate(adb, recog=None):
             tap(adb, (10, 10), recog)
         elif recog.state == State.OPERATOR_INTERRUPT:
             tap(adb, get_pos(recog.find('ope_interrupt_no')), recog)
-        elif recog.state == State.OPERATOR_RECOVER:
-            tap(adb, get_pos(recog.find('ope_recover_no')), recog)
-            break
+        elif recog.state == State.OPERATOR_RECOVER_POTION:
+            if potion == 0:
+                if originite != 0:
+                    tap(adb, get_pos(recog.find('ope_recover_originite')), recog)
+                else:
+                    tap(adb, get_pos(recog.find('ope_recover_potion_no')), recog)
+                    break
+            elif recovering:
+                recog.skip_sec(3)
+            else:
+                tap(adb, get_pos(recog.find('ope_recover_potion_yes')), recog)
+                recovering = 1
+        elif recog.state == State.OPERATOR_RECOVER_ORIGINITE:
+            if originite == 0:
+                if potion != 0:
+                    tap(adb, get_pos(recog.find('ope_recover_potion')), recog)
+                else:
+                    tap(adb, get_pos(recog.find('ope_recover_originite_no')), recog)
+                    break
+            elif recovering:
+                recog.skip_sec(3)
+            else:
+                tap(adb, get_pos(recog.find('ope_recover_originite_yes')), recog)
+                recovering = 2
         elif recog.state == State.LOADING:
             recog.skip_sec(3)
         elif has_nav(adb, recog):

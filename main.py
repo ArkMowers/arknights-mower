@@ -13,9 +13,13 @@ if __name__ == '__main__':
     # task.complete_tasks(adb)
     # task.recruit(adb)
 
+    task.auto_operate(adb, potion=5)
+
     # adb.save_screenshot()
 
-    Recognizer(adb).find('announce_close', draw=True)
+    # Recognizer(adb).find('ope_plan', draw=True)
+
+    # Recognizer(adb).get_state()
     
     # with open('./screenshot/20210911123231.png', 'rb') as f:
     #     Recognizer(adb, f.read()).find('yes', draw=True)

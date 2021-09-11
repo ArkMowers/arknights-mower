@@ -46,8 +46,9 @@ class State:
     OPERATOR_SELECT = 603  # 作战前，正在编队
     OPERATOR_ONGOING = 604  # 作战中
     OPERATOR_FINISH = 605  # 作战结束
-    OPERATOR_RECOVER = 606  # 恢复理智
-    OPERATOR_INTERRUPT = 607  # 对战中断
+    OPERATOR_INTERRUPT = 606  # 对战中断
+    OPERATOR_RECOVER_POTION = 607  # 恢复理智（药剂）
+    OPERATOR_RECOVER_ORIGINITE = 608  # 恢复理智（源石）
     YES = 9999  # 确认对话框
 
 
@@ -119,7 +120,7 @@ class Recognizer():
             self.state = State.MISSION_WEEKLY
         elif self.find('terminal_pre') is not None:
             self.state = State.TERMINAL_MAIN
-        elif self.find('ope_sanity') is not None:
+        elif self.find('ope_plan') is not None:
             self.state = State.OPERATOR_BEFORE
         elif self.find('ope_select_start') is not None:
             self.state = State.OPERATOR_SELECT
@@ -127,8 +128,10 @@ class Recognizer():
             self.state = State.OPERATOR_ONGOING
         elif self.find('ope_finish') is not None:
             self.state = State.OPERATOR_FINISH
-        elif self.find('ope_recover') is not None:
-            self.state = State.OPERATOR_RECOVER
+        elif self.find('ope_recover_potion_on') is not None:
+            self.state = State.OPERATOR_RECOVER_POTION
+        elif self.find('ope_recover_originite_on') is not None:
+            self.state = State.OPERATOR_RECOVER_ORIGINITE
         elif self.find('ope_interrupt') is not None:
             self.state = State.OPERATOR_INTERRUPT
         else:
