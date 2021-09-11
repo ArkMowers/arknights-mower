@@ -51,7 +51,7 @@ class FlannBasedMatcher():
             if x.distance < GOOD_DISTANCE_LIMIT * y.distance:
                 good.append(x)
 
-        good_kp_x = [kp[x.queryIdx].pt[0] for x in good]
+        good_kp_x = [kp[x.queryIdx].pt[1] for x in good]
         if len(good_kp_x):
             good_area_rate = np.ptp(good_kp_x) / w
         else:
@@ -91,9 +91,10 @@ class FlannBasedMatcher():
         pts = np.float32([[0, 0], [0, h-1], [w-1, h-1],
                          [w-1, 0]]).reshape(-1, 1, 2)
         dst = cv2.perspectiveTransform(pts, M)
+        dst_list = np.int32(dst).reshape(4, 2).tolist()
 
-        if abs(dst[0][0][0] - dst[1][0][0]) > 10 or abs(dst[2][0][0] - dst[3][0][0]) > 10 or abs(dst[0][0][1] - dst[3][0][1]) > 10 or abs(dst[1][0][1] - dst[2][0][1]) > 10:
-            logger.debug('square is not rectangle')
+        if abs(dst[0][0][0] - dst[1][0][0]) > 30 or abs(dst[2][0][0] - dst[3][0][0]) > 30 or abs(dst[0][0][1] - dst[3][0][1]) > 30 or abs(dst[1][0][1] - dst[2][0][1]) > 30:
+            logger.debug(f'square is not rectangle: {dst_list}')
             if ret_square:
                 return None
             return False
@@ -118,9 +119,8 @@ class FlannBasedMatcher():
             plt.imshow(result, 'gray')
             plt.show()
 
-        dst = np.int32(dst).reshape(4, 2).tolist()
-        logger.debug(f'find in {dst}')
+        logger.debug(f'find in {dst_list}')
 
         if ret_square:
-            return dst
+            return dst_list
         return True
