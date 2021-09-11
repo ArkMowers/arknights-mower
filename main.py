@@ -13,7 +13,7 @@ if __name__ == '__main__':
     # task.complete_tasks(adb)
     # task.recruit(adb)
 
-    task.auto_operate(adb, potion=5)
+    task.auto_operate(adb, potion=4)
 
     # adb.save_screenshot()
 
