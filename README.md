@@ -1,6 +1,6 @@
 # ArknightsHelper
 
-《明日方舟》长草助手
+《明日方舟》长草助手（开发中）
 
 Discuss Group: https://t.me/ArknightsHelper
 
