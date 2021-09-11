@@ -6,7 +6,7 @@ Discuss Group: https://t.me/ArknightsHelper
 
 ## Aim
 
-7*24 小时不间断长草，让你忘掉这个游戏！
+支持任意分辨率，7*24 小时不间断长草，让你忘掉这个游戏！
 
 ## Feature
 
