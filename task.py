@@ -2,7 +2,7 @@ import time
 
 from utils.log import logger
 from utils.adb import KeyCode
-from utils.recognize import Recognizer, Status
+from utils.recognize import Recognizer, State
 
 
 def get_pos(poly, x_rate=0.5, y_rate=0.5):
@@ -31,13 +31,13 @@ def login(adb, recog=None):
         recog = Recognizer(adb)
     retry_times = 5
     while retry_times and recog.is_index() == False:
-        if recog.status == Status.LOGIN_START:
+        if recog.state == State.LOGIN_START:
             tap(adb, get_pos(recog.find('start')), recog)
-        elif recog.status == Status.LOGIN_QUICKLY:
+        elif recog.state == State.LOGIN_QUICKLY:
             tap(adb, get_pos(recog.find('login_awake')), recog)
-        elif recog.status == Status.LOGIN_MAIN:
+        elif recog.state == State.LOGIN_MAIN:
             tap(adb, get_pos(recog.find('login_account')), recog)
-        elif recog.status == Status.LOGIN_INPUT:
+        elif recog.state == State.LOGIN_INPUT:
             input_area = recog.find('login_username')
             if input_area is not None:
                 logger.debug(input_area)
@@ -51,13 +51,13 @@ def login(adb, recog=None):
                 adb.send_text(input('Enter password: ').strip())
                 adb.touch_tap((0, 0))
             tap(adb, get_pos(recog.find('login_button')), recog)
-        elif recog.status == Status.LOGIN_LOADING:
+        elif recog.state == State.LOGIN_LOADING:
             recog.skip_sec(3)
-        elif recog.status == Status.LOADING:
+        elif recog.state == State.LOADING:
             recog.skip_sec(3)
-        elif recog.status == Status.MATERIEL:
+        elif recog.state == State.MATERIEL:
             tap(adb, get_pos(recog.find('materiel')), recog)
-        elif recog.status == Status.YES:
+        elif recog.state == State.YES:
             tap(adb, get_pos(recog.find('yes')), recog)
         else:
             retry_times -= 1
@@ -71,7 +71,7 @@ def has_nav(adb, recog):
     """
     判断是否存在导航栏，若存在则打开
     """
-    if recog.get_status() == Status.NAVIGATION_BAR:
+    if recog.get_state() == State.NAVIGATION_BAR:
         return True
     navbutton = recog.find('navbutton')
     if navbutton is not None:
@@ -88,18 +88,18 @@ def back_to_index(adb, recog=None):
     if recog is None:
         recog = Recognizer(adb)
     retry_times = 5
-    while retry_times and recog.get_status() != Status.INDEX:
+    while retry_times and recog.get_state() != State.INDEX:
         if has_nav(adb, recog):
             tap(adb, get_pos(recog.find('nav_index')), recog)
-        elif recog.status == Status.ANNOUNCEMENT:
+        elif recog.state == State.ANNOUNCEMENT:
             tap(adb, get_pos(recog.find('announce_close')), recog)
-        elif recog.status == Status.MATERIEL:
+        elif recog.state == State.MATERIEL:
             tap(adb, get_pos(recog.find('materiel')), recog)
-        elif recog.status // 100 == 1:
+        elif recog.state // 100 == 1:
             login(adb)
-        elif recog.status == Status.YES:
+        elif recog.state == State.YES:
             tap(adb, get_pos(recog.find('yes')), recog)
-        elif recog.status == Status.LOADING:
+        elif recog.state == State.LOADING:
             recog.skip_sec(3)
         else:
             retry_times -= 1
@@ -107,7 +107,7 @@ def back_to_index(adb, recog=None):
             continue
         retry_times = 5
 
-    assert recog.get_status() == Status.INDEX
+    assert recog.get_state() == State.INDEX
 
 
 def infra_collect(adb, recog=None):
@@ -118,17 +118,17 @@ def infra_collect(adb, recog=None):
         recog = Recognizer(adb)
     retry_times = 5
     while retry_times > 0:
-        if recog.status == Status.UNDEFINED:
-            recog.get_status()
-        elif recog.status == Status.INDEX:
+        if recog.state == State.UNDEFINED:
+            recog.get_state()
+        elif recog.state == State.INDEX:
             tap(adb, get_pos(recog.find('index_infrastructure')), recog)
-        elif recog.status == Status.INFRA_MAIN:
+        elif recog.state == State.INFRA_MAIN:
             notification = recog.find('infra_notification')
             if notification is not None:
                 tap(adb, get_pos(notification), recog)
             else:
                 break
-        elif recog.status == Status.INFRA_TODOLIST:
+        elif recog.state == State.INFRA_TODOLIST:
             trust = recog.find('infra_collect_trust')
             if trust is not None:
                 tap(adb, get_pos(trust), recog)
@@ -139,11 +139,11 @@ def infra_collect(adb, recog=None):
             if factory is not None:
                 tap(adb, get_pos(factory), recog)
             break
-        elif recog.status == Status.LOADING:
+        elif recog.state == State.LOADING:
             recog.skip_sec(3)
         elif has_nav(adb, recog):
             tap(adb, get_pos(recog.find('nav_infrastructure')), recog)
-        elif recog.status != Status.UNKNOWN:
+        elif recog.state != State.UNKNOWN:
             back_to_index(adb, recog)
         else:
             retry_times -= 1
@@ -160,29 +160,29 @@ def complete_tasks(adb, recog=None):
         recog = Recognizer(adb)
     retry_times = 5
     while retry_times > 0:
-        if recog.status == Status.UNDEFINED:
-            recog.get_status()
-        elif recog.status == Status.INDEX:
+        if recog.state == State.UNDEFINED:
+            recog.get_state()
+        elif recog.state == State.INDEX:
             tap(adb, get_pos(recog.find('index_mission')), recog)
-        elif recog.status == Status.MISSION_DAILY:
+        elif recog.state == State.MISSION_DAILY:
             collect = recog.find('mission_collect')
             if collect is not None:
                 tap(adb, get_pos(collect), recog)
             else:
                 tap(adb, get_pos(recog.find('mission_weekly')), recog)
-        elif recog.status == Status.MISSION_WEEKLY:
+        elif recog.state == State.MISSION_WEEKLY:
             collect = recog.find('mission_collect')
             if collect is not None:
                 tap(adb, get_pos(collect), recog)
             else:
                 break
-        elif recog.status == Status.MATERIEL:
+        elif recog.state == State.MATERIEL:
             tap(adb, get_pos(recog.find('materiel')), recog)
-        elif recog.status == Status.LOADING:
+        elif recog.state == State.LOADING:
             recog.skip_sec(3)
         elif has_nav(adb, recog):
             tap(adb, get_pos(recog.find('nav_mission')), recog)
-        elif recog.status != Status.UNKNOWN:
+        elif recog.state != State.UNKNOWN:
             back_to_index(adb, recog)
         else:
             retry_times -= 1
@@ -199,13 +199,13 @@ def collect_credit(adb, recog=None):
         recog = Recognizer(adb)
     retry_times = 5
     while retry_times > 0:
-        if recog.status == Status.UNDEFINED:
-            recog.get_status()
-        elif recog.status == Status.INDEX:
+        if recog.state == State.UNDEFINED:
+            recog.get_state()
+        elif recog.state == State.INDEX:
             tap(adb, get_pos(recog.find('index_friend')), recog)
-        elif recog.status == Status.FRIEND_LIST_OFF:
+        elif recog.state == State.FRIEND_LIST_OFF:
             tap(adb, get_pos(recog.find('friend_list')), recog)
-        elif recog.status == Status.FRIEND_LIST_ON:
+        elif recog.state == State.FRIEND_LIST_ON:
             maxy = recog.find('friend_list_on')[1][1]
             scope = [(0, 0), (100000, maxy)]
             friend_visit = recog.find('friend_visit', scope=scope)
@@ -213,7 +213,7 @@ def collect_credit(adb, recog=None):
                 tap(adb, get_pos(friend_visit), recog)
             else:
                 recog.skip_sec(1)
-        elif recog.status == Status.FRIEND_VISITING:
+        elif recog.state == State.FRIEND_VISITING:
             friend_next = recog.find('friend_next')
             x = (friend_next[0][0] + friend_next[3][0]) // 2
             y = friend_next[0][1]
@@ -221,11 +221,11 @@ def collect_credit(adb, recog=None):
                 tap(adb, get_pos(friend_next), recog)
             else:
                 break
-        elif recog.status == Status.LOADING:
+        elif recog.state == State.LOADING:
             recog.skip_sec(3)
         elif has_nav(adb, recog):
             tap(adb, get_pos(recog.find('nav_social')), recog)
-        elif recog.status != Status.UNKNOWN:
+        elif recog.state != State.UNKNOWN:
             back_to_index(adb, recog)
         else:
             retry_times -= 1
@@ -242,34 +242,34 @@ def auto_operate(adb, recog=None):
         recog = Recognizer(adb)
     retry_times = 5
     while retry_times > 0:
-        if recog.status == Status.UNDEFINED:
-            recog.get_status()
-        elif recog.status == Status.INDEX:
+        if recog.state == State.UNDEFINED:
+            recog.get_state()
+        elif recog.state == State.INDEX:
             tap(adb, get_pos(recog.find('index_terminal')), recog)
-        elif recog.status == Status.TERMINAL_MAIN:
+        elif recog.state == State.TERMINAL_MAIN:
             tap(adb, get_pos(recog.find('terminal_pre')), recog)
-        elif recog.status == Status.OPERATOR_BEFORE:
+        elif recog.state == State.OPERATOR_BEFORE:
             agency = recog.find('ope_agency')
             if agency is not None:
                 tap(adb, get_pos(agency), recog)
             else:
                 tap(adb, get_pos(recog.find('ope_start')), recog)
-        elif recog.status == Status.OPERATOR_SELECT:
+        elif recog.state == State.OPERATOR_SELECT:
             tap(adb, get_pos(recog.find('ope_select_start')), recog)
-        elif recog.status == Status.OPERATOR_ONGOING:
+        elif recog.state == State.OPERATOR_ONGOING:
             recog.skip_sec(10)
-        elif recog.status == Status.OPERATOR_FINISH:
+        elif recog.state == State.OPERATOR_FINISH:
             tap(adb, (10, 10), recog)
-        elif recog.status == Status.OPERATOR_INTERRUPT:
+        elif recog.state == State.OPERATOR_INTERRUPT:
             tap(adb, get_pos(recog.find('ope_interrupt_no')), recog)
-        elif recog.status == Status.OPERATOR_RECOVER:
+        elif recog.state == State.OPERATOR_RECOVER:
             tap(adb, get_pos(recog.find('ope_recover_no')), recog)
             break
-        elif recog.status == Status.LOADING:
+        elif recog.state == State.LOADING:
             recog.skip_sec(3)
         elif has_nav(adb, recog):
             tap(adb, get_pos(recog.find('nav_terminal')), recog)
-        elif recog.status != Status.UNKNOWN:
+        elif recog.state != State.UNKNOWN:
             back_to_index(adb, recog)
         else:
             retry_times -= 1

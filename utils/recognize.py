@@ -20,7 +20,7 @@ def threshole(img, thresh=250):
     return ret
 
 
-class Status:
+class State:
     UNKNOWN = -1  # 未知
     UNDEFINED = 0  # 未定义
     INDEX = 1  # 首页
@@ -65,7 +65,7 @@ class Recognizer():
         data = bytes2img(self.screencap, True)
         self.matcher = FlannBasedMatcher(data)
         self.matcher_thres = FlannBasedMatcher(threshole(data))
-        self.status = Status.UNDEFINED
+        self.state = State.UNDEFINED
 
     def color(self, x, y):
         return bytes2img(self.screencap)[y][x]
@@ -74,75 +74,75 @@ class Recognizer():
         time.sleep(interval)
         self.update()
 
-    def get_status(self):
-        if self.status != Status.UNDEFINED:
-            return self.status
+    def get_state(self):
+        if self.state != State.UNDEFINED:
+            return self.state
         if self.find_thres('index_nav') is not None:
-            self.status = Status.INDEX
+            self.state = State.INDEX
         elif self.find('nav_index') is not None:
-            self.status = Status.NAVIGATION_BAR
+            self.state = State.NAVIGATION_BAR
         elif self.find('announce_close') is not None:
-            self.status = Status.ANNOUNCEMENT
+            self.state = State.ANNOUNCEMENT
         elif self.find('materiel') is not None:
-            self.status = Status.MATERIEL
+            self.state = State.MATERIEL
         elif self.find('loading') is not None:
-            self.status = Status.LOADING
+            self.state = State.LOADING
         elif self.find('loading2') is not None:
-            self.status = Status.LOADING
+            self.state = State.LOADING
         elif self.find('loading3') is not None:
-            self.status = Status.LOADING
+            self.state = State.LOADING
         elif self.find('yes') is not None:
-            self.status = Status.YES
+            self.state = State.YES
         elif self.find('login_awake') is not None:
-            self.status = Status.LOGIN_QUICKLY
+            self.state = State.LOGIN_QUICKLY
         elif self.find('login_account') is not None:
-            self.status = Status.LOGIN_MAIN
+            self.state = State.LOGIN_MAIN
         elif self.find('login_button') is not None:
-            self.status = Status.LOGIN_INPUT
+            self.state = State.LOGIN_INPUT
         elif self.find('login_loading') is not None:
-            self.status = Status.LOGIN_LOADING
+            self.state = State.LOGIN_LOADING
         elif self.find('start') is not None:
-            self.status = Status.LOGIN_START
+            self.state = State.LOGIN_START
         elif self.find('infra_overview') is not None:
-            self.status = Status.INFRA_MAIN
+            self.state = State.INFRA_MAIN
         elif self.find('infra_todo') is not None:
-            self.status = Status.INFRA_TODOLIST
+            self.state = State.INFRA_TODOLIST
         elif self.find('friend_list') is not None:
-            self.status = Status.FRIEND_LIST_OFF
+            self.state = State.FRIEND_LIST_OFF
         elif self.find('friend_list_on') is not None:
-            self.status = Status.FRIEND_LIST_ON
+            self.state = State.FRIEND_LIST_ON
         elif self.find('friend_next') is not None:
-            self.status = Status.FRIEND_VISITING
+            self.state = State.FRIEND_VISITING
         elif self.find('mission_daily_on') is not None:
-            self.status = Status.MISSION_DAILY
+            self.state = State.MISSION_DAILY
         elif self.find('mission_weekly_on') is not None:
-            self.status = Status.MISSION_WEEKLY
+            self.state = State.MISSION_WEEKLY
         elif self.find('terminal_pre') is not None:
-            self.status = Status.TERMINAL_MAIN
+            self.state = State.TERMINAL_MAIN
         elif self.find('ope_sanity') is not None:
-            self.status = Status.OPERATOR_BEFORE
+            self.state = State.OPERATOR_BEFORE
         elif self.find('ope_select_start') is not None:
-            self.status = Status.OPERATOR_SELECT
+            self.state = State.OPERATOR_SELECT
         elif self.find('ope_ongoing') is not None:
-            self.status = Status.OPERATOR_ONGOING
+            self.state = State.OPERATOR_ONGOING
         elif self.find('ope_finish') is not None:
-            self.status = Status.OPERATOR_FINISH
+            self.state = State.OPERATOR_FINISH
         elif self.find('ope_recover') is not None:
-            self.status = Status.OPERATOR_RECOVER
+            self.state = State.OPERATOR_RECOVER
         elif self.find('ope_interrupt') is not None:
-            self.status = Status.OPERATOR_INTERRUPT
+            self.state = State.OPERATOR_INTERRUPT
         else:
-            self.status = Status.UNKNOWN
+            self.state = State.UNKNOWN
             # save screencap to analyse
             with open(time.strftime('./screenshot/%Y%m%d%H%M%S.png', time.localtime()), 'wb') as f:
                 f.write(self.screencap)
-        logger.debug(f'status: {self.status}')
-        return self.status
+        logger.debug(f'state: {self.state}')
+        return self.state
 
     def is_index(self):
-        if self.status == Status.UNDEFINED:
-            self.get_status()
-        return self.status == Status.INDEX or self.status == Status.ANNOUNCEMENT
+        if self.state == State.UNDEFINED:
+            self.get_state()
+        return self.state == State.INDEX or self.state == State.ANNOUNCEMENT
 
     def find(self, item, draw=False, scope=None):
         logger.debug(f'find {item}')
