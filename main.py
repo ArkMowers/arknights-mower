@@ -8,17 +8,14 @@ if __name__ == '__main__':
     # task.start_game(adb)
     # task.login(adb)
     # task.collect_credit(adb)
-    # task.complete_tasks(adb)
+    # task.auto_operate(adb)
     # task.infra_collect(adb)
+    # task.complete_tasks(adb)
     # task.recruit(adb)
-    task.auto_operate(adb)
 
     # adb.save_screenshot()
-    # adb.touch_tap((40, 40))
-    # devices = adb.get_devices()
-    # adb.connect_device(devices[0])
-    # adb.send_keyevent(KeyCode.KEYCODE_BACK)
-    # adb.touch_swipe((820, 366), (-500, 366))
-    # f = Recognizer(adb)
-    # f.find('friend_unvisited', draw=True)
-    # Recognizer(adb).get_status()
+
+    Recognizer(adb).find('announce_close', draw=True)
+    
+    # with open('./screenshot/20210911123231.png', 'rb') as f:
+    #     Recognizer(adb, f.read()).find('yes', draw=True)

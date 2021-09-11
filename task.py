@@ -92,7 +92,7 @@ def back_to_index(adb, recog=None):
         if has_nav(adb, recog):
             tap(adb, get_pos(recog.find('nav_index')), recog)
         elif recog.status == Status.ANNOUNCEMENT:
-            tap(adb, get_pos(recog.find('index_close')), recog)
+            tap(adb, get_pos(recog.find('announce_close')), recog)
         elif recog.status == Status.MATERIEL:
             tap(adb, get_pos(recog.find('materiel')), recog)
         elif recog.status // 100 == 1:
@@ -260,7 +260,10 @@ def auto_operate(adb, recog=None):
             recog.skip_sec(10)
         elif recog.status == Status.OPERATOR_FINISH:
             tap(adb, (10, 10), recog)
+        elif recog.status == Status.OPERATOR_INTERRUPT:
+            tap(adb, get_pos(recog.find('ope_interrupt_no')), recog)
         elif recog.status == Status.OPERATOR_RECOVER:
+            tap(adb, get_pos(recog.find('ope_recover_no')), recog)
             break
         elif recog.status == Status.LOADING:
             recog.skip_sec(3)

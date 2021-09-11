@@ -47,6 +47,7 @@ class Status:
     OPERATOR_ONGOING = 604  # 作战中
     OPERATOR_FINISH = 605  # 作战结束
     OPERATOR_RECOVER = 606  # 恢复理智
+    OPERATOR_INTERRUPT = 607  # 对战中断
     YES = 9999  # 确认对话框
 
 
@@ -80,7 +81,7 @@ class Recognizer():
             self.status = Status.INDEX
         elif self.find('nav_index') is not None:
             self.status = Status.NAVIGATION_BAR
-        elif self.find('index_close') is not None:
+        elif self.find('announce_close') is not None:
             self.status = Status.ANNOUNCEMENT
         elif self.find('materiel') is not None:
             self.status = Status.MATERIEL
@@ -128,6 +129,8 @@ class Recognizer():
             self.status = Status.OPERATOR_FINISH
         elif self.find('ope_recover') is not None:
             self.status = Status.OPERATOR_RECOVER
+        elif self.find('ope_interrupt') is not None:
+            self.status = Status.OPERATOR_INTERRUPT
         else:
             self.status = Status.UNKNOWN
             # save screencap to analyse
