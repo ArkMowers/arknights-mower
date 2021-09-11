@@ -10,6 +10,31 @@ GOOD_DISTANCE_LIMIT = 0.7
 SIFT = cv2.SIFT_create()
 
 
+def is_in_poly(p, poly):
+    """
+    :param p: [x, y]
+    :param poly: [[], [], [], [], ...]
+    :return:
+    """
+    px, py = p
+    is_in = False
+    for i, corner in enumerate(poly):
+        next_i = i + 1 if i + 1 < len(poly) else 0
+        x1, y1 = corner
+        x2, y2 = poly[next_i]
+        if (x1 == px and y1 == py) or (x2 == px and y2 == py):  # if point is on vertex
+            is_in = True
+            break
+        if min(y1, y2) < py <= max(y1, y2):  # find horizontal edges of polygon
+            x = x1 + (py - y1) * (x2 - x1) / (y2 - y1)
+            if x == px:  # if point is on edge
+                is_in = True
+                break
+            elif x > px:  # if point is on left-side of line
+                is_in = not is_in
+    return is_in
+
+
 class FlannBasedMatcher():
 
     def __init__(self, origin):
@@ -51,23 +76,9 @@ class FlannBasedMatcher():
             if x.distance < GOOD_DISTANCE_LIMIT * y.distance:
                 good.append(x)
 
-        good_kp_x = [kp[x.queryIdx].pt[1] for x in good]
-        if len(good_kp_x):
-            good_area_rate = np.ptp(good_kp_x) / w
-        else:
-            good_area_rate = 0
-
-        logger.debug(
-            f'matches: {len(good)} / {len(matches)} / {len(des)} / {len(good) / len(des)} / {good_area_rate}')
-
-        if draw:
-            result = cv2.drawMatches(
-                query, kp, self.origin, kp0, good, None)
-            plt.imshow(result, 'gray')
-            plt.show()
-
         if len(good) <= 4 or len(good) / len(des) < 0.2:
-            logger.debug('not enough good matches are found')
+            logger.debug(
+                f'not enough good matches are found: {len(good)} / {len(matches)} / {len(des)} / {len(good) / len(des)}')
             if ret_square:
                 return None
             return False
@@ -93,6 +104,13 @@ class FlannBasedMatcher():
         dst = cv2.perspectiveTransform(pts, M)
         dst_list = np.int32(dst).reshape(4, 2).tolist()
 
+        better = filter(lambda m: is_in_poly(kp0[m.trainIdx].pt, dst_list), good)
+        better_kp_x = [kp[m.queryIdx].pt[0] for m in better]
+        if len(better_kp_x):
+            good_area_rate = np.ptp(better_kp_x) / w
+        else:
+            good_area_rate = 0
+
         if abs(dst[0][0][0] - dst[1][0][0]) > 30 or abs(dst[2][0][0] - dst[3][0][0]) > 30 or abs(dst[0][0][1] - dst[3][0][1]) > 30 or abs(dst[1][0][1] - dst[2][0][1]) > 30:
             logger.debug(f'square is not rectangle: {dst_list}')
             if ret_square:
@@ -100,7 +118,7 @@ class FlannBasedMatcher():
             return False
 
         if good_area_rate < 0.5:
-            logger.debug('good_area_rate is not enough')
+            logger.debug(f'good_area_rate is not enough: {good_area_rate}')
             if ret_square:
                 return None
             return False
