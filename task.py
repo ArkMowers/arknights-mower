@@ -159,21 +159,34 @@ def complete_tasks(adb, recog=None):
     if recog is None:
         recog = Recognizer(adb)
     retry_times = 5
+    checked = 0
     while retry_times > 0:
         if recog.state == State.UNDEFINED:
             recog.get_state()
         elif recog.state == State.INDEX:
             tap(adb, get_pos(recog.find('index_mission')), recog)
         elif recog.state == State.MISSION_DAILY:
+            checked |= 1
             collect = recog.find('mission_collect')
+            if collect is None:
+                recog.skip_sec(1)
+                collect = recog.find('mission_collect')
             if collect is not None:
                 tap(adb, get_pos(collect), recog)
-            else:
+            elif checked & 2 == 0:
                 tap(adb, get_pos(recog.find('mission_weekly')), recog)
+            else:
+                break
         elif recog.state == State.MISSION_WEEKLY:
+            checked |= 2
             collect = recog.find('mission_collect')
+            if collect is None:
+                recog.skip_sec(1)
+                collect = recog.find('mission_collect')
             if collect is not None:
                 tap(adb, get_pos(collect), recog)
+            elif checked & 1 == 0:
+                tap(adb, get_pos(recog.find('mission_daily')), recog)
             else:
                 break
         elif recog.state == State.MATERIEL:

@@ -10,10 +10,10 @@ if __name__ == '__main__':
     # task.collect_credit(adb)
     # task.auto_operate(adb)
     # task.infra_collect(adb)
-    # task.complete_tasks(adb)
     # task.recruit(adb)
 
-    task.auto_operate(adb, potion=4)
+    # task.auto_operate(adb, potion=4)
+    task.complete_tasks(adb)
 
     # adb.save_screenshot()
 
