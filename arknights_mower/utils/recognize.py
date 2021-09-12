@@ -21,6 +21,66 @@ def threshole(img, thresh=250):
     return ret
 
 
+def credit_segment(im):
+    """
+    信用交易所特供的图像分割算法
+    """
+    x, y, z = im.shape
+
+    def average(i):
+        n, s = 0, 0
+        for j in range(y):
+            if im[i][j][0] == im[i][j][1] and im[i][j][0] == im[i][j][2]:
+                n += 1
+                s += im[i][j][0]
+        return int(s / n)
+
+    def ptp(j):
+        mx = -999999
+        mn = 999999
+        for i in range(up, up2):
+            if im[i][j][0] == im[i][j][1] and im[i][j][0] == im[i][j][2]:
+                mn = min(mn, im[i][j][0])
+                mx = max(mx, im[i][j][0])
+        return mx - mn
+
+    up = 0
+    fg = False
+    while fg == False or average(up) >= 250:
+        fg |= average(up) >= 250
+        up += 1
+
+    up2 = up
+    fg = False
+    while fg == False or average(up2) < 220:
+        fg |= average(up2) < 220
+        up2 += 1
+
+    down = x - 1
+    while average(down) < 220:
+        down -= 1
+
+    right = y - 1
+    while ptp(right) < 50:
+        right -= 1
+
+    left = 0
+    while ptp(left) < 50:
+        left += 1
+
+    split_x = [up, (up + down) // 2, down]
+    split_y = [left] + [left + (right - left) //
+                        5 * i for i in range(1, 5)] + [right]
+
+    ret = []
+    for x1, x2 in zip(split_x[:-1], split_x[1:]):
+        for y1, y2 in zip(split_y[:-1], split_y[1:]):
+            ret.append(((y1, x1), (y2, x2)))
+
+    logger.debug(f'credit_segment: {ret}')
+    return ret
+
+
 class Scene:
     UNKNOWN = -1  # 未知
     UNDEFINED = 0  # 未定义
@@ -49,6 +109,9 @@ class Scene:
     OPERATOR_INTERRUPT = 606  # 对战中断
     OPERATOR_RECOVER_POTION = 607  # 恢复理智（药剂）
     OPERATOR_RECOVER_ORIGINITE = 608  # 恢复理智（源石）
+    SHOP_OTHERS = 701  # 商店除了信用兑换处以外的界面
+    SHOP_CREDIT = 702  # 信用兑换处
+    SHOP_CREDIT_CONFIRM = 703  # 兑换确认
     LOADING = 9998  # 场景跳转时的等待界面
     YES = 9999  # 确认对话框
 
@@ -83,14 +146,14 @@ class Recognizer():
             self.scene = Scene.ANNOUNCEMENT
         elif self.find('materiel') is not None:
             self.scene = Scene.MATERIEL
-        elif self.find('loading') is not None:
-            self.scene = Scene.LOADING
-        elif self.find('loading2') is not None:
-            self.scene = Scene.LOADING
-        elif self.find('loading3') is not None:
-            self.scene = Scene.LOADING
         elif self.find('yes') is not None:
             self.scene = Scene.YES
+        elif self.find('shop_credit') is not None:
+            self.scene = Scene.SHOP_OTHERS
+        elif self.find('shop_credit_on') is not None:
+            self.scene = Scene.SHOP_CREDIT
+        elif self.find('shop_cart') is not None:
+            self.scene = Scene.SHOP_CREDIT_CONFIRM
         elif self.find('login_awake') is not None:
             self.scene = Scene.LOGIN_QUICKLY
         elif self.find('login_account') is not None:

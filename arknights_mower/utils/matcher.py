@@ -76,6 +76,13 @@ class FlannBasedMatcher():
             if x.distance < GOOD_DISTANCE_LIMIT * y.distance:
                 good.append(x)
 
+        """draw the result"""
+        if draw:
+            result = cv2.drawMatches(
+                query, kp, self.origin, kp0, good, None)
+            plt.imshow(result, 'gray')
+            plt.show()
+
         if len(good) <= 4 or len(good) / len(des) < 0.2:
             logger.debug(
                 f'not enough good matches are found: {len(good)} / {len(matches)} / {len(des)} / {len(good) / len(des)}')
@@ -112,6 +119,17 @@ class FlannBasedMatcher():
         else:
             good_area_rate = 0
 
+        """draw the result"""
+        if draw or MATCHER_DEBUG:
+            origin = np.array(self.origin)
+            cv2.polylines(origin, [np.int32(dst)], True, 0, 2, cv2.LINE_AA)
+            draw_params = dict(matchColor=(
+                0, 255, 0), singlePointColor=None, matchesMask=matchesMask, flags=2)
+            result = cv2.drawMatches(
+                query, kp, origin, kp0, good, None, **draw_params)
+            plt.imshow(result, 'gray')
+            plt.show()
+
         if abs(dst[0][0][0] - dst[1][0][0]) > 30 or abs(dst[2][0][0] - dst[3][0][0]) > 30 or abs(dst[0][0][1] - dst[3][0][1]) > 30 or abs(dst[1][0][1] - dst[2][0][1]) > 30:
             logger.debug(f'square is not rectangle: {dst_list}')
             if ret_square:
@@ -126,17 +144,6 @@ class FlannBasedMatcher():
 
         logger.info(
             f'matches: {len(good)} / {len(matches)} / {len(des)} / {len(good) / len(des)} / {good_area_rate}')
-
-        """draw the result"""
-        if draw or MATCHER_DEBUG:
-            origin = np.array(self.origin)
-            cv2.polylines(origin, [np.int32(dst)], True, 0, 2, cv2.LINE_AA)
-            draw_params = dict(matchColor=(
-                0, 255, 0), singlePointColor=None, matchesMask=matchesMask, flags=2)
-            result = cv2.drawMatches(
-                query, kp, origin, kp0, good, None, **draw_params)
-            plt.imshow(result, 'gray')
-            plt.show()
 
         logger.debug(f'find in {dst_list}')
 

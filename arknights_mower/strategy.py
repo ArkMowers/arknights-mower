@@ -2,17 +2,21 @@ import time
 
 from .utils.log import logger
 from .utils.adb import ADBConnector, KeyCode
-from .utils.recognize import Recognizer, Scene
+from .utils.recognize import Recognizer, Scene, bytes2img, credit_segment
 
 APP = 'com.hypergryph.arknights/com.u8.sdk.U8UnityContext'
 
 
 def get_pos(poly, x_rate=0.5, y_rate=0.5):
-    x = poly[0][0] * (1-x_rate) + poly[1][0] * (1-x_rate) + \
-        poly[2][0] * x_rate + poly[3][0] * x_rate
-    y = poly[0][1] * (1-y_rate) + poly[3][1] * (1-y_rate) + \
-        poly[1][1] * y_rate + poly[2][1] * y_rate
-    return (int(x/2), int(y/2))
+    if len(poly) == 4:
+        x = (poly[0][0] * (1-x_rate) + poly[1][0] * (1-x_rate) +
+             poly[2][0] * x_rate + poly[3][0] * x_rate) / 2
+        y = (poly[0][1] * (1-y_rate) + poly[3][1] * (1-y_rate) +
+             poly[1][1] * y_rate + poly[2][1] * y_rate) / 2
+    elif len(poly) == 2:
+        x = poly[0][0] * (1-x_rate) + poly[1][0] * x_rate
+        y = poly[0][1] * (1-y_rate) + poly[1][1] * y_rate
+    return (int(x), int(y))
 
 
 class Solver:
@@ -280,6 +284,48 @@ class Solver:
         自动完成公招
         """
         self.run_once = True
+        sold = 0
+        retry_times = 5
+        while retry_times > 0:
+            if self.recog.scene == Scene.UNDEFINED:
+                self.recog.get_scene()
+            elif self.recog.scene == Scene.INDEX:
+                self.tap(self.recog.find('index_shop'))
+            elif self.recog.scene == Scene.SHOP_OTHERS:
+                self.tap(self.recog.find('shop_credit'))
+            elif self.recog.scene == Scene.SHOP_CREDIT:
+                collect = self.recog.find('shop_collect')
+                if collect is not None:
+                    self.tap(collect)
+                else:
+                    segments = credit_segment(bytes2img(self.recog.screencap))
+                    sold = False
+                    for seg in segments[sold:]:
+                        if self.recog.find('shop_sold', scope=seg) is None:
+                            self.tap(seg)
+                            break
+                        else:
+                            sold += 1
+                    if sold == 10:
+                        break
+            elif self.recog.scene == Scene.SHOP_CREDIT_CONFIRM:
+                if self.recog.find('shop_credit_not_enough') is None:
+                    self.tap(self.recog.find('shop_cart'))
+                else:
+                    break
+            elif self.recog.scene == Scene.MATERIEL:
+                self.tap(self.recog.find('materiel'))
+            elif self.recog.scene == Scene.LOADING:
+                self.sleep(3)
+            elif self.get_navigation():
+                self.tap(self.recog.find('nav_shop'))
+            elif self.recog.scene != Scene.UNKNOWN:
+                self.back_to_index()
+            else:
+                retry_times -= 1
+                self.sleep(3)
+                continue
+            retry_times = 5
 
     def mission(self):
         """

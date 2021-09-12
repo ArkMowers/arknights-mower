@@ -152,3 +152,4 @@ dmypy.json
 logs/*
 screenshot/*
 venv_dev
+test.py
