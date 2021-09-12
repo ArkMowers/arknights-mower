@@ -80,13 +80,15 @@ class Solver:
         """
         判断是否存在导航栏，若存在则打开
         """
-        if self.recog.get_scene() == Scene.NAVIGATION_BAR:
-            return True
-        navbutton = self.recog.find('navbutton')
-        if navbutton is not None:
-            self.tap(navbutton)
-            return True
-        return False
+        while True:
+            if self.recog.get_scene() == Scene.NAVIGATION_BAR:
+                return True
+            else:
+                navbutton = self.recog.find('navbutton')
+                if navbutton is not None:
+                    self.tap(navbutton)
+                else:
+                    return False
 
     def back_to_index(self):
         """
