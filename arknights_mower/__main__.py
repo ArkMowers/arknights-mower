@@ -1,37 +1,95 @@
 import argparse
 
-from utils.adb import ADBConnector
-from utils.recognize import Recognizer
-import task
+from .__init__ import __version__
+from .utils.log import logger
+from .utils.adb import ADBConnector
+from .strategy import Solver
 
+ap = argparse.ArgumentParser(prog='arknights-mower')
 
-# ap = argparse.ArgumentParser(prog='arknights-mower')
-# required_args = ap.add_argument_group('required args')
-# optional_args = ap.add_argument_group('optional args')
-# required_args.add_argument('-s', '--stage', nargs='+',
-#                            help='manually add stage(s) to farm task (e.g. 1-7:100 4-4:25 (separated by whitespace))')
-# required_args.add_argument('-c', '--cont', action='store_true',
-#                            help='continue from the most recent farming session')
-# optional_args.add_argument('-r', '--refill', default=0, type=int, metavar='AMOUNT',
-#                            help='how many times you want to refill. default is 0')
-# optional_args.add_argument('-l', '--list-task', action='store_true',
-#                            help='list unfinished task(s) from recent farming session')
-# optional_args.add_argument('-v', '--version', action='store_true',
-#                            help='show version')
-# optional_args.add_argument('-m', '--manual', type=int, metavar='AMOUNT',
-#                            help='manual mode (good for single stage farming like event stages)')
+ap.add_argument('-v', '--version', action='store_true',
+                help='show version')
+
+# subparsers = ap.add_subparsers(help='tasks')
+
+# # Base
+# base_parser = subparsers.add_parser(
+#     'base', help='collect productions in base')
+
+# # Credit
+# credit_parser = subparsers.add_parser(
+#     'credit', help='collect credits by clue exchange')
+
+# # Fight
+# fight_parser = subparsers.add_parser(
+#     'fight', help='clear sanity by fighting')
+
+# # Shop
+# shop_parser = subparsers.add_parser(
+#     'shop', help='clear credits by shopping')
+
+# # Recruit
+# recruit_parser = subparsers.add_parser(
+#     'recruit', help='recruit automatically')
+
+# # Mission
+# mission_parser = subparsers.add_parser(
+#     'mission', help='collect mission rewards')
+
+ap.add_argument('-b', '--base', action='store_true',
+                help='collect productions in base')
+
+ap.add_argument('-c', '--credit', action='store_true',
+                help='collect credits by clue exchange')
+
+ap.add_argument('-f', '--fight', action='store_true',
+                help='clear sanity by fighting')
+ap.add_argument('-fp', '--fight-potion', default=0, type=int, metavar='AMOUNT',
+                help='how many potions do you want to use. default is 0')
+ap.add_argument('-fo', '--fight-originite', default=0, type=int, metavar='AMOUNT',
+                help='how many originites do you want to use. default is 0')
+
+ap.add_argument('-s', '--shop', action='store_true',
+                help='clear credits by shopping')
+
+ap.add_argument('-r', '--recruit', action='store_true',
+                help='recruit automatically')
+
+ap.add_argument('-m', '--mission', action='store_true',
+                help='collect mission rewards')
 
 
 def main():
+    args = ap.parse_args()
+    logger.debug(args)
+
+    if args.version:
+        print(f'arknights-mower version: {__version__}')
+        exit()
+
     adb = ADBConnector()
-    print('Hello')
-    # task.start_game(adb)
-    # task.login(adb)
-    # task.credit(adb)
-    # task.operate(adb)
-    # task.infrastructure(adb)
-    # task.mission(adb)
-    # task.recruit(adb)
+    cli = Solver(adb)
+
+    if args.base:
+        cli.base()
+    if args.credit:
+        cli.credit()
+    if args.fight:
+        cli.fight(args.fight_potion, args.fight_originite)
+    if args.shop:
+        cli.shop()
+    if args.recruit:
+        cli.recruit()
+    if args.mission:
+        cli.mission()
+
+    if cli.run_once == False:
+        cli.base()
+        cli.credit()
+        cli.fight(args.fight_potion, args.fight_originite)
+        cli.shop()
+        cli.recruit()
+        cli.mission()
 
 
 if __name__ == '__main__':

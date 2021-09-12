@@ -8,7 +8,7 @@ import subprocess
 import numpy as np
 from random import randint
 
-from utils.log import logger
+from .log import logger
 
 
 class ADBSocket:
@@ -251,6 +251,11 @@ class ADBConnector:
         with open(filename, 'wb') as f:
             f.write(self.screencap())
         logger.debug(f'save screenshot in {filename}')
+
+    def current_focus(self):
+        command = 'dumpsys window | grep mCurrentFocus'
+        line = str(self.session().exec(command), encoding='utf8')
+        return line.strip()[:-1].split(' ')[-1]
 
 
 class KeyCode:

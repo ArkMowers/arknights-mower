@@ -1,10 +1,10 @@
 import cv2
 import time
-from matplotlib.pyplot import draw
 import numpy as np
 
-from utils.log import logger
-from utils.matcher import FlannBasedMatcher
+from ..__init__ import __rootdir__
+from .log import logger
+from .matcher import FlannBasedMatcher
 
 
 def bytes2img(data, grey=False):
@@ -12,6 +12,7 @@ def bytes2img(data, grey=False):
 
 
 def loadimg(filename):
+    logger.debug(filename)
     return cv2.imread(filename, cv2.IMREAD_GRAYSCALE)
 
 
@@ -20,15 +21,14 @@ def threshole(img, thresh=250):
     return ret
 
 
-class State:
+class Scene:
     UNKNOWN = -1  # 未知
     UNDEFINED = 0  # 未定义
     INDEX = 1  # 首页
     MATERIEL = 2  # 物资领取确认
     ANNOUNCEMENT = 3  # 公告
-    LOADING = 4  # 场景跳转时的等待界面
-    MISSION = 5  # 任务列表
-    NAVIGATION_BAR = 6 # 导航栏返回
+    MISSION = 4  # 任务列表
+    NAVIGATION_BAR = 5  # 导航栏返回
     LOGIN_MAIN = 101  # 登陆页面
     LOGIN_INPUT = 102  # 登陆页面（输入）
     LOGIN_QUICKLY = 103  # 登陆页面（快速）
@@ -49,6 +49,7 @@ class State:
     OPERATOR_INTERRUPT = 606  # 对战中断
     OPERATOR_RECOVER_POTION = 607  # 恢复理智（药剂）
     OPERATOR_RECOVER_ORIGINITE = 608  # 恢复理智（源石）
+    LOADING = 9998  # 场景跳转时的等待界面
     YES = 9999  # 确认对话框
 
 
@@ -66,90 +67,85 @@ class Recognizer():
         data = bytes2img(self.screencap, True)
         self.matcher = FlannBasedMatcher(data)
         self.matcher_thres = FlannBasedMatcher(threshole(data))
-        self.state = State.UNDEFINED
+        self.scene = Scene.UNDEFINED
 
     def color(self, x, y):
         return bytes2img(self.screencap)[y][x]
 
-    def skip_sec(self, interval):
-        time.sleep(interval)
-        self.update()
-
-    def get_state(self):
-        if self.state != State.UNDEFINED:
-            return self.state
+    def get_scene(self):
+        if self.scene != Scene.UNDEFINED:
+            return self.scene
         if self.find_thres('index_nav') is not None:
-            self.state = State.INDEX
+            self.scene = Scene.INDEX
         elif self.find('nav_index') is not None:
-            self.state = State.NAVIGATION_BAR
+            self.scene = Scene.NAVIGATION_BAR
         elif self.find('announce_close') is not None:
-            self.state = State.ANNOUNCEMENT
+            self.scene = Scene.ANNOUNCEMENT
         elif self.find('materiel') is not None:
-            self.state = State.MATERIEL
+            self.scene = Scene.MATERIEL
         elif self.find('loading') is not None:
-            self.state = State.LOADING
+            self.scene = Scene.LOADING
         elif self.find('loading2') is not None:
-            self.state = State.LOADING
+            self.scene = Scene.LOADING
         elif self.find('loading3') is not None:
-            self.state = State.LOADING
+            self.scene = Scene.LOADING
         elif self.find('yes') is not None:
-            self.state = State.YES
+            self.scene = Scene.YES
         elif self.find('login_awake') is not None:
-            self.state = State.LOGIN_QUICKLY
+            self.scene = Scene.LOGIN_QUICKLY
         elif self.find('login_account') is not None:
-            self.state = State.LOGIN_MAIN
+            self.scene = Scene.LOGIN_MAIN
         elif self.find('login_button') is not None:
-            self.state = State.LOGIN_INPUT
+            self.scene = Scene.LOGIN_INPUT
         elif self.find('login_loading') is not None:
-            self.state = State.LOGIN_LOADING
+            self.scene = Scene.LOGIN_LOADING
         elif self.find('start') is not None:
-            self.state = State.LOGIN_START
+            self.scene = Scene.LOGIN_START
         elif self.find('infra_overview') is not None:
-            self.state = State.INFRA_MAIN
+            self.scene = Scene.INFRA_MAIN
         elif self.find('infra_todo') is not None:
-            self.state = State.INFRA_TODOLIST
+            self.scene = Scene.INFRA_TODOLIST
         elif self.find('friend_list') is not None:
-            self.state = State.FRIEND_LIST_OFF
+            self.scene = Scene.FRIEND_LIST_OFF
         elif self.find('friend_list_on') is not None:
-            self.state = State.FRIEND_LIST_ON
+            self.scene = Scene.FRIEND_LIST_ON
         elif self.find('friend_next') is not None:
-            self.state = State.FRIEND_VISITING
+            self.scene = Scene.FRIEND_VISITING
         elif self.find('mission_daily_on') is not None:
-            self.state = State.MISSION_DAILY
+            self.scene = Scene.MISSION_DAILY
         elif self.find('mission_weekly_on') is not None:
-            self.state = State.MISSION_WEEKLY
+            self.scene = Scene.MISSION_WEEKLY
         elif self.find('terminal_pre') is not None:
-            self.state = State.TERMINAL_MAIN
+            self.scene = Scene.TERMINAL_MAIN
         elif self.find('ope_plan') is not None:
-            self.state = State.OPERATOR_BEFORE
+            self.scene = Scene.OPERATOR_BEFORE
         elif self.find('ope_select_start') is not None:
-            self.state = State.OPERATOR_SELECT
+            self.scene = Scene.OPERATOR_SELECT
         elif self.find('ope_ongoing') is not None:
-            self.state = State.OPERATOR_ONGOING
+            self.scene = Scene.OPERATOR_ONGOING
         elif self.find('ope_finish') is not None:
-            self.state = State.OPERATOR_FINISH
+            self.scene = Scene.OPERATOR_FINISH
         elif self.find('ope_recover_potion_on') is not None:
-            self.state = State.OPERATOR_RECOVER_POTION
+            self.scene = Scene.OPERATOR_RECOVER_POTION
         elif self.find('ope_recover_originite_on') is not None:
-            self.state = State.OPERATOR_RECOVER_ORIGINITE
+            self.scene = Scene.OPERATOR_RECOVER_ORIGINITE
         elif self.find('ope_interrupt') is not None:
-            self.state = State.OPERATOR_INTERRUPT
+            self.scene = Scene.OPERATOR_INTERRUPT
         else:
-            self.state = State.UNKNOWN
+            self.scene = Scene.UNKNOWN
             # save screencap to analyse
             with open(time.strftime('./screenshot/%Y%m%d%H%M%S.png', time.localtime()), 'wb') as f:
                 f.write(self.screencap)
-        logger.debug(f'state: {self.state}')
-        return self.state
+        logger.debug(f'scene: {self.scene}')
+        return self.scene
 
-    def is_index(self):
-        if self.state == State.UNDEFINED:
-            self.get_state()
-        return self.state == State.INDEX or self.state == State.ANNOUNCEMENT
+    def is_login(self):
+        return not (self.get_scene() // 100 == 1 or self.get_scene() // 100 == 99)
 
     def find(self, item, draw=False, scope=None):
         logger.debug(f'find {item}')
-        ret = self.matcher.match(loadimg(f'./resources/{item}.png'), draw=draw, scope=scope)
+        ret = self.matcher.match(
+            loadimg(f'{__rootdir__}/resources/{item}.png'), draw=draw, scope=scope)
         if ret is None:
             return None
         return ret
@@ -157,7 +153,7 @@ class Recognizer():
     def find_thres(self, item, draw=False, scope=None):
         logger.debug(f'find {item}')
         ret = self.matcher_thres.match(
-            threshole(loadimg(f'./resources/{item}.png')), draw=draw, scope=scope)
+            threshole(loadimg(f'{__rootdir__}/resources/{item}.png')), draw=draw, scope=scope)
         if ret is None:
             return None
         return ret

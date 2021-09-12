@@ -4,8 +4,8 @@
 name: Upload pypi
 
 on:
-  release:
-    types: [created]
+  push:
+    branches: [ main ]
 
 jobs:
   deploy:

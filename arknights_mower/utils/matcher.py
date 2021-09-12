@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 from matplotlib import pyplot as plt
 
-from utils.log import logger
+from .log import logger
 
 MATCHER_DEBUG = False
 FLANN_INDEX_KDTREE = 0
@@ -104,7 +104,8 @@ class FlannBasedMatcher():
         dst = cv2.perspectiveTransform(pts, M)
         dst_list = np.int32(dst).reshape(4, 2).tolist()
 
-        better = filter(lambda m: is_in_poly(kp0[m.trainIdx].pt, dst_list), good)
+        better = filter(lambda m: is_in_poly(
+            kp0[m.trainIdx].pt, dst_list), good)
         better_kp_x = [kp[m.queryIdx].pt[0] for m in better]
         if len(better_kp_x):
             good_area_rate = np.ptp(better_kp_x) / w

@@ -13,7 +13,7 @@ chlr.setFormatter(color_formatter)
 chlr.setLevel('DEBUG')
 
 fhlr = TimedRotatingFileHandler(
-    'logs/log.txt', when='H', interval=1, backupCount=24)
+    './logs/log.txt', when='H', interval=1, backupCount=24)
 fhlr.setFormatter(basic_formatter)
 fhlr.setLevel('DEBUG')
 
