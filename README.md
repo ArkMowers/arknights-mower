@@ -2,8 +2,6 @@
 
 《明日方舟》长草助手（开发中）
 
-Discuss Group: https://t.me/ArknightsHelper
-
 ## Aim
 
 支持任意分辨率，7*24 小时不间断长草，让你忘掉这个游戏！
