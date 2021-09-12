@@ -110,7 +110,7 @@ def back_to_index(adb, recog=None):
     assert recog.get_state() == State.INDEX
 
 
-def infra_collect(adb, recog=None):
+def infrastructure(adb, recog=None):
     """
     基建自动化收集：收物资、赤金、信赖
     """
@@ -152,7 +152,7 @@ def infra_collect(adb, recog=None):
         retry_times = 5
 
 
-def complete_tasks(adb, recog=None):
+def mission(adb, recog=None):
     """
     点击确认完成每日任务和每周任务
     """
@@ -204,7 +204,7 @@ def complete_tasks(adb, recog=None):
         retry_times = 5
 
 
-def collect_credit(adb, recog=None):
+def credit(adb, recog=None):
     """
     走亲访友收信用
     """
@@ -247,7 +247,7 @@ def collect_credit(adb, recog=None):
         retry_times = 5
 
 
-def auto_operate(adb, recog=None, potion=0, originite=0):
+def operate(adb, recog=None, potion=0, originite=0):
     """
     自动前往上一次作战刷体力
     :param potion: 最多使用药剂恢复体力的次数，-1 为无限制
