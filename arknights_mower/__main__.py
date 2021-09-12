@@ -44,9 +44,9 @@ ap.add_argument('-c', '--credit', action='store_true',
 
 ap.add_argument('-f', '--fight', action='store_true',
                 help='clear sanity by fighting')
-ap.add_argument('-fp', '--fight-potion', default=0, type=int, metavar='AMOUNT',
+ap.add_argument('-fp', '--fight-potion', default=0, type=int, metavar='NUM',
                 help='how many potions do you want to use. default is 0')
-ap.add_argument('-fo', '--fight-originite', default=0, type=int, metavar='AMOUNT',
+ap.add_argument('-fo', '--fight-originite', default=0, type=int, metavar='NUM',
                 help='how many originites do you want to use. default is 0')
 
 ap.add_argument('-s', '--shop', action='store_true',
