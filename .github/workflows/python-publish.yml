@@ -5,7 +5,7 @@ name: Upload pypi
 
 on:
   push:
-    branches: [ main ]
+    branches: [ release ]
 
 jobs:
   deploy:
