@@ -1,7 +1,7 @@
 import argparse
 
 from .__init__ import __version__
-from .utils.log import logger
+from .utils.log import logger, init_fhlr
 from .utils.adb import ADBConnector
 from .strategy import Solver
 from .utils import config
@@ -67,7 +67,7 @@ debug_args.add_argument('--cap-fail', action='store_false',
 
 def main():
     args = ap.parse_args()
-    logger.debug()
+    logger.debug(args)
 
     if args.version:
         print(f'arknights-mower version: {__version__}')
@@ -76,6 +76,7 @@ def main():
     config.LOGFILE_PATH = args.log
     config.SCREENSHOT_PATH = args.cap
     config.SCREENSHOT_ONLYFAIL = args.cap_fail
+    init_fhlr()
 
     adb = ADBConnector()
     cli = Solver(adb)
