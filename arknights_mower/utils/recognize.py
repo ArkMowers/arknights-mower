@@ -129,13 +129,14 @@ class Recognizer():
             self.screencap = self.adb.screencap()
         if config.SCREENSHOT_ONLYFAIL == False:
             save_screenshot(self.screencap)
-        data = bytes2img(self.screencap, True)
-        self.matcher = FlannBasedMatcher(data)
-        self.matcher_thres = FlannBasedMatcher(threshole(data))
+        self.img = bytes2img(self.screencap)
+        self.grey = bytes2img(self.screencap, True)
+        self.matcher = FlannBasedMatcher(self.grey)
+        self.matcher_thres = FlannBasedMatcher(threshole(self.grey))
         self.scene = Scene.UNDEFINED
 
     def color(self, x, y):
-        return bytes2img(self.screencap)[y][x]
+        return self.img[y][x]
 
     def get_scene(self):
         if self.scene != Scene.UNDEFINED:
@@ -204,12 +205,17 @@ class Recognizer():
             self.scene = Scene.LOADING
         elif self.find_thres('loading4') is not None:
             self.scene = Scene.LOADING
+        elif self.is_black():
+            self.scene = Scene.LOADING
         else:
             self.scene = Scene.UNKNOWN
             # save screencap to analyse
             save_screenshot(self.screencap)
         logger.debug(f'scene: {self.scene}')
         return self.scene
+
+    def is_black(self):
+        return np.max(self.grey) <= 20
 
     def is_login(self):
         return not (self.get_scene() // 100 == 1 or self.get_scene() // 100 == 99)
