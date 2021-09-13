@@ -19,7 +19,7 @@
 
 需要安装 ADB。
 
-### 命令行
+### From pip
 
 ```bash
 $ pip3 install arknights-mower
@@ -27,7 +27,7 @@ $ arknights-mower -h
 $ arknights-mower
 ```
 
-### 源码
+### From Source
 
 ```bash
 $ pip3 install -r requirements.txt
