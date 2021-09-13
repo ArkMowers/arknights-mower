@@ -34,7 +34,8 @@ def init_fhlr():
 def save_screenshot(img):
     if config.SCREENSHOT_PATH is None:
         return
-    folder = Path(config.SCREENSHOT_PATH).mkdir(exist_ok=True)
+    folder = Path(config.SCREENSHOT_PATH)
+    folder.mkdir(exist_ok=True)
     filename = time.strftime(f'%Y%m%d%H%M%S.png', time.localtime())
     with folder.joinpath(filename).open('wb') as f:
         f.write(img)
