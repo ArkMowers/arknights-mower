@@ -280,12 +280,6 @@ class Solver:
         自动购买物资清空信用
         """
         self.run_once = True
-
-    def recruit(self):
-        """
-        自动完成公招
-        """
-        self.run_once = True
         sold = 0
         retry_times = 5
         while retry_times > 0:
@@ -328,6 +322,12 @@ class Solver:
                 self.sleep(3)
                 continue
             retry_times = 5
+
+    def recruit(self):
+        """
+        自动完成公招
+        """
+        self.run_once = True
 
     def mission(self):
         """
