@@ -8,7 +8,7 @@ import subprocess
 import numpy as np
 from random import randint
 
-from .log import logger
+from .log import logger, save_screenshot
 
 
 class ADBSocket:
@@ -246,11 +246,7 @@ class ADBConnector:
         return self.session().exec(command)
 
     def save_screenshot(self):
-        filename = time.strftime(
-            './screenshot/%Y%m%d%H%M%S.png', time.localtime())
-        with open(filename, 'wb') as f:
-            f.write(self.screencap())
-        logger.debug(f'save screenshot in {filename}')
+        save_screenshot(self.screencap())
 
     def current_focus(self):
         command = 'dumpsys window | grep mCurrentFocus'
