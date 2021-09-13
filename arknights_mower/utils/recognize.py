@@ -196,6 +196,14 @@ class Recognizer():
             self.scene = Scene.OPERATOR_RECOVER_ORIGINITE
         elif self.find('ope_interrupt') is not None:
             self.scene = Scene.OPERATOR_INTERRUPT
+        elif self.find('loading') is not None:
+            self.scene = Scene.LOADING
+        elif self.find('loading2') is not None:
+            self.scene = Scene.LOADING
+        elif self.find_thres('loading3') is not None:
+            self.scene = Scene.LOADING
+        elif self.find_thres('loading4') is not None:
+            self.scene = Scene.LOADING
         else:
             self.scene = Scene.UNKNOWN
             # save screencap to analyse
