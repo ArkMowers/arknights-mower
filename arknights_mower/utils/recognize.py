@@ -57,7 +57,7 @@ def credit_segment(im):
         up2 += 1
 
     down = x - 1
-    while average(down) < 220:
+    while average(down) < 180:
         down -= 1
 
     right = y - 1
