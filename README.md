@@ -2,8 +2,6 @@
 
 《明日方舟》长草助手（开发中）
 
-## Aim
-
 支持任意分辨率，7*24 小时不间断长草，让你忘掉这个游戏！
 
 ## Feature
@@ -21,16 +19,17 @@
 
 需要安装 ADB。
 
-```
-pip3 install -r requirements.txt
+### 命令行
+
+```bash
+$ pip3 install arknights-mower
+$ arknights-mower -h
+$ arknights-mower
 ```
 
-## Todo
+### 源码
 
-- [ ] 处理代理失误的状态
-- [ ] 处理升级的状态
-- [ ] 引入 OCR
-    - [ ] 定位主线关卡
-    - [ ] 自动公招
-- [ ] 自动消费信用点
-- [ ] 自动基建换人
+```bash
+$ pip3 install -r requirements.txt
+$ python3 diy.py
+```

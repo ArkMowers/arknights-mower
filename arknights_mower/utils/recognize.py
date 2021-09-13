@@ -1,10 +1,10 @@
 import cv2
-import time
 import numpy as np
 
 from ..__init__ import __rootdir__
-from .log import logger
+from .log import logger, save_screenshot
 from .matcher import FlannBasedMatcher
+from . import config
 
 
 def bytes2img(data, grey=False):
@@ -127,6 +127,8 @@ class Recognizer():
             self.screencap = debug_screencap
         else:
             self.screencap = self.adb.screencap()
+        if config.SCREENSHOT_ONLYFAIL == False:
+            save_screenshot(self.screencap)
         data = bytes2img(self.screencap, True)
         self.matcher = FlannBasedMatcher(data)
         self.matcher_thres = FlannBasedMatcher(threshole(data))
@@ -197,8 +199,7 @@ class Recognizer():
         else:
             self.scene = Scene.UNKNOWN
             # save screencap to analyse
-            with open(time.strftime('./screenshot/%Y%m%d%H%M%S.png', time.localtime()), 'wb') as f:
-                f.write(self.screencap)
+            save_screenshot(self.screencap)
         logger.debug(f'scene: {self.scene}')
         return self.scene
 

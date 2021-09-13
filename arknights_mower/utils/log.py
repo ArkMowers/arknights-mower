@@ -2,8 +2,8 @@ import time
 import logging
 import colorlog
 from pathlib import Path
-from logging.handlers import FileHandler
-from .config import LOGFILE_PATH, SCREENSHOT_PATH, SCREENSHOT_MAXNUM
+from logging.handlers import TimedRotatingFileHandler
+from . import config
 
 BASIC_FORMAT = '%(asctime)s - %(levelname)s - %(lineno)d - %(funcName)s - %(message)s'
 COLOR_FORMAT = '%(log_color)s%(asctime)s - %(levelname)s - %(lineno)d - %(funcName)s - %(message)s'
@@ -15,26 +15,26 @@ chlr = logging.StreamHandler()
 chlr.setFormatter(color_formatter)
 chlr.setLevel('DEBUG')
 
-fhlr = FileHandler(LOGFILE_PATH, when='D', interval=1, backupCount=7)
-fhlr.setFormatter(basic_formatter)
-fhlr.setLevel('DEBUG')
-
 logger = logging.getLogger(__name__)
 logger.setLevel('DEBUG')
 logger.addHandler(chlr)
-logger.addHandler(fhlr)
 
 
-def save_screenshot(img=None):
+def init_fhlr():
+    if config.LOGFILE_PATH is None:
+        return
+    folder = Path(config.LOGFILE_PATH)
+    folder.mkdir(exist_ok=True)
+    fhlr = TimedRotatingFileHandler(folder.joinpath(config.LOGFILE_PATH), when='D', interval=1, backupCount=7)
+    fhlr.setFormatter(basic_formatter)
+    fhlr.setLevel('DEBUG')
+    logger.addHandler(fhlr)
 
-    assert img is not None
 
-    folder = Path(SCREENSHOT_PATH)
-    png_lists = list(folder.iterdir())
-    for x in png_lists[:1-SCREENSHOT_MAXNUM]:
-        logger.debug(f'remove screenshot: {x.name}')
-        x.unlink()
-
+def save_screenshot(img):
+    if config.SCREENSHOT_PATH is None:
+        return
+    folder = Path(config.SCREENSHOT_PATH).mkdir(exist_ok=True)
     filename = time.strftime(f'%Y%m%d%H%M%S.png', time.localtime())
     with folder.joinpath(filename).open('wb') as f:
         f.write(img)

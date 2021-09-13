@@ -149,7 +149,8 @@ dmypy.json
 
 # End of https://www.toptal.com/developers/gitignore/api/visualstudiocode
 
-logs/*
+log/*
 screenshot/*
 venv_dev
 test.py
+config.test.ini
