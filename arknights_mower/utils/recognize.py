@@ -10,6 +10,10 @@ from . import config
 from . import segment, detector
 
 
+class RecognizeError(Exception):
+    pass
+
+
 def bytes2img(data, gray=False):
     if gray:
         return cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_GRAYSCALE)
@@ -25,12 +29,6 @@ def loadimg(filename):
 def threshole(img, thresh=250):
     _, ret = cv2.threshold(img, thresh, 255, cv2.THRESH_BINARY)
     return ret
-
-
-
-
-
-
 
 
 # def detect_circle_small(img, draw=False, scope=None, maxRadius=40):
@@ -82,7 +80,7 @@ class Scene:
     LOGIN_QUICKLY = 103  # 登陆页面（快速）
     LOGIN_LOADING = 104  # 登陆中
     LOGIN_START = 105  # 启动
-    LOGIN_ANNOUNCE = 106 # 启动界面公告
+    LOGIN_ANNOUNCE = 106  # 启动界面公告
     INFRA_MAIN = 201  # 基建全局视角
     INFRA_TODOLIST = 202  # 基建待办事项
     FRIEND_LIST_OFF = 301  # 好友列表（未选中）
@@ -216,7 +214,7 @@ class Recognizer():
         return self.scene
 
     def is_black(self):
-        return np.max(self.gray[:,105:-105]) <= 20
+        return np.max(self.gray[:, 105:-105]) <= 20
 
     def is_login(self):
         return not (self.get_scene() // 100 == 1 or self.get_scene() // 100 == 99)
