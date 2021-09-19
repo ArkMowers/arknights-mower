@@ -47,7 +47,8 @@ class Solver:
         retry_times = 5
         while retry_times and self.recog.is_login() == False:
             if self.recog.scene == Scene.LOGIN_START:
-                self.tap((self.recog.y // 2, self.recog.x - 10)) # TODO wait for test
+                # TODO wait for test
+                self.tap((self.recog.y // 2, self.recog.x - 10))
             elif self.recog.scene == Scene.LOGIN_QUICKLY:
                 self.tap(self.recog.find('login_awake'))
             elif self.recog.scene == Scene.LOGIN_MAIN:
