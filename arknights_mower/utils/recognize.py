@@ -82,6 +82,7 @@ class Scene:
     LOGIN_QUICKLY = 103  # 登陆页面（快速）
     LOGIN_LOADING = 104  # 登陆中
     LOGIN_START = 105  # 启动
+    LOGIN_ANNOUNCE = 106 # 启动界面公告
     INFRA_MAIN = 201  # 基建全局视角
     INFRA_TODOLIST = 202  # 基建待办事项
     FRIEND_LIST_OFF = 301  # 好友列表（未选中）
@@ -154,6 +155,8 @@ class Recognizer():
             self.scene = Scene.LOGIN_INPUT
         elif self.find('login_loading') is not None:
             self.scene = Scene.LOGIN_LOADING
+        elif self.find('login_iknow') is not None:
+            self.scene = Scene.LOGIN_ANNOUNCE
         elif self.find('12cadpa') is not None:
             self.scene = Scene.LOGIN_START
         elif self.find('infra_overview') is not None:

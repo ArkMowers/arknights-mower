@@ -67,6 +67,8 @@ class Solver:
                     self.adb.send_text(input('Enter password: ').strip())
                     self.adb.touch_tap((0, 0))
                 self.tap(self.recog.find('login_button'))
+            elif self.recog.scene == Scene.LOGIN_ANNOUNCE:
+                self.tap(self.recog.find('login_iknow'))
             elif self.recog.scene == Scene.LOGIN_LOADING:
                 self.sleep(3)
             elif self.recog.scene == Scene.LOADING:
