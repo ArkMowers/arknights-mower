@@ -31,11 +31,15 @@ def init_fhlr():
     logger.addHandler(fhlr)
 
 
-def save_screenshot(img):
+def save_screenshot(img, subdir=''):
     if config.SCREENSHOT_PATH is None:
         return
-    folder = Path(config.SCREENSHOT_PATH)
+    folder = Path(config.SCREENSHOT_PATH).joinpath(subdir)
     folder.mkdir(exist_ok=True)
+    if subdir != '-1' and len(list(folder.iterdir())) > config.SCREENSHOT_MAXNUM:
+        for x in list(folder.iterdir())[:-config.SCREENSHOT_MAXNUM]:
+            logger.debug(f'remove screenshot: {x.name}')
+            x.unlink()
     filename = time.strftime(f'%Y%m%d%H%M%S.png', time.localtime())
     with folder.joinpath(filename).open('wb') as f:
         f.write(img)

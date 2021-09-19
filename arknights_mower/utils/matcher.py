@@ -42,13 +42,10 @@ class FlannBasedMatcher():
         self.kp, self.des = SIFT.detectAndCompute(origin, None)
         logger.debug(f'FlannBasedMatcher init: shape ({origin.shape})')
 
-    def match(self, query, ret_square=True, draw=False, scope=None):
+    def match(self, query, draw=False, scope=None):
         if self.des is None:
             logger.debug('feature points is None')
-            if ret_square:
-                return None
-            return False
-
+            return None
         if scope is not None:
             logger.debug(f'before: {len(self.kp)}')
             logger.debug(f'scope: {scope}')
@@ -83,12 +80,10 @@ class FlannBasedMatcher():
             plt.imshow(result, 'gray')
             plt.show()
 
-        if len(good) <= 4 or len(good) / len(des) < 0.2:
+        if len(good) <= 4 or len(good) / len(des) < 0.2 or (len(good) / len(des) < 0.3 and len(des) >= 100):
             logger.debug(
                 f'not enough good matches are found: {len(good)} / {len(matches)} / {len(des)} / {len(good) / len(des)}')
-            if ret_square:
-                return None
-            return False
+            return None
 
         """get the coordinates of good matches"""
         src_pts = np.float32(
@@ -102,9 +97,7 @@ class FlannBasedMatcher():
 
         if M is None:
             logger.debug('calculated transformation matrix failed')
-            if ret_square:
-                return None
-            return False
+            return None
 
         pts = np.float32([[0, 0], [0, h-1], [w-1, h-1],
                          [w-1, 0]]).reshape(-1, 1, 2)
@@ -132,21 +125,15 @@ class FlannBasedMatcher():
 
         if abs(dst[0][0][0] - dst[1][0][0]) > 30 or abs(dst[2][0][0] - dst[3][0][0]) > 30 or abs(dst[0][0][1] - dst[3][0][1]) > 30 or abs(dst[1][0][1] - dst[2][0][1]) > 30:
             logger.debug(f'square is not rectangle: {dst_list}')
-            if ret_square:
-                return None
-            return False
+            return None
 
         if good_area_rate < 0.5:
             logger.debug(f'good_area_rate is not enough: {good_area_rate}')
-            if ret_square:
-                return None
-            return False
+            return None
 
         logger.info(
             f'matches: {len(good)} / {len(matches)} / {len(des)} / {len(good) / len(des)} / {good_area_rate}')
 
         logger.debug(f'find in {dst_list}')
 
-        if ret_square:
-            return dst_list
-        return True
+        return dst_list

@@ -2,7 +2,8 @@ import time
 
 from .utils.log import logger
 from .utils.adb import ADBConnector, KeyCode
-from .utils.recognize import Recognizer, Scene, bytes2img, credit_segment
+from .utils.recognize import Recognizer, Scene
+from .utils import segment, detector
 
 APP = 'com.hypergryph.arknights/com.u8.sdk.U8UnityContext'
 
@@ -13,9 +14,11 @@ def get_pos(poly, x_rate=0.5, y_rate=0.5):
              poly[2][0] * x_rate + poly[3][0] * x_rate) / 2
         y = (poly[0][1] * (1-y_rate) + poly[3][1] * (1-y_rate) +
              poly[1][1] * y_rate + poly[2][1] * y_rate) / 2
-    elif len(poly) == 2:
+    elif len(poly) == 2 and type(poly[0]).__name__ == 'list':
         x = poly[0][0] * (1-x_rate) + poly[1][0] * x_rate
         y = poly[0][1] * (1-y_rate) + poly[1][1] * y_rate
+    else:
+        x, y = poly
     return (int(x), int(y))
 
 
@@ -44,7 +47,7 @@ class Solver:
         retry_times = 5
         while retry_times and self.recog.is_login() == False:
             if self.recog.scene == Scene.LOGIN_START:
-                self.tap(self.recog.find('start'))
+                self.tap((self.recog.y // 2, self.recog.x - 10)) # TODO wait for test
             elif self.recog.scene == Scene.LOGIN_QUICKLY:
                 self.tap(self.recog.find('login_awake'))
             elif self.recog.scene == Scene.LOGIN_MAIN:
@@ -67,8 +70,8 @@ class Solver:
                 self.sleep(3)
             elif self.recog.scene == Scene.LOADING:
                 self.sleep(3)
-            elif self.recog.scene == Scene.YES:
-                self.tap(self.recog.find('yes'))
+            elif self.recog.scene == Scene.CONFIRM:
+                self.tap(detector.confirm(self.img))
             else:
                 retry_times -= 1
                 self.sleep(3)
@@ -105,8 +108,8 @@ class Solver:
                 self.tap(self.recog.find('materiel'))
             elif self.recog.scene // 100 == 1:
                 self.login()
-            elif self.recog.scene == Scene.YES:
-                self.tap(self.recog.find('yes'))
+            elif self.recog.scene == Scene.CONFIRM:
+                self.tap(detector.confirm(self.img))
             elif self.recog.scene == Scene.LOADING:
                 self.sleep(3)
             else:
@@ -126,10 +129,10 @@ class Solver:
         while retry_times > 0:
             if self.recog.scene == Scene.UNDEFINED:
                 self.recog.get_scene()
-            elif self.recog.scene == Scene.INDEX:
+            if self.recog.scene == Scene.INDEX:
                 self.tap(self.recog.find('index_infrastructure'))
             elif self.recog.scene == Scene.INFRA_MAIN:
-                notification = self.recog.find('infra_notification')
+                notification = detector.infra_notification(self.recog.img)
                 if notification is not None:
                     self.tap(notification)
                 else:
@@ -166,7 +169,7 @@ class Solver:
         while retry_times > 0:
             if self.recog.scene == Scene.UNDEFINED:
                 self.recog.get_scene()
-            elif self.recog.scene == Scene.INDEX:
+            if self.recog.scene == Scene.INDEX:
                 self.tap(self.recog.find('index_friend'))
             elif self.recog.scene == Scene.FRIEND_LIST_OFF:
                 self.tap(self.recog.find('friend_list'))
@@ -182,7 +185,7 @@ class Solver:
                 friend_next = self.recog.find('friend_next')
                 x = (friend_next[0][0] + friend_next[3][0]) // 2
                 y = friend_next[0][1]
-                if self.recog.color(x, y)[2] > 100:
+                if self.recog.color(x, y)[0] > 100:
                     self.tap(friend_next)
                 else:
                     break
@@ -210,7 +213,7 @@ class Solver:
         while retry_times > 0:
             if self.recog.scene == Scene.UNDEFINED:
                 self.recog.get_scene()
-            elif self.recog.scene == Scene.INDEX:
+            if self.recog.scene == Scene.INDEX:
                 self.tap(self.recog.find('index_terminal'))
             elif self.recog.scene == Scene.TERMINAL_MAIN:
                 self.tap(self.recog.find('terminal_pre'))
@@ -285,7 +288,7 @@ class Solver:
         while retry_times > 0:
             if self.recog.scene == Scene.UNDEFINED:
                 self.recog.get_scene()
-            elif self.recog.scene == Scene.INDEX:
+            if self.recog.scene == Scene.INDEX:
                 self.tap(self.recog.find('index_shop'))
             elif self.recog.scene == Scene.SHOP_OTHERS:
                 self.tap(self.recog.find('shop_credit'))
@@ -294,7 +297,7 @@ class Solver:
                 if collect is not None:
                     self.tap(collect)
                 else:
-                    segments = credit_segment(bytes2img(self.recog.screencap))
+                    segments = segment.credit(self.recog.img)
                     sold = False
                     for seg in segments[sold:]:
                         if self.recog.find('shop_sold', scope=seg) is None:
@@ -328,6 +331,58 @@ class Solver:
         自动完成公招
         """
         self.run_once = True
+        retry_times = 5
+        while retry_times > 0:
+            if self.recog.scene == Scene.UNDEFINED:
+                self.recog.get_scene()
+            if self.recog.scene == Scene.INDEX:
+                self.tap(self.recog.find('index_recruit'))
+            # elif self.recog.scene == Scene.RECRUIT_MAIN:
+            #     segments = segment.recruit(self.recog.img)
+            #     for seg in segments:
+            #         finished = self.recog.find('recruit_finish', scope=seg)
+            #         if finished is not None:
+            #             self.tap(finished)
+            #             break
+            #         else:
+            #             sold += 1
+            #     if sold == 10:
+            #         break
+            # elif self.recog.scene == Scene.SHOP_OTHERS:
+            #     self.tap(self.recog.find('shop_credit'))
+            # elif self.recog.scene == Scene.SHOP_CREDIT:
+            #     collect = self.recog.find('shop_collect')
+            #     if collect is not None:
+            #         self.tap(collect)
+            #     else:
+            #         segments = segment.credit(bytes2img(self.recog.screencap))
+            #         sold = False
+            #         for seg in segments[sold:]:
+            #             if self.recog.find('shop_sold', scope=seg) is None:
+            #                 self.tap(seg)
+            #                 break
+            #             else:
+            #                 sold += 1
+            #         if sold == 10:
+            #             break
+            # elif self.recog.scene == Scene.SHOP_CREDIT_CONFIRM:
+            #     if self.recog.find('shop_credit_not_enough') is None:
+            #         self.tap(self.recog.find('shop_cart'))
+            #     else:
+            #         break
+            elif self.recog.scene == Scene.MATERIEL:
+                self.tap(self.recog.find('materiel'))
+            elif self.recog.scene == Scene.LOADING:
+                self.sleep(3)
+            elif self.get_navigation():
+                self.tap(self.recog.find('nav_recruit'))
+            elif self.recog.scene != Scene.UNKNOWN:
+                self.back_to_index()
+            else:
+                retry_times -= 1
+                self.sleep(3)
+                continue
+            retry_times = 5
 
     def mission(self):
         """
@@ -339,7 +394,7 @@ class Solver:
         while retry_times > 0:
             if self.recog.scene == Scene.UNDEFINED:
                 self.recog.get_scene()
-            elif self.recog.scene == Scene.INDEX:
+            if self.recog.scene == Scene.INDEX:
                 self.tap(self.recog.find('index_mission'))
             elif self.recog.scene == Scene.MISSION_DAILY:
                 checked |= 1

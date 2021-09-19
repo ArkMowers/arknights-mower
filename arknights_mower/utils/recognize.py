@@ -1,14 +1,20 @@
 import cv2
+import time
 import numpy as np
+from matplotlib import pyplot as plt
 
 from ..__init__ import __rootdir__
 from .log import logger, save_screenshot
 from .matcher import FlannBasedMatcher
 from . import config
+from . import segment, detector
 
 
-def bytes2img(data, grey=False):
-    return cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_GRAYSCALE if grey else cv2.IMREAD_COLOR)
+def bytes2img(data, gray=False):
+    if gray:
+        return cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_GRAYSCALE)
+    else:
+        return cv2.cvtColor(cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
 
 
 def loadimg(filename):
@@ -21,64 +27,46 @@ def threshole(img, thresh=250):
     return ret
 
 
-def credit_segment(im):
-    """
-    信用交易所特供的图像分割算法
-    """
-    x, y, z = im.shape
 
-    def average(i):
-        n, s = 0, 0
-        for j in range(y):
-            if im[i][j][0] == im[i][j][1] and im[i][j][0] == im[i][j][2]:
-                n += 1
-                s += im[i][j][0]
-        return int(s / n)
 
-    def ptp(j):
-        mx = -999999
-        mn = 999999
-        for i in range(up, up2):
-            if im[i][j][0] == im[i][j][1] and im[i][j][0] == im[i][j][2]:
-                mn = min(mn, im[i][j][0])
-                mx = max(mx, im[i][j][0])
-        return mx - mn
 
-    up = 0
-    fg = False
-    while fg == False or average(up) >= 250:
-        fg |= average(up) >= 250
-        up += 1
 
-    up2 = up
-    fg = False
-    while fg == False or average(up2) < 220:
-        fg |= average(up2) < 220
-        up2 += 1
 
-    down = x - 1
-    while average(down) < 180:
-        down -= 1
 
-    right = y - 1
-    while ptp(right) < 50:
-        right -= 1
+# def detect_circle_small(img, draw=False, scope=None, maxRadius=40):
 
-    left = 0
-    while ptp(left) < 50:
-        left += 1
+#     (x1, y1), (x2, y2) = scope
+#     img = img[x1: x2, y1: y2]
 
-    split_x = [up, (up + down) // 2, down]
-    split_y = [left] + [left + (right - left) //
-                        5 * i for i in range(1, 5)] + [right]
+#     coins_circle = cv2.HoughCircles(img,
+#                                     cv2.HOUGH_GRADIENT,
+#                                     2,
+#                                     50,
+#                                     param1=10,
+#                                     param2=30,
+#                                     minRadius=1,
+#                                     maxRadius=40)
 
-    ret = []
-    for x1, x2 in zip(split_x[:-1], split_x[1:]):
-        for y1, y2 in zip(split_y[:-1], split_y[1:]):
-            ret.append(((y1, x1), (y2, x2)))
+#     print(coins_circle)
 
-    logger.debug(f'credit_segment: {ret}')
-    return ret
+#     circles = coins_circle.reshape(-1, 3)
+#     circles = np.uint16(np.around(circles))
+
+#     for i in circles:
+#         ret = cv2.circle(img, (i[0], i[1]), i[2], (128, 128, 128), 3)   # 画圆
+#         ret = cv2.circle(img, (i[0], i[1]), 2, (128, 128, 128), 3)     # 画圆心
+
+#     # cv2.
+#     # cv2.imshow('', img)
+
+#     # cv2.imencode('.png', im)
+
+#     plt.imshow(ret, 'gray')
+#     plt.show()
+
+#     # time.sleep(10000)
+#     # cv2.waitKey(0)
+#     # cv2.destroyAllWindows()
 
 
 class Scene:
@@ -112,8 +100,10 @@ class Scene:
     SHOP_OTHERS = 701  # 商店除了信用兑换处以外的界面
     SHOP_CREDIT = 702  # 信用兑换处
     SHOP_CREDIT_CONFIRM = 703  # 兑换确认
+    RECRUIT_MAIN = 801  # 公招主界面
+    RECRUIT_TAGS = 802  # 挑选标签时
     LOADING = 9998  # 场景跳转时的等待界面
-    YES = 9999  # 确认对话框
+    CONFIRM = 9999  # 确认对话框
 
 
 class Recognizer():
@@ -130,9 +120,10 @@ class Recognizer():
         if config.SCREENSHOT_ONLYFAIL == False:
             save_screenshot(self.screencap)
         self.img = bytes2img(self.screencap)
-        self.grey = bytes2img(self.screencap, True)
-        self.matcher = FlannBasedMatcher(self.grey)
-        self.matcher_thres = FlannBasedMatcher(threshole(self.grey))
+        self.gray = bytes2img(self.screencap, True)
+        self.x, self.y, _ = self.img.shape
+        self.matcher = FlannBasedMatcher(self.gray)
+        self.matcher_thres = FlannBasedMatcher(threshole(self.gray))
         self.scene = Scene.UNDEFINED
 
     def color(self, x, y):
@@ -149,8 +140,6 @@ class Recognizer():
             self.scene = Scene.ANNOUNCEMENT
         elif self.find('materiel') is not None:
             self.scene = Scene.MATERIEL
-        elif self.find('yes') is not None:
-            self.scene = Scene.YES
         elif self.find('shop_credit') is not None:
             self.scene = Scene.SHOP_OTHERS
         elif self.find('shop_credit_on') is not None:
@@ -165,7 +154,7 @@ class Recognizer():
             self.scene = Scene.LOGIN_INPUT
         elif self.find('login_loading') is not None:
             self.scene = Scene.LOGIN_LOADING
-        elif self.find('start') is not None:
+        elif self.find('12cadpa') is not None:
             self.scene = Scene.LOGIN_START
         elif self.find('infra_overview') is not None:
             self.scene = Scene.INFRA_MAIN
@@ -187,7 +176,7 @@ class Recognizer():
             self.scene = Scene.OPERATOR_BEFORE
         elif self.find('ope_select_start') is not None:
             self.scene = Scene.OPERATOR_SELECT
-        elif self.find('ope_ongoing') is not None:
+        elif self.find('ope_enemy') is not None:
             self.scene = Scene.OPERATOR_ONGOING
         elif self.find('ope_finish') is not None:
             self.scene = Scene.OPERATOR_FINISH
@@ -197,6 +186,11 @@ class Recognizer():
             self.scene = Scene.OPERATOR_RECOVER_ORIGINITE
         elif self.find('ope_interrupt') is not None:
             self.scene = Scene.OPERATOR_INTERRUPT
+        elif self.find('recruit') is not None:
+            if self.find('recruit_refresh') is not None:
+                self.scene = Scene.RECRUIT_TAGS
+            else:
+                self.scene = Scene.RECRUIT_MAIN
         elif self.find('loading') is not None:
             self.scene = Scene.LOADING
         elif self.find('loading2') is not None:
@@ -205,17 +199,21 @@ class Recognizer():
             self.scene = Scene.LOADING
         elif self.find_thres('loading4') is not None:
             self.scene = Scene.LOADING
+        elif self.find_thres('loading5') is not None:
+            self.scene = Scene.LOADING
         elif self.is_black():
             self.scene = Scene.LOADING
+        elif detector.confirm(self.img) is not None:
+            self.scene = Scene.CONFIRM
         else:
             self.scene = Scene.UNKNOWN
             # save screencap to analyse
-            save_screenshot(self.screencap)
+        save_screenshot(self.screencap, subdir=str(self.scene))
         logger.debug(f'scene: {self.scene}')
         return self.scene
 
     def is_black(self):
-        return np.max(self.grey) <= 20
+        return np.max(self.gray[:,105:-105]) <= 20
 
     def is_login(self):
         return not (self.get_scene() // 100 == 1 or self.get_scene() // 100 == 99)

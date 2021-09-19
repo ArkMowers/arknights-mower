@@ -1,0 +1,112 @@
+import numpy as np
+from .log import logger
+
+
+def credit(im):
+    """
+    信用交易所特供的图像分割算法
+    """
+    x, y, z = im.shape
+
+    def average(i):
+        n, s = 0, 0
+        for j in range(y):
+            if im[i, j, 0] == im[i, j, 1] and im[i, j, 0] == im[i, j, 2]:
+                n += 1
+                s += im[i, j, 0]
+        return int(s / n)
+
+    def ptp(j):
+        mx = -999999
+        mn = 999999
+        for i in range(up, up2):
+            if im[i, j, 0] == im[i, j, 1] and im[i, j, 0] == im[i, j, 2]:
+                mn = min(mn, im[i, j, 0])
+                mx = max(mx, im[i, j, 0])
+        return mx - mn
+
+    up = 0
+    fg = False
+    while fg == False or average(up) >= 250:
+        fg |= average(up) >= 250
+        up += 1
+
+    up2 = up
+    fg = False
+    while fg == False or average(up2) < 220:
+        fg |= average(up2) < 220
+        up2 += 1
+
+    down = x - 1
+    while average(down) < 180:
+        down -= 1
+
+    right = y - 1
+    while ptp(right) < 50:
+        right -= 1
+
+    left = 0
+    while ptp(left) < 50:
+        left += 1
+
+    split_x = [up, (up + down) // 2, down]
+    split_y = [left] + [left + (right - left) //
+                        5 * i for i in range(1, 5)] + [right]
+
+    ret = []
+    for x1, x2 in zip(split_x[:-1], split_x[1:]):
+        for y1, y2 in zip(split_y[:-1], split_y[1:]):
+            ret.append(((y1, x1), (y2, x2)))
+
+    logger.debug(f'segment.credit: {ret}')
+    return ret
+
+
+def recruit(im):
+    """
+    公招特供的图像分割算法
+    """
+    x, y, z = im.shape
+    l, r = y//2-100, y//2-50
+
+    def adj(i):
+        if i == 0:
+            return 0
+        s = 0
+        for j in range(l, r):
+            for k in range(3):
+                s += abs(int(im[i, j, k]) - int(im[i-1, j, k]))
+        return int(s / (r-l))
+
+    def average(i):
+        s = 0
+        for j in range(l, r):
+            s += np.sum(im[i, j, :3])
+        return int(s / (r-l) / 3)
+
+    def minus(i):
+        s = 0
+        for j in range(l, r):
+            s += int(im[i, j, 2]) - int(im[i, j, 0])
+        return int(s / (r-l))
+
+    up = 0
+    while minus(up) > -210:
+        up += 1
+    while not (adj(up) > 80 and minus(up) > -10 and average(up) > 210):
+        up += 1
+
+    down = x - 2
+    while adj(down+1) < 100:
+        down -= 1
+
+    split_x = [up, (up + down) // 2, down]
+    split_y = [0, y//2, y]
+
+    ret = []
+    for x1, x2 in zip(split_x[:-1], split_x[1:]):
+        for y1, y2 in zip(split_y[:-1], split_y[1:]):
+            ret.append(((y1, x1), (y2, x2)))
+
+    logger.debug(f'segment.recruit: {ret}')
+    return ret
