@@ -50,8 +50,7 @@ class Solver:
         while retry_times and self.recog.is_login() == False:
             try:
                 if self.recog.scene == Scene.LOGIN_START:
-                    # TODO wait for test
-                    self.tap((self.recog.y // 2, self.recog.x - 10))
+                    self.tap((self.recog.w // 2, self.recog.h - 10))
                     self.sleep(3)
                 elif self.recog.scene == Scene.LOGIN_QUICKLY:
                     self.tap(self.recog.find('login_awake'))

@@ -24,7 +24,7 @@ def init_fhlr():
     if config.LOGFILE_PATH is None:
         return
     folder = Path(config.LOGFILE_PATH)
-    folder.mkdir(exist_ok=True)
+    folder.mkdir(exist_ok=True, parents=True)
     fhlr = TimedRotatingFileHandler(folder.joinpath('runtime.log'), when='D', interval=1, backupCount=7)
     fhlr.setFormatter(basic_formatter)
     fhlr.setLevel('DEBUG')
@@ -35,7 +35,7 @@ def save_screenshot(img, subdir=''):
     if config.SCREENSHOT_PATH is None:
         return
     folder = Path(config.SCREENSHOT_PATH).joinpath(subdir)
-    folder.mkdir(exist_ok=True)
+    folder.mkdir(exist_ok=True, parents=True)
     if subdir != '-1' and len(list(folder.iterdir())) > config.SCREENSHOT_MAXNUM:
         for x in list(folder.iterdir())[:-config.SCREENSHOT_MAXNUM]:
             logger.debug(f'remove screenshot: {x.name}')
