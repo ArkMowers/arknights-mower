@@ -121,7 +121,7 @@ class Solver:
                 elif self.recog.scene // 100 == 1:
                     self.login()
                 elif self.recog.scene == Scene.CONFIRM:
-                    self.tap(detector.confirm(self.img))
+                    self.tap(detector.confirm(self.recog.img))
                 elif self.recog.scene == Scene.LOADING:
                     self.sleep(3)
                 else:
