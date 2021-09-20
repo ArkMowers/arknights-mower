@@ -1,4 +1,6 @@
 import numpy as np
+from matplotlib import pyplot as plt
+
 from .log import logger
 
 
@@ -75,3 +77,29 @@ def infra_notification(im):
     ret = (r - 10, (u + d) // 2)
     logger.debug(f'detector.infra_notification: {ret}')
     return ret
+
+
+def announcement_close(im):
+    """
+    检测公告关闭按钮
+    """
+    x, y, z = im.shape
+    u, d = 0, x // 4
+    l, r = y // 4 * 3, y
+    sumx, sumy, cnt = 0, 0, 0
+    for i in range(u, d):
+        line_cnt = 0
+        for j in range(l, r):
+            if np.ptp(im[i, j]) == 0 and abs(im[i, j, 0] - 89) < 3:
+                sumx += i
+                sumy += j
+                cnt += 1
+                line_cnt += 1
+                if line_cnt >= 100:
+                    return None
+                if cnt >= 2000:
+                    ret = (sumy // cnt, sumx // cnt)
+                    logger.debug(f'detector.announcement_close: {ret}')
+                    return ret
+
+    return None

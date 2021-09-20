@@ -137,8 +137,6 @@ class Recognizer():
             self.scene = Scene.INDEX
         elif self.find('nav_index') is not None:
             self.scene = Scene.NAVIGATION_BAR
-        elif self.find('announce_close') is not None:
-            self.scene = Scene.ANNOUNCEMENT
         elif self.find('materiel') is not None:
             self.scene = Scene.MATERIEL
         elif self.find('loading') is not None:
@@ -208,6 +206,8 @@ class Recognizer():
             self.scene = Scene.LOGIN_ANNOUNCE
         elif self.find('12cadpa') is not None:
             self.scene = Scene.LOGIN_START
+        elif detector.announcement_close(self.img) is not None:
+            self.scene = Scene.ANNOUNCEMENT
         elif self.find('upgrade') is not None:
             self.scene = Scene.UPGRADE
         elif detector.confirm(self.img) is not None:

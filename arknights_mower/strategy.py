@@ -115,7 +115,7 @@ class Solver:
                 if self.get_navigation():
                     self.tap(self.recog.find('nav_index'))
                 elif self.recog.scene == Scene.ANNOUNCEMENT:
-                    self.tap(self.recog.find('announce_close'))
+                    self.tap(detector.announcement_close(self.recog.img))
                 elif self.recog.scene == Scene.MATERIEL:
                     self.tap(self.recog.find('materiel'))
                 elif self.recog.scene // 100 == 1:
