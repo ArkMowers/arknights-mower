@@ -97,6 +97,7 @@ class Scene:
     OPERATOR_INTERRUPT = 606  # 对战中断
     OPERATOR_RECOVER_POTION = 607  # 恢复理智（药剂）
     OPERATOR_RECOVER_ORIGINITE = 608  # 恢复理智（源石）
+    OPERATOR_DROP = 609  # 掉落物品详细说明页
     SHOP_OTHERS = 701  # 商店除了信用兑换处以外的界面
     SHOP_CREDIT = 702  # 信用兑换处
     SHOP_CREDIT_CONFIRM = 703  # 兑换确认
@@ -166,6 +167,8 @@ class Recognizer():
             self.scene = Scene.OPERATOR_RECOVER_ORIGINITE
         elif self.find('ope_interrupt') is not None:
             self.scene = Scene.OPERATOR_INTERRUPT
+        elif self.find('ope_firstdrop') is not None:
+            self.scene = Scene.OPERATOR_DROP
         elif self.find('friend_list_on') is not None:
             self.scene = Scene.FRIEND_LIST_ON
         elif self.find('friend_next') is not None:
