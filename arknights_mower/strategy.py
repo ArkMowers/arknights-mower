@@ -297,6 +297,8 @@ class Solver:
                     self.sleep(3)
                 elif self.get_navigation():
                     self.tap(self.recog.find('nav_terminal'))
+                elif self.recog.scene == Scene.UPGRADE:
+                    self.tap(self.recog.find('upgrade'))
                 elif self.recog.scene != Scene.UNKNOWN:
                     self.back_to_index()
                 else:
