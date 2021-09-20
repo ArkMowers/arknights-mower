@@ -150,6 +150,8 @@ class Recognizer():
             self.scene = Scene.LOADING
         elif self.find_thres('loading5') is not None:
             self.scene = Scene.LOADING
+        elif self.is_black():
+            self.scene = Scene.LOADING
         elif self.find('ope_plan') is not None:
             self.scene = Scene.OPERATOR_BEFORE
         elif self.find('ope_select_start') is not None:
@@ -164,16 +166,16 @@ class Recognizer():
             self.scene = Scene.OPERATOR_RECOVER_ORIGINITE
         elif self.find('ope_interrupt') is not None:
             self.scene = Scene.OPERATOR_INTERRUPT
+        elif self.find('friend_list_on') is not None:
+            self.scene = Scene.FRIEND_LIST_ON
+        elif self.find('friend_next') is not None:
+            self.scene = Scene.FRIEND_VISITING
         elif self.find('infra_overview') is not None:
             self.scene = Scene.INFRA_MAIN
         elif self.find('infra_todo') is not None:
             self.scene = Scene.INFRA_TODOLIST
         elif self.find('friend_list') is not None:
             self.scene = Scene.FRIEND_LIST_OFF
-        elif self.find('friend_list_on') is not None:
-            self.scene = Scene.FRIEND_LIST_ON
-        elif self.find('friend_next') is not None:
-            self.scene = Scene.FRIEND_VISITING
         elif self.find('mission_daily_on') is not None:
             self.scene = Scene.MISSION_DAILY
         elif self.find('mission_weekly_on') is not None:
@@ -205,19 +207,17 @@ class Recognizer():
             self.scene = Scene.LOGIN_START
         elif self.find('upgrade') is not None:
             self.scene = Scene.UPGRADE
-        elif self.is_black():
-            self.scene = Scene.LOADING
         elif detector.confirm(self.img) is not None:
             self.scene = Scene.CONFIRM
         else:
             self.scene = Scene.UNKNOWN
-            # save screencap to analyse
+        # save screencap to analyse
         save_screenshot(self.screencap, subdir=str(self.scene))
         logger.debug(f'scene: {self.scene}')
         return self.scene
 
     def is_black(self):
-        return np.max(self.gray[:, 105:-105]) <= 20
+        return np.max(self.gray[:, 105:-105]) < 16
 
     def is_login(self):
         return not (self.get_scene() // 100 == 1 or self.get_scene() // 100 == 99)
