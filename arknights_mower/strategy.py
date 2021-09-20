@@ -295,10 +295,12 @@ class Solver:
                         recovering = 2
                 elif self.recog.scene == Scene.LOADING:
                     self.sleep(3)
-                elif self.get_navigation():
-                    self.tap(self.recog.find('nav_terminal'))
                 elif self.recog.scene == Scene.UPGRADE:
                     self.tap(self.recog.find('upgrade'))
+                elif self.recog.scene == Scene.OPERATOR_DROP:
+                    self.tap(self.recog.find('navbutton'), 0.2)
+                elif self.get_navigation():
+                    self.tap(self.recog.find('nav_terminal'))
                 elif self.recog.scene != Scene.UNKNOWN:
                     self.back_to_index()
                 else:
