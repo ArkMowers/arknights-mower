@@ -75,6 +75,7 @@ class Scene:
     ANNOUNCEMENT = 3  # 公告
     MISSION = 4  # 任务列表
     NAVIGATION_BAR = 5  # 导航栏返回
+    UPGRADE = 6  #  升级
     LOGIN_MAIN = 101  # 登陆页面
     LOGIN_INPUT = 102  # 登陆页面（输入）
     LOGIN_QUICKLY = 103  # 登陆页面（快速）
@@ -139,6 +140,51 @@ class Recognizer():
             self.scene = Scene.ANNOUNCEMENT
         elif self.find('materiel') is not None:
             self.scene = Scene.MATERIEL
+        elif self.find('loading') is not None:
+            self.scene = Scene.LOADING
+        elif self.find('loading2') is not None:
+            self.scene = Scene.LOADING
+        elif self.find_thres('loading3') is not None:
+            self.scene = Scene.LOADING
+        elif self.find_thres('loading4') is not None:
+            self.scene = Scene.LOADING
+        elif self.find_thres('loading5') is not None:
+            self.scene = Scene.LOADING
+        elif self.find('ope_plan') is not None:
+            self.scene = Scene.OPERATOR_BEFORE
+        elif self.find('ope_select_start') is not None:
+            self.scene = Scene.OPERATOR_SELECT
+        elif self.find('ope_enemy') is not None:
+            self.scene = Scene.OPERATOR_ONGOING
+        elif self.find('ope_finish') is not None:
+            self.scene = Scene.OPERATOR_FINISH
+        elif self.find('ope_recover_potion_on') is not None:
+            self.scene = Scene.OPERATOR_RECOVER_POTION
+        elif self.find('ope_recover_originite_on') is not None:
+            self.scene = Scene.OPERATOR_RECOVER_ORIGINITE
+        elif self.find('ope_interrupt') is not None:
+            self.scene = Scene.OPERATOR_INTERRUPT
+        elif self.find('infra_overview') is not None:
+            self.scene = Scene.INFRA_MAIN
+        elif self.find('infra_todo') is not None:
+            self.scene = Scene.INFRA_TODOLIST
+        elif self.find('friend_list') is not None:
+            self.scene = Scene.FRIEND_LIST_OFF
+        elif self.find('friend_list_on') is not None:
+            self.scene = Scene.FRIEND_LIST_ON
+        elif self.find('friend_next') is not None:
+            self.scene = Scene.FRIEND_VISITING
+        elif self.find('mission_daily_on') is not None:
+            self.scene = Scene.MISSION_DAILY
+        elif self.find('mission_weekly_on') is not None:
+            self.scene = Scene.MISSION_WEEKLY
+        elif self.find('terminal_pre') is not None:
+            self.scene = Scene.TERMINAL_MAIN
+        elif self.find('recruit') is not None:
+            if self.find('recruit_refresh') is not None:
+                self.scene = Scene.RECRUIT_TAGS
+            else:
+                self.scene = Scene.RECRUIT_MAIN
         elif self.find('shop_credit') is not None:
             self.scene = Scene.SHOP_OTHERS
         elif self.find('shop_credit_on') is not None:
@@ -157,51 +203,8 @@ class Recognizer():
             self.scene = Scene.LOGIN_ANNOUNCE
         elif self.find('12cadpa') is not None:
             self.scene = Scene.LOGIN_START
-        elif self.find('infra_overview') is not None:
-            self.scene = Scene.INFRA_MAIN
-        elif self.find('infra_todo') is not None:
-            self.scene = Scene.INFRA_TODOLIST
-        elif self.find('friend_list') is not None:
-            self.scene = Scene.FRIEND_LIST_OFF
-        elif self.find('friend_list_on') is not None:
-            self.scene = Scene.FRIEND_LIST_ON
-        elif self.find('friend_next') is not None:
-            self.scene = Scene.FRIEND_VISITING
-        elif self.find('mission_daily_on') is not None:
-            self.scene = Scene.MISSION_DAILY
-        elif self.find('mission_weekly_on') is not None:
-            self.scene = Scene.MISSION_WEEKLY
-        elif self.find('terminal_pre') is not None:
-            self.scene = Scene.TERMINAL_MAIN
-        elif self.find('ope_plan') is not None:
-            self.scene = Scene.OPERATOR_BEFORE
-        elif self.find('ope_select_start') is not None:
-            self.scene = Scene.OPERATOR_SELECT
-        elif self.find('ope_enemy') is not None:
-            self.scene = Scene.OPERATOR_ONGOING
-        elif self.find('ope_finish') is not None:
-            self.scene = Scene.OPERATOR_FINISH
-        elif self.find('ope_recover_potion_on') is not None:
-            self.scene = Scene.OPERATOR_RECOVER_POTION
-        elif self.find('ope_recover_originite_on') is not None:
-            self.scene = Scene.OPERATOR_RECOVER_ORIGINITE
-        elif self.find('ope_interrupt') is not None:
-            self.scene = Scene.OPERATOR_INTERRUPT
-        elif self.find('recruit') is not None:
-            if self.find('recruit_refresh') is not None:
-                self.scene = Scene.RECRUIT_TAGS
-            else:
-                self.scene = Scene.RECRUIT_MAIN
-        elif self.find('loading') is not None:
-            self.scene = Scene.LOADING
-        elif self.find('loading2') is not None:
-            self.scene = Scene.LOADING
-        elif self.find_thres('loading3') is not None:
-            self.scene = Scene.LOADING
-        elif self.find_thres('loading4') is not None:
-            self.scene = Scene.LOADING
-        elif self.find_thres('loading5') is not None:
-            self.scene = Scene.LOADING
+        elif self.find('upgrade') is not None:
+            self.scene = Scene.UPGRADE
         elif self.is_black():
             self.scene = Scene.LOADING
         elif detector.confirm(self.img) is not None:
