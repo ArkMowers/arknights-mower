@@ -118,11 +118,9 @@ class Recognizer():
             self.screencap = debug_screencap
         else:
             self.screencap = self.adb.screencap()
-        if config.SCREENSHOT_ONLYFAIL == False:
-            save_screenshot(self.screencap)
         self.img = bytes2img(self.screencap)
         self.gray = bytes2img(self.screencap, True)
-        self.x, self.y, _ = self.img.shape
+        self.h, self.w, _ = self.img.shape
         self.matcher = FlannBasedMatcher(self.gray)
         self.matcher_thres = FlannBasedMatcher(threshole(self.gray))
         self.scene = Scene.UNDEFINED
@@ -215,7 +213,8 @@ class Recognizer():
         else:
             self.scene = Scene.UNKNOWN
         # save screencap to analyse
-        save_screenshot(self.screencap, subdir=str(self.scene))
+        if config.SCREENSHOT_ONLYFAIL == False or self.scene == Scene.UNKNOWN:
+            save_screenshot(self.screencap, subdir=f'{self.scene}/{self.h}x{self.w}')
         logger.debug(f'scene: {self.scene}')
         return self.scene
 
