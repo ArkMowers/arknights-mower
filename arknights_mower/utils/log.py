@@ -1,3 +1,4 @@
+import sys
 import time
 import logging
 import colorlog
@@ -11,13 +12,29 @@ DATE_FORMAT = None
 basic_formatter = logging.Formatter(BASIC_FORMAT, DATE_FORMAT)
 color_formatter = colorlog.ColoredFormatter(COLOR_FORMAT, DATE_FORMAT)
 
-chlr = logging.StreamHandler()
+
+class MaxFilter:
+    def __init__(self, max_level):
+        self.max_level = max_level
+
+    def filter(self, record):
+        if record.levelno <= self.max_level:
+            return True
+
+
+chlr = logging.StreamHandler(stream=sys.stdout)
 chlr.setFormatter(color_formatter)
-chlr.setLevel('DEBUG')
+chlr.setLevel('INFO')
+chlr.addFilter(MaxFilter(logging.INFO))
+
+ehlr = logging.StreamHandler(stream=sys.stderr)
+ehlr.setFormatter(color_formatter)
+ehlr.setLevel('WARNING')
 
 logger = logging.getLogger(__name__)
 logger.setLevel('DEBUG')
 logger.addHandler(chlr)
+logger.addHandler(ehlr)
 
 
 def init_fhlr():
@@ -40,7 +57,7 @@ def save_screenshot(img, subdir=''):
         for x in list(folder.iterdir())[:-config.SCREENSHOT_MAXNUM]:
             logger.debug(f'remove screenshot: {x.name}')
             x.unlink()
-    filename = time.strftime(f'%Y%m%d%H%M%S.png', time.localtime())
+    filename = time.strftime('%Y%m%d%H%M%S.png', time.localtime())
     with folder.joinpath(filename).open('wb') as f:
         f.write(img)
     logger.debug(f'save screenshot: {filename}')
