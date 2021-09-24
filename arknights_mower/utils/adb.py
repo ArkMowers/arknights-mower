@@ -53,7 +53,7 @@ class ADBSocket:
         """read a chunk of length indicated by 4 hex digits"""
         len = int(self.recv_exactly(4), 16)
         if len == 0:
-            return ''
+            return b''
         return self.recv_exactly(len)
 
     def check_okay(self):
