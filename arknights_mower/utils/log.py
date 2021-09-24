@@ -24,7 +24,7 @@ class MaxFilter:
 
 chlr = logging.StreamHandler(stream=sys.stdout)
 chlr.setFormatter(color_formatter)
-chlr.setLevel('INFO')
+chlr.setLevel('DEBUG')
 chlr.addFilter(MaxFilter(logging.INFO))
 
 ehlr = logging.StreamHandler(stream=sys.stderr)
