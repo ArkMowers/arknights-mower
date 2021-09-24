@@ -167,7 +167,7 @@ class Recognizer():
             self.scene = Scene.OPERATOR_DROP
         elif self.find('friend_list_on') is not None:
             self.scene = Scene.FRIEND_LIST_ON
-        elif self.find('friend_next') is not None:
+        elif self.find('credit_visiting') is not None:
             self.scene = Scene.FRIEND_VISITING
         elif self.find('infra_overview') is not None:
             self.scene = Scene.INFRA_MAIN
@@ -196,8 +196,6 @@ class Recognizer():
             self.scene = Scene.LOGIN_QUICKLY
         elif self.find('login_account') is not None:
             self.scene = Scene.LOGIN_MAIN
-        elif self.find('login_button') is not None:
-            self.scene = Scene.LOGIN_INPUT
         elif self.find('login_loading') is not None:
             self.scene = Scene.LOGIN_LOADING
         elif self.find('login_iknow') is not None:
@@ -210,6 +208,8 @@ class Recognizer():
             self.scene = Scene.UPGRADE
         elif detector.confirm(self.img) is not None:
             self.scene = Scene.CONFIRM
+        elif self.find('login_button') is not None: # TODO 不要用 Login_button，用别的
+            self.scene = Scene.LOGIN_INPUT
         else:
             self.scene = Scene.UNKNOWN
         # save screencap to analyse

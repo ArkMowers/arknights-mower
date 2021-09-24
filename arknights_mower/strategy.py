@@ -77,7 +77,7 @@ class Solver:
                 elif self.recog.scene == Scene.LOADING:
                     self.sleep(3)
                 elif self.recog.scene == Scene.CONFIRM:
-                    self.tap(detector.confirm(self.img))
+                    self.tap(detector.confirm(self.recog.img))
                 else:
                     raise RecognizeError
             except RecognizeError:
@@ -203,13 +203,7 @@ class Solver:
                     else:
                         self.sleep(1)
                 elif self.recog.scene == Scene.FRIEND_VISITING:
-                    friend_next = self.recog.find('friend_next')
-                    x = (friend_next[0][0] + friend_next[3][0]) // 2
-                    y = friend_next[0][1]
-                    if self.recog.color(x, y)[0] > 100:
-                        self.tap(friend_next)
-                    else:
-                        break
+                    self.tap(detector.visit_next(self.recog.img))
                 elif self.recog.scene == Scene.LOADING:
                     self.sleep(3)
                 elif self.get_navigation():

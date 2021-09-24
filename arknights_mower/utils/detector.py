@@ -40,6 +40,8 @@ def confirm(im):
                 break
         if d:
             break
+    if d == 0:
+        return None
 
     ret = (y // 2, (u + d) // 2)
     logger.debug(f'detector.confirm: {ret}')
@@ -103,3 +105,35 @@ def announcement_close(im):
                     return ret
 
     return None
+
+
+def visit_next(im):
+    """
+    检测访问下位按钮
+    """
+    x, y, z = im.shape
+
+    r = y
+    while np.max(im[:, r-1]) < 100:
+        r -= 1
+    r -= 1
+
+    u = 0
+    for i in range(x):
+        if im[i, r, 0] > 150 > im[i, r, 1] > 40 > im[i, r, 2]:
+            u = i
+            break
+    if u == 0:
+        return None
+
+    d = 0
+    for i in range(u, x):
+        if not (im[i, r, 0] > 150 > im[i, r, 1] > 40 > im[i, r, 2]):
+            d = i
+            break
+    if d == 0:
+        return None
+
+    ret = (r - 10, (u + d) // 2)
+    logger.debug(f'detector.visit_next: {ret}')
+    return ret
