@@ -97,7 +97,7 @@ class ADBClientSession:
         resp = self.service('host:devices').read_response().decode(errors='ignore')
         devices = [tuple(line.split('\t')) for line in resp.splitlines()]
         if not resp:
-            raise RuntimeError("Connection Failure,check abd devices to see if your destination device is attached")
+            raise RuntimeError("Connection Failure, check abd devices to see if your destination device is attached")
         return devices
 
     def connect(self, device):
