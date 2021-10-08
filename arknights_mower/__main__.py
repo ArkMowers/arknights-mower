@@ -10,32 +10,8 @@ ap = argparse.ArgumentParser(prog='arknights-mower')
 
 ap.add_argument('-v', '--version', action='store_true',
                 help='show version')
-
-# subparsers = ap.add_subparsers(help='tasks')
-
-# # Base
-# base_parser = subparsers.add_parser(
-#     'base', help='collect productions in base')
-
-# # Credit
-# credit_parser = subparsers.add_parser(
-#     'credit', help='collect credits by clue exchange')
-
-# # Fight
-# fight_parser = subparsers.add_parser(
-#     'fight', help='clear sanity by fighting')
-
-# # Shop
-# shop_parser = subparsers.add_parser(
-#     'shop', help='clear credits by shopping')
-
-# # Recruit
-# recruit_parser = subparsers.add_parser(
-#     'recruit', help='recruit automatically')
-
-# # Mission
-# mission_parser = subparsers.add_parser(
-#     'mission', help='collect mission rewards')
+ap.add_argument('-d', '--debug', action='store_true',
+                help='debug mode')
 
 task_args = ap.add_argument_group('tasks arguments')
 task_args.add_argument('-b', '--base', action='store_true',
@@ -53,15 +29,10 @@ task_args.add_argument('-m', '--mission', action='store_true',
 
 
 fight_args = ap.add_argument_group('fight task arguments')
-fight_args.add_argument('-fp', '--fight-potion', default=-1, type=int, metavar='N',
+fight_args.add_argument('-fp', '--fight-potion', type=int, metavar='N',
                         help='how many potions do you want to use. default is 0')
-fight_args.add_argument('-fo', '--fight-originite', default=-1, type=int, metavar='N',
+fight_args.add_argument('-fo', '--fight-originite', type=int, metavar='N',
                         help='how many originites do you want to use. default is 0')
-
-
-debug_args = ap.add_argument_group('debug arguments')
-debug_args.add_argument('-d', '--debug', action='store_true',
-                        help='debug mode')
 
 
 def main():
@@ -73,15 +44,22 @@ def main():
         print(f'arknights-mower: version: {__version__}')
         exit()
 
-    if args.fight is False:
-        if args.fight_potion != -1:
-            print(f'arknights-mower: error: argument -fp/--fight-potion: expected -f/--fight')
+    if args.fight:
+        if args.fight_potion is None:
+            args.fight_potion = 0
+        if args.fight_originite is None:
+            args.fight_originite = 0
+    else:
+        if args.fight_potion is not None:
+            print(
+                f'arknights-mower: error: argument -fp/--fight-potion: expected -f/--fight')
             exit()
-        if args.fight_originite != -1:
-            print(f'arknights-mower: error: argument -fo/--fight-originite: expected -f/--fight')
+        if args.fight_originite is not None:
+            print(
+                f'arknights-mower: error: argument -fo/--fight-originite: expected -f/--fight')
             exit()
 
-    if args.log:
+    if args.debug:
         config.LOGFILE_PATH = '/var/log/arknights-mower'
         config.SCREENSHOT_PATH = '/var/log/arknights-mower/screenshot'
         init_fhlr()
@@ -103,12 +81,13 @@ def main():
         cli.mission()
 
     if cli.run_once == False:
-        cli.base()
-        cli.credit()
-        cli.fight(args.fight_potion, args.fight_originite)
-        cli.shop()
-        cli.recruit()
-        cli.mission()
+        ap.print_usage()
+    #     cli.base()
+    #     cli.credit()
+    #     cli.fight(args.fight_potion, args.fight_originite)
+    #     cli.shop()
+    #     cli.recruit()
+    #     cli.mission()
 
 
 if __name__ == '__main__':
