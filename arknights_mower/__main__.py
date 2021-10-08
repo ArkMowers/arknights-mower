@@ -37,46 +37,54 @@ ap.add_argument('-v', '--version', action='store_true',
 # mission_parser = subparsers.add_parser(
 #     'mission', help='collect mission rewards')
 
-task_args = ap.add_argument_group('task args')
+task_args = ap.add_argument_group('tasks arguments')
 task_args.add_argument('-b', '--base', action='store_true',
-                        help='collect productions in base')
+                       help='collect productions in base')
 task_args.add_argument('-c', '--credit', action='store_true',
-                        help='collect credits by clue exchange')
-task_args.add_argument('-f', '--fight', action='store_true',
-                        help='clear sanity by fighting')
-task_args.add_argument('-fp', '--fight-potion', default=0, type=int, metavar='N',
-                        help='how many potions do you want to use. default is 0')
-task_args.add_argument('-fo', '--fight-originite', default=0, type=int, metavar='N',
-                        help='how many originites do you want to use. default is 0')
+                       help='collect credits by clue exchange')
 task_args.add_argument('-s', '--shop', action='store_true',
-                        help='clear credits by shopping')
+                       help='clear credits by shopping')
+task_args.add_argument('-f', '--fight', action='store_true',
+                       help='clear sanity by fighting')
 task_args.add_argument('-r', '--recruit', action='store_true',
-                        help='recruit automatically')
+                       help='recruit automatically')
 task_args.add_argument('-m', '--mission', action='store_true',
-                        help='collect mission rewards')
+                       help='collect mission rewards')
 
 
-debug_args = ap.add_argument_group('debug args')
-debug_args.add_argument('--log', type=str, metavar='PATH',
-                        help='log save path')
-debug_args.add_argument('--cap', type=str, metavar='PATH',
-                        help='screenshot save path')
-debug_args.add_argument('--cap-fail', action='store_false',
-                        help='save screenshot only on failure')
+fight_args = ap.add_argument_group('fight task arguments')
+fight_args.add_argument('-fp', '--fight-potion', default=-1, type=int, metavar='N',
+                        help='how many potions do you want to use. default is 0')
+fight_args.add_argument('-fo', '--fight-originite', default=-1, type=int, metavar='N',
+                        help='how many originites do you want to use. default is 0')
+
+
+debug_args = ap.add_argument_group('debug arguments')
+debug_args.add_argument('-d', '--debug', action='store_true',
+                        help='debug mode')
 
 
 def main():
     args = ap.parse_args()
     logger.debug(args)
+    print(args)
 
     if args.version:
-        print(f'arknights-mower version: {__version__}')
+        print(f'arknights-mower: version: {__version__}')
         exit()
-    
-    config.LOGFILE_PATH = args.log
-    config.SCREENSHOT_PATH = args.cap
-    config.SCREENSHOT_ONLYFAIL = args.cap_fail
-    init_fhlr()
+
+    if args.fight is False:
+        if args.fight_potion != -1:
+            print(f'arknights-mower: error: argument -fp/--fight-potion: expected -f/--fight')
+            exit()
+        if args.fight_originite != -1:
+            print(f'arknights-mower: error: argument -fo/--fight-originite: expected -f/--fight')
+            exit()
+
+    if args.log:
+        config.LOGFILE_PATH = '/var/log/arknights-mower'
+        config.SCREENSHOT_PATH = '/var/log/arknights-mower/screenshot'
+        init_fhlr()
 
     adb = ADBConnector()
     cli = Solver(adb)

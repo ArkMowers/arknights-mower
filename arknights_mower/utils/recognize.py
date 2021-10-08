@@ -174,7 +174,7 @@ class Recognizer():
         else:
             self.scene = Scene.UNKNOWN
         # save screencap to analyse
-        if config.SCREENSHOT_ONLYFAIL == False or self.scene == Scene.UNKNOWN:
+        if config.SCREENSHOT_PATH is not None:
             save_screenshot(self.screencap, subdir=f'{self.scene}/{self.h}x{self.w}')
         logger.info(f'Scene: {self.scene}: {SceneComment[self.scene]}')
         return self.scene
