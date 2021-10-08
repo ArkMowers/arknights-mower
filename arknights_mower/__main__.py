@@ -38,7 +38,6 @@ fight_args.add_argument('-fo', '--fight-originite', type=int, metavar='N',
 def main():
     args = ap.parse_args()
     logger.debug(args)
-    print(args)
 
     if args.version:
         print(f'arknights-mower: version: {__version__}')
@@ -81,13 +80,7 @@ def main():
         cli.mission()
 
     if cli.run_once == False:
-        ap.print_usage()
-    #     cli.base()
-    #     cli.credit()
-    #     cli.fight(args.fight_potion, args.fight_originite)
-    #     cli.shop()
-    #     cli.recruit()
-    #     cli.mission()
+        ap.print_help()
 
 
 if __name__ == '__main__':
