@@ -53,7 +53,7 @@ class ADBSocket:
         """read a chunk of length indicated by 4 hex digits"""
         len = int(self.recv_exactly(4), 16)
         if len == 0:
-            return ''
+            return b''
         return self.recv_exactly(len)
 
     def check_okay(self):
@@ -94,8 +94,10 @@ class ADBClientSession:
 
     def devices(self):
         """returns list of devices that the adb server knows"""
-        resp = self.service('host:devices').read_response().decode()
+        resp = self.service('host:devices').read_response().decode(errors='ignore')
         devices = [tuple(line.split('\t')) for line in resp.splitlines()]
+        if not resp:
+            raise RuntimeError("Connection Failure, check abd devices to see if your destination device is attached")
         return devices
 
     def connect(self, device):

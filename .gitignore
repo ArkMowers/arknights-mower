@@ -147,6 +147,9 @@ dmypy.json
 .history
 .ionide
 
+###JetBrains Product###
+.idea/*
+
 # End of https://www.toptal.com/developers/gitignore/api/visualstudiocode
 
 log/*
