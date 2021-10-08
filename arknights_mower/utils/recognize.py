@@ -8,6 +8,7 @@ from .log import logger, save_screenshot
 from .matcher import FlannBasedMatcher
 from . import config
 from . import segment, detector
+from .scene import Scene, SceneComment
 
 
 class RecognizeError(Exception):
@@ -65,46 +66,6 @@ def threshole(img, thresh=250):
 #     # time.sleep(10000)
 #     # cv2.waitKey(0)
 #     # cv2.destroyAllWindows()
-
-
-class Scene:
-    UNKNOWN = -1  # 未知
-    UNDEFINED = 0  # 未定义
-    INDEX = 1  # 首页
-    MATERIEL = 2  # 物资领取确认
-    ANNOUNCEMENT = 3  # 公告
-    MISSION = 4  # 任务列表
-    NAVIGATION_BAR = 5  # 导航栏返回
-    UPGRADE = 6  #  升级
-    LOGIN_MAIN = 101  # 登陆页面
-    LOGIN_INPUT = 102  # 登陆页面（输入）
-    LOGIN_QUICKLY = 103  # 登陆页面（快速）
-    LOGIN_LOADING = 104  # 登陆中
-    LOGIN_START = 105  # 启动
-    LOGIN_ANNOUNCE = 106  # 启动界面公告
-    INFRA_MAIN = 201  # 基建全局视角
-    INFRA_TODOLIST = 202  # 基建待办事项
-    FRIEND_LIST_OFF = 301  # 好友列表（未选中）
-    FRIEND_LIST_ON = 302  # 好友列表（选中）
-    FRIEND_VISITING = 303  # 基建内访问好友
-    MISSION_DAILY = 401  # 日常任务
-    MISSION_WEEKLY = 402  # 周常任务
-    TERMINAL_MAIN = 501  # 终端主界面
-    OPERATOR_BEFORE = 602  # 作战前，关卡已选定
-    OPERATOR_SELECT = 603  # 作战前，正在编队
-    OPERATOR_ONGOING = 604  # 作战中
-    OPERATOR_FINISH = 605  # 作战结束
-    OPERATOR_INTERRUPT = 606  # 对战中断
-    OPERATOR_RECOVER_POTION = 607  # 恢复理智（药剂）
-    OPERATOR_RECOVER_ORIGINITE = 608  # 恢复理智（源石）
-    OPERATOR_DROP = 609  # 掉落物品详细说明页
-    SHOP_OTHERS = 701  # 商店除了信用兑换处以外的界面
-    SHOP_CREDIT = 702  # 信用兑换处
-    SHOP_CREDIT_CONFIRM = 703  # 兑换确认
-    RECRUIT_MAIN = 801  # 公招主界面
-    RECRUIT_TAGS = 802  # 挑选标签时
-    LOADING = 9998  # 场景跳转时的等待界面
-    CONFIRM = 9999  # 确认对话框
 
 
 class Recognizer():
@@ -215,7 +176,7 @@ class Recognizer():
         # save screencap to analyse
         if config.SCREENSHOT_ONLYFAIL == False or self.scene == Scene.UNKNOWN:
             save_screenshot(self.screencap, subdir=f'{self.scene}/{self.h}x{self.w}')
-        logger.debug(f'scene: {self.scene}')
+        logger.info(f'Scene: {self.scene}: {SceneComment[self.scene]}')
         return self.scene
 
     def is_black(self):

@@ -203,7 +203,11 @@ class Solver:
                     else:
                         self.sleep(1)
                 elif self.recog.scene == Scene.FRIEND_VISITING:
-                    self.tap(detector.visit_next(self.recog.img))
+                    visit_next = detector.visit_next(self.recog.img)
+                    if visit_next is not None:
+                        self.tap(visit_next)
+                    else:
+                        break
                 elif self.recog.scene == Scene.LOADING:
                     self.sleep(3)
                 elif self.get_navigation():

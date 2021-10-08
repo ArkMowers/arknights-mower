@@ -83,7 +83,7 @@ def infra_notification(im):
 
 def announcement_close(im):
     """
-    检测公告关闭按钮
+    检测「关闭公告」按钮
     """
     x, y, z = im.shape
     u, d = 0, x // 4
@@ -109,7 +109,7 @@ def announcement_close(im):
 
 def visit_next(im):
     """
-    检测访问下位按钮
+    检测「访问下位」按钮
     """
     x, y, z = im.shape
 
