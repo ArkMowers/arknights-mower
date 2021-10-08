@@ -330,6 +330,8 @@ class Solver:
                         self.tap(collect)
                     else:
                         segments = segment.credit(self.recog.img)
+                        if segments is None:
+                            raise RecognizeError
                         sold = False
                         for seg in segments[sold:]:
                             if self.recog.find('shop_sold', scope=seg) is None:

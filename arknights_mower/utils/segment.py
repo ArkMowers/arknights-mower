@@ -1,3 +1,4 @@
+import traceback
 import numpy as np
 from .log import logger
 
@@ -6,60 +7,64 @@ def credit(im):
     """
     信用交易所特供的图像分割算法
     """
-    x, y, z = im.shape
+    try:
+        x, y, z = im.shape
 
-    def average(i):
-        n, s = 0, 0
-        for j in range(y):
-            if im[i, j, 0] == im[i, j, 1] and im[i, j, 0] == im[i, j, 2]:
-                n += 1
-                s += im[i, j, 0]
-        return int(s / n)
+        def average(i):
+            n, s = 0, 0
+            for j in range(y):
+                if im[i, j, 0] == im[i, j, 1] and im[i, j, 0] == im[i, j, 2]:
+                    n += 1
+                    s += im[i, j, 0]
+            return int(s / n)
 
-    def ptp(j):
-        mx = -999999
-        mn = 999999
-        for i in range(up, up2):
-            if im[i, j, 0] == im[i, j, 1] and im[i, j, 0] == im[i, j, 2]:
-                mn = min(mn, im[i, j, 0])
-                mx = max(mx, im[i, j, 0])
-        return mx - mn
+        def ptp(j):
+            mx = -999999
+            mn = 999999
+            for i in range(up, up2):
+                if im[i, j, 0] == im[i, j, 1] and im[i, j, 0] == im[i, j, 2]:
+                    mn = min(mn, im[i, j, 0])
+                    mx = max(mx, im[i, j, 0])
+            return mx - mn
 
-    up = 0
-    fg = False
-    while fg == False or average(up) >= 250:
-        fg |= average(up) >= 250
-        up += 1
+        up = 0
+        fg = False
+        while fg == False or average(up) >= 250:
+            fg |= average(up) >= 250
+            up += 1
 
-    up2 = up
-    fg = False
-    while fg == False or average(up2) < 220:
-        fg |= average(up2) < 220
-        up2 += 1
+        up2 = up
+        fg = False
+        while fg == False or average(up2) < 220:
+            fg |= average(up2) < 220
+            up2 += 1
 
-    down = x - 1
-    while average(down) < 180:
-        down -= 1
+        down = x - 1
+        while average(down) < 180:
+            down -= 1
 
-    right = y - 1
-    while ptp(right) < 50:
-        right -= 1
+        right = y - 1
+        while ptp(right) < 50:
+            right -= 1
 
-    left = 0
-    while ptp(left) < 50:
-        left += 1
+        left = 0
+        while ptp(left) < 50:
+            left += 1
 
-    split_x = [up, (up + down) // 2, down]
-    split_y = [left] + [left + (right - left) //
-                        5 * i for i in range(1, 5)] + [right]
+        split_x = [up, (up + down) // 2, down]
+        split_y = [left] + [left + (right - left) //
+                            5 * i for i in range(1, 5)] + [right]
 
-    ret = []
-    for x1, x2 in zip(split_x[:-1], split_x[1:]):
-        for y1, y2 in zip(split_y[:-1], split_y[1:]):
-            ret.append(((y1, x1), (y2, x2)))
+        ret = []
+        for x1, x2 in zip(split_x[:-1], split_x[1:]):
+            for y1, y2 in zip(split_y[:-1], split_y[1:]):
+                ret.append(((y1, x1), (y2, x2)))
 
-    logger.debug(f'segment.credit: {ret}')
-    return ret
+        logger.debug(f'segment.credit: {ret}')
+        return ret
+    except Exception as e:
+        logger.debug(traceback.format_exc())
+        return None
 
 
 def recruit(im):
