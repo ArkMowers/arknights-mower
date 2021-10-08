@@ -154,6 +154,8 @@ dmypy.json
 
 log/*
 screenshot/*
+screenshot_right/*
 venv_dev
 test_*
 config.test.ini
+data/*

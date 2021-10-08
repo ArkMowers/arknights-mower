@@ -5,7 +5,7 @@ from matplotlib import pyplot as plt
 
 from ..__init__ import __rootdir__
 from .log import logger, save_screenshot
-from .matcher import FlannBasedMatcher
+from .matcher import Matcher
 from . import config
 from . import segment, detector
 from .scene import Scene, SceneComment
@@ -82,8 +82,8 @@ class Recognizer():
         self.img = bytes2img(self.screencap)
         self.gray = bytes2img(self.screencap, True)
         self.h, self.w, _ = self.img.shape
-        self.matcher = FlannBasedMatcher(self.gray)
-        self.matcher_thres = FlannBasedMatcher(threshole(self.gray, 250))
+        self.matcher = Matcher(self.gray)
+        self.matcher_thres = Matcher(threshole(self.gray, 250))
         self.scene = Scene.UNDEFINED
 
     def color(self, x, y):
@@ -192,9 +192,25 @@ class Recognizer():
         return ret
 
     def find_thres(self, item, draw=False, scope=None):
-        logger.debug(f'find {item}')
+        logger.debug(f'find_thres {item}')
         ret = self.matcher_thres.match(
             threshole(loadimg(f'{__rootdir__}/resources/{item}.png'), 250), draw=draw, scope=scope)
         if ret is None:
             return None
         return ret
+
+    def score(self, item, draw=False, scope=None):
+        logger.debug(f'score {item}')
+        ret = self.matcher.score(
+            loadimg(f'{__rootdir__}/resources/{item}.png'), draw=draw, scope=scope)
+        if ret is None:
+            return None
+        return ret[1:]
+
+    def score_thres(self, item, draw=False, scope=None):
+        logger.debug(f'score_thres {item}')
+        ret = self.matcher_thres.score(
+            threshole(loadimg(f'{__rootdir__}/resources/{item}.png'), 250), draw=draw, scope=scope)
+        if ret is None:
+            return None
+        return ret[1:]

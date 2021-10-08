@@ -1,15 +1,20 @@
 import cv2
+import pickle
+import sklearn
 import traceback
 import numpy as np
 from matplotlib import pyplot as plt
 from skimage.metrics import structural_similarity as compare_ssim
 
+from ..__init__ import __rootdir__
 from .log import logger
 
 MATCHER_DEBUG = False
 FLANN_INDEX_KDTREE = 0
 GOOD_DISTANCE_LIMIT = 0.7
 SIFT = cv2.SIFT_create()
+with open(f'{__rootdir__}/data/svm.model', 'rb') as f:
+    SVC = pickle.loads(f.read())
 
 
 def getHash(image):
@@ -24,7 +29,7 @@ def getHash(image):
     return hash
 
 
-def HammingDistance(hash1,hash2):
+def HammingDistance(hash1, hash2):
     num = 0
     for index in range(len(hash1)):
         if hash1[index] != hash2[index]:
@@ -32,7 +37,7 @@ def HammingDistance(hash1,hash2):
     return num
 
 
-def aHash(image1,image2):
+def aHash(image1, image2):
     image1 = cv2.resize(image1, (8, 8))
     image2 = cv2.resize(image2, (8, 8))
     hash1 = getHash(image1)
@@ -40,14 +45,22 @@ def aHash(image1,image2):
     return HammingDistance(hash1, hash2)
 
 
-class FlannBasedMatcher():
+class Matcher():
 
     def __init__(self, origin):
         self.origin = origin  # origin need to be gray
         self.kp, self.des = SIFT.detectAndCompute(origin, None)
-        logger.debug(f'FlannBasedMatcher init: shape ({origin.shape})')
+        logger.debug(f'Matcher init: shape ({origin.shape})')
 
     def match(self, query, draw=False, scope=None):
+        score = self.score(query, draw, scope)
+        # if score is None or score[1] < 0.1 or score[2] < 0.5 or (score[3] < 0.4 and score[4] > 12) or score[3] < 0.2 or score[4] > 24:
+        if score is None or SVC.predict([score[1:]])[0] == False:
+            return None
+        else:
+            return score[0]
+
+    def score(self, query, draw=False, scope=None):
         try:
             if self.des is None:
                 logger.debug('feature points is None')
@@ -86,9 +99,10 @@ class FlannBasedMatcher():
                 plt.imshow(result, 'gray')
                 plt.show()
 
-            if len(good) <= 4 or len(good) / len(des) < 0.1:
+            good_match_rate = len(good) / len(des)
+            if len(good) <= 4:
                 logger.debug(
-                    f'not enough good matches are found: {len(good)} / {len(des)} / {len(good) / len(des)}')
+                    f'not enough good matches are found: {len(good)} / {len(des)} / {good_match_rate}')
                 return None
 
             """get the coordinates of good matches"""
@@ -106,7 +120,7 @@ class FlannBasedMatcher():
                 return None
 
             pts = np.float32([[0, 0], [0, h-1], [w-1, h-1],
-                            [w-1, 0]]).reshape(-1, 1, 2)
+                              [w-1, 0]]).reshape(-1, 1, 2)
             dst = cv2.perspectiveTransform(pts, M)
             dst_list = np.int32(dst).reshape(4, 2).tolist()
 
@@ -125,26 +139,28 @@ class FlannBasedMatcher():
                 logger.debug(f'square is not rectangle: {dst_list}')
                 return None
             dst_tp = [(np.min(dst[:, 0, 0]), np.min(dst[:, 0, 1])),
-                    (np.max(dst[:, 0, 0]), np.max(dst[:, 0, 1]))]
+                      (np.max(dst[:, 0, 0]), np.max(dst[:, 0, 1]))]
             if dst_tp[1][0] - dst_tp[0][0] < 10 or dst_tp[1][1] - dst_tp[0][1] < 10:
                 logger.debug(f'square is small: {dst_tp}')
                 return None
 
-            better = filter(lambda m: dst_tp[0] < kp0[m.trainIdx].pt < dst_tp[1], good)
+            better = filter(
+                lambda m: dst_tp[0] < kp0[m.trainIdx].pt < dst_tp[1], good)
             better_kp_x = [kp[m.queryIdx].pt[0] for m in better]
             if len(better_kp_x):
                 good_area_rate = np.ptp(better_kp_x) / w
             else:
                 good_area_rate = 0
 
-            if good_area_rate < 0.5:
-                logger.debug(f'good_area_rate is not enough: {good_area_rate}')
-                return None
-
             dst_tp = np.array(dst_tp, dtype=int).tolist()
-            origin = self.origin[dst_tp[0][1]: dst_tp[1][1], dst_tp[0][0]: dst_tp[1][0]]
+            origin = self.origin[dst_tp[0][1]: dst_tp[1]
+                                 [1], dst_tp[0][0]: dst_tp[1][0]]
+            if np.min(origin.shape) < 10:
+                logger.debug(f'origin is small: {origin.shape}')
+                return None
             origin = cv2.resize(origin, query.shape[::-1])
-                
+
+            """draw the result"""
             if draw or MATCHER_DEBUG:
                 plt.subplot(1, 2, 1)
                 plt.imshow(query, 'gray')
@@ -152,18 +168,20 @@ class FlannBasedMatcher():
                 plt.imshow(origin, 'gray')
                 plt.show()
 
-            aHash_val = aHash(query, origin)
+            hash = 1 - (aHash(query, origin) / 32)
             ssim = compare_ssim(query, origin, multichannel=True)
-            if (ssim < 0.4 and aHash_val > 12) or ssim < 0.2 or aHash_val > 24:
-                logger.debug(f'compare_ssim & aHash fail: {ssim}, {aHash_val}')
-                return None
+            return (dst_tp, good_match_rate, good_area_rate, hash, ssim)
 
-            logger.info(
-                f'matches: {len(good)} / {len(matches)} / {len(des)} / {len(good) / len(des)} / {good_area_rate} / {aHash_val} / {ssim}')
+            # if good_area_rate < 0.5 or (ssim < 0.4 and hash > 12) or ssim < 0.2 or hash > 24:
+            #     logger.debug(f'compare_ssim & aHash fail: {ssim}, {hash}')
+            #     return None, (good_match_rate, good_area_rate, hash, ssim)
 
-            logger.debug(f'find in {dst_list}, {dst_tp}')
+            # logger.info(
+            #     f'matches: {len(good)} / {len(matches)} / {len(des)} / {good_match_rate} / {good_area_rate} / {hash} / {ssim}')
 
-            return dst_tp
+            # logger.debug(f'find in {dst_list}, {dst_tp}')
+
+            # return dst_tp, (good_match_rate, good_area_rate, hash, ssim)
 
         except Exception as e:
 
