@@ -2,10 +2,9 @@ import time
 
 from .utils.log import logger
 from .utils.adb import ADBConnector, KeyCode
+from .utils.config import APPNAME
 from .utils.recognize import Recognizer, Scene, RecognizeError
 from .utils import segment, detector
-
-APP = 'com.hypergryph.arknights/com.u8.sdk.U8UnityContext'
 
 
 def get_pos(poly, x_rate=0.5, y_rate=0.5):
@@ -29,8 +28,8 @@ class Solver:
         self.adb = adb
         self.recog = Recognizer(adb)
         self.run_once = False
-        if self.adb.current_focus() != APP:
-            self.adb.start_app(APP)
+        if self.adb.current_focus() != APPNAME:
+            self.adb.start_app(APPNAME)
             time.sleep(10)
 
     def sleep(self, interval=1):

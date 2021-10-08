@@ -27,7 +27,7 @@ def loadimg(filename):
     return cv2.imread(filename, cv2.IMREAD_GRAYSCALE)
 
 
-def threshole(img, thresh=250):
+def threshole(img, thresh):
     _, ret = cv2.threshold(img, thresh, 255, cv2.THRESH_BINARY)
     return ret
 
@@ -83,7 +83,7 @@ class Recognizer():
         self.gray = bytes2img(self.screencap, True)
         self.h, self.w, _ = self.img.shape
         self.matcher = FlannBasedMatcher(self.gray)
-        self.matcher_thres = FlannBasedMatcher(threshole(self.gray))
+        self.matcher_thres = FlannBasedMatcher(threshole(self.gray, 250))
         self.scene = Scene.UNDEFINED
 
     def color(self, x, y):
@@ -96,17 +96,15 @@ class Recognizer():
             self.scene = Scene.INDEX
         elif self.find('nav_index') is not None:
             self.scene = Scene.NAVIGATION_BAR
-        elif self.find('materiel') is not None:
+        elif self.find('materiel_ico') is not None:
             self.scene = Scene.MATERIEL
         elif self.find('loading') is not None:
             self.scene = Scene.LOADING
         elif self.find('loading2') is not None:
             self.scene = Scene.LOADING
-        elif self.find_thres('loading3') is not None:
+        elif self.find('loading3') is not None:
             self.scene = Scene.LOADING
-        elif self.find_thres('loading4') is not None:
-            self.scene = Scene.LOADING
-        elif self.find_thres('loading5') is not None:
+        elif self.find('loading4') is not None:
             self.scene = Scene.LOADING
         elif self.is_black():
             self.scene = Scene.LOADING
@@ -196,7 +194,7 @@ class Recognizer():
     def find_thres(self, item, draw=False, scope=None):
         logger.debug(f'find {item}')
         ret = self.matcher_thres.match(
-            threshole(loadimg(f'{__rootdir__}/resources/{item}.png')), draw=draw, scope=scope)
+            threshole(loadimg(f'{__rootdir__}/resources/{item}.png'), 250), draw=draw, scope=scope)
         if ret is None:
             return None
         return ret

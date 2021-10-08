@@ -12,6 +12,34 @@ GOOD_DISTANCE_LIMIT = 0.7
 SIFT = cv2.SIFT_create()
 
 
+def getHash(image):
+    avreage = np.mean(image)
+    hash = []
+    for i in range(image.shape[0]):
+        for j in range(image.shape[1]):
+            if image[i, j] > avreage:
+                hash.append(1)
+            else:
+                hash.append(0)
+    return hash
+
+
+def HammingDistance(hash1,hash2):
+    num = 0
+    for index in range(len(hash1)):
+        if hash1[index] != hash2[index]:
+            num += 1
+    return num
+
+
+def aHash(image1,image2):
+    image1 = cv2.resize(image1, (8, 8))
+    image2 = cv2.resize(image2, (8, 8))
+    hash1 = getHash(image1)
+    hash2 = getHash(image2)
+    return HammingDistance(hash1, hash2)
+
+
 class FlannBasedMatcher():
 
     def __init__(self, origin):
@@ -116,8 +144,7 @@ class FlannBasedMatcher():
             dst_tp = np.array(dst_tp, dtype=int).tolist()
             origin = self.origin[dst_tp[0][1]: dst_tp[1][1], dst_tp[0][0]: dst_tp[1][0]]
             origin = cv2.resize(origin, query.shape[::-1])
-            ssim, _ = compare_ssim(origin, query, full=True)
-
+                
             if draw or MATCHER_DEBUG:
                 plt.subplot(1, 2, 1)
                 plt.imshow(query, 'gray')
@@ -125,12 +152,14 @@ class FlannBasedMatcher():
                 plt.imshow(origin, 'gray')
                 plt.show()
 
-            if ssim < 0.2:
-                logger.debug(f'compare_ssim fail: {ssim}')
+            aHash_val = aHash(query, origin)
+            ssim = compare_ssim(query, origin, multichannel=True)
+            if (ssim < 0.4 and aHash_val > 12) or ssim < 0.2 or aHash_val > 24:
+                logger.debug(f'compare_ssim & aHash fail: {ssim}, {aHash_val}')
                 return None
 
-            logger.debug(
-                f'matches: {len(good)} / {len(matches)} / {len(des)} / {len(good) / len(des)} / {good_area_rate} / {ssim}')
+            logger.info(
+                f'matches: {len(good)} / {len(matches)} / {len(des)} / {len(good) / len(des)} / {good_area_rate} / {aHash_val} / {ssim}')
 
             logger.debug(f'find in {dst_list}, {dst_tp}')
 
