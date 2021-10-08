@@ -26,10 +26,10 @@ def simulate():
     # cli.mail()
 
 
-schedule.every().day.at('7:00').do(simulate)
+schedule.every().day.at('07:00').do(simulate)
 schedule.every().day.at('19:00').do(simulate)
 
 
 while True:
     schedule.run_pending()
-    time.sleep(1)
+    time.sleep(60)
