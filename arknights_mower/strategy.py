@@ -15,7 +15,7 @@ def get_pos(poly, x_rate=0.5, y_rate=0.5):
              poly[2][0] * x_rate + poly[3][0] * x_rate) / 2
         y = (poly[0][1] * (1-y_rate) + poly[3][1] * (1-y_rate) +
              poly[1][1] * y_rate + poly[2][1] * y_rate) / 2
-    elif len(poly) == 2 and type(poly[0]).__name__ == 'list':
+    elif len(poly) == 2 and type(poly[0]).__name__ in ['list', 'tuple']:
         x = poly[0][0] * (1-x_rate) + poly[1][0] * x_rate
         y = poly[0][1] * (1-y_rate) + poly[1][1] * y_rate
     else:
