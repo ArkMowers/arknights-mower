@@ -1,9 +1,12 @@
+import cv2
 import traceback
 import numpy as np
+from matplotlib import pyplot as plt
+
 from .log import logger
 
 
-def credit(im):
+def credit(im, draw=False):
     """
     信用交易所特供的图像分割算法
     """
@@ -22,9 +25,8 @@ def credit(im):
             mx = -999999
             mn = 999999
             for i in range(up, up2):
-                if im[i, j, 0] == im[i, j, 1] and im[i, j, 0] == im[i, j, 2]:
-                    mn = min(mn, im[i, j, 0])
-                    mx = max(mx, im[i, j, 0])
+                mn = min(mn, im[i, j, 0])
+                mx = max(mx, im[i, j, 0])
             return mx - mn
 
         up = 0
@@ -60,58 +62,80 @@ def credit(im):
             for y1, y2 in zip(split_y[:-1], split_y[1:]):
                 ret.append(((y1, x1), (y2, x2)))
 
+        if draw:
+            for x1, x2 in zip(split_x[:-1], split_x[1:]):
+                for y1, y2 in zip(split_y[:-1], split_y[1:]):
+                    cv2.polylines(im, [np.array(
+                        [[y1, x1], [y1, x2], [y2, x2], [y2, x1]])], True, 0, 10, cv2.LINE_AA)
+            plt.imshow(im)
+            plt.show()
+
         logger.debug(f'segment.credit: {ret}')
         return ret
+
     except Exception as e:
         logger.debug(traceback.format_exc())
         return None
 
 
-def recruit(im):
+def recruit(im, draw=True):
     """
     公招特供的图像分割算法
     """
-    x, y, z = im.shape
-    l, r = y//2-100, y//2-50
+    try:
+        x, y, z = im.shape
+        l, r = y//2-100, y//2-50
 
-    def adj(i):
-        if i == 0:
-            return 0
-        s = 0
-        for j in range(l, r):
-            for k in range(3):
-                s += abs(int(im[i, j, k]) - int(im[i-1, j, k]))
-        return int(s / (r-l))
+        def adj(i):
+            if i == 0:
+                return 0
+            s = 0
+            for j in range(l, r):
+                for k in range(3):
+                    s += abs(int(im[i, j, k]) - int(im[i-1, j, k]))
+            return int(s / (r-l))
 
-    def average(i):
-        s = 0
-        for j in range(l, r):
-            s += np.sum(im[i, j, :3])
-        return int(s / (r-l) / 3)
+        def average(i):
+            s = 0
+            for j in range(l, r):
+                s += np.sum(im[i, j, :3])
+            return int(s / (r-l) / 3)
 
-    def minus(i):
-        s = 0
-        for j in range(l, r):
-            s += int(im[i, j, 2]) - int(im[i, j, 0])
-        return int(s / (r-l))
+        def minus(i):
+            s = 0
+            for j in range(l, r):
+                s += int(im[i, j, 2]) - int(im[i, j, 0])
+            return int(s / (r-l))
 
-    up = 0
-    while minus(up) > -210:
-        up += 1
-    while not (adj(up) > 80 and minus(up) > -10 and average(up) > 210):
-        up += 1
+        up = 0
+        while minus(up) > -210:
+            up += 1
+        while not (adj(up) > 80 and minus(up) > -10 and average(up) > 210):
+            up += 1
 
-    down = x - 2
-    while adj(down+1) < 100:
-        down -= 1
+        down = x - 2
+        while adj(down+1) < 100:
+            down -= 1
 
-    split_x = [up, (up + down) // 2, down]
-    split_y = [0, y//2, y]
+        split_x = [up, (up + down) // 2, down]
+        split_y = [0, y//2, y]
 
-    ret = []
-    for x1, x2 in zip(split_x[:-1], split_x[1:]):
-        for y1, y2 in zip(split_y[:-1], split_y[1:]):
-            ret.append(((y1, x1), (y2, x2)))
+        ret = []
+        for x1, x2 in zip(split_x[:-1], split_x[1:]):
+            for y1, y2 in zip(split_y[:-1], split_y[1:]):
+                ret.append(((y1, x1), (y2, x2)))
 
-    logger.debug(f'segment.recruit: {ret}')
-    return ret
+        if draw:
+            for x1, x2 in zip(split_x[:-1], split_x[1:]):
+                for y1, y2 in zip(split_y[:-1], split_y[1:]):
+                    cv2.polylines(im, [np.array(
+                        [[y1, x1], [y1, x2], [y2, x2], [y2, x1]])], True, 0, 10, cv2.LINE_AA)
+            plt.imshow(im)
+            plt.show()
+
+        logger.debug(f'segment.recruit: {ret}')
+        return ret
+
+    except Exception as e:
+        logger.debug(traceback.format_exc())
+        return None
