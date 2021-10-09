@@ -289,6 +289,9 @@ class Solver:
                 elif self.recog.scene == Scene.OPERATOR_FINISH:
                     self.adb.touch_tap((10, 10))
                     self.sleep(1)
+                elif self.recog.scene == Scene.OPERATOR_ELIMINATE_FINISH:
+                    self.adb.touch_tap((10, 10))
+                    self.sleep(1)
                 elif self.recog.scene == Scene.OPERATOR_INTERRUPT:
                     self.tap(self.recog.find('ope_interrupt_no'))
                 elif self.recog.scene == Scene.OPERATOR_RECOVER_POTION:

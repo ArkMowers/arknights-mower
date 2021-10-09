@@ -112,8 +112,10 @@ class Recognizer():
             self.scene = Scene.OPERATOR_BEFORE
         elif self.find('ope_select_start') is not None:
             self.scene = Scene.OPERATOR_SELECT
-        elif self.find('ope_enemy') is not None:
+        elif self.find('ope_top') is not None:
             self.scene = Scene.OPERATOR_ONGOING
+        elif self.find('ope_elimi_finished') is not None:
+            self.scene = Scene.OPERATOR_ELIMINATE_FINISH
         elif self.find('ope_finish') is not None:
             self.scene = Scene.OPERATOR_FINISH
         elif self.find('ope_recover_potion_on') is not None:
