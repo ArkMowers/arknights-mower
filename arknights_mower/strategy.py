@@ -5,6 +5,7 @@ from .utils.adb import ADBConnector, KeyCode
 from .utils.config import APPNAME
 from .utils.recognize import Recognizer, Scene, RecognizeError
 from .utils import segment, detector
+from .ocr import ocrhandle
 
 
 def get_pos(poly, x_rate=0.5, y_rate=0.5):
@@ -343,12 +344,11 @@ class Solver:
                 raise e
             retry_times = 5
 
-    def shop(self):
+    def shop(self, priority=None):
         """
         自动购买物资清空信用
         """
         self.run_once = True
-        sold = 0
         retry_times = 5
         while retry_times > 0:
             try:
@@ -366,15 +366,18 @@ class Solver:
                         segments = segment.credit(self.recog.img)
                         if segments is None:
                             raise RecognizeError
-                        sold = False
-                        for seg in segments[sold:]:
+                        valid = []
+                        for seg in segments:
                             if self.recog.find('shop_sold', scope=seg) is None:
-                                self.tap(seg)
-                                break
-                            else:
-                                sold += 1
-                        if sold == 10:
+                                predict = ocrhandle.predict(self.recog.img[seg[0][1]:seg[0][1]+64, seg[0][0]:seg[1][0]])
+                                logger.debug(predict)
+                                valid.append((seg, predict[0][1]))
+                        logger.debug(valid)
+                        if len(valid) == 0:
                             break
+                        if priority is not None:
+                            valid.sort(key=lambda x: 9999 if x[1] not in priority else priority.index(x[1]))
+                        self.tap(valid[0][0])
                 elif self.recog.scene == Scene.SHOP_CREDIT_CONFIRM:
                     if self.recog.find('shop_credit_not_enough') is None:
                         self.tap(self.recog.find('shop_cart'))
