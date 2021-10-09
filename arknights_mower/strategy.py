@@ -153,16 +153,21 @@ class Solver:
                     else:
                         break
                 elif self.recog.scene == Scene.INFRA_TODOLIST:
+                    taped = False
                     trust = self.recog.find('infra_collect_trust')
                     if trust is not None:
                         self.tap(trust)
+                        taped = True
                     bill = self.recog.find('infra_collect_bill')
                     if bill is not None:
                         self.tap(bill)
+                        taped = True
                     factory = self.recog.find('infra_collect_factory')
                     if factory is not None:
                         self.tap(factory)
-                    break
+                        taped = True
+                    if taped == False:
+                        break
                 elif self.recog.scene == Scene.LOADING:
                     self.sleep(3)
                 elif self.get_navigation():
