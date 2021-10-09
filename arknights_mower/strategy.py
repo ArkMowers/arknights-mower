@@ -377,6 +377,8 @@ class Solver:
                             break
                         if priority is not None:
                             valid.sort(key=lambda x: 9999 if x[1] not in priority else priority.index(x[1]))
+                            if valid[0][1] not in priority:
+                                break
                         self.tap(valid[0][0])
                 elif self.recog.scene == Scene.SHOP_CREDIT_CONFIRM:
                     if self.recog.find('shop_credit_not_enough') is None:
