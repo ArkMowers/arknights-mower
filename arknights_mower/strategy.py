@@ -231,6 +231,7 @@ class Solver:
         """
         self.run_once = True
         recovering = 0
+        need_eliminate = False
         retry_times = 5
         while retry_times > 0:
             try:
@@ -239,7 +240,12 @@ class Solver:
                 if self.recog.scene == Scene.INDEX:
                     self.tap(self.recog.find('index_terminal'))
                 elif self.recog.scene == Scene.TERMINAL_MAIN:
-                    self.tap(self.recog.find('terminal_pre'))
+                    eliminate = self.recog.find('terminal_eliminate')
+                    if eliminate is not None:
+                        need_eliminate = True
+                        self.tap(eliminate)
+                    else:
+                        self.tap(self.recog.find('terminal_pre'))
                 elif self.recog.scene == Scene.OPERATOR_BEFORE:
                     agency = self.recog.find('ope_agency')
                     if agency is not None:
@@ -256,7 +262,27 @@ class Solver:
                             raise RuntimeError(
                                 f'recovering: unknown type {recovering}')
                         recovering = 0
+                elif self.recog.scene == Scene.OPERATOR_ELIMINATE:
+                    agency = self.recog.find('ope_agency')
+                    if agency is not None:
+                        self.tap(agency)
+                    elif need_eliminate == False:
+                        self.get_navigation()
+                        self.tap(self.recog.find('nav_terminal'))
+                    else:
+                        self.tap(self.recog.find('ope_start'))
+                        if recovering == 1:
+                            logger.info('use potion to recover sanity')
+                            potion -= 1
+                        elif recovering == 2:
+                            logger.info('use originite to recover sanity')
+                            originite -= 1
+                        elif recovering != 0:
+                            raise RuntimeError(
+                                f'recovering: unknown type {recovering}')
+                        recovering = 0
                 elif self.recog.scene == Scene.OPERATOR_SELECT:
+                    need_eliminate = False
                     self.tap(self.recog.find('ope_select_start'))
                 elif self.recog.scene == Scene.OPERATOR_ONGOING:
                     self.sleep(10)
@@ -270,24 +296,24 @@ class Solver:
                         if originite != 0:
                             self.tap(self.recog.find('ope_recover_originite'))
                         else:
-                            self.tap(self.recog.find('ope_recover_potion_no'))
+                            self.tap(self.recog.find('ope_recover_choose'), x_rate=0.05)
                             break
                     elif recovering:
                         self.sleep(3)
                     else:
-                        self.tap(self.recog.find('ope_recover_potion_yes'))
+                        self.tap(self.recog.find('ope_recover_choose'), x_rate=0.95)
                         recovering = 1
                 elif self.recog.scene == Scene.OPERATOR_RECOVER_ORIGINITE:
                     if originite == 0:
                         if potion != 0:
                             self.tap(self.recog.find('ope_recover_potion'))
                         else:
-                            self.tap(self.recog.find('ope_recover_originite_no'))
+                            self.tap(self.recog.find('ope_recover_choose'), x_rate=0.05)
                             break
                     elif recovering:
                         self.sleep(3)
                     else:
-                        self.tap(self.recog.find('ope_recover_originite_yes'))
+                        self.tap(self.recog.find('ope_recover_choose'), x_rate=0.95)
                         recovering = 2
                 elif self.recog.scene == Scene.LOADING:
                     self.sleep(3)
