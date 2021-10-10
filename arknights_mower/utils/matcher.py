@@ -13,7 +13,7 @@ MATCHER_DEBUG = False
 FLANN_INDEX_KDTREE = 0
 GOOD_DISTANCE_LIMIT = 0.7
 SIFT = cv2.SIFT_create()
-with open(f'{__rootdir__}/data/svm.model', 'rb') as f:
+with open(f'{__rootdir__}/models/svm.model', 'rb') as f:
     SVC = pickle.loads(f.read())
 
 

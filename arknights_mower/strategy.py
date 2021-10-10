@@ -6,6 +6,7 @@ from .utils.config import APPNAME
 from .utils.recognize import Recognizer, Scene, RecognizeError
 from .utils import segment, detector
 from .ocr import ocrhandle
+from .data.recruit import recruit_database
 
 
 def get_pos(poly, x_rate=0.5, y_rate=0.5):
@@ -40,7 +41,53 @@ class Solver:
     def tap(self, poly, x_rate=0.5, y_rate=0.5, interval=1):
         pos = get_pos(poly, x_rate, y_rate)
         self.adb.touch_tap(pos)
-        self.sleep(interval)
+        if interval > 0:
+            self.sleep(interval)
+
+    def recruit_choose(self, tags, priority):
+        if priority is None:
+            priority = ['因陀罗', '火神']
+        possibility = {}
+        for x in recruit_database:
+            if x[1] == 6 and '高级资深干员' not in tags:
+                continue
+            valid = 0
+            if x[1] == 6:
+                if '高级资深干员' in tags:
+                    valid |= (1<<tags.index('高级资深干员'))
+            if x[1] == 5:
+                if '资深干员' in tags:
+                    valid |= (1<<tags.index('资深干员'))
+            for tag in x[2]:
+                if tag in tags:
+                    valid |= (1<<tags.index(tag))
+            for o in range(1, 1<<5):
+                if o & valid == o:
+                    if o not in possibility.keys():
+                        possibility[o] = [7, []]
+                    possibility[o][0] = min(possibility[o][0], x[1])
+                    possibility[o][1].append(x[0])
+        for o in possibility.keys():
+            minidx = 999
+            for x in possibility[o][1]:
+                if x in priority:
+                    minidx = min(minidx, priority.index(x))
+            if minidx != 999:
+                possibility[o][0] += 0.5 - 0.5 * minidx / len(priority)
+        logger.debug(possibility)
+        maxlevel = 0
+        maxlevel_choose = 0
+        for o in possibility.keys():
+            if maxlevel < possibility[o][0]:
+                maxlevel = possibility[o][0]
+                maxlevel_choose = o
+        logger.debug(maxlevel_choose)
+        choose = []
+        for i in range(len(tags)):
+            if maxlevel_choose & (1<<i):
+                choose.append(tags[i])
+        return choose, maxlevel
+            
 
     def login(self):
         """
@@ -169,7 +216,7 @@ class Solver:
                     if factory is not None:
                         self.tap(factory)
                         tapped = True
-                    if tapped == False:
+                    if not tapped:
                         break
                 elif self.recog.scene == Scene.LOADING:
                     self.sleep(3)
@@ -298,8 +345,8 @@ class Solver:
                     self.tap((10, 10))
                 elif self.recog.scene == Scene.OPERATOR_ELIMINATE_FINISH:
                     self.tap((10, 10))
-                elif self.recog.scene == Scene.OPERATOR_INTERRUPT:
-                    self.tap(self.recog.find('ope_interrupt_no'))
+                elif self.recog.scene == Scene.DOUBLE_CONFIRM:
+                    self.tap(self.recog.find('double_confirm'), 0.2)
                 elif self.recog.scene == Scene.OPERATOR_RECOVER_POTION:
                     if potion == 0:
                         if originite != 0:
@@ -403,12 +450,11 @@ class Solver:
                 raise e
             retry_times = 5
 
-    def recruit(self):
+    def recruit(self, priority=None):
         """
         自动完成公招
         """
         self.run_once = True
-        opening_bag = True
         retry_times = 5
         while retry_times > 0:
             try:
@@ -417,41 +463,52 @@ class Solver:
                 if self.recog.scene == Scene.INDEX:
                     self.tap(self.recog.find('index_recruit'))
                 elif self.recog.scene == Scene.RECRUIT_MAIN:
-                    opening_bag = False
                     segments = segment.recruit(self.recog.img)
                     tapped = False
                     for seg in segments:
                         finished = self.recog.find('recruit_finish', scope=seg)
-                        if finished is not None and tapped is False:
+                        if finished is not None:
                             self.tap(finished)
                             tapped = True
-                    if tapped == False:
+                            break
+                        required = self.recog.find('job_requirements', scope=seg)
+                        if required is None:
+                            self.tap(seg)
+                            tapped = True
+                            break
+                    if not tapped:
                         break
+                elif self.recog.scene == Scene.RECRUIT_TAGS:
+                    needs = self.recog.find('career_needs')
+                    avail_level = self.recog.find('available_level')
+                    budget = self.recog.find('recruit_budget')
+                    up = needs[0][1] - 80
+                    down = needs[1][1] + 60
+                    left = needs[1][0]
+                    right = avail_level[0][0]
+                    while True:
+                        predict = ocrhandle.predict(self.recog.img[up:down, left:right])
+                        logger.debug(predict)
+                        choose, maxlevel = self.recruit_choose([x[1] for x in predict], priority)
+                        if maxlevel < 4:
+                            refresh = self.recog.find('recruit_refresh')
+                            if refresh is not None:
+                                self.tap(refresh)
+                                self.tap(self.recog.find('double_confirm'), 0.8, interval=5)
+                                continue
+                            if maxlevel <= 3:
+                                choose = []
+                        break
+                    for x in predict:
+                        color = self.recog.img[up+x[2][0][1]-5, left+x[2][0][0]-5]
+                        if (color[2] < 100) != (x[1] not in choose):
+                            self.adb.touch_tap((left+x[2][0][0]-5, up+x[2][0][1]-5))
+                    self.tap(self.recog.find('one_hour'), 0.2, 0.8, 0)
+                    self.tap((avail_level[1][0], budget[0][1]), interval=5)
                 elif self.recog.scene == Scene.SKIP:
-                    opening_bag = True
                     self.tap(self.recog.find('skip'))
-                # elif self.recog.scene == Scene.SHOP_OTHERS:
-                #     self.tap(self.recog.find('shop_credit'))
-                # elif self.recog.scene == Scene.SHOP_CREDIT:
-                #     collect = self.recog.find('shop_collect')
-                #     if collect is not None:
-                #         self.tap(collect)
-                #     else:
-                #         segments = segment.credit(bytes2img(self.recog.screencap))
-                #         sold = False
-                #         for seg in segments[sold:]:
-                #             if self.recog.find('shop_sold', scope=seg) is None:
-                #                 self.tap(seg)
-                #                 break
-                #             else:
-                #                 sold += 1
-                #         if sold == 10:
-                #             break
-                # elif self.recog.scene == Scene.SHOP_CREDIT_CONFIRM:
-                #     if self.recog.find('shop_credit_not_enough') is None:
-                #         self.tap(self.recog.find('shop_cart'))
-                #     else:
-                #         break
+                elif self.recog.scene == Scene.RECRUIT_AGENT:
+                    self.tap((10, 10))
                 elif self.recog.scene == Scene.MATERIEL:
                     self.tap(self.recog.find('materiel'))
                 elif self.recog.scene == Scene.LOADING:
@@ -461,10 +518,7 @@ class Solver:
                 elif self.recog.scene != Scene.UNKNOWN:
                     self.back_to_index()
                 else:
-                    if opening_bag:
-                        self.tap((10, 10))
-                    else:
-                        raise RecognizeError
+                    raise RecognizeError
             except RecognizeError:
                 retry_times -= 1
                 self.sleep(3)

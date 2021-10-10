@@ -1,4 +1,4 @@
-from ..__init__ import __rootdir__
+from ..data.scene import scene_database
 
 
 class Scene:
@@ -8,7 +8,6 @@ class Scene:
 SceneComment = {}
 
 
-with open(f'{__rootdir__}/data/scene', 'r') as f:
-    for scene in [x.strip().split(',') for x in f.readlines()]:
-        exec(f'Scene.{scene[1]} = {scene[0]}')
-        SceneComment[int(scene[0])] = scene[2]
+for scene in scene_database:
+    exec(f'Scene.{scene[1]} = {scene[0]}')
+    SceneComment[scene[0]] = scene[2]

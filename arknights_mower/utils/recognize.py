@@ -122,8 +122,8 @@ class Recognizer():
             self.scene = Scene.OPERATOR_RECOVER_POTION
         elif self.find('ope_recover_originite_on') is not None:
             self.scene = Scene.OPERATOR_RECOVER_ORIGINITE
-        elif self.find('ope_interrupt') is not None:
-            self.scene = Scene.OPERATOR_INTERRUPT
+        elif self.find('double_confirm') is not None:
+            self.scene = Scene.DOUBLE_CONFIRM
         elif self.find('ope_firstdrop') is not None:
             self.scene = Scene.OPERATOR_DROP
         elif self.find('ope_eliminate') is not None:
@@ -144,11 +144,10 @@ class Recognizer():
             self.scene = Scene.MISSION_WEEKLY
         elif self.find('terminal_pre') is not None:
             self.scene = Scene.TERMINAL_MAIN
-        elif self.find('recruit') is not None:
-            if self.find('recruit_refresh') is not None:
-                self.scene = Scene.RECRUIT_TAGS
-            else:
-                self.scene = Scene.RECRUIT_MAIN
+        elif self.find('open_recruitment') is not None:
+            self.scene = Scene.RECRUIT_MAIN
+        elif self.find('recruiting_instructions') is not None:
+            self.scene = Scene.RECRUIT_TAGS
         elif self.find('agent_token') is not None:
             self.scene = Scene.RECRUIT_AGENT
         elif self.find('shop_credit') is not None:

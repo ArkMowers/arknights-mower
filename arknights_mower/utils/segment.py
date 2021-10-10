@@ -84,9 +84,10 @@ def recruit(im, draw=False):
     """
     try:
         x, y, z = im.shape
+        u, d = 0, x
         l, r = y//2-100, y//2-50
 
-        def adj(i):
+        def adj_x(i):
             if i == 0:
                 return 0
             s = 0
@@ -94,6 +95,15 @@ def recruit(im, draw=False):
                 for k in range(3):
                     s += abs(int(im[i, j, k]) - int(im[i-1, j, k]))
             return int(s / (r-l))
+
+        def adj_y(j):
+            if j == 0:
+                return 0
+            s = 0
+            for i in range(u, d):
+                for k in range(3):
+                    s += abs(int(im[i, j, k]) - int(im[i, j-1, k]))
+            return int(s / (d-u))
 
         def average(i):
             s = 0
@@ -110,15 +120,24 @@ def recruit(im, draw=False):
         up = 0
         while minus(up) > -210:
             up += 1
-        while not (adj(up) > 80 and minus(up) > -10 and average(up) > 210):
+        while not (adj_x(up) > 80 and minus(up) > -10 and average(up) > 210):
             up += 1
+        u, d = up-90, up-40
 
         down = x - 2
-        while adj(down+1) < 100:
+        while adj_x(down+1) < 100:
             down -= 1
 
+        left = 0
+        while adj_y(left) < 50:
+            left += 1
+
+        right = y - 1
+        while adj_y(right) < 50:
+            right -= 1
+
         split_x = [up, (up + down) // 2, down]
-        split_y = [0, y//2, y]
+        split_y = [left, (left + right) // 2, right]
 
         ret = []
         for x1, x2 in zip(split_x[:-1], split_x[1:]):
