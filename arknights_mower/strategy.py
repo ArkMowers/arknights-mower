@@ -123,6 +123,8 @@ class Solver:
                     self.tap(detector.confirm(self.recog.img))
                 elif self.recog.scene == Scene.LOADING:
                     self.sleep(3)
+                elif self.recog.scene == Scene.SKIP:
+                    self.tap(self.recog.find('skip'))
                 else:
                     raise RecognizeError
             except RecognizeError:
@@ -154,20 +156,20 @@ class Solver:
                     else:
                         break
                 elif self.recog.scene == Scene.INFRA_TODOLIST:
-                    taped = False
+                    tapped = False
                     trust = self.recog.find('infra_collect_trust')
                     if trust is not None:
                         self.tap(trust)
-                        taped = True
+                        tapped = True
                     bill = self.recog.find('infra_collect_bill')
                     if bill is not None:
                         self.tap(bill)
-                        taped = True
+                        tapped = True
                     factory = self.recog.find('infra_collect_factory')
                     if factory is not None:
                         self.tap(factory)
-                        taped = True
-                    if taped == False:
+                        tapped = True
+                    if tapped == False:
                         break
                 elif self.recog.scene == Scene.LOADING:
                     self.sleep(3)
@@ -293,11 +295,9 @@ class Solver:
                 elif self.recog.scene == Scene.OPERATOR_ONGOING:
                     self.sleep(10)
                 elif self.recog.scene == Scene.OPERATOR_FINISH:
-                    self.adb.touch_tap((10, 10))
-                    self.sleep(1)
+                    self.tap((10, 10))
                 elif self.recog.scene == Scene.OPERATOR_ELIMINATE_FINISH:
-                    self.adb.touch_tap((10, 10))
-                    self.sleep(1)
+                    self.tap((10, 10))
                 elif self.recog.scene == Scene.OPERATOR_INTERRUPT:
                     self.tap(self.recog.find('ope_interrupt_no'))
                 elif self.recog.scene == Scene.OPERATOR_RECOVER_POTION:
@@ -408,6 +408,7 @@ class Solver:
         自动完成公招
         """
         self.run_once = True
+        opening_bag = True
         retry_times = 5
         while retry_times > 0:
             try:
@@ -415,17 +416,20 @@ class Solver:
                     self.recog.get_scene()
                 if self.recog.scene == Scene.INDEX:
                     self.tap(self.recog.find('index_recruit'))
-                # elif self.recog.scene == Scene.RECRUIT_MAIN:
-                #     segments = segment.recruit(self.recog.img)
-                #     for seg in segments:
-                #         finished = self.recog.find('recruit_finish', scope=seg)
-                #         if finished is not None:
-                #             self.tap(finished)
-                #             break
-                #         else:
-                #             sold += 1
-                #     if sold == 10:
-                #         break
+                elif self.recog.scene == Scene.RECRUIT_MAIN:
+                    opening_bag = False
+                    segments = segment.recruit(self.recog.img)
+                    tapped = False
+                    for seg in segments:
+                        finished = self.recog.find('recruit_finish', scope=seg)
+                        if finished is not None and tapped is False:
+                            self.tap(finished)
+                            tapped = True
+                    if tapped == False:
+                        break
+                elif self.recog.scene == Scene.SKIP:
+                    opening_bag = True
+                    self.tap(self.recog.find('skip'))
                 # elif self.recog.scene == Scene.SHOP_OTHERS:
                 #     self.tap(self.recog.find('shop_credit'))
                 # elif self.recog.scene == Scene.SHOP_CREDIT:
@@ -457,7 +461,10 @@ class Solver:
                 elif self.recog.scene != Scene.UNKNOWN:
                     self.back_to_index()
                 else:
-                    raise RecognizeError
+                    if opening_bag:
+                        self.tap((10, 10))
+                    else:
+                        raise RecognizeError
             except RecognizeError:
                 retry_times -= 1
                 self.sleep(3)

@@ -149,6 +149,8 @@ class Recognizer():
                 self.scene = Scene.RECRUIT_TAGS
             else:
                 self.scene = Scene.RECRUIT_MAIN
+        elif self.find('agent_token') is not None:
+            self.scene = Scene.RECRUIT_AGENT
         elif self.find('shop_credit') is not None:
             self.scene = Scene.SHOP_OTHERS
         elif self.find('shop_credit_on') is not None:
@@ -167,6 +169,8 @@ class Recognizer():
             self.scene = Scene.LOGIN_START
         elif detector.announcement_close(self.img) is not None:
             self.scene = Scene.ANNOUNCEMENT
+        elif self.find('skip') is not None:
+            self.scene = Scene.SKIP
         elif self.find('upgrade') is not None:
             self.scene = Scene.UPGRADE
         elif detector.confirm(self.img) is not None:

@@ -78,7 +78,7 @@ def credit(im, draw=False):
         return None
 
 
-def recruit(im, draw=True):
+def recruit(im, draw=False):
     """
     公招特供的图像分割算法
     """
