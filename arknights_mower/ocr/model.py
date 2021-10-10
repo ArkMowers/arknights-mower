@@ -7,6 +7,7 @@ from PIL import Image
 from .config import dbnet_model_path, crnn_model_path
 from .dbnet import DBNET
 from .crnn import CRNNHandle
+from ..utils.log import logger
 
 
 def sorted_boxes(dt_boxes):
@@ -93,6 +94,7 @@ class OcrHandle(object):
         short_size = short_size // 32 * 32
         boxes_list, score_list = self.text_handle.process(img, short_size=short_size)
         result = self.crnnRecWithBox(img, boxes_list, score_list, is_rgb)
+        logger.debug(result)
         return result
 
 

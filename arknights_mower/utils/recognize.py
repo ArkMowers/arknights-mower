@@ -174,8 +174,16 @@ class Recognizer():
             self.scene = Scene.UPGRADE
         elif detector.confirm(self.img) is not None:
             self.scene = Scene.CONFIRM
-        elif self.find('login_button') is not None: # TODO 不要用 Login_button，用别的
+        elif self.find('login_button') is not None:
             self.scene = Scene.LOGIN_INPUT
+        elif self.find('main_theme') is not None:
+            self.scene = Scene.TERMINAL_MAIN_THEME
+        elif self.find('episode') is not None:
+            self.scene = Scene.TERMINAL_EPISODE
+        elif self.find('biography') is not None:
+            self.scene = Scene.TERMINAL_BIOGRAPHY
+        elif self.find('collection') is not None:
+            self.scene = Scene.TERMINAL_COLLECTION
         else:
             self.scene = Scene.UNKNOWN
         # save screencap to analyse

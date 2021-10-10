@@ -7,6 +7,11 @@ from .utils.recognize import Recognizer, Scene, RecognizeError
 from .utils import segment, detector
 from .ocr import ocrhandle
 from .data.recruit import recruit_database
+from .data.level import level_database, zone_database, theme_database, weekly_zones
+
+
+class LevelUnopenError(Exception):
+    pass
 
 
 def get_pos(poly, x_rate=0.5, y_rate=0.5):
@@ -315,12 +320,131 @@ class Solver:
                 raise e
             retry_times = 5
 
-    def fight(self, potion=0, originite=0):
+    def choose_level(self, level):
+        zone = level_database[level]['zone_id']
+        zone = zone_database[zone]
+        logger.info(f'章节：{zone[0]}')
+
+        nav = self.recog.find('navbutton')
+        nav[1][1] = self.recog.h
+        bottom = self.recog.find('terminal_small')[0][1]
+        if zone[1] == 0:
+            self.tap((self.recog.w // 14 * 3, bottom))
+            predict = []
+            act_id = 999
+            while act_id != zone[2]:
+                _act_id = act_id
+                act_id = -1
+                for x in predict: 
+                    if x[1] in theme_database[:_act_id]:
+                        self.tap(x[2])
+                        break
+                predict = ocrhandle.predict(self.recog.img[nav[0][1]:nav[1][1], nav[0][0]:nav[1][0]])
+                for x in predict:
+                    if x[1][:7] == 'EPISODE':
+                        episode = int(x[1][-2:])
+                        act_id = zone_database[f'main_{episode}'][2]
+                        break
+                if act_id == -1 or _act_id == act_id:
+                    raise RecognizeError
+            cover = self.recog.find(f'main_{episode}')
+            while zone[3] < episode:
+                self.adb.touch_swipe((cover[0][0], cover[0][1]), (cover[1][0] - cover[0][0], 0))
+                self.sleep(1)
+                episode -= 1
+            while episode < zone[3]:
+                self.adb.touch_swipe((cover[1][0], cover[0][1]), (cover[0][0] - cover[1][0], 0))
+                self.sleep(1)
+                episode += 1
+            self.tap(cover)
+        elif zone[1] == 1:
+            self.tap((self.recog.w // 14 * 5, bottom))
+            predict = ocrhandle.predict(self.recog.img[nav[0][1]:nav[1][1], nav[0][0]:nav[1][0]])
+            for x in predict:
+                if x[1] == zone[0]:
+                    self.tap(x[2])
+            self.tap(self.recog.find('enter'))
+        elif zone[1] == 2:
+            self.tap((self.recog.w // 14 * 7, bottom))
+            predict = ocrhandle.predict(self.recog.img[nav[0][1]:nav[1][1], nav[0][0]:nav[1][0]])
+            for x in predict:
+                if x[1] == zone[0]:
+                    self.tap(x[2])
+            self.tap(self.recog.find('enter'))
+        elif zone[1] == 3:
+            self.tap((self.recog.w // 14 * 9, bottom))
+            predict = ocrhandle.predict(self.recog.img)
+            unable = list(filter(lambda x: x[1] == '不可进入', predict))
+            predict = list(filter(lambda x: x[1] in weekly_zones, predict))
+            weekly = sorted([x[1] for x in predict])
+            while zone[0] not in weekly:
+                _weekly = weekly
+                self.adb.touch_swipe((self.recog.w // 4, self.recog.h // 4), (self.recog.w // 16, 0))
+                self.sleep(1)
+                predict = ocrhandle.predict(self.recog.img)
+                unable = list(filter(lambda x: x[1] == '不可进入', predict))
+                predict = list(filter(lambda x: x[1] in weekly_zones, predict))
+                weekly = sorted([x[1] for x in predict])
+                if _weekly == weekly:
+                    break
+            while zone[0] not in weekly:
+                _weekly = weekly
+                self.adb.touch_swipe((self.recog.w // 4, self.recog.h // 4), (-self.recog.w // 16, 0))
+                self.sleep(1)
+                predict = ocrhandle.predict(self.recog.img)
+                unable = list(filter(lambda x: x[1] == '不可进入', predict))
+                predict = list(filter(lambda x: x[1] in weekly_zones, predict))
+                weekly = sorted([x[1] for x in predict])
+                if _weekly == weekly:
+                    break
+            if zone[0] not in weekly:
+                raise RecognizeError
+            for x in predict:
+                if x[1] == zone[0]:
+                    for item in unable:
+                        if x[2][0][0] < item[2][0][0] < x[2][1][0]:
+                            raise LevelUnopenError
+                    self.tap(x[2])
+                    break
+        else:
+            raise RecognizeError
+        
+        predict = ocrhandle.predict(self.recog.img)
+        predict = list(filter(lambda x: x[1] in level_database.keys(), predict))
+        levels = sorted([x[1] for x in predict])
+        while level not in levels:
+            _levels = levels
+            self.adb.touch_swipe((self.recog.w // 4, self.recog.h // 4), (self.recog.w // 16, 0))
+            self.sleep(1)
+            predict = ocrhandle.predict(self.recog.img)
+            predict = list(filter(lambda x: x[1] in level_database.keys(), predict))
+            levels = sorted([x[1] for x in predict])
+            if _levels == levels:
+                break
+        while level not in levels:
+            _levels = levels
+            self.adb.touch_swipe((self.recog.w // 4, self.recog.h // 4), (-self.recog.w // 16, 0))
+            self.sleep(1)
+            predict = ocrhandle.predict(self.recog.img)
+            predict = list(filter(lambda x: x[1] in level_database.keys(), predict))
+            levels = sorted([x[1] for x in predict])
+            if _levels == levels:
+                break
+        for x in predict:
+            if x[1] == level:
+                self.tap(x[2])
+                return
+        raise RecognizeError
+
+    def fight(self, potion=0, originite=0, times=-1, level=None):
         """
         自动前往上一次作战刷体力
         :param potion: 最多使用药剂恢复体力的次数，-1 为无限制
         :param originite: 最多使用源石恢复体力的次数，-1 为无限制
         """
+        if level is not None and level not in level_database.keys():
+            logger.info('非法输入')
+            return
         self.run_once = True
         recovering = 0
         need_eliminate = False
@@ -332,13 +456,18 @@ class Solver:
                 if self.recog.scene == Scene.INDEX:
                     self.tap(self.recog.find('index_terminal'))
                 elif self.recog.scene == Scene.TERMINAL_MAIN:
-                    eliminate = self.recog.find('terminal_eliminate')
-                    if eliminate is not None:
-                        need_eliminate = True
-                        self.tap(eliminate)
+                    if level is not None:
+                        self.choose_level(level)
                     else:
-                        self.tap(self.recog.find('terminal_pre'))
+                        eliminate = self.recog.find('terminal_eliminate')
+                        if eliminate is not None:
+                            need_eliminate = True
+                            self.tap(eliminate)
+                        else:
+                            self.tap(self.recog.find('terminal_pre'))
                 elif self.recog.scene == Scene.OPERATOR_BEFORE:
+                    if times == 0:
+                        break
                     agency = self.recog.find('ope_agency')
                     if agency is not None:
                         self.tap(agency)
@@ -379,6 +508,7 @@ class Solver:
                 elif self.recog.scene == Scene.OPERATOR_ONGOING:
                     self.sleep(10)
                 elif self.recog.scene == Scene.OPERATOR_FINISH:
+                    times -= 1
                     self.tap((10, 10))
                 elif self.recog.scene == Scene.OPERATOR_ELIMINATE_FINISH:
                     self.tap((10, 10))
@@ -420,6 +550,9 @@ class Solver:
                     self.back_to_index()
                 else:
                     raise RecognizeError
+            except LevelUnopenError:
+                logger.info('关卡未开放')
+                return
             except RecognizeError:
                 retry_times -= 1
                 self.sleep(3)
@@ -454,7 +587,6 @@ class Solver:
                         for seg in segments:
                             if self.recog.find('shop_sold', scope=seg) is None:
                                 predict = ocrhandle.predict(self.recog.img[seg[0][1]:seg[0][1]+64, seg[0][0]:seg[1][0]])
-                                logger.debug(predict)
                                 valid.append((seg, predict[0][1]))
                         logger.debug(valid)
                         if len(valid) == 0:
@@ -525,7 +657,6 @@ class Solver:
                     right = avail_level[0][0]
                     while True:
                         predict = ocrhandle.predict(self.recog.img[up:down, left:right])
-                        logger.debug(predict)
                         choose, maxlevel = self.recruit_choose([x[1] for x in predict], priority)
                         if maxlevel < 4:
                             refresh = self.recog.find('recruit_refresh')
