@@ -44,12 +44,49 @@ class Solver:
         if interval > 0:
             self.sleep(interval)
 
+    def recruit_choose_level1(self, tags, priority):
+        if priority is None:
+            priority = ['Lancet-2', 'Castle-3', 'THRM-EX']
+        possibility = []
+        for x in recruit_database:
+            if x[1] != 1 or x[0] not in priority:
+                continue
+            valid = 0
+            for tag in x[2]:
+                if tag in tags:
+                    valid |= (1<<tags.index(tag))
+            for o in range(1, 1<<5):
+                if o & valid == o:
+                    if o not in possibility:
+                        possibility.append(o)
+        for x in recruit_database:
+            if x[1] > 4:
+                continue
+            valid = 0
+            for tag in x[2]:
+                if tag in tags:
+                    valid |= (1<<tags.index(tag))
+            for o in range(1, 1<<5):
+                if o & valid == o:
+                    if o in possibility:
+                        possibility.remove(o)
+        logger.debug(possibility)
+        if len(possibility) == 0:
+            return []
+        choose = []
+        for i in range(len(tags)):
+            if possibility[0] & (1<<i):
+                choose.append(tags[i])
+        return choose
+
     def recruit_choose(self, tags, priority):
         if priority is None:
             priority = ['因陀罗', '火神']
         possibility = {}
         for x in recruit_database:
             if x[1] == 6 and '高级资深干员' not in tags:
+                continue
+            if x[1] < 3:
                 continue
             valid = 0
             if x[1] == 6:
