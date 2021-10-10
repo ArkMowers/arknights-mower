@@ -531,7 +531,7 @@ class Solver:
                             refresh = self.recog.find('recruit_refresh')
                             if refresh is not None:
                                 self.tap(refresh)
-                                self.tap(self.recog.find('double_confirm'), 0.8, interval=5)
+                                self.tap(self.recog.find('double_confirm'), 0.8)
                                 continue
                             if maxlevel <= 3:
                                 choose = []
