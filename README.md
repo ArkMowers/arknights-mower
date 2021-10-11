@@ -85,6 +85,6 @@ source venv/bin/activate
 #### venv end
 
 pip3 install -r requirements.txt
-python3 diy.py
 # 可根据个人需求修改 diy.py
+python3 diy.py
 ```
