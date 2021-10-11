@@ -99,6 +99,7 @@ class OpeSolver(BaseSolver):
                         self.sleep(wait_start)
                         wait_total += wait_start
                     else:
+                        wait_interval = min(wait_interval, 80)
                         logger.info(f'等待 {wait_interval} 秒')
                         self.sleep(wait_interval)
                         wait_total += wait_interval
