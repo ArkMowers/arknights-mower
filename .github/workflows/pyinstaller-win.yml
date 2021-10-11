@@ -2,7 +2,7 @@ name: Windows Binary Package
 
 on:
   push:
-    branches: [ main ]
+    branches: [ disable ]
 
 jobs:
   build-win-amd64:
