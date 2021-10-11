@@ -87,8 +87,8 @@ class RecruitSolver(BaseSolver):
                             break
                     if agent is None:
                         logger.warn('未能识别到干员名称')
-                    elif x not in recruit_agent:
-                        logger.warn(f'干员识别异常：{x} 为不存在的干员')
+                    elif agent not in recruit_agent:
+                        logger.warn(f'干员识别异常：{agent} 为不存在的干员')
                     else:
                         logger.info(f'获得干员：{agent}')
                     self.tap((10, 10))
