@@ -25,6 +25,9 @@ class BaseConstructSolver(BaseSolver):
                     self.tap_element('index_infrastructure')
                 elif self.scene() == Scene.INFRA_MAIN:
                     notification = detector.infra_notification(self.recog.img)
+                    if notification is None:
+                        self.sleep(1)
+                        notification = detector.infra_notification(self.recog.img)
                     if notification is not None:
                         self.tap(notification)
                     else:
