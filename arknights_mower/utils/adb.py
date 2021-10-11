@@ -14,8 +14,13 @@ from .log import logger, save_screenshot
 class ADBSocket:
 
     def __init__(self, server, timeout):
-        self.sock = socket.create_connection(server, timeout=timeout)
-        self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        try:
+            self.sock = socket.create_connection(server, timeout=timeout)
+            self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except ConnectionRefusedError:
+            logger.error('ConnectionRefusedError')
+            print('ADB Server 未开启。请运行 `adb server` 以启动 ADB Server。')
+            exit()
 
     def recv_all(self, chunklen=65536, return_buffer=False):
         bufs = []
@@ -98,8 +103,9 @@ class ADBClientSession:
         resp = resp.decode(errors='ignore')
         devices = [tuple(line.split('\t')) for line in resp.splitlines()]
         if not resp:
-            raise RuntimeError(
-                'Connection Failure, check abd devices to see if your destination device is attached')
+            logger.error('Connection Failure, check abd devices to see if your destination device is attached')
+            print('未检测到 ADB Devices。请运行 `adb devices` 确认列表中列出了目标模拟器或设备。')
+            exit()
         return devices
 
     def connect(self, device):
