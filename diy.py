@@ -12,11 +12,14 @@ def debuglog():
     logger.handlers[0].setLevel('DEBUG')
 
 
-def simulate():
+def savelog():
     config.LOGFILE_PATH = './log'
     config.SCREENSHOT_PATH = './screenshot'
-    config.SCREENSHOT_MAXNUM = 50
+    config.SCREENSHOT_MAXNUM = 100
     init_fhlr()
+
+
+def simulate():
     cli = Solver()
     cli.base()
     cli.credit()
@@ -24,8 +27,9 @@ def simulate():
     cli.shop() 
     cli.recruit() 
     cli.mission() 
-    cli.mail()
+    # cli.mail()  TODO
 
 
 debuglog()
+savelog()
 simulate()
