@@ -159,3 +159,4 @@ venv_dev
 test_*
 config.test.ini
 data/*
+release.sh
