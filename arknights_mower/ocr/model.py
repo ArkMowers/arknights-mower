@@ -8,6 +8,7 @@ from .config import dbnet_model_path, crnn_model_path
 from .dbnet import DBNET
 from .crnn import CRNNHandle
 from ..utils.log import logger
+from ..data.ocr import ocr_error
 
 
 def sorted_boxes(dt_boxes):
@@ -92,8 +93,11 @@ class OcrHandle(object):
     def predict(self, img, is_rgb=False):
         short_size = min(img.shape[:-1])
         short_size = short_size // 32 * 32
-        boxes_list, score_list = self.text_handle.process(img, short_size=short_size)
+        boxes_list, score_list = self.text_handle.process(img, short_size)
         result = self.crnnRecWithBox(img, boxes_list, score_list, is_rgb)
+        for i in range(len(result)):
+            if result[i][1] in ocr_error.keys():
+                result[i][1] = ocr_error[result[i][1]]
         logger.debug(result)
         return result
 

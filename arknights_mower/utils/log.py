@@ -42,7 +42,8 @@ def init_fhlr():
         return
     folder = Path(config.LOGFILE_PATH)
     folder.mkdir(exist_ok=True, parents=True)
-    fhlr = TimedRotatingFileHandler(folder.joinpath('runtime.log'), when='D', interval=1, backupCount=7)
+    fhlr = TimedRotatingFileHandler(folder.joinpath('runtime.log'),
+                                    when='D', interval=1, backupCount=7)
     fhlr.setFormatter(basic_formatter)
     fhlr.setLevel('DEBUG')
     logger.addHandler(fhlr)

@@ -1,0 +1,75 @@
+import traceback
+
+from ..ocr import ocrhandle
+from ..utils import segment
+from ..utils.log import logger
+from ..utils.config import MAX_RETRYTIME
+from ..utils.recognize import Scene, RecognizeError
+from ..utils.solver import BaseSolver, StrategyError
+
+
+class ShopSolver(BaseSolver):
+    """
+    自动使用信用点购买物资
+    """
+
+    def __init__(self, adb=None, recog=None):
+        super(ShopSolver, self).__init__(adb, recog)
+
+    def run(self, priority=None):
+        logger.info('Start: 信用')
+
+        retry_times = MAX_RETRYTIME
+        while retry_times > 0:
+            try:
+                if self.scene() == Scene.INDEX:
+                    self.tap_element('index_shop')
+                elif self.scene() == Scene.SHOP_OTHERS:
+                    self.tap_element('shop_credit')
+                elif self.scene() == Scene.SHOP_CREDIT:
+                    collect = self.recog.find('shop_collect')
+                    if collect is not None:
+                        self.tap(collect)
+                    else:
+                        segments = segment.credit(self.recog.img)
+                        valid = []
+                        for seg in segments:
+                            if self.recog.find('shop_sold', scope=seg) is None:
+                                predict = ocrhandle.predict(
+                                    self.recog.img[seg[0][1]:seg[0][1]+64, seg[0][0]:seg[1][0]])
+                                valid.append((seg, predict[0][1]))
+                        logger.debug(valid)
+                        if len(valid) == 0:
+                            break
+                        if priority is not None:
+                            valid.sort(
+                                key=lambda x: 9999 if x[1] not in priority else priority.index(x[1]))
+                            if valid[0][1] not in priority:
+                                break
+                        self.tap(valid[0][0])
+                elif self.scene() == Scene.SHOP_CREDIT_CONFIRM:
+                    if self.recog.find('shop_credit_not_enough') is None:
+                        self.tap_element('shop_cart')
+                    else:
+                        break
+                elif self.scene() == Scene.MATERIEL:
+                    self.tap_element('materiel')
+                elif self.scene() == Scene.LOADING:
+                    self.sleep(3)
+                elif self.get_navigation():
+                    self.tap_element('nav_shop')
+                elif self.scene() != Scene.UNKNOWN:
+                    self.back_to_index()
+                else:
+                    raise RecognizeError
+            except RecognizeError:
+                retry_times -= 1
+                self.sleep(3)
+                continue
+            except StrategyError as e:
+                logger.error(e)
+                logger.debug(traceback.format_exc())
+                return
+            except Exception as e:
+                raise e
+            retry_times = MAX_RETRYTIME

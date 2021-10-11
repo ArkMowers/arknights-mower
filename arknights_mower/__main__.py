@@ -71,7 +71,7 @@ def main():
     if args.credit:
         cli.credit()
     if args.fight:
-        cli.fight(args.fight_potion, args.fight_originite)
+        cli.ope(args.fight_potion, args.fight_originite)
     if args.shop:
         cli.shop()
     if args.recruit:

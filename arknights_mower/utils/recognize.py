@@ -1,71 +1,15 @@
-import cv2
-import time
 import numpy as np
-from matplotlib import pyplot as plt
 
 from ..__init__ import __rootdir__
+from . import config, detector
 from .log import logger, save_screenshot
-from .matcher import Matcher
-from . import config
-from . import segment, detector
 from .scene import Scene, SceneComment
+from .image import bytes2img, loadimg, threshole
+from .matcher import Matcher
 
 
 class RecognizeError(Exception):
     pass
-
-
-def bytes2img(data, gray=False):
-    if gray:
-        return cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_GRAYSCALE)
-    else:
-        return cv2.cvtColor(cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
-
-
-def loadimg(filename):
-    logger.debug(filename)
-    return cv2.imread(filename, cv2.IMREAD_GRAYSCALE)
-
-
-def threshole(img, thresh):
-    _, ret = cv2.threshold(img, thresh, 255, cv2.THRESH_BINARY)
-    return ret
-
-
-# def detect_circle_small(img, draw=False, scope=None, maxRadius=40):
-
-#     (x1, y1), (x2, y2) = scope
-#     img = img[x1: x2, y1: y2]
-
-#     coins_circle = cv2.HoughCircles(img,
-#                                     cv2.HOUGH_GRADIENT,
-#                                     2,
-#                                     50,
-#                                     param1=10,
-#                                     param2=30,
-#                                     minRadius=1,
-#                                     maxRadius=40)
-
-#     print(coins_circle)
-
-#     circles = coins_circle.reshape(-1, 3)
-#     circles = np.uint16(np.around(circles))
-
-#     for i in circles:
-#         ret = cv2.circle(img, (i[0], i[1]), i[2], (128, 128, 128), 3)   # 画圆
-#         ret = cv2.circle(img, (i[0], i[1]), 2, (128, 128, 128), 3)     # 画圆心
-
-#     # cv2.
-#     # cv2.imshow('', img)
-
-#     # cv2.imencode('.png', im)
-
-#     plt.imshow(ret, 'gray')
-#     plt.show()
-
-#     # time.sleep(10000)
-#     # cv2.waitKey(0)
-#     # cv2.destroyAllWindows()
 
 
 class Recognizer():
@@ -112,7 +56,7 @@ class Recognizer():
             self.scene = Scene.OPERATOR_BEFORE
         elif self.find('ope_select_start') is not None:
             self.scene = Scene.OPERATOR_SELECT
-        elif self.find('ope_top') is not None:
+        elif self.find('ope_agency_going') is not None:
             self.scene = Scene.OPERATOR_ONGOING
         elif self.find('ope_elimi_finished') is not None:
             self.scene = Scene.OPERATOR_ELIMINATE_FINISH
@@ -188,15 +132,13 @@ class Recognizer():
             self.scene = Scene.UNKNOWN
         # save screencap to analyse
         if config.SCREENSHOT_PATH is not None:
-            save_screenshot(self.screencap, subdir=f'{self.scene}/{self.h}x{self.w}')
+            save_screenshot(
+                self.screencap, subdir=f'{self.scene}/{self.h}x{self.w}')
         logger.info(f'Scene: {self.scene}: {SceneComment[self.scene]}')
         return self.scene
 
     def is_black(self):
         return np.max(self.gray[:, 105:-105]) < 16
-
-    def is_login(self):
-        return not (self.get_scene() // 100 == 1 or self.get_scene() // 100 == 99)
 
     def find(self, item, draw=False, scope=None):
         logger.debug(f'find {item}')

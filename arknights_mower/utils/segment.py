@@ -3,6 +3,7 @@ import traceback
 import numpy as np
 from matplotlib import pyplot as plt
 
+from .recognize import RecognizeError
 from .log import logger
 
 
@@ -65,8 +66,8 @@ def credit(im, draw=False):
         if draw:
             for x1, x2 in zip(split_x[:-1], split_x[1:]):
                 for y1, y2 in zip(split_y[:-1], split_y[1:]):
-                    cv2.polylines(im, [np.array(
-                        [[y1, x1], [y1, x2], [y2, x2], [y2, x1]])], True, 0, 10, cv2.LINE_AA)
+                    cv2.polylines(im, [np.array([[y1, x1], [y1, x2], [y2, x2], [y2, x1]])],
+                                  True, 0, 10, cv2.LINE_AA)
             plt.imshow(im)
             plt.show()
 
@@ -75,7 +76,7 @@ def credit(im, draw=False):
 
     except Exception as e:
         logger.debug(traceback.format_exc())
-        return None
+        raise RecognizeError
 
 
 def recruit(im, draw=False):
@@ -157,4 +158,4 @@ def recruit(im, draw=False):
 
     except Exception as e:
         logger.debug(traceback.format_exc())
-        return None
+        raise RecognizeError

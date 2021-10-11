@@ -20,7 +20,7 @@ def simulate():
     cli = Solver()
     cli.base()
     cli.credit()
-    cli.fight() 
+    cli.ope() 
     cli.shop() 
     cli.recruit() 
     cli.mission() 

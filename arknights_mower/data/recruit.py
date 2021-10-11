@@ -101,3 +101,12 @@ recruit_database = [
     ('布洛卡', 5, ['近卫干员', '近战位', '群攻', '生存']),
     ('安比尔', 4, ['狙击干员', '远程位', '输出', '减速']),
 ]
+
+recruit_tag = ['资深干员', '高级资深干员']
+for x in recruit_database:
+    recruit_tag += x[2]
+recruit_tag = list(set(recruit_tag))
+
+recruit_agent = []
+for x in recruit_database:
+    recruit_agent.append(x[0])

@@ -48,13 +48,12 @@ def aHash(image1, image2):
 class Matcher():
 
     def __init__(self, origin):
-        self.origin = origin  # origin need to be gray
+        self.origin = origin  # need to be gray
         self.kp, self.des = SIFT.detectAndCompute(origin, None)
         logger.debug(f'Matcher init: shape ({origin.shape})')
 
     def match(self, query, draw=False, scope=None):
         score = self.score(query, draw, scope)
-        # if score is None or score[1] < 0.1 or score[2] < 0.5 or (score[3] < 0.4 and score[4] > 12) or score[3] < 0.2 or score[4] > 24:
         if score is None or SVC.predict([score[1:]])[0] == False:
             return None
         else:
@@ -172,18 +171,6 @@ class Matcher():
             ssim = compare_ssim(query, origin, multichannel=True)
             return (dst_tp, good_match_rate, good_area_rate, hash, ssim)
 
-            # if good_area_rate < 0.5 or (ssim < 0.4 and hash > 12) or ssim < 0.2 or hash > 24:
-            #     logger.debug(f'compare_ssim & aHash fail: {ssim}, {hash}')
-            #     return None, (good_match_rate, good_area_rate, hash, ssim)
-
-            # logger.info(
-            #     f'matches: {len(good)} / {len(matches)} / {len(des)} / {good_match_rate} / {good_area_rate} / {hash} / {ssim}')
-
-            # logger.debug(f'find in {dst_list}, {dst_tp}')
-
-            # return dst_tp, (good_match_rate, good_area_rate, hash, ssim)
-
         except Exception as e:
-
             logger.error(e)
             logger.debug(traceback.format_exc())
