@@ -118,7 +118,7 @@ class Recognizer():
             self.scene = Scene.UPGRADE
         elif detector.confirm(self.img) is not None:
             self.scene = Scene.CONFIRM
-        elif self.find('login_button') is not None:
+        elif self.find('login_captcha') is not None:
             self.scene = Scene.LOGIN_INPUT
         elif self.find('main_theme') is not None:
             self.scene = Scene.TERMINAL_MAIN_THEME
@@ -128,6 +128,8 @@ class Recognizer():
             self.scene = Scene.TERMINAL_BIOGRAPHY
         elif self.find('collection') is not None:
             self.scene = Scene.TERMINAL_COLLECTION
+        elif self.find('loading6') is not None:
+            self.scene = Scene.LOADING
         else:
             self.scene = Scene.UNKNOWN
         # save screencap to analyse
