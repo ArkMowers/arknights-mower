@@ -58,7 +58,7 @@ class RecruitSolver(BaseSolver):
                         logger.info(f'公招标签：{tags}')
                         for x in tags:
                             if x not in recruit_tag:
-                                logger.warn(f'公招识别异常：{x} 为不存在的标签')
+                                logger.warn(f'公招识别异常：{x} 为不存在的标签，请报告至 https://github.com/Konano/arknights-mower/issues')
                         choose, maxlevel = self.recruit_choose(tags, priority)
                         if maxlevel < 4:
                             if self.tap_element('recruit_refresh', detected=True):
@@ -88,7 +88,7 @@ class RecruitSolver(BaseSolver):
                     if agent is None:
                         logger.warn('未能识别到干员名称')
                     elif agent not in recruit_agent:
-                        logger.warn(f'干员识别异常：{agent} 为不存在的干员')
+                        logger.warn(f'干员识别异常：{agent} 为不存在的干员，请报告至 https://github.com/Konano/arknights-mower/issues')
                     else:
                         logger.info(f'获得干员：{agent}')
                     self.tap((self.recog.w // 2, self.recog.h // 2))
