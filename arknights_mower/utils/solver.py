@@ -146,9 +146,9 @@ class BaseSolver:
                 elif self.scene() == Scene.OPERATOR_ONGOING:
                     self.sleep(10)
                 elif self.scene() == Scene.OPERATOR_FINISH:
-                    self.tap((10, 10))
+                    self.tap((self.recog.w // 2, 10))
                 elif self.scene() == Scene.OPERATOR_ELIMINATE_FINISH:
-                    self.tap((10, 10))
+                    self.tap((self.recog.w // 2, 10))
                 elif self.scene() == Scene.DOUBLE_CONFIRM:
                     self.tap_element('double_confirm', 0.2)
                 else:

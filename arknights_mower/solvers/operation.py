@@ -109,9 +109,9 @@ class OpeSolver(BaseSolver):
                         wait_interval = 10
                         wait_total = 0
                     times -= 1
-                    self.tap((10, 10))
+                    self.tap((self.recog.w // 2, 10))
                 elif self.scene() == Scene.OPERATOR_ELIMINATE_FINISH:
-                    self.tap((10, 10))
+                    self.tap((self.recog.w // 2, 10))
                 elif self.scene() == Scene.DOUBLE_CONFIRM:
                     self.tap_element('double_confirm', 0.2)
                 elif self.scene() == Scene.OPERATOR_RECOVER_POTION:
