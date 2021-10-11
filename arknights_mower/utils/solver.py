@@ -149,6 +149,8 @@ class BaseSolver:
                     self.tap((10, 10))
                 elif self.scene() == Scene.OPERATOR_ELIMINATE_FINISH:
                     self.tap((10, 10))
+                elif self.scene() == Scene.DOUBLE_CONFIRM:
+                    self.tap_element('double_confirm', 0.2)
                 else:
                     raise RecognizeError
             except RecognizeError:
