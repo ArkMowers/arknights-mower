@@ -64,7 +64,7 @@ def operation(args):
     """
     operation [level] [n] [-r[N]] [-R[N]] [-e]
         自动进行作战，可指定次数或直到理智不足
-        level 指定关卡名称，未指定则默认前往上一次作战
+        level 指定关卡名称，未指定则默认前往上一次关卡
         n 指定作战次数，未指定则默认作战直到理智不足
         -r 是否自动回复理智，最多回复 N 次，N 未指定则表示不限制回复次数
         -R 是否使用源石回复理智，最多回复 N 次，N 未指定则表示不限制回复次数
@@ -144,6 +144,11 @@ def match_cmd(prefix, avail_cmds):
 
 def main():
     args = sys.argv[1:]
+    if len(args) > 0 and args[-1] == '-d':
+        args = args[:-1]
+        config.LOGFILE_PATH = '/var/log/arknights-mower'
+        config.SCREENSHOT_PATH = '/var/log/arknights-mower/screenshot'
+        init_fhlr()
     logger.debug(args)
     if len(args) == 0:
         help()
@@ -151,13 +156,7 @@ def main():
         target_cmd = match_cmd(args[0], global_cmds)
         if target_cmd is not None:
             try:
-                args = args[1:]
-                if len(args) > 0 and args[-1] == '-d':
-                    args = args[:-1]
-                    config.LOGFILE_PATH = '/var/log/arknights-mower'
-                    config.SCREENSHOT_PATH = '/var/log/arknights-mower/screenshot'
-                    init_fhlr()
-                target_cmd(args)
+                target_cmd(args[1:])
             except ParamError:
                 help()
         else:
