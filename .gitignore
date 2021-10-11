@@ -156,6 +156,7 @@ log/*
 screenshot/*
 screenshot_right/*
 venv_dev
+venv64
 test_*
 config.test.ini
 data/*
