@@ -114,6 +114,9 @@ class OpeSolver(BaseSolver):
                     self.tap((self.recog.w // 2, 10))
                 # elif self.scene() == Scene.DOUBLE_CONFIRM:
                 #     self.tap_element('double_confirm', 0.2)
+                elif self.scene() == Scene.OPERATOR_GIVEUP:
+                    logger.error('代理出现失误')
+                    exit()
                 elif self.scene() == Scene.OPERATOR_RECOVER_POTION:
                     if potion == 0:
                         if originite != 0:

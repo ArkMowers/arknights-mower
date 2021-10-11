@@ -36,6 +36,7 @@ scene_database = [
     [609, 'OPERATOR_DROP', '掉落物品详细说明页'],
     [610, 'OPERATOR_ELIMINATE', '剿灭作战前，关卡已选定'],
     [611, 'OPERATOR_ELIMINATE_FINISH', '剿灭作战结束'],
+    [612, 'OPERATOR_GIVEUP', '代理失误'],
     [701, 'SHOP_OTHERS', '商店除了信用兑换处以外的界面'],
     [702, 'SHOP_CREDIT', '信用兑换处'],
     [703, 'SHOP_CREDIT_CONFIRM', '兑换确认'],

@@ -72,6 +72,8 @@ class Recognizer():
             self.scene = Scene.OPERATOR_DROP
         elif self.find('ope_eliminate') is not None:
             self.scene = Scene.OPERATOR_ELIMINATE
+        elif self.find('ope_giveup') is not None:
+            self.scene = Scene.OPERATOR_GIVEUP
         elif self.find('friend_list_on') is not None:
             self.scene = Scene.FRIEND_LIST_ON
         elif self.find('credit_visiting') is not None:
