@@ -17,7 +17,7 @@ def confirm(im):
             if np.ptp(im[i, j]) != 0:
                 return None
     val = np.sum(im[u:d, l:r]) / 400 / 3
-    if abs(val - 53) > 3:
+    if abs(val - 55) > 5:
         return None
 
     u = 0

@@ -32,6 +32,9 @@ class OpeSolver(BaseSolver):
             return
         recover_state = 0
         need_eliminate = False
+        wait_start = 10
+        wait_interval = 10
+        wait_total = 0
 
         retry_times = MAX_RETRYTIME
         while retry_times > 0:
@@ -88,8 +91,20 @@ class OpeSolver(BaseSolver):
                     need_eliminate = False
                     self.tap_element('ope_select_start')
                 elif self.scene() == Scene.OPERATOR_ONGOING:
-                    self.sleep(10)
+                    if wait_total == 0:
+                        logger.info(f'等待 {wait_start} 秒')
+                        self.sleep(wait_start)
+                        wait_total += wait_start
+                    else:
+                        logger.info(f'等待 {wait_interval} 秒')
+                        self.sleep(wait_interval)
+                        wait_total += wait_interval
+                        wait_interval *= 2
                 elif self.scene() == Scene.OPERATOR_FINISH:
+                    if wait_total > 0:
+                        wait_start = max(10, wait_total - wait_interval // 2)
+                        wait_interval = 10
+                        wait_total = 0
                     times -= 1
                     self.tap((10, 10))
                 elif self.scene() == Scene.OPERATOR_ELIMINATE_FINISH:

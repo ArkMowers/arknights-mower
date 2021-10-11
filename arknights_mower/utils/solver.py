@@ -66,7 +66,7 @@ class BaseSolver:
         return self.recog.get_scene()
 
     def is_login(self):
-        return not (self.scene() // 100 == 1 or self.scene() // 100 == 99)
+        return not (self.scene() // 100 == 1 or self.scene() // 100 == 99 or self.scene() == -1)
 
     def login(self):
         """
@@ -107,7 +107,7 @@ class BaseSolver:
                 raise e
             retry_times = MAX_RETRYTIME
 
-        if not self.recog.is_login():
+        if not self.is_login():
             raise StrategyError
 
     def get_navigation(self):
