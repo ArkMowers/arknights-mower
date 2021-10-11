@@ -17,7 +17,7 @@ class ShopSolver(BaseSolver):
         super(ShopSolver, self).__init__(adb, recog)
 
     def run(self, priority=None):
-        logger.info('Start: 信用')
+        logger.info('Start: 商店')
 
         retry_times = MAX_RETRYTIME
         while retry_times > 0:
