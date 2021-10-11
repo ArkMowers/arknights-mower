@@ -18,6 +18,9 @@ class RecruitSolver(BaseSolver):
         super(RecruitSolver, self).__init__(adb, recog)
 
     def run(self, priority=None):
+        """
+        :param priority: list[str], 公招干员优先级，默认为火神和因陀罗
+        """
         logger.info('Start: 公招')
 
         retry_times = MAX_RETRYTIME

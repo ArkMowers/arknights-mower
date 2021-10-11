@@ -22,8 +22,11 @@ class OpeSolver(BaseSolver):
 
     def run(self, times=-1, potion=0, originite=0, level=None, eliminate=False):
         """
-        :param potion: 最多使用药剂恢复体力的次数，-1 为无限制
-        :param originite: 最多使用源石恢复体力的次数，-1 为无限制
+        :param times: int, 作战的次数上限，-1 为无限制，默认为 -1
+        :param potion: int, 使用药剂恢复体力的次数上限，-1 为无限制，默认为 0
+        :param originite: int, 使用源石恢复体力的次数上限，-1 为无限制，默认为 0
+        :param level: str, 指定关卡，默认为前往上一次作战
+        :param eliminate: bool, 是否优先处理未完成的每周剿灭，默认为 False
         """
         logger.info('Start: 作战')
 

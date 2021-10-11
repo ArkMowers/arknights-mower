@@ -33,14 +33,17 @@ class BaseConstructSolver(BaseSolver):
                     tapped = False
                     trust = self.recog.find('infra_collect_trust')
                     if trust is not None:
+                        logger.info('基建：干员信赖')
                         self.tap(trust)
                         tapped = True
                     bill = self.recog.find('infra_collect_bill')
                     if bill is not None:
+                        logger.info('基建：订单交付')
                         self.tap(bill)
                         tapped = True
                     factory = self.recog.find('infra_collect_factory')
                     if factory is not None:
+                        logger.info('基建：可收获')
                         self.tap(factory)
                         tapped = True
                     if not tapped:

@@ -31,6 +31,7 @@ class MissionSolver(BaseSolver):
                         self.sleep(1)
                         collect = self.recog.find('mission_collect')
                     if collect is not None:
+                        logger.info('任务：一键收取任务')
                         self.tap(collect)
                     elif checked & 2 == 0:
                         self.tap_element('mission_weekly')
@@ -43,6 +44,7 @@ class MissionSolver(BaseSolver):
                         self.sleep(1)
                         collect = self.recog.find('mission_collect')
                     if collect is not None:
+                        logger.info('任务：一键收取任务')
                         self.tap(collect)
                     elif checked & 1 == 0:
                         self.tap_element('mission_daily')

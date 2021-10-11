@@ -17,6 +17,9 @@ class ShopSolver(BaseSolver):
         super(ShopSolver, self).__init__(adb, recog)
 
     def run(self, priority=None):
+        """
+        :param priority: list[str], 使用信用点购买东西的优先级, 若无指定则默认购买第一件可购买的物品
+        """
         logger.info('Start: 商店')
 
         retry_times = MAX_RETRYTIME
@@ -38,7 +41,7 @@ class ShopSolver(BaseSolver):
                                 predict = ocrhandle.predict(
                                     self.recog.img[seg[0][1]:seg[0][1]+64, seg[0][0]:seg[1][0]])
                                 valid.append((seg, predict[0][1]))
-                        logger.debug(valid)
+                        logger.info(f'商店内可购买的物品：{[x[1] for x in valid]}')
                         if len(valid) == 0:
                             break
                         if priority is not None:

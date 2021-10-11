@@ -9,10 +9,16 @@ from arknights_mower.utils.recognize import Recognizer, threshole, bytes2img
 from arknights_mower.utils import config
 from matplotlib import pyplot as plt
 
+
+# 指定日志和截屏的保存位置，方便调试和报错
 config.LOGFILE_PATH = './log'
 config.SCREENSHOT_PATH = './screenshot'
 config.SCREENSHOT_MAXNUM = 100
 init_fhlr()
+
+
+# 使用信用点购买东西的优先级
+shop_priority = ['招聘许可', '赤金', '龙门币', '初级作战记录', '技巧概要卷2', '基础作战记录', '技巧概要卷1']
 
 
 def simulate():
