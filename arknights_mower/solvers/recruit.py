@@ -91,7 +91,7 @@ class RecruitSolver(BaseSolver):
                         logger.warn(f'干员识别异常：{agent} 为不存在的干员')
                     else:
                         logger.info(f'获得干员：{agent}')
-                    self.tap((10, 10))
+                    self.tap((self.recog.w // 2, self.recog.h // 2))
                 elif self.scene() == Scene.MATERIEL:
                     self.tap_element('materiel')
                 elif self.scene() == Scene.LOADING:
