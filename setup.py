@@ -20,7 +20,7 @@ setuptools.setup(
     entry_points={'console_scripts': [
         'arknights-mower=arknights_mower.__main__:main']},
     classifiers=[
-        'Development Status :: 2 - Pre-Alpha',
+        'Development Status :: 5 - Production/Stable',
         'Programming Language :: Python :: 3 :: Only',
         'Topic :: Games/Entertainment',
         'License :: OSI Approved :: MIT License',
