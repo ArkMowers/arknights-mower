@@ -46,7 +46,9 @@ class OpeSolver(BaseSolver):
                     self.tap_element('index_terminal')
                 elif self.scene() == Scene.TERMINAL_MAIN:
                     eliminate_todo = self.recog.find('terminal_eliminate')
-                    if eliminate and eliminate_todo is not None:
+                    if eliminate_todo is None:
+                        eliminate = False
+                    elif eliminate:
                         need_eliminate = True
                         self.tap(eliminate_todo)
                     elif level is not None:
