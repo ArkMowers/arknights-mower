@@ -161,3 +161,4 @@ test_*
 config.test.ini
 data/*
 release.sh
+!main.spec
