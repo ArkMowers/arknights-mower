@@ -1,86 +1,167 @@
-import argparse
+import sys
 
 from .__init__ import __version__
 from .utils.log import logger, init_fhlr
-from .utils.adb import ADBConnector
-from .strategy import Solver
 from .utils import config
-
-ap = argparse.ArgumentParser(prog='arknights-mower')
-
-ap.add_argument('-v', '--version', action='store_true',
-                help='show version')
-ap.add_argument('-d', '--debug', action='store_true',
-                help='debug mode')
-
-task_args = ap.add_argument_group('tasks arguments')
-task_args.add_argument('-b', '--base', action='store_true',
-                       help='collect productions in base')
-task_args.add_argument('-c', '--credit', action='store_true',
-                       help='collect credits by clue exchange')
-task_args.add_argument('-s', '--shop', action='store_true',
-                       help='clear credits by shopping')
-task_args.add_argument('-f', '--fight', action='store_true',
-                       help='clear sanity by fighting')
-task_args.add_argument('-r', '--recruit', action='store_true',
-                       help='recruit automatically')
-task_args.add_argument('-m', '--mission', action='store_true',
-                       help='collect mission rewards')
+from .solvers import *
 
 
-fight_args = ap.add_argument_group('fight task arguments')
-fight_args.add_argument('-fp', '--fight-potion', type=int, metavar='N',
-                        help='how many potions do you want to use. default is 0')
-fight_args.add_argument('-fo', '--fight-originite', type=int, metavar='N',
-                        help='how many originites do you want to use. default is 0')
+class ParamError(Exception):
+    """
+    参数错误
+    """
+
+
+def base(args):
+    """
+    base
+        自动处理基建的信赖/货物/订单
+    """
+    BaseConstructSolver().run()
+
+
+def credit(args):
+    """
+    credit
+        自动访友获取信用点
+    """
+    CreditSolver().run()
+
+
+def shop(args):
+    """
+    shop [items ...]
+        自动前往商店消费信用点
+        items 优先考虑的物品，默认为从上到下从左到右购买
+    """
+    if len(args) == 0:
+        ShopSolver().run()
+    else:
+        ShopSolver().run(args)
+
+
+def recruit(args):
+    """
+    recruit [agents ...]
+        自动进行公共招募
+        agents 优先考虑的公招干员，默认为火神和因陀罗
+    """
+    if len(args) == 0:
+        RecruitSolver().run()
+    else:
+        RecruitSolver().run(args)
+
+
+def mission(args):
+    """
+    mission
+        收集每日任务和每周任务奖励
+    """
+    MissionSolver().run()
+
+
+def operation(args):
+    """
+    operation [level] [n] [-r[N]] [-R[N]] [-e]
+        自动进行作战，可指定次数或直到理智不足
+        level 指定关卡名称，未指定则默认前往上一次作战
+        n 指定作战次数，未指定则默认作战直到理智不足
+        -r 是否自动回复理智，最多回复 N 次，N 未指定则表示不限制回复次数
+        -R 是否使用源石回复理智，最多回复 N 次，N 未指定则表示不限制回复次数
+        -e 是否优先处理未完成的每周剿灭
+    """
+    level = None
+    times = -1
+    potion = 0
+    originite = 0
+    eliminate = False
+
+    try:
+        for p in args:
+            if p[0] == '-':
+                val = -1
+                if len(p) > 2:
+                    val = int(p[2:])
+                if p[1] == 'r':
+                    assert potion == 0
+                    potion = val
+                elif p[1] == 'R':
+                    assert originite == 0
+                    originite = val
+                elif p[1] == 'e':
+                    assert eliminate == False
+                    eliminate = True
+            elif p.find('-') == -1:
+                assert times == -1
+                times = int(p)
+            else:
+                assert level is None
+                level = p
+    except:
+        raise ParamError
+
+    OpeSolver().run(times, potion, originite, level, eliminate)
+
+
+def version(args=None):
+    """
+    version
+        输出版本信息
+    """
+    print(f'arknights-mower: version: {__version__}')
+
+
+def help(args=None):
+    """
+    help
+        输出本段消息
+    """
+    print('usage: arknights-mower command [command args] [-d]')
+    print('commands (prefix abbreviation accepted):')
+    for cmd in global_cmds:
+        if cmd.__doc__:
+            print('    ' + str(cmd.__doc__.strip()))
+        else:
+            print('    ' + cmd.__name__)
+    print('    -d\n        启用调试功能，调试信息将会输出到 /var/log/arknights-mower/ 中')
+
+
+global_cmds = [base, credit, shop, recruit, mission, operation, version, help]
+
+
+def match_cmd(prefix, avail_cmds):
+    target_cmds = [x for x in avail_cmds if x.__name__.startswith(prefix)]
+    if len(target_cmds) == 1:
+        return target_cmds[0]
+    elif len(target_cmds) == 0:
+        print('unrecognized command: ' + prefix)
+        return None
+    else:
+        print('ambiguous command: ' + prefix)
+        print('matched commands: ' + ','.join(x.__name__ for x in target_cmds))
+        return None
 
 
 def main():
-    args = ap.parse_args()
+    args = sys.argv[1:]
     logger.debug(args)
-
-    if args.version:
-        print(f'arknights-mower: version: {__version__}')
-        exit()
-
-    if args.fight:
-        if args.fight_potion is None:
-            args.fight_potion = 0
-        if args.fight_originite is None:
-            args.fight_originite = 0
+    if len(args) == 0:
+        help()
     else:
-        if args.fight_potion is not None:
-            print(
-                f'arknights-mower: error: argument -fp/--fight-potion: expected -f/--fight')
-            exit()
-        if args.fight_originite is not None:
-            print(
-                f'arknights-mower: error: argument -fo/--fight-originite: expected -f/--fight')
-            exit()
-
-    if args.debug:
-        config.LOGFILE_PATH = '/var/log/arknights-mower'
-        config.SCREENSHOT_PATH = '/var/log/arknights-mower/screenshot'
-        init_fhlr()
-
-    adb = ADBConnector()
-    cli = Solver(adb)
-
-    if args.base:
-        cli.base()
-    if args.credit:
-        cli.credit()
-    if args.fight:
-        cli.ope(args.fight_potion, args.fight_originite)
-    if args.shop:
-        cli.shop()
-    if args.recruit:
-        cli.recruit()
-    if args.mission:
-        cli.mission()
-
-    if cli.run_once == False:
-        ap.print_help()
+        target_cmd = match_cmd(args[0], global_cmds)
+        if target_cmd is not None:
+            try:
+                args = args[1:]
+                if len(args) > 0 and args[-1] == '-d':
+                    args = args[:-1]
+                    config.LOGFILE_PATH = '/var/log/arknights-mower'
+                    config.SCREENSHOT_PATH = '/var/log/arknights-mower/screenshot'
+                    init_fhlr()
+                target_cmd(args)
+            except ParamError:
+                help()
+        else:
+            help()
 
 
 if __name__ == '__main__':
