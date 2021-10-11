@@ -23,6 +23,7 @@
 
 - 自动更换基建干员
 - 自动收取线索
+- 自动收取未收邮件
 
 ## Usage
 
@@ -32,8 +33,39 @@
 
 ```bash
 pip3 install arknights-mower
-arknights-mower -h
 arknights-mower
+```
+
+命令行使用说明如下：
+
+```
+usage: arknights-mower command [command args] [-d]
+commands (prefix abbreviation accepted):
+    base
+        自动处理基建的信赖/货物/订单
+    credit
+        自动访友获取信用点
+    shop [items ...]
+        自动前往商店消费信用点
+        items 优先考虑的物品，默认为从上到下从左到右购买
+    recruit [agents ...]
+        自动进行公共招募
+        agents 优先考虑的公招干员，默认为火神和因陀罗
+    mission
+        收集每日任务和每周任务奖励
+    operation [level] [n] [-r[N]] [-R[N]] [-e]
+        自动进行作战，可指定次数或直到理智不足
+        level 指定关卡名称，未指定则默认前往上一次作战
+        n 指定作战次数，未指定则默认作战直到理智不足
+        -r 是否自动回复理智，最多回复 N 次，N 未指定则表示不限制回复次数
+        -R 是否使用源石回复理智，最多回复 N 次，N 未指定则表示不限制回复次数
+        -e 是否优先处理未完成的每周剿灭
+    version
+        输出版本信息
+    help
+        输出本段消息
+    -d
+        启用调试功能，调试信息将会输出到 /var/log/arknights-mower/ 中
 ```
 
 ### From Source
@@ -54,4 +86,5 @@ source venv/bin/activate
 
 pip3 install -r requirements.txt
 python3 diy.py
+# 可根据个人需求修改 diy.py
 ```
