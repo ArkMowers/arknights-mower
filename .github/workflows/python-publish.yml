@@ -5,7 +5,8 @@ name: Upload PyPI
 
 on:
   push:
-    branches: [ release ]
+    tags:
+      - 'v*'
 
 jobs:
   deploy:
