@@ -155,6 +155,10 @@ class BaseSolver:
                     self.tap((self.recog.w // 2, 10))
                 elif self.scene() == Scene.DOUBLE_CONFIRM:
                     self.tap_element('double_confirm', 0.8)
+                elif self.scene() == Scene.MAIL:
+                    mail = self.recog.find('mail')
+                    mid_y = (mail[0][1] + mail[1][1]) // 2
+                    self.tap((mid_y, mid_y))
                 else:
                     raise RecognizeError
             except RecognizeError:
