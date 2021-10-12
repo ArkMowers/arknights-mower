@@ -119,7 +119,7 @@ def recruit(im, draw=False):
             return int(s / (r-l))
 
         up = 0
-        while minus(up) > -210:
+        while minus(up) > -100:
             up += 1
         while not (adj_x(up) > 80 and minus(up) > -10 and average(up) > 210):
             up += 1
