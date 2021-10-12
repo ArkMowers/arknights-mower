@@ -87,10 +87,12 @@ class RecruitSolver(BaseSolver):
                             break
                     if agent is None:
                         logger.warn('未能识别到干员名称')
-                    elif agent not in recruit_agent:
+                    elif agent not in recruit_agent.keys():
                         logger.warn(f'干员识别异常：{agent} 为不存在的干员，请报告至 https://github.com/Konano/arknights-mower/issues')
-                    else:
+                    elif recruit_agent[agent][1] < 5:
                         logger.info(f'获得干员：{agent}')
+                    else:
+                        logger.critical(f'获得干员：{agent}')
                     self.tap((self.recog.w // 2, self.recog.h // 2))
                 elif self.scene() == Scene.MATERIEL:
                     self.tap_element('materiel_ico')

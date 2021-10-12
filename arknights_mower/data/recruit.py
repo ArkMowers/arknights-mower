@@ -107,6 +107,6 @@ for x in recruit_database:
     recruit_tag += x[2]
 recruit_tag = list(set(recruit_tag))
 
-recruit_agent = []
+recruit_agent = {}
 for x in recruit_database:
-    recruit_agent.append(x[0])
+    recruit_agent[x[0]] = x
