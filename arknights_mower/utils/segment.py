@@ -14,9 +14,15 @@ def credit(im, draw=False):
     try:
         x, y, z = im.shape
 
+        l, r = 0, y
+        while np.max(im[:, r-1]) < 100:
+            r -= 1
+        while np.max(im[:, l]) < 100:
+            l += 1
+
         def average(i):
             n, s = 0, 0
-            for j in range(y):
+            for j in range(l, r):
                 if im[i, j, 0] == im[i, j, 1] and im[i, j, 0] == im[i, j, 2]:
                     n += 1
                     s += im[i, j, 0]
@@ -130,10 +136,15 @@ def recruit(im, draw=False):
             down -= 1
 
         left = 0
+        while np.max(im[:, left]) < 100:
+            left += 1
+        left += 1
         while adj_y(left) < 50:
             left += 1
 
         right = y - 1
+        while np.max(im[:, right]) < 100:
+            right -= 1
         while adj_y(right) < 50:
             right -= 1
 
