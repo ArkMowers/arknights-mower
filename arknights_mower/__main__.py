@@ -13,6 +13,14 @@ class ParamError(Exception):
     """
 
 
+def mail(args):
+    """
+    mail
+        自动收取邮件
+    """
+    MailSolver().run()
+
+
 def base(args):
     """
     base
@@ -127,7 +135,7 @@ def help(args=None):
     print('    -d\n        启用调试功能，调试信息将会输出到 /var/log/arknights-mower/ 中')
 
 
-global_cmds = [base, credit, shop, recruit, mission, operation, version, help]
+global_cmds = [base, credit, mail, mission, shop, recruit, operation, version, help]
 
 
 def match_cmd(prefix, avail_cmds):

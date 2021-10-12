@@ -53,6 +53,7 @@ scene_test = [
     ['skip', Scene.SKIP],
     ['terminal_pre', Scene.TERMINAL_MAIN],
     ['upgrade', Scene.UPGRADE],
+    ['read_mail', Scene.MAIL],
 ]
 
 recog_test = [

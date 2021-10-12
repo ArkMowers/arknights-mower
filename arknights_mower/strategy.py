@@ -39,3 +39,6 @@ class Solver():
         :param priority: list[str], 使用信用点购买东西的优先级, 若无指定则默认购买第一件可购买的物品
         """
         ShopSolver(self.adb, self.recog).run(priority)
+
+    def mail(self):
+        MailSolver(self.adb, self.recog).run()

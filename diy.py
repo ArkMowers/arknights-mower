@@ -34,7 +34,7 @@ def simulate():
     cli.shop(shop_priority) # 商店
     cli.recruit() # 公招
     cli.mission() # 任务
-    # cli.mail() # 邮件 (TODO)
+    cli.mail() # 邮件
 
 
 def schedule_task():

@@ -4,6 +4,7 @@ scene_database = [
     [1, 'INDEX', '首页'],
     [2, 'MATERIEL', '物资领取确认'],
     [3, 'ANNOUNCEMENT', '公告'],
+    [4, 'MAIL', '邮件信箱'],
     [5, 'NAVIGATION_BAR', '导航栏返回'],
     [6, 'UPGRADE', '升级'],
     [7, 'SKIP', '跳过'],
