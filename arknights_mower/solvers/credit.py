@@ -31,6 +31,9 @@ class CreditSolver(BaseSolver):
                     if not self.tap_element('friend_visit', scope=scope, detected=True):
                         self.sleep(1)
                 elif self.scene() == Scene.FRIEND_VISITING:
+                    visit_limit = self.recog.find('visit_limit')
+                    if visit_limit is not None:
+                        break
                     visit_next = detector.visit_next(self.recog.img)
                     if visit_next is not None:
                         self.tap(visit_next)
