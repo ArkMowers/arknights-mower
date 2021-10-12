@@ -54,9 +54,13 @@ class Matcher():
 
     def match(self, query, draw=False, scope=None):
         score = self.score(query, draw, scope)
-        if score is None or SVC.predict([score[1:]])[0] == False:
+        if score is None:
+            return None
+        elif SVC.predict([score[1:]])[0] == False:
+            logger.debug(f'match fail: {score[1:]}')
             return None
         else:
+            logger.debug(f'match success: {score[1:]}')
             return score[0]
 
     def score(self, query, draw=False, scope=None):
