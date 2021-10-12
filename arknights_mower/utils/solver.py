@@ -51,7 +51,10 @@ class BaseSolver:
             self.sleep(interval)
 
     def tap_element(self, element_name, x_rate=0.5, y_rate=0.5, interval=1, draw=False, scope=None, detected=False):
-        element = self.recog.find(element_name, draw, scope)
+        if element_name == 'navbutton':
+            element = self.recog.navbutton()
+        else:
+            element = self.recog.find(element_name, draw, scope)
         if detected and element is None:
             return False
         self.tap(element, x_rate, y_rate, interval)

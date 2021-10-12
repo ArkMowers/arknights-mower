@@ -27,7 +27,6 @@ class Recognizer():
         self.gray = bytes2img(self.screencap, True)
         self.h, self.w, _ = self.img.shape
         self.matcher = Matcher(self.gray)
-        self.matcher_thres = Matcher(threshole(self.gray, 250))
         self.scene = Scene.UNDEFINED
 
     def color(self, x, y):
@@ -36,7 +35,7 @@ class Recognizer():
     def get_scene(self):
         if self.scene != Scene.UNDEFINED:
             return self.scene
-        if self.find_thres('index_nav') is not None:
+        if self.find('index_nav', thres=250, scope=((0, 0), (100+self.w//4, self.h//10))) is not None:
             self.scene = Scene.INDEX
         elif self.find('nav_index') is not None:
             self.scene = Scene.NAVIGATION_BAR
@@ -144,34 +143,35 @@ class Recognizer():
     def is_black(self):
         return np.max(self.gray[:, 105:-105]) < 16
 
-    def find(self, item, draw=False, scope=None):
+    def find(self, item, draw=False, scope=None, thres=None):
         logger.debug(f'find {item}')
-        ret = self.matcher.match(
-            loadimg(f'{__rootdir__}/resources/{item}.png'), draw=draw, scope=scope)
+        if thres is not None:
+            image = threshole(
+                loadimg(f'{__rootdir__}/resources/{item}.png'), thres)
+            matcher = Matcher(
+                threshole(self.gray[scope[0][1]:scope[1][1], scope[0][0]:scope[1][0]], thres))
+        else:
+            image = loadimg(f'{__rootdir__}/resources/{item}.png')
+            matcher = self.matcher
+        ret = matcher.match(image, draw=draw, scope=scope)
         if ret is None:
             return None
         return ret
 
-    def find_thres(self, item, draw=False, scope=None):
-        logger.debug(f'find_thres {item}')
-        ret = self.matcher_thres.match(
-            threshole(loadimg(f'{__rootdir__}/resources/{item}.png'), 250), draw=draw, scope=scope)
-        if ret is None:
-            return None
-        return ret
-
-    def score(self, item, draw=False, scope=None):
+    def score(self, item, draw=False, scope=None, thres=None):
         logger.debug(f'score {item}')
-        ret = self.matcher.score(
-            loadimg(f'{__rootdir__}/resources/{item}.png'), draw=draw, scope=scope)
+        if thres is not None:
+            image = threshole(
+                loadimg(f'{__rootdir__}/resources/{item}.png'), thres)
+            matcher = Matcher(
+                threshole(self.gray[scope[0][1]:scope[1][1], scope[0][0]:scope[1][0]], thres))
+        else:
+            image = loadimg(f'{__rootdir__}/resources/{item}.png')
+            matcher = self.matcher
+        ret = matcher.score(image, draw=draw, scope=scope)
         if ret is None:
             return None
         return ret[1:]
 
-    def score_thres(self, item, draw=False, scope=None):
-        logger.debug(f'score_thres {item}')
-        ret = self.matcher_thres.score(
-            threshole(loadimg(f'{__rootdir__}/resources/{item}.png'), 250), draw=draw, scope=scope)
-        if ret is None:
-            return None
-        return ret[1:]
+    def navbutton(self):
+        return self.find('navbutton', thres=128, scope=((0, 0), (100+self.w//4, self.h//10)))

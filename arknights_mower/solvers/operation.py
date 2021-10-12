@@ -179,7 +179,7 @@ class OpeSolver(BaseSolver):
         zone = zone_database[zone]
         logger.info(f'章节：{zone[0]}')
 
-        nav = self.recog.find('navbutton')
+        nav = self.recog.navbutton()
         nav[1][1] = self.recog.h
         bottom = self.recog.find('terminal_small')[0][1]
         if zone[1] == 0:
