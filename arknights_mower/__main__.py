@@ -1,6 +1,7 @@
 import sys
+from pathlib import Path
 
-from .__init__ import __version__
+from .__init__ import __version__, __system__
 from .utils.log import logger, init_fhlr
 from .utils import config
 from .solvers import *
@@ -146,9 +147,15 @@ def main():
     args = sys.argv[1:]
     if len(args) > 0 and args[-1] == '-d':
         args = args[:-1]
-        config.LOGFILE_PATH = '/var/log/arknights-mower'
-        config.SCREENSHOT_PATH = '/var/log/arknights-mower/screenshot'
+        if __system__ == 'windows':
+            config.LOGFILE_PATH = '%HOMEPATH%\arknights-mower'
+            config.SCREENSHOT_PATH = '%HOMEPATH%\arknights-mower\screenshot'
+        else:
+            config.LOGFILE_PATH = '/var/log/arknights-mower'
+            config.SCREENSHOT_PATH = '/var/log/arknights-mower/screenshot'
+        print(f'开启 Debug 模式，日志将会被保存在 {Path(config.LOGFILE_PATH)}')
         init_fhlr()
+        
     logger.debug(args)
     if len(args) == 0:
         help()
