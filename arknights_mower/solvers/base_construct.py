@@ -60,6 +60,7 @@ class BaseConstructSolver(BaseSolver):
                 else:
                     raise RecognizeError
             except RecognizeError:
+                logger.warn('识别出了点小差错 qwq')
                 retry_times -= 1
                 self.sleep(3)
                 continue
