@@ -181,7 +181,7 @@ class OpeSolver(BaseSolver):
 
         nav = self.recog.nav_button()
         nav[1][1] = self.recog.h
-        bottom = self.recog.find('terminal_small')[0][1]
+        bottom = self.recog.h - 10
         if zone[1] == 0:
             self.tap((self.recog.w // 14 * 3, bottom))
             predict = []

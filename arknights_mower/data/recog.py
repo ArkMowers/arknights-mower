@@ -1,6 +1,13 @@
 from ..utils.scene import Scene
 
-get_scene_test = [
+scene_notest = [
+    Scene.LOADING,
+    Scene.ANNOUNCEMENT,
+    Scene.LOGIN_LOADING,
+    Scene.NAVIGATION_BAR,
+]
+
+scene_test = [
     ['index_nav', Scene.INDEX],
     ['12cadpa', Scene.LOGIN_START],
     ['agent_token', Scene.RECRUIT_AGENT],
@@ -18,17 +25,17 @@ get_scene_test = [
     ['loading2', Scene.LOADING],
     ['loading3', Scene.LOADING],
     ['loading4', Scene.LOADING],
-    ['loading6', Scene.LOADING],
+    # ['loading6', Scene.LOADING],
     ['login_account', Scene.LOGIN_MAIN],
     ['login_awake', Scene.LOGIN_QUICKLY],
     ['login_captcha', Scene.LOGIN_INPUT],
     ['login_iknow', Scene.LOGIN_ANNOUNCE],
-    ['login_loading', Scene.LOGIN_LOADING],
+    # ['login_loading', Scene.LOGIN_LOADING],
     ['main_theme', Scene.TERMINAL_MAIN_THEME],
     ['materiel_ico', Scene.MATERIEL],
     ['mission_daily_on', Scene.MISSION_DAILY],
     ['mission_weekly_on', Scene.MISSION_WEEKLY],
-    ['nav_index', Scene.NAVIGATION_BAR],
+    # ['nav_index', Scene.NAVIGATION_BAR],
     ['ope_agency_going', Scene.OPERATOR_ONGOING],
     ['ope_elimi_finished', Scene.OPERATOR_ELIMINATE_FINISH],
     ['ope_eliminate', Scene.OPERATOR_ELIMINATE],
@@ -71,13 +78,14 @@ recog_test = [
         Scene.RECRUIT_TAGS,
         Scene.OPERATOR_ELIMINATE,
     ]],
-    ['terminal_small', Scene.TERMINAL_MAIN],
+    # ['terminal_small', Scene.TERMINAL_MAIN],
     ['career_needs', Scene.RECRUIT_TAGS],
     ['available_level', Scene.RECRUIT_TAGS],
     ['recruit_budget', Scene.RECRUIT_TAGS],
     ['login_button', Scene.LOGIN_INPUT],
     ['mission_weekly', Scene.MISSION_DAILY],
     ['mission_daily', Scene.MISSION_WEEKLY],
+    ['nav_index', Scene.NAVIGATION_BAR],
     ['nav_shop', Scene.NAVIGATION_BAR],
     ['nav_terminal', Scene.NAVIGATION_BAR],
     ['nav_mission', Scene.NAVIGATION_BAR],
