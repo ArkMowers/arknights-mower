@@ -3,7 +3,7 @@ import time
 import logging
 import colorlog
 from pathlib import Path
-from logging.handlers import TimedRotatingFileHandler
+from logging.handlers import RotatingFileHandler
 from . import config
 
 BASIC_FORMAT = '%(asctime)s - %(levelname)s - %(lineno)d - %(funcName)s - %(message)s'
@@ -42,8 +42,8 @@ def init_fhlr():
         return
     folder = Path(config.LOGFILE_PATH)
     folder.mkdir(exist_ok=True, parents=True)
-    fhlr = TimedRotatingFileHandler(folder.joinpath('runtime.log'),
-                                    when='D', interval=1, backupCount=7)
+    fhlr = RotatingFileHandler(folder.joinpath('runtime.log'),
+                               maxBytes=10 * 1024 * 1024, backupCount=3)
     fhlr.setFormatter(basic_formatter)
     fhlr.setLevel('DEBUG')
     logger.addHandler(fhlr)
