@@ -77,7 +77,9 @@ class OpeSolver(BaseSolver):
                     agency = self.recog.find('ope_agency')
                     if agency is not None:
                         self.tap(agency)
-                    elif eliminate and need_eliminate == False:
+                    elif not eliminate:
+                        break
+                    elif eliminate and not need_eliminate:
                         self.get_navigation()
                         self.tap_element('nav_terminal')
                     else:
