@@ -1,6 +1,5 @@
 import cv2
 import pickle
-import sklearn
 import traceback
 import numpy as np
 from matplotlib import pyplot as plt
