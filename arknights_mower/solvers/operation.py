@@ -1,3 +1,4 @@
+import time
 import traceback
 
 from ..ocr import ocrhandle
@@ -102,7 +103,7 @@ class OpeSolver(BaseSolver):
                             logger.info(f'等待 {wait_start} 秒')
                     else:
                         logger.info(f'等待 10 秒')
-                    self.sleep(10)
+                    time.sleep(10)
                     self.adb.touch_tap((2, 2)) # 保持屏幕常亮
                     wait_total += 10
                 elif self.scene() == Scene.OPERATOR_FINISH:
