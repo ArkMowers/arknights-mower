@@ -149,8 +149,8 @@ def main():
     if len(args) > 0 and args[-1] == '-d':
         args = args[:-1]
         if __system__ == 'windows':
-            config.LOGFILE_PATH = os.environ['HOME']+'/arknights-mower'
-            config.SCREENSHOT_PATH = os.environ['HOME']+'/arknights-mower/screenshot'
+            config.LOGFILE_PATH = os.path.expanduser('~')+'/arknights-mower'
+            config.SCREENSHOT_PATH = os.path.expanduser('~')+'/arknights-mower/screenshot'
         else:
             config.LOGFILE_PATH = '/var/log/arknights-mower'
             config.SCREENSHOT_PATH = '/var/log/arknights-mower/screenshot'
