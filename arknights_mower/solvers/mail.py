@@ -32,6 +32,8 @@ class MailSolver(BaseSolver):
                     self.tap_element('read_mail')
                 elif self.scene() == Scene.LOADING:
                     self.sleep(3)
+                elif self.get_navigation():
+                    self.tap_element('nav_index')
                 elif self.scene() != Scene.UNKNOWN:
                     self.back_to_index()
                 else:
