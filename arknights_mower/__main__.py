@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 
@@ -148,12 +149,12 @@ def main():
     if len(args) > 0 and args[-1] == '-d':
         args = args[:-1]
         if __system__ == 'windows':
-            config.LOGFILE_PATH = '%HOMEPATH%\arknights-mower'
-            config.SCREENSHOT_PATH = '%HOMEPATH%\arknights-mower\screenshot'
+            config.LOGFILE_PATH = os.environ['HOME']+'/arknights-mower'
+            config.SCREENSHOT_PATH = os.environ['HOME']+'/arknights-mower/screenshot'
         else:
             config.LOGFILE_PATH = '/var/log/arknights-mower'
             config.SCREENSHOT_PATH = '/var/log/arknights-mower/screenshot'
-        print(f'开启 Debug 模式，日志将会被保存在 {Path(config.LOGFILE_PATH)}')
+        print(f'开启 Debug 模式，日志将会被保存在 {Path(config.LOGFILE_PATH)} 中')
         init_fhlr()
         
     logger.debug(args)
