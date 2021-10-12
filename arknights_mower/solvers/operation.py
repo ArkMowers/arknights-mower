@@ -36,7 +36,6 @@ class OpeSolver(BaseSolver):
         recover_state = 0
         need_eliminate = False
         wait_start = 10
-        wait_interval = 10
         wait_total = 0
 
         retry_times = MAX_RETRYTIME
@@ -98,20 +97,17 @@ class OpeSolver(BaseSolver):
                     need_eliminate = False
                     self.tap_element('ope_select_start')
                 elif self.scene() == Scene.OPERATOR_ONGOING:
-                    if wait_total == 0:
-                        logger.info(f'等待 {wait_start} 秒')
-                        self.sleep(wait_start)
-                        wait_total += wait_start
+                    if wait_total < wait_start:
+                        if wait_total == 0:
+                            logger.info(f'等待 {wait_start} 秒')
                     else:
-                        wait_interval = min(wait_interval, 80)
-                        logger.info(f'等待 {wait_interval} 秒')
-                        self.sleep(wait_interval)
-                        wait_total += wait_interval
-                        wait_interval *= 2
+                        logger.info(f'等待 10 秒')
+                    self.sleep(10)
+                    self.adb.touch_tap((2, 2)) # 保持屏幕常亮
+                    wait_total += 10
                 elif self.scene() == Scene.OPERATOR_FINISH:
                     if wait_total > 0:
-                        wait_start = max(10, wait_total - wait_interval // 2)
-                        wait_interval = 10
+                        wait_start = max(10, wait_total - 10)
                         wait_total = 0
                     times -= 1
                     self.tap((self.recog.w // 2, 10))
@@ -190,7 +186,7 @@ class OpeSolver(BaseSolver):
                 _act_id = act_id
                 act_id = -1
                 for x in predict:
-                    if x[1].upper().replace(' ','') in theme_database[:_act_id]:
+                    if x[1].upper().replace(' ', '') in theme_database[:_act_id]:
                         self.tap(x[2])
                         break
                 predict = ocrhandle.predict(
