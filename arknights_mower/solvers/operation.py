@@ -98,13 +98,14 @@ class OpeSolver(BaseSolver):
                     need_eliminate = False
                     self.tap_element('ope_select_start')
                 elif self.scene() == Scene.OPERATOR_ONGOING:
+                    self.adb.touch_tap((2, 2)) # 保持屏幕常亮
                     if wait_total < wait_start:
                         if wait_total == 0:
                             logger.info(f'等待 {wait_start} 秒')
+                        time.sleep(10)
                     else:
                         logger.info(f'等待 10 秒')
-                    time.sleep(10)
-                    self.adb.touch_tap((2, 2)) # 保持屏幕常亮
+                        self.sleep(10)
                     wait_total += 10
                 elif self.scene() == Scene.OPERATOR_FINISH:
                     if wait_total > 0:
