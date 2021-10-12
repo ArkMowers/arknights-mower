@@ -6,6 +6,7 @@ from ..utils.log import logger
 from ..utils.config import MAX_RETRYTIME
 from ..utils.recognize import Scene, RecognizeError
 from ..utils.solver import BaseSolver, StrategyError
+from ..data.item import shop_items
 
 
 class ShopSolver(BaseSolver):
@@ -40,6 +41,8 @@ class ShopSolver(BaseSolver):
                             if self.recog.find('shop_sold', scope=seg) is None:
                                 predict = ocrhandle.predict(
                                     self.recog.img[seg[0][1]:seg[0][1]+(seg[1][1]-seg[0][1])//4, seg[0][0]:seg[1][0]])
+                                if predict[0][1] not in shop_items:
+                                    logger.warn(f'物品名称识别异常：{predict[0][1]} 为不存在的物品，请报告至 https://github.com/Konano/arknights-mower/issues')
                                 valid.append((seg, predict[0][1]))
                         logger.info(f'商店内可购买的物品：{[x[1] for x in valid]}')
                         if len(valid) == 0:
