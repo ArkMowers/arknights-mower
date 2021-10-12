@@ -51,8 +51,8 @@ class BaseSolver:
             self.sleep(interval)
 
     def tap_element(self, element_name, x_rate=0.5, y_rate=0.5, interval=1, draw=False, scope=None, detected=False):
-        if element_name == 'navbutton':
-            element = self.recog.navbutton()
+        if element_name == 'nav_button':
+            element = self.recog.nav_button()
         else:
             element = self.recog.find(element_name, draw, scope)
         if detected and element is None:
@@ -122,7 +122,7 @@ class BaseSolver:
             if self.scene() == Scene.NAVIGATION_BAR:
                 return True
             else:
-                if not self.tap_element('navbutton', detected=True):
+                if not self.tap_element('nav_button', detected=True):
                     return False
 
     def back_to_index(self):
@@ -138,7 +138,7 @@ class BaseSolver:
                 elif self.scene() == Scene.ANNOUNCEMENT:
                     self.tap(detector.announcement_close(self.recog.img))
                 elif self.scene() == Scene.MATERIEL:
-                    self.tap_element('materiel')
+                    self.tap_element('materiel_ico')
                 elif self.scene() // 100 == 1:
                     self.login()
                 elif self.scene() == Scene.CONFIRM:

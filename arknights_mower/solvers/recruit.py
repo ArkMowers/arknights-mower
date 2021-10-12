@@ -93,7 +93,7 @@ class RecruitSolver(BaseSolver):
                         logger.info(f'获得干员：{agent}')
                     self.tap((self.recog.w // 2, self.recog.h // 2))
                 elif self.scene() == Scene.MATERIEL:
-                    self.tap_element('materiel')
+                    self.tap_element('materiel_ico')
                 elif self.scene() == Scene.LOADING:
                     self.sleep(3)
                 elif self.get_navigation():

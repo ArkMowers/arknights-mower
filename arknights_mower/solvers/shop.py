@@ -28,7 +28,7 @@ class ShopSolver(BaseSolver):
                 if self.scene() == Scene.INDEX:
                     self.tap_element('index_shop')
                 elif self.scene() == Scene.SHOP_OTHERS:
-                    self.tap_element('shop_credit')
+                    self.tap_element('shop_credit_2')
                 elif self.scene() == Scene.SHOP_CREDIT:
                     collect = self.recog.find('shop_collect')
                     if collect is not None:
@@ -56,7 +56,7 @@ class ShopSolver(BaseSolver):
                     else:
                         break
                 elif self.scene() == Scene.MATERIEL:
-                    self.tap_element('materiel')
+                    self.tap_element('materiel_ico')
                 elif self.scene() == Scene.LOADING:
                     self.sleep(3)
                 elif self.get_navigation():

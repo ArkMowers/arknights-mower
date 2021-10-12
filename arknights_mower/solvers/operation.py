@@ -151,7 +151,7 @@ class OpeSolver(BaseSolver):
                 elif self.scene() == Scene.UPGRADE:
                     self.tap_element('upgrade')
                 elif self.scene() == Scene.OPERATOR_DROP:
-                    self.tap_element('navbutton', 0.2)
+                    self.tap_element('nav_button', 0.2)
                 elif self.get_navigation():
                     self.tap_element('nav_terminal')
                 elif self.scene() != Scene.UNKNOWN:
@@ -179,7 +179,7 @@ class OpeSolver(BaseSolver):
         zone = zone_database[zone]
         logger.info(f'章节：{zone[0]}')
 
-        nav = self.recog.navbutton()
+        nav = self.recog.nav_button()
         nav[1][1] = self.recog.h
         bottom = self.recog.find('terminal_small')[0][1]
         if zone[1] == 0:
@@ -190,13 +190,13 @@ class OpeSolver(BaseSolver):
                 _act_id = act_id
                 act_id = -1
                 for x in predict:
-                    if x[1] in theme_database[:_act_id]:
+                    if x[1].upper().replace(' ','') in theme_database[:_act_id]:
                         self.tap(x[2])
                         break
                 predict = ocrhandle.predict(
                     self.recog.img[nav[0][1]:nav[1][1], nav[0][0]:nav[1][0]])
                 for x in predict:
-                    if x[1][:7] == 'EPISODE':
+                    if x[1][:7].upper() == 'EPISODE':
                         episode = int(x[1][-2:])
                         act_id = zone_database[f'main_{episode}'][2]
                         break

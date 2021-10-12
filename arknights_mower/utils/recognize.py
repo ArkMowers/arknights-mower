@@ -173,5 +173,5 @@ class Recognizer():
             return None
         return ret[1:]
 
-    def navbutton(self):
-        return self.find('navbutton', thres=128, scope=((0, 0), (100+self.w//4, self.h//10)))
+    def nav_button(self):
+        return self.find('nav_button', thres=128, scope=((0, 0), (100+self.w//4, self.h//10)))

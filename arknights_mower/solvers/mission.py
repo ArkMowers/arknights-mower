@@ -51,7 +51,7 @@ class MissionSolver(BaseSolver):
                     else:
                         break
                 elif self.scene() == Scene.MATERIEL:
-                    self.tap_element('materiel')
+                    self.tap_element('materiel_ico')
                 elif self.scene() == Scene.LOADING:
                     self.sleep(3)
                 elif self.get_navigation():
