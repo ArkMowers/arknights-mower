@@ -77,6 +77,9 @@ class Matcher():
                         kp0.append(kp)
                         des0.append(des)
                 logger.debug(f'after: {len(kp0)}')
+                if len(kp0) < 2:
+                    logger.debug('feature points is None')
+                    return None
                 kp0, des0 = np.array(kp0), np.array(des0)
             else:
                 kp0, des0 = self.kp, self.des
