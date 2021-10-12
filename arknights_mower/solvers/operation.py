@@ -186,9 +186,14 @@ class OpeSolver(BaseSolver):
                 _act_id = act_id
                 act_id = -1
                 for x in predict:
-                    if x[1].upper().replace(' ', '') in theme_database[:_act_id]:
-                        self.tap(x[2])
-                        break
+                    if zone[2] < _act_id:
+                        if x[1].upper().replace(' ', '') == theme_database[_act_id-1]:
+                            self.tap(x[2])
+                            break
+                    else:
+                        if x[1].upper().replace(' ', '') == theme_database[_act_id+1]:
+                            self.tap(x[2])
+                            break
                 predict = ocrhandle.predict(
                     self.recog.img[nav[0][1]:nav[1][1], nav[0][0]:nav[1][0]])
                 for x in predict:
