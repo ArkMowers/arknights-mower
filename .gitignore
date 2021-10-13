@@ -162,3 +162,4 @@ config.test.ini
 data/*
 release.sh
 !main.spec
+plan.json

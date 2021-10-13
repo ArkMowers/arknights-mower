@@ -24,15 +24,18 @@ class Solver():
         """
         RecruitSolver(self.adb, self.recog).run(priority)
 
-    def ope(self, times=-1, potion=0, originite=0, level=None, eliminate=False):
+    def ope(self, times=-1, potion=0, originite=0, level=None, plan=None, eliminate=False):
         """
         :param times: int, 作战的次数上限，-1 为无限制，默认为 -1
         :param potion: int, 使用药剂恢复体力的次数上限，-1 为无限制，默认为 0
         :param originite: int, 使用源石恢复体力的次数上限，-1 为无限制，默认为 0
         :param level: str, 指定关卡，默认为前往上一次关卡
+        :param plan: [[str, int]...], 指定多个关卡以及次数，优先级高于 level
         :param eliminate: bool, 是否优先处理未完成的每周剿灭，默认为 False
+
+        :return remain_plan: [[str, int]...], 未完成的计划
         """
-        OpeSolver(self.adb, self.recog).run(times, potion, originite, level, eliminate)
+        return OpeSolver(self.adb, self.recog).run(times, potion, originite, level, plan, eliminate)
 
     def shop(self, priority=None):
         """
