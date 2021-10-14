@@ -41,11 +41,11 @@ class OpeSolver(BaseSolver):
             return
         if plan is not None:
             for x in plan:
-                if x[0] not in level_database.keys():
+                if x[0] not in level_database.keys() or level_database[x[0]]['ap_cost'] == 0:
                     logger.error(f'不支持关卡 {x[0]}，请重新指定')
                     return
         if level is not None:
-            if level not in level_database.keys():
+            if level not in level_database.keys() or level_database[level]['ap_cost'] == 0:
                 logger.error(f'不支持关卡 {level}，请重新指定')
                 return
             plan = [(level, times)]
@@ -313,6 +313,7 @@ class OpeSolver(BaseSolver):
         predict = list(
             filter(lambda x: x[1] in level_database.keys(), predict))
         levels = sorted([x[1] for x in predict])
+        retry_times = 3
         while level not in levels:
             _levels = levels
             self.swipe((self.recog.w // 4, self.recog.h // 4),
@@ -322,7 +323,11 @@ class OpeSolver(BaseSolver):
                 filter(lambda x: x[1] in level_database.keys(), predict))
             levels = sorted([x[1] for x in predict])
             if _levels == levels:
-                break
+                retry_times -= 1
+                if retry_times == 0:
+                    break
+            retry_times = 3
+        retry_times = 3
         while level not in levels:
             _levels = levels
             self.swipe((self.recog.w // 4, self.recog.h // 4),
@@ -332,7 +337,10 @@ class OpeSolver(BaseSolver):
                 filter(lambda x: x[1] in level_database.keys(), predict))
             levels = sorted([x[1] for x in predict])
             if _levels == levels:
-                break
+                retry_times -= 1
+                if retry_times == 0:
+                    break
+            retry_times = 3
         for x in predict:
             if x[1] == level:
                 self.tap(x[2])
