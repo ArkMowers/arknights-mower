@@ -125,11 +125,15 @@ class OpeSolver(BaseSolver):
                     if wait_total < wait_start:
                         if wait_total == 0:
                             logger.info(f'等待 {wait_start} 秒')
-                        time.sleep(10)
+                        wait_total += 10
+                        if wait_total == wait_start:
+                            self.sleep(10)
+                        else:
+                            time.sleep(10)
                     else:
                         logger.info(f'等待 10 秒')
+                        wait_total += 10
                         self.sleep(10)
-                    wait_total += 10
                 elif self.scene() == Scene.OPERATOR_FINISH:
                     if wait_total > 0:
                         wait_start = max(10, wait_total - 10)
