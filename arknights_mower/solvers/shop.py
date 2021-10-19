@@ -52,7 +52,7 @@ class ShopSolver(BaseSolver):
                                 key=lambda x: 9999 if x[1] not in priority else priority.index(x[1]))
                             if valid[0][1] not in priority:
                                 break
-                        self.tap(valid[0][0])
+                        self.tap(valid[0][0], interval=3) #  TODO fix
                 elif self.scene() == Scene.SHOP_CREDIT_CONFIRM:
                     if self.recog.find('shop_credit_not_enough') is None:
                         self.tap_element('shop_cart')
