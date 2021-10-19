@@ -84,6 +84,7 @@ def operation(args):
     potion = 0
     originite = 0
     eliminate = False
+    plan = None
 
     try:
         for p in args:
@@ -109,7 +110,7 @@ def operation(args):
     except:
         raise ParamError
 
-    OpeSolver().run(times, potion, originite, level, eliminate)
+    OpeSolver().run(times, potion, originite, level, plan, eliminate)
 
 
 def version(args=None):
