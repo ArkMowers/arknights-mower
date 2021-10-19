@@ -48,9 +48,9 @@ class OpeSolver(BaseSolver):
             if level not in level_database.keys() or level_database[level]['ap_cost'] == 0:
                 logger.error(f'不支持关卡 {level}，请重新指定')
                 return
-            plan = [(level, times)]
+            plan = [[level, times]]
         if plan is None:
-            plan = [('pre_ope', times)]
+            plan = [['pre_ope', times]]
         logger.debug(f'plan: {plan}')
 
         recover_state = 0
