@@ -60,11 +60,11 @@ class RecruitSolver(BaseSolver):
                             if x not in recruit_tag:
                                 logger.warn(f'公招识别异常：{x} 为不存在的标签，请报告至 https://github.com/Konano/arknights-mower/issues')
                         choose, maxlevel = self.recruit_choose(tags, priority)
-                        if maxlevel < 4:
+                        if maxlevel[0] < 4:
                             if self.tap_element('recruit_refresh', detected=True):
                                 self.tap_element('double_confirm', 0.8)
                                 continue
-                            if maxlevel <= 3:
+                            if maxlevel[0] <= 3:
                                 choose = []
                         break
                     logger.info(f'选择：{choose}')
@@ -139,23 +139,22 @@ class RecruitSolver(BaseSolver):
             for o in range(1, 1 << 5):
                 if o & valid == o:
                     if o not in possibility.keys():
-                        possibility[o] = [7, []]
-                    possibility[o][0] = min(possibility[o][0], x[1])
-                    possibility[o][1].append(x[0])
-        for o in possibility.keys():
-            minidx = 999
-            for x in possibility[o][1]:
-                if x in priority:
-                    minidx = min(minidx, priority.index(x))
-            if minidx != 999:
-                possibility[o][0] += 0.5 - 0.5 * minidx / len(priority)
-        logger.debug(possibility)
-        maxlevel = 0
+                        possibility[o] = [0, 7, []]
+                    weight = x[1]
+                    if x[0] in priority:
+                        weight += 0.9 - 0.9 * priority.index(x[0]) / len(priority)
+                    possibility[o][0] = max(possibility[o][0], weight)
+                    possibility[o][1] = min(possibility[o][1], weight)
+                    possibility[o][-1].append(x[0])
+        maxlevel = [0, 0]
         maxlevel_choose = 0
         for o in possibility.keys():
-            if maxlevel < possibility[o][0]:
-                maxlevel = possibility[o][0]
+            while possibility[o][0] - 1 >= possibility[o][1]:
+                possibility[o][0] -= 1
+            if maxlevel < possibility[o][:2]:
+                maxlevel = possibility[o][:2]
                 maxlevel_choose = o
+        logger.debug(possibility)
         logger.debug(maxlevel_choose)
         choose = []
         for i in range(len(tags)):
