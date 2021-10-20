@@ -62,7 +62,7 @@ class RecruitSolver(BaseSolver):
                         choose, maxlevel = self.recruit_choose(tags, priority)
                         if maxlevel[0] < 4:
                             if self.tap_element('recruit_refresh', detected=True):
-                                self.tap_element('double_confirm', 0.8)
+                                self.tap_element('double_confirm', 0.8, judge=False)
                                 continue
                             if maxlevel[0] <= 3:
                                 choose = []
