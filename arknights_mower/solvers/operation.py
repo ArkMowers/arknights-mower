@@ -252,11 +252,11 @@ class OpeSolver(BaseSolver):
             cover = self.recog.find(f'main_{episode}')
             while zone[3] < episode:
                 self.swipe((cover[0][0], cover[0][1]),
-                           (cover[1][0] - cover[0][0], 0))
+                           (cover[1][0] - cover[0][0], 0), 200)
                 episode -= 1
             while episode < zone[3]:
                 self.swipe((cover[1][0], cover[0][1]),
-                           (cover[0][0] - cover[1][0], 0))
+                           (cover[0][0] - cover[1][0], 0), 200)
                 episode += 1
             self.tap(cover)
         elif zone[1] == 1:
@@ -330,7 +330,8 @@ class OpeSolver(BaseSolver):
                 retry_times -= 1
                 if retry_times == 0:
                     break
-            retry_times = 3
+            else:
+                retry_times = 3
         retry_times = 3
         while level not in levels:
             _levels = levels
@@ -344,7 +345,8 @@ class OpeSolver(BaseSolver):
                 retry_times -= 1
                 if retry_times == 0:
                     break
-            retry_times = 3
+            else:
+                retry_times = 3
         for x in predict:
             if x[1] == level:
                 self.tap(x[2])

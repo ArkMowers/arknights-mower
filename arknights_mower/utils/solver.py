@@ -60,8 +60,8 @@ class BaseSolver:
         self.tap(element, x_rate, y_rate, interval)
         return True
 
-    def swipe(self, start, movement, interval=1):
-        self.adb.touch_swipe(start, movement)
+    def swipe(self, start, movement, duration=100, interval=1):
+        self.adb.touch_swipe(start, movement, duration=duration)
         if interval > 0:
             self.sleep(interval)
 
