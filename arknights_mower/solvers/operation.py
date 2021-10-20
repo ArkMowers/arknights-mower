@@ -121,7 +121,7 @@ class OpeSolver(BaseSolver):
                 elif self.scene() == Scene.OPERATOR_SELECT:
                     self.tap_element('ope_select_start')
                 elif self.scene() == Scene.OPERATOR_ONGOING:
-                    self.adb.touch_tap((1, 1))  # 保持屏幕常亮
+                    # self.adb.touch_tap((1, 1))  # 保持屏幕常亮
                     if wait_total < wait_start:
                         if wait_total == 0:
                             logger.info(f'等待 {wait_start} 秒')
