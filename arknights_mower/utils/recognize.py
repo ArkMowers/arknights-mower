@@ -145,7 +145,7 @@ class Recognizer():
     def is_black(self):
         return np.max(self.gray[:, 105:-105]) < 16
 
-    def find(self, item, draw=False, scope=None, thres=None):
+    def find(self, item, draw=False, scope=None, thres=None, judge=True):
         logger.debug(f'find {item}')
         if thres is not None:
             image = threshole(
@@ -155,7 +155,7 @@ class Recognizer():
         else:
             image = loadimg(f'{__rootdir__}/resources/{item}.png')
             matcher = self.matcher
-        ret = matcher.match(image, draw=draw, scope=scope)
+        ret = matcher.match(image, draw=draw, scope=scope, judge=judge)
         if ret is None:
             return None
         return ret

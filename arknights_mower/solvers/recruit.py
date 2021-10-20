@@ -44,9 +44,9 @@ class RecruitSolver(BaseSolver):
                     if not tapped:
                         break
                 elif self.scene() == Scene.RECRUIT_TAGS:
-                    needs = self.recog.find('career_needs')
-                    avail_level = self.recog.find('available_level')
-                    budget = self.recog.find('recruit_budget')
+                    needs = self.recog.find('career_needs', judge=False)
+                    avail_level = self.recog.find('available_level', judge=False)
+                    budget = self.recog.find('recruit_budget', judge=False)
                     up = needs[0][1] - 80
                     down = needs[1][1] + 60
                     left = needs[1][0]

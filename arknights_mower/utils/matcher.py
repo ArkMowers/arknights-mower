@@ -52,11 +52,11 @@ class Matcher():
         self.kp, self.des = SIFT.detectAndCompute(origin, None)
         logger.debug(f'Matcher init: shape ({origin.shape})')
 
-    def match(self, query, draw=False, scope=None):
+    def match(self, query, draw=False, scope=None, judge=True):
         score = self.score(query, draw, scope)
         if score is None:
             return None
-        elif SVC.predict([score[1:]])[0] == False:
+        elif judge and SVC.predict([score[1:]])[0] == False:
             logger.debug(f'match fail: {score[1:]}')
             return None
         else:
