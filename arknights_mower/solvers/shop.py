@@ -1,6 +1,6 @@
 import traceback
 
-from ..ocr import ocrhandle
+from ..ocr import ocrhandle, ocronline
 from ..utils import segment
 from ..utils.log import logger
 from ..utils.config import MAX_RETRYTIME
@@ -39,11 +39,22 @@ class ShopSolver(BaseSolver):
                         valid = []
                         for seg in segments:
                             if self.recog.find('shop_sold', scope=seg) is None:
-                                predict = ocrhandle.predict(
-                                    self.recog.img[seg[0][1]:seg[0][1]+(seg[1][1]-seg[0][1])//4, seg[0][0]:seg[1][0]])
-                                if predict[0][1] not in shop_items:
-                                    logger.warning(f'物品名称识别异常：{predict[0][1]} 为不存在的物品，请报告至 https://github.com/Konano/arknights-mower/issues')
-                                valid.append((seg, predict[0][1]))
+                                img = self.recog.img[seg[0][1]:seg[0][1]+(seg[1][1]-seg[0][1])//4, seg[0][0]:seg[1][0]]
+                                ocr = ocrhandle.predict(img)[0]
+                                if ocr[1] not in shop_items:
+                                    logger.warning(f'物品名称识别异常：正在调用在线识别处理异常结果……')
+                                    _x = ocronline.repredict(img, ocr[1], ocr[2])
+                                    if _x is None:
+                                        logger.warning(
+                                            f'物品名称识别异常：{ocr[1]} 为不存在的物品，请报告至 https://github.com/Konano/arknights-mower/issues')
+                                    elif _x not in shop_items:
+                                        logger.warning(
+                                            f'物品名称识别异常：{ocr[1]} 和 {_x} 均为不存在的物品，请报告至 https://github.com/Konano/arknights-mower/issues')
+                                    else:
+                                        logger.warning(
+                                            f'物品名称识别异常：{ocr[1]} 应为 {_x}，请报告至 https://github.com/Konano/arknights-mower/issues')
+                                        ocr[1] = _x
+                                valid.append((seg, ocr[1]))
                         logger.info(f'商店内可购买的物品：{[x[1] for x in valid]}')
                         if len(valid) == 0:
                             break
@@ -52,7 +63,7 @@ class ShopSolver(BaseSolver):
                                 key=lambda x: 9999 if x[1] not in priority else priority.index(x[1]))
                             if valid[0][1] not in priority:
                                 break
-                        self.tap(valid[0][0], interval=3) #  TODO fix
+                        self.tap(valid[0][0], interval=3)
                 elif self.scene() == Scene.SHOP_CREDIT_CONFIRM:
                     if self.recog.find('shop_credit_not_enough') is None:
                         self.tap_element('shop_cart')
@@ -68,8 +79,8 @@ class ShopSolver(BaseSolver):
                     self.back_to_index()
                 else:
                     raise RecognizeError
-            except RecognizeError:
-                logger.warning('识别出了点小差错 qwq')
+            except RecognizeError as e:
+                logger.warning(f'识别出了点小差错 qwq: {e}')
                 retry_times -= 1
                 self.sleep(3)
                 continue

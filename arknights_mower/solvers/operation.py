@@ -194,8 +194,8 @@ class OpeSolver(BaseSolver):
                 plan = plan[1:]
                 choosed = False
                 continue
-            except RecognizeError:
-                logger.warning('识别出了点小差错 qwq')
+            except RecognizeError as e:
+                logger.warning(f'识别出了点小差错 qwq: {e}')
                 retry_times -= 1
                 self.sleep(3)
                 continue
@@ -223,12 +223,12 @@ class OpeSolver(BaseSolver):
         bottom = self.recog.h - 10
         if zone[1] == 0:
             self.tap((self.recog.w // 14 * 3, bottom))
-            predict = []
+            ocr = []
             act_id = 999
             while act_id != zone[2]:
                 _act_id = act_id
                 act_id = -1
-                for x in predict:
+                for x in ocr:
                     if zone[2] < _act_id:
                         if x[1].upper().replace(' ', '') == theme_database[_act_id-1]:
                             self.tap(x[2])
@@ -237,9 +237,9 @@ class OpeSolver(BaseSolver):
                         if x[1].upper().replace(' ', '') == theme_database[_act_id+1]:
                             self.tap(x[2])
                             break
-                predict = ocrhandle.predict(
+                ocr = ocrhandle.predict(
                     self.recog.img[nav[0][1]:nav[1][1], nav[0][0]:nav[1][0]])
-                for x in predict:
+                for x in ocr:
                     if x[1][:7].upper() == 'EPISODE' and len(x[1]) == 9:
                         try:
                             episode = int(x[1][-2:])
@@ -261,49 +261,49 @@ class OpeSolver(BaseSolver):
             self.tap(cover)
         elif zone[1] == 1:
             self.tap((self.recog.w // 14 * 5, bottom))
-            predict = ocrhandle.predict(
+            ocr = ocrhandle.predict(
                 self.recog.img[nav[0][1]:nav[1][1], nav[0][0]:nav[1][0]])
-            for x in predict:
+            for x in ocr:
                 if x[1] == zone[0]:
                     self.tap(x[2])
             self.tap_element('enter')
         elif zone[1] == 2:
             self.tap((self.recog.w // 14 * 7, bottom))
-            predict = ocrhandle.predict(
+            ocr = ocrhandle.predict(
                 self.recog.img[nav[0][1]:nav[1][1], nav[0][0]:nav[1][0]])
-            for x in predict:
+            for x in ocr:
                 if x[1] == zone[0]:
                     self.tap(x[2])
             self.tap_element('enter')
         elif zone[1] == 3:
             self.tap((self.recog.w // 14 * 9, bottom))
-            predict = ocrhandle.predict(self.recog.img)
-            unable = list(filter(lambda x: x[1] == '不可进入', predict))
-            predict = list(filter(lambda x: x[1] in weekly_zones, predict))
-            weekly = sorted([x[1] for x in predict])
+            ocr = ocrhandle.predict(self.recog.img)
+            unable = list(filter(lambda x: x[1] == '不可进入', ocr))
+            ocr = list(filter(lambda x: x[1] in weekly_zones, ocr))
+            weekly = sorted([x[1] for x in ocr])
             while zone[0] not in weekly:
                 _weekly = weekly
                 self.swipe((self.recog.w // 4, self.recog.h // 4),
                            (self.recog.w // 16, 0))
-                predict = ocrhandle.predict(self.recog.img)
-                unable = list(filter(lambda x: x[1] == '不可进入', predict))
-                predict = list(filter(lambda x: x[1] in weekly_zones, predict))
-                weekly = sorted([x[1] for x in predict])
+                ocr = ocrhandle.predict(self.recog.img)
+                unable = list(filter(lambda x: x[1] == '不可进入', ocr))
+                ocr = list(filter(lambda x: x[1] in weekly_zones, ocr))
+                weekly = sorted([x[1] for x in ocr])
                 if _weekly == weekly:
                     break
             while zone[0] not in weekly:
                 _weekly = weekly
                 self.swipe((self.recog.w // 4, self.recog.h // 4),
                            (-self.recog.w // 16, 0))
-                predict = ocrhandle.predict(self.recog.img)
-                unable = list(filter(lambda x: x[1] == '不可进入', predict))
-                predict = list(filter(lambda x: x[1] in weekly_zones, predict))
-                weekly = sorted([x[1] for x in predict])
+                ocr = ocrhandle.predict(self.recog.img)
+                unable = list(filter(lambda x: x[1] == '不可进入', ocr))
+                ocr = list(filter(lambda x: x[1] in weekly_zones, ocr))
+                weekly = sorted([x[1] for x in ocr])
                 if _weekly == weekly:
                     break
             if zone[0] not in weekly:
                 raise RecognizeError
-            for x in predict:
+            for x in ocr:
                 if x[1] == zone[0]:
                     for item in unable:
                         if x[2][0][0] < item[2][0][0] < x[2][1][0]:
@@ -313,19 +313,19 @@ class OpeSolver(BaseSolver):
         else:
             raise RecognizeError
 
-        predict = ocrhandle.predict(self.recog.img)
-        predict = list(
-            filter(lambda x: x[1] in level_database.keys(), predict))
-        levels = sorted([x[1] for x in predict])
+        ocr = ocrhandle.predict(self.recog.img)
+        ocr = list(
+            filter(lambda x: x[1] in level_database.keys(), ocr))
+        levels = sorted([x[1] for x in ocr])
         retry_times = 3
         while level not in levels:
             _levels = levels
             self.swipe((self.recog.w // 4, self.recog.h // 4),
                        (self.recog.w // 16, 0))
-            predict = ocrhandle.predict(self.recog.img)
-            predict = list(
-                filter(lambda x: x[1] in level_database.keys(), predict))
-            levels = sorted([x[1] for x in predict])
+            ocr = ocrhandle.predict(self.recog.img)
+            ocr = list(
+                filter(lambda x: x[1] in level_database.keys(), ocr))
+            levels = sorted([x[1] for x in ocr])
             if _levels == levels:
                 retry_times -= 1
                 if retry_times == 0:
@@ -337,17 +337,17 @@ class OpeSolver(BaseSolver):
             _levels = levels
             self.swipe((self.recog.w // 4, self.recog.h // 4),
                        (-self.recog.w // 16, 0))
-            predict = ocrhandle.predict(self.recog.img)
-            predict = list(
-                filter(lambda x: x[1] in level_database.keys(), predict))
-            levels = sorted([x[1] for x in predict])
+            ocr = ocrhandle.predict(self.recog.img)
+            ocr = list(
+                filter(lambda x: x[1] in level_database.keys(), ocr))
+            levels = sorted([x[1] for x in ocr])
             if _levels == levels:
                 retry_times -= 1
                 if retry_times == 0:
                     break
             else:
                 retry_times = 3
-        for x in predict:
+        for x in ocr:
             if x[1] == level:
                 self.tap(x[2])
                 return

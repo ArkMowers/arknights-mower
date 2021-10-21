@@ -1,6 +1,6 @@
 import traceback
 
-from ..ocr import ocrhandle
+from ..ocr import ocrhandle, ocronline
 from ..utils import segment
 from ..utils.log import logger
 from ..utils.config import MAX_RETRYTIME
@@ -52,23 +52,34 @@ class RecruitSolver(BaseSolver):
                     left = needs[1][0]
                     right = avail_level[0][0]
                     while True:
-                        predict = ocrhandle.predict(
-                            self.recog.img[up:down, left:right])
-                        tags = [x[1] for x in predict]
+                        img = self.recog.img[up:down, left:right]
+                        ocr = ocrhandle.predict(img)
+                        for x in ocr:
+                            if x[1] not in recruit_tag:
+                                logger.warning(f'公招识别异常：正在调用在线识别处理异常结果……')
+                                _x = ocronline.repredict(img, x[1], x[2])
+                                if _x is None:
+                                    logger.warning(
+                                        f'公招识别异常：{x[1]} 为不存在的标签，请报告至 https://github.com/Konano/arknights-mower/issues')
+                                elif _x not in recruit_tag:
+                                    logger.warning(
+                                        f'公招识别异常：{x[1]} 和 {_x} 均为不存在的标签，请报告至 https://github.com/Konano/arknights-mower/issues')
+                                else:
+                                    logger.warning(
+                                        f'公招识别异常：{x[1]} 应为 {_x}，请报告至 https://github.com/Konano/arknights-mower/issues')
+                                    x[1] = _x
+                        tags = [x[1] for x in ocr]
                         logger.info(f'公招标签：{tags}')
-                        for x in tags:
-                            if x not in recruit_tag:
-                                logger.warning(f'公招识别异常：{x} 为不存在的标签，请报告至 https://github.com/Konano/arknights-mower/issues')
                         choose, maxlevel = self.recruit_choose(tags, priority)
                         if maxlevel[0] < 4:
                             if self.tap_element('recruit_refresh', detected=True):
-                                self.tap_element('double_confirm', 0.8, judge=False)
+                                self.tap_element('double_confirm', 0.8, interval=3, judge=False)
                                 continue
                             if maxlevel[0] <= 3:
                                 choose = []
                         break
                     logger.info(f'选择：{choose}')
-                    for x in predict:
+                    for x in ocr:
                         color = self.recog.img[
                             up+x[2][0][1]-5, left+x[2][0][0]-5]
                         if (color[2] < 100) != (x[1] not in choose):
@@ -80,8 +91,8 @@ class RecruitSolver(BaseSolver):
                     self.tap_element('skip')
                 elif self.scene() == Scene.RECRUIT_AGENT:
                     agent = None
-                    predict = ocrhandle.predict(self.recog.img)
-                    for x in predict:
+                    ocr = ocrhandle.predict(self.recog.img)
+                    for x in ocr:
                         if x[1][-3:] == '的信物':
                             agent = x[1][:-3]
                             break
@@ -104,8 +115,8 @@ class RecruitSolver(BaseSolver):
                     self.back_to_index()
                 else:
                     raise RecognizeError
-            except RecognizeError:
-                logger.warning('识别出了点小差错 qwq')
+            except RecognizeError as e:
+                logger.warning(f'识别出了点小差错 qwq: {e}')
                 retry_times -= 1
                 self.sleep(3)
                 continue
@@ -142,7 +153,8 @@ class RecruitSolver(BaseSolver):
                         possibility[o] = [0, 7, []]
                     weight = x[1]
                     if x[0] in priority:
-                        weight += 0.9 - 0.9 * priority.index(x[0]) / len(priority)
+                        weight += 0.9 - \
+                            (1 - priority.index(x[0]) / len(priority))
                     possibility[o][0] = max(possibility[o][0], weight)
                     possibility[o][1] = min(possibility[o][1], weight)
                     possibility[o][-1].append(x[0])
