@@ -60,8 +60,8 @@ class MissionSolver(BaseSolver):
                     self.back_to_index()
                 else:
                     raise RecognizeError
-            except RecognizeError:
-                logger.warning('识别出了点小差错 qwq')
+            except RecognizeError as e:
+                logger.warning(f'识别出了点小差错 qwq: {e}')
                 retry_times -= 1
                 self.sleep(3)
                 continue

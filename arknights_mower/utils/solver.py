@@ -102,8 +102,8 @@ class BaseSolver:
                     self.tap(detector.confirm(self.recog.img))
                 else:
                     raise RecognizeError
-            except RecognizeError:
-                logger.warning('识别出了点小差错 qwq')
+            except RecognizeError as e:
+                logger.warning(f'识别出了点小差错 qwq: {e}')
                 retry_times -= 1
                 self.sleep(3)
                 continue
@@ -161,8 +161,8 @@ class BaseSolver:
                     self.tap((mid_y, mid_y))
                 else:
                     raise RecognizeError
-            except RecognizeError:
-                logger.warning('识别出了点小差错 qwq')
+            except RecognizeError as e:
+                logger.warning(f'识别出了点小差错 qwq: {e}')
                 retry_times -= 1
                 self.sleep(3)
                 continue
