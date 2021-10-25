@@ -153,7 +153,7 @@ class RecruitSolver(BaseSolver):
                         possibility[o] = [0, 7, []]
                     weight = x[1]
                     if x[0] in priority:
-                        weight += 0.9 - \
+                        weight += 0.9 * \
                             (1 - priority.index(x[0]) / len(priority))
                     possibility[o][0] = max(possibility[o][0], weight)
                     possibility[o][1] = min(possibility[o][1], weight)
