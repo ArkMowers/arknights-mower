@@ -163,3 +163,4 @@ data/*
 release.sh
 !main.spec
 plan.json
+custom.json
