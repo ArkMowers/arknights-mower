@@ -34,9 +34,9 @@ class BaseSolver:
             x, y = poly
         return (int(x), int(y))
 
-    def sleep(self, interval=1):
+    def sleep(self, interval=1, matcher=True):
         time.sleep(interval)
-        self.recog.update()
+        self.recog.update(matcher=matcher)
 
     def input(self, text, input_area):
         logger.debug(f'input: {text} {input_area}')
@@ -44,26 +44,29 @@ class BaseSolver:
         self.adb.send_text(input(text).strip())
         self.adb.touch_tap((0, 0))
 
-    def tap(self, poly, x_rate=0.5, y_rate=0.5, interval=1):
+    def find(self, item, draw=False, scope=None, thres=None, judge=True):
+        return self.recog.find(item, draw, scope, thres, judge)
+
+    def tap(self, poly, x_rate=0.5, y_rate=0.5, interval=1, matcher=True):
         pos = self.get_pos(poly, x_rate, y_rate)
         self.adb.touch_tap(pos)
         if interval > 0:
-            self.sleep(interval)
+            self.sleep(interval, matcher=matcher)
 
-    def tap_element(self, element_name, x_rate=0.5, y_rate=0.5, interval=1, draw=False, scope=None, detected=False, judge=True):
+    def tap_element(self, element_name, x_rate=0.5, y_rate=0.5, interval=1, draw=False, scope=None, detected=False, judge=True, matcher=True):
         if element_name == 'nav_button':
             element = self.recog.nav_button()
         else:
             element = self.recog.find(element_name, draw, scope, judge=judge)
         if detected and element is None:
             return False
-        self.tap(element, x_rate, y_rate, interval)
+        self.tap(element, x_rate, y_rate, interval, matcher)
         return True
 
-    def swipe(self, start, movement, duration=100, interval=1):
+    def swipe(self, start, movement, duration=100, interval=1, matcher=True):
         self.adb.touch_swipe(start, movement, duration=duration)
         if interval > 0:
-            self.sleep(interval)
+            self.sleep(interval, matcher=matcher)
 
     def scene(self):
         return self.recog.get_scene()

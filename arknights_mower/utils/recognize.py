@@ -18,7 +18,7 @@ class Recognizer():
         self.adb = adb
         self.update(debug_screencap)
 
-    def update(self, debug_screencap=None):
+    def update(self, debug_screencap=None, matcher=True):
         if debug_screencap is not None:
             self.screencap = debug_screencap
         else:
@@ -26,7 +26,7 @@ class Recognizer():
         self.img = bytes2img(self.screencap)
         self.gray = bytes2img(self.screencap, True)
         self.h, self.w, _ = self.img.shape
-        self.matcher = Matcher(self.gray)
+        self.matcher = Matcher(self.gray) if matcher else None
         self.scene = Scene.UNDEFINED
 
     def color(self, x, y):
@@ -83,6 +83,8 @@ class Recognizer():
             self.scene = Scene.INFRA_MAIN
         elif self.find('infra_todo') is not None:
             self.scene = Scene.INFRA_TODOLIST
+        elif self.find('confidential') is not None:
+            self.scene = Scene.INFRA_CONFIDENTIAL
         elif self.find('friend_list') is not None:
             self.scene = Scene.FRIEND_LIST_OFF
         elif self.find('mission_daily_on') is not None:

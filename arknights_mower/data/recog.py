@@ -54,6 +54,7 @@ scene_test = [
     ['terminal_pre', Scene.TERMINAL_MAIN],
     ['upgrade', Scene.UPGRADE],
     ['read_mail', Scene.MAIL],
+    ['confidential', Scene.INFRA_CONFIDENTIAL],
 ]
 
 recog_test = [
