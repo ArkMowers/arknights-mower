@@ -250,12 +250,11 @@ class BaseConstructSolver(BaseSolver):
         return clues
 
     def clue(self):
-
         global x1, x2, x3, x4, y0, y1, y2
-
         x1, x2, x3, x4 = 0, 0, 0, 0
         y0, y1, y2 = 0, 0, 0
 
+        logger.info('基建：线索')
         base_room = segment.base(self.recog.img, self.find('control_central'))
 
         room = base_room['meeting']
@@ -270,14 +269,17 @@ class BaseConstructSolver(BaseSolver):
 
         (x0, y0), (x1, y1) = self.find('clue_func')
 
+        logger.info('接收赠送线索')
         self.tap(((x0+x1)//2, (y0*3+y1)//4), interval=3, matcher=False)
         self.tap((self.recog.w-10, self.recog.h-10), interval=3, matcher=False)
         self.tap((10, self.recog.h-10), interval=3, matcher=False)
 
+        logger.info('领取会客室线索')
         self.tap(((x0+x1)//2, (y0*5-y1)//4), interval=3)
         self.tap_element('clue_obtain', interval=3)
         self.tap_element('nav_button', x_rate=0.2, interval=3)
 
+        logger.info('放置线索')
         clue_unlock = self.find('clue_unlock')
         if clue_unlock is not None:
             self.tap_element('clue', interval=3)
@@ -293,8 +295,10 @@ class BaseConstructSolver(BaseSolver):
                 self.clear_clue_mask()
                 self.clue_view()
                 if len(self.ori_clue()) == 0:
+                    logger.info(f'无线索 {i}')
                     get_all_clue = False
                     break
+                logger.info(f'放置线索 {i}')
                 self.tap(((x1+x2)//2, y1+3), matcher=False)
 
             self.tap((10, self.recog.h-10), interval=3, matcher=False)
@@ -302,10 +306,12 @@ class BaseConstructSolver(BaseSolver):
             if get_all_clue and clue_unlock is not None:
                 self.tap(clue_unlock)
 
+        logger.info('返回基建主界面')
         self.tap_element('nav_button', x_rate=0.2, interval=3)
         self.tap_element('nav_button', x_rate=0.2, interval=3)
 
     def drone(self, room):
+        logger.info('基建：无人机加速')
         base_room = segment.base(self.recog.img, self.find('control_central'))
 
         room = base_room[room]
@@ -323,6 +329,7 @@ class BaseConstructSolver(BaseSolver):
         self.tap_element('all_in')
         self.tap(accelerate, y_rate=1)
 
+        logger.info('返回基建主界面')
         nav_button = self.recog.nav_button()
         self.tap(nav_button, x_rate=0.2, interval=3)
         self.tap(nav_button, x_rate=0.2, interval=3)
