@@ -58,6 +58,8 @@ arknights-mower recruit 因陀罗 火神
 # 公招自动化，优先选择保底星数高的组合，若有多种标签组合保底星数一致则优先选择包含优先级高的干员的组合，公招干员的优先级从高到低分别是因陀罗和火神
 arknights-mower shop 招聘许可 赤金 龙门币
 # 在商场使用信用点消费，购买物品的优先级从高到低分别是招聘许可、赤金和龙门币，其余物品不购买
+arknights-mower base -c -d33
+# 自动收取基建中的信赖/货物/订单，自动放置线索，自动前往 3 楼第 3 个房间使用无人机加速生产（暂且只支持制造站加速）
 ```
 
 命令使用说明如下：
@@ -66,8 +68,10 @@ arknights-mower shop 招聘许可 赤金 龙门币
 $ arknights-mower
 usage: arknights-mower command [command args] [-d]
 commands (prefix abbreviation accepted):
-    base
-        自动处理基建的信赖/货物/订单
+    base [-c] [-d[F][N]]
+        自动处理基建的信赖/货物/订单/线索/无人机
+        -c 是否自动使用线索
+        -d 是否自动消耗无人机，F 表示第几层（1-3），N 表示从左往右第几个房间（1-3），仅支持制造站
     credit
         自动访友获取信用点
     mail
