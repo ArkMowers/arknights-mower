@@ -23,10 +23,27 @@ def mail(args):
 
 def base(args):
     """
-    base
-        自动处理基建的信赖/货物/订单
+    base [-c] [-d[F][N]]
+        自动处理基建的信赖/货物/订单/线索/无人机
+        -c 是否自动使用线索
+        -d 是否自动消耗无人机，F 表示第几层（1-3），N 表示从左往右第几个房间（1-3），仅支持制造站
     """
-    BaseConstructSolver().run()
+    clue_collect = False
+    drone_room = None
+
+    try:
+        for p in args:
+            if p[0] == '-':
+                if p[1] == 'c':
+                    clue_collect = True
+                elif p[1] == 'd':
+                    assert '1' <= p[2] <= '3'
+                    assert '1' <= p[3] <= '3'
+                    drone_room = f'room_{p[2]}_{p[3]}'
+    except:
+        raise ParamError
+
+    BaseConstructSolver().run(clue_collect, drone_room)
 
 
 def credit(args):
