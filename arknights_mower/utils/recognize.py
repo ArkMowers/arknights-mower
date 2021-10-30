@@ -83,7 +83,7 @@ class Recognizer():
             self.scene = Scene.INFRA_MAIN
         elif self.find('infra_todo') is not None:
             self.scene = Scene.INFRA_TODOLIST
-        elif self.find('confidential') is not None:
+        elif self.find('clue') is not None:
             self.scene = Scene.INFRA_CONFIDENTIAL
         elif self.find('friend_list') is not None:
             self.scene = Scene.FRIEND_LIST_OFF
