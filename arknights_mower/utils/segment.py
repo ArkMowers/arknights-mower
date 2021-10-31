@@ -1,8 +1,9 @@
-from typing import Match
 import cv2
 import traceback
+import imagehash
 import numpy as np
 from matplotlib import pyplot as plt
+from PIL import Image, ImageDraw, ImageFont
 
 from .log import logger
 from .recognize import RecognizeError
@@ -14,7 +15,36 @@ from .image import loadimg, rgb2gray, margin
 from ..__init__ import __rootdir__
 
 
-match = Matcher(loadimg(f'{__rootdir__}/resources/agents.png'))
+agent_ahash = None
+
+
+def agent_ahash_init():
+    global agent_ahash
+    if agent_ahash is None:
+        agent_ahash = {}
+        font = ImageFont.truetype(
+            f'{__rootdir__}/fonts/SourceHanSansSC-Bold.otf', size=30, encoding='utf-8')
+        for text in agent_list:
+            dt = np.zeros((500, 500, 3), dtype=int)
+            img = Image.fromarray(np.uint8(dt))
+            ImageDraw.Draw(img).text((0, 0), text, (255, 255, 255), font=font)
+            img = np.array(img)
+
+            x0 = 0
+            while (img[:, x0] == 0).all():
+                x0 += 1
+            x1 = img.shape[1]
+            while (img[:, x1-1] == 0).all():
+                x1 -= 1
+            y0 = 0
+            while (img[y0, x0:x1] == 0).all():
+                y0 += 1
+            y1 = img.shape[0]
+            while (img[y1-1, x0:x1] == 0).all():
+                y1 -= 1
+
+            agent_ahash[text] = str(imagehash.average_hash(
+                Image.fromarray(img[y0:y1, x0:x1]), 16))
 
 
 def get_poly(x1, x2, y1, y2):
@@ -425,6 +455,67 @@ def agent(im, draw=False):
         #     plt.imshow(im)
         #     plt.show()
 
+        def ahash_recog(img):
+            agent_ahash_init()
+            h, w = img.shape
+            dt = np.zeros((h, w), dtype=np.uint8)
+            for y in range(h):
+                for x in range(w-1, -1, -1):
+                    if img[y, x] != 0:
+                        dt[y, x] = 1
+                    else:
+                        break
+            for x in range(w):
+                for y in range(h):
+                    if img[y, x] != 0:
+                        dt[y, x] = 1
+                    else:
+                        break
+                for y in range(h-1, -1, -1):
+                    if img[y, x] != 0:
+                        dt[y, x] = 1
+                    else:
+                        break
+            while True:
+                pre_count = (dt > 0).sum()
+                for x in range(1, w):
+                    dt[:, x][(dt[:, x-1] > 0) & (img[:, x] > 0)] = 1
+                for y in range(h-2, -1, -1):
+                    dt[y][(dt[y+1] > 0) & (img[y] > 0)] = 1
+                for x in range(w-2, -1, -1):
+                    dt[:, x][(dt[:, x+1] > 0) & (img[:, x] > 0)] = 1
+                for y in range(1, h):
+                    dt[y][(dt[y-1] > 0) & (img[y] > 0)] = 1
+                if pre_count == (dt > 0).sum():
+                    break
+            if (dt > 0).sum() == 0:
+                return None
+            img[dt > 0] = 0
+            x0 = 0
+            while (img[:, x0] == 0).all():
+                x0 += 1
+            x1 = w
+            while (img[:, x1-1] == 0).all():
+                x1 -= 1
+            y0 = 0
+            while (img[y0, x0:x1] == 0).all():
+                y0 += 1
+            y1 = h
+            while (img[y1-1, x0:x1] == 0).all():
+                y1 -= 1
+            dt = np.zeros((y1-y0, x1-x0, 3), dtype=np.uint8)
+            dt[:, :, 0] = img[y0:y1, x0:x1]
+            dt[:, :, 1] = img[y0:y1, x0:x1]
+            dt[:, :, 2] = img[y0:y1, x0:x1]
+            ahash = str(imagehash.average_hash(Image.fromarray(dt), 16))
+            p = [(bin(int(ahash, 16) ^ int(agent_ahash[x], 16)).count('1'), x) for x in agent_ahash.keys()]
+            p = sorted(p)
+            logger.debug(p[:10])
+            if p[1][0] - p[0][0] >= 10:
+                logger.debug(p[0][1])
+                return p[0][1]
+            return None
+
         ret_succ = []
         ret_fail = []
         ret_agent = []
@@ -442,30 +533,32 @@ def agent(im, draw=False):
                     ret_agent.append(x[1])
                     ret_succ.append(poly)
                     continue
-                res = ocrhandle.predict(margin(im[poly[0, 1]-20:poly[2, 1]+20, poly[0, 0]-20:poly[2, 0]+20], 70))
+                res = ocrhandle.predict(
+                    margin(im[poly[0, 1]-20:poly[2, 1]+20, poly[0, 0]-20:poly[2, 0]+20], 70))
                 if len(res) > 0 and res[0][1] in agent_list:
                     x = res[0]
                     ret_agent.append(x[1])
                     ret_succ.append(poly)
                     continue
-                res = match.match(margin(rgb2gray(im[poly[0, 1]:poly[2, 1], poly[0, 0]:poly[2, 0]]), 70), judge=False)
+                res = ahash_recog(rgb2gray(margin(im[poly[0, 1]:poly[2, 1], poly[0, 0]:poly[2, 0]], 70)))
                 if res is not None:
-                    res = agent_list[(res[0][1]+res[1][1]) // 2 // 50 * 10 + res[1][0] // 200]
-                    logger.warning(f'干员名称识别异常：{x[1]} 应为 {res}，请报告至 https://github.com/Konano/arknights-mower/issues')
+                    logger.warning(
+                        f'干员名称识别异常：{x[1]} 应为 {res}，请报告至 https://github.com/Konano/arknights-mower/issues')
                     ret_agent.append(res)
                     ret_succ.append(poly)
                     continue
-                logger.warning(f'干员名称识别异常：{x[1]} 为不存在的数据，请报告至 https://github.com/Konano/arknights-mower/issues')
+                logger.warning(
+                    f'干员名称识别异常：{x[1]} 为不存在的数据，请报告至 https://github.com/Konano/arknights-mower/issues')
             else:
-                res = ocrhandle.predict(margin(im[poly[0, 1]-20:poly[2, 1]+20, poly[0, 0]-20:poly[2, 0]+20], 70))
+                res = ocrhandle.predict(
+                    margin(im[poly[0, 1]-20:poly[2, 1]+20, poly[0, 0]-20:poly[2, 0]+20], 70))
                 if len(res) > 0 and res[0][1] in agent_list:
                     res = res[0][1]
                     ret_agent.append(res)
                     ret_succ.append(poly)
                     continue
-                res = match.match(margin(rgb2gray(im[poly[0, 1]:poly[2, 1], poly[0, 0]:poly[2, 0]]), 70), judge=False)
+                res = ahash_recog(rgb2gray(margin(im[poly[0, 1]:poly[2, 1], poly[0, 0]:poly[2, 0]], 70)))
                 if res is not None:
-                    res = agent_list[(res[0][1]+res[1][1]) // 2 // 50 * 10 + res[1][0] // 200]
                     ret_agent.append(res)
                     ret_succ.append(poly)
                     continue
@@ -476,9 +569,9 @@ def agent(im, draw=False):
             plt.imshow(im)
             plt.show()
 
-        logger.debug(ret_agent)
+        logger.debug(f'segment.agent: {ret_agent}')
         logger.debug(f'segment.agent: {[x.tolist() for x in ret]}')
-        return ret
+        return ret, ret_agent
 
     except Exception as e:
         logger.debug(traceback.format_exc())
