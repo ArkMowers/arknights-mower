@@ -1,3 +1,4 @@
+from typing import Match
 import cv2
 import traceback
 import numpy as np
@@ -6,6 +7,14 @@ from matplotlib import pyplot as plt
 from .log import logger
 from .recognize import RecognizeError
 from ..data.base import base_room_list
+from ..data.agent import agent_list
+from ..ocr import ocr_amend, ocrhandle, ocronline
+from .matcher import Matcher
+from .image import loadimg, rgb2gray, margin
+from ..__init__ import __rootdir__
+
+
+match = Matcher(loadimg(f'{__rootdir__}/resources/agents.png'))
 
 
 def get_poly(x1, x2, y1, y2):
@@ -84,7 +93,7 @@ def credit(im, draw=False):
             plt.imshow(im)
             plt.show()
 
-        logger.debug(f'segment.credit: {ret}')
+        logger.debug(f'segment.credit: {[x.tolist() for x in ret]}')
         return ret
 
     except Exception as e:
@@ -171,7 +180,7 @@ def recruit(im, draw=False):
             plt.imshow(im)
             plt.show()
 
-        logger.debug(f'segment.recruit: {ret}')
+        logger.debug(f'segment.recruit: {[x.tolist() for x in ret]}')
         return ret
 
     except Exception as e:
@@ -250,11 +259,12 @@ def base(im, central, draw=False):
             ret[f'room_{floor}_1'] = room
 
         if draw:
-            cv2.polylines(im, list(ret.values()), True, (255, 0, 0), 10, cv2.LINE_AA)
+            polys = list(ret.values())
+            cv2.polylines(im, polys, True, (255, 0, 0), 10, cv2.LINE_AA)
             plt.imshow(im)
             plt.show()
 
-        logger.debug(f'segment.base: {ret}')
+        logger.debug(f'segment.base: {[x.tolist() for x in ret]}')
         return ret
 
     except Exception as e:
@@ -319,7 +329,155 @@ def worker(im, draw=False):
             plt.imshow(im)
             plt.show()
 
-        logger.debug(f'segment.worker: {ret}')
+        logger.debug(f'segment.worker: {[x.tolist() for x in ret]}')
+        return ret
+
+    except Exception as e:
+        logger.debug(traceback.format_exc())
+        raise RecognizeError
+
+
+def agent(im, draw=False):
+    """
+    干员总览的图像分割算法
+    """
+    try:
+        h, w, _ = im.shape
+
+        # gray = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
+        # gray = 255 - gray
+
+        l, r = 0, w
+        while np.max(im[:, r-1]) < 100:
+            r -= 1
+        while np.max(im[:, l]) < 100:
+            l += 1
+
+        x0 = l + 1
+        while not (im[h-1, x0-1, 0] > im[h-1, x0, 0] + 10 and abs(int(im[h-1, x0, 0]) - int(im[h-1, x0+1, 0])) < 5):
+            x0 += 1
+
+        ocr = ocrhandle.predict(im[:, x0:r])
+
+        segs = [(min(x[2][0][1], x[2][1][1]), max(x[2][2][1], x[2][3][1]))
+                for x in ocr if x[1] in agent_list]
+        while True:
+            _a, _b = None, None
+            for i in range(len(segs)):
+                for j in range(len(segs)):
+                    if i != j and (segs[i][0] <= segs[j][0] <= segs[i][1] or segs[i][0] <= segs[j][1] <= segs[i][1]):
+                        _a, _b = segs[i], segs[j]
+                        break
+                if _b is not None:
+                    break
+            if _b is not None:
+                segs.remove(_a)
+                segs.remove(_b)
+                segs.append((min(_a[0], _b[0]), max(_a[1], _b[1])))
+            else:
+                break
+        segs = sorted(segs)
+        for x in segs:
+            if x[1] < h // 2:
+                y0, y1 = x
+            y2, y3 = x
+        card_gap = y1 - y0
+        logger.debug([y0, y1, y2, y3])
+
+        x_set = set()
+        for x in ocr:
+            if x[1] in agent_list and (y0 <= x[2][0][1] <= y1 or y2 <= x[2][0][1] <= y3):
+                x_set.add(x[2][1][0])
+                x_set.add(x[2][2][0])
+        x_set = sorted(x_set)
+        logger.debug(x_set)
+        x_set = [x_set[0]] + \
+            [y for x, y in zip(x_set[:-1], x_set[1:]) if y - x > 80]
+        gap = [y - x for x, y in zip(x_set[:-1], x_set[1:])]
+        gap = [x for x in gap if x - np.min(gap) < 40]
+        gap = int(np.average(gap))
+        for x, y in zip(x_set[:-1], x_set[1:]):
+            if y - x > 40:
+                gap_num = round((y - x) / gap)
+                for i in range(1, gap_num):
+                    x_set.append(int(x + (y - x) / gap_num * i))
+        while np.min(x_set) > 0:
+            x_set.append(np.min(x_set) - gap)
+        while np.max(x_set) < r - x0:
+            x_set.append(np.max(x_set) + gap)
+        x_set = sorted(x_set)
+        logger.debug(x_set)
+
+        ret = []
+        for x1, x2 in zip(x_set[:-1], x_set[1:]):
+            if 0 <= x1+card_gap and x0+x2+5 <= r:
+                ret += [get_poly(x0+x1+card_gap, x0+x2+5, y0, y1),
+                        get_poly(x0+x1+card_gap, x0+x2+5, y2, y3)]
+
+        def poly_center(poly):
+            return (np.average([x[0] for x in poly]), np.average([x[1] for x in poly]))
+
+        def in_poly(poly, p):
+            return poly[0, 0] <= p[0] <= poly[2, 0] and poly[0, 1] <= p[1] <= poly[2, 1]
+
+        # if draw:
+        #     cv2.polylines(im, ret, True, (255, 0, 0), 3, cv2.LINE_AA)
+        #     plt.imshow(im)
+        #     plt.show()
+
+        ret_succ = []
+        ret_fail = []
+        ret_agent = []
+        for poly in ret:
+            found_ocr, fx = None, 0
+            for x in ocr:
+                cx, cy = poly_center(x[2])
+                if in_poly(poly, (cx+x0, cy)) and cx > fx:
+                    fx = cx
+                    found_ocr = x
+
+            if found_ocr is not None:
+                x = found_ocr
+                if x[1] in agent_list:
+                    ret_agent.append(x[1])
+                    ret_succ.append(poly)
+                    continue
+                res = ocrhandle.predict(margin(im[poly[0, 1]-20:poly[2, 1]+20, poly[0, 0]-20:poly[2, 0]+20], 70))
+                if len(res) > 0 and res[0][1] in agent_list:
+                    x = res[0]
+                    ret_agent.append(x[1])
+                    ret_succ.append(poly)
+                    continue
+                res = match.match(margin(rgb2gray(im[poly[0, 1]:poly[2, 1], poly[0, 0]:poly[2, 0]]), 70), judge=False)
+                if res is not None:
+                    res = agent_list[(res[0][1]+res[1][1]) // 2 // 50 * 10 + res[1][0] // 200]
+                    logger.warning(f'干员名称识别异常：{x[1]} 应为 {res}，请报告至 https://github.com/Konano/arknights-mower/issues')
+                    ret_agent.append(res)
+                    ret_succ.append(poly)
+                    continue
+                logger.warning(f'干员名称识别异常：{x[1]} 为不存在的数据，请报告至 https://github.com/Konano/arknights-mower/issues')
+            else:
+                res = ocrhandle.predict(margin(im[poly[0, 1]-20:poly[2, 1]+20, poly[0, 0]-20:poly[2, 0]+20], 70))
+                if len(res) > 0 and res[0][1] in agent_list:
+                    res = res[0][1]
+                    ret_agent.append(res)
+                    ret_succ.append(poly)
+                    continue
+                res = match.match(margin(rgb2gray(im[poly[0, 1]:poly[2, 1], poly[0, 0]:poly[2, 0]]), 70), judge=False)
+                if res is not None:
+                    res = agent_list[(res[0][1]+res[1][1]) // 2 // 50 * 10 + res[1][0] // 200]
+                    ret_agent.append(res)
+                    ret_succ.append(poly)
+                    continue
+            ret_fail.append(poly)
+
+        if draw and len(ret_fail):
+            cv2.polylines(im, ret_fail, True, (255, 0, 0), 3, cv2.LINE_AA)
+            plt.imshow(im)
+            plt.show()
+
+        logger.debug(ret_agent)
+        logger.debug(f'segment.agent: {[x.tolist() for x in ret]}')
         return ret
 
     except Exception as e:
