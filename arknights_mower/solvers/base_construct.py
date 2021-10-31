@@ -277,7 +277,7 @@ class BaseConstructSolver(BaseSolver):
         logger.info('领取会客室线索')
         self.tap(((x0+x1)//2, (y0*5-y1)//4), interval=3)
         self.tap_element('clue_obtain', interval=3)
-        self.tap_element('nav_button', x_rate=0.2, interval=3)
+        self.back(interval=2)
 
         logger.info('放置线索')
         clue_unlock = self.find('clue_unlock')
@@ -307,8 +307,8 @@ class BaseConstructSolver(BaseSolver):
                 self.tap(clue_unlock)
 
         logger.info('返回基建主界面')
-        self.tap_element('nav_button', x_rate=0.2, interval=3)
-        self.tap_element('nav_button', x_rate=0.2, interval=3)
+        self.back(interval=2, matcher=False)
+        self.back(interval=2)
 
     def drone(self, room):
         logger.info('基建：无人机加速')
@@ -330,9 +330,8 @@ class BaseConstructSolver(BaseSolver):
         self.tap(accelerate, y_rate=1)
 
         logger.info('返回基建主界面')
-        nav_button = self.recog.nav_button()
-        self.tap(nav_button, x_rate=0.2, interval=3)
-        self.tap(nav_button, x_rate=0.2, interval=3)
+        self.back(interval=2, matcher=False)
+        self.back(interval=2)
 
 
     def run(self, clue_collect=False, drone_room=None):

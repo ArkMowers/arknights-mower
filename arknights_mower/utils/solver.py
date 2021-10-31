@@ -1,7 +1,7 @@
 import time
 
 from .log import logger
-from .adb import ADBConnector
+from .adb import ADBConnector, KeyCode
 from .config import APPNAME, MAX_RETRYTIME
 from .recognize import Recognizer, Scene, RecognizeError
 from . import detector
@@ -67,6 +67,10 @@ class BaseSolver:
         self.adb.touch_swipe(start, movement, duration=duration)
         if interval > 0:
             self.sleep(interval, matcher=matcher)
+
+    def back(self, interval=1, matcher=True):
+        self.adb.send_keyevent(KeyCode.KEYCODE_BACK)
+        self.sleep(interval=interval, matcher=matcher)
 
     def scene(self):
         return self.recog.get_scene()
