@@ -7,6 +7,7 @@ block_cipher = None
 a = Analysis(['main.py'],
              binaries=[],
              datas=[
+                ('arknights_mower/fonts', 'arknights_mower/__init__/fonts'),
                 ('arknights_mower/models', 'arknights_mower/__init__/models'),
                 ('arknights_mower/resources', 'arknights_mower/__init__/resources'),
                 ('venv64/Lib/site-packages/onnxruntime/capi/onnxruntime_providers_shared.dll', 'onnxruntime/capi/'),
