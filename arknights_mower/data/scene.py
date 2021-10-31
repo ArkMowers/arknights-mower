@@ -1,4 +1,4 @@
-scene_database = [
+scene_list = [
     [-1, 'UNKNOWN', '未知'],
     [0, 'UNDEFINED', '未定义'],
     [1, 'INDEX', '首页'],

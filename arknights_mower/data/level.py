@@ -1,4 +1,4 @@
-level_database = {
+level_list = {
     '0-1': {'zone_id': 'main_0', 'ap_cost': 6, 'code': '0-1', 'name': '坍塌'},
     '0-2': {'zone_id': 'main_0', 'ap_cost': 6, 'code': '0-2', 'name': '守卫'},
     '0-3': {'zone_id': 'main_0', 'ap_cost': 6, 'code': '0-3', 'name': '追击'},
@@ -292,7 +292,7 @@ level_database = {
     'DM-8': {'zone_id': 'act17d5_zone1', 'ap_cost': 18, 'code': 'DM-8', 'name': '离散'},
 }
 
-zone_database = {
+zone_list = {
     'main_0': ['黑暗时代·上', 0, 0, 0],
     'main_1': ['黑暗时代·下', 0, 0, 1],
     'main_2': ['异卵同生', 0, 0, 2],
@@ -322,13 +322,13 @@ zone_database = {
     'act6sre_zone1': ['密林悍将归来', 2, 4],
 }
 
-theme_database = [
+theme_list = [
     'HOUROFANAWAKENING',
     'SHATTEROFAVISION',
     'SHADOWOFADYINGSUN',
 ]
 
 weekly_zones = []
-for key in zone_database:
+for key in zone_list:
     if key[:6] == 'weekly':
-        weekly_zones.append(zone_database[key][0])
+        weekly_zones.append(zone_list[key][0])

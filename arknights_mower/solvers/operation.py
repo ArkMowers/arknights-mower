@@ -8,7 +8,7 @@ from ..utils.log import logger
 from ..utils.config import MAX_RETRYTIME
 from ..utils.recognize import Scene, RecognizeError
 from ..utils.solver import BaseSolver, StrategyError
-from ..data.level import level_database, zone_database, theme_database, weekly_zones
+from ..data.level import level_list, zone_list, theme_list, weekly_zones
 
 
 class LevelUnopenError(Exception):
@@ -41,11 +41,11 @@ class OpeSolver(BaseSolver):
             return
         if plan is not None:
             for x in plan:
-                if x[0] not in level_database.keys() or level_database[x[0]]['ap_cost'] == 0:
+                if x[0] not in level_list.keys() or level_list[x[0]]['ap_cost'] == 0:
                     logger.error(f'不支持关卡 {x[0]}，请重新指定')
                     return
         if level is not None:
-            if level not in level_database.keys() or level_database[level]['ap_cost'] == 0:
+            if level not in level_list.keys() or level_list[level]['ap_cost'] == 0:
                 logger.error(f'不支持关卡 {level}，请重新指定')
                 return
             plan = [[level, times]]
@@ -213,8 +213,8 @@ class OpeSolver(BaseSolver):
             self.tap_element('terminal_pre')
             return
 
-        zone = level_database[level]['zone_id']
-        zone = zone_database[zone]
+        zone = level_list[level]['zone_id']
+        zone = zone_list[zone]
         logger.info(f'关卡：{level}')
         logger.info(f'章节：{zone[0]}')
 
@@ -230,11 +230,11 @@ class OpeSolver(BaseSolver):
                 act_id = -1
                 for x in ocr:
                     if zone[2] < _act_id:
-                        if x[1].upper().replace(' ', '') == theme_database[_act_id-1]:
+                        if x[1].upper().replace(' ', '') == theme_list[_act_id-1]:
                             self.tap(x[2])
                             break
                     else:
-                        if x[1].upper().replace(' ', '') == theme_database[_act_id+1]:
+                        if x[1].upper().replace(' ', '') == theme_list[_act_id+1]:
                             self.tap(x[2])
                             break
                 ocr = ocrhandle.predict(
@@ -243,7 +243,7 @@ class OpeSolver(BaseSolver):
                     if x[1][:7].upper() == 'EPISODE' and len(x[1]) == 9:
                         try:
                             episode = int(x[1][-2:])
-                            act_id = zone_database[f'main_{episode}'][2]
+                            act_id = zone_list[f'main_{episode}'][2]
                             break
                         except:
                             raise RecognizeError
@@ -315,7 +315,7 @@ class OpeSolver(BaseSolver):
 
         ocr = ocrhandle.predict(self.recog.img)
         ocr = list(
-            filter(lambda x: x[1] in level_database.keys(), ocr))
+            filter(lambda x: x[1] in level_list.keys(), ocr))
         levels = sorted([x[1] for x in ocr])
         retry_times = 3
         while level not in levels:
@@ -324,7 +324,7 @@ class OpeSolver(BaseSolver):
                        (self.recog.w // 16, 0))
             ocr = ocrhandle.predict(self.recog.img)
             ocr = list(
-                filter(lambda x: x[1] in level_database.keys(), ocr))
+                filter(lambda x: x[1] in level_list.keys(), ocr))
             levels = sorted([x[1] for x in ocr])
             if _levels == levels:
                 retry_times -= 1
@@ -339,7 +339,7 @@ class OpeSolver(BaseSolver):
                        (-self.recog.w // 16, 0))
             ocr = ocrhandle.predict(self.recog.img)
             ocr = list(
-                filter(lambda x: x[1] in level_database.keys(), ocr))
+                filter(lambda x: x[1] in level_list.keys(), ocr))
             levels = sorted([x[1] for x in ocr])
             if _levels == levels:
                 retry_times -= 1
