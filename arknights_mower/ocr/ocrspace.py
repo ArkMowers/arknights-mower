@@ -6,6 +6,7 @@ import requests
 
 from ..utils.log import logger
 from ..utils.recognize import RecognizeError
+from .utils import fix
 
 
 class Language:
@@ -40,7 +41,7 @@ class API:
         self,
         endpoint='https://api.ocr.space/parse/image',
         api_key='helloworld',
-        language=Language.English,
+        language=Language.Chinese_Simplified,
         **kwargs,
     ):
         """
@@ -49,7 +50,7 @@ class API:
         :param language: document language
         :param **kwargs: other settings to API
         """
-        self.timeout = (5, 30)
+        self.timeout = (5, 10)
         self.endpoint = endpoint
         self.payload = {
             'isOverlayRequired': True,
@@ -64,6 +65,8 @@ class API:
             raise RecognizeError(raw)
         if raw['IsErroredOnProcessing']:
             raise RecognizeError(raw['ErrorMessage'][0])
+        if raw['ParsedResults'][0].get('TextOverlay') is None:
+            raise RecognizeError('No Result')
         # ret = []
         # for x in raw['ParsedResults'][0]['TextOverlay']['Lines']:
         #     left, right, up, down = 1e30, 0, 1e30, 0
@@ -127,27 +130,32 @@ class API:
         data['base64Image'] = 'data:image/jpg;base64,' + \
             base64.b64encode(cv2.imencode('.jpg', image)[1].tobytes()).decode()
 
-        retry_times = 3
+        retry_times = 1
+        while True:
+            try:
+                r = requests.post(
+                    self.endpoint,
+                    data=data,
+                    timeout=self.timeout,
+                )
+                break
+            except Exception as e:
+                logger.warning(e)
+                logger.debug(traceback.format_exc())
+                retry_times -= 1
+                if retry_times > 0:
+                    logger.warning('重试中……')
+                else:
+                    logger.warning('无网络或网络故障，无法连接到 OCR Space')
+                    return []
         try:
-            r = requests.post(
-                self.endpoint,
-                data=data,
-                timeout=self.timeout,
-            )
+            return self._parse(r.json())
         except Exception as e:
-            logger.warning(e)
-            logger.debug(traceback.format_exc())
-            retry_times -= 1
-            if retry_times > 0:
-                logger.warning('重试中……')
-            else:
-                logger.warning('无网络或网络故障，无法连接到 OCR Space')
-                return []
+            logger.debug(e)
+            return []
 
-        return self._parse(r.json())
-
-    def repredict(self, image, scope):
-        ret = self.ocr_image(image[scope[0][1]:scope[2][1], scope[0][0]:scope[1][0]])
+    def predict(self, image, scope):
+        ret = self.ocr_image(image[scope[0][1]:scope[2][1], scope[0][0]:scope[2][0]])
         if len(ret) == 0:
             return None
-        return ret[0]
+        return fix(ret[0])

@@ -1,5 +1,9 @@
 from PIL import Image
 import numpy as np
+import re
+
+from ..data.ocr import ocr_error
+from ..utils.log import logger
 
 
 class resizeNormalize(object):
@@ -50,3 +54,11 @@ class strLabelConverter(object):
                 if t[i] != 0 and (not (i > 0 and t[i - 1] == t[i])):
                     char_list.append(self.alphabet[t[i] - 1])
             return ''.join(char_list)
+
+
+def fix(s):
+    s = re.sub(r'[。？！，、；：“”‘’（）《》〈〉【】『』「」﹃﹄〔〕…～﹏￥－＿]', '', s)
+    if s in ocr_error.keys():
+        logger.debug(f'fix with ocr_error: {s} -> {ocr_error[s]}')
+        s = ocr_error[s]
+    return s

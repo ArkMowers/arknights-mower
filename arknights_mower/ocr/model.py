@@ -7,6 +7,7 @@ from PIL import Image
 from .config import dbnet_model_path, crnn_model_path
 from .dbnet import DBNET
 from .crnn import CRNNHandle
+from .utils import fix
 from ..utils.log import logger
 from ..data.ocr import ocr_error
 
@@ -96,8 +97,7 @@ class OcrHandle(object):
         boxes_list, score_list = self.text_handle.process(img, short_size)
         result = self.crnnRecWithBox(img, boxes_list, score_list, is_rgb)
         for i in range(len(result)):
-            if result[i][1] in ocr_error.keys():
-                result[i][1] = ocr_error[result[i][1]]
+            result[i][1] = fix(result[i][1])
         logger.debug(result)
         return result
 

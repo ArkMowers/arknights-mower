@@ -12,7 +12,7 @@ def ocr_amend(img, pre, dataset, text=''):
     logger.warning(f'{text}识别异常：正在调用在线识别处理异常结果……')
     pre_res = pre[1]
     res = ocronline.predict(img, pre[2])
-    if res is None:
+    if res is None or res == pre_res:
         logger.warning(
             f'{text}识别异常：{pre_res} 为不存在的数据，请报告至 https://github.com/Konano/arknights-mower/issues')
     elif res not in dataset:

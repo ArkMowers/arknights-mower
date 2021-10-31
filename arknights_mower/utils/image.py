@@ -11,11 +11,27 @@ def bytes2img(data, gray=False):
         return cv2.cvtColor(cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
 
 
-def loadimg(filename):
+def loadimg(filename, gray=True):
     logger.debug(filename)
-    return cv2.imread(filename, cv2.IMREAD_GRAYSCALE)
+    if gray:
+        return cv2.imread(filename, cv2.IMREAD_GRAYSCALE)
+    else:
+        return cv2.cvtColor(cv2.imread(filename, cv2.IMREAD_GRAYSCALE), cv2.COLOR_BGR2RGB)
 
 
 def threshole(img, thresh):
     _, ret = cv2.threshold(img, thresh, 255, cv2.THRESH_BINARY)
     return ret
+
+
+def margin(img, thresh):
+    ret = img.copy()
+    if len(ret.shape) == 3:
+        ret[rgb2gray(img) <= thresh] = 0
+    else:
+        ret[ret <= thresh] = 0
+    return ret
+
+
+def rgb2gray(img):
+    return cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
