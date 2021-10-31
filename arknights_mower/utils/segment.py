@@ -3,8 +3,9 @@ import traceback
 import numpy as np
 from matplotlib import pyplot as plt
 
-from .recognize import RecognizeError
 from .log import logger
+from .recognize import RecognizeError
+from ..data.base import base_room_list
 
 
 def get_poly(x1, x2, y1, y2):
@@ -253,7 +254,72 @@ def base(im, central, draw=False):
             plt.imshow(im)
             plt.show()
 
-        logger.debug(f'segment.recruit: {ret}')
+        logger.debug(f'segment.base: {ret}')
+        return ret
+
+    except Exception as e:
+        logger.debug(traceback.format_exc())
+        raise RecognizeError
+
+
+def worker(im, draw=False):
+    """
+    进驻总览的图像分割算法
+    """
+    try:
+        h, w, _ = im.shape
+
+        l, r = 0, w
+        while np.max(im[:, r-1]) < 100:
+            r -= 1
+        while np.max(im[:, l]) < 100:
+            l += 1
+
+        x0 = r-1
+        while np.average(im[:, x0]) >= 100:
+            x0 -= 1
+        x0 -= 2
+
+        seg = []
+        pre, st = int(im[0, x0, 0]), 0
+        for y in range(1, h):
+            if np.ptp(im[y, x0]) <= 1:
+                now = int(im[y, x0, 0])
+                if abs(now - pre) > 20:
+                    if now < pre and st == 0:
+                        st = y
+                    elif now > pre and st != 0:
+                        seg.append((st, y))
+                        st = 0
+                pre = now
+            elif st != 0:
+                seg.append((st, y))
+                st = 0
+        # if st != 0:
+        #     seg.append((st, h))
+        logger.debug(seg)
+
+        remove_button = seg[0]
+        seg = seg[1:]
+
+        for i in range(1, len(seg)):
+            if seg[i][1] - seg[i][0] > 9:
+                x1 = x0
+                while im[seg[i][1]-1, x1-1, 2] < 100:
+                    x1 -= 1
+                break
+
+        ret = []
+        for i in range(1, len(seg)):
+            if seg[i][1] - seg[i][0] > 9:
+                ret.append(get_poly(x1, x0, seg[i][0], seg[i][1]))
+
+        if draw:
+            cv2.polylines(im, ret, True, (255, 0, 0), 10, cv2.LINE_AA)
+            plt.imshow(im)
+            plt.show()
+
+        logger.debug(f'segment.worker: {ret}')
         return ret
 
     except Exception as e:
