@@ -27,7 +27,14 @@ def threshole(img, thresh):
 def margin(img, thresh):
     ret = img.copy()
     if len(ret.shape) == 3:
-        ret[rgb2gray(img) <= thresh] = 0
+        # ret[rgb2gray(img) <= thresh] = 0
+        z0 = ret[:,:,0]
+        z1 = ret[:,:,1]
+        z2 = ret[:,:,2]
+        _ = (z0 <= thresh) | (z1 <= thresh) | (z2 <= thresh)
+        z0[_] = 0
+        z1[_] = 0
+        z2[_] = 0
     else:
         ret[ret <= thresh] = 0
     return ret
