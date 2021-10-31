@@ -4,7 +4,6 @@ import numpy
 import base64
 import requests
 
-from ..data.ocr import ocr_error
 from ..utils.log import logger
 from ..utils.recognize import RecognizeError
 
@@ -147,10 +146,8 @@ class API:
 
         return self._parse(r.json())
 
-    def repredict(self, image, pre, scope):
+    def repredict(self, image, scope):
         ret = self.ocr_image(image[scope[0][1]:scope[2][1], scope[0][0]:scope[1][0]])
         if len(ret) == 0:
             return None
-        if pre != ret[0]:
-            ocr_error[pre] = ret[0]
         return ret[0]

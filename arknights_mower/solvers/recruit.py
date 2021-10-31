@@ -1,6 +1,6 @@
 import traceback
 
-from ..ocr import ocrhandle, ocronline
+from ..ocr import ocrhandle, ocr_amend
 from ..utils import segment
 from ..utils.log import logger
 from ..utils.config import MAX_RETRYTIME
@@ -56,18 +56,7 @@ class RecruitSolver(BaseSolver):
                         ocr = ocrhandle.predict(img)
                         for x in ocr:
                             if x[1] not in recruit_tag:
-                                logger.warning(f'公招识别异常：正在调用在线识别处理异常结果……')
-                                _x = ocronline.repredict(img, x[1], x[2])
-                                if _x is None:
-                                    logger.warning(
-                                        f'公招识别异常：{x[1]} 为不存在的标签，请报告至 https://github.com/Konano/arknights-mower/issues')
-                                elif _x not in recruit_tag:
-                                    logger.warning(
-                                        f'公招识别异常：{x[1]} 和 {_x} 均为不存在的标签，请报告至 https://github.com/Konano/arknights-mower/issues')
-                                else:
-                                    logger.warning(
-                                        f'公招识别异常：{x[1]} 应为 {_x}，请报告至 https://github.com/Konano/arknights-mower/issues')
-                                    x[1] = _x
+                                x[1] = ocr_amend(img, x, recruit_tag, '公招标签')
                         tags = [x[1] for x in ocr]
                         logger.info(f'公招标签：{tags}')
                         choose, maxlevel = self.recruit_choose(tags, priority)
@@ -95,15 +84,18 @@ class RecruitSolver(BaseSolver):
                     for x in ocr:
                         if x[1][-3:] == '的信物':
                             agent = x[1][:-3]
+                            agent_ocr = x
                             break
                     if agent is None:
                         logger.warning('未能识别到干员名称')
-                    elif agent not in recruit_agent.keys():
-                        logger.warning(f'干员识别异常：{agent} 为不存在的干员，请报告至 https://github.com/Konano/arknights-mower/issues')
-                    elif recruit_agent[agent][1] < 5:
-                        logger.info(f'获得干员：{agent}')
                     else:
-                        logger.critical(f'获得干员：{agent}')
+                        if agent not in recruit_agent.keys():
+                            agent = ocr_amend(img, agent_ocr, [x+'的信物' for x in recruit_agent.keys()], '干员名称')[:-3]
+                        if agent in recruit_agent.keys():
+                            if recruit_agent[agent][1] < 5:
+                                logger.info(f'获得干员：{agent}')
+                            else:
+                                logger.critical(f'获得干员：{agent}')
                     self.tap((self.recog.w // 2, self.recog.h // 2))
                 elif self.scene() == Scene.MATERIEL:
                     self.tap_element('materiel_ico')
