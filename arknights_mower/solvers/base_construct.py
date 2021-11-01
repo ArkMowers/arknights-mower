@@ -267,6 +267,8 @@ class BaseConstructSolver(BaseSolver):
         self.tap(room[0], interval=3, matcher=False)
         self.tap((111, self.recog.h-10), interval=3)
 
+        if self.find('clue_summary') is not None:
+            self.back()
         (x0, y0), (x1, y1) = self.find('clue_func')
 
         logger.info('接收赠送线索')
