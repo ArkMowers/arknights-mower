@@ -265,14 +265,14 @@ class BaseConstructSolver(BaseSolver):
             room[i, 1] = min(room[i, 1], self.recog.h)
 
         self.tap(room[0], interval=3, matcher=False)
-        self.tap((10, self.recog.h-10), interval=3)
+        self.tap((111, self.recog.h-10), interval=3)
 
         (x0, y0), (x1, y1) = self.find('clue_func')
 
         logger.info('接收赠送线索')
         self.tap(((x0+x1)//2, (y0*3+y1)//4), interval=3, matcher=False)
         self.tap((self.recog.w-10, self.recog.h-10), interval=3, matcher=False)
-        self.tap((10, self.recog.h-10), interval=3, matcher=False)
+        self.tap((111, self.recog.h-10), interval=3, matcher=False)
 
         logger.info('领取会客室线索')
         self.tap(((x0+x1)//2, (y0*5-y1)//4), interval=3)
@@ -301,7 +301,7 @@ class BaseConstructSolver(BaseSolver):
                 logger.info(f'放置线索 {i}')
                 self.tap(((x1+x2)//2, y1+3), matcher=False)
 
-            self.tap((10, self.recog.h-10), interval=3, matcher=False)
+            self.tap((111, self.recog.h-10), interval=3, matcher=False)
 
             if get_all_clue and clue_unlock is not None:
                 self.tap(clue_unlock)
@@ -322,7 +322,7 @@ class BaseConstructSolver(BaseSolver):
             room[i,1] = min(room[i,1], self.recog.h)
 
         self.tap(room[0], interval=3, matcher=False)
-        self.tap((10, self.recog.h-10), interval=3)
+        self.tap((111, self.recog.h-10), interval=3)
 
         accelerate = self.find('factory_accelerate')
         self.tap(accelerate)
@@ -383,7 +383,7 @@ class BaseConstructSolver(BaseSolver):
                         self.tap(factory)
                         tapped = True
                     if not tapped:
-                        self.tap((10, self.recog.h-10))
+                        self.tap((111, self.recog.h-10))
                         todo_task = False
                 elif self.scene() == Scene.LOADING:
                     self.sleep(3)
