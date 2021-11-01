@@ -60,7 +60,7 @@ class RecruitSolver(BaseSolver):
                         tags = [x[1] for x in ocr]
                         logger.info(f'公招标签：{tags}')
                         choose, maxlevel = self.recruit_choose(tags, priority)
-                        if maxlevel[0] < 4:
+                        if maxlevel[0] < 4 and maxlevel[1] < 7:
                             if self.tap_element('recruit_refresh', detected=True):
                                 self.tap_element('double_confirm', 0.8, interval=3, judge=False)
                                 continue
@@ -74,7 +74,8 @@ class RecruitSolver(BaseSolver):
                         if (color[2] < 100) != (x[1] not in choose):
                             self.adb.touch_tap(
                                 (left+x[2][0][0]-5, up+x[2][0][1]-5))
-                    self.tap_element('one_hour', 0.2, 0.8, 0)
+                    if maxlevel[1] < 7:
+                        self.tap_element('one_hour', 0.2, 0.8, 0)
                     self.tap((avail_level[1][0], budget[0][1]), interval=5)
                 elif self.scene() == Scene.SKIP:
                     self.tap_element('skip')
@@ -92,7 +93,7 @@ class RecruitSolver(BaseSolver):
                         if agent not in recruit_agent.keys():
                             agent = ocr_amend(img, agent_ocr, [x+'的信物' for x in recruit_agent.keys()], '干员名称')[:-3]
                         if agent in recruit_agent.keys():
-                            if recruit_agent[agent][1] < 5:
+                            if 2 <= recruit_agent[agent][1] <= 4:
                                 logger.info(f'获得干员：{agent}')
                             else:
                                 logger.critical(f'获得干员：{agent}')
@@ -128,7 +129,8 @@ class RecruitSolver(BaseSolver):
             if x[1] == 6 and '高级资深干员' not in tags:
                 continue
             if x[1] < 3:
-                continue
+                if x[1] != 1 or x[0] not in priority:
+                    continue
             valid = 0
             if x[1] == 6:
                 if '高级资深干员' in tags:
@@ -148,8 +150,13 @@ class RecruitSolver(BaseSolver):
                         weight += 0.9 * \
                             (1 - priority.index(x[0]) / len(priority))
                     possibility[o][0] = max(possibility[o][0], weight)
-                    possibility[o][1] = min(possibility[o][1], weight)
+                    if x[1] != 1:
+                        possibility[o][1] = min(possibility[o][1], weight)
                     possibility[o][-1].append(x[0])
+        level1 = None
+        for o in possibility.keys():
+            if possibility[o][1] == 7:
+                level1 = o
         maxlevel = [0, 0]
         maxlevel_choose = 0
         for o in possibility.keys():
@@ -158,6 +165,9 @@ class RecruitSolver(BaseSolver):
             if maxlevel < possibility[o][:2]:
                 maxlevel = possibility[o][:2]
                 maxlevel_choose = o
+        if maxlevel[0] < 5 and level1 is not None:
+            maxlevel = possibility[level1][:2]
+            maxlevel_choose = level1
         logger.debug(possibility)
         logger.debug(maxlevel_choose)
         choose = []
@@ -165,38 +175,3 @@ class RecruitSolver(BaseSolver):
             if maxlevel_choose & (1 << i):
                 choose.append(tags[i])
         return choose, maxlevel
-
-    def recruit_choose_level1(self, tags, priority):
-        if priority is None:
-            priority = ['Lancet-2', 'Castle-3', 'THRM-EX']
-        possibility = []
-        for x in recruit_database:
-            if x[1] != 1 or x[0] not in priority:
-                continue
-            valid = 0
-            for tag in x[2]:
-                if tag in tags:
-                    valid |= (1 << tags.index(tag))
-            for o in range(1, 1 << 5):
-                if o & valid == o:
-                    if o not in possibility:
-                        possibility.append(o)
-        for x in recruit_database:
-            if x[1] > 4:
-                continue
-            valid = 0
-            for tag in x[2]:
-                if tag in tags:
-                    valid |= (1 << tags.index(tag))
-            for o in range(1, 1 << 5):
-                if o & valid == o:
-                    if o in possibility:
-                        possibility.remove(o)
-        logger.debug(possibility)
-        if len(possibility) == 0:
-            return []
-        choose = []
-        for i in range(len(tags)):
-            if possibility[0] & (1 << i):
-                choose.append(tags[i])
-        return choose
