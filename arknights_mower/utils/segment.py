@@ -9,6 +9,7 @@ from .log import logger
 from .recognize import RecognizeError
 from ..data.base import base_room_list
 from ..data.agent import agent_list
+from ..data.ocr import ocr_error
 from ..ocr import ocr_amend, ocrhandle, ocronline
 from .matcher import Matcher
 from .image import loadimg, rgb2gray, margin
@@ -339,7 +340,7 @@ def worker(im, draw=False):
         #     seg.append((st, h))
         logger.debug(seg)
 
-        remove_button = seg[0]
+        remove_button = get_poly(x0-10, x0, seg[0][0], seg[0][1])
         seg = seg[1:]
 
         for i in range(1, len(seg)):
@@ -350,7 +351,7 @@ def worker(im, draw=False):
                 break
 
         ret = []
-        for i in range(1, len(seg)):
+        for i in range(len(seg)):
             if seg[i][1] - seg[i][0] > 9:
                 ret.append(get_poly(x1, x0, seg[i][0], seg[i][1]))
 
@@ -360,7 +361,7 @@ def worker(im, draw=False):
             plt.show()
 
         logger.debug(f'segment.worker: {[x.tolist() for x in ret]}')
-        return ret
+        return ret, remove_button
 
     except Exception as e:
         logger.debug(traceback.format_exc())
@@ -488,9 +489,9 @@ def agent(im, draw=False):
                     dt[y][(dt[y-1] > 0) & (img[y] > 0)] = 1
                 if pre_count == (dt > 0).sum():
                     break
-            if (dt > 0).sum() == 0:
-                return None
             img[dt > 0] = 0
+            if (img > 0).sum() == 0:
+                return None
             x0 = 0
             while (img[:, x0] == 0).all():
                 x0 += 1
@@ -540,10 +541,10 @@ def agent(im, draw=False):
                     ret_agent.append(x[1])
                     ret_succ.append(poly)
                     continue
-                res = ahash_recog(rgb2gray(margin(im[poly[0, 1]:poly[2, 1], poly[0, 0]:poly[2, 0]], 70)))
+                res = ahash_recog(rgb2gray(margin(im[poly[0, 1]:poly[2, 1], poly[0, 0]:poly[2, 0]], 75)))
                 if res is not None:
-                    logger.warning(
-                        f'干员名称识别异常：{x[1]} 应为 {res}，请报告至 https://github.com/Konano/arknights-mower/issues')
+                    logger.warning(f'干员名称识别异常：{x[1]} 应为 {res}')
+                    ocr_error[x[1]] = res
                     ret_agent.append(res)
                     ret_succ.append(poly)
                     continue
@@ -557,11 +558,12 @@ def agent(im, draw=False):
                     ret_agent.append(res)
                     ret_succ.append(poly)
                     continue
-                res = ahash_recog(rgb2gray(margin(im[poly[0, 1]:poly[2, 1], poly[0, 0]:poly[2, 0]], 70)))
+                res = ahash_recog(rgb2gray(margin(im[poly[0, 1]:poly[2, 1], poly[0, 0]:poly[2, 0]], 75)))
                 if res is not None:
                     ret_agent.append(res)
                     ret_succ.append(poly)
                     continue
+                logger.warning(f'干员名称识别异常：区域 {poly}')
             ret_fail.append(poly)
 
         if draw and len(ret_fail):
@@ -571,7 +573,7 @@ def agent(im, draw=False):
 
         logger.debug(f'segment.agent: {ret_agent}')
         logger.debug(f'segment.agent: {[x.tolist() for x in ret]}')
-        return ret, ret_agent
+        return list(zip(ret_agent, ret_succ))
 
     except Exception as e:
         logger.debug(traceback.format_exc())
