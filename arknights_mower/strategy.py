@@ -9,12 +9,13 @@ class Solver():
         self.adb = adb if adb is not None else ADBConnector()
         self.recog = recog if recog is not None else Recognizer(self.adb)
 
-    def base(self, clue_collect=False, drone_room=None):
+    def base(self, clue_collect=False, drone_room=None, arrange=None):
         """
         :param clue_collect: bool, 是否收取线索
         :param drone_room: str, 是否使用无人机加速（仅支持制造站）
+        :param arrange: {room_name: [agent,...]}, 基建干员安排
         """
-        BaseConstructSolver(self.adb, self.recog).run(clue_collect, drone_room)
+        BaseConstructSolver(self.adb, self.recog).run(clue_collect, drone_room, arrange)
 
     def credit(self):
         CreditSolver(self.adb, self.recog).run()

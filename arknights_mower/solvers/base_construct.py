@@ -6,6 +6,7 @@ from ..utils.log import logger
 from ..utils.config import MAX_RETRYTIME
 from ..utils.recognize import Scene, RecognizeError
 from ..utils.solver import BaseSolver, StrategyError
+from ..data.base import base_room_list
 
 
 class BaseConstructSolver(BaseSolver):
@@ -318,10 +319,10 @@ class BaseConstructSolver(BaseSolver):
 
         room = base_room[room]
         for i in range(4):
-            room[i,0] = max(room[i,0], 0)
-            room[i,0] = min(room[i,0], self.recog.w)
-            room[i,1] = max(room[i,1], 0)
-            room[i,1] = min(room[i,1], self.recog.h)
+            room[i, 0] = max(room[i, 0], 0)
+            room[i, 0] = min(room[i, 0], self.recog.w)
+            room[i, 1] = max(room[i, 1], 0)
+            room[i, 1] = min(room[i, 1], self.recog.h)
 
         self.tap(room[0], interval=3, matcher=False)
         self.tap((111, self.recog.h-10), interval=3)
@@ -335,8 +336,115 @@ class BaseConstructSolver(BaseSolver):
         self.back(interval=2, matcher=False)
         self.back(interval=2)
 
+    def choose_agent(self, agent):
+        agent = set(agent)
 
-    def run(self, clue_collect=False, drone_room=None):
+        h, w = self.recog.h, self.recog.w
+        for _ in range(9):
+            self.swipe((w//2, h//2), (w//2, 0), interval=0)
+        self.swipe((w//2, h//2), (w//2, 0), interval=3, matcher=False)
+
+        checked = set()
+        while True:
+
+            while len(agent):
+                ret = segment.agent(self.recog.img)
+                ret_agent = set([x[0] for x in ret])
+                if len(checked) > 0 and len(checked & ret_agent) == 0:
+                    break
+                if len(ret_agent - checked) > 0:
+                    checked |= ret_agent
+                    for x in ret_agent & agent:
+                        for y in ret:
+                            if y[0] == x:
+                                self.tap((y[1][0]), matcher=False)
+                                break
+                        agent.remove(x)
+                    if len(agent) == 0:
+                        return
+                    st = ret[-7][1][0]
+                    ed = ret[0][1][0]
+                else:
+                    st = ret[-1][1][0]
+                    ed = ret[0][1][0]
+                self.swipe(st, (ed[0]-st[0], 0),
+                           duration=(st[0]-ed[0])*3, interval=0)
+                self.swipe(st, (0, st[0]-ed[0]),
+                           duration=500, matcher=False)
+
+            self.swipe((w//2, h//2), (w//2, 0), interval=3, matcher=False)
+
+    def arrange(self, plan):
+        self.tap_element('infra_overview', interval=2)
+
+        h, w = self.recog.h, self.recog.w
+        for _ in range(4):
+            self.swipe((w//2, h//2), (0, h//2), interval=0)
+        self.swipe((w//2, h//2), (0, h//2), matcher=False)
+
+        idx = 0
+        room_total = len(base_room_list)
+        while idx < room_total:
+            ret, switch = segment.worker(self.recog.img)
+
+            if room_total-idx < len(ret):
+                ret = ret[-(room_total-idx):]
+
+            self.tap((switch[0][0]+5, switch[0][1]+5), matcher=False)
+            for block in ret:
+                if base_room_list[idx] in plan.keys():
+                    self.tap((block[2][0]-5, block[2][1]-5))
+                    dc = self.find('double_confirm')
+                    if dc is not None:
+                        self.tap(
+                            (dc[1][0], (dc[0][1]+dc[1][1]) // 2), matcher=False)
+                idx += 1
+            self.tap((switch[0][0]+5, switch[0][1]+5), matcher=False)
+
+            if idx == room_total:
+                break
+            block = ret[-1]
+            top = switch[2][1]
+            self.swipe(tuple(block[1]), (0, top-block[1][1]),
+                       duration=(block[1][1]-top)*3, interval=0)
+            self.swipe(tuple(block[1]), (block[2][0]-block[1][0], 0),
+                       duration=500, interval=3, matcher=False)
+
+        h, w = self.recog.h, self.recog.w
+        for _ in range(4):
+            self.swipe((w//2, h//2), (0, h//2), interval=0)
+        self.swipe((w//2, h//2), (0, h//2), matcher=False)
+
+        idx = 0
+        room_total = len(base_room_list)
+        while idx < room_total:
+            ret, switch = segment.worker(self.recog.img)
+
+            if room_total-idx < len(ret):
+                ret = ret[-(room_total-idx):]
+
+            for block in ret:
+                if base_room_list[idx] in plan.keys():
+                    self.tap(((7*block[0][0]+3*block[2][0])//10,
+                             (block[0][1]+block[2][1])//2), matcher=False)
+                    self.choose_agent(plan[base_room_list[idx]])
+                    self.recog.update()
+                    self.tap_element('comfirm_blue', detected=True,
+                                     judge=False, interval=3, matcher=False)
+                idx += 1
+
+            if idx == room_total:
+                break
+            block = ret[-1]
+            top = switch[2][1]
+            self.swipe(tuple(block[1]), (0, top-block[1][1]),
+                       duration=(block[1][1]-top)*3, interval=0)
+            self.swipe(tuple(block[1]), (block[2][0]-block[1][0], 0),
+                       duration=500, interval=3, matcher=False)
+
+        self.back()
+
+    def run(self, clue_collect=False, drone_room=None, arrange=None):
         """
         :param clue_collect: bool, 是否收取线索
         :param drone_room: str, 是否使用无人机加速（仅支持制造站）
@@ -350,10 +458,7 @@ class BaseConstructSolver(BaseSolver):
                 if self.scene() == Scene.INDEX:
                     self.tap_element('index_infrastructure')
                 elif self.scene() == Scene.INFRA_MAIN:
-                    if clue_collect:
-                        self.clue()
-                        clue_collect = False
-                    elif todo_task:
+                    if todo_task:
                         notification = detector.infra_notification(self.recog.img)
                         if notification is None:
                             self.sleep(1)
@@ -362,9 +467,15 @@ class BaseConstructSolver(BaseSolver):
                             self.tap(notification)
                         else:
                             todo_task = False
+                    elif clue_collect:
+                        self.clue()
+                        clue_collect = False
                     elif drone_room is not None:
                         self.drone(drone_room)
                         drone_room = None
+                    elif arrange is not None:
+                        self.arrange(arrange)
+                        arrange = None
                     else:
                         break
                 elif self.scene() == Scene.INFRA_TODOLIST:
