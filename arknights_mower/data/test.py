@@ -55,6 +55,7 @@ scene_test = [
     ['upgrade', Scene.UPGRADE],
     ['read_mail', Scene.MAIL],
     ['clue', Scene.INFRA_CONFIDENTIAL],
+    ['infra_overview_in', Scene.INFRA_ARRANGE],
 ]
 
 recog_test = [

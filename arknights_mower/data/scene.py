@@ -18,6 +18,7 @@ scene_list = [
     [201, 'INFRA_MAIN', '基建全局视角'],
     [202, 'INFRA_TODOLIST', '基建待办事项'],
     [203, 'INFRA_CONFIDENTIAL', '线索主界面'],
+    [204, 'INFRA_ARRANGE', '基建干员排班'],
     [301, 'FRIEND_LIST_OFF', '好友列表（未选中）'],
     [302, 'FRIEND_LIST_ON', '好友列表（选中）'],
     [303, 'FRIEND_VISITING', '基建内访问好友'],
