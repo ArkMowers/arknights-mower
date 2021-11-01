@@ -124,7 +124,7 @@ def credit(im, draw=False):
             plt.imshow(im)
             plt.show()
 
-        logger.debug(f'segment.credit: {[x.tolist() for x in ret]}')
+        logger.debug(f'segment.credit: {ret}')
         return ret
 
     except Exception as e:
@@ -211,7 +211,7 @@ def recruit(im, draw=False):
             plt.imshow(im)
             plt.show()
 
-        logger.debug(f'segment.recruit: {[x.tolist() for x in ret]}')
+        logger.debug(f'segment.recruit: {ret}')
         return ret
 
     except Exception as e:
@@ -295,7 +295,7 @@ def base(im, central, draw=False):
             plt.imshow(im)
             plt.show()
 
-        logger.debug(f'segment.base: {[x.tolist() for x in ret]}')
+        logger.debug(f'segment.base: {ret}')
         return ret
 
     except Exception as e:
