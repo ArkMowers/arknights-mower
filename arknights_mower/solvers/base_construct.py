@@ -345,13 +345,32 @@ class BaseConstructSolver(BaseSolver):
         self.swipe((w//2, h//2), (w//2, 0), interval=3, matcher=False)
 
         checked = set()
+        pre_ret = set()
+        error_count = 0
         while True:
 
             while len(agent):
-                ret = segment.agent(self.recog.img)
+                try:
+                    ret = segment.agent(self.recog.img)
+                except RecognizeError as e:
+                    logger.warning(e)
+                    error_count += 1
+                    if error_count < 5:
+                        self.sleep(3)
+                        continue
+                    raise e
                 ret_agent = set([x[0] for x in ret])
                 if len(checked) > 0 and len(checked & ret_agent) == 0:
                     break
+                if ret_agent == pre_ret:
+                    error_count += 1
+                    if error_count < 5:
+                        self.sleep(3)
+                        continue
+                    logger.warning(f'未找到干员：{list(agent)}')
+                    return
+                else:
+                    pre_ret = ret_agent
                 if len(ret_agent - checked) > 0:
                     checked |= ret_agent
                     for x in ret_agent & agent:
@@ -362,7 +381,7 @@ class BaseConstructSolver(BaseSolver):
                         agent.remove(x)
                     if len(agent) == 0:
                         return
-                    st = ret[-7][1][0]
+                    st = ret[-3][1][0]
                     ed = ret[0][1][0]
                 else:
                     st = ret[-1][1][0]
@@ -376,12 +395,14 @@ class BaseConstructSolver(BaseSolver):
 
     def arrange(self, plan):
         self.tap_element('infra_overview', interval=2)
+        logger.info('基建：排班')
 
         h, w = self.recog.h, self.recog.w
         for _ in range(4):
             self.swipe((w//2, h//2), (0, h//2), interval=0)
         self.swipe((w//2, h//2), (0, h//2), matcher=False)
 
+        logger.info('撤下干员中……')
         idx = 0
         room_total = len(base_room_list)
         while idx < room_total:
@@ -415,6 +436,7 @@ class BaseConstructSolver(BaseSolver):
             self.swipe((w//2, h//2), (0, h//2), interval=0)
         self.swipe((w//2, h//2), (0, h//2), matcher=False)
 
+        logger.info('安排干员工作……')
         idx = 0
         room_total = len(base_room_list)
         while idx < room_total:

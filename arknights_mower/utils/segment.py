@@ -541,7 +541,7 @@ def agent(im, draw=False):
                     ret_agent.append(x[1])
                     ret_succ.append(poly)
                     continue
-                res = ahash_recog(rgb2gray(margin(im[poly[0, 1]:poly[2, 1], poly[0, 0]:poly[2, 0]], 75)))
+                res = ahash_recog(rgb2gray(margin(im[poly[0, 1]:poly[2, 1], poly[0, 0]:poly[2, 0]], 80)))
                 if res is not None:
                     logger.warning(f'干员名称识别异常：{x[1]} 应为 {res}')
                     ocr_error[x[1]] = res
@@ -558,7 +558,7 @@ def agent(im, draw=False):
                     ret_agent.append(res)
                     ret_succ.append(poly)
                     continue
-                res = ahash_recog(rgb2gray(margin(im[poly[0, 1]:poly[2, 1], poly[0, 0]:poly[2, 0]], 75)))
+                res = ahash_recog(rgb2gray(margin(im[poly[0, 1]:poly[2, 1], poly[0, 0]:poly[2, 0]], 80)))
                 if res is not None:
                     ret_agent.append(res)
                     ret_succ.append(poly)
