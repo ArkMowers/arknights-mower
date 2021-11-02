@@ -222,7 +222,7 @@ plan = {
 Solver().base(arrange=plan)
 ```
 
-如果想使用定时运行等其他高级功能，可根据个人需求修改 [diy.py](https://github.com/Konano/arknights-mower/blob/main/diy.py)，具体见文件内说明。
+如果想使用定时运行等其他高级功能，可根据个人需求修改 [diy.py](https://github.com/Konano/arknights-mower/blob/main/diy.py) 并运行，具体见文件内注释说明。
 
 如果想添加其他的功能，你甚至可以创建一个继承 `BaseSolver` 的自定义类，通过现有接口实现自己的想法。
 
