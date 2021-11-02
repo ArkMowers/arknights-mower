@@ -28,12 +28,18 @@
 - 自动更换基建排班干员（命令行模式下不支持）
 - 支持游戏任意分辨率
 
+## 安装
+
+```bash
+pip3 install arknights-mower
+```
+
 ## 运行须知
 
 运行脚本需要安装 ADB。ADB 下载地址：
 
 - Windows: https://dl.google.com/android/repository/platform-tools-latest-windows.zip
-- Max: https://dl.google.com/android/repository/platform-tools-latest-darwin.zip
+- Mac: https://dl.google.com/android/repository/platform-tools-latest-darwin.zip
 - Linux: https://dl.google.com/android/repository/platform-tools-latest-linux.zip
 
 下载 ADB 后需要将 ADB 所在目录添加到环境变量中。请确认 `adb devices` 中列出了目标模拟器或设备：
@@ -46,42 +52,13 @@ emulator-5554   device
 ### 常见问题
 
 - 部分模拟器（如 MuMu、BlueStacks）需要自行启动 ADB server。
-- 部分模拟器（如 MuMu）不使用标准模拟器 ADB 端口，ADB server 无法自动探测，需要另行 `adb connect`。
+- 部分模拟器（如 MuMu）不使用标准模拟器 ADB 端口，ADB server 无法自动探测。
 - 部分模拟器（如夜神）会频繁使用自带的旧版本 ADB 挤掉用户自行启动的新版 ADB。
 - 部分非 VMM 模拟器（声称「不需要开启 VT」，如 MuMu 星云引擎）不提供 ADB 接口。
 
-## 脚本启动
+## 使用教程
 
-使用 pip 安装：
-
-```bash
-pip3 install arknights-mower
-```
-
-脚本可以在命令行模式下使用，具体例子如下：
-
-```
-arknights-mower operation
-# 重复刷上一次关卡，直到理智不足停止
-arknights-mower operation 99
-# 重复刷上一次关卡 99 次
-arknights-mower operation -r5
-# 重复刷上一次关卡，使用理智药自动回复理智，最多消耗 5 瓶（直到理智不足停止）
-arknights-mower operation -r
-# 重复刷上一次关卡，使用理智药自动回复理智，直到理智药用完为止
-arknights-mower operation 1-7 99 -R5
-# 重复刷 1-7 关卡 99 次，使用源石自动回复理智，最多消耗 5 颗
-arknights-mower operation GT-1 99 -r5 -R5
-# 重复刷 GT-1 关卡 99 次，使用理智药以及源石自动回复理智，最多消耗 5 瓶理智药和 5 颗源石
-arknights-mower recruit 因陀罗 火神
-# 公招自动化，优先选择保底星数高的组合，若有多种标签组合保底星数一致则优先选择包含优先级高的干员的组合，公招干员的优先级从高到低分别是因陀罗和火神
-arknights-mower shop 招聘许可 赤金 龙门币
-# 在商场使用信用点消费，购买物品的优先级从高到低分别是招聘许可、赤金和龙门币，其余物品不购买
-arknights-mower base -c -d33
-# 自动收取基建中的信赖/货物/订单，自动放置线索，自动前往地下 3 层 3 号房间使用无人机加速生产（暂且只支持制造站加速）
-```
-
-命令行模式下脚本使用说明如下：
+命令行模式下的使用说明如下：
 
 ```
 $ arknights-mower
@@ -118,6 +95,29 @@ commands (prefix abbreviation accepted):
         启用调试功能，调试信息将会输出到 /var/log/arknights-mower/ 中
 ```
 
+命令行模式下的具体使用例子如下：
+
+```
+arknights-mower operation
+# 重复刷上一次关卡，直到理智不足停止
+arknights-mower operation 99
+# 重复刷上一次关卡 99 次
+arknights-mower operation -r5
+# 重复刷上一次关卡，使用理智药自动回复理智，最多消耗 5 瓶（直到理智不足停止）
+arknights-mower operation -r
+# 重复刷上一次关卡，使用理智药自动回复理智，直到理智药用完为止
+arknights-mower operation 1-7 99 -R5
+# 重复刷 1-7 关卡 99 次，使用源石自动回复理智，最多消耗 5 颗
+arknights-mower operation GT-1 99 -r5 -R5
+# 重复刷 GT-1 关卡 99 次，使用理智药以及源石自动回复理智，最多消耗 5 瓶理智药和 5 颗源石
+arknights-mower recruit 因陀罗 火神
+# 公招自动化，优先选择保底星数高的组合，若有多种标签组合保底星数一致则优先选择包含优先级高的干员的组合，公招干员的优先级从高到低分别是因陀罗和火神
+arknights-mower shop 招聘许可 赤金 龙门币
+# 在商场使用信用点消费，购买物品的优先级从高到低分别是招聘许可、赤金和龙门币，其余物品不购买
+arknights-mower base -c -d33
+# 自动收取基建中的信赖/货物/订单，自动放置线索，自动前往地下 3 层 3 号房间使用无人机加速生产（暂且只支持制造站加速）
+```
+
 命令可使用前缀或首字母缩写，如：
 
 ```
@@ -129,32 +129,108 @@ arknights-mower o 1-7 99 -r5 -R5
 # 重复刷 1-7 关卡 99 次，使用理智药以及源石自动回复理智，最多消耗 5 瓶理智药和 5 颗源石
 ```
 
-## 自定义功能实现
+## 更多高级功能
 
-<!-- 或者也可以从源码安装
+由于命令行长度限制，基建自动换班功能只能通过代码进行调用。
 
-```bash
-git clone git@github.com:Konano/arknights-mower.git --depth=1
-cd arknights-mower
+```python
+from arknights_mower.strategy import Solver
 
-#### 建议使用 venv 避免依赖包冲突
-python3 -m venv venv
-# 在 Windows cmd 中：
-venv\Scripts\activate.bat
-# 在 PowerShell 中：
-& ./venv/[bS]*/Activate.ps1
-# 在 bash/zsh 中：
-source venv/bin/activate
-#### venv end
+# 自定义基建排班
+# 这里自定义了一套排班策略，实现的是两班倒，分为四个阶段
+# 阶段 1 和 2 为第一班，阶段 3 和 4 为第二班
+# 第一班的干员在阶段 3 和 4 分两批休息，第二班同理
+# 每个阶段耗时 6 小时
+plan = {
+    # 阶段 1
+    'plan_1': {
+        # 办公室
+        'contact': ['艾雅法拉'],
+        # 宿舍
+        'dormitory_1': ['杜林', '闪灵', '安比尔', '空弦', '缠丸'],
+        'dormitory_2': ['推进之王', '琴柳', '赫默', '杰西卡', '调香师'],
+        'dormitory_3': ['夜莺', '波登可', '夜刀', '古米', '空爆'],
+        'dormitory_4': ['空', 'Lancet-2', '香草', '史都华德', '刻俄柏'],
+        # 会客室
+        'meeting': ['陈', '红'],
+        # 制造站 + 贸易站 + 发电站
+        'room_1_1': ['德克萨斯', '能天使', '拉普兰德'],
+        'room_1_2': ['断罪者', '食铁兽', '槐琥'],
+        'room_1_3': ['阿消'],
+        'room_2_1': ['巫恋', '柏喙', '慕斯'],
+        'room_2_2': ['红豆', '霜叶', '白雪'],
+        'room_2_3': ['雷蛇'],
+        'room_3_1': ['Castle-3', '梅尔', '白面鸮'],
+        'room_3_2': ['格雷伊'],
+        'room_3_3': ['砾', '夜烟', '斑点']
+    },
+    # 阶段 2
+    'plan_2': {
+        # 注释掉了部分和阶段 1 一样排班计划的房间，加快排班速度
+        # 'contact': ['艾雅法拉'],
+        'dormitory_1': ['杜林', '闪灵', '芬', '稀音', '克洛丝'],
+        'dormitory_2': ['推进之王', '琴柳', '清流', '森蚺', '温蒂'],
+        'dormitory_3': ['夜莺', '波登可', '伊芙利特', '深靛', '炎熔'],
+        'dormitory_4': ['空', 'Lancet-2', '远山', '星极', '普罗旺斯'],
+        # 'meeting': ['陈', '红'],
+        # 'room_1_1': ['德克萨斯', '能天使', '拉普兰德'],
+        # 'room_1_2': ['断罪者', '食铁兽', '槐琥'],
+        # 'room_1_3': ['阿消'],
+        # 'room_2_1': ['巫恋', '柏喙', '慕斯'],
+        # 'room_2_2': ['红豆', '霜叶', '白雪'],
+        # 'room_2_3': ['雷蛇'],
+        # 'room_3_1': ['Castle-3', '梅尔', '白面鸮'],
+        # 'room_3_2': ['格雷伊'],
+        # 'room_3_3': ['砾', '夜烟', '斑点']
+    },
+    'plan_3': {
+        'contact': ['普罗旺斯'],
+        'dormitory_1': ['杜林', '闪灵', '格雷伊', '雷蛇', '阿消'],
+        'dormitory_2': ['推进之王', '琴柳', '德克萨斯', '能天使', '拉普兰德'],
+        'dormitory_3': ['夜莺', '波登可', '巫恋', '柏喙', '慕斯'],
+        'dormitory_4': ['空', 'Lancet-2', '艾雅法拉', '陈', '红'],
+        'meeting': ['远山', '星极'],
+        'room_1_1': ['安比尔', '空弦', '缠丸'],
+        'room_1_2': ['赫默', '杰西卡', '调香师'],
+        'room_1_3': ['伊芙利特'],
+        'room_2_1': ['夜刀', '古米', '空爆'],
+        'room_2_2': ['香草', '史都华德', '刻俄柏'],
+        'room_2_3': ['深靛'],
+        'room_3_1': ['芬', '稀音', '克洛丝'],
+        'room_3_2': ['炎熔'],
+        'room_3_3': ['清流', '森蚺', '温蒂']
+    },
+    'plan_4': {
+        # 'contact': ['普罗旺斯'],
+        'dormitory_1': ['杜林', '闪灵', '断罪者', '食铁兽', '槐琥'],
+        'dormitory_2': ['推进之王', '琴柳', '红豆', '霜叶', '白雪'],
+        'dormitory_3': ['夜莺', '波登可', 'Castle-3', '梅尔', '白面鸮'],
+        'dormitory_4': ['空', 'Lancet-2', '砾', '夜烟', '斑点'],
+        # 'meeting': ['远山', '星极'],
+        # 'room_1_1': ['安比尔', '空弦', '缠丸'],
+        # 'room_1_2': ['赫默', '杰西卡', '调香师'],
+        # 'room_1_3': ['伊芙利特'],
+        # 'room_2_1': ['夜刀', '古米', '空爆'],
+        # 'room_2_2': ['香草', '史都华德', '刻俄柏'],
+        # 'room_2_3': ['深靛'],
+        # 'room_3_1': ['芬', '稀音', '克洛丝'],
+        # 'room_3_2': ['炎熔'],
+        # 'room_3_3': ['清流', '森蚺', '温蒂']
+    }
+}
 
-pip3 install -r requirements.txt
-# 可根据个人需求修改 diy.py
-python3 diy.py
-``` -->
+Solver().base(arrange=plan)
+```
+
+如果想使用定时运行等其他高级功能，可根据个人需求修改 [diy.py](https://github.com/Konano/arknights-mower/blob/main/diy.py)，具体见文件内说明。
+
+如果想添加其他的功能，你甚至可以创建一个继承 `BaseSolver` 的自定义类，通过现有接口实现自己的想法。
+
+欢迎大家提交 Pull requests 一起完善功能！
 
 ## 遇到报错？想要更多功能？
 
-如果你在使用过程中遇到问题，欢迎提交 Issue 报错或者提问。报告 Issue 时建议附上日志以便定位问题。
+如果你在使用过程中遇到问题，欢迎通过提交 Issue 的方式报错或者提问。报告 Issue 时建议附上调试信息以便定位问题。
 
 也欢迎加入交流群讨论：
 
