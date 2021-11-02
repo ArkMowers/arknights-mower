@@ -85,29 +85,34 @@ class BaseConstructSolver(BaseSolver):
 
     def get_clue_mask(self):
 
-        mask = []
-        for y in range(y1, y2):
-            if int(self.recog.img[y, x3-1, 0]) - int(self.recog.img[y, x3-2, 0]) > 20 and np.ptp(self.recog.img[y, x3-2]) == 0:
-                mask.append(y)
-
-        if len(mask) > 0:
-            logger.debug(np.average(mask))
-            return np.average(mask)
-        else:
-            return None
+        try:
+            mask = []
+            for y in range(y1, y2):
+                if int(self.recog.img[y, x3-1, 0]) - int(self.recog.img[y, x3-2, 0]) > 20 and np.ptp(self.recog.img[y, x3-2]) == 0:
+                    mask.append(y)
+            if len(mask) > 0:
+                logger.debug(np.average(mask))
+                return np.average(mask)
+            else:
+                return None
+        except Exception as e:
+            raise RecognizeError(e)
 
     def clear_clue_mask(self):
 
-        while True:
-            mask = False
-            for y in range(y1, y2):
-                if int(self.recog.img[y, x3-1, 0]) - int(self.recog.img[y, x3-2, 0]) > 20 and np.ptp(self.recog.img[y, x3-2]) == 0:
-                    self.tap((x3-2, y+1), matcher=True)
-                    mask = True
-                    break
-            if mask:
-                continue
-            break
+        try:
+            while True:
+                mask = False
+                for y in range(y1, y2):
+                    if int(self.recog.img[y, x3-1, 0]) - int(self.recog.img[y, x3-2, 0]) > 20 and np.ptp(self.recog.img[y, x3-2]) == 0:
+                        self.tap((x3-2, y+1), matcher=True)
+                        mask = True
+                        break
+                if mask:
+                    continue
+                break
+        except Exception as e:
+            raise RecognizeError(e)
 
     def ori_clue(self):
 
