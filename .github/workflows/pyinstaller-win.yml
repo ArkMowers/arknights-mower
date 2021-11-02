@@ -2,7 +2,8 @@ name: Windows Binary Package
 
 on:
   push:
-    branches: [ dev ]
+    tags:
+      - 'v*'
 
 jobs:
   build-win-amd64:
@@ -15,19 +16,25 @@ jobs:
           python-version: 3.9
           architecture: x64
       - name: Install dependencies
+        shell: cmd
         run: |
           python -m pip install --upgrade pip
           python -m venv venv64
           venv64\Scripts\python -m pip install --upgrade pip wheel setuptools
           venv64\Scripts\python -m pip install -r requirements.txt
           venv64\Scripts\python -m pip install pyinstaller
-        shell: cmd
       - name: Make package
         shell: cmd
         run: |
           venv64\Scripts\pyinstaller .\main.spec --onefile
+          move dist\main.exe dist\arknights_mower.exe
       - name: Upload artifact
         uses: actions/upload-artifact@v2.1.4
         with:
           name: arknights-mower_cp39_win_amd64
-          path: dist/main.exe
+          path: dist/arknights_mower.exe
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: dist/arknights_mower.exe
