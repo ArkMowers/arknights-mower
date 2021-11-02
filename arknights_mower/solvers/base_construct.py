@@ -376,8 +376,6 @@ class BaseConstructSolver(BaseSolver):
                         continue
                     raise e
                 ret_agent = set([x[0] for x in ret])
-                if len(checked) > 0 and len(checked & ret_agent) == 0:
-                    break
                 if ret_agent == pre_ret:
                     error_count += 1
                     if error_count < 5:
@@ -387,7 +385,10 @@ class BaseConstructSolver(BaseSolver):
                     return
                 else:
                     pre_ret = ret_agent
-                if len(ret_agent - checked) > 0:
+                if len(checked) > 0 and len(checked & ret_agent) == 0:
+                    st = ret[0][1][0]
+                    ed = ret[-1][1][3]
+                elif len(ret_agent - checked) > 0:
                     checked |= ret_agent
                     for x in ret_agent & agent:
                         for y in ret:
@@ -397,19 +398,15 @@ class BaseConstructSolver(BaseSolver):
                         agent.remove(x)
                     if len(agent) == 0:
                         return
-                    st = ret[-1][1][0]
+                    st = ret[-3][1][0]
                     ed = ret[0][1][0]
-                    self.swipe(st, (ed[0]-st[0], 0),
-                               duration=(st[0]-ed[0])*3, interval=0)
                 else:
-                    st = ret[-1][1][0]
+                    st = ret[-1][1][3]
                     ed = ret[0][1][0]
-                    self.swipe(st, (ed[0]-st[0], 0),
-                               duration=(st[0]-ed[0]), interval=0)
+                self.swipe(st, (ed[0]-st[0], 0),
+                           duration=abs(st[0]-ed[0]), interval=0)
                 self.swipe(st, (0, st[0]-ed[0]),
                            duration=500, matcher=False)
-
-            self.swipe((w//2, h//2), (w//2, 0), interval=3, matcher=False)
 
     def arrange(self, plan):
         self.tap_element('infra_overview', interval=2)
