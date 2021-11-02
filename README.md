@@ -1,33 +1,56 @@
 # ArknightsHelper
 
-《明日方舟》长草助手（开发中）
+[![GitHub License](https://img.shields.io/github/license/Konano/arknights-mower)](https://github.com/Konano/arknights-mower/blob/master/LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/arknights-mower)](https://pypi.org/project/arknights-mower/)
+[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/arknights-mower)](https://pypi.org/project/arknights-mower/)
+[![GitHub Workflow Status](https://img.shields.io/github/workflow/status/Konano/arknights-mower/Upload%20PyPI)](https://github.com/Konano/arknights-mower/actions/workflows/python-publish.yml)
+![GitHub last commit (branch)](https://img.shields.io/github/last-commit/Konano/arknights-mower/main)
 
-支持任意分辨率，7*24 小时不间断长草，让你忘掉这个游戏！
+7*24 小时不间断长草，让你忘掉这个游戏！
 
-## Feature
+## 主要功能
 
 - 自动打开《明日方舟》
 - 自动登录
     - 账户密码需要手动输入
-- 自动访友收信用
+- 自动访友收取信用点
 - 自动确认任务完成
 - 自动刷体力
-    - 默认进行上一次关卡
-    - 若剿灭未完成则优先完成
+    - 默认进行上一次完成的关卡
+    - 可设置成优先完成剿灭任务
     - 可自动通过体力药剂和源石回复体力
-    - 可限定次数
+    - 可限定关卡次数和序列
     - 可指定关卡，包括主线、插曲、别传和资源收集四大区域
 - 自动完成公招
-- 自动收取邮件
-- 自动收取线索
-- 自动无人机加速
-- 自动更换基建干员
+- 自动收取邮件奖励
+- 自动收取并安放线索
+- 自动消耗无人机加速制造站
+- 自动更换基建排班干员（命令行模式下不支持）
+- 支持游戏任意分辨率
 
-## Usage
+## 运行须知
 
-需要安装 ADB。
+运行脚本需要安装 ADB。ADB 下载地址：
 
-### From pip
+- Windows: https://dl.google.com/android/repository/platform-tools-latest-windows.zip
+- Max: https://dl.google.com/android/repository/platform-tools-latest-darwin.zip
+- Linux: https://dl.google.com/android/repository/platform-tools-latest-linux.zip
+
+下载 ADB 后需要将 ADB 所在目录添加到环境变量中。请确认 `adb devices` 中列出了目标模拟器或设备：
+
+```
+$ adb devices
+emulator-5554   device
+```
+
+### 常见问题
+
+- 部分模拟器（如 MuMu、BlueStacks）需要自行启动 ADB server。
+- 部分模拟器（如 MuMu）不使用标准模拟器 ADB 端口，ADB server 无法自动探测，需要另行 `adb connect`。
+- 部分模拟器（如夜神）会频繁使用自带的旧版本 ADB 挤掉用户自行启动的新版 ADB。
+- 部分非 VMM 模拟器（声称「不需要开启 VT」，如 MuMu 星云引擎）不提供 ADB 接口。
+
+## 脚本启动
 
 使用 pip 安装：
 
@@ -35,7 +58,7 @@
 pip3 install arknights-mower
 ```
 
-命令使用具体例子如下：
+脚本可以在命令行模式下使用，具体例子如下：
 
 ```
 arknights-mower operation
@@ -58,7 +81,7 @@ arknights-mower base -c -d33
 # 自动收取基建中的信赖/货物/订单，自动放置线索，自动前往地下 3 层 3 号房间使用无人机加速生产（暂且只支持制造站加速）
 ```
 
-命令使用说明如下：
+命令行模式下脚本使用说明如下：
 
 ```
 $ arknights-mower
@@ -106,7 +129,9 @@ arknights-mower o 1-7 99 -r5 -R5
 # 重复刷 1-7 关卡 99 次，使用理智药以及源石自动回复理智，最多消耗 5 瓶理智药和 5 颗源石
 ```
 
-### From Source
+## 自定义功能实现
+
+<!-- 或者也可以从源码安装
 
 ```bash
 git clone git@github.com:Konano/arknights-mower.git --depth=1
@@ -125,4 +150,13 @@ source venv/bin/activate
 pip3 install -r requirements.txt
 # 可根据个人需求修改 diy.py
 python3 diy.py
-```
+``` -->
+
+## 遇到报错？想要更多功能？
+
+如果你在使用过程中遇到问题，欢迎提交 Issue 报错或者提问。报告 Issue 时建议附上日志以便定位问题。
+
+也欢迎加入交流群讨论：
+
+- [Telegram Group](https://t.me/joinchat/eFkqRj1IWm9kYTBl)
+- QQ Group：239200680
