@@ -58,10 +58,7 @@ emulator-5554   device
 
 ### 常见问题
 
-- 部分模拟器（如 MuMu、BlueStacks）需要自行启动 ADB server。
-- 部分模拟器（如 MuMu）不使用标准模拟器 ADB 端口，ADB server 无法自动探测。
-- 部分模拟器（如夜神）会频繁使用自带的旧版本 ADB 挤掉用户自行启动的新版 ADB。
-- 部分非 VMM 模拟器（声称「不需要开启 VT」，如 MuMu 星云引擎）不提供 ADB 接口。
+- 待补充……
 
 ## 使用教程
 
