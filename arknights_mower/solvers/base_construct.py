@@ -397,13 +397,15 @@ class BaseConstructSolver(BaseSolver):
                         agent.remove(x)
                     if len(agent) == 0:
                         return
-                    st = ret[-3][1][0]
+                    st = ret[-1][1][0]
                     ed = ret[0][1][0]
+                    self.swipe(st, (ed[0]-st[0], 0),
+                               duration=(st[0]-ed[0])*3, interval=0)
                 else:
                     st = ret[-1][1][0]
                     ed = ret[0][1][0]
-                self.swipe(st, (ed[0]-st[0], 0),
-                           duration=(st[0]-ed[0])*3, interval=0)
+                    self.swipe(st, (ed[0]-st[0], 0),
+                               duration=(st[0]-ed[0]), interval=0)
                 self.swipe(st, (0, st[0]-ed[0]),
                            duration=500, matcher=False)
 
@@ -445,7 +447,7 @@ class BaseConstructSolver(BaseSolver):
             self.swipe(tuple(block[1]), (0, top-block[1][1]),
                        duration=(block[1][1]-top)*3, interval=0)
             self.swipe(tuple(block[1]), (block[2][0]-block[1][0], 0),
-                       duration=500, interval=3, matcher=False)
+                       duration=500, matcher=False)
 
         h, w = self.recog.h, self.recog.w
         for _ in range(4):
@@ -478,7 +480,7 @@ class BaseConstructSolver(BaseSolver):
             self.swipe(tuple(block[1]), (0, top-block[1][1]),
                        duration=(block[1][1]-top)*3, interval=0)
             self.swipe(tuple(block[1]), (block[2][0]-block[1][0], 0),
-                       duration=500, interval=3, matcher=False)
+                       duration=500, matcher=False)
 
         self.back()
 
