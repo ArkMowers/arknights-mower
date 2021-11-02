@@ -279,8 +279,11 @@ class BaseConstructSolver(BaseSolver):
 
         logger.info('领取会客室线索')
         self.tap(((x0+x1)//2, (y0*5-y1)//4), interval=3)
-        self.tap_element('clue_obtain', interval=3)
-        self.back(interval=2)
+        obtain = self.find('clue_obtain')
+        if obtain is not None and self.get_color(self.get_pos(obtain, 0.25, 0.5))[0] < 20:
+            self.tap(obtain, interval=3)
+        else:
+            self.back()
 
         logger.info('放置线索')
         clue_unlock = self.find('clue_unlock')
@@ -337,6 +340,7 @@ class BaseConstructSolver(BaseSolver):
         self.back(interval=2)
 
     def choose_agent(self, agent):
+        logger.info(f'安排干员：{agent}')
         agent = set(agent)
 
         h, w = self.recog.h, self.recog.w
@@ -480,6 +484,9 @@ class BaseConstructSolver(BaseSolver):
                 if self.scene() == Scene.INDEX:
                     self.tap_element('index_infrastructure')
                 elif self.scene() == Scene.INFRA_MAIN:
+                    if self.find('control_central') is None:
+                        self.back()
+                        continue
                     if todo_task:
                         notification = detector.infra_notification(self.recog.img)
                         if notification is None:

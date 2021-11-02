@@ -18,6 +18,9 @@ class BaseSolver:
         if self.adb.current_focus() != APPNAME:
             self.adb.start_app(APPNAME)
             time.sleep(10)
+    
+    def get_color(self, XY):
+        return self.recog.color(XY[0], XY[1])
 
     def get_pos(self, poly, x_rate=0.5, y_rate=0.5):
         if poly is None:
