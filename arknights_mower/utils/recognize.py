@@ -1,4 +1,5 @@
 import numpy as np
+import cv2
 
 from ..__init__ import __rootdir__
 from . import config, detector
@@ -19,15 +20,21 @@ class Recognizer():
         self.update(debug_screencap)
 
     def update(self, debug_screencap=None, matcher=True):
-        if debug_screencap is not None:
-            self.screencap = debug_screencap
-        else:
-            self.screencap = self.adb.screencap()
-        self.img = bytes2img(self.screencap)
-        self.gray = bytes2img(self.screencap, True)
-        self.h, self.w, _ = self.img.shape
-        self.matcher = Matcher(self.gray) if matcher else None
-        self.scene = Scene.UNDEFINED
+        while True:
+            try:
+                if debug_screencap is not None:
+                    self.screencap = debug_screencap
+                else:
+                    self.screencap = self.adb.screencap()
+                self.img = bytes2img(self.screencap)
+                self.gray = bytes2img(self.screencap, True)
+                self.h, self.w, _ = self.img.shape
+                self.matcher = Matcher(self.gray) if matcher else None
+                self.scene = Scene.UNDEFINED
+                break
+            except cv2.error as e:
+                logger.warning(e)
+                continue
 
     def color(self, x, y):
         return self.img[y][x]
