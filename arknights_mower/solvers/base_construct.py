@@ -30,6 +30,8 @@ class BaseConstructSolver(BaseSolver):
             y1 += 1
         y1 += 1
 
+        logger.debug(f'x1:{x1}, x2:{x2}, y0:{y0}, y1:{y1}')
+
     def clue_view(self, only_y2=True):
         global y2, x3, x4
 
@@ -37,6 +39,8 @@ class BaseConstructSolver(BaseSolver):
         y2 = self.recog.h
         while self.recog.img[y2-1, x1:x2].ptp() <= 24:
             y2 -= 1
+
+        logger.debug(f'y2:{y2}')
 
         if not only_y2:
 
@@ -76,6 +80,8 @@ class BaseConstructSolver(BaseSolver):
 
             # x4: 四分之三的位置，用来定位单个线索
             x4 = (x1 + 3 * x2) // 4
+
+            logger.debug(f'x3:{x3}, x4:{x4}')
 
     def get_clue_mask(self):
 
