@@ -34,6 +34,8 @@
 pip3 install arknights-mower
 ```
 
+也可以前往 [Releases](https://github.com/Konano/arknights-mower/releases) 下载 Windows 可执行版本。
+
 ## 运行须知
 
 运行脚本需要安装 ADB。ADB 下载地址：
