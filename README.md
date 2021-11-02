@@ -239,4 +239,4 @@ Solver().base(arrange=plan)
 也欢迎加入交流群讨论：
 
 - [Telegram Group](https://t.me/joinchat/eFkqRj1IWm9kYTBl)
-- QQ Group：239200680
+- [QQ Group](https://jq.qq.com/?_wv=1027&k=4gWboTVI)：239200680
