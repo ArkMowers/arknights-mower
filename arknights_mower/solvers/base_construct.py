@@ -320,11 +320,12 @@ class BaseConstructSolver(BaseSolver):
 
             self.tap((111, self.recog.h-10), interval=3, matcher=False)
 
-            if get_all_clue and clue_unlock is not None:
-                self.tap(clue_unlock)
+        if clue_unlock is not None and get_all_clue:
+            self.tap(clue_unlock)
+        else:
+            self.back(interval=2, matcher=False)
 
         logger.info('返回基建主界面')
-        self.back(interval=2, matcher=False)
         self.back(interval=2)
 
     def drone(self, room):
