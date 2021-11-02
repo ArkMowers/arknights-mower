@@ -58,6 +58,7 @@ class OpeSolver(BaseSolver):
         wait_start = 10
         wait_total = 0
         choosed = plan[0][0] == 'pre_ope'
+        unopen = []
 
         retry_times = MAX_RETRYTIME
         while retry_times > 0:
@@ -66,7 +67,7 @@ class OpeSolver(BaseSolver):
                     plan = plan[1:]
                     choosed = False
                 if len(plan) == 0:
-                    return
+                    return unopen
                 if self.scene() == Scene.INDEX:
                     self.tap_element('index_terminal')
                 elif self.scene() == Scene.TERMINAL_MAIN:
@@ -156,7 +157,7 @@ class OpeSolver(BaseSolver):
                         else:
                             self.tap_element('ope_recover_choose', 0.05)
                             if plan[0][0] != 'pre_ope' and level is None:
-                                return plan
+                                return plan + unopen
                             return
                     elif recover_state:
                         self.sleep(3)
@@ -170,7 +171,7 @@ class OpeSolver(BaseSolver):
                         else:
                             self.tap_element('ope_recover_choose', 0.05)
                             if plan[0][0] != 'pre_ope' and level is None:
-                                return plan
+                                return plan + unopen
                             return
                     elif recover_state:
                         self.sleep(3)
@@ -191,6 +192,7 @@ class OpeSolver(BaseSolver):
                     raise RecognizeError
             except LevelUnopenError:
                 logger.error(f'关卡 {plan[0][0]} 未开放，请重新指定')
+                unopen.append(plan[0])
                 plan = plan[1:]
                 choosed = False
                 continue
@@ -202,7 +204,7 @@ class OpeSolver(BaseSolver):
             except StrategyError as e:
                 logger.error(e)
                 logger.debug(traceback.format_exc())
-                return
+                return plan + unopen
             except Exception as e:
                 raise e
             retry_times = MAX_RETRYTIME
