@@ -22,6 +22,7 @@ agent_ahash = None
 def agent_ahash_init():
     global agent_ahash
     if agent_ahash is None:
+        logger.debug('agent_ahash_init')
         agent_ahash = {}
         font = ImageFont.truetype(
             f'{__rootdir__}/fonts/SourceHanSansSC-Bold.otf', size=30, encoding='utf-8')
@@ -456,66 +457,74 @@ def agent(im, draw=False):
         #     plt.imshow(im)
         #     plt.show()
 
-        def ahash_recog(img):
+        def ahash_recog(origin_img, scope):
             agent_ahash_init()
-            h, w = img.shape
-            dt = np.zeros((h, w), dtype=np.uint8)
-            for y in range(h):
-                for x in range(w-1, -1, -1):
-                    if img[y, x] != 0:
-                        dt[y, x] = 1
-                    else:
-                        break
-            for x in range(w):
-                for y in range(h):
-                    if img[y, x] != 0:
-                        dt[y, x] = 1
-                    else:
-                        break
-                for y in range(h-1, -1, -1):
-                    if img[y, x] != 0:
-                        dt[y, x] = 1
-                    else:
-                        break
+            origin_img = origin_img[scope[0, 1]:scope[2, 1], scope[0, 0]:scope[2, 0]]
+            h, w = origin_img.shape[:2]
+            thresh = 70
             while True:
-                pre_count = (dt > 0).sum()
-                for x in range(1, w):
-                    dt[:, x][(dt[:, x-1] > 0) & (img[:, x] > 0)] = 1
-                for y in range(h-2, -1, -1):
-                    dt[y][(dt[y+1] > 0) & (img[y] > 0)] = 1
-                for x in range(w-2, -1, -1):
-                    dt[:, x][(dt[:, x+1] > 0) & (img[:, x] > 0)] = 1
-                for y in range(1, h):
-                    dt[y][(dt[y-1] > 0) & (img[y] > 0)] = 1
-                if pre_count == (dt > 0).sum():
-                    break
-            img[dt > 0] = 0
-            if (img > 0).sum() == 0:
+                img = rgb2gray(margin(origin_img, thresh))
+                dt = np.zeros((h, w), dtype=np.uint8)
+                for y in range(h):
+                    for x in range(w-1, -1, -1):
+                        if img[y, x] != 0:
+                            dt[y, x] = 1
+                        else:
+                            break
+                for x in range(w):
+                    for y in range(h):
+                        if img[y, x] != 0:
+                            dt[y, x] = 1
+                        else:
+                            break
+                    for y in range(h-1, -1, -1):
+                        if img[y, x] != 0:
+                            dt[y, x] = 1
+                        else:
+                            break
+                while True:
+                    pre_count = (dt > 0).sum()
+                    for x in range(1, w):
+                        dt[:, x][(dt[:, x-1] > 0) & (img[:, x] > 0)] = 1
+                    for y in range(h-2, -1, -1):
+                        dt[y][(dt[y+1] > 0) & (img[y] > 0)] = 1
+                    for x in range(w-2, -1, -1):
+                        dt[:, x][(dt[:, x+1] > 0) & (img[:, x] > 0)] = 1
+                    for y in range(1, h):
+                        dt[y][(dt[y-1] > 0) & (img[y] > 0)] = 1
+                    if pre_count == (dt > 0).sum():
+                        break
+                img[dt > 0] = 0
+                if (img > 0).sum() == 0:
+                    thresh += 5
+                    logger.debug(f'add thresh to {thresh}')
+                    if thresh > 100:
+                        return None
+                    continue
+                x0 = 0
+                while (img[:, x0] == 0).all():
+                    x0 += 1
+                x1 = w
+                while (img[:, x1-1] == 0).all():
+                    x1 -= 1
+                y0 = 0
+                while (img[y0, x0:x1] == 0).all():
+                    y0 += 1
+                y1 = h
+                while (img[y1-1, x0:x1] == 0).all():
+                    y1 -= 1
+                dt = np.zeros((y1-y0, x1-x0, 3), dtype=np.uint8)
+                dt[:, :, 0] = img[y0:y1, x0:x1]
+                dt[:, :, 1] = img[y0:y1, x0:x1]
+                dt[:, :, 2] = img[y0:y1, x0:x1]
+                ahash = str(imagehash.average_hash(Image.fromarray(dt), 16))
+                p = [(bin(int(ahash, 16) ^ int(agent_ahash[x], 16)).count('1'), x) for x in agent_ahash.keys()]
+                p = sorted(p)
+                logger.debug(p[:10])
+                if p[1][0] - p[0][0] >= 10:
+                    logger.debug(p[0][1])
+                    return p[0][1]
                 return None
-            x0 = 0
-            while (img[:, x0] == 0).all():
-                x0 += 1
-            x1 = w
-            while (img[:, x1-1] == 0).all():
-                x1 -= 1
-            y0 = 0
-            while (img[y0, x0:x1] == 0).all():
-                y0 += 1
-            y1 = h
-            while (img[y1-1, x0:x1] == 0).all():
-                y1 -= 1
-            dt = np.zeros((y1-y0, x1-x0, 3), dtype=np.uint8)
-            dt[:, :, 0] = img[y0:y1, x0:x1]
-            dt[:, :, 1] = img[y0:y1, x0:x1]
-            dt[:, :, 2] = img[y0:y1, x0:x1]
-            ahash = str(imagehash.average_hash(Image.fromarray(dt), 16))
-            p = [(bin(int(ahash, 16) ^ int(agent_ahash[x], 16)).count('1'), x) for x in agent_ahash.keys()]
-            p = sorted(p)
-            logger.debug(p[:10])
-            if p[1][0] - p[0][0] >= 10:
-                logger.debug(p[0][1])
-                return p[0][1]
-            return None
 
         ret_succ = []
         ret_fail = []
@@ -541,7 +550,7 @@ def agent(im, draw=False):
                     ret_agent.append(x[1])
                     ret_succ.append(poly)
                     continue
-                res = ahash_recog(rgb2gray(margin(im[poly[0, 1]:poly[2, 1], poly[0, 0]:poly[2, 0]], 80)))
+                res = ahash_recog(im, poly)
                 if res is not None:
                     logger.warning(f'干员名称识别异常：{x[1]} 应为 {res}')
                     ocr_error[x[1]] = res
@@ -558,7 +567,7 @@ def agent(im, draw=False):
                     ret_agent.append(res)
                     ret_succ.append(poly)
                     continue
-                res = ahash_recog(rgb2gray(margin(im[poly[0, 1]:poly[2, 1], poly[0, 0]:poly[2, 0]], 80)))
+                res = ahash_recog(im, poly)
                 if res is not None:
                     ret_agent.append(res)
                     ret_succ.append(poly)
