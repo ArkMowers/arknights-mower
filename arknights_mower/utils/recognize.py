@@ -165,10 +165,11 @@ class Recognizer():
                 loadimg(f'{__rootdir__}/resources/{item}.png'), thres)
             matcher = Matcher(
                 threshole(self.gray[scope[0][1]:scope[1][1], scope[0][0]:scope[1][0]], thres))
+            ret = matcher.match(image, draw=draw, judge=judge)
         else:
             image = loadimg(f'{__rootdir__}/resources/{item}.png')
             matcher = self.matcher
-        ret = matcher.match(image, draw=draw, scope=scope, judge=judge)
+            ret = matcher.match(image, draw=draw, scope=scope, judge=judge)
         if ret is None:
             return None
         return ret
@@ -180,10 +181,11 @@ class Recognizer():
                 loadimg(f'{__rootdir__}/resources/{item}.png'), thres)
             matcher = Matcher(
                 threshole(self.gray[scope[0][1]:scope[1][1], scope[0][0]:scope[1][0]], thres))
+            ret = matcher.score(image, draw=draw)
         else:
             image = loadimg(f'{__rootdir__}/resources/{item}.png')
             matcher = self.matcher
-        ret = matcher.score(image, draw=draw, scope=scope)
+            ret = matcher.score(image, draw=draw, scope=scope)
         if ret is None:
             return None
         return ret[1:]
