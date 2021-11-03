@@ -1,6 +1,6 @@
 import traceback
 
-from ..ocr import ocrhandle, ocr_amend
+from ..ocr import ocrhandle, ocr_rectify
 from ..utils import segment
 from ..utils.log import logger
 from ..utils.config import MAX_RETRYTIME
@@ -56,7 +56,7 @@ class RecruitSolver(BaseSolver):
                         ocr = ocrhandle.predict(img)
                         for x in ocr:
                             if x[1] not in recruit_tag:
-                                x[1] = ocr_amend(img, x, recruit_tag, '公招标签')
+                                x[1] = ocr_rectify(img, x, recruit_tag, '公招标签')
                         tags = [x[1] for x in ocr]
                         logger.info(f'公招标签：{tags}')
                         choose, maxlevel = self.recruit_choose(tags, priority)
@@ -91,7 +91,7 @@ class RecruitSolver(BaseSolver):
                         logger.warning('未能识别到干员名称')
                     else:
                         if agent not in recruit_agent.keys():
-                            agent = ocr_amend(img, agent_ocr, [x+'的信物' for x in recruit_agent.keys()], '干员名称')[:-3]
+                            agent = ocr_rectify(img, agent_ocr, [x+'的信物' for x in recruit_agent.keys()], '干员名称')[:-3]
                         if agent in recruit_agent.keys():
                             if 2 <= recruit_agent[agent][1] <= 4:
                                 logger.info(f'获得干员：{agent}')

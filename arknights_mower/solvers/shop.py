@@ -1,6 +1,6 @@
 import traceback
 
-from ..ocr import ocrhandle, ocronline, ocr_amend
+from ..ocr import ocrhandle, ocr_rectify
 from ..utils import segment
 from ..utils.log import logger
 from ..utils.config import MAX_RETRYTIME
@@ -42,7 +42,7 @@ class ShopSolver(BaseSolver):
                                 img = self.recog.img[seg[0][1]:seg[0][1]+(seg[1][1]-seg[0][1])//4, seg[0][0]:seg[1][0]]
                                 ocr = ocrhandle.predict(img)[0]
                                 if ocr[1] not in shop_items:
-                                    ocr[1] = ocr_amend(img, ocr, shop_items, '物品名称')
+                                    ocr[1] = ocr_rectify(img, ocr, shop_items, '物品名称')
                                 valid.append((seg, ocr[1]))
                         logger.info(f'商店内可购买的物品：{[x[1] for x in valid]}')
                         if len(valid) == 0:

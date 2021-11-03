@@ -9,7 +9,6 @@ from .dbnet import DBNET
 from .crnn import CRNNHandle
 from .utils import fix
 from ..utils.log import logger
-from ..data.ocr import ocr_error
 
 
 def sorted_boxes(dt_boxes):

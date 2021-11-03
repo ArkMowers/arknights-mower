@@ -7,12 +7,10 @@ from PIL import Image, ImageDraw, ImageFont
 
 from .log import logger
 from .recognize import RecognizeError
-from ..data.base import base_room_list
 from ..data.agent import agent_list
 from ..data.ocr import ocr_error
-from ..ocr import ocr_amend, ocrhandle, ocronline
-from .matcher import Matcher
-from .image import loadimg, rgb2gray, margin
+from ..ocr import ocrhandle
+from .image import rgb2gray, margin
 from ..__init__ import __rootdir__
 
 

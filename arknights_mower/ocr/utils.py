@@ -57,6 +57,9 @@ class strLabelConverter(object):
 
 
 def fix(s):
+    """
+    对识别结果进行简单处理，并查询是否在 ocr_error 中有过记录
+    """
     s = re.sub(r'[。？！，、；：“”‘’（）《》〈〉【】『』「」﹃﹄〔〕…～﹏￥－＿]', '', s)
     if s in ocr_error.keys():
         logger.debug(f'fix with ocr_error: {s} -> {ocr_error[s]}')
