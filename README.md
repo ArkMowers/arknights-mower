@@ -58,7 +58,7 @@ emulator-5554   device
 
 ### 常见问题
 
-- 待补充……
+- Linux 下可以使用 Anbox 来运行 Android 模拟器，[参见教程](https://www.cnblogs.com/syisyuan/p/12811595.html)
 
 ## 使用教程
 
