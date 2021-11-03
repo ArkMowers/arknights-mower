@@ -80,9 +80,11 @@ class ADBClientSession:
     def __init__(self, server=None, timeout=None):
         if server is None:
             server = ('127.0.0.1', 5037)
-        if server[0] == '127.0.0.1' or server[0] == '::1':
+        if (server[0] == '127.0.0.1' or server[0] == '::1') and timeout is None:
             timeout = 5
-        self.sock = ADBSocket(server, timeout)
+        self.server = server
+        self.timeout = timeout
+        self.sock = ADBSocket(self.server, self.timeout)
 
     def close(self):
         self.sock.close()
@@ -146,10 +148,20 @@ class ADBClientSession:
         """run command in device, returns stdout content after the command exits"""
         if len(cmd) == 0:
             raise ValueError('no command specified for blocking exec')
-        sock = self.exec_stream(cmd)
-        data = sock.recv_all()
-        sock.close()
-        return data
+        while True:
+            try:
+                sock = self.exec_stream(cmd)
+                data = sock.recv_all()
+                sock.close()
+                return data
+            except socket.timeout:
+                sock.close()
+                logger.warning(f'socket.timeout: {self.timeout}s')
+                self.timeout += 5
+                if self.timeout > 60:
+                    logger.error('socket.timeout too many times')
+                    exit()
+                self.sock = ADBSocket(self.server, self.timeout)
 
     def shell_stream(self, cmd=''):
         """run command in device, with pty attached to the socket returned"""
