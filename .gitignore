@@ -165,3 +165,4 @@ release.sh
 plan.json
 custom.json
 FontPruner
+test/*
