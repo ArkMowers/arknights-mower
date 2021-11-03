@@ -94,6 +94,8 @@ class Recognizer():
             self.scene = Scene.INFRA_CONFIDENTIAL
         elif self.find('infra_overview_in') is not None:
             self.scene = Scene.INFRA_ARRANGE
+        elif self.find('hidden_eye') is not None:
+            self.scene = Scene.INFRA_DETAILS
         elif self.find('friend_list') is not None:
             self.scene = Scene.FRIEND_LIST_OFF
         elif self.find('mission_daily_on') is not None:

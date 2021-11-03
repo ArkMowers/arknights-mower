@@ -56,6 +56,7 @@ scene_test = [
     ['read_mail', Scene.MAIL],
     ['clue', Scene.INFRA_CONFIDENTIAL],
     ['infra_overview_in', Scene.INFRA_ARRANGE],
+    ['hidden_eye', Scene.INFRA_DETAILS],
 ]
 
 recog_test = [

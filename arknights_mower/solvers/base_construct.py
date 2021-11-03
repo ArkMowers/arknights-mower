@@ -538,6 +538,8 @@ class BaseConstructSolver(BaseSolver):
                     if not tapped:
                         self.tap((111, self.recog.h-10))
                         todo_task = False
+                elif self.scene() == Scene.INFRA_DETAILS:
+                    self.back()
                 elif self.scene() == Scene.LOADING:
                     self.sleep(3)
                 elif self.get_navigation():
