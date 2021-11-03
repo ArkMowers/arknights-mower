@@ -14,6 +14,7 @@ from .log import logger, save_screenshot
 class ADBSocket:
 
     def __init__(self, server, timeout):
+        logger.debug(f'server={server}, timeout={timeout}')
         try:
             self.sock = socket.create_connection(server, timeout=timeout)
             self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
