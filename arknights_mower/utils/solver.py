@@ -13,7 +13,7 @@ class StrategyError(Exception):
 
 class BaseSolver:
     def __init__(self, adb=None, recog=None):
-        self.adb = adb if adb is not None else ADBConnector()
+        self.adb = adb if adb is not None else (recog.adb if recog is not None else ADBConnector())
         self.recog = recog if recog is not None else Recognizer(self.adb)
         if self.adb.current_focus() != APPNAME:
             self.adb.start_app(APPNAME)
