@@ -1,12 +1,18 @@
-# ArknightsHelper
+<div align="center">
 
-[![GitHub License](https://img.shields.io/github/license/Konano/arknights-mower)](https://github.com/Konano/arknights-mower/blob/master/LICENSE)
-[![PyPI](https://img.shields.io/pypi/v/arknights-mower)](https://pypi.org/project/arknights-mower/)
-[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/arknights-mower)](https://pypi.org/project/arknights-mower/)
-[![GitHub Workflow Status](https://img.shields.io/github/workflow/status/Konano/arknights-mower/Upload%20PyPI)](https://github.com/Konano/arknights-mower/actions/workflows/python-publish.yml)
-![GitHub last commit (branch)](https://img.shields.io/github/last-commit/Konano/arknights-mower/main)
+![logo](https://github.com/Konano/arknights-mower/raw/main/logo.png)
+
+# arknights-mower
+
+[![GitHub License](https://img.shields.io/github/license/Konano/arknights-mower?style=flat-square)](https://github.com/Konano/arknights-mower/blob/master/LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/arknights-mower?style=flat-square)](https://pypi.org/project/arknights-mower/)
+[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/arknights-mower?style=flat-square)](https://pypi.org/project/arknights-mower/)
+[![GitHub Workflow Status](https://img.shields.io/github/workflow/status/Konano/arknights-mower/Upload%20PyPI?style=flat-square)](https://github.com/Konano/arknights-mower/actions/workflows/python-publish.yml)
+![GitHub last commit (branch)](https://img.shields.io/github/last-commit/Konano/arknights-mower/main?style=flat-square)
 
 7*24 小时不间断长草，让你忘掉这个游戏！
+
+</div>
 
 ## ⚠ 注意事项
 
