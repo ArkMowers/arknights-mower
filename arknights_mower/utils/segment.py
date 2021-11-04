@@ -14,6 +14,10 @@ from .image import rgb2gray, margin
 from ..__init__ import __rootdir__
 
 
+class FloodCheckFailed(Exception):
+    pass
+
+
 agent_ahash = None
 
 
@@ -316,15 +320,17 @@ def worker(im, draw=False):
             l += 1
 
         x0 = r-1
-        while np.average(im[:, x0]) >= 100:
+        while np.average(im[:, x0, 1]) >= 100:
             x0 -= 1
         x0 -= 2
 
         seg = []
-        pre, st = int(im[0, x0, 0]), 0
+        remove_mode = False
+        pre, st = int(im[0, x0, 1]), 0
         for y in range(1, h):
-            if np.ptp(im[y, x0]) <= 1:
-                now = int(im[y, x0, 0])
+            remove_mode |= im[y, x0, 0] - im[y, x0, 1] > 40
+            if np.ptp(im[y, x0]) <= 1 or int(im[y, x0, 0]) - int(im[y, x0, 1]) > 40:
+                now = int(im[y, x0, 1])
                 if abs(now - pre) > 20:
                     if now < pre and st == 0:
                         st = y
@@ -345,7 +351,7 @@ def worker(im, draw=False):
         for i in range(1, len(seg)):
             if seg[i][1] - seg[i][0] > 9:
                 x1 = x0
-                while im[seg[i][1]-1, x1-1, 2] < 100:
+                while im[seg[i][1]-3, x1-1, 2] < 100:
                     x1 -= 1
                 break
 
@@ -360,7 +366,7 @@ def worker(im, draw=False):
             plt.show()
 
         logger.debug(f'segment.worker: {[x.tolist() for x in ret]}')
-        return ret, remove_button
+        return ret, remove_button, remove_mode
 
     except Exception as e:
         logger.debug(traceback.format_exc())
@@ -455,90 +461,109 @@ def agent(im, draw=False):
         #     plt.imshow(im)
         #     plt.show()
 
+        def flood(img, dt):
+            h, w = img.shape
+            while True:
+                pre_count = (dt > 0).sum()
+                for x in range(1, w):
+                    dt[:, x][(dt[:, x-1] > 0) & (img[:, x] > 0)] = 1
+                for y in range(h-2, -1, -1):
+                    dt[y][(dt[y+1] > 0) & (img[y] > 0)] = 1
+                for x in range(w-2, -1, -1):
+                    dt[:, x][(dt[:, x+1] > 0) & (img[:, x] > 0)] = 1
+                for y in range(1, h):
+                    dt[y][(dt[y-1] > 0) & (img[y] > 0)] = 1
+                if pre_count == (dt > 0).sum():
+                    break
+
+
         def ahash_recog(origin_img, scope):
             agent_ahash_init()
             origin_img = origin_img[scope[0, 1]:scope[2, 1], scope[0, 0]:scope[2, 0]]
             h, w = origin_img.shape[:2]
             thresh = 70
             while True:
-                img = rgb2gray(margin(origin_img, thresh))
-                dt = np.zeros((h, w), dtype=np.uint8)
-                c = []
-                for y in range(h):
-                    for x in range(w-1, -1, -1):
-                        if img[y, x] != 0:
-                            dt[y, x] = 1
-                        else:
-                            c.append(w-1 - x)
-                            break
-                flood_check = True
-                for y in range(h//2, 9, -1):
-                    if c[y] - c[y-1] > 1 and c[y] < w//2:
-                        flood_check = False
-                        break
-                if not flood_check:
-                    thresh += 5
-                    logger.debug(f'add thresh to {thresh}')
-                    if thresh > 100:
-                        return None
-                    continue
-                for x in range(w):
+                try:
+                    img = rgb2gray(margin(origin_img, thresh))
+                    dt = np.zeros((h, w), dtype=np.uint8)
                     for y in range(h):
-                        if img[y, x] != 0:
-                            dt[y, x] = 1
-                        else:
-                            break
-                    for y in range(h-1, -1, -1):
-                        if img[y, x] != 0:
-                            dt[y, x] = 1
-                        else:
-                            break
-                while True:
-                    pre_count = (dt > 0).sum()
-                    for x in range(1, w):
-                        dt[:, x][(dt[:, x-1] > 0) & (img[:, x] > 0)] = 1
-                    for y in range(h-2, -1, -1):
-                        dt[y][(dt[y+1] > 0) & (img[y] > 0)] = 1
-                    for x in range(w-2, -1, -1):
-                        dt[:, x][(dt[:, x+1] > 0) & (img[:, x] > 0)] = 1
-                    for y in range(1, h):
-                        dt[y][(dt[y-1] > 0) & (img[y] > 0)] = 1
-                    if pre_count == (dt > 0).sum():
+                        if img[y, w-1] != 0:
+                            dt[y, w-1] = 1
+                    flood(img, dt)
+                    for y in range(h-1, h//2, -1):
+                        count = 0
+                        for x in range(w-1, -1, -1):
+                            if dt[y, x] != 0:
+                                count += 1
+                            else:
+                                break
+                        if not (dt[y, :] > 0).all():
+                            for x in range(w):
+                                if dt[y, x] != 0:
+                                    count += 1
+                                else:
+                                    break
+                        if (dt[y] > 0).sum() != count:
+                            logger.debug(f'{y}, {count}')
+                            raise FloodCheckFailed
+                    
+                    for y in range(h):
+                        if img[y, 0] != 0:
+                            dt[y, 0] = 1
+                    for x in range(w):
+                        if img[h-1, x] != 0:
+                            dt[h-1, x] = 1
+                        if img[0, x] != 0:
+                            dt[0, x] = 1
+                    flood(img, dt)
+                    img[dt > 0] = 0
+                    if (img > 0).sum() == 0:
+                        raise FloodCheckFailed
+                    
+                    x0, x1, y0, y1 = 0, w, 0, h
+                    while True:
+                        while (img[y0:y1, x0] == 0).all():
+                            x0 += 1
+                        while (img[y0:y1, x1-1] == 0).all():
+                            x1 -= 1
+                        while (img[y0, x0:x1] == 0).all():
+                            y0 += 1
+                        while (img[y1-1, x0:x1] == 0).all():
+                            y1 -= 1
+                        for x in range(x0, x1-10+1):
+                            if (img[y0:y1, x:x+10] == 0).all():
+                                x0 = x
+                                break
+                        if (img[y0:y1, x0] == 0).all():
+                            continue
+                        for y in range(y0, y1-10+1):
+                            if (img[y:y+10, x0:x1] == 0).all():
+                                y0 = y
+                                break
+                        if (img[y0, x0:x1] == 0).all():
+                            continue
                         break
-                img[dt > 0] = 0
-                if (img > 0).sum() == 0:
-                    thresh += 5
-                    logger.debug(f'add thresh to {thresh}')
-                    if thresh > 100:
-                        return None
-                    continue
-                x0 = 0
-                while (img[:, x0] == 0).all():
-                    x0 += 1
-                x1 = w
-                while (img[:, x1-1] == 0).all():
-                    x1 -= 1
-                y0 = 0
-                while (img[y0, x0:x1] == 0).all():
-                    y0 += 1
-                y1 = h
-                while (img[y1-1, x0:x1] == 0).all():
-                    y1 -= 1
-                dt = np.zeros((y1-y0, x1-x0, 3), dtype=np.uint8)
-                dt[:, :, 0] = img[y0:y1, x0:x1]
-                dt[:, :, 1] = img[y0:y1, x0:x1]
-                dt[:, :, 2] = img[y0:y1, x0:x1]
-                ahash = str(imagehash.average_hash(Image.fromarray(dt), 16))
-                p = [(bin(int(ahash, 16) ^ int(agent_ahash[x], 16)).count('1'), x) for x in agent_ahash.keys()]
-                p = sorted(p)
-                logger.debug(p[:10])
-                if p[1][0] - p[0][0] >= 10:
+
+                    dt = np.zeros((y1-y0, x1-x0, 3), dtype=np.uint8)
+                    dt[:, :, 0] = img[y0:y1, x0:x1]
+                    dt[:, :, 1] = img[y0:y1, x0:x1]
+                    dt[:, :, 2] = img[y0:y1, x0:x1]
+                    ahash = str(imagehash.average_hash(Image.fromarray(dt), 16))
+                    p = [(bin(int(ahash, 16) ^ int(agent_ahash[x], 16)).count('1'), x) for x in agent_ahash.keys()]
+                    p = sorted(p)
+                    logger.debug(p[:10])
+                    if p[1][0] - p[0][0] < 10:
+                        raise FloodCheckFailed
                     logger.debug(p[0][1])
                     return p[0][1]
-                thresh += 5
-                logger.debug(f'add thresh to {thresh}')
-                if thresh > 100:
-                    return None
+                    
+                except FloodCheckFailed:
+                    thresh += 5
+                    logger.debug(f'add thresh to {thresh}')
+                    if thresh > 100:
+                        break
+                    continue
+            return None
 
         ret_succ = []
         ret_fail = []
@@ -600,4 +625,4 @@ def agent(im, draw=False):
 
     except Exception as e:
         logger.debug(traceback.format_exc())
-        raise RecognizeError
+        raise RecognizeError(e)

@@ -419,12 +419,15 @@ class BaseConstructSolver(BaseSolver):
         idx = 0
         room_total = len(base_room_list)
         while idx < room_total:
-            ret, switch = segment.worker(self.recog.img)
+            ret, switch, mode = segment.worker(self.recog.img)
+
+            if not mode:
+                self.tap((switch[0][0]+5, switch[0][1]+5), matcher=False)
+                continue
 
             if room_total-idx < len(ret):
                 ret = ret[-(room_total-idx):]
 
-            self.tap((switch[0][0]+5, switch[0][1]+5), matcher=False)
             for block in ret:
                 if base_room_list[idx] in plan.keys():
                     self.tap((block[2][0]-5, block[2][1]-5))
@@ -433,7 +436,6 @@ class BaseConstructSolver(BaseSolver):
                         self.tap(
                             (dc[1][0], (dc[0][1]+dc[1][1]) // 2), matcher=False)
                 idx += 1
-            self.tap((switch[0][0]+5, switch[0][1]+5), matcher=False)
 
             if idx == room_total:
                 break
@@ -453,7 +455,11 @@ class BaseConstructSolver(BaseSolver):
         idx = 0
         room_total = len(base_room_list)
         while idx < room_total:
-            ret, switch = segment.worker(self.recog.img)
+            ret, switch, mode = segment.worker(self.recog.img)
+
+            if mode:
+                self.tap((switch[0][0]+5, switch[0][1]+5), matcher=False)
+                continue
 
             if room_total-idx < len(ret):
                 ret = ret[-(room_total-idx):]
