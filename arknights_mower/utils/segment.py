@@ -463,12 +463,25 @@ def agent(im, draw=False):
             while True:
                 img = rgb2gray(margin(origin_img, thresh))
                 dt = np.zeros((h, w), dtype=np.uint8)
+                c = []
                 for y in range(h):
                     for x in range(w-1, -1, -1):
                         if img[y, x] != 0:
                             dt[y, x] = 1
                         else:
+                            c.append(w-1 - x)
                             break
+                flood_check = True
+                for y in range(h//2, 9, -1):
+                    if c[y] - c[y-1] > 1 and c[y] < w//2:
+                        flood_check = False
+                        break
+                if not flood_check:
+                    thresh += 5
+                    logger.debug(f'add thresh to {thresh}')
+                    if thresh > 100:
+                        return None
+                    continue
                 for x in range(w):
                     for y in range(h):
                         if img[y, x] != 0:
@@ -522,7 +535,10 @@ def agent(im, draw=False):
                 if p[1][0] - p[0][0] >= 10:
                     logger.debug(p[0][1])
                     return p[0][1]
-                return None
+                thresh += 5
+                logger.debug(f'add thresh to {thresh}')
+                if thresh > 100:
+                    return None
 
         ret_succ = []
         ret_fail = []
