@@ -10,6 +10,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v2
+      - name: Get the version
+        id: get_version
+        shell: bash
+        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\/v/}
       - name: Set up Python 3.9 amd64
         uses: actions/setup-python@v2
         with:
@@ -27,9 +31,17 @@ jobs:
         shell: cmd
         run: |
           venv64\Scripts\pyinstaller .\main.spec --onefile
-          move dist\main.exe dist\arknights_mower.exe
+          md public
+          move dist\main.exe public\arknights_mower.exe
+      - name: Package into zip
+        uses: papeloto/action-zip@v1
+        with:
+          files: public/
+          recursive: false
+          dest: arknights-mower_cp39_win_amd64_${{ steps.get_version.outputs.VERSION }}.zip
       - name: Release
         uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: dist/arknights_mower.exe
+          body_path: doc/CHANGELOG-${{ steps.get_version.outputs.VERSION }}.txt
+          draft: true
+          files: arknights-mower_cp39_win_amd64_${{ steps.get_version.outputs.VERSION }}.zip
