@@ -378,11 +378,9 @@ class BaseConstructSolver(BaseSolver):
                 ret_agent = set([x[0] for x in ret])
                 if ret_agent == pre_ret:
                     error_count += 1
-                    if error_count < 5:
-                        self.sleep(3)
-                        continue
-                    logger.warning(f'未找到干员：{list(agent)}')
-                    return
+                    if error_count >= 5:
+                        logger.warning(f'未找到干员：{list(agent)}')
+                        return
                 else:
                     pre_ret = ret_agent
                 if len(checked) > 0 and len(checked & ret_agent) == 0:
