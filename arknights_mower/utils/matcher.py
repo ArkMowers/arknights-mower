@@ -90,6 +90,7 @@ class Matcher():
             index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
             search_params = dict(checks=50)
             flann = cv2.FlannBasedMatcher(index_params, search_params)
+            logger.debug(f'{len(des)}, {len(des0)}')
             matches = flann.knnMatch(des, des0, k=2)
 
             """store all the good matches as per Lowe's ratio test."""
