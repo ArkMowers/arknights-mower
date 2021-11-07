@@ -77,12 +77,12 @@ class Matcher():
                         kp0.append(kp)
                         des0.append(des)
                 logger.debug(f'after: {len(kp0)}')
-                if len(kp0) < 2:
-                    logger.debug('feature points is None')
-                    return None
                 kp0, des0 = np.array(kp0), np.array(des0)
             else:
                 kp0, des0 = self.kp, self.des
+            if len(kp0) < 2:
+                logger.debug('feature points is None')
+                return None
 
             h, w = query.shape
             kp, des = SIFT.detectAndCompute(query, None)
@@ -90,7 +90,6 @@ class Matcher():
             index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
             search_params = dict(checks=50)
             flann = cv2.FlannBasedMatcher(index_params, search_params)
-            logger.debug(f'{len(des)}, {len(des0)}')
             matches = flann.knnMatch(des, des0, k=2)
 
             """store all the good matches as per Lowe's ratio test."""
