@@ -28,7 +28,7 @@ class OpeSolver(BaseSolver):
         :param times: int, 作战的次数上限，-1 为无限制，默认为 -1
         :param potion: int, 使用药剂恢复体力的次数上限，-1 为无限制，默认为 0
         :param originite: int, 使用源石恢复体力的次数上限，-1 为无限制，默认为 0
-        :param level: str, 指定关卡，默认为前往上一次关卡
+        :param level: str, 指定关卡，默认为前往上一次关卡或当前界面关卡
         :param plan: [[str, int]...], 指定多个关卡以及次数，优先级高于 level
         :param eliminate: bool, 是否优先处理未完成的每周剿灭，默认为 False
 
@@ -50,14 +50,15 @@ class OpeSolver(BaseSolver):
                 return
             plan = [[level, times]]
         if plan is None:
-            plan = [['pre_ope', times]]
+            plan = [['pre_ope', times]]  # 上一次作战关卡
         logger.debug(f'plan: {plan}')
 
-        recover_state = 0
-        need_eliminate = False
-        wait_start = 10
-        wait_total = 0
-        choosed = plan[0][0] == 'pre_ope'
+        recover_state = 0  # 有关体力恢复的状态，0 为未知，1 为体力药剂恢复中，2 为源石恢复中（防止网络波动）
+        eliminate_state = 0  # 有关每周剿灭的状态，0 为未知，1 为未完成，2 为已完成
+        wait_pre = 10  # 作战时每次等待的时长
+        wait_start = 0  # 作战时第一次等待的时长
+        wait_total = 0  # 作战时累计等待的时长
+        level_choosed = plan[0][0] == 'pre_ope'  # 是否已经选定关卡
         unopen = []
 
         retry_times = MAX_RETRYTIME
@@ -65,23 +66,24 @@ class OpeSolver(BaseSolver):
             try:
                 while len(plan) > 0 and plan[0][1] == 0:
                     plan = plan[1:]
-                    choosed = False
+                    level_choosed = False
                 if len(plan) == 0:
                     return unopen
                 if self.scene() == Scene.INDEX:
                     self.tap_element('index_terminal')
                 elif self.scene() == Scene.TERMINAL_MAIN:
                     eliminate_todo = self.recog.find('terminal_eliminate')
-                    if eliminate_todo is None:
-                        eliminate = False
+                    if eliminate_todo is not None:
+                        eliminate_state = 1
+                    else:
+                        eliminate_state = 2
                     if eliminate and eliminate_todo is not None:
-                        need_eliminate = True
                         self.tap(eliminate_todo)
                     else:
                         self.choose_level(plan[0][0])
-                        choosed = True
+                        level_choosed = True
                 elif self.scene() == Scene.OPERATOR_BEFORE:
-                    if not choosed:
+                    if not level_choosed:
                         self.get_navigation()
                         self.tap_element('nav_terminal')
                         continue
@@ -89,6 +91,7 @@ class OpeSolver(BaseSolver):
                     if agency is not None:
                         self.tap(agency)
                     else:
+                        wait_pre = 10
                         self.tap_element('ope_start')
                         if recover_state == 1:
                             logger.info('use potion to recover sanity')
@@ -101,13 +104,18 @@ class OpeSolver(BaseSolver):
                                 f'recover_state: unknown type {recover_state}')
                         recover_state = 0
                 elif self.scene() == Scene.OPERATOR_ELIMINATE:
+                    if eliminate_state == 0:
+                        self.get_navigation()
+                        self.tap_element('nav_terminal')
+                        continue
+                    if eliminate_state == 2:
+                        logger.warning('检测到关卡为剿灭，但每周剿灭任务已完成')
+                        break
                     agency = self.recog.find('ope_agency')
                     if agency is not None:
                         self.tap(agency)
-                    elif not (eliminate and need_eliminate):
-                        self.get_navigation()
-                        self.tap_element('nav_terminal')
                     else:
+                        wait_pre = 60
                         self.tap_element('ope_start')
                         if recover_state == 1:
                             logger.info('use potion to recover sanity')
@@ -126,24 +134,27 @@ class OpeSolver(BaseSolver):
                     if wait_total < wait_start:
                         if wait_total == 0:
                             logger.info(f'等待 {wait_start} 秒')
-                        wait_total += 10
+                        wait_total += wait_pre
                         if wait_total == wait_start:
-                            self.sleep(10)
+                            self.sleep(wait_pre)
                         else:
-                            time.sleep(10)
+                            time.sleep(wait_pre)
                     else:
-                        logger.info(f'等待 10 秒')
-                        wait_total += 10
-                        self.sleep(10)
+                        logger.info(f'等待 {wait_pre} 秒')
+                        wait_total += wait_pre
+                        self.sleep(wait_pre)
                 elif self.scene() == Scene.OPERATOR_FINISH:
                     if wait_total > 0:
-                        wait_start = max(10, wait_total - 10)
+                        if wait_start == 0:
+                            wait_start = wait_total - wait_pre
+                        else:
+                            wait_start = min(wait_start + wait_pre, wait_total - wait_pre)
                         wait_total = 0
-                    if choosed:
+                    if level_choosed:
                         plan[0][1] -= 1
                     self.tap((self.recog.w // 2, 10))
                 elif self.scene() == Scene.OPERATOR_ELIMINATE_FINISH:
-                    need_eliminate = False
+                    eliminate_state = 0
                     self.tap((self.recog.w // 2, 10))
                 # elif self.scene() == Scene.DOUBLE_CONFIRM:
                 #     self.tap_element('double_confirm', 0.2)
@@ -194,7 +205,7 @@ class OpeSolver(BaseSolver):
                 logger.error(f'关卡 {plan[0][0]} 未开放，请重新指定')
                 unopen.append(plan[0])
                 plan = plan[1:]
-                choosed = False
+                level_choosed = False
                 continue
             except RecognizeError as e:
                 logger.warning(f'识别出了点小差错 qwq: {e}')
