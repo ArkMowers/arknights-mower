@@ -80,9 +80,11 @@ schedule:
     - base plan_4
 
 priority:
+  # 公招优先级
   recruit:
     - 因陀罗
     - 火神
+  # 商店优先级
   shop: 
     - 招聘许可
     - 赤金
@@ -90,10 +92,21 @@ priority:
     - 初级作战记录
     - 技巧概要·卷2
 
+# 自定义基建排班
+# 这里自定义了一套排班策略，实现的是两班倒，分为四个阶段
+# 阶段 1 和 2 为第一班，阶段 3 和 4 为第二班
+# 第一班的干员在阶段 3 和 4 分两批休息，第二班同理
+# 每个阶段耗时 6 小时
 base_construct:
   plan_1:
+    # 办公室
     contact:
       - 艾雅法拉
+    # 会客室
+    meeting:
+      - 陈
+      - 红
+    # 宿舍
     dormitory_1:
       - 杜林
       - 闪灵
@@ -118,9 +131,7 @@ base_construct:
       - 香草
       - 史都华德
       - 刻俄柏
-    meeting:
-      - 陈
-      - 红
+    # 制造站 + 贸易站 + 发电站
     room_1_1:
       - 德克萨斯
       - 能天使
@@ -179,6 +190,9 @@ base_construct:
   plan_3:
     contact:
       - 普罗旺斯
+    meeting:
+      - 远山
+      - 星极
     dormitory_1:
       - 杜林
       - 闪灵
@@ -203,9 +217,6 @@ base_construct:
       - 艾雅法拉
       - 陈
       - 红
-    meeting:
-      - 远山
-      - 星极
     room_1_1:
       - 安比尔
       - 空弦
