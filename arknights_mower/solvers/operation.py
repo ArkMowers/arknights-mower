@@ -4,8 +4,8 @@ import traceback
 import string
 
 from ..ocr import ocrhandle
+from ..utils import config
 from ..utils.log import logger
-from ..utils.config import MAX_RETRYTIME
 from ..utils.recognize import Scene, RecognizeError
 from ..utils.solver import BaseSolver, StrategyError
 from ..data.level import level_list, zone_list, theme_list, weekly_zones
@@ -61,7 +61,7 @@ class OpeSolver(BaseSolver):
         level_choosed = plan[0][0] == 'pre_ope'  # 是否已经选定关卡
         unopen = []
 
-        retry_times = MAX_RETRYTIME
+        retry_times = config.MAX_RETRYTIME
         while retry_times > 0:
             try:
                 while len(plan) > 0 and plan[0][1] == 0:
@@ -218,7 +218,7 @@ class OpeSolver(BaseSolver):
                 return plan + unopen
             except Exception as e:
                 raise e
-            retry_times = MAX_RETRYTIME
+            retry_times = config.MAX_RETRYTIME
 
     def choose_level(self, level):
         if level == 'pre_ope':

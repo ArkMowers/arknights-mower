@@ -1,10 +1,10 @@
 import time
 
+from . import config
+from . import detector
 from .log import logger
 from .adb import ADBConnector, KeyCode
-from .config import APPNAME, MAX_RETRYTIME
 from .recognize import Recognizer, Scene, RecognizeError
-from . import detector
 
 
 class StrategyError(Exception):
@@ -15,8 +15,8 @@ class BaseSolver:
     def __init__(self, adb=None, recog=None):
         self.adb = adb if adb is not None else (recog.adb if recog is not None else ADBConnector())
         self.recog = recog if recog is not None else Recognizer(self.adb)
-        if self.adb.current_focus() != APPNAME:
-            self.adb.start_app(APPNAME)
+        if self.adb.current_focus() != config.APPNAME:
+            self.adb.start_app(config.APPNAME)
             time.sleep(10)
     
     def get_color(self, XY):
@@ -85,7 +85,7 @@ class BaseSolver:
         """
         登录进游戏
         """
-        retry_times = MAX_RETRYTIME
+        retry_times = config.MAX_RETRYTIME
         while retry_times and self.is_login() == False:
             try:
                 if self.scene() == Scene.LOGIN_START:
@@ -119,7 +119,7 @@ class BaseSolver:
                 continue
             except Exception as e:
                 raise e
-            retry_times = MAX_RETRYTIME
+            retry_times = config.MAX_RETRYTIME
 
         if not self.is_login():
             raise StrategyError
@@ -140,7 +140,7 @@ class BaseSolver:
         返回主页
         """
         logger.info('back to index')
-        retry_times = MAX_RETRYTIME
+        retry_times = config.MAX_RETRYTIME
         while retry_times and self.scene() != Scene.INDEX:
             try:
                 if self.get_navigation():
@@ -178,7 +178,7 @@ class BaseSolver:
                 continue
             except Exception as e:
                 raise e
-            retry_times = MAX_RETRYTIME
+            retry_times = config.MAX_RETRYTIME
 
         if self.scene() != Scene.INDEX:
             raise StrategyError

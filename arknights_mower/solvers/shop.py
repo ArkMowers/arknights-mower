@@ -1,9 +1,9 @@
 import traceback
 
 from ..ocr import ocrhandle, ocr_rectify
+from ..utils import config
 from ..utils import segment
 from ..utils.log import logger
-from ..utils.config import MAX_RETRYTIME
 from ..utils.recognize import Scene, RecognizeError
 from ..utils.solver import BaseSolver, StrategyError
 from ..data.item import shop_items
@@ -17,13 +17,13 @@ class ShopSolver(BaseSolver):
     def __init__(self, adb=None, recog=None):
         super(ShopSolver, self).__init__(adb, recog)
 
-    def run(self, priority=None):
+    def run(self, priority=config.SHOP_PRIORITY):
         """
         :param priority: list[str], 使用信用点购买东西的优先级, 若无指定则默认购买第一件可购买的物品
         """
         logger.info('Start: 商店')
 
-        retry_times = MAX_RETRYTIME
+        retry_times = config.MAX_RETRYTIME
         while retry_times > 0:
             try:
                 if self.scene() == Scene.INDEX:
@@ -79,4 +79,4 @@ class ShopSolver(BaseSolver):
                 return
             except Exception as e:
                 raise e
-            retry_times = MAX_RETRYTIME
+            retry_times = config.MAX_RETRYTIME

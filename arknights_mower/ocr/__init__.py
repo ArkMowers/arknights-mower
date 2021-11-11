@@ -1,11 +1,11 @@
 from .model import OcrHandle
 from .ocrspace import API, Language
+from ..utils import config
 from ..utils.log import logger
-from ..utils.config import OCR_APIKEY
 from ..data.ocr import ocr_error
 
 ocrhandle = OcrHandle()
-ocronline = API(api_key=OCR_APIKEY, language=Language.Chinese_Simplified)
+ocronline = API(api_key=config.OCR_APIKEY, language=Language.Chinese_Simplified)
 
 
 def ocr_rectify(img, pre, valid, text=''):

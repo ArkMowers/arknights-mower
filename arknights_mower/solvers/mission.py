@@ -1,7 +1,7 @@
 import traceback
 
+from ..utils import config
 from ..utils.log import logger
-from ..utils.config import MAX_RETRYTIME
 from ..utils.recognize import Scene, RecognizeError
 from ..utils.solver import BaseSolver, StrategyError
 
@@ -19,7 +19,7 @@ class MissionSolver(BaseSolver):
 
         checked = 0
 
-        retry_times = MAX_RETRYTIME
+        retry_times = config.MAX_RETRYTIME
         while retry_times > 0:
             try:
                 if self.scene() == Scene.INDEX:
@@ -71,4 +71,4 @@ class MissionSolver(BaseSolver):
                 return
             except Exception as e:
                 raise e
-            retry_times = MAX_RETRYTIME
+            retry_times = config.MAX_RETRYTIME

@@ -1,9 +1,9 @@
 import traceback
 
 from ..ocr import ocrhandle, ocr_rectify
+from ..utils import config
 from ..utils import segment
 from ..utils.log import logger
-from ..utils.config import MAX_RETRYTIME
 from ..utils.recognize import Scene, RecognizeError
 from ..utils.solver import BaseSolver, StrategyError
 from ..data.recruit import recruit_database, recruit_tag, recruit_agent
@@ -17,13 +17,13 @@ class RecruitSolver(BaseSolver):
     def __init__(self, adb=None, recog=None):
         super(RecruitSolver, self).__init__(adb, recog)
 
-    def run(self, priority=None):
+    def run(self, priority=config.RECRUIT_PRIORITY):
         """
         :param priority: list[str], 优先考虑的公招干员，默认为火神和因陀罗
         """
         logger.info('Start: 公招')
 
-        retry_times = MAX_RETRYTIME
+        retry_times = config.MAX_RETRYTIME
         while retry_times > 0:
             try:
                 if self.scene() == Scene.INDEX:
@@ -119,11 +119,11 @@ class RecruitSolver(BaseSolver):
                 return
             except Exception as e:
                 raise e
-            retry_times = MAX_RETRYTIME
+            retry_times = config.MAX_RETRYTIME
 
     def recruit_choose(self, tags, priority):
         if priority is None:
-            priority = ['因陀罗', '火神']
+            priority = []
         possibility = {}
         for x in recruit_database:
             if x[1] == 6 and '高级资深干员' not in tags:

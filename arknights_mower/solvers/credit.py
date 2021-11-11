@@ -1,8 +1,8 @@
 import traceback
 
+from ..utils import config
 from ..utils import detector
 from ..utils.log import logger
-from ..utils.config import MAX_RETRYTIME
 from ..utils.recognize import Scene, RecognizeError
 from ..utils.solver import BaseSolver, StrategyError
 
@@ -18,7 +18,7 @@ class CreditSolver(BaseSolver):
     def run(self):
         logger.info('Start: 信用')
 
-        retry_times = MAX_RETRYTIME
+        retry_times = config.MAX_RETRYTIME
         while retry_times > 0:
             try:
                 if self.scene() == Scene.INDEX:
@@ -58,4 +58,4 @@ class CreditSolver(BaseSolver):
                 return
             except Exception as e:
                 raise e
-            retry_times = MAX_RETRYTIME
+            retry_times = config.MAX_RETRYTIME

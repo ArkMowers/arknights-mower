@@ -1,9 +1,9 @@
 import traceback
 import numpy as np
 
+from ..utils import config
 from ..utils import detector, segment
 from ..utils.log import logger
-from ..utils.config import MAX_RETRYTIME
 from ..utils.recognize import Scene, RecognizeError
 from ..utils.solver import BaseSolver, StrategyError
 from ..data.base import base_room_list
@@ -492,7 +492,7 @@ class BaseConstructSolver(BaseSolver):
         """
         logger.info('Start: 基建')
 
-        retry_times = MAX_RETRYTIME
+        retry_times = config.MAX_RETRYTIME
         todo_task = True
         while retry_times > 0:
             try:
@@ -563,4 +563,4 @@ class BaseConstructSolver(BaseSolver):
                 return
             except Exception as e:
                 raise e
-            retry_times = MAX_RETRYTIME
+            retry_times = config.MAX_RETRYTIME
