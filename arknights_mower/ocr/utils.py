@@ -61,6 +61,8 @@ def fix(s):
     对识别结果进行简单处理，并查询是否在 ocr_error 中有过记录
     """
     s = re.sub(r'[。？！，、；：“”‘’（）《》〈〉【】『』「」﹃﹄〔〕…～﹏￥－＿]', '', s)
+    s = re.sub(r'[\'\"\,\.\(\)]', '', s) # TODO 去除符号
+    # TODO 如果包含汉字，则前面一定是汉字
     if s in ocr_error.keys():
         logger.debug(f'fix with ocr_error: {s} -> {ocr_error[s]}')
         s = ocr_error[s]
