@@ -75,8 +75,9 @@ emulator-5554   device
 $ arknights-mower
 usage: arknights-mower command [command args] [-d]
 commands (prefix abbreviation accepted):
-    base [-c] [-d[F][N]]
+    base [plan] [-c] [-d[F][N]]
         自动处理基建的信赖/货物/订单/线索/无人机
+        plan 表示选择的基建干员排班计划（需要搭配配置文件使用）
         -c 是否自动使用线索
         -d 是否自动消耗无人机，F 表示从上往下第几层（1-3），N 表示从左往右第几个房间（1-3），仅支持制造站
     credit
@@ -98,6 +99,8 @@ commands (prefix abbreviation accepted):
         -r 是否自动回复理智，最多回复 N 次，N 未指定则表示不限制回复次数
         -R 是否使用源石回复理智，最多回复 N 次，N 未指定则表示不限制回复次数
         -e 是否优先处理未完成的每周剿灭
+    schedule
+        执行配置文件中的计划任务
     version
         输出版本信息
     help

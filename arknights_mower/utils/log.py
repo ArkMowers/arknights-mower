@@ -49,6 +49,12 @@ def init_fhlr():
     logger.addHandler(fhlr)
 
 
+def set_debug_mode():
+    if config.DEBUG_MODE:
+        logger.info(f'开启 debug 模式，运行日志被保存在 {config.LOGFILE_PATH} 中')
+        init_fhlr()
+
+
 def save_screenshot(img, subdir=''):
     if config.SCREENSHOT_PATH is None:
         return

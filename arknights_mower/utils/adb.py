@@ -1,13 +1,10 @@
-# import os
 import time
-# import utils
 import socket
-import shutil
-# import platform
 import subprocess
 import numpy as np
 from random import randint
 
+from . import config
 from .log import logger, save_screenshot
 
 
@@ -181,23 +178,34 @@ class ADBClientSession:
 class ADBConnector:
 
     def __init__(self, device_id=None):
-        # self.__system = platform.system()
-        # self.__find = ''
-        # self.__command = 'adb'
         self.__device_id = device_id
-        # self.__get_find()
-        # self.__check_adb()
-        # self.__check_server_alive()
         if self.__device_id == None:
-            for device in ADBClientSession().devices():
-                if device[1] == 'device':
-                    self.__device_id = device[0]
-                    break
-
+            devices = self.__available_devices()
+            if len(devices) == 0:
+                for fixup in config.ADB_FIXUPS:
+                    if fixup['run'] == 'adb_connect':
+                        for target in fixup['target']:
+                            try:
+                                ADBClientSession().connect(target)
+                            except RuntimeError as e:
+                                logger.debug(e)
+                                continue
+                        devices = self.__available_devices()
+                        if len(devices) > 0:
+                            break
+                    else:
+                        logger.warning('Unknown run command: ' + fixup['run'])
+                raise RuntimeError('No available device found')
+            for x in config.ADB_DEVICE:
+                for device in devices:
+                    if device[0] == x:
+                        self.__device_id = device
+                        return
+            self.__device_id = devices[0][0]
+            
     def __start_server(self):
         logger.info('Starting adb server...')
-        adb_binaries = [shutil.which('adb')]
-        for adb_bin in adb_binaries:
+        for adb_bin in config.ADB_BINARY:
             try:
                 logger.debug(f'Try adb_bin: {adb_bin}')
                 subprocess.run([adb_bin, 'start-server'], check=True)
@@ -222,6 +230,9 @@ class ADBConnector:
             if restart:
                 self.__start_server()
             return False
+
+    def __available_devices(self):
+        return [x for x in ADBClientSession().devices() if x[1] != 'offline']
 
     def session(self):
         self.__check_server_alive()

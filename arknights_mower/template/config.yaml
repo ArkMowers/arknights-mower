@@ -1,0 +1,263 @@
+---
+
+此文件为配置文件模板，更新时将覆盖。
+配置文件为 config.yaml，首次运行时自动生成。
+
+---
+
+debug:
+  # 是否启动调试模式
+  enabled: true
+  logfile:
+    # 日志存放路径
+    path: ./log
+  screenshot:
+    # 截图存放路径
+    path: ./screenshot
+    # 单个文件夹内截图数量的上限
+    max_total: 100
+
+device:
+  # 需要启动 adb server 时使用的 adb 程序，为空时则尝试 PATH 中的 adb
+  # 以下为部分模拟器提供的 adb 程序，不一定正确，仅供参考
+  # adb_binary: D:\leidian\LDPlayer\adb.exe             # 雷电模拟器
+  # adb_binary: C:\Program Files\Nox\bin\nox_adb.exe    # 夜神模拟器
+  # adb_binary: C:\Program Files\BlueStacks\HD-Adb.exe  # BlueStacks
+  # adb_binary: C:\Program Files (x86)\MuMu\emulator\nemu\vmonitor\bin\adb_server.exe   # MuMu模拟器
+  adb_binary:
+
+  # 优先选择指定设备进行操作，指定 adb devices 中列出的名称
+  # 若都无法连接则优先选择在线的设备进行连接
+  adb_device:
+    - 127.0.0.1:62026
+
+  # 无设备连接时进行的操作
+  # 如果某个操作报告成功，则不再执行后续定义的操作
+  adb_no_device_fixups:
+    - run: adb_connect # 连接 ADB TCP/IP 端口
+      target:
+        - 127.0.0.1:5555 # 大部分模拟器
+        - 127.0.0.1:7555 # MuMu模拟器
+
+app:
+  package_name: com.hypergryph.arknights
+  # package_name: com.hypergryph.arknights.bilibili   # Bilibili 服
+  activity_name: com.u8.sdk.U8UnityContext
+
+ocr:
+  # ocr.space 免费 API Token
+  # 若不可用则需要自己申请一个 → https://ocr.space/OCRAPI
+  ocr_space_api: c7431c9d7288957
+
+behavior:
+  max_retry: 5
+
+schedule:
+  # 开始运行时的计划任务
+  start_up: &full_task
+    - mail
+    - base -c
+    - credit
+    - operation -e
+    - shop
+    - recruit
+    - mission
+  # 每个小时的计划任务
+  pre_hour:
+    - base -c -d33
+    - recruit
+  # 定时计划任务
+  day_07_00: *full_task
+  day_15_00: *full_task
+  day_23_00: *full_task
+  day_08_00:
+    - base plan_1
+  day_14_00:
+    - base plan_2
+  day_20_00:
+    - base plan_3
+  day_02_00:
+    - base plan_4
+
+priority:
+  recruit:
+    - 因陀罗
+    - 火神
+  shop: 
+    - 招聘许可
+    - 赤金
+    - 龙门币
+    - 初级作战记录
+    - 技巧概要·卷2
+
+base_construct:
+  plan_1:
+    contact:
+      - 艾雅法拉
+    dormitory_1:
+      - 杜林
+      - 闪灵
+      - 安比尔
+      - 空弦
+      - 缠丸
+    dormitory_2:
+      - 推进之王
+      - 琴柳
+      - 赫默
+      - 杰西卡
+      - 调香师
+    dormitory_3:
+      - 夜莺
+      - 波登可
+      - 夜刀
+      - 古米
+      - 空爆
+    dormitory_4:
+      - 空
+      - Lancet-2
+      - 香草
+      - 史都华德
+      - 刻俄柏
+    meeting:
+      - 陈
+      - 红
+    room_1_1:
+      - 德克萨斯
+      - 能天使
+      - 拉普兰德
+    room_1_2:
+      - 断罪者
+      - 食铁兽
+      - 槐琥
+    room_1_3:
+      - 阿消
+    room_2_1:
+      - 巫恋
+      - 柏喙
+      - 慕斯
+    room_2_2:
+      - 红豆
+      - 霜叶
+      - 白雪
+    room_2_3:
+      - 雷蛇
+    room_3_1:
+      - Castle-3
+      - 梅尔
+      - 白面鸮
+    room_3_2:
+      - 格雷伊
+    room_3_3:
+      - 砾
+      - 夜烟
+      - 斑点
+  plan_2:
+    dormitory_1:
+      - 杜林
+      - 闪灵
+      - 芬
+      - 稀音
+      - 克洛丝
+    dormitory_2:
+      - 推进之王
+      - 琴柳
+      - 清流
+      - 森蚺
+      - 温蒂
+    dormitory_3:
+      - 夜莺
+      - 波登可
+      - 伊芙利特
+      - 深靛
+      - 炎熔
+    dormitory_4:
+      - 空
+      - Lancet-2
+      - 远山
+      - 星极
+      - 普罗旺斯
+  plan_3:
+    contact:
+      - 普罗旺斯
+    dormitory_1:
+      - 杜林
+      - 闪灵
+      - 格雷伊
+      - 雷蛇
+      - 阿消
+    dormitory_2:
+      - 推进之王
+      - 琴柳
+      - 德克萨斯
+      - 能天使
+      - 拉普兰德
+    dormitory_3:
+      - 夜莺
+      - 波登可
+      - 巫恋
+      - 柏喙
+      - 慕斯
+    dormitory_4:
+      - 空
+      - Lancet-2
+      - 艾雅法拉
+      - 陈
+      - 红
+    meeting:
+      - 远山
+      - 星极
+    room_1_1:
+      - 安比尔
+      - 空弦
+      - 缠丸
+    room_1_2:
+      - 赫默
+      - 杰西卡
+      - 调香师
+    room_1_3:
+      - 伊芙利特
+    room_2_1:
+      - 夜刀
+      - 古米
+      - 空爆
+    room_2_2:
+      - 香草
+      - 史都华德
+      - 刻俄柏
+    room_2_3:
+      - 深靛
+    room_3_1:
+      - 芬
+      - 稀音
+      - 克洛丝
+    room_3_2:
+      - 炎熔
+    room_3_3:
+      - 清流
+      - 森蚺
+      - 温蒂
+  plan_4:
+    dormitory_1:
+      - 杜林
+      - 闪灵
+      - 断罪者
+      - 食铁兽
+      - 槐琥
+    dormitory_2:
+      - 推进之王
+      - 琴柳
+      - 红豆
+      - 霜叶
+      - 白雪
+    dormitory_3:
+      - 夜莺
+      - 波登可
+      - Castle-3
+      - 梅尔
+      - 白面鸮
+    dormitory_4:
+      - 空
+      - Lancet-2
+      - 砾
+      - 夜烟
+      - 斑点
