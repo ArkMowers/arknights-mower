@@ -103,8 +103,6 @@ def init_config():
 
     global SCHEDULE_PLAN
     SCHEDULE_PLAN = __get('schedule', None)
-    if SCHEDULE_PLAN is not None:
-        print(SCHEDULE_PLAN.get('sdfsdf'))
 
     global RECRUIT_PRIORITY, SHOP_PRIORITY
     RECRUIT_PRIORITY = __get('priority/recruit', None)
