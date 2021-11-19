@@ -11,3 +11,4 @@ tornado==6.1
 imagehash==4.2.1
 requests==2.22.0
 ruamel.yaml==0.17.17
+schedule~=1.1.0
