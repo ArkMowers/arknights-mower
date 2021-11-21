@@ -113,6 +113,7 @@ def task(tag='start_up'):
     plan = config.SCHEDULE_PLAN.get(tag)
     if plan is not None:
         for args in plan:
+            args = args.split()
             if 'schedule' in args:
                 logger.info('schedule 里套 schedule，你就是测试工程师？')
                 exit()
