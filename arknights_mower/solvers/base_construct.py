@@ -292,7 +292,9 @@ class BaseConstructSolver(BaseSolver):
         self.tap(((x0+x1)//2, (y0*5-y1)//4), interval=3)
         obtain = self.find('clue_obtain')
         if obtain is not None and self.get_color(self.get_pos(obtain, 0.25, 0.5))[0] < 20:
-            self.tap(obtain, interval=3)
+            self.tap(obtain, interval=2)
+            if self.find('clue_full') is not None:
+                self.back()
         else:
             self.back()
 

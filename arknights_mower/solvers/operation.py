@@ -55,7 +55,7 @@ class OpeSolver(BaseSolver):
 
         recover_state = 0  # 有关体力恢复的状态，0 为未知，1 为体力药剂恢复中，2 为源石恢复中（防止网络波动）
         eliminate_state = 0  # 有关每周剿灭的状态，0 为未知，1 为未完成，2 为已完成
-        wait_pre = 10  # 作战时每次等待的时长
+        wait_pre = 10  # 作战时每次等待的时长，普通关卡为 10s，剿灭关卡为 60s
         wait_start = 0  # 作战时第一次等待的时长
         wait_total = 0  # 作战时累计等待的时长
         level_choosed = plan[0][0] == 'pre_ope'  # 是否已经选定关卡
@@ -66,6 +66,7 @@ class OpeSolver(BaseSolver):
             try:
                 while len(plan) > 0 and plan[0][1] == 0:
                     plan = plan[1:]
+                    wait_start = 0
                     level_choosed = False
                 if len(plan) == 0:
                     return unopen
@@ -91,7 +92,9 @@ class OpeSolver(BaseSolver):
                     if agency is not None:
                         self.tap(agency)
                     else:
-                        wait_pre = 10
+                        if wait_pre != 10:
+                            wait_start = 0
+                            wait_pre = 10
                         self.tap_element('ope_start')
                         if recover_state == 1:
                             logger.info('use potion to recover sanity')
@@ -115,7 +118,9 @@ class OpeSolver(BaseSolver):
                     if agency is not None:
                         self.tap(agency)
                     else:
-                        wait_pre = 60
+                        if wait_pre != 60:
+                            wait_start = 0
+                            wait_pre = 60
                         self.tap_element('ope_start')
                         if recover_state == 1:
                             logger.info('use potion to recover sanity')
@@ -130,7 +135,6 @@ class OpeSolver(BaseSolver):
                 elif self.scene() == Scene.OPERATOR_SELECT:
                     self.tap_element('ope_select_start')
                 elif self.scene() == Scene.OPERATOR_ONGOING:
-                    # self.adb.touch_tap((1, 1))  # 保持屏幕常亮
                     if wait_total < wait_start:
                         if wait_total == 0:
                             logger.info(f'等待 {wait_start} 秒')
@@ -205,6 +209,7 @@ class OpeSolver(BaseSolver):
                 logger.error(f'关卡 {plan[0][0]} 未开放，请重新指定')
                 unopen.append(plan[0])
                 plan = plan[1:]
+                wait_start = 0
                 level_choosed = False
                 continue
             except RecognizeError as e:

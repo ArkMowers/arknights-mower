@@ -199,7 +199,7 @@ class ADBConnector:
             for x in config.ADB_DEVICE:
                 for device in devices:
                     if device[0] == x:
-                        self.__device_id = device
+                        self.__device_id = device[0]
                         return
             self.__device_id = devices[0][0]
             
