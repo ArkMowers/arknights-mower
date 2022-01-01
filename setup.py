@@ -14,7 +14,7 @@ setuptools.setup(
     long_description_content_type='text/markdown',
     url='https://github.com/Konano/arknights-mower',
     packages=setuptools.find_packages(),
-    install_requires=['colorlog', 'opencv_python', 'matplotlib', 'numpy', 'scikit_image', 'scikit_learn>=1',
+    install_requires=['colorlog', 'opencv_python', 'matplotlib', 'numpy', 'scikit_image==0.18.3', 'scikit_learn>=1',
                       'onnxruntime', 'pyclipper', 'shapely', 'tornado', 'imagehash', 'requests', 'ruamel.yaml', 'schedule'],
     include_package_data=True,
     package_data={'arknights_mower': ['template/*.yaml']},
