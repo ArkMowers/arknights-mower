@@ -1,7 +1,7 @@
 import setuptools
 import arknights_mower
 
-LONG_DESC = open('README.md', 'r').read()
+LONG_DESC = open('README.md', 'r', encoding='utf8').read()
 VERSION = arknights_mower.__version__
 
 setuptools.setup(
