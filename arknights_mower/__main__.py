@@ -211,6 +211,9 @@ def match_cmd(prefix, avail_cmds):
 
 def main(executable=False):
     args = sys.argv[1:]
+    if not args and executable:
+        args.append("schedule")
+        print("单文件模式，读取当前目录的.ark_mower.yaml文件执行计划任务。按下Ctrl+C以结束脚本运行")
     config_file = None
     debug_mode = False
     while True:
