@@ -226,9 +226,10 @@ def main(executable=False):
         
     if config_file is None:
         if executable:
-            # config_file = Path.home().joinpath('.ark_mower.yaml')
-            print(__rootdir__)
-            exit()  # TODO exe 版本的话配置文件默认和 exe 同目录
+            # print(f"executable:{sys.executable}")
+            # print(f"file: {sys.__file__}")
+            # print(f"MEIPASS: {sys._MEIPASS}")
+            config_file = Path(sys.executable).parent.joinpath('.ark_mower.yaml')
         else:
             config_file = Path.home().joinpath('.ark_mower.yaml')
         if not config_file.exists():
