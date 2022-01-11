@@ -17,7 +17,6 @@ setuptools.setup(
     install_requires=['colorlog', 'opencv_python', 'matplotlib', 'numpy', 'scikit_image==0.18.3', 'scikit_learn>=1',
                       'onnxruntime', 'pyclipper', 'shapely', 'tornado', 'imagehash', 'requests', 'ruamel.yaml', 'schedule'],
     include_package_data=True,
-    package_data={'arknights_mower': ['template/*.yaml']},
     entry_points={'console_scripts': [
         'arknights-mower=arknights_mower.__main__:main']},
     classifiers=[
