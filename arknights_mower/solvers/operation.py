@@ -236,11 +236,13 @@ class OpeSolver(BaseSolver):
         logger.info(f'关卡：{level}')
         logger.info(f'章节：{zone[0]}')
 
+        BOTTOM_TAP_NUMER = 8
+
         nav = self.recog.nav_button()
         nav[1][1] = self.recog.h
         bottom = self.recog.h - 10
         if zone[1] == 0:
-            self.tap((self.recog.w // 14 * 3, bottom))
+            self.tap((self.recog.w // BOTTOM_TAP_NUMER // 2 * 3, bottom))
             ocr = []
             act_id = 999
             while act_id != zone[2]:
@@ -278,7 +280,7 @@ class OpeSolver(BaseSolver):
                 episode += 1
             self.tap(cover)
         elif zone[1] == 1:
-            self.tap((self.recog.w // 14 * 5, bottom))
+            self.tap((self.recog.w // BOTTOM_TAP_NUMER // 2 * 5, bottom))
             ocr = ocrhandle.predict(
                 self.recog.img[nav[0][1]:nav[1][1], nav[0][0]:nav[1][0]])
             for x in ocr:
@@ -286,7 +288,7 @@ class OpeSolver(BaseSolver):
                     self.tap(x[2])
             self.tap_element('enter')
         elif zone[1] == 2:
-            self.tap((self.recog.w // 14 * 7, bottom))
+            self.tap((self.recog.w // BOTTOM_TAP_NUMER // 2 * 7, bottom))
             ocr = ocrhandle.predict(
                 self.recog.img[nav[0][1]:nav[1][1], nav[0][0]:nav[1][0]])
             for x in ocr:
@@ -294,7 +296,7 @@ class OpeSolver(BaseSolver):
                     self.tap(x[2])
             self.tap_element('enter')
         elif zone[1] == 3:
-            self.tap((self.recog.w // 14 * 9, bottom))
+            self.tap((self.recog.w // BOTTOM_TAP_NUMER // 2 * 9, bottom))
             ocr = ocrhandle.predict(self.recog.img)
             unable = list(filter(lambda x: x[1] == '不可进入', ocr))
             ocr = list(filter(lambda x: x[1] in weekly_zones, ocr))
