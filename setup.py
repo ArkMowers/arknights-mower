@@ -1,7 +1,8 @@
 import setuptools
 import arknights_mower
+from pathlib import Path
 
-LONG_DESC = open('README.md', 'r', encoding='utf8').read()
+LONG_DESC = Path('README.md').read_text('utf8')
 VERSION = arknights_mower.__version__
 
 setuptools.setup(
