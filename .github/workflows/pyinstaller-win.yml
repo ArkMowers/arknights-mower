@@ -34,7 +34,7 @@ jobs:
           md public
           move dist\main.exe public\arknights_mower.exe
       - name: Package into zip
-        uses: papeloto/action-zip@v1
+        uses: vimtor/action-zip@v1
         with:
           files: public/
           recursive: false
