@@ -1,6 +1,17 @@
 from pathlib import Path
 import platform
+import sys
 
-__rootdir__ = Path(__file__).parent.resolve()
+# Use sys.frozen to check if run through pyinstaller frozen exe, and sys._MEIPASS to get temp path.
+if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+    __pyinstall__ = True
+    __rootdir__ = Path(sys._MEIPASS).resolve()
+else:
+    __pyinstall__ = False
+    __rootdir__ = Path(__file__).parent.resolve()
+
+# Command line mode
+__cli__ = not (__pyinstall__ and not sys.argv[1:])
+
 __system__ = platform.system().lower()
 __version__ = '1.3.9'

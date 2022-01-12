@@ -1,10 +1,11 @@
+import sys
 import shutil
 import ruamel.yaml
 from ruamel.yaml.comments import CommentedSeq
 from pathlib import Path
 from collections import Mapping
 
-from ..__init__ import __rootdir__
+from ..__init__ import __rootdir__, __system__, __pyinstall__
 
 yaml = ruamel.yaml.YAML()
 __ydoc = None
@@ -52,24 +53,30 @@ def __set(path, value):
     current_map[k] = value
 
 
-def create_config(config_file):
+def build_config(path, module):
+    global __ydoc
     with Path(f'{__rootdir__}/template/config.yaml').open('r', encoding='utf8') as f:
         loader = yaml.load_all(f)
         next(loader)  # discard first document (used for comment)
-        ydoc = next(loader)
-    with Path(config_file).open('w', encoding='utf8') as f:
-        yaml.dump(ydoc, f)
+        __ydoc = next(loader)
+    init_debug(module)
+    __set('debug/logfile/path', str(LOGFILE_PATH.resolve()))
+    __set('debug/screenshot/path', str(SCREENSHOT_PATH.resolve()))
+    with Path(path).open('w', encoding='utf8') as f:
+        yaml.dump(__ydoc, f)
 
 
-def load_config(config_file):
-    global __ydoc
-    with Path(config_file).open('r', encoding='utf8') as f:
+def load_config(path):
+    global __ydoc, PATH
+    PATH = path
+    with PATH.open('r', encoding='utf8') as f:
         __ydoc = yaml.load(f)
     init_config()
 
 
-def save_config(config_file):
-    with Path(config_file).open('w', encoding='utf8') as f:
+def save_config():
+    global PATH
+    with PATH.open('w', encoding='utf8') as f:
         yaml.dump(__ydoc, f)
 
 
@@ -107,6 +114,26 @@ def init_config():
     global RECRUIT_PRIORITY, SHOP_PRIORITY
     RECRUIT_PRIORITY = __get('priority/recruit', None)
     SHOP_PRIORITY = __get('priority/shop', None)
+
+
+def init_debug(module):
+    global LOGFILE_PATH, SCREENSHOT_PATH
+    if __pyinstall__:
+        LOGFILE_PATH = Path(sys.executable).parent.joinpath('log')
+        SCREENSHOT_PATH = Path(sys.executable).parent.joinpath('screenshot')
+    elif module:
+        if __system__ == 'windows':
+            LOGFILE_PATH = Path.home().joinpath('arknights-mower')
+            SCREENSHOT_PATH = Path.home().joinpath('arknights-mower/screenshot')
+        elif __system__ == 'linux':
+            LOGFILE_PATH = '/var/log/arknights-mower'
+            SCREENSHOT_PATH = '/var/log/arknights-mower/screenshot'
+        else:
+            print(f'Unknown system: {__system__}')
+            raise NotImplementedError
+    else:
+        LOGFILE_PATH = __rootdir__.parent.joinpath('log')
+        SCREENSHOT_PATH = __rootdir__.parent.joinpath('screenshot')
 
 
 init_config()

@@ -1,17 +1,16 @@
 import os
+import traceback
 
 from arknights_mower.__main__ import main
-from arknights_mower.__init__ import __system__
+from arknights_mower import __cli__
 
 if __name__ == '__main__':
     try:
-        main(executable=True)
-    except Exception as e:
-        print(e)
-        print('脚本发生错误')
-        if __system__ == 'windows':
+        main()
+    except Exception:
+        print(traceback.format_exc())
+    except SystemExit:
+        pass
+    finally:
+        if not __cli__:
             os.system('pause')
-        else:
-            input()
-        raise e
-    # Use sys.frozen to check if run through pyinstaller frozen exe, and sys._MEIPASS to get temp path.

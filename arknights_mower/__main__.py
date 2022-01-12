@@ -1,9 +1,10 @@
 import sys
 import time
+import traceback
 import schedule as sd
 from pathlib import Path
 
-from .__init__ import __version__, __system__, __rootdir__
+from .__init__ import __version__, __system__, __rootdir__, __pyinstall__
 from .utils.log import logger, set_debug_mode
 from .utils import config
 from .solvers import *
@@ -115,8 +116,8 @@ def task(tag='start_up'):
         for args in plan:
             args = args.split()
             if 'schedule' in args:
-                logger.info('schedule 里套 schedule，你就是测试工程师？')
-                exit()
+                logger.error('schedule 里套 schedule，你就是测试工程师？')
+                raise NotImplementedError
             try:
                 target_cmd = match_cmd(args[0], global_cmds)
                 if target_cmd is not None:
@@ -189,8 +190,8 @@ def help(args=None):
             print('    ' + str(cmd.__doc__.strip()))
         else:
             print('    ' + cmd.__name__)
-    print('    --debug\n        启用调试功能，调试信息将会输出到 /var/log/arknights-mower/ 中')
-    print('    --config filepath\n        指定配置文件，默认使用 ~/.ark_mower.yaml')
+    print(f'    --debug\n        启用调试功能，调试信息将会输出到 {config.LOGFILE_PATH} 中')
+    print(f'    --config filepath\n        指定配置文件，默认使用 {config.PATH}')
 
 
 global_cmds = [base, credit, mail, mission, shop, recruit, operation, version, help, schedule]
@@ -209,16 +210,16 @@ def match_cmd(prefix, avail_cmds):
         return None
 
 
-def main(executable=False):
+def main(module=False):
     args = sys.argv[1:]
-    if not args and executable:
-        args.append("schedule")
-        print("单文件模式，读取当前目录的.ark_mower.yaml文件执行计划任务。按下Ctrl+C以结束脚本运行")
-    config_file = None
+    if not args and __pyinstall__:
+        logger.info('参数为空，默认执行 schedule 模式，按下 Ctrl+C 以结束脚本运行')
+        args.append('schedule')
+    config_path = None
     debug_mode = False
     while True:
         if len(args) > 1 and args[-2] == '--config':
-            config_file = args[-1]
+            config_path = Path(args[-1])
             args = args[:-2]
             continue
         if len(args) > 0 and args[-1] == '--debug':
@@ -227,36 +228,28 @@ def main(executable=False):
             continue
         break
         
-    if config_file is None:
-        if executable:
-            # print(f"executable:{sys.executable}")
-            # print(f"file: {sys.__file__}")
-            # print(f"MEIPASS: {sys._MEIPASS}")
-            config_file = Path(sys.executable).parent.joinpath('.ark_mower.yaml')
+    if config_path is None:
+        if __pyinstall__:
+            config_path = Path(sys.executable).parent.joinpath('config.yaml')
+        elif module:
+            config_path = Path.home().joinpath('.ark_mower.yaml')
         else:
-            config_file = Path.home().joinpath('.ark_mower.yaml')
-        if not config_file.exists():
-            config.create_config(config_file)
+            config_path = __rootdir__.parent.joinpath('config.yaml')
+        if not config_path.exists():
+            config.build_config(config_path, module)
     else:
-        try:
-            assert Path(config_file).exists()
-        except:
-            logger.error(f'配置文件路径有误或不存在：{config_file}')
-        config_file = Path(config_file)
-
-    config.load_config(config_file)
+        if not config_path.exists():
+            logger.error(f'配置文件路径有误或不存在：{config_path}')
+            return
+    try:
+        logger.info(f'读取配置文件：{config_path}')
+        config.load_config(config_path)
+    except Exception as e:
+        logger.error('加载配置文件出现错误')
+        raise e
 
     if debug_mode and not config.DEBUG_MODE:
         config.DEBUG_MODE = True
-        if __system__ == 'windows':
-            config.LOGFILE_PATH = Path.home().joinpath('arknights-mower')
-            config.SCREENSHOT_PATH = Path.home().joinpath('arknights-mower/screenshot')
-        elif __system__ == 'linux':
-            config.LOGFILE_PATH = '/var/log/arknights-mower'
-            config.SCREENSHOT_PATH = '/var/log/arknights-mower/screenshot'
-        else:
-            logger.error(f'尚未支持该系统：{__system__}')
-            exit()
     set_debug_mode()
         
     logger.debug(args)
@@ -268,10 +261,11 @@ def main(executable=False):
             try:
                 target_cmd(args[1:])
             except ParamError:
+                logger.debug(traceback.format_exc())
                 help()
         else:
             help()
 
 
 if __name__ == '__main__':
-    main()
+    main(module=True)
