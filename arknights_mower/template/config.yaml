@@ -15,7 +15,7 @@ debug:
     # 截图存放路径
     path: ./screenshot
     # 单个文件夹内截图数量的上限
-    max_total: 100
+    max_total: 20
 
 device:
   # 需要启动 adb server 时使用的 adb 程序，为空时则尝试 PATH 中的 adb

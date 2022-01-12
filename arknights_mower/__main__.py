@@ -32,8 +32,8 @@ def base(args):
         -c 是否自动使用线索
         -d 是否自动消耗无人机，F 表示第几层（1-3），N 表示从左往右第几个房间（1-3），仅支持制造站
     """
-    clue_collect = False
-    drone_room = None
+    clue_collect = config.BASE_CONSTRUCT_CLUE
+    drone_room = config.BASE_CONSTRUCT_DRONE
     arrange = None
 
     try:
@@ -137,11 +137,11 @@ def operation(args):
         -e 是否优先处理未完成的每周剿灭
     """
     level = None
-    times = -1
-    potion = 0
-    originite = 0
-    eliminate = False
-    plan = None
+    times = config.OPE_TIMES
+    potion = config.OPE_POTION
+    originite = config.OPE_ORIGINITE
+    eliminate = config.OPE_ELIMINATE
+    plan = config.OPE_PLAN
 
     try:
         for p in args:
@@ -167,7 +167,8 @@ def operation(args):
     except:
         raise ParamError
 
-    OpeSolver().run(times, potion, originite, level, plan, eliminate)
+    remain_plan = OpeSolver().run(times, potion, originite, level, plan, eliminate)
+    config.update_ope_plan(remain_plan)
 
 
 def version(args=None):

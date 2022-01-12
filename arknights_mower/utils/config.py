@@ -83,9 +83,9 @@ def save_config():
 def init_config():
 
     global ADB_BINARY, ADB_DEVICE, ADB_FIXUPS
-    ADB_BINARY = __get_list('device/adb_binary')
-    ADB_DEVICE = __get_list('device/adb_device')
-    ADB_FIXUPS = __get_list('device/adb_no_device_fixups')
+    ADB_BINARY = __get('device/adb_binary', [])
+    ADB_DEVICE = __get('device/adb_device', [])
+    ADB_FIXUPS = __get('device/adb_no_device_fixups', [])
     if len(ADB_BINARY) == 0:
         ADB_BINARY = [shutil.which('adb')]
 
@@ -105,15 +105,35 @@ def init_config():
     global OCR_APIKEY
     OCR_APIKEY = __get('ocr/ocr_space_api', 'c7431c9d7288957')
 
-    global BASE_CONSTRUCT_PLAN
-    BASE_CONSTRUCT_PLAN = __get('base_construct', None)
+    global BASE_CONSTRUCT_PLAN, BASE_CONSTRUCT_CLUE, BASE_CONSTRUCT_DRONE
+    BASE_CONSTRUCT_PLAN = __get('arrangement', None)
+    BASE_CONSTRUCT_CLUE = __get('base_construct/clue_collect', False)
+    BASE_CONSTRUCT_DRONE = __get('base_construct/drone_room', None)
 
     global SCHEDULE_PLAN
     SCHEDULE_PLAN = __get('schedule', None)
 
     global RECRUIT_PRIORITY, SHOP_PRIORITY
-    RECRUIT_PRIORITY = __get('priority/recruit', None)
+    RECRUIT_PRIORITY = __get('priority/recruit', ['火神', '因陀罗'])
     SHOP_PRIORITY = __get('priority/shop', None)
+
+    global OPE_TIMES, OPE_POTION, OPE_ORIGINITE, OPE_ELIMINATE, OPE_PLAN
+    OPE_TIMES = __get('operation/times', -1)
+    OPE_POTION = __get('operation/potion', 0)
+    OPE_ORIGINITE = __get('operation/originite', 0)
+    OPE_ELIMINATE = __get('operation/eliminate', False)
+    OPE_PLAN = __get('operation/plan', None)
+    if OPE_PLAN is not None:
+        OPE_PLAN = [x.split(',') for x in OPE_PLAN]
+        OPE_PLAN = [[x[0], int(x[1])] for x in OPE_PLAN]
+
+
+def update_ope_plan(plan):
+    global OPE_PLAN
+    OPE_PLAN = plan
+    print([f'{x[0]},{x[1]}' for x in OPE_PLAN])
+    __set('operation/plan', [f'{x[0]},{x[1]}' for x in OPE_PLAN])
+    save_config()
 
 
 def init_debug(module):
