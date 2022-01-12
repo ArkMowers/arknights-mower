@@ -1,16 +1,16 @@
 import os
-import sys
 
 from arknights_mower.__main__ import main
+from arknights_mower.__init__ import __system__
 
 if __name__ == '__main__':
     try:
         main(executable=True)
     except Exception as e:
         print(e)
-        print("脚本发生错误")
-        if sys.platform == "win32":
-            os.system("pause")
+        print('脚本发生错误')
+        if __system__ == 'windows':
+            os.system('pause')
         else:
             input()
         raise e
