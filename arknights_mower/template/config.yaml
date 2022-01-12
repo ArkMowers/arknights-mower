@@ -20,12 +20,12 @@ debug:
 device:
   # 需要启动 adb server 时使用的 adb 程序，为空时则尝试 PATH 中的 adb
   # 以下为部分模拟器提供的 adb 程序，不一定正确，仅供参考
-  # adb_binary: D:\leidian\LDPlayer\adb.exe             # 雷电模拟器
-  # adb_binary: C:\Program Files\Nox\bin\nox_adb.exe    # 夜神模拟器
-  # adb_binary: C:\Program Files\BlueStacks\HD-Adb.exe  # BlueStacks
-  # adb_binary: C:\Program Files (x86)\MuMu\emulator\nemu\vmonitor\bin\adb_server.exe   # MuMu模拟器
   adb_binary:
-
+  # - D:\leidian\LDPlayer\adb.exe             # 雷电模拟器
+  # - C:\Program Files\Nox\bin\nox_adb.exe    # 夜神模拟器
+  # - C:\Program Files\BlueStacks\HD-Adb.exe  # BlueStacks
+  # - C:\Program Files (x86)\MuMu\emulator\nemu\vmonitor\bin\adb_server.exe   # MuMu模拟器
+  
   # 优先选择指定设备进行操作，指定 adb devices 中列出的名称
   # 若都无法连接则优先选择在线的设备进行连接
   adb_device:
@@ -97,7 +97,7 @@ priority:
 # 阶段 1 和 2 为第一班，阶段 3 和 4 为第二班
 # 第一班的干员在阶段 3 和 4 分两批休息，第二班同理
 # 每个阶段耗时 6 小时
-base_construct:
+arrangement:
   plan_1:
     # 办公室
     contact:
@@ -272,3 +272,24 @@ base_construct:
       - 砾
       - 夜烟
       - 斑点
+
+# 基建
+base_construct:
+  # 是否处理会客室线索
+  clue_collect: true
+  # 无人机加速房间（仅限制造站）
+  # drone_room: room_3_3
+
+# 作战
+operation:
+  # 作战的次数上限，-1 为无限制，默认为 -1
+  times: -1
+  # 使用药剂恢复体力的次数上限，-1 为无限制，默认为 0
+  potion: 0
+  # 使用源石恢复体力的次数上限，-1 为无限制，默认为 0
+  originite: 0
+  # 是否优先处理未完成的每周剿灭，默认为 False
+  eliminate: false
+  plan: # 指定多个关卡以及次数，两者用英文逗号分隔
+  - 1-7,-1
+  - pre_ope,-1
