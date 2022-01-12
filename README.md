@@ -38,7 +38,7 @@
 - 自动收取并安放线索
 - 自动消耗无人机加速制造站
 - 自动更换基建排班干员（命令行模式下不支持）
-- 支持游戏任意分辨率
+
 
 ## 安装
 
@@ -50,8 +50,10 @@ pip3 install arknights-mower
 
 ## 运行须知
 
-运行脚本需要安装 ADB。ADB 下载地址：
+运行脚本需要安装 ADB并与安卓模拟器进行连接。
+Windows下的夜神（Nox）模拟器会自动启动并连接自带的ADB，如果对配置ADB比较苦手的人可以换用夜神（Nox）模拟器。
 
+ADB 下载地址：
 - Windows: https://dl.google.com/android/repository/platform-tools-latest-windows.zip
 - Mac: https://dl.google.com/android/repository/platform-tools-latest-darwin.zip
 - Linux: https://dl.google.com/android/repository/platform-tools-latest-linux.zip
@@ -66,9 +68,19 @@ emulator-5554   device
 ### 常见问题
 
 - Linux 下可以使用 Anbox 来运行 Android 模拟器，[参见教程](https://www.cnblogs.com/syisyuan/p/12811595.html)
+- 提示`ADB Server 未开启。请运行 adb server 以启动 ADB Serve。`：需要自行启动adb，夜神模拟器自带的adb在崩溃后也会出现这一错误提示，重启模拟器有几率解决这一问题。
+- 大量出现`识别出了点小差错`并卡死在特定界面：当前版本非1080p（1920x1080）分辨率下有些界面的识别可能出现错误，将模拟器修改为1080p分辨率可以解决大部分问题。如果分辨率修改并未解决问题，请在issue页面提出。
 
 ## 使用教程
 
+### 计划任务模式
+可以通过Windows可执行文件启动计划任务模式，自动进行收邮件、信用点、基建产出、消耗体力等。
+
+第一次运行程序时，会在可执行文件的同目录（Windows可执行文件版本）或Home目录（Linux下为`~/`，Windows下为`%HOMEPATH%`或`C:/Users/你的用户名/`）处生成配置文件`config.yaml`（可执行文件版本）或`ark_mower.yaml`（Pypi版本）。该文件为一系列每日基础任务的模板，请参考该文件的注释来进行计划任务的配置，尤其是以TODO开头的部分可能需要根据自己的情况进行修改（如无人机加速位置），否则可能无法正常运行。
+
+### 单独功能运行模式
+
+也可以通过命令行模式启动指定运行的功能，Release页面中的可执行文件版与pypi安装的模块版均可以命令行模式启动。
 命令行模式下的使用说明如下：
 
 ```
@@ -145,8 +157,15 @@ arknights-mower o 1-7 99 -r5 -R5
 
 ## 更多高级功能
 
-由于命令行长度限制，基建自动换班功能只能通过代码进行调用。
+由于命令行长度限制，基建自动换班功能只能通过计划任务模式进行配置，或使用代码进行调用。
 
+
+
+
+### 自定义diy.py
+如果想使用定时运行等其他高级功能，可根据个人需求修改 [diy.py](https://github.com/Konano/arknights-mower/blob/main/diy.py) 并运行，具体见文件内注释说明。
+
+如果想添加其他的功能，你甚至可以创建一个继承 `BaseSolver` 的自定义类，通过现有接口实现自己的想法。
 ```python
 from arknights_mower.strategy import Solver
 
@@ -236,9 +255,6 @@ plan = {
 Solver().base(arrange=plan)
 ```
 
-如果想使用定时运行等其他高级功能，可根据个人需求修改 [diy.py](https://github.com/Konano/arknights-mower/blob/main/diy.py) 并运行，具体见文件内注释说明。
-
-如果想添加其他的功能，你甚至可以创建一个继承 `BaseSolver` 的自定义类，通过现有接口实现自己的想法。
 
 欢迎大家提交 Pull requests 一起完善功能！
 
