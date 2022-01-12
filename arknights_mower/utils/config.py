@@ -53,23 +53,23 @@ def __set(path, value):
 
 
 def create_config(config_file):
-    with Path(f'{__rootdir__}/template/config.yaml').open('r') as f:
+    with Path(f'{__rootdir__}/template/config.yaml').open('r', encoding='utf8') as f:
         loader = yaml.load_all(f)
         next(loader)  # discard first document (used for comment)
         ydoc = next(loader)
-    with Path(config_file).open('w') as f:
+    with Path(config_file).open('w', encoding='utf8') as f:
         yaml.dump(ydoc, f)
 
 
 def load_config(config_file):
     global __ydoc
-    with Path(config_file).open('r') as f:
+    with Path(config_file).open('r', encoding='utf8') as f:
         __ydoc = yaml.load(f)
     init_config()
 
 
 def save_config(config_file):
-    with Path(config_file).open('w') as f:
+    with Path(config_file).open('w', encoding='utf8') as f:
         yaml.dump(__ydoc, f)
 
 

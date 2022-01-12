@@ -211,6 +211,9 @@ def match_cmd(prefix, avail_cmds):
 
 def main(executable=False):
     args = sys.argv[1:]
+    if not args and executable:
+        args.append("schedule")
+        print("单文件模式，读取当前目录的.ark_mower.yaml文件执行计划任务。按下Ctrl+C以结束脚本运行")
     config_file = None
     debug_mode = False
     while True:
@@ -226,9 +229,10 @@ def main(executable=False):
         
     if config_file is None:
         if executable:
-            # config_file = Path.home().joinpath('.ark_mower.yaml')
-            print(__rootdir__)
-            exit()  # TODO exe 版本的话配置文件默认和 exe 同目录
+            # print(f"executable:{sys.executable}")
+            # print(f"file: {sys.__file__}")
+            # print(f"MEIPASS: {sys._MEIPASS}")
+            config_file = Path(sys.executable).parent.joinpath('.ark_mower.yaml')
         else:
             config_file = Path.home().joinpath('.ark_mower.yaml')
         if not config_file.exists():

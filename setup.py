@@ -1,7 +1,7 @@
 import setuptools
 import arknights_mower
 
-LONG_DESC = open('README.md', 'r').read()
+LONG_DESC = open('README.md', 'r', encoding='utf8').read()
 VERSION = arknights_mower.__version__
 
 setuptools.setup(
@@ -14,8 +14,8 @@ setuptools.setup(
     long_description_content_type='text/markdown',
     url='https://github.com/Konano/arknights-mower',
     packages=setuptools.find_packages(),
-    install_requires=['colorlog', 'opencv_python', 'matplotlib', 'numpy', 'scikit_image', 'scikit_learn>=1',
-                      'onnxruntime', 'pyclipper', 'shapely', 'tornado', 'imagehash', 'requests', 'ruamel.yaml'],
+    install_requires=['colorlog', 'opencv_python', 'matplotlib', 'numpy', 'scikit_image==0.18.3', 'scikit_learn>=1',
+                      'onnxruntime', 'pyclipper', 'shapely', 'tornado', 'imagehash', 'requests', 'ruamel.yaml', 'schedule'],
     include_package_data=True,
     entry_points={'console_scripts': [
         'arknights-mower=arknights_mower.__main__:main']},
