@@ -1,10 +1,14 @@
-# New
+## New
 - 
 
-# Bug Fixes
+## Bug Fixes
 - 
 
-# Documentation
+## Documentation
 - 
 
-**Full Changelog**: https://github.com/Konano/arknights-mower/compare/vx.x.x...vx.x.x
+## Workflow Updates
+- 
+
+## Dependency Updates
+- 

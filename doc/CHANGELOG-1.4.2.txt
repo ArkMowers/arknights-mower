@@ -1,8 +1,6 @@
-# Bug Fixes
+## Bug Fixes
 - 修正初始默认配置文件
 - 当计划任务为空时警告
 
-# Documentation
+## Documentation
 - 完善 README.md 的说明及文档结构
-
-**Full Changelog**: https://github.com/Konano/arknights-mower/compare/v1.4.1...v1.4.2
