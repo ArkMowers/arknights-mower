@@ -37,22 +37,26 @@
 - 自动收取邮件奖励
 - 自动收取并安放线索
 - 自动消耗无人机加速制造站
-- 自动更换基建排班干员（需要使用计划任务或自定义代码）
+- 自动更换基建排班干员（需要搭配配置文件使用）
 - 支持游戏任意分辨率（低于 1080p 的分辨率可能会有一些问题）
 
-
 ## 安装
+
+程序分为 Pypi 版本和 Windows 可执行文件版本两种。
+
+Pypi 版本可通过 pip 直接安装：
 
 ```bash
 pip3 install arknights-mower
 ```
 
-也可以在 [Releases](https://github.com/Konano/arknights-mower/releases) 下载 Windows 可执行文件。
+也可以在 [Releases](https://github.com/Konano/arknights-mower/releases) 下载 Windows 可执行文件版本。
 
 ## 运行须知
 
 运行脚本需要安装 ADB 并与安卓模拟器进行连接。
-Windows 下的夜神（Nox）模拟器会自动启动并连接自带的 ADB，如果对配置 ADB 比较苦手的人可以换用夜神（Nox）模拟器。
+
+### ADB 配置
 
 ADB 下载地址：
 - Windows: https://dl.google.com/android/repository/platform-tools-latest-windows.zip
@@ -66,23 +70,26 @@ $ adb devices
 emulator-5554   device
 ```
 
-### 常见问题
+Windows 下的夜神（Nox）模拟器会自动启动并连接自带的 ADB，如果对配置 ADB 比较苦手的人可以换用夜神（Nox）模拟器。
 
-- Linux 下可以使用 Anbox 来运行 Android 模拟器，[参见教程](https://www.cnblogs.com/syisyuan/p/12811595.html)
-- 提示 `ADB Server 未开启。请运行 adb server 以启动 ADB Server。`：需要自行启动 ADB，夜神模拟器自带的 ADB 在崩溃后也会出现这一错误提示，重启模拟器有几率解决这一问题。
-- 大量出现 `识别出了点小差错` 并卡死在特定界面：当前版本非 1080p（1920x1080）分辨率下有些界面的识别可能出现错误，将模拟器修改为 1080p 分辨率可以解决大部分问题。如果分辨率修改并未解决问题，请在 Issue 页面提出。
+### 模拟器配置
+
+_TODO：因为各家模拟器的运行情况都不一样，所以有必要梳理一下各家模拟器如何搭配程序使用，此处留一坑待填_
+
+Linux 下可以使用 Anbox 来运行 Android 模拟器，[参见教程](https://www.cnblogs.com/syisyuan/p/12811595.html)。
 
 ## 使用教程
 
-### 计划任务
+第一次运行程序时，会在可执行文件的同目录（Windows 可执行文件版本）或 Home 目录（Linux 下为 `~/`，Windows 下为 `%HOMEPATH%` 或 `C:/Users/你的用户名/`）处生成配置文件 `config.yaml`（Windows 可执行文件版本）或 `.ark_mower.yaml`（Pypi 版本）。
 
-可以通过 Windows 可执行文件启动计划任务模，自动进行收邮件、信用点、基建产出、消耗体力等。
+**强烈建议在开始使用程序前仔细阅读配置文件内的注释说明，并根据自身情况修改配置文件中各项的值，否则可能无法正常运行。**
 
-第一次运行程序时，会在可执行文件的同目录（Windows 可执行文件版本）或 Home 目录（Linux 下为 `~/`，Windows 下为 `%HOMEPATH%` 或 `C:/Users/你的用户名/`）处生成配置文件 `config.yaml`（可执行文件版本）或 `.ark_mower.yaml`（Pypi 版本）。该文件为一系列每日基础任务的模板，请参考该文件的注释来进行计划任务的配置，尤其是以 TODO 开头的部分可能需要根据自己的情况进行修改（如无人机加速位置），否则可能无法正常运行。
+Pypi 版本只支持命令行模式启动，Windows 可执行文件版本支持命令行模式启动和双击文件启动。
 
-### 单独功能运行
+直接双击运行 Windows 可执行文件版本将会执行配置文件内所设定的计划任务，自动进行收邮件、收信用点、收基建产物、刷体力等操作。
 
-也可以通过命令行模式启动并指定运行的功能，Release 页面中的可执行文件版与 Pypi 安装的模块版均可以命令行模式启动。
+若想更进一步指定运行的功能，则需要通过命令行模式启动。Windows 可执行文件版本需要通过 cmd 或 powershell 指定命令行运行的参数。
+
 命令行模式下的使用说明如下：
 
 ```
@@ -143,7 +150,7 @@ arknights-mower recruit 因陀罗 火神
 arknights-mower shop 招聘许可 赤金 龙门币
 # 在商场使用信用点消费，购买物品的优先级从高到低分别是招聘许可、赤金和龙门币，其余物品不购买
 arknights-mower base -c -d33
-# 自动收取基建中的信赖/货物/订单，自动放置线索，自动前往地下 3 层 3 号房间使用无人机加速生产（暂且只支持制造站加速）
+# 自动收取基建中的信赖/货物/订单，自动放置线索，自动前往 B303 房间（地下 3 层从左往右数第 3 间）使用无人机加速生产（暂且只支持制造站加速）
 ```
 
 命令可使用前缀或首字母缩写，如：
@@ -157,15 +164,14 @@ arknights-mower o 1-7 99 -r5 -R5
 # 重复刷 1-7 关卡 99 次，使用理智药以及源石自动回复理智，最多消耗 5 瓶理智药和 5 颗源石
 ```
 
+**请注意：基建自动换班需要搭配配置文件使用。**
+
 ## 更多高级功能
 
-由于命令行长度限制，基建自动换班功能只能通过计划任务进行配置，或使用代码进行调用。
+如果想定制更加复杂的定时计划等其他高级功能，可根据个人需求修改 [diy.py](https://github.com/Konano/arknights-mower/blob/main/diy.py) 并运行，具体见文件内注释说明。
 
-### 自定义 diy.py
+如果想添加其他的功能，你甚至可以创建一个继承 `BaseSolver` 的自定义类，通过现有接口实现自己的想法。这里展示了一种可能的例子：
 
-如果想使用定时运行等其他高级功能，可根据个人需求修改 [diy.py](https://github.com/Konano/arknights-mower/blob/main/diy.py) 并运行，具体见文件内注释说明。
-
-如果想添加其他的功能，你甚至可以创建一个继承 `BaseSolver` 的自定义类，通过现有接口实现自己的想法。
 ```python
 from arknights_mower.strategy import Solver
 
@@ -255,8 +261,12 @@ plan = {
 Solver().base(arrange=plan)
 ```
 
+欢迎大家提交 Pull requests 增加更多的功能！
 
-欢迎大家提交 Pull requests 一起完善功能！
+## 常见问题 Q&A
+
+- 提示 `ADB Server 未开启。请运行 adb server 以启动 ADB Server。`：需要自行启动 ADB，夜神模拟器自带的 ADB 在崩溃后也会出现这一错误提示，重启模拟器有几率解决这一问题。
+- 大量出现 `识别出了点小差错` 并卡死在特定界面：当前版本非 1080p（1920x1080）分辨率下有些界面的识别可能出现错误，将模拟器修改为 1080p 分辨率可以解决大部分问题。如果分辨率修改并未解决问题，请在 Issue 页面提出。
 
 ## 遇到报错？想要更多功能？
 
