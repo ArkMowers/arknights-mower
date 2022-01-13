@@ -161,7 +161,7 @@ arknights-mower o 1-7 99 -r5 -R5
 
 由于命令行长度限制，基建自动换班功能只能通过计划任务进行配置，或使用代码进行调用。
 
-### 自定义diy.py
+### 自定义 diy.py
 
 如果想使用定时运行等其他高级功能，可根据个人需求修改 [diy.py](https://github.com/Konano/arknights-mower/blob/main/diy.py) 并运行，具体见文件内注释说明。
 
