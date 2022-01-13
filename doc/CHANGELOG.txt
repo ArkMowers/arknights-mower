@@ -1,0 +1,10 @@
+# New
+- 
+
+# Bug Fixes
+- 
+
+# Documentation
+- 
+
+**Full Changelog**: https://github.com/Konano/arknights-mower/compare/vx.x.x...vx.x.x
