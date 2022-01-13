@@ -99,15 +99,17 @@ def schedule(args):
         执行配置文件中的计划任务
     """
 
-    sd.every().hour.do(task, tag='per_hour')
     if config.SCHEDULE_PLAN is not None:
+        sd.every().hour.do(task, tag='per_hour')
         for tag in config.SCHEDULE_PLAN.keys():
             if tag[:4] == 'day_':
                 sd.every().day.at(tag.replace('_', ':')[4:]).do(task, tag=tag)
-    task()
-    while True:
-        sd.run_pending()
-        time.sleep(60)
+        task()
+        while True:
+            sd.run_pending()
+            time.sleep(60)
+    else:
+        logger.warning('计划任务为空')
 
 
 def task(tag='start_up'):
