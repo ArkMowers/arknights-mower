@@ -1,5 +1,4 @@
 # WSL
-
 log/*
 data/*
 screenshot/*
@@ -11,10 +10,9 @@ config.yaml
 release_*.sh
 
 # Windows
-
 venv64
 release_test.bat
-public/*
+publish/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
