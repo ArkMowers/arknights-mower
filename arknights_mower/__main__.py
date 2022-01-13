@@ -99,7 +99,7 @@ def schedule(args):
         执行配置文件中的计划任务
     """
 
-    sd.every().hour.do(task, tag='pre_hour')
+    sd.every().hour.do(task, tag='per_hour')
     if config.SCHEDULE_PLAN is not None:
         for tag in config.SCHEDULE_PLAN.keys():
             if tag[:4] == 'day_':
