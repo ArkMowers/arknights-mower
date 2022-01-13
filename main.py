@@ -6,7 +6,7 @@ from arknights_mower import __cli__
 
 if __name__ == '__main__':
     try:
-        main()
+        main(module=False)
     except Exception:
         print(traceback.format_exc())
     except SystemExit:

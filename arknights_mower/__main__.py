@@ -211,7 +211,7 @@ def match_cmd(prefix, avail_cmds):
         return None
 
 
-def main(module=False):
+def main(module=True):
     args = sys.argv[1:]
     if not args and __pyinstall__:
         logger.info('参数为空，默认执行 schedule 模式，按下 Ctrl+C 以结束脚本运行')
@@ -233,8 +233,10 @@ def main(module=False):
         if __pyinstall__:
             config_path = Path(sys.executable).parent.joinpath('config.yaml')
         elif module:
+            print('A')
             config_path = Path.home().joinpath('.ark_mower.yaml')
         else:
+            print('B')
             config_path = __rootdir__.parent.joinpath('config.yaml')
         if not config_path.exists():
             config.build_config(config_path, module)
