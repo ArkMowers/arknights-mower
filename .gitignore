@@ -1,3 +1,21 @@
+# WSL
+
+log/*
+data/*
+screenshot/*
+screenshot_right/*
+test/*
+test_*
+!main.spec
+config.yaml
+release_*.sh
+
+# Windows
+
+venv64
+release_test.bat
+public/*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -151,19 +169,3 @@ dmypy.json
 .idea/*
 
 # End of https://www.toptal.com/developers/gitignore/api/visualstudiocode
-
-log/*
-screenshot/*
-screenshot_right/*
-venv_dev
-venv64
-test_*
-config.test.ini
-data/*
-release.sh
-!main.spec
-plan.json
-custom.json
-FontPruner
-test/*
-config.yaml
