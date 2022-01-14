@@ -42,7 +42,7 @@ def init_fhlr():
         return
     folder = Path(config.LOGFILE_PATH)
     folder.mkdir(exist_ok=True, parents=True)
-    fhlr = RotatingFileHandler(folder.joinpath('runtime.log'),
+    fhlr = RotatingFileHandler(folder.joinpath('runtime.log'), encoding='utf8',
                                maxBytes=10 * 1024 * 1024, backupCount=3)
     fhlr.setFormatter(basic_formatter)
     fhlr.setLevel('DEBUG')
