@@ -328,8 +328,8 @@ def worker(im, draw=False):
         remove_mode = False
         pre, st = int(im[0, x0, 1]), 0
         for y in range(1, h):
-            remove_mode |= im[y, x0, 0] - im[y, x0, 1] > 40
-            if np.ptp(im[y, x0]) <= 1 or int(im[y, x0, 0]) - int(im[y, x0, 1]) > 40:
+            remove_mode |= int(im[y, x0, 0]) - int(im[y, x0, 1]) > 40
+            if np.ptp(im[y, x0]) <= 3 or int(im[y, x0, 0]) - int(im[y, x0, 1]) > 40:
                 now = int(im[y, x0, 1])
                 if abs(now - pre) > 20:
                     if now < pre and st == 0:
@@ -390,8 +390,14 @@ def agent(im, draw=False):
             l += 1
 
         x0 = l + 1
-        while not (im[h-1, x0-1, 0] > im[h-1, x0, 0] + 10 and abs(int(im[h-1, x0, 0]) - int(im[h-1, x0+1, 0])) < 5):
-            x0 += 1
+        while True:
+            borderL = int(im[h-1, x0, 0]) + int(im[h-1, x0-1, 0])+ int(im[h-1, x0-2, 0])
+            borderR = int(im[h-1, x0+1, 0]) + int(im[h-1, x0+2, 0])+ int(im[h-1, x0+3, 0])
+            if borderL - borderR > 110:
+                break
+            x0 += 2
+        #while not (im[h-1, x0-1, 0] > im[h-1, x0, 0] + 10 and abs(int(im[h-1, x0, 0]) - int(im[h-1, x0+1, 0])) < 5):
+            #x0 += 1
 
         ocr = ocrhandle.predict(im[:, x0:r])
 

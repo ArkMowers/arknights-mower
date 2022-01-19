@@ -408,6 +408,61 @@ class BaseConstructSolver(BaseSolver):
                 self.swipe(st, (0, st[0]-ed[0]),
                            duration=500, matcher=False)
 
+    addDelay = 0.5
+
+    def choose_agent_2(self, agent):
+        logger.info(f'安排干员：{agent}')
+        agent = set(agent)
+        
+        checked = set()
+        pre_ret = set()
+        error_count = 0
+        retry_sign = config.BASE_CONSTRUCT_PLAN.get('retry_sign')
+        if not retry_sign:
+            retry_sign = set([])
+        else:
+            retry_sign = set(retry_sign)
+        while True:
+
+            while len(agent):
+                try:
+                    ret = segment.agent(self.recog.img)
+                except RecognizeError as e:
+                    logger.warning(e)
+                    error_count += 1
+                    if error_count < 5:
+                        self.sleep(3)
+                        continue
+                    raise e
+                ret_agent = set([x[0] for x in ret])
+                if ret_agent == pre_ret or len(retry_sign & checked):
+                    error_count += 1
+                    if error_count >= 5:
+                        logger.warning(f'未找到干员：{list(agent)}')
+                        return
+                else:
+                    pre_ret = ret_agent
+                if len(checked) > 0 and len(checked & ret_agent) == 0:
+                    st = ret[0][1][0]
+                    ed = ret[4][1][3]
+                elif len(ret_agent - checked) > 0:
+                    checked |= ret_agent
+                    for x in ret_agent & agent:
+                        for y in ret:
+                            if y[0] == x:
+                                self.tap((y[1][0]), matcher=False)
+                                break
+                        agent.remove(x)
+                    if len(agent) == 0:
+                        return
+                    st = ret[-1][1][0]
+                    ed = ret[0][1][0]
+                else:
+                    st = ret[-3][1][0]
+                    ed = ret[0][1][0]
+                self.swipe(st, (ed[0]-st[0], 0),
+                           duration=abs(st[0]-ed[0])*3, interval=1, matcher=False)
+
     def arrange(self, plan):
         self.tap_element('infra_overview', interval=2)
         logger.info('基建：排班')
@@ -487,6 +542,164 @@ class BaseConstructSolver(BaseSolver):
 
         self.back()
 
+    def arrange_2(self, plan):
+        self.tap_element('infra_overview', interval=2)
+        logger.info('基建：排班')
+
+        ret, switch, mode = segment.worker(self.recog.img)
+        ifrMap = self.find('infra_overview_map',scope=((0, ret[0][0][1]), (ret[0][0][0], self.recog.img.shape[1]//2) ))
+        temp_x, temp_y = self.infraMapPos(ifrMap, 0)
+        greyMapSel = self.recog.img[temp_y][temp_x][0]
+        self.tap((ret[0][0][0]+5, ret[0][0][1]+5)) #点选控制中心房间
+        blueMapSel = self.recog.img[temp_y][temp_x][0]
+        mapSelTH = int(greyMapSel)//2 + int(blueMapSel)//2 # 得到总览剖面图蓝/灰阈值
+        blockHeight = ret[0][1][1] - ret[0][0][1]
+
+        logger.info('撤下干员中……')
+        idx = 0
+        room_total = len(base_room_list)
+        while idx < room_total:
+            ret, switch, mode = segment.worker(self.recog.img)
+            
+            if not mode:
+                self.tap((switch[0][0]+5, switch[0][1]+5), matcher=False, interval=1+self.addDelay)
+                continue
+            
+            self.tap((ret[0][1][0]+5, ret[0][1][1]-5)) #点选识别到的第一个房间
+            curr_idx = self.findCurSelRoom(ifrMap, TH=mapSelTH, startFromIdx=idx)
+            if curr_idx > idx: #划过头 往回划
+                # TODO:RISK 经验滑动值
+                self.swipe(tuple(ret[0][1]+[5, -5]), (0, blockHeight//3+33),
+                       duration=(blockHeight//3+33)*10)
+                continue
+            elif curr_idx < idx: #划得不够 忽略部分
+                if not len(ret[(idx-curr_idx):]):
+                    # 上一次房间下滑压根没划到
+                    block = ret[-1]
+                    # TODO:RISK 经验滑动值
+                    self.swipe(tuple(block[1]+[5, -5]), (0, -(blockHeight)*7//2-33),
+                               duration=((blockHeight)*7//2+33)*3, interval=2+self.addDelay)
+                    continue
+                ret = ret[(idx-curr_idx):]
+            if room_total-idx < len(ret):
+                ret = ret[-(room_total-idx):]
+
+            for block in ret:
+                if base_room_list[idx] in plan.keys():
+                    self.tap((block[2][0]-5, block[2][1]-5))
+                    dc = self.find('double_confirm')
+                    if dc is not None:
+                        self.tap(
+                            # TODO:RISK 点击之后加载可能很长
+                            (dc[1][0], (dc[0][1]+dc[1][1]) // 2), matcher=False, interval=1+self.addDelay)
+                idx += 1
+
+            if idx == room_total:
+                break
+            block = ret[-1]
+            # TODO:RISK 经验滑动值
+            self.swipe(tuple(block[1]+[5, -5]), (0, -(blockHeight)*7//2-33),
+                       duration=((blockHeight)*7//2+33)*3, interval=2+self.addDelay)
+        
+        self.back(interval=1+self.addDelay)
+        self.tap_element('infra_overview')
+
+        logger.info('安排干员工作……')
+        idx = 0
+        room_total = len(base_room_list)
+        while idx < room_total:
+            ret, switch, mode = segment.worker(self.recog.img)
+            
+            if mode:
+                self.tap((switch[0][0]+5, switch[0][1]+5), matcher=False, interval=1+self.addDelay)
+                continue
+
+            self.tap((ret[0][1][0]+5, ret[0][1][1]-5)) #点选识别到的第一个房间
+            curr_idx = self.findCurSelRoom(ifrMap, TH=mapSelTH, startFromIdx=idx)
+            if curr_idx > idx: #划过头 往回划
+                # TODO:RISK 经验滑动值
+                self.swipe(tuple(ret[0][1]+[5, -5]), (0, blockHeight//3+33),
+                       duration=(blockHeight//3+33)*10)
+                ret, switch, mode = segment.worker(self.recog.img)
+                continue
+            elif curr_idx < idx: #划得不够 忽略部分
+                if not len(ret[(idx-curr_idx):]):
+                    # 上一次房间下滑压根没划到
+                    block = ret[-1]
+                    # TODO:RISK 经验滑动值
+                    self.swipe(tuple(block[1]+[5, -5]), (0, -(blockHeight)*7//2-33),
+                               duration=((blockHeight)*7//2+33)*3, interval=2+self.addDelay)
+                    continue
+                ret = ret[(idx-curr_idx):]
+            if room_total-idx < len(ret):
+                ret = ret[-(room_total-idx):]
+
+            for block in ret:
+                if base_room_list[idx] in plan.keys():
+                    self.tap(((7*block[0][0]+3*block[2][0])//10,
+                             (block[0][1]+block[2][1]*4)//5-3), matcher=False)
+                    self.choose_agent_2(plan[base_room_list[idx]])
+                    self.recog.update()
+                    self.tap_element('comfirm_blue', detected=True,
+                                     judge=False, interval=3+self.addDelay, matcher=False)
+                idx += 1
+
+            if idx == room_total:
+                break
+            block = ret[-1]
+            # TODO:RISK 经验滑动值
+            self.swipe(tuple(block[1]+[5, -5]), (0, -(blockHeight)*7//2-33),
+                       duration=((blockHeight)*7//2+33)*3, interval=1+self.addDelay)
+
+        self.back()
+
+    '''
+    基建总览剖面图中，roomId==/data/base.py中对应的房间，输出该房间取色判断蓝/灰坐标
+    '''
+    def infraMapPos(self, ifrMap, roomId):
+        roomGridx = [
+            17, 26,
+            2, 6, 10, 17, 26,
+            0, 4, 8, 17, 26,
+            2, 6, 10, 17, 26,
+            17
+        ]
+        roomGridy = [
+            -1, -1,
+            0, 0, 0, 0, 0,
+            1, 1, 1, 1, 1,
+            2, 2, 2, 2, 2,
+            3
+        ]
+        gridx = (ifrMap[1][0] - ifrMap[0][0])//28
+        gridy = (ifrMap[1][1] - ifrMap[0][1])//3
+        rx = ifrMap[0][0] + gridx * roomGridx[roomId] + gridx//2
+        ry = ifrMap[0][1] + gridy * roomGridy[roomId] + gridy//2
+        return rx, ry
+
+    '''
+    找剖面图哪个房间是蓝色被选中
+    '''
+    def findCurSelRoom(self, ifrMap, TH=150, startFromIdx=0):
+        self.recog.update()
+        if startFromIdx:
+            searchStrategy = [0, 1, 2, -1, -2, 3, -3, 4]
+            for i in range(len(searchStrategy)):
+                chkIdx = startFromIdx+searchStrategy[i]
+                if (chkIdx < 0) or (chkIdx > len(base_room_list)-1):
+                    break
+                rx, ry = self.infraMapPos(ifrMap, chkIdx)
+                if (self.recog.img[ry][rx][0] < TH):
+                    # 选中
+                    return chkIdx
+                    
+        for i in range(len(base_room_list)):
+            rx, ry = self.infraMapPos(ifrMap, i)
+            if (self.recog.img[ry][rx][0] < TH):
+                # 选中
+                return i
+        return -1
+    
     def run(self, clue_collect=False, drone_room=None, arrange=None):
         """
         :param clue_collect: bool, 是否收取线索
@@ -520,7 +733,7 @@ class BaseConstructSolver(BaseSolver):
                         self.drone(drone_room)
                         drone_room = None
                     elif arrange is not None:
-                        self.arrange(arrange)
+                        self.arrange_2(arrange)
                         arrange = None
                     else:
                         break
