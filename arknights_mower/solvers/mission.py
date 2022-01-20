@@ -24,6 +24,13 @@ class MissionSolver(BaseSolver):
             try:
                 if self.scene() == Scene.INDEX:
                     self.tap_element('index_mission')
+                elif self.scene() == Scene.MISSION_TRAINEE:
+                    if checked & 1 == 0:
+                        self.tap_element('mission_daily')
+                    elif checked & 2 == 0:
+                        self.tap_element('mission_weekly')
+                    else:
+                        break
                 elif self.scene() == Scene.MISSION_DAILY:
                     checked |= 1
                     collect = self.recog.find('mission_collect')
