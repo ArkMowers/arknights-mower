@@ -112,6 +112,8 @@ class Recognizer():
             self.scene = Scene.RECRUIT_AGENT
         elif self.find('agent_token_1080_1440') is not None:
             self.scene = Scene.RECRUIT_AGENT
+        elif self.find('agent_token_900_1440') is not None:
+            self.scene = Scene.RECRUIT_AGENT
         elif self.find('agent_unlock') is not None:
             self.scene = Scene.SHOP_CREDIT
         elif self.find('shop_credit_2') is not None:
