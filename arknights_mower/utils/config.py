@@ -146,8 +146,8 @@ def init_debug(module):
             LOGFILE_PATH = Path.home().joinpath('arknights-mower')
             SCREENSHOT_PATH = Path.home().joinpath('arknights-mower/screenshot')
         elif __system__ == 'linux':
-            LOGFILE_PATH = '/var/log/arknights-mower'
-            SCREENSHOT_PATH = '/var/log/arknights-mower/screenshot'
+            LOGFILE_PATH = Path('/var/log/arknights-mower')
+            SCREENSHOT_PATH = Path('/var/log/arknights-mower/screenshot')
         else:
             print(f'Unknown system: {__system__}')
             raise NotImplementedError
