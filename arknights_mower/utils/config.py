@@ -82,12 +82,20 @@ def save_config():
 
 def init_config():
 
-    global ADB_BINARY, ADB_DEVICE, ADB_FIXUPS
+    global ADB_BINARY, ADB_DEVICE, ADB_CONNECT
     ADB_BINARY = __get('device/adb_binary', [])
     ADB_DEVICE = __get('device/adb_device', [])
-    ADB_FIXUPS = __get('device/adb_no_device_fixups', [])
-    if len(ADB_BINARY) == 0:
-        ADB_BINARY = [shutil.which('adb')]
+    ADB_CONNECT = __get('device/adb_connect', [])
+    if shutil.which('adb') is not None:
+        ADB_BINARY.append(shutil.which('adb'))
+
+    global ADB_BUILDIN
+    ADB_BUILDIN = None
+
+    global ADB_SERVER_IP, ADB_SERVER_PORT, ADB_SERVER_TIMEOUT
+    ADB_SERVER_IP = __get('device/adb_server/ip', '127.0.0.1')
+    ADB_SERVER_PORT = __get('device/adb_server/port', 5037)
+    ADB_SERVER_TIMEOUT = __get('device/adb_server/timeout', 5)
 
     global APPNAME
     APPNAME = __get('app/package_name', 'com.hypergryph.arknights') + \
@@ -149,8 +157,7 @@ def init_debug(module):
             LOGFILE_PATH = Path('/var/log/arknights-mower')
             SCREENSHOT_PATH = Path('/var/log/arknights-mower/screenshot')
         else:
-            print(f'Unknown system: {__system__}')
-            raise NotImplementedError
+            raise NotImplementedError(f'Unknown system: {__system__}')
     else:
         LOGFILE_PATH = __rootdir__.parent.joinpath('log')
         SCREENSHOT_PATH = __rootdir__.parent.joinpath('screenshot')
