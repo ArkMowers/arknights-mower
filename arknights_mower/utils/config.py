@@ -54,6 +54,8 @@ def __set(path, value):
 
 
 def build_config(path, module):
+    """ build config via template """
+
     global __ydoc
     with Path(f'{__rootdir__}/template/config.yaml').open('r', encoding='utf8') as f:
         loader = yaml.load_all(f)
@@ -67,6 +69,8 @@ def build_config(path, module):
 
 
 def load_config(path):
+    """ load config from PATH """
+
     global __ydoc, PATH
     PATH = path
     with PATH.open('r', encoding='utf8') as f:
@@ -75,12 +79,15 @@ def load_config(path):
 
 
 def save_config():
+    """ save config into PATH """
+
     global PATH
     with PATH.open('w', encoding='utf8') as f:
         yaml.dump(__ydoc, f)
 
 
 def init_config():
+    """ init config from __ydoc """
 
     global ADB_BINARY, ADB_DEVICE, ADB_CONNECT
     ADB_BINARY = __get('device/adb_binary', [])
@@ -137,6 +144,8 @@ def init_config():
 
 
 def update_ope_plan(plan):
+    """ update operation plan """
+
     global OPE_PLAN
     OPE_PLAN = plan
     print([f'{x[0]},{x[1]}' for x in OPE_PLAN])
@@ -145,6 +154,8 @@ def update_ope_plan(plan):
 
 
 def init_debug(module):
+    """ init LOGFILE_PATH & SCREENSHOT_PATH """
+
     global LOGFILE_PATH, SCREENSHOT_PATH
     if __pyinstall__:
         LOGFILE_PATH = Path(sys.executable).parent.joinpath('log')

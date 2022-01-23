@@ -38,6 +38,8 @@ logger.addHandler(ehlr)
 
 
 def init_fhlr():
+    """ initialize log file """
+
     if config.LOGFILE_PATH is None:
         return
     folder = Path(config.LOGFILE_PATH)
@@ -50,12 +52,16 @@ def init_fhlr():
 
 
 def set_debug_mode():
+    """ set debud mode on """
+
     if config.DEBUG_MODE:
-        logger.info(f'开启 debug 模式，运行日志被保存在 {config.LOGFILE_PATH} 中')
+        logger.info(f'Start debug mode, log is stored in {config.LOGFILE_PATH}')
         init_fhlr()
 
 
 def save_screenshot(img, subdir=''):
+    """ save screenshot """
+
     if config.SCREENSHOT_PATH is None:
         return
     folder = Path(config.SCREENSHOT_PATH).joinpath(subdir)
