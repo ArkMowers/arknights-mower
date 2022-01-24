@@ -59,12 +59,9 @@ class Device(object):
         logger.debug(f'tap: {point}')
         self.minitouch.tap([point])
 
-    def swipe(self, points: List[Tuple[int, int]], duration: int = 100, smooth: bool = False) -> None:
+    def swipe(self, points: List[Tuple[int, int]], duration: int = 100, part: int = 10) -> None:
         """ swipe """
         logger.debug(f'swipe: {points}')
         points_num = len(points)
         duration //= points_num - 1
-        if smooth:
-            self.minitouch.smooth_swipe(points, duration=duration)
-        else:
-            self.minitouch.swipe(points, duration=duration)
+        self.minitouch.smooth_swipe(points, duration=duration, part=part)
