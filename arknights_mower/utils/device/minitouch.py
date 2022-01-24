@@ -88,7 +88,7 @@ class MiniTouch(object):
 
     def __get_abi(self) -> str:
         """ query device ABI """
-        abi = self.client.shell('getprop ro.product.cpu.abi', True)
+        abi = self.client.shell('getprop ro.product.cpu.abi', True).strip()
         logger.debug(f'device_abi: {abi}')
         return abi
 
