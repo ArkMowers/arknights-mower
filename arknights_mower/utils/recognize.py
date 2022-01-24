@@ -99,6 +99,8 @@ class Recognizer(object):
             self.scene = Scene.INFRA_DETAILS
         elif self.find('friend_list') is not None:
             self.scene = Scene.FRIEND_LIST_OFF
+        elif self.find("mission_trainee_on") is not None:
+            self.scene = Scene.MISSION_TRAINEE
         elif self.find('mission_daily_on') is not None:
             self.scene = Scene.MISSION_DAILY
         elif self.find('mission_weekly_on') is not None:
