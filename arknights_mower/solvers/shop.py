@@ -21,7 +21,9 @@ class ShopSolver(BaseSolver):
         """
         :param priority: list[str], 使用信用点购买东西的优先级, 若无指定则默认购买第一件可购买的物品
         """
+        # TODO: Call from target_cmd will cause priority set to None, need fix.
         logger.info('Start: 商店')
+        logger.info(f'购买期望：{priority if priority else "无，购买到信用点用完为止"}')
 
         retry_times = config.MAX_RETRYTIME
         while retry_times > 0:
@@ -49,9 +51,11 @@ class ShopSolver(BaseSolver):
                             break
                         if priority is not None:
                             valid.sort(
-                                key=lambda x: 9999 if x[1] not in priority else priority.index(x[1]))
+                                key=lambda x: 9999 if x[1] not in priority else priority.index(x[1])
+                            )
                             if valid[0][1] not in priority:
                                 break
+                        logger.info(f'实际购买顺序：{[x[1] for x in valid]}')
                         self.tap(valid[0][0], interval=3)
                 elif self.scene() == Scene.SHOP_CREDIT_CONFIRM:
                     if self.recog.find('shop_credit_not_enough') is None:

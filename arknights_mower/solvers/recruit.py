@@ -25,6 +25,7 @@ class RecruitSolver(BaseSolver):
         :param priority: list[str], 优先考虑的公招干员，默认为火神和因陀罗
         """
         logger.info('Start: 公招')
+        logger.info(f'目标干员：{priority if priority else "无，高稀有度优先"}')
 
         retry_times = config.MAX_RETRYTIME
         while retry_times > 0:
