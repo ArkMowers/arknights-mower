@@ -118,12 +118,14 @@ class MiniTouch(object):
         self.port = self.__get_port()
         self.__forward_port()
         self.process = None
+        r, self.stderr = os.pipe()
+        log_sync('minitouch', r).start()
         self.__start_mnt()
 
         # make sure minitouch is up
         time.sleep(1)
         assert (
-            self.check_alive()
+            self.check_mnt_alive(False)
         ), "minitouch did not work. see https://github.com/williamfzc/pyminitouch/issues/11"
 
     def __server_stop(self) -> None:
@@ -145,16 +147,29 @@ class MiniTouch(object):
 
     def __start_mnt(self) -> None:
         """ fork a process to start minitouch on android """
-        r, w = os.pipe()
         if self.touch_device is None:
-            self.process = self.client.process('/data/local/tmp/minitouch', [], w)
+            self.process = self.client.process('/data/local/tmp/minitouch', [], self.stderr)
         else:
-            self.process = self.client.process('/data/local/tmp/minitouch', ['-d', self.touch_device], w)
-        log_sync('minitouch', r).start()
+            self.process = self.client.process('/data/local/tmp/minitouch', ['-d', self.touch_device], self.stderr)
 
-    def check_alive(self) -> None:
+    def check_mnt_alive(self, restart: bool = True) -> bool:
         """ check if minitouch process alive """
-        return self.process.poll() is None
+        if self.process and self.process.poll() is None:
+            return True
+        elif restart:
+            self.__server_stop()
+            self.__forward_port()
+            self.__start_mnt()
+            time.sleep(1)
+            assert (
+                self.process and self.process.poll() is None
+            ), "minitouch did not work. see https://github.com/williamfzc/pyminitouch/issues/11"
+            return True
+        return False
+
+    def check_server_alive(self) -> bool:
+        """ check if adb server alive """
+        return self.client.check_server_alive()
 
     def tap(self, points: List[Tuple[int, int]], pressure: int = 100, duration: int = None, lift: bool = True) -> None:
         """
@@ -165,6 +180,9 @@ class MiniTouch(object):
         :param duration: in milliseconds
         :param lift: if True, "lift" the touch point
         """
+        self.check_server_alive()
+        self.check_mnt_alive()
+
         builder = CommandBuilder()
         points = [list(map(int, point)) for point in points]
         for id, point in enumerate(points):
@@ -193,6 +211,9 @@ class MiniTouch(object):
         :param fall: if True, "fall" the first touch point
         :param lift: if True, "lift" the last touch point
         """
+        self.check_server_alive()
+        self.check_mnt_alive()
+
         builder = CommandBuilder()
         points = [list(map(int, point)) for point in points]
         with MNTConnection(self.port) as conn:
