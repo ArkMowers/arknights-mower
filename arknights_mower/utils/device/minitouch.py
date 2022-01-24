@@ -50,7 +50,7 @@ class CommandBuilder(object):
     def publish(self, connection: MNTConnection):
         """ apply current commands to device """
         self.commit()
-        logger.debug(f'send operation: {self.content.replace("\n", "\\n")}')
+        logger.debug('send operation: %s' % self.content.replace('\n', '\\n'))
         connection.send(self.content)
         time.sleep(self.delay / 1000 + DEFAULT_DELAY)
         self.reset()
