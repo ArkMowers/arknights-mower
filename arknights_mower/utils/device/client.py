@@ -39,7 +39,7 @@ class Client(object):
 
     def __init_device(self) -> None:
         # wait for the newly started ADB server to probe emulators
-        time.sleep(0.5)
+        time.sleep(1)
         if self.device_id is None:
             self.device_id = self.__choose_devices()
         if self.device_id is None:
@@ -86,7 +86,7 @@ class Client(object):
                     continue
                 return
 
-    def __check_server_alive(self, restart: bool = True) -> bool:
+    def check_server_alive(self, restart: bool = True) -> bool:
         """ check adb server if it works """
         return self.__run('host:version', restart) is not None
 
@@ -94,11 +94,11 @@ class Client(object):
         """ check adb_bin if it works """
         try:
             self.__exec('start-server', adb_bin)
-            if self.__check_server_alive(False):
+            if self.check_server_alive(False):
                 return True
             self.__exec('kill-server', adb_bin)
             self.__exec('start-server', adb_bin)
-            if self.__check_server_alive(False):
+            if self.check_server_alive(False):
                 return True
         except FileNotFoundError:
             return False
@@ -113,7 +113,7 @@ class Client(object):
 
     def session(self) -> Session:
         """ get a session between adb client and adb server """
-        if not self.__check_server_alive():
+        if not self.check_server_alive():
             raise RuntimeError('ADB server is not working')
         return Session().device(self.device_id)
 
