@@ -181,10 +181,6 @@ def recruit(im, draw=False):
             up += 1
         u, d = up-90, up-40
 
-        down = x - 2
-        while adj_x(down+1) < 100:
-            down -= 1
-
         left = 0
         while np.max(im[:, left]) < 100:
             left += 1
@@ -199,6 +195,7 @@ def recruit(im, draw=False):
             right -= 1
 
         split_x = [left, (left + right) // 2, right]
+        down = x - 1
         split_y = [up, (up + down) // 2, down]
 
         ret = []

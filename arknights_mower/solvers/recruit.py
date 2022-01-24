@@ -28,6 +28,7 @@ class RecruitSolver(BaseSolver):
         logger.info(f'目标干员：{priority if priority else "无，高稀有度优先"}')
 
         retry_times = config.MAX_RETRYTIME
+        recruiting = 0
         while retry_times > 0:
             try:
                 if self.scene() == Scene.INDEX:
@@ -35,7 +36,9 @@ class RecruitSolver(BaseSolver):
                 elif self.scene() == Scene.RECRUIT_MAIN:
                     segments = segment.recruit(self.recog.img)
                     tapped = False
-                    for seg in segments:
+                    for idx, seg in enumerate(segments):
+                        if recruiting & (1 << idx) != 0:
+                            continue
                         if self.tap_element('recruit_finish', scope=seg, detected=True):
                             tapped = True
                             break
@@ -44,6 +47,7 @@ class RecruitSolver(BaseSolver):
                         if required is None:
                             self.tap(seg)
                             tapped = True
+                            recruiting |= (1 << idx)
                             break
                     if not tapped:
                         break
