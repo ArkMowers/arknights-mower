@@ -1,6 +1,6 @@
 import time
 import traceback
-from typing import List, NewType
+from typing import List, Tuple, NewType
 
 from ..ocr import ocrhandle
 from ..utils import config
@@ -9,7 +9,7 @@ from ..utils.recognize import Scene, RecognizeError
 from ..utils.solver import BaseSolver, StrategyError
 from ..data.level import level_list, zone_list, theme_list, weekly_zones
 
-PlanList = NewType('PlanList', List[List[str, int]])
+PlanList = NewType('PlanList', List[Tuple[str, int]])
 
 
 class LevelUnopenError(Exception):
