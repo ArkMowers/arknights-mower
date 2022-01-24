@@ -9,7 +9,7 @@ from typing import Tuple, List
 from .client import Client
 from .utils import download_file, is_port_using
 from .. import config
-from ..log import logger
+from ..log import logger, log_sync
 
 MNT_PATH = '/data/local/tmp/minitouch'
 MNT_PREBUILT_URL = 'https://github.com/williamfzc/stf-binaries/raw/master/node_modules/minitouch-prebuilt/prebuilt'
@@ -145,10 +145,12 @@ class MiniTouch(object):
 
     def __start_mnt(self) -> None:
         """ fork a process to start minitouch on android """
+        r, w = os.pipe()
         if self.touch_device is None:
-            self.process = self.client.process('/data/local/tmp/minitouch')
+            self.process = self.client.process('/data/local/tmp/minitouch', [], w)
         else:
-            self.process = self.client.process('/data/local/tmp/minitouch', ['-d', self.touch_device])
+            self.process = self.client.process('/data/local/tmp/minitouch', ['-d', self.touch_device], w)
+        log_sync('minitouch', r).start()
 
     def check_alive(self) -> None:
         """ check if minitouch process alive """

@@ -3,6 +3,7 @@ import sys
 import time
 import logging
 import colorlog
+import threading
 from pathlib import Path
 from logging.handlers import RotatingFileHandler
 
@@ -94,3 +95,19 @@ def save_screenshot(img, subdir=''):
     with folder.joinpath(filename).open('wb') as f:
         f.write(img)
     logger.debug(f'save screenshot: {filename}')
+
+
+class log_sync(threading.Thread):
+
+    def __init__(self, process: str, pipe: int) -> None:
+        self.process = process
+        self.pipe = os.fdopen(pipe)
+        super().__init__(daemon=True)
+
+    def __del__(self):
+        self.pipe.close()
+
+    def run(self):
+        while True:
+            line = self.pipe.readline().strip()
+            logger.debug(f'{self.process}: {line}')
