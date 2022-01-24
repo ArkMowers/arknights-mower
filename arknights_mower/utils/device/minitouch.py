@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import time
 import socket
-import random
+# import random
 from typing import Tuple, List
 
 from .client import Client
@@ -115,7 +115,8 @@ class MiniTouch(object):
 
     def __server(self) -> None:
         """ execute minitouch with adb shell """
-        self.port = self.__get_port()
+        # self.port = self.__get_port()
+        self.port = config.ADB_MNT_PORT
         self.__forward_port()
         self.process = None
         r, self.stderr = os.pipe()
@@ -132,12 +133,12 @@ class MiniTouch(object):
         """ stop minitouch """
         self.process and self.process.kill()
 
-    def __get_port(cls) -> int:
-        """ get a random port from port set """
-        while True:
-            port = random.choice(list(range(20000, 21000)))
-            if is_port_using(DEFAULT_HOST, port):
-                return port
+    # def __get_port(cls) -> int:
+    #     """ get a random port from port set """
+    #     while True:
+    #         port = random.choice(list(range(20000, 21000)))
+    #         if is_port_using(DEFAULT_HOST, port):
+    #             return port
 
     def __forward_port(self) -> None:
         """ allow pc access minitouch with port """

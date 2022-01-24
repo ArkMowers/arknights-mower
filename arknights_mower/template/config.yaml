@@ -45,6 +45,9 @@ device:
   # 指定设备上的 Touch Device，若无则自动检测
   # adb_touch_device: /dev/input/event4
 
+  # minitouch 使用的转发端口
+  # adb_mnt_port: 20937
+
 app:
   package_name: com.hypergryph.arknights  # 官服
   # package_name: com.hypergryph.arknights.bilibili   # Bilibili 服
