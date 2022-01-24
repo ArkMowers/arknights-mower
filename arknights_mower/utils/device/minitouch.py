@@ -35,7 +35,7 @@ class CommandBuilder(object):
     def wait(self, ms: int) -> None:
         """ add minitouch command: 'w <ms>\n' """
         self.append(f'w {ms}')
-        self._delay += ms
+        self.delay += ms
 
     def up(self, contact_id: int) -> None:
         """ add minitouch command: 'u <contact_id>\n' """
