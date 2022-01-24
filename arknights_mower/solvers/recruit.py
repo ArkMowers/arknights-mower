@@ -1,4 +1,3 @@
-import cv2
 import traceback
 
 from ..ocr import ocrhandle, ocr_rectify
