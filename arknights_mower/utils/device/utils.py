@@ -31,7 +31,7 @@ def download_file(target_url: str) -> str:
 def is_port_using(host: str, port: int) -> bool:
     """ if port is using by others, return True. else return False """
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.settimeout(2)
+    s.settimeout(1)
 
     try:
         result = s.connect_ex((host, port))
