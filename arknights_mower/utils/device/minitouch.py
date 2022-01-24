@@ -12,7 +12,8 @@ from .. import config
 from ..log import logger, log_sync
 
 MNT_PATH = '/data/local/tmp/minitouch'
-MNT_PREBUILT_URL = 'https://github.com/williamfzc/stf-binaries/raw/master/node_modules/minitouch-prebuilt/prebuilt'
+# MNT_PREBUILT_URL = 'https://github.com/williamfzc/stf-binaries/raw/master/node_modules/minitouch-prebuilt/prebuilt'
+MNT_PREBUILT_URL = 'https://oss.nano.ac/arknights_mower/minitouch'
 DEFAULT_HOST = '127.0.0.1'
 DEFAULT_DELAY = 0.05
 
