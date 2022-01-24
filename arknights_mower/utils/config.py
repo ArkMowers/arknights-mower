@@ -104,6 +104,9 @@ def init_config():
     ADB_SERVER_PORT = __get('device/adb_server/port', 5037)
     ADB_SERVER_TIMEOUT = __get('device/adb_server/timeout', 5)
 
+    global ADB_TOUCH_DEVICE
+    ADB_TOUCH_DEVICE = __get('adb_touch_device', None)
+
     global APPNAME
     APPNAME = __get('app/package_name', 'com.hypergryph.arknights') + \
         '/' + __get('app/activity_name', 'com.u8.sdk.U8UnityContext')

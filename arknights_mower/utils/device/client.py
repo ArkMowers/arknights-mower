@@ -151,6 +151,7 @@ class Client(object):
         cmd = [self.adb_bin, '-s', self.device_id, 'push', filepath, target]
         run_cmd(cmd)
 
-    def process(self, path: str) -> subprocess.Popen:
-        cmd = [self.adb_bin, '-s', self.device_id, 'shell', path]
+    def process(self, path: str, args: List[str] = []) -> subprocess.Popen:
+        logger.debug(f'run process: {path}, args: {args}')
+        cmd = [self.adb_bin, '-s', self.device_id, 'shell', path] + args
         return subprocess.Popen(cmd, stdout=subprocess.DEVNULL)

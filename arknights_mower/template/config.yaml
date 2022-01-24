@@ -42,6 +42,9 @@ device:
   #   port: 5037
   #   timeout: 5
 
+  # 指定设备上的 Touch Device，若无则自动检测
+  # adb_touch_device: /dev/input/event4
+
 app:
   package_name: com.hypergryph.arknights  # 官服
   # package_name: com.hypergryph.arknights.bilibili   # Bilibili 服

@@ -8,6 +8,7 @@ from typing import Tuple, List
 
 from .client import Client
 from .utils import download_file, is_port_using
+from .. import config
 from ..log import logger
 
 MNT_PATH = '/data/local/tmp/minitouch'
@@ -63,8 +64,9 @@ class CommandBuilder(object):
 class MiniTouch(object):
     """ Use minitouch to control Android devices easily """
 
-    def __init__(self, client: Client) -> None:
+    def __init__(self, client: Client, touch_device: str = config.ADB_TOUCH_DEVICE) -> None:
         self.client = client
+        self.touch_device = touch_device
         self.start()
 
     def start(self) -> None:
@@ -143,7 +145,10 @@ class MiniTouch(object):
 
     def __start_mnt(self) -> None:
         """ fork a process to start minitouch on android """
-        self.process = self.client.process('/data/local/tmp/minitouch')
+        if self.touch_device is None:
+            self.process = self.client.process('/data/local/tmp/minitouch')
+        else:
+            self.process = self.client.process('/data/local/tmp/minitouch', ['-d', self.touch_device])
 
     def check_alive(self) -> None:
         """ check if minitouch process alive """

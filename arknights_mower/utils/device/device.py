@@ -8,16 +8,17 @@ from ..log import logger, save_screenshot
 class Device(object):
     """ Android Device """
 
-    def __init__(self, device_id: str = None, connect: str = None) -> None:
+    def __init__(self, device_id: str = None, connect: str = None, touch_device: str = None) -> None:
         self.device_id = device_id
         self.connect = connect
+        self.touch_device = touch_device
         self.client = None
         self.minitouch = None
         self.start()
 
     def start(self) -> None:
         self.client = Client(self.device_id, self.connect)
-        self.minitouch = MiniTouch(self.client)
+        self.minitouch = MiniTouch(self.client, self.touch_device)
 
     def run(self, cmd: str) -> Union[None, bytes]:
         return self.client.run(cmd)
