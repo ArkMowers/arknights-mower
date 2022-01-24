@@ -33,12 +33,14 @@ class Socket(object):
 
     def recv_exactly(self, len: int) -> bytes:
         buf = bytearray(len)
+        view = memoryview(buf)
         pos = 0
         while pos < len:
-            rcvlen = self.sock.recv_into(buf[pos:])
-            pos += rcvlen
+            rcvlen = self.sock.recv_into(view)
             if rcvlen == 0:
                 break
+            view = view[rcvlen:]
+            pos += rcvlen
         if pos != len:
             raise EOFError('recv_exactly %d bytes failed' % len)
         return bytes(buf)
