@@ -1,8 +1,8 @@
-from typing import Union
+from typing import Union, Tuple, List
 
 from .client import Client
 from .minitouch import MiniTouch
-from ..log import logger
+from ..log import logger, save_screenshot
 
 
 class Device(object):
@@ -22,7 +22,7 @@ class Device(object):
     def run(self, cmd: str) -> Union[None, bytes]:
         return self.client.run(cmd)
 
-    def launch(self, app) -> None:
+    def launch(self, app: str) -> None:
         """ launch the application """
         self.run(f'am start -n {app}')
 
@@ -39,10 +39,13 @@ class Device(object):
         command = f'input text "{text}"'
         self.run(command)
 
-    def screencap(self) -> bytes:
+    def screencap(self, save: bool = False) -> bytes:
         """ get a screencap """
         command = 'screencap -p'
-        return self.run(command)
+        screencap = self.run(command)
+        if save:
+            save_screenshot(screencap)
+        return screencap
 
     def current_focus(self) -> str:
         """ detect current focus app """
@@ -50,10 +53,17 @@ class Device(object):
         line = self.run(command).decode('utf8')
         return line.strip()[:-1].split(' ')[-1]
 
-    def tap(self) -> None:
+    def tap(self, point: Tuple[int, int]) -> None:
         """ tap """
-        raise NotImplementedError  # TODO
+        logger.debug(f'tap: {point}')
+        self.minitouch.tap([point])
 
-    def swipe(self) -> None:
+    def swipe(self, points: List[Tuple[int, int]], duration: int = 100, smooth: bool = False) -> None:
         """ swipe """
-        raise NotImplementedError  # TODO
+        logger.debug(f'swipe: {points}')
+        points_num = len(points)
+        duration //= points_num - 1
+        if smooth:
+            self.minitouch.smooth_swipe(points, duration=duration)
+        else:
+            self.minitouch.swipe(points, duration=duration)

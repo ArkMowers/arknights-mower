@@ -1,7 +1,6 @@
 import time
 import traceback
-
-import string
+from typing import List, NewType
 
 from ..ocr import ocrhandle
 from ..utils import config
@@ -9,6 +8,8 @@ from ..utils.log import logger
 from ..utils.recognize import Scene, RecognizeError
 from ..utils.solver import BaseSolver, StrategyError
 from ..data.level import level_list, zone_list, theme_list, weekly_zones
+
+PlanList = NewType('PlanList', List[List[str, int]])
 
 
 class LevelUnopenError(Exception):
@@ -20,8 +21,8 @@ class OpeSolver(BaseSolver):
     自动作战策略
     """
 
-    def __init__(self, adb=None, recog=None):
-        super(OpeSolver, self).__init__(adb, recog)
+    def __init__(self, device=None, recog=None):
+        super(OpeSolver, self).__init__(device, recog)
 
     def run(self, times: int = -1, potion: int = 0, originite: int = 0, level: str = None, plan: list = None, eliminate: bool = False):
         """

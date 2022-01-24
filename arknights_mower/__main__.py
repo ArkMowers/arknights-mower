@@ -3,6 +3,7 @@ import traceback
 from pathlib import Path
 
 from .__init__ import __rootdir__, __pyinstall__
+from .utils.device import Device
 from .utils.log import logger, set_debug_mode
 from .utils import config
 from .command import *
@@ -51,14 +52,16 @@ def main(module=True):
         config.DEBUG_MODE = True
     set_debug_mode()
 
+    device = Device()
+
     logger.debug(args)
     if len(args) == 0:
         help()
     else:
-        target_cmd = match_cmd(args[0], global_cmds)
+        target_cmd = match_cmd(args[0])
         if target_cmd is not None:
             try:
-                target_cmd(args[1:])
+                target_cmd(args[1:], device)
             except ParamError:
                 logger.debug(traceback.format_exc())
                 help()

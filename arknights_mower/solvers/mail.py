@@ -11,8 +11,8 @@ class MailSolver(BaseSolver):
     收取邮件
     """
 
-    def __init__(self, adb=None, recog=None):
-        super(MailSolver, self).__init__(adb, recog)
+    def __init__(self, device=None, recog=None):
+        super(MailSolver, self).__init__(device, recog)
 
     def run(self):
         logger.info('Start: 邮件')

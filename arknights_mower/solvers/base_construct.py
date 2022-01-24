@@ -3,8 +3,9 @@ import numpy as np
 
 from ..utils import config
 from ..utils import detector, segment
+from ..utils.device import Device
 from ..utils.log import logger
-from ..utils.recognize import Scene, RecognizeError
+from ..utils.recognize import Recognizer, Scene, RecognizeError
 from ..utils.solver import BaseSolver, StrategyError
 from ..data.base import base_room_list
 
@@ -14,8 +15,8 @@ class BaseConstructSolver(BaseSolver):
     收集基建的产物：物资、赤金、信赖
     """
 
-    def __init__(self, adb=None, recog=None):
-        super(BaseConstructSolver, self).__init__(adb, recog)
+    def __init__(self, device: Device = None, recog: Recognizer = None):
+        super(BaseConstructSolver, self).__init__(device, recog)
 
     def clue_bar(self):
         global x1, x2, y0, y1
@@ -171,9 +172,7 @@ class BaseConstructSolver(BaseSolver):
                             y4 = poly[0, 1]
 
                         self.tap((x4, y4+10), matcher=False)
-                        self.adb.touch_swipe(
-                            (x4, y4), (-x4, y1+10-y4), duration=(y4-y1-10)*3)
-                        self.adb.touch_swipe((x4, y4), (-x4, 0), duration=500)
+                        self.device.swipe([(x4, y4), (x4, y1+10), (0, y1+10)], duration=(y4-y1-10)*3)
                         self.sleep(1, matcher=False)
 
                         mask = self.get_clue_mask()
@@ -227,9 +226,7 @@ class BaseConstructSolver(BaseSolver):
                             y4 = poly[0, 1]
 
                         self.tap((x4, y4+10), matcher=False)
-                        self.adb.touch_swipe(
-                            (x4, y4), (-x4, y1+10-y4), duration=(y4-y1-10)*3)
-                        self.adb.touch_swipe((x4, y4), (-x4, 0), duration=500)
+                        self.device.swipe([(x4, y4), (x4, y1+10), (0, y1+10)], duration=(y4-y1-10)*3)
                         self.sleep(1, matcher=False)
 
                         mask = self.get_clue_mask()

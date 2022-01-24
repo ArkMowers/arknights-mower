@@ -7,25 +7,26 @@ from .log import logger, save_screenshot
 from .scene import Scene, SceneComment
 from .image import bytes2img, loadimg, threshole
 from .matcher import Matcher
+from .device import Device
 
 
 class RecognizeError(Exception):
     pass
 
 
-class Recognizer():
+class Recognizer(object):
 
-    def __init__(self, adb, debug_screencap=None):
-        self.adb = adb
+    def __init__(self, device: Device, debug_screencap: bytes = None):
+        self.device = device
         self.update(debug_screencap)
 
-    def update(self, debug_screencap=None, matcher=True):
+    def update(self, debug_screencap: bytes = None, matcher: bool = True):
         while True:
             try:
                 if debug_screencap is not None:
                     self.screencap = debug_screencap
                 else:
-                    self.screencap = self.adb.screencap()
+                    self.screencap = self.device.screencap()
                 self.img = bytes2img(self.screencap)
                 self.gray = bytes2img(self.screencap, True)
                 self.h, self.w, _ = self.img.shape
