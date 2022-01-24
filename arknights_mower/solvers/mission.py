@@ -11,8 +11,8 @@ class MissionSolver(BaseSolver):
     点击确认完成每日任务和每周任务
     """
 
-    def __init__(self, adb=None, recog=None):
-        super(MissionSolver, self).__init__(adb, recog)
+    def __init__(self, device=None, recog=None):
+        super(MissionSolver, self).__init__(device, recog)
 
     def run(self):
         logger.info('Start: 任务')

@@ -14,8 +14,8 @@ class ShopSolver(BaseSolver):
     自动使用信用点购买物资
     """
 
-    def __init__(self, adb=None, recog=None):
-        super(ShopSolver, self).__init__(adb, recog)
+    def __init__(self, device=None, recog=None):
+        super(ShopSolver, self).__init__(device, recog)
 
     def run(self, priority=config.SHOP_PRIORITY):
         """

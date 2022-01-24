@@ -54,6 +54,8 @@ def __set(path, value):
 
 
 def build_config(path, module):
+    """ build config via template """
+
     global __ydoc
     with Path(f'{__rootdir__}/template/config.yaml').open('r', encoding='utf8') as f:
         loader = yaml.load_all(f)
@@ -67,6 +69,8 @@ def build_config(path, module):
 
 
 def load_config(path):
+    """ load config from PATH """
+
     global __ydoc, PATH
     PATH = path
     with PATH.open('r', encoding='utf8') as f:
@@ -75,19 +79,36 @@ def load_config(path):
 
 
 def save_config():
+    """ save config into PATH """
+
     global PATH
     with PATH.open('w', encoding='utf8') as f:
         yaml.dump(__ydoc, f)
 
 
 def init_config():
+    """ init config from __ydoc """
 
-    global ADB_BINARY, ADB_DEVICE, ADB_FIXUPS
+    global ADB_BINARY, ADB_DEVICE, ADB_CONNECT
     ADB_BINARY = __get('device/adb_binary', [])
     ADB_DEVICE = __get('device/adb_device', [])
-    ADB_FIXUPS = __get('device/adb_no_device_fixups', [])
-    if len(ADB_BINARY) == 0:
-        ADB_BINARY = [shutil.which('adb')]
+    ADB_CONNECT = __get('device/adb_connect', [])
+    if shutil.which('adb') is not None:
+        ADB_BINARY.append(shutil.which('adb'))
+
+    global ADB_BUILDIN
+    ADB_BUILDIN = None
+
+    global ADB_SERVER_IP, ADB_SERVER_PORT, ADB_SERVER_TIMEOUT
+    ADB_SERVER_IP = __get('device/adb_server/ip', '127.0.0.1')
+    ADB_SERVER_PORT = __get('device/adb_server/port', 5037)
+    ADB_SERVER_TIMEOUT = __get('device/adb_server/timeout', 5)
+
+    global ADB_TOUCH_DEVICE
+    ADB_TOUCH_DEVICE = __get('adb_touch_device', None)
+
+    global ADB_MNT_PORT
+    ADB_MNT_PORT = __get('adb_mnt_port', 20937)
 
     global APPNAME
     APPNAME = __get('app/package_name', 'com.hypergryph.arknights') + \
@@ -129,6 +150,8 @@ def init_config():
 
 
 def update_ope_plan(plan):
+    """ update operation plan """
+
     global OPE_PLAN
     OPE_PLAN = plan
     print([f'{x[0]},{x[1]}' for x in OPE_PLAN])
@@ -137,6 +160,8 @@ def update_ope_plan(plan):
 
 
 def init_debug(module):
+    """ init LOGFILE_PATH & SCREENSHOT_PATH """
+
     global LOGFILE_PATH, SCREENSHOT_PATH
     if __pyinstall__:
         LOGFILE_PATH = Path(sys.executable).parent.joinpath('log')
@@ -149,8 +174,7 @@ def init_debug(module):
             LOGFILE_PATH = Path('/var/log/arknights-mower')
             SCREENSHOT_PATH = Path('/var/log/arknights-mower/screenshot')
         else:
-            print(f'Unknown system: {__system__}')
-            raise NotImplementedError
+            raise NotImplementedError(f'Unknown system: {__system__}')
     else:
         LOGFILE_PATH = __rootdir__.parent.joinpath('log')
         SCREENSHOT_PATH = __rootdir__.parent.joinpath('screenshot')

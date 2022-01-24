@@ -12,8 +12,8 @@ class CreditSolver(BaseSolver):
     通过线索交换自动收集信用
     """
 
-    def __init__(self, adb=None, recog=None):
-        super(CreditSolver, self).__init__(adb, recog)
+    def __init__(self, device=None, recog=None):
+        super(CreditSolver, self).__init__(device, recog)
 
     def run(self):
         logger.info('Start: 信用')

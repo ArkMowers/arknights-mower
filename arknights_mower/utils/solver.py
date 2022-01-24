@@ -3,7 +3,7 @@ import time
 from . import config
 from . import detector
 from .log import logger
-from .adb import ADBConnector, KeyCode
+from .device import Device, KeyCode
 from .recognize import Recognizer, Scene, RecognizeError
 
 
@@ -12,11 +12,11 @@ class StrategyError(Exception):
 
 
 class BaseSolver:
-    def __init__(self, adb=None, recog=None):
-        self.adb = adb if adb is not None else (recog.adb if recog is not None else ADBConnector())
-        self.recog = recog if recog is not None else Recognizer(self.adb)
-        if self.adb.current_focus() != config.APPNAME:
-            self.adb.start_app(config.APPNAME)
+    def __init__(self, device: Device = None, recog: Recognizer = None):
+        self.device = device if device is not None else (recog.device if recog is not None else Device())
+        self.recog = recog if recog is not None else Recognizer(self.device)
+        if self.device.current_focus() != config.APPNAME:
+            self.device.launch(config.APPNAME)
             time.sleep(10)
     
     def get_color(self, XY):
@@ -43,16 +43,16 @@ class BaseSolver:
 
     def input(self, text, input_area):
         logger.debug(f'input: {text} {input_area}')
-        self.adb.touch_tap(self.get_pos(input_area))
-        self.adb.send_text(input(text).strip())
-        self.adb.touch_tap((0, 0))
+        self.device.tap(self.get_pos(input_area))
+        self.device.send_text(input(text).strip())
+        self.device.tap((0, 0))
 
     def find(self, item, draw=False, scope=None, thres=None, judge=True):
         return self.recog.find(item, draw, scope, thres, judge)
 
     def tap(self, poly, x_rate=0.5, y_rate=0.5, interval=1, matcher=True):
         pos = self.get_pos(poly, x_rate, y_rate)
-        self.adb.touch_tap(pos)
+        self.device.tap(pos)
         if interval > 0:
             self.sleep(interval, matcher=matcher)
 
@@ -67,12 +67,13 @@ class BaseSolver:
         return True
 
     def swipe(self, start, movement, duration=100, interval=1, matcher=True):
-        self.adb.touch_swipe(start, movement, duration=duration)
+        end = (start[0] + movement[0], start[1] + movement[1])
+        self.device.swipe([start, end], duration=duration)
         if interval > 0:
             self.sleep(interval, matcher=matcher)
 
     def back(self, interval=1, matcher=True):
-        self.adb.send_keyevent(KeyCode.KEYCODE_BACK)
+        self.device.send_keyevent(KeyCode.KEYCODE_BACK)
         self.sleep(interval=interval, matcher=matcher)
 
     def scene(self):

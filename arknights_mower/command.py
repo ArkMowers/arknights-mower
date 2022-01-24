@@ -6,21 +6,22 @@ from .__init__ import __version__
 from .solvers import *
 from .utils import config
 from .utils.log import logger
+from .utils.device import Device
 
 
-class ParamError(Exception):
+class ParamError(ValueError):
     """ 参数错误 """
 
 
-def mail(args: List[str] = []):
+def mail(args: List[str] = [], device: Device = None):
     """
     mail
         自动收取邮件
     """
-    MailSolver().run()
+    MailSolver(device).run()
 
 
-def base(args: List[str] = []):
+def base(args: List[str] = [], device: Device = None):
     """
     base [plan] [-c] [-d[F][N]]
         自动处理基建的信赖/货物/订单/线索/无人机
@@ -46,50 +47,50 @@ def base(args: List[str] = []):
     except:
         raise ParamError
 
-    BaseConstructSolver().run(clue_collect, drone_room, arrange)
+    BaseConstructSolver(device).run(clue_collect, drone_room, arrange)
 
 
-def credit(args: List[str] = []):
+def credit(args: List[str] = [], device: Device = None):
     """
     credit
         自动访友获取信用点
     """
-    CreditSolver().run()
+    CreditSolver(device).run()
 
 
-def shop(args: List[str] = []):
+def shop(args: List[str] = [], device: Device = None):
     """
     shop [items ...]
         自动前往商店消费信用点
         items 优先考虑的物品，默认为从上到下从左到右购买
     """
     if len(args) == 0:
-        ShopSolver().run()
+        ShopSolver(device).run()
     else:
-        ShopSolver().run(args)
+        ShopSolver(device).run(args)
 
 
-def recruit(args: List[str] = []):
+def recruit(args: List[str] = [], device: Device = None):
     """
     recruit [agents ...]
         自动进行公共招募
         agents 优先考虑的公招干员，默认为火神和因陀罗
     """
     if len(args) == 0:
-        RecruitSolver().run()
+        RecruitSolver(device).run()
     else:
-        RecruitSolver().run(args)
+        RecruitSolver(device).run(args)
 
 
-def mission(args: List[str] = []):
+def mission(args: List[str] = [], device: Device = None):
     """
     mission
         收集每日任务和每周任务奖励
     """
-    MissionSolver().run()
+    MissionSolver(device).run()
 
 
-def operation(args: List[str] = []):
+def operation(args: List[str] = [], device: Device = None):
     """
     operation [level] [n] [-r[N]] [-R[N]] [-e]
         自动进行作战，可指定次数或直到理智不足
@@ -130,11 +131,12 @@ def operation(args: List[str] = []):
     except:
         raise ParamError
 
-    remain_plan = OpeSolver().run(times, potion, originite, level, plan, eliminate)
+    remain_plan = OpeSolver(device).run(
+        times, potion, originite, level, plan, eliminate)
     config.update_ope_plan(remain_plan)
 
 
-def version(args: List[str] = []):
+def version(args: List[str] = [], device: Device = None):
     """
     version
         输出版本信息
@@ -142,7 +144,7 @@ def version(args: List[str] = []):
     print(f'arknights-mower: version: {__version__}')
 
 
-def help(args: List[str] = []):
+def help(args: List[str] = [], device: Device = None):
     """
     help
         输出本段消息
@@ -160,18 +162,19 @@ def help(args: List[str] = []):
     print(f'    --config filepath\n        指定配置文件，默认使用 {config.PATH}')
 
 
-def schedule(args: List[str] = []):
+def schedule(args: List[str] = [], device: Device = None):
     """
     schedule
         执行配置文件中的计划任务
     """
 
     if config.SCHEDULE_PLAN is not None:
-        sd.every().hour.do(task, tag='per_hour')
+        sd.every().hour.do(task, tag='per_hour', device=device)
         for tag in config.SCHEDULE_PLAN.keys():
             if tag[:4] == 'day_':
-                sd.every().day.at(tag.replace('_', ':')[4:]).do(task, tag=tag)
-        task()
+                sd.every().day.at(tag.replace('_', ':')[4:]).do(
+                    task, tag=tag, device=device)
+        task(device=device)
         while True:
             sd.run_pending()
             time.sleep(60)
@@ -179,7 +182,7 @@ def schedule(args: List[str] = []):
         logger.warning('empty plan')
 
 
-def task(tag='start_up'):
+def task(tag: str = 'start_up', device: Device = None):
     """ run single task """
 
     plan = config.SCHEDULE_PLAN.get(tag)
@@ -191,14 +194,19 @@ def task(tag='start_up'):
                     'Found `schedule` in `schedule`. Are you kidding me?')
                 raise NotImplementedError
             try:
-                target_cmd = match_cmd(args[0], global_cmds)
+                target_cmd = match_cmd(args[0])
                 if target_cmd is not None:
-                    target_cmd(args[1:])
+                    target_cmd(args[1:], device)
             except Exception as e:
                 logger.error(e)
 
 
-def match_cmd(prefix, avail_cmds):
+# all available commands
+global_cmds = [base, credit, mail, mission, shop,
+               recruit, operation, version, help, schedule]
+
+
+def match_cmd(prefix: str, avail_cmds: List[str] = global_cmds):
     """ match command """
 
     target_cmds = [x for x in avail_cmds if x.__name__.startswith(prefix)]
@@ -211,8 +219,3 @@ def match_cmd(prefix, avail_cmds):
         print('ambiguous command: ' + prefix)
         print('matched commands: ' + ','.join(x.__name__ for x in target_cmds))
         return None
-
-
-# all available commands
-global_cmds = [base, credit, mail, mission, shop,
-               recruit, operation, version, help, schedule]

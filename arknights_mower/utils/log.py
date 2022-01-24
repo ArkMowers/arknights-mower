@@ -1,16 +1,33 @@
+import os
 import sys
 import time
 import logging
 import colorlog
+import threading
 from pathlib import Path
 from logging.handlers import RotatingFileHandler
+
 from . import config
 
-BASIC_FORMAT = '%(asctime)s - %(levelname)s - %(lineno)d - %(funcName)s - %(message)s'
-COLOR_FORMAT = '%(log_color)s%(asctime)s - %(levelname)s - %(lineno)d - %(funcName)s - %(message)s'
+BASIC_FORMAT = '%(asctime)s - %(levelname)s - %(relativepath)s:%(lineno)d - %(funcName)s - %(message)s'
+COLOR_FORMAT = '%(log_color)s%(asctime)s - %(levelname)s - %(relativepath)s:%(lineno)d - %(funcName)s - %(message)s'
 DATE_FORMAT = None
 basic_formatter = logging.Formatter(BASIC_FORMAT, DATE_FORMAT)
 color_formatter = colorlog.ColoredFormatter(COLOR_FORMAT, DATE_FORMAT)
+
+
+class PackagePathFilter(logging.Filter):
+    def filter(self, record):
+        pathname = record.pathname
+        record.relativepath = None
+        abs_sys_paths = map(os.path.abspath, sys.path)
+        for path in sorted(abs_sys_paths, key=len, reverse=True):  # longer paths first
+            if not path.endswith(os.sep):
+                path += os.sep
+            if pathname.startswith(path):
+                record.relativepath = os.path.relpath(pathname, path)
+                break
+        return True
 
 
 class MaxFilter:
@@ -26,10 +43,12 @@ chlr = logging.StreamHandler(stream=sys.stdout)
 chlr.setFormatter(color_formatter)
 chlr.setLevel('INFO')
 chlr.addFilter(MaxFilter(logging.INFO))
+chlr.addFilter(PackagePathFilter())
 
 ehlr = logging.StreamHandler(stream=sys.stderr)
 ehlr.setFormatter(color_formatter)
 ehlr.setLevel('WARNING')
+ehlr.addFilter(PackagePathFilter())
 
 logger = logging.getLogger(__name__)
 logger.setLevel('DEBUG')
@@ -38,6 +57,8 @@ logger.addHandler(ehlr)
 
 
 def init_fhlr():
+    """ initialize log file """
+
     if config.LOGFILE_PATH is None:
         return
     folder = Path(config.LOGFILE_PATH)
@@ -46,16 +67,22 @@ def init_fhlr():
                                maxBytes=10 * 1024 * 1024, backupCount=3)
     fhlr.setFormatter(basic_formatter)
     fhlr.setLevel('DEBUG')
+    fhlr.addFilter(PackagePathFilter())
     logger.addHandler(fhlr)
 
 
 def set_debug_mode():
+    """ set debud mode on """
+
     if config.DEBUG_MODE:
-        logger.info(f'开启 debug 模式，运行日志被保存在 {config.LOGFILE_PATH} 中')
+        logger.info(
+            f'Start debug mode, log is stored in {config.LOGFILE_PATH}')
         init_fhlr()
 
 
 def save_screenshot(img, subdir=''):
+    """ save screenshot """
+
     if config.SCREENSHOT_PATH is None:
         return
     folder = Path(config.SCREENSHOT_PATH).joinpath(subdir)
@@ -68,3 +95,19 @@ def save_screenshot(img, subdir=''):
     with folder.joinpath(filename).open('wb') as f:
         f.write(img)
     logger.debug(f'save screenshot: {filename}')
+
+
+class log_sync(threading.Thread):
+
+    def __init__(self, process: str, pipe: int) -> None:
+        self.process = process
+        self.pipe = os.fdopen(pipe)
+        super().__init__(daemon=True)
+
+    def __del__(self):
+        self.pipe.close()
+
+    def run(self):
+        while True:
+            line = self.pipe.readline().strip()
+            logger.debug(f'{self.process}: {line}')
