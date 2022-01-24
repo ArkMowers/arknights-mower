@@ -133,7 +133,8 @@ class Client(object):
                     self.__init_device()
                     continue
                 raise e
-        logger.debug(f'response: {repr(resp)}')
+        if len(resp) <= 256:
+            logger.debug(f'response: {repr(resp)}')
         return resp
 
     def shell(self, cmd: str, decode: bool = False) -> Union[bytes, str]:
