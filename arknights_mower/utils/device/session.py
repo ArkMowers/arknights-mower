@@ -43,21 +43,24 @@ class Session(object):
                     self.device(self.device_id)
         raise socket.timeout(f'server: {self.server}')
 
-    def response(self) -> bytes:
+    def response(self, recv_all: bool = False) -> bytes:
         """ receive response """
-        return self.sock.recv_response()
+        if recv_all:
+            return self.sock.recv_all()
+        else:
+            return self.sock.recv_response()
 
     def exec(self, cmd: str) -> bytes:
         """ exec: cmd """
         if len(cmd) == 0:
             raise ValueError('no command specified for exec')
-        return self.request('exec:' + cmd, True).response()
+        return self.request('exec:' + cmd, True).response(True)
 
     def shell(self, cmd: str) -> bytes:
         """ shell: cmd """
         if len(cmd) == 0:
             raise ValueError('no command specified for shell')
-        return self.request('shell:' + cmd, True).response()
+        return self.request('shell:' + cmd, True).response(True)
 
     def host(self, cmd: str) -> bytes:
         """ host: cmd """
@@ -65,11 +68,11 @@ class Session(object):
             raise ValueError('no command specified for host')
         return self.request('host:' + cmd, True).response()
 
-    def run(self, cmd: str) -> bytes:
+    def run(self, cmd: str, recv_all: bool = False) -> bytes:
         """ run command """
         if len(cmd) == 0:
             raise ValueError('no command specified')
-        return self.request(cmd, True).response()
+        return self.request(cmd, True).response(recv_all)
 
     def device(self, device_id: str = None) -> Session:
         """ switch to a device """

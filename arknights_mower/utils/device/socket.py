@@ -31,6 +31,25 @@ class Socket(object):
         self.sock and self.sock.close()
         self.sock = None
 
+    def recv_all(self, chunklen: int = 65536) -> bytes:
+        data = []
+        buf = bytearray(chunklen)
+        view = memoryview(buf)
+        pos = 0
+        while True:
+            if pos >= chunklen:
+                data.append(buf)
+                buf = bytearray(chunklen)
+                view = memoryview(buf)
+                pos = 0
+            rcvlen = self.sock.recv_into(view)
+            if rcvlen == 0:
+                break
+            view = view[rcvlen:]
+            pos += rcvlen
+        data.append(buf[:pos])
+        return b''.join(data)
+
     def recv_exactly(self, len: int) -> bytes:
         buf = bytearray(len)
         view = memoryview(buf)
