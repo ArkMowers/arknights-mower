@@ -354,6 +354,7 @@ class BaseConstructSolver(BaseSolver):
         logger.info(f'安排干员：{agent}')
         agent = set(agent)
 
+        # to the left
         h, w = self.recog.h, self.recog.w
         for _ in range(9):
             self.swipe((w//2, h//2), (w//2, 0), interval=0)
@@ -366,7 +367,7 @@ class BaseConstructSolver(BaseSolver):
 
             while len(agent):
                 try:
-                    ret = segment.agent(self.recog.img)
+                    ret = segment.agent(self.recog.img, True)  # 从左往右 从上往下
                 except RecognizeError as e:
                     logger.warning(e)
                     error_count += 1
@@ -382,69 +383,75 @@ class BaseConstructSolver(BaseSolver):
                         return
                 else:
                     pre_ret = ret_agent
-                if len(checked) > 0 and len(checked & ret_agent) == 0:
-                    st = ret[0][1][0]
-                    ed = ret[-1][1][3]
-                elif len(ret_agent - checked) > 0:
-                    checked |= ret_agent
-                    for x in ret_agent & agent:
-                        for y in ret:
-                            if y[0] == x:
-                                self.tap((y[1][0]), matcher=False)
-                                break
-                        agent.remove(x)
-                    if len(agent) == 0:
-                        return
-                    st = ret[-3][1][0]
-                    ed = ret[0][1][0]
-                else:
-                    st = ret[-1][1][3]
-                    ed = ret[0][1][0]
-                self.swipe(st, (ed[0]-st[0], 0),
-                           duration=abs(st[0]-ed[0]), interval=0)
-                self.swipe(st, (0, st[0]-ed[0]),
-                           duration=500, matcher=False)
+                # if len(checked) > 0 and len(checked & ret_agent) == 0:
+                #     raise RuntimeError("It shouldn't happen")
+                #     st = ret[0][1][0]
+                #     ed = ret[-1][1][3]
+                # if len(ret_agent - checked) > 0:
+                checked |= ret_agent
+                for x in ret_agent & agent:
+                    for y in ret:
+                        if y[0] == x:
+                            self.tap((y[1][0]), matcher=False)
+                            break
+                    agent.remove(x)
+                if len(agent) == 0:
+                    return
+                st = ret[-2][1][2]
+                ed = ret[0][1][1]
+                # else:
+                #     st = ret[-1][1][3]
+                #     ed = ret[0][1][0]
+                # self.swipe(st, (ed[0]-st[0], 0),
+                #            duration=abs(st[0]-ed[0]), interval=0)
+                # self.swipe(st, (0, st[0]-ed[0]),
+                #            duration=500, matcher=False)
+                self.swipe_move(st, [(0, -100), (ed[0]-st[0], 0), (0, 100)], duration=st[0]-ed[0], matcher=False)
 
     def arrange(self, plan):
+        """ 基建排班 """
+
+        # enter 进驻总览
         self.tap_element('infra_overview', interval=2)
         logger.info('基建：排班')
 
-        h, w = self.recog.h, self.recog.w
-        for _ in range(4):
-            self.swipe((w//2, h//2), (0, h//2), interval=0)
-        self.swipe((w//2, h//2), (0, h//2), matcher=False)
+        # # swipe to the top
+        # h, w = self.recog.h, self.recog.w
+        # for _ in range(4):
+        #     self.swipe((w//2, h//2), (0, h//2), interval=0)
+        # self.swipe((w//2, h//2), (0, h//2), matcher=False)
 
-        logger.info('撤下干员中……')
-        idx = 0
-        room_total = len(base_room_list)
-        while idx < room_total:
-            ret, switch, mode = segment.worker(self.recog.img)
+        # logger.info('撤下干员中……')
+        # idx = 0
+        # room_total = len(base_room_list)
+        # while idx < room_total:
+        #     ret, switch, mode = segment.worker(self.recog.img)  # switch: 撤下干员按钮
 
-            if not mode:
-                self.tap((switch[0][0]+5, switch[0][1]+5), matcher=False)
-                continue
+        #     # check "撤下干员" mode
+        #     if not mode:
+        #         self.tap((switch[0][0]+5, switch[0][1]+5), matcher=False)
+        #         continue
 
-            if room_total-idx < len(ret):
-                ret = ret[-(room_total-idx):]
+        #     # arrive at the bottom
+        #     if room_total-idx < len(ret):
+        #         ret = ret[-(room_total-idx):]
 
-            for block in ret:
-                if base_room_list[idx] in plan.keys():
-                    self.tap((block[2][0]-5, block[2][1]-5))
-                    dc = self.find('double_confirm')
-                    if dc is not None:
-                        self.tap(
-                            (dc[1][0], (dc[0][1]+dc[1][1]) // 2), matcher=False)
-                idx += 1
+        #     for block in ret:
+        #         if base_room_list[idx] in plan.keys():  # check if this room is in plan, should be clear
+        #             self.tap((block[2][0]-5, block[2][1]-5))
+        #             dc = self.find('double_confirm')
+        #             if dc is not None:
+        #                 self.tap(
+        #                     (dc[1][0], (dc[0][1]+dc[1][1]) // 2), matcher=False)
+        #         idx += 1
 
-            if idx == room_total:
-                break
-            block = ret[-1]
-            top = switch[2][1]
-            self.swipe(tuple(block[1]), (0, top-block[1][1]),
-                       duration=(block[1][1]-top)*3, interval=0)
-            self.swipe(tuple(block[1]), (block[2][0]-block[1][0], 0),
-                       duration=500, matcher=False)
+        #     if idx == room_total:
+        #         break
+        #     block = ret[-1]
+        #     top = switch[2][1]
+        #     self.swipe_move(tuple(block[1]), [(100, 0), (0, top-block[1][1]), (-100, 0)], duration=(block[1][1]-top)*3, matcher=False)
 
+        # swipe to the top
         h, w = self.recog.h, self.recog.w
         for _ in range(4):
             self.swipe((w//2, h//2), (0, h//2), interval=0)
@@ -477,10 +484,7 @@ class BaseConstructSolver(BaseSolver):
                 break
             block = ret[-1]
             top = switch[2][1]
-            self.swipe(tuple(block[1]), (0, top-block[1][1]),
-                       duration=(block[1][1]-top)*3, interval=0)
-            self.swipe(tuple(block[1]), (block[2][0]-block[1][0], 0),
-                       duration=500, matcher=False)
+            self.swipe_move(tuple(block[1]), [(100, 0), (0, top-block[1][1]), (-100, 0)], duration=(block[1][1]-top)*3, matcher=False)
 
         self.back()
 

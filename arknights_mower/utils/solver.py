@@ -72,6 +72,19 @@ class BaseSolver:
         if interval > 0:
             self.sleep(interval, matcher=matcher)
 
+    def swipe_seq(self, points, duration=100, interval=1, matcher=True):
+        self.device.swipe(points, duration=duration)
+        if interval > 0:
+            self.sleep(interval, matcher=matcher)
+
+    def swipe_move(self, start, movements, duration=100, interval=1, matcher=True):
+        points = [start]
+        for move in movements:
+            points.append((points[-1][0] + move[0], points[-1][1] + move[1]))
+        self.device.swipe(points, duration=duration)
+        if interval > 0:
+            self.sleep(interval, matcher=matcher)
+
     def back(self, interval=1, matcher=True):
         self.device.send_keyevent(KeyCode.KEYCODE_BACK)
         self.sleep(interval=interval, matcher=matcher)
