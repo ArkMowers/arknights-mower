@@ -29,8 +29,8 @@ def base(args: List[str] = [], device: Device = None):
         -c 是否自动使用线索
         -d 是否自动消耗无人机，F 表示第几层（1-3），N 表示从左往右第几个房间（1-3），仅支持制造站
     """
-    clue_collect = config.BASE_CONSTRUCT_CLUE
-    drone_room = config.BASE_CONSTRUCT_DRONE
+    clue_collect = False
+    drone_room = None
     arrange = None
 
     try:
@@ -101,11 +101,11 @@ def operation(args: List[str] = [], device: Device = None):
         -e 是否优先处理未完成的每周剿灭
     """
     level = None
-    times = config.OPE_TIMES
-    potion = config.OPE_POTION
-    originite = config.OPE_ORIGINITE
-    eliminate = config.OPE_ELIMINATE
-    plan = config.OPE_PLAN
+    times = -1
+    potion = 0
+    originite = 0
+    eliminate = False
+    plan = config.OPE_PLAN  # TODO
 
     try:
         for p in args:
