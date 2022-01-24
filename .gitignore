@@ -8,6 +8,7 @@ test_*
 !main.spec
 config.yaml
 release_*.sh
+test.py
 
 # Windows
 venv64

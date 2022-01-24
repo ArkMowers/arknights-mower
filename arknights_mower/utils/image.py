@@ -4,14 +4,14 @@ import numpy as np
 from .log import logger
 
 
-def bytes2img(data, gray=False):
+def bytes2img(data: bytes, gray: bool = False) -> np.ndarray:
     if gray:
         return cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_GRAYSCALE)
     else:
         return cv2.cvtColor(cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
 
 
-def loadimg(filename, gray=True):
+def loadimg(filename: str, gray: bool = True) -> np.ndarray:
     logger.debug(filename)
     if gray:
         return cv2.imread(filename, cv2.IMREAD_GRAYSCALE)
@@ -19,7 +19,7 @@ def loadimg(filename, gray=True):
         return cv2.cvtColor(cv2.imread(filename, cv2.IMREAD_GRAYSCALE), cv2.COLOR_BGR2RGB)
 
 
-def threshole(img, thresh):
+def threshole(img: np.ndarray, thresh: int) -> np.ndarray:
     _, ret = cv2.threshold(img, thresh, 255, cv2.THRESH_BINARY)
     return ret
 
@@ -28,9 +28,9 @@ def margin(img, thresh):
     ret = img.copy()
     if len(ret.shape) == 3:
         # ret[rgb2gray(img) <= thresh] = 0
-        z0 = ret[:,:,0]
-        z1 = ret[:,:,1]
-        z2 = ret[:,:,2]
+        z0 = ret[:, :, 0]
+        z1 = ret[:, :, 1]
+        z2 = ret[:, :, 2]
         _ = (z0 <= thresh) | (z1 <= thresh) | (z2 <= thresh)
         z0[_] = 0
         z1[_] = 0

@@ -1,9 +1,12 @@
 import traceback
 
+
+
 from ..ocr import ocrhandle, ocr_rectify
 from ..utils import config
 from ..utils import segment
 from ..utils.log import logger
+from ..utils.device import Device
 from ..utils.recognize import Scene, RecognizeError
 from ..utils.solver import BaseSolver, StrategyError
 from ..data.recruit import recruit_database, recruit_tag, recruit_agent
@@ -14,8 +17,8 @@ class RecruitSolver(BaseSolver):
     自动进行公招
     """
 
-    def __init__(self, adb=None, recog=None):
-        super(RecruitSolver, self).__init__(adb, recog)
+    def __init__(self, device: Device = None, recog=None):
+        super(RecruitSolver, self).__init__(device, recog)
 
     def run(self, priority=config.RECRUIT_PRIORITY):
         """
@@ -73,8 +76,7 @@ class RecruitSolver(BaseSolver):
                         color = self.recog.img[
                             up+x[2][0][1]-5, left+x[2][0][0]-5]
                         if (color[2] < 100) != (x[1] not in choose):
-                            self.adb.touch_tap(
-                                (left+x[2][0][0]-5, up+x[2][0][1]-5))
+                            self.device.tap((left+x[2][0][0]-5, up+x[2][0][1]-5))
                     if maxlevel[1] < 7:
                         self.tap_element('one_hour', 0.2, 0.8, 0)
                     self.tap((avail_level[1][0], budget[0][1]), interval=5)
