@@ -11,7 +11,7 @@ from ..data.agent import agent_list
 from ..data.ocr import ocr_error
 from ..ocr import ocrhandle
 from .image import rgb2gray, margin
-from ..__init__ import __rootdir__
+from .. import __rootdir__
 
 
 class FloodCheckFailed(Exception):

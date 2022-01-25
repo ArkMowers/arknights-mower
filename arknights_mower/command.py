@@ -2,7 +2,7 @@ import time
 import schedule as sd
 from typing import List
 
-from .__init__ import __version__
+from . import __version__
 from .solvers import *
 from .utils import config
 from .utils.log import logger

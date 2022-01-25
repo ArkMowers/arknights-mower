@@ -5,7 +5,7 @@ from ruamel.yaml.comments import CommentedSeq
 from pathlib import Path
 from collections import Mapping
 
-from ..__init__ import __rootdir__, __system__, __pyinstall__
+from .. import __rootdir__, __system__, __pyinstall__
 
 yaml = ruamel.yaml.YAML()
 __ydoc = None

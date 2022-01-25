@@ -1,7 +1,7 @@
 import numpy as np
 import cv2
 
-from ..__init__ import __rootdir__
+from .. import __rootdir__
 from . import config, detector
 from .log import logger, save_screenshot
 from .scene import Scene, SceneComment
