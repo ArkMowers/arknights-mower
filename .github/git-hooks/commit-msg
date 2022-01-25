@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# https://www.conventionalcommits.org/zh-hans/v1.0.0-beta.4/
+
+commit_msg=`cat $1`
+msg_re="^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|release|workflow|update)(\(.+\))?: .{1,100}"
+
+if [[ ! $commit_msg =~ $msg_re ]]
+then
+    echo "Illegal commit message format:"
+    echo $commit_msg
+    echo ""
+    echo "Please use the correct format."
+    exit 1
+fi
