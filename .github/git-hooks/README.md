@@ -3,7 +3,7 @@
 ## Install
 
 ```bash
-git config core.hooksPath .github/git-hooks
+git config core.hooksPath `git rev-parse --show-toplevel`/.github/git-hooks
 ```
 
 ## git commit 提交规范
@@ -16,6 +16,7 @@ git config core.hooksPath .github/git-hooks
 - docs: Documentation only changes.
 - feat: A new feature.
 - fix: A bug fix.
+- hotfix: Publish a hotfix.
 - perf: A code change that improves performance.
 - refactor: A code change that neither fixes a bug or adds a feature.
 - release: Publish a new release.

@@ -42,5 +42,5 @@ jobs:
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
-          body_path: doc/CHANGELOG-${{ steps.get_version.outputs.VERSION }}.txt
+          body_path: doc/CHANGELOG/${{ steps.get_version.outputs.VERSION }}.md
           files: arknights-mower_cp39_win_amd64_${{ steps.get_version.outputs.VERSION }}.zip
