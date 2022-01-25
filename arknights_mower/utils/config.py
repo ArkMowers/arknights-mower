@@ -180,4 +180,20 @@ def init_debug(module):
         SCREENSHOT_PATH = __rootdir__.parent.joinpath('screenshot')
 
 
+def init_adb_buildin():
+    """ init ADB_BUILDIN & ADB_BUILDIN_DIR """
+
+    global ADB_BUILDIN_DIR, ADB_BUILDIN
+    ADB_BUILDIN = None
+    if __pyinstall__:
+        ADB_BUILDIN_DIR = Path(sys.executable).parent.joinpath('adb-buildin')
+    elif __system__ == 'windows':
+        ADB_BUILDIN_DIR = Path.home().joinpath('arknights-mower/adb-buildin')
+    elif __system__ == 'linux':
+        ADB_BUILDIN_DIR = Path.home().joinpath('.arknights-mower')
+    else:
+        raise NotImplementedError(f'Unknown system: {__system__}')
+    return ADB_BUILDIN_DIR
+
+
 init_config()

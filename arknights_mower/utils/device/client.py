@@ -6,7 +6,7 @@ import subprocess
 from typing import List, Union
 
 from .session import Session
-from .utils import download_file, run_cmd
+from .utils import download_file, run_cmd, adb_buildin
 from .. import config
 from ..log import logger
 
@@ -31,7 +31,7 @@ class Client(object):
                 self.adb_bin = adb_bin
                 return
         if config.ADB_BUILDIN is None:
-            self.__adb_buildin()
+            adb_buildin()
         if self.__check_adb(config.ADB_BUILDIN):
             self.adb_bin = config.ADB_BUILDIN
             return
@@ -106,10 +106,6 @@ class Client(object):
             return False
         else:
             return False
-
-    def __adb_buildin(self):
-        """ download adb_bin """
-        raise NotImplementedError  # TODO
 
     def session(self) -> Session:
         """ get a session between adb client and adb server """
