@@ -13,6 +13,7 @@ ADB_BUILDIN_URL = 'https://oss.nano.ac/arknights_mower/adb-binaries'
 ADB_BUILDIN_FILELIST = {
     'linux': ['adb'],
     'windows': ['adb.exe', 'AdbWinApi.dll', 'AdbWinUsbApi.dll'],
+    'darwin': ['adb'],
 }
 
 

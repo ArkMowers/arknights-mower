@@ -173,6 +173,9 @@ def init_debug(module):
         elif __system__ == 'linux':
             LOGFILE_PATH = Path('/var/log/arknights-mower')
             SCREENSHOT_PATH = Path('/var/log/arknights-mower/screenshot')
+        elif __system__ == 'darwin':
+            LOGFILE_PATH = Path('/var/log/arknights-mower')
+            SCREENSHOT_PATH = Path('/var/log/arknights-mower/screenshot')
         else:
             raise NotImplementedError(f'Unknown system: {__system__}')
     else:
@@ -190,6 +193,8 @@ def init_adb_buildin():
     elif __system__ == 'windows':
         ADB_BUILDIN_DIR = Path.home().joinpath('arknights-mower/adb-buildin')
     elif __system__ == 'linux':
+        ADB_BUILDIN_DIR = Path.home().joinpath('.arknights-mower')    
+    elif __system__ == 'darwin':
         ADB_BUILDIN_DIR = Path.home().joinpath('.arknights-mower')
     else:
         raise NotImplementedError(f'Unknown system: {__system__}')
