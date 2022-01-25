@@ -1,3 +1,5 @@
+# collection of the obtained ocr error
+
 ocr_error = {
     '削男': '削弱',
     'HU男易': '削弱',

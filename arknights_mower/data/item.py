@@ -1,3 +1,5 @@
+# goods sold in shop
+
 shop_items = [
     '龙门币',
     '基础作战记录',

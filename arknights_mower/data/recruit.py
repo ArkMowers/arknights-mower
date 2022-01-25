@@ -1,3 +1,5 @@
+# recruit database
+
 recruit_database = [
     ('Lancet-2', 1, ['医疗干员', '远程位', '治疗', '支援机械']),
     ('Castle-3', 1, ['近卫干员', '近战位', '支援', '支援机械']),
