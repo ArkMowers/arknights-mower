@@ -57,7 +57,7 @@ def build_config(path, module):
     """ build config via template """
 
     global __ydoc
-    with Path(f'{__rootdir__}/template/config.yaml').open('r', encoding='utf8') as f:
+    with Path(f'{__rootdir__}/templates/config.yaml').open('r', encoding='utf8') as f:
         loader = yaml.load_all(f)
         next(loader)  # discard first document (used for comment)
         __ydoc = next(loader)

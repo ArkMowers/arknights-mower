@@ -1,4 +1,4 @@
-# Template
+# Templates
 
 ## config.yaml
 
