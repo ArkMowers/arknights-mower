@@ -45,7 +45,7 @@ def base(args: list[str] = [], device: Device = None):
                     drone_room = f'room_{p[2]}_{p[3]}'
             elif arrange is None:
                 arrange = config.BASE_CONSTRUCT_PLAN.get(p)
-    except:
+    except Exception:
         raise ParamError
 
     BaseConstructSolver(device).run(clue_collect, drone_room, arrange)
@@ -129,7 +129,7 @@ def operation(args: list[str] = [], device: Device = None):
             else:
                 assert level is None
                 level = p
-    except:
+    except Exception:
         raise ParamError
 
     remain_plan = OpeSolver(device).run(
