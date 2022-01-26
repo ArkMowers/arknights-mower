@@ -8,8 +8,9 @@ Plan = Tuple[str, int]
 
 # Image
 Image = NDArray[np.int8]
-GrayImage = NDArray[np.int8]
 Pixel = Tuple[int, int, int]
+
+GrayImage = NDArray[np.int8]
 GrayPixel = int
 
 # Recognizer
@@ -19,4 +20,5 @@ Scope = Tuple[Coordinate, Coordinate]
 Slice = Tuple[Range, Range]
 
 # Matcher
-HashRaw = List[Literal[0, 1]]
+Hash = List[Literal[0, 1]]
+Score = Tuple[float, float, float, float]

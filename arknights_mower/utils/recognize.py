@@ -1,14 +1,18 @@
-import numpy as np
+from __future__ import annotations
+
 import cv2
+import time
+import numpy as np
+from typing import Optional
 
 from .. import __rootdir__
 from . import config, detector
 from .log import logger, save_screenshot
 from .scene import Scene, SceneComment
-from .image import bytes2img, loadimg, threshole
+from .image import bytes2img, loadimg, thres2, cropimg
 from .matcher import Matcher
 from .device import Device
-
+from . import typealias as tp
 
 class RecognizeError(Exception):
     pass
@@ -16,31 +20,38 @@ class RecognizeError(Exception):
 
 class Recognizer(object):
 
-    def __init__(self, device: Device, debug_screencap: bytes = None):
+    def __init__(self, device: Device, screencap: bytes = None) -> None:
         self.device = device
-        self.update(debug_screencap)
+        self.start(screencap)
 
-    def update(self, debug_screencap: bytes = None, matcher: bool = True):
-        while True:
+    def start(self, screencap: bytes = None, build: bool = True) -> None:
+        """ init with screencap, build matcher  """
+        retry_times = config.MAX_RETRYTIME
+        while retry_times > 0:
             try:
-                if debug_screencap is not None:
-                    self.screencap = debug_screencap
+                if screencap is not None:
+                    self.screencap = screencap
                 else:
                     self.screencap = self.device.screencap()
-                self.img = bytes2img(self.screencap)
+                self.img = bytes2img(self.screencap, False)
                 self.gray = bytes2img(self.screencap, True)
                 self.h, self.w, _ = self.img.shape
-                self.matcher = Matcher(self.gray) if matcher else None
+                self.matcher = Matcher(self.gray) if build else None
                 self.scene = Scene.UNDEFINED
-                break
+                return
             except cv2.error as e:
                 logger.warning(e)
+                retry_times -= 1
+                time.sleep(1)
                 continue
+        raise RuntimeError('init Recognizer failed')
 
-    def color(self, x, y):
+    def color(self, x: int, y: int) -> tp.Pixel:
+        """ get the color of the pixel """
         return self.img[y][x]
 
-    def get_scene(self):
+    def get_scene(self) -> int:
+        """ get the current scene in the game """
         if self.scene != Scene.UNDEFINED:
             return self.scene
         if self.find('index_nav', thres=250, scope=((0, 0), (100+self.w//4, self.h//10))) is not None:
@@ -162,40 +173,63 @@ class Recognizer(object):
         logger.info(f'Scene: {self.scene}: {SceneComment[self.scene]}')
         return self.scene
 
-    def is_black(self):
+    def is_black(self) -> None:
+        """ check if the current scene is all black """
         return np.max(self.gray[:, 105:-105]) < 16
 
-    def find(self, item, draw=False, scope=None, thres=None, judge=True):
-        logger.debug(f'find {item}')
+    def nav_button(self):
+        """ find navigation button """
+        return self.find('nav_button', thres=128, scope=((0, 0), (100+self.w//4, self.h//10)))
+
+    def find(self, res: str, draw=False, scope: tp.Scope = None, thres: Optional(int) = None, judge: bool = True) -> Optional(tp.Scope):
+        """
+        查找元素是否出现在画面中
+
+        :param res: 待识别元素资源文件名
+        :param draw: 是否将识别结果输出到屏幕
+        :param scope: ((x0, y0), (x1, y1))，提前限定元素可能出现的范围
+        :param thres: 是否在匹配前对图像进行二值化处理
+        :param judge: 是否假如更加精准的判断
+
+        :return ret: 若匹配成功，则返回元素在游戏界面中出现的位置，否则返回 None
+        """
+        logger.debug(f'find: {res}')
+        res = f'{__rootdir__}/resources/{res}.png'
+
         if thres is not None:
-            image = threshole(
-                loadimg(f'{__rootdir__}/resources/{item}.png'), thres)
-            matcher = Matcher(
-                threshole(self.gray[scope[0][1]:scope[1][1], scope[0][0]:scope[1][0]], thres))
-            ret = matcher.match(image, draw=draw, judge=judge)
+            # 对图像二值化处理
+            res_img = thres2(loadimg(res, True), thres)
+            gray_img = cropimg(self.gray, scope)
+            matcher = Matcher(thres2(gray_img, thres))
+            ret = matcher.match(res_img, draw=draw, judge=judge)
         else:
-            image = loadimg(f'{__rootdir__}/resources/{item}.png')
+            res_img = loadimg(res, True)
             matcher = self.matcher
-            ret = matcher.match(image, draw=draw, scope=scope, judge=judge)
-        if ret is None:
-            return None
+            ret = matcher.match(res_img, draw=draw, scope=scope, judge=judge)
         return ret
 
-    def score(self, item, draw=False, scope=None, thres=None):
-        logger.debug(f'score {item}')
-        if thres is not None:
-            image = threshole(
-                loadimg(f'{__rootdir__}/resources/{item}.png'), thres)
-            matcher = Matcher(
-                threshole(self.gray[scope[0][1]:scope[1][1], scope[0][0]:scope[1][0]], thres))
-            ret = matcher.score(image, draw=draw)
-        else:
-            image = loadimg(f'{__rootdir__}/resources/{item}.png')
-            matcher = self.matcher
-            ret = matcher.score(image, draw=draw, scope=scope)
-        if ret is None:
-            return None
-        return ret[1:]
+    # def score(self, item, draw=False, scope=None, thres=None):
+    #     """
+    #     查找元素是否出现在画面中，并返回分数
 
-    def nav_button(self):
-        return self.find('nav_button', thres=128, scope=((0, 0), (100+self.w//4, self.h//10)))
+    #     :param item: str , 待识别元素资源文件名
+    #     :param draw: bool, 是否将识别结果输出到屏幕
+    #     :param scope: # TODO
+    #     :param thres: # TODO
+    #     :param judge: bool，# TODO
+
+    #     :return ret: # TODO
+    #     """
+    #     logger.debug(f'score {item}')
+    #     resource = f'{__rootdir__}/resources/{item}.png'
+    #     if thres is not None:
+    #         # 对图像二值化处理
+    #         image = thres2(loadimg(resource), thres)
+    #         gray_img = self.gray[scope[0][1]:scope[1][1], scope[0][0]:scope[1][0]]
+    #         matcher = Matcher(thres2(gray_img, thres))
+    #         ret = matcher.score(image, draw=draw)
+    #     else:
+    #         image = loadimg(f'{__rootdir__}/resources/{item}.png')
+    #         matcher = self.matcher
+    #         ret = matcher.score(image, draw=draw, scope=scope)
+    #     return ret[1:] if ret is not None else None
