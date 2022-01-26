@@ -1,0 +1,19 @@
+engines:
+  # ... CONFIG CONTENT ...
+  bandit:
+    enabled: true
+    # ... CONFIG CONTENT ...
+    checks:
+      assert_used:
+        enabled: false
+      blacklist:
+        enabled: false
+      subprocess_without_shell_equals_true:
+        enabled: false
+  pep8:
+    enabled: true
+    # ... CONFIG CONTENT ...
+    checks:
+      E501:
+        enabled: false
+# ... CONFIG CONTENT ...
