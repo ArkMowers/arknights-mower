@@ -56,7 +56,7 @@ class Matcher():
         score = self.score(query, draw, scope)
         if score is None:
             return None
-        elif judge and SVC.predict([score[1:]])[0] == False:
+        elif judge and SVC.predict([score[1:]])[0] is False:
             logger.debug(f'match fail: {score[1:]}')
             return None
         else:

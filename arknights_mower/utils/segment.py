@@ -88,13 +88,13 @@ def credit(im, draw=False):
 
         up = 0
         fg = False
-        while fg == False or average(up) >= 250:
+        while fg is False or average(up) >= 250:
             fg |= average(up) >= 250
             up += 1
 
         up2 = up
         fg = False
-        while fg == False or average(up2) < 220:
+        while fg is False or average(up2) < 220:
             fg |= average(up2) < 220
             up2 += 1
 
