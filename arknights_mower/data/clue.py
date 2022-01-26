@@ -1,3 +1,5 @@
+# the camps to which the clue belongs
+
 clue_name = {
     '莱茵生命': 1,
     '企鹅物流': 2,

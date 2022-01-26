@@ -6,7 +6,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from skimage.metrics import structural_similarity as compare_ssim
 
-from ..__init__ import __rootdir__
+from .. import __rootdir__
 from .log import logger
 
 MATCHER_DEBUG = False

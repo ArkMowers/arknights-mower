@@ -1,4 +1,6 @@
-from typing import List, Union
+from __future__ import annotations
+
+from typing import Union
 import subprocess
 import tempfile
 import requests
@@ -17,7 +19,7 @@ ADB_BUILDIN_FILELIST = {
 }
 
 
-def run_cmd(cmd: List[str], decode: bool = False) -> Union[bytes, str]:
+def run_cmd(cmd: list[str], decode: bool = False) -> Union[bytes, str]:
     logger.debug(f"run command: {cmd}")
     try:
         r = subprocess.check_output(cmd, stderr=subprocess.STDOUT)

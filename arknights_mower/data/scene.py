@@ -1,3 +1,5 @@
+# list of scene defined
+
 scene_list = [
     [-1, 'UNKNOWN', '未知'],
     [0, 'UNDEFINED', '未定义'],

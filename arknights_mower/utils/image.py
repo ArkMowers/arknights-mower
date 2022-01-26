@@ -1,30 +1,35 @@
 import cv2
 import numpy as np
 
+from . import typealias as tp
 from .log import logger
 
 
-def bytes2img(data: bytes, gray: bool = False) -> np.ndarray:
+def bytes2img(data: bytes, gray: bool = False) -> tp.Image:
+    """ bytes -> image """
     if gray:
         return cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_GRAYSCALE)
     else:
         return cv2.cvtColor(cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
 
 
-def loadimg(filename: str, gray: bool = True) -> np.ndarray:
+def loadimg(filename: str, gray: bool = True) -> tp.Image:
+    """ load image from file """
     logger.debug(filename)
     if gray:
         return cv2.imread(filename, cv2.IMREAD_GRAYSCALE)
     else:
-        return cv2.cvtColor(cv2.imread(filename, cv2.IMREAD_GRAYSCALE), cv2.COLOR_BGR2RGB)
+        return cv2.cvtColor(cv2.imread(filename, cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
 
 
-def threshole(img: np.ndarray, thresh: int) -> np.ndarray:
+def threshole(img: tp.Image, thresh: int) -> tp.Image:
+    """ threshole # TODO """  
     _, ret = cv2.threshold(img, thresh, 255, cv2.THRESH_BINARY)
     return ret
 
 
-def margin(img, thresh):
+def margin(img: tp.Image, thresh: int) -> tp.Image:
+    """ threshole # TODO """  
     ret = img.copy()
     if len(ret.shape) == 3:
         # ret[rgb2gray(img) <= thresh] = 0
@@ -40,5 +45,6 @@ def margin(img, thresh):
     return ret
 
 
-def rgb2gray(img):
+def rgb2gray(img: tp.Image) -> tp.Image:
+    """ change image from rgb to gray """
     return cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)

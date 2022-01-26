@@ -2,14 +2,14 @@ import sys
 import traceback
 from pathlib import Path
 
-from .__init__ import __rootdir__, __pyinstall__
+from . import __rootdir__, __pyinstall__
+from .command import *
+from .utils import config
 from .utils.device import Device
 from .utils.log import logger, set_debug_mode
-from .utils import config
-from .command import *
 
 
-def main(module=True):
+def main(module: bool = True) -> None:
     args = sys.argv[1:]
     if not args and __pyinstall__:
         logger.info('参数为空，默认执行 schedule 模式，按下 Ctrl+C 以结束脚本运行')

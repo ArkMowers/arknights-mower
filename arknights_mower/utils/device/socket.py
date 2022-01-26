@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from typing import Tuple
 import socket
 
 from ..log import logger
@@ -9,7 +8,7 @@ from ..log import logger
 class Socket(object):
     """ Connect ADB server with socket """
 
-    def __init__(self, server: Tuple[str, int], timeout: int) -> None:
+    def __init__(self, server: tuple[str, int], timeout: int) -> None:
         logger.debug(f'server: {server}, timeout: {timeout}')
         try:
             self.sock = socket.create_connection(server, timeout=timeout)
