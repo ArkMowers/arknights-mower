@@ -1,7 +1,5 @@
 import traceback
 
-
-
 from ..ocr import ocrhandle, ocr_rectify
 from ..utils import config
 from ..utils import segment

@@ -473,7 +473,6 @@ def agent(im, draw=False):
                 if pre_count == (dt > 0).sum():
                     break
 
-
         def ahash_recog(origin_img, scope):
             agent_ahash_init()
             origin_img = origin_img[scope[0, 1]:scope[2, 1], scope[0, 0]:scope[2, 0]]
