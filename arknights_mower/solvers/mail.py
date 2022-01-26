@@ -1,8 +1,9 @@
 import traceback
 
 from ..utils import config
+from ..utils.device import Device
 from ..utils.log import logger
-from ..utils.recognize import Scene, RecognizeError
+from ..utils.recognize import Recognizer, Scene, RecognizeError
 from ..utils.solver import BaseSolver, StrategyError
 
 
@@ -11,24 +12,24 @@ class MailSolver(BaseSolver):
     收取邮件
     """
 
-    def __init__(self, device=None, recog=None):
+    def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
         super(MailSolver, self).__init__(device, recog)
 
-    def run(self):
+    def run(self) -> None:
         logger.info('Start: 邮件')
 
-        tapped = False
+        touched = False  # if it touched
         retry_times = config.MAX_RETRYTIME
         while retry_times > 0:
             try:
                 if self.scene() == Scene.INDEX:
-                    nav = self.recog.find('index_nav', thres=250,
-                                          scope=((0, 0), (100+self.recog.w//4, self.recog.h//10)))
+                    scope = ((0, 0), (100+self.recog.w//4, self.recog.h//10))
+                    nav = self.recog.find('index_nav', thres=250, scope=scope)
                     self.tap(nav, 0.625)
                 elif self.scene() == Scene.MAIL:
-                    if tapped:
+                    if touched:
                         break
-                    tapped = True
+                    touched = True
                     self.tap_element('read_mail')
                 elif self.scene() == Scene.LOADING:
                     self.sleep(3)

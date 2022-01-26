@@ -167,12 +167,13 @@ class BaseSolver:
         """
         判断是否存在导航栏，若存在则打开
         """
-        while True:
+        retry_times = config.MAX_RETRYTIME
+        while retry_times:
             if self.scene() == Scene.NAVIGATION_BAR:
                 return True
-            else:
-                if not self.tap_element('nav_button', detected=True):
-                    return False
+            elif not self.tap_element('nav_button', detected=True):
+                return False
+            retry_times -= 1
 
     def back_to_index(self):
         """
