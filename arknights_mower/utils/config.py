@@ -1,17 +1,21 @@
+from __future__ import annotations
+
 import sys
 import shutil
 import ruamel.yaml
-from ruamel.yaml.comments import CommentedSeq
+from typing import Any
 from pathlib import Path
 from collections import Mapping
+from ruamel.yaml.comments import CommentedSeq
 
+from . import typealias as tp
 from .. import __rootdir__, __system__, __pyinstall__
 
 yaml = ruamel.yaml.YAML()
 __ydoc = None
 
 
-def __dig_mapping(path):
+def __dig_mapping(path: str):
     path = path.split('/')
     parent_maps = path[:-1]
     current_map = __ydoc
@@ -25,7 +29,7 @@ def __dig_mapping(path):
     return current_map, path[-1]
 
 
-def __get(path, default=None):
+def __get(path: str, default: Any = None):
     try:
         current_map, k = __dig_mapping(path)
     except (KeyError, TypeError) as e:
@@ -35,7 +39,7 @@ def __get(path, default=None):
     return current_map[k]
 
 
-def __get_list(path, default=list()):
+def __get_list(path: str, default: Any = list()):
     item = __get(path)
     if item is None:
         return default
@@ -45,7 +49,7 @@ def __get_list(path, default=list()):
         return list(item)
 
 
-def __set(path, value):
+def __set(path: str, value: Any):
     try:
         current_map, k = __dig_mapping(path)
     except (KeyError, TypeError):
@@ -53,9 +57,8 @@ def __set(path, value):
     current_map[k] = value
 
 
-def build_config(path, module):
+def build_config(path: str, module: bool) -> None:
     """ build config via template """
-
     global __ydoc
     with Path(f'{__rootdir__}/templates/config.yaml').open('r', encoding='utf8') as f:
         loader = yaml.load_all(f)
@@ -68,9 +71,8 @@ def build_config(path, module):
         yaml.dump(__ydoc, f)
 
 
-def load_config(path):
+def load_config(path: str) -> None:
     """ load config from PATH """
-
     global __ydoc, PATH
     PATH = path
     with PATH.open('r', encoding='utf8') as f:
@@ -78,17 +80,15 @@ def load_config(path):
     init_config()
 
 
-def save_config():
+def save_config() -> None:
     """ save config into PATH """
-
     global PATH
     with PATH.open('w', encoding='utf8') as f:
         yaml.dump(__ydoc, f)
 
 
-def init_config():
+def init_config() -> None:
     """ init config from __ydoc """
-
     global ADB_BINARY, ADB_DEVICE, ADB_CONNECT
     ADB_BINARY = __get('device/adb_binary', [])
     ADB_DEVICE = __get('device/adb_device', [])
@@ -149,9 +149,8 @@ def init_config():
         OPE_PLAN = [[x[0], int(x[1])] for x in OPE_PLAN]
 
 
-def update_ope_plan(plan):
+def update_ope_plan(plan: list[tp.Plan]) -> None:
     """ update operation plan """
-
     global OPE_PLAN
     OPE_PLAN = plan
     print([f'{x[0]},{x[1]}' for x in OPE_PLAN])
@@ -159,9 +158,8 @@ def update_ope_plan(plan):
     save_config()
 
 
-def init_debug(module):
+def init_debug(module: bool) -> None:
     """ init LOGFILE_PATH & SCREENSHOT_PATH """
-
     global LOGFILE_PATH, SCREENSHOT_PATH
     if __pyinstall__:
         LOGFILE_PATH = Path(sys.executable).parent.joinpath('log')
@@ -183,9 +181,8 @@ def init_debug(module):
         SCREENSHOT_PATH = __rootdir__.parent.joinpath('screenshot')
 
 
-def init_adb_buildin():
+def init_adb_buildin() -> Path:
     """ init ADB_BUILDIN & ADB_BUILDIN_DIR """
-
     global ADB_BUILDIN_DIR, ADB_BUILDIN
     ADB_BUILDIN = None
     if __pyinstall__:

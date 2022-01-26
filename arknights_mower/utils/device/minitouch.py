@@ -4,7 +4,6 @@ import os
 import time
 import socket
 # import random
-from typing import Tuple, List
 
 from .client import Client
 from .utils import download_file, is_port_using
@@ -173,7 +172,7 @@ class MiniTouch(object):
         """ check if adb server alive """
         return self.client.check_server_alive()
 
-    def tap(self, points: List[Tuple[int, int]], pressure: int = 100, duration: int = None, lift: bool = True) -> None:
+    def tap(self, points: list[tuple[int, int]], pressure: int = 100, duration: int = None, lift: bool = True) -> None:
         """
         tap on screen with pressure and duration
 
@@ -203,7 +202,7 @@ class MiniTouch(object):
         with MNTConnection(self.port) as conn:
             builder.publish(conn)
 
-    def swipe(self, points: List[Tuple[int, int]], pressure: int = 100, duration: int = None, fall: bool = True, lift: bool = True) -> None:
+    def swipe(self, points: list[tuple[int, int]], pressure: int = 100, duration: int = None, fall: bool = True, lift: bool = True) -> None:
         """
         swipe between points one by one, with pressure and duration
 
@@ -236,7 +235,7 @@ class MiniTouch(object):
                 builder.up(0)
                 builder.publish(conn)
 
-    def smooth_swipe(self, points: List[Tuple[int, int]], pressure: int = 100, duration: int = None, part: int = 10, fall: bool = True, lift: bool = True) -> None:
+    def smooth_swipe(self, points: list[tuple[int, int]], pressure: int = 100, duration: int = None, part: int = 10, fall: bool = True, lift: bool = True) -> None:
         """
         swipe between points one by one, with pressure and duration
         it will split distance between points into pieces

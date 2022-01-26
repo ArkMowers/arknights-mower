@@ -17,7 +17,7 @@ color_formatter = colorlog.ColoredFormatter(COLOR_FORMAT, DATE_FORMAT)
 
 
 class PackagePathFilter(logging.Filter):
-    def filter(self, record):
+    def filter(self, record: logging.LogRecord) -> bool:
         pathname = record.pathname
         record.relativepath = None
         abs_sys_paths = map(os.path.abspath, sys.path)
@@ -30,11 +30,11 @@ class PackagePathFilter(logging.Filter):
         return True
 
 
-class MaxFilter:
-    def __init__(self, max_level):
+class MaxFilter(object):
+    def __init__(self, max_level: int) -> None:
         self.max_level = max_level
 
-    def filter(self, record):
+    def filter(self, record: logging.LogRecord) -> bool:
         if record.levelno <= self.max_level:
             return True
 
@@ -56,9 +56,8 @@ logger.addHandler(chlr)
 logger.addHandler(ehlr)
 
 
-def init_fhlr():
+def init_fhlr() -> None:
     """ initialize log file """
-
     if config.LOGFILE_PATH is None:
         return
     folder = Path(config.LOGFILE_PATH)
@@ -71,18 +70,16 @@ def init_fhlr():
     logger.addHandler(fhlr)
 
 
-def set_debug_mode():
+def set_debug_mode() -> None:
     """ set debud mode on """
-
     if config.DEBUG_MODE:
         logger.info(
             f'Start debug mode, log is stored in {config.LOGFILE_PATH}')
         init_fhlr()
 
 
-def save_screenshot(img, subdir=''):
+def save_screenshot(img: bytes, subdir: str = '') -> None:
     """ save screenshot """
-
     if config.SCREENSHOT_PATH is None:
         return
     folder = Path(config.SCREENSHOT_PATH).joinpath(subdir)
@@ -98,16 +95,17 @@ def save_screenshot(img, subdir=''):
 
 
 class log_sync(threading.Thread):
+    """ recv output from subprocess """
 
     def __init__(self, process: str, pipe: int) -> None:
         self.process = process
         self.pipe = os.fdopen(pipe)
         super().__init__(daemon=True)
 
-    def __del__(self):
+    def __del__(self) -> None:
         self.pipe.close()
 
-    def run(self):
+    def run(self) -> None:
         while True:
             line = self.pipe.readline().strip()
             logger.debug(f'{self.process}: {line}')

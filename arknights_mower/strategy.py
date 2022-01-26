@@ -1,8 +1,11 @@
-from typing import Dict, List
+from __future__ import annotations
 
+from typing import Dict  # TODO
+
+from .solvers import *
 from .utils.device import Device
 from .utils.recognize import Recognizer
-from .solvers import *
+from .utils import typealias as tp
 
 
 class Solver():
@@ -27,13 +30,13 @@ class Solver():
     def mission(self) -> None:
         MissionSolver(self.device, self.recog).run()
 
-    def recruit(self, priority: List[str] = None) -> None:
+    def recruit(self, priority: list[str] = None) -> None:
         """
         :param priority: list[str], 优先考虑的公招干员，默认为火神和因陀罗
         """
         RecruitSolver(self.device, self.recog).run(priority)
 
-    def ope(self, times: int = -1, potion: int = 0, originite: int = 0, level: str = None, plan: PlanList = None, eliminate: bool = False) -> PlanList:
+    def ope(self, times: int = -1, potion: int = 0, originite: int = 0, level: str = None, plan: list[tp.Plan] = None, eliminate: bool = False) -> list[tp.Plan]:
         """
         :param times: int, 作战的次数上限，-1 为无限制，默认为 -1
         :param potion: int, 使用药剂恢复体力的次数上限，-1 为无限制，默认为 0

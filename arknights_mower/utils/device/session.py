@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import socket
-from typing import Tuple, List
 
 from .socket import Socket
 from .. import config
@@ -11,7 +10,7 @@ from ..log import logger
 class Session(object):
     """ Session between ADB client and ADB server """
 
-    def __init__(self, server: Tuple[str, int] = None, timeout: int = None) -> None:
+    def __init__(self, server: tuple[str, int] = None, timeout: int = None) -> None:
         if server is None:
             server = (config.ADB_SERVER_IP, config.ADB_SERVER_PORT)
         if timeout is None:
@@ -100,7 +99,7 @@ class Session(object):
         if throw_error and (b'unable' in resp or b'cannot' in resp):
             raise RuntimeError(repr(resp))
 
-    def devices_list(self) -> List[Tuple[str, str]]:
+    def devices_list(self) -> list[tuple[str, str]]:
         """ returns list of devices that the adb server knows """
         resp = self.request('host:devices').response().decode(errors='ignore')
         devices = [tuple(line.split('\t')) for line in resp.splitlines()]

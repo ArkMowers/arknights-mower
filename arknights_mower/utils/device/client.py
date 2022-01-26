@@ -1,12 +1,12 @@
-import os
+from __future__ import annotations
+
 import time
 import socket
-import typing
 import subprocess
-from typing import List, Union
+from typing import Optional, Union
 
 from .session import Session
-from .utils import download_file, run_cmd, adb_buildin
+from .utils import run_cmd, adb_buildin
 from .. import config
 from ..log import logger
 
@@ -53,7 +53,7 @@ class Client(object):
             logger.error('未检测到相应设备。请运行 `adb devices` 确认列表中列出了目标模拟器或设备。')
             raise RuntimeError('Device connection failure')
 
-    def __choose_devices(self) -> Union[str, None]:
+    def __choose_devices(self) -> Optional[str]:
         """ choose available devices """
         devices = self.__available_devices()
         for device in config.ADB_DEVICE:
@@ -62,7 +62,7 @@ class Client(object):
         if len(devices) > 0:
             return devices[0]
 
-    def __available_devices(self) -> List[str]:
+    def __available_devices(self) -> list[str]:
         """ return available devices """
         return [x[0] for x in Session().devices_list() if x[1] != 'offline']
 
@@ -72,7 +72,7 @@ class Client(object):
             adb_bin = self.adb_bin
         subprocess.run([adb_bin, cmd], check=True)
 
-    def __run(self, cmd: str, restart: bool = True) -> Union[None, bytes]:
+    def __run(self, cmd: str, restart: bool = True) -> Optional[bytes]:
         """ run command with Session """
         error_limit = 3
         while True:
@@ -113,7 +113,7 @@ class Client(object):
             raise RuntimeError('ADB server is not working')
         return Session().device(self.device_id)
 
-    def run(self, cmd: str) -> bytes:
+    def run(self, cmd: str) -> Optional(bytes):
         """ run adb exec command """
         logger.debug(f'command: {cmd}')
         error_limit = 3
@@ -148,7 +148,7 @@ class Client(object):
         cmd = [self.adb_bin, '-s', self.device_id, 'push', filepath, target]
         run_cmd(cmd)
 
-    def process(self, path: str, args: List[str] = [], stderr: int = subprocess.DEVNULL) -> subprocess.Popen:
+    def process(self, path: str, args: list[str] = [], stderr: int = subprocess.DEVNULL) -> subprocess.Popen:
         logger.debug(f'run process: {path}, args: {args}')
         cmd = [self.adb_bin, '-s', self.device_id, 'shell', path] + args
         return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=stderr)

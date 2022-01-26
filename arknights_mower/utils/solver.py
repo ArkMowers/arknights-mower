@@ -2,25 +2,31 @@ import time
 
 from . import config
 from . import detector
-from .log import logger
 from .device import Device, KeyCode
+from .log import logger
 from .recognize import Recognizer, Scene, RecognizeError
+from ..utils.typealias import Coordinate
 
 
 class StrategyError(Exception):
+    """ Strategy Error """
     pass
 
 
 class BaseSolver:
-    def __init__(self, device: Device = None, recog: Recognizer = None):
+    """ Base class, provide basic operation """
+
+    def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
         self.device = device if device is not None else (recog.device if recog is not None else Device())
         self.recog = recog if recog is not None else Recognizer(self.device)
         if self.device.current_focus() != config.APPNAME:
             self.device.launch(config.APPNAME)
+            # wait for app to finish launching
             time.sleep(10)
     
-    def get_color(self, XY):
-        return self.recog.color(XY[0], XY[1])
+    def get_color(self, pos: Coordinate):
+        """ get the color of the pixel """
+        return self.recog.color(pos[0], pos[1])
 
     def get_pos(self, poly, x_rate=0.5, y_rate=0.5):
         if poly is None:
@@ -39,7 +45,7 @@ class BaseSolver:
 
     def sleep(self, interval=1, matcher=True):
         time.sleep(interval)
-        self.recog.update(matcher=matcher)
+        self.recog.update(matcher=matcher)  # TODO
 
     def input(self, text, input_area):
         logger.debug(f'input: {text} {input_area}')
