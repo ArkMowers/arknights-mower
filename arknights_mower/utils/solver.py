@@ -1,6 +1,8 @@
 from __future__ import annotations
+from abc import abstractmethod
 
 import time
+import traceback
 
 from . import config
 from . import detector
@@ -27,6 +29,30 @@ class BaseSolver:
             self.device.launch(config.APPNAME)
             # wait for app to finish launching
             time.sleep(10)
+
+    def run(self) -> None:
+        retry_times = config.MAX_RETRYTIME
+        while retry_times > 0:
+            try:
+                if self.transition():
+                    break
+            except RecognizeError as e:
+                logger.warning(f'识别出了点小差错 qwq: {e}')
+                retry_times -= 1
+                self.sleep(3)
+                continue
+            except StrategyError as e:
+                logger.error(e)
+                logger.debug(traceback.format_exc())
+                return
+            except Exception as e:
+                raise e
+            retry_times = config.MAX_RETRYTIME
+
+    @abstractmethod
+    def transition(self) -> bool:
+        # the change from one state to another is called transition
+        return True  # means task completed
 
     def get_color(self, pos: tp.Coordinate) -> tp.Pixel:
         """ get the color of the pixel """
@@ -79,7 +105,7 @@ class BaseSolver:
         if element_name == 'nav_button':
             element = self.recog.nav_button()
         else:
-            element = self.recog.find(element_name, draw, scope, judge=judge)
+            element = self.find(element_name, draw, scope, judge=judge)
         if detected and element is None:
             return False
         self.tap(element, x_rate, y_rate, interval, rebuild)
@@ -134,10 +160,10 @@ class BaseSolver:
                 elif self.scene() == Scene.LOGIN_MAIN:
                     self.tap_element('login_account')
                 elif self.scene() == Scene.LOGIN_INPUT:
-                    input_area = self.recog.find('login_username')
+                    input_area = self.find('login_username')
                     if input_area is not None:
                         self.input('Enter username: ', input_area)
-                    input_area = self.recog.find('login_password')
+                    input_area = self.find('login_password')
                     if input_area is not None:
                         self.input('Enter password: ', input_area)
                     self.tap_element('login_button')
@@ -206,7 +232,7 @@ class BaseSolver:
                 elif self.scene() == Scene.DOUBLE_CONFIRM:
                     self.tap_element('double_confirm', 0.8)
                 elif self.scene() == Scene.MAIL:
-                    mail = self.recog.find('mail')
+                    mail = self.find('mail')
                     mid_y = (mail[0][1] + mail[1][1]) // 2
                     self.tap((mid_y, mid_y))
                 else:

@@ -19,7 +19,7 @@ class OpeSolver(BaseSolver):
     """
 
     def __init__(self, device=None, recog=None):
-        super(OpeSolver, self).__init__(device, recog)
+        super().__init__(device, recog)
 
     def run(self, times: int = -1, potion: int = 0, originite: int = 0, level: str = None, plan: list = None, eliminate: bool = False):
         """
@@ -71,7 +71,7 @@ class OpeSolver(BaseSolver):
                 if self.scene() == Scene.INDEX:
                     self.tap_element('index_terminal')
                 elif self.scene() == Scene.TERMINAL_MAIN:
-                    eliminate_todo = self.recog.find('terminal_eliminate')
+                    eliminate_todo = self.find('terminal_eliminate')
                     if eliminate_todo is not None:
                         eliminate_state = 1
                     else:
@@ -86,7 +86,7 @@ class OpeSolver(BaseSolver):
                         self.get_navigation()
                         self.tap_element('nav_terminal')
                         continue
-                    agency = self.recog.find('ope_agency')
+                    agency = self.find('ope_agency')
                     if agency is not None:
                         self.tap(agency)
                     else:
@@ -112,7 +112,7 @@ class OpeSolver(BaseSolver):
                     if eliminate_state == 2:
                         logger.warning('检测到关卡为剿灭，但每周剿灭任务已完成')
                         break
-                    agency = self.recog.find('ope_agency')
+                    agency = self.find('ope_agency')
                     if agency is not None:
                         self.tap(agency)
                     else:
@@ -267,7 +267,7 @@ class OpeSolver(BaseSolver):
                             raise RecognizeError
                 if act_id == -1 or _act_id == act_id:
                     raise RecognizeError
-            cover = self.recog.find(f'main_{episode}')
+            cover = self.find(f'main_{episode}')
             while zone[3] < episode:
                 self.swipe((cover[0][0], cover[0][1]),
                            (cover[1][0] - cover[0][0], 0), 200)

@@ -135,7 +135,7 @@ def init_config() -> None:
     SCHEDULE_PLAN = __get('schedule', None)
 
     global RECRUIT_PRIORITY, SHOP_PRIORITY
-    RECRUIT_PRIORITY = __get('priority/recruit', ['火神', '因陀罗'])
+    RECRUIT_PRIORITY = __get('priority/recruit', None)
     SHOP_PRIORITY = __get('priority/shop', None)
 
     global OPE_TIMES, OPE_POTION, OPE_ORIGINITE, OPE_ELIMINATE, OPE_PLAN

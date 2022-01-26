@@ -1,10 +1,8 @@
-import traceback
-
-from ..utils import config, detector
+from ..utils import detector
 from ..utils.device import Device
 from ..utils.log import logger
 from ..utils.recognize import Recognizer, Scene, RecognizeError
-from ..utils.solver import BaseSolver, StrategyError
+from ..utils.solver import BaseSolver
 
 
 class CreditSolver(BaseSolver):
@@ -13,41 +11,24 @@ class CreditSolver(BaseSolver):
     """
 
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
-        super(CreditSolver, self).__init__(device, recog)
+        super().__init__(device, recog)
 
     def run(self) -> None:
         logger.info('Start: 信用')
+        super().run()
 
-        retry_times = config.MAX_RETRYTIME
-        while retry_times > 0:
-            try:
-                if self.__run():
-                    break
-            except RecognizeError as e:
-                logger.warning(f'识别出了点小差错 qwq: {e}')
-                retry_times -= 1
-                self.sleep(3)
-                continue
-            except StrategyError as e:
-                logger.error(e)
-                logger.debug(traceback.format_exc())
-                return
-            except Exception as e:
-                raise e
-            retry_times = config.MAX_RETRYTIME
-
-    def __run(self) -> bool:
+    def transition(self) -> bool:
         if self.scene() == Scene.INDEX:
             self.tap_element('index_friend')
         elif self.scene() == Scene.FRIEND_LIST_OFF:
             self.tap_element('friend_list')
         elif self.scene() == Scene.FRIEND_LIST_ON:
-            down = self.recog.find('friend_list_on')[1][1]
+            down = self.find('friend_list_on')[1][1]
             scope = [(0, 0), (100000, down)]
             if not self.tap_element('friend_visit', scope=scope, detected=True):
                 self.sleep(1)
         elif self.scene() == Scene.FRIEND_VISITING:
-            visit_limit = self.recog.find('visit_limit')
+            visit_limit = self.find('visit_limit')
             if visit_limit is not None:
                 return True
             visit_next = detector.visit_next(self.recog.img)

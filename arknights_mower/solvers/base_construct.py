@@ -16,7 +16,7 @@ class BaseConstructSolver(BaseSolver):
     """
 
     def __init__(self, device: Device = None, recog: Recognizer = None):
-        super(BaseConstructSolver, self).__init__(device, recog)
+        super().__init__(device, recog)
 
     def clue_bar(self):
         global x1, x2, y0, y1
@@ -527,17 +527,17 @@ class BaseConstructSolver(BaseSolver):
                         break
                 elif self.scene() == Scene.INFRA_TODOLIST:
                     tapped = False
-                    trust = self.recog.find('infra_collect_trust')
+                    trust = self.find('infra_collect_trust')
                     if trust is not None:
                         logger.info('基建：干员信赖')
                         self.tap(trust)
                         tapped = True
-                    bill = self.recog.find('infra_collect_bill')
+                    bill = self.find('infra_collect_bill')
                     if bill is not None:
                         logger.info('基建：订单交付')
                         self.tap(bill)
                         tapped = True
-                    factory = self.recog.find('infra_collect_factory')
+                    factory = self.find('infra_collect_factory')
                     if factory is not None:
                         logger.info('基建：可收获')
                         self.tap(factory)

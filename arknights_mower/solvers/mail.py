@@ -1,10 +1,7 @@
-import traceback
-
-from ..utils import config
 from ..utils.device import Device
 from ..utils.log import logger
 from ..utils.recognize import Recognizer, Scene, RecognizeError
-from ..utils.solver import BaseSolver, StrategyError
+from ..utils.solver import BaseSolver
 
 
 class MailSolver(BaseSolver):
@@ -13,34 +10,19 @@ class MailSolver(BaseSolver):
     """
 
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
-        super(MailSolver, self).__init__(device, recog)
+        super().__init__(device, recog)
 
     def run(self) -> None:
+        # if it touched
+        self.touched = False
+
         logger.info('Start: 邮件')
+        super().run()
 
-        self.touched = False  # if it touched
-        retry_times = config.MAX_RETRYTIME
-        while retry_times > 0:
-            try:
-                if self.__run():
-                    break
-            except RecognizeError as e:
-                logger.warning(f'识别出了点小差错 qwq: {e}')
-                retry_times -= 1
-                self.sleep(3)
-                continue
-            except StrategyError as e:
-                logger.error(e)
-                logger.debug(traceback.format_exc())
-                return
-            except Exception as e:
-                raise e
-            retry_times = config.MAX_RETRYTIME
-
-    def __run(self) -> bool:
+    def transition(self) -> bool:
         if self.scene() == Scene.INDEX:
             scope = ((0, 0), (100+self.recog.w//4, self.recog.h//10))
-            nav = self.recog.find('index_nav', thres=250, scope=scope)
+            nav = self.find('index_nav', thres=250, scope=scope)
             self.tap(nav, 0.625)
         elif self.scene() == Scene.MAIL:
             if self.touched:

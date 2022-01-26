@@ -66,7 +66,7 @@ def shop(args: list[str] = [], device: Device = None):
         items 优先考虑的物品，默认为从上到下从左到右购买
     """
     if len(args) == 0:
-        ShopSolver(device).run()
+        ShopSolver(device).run(config.SHOP_PRIORITY)
     else:
         ShopSolver(device).run(args)
 
@@ -75,10 +75,10 @@ def recruit(args: list[str] = [], device: Device = None):
     """
     recruit [agents ...]
         自动进行公共招募
-        agents 优先考虑的公招干员，默认为火神和因陀罗
+        agents 优先考虑的公招干员，默认为高稀有度优先
     """
     if len(args) == 0:
-        RecruitSolver(device).run()
+        RecruitSolver(device).run(config.RECRUIT_PRIORITY)
     else:
         RecruitSolver(device).run(args)
 
