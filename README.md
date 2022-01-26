@@ -9,6 +9,7 @@
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/arknights-mower?style=flat-square)](https://pypi.org/project/arknights-mower/)
 [![GitHub Workflow Status](https://img.shields.io/github/workflow/status/Konano/arknights-mower/Upload%20PyPI?style=flat-square)](https://github.com/Konano/arknights-mower/actions/workflows/python-publish.yml)
 ![GitHub last commit (branch)](https://img.shields.io/github/last-commit/Konano/arknights-mower/main?style=flat-square)
+[![Code Climate maintainability](https://img.shields.io/codeclimate/maintainability/Konano/arknights-mower?style=flat-square)](https://codeclimate.com/github/Konano/arknights-mower)
 
 7*24 小时不间断长草，让你忘掉这个游戏！
 
