@@ -219,11 +219,10 @@ class Recognizer(object):
 
     #     :param item: str , 待识别元素资源文件名
     #     :param draw: bool, 是否将识别结果输出到屏幕
-    #     :param scope: # TODO
-    #     :param thres: # TODO
-    #     :param judge: bool，# TODO
+    #     :param scope: ((x0, y0), (x1, y1))，提前限定元素可能出现的范围
+    #     :param thres: 是否在匹配前对图像进行二值化处理
 
-    #     :return ret: # TODO
+    #     :return ret: 若匹配成功，则返回元素的匹配得分，否则返回 None
     #     """
     #     logger.debug(f'score {item}')
     #     resource = f'{__rootdir__}/resources/{item}.png'
