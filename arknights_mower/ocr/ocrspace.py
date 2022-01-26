@@ -77,7 +77,8 @@ class API:
         #         down = max(down, w['Top'] + w['Height'])
         #     ret.append([x['LineText'], [(left + right) / 2, (up + down) / 2]])
         # return ret
-        ret = [x['LineText'] for x in raw['ParsedResults'][0]['TextOverlay']['Lines']]
+        ret = [x['LineText']
+               for x in raw['ParsedResults'][0]['TextOverlay']['Lines']]
         return ret
 
     def ocr_file(self, fp):
@@ -155,7 +156,8 @@ class API:
             return []
 
     def predict(self, image, scope):
-        ret = self.ocr_image(image[scope[0][1]:scope[2][1], scope[0][0]:scope[2][0]])
+        ret = self.ocr_image(
+            image[scope[0][1]:scope[2][1], scope[0][0]:scope[2][0]])
         if len(ret) == 0:
             return None
         return fix(ret[0])
