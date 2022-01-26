@@ -502,7 +502,7 @@ def agent(im, draw=False):
                         if (dt[y] > 0).sum() != count:
                             logger.debug(f'{y}, {count}')
                             raise FloodCheckFailed
-                    
+
                     for y in range(h):
                         if img[y, 0] != 0:
                             dt[y, 0] = 1
@@ -515,7 +515,7 @@ def agent(im, draw=False):
                     img[dt > 0] = 0
                     if (img > 0).sum() == 0:
                         raise FloodCheckFailed
-                    
+
                     x0, x1, y0, y1 = 0, w, 0, h
                     while True:
                         while (img[y0:y1, x0] == 0).all():
@@ -552,7 +552,7 @@ def agent(im, draw=False):
                         raise FloodCheckFailed
                     logger.debug(p[0][1])
                     return p[0][1]
-                    
+
                 except FloodCheckFailed:
                     thresh += 5
                     logger.debug(f'add thresh to {thresh}')

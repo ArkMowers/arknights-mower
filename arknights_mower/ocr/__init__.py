@@ -12,7 +12,7 @@ def ocr_rectify(img, pre, valid, text=''):
     """
     调用在线 OCR 校正本地 OCR 得到的错误结果，并返回校正后的识别结果
     若在线 OCR 依旧无法正确识别则返回 None
-    
+
     :param img: numpy.array, 图像
     :param pre: (str, tuple), 本地 OCR 得到的错误结果，包括字符串和范围
     :param valid: list[str], 期望得到的识别结果

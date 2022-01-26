@@ -23,7 +23,7 @@ class BaseSolver:
             self.device.launch(config.APPNAME)
             # wait for app to finish launching
             time.sleep(10)
-    
+
     def get_color(self, pos: Coordinate):
         """ get the color of the pixel """
         return self.recog.color(pos[0], pos[1])
