@@ -190,7 +190,7 @@ def init_adb_buildin() -> Path:
     elif __system__ == 'windows':
         ADB_BUILDIN_DIR = Path.home().joinpath('arknights-mower/adb-buildin')
     elif __system__ == 'linux':
-        ADB_BUILDIN_DIR = Path.home().joinpath('.arknights-mower')    
+        ADB_BUILDIN_DIR = Path.home().joinpath('.arknights-mower')
     elif __system__ == 'darwin':
         ADB_BUILDIN_DIR = Path.home().joinpath('.arknights-mower')
     else:

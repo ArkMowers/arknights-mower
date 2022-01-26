@@ -23,13 +23,13 @@ def loadimg(filename: str, gray: bool = True) -> tp.Image:
 
 
 def threshole(img: tp.Image, thresh: int) -> tp.Image:
-    """ threshole # TODO """  
+    """ threshole # TODO """
     _, ret = cv2.threshold(img, thresh, 255, cv2.THRESH_BINARY)
     return ret
 
 
 def margin(img: tp.Image, thresh: int) -> tp.Image:
-    """ threshole # TODO """  
+    """ threshole # TODO """
     ret = img.copy()
     if len(ret.shape) == 3:
         # ret[rgb2gray(img) <= thresh] = 0
