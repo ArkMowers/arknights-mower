@@ -263,7 +263,7 @@ class OpeSolver(BaseSolver):
                             episode = int(x[1][-2:])
                             act_id = zone_list[f'main_{episode}'][2]
                             break
-                        except:
+                        except Exception:
                             raise RecognizeError
                 if act_id == -1 or _act_id == act_id:
                     raise RecognizeError
