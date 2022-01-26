@@ -14,6 +14,7 @@ from .matcher import Matcher
 from .device import Device
 from . import typealias as tp
 
+
 class RecognizeError(Exception):
     pass
 
@@ -45,6 +46,10 @@ class Recognizer(object):
                 time.sleep(1)
                 continue
         raise RuntimeError('init Recognizer failed')
+
+    def update(self, screencap: bytes = None, rebuild: bool = True) -> None:
+        """ rebuild matcher """
+        self.start(screencap, rebuild)
 
     def color(self, x: int, y: int) -> tp.Pixel:
         """ get the color of the pixel """
@@ -181,7 +186,7 @@ class Recognizer(object):
         """ find navigation button """
         return self.find('nav_button', thres=128, scope=((0, 0), (100+self.w//4, self.h//10)))
 
-    def find(self, res: str, draw=False, scope: tp.Scope = None, thres: Optional(int) = None, judge: bool = True) -> Optional(tp.Scope):
+    def find(self, res: str, draw: bool = False, scope: tp.Scope = None, thres: int = None, judge: bool = True) -> tp.Scope:
         """
         查找元素是否出现在画面中
 

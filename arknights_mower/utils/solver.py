@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import time
 
 from . import config
@@ -5,7 +7,7 @@ from . import detector
 from .device import Device, KeyCode
 from .log import logger
 from .recognize import Recognizer, Scene, RecognizeError
-from ..utils.typealias import Coordinate
+from ..utils import typealias as tp
 
 
 class StrategyError(Exception):
@@ -17,88 +19,105 @@ class BaseSolver:
     """ Base class, provide basic operation """
 
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
-        self.device = device if device is not None else (recog.device if recog is not None else Device())
+        # self.device = device if device is not None else (recog.device if recog is not None else Device())
+        assert device is None and recog is not None
+        self.device = device if device is not None else Device()
         self.recog = recog if recog is not None else Recognizer(self.device)
         if self.device.current_focus() != config.APPNAME:
             self.device.launch(config.APPNAME)
             # wait for app to finish launching
             time.sleep(10)
 
-    def get_color(self, pos: Coordinate):
+    def get_color(self, pos: tp.Coordinate) -> tp.Pixel:
         """ get the color of the pixel """
         return self.recog.color(pos[0], pos[1])
 
-    def get_pos(self, poly, x_rate=0.5, y_rate=0.5):
+    def get_pos(self, poly: tp.Location, x_rate: float = 0.5, y_rate: float = 0.5) -> tp.Coordinate:
+        """ get the pos form tp.Location """
         if poly is None:
             raise RecognizeError
         elif len(poly) == 4:
+            # tp.Rectangle
             x = (poly[0][0] * (1-x_rate) + poly[1][0] * (1-x_rate) +
                  poly[2][0] * x_rate + poly[3][0] * x_rate) / 2
             y = (poly[0][1] * (1-y_rate) + poly[3][1] * (1-y_rate) +
                  poly[1][1] * y_rate + poly[2][1] * y_rate) / 2
-        elif len(poly) == 2 and type(poly[0]).__name__ in ['list', 'tuple']:
+        elif len(poly) == 2 and isinstance(poly[0], (list, tuple)):
+            # tp.Scope
             x = poly[0][0] * (1-x_rate) + poly[1][0] * x_rate
             y = poly[0][1] * (1-y_rate) + poly[1][1] * y_rate
         else:
+            # tp.Coordinate
             x, y = poly
         return (int(x), int(y))
 
-    def sleep(self, interval=1, matcher=True):
+    def sleep(self, interval: float = 1, rebuild: bool = True) -> None:
+        """ sleeping for a interval """
         time.sleep(interval)
-        self.recog.update(matcher=matcher)  # TODO
+        self.recog.update(rebuild=rebuild)
 
-    def input(self, text, input_area):
-        logger.debug(f'input: {text} {input_area}')
+    def input(self, referent: str, input_area: tp.Scope) -> None:
+        """ input text """
+        logger.debug(f'input: {referent} {input_area}')
         self.device.tap(self.get_pos(input_area))
-        self.device.send_text(input(text).strip())
+        self.device.send_text(input(referent).strip())
         self.device.tap((0, 0))
 
-    def find(self, item, draw=False, scope=None, thres=None, judge=True):
-        return self.recog.find(item, draw, scope, thres, judge)
+    def find(self, res: str, draw: bool = False, scope: tp.Scope = None, thres: int = None, judge: bool = True) -> tp.Scope:
+        return self.recog.find(res, draw, scope, thres, judge)
 
-    def tap(self, poly, x_rate=0.5, y_rate=0.5, interval=1, matcher=True):
+    def tap(self, poly: tp.Location, x_rate: float = 0.5, y_rate: float = 0.5, interval: float = 1, rebuild: bool = True) -> None:
+        """ tap """
         pos = self.get_pos(poly, x_rate, y_rate)
         self.device.tap(pos)
         if interval > 0:
-            self.sleep(interval, matcher=matcher)
+            self.sleep(interval, rebuild)
 
-    def tap_element(self, element_name, x_rate=0.5, y_rate=0.5, interval=1, draw=False, scope=None, detected=False, judge=True, matcher=True):
+    def tap_element(self, element_name: str, x_rate: float = 0.5, y_rate: float = 0.5, interval: float = 1, rebuild: bool = True,
+                    draw: bool = False, scope: tp.Scope = None, judge: bool = True, detected: bool = False) -> bool:
+        """ tap element """
         if element_name == 'nav_button':
             element = self.recog.nav_button()
         else:
             element = self.recog.find(element_name, draw, scope, judge=judge)
         if detected and element is None:
             return False
-        self.tap(element, x_rate, y_rate, interval, matcher)
+        self.tap(element, x_rate, y_rate, interval, rebuild)
         return True
 
-    def swipe(self, start, movement, duration=100, interval=1, matcher=True):
+    def swipe(self, start: tp.Coordinate, movement: tp.Coordinate, duration: int = 100, interval: float = 1, rebuild: bool = True) -> None:
+        """ swipe """
         end = (start[0] + movement[0], start[1] + movement[1])
         self.device.swipe([start, end], duration=duration)
         if interval > 0:
-            self.sleep(interval, matcher=matcher)
+            self.sleep(interval, rebuild)
 
-    def swipe_seq(self, points, duration=100, interval=1, matcher=True):
+    def swipe_seq(self, points: list[tp.Coordinate], duration: int = 100, interval: float = 1, rebuild: bool = True) -> None:
+        """ swipe with point sequence """
         self.device.swipe(points, duration=duration)
         if interval > 0:
-            self.sleep(interval, matcher=matcher)
+            self.sleep(interval, rebuild)
 
-    def swipe_move(self, start, movements, duration=100, interval=1, matcher=True):
+    def swipe_move(self, start: tp.Coordinate, movements: list[tp.Coordinate], duration: int = 100, interval: float = 1, rebuild: bool = True) -> None:
+        """ swipe with start and movement sequence """
         points = [start]
         for move in movements:
             points.append((points[-1][0] + move[0], points[-1][1] + move[1]))
         self.device.swipe(points, duration=duration)
         if interval > 0:
-            self.sleep(interval, matcher=matcher)
+            self.sleep(interval, rebuild)
 
-    def back(self, interval=1, matcher=True):
+    def back(self, interval: float = 1, rebuild: bool = True) -> None:
+        """ send back keyevent """
         self.device.send_keyevent(KeyCode.KEYCODE_BACK)
-        self.sleep(interval=interval, matcher=matcher)
+        self.sleep(interval, rebuild)
 
-    def scene(self):
+    def scene(self) -> int:
+        """ get the current scene in the game """
         return self.recog.get_scene()
 
     def is_login(self):
+        """ check if you are logged in """
         return not (self.scene() // 100 == 1 or self.scene() // 100 == 99 or self.scene() == -1)
 
     def login(self):

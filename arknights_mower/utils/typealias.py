@@ -1,6 +1,6 @@
 import numpy as np
 from numpy.typing import NDArray
-from typing import Tuple, Literal, List
+from typing import Tuple, Literal, List, Union
 
 
 # Operation Plan
@@ -18,6 +18,8 @@ Range = Tuple[int, int]
 Coordinate = Tuple[int, int]
 Scope = Tuple[Coordinate, Coordinate]
 Slice = Tuple[Range, Range]
+Rectangle = Tuple[Coordinate, Coordinate, Coordinate, Coordinate]
+Location = Union[Rectangle, Scope, Coordinate]
 
 # Matcher
 Hash = List[Literal[0, 1]]

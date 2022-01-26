@@ -10,7 +10,7 @@ from .recognize import RecognizeError
 from ..data.agent import agent_list
 from ..data.ocr import ocr_error
 from ..ocr import ocrhandle
-from .image import rgb2gray, margin
+from .image import rgb2gray, thres0
 from .. import __rootdir__
 
 
@@ -480,7 +480,7 @@ def agent(im, draw=False):
             thresh = 70
             while True:
                 try:
-                    img = rgb2gray(margin(origin_img, thresh))
+                    img = rgb2gray(thres0(origin_img, thresh))
                     dt = np.zeros((h, w), dtype=np.uint8)
                     for y in range(h):
                         if img[y, w-1] != 0:
@@ -579,7 +579,7 @@ def agent(im, draw=False):
                     ret_succ.append(poly)
                     continue
                 res = ocrhandle.predict(
-                    margin(im[poly[0, 1]-20:poly[2, 1]+20, poly[0, 0]-20:poly[2, 0]+20], 70))
+                    thres0(im[poly[0, 1]-20:poly[2, 1]+20, poly[0, 0]-20:poly[2, 0]+20], 70))
                 if len(res) > 0 and res[0][1] in agent_list:
                     x = res[0]
                     ret_agent.append(x[1])
@@ -596,7 +596,7 @@ def agent(im, draw=False):
                     f'干员名称识别异常：{x[1]} 为不存在的数据，请报告至 https://github.com/Konano/arknights-mower/issues')
             else:
                 res = ocrhandle.predict(
-                    margin(im[poly[0, 1]-20:poly[2, 1]+20, poly[0, 0]-20:poly[2, 0]+20], 70))
+                    thres0(im[poly[0, 1]-20:poly[2, 1]+20, poly[0, 0]-20:poly[2, 0]+20], 70))
                 if len(res) > 0 and res[0][1] in agent_list:
                     res = res[0][1]
                     ret_agent.append(res)

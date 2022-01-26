@@ -100,9 +100,7 @@ class Client(object):
             self.__exec('start-server', adb_bin)
             if self.check_server_alive(False):
                 return True
-        except FileNotFoundError:
-            return False
-        except subprocess.CalledProcessError:
+        except (FileNotFoundError, subprocess.CalledProcessError):
             return False
         else:
             return False
