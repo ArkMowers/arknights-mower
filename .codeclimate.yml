@@ -62,6 +62,8 @@ plugins:
     checks:
       python:S1871:
         enabled: false
+      python:S125:
+        enabled: false
 
 exclude_patterns:
   - "arknights_mower/data/*.py"
