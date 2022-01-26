@@ -3,9 +3,10 @@
 # https://www.conventionalcommits.org/zh-hans/v1.0.0-beta.4/
 
 COMMIT_MESSAGE=`cat $1`
-MESSAGE_RE="^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|release|hotfix|workflow|update)(\(.+\))?: .{1,100}"
+COMMIT_RE="^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|release|hotfix|workflow|update)(\(.+\))?: .{1,100}"
+MERGE_RE="^Merge branch"
 
-if [[ ! $COMMIT_MESSAGE =~ $MESSAGE_RE ]]
+if [[ ! $COMMIT_MESSAGE =~ $COMMIT_RE ]] && [[ ! $COMMIT_MESSAGE =~ $MERGE_RE ]]
 then
     echo "Illegal commit message format:"
     echo $COMMIT_MESSAGE
