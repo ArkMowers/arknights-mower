@@ -59,20 +59,10 @@ plugins:
         enabled: false
   sonar-python:
     enabled: true
+    checks:
+      python:S1871:
+        enabled: false
 
 exclude_patterns:
-  - "config/"
-  - "db/"
-  - "dist/"
-  - "features/"
-  - "**/node_modules/"
-  - "script/"
-  - "**/spec/"
-  - "**/test/"
-  - "**/tests/"
-  - "Tests/"
-  - "**/vendor/"
-  - "**/*_test.go"
-  - "**/*.d.ts"
   - "arknights_mower/data/*.py"
   - "**/*.png"
