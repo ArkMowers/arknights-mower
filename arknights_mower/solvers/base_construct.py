@@ -488,8 +488,9 @@ class BaseConstructSolver(BaseSolver):
 
         self.back()
 
-    def run(self, clue_collect=False, drone_room=None, arrange=None):
+    def run(self, arrange=None, clue_collect=False, drone_room=None):
         """
+        :param arrange: dict(room_name: [agent,...]), 基建干员安排
         :param clue_collect: bool, 是否收取线索
         :param drone_room: str, 是否使用无人机加速（仅支持制造站）
         """

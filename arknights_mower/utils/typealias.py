@@ -1,10 +1,7 @@
 import numpy as np
 from numpy.typing import NDArray
-from typing import Tuple, Literal, List, Union
+from typing import Tuple, Literal, List, Union, Dict
 
-
-# Operation Plan
-Plan = Tuple[str, int]
 
 # Image
 Image = NDArray[np.int8]
@@ -24,3 +21,9 @@ Location = Union[Rectangle, Scope, Coordinate]
 # Matcher
 Hash = List[Literal[0, 1]]
 Score = Tuple[float, float, float, float]
+
+# Operation Plan
+OpePlan = Tuple[str, int]
+
+# BaseConstruct Plan
+BasePlan = Dict[str, List[str]]

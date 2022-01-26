@@ -27,12 +27,12 @@ def base(args: list[str] = [], device: Device = None):
     base [plan] [-c] [-d[F][N]]
         自动处理基建的信赖/货物/订单/线索/无人机
         plan 表示选择的基建干员排班计划（需要搭配配置文件使用）
-        -c 是否自动使用线索
+        -c 是否自动收集并使用线索
         -d 是否自动消耗无人机，F 表示第几层（1-3），N 表示从左往右第几个房间（1-3），仅支持制造站
     """
+    arrange = None
     clue_collect = False
     drone_room = None
-    arrange = None
 
     try:
         for p in args:
@@ -48,7 +48,7 @@ def base(args: list[str] = [], device: Device = None):
     except Exception:
         raise ParamError
 
-    BaseConstructSolver(device).run(clue_collect, drone_room, arrange)
+    BaseConstructSolver(device).run(arrange, clue_collect, drone_room)
 
 
 def credit(args: list[str] = [], device: Device = None):
@@ -63,7 +63,7 @@ def shop(args: list[str] = [], device: Device = None):
     """
     shop [items ...]
         自动前往商店消费信用点
-        items 优先考虑的物品，默认为从上到下从左到右购买
+        items 优先考虑的物品，若不指定则使用配置文件中的优先级，默认为从上到下从左到右购买
     """
     if len(args) == 0:
         ShopSolver(device).run(config.SHOP_PRIORITY)
@@ -75,7 +75,7 @@ def recruit(args: list[str] = [], device: Device = None):
     """
     recruit [agents ...]
         自动进行公共招募
-        agents 优先考虑的公招干员，默认为高稀有度优先
+        agents 优先考虑的公招干员，若不指定则使用配置文件中的优先级，默认为高稀有度优先
     """
     if len(args) == 0:
         RecruitSolver(device).run(config.RECRUIT_PRIORITY)
@@ -100,13 +100,21 @@ def operation(args: list[str] = [], device: Device = None):
         -r 是否自动回复理智，最多回复 N 次，N 未指定则表示不限制回复次数
         -R 是否使用源石回复理智，最多回复 N 次，N 未指定则表示不限制回复次数
         -e 是否优先处理未完成的每周剿灭
+    operation --plan
+        （使用配置文件中的参数以及计划）自动进行作战
     """
+
+    if len(args) == 1 and args[0] == "--plan":
+        remain_plan = OpeSolver(device).run(None, config.OPE_TIMES, config.OPE_POTION,
+                                            config.OPE_ORIGINITE, config.OPE_ELIMINATE, config.OPE_PLAN)
+        config.update_ope_plan(remain_plan)
+        return
+
     level = None
     times = -1
     potion = 0
     originite = 0
     eliminate = False
-    plan = config.OPE_PLAN  # TODO
 
     try:
         for p in args:
@@ -132,9 +140,7 @@ def operation(args: list[str] = [], device: Device = None):
     except Exception:
         raise ParamError
 
-    remain_plan = OpeSolver(device).run(
-        times, potion, originite, level, plan, eliminate)
-    config.update_ope_plan(remain_plan)
+    OpeSolver(device).run(level, times, potion, originite, eliminate)
 
 
 def version(args: list[str] = [], device: Device = None):
