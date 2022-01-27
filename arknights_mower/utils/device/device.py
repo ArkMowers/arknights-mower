@@ -61,7 +61,7 @@ class Device(object):
         logger.debug(f'tap: {point}')
         self.minitouch.tap([point])
 
-    def swipe(self, points: list[tuple[int, int]], duration: int = 100, part: int = 10) -> None:
+    def swipe(self, points: list[tuple[int, int]], duration: int = 100, part: int = 10, fall: bool = True, lift: bool = True) -> None:
         """ swipe """
         logger.debug(f'swipe: {points}')
         points_num = len(points)
