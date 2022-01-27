@@ -48,6 +48,9 @@ device:
   # minitouch 使用的转发端口
   # adb_mnt_port: 20937
 
+  # minitouch 兼容模式，当打开时, 用于处理在某些模拟器下无法正确处理分辨率和旋转的情况, 默认关闭
+  # compatibility_mode: no
+
 app:
   package_name: com.hypergryph.arknights  # 官服
   # package_name: com.hypergryph.arknights.bilibili   # Bilibili 服

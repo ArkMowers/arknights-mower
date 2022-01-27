@@ -107,6 +107,9 @@ def init_config() -> None:
     ADB_SERVER_PORT = __get('device/adb_server/port', 5037)
     ADB_SERVER_TIMEOUT = __get('device/adb_server/timeout', 5)
 
+    global COMPATIBILITY_MODE
+    COMPATIBILITY_MODE = __get('device/compatibility_mode', 'no')
+
     global ADB_TOUCH_DEVICE
     ADB_TOUCH_DEVICE = __get('adb_touch_device', None)
 
