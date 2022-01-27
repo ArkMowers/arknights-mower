@@ -3,7 +3,7 @@ name: Windows Binary Package
 on:
   push:
     tags:
-      - 'v*'
+      - 'a*'
 
 jobs:
   build-win-amd64:
@@ -43,5 +43,6 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           draft: true
+          prerelease: true
           body_path: doc/CHANGELOG.md
           files: arknights-mower_cp39_win_amd64_${{ steps.get_version.outputs.VERSION }}.zip
