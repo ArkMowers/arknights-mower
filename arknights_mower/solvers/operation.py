@@ -229,7 +229,7 @@ class OpeSolver(BaseSolver):
             self.plan[0][1] -= 1
         # 随便点击某处退出结算界面
         self.tap((self.recog.w // 2, 10))
-    
+
     def ope_finish_elimi(self) -> None:
         # 每周剿灭完成情况变为未知
         self.eliminate_state = 0
