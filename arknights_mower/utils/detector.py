@@ -8,47 +8,47 @@ def confirm(img: tp.Image) -> tp.Coordinate:
     """
     检测是否出现确认界面
     """
-    h, w, _ = img.shape
+    height, weight, _ = img.shape
 
     # 4 scan lines: left, right, up, down
-    l, r = w // 4 * 3 - 10, w // 4 * 3 + 10
-    u, d = h // 2 - 10, h // 2 + 10
+    left, right = weight // 4 * 3 - 10, weight // 4 * 3 + 10
+    up, down = height // 2 - 10, height // 2 + 10
 
     # the R/G/B must be the same for a single pixel in the specified area
-    if (img[u:d, l:r, :-1] != img[u:d, l:r, 1:]).any():
+    if (img[up:down, left:right, :-1] != img[up:down, left:right, 1:]).any():
         return None
 
     # the pixel average of the specified area must be in the vicinity of 55
-    if abs(np.mean(img[u:d, l:r]) - 55) > 5:
+    if abs(np.mean(img[up:down, left:right]) - 55) > 5:
         return None
 
     # set a new scan line: up
-    u = 0
-    for i in range(d, h):
-        for j in range(l, r):
+    up = 0
+    for i in range(down, height):
+        for j in range(left, right):
             if np.ptp(img[i, j]) != 0 or abs(img[i, j, 0] - 13) > 3:
                 break
-            elif j == r-1:
-                u = i
-        if u:
+            elif j == right-1:
+                up = i
+        if up:
             break
-    if u == 0:
+    if up == 0:
         return None
 
     # set a new scan line: down
-    d = 0
-    for i in range(u, h):
-        for j in range(l, r):
+    down = 0
+    for i in range(up, height):
+        for j in range(left, right):
             if np.ptp(img[i, j]) != 0 or abs(img[i, j, 0] - 13) > 3:
-                d = i
+                down = i
                 break
-        if d:
+        if down:
             break
-    if d == 0:
+    if down == 0:
         return None
 
     # detect successful
-    point = (w // 2, (u + d) // 2)
+    point = (weight // 2, (up + down) // 2)
     logger.debug(f'detector.confirm: {point}')
     return point
 
@@ -58,34 +58,34 @@ def infra_notification(img: tp.Image) -> tp.Coordinate:
     检测基建内是否存在蓝色通知
     前置条件：已经处于基建内
     """
-    h, w, _ = img.shape
+    height, weight, _ = img.shape
 
     # set a new scan line: right
-    r = w
-    while np.max(img[:, r-1]) < 100:
-        r -= 1
-    r -= 1
+    right = weight
+    while np.max(img[:, right-1]) < 100:
+        right -= 1
+    right -= 1
 
     # set a new scan line: up
-    u = 0
-    for i in range(h):
-        if img[i, r, 0] < 100 < img[i, r, 1] < img[i, r, 2]:
-            u = i
+    up = 0
+    for i in range(height):
+        if img[i, right, 0] < 100 < img[i, right, 1] < img[i, right, 2]:
+            up = i
             break
-    if u == 0:
+    if up == 0:
         return None
 
     # set a new scan line: down
-    d = 0
-    for i in range(u, h):
-        if not (img[i, r, 0] < 100 < img[i, r, 1] < img[i, r, 2]):
-            d = i
+    down = 0
+    for i in range(up, height):
+        if not (img[i, right, 0] < 100 < img[i, right, 1] < img[i, right, 2]):
+            down = i
             break
-    if d == 0:
+    if down == 0:
         return None
 
     # detect successful
-    point = (r - 10, (u + d) // 2)
+    point = (right - 10, (up + down) // 2)
     logger.debug(f'detector.infra_notification: {point}')
     return point
 
@@ -94,16 +94,16 @@ def announcement_close(img: tp.Image) -> tp.Coordinate:
     """
     检测「关闭公告」按钮
     """
-    h, w, _ = img.shape
+    height, weight, _ = img.shape
 
     # 4 scan lines: left, right, up, down
-    u, d = 0, h // 4
-    l, r = w // 4 * 3, w
+    up, down = 0, height // 4
+    left, right = weight // 4 * 3, weight
 
     sumx, sumy, cnt = 0, 0, 0
-    for i in range(u, d):
+    for i in range(up, down):
         line_cnt = 0
-        for j in range(l, r):
+        for j in range(left, right):
             if np.ptp(img[i, j]) == 0 and abs(img[i, j, 0] - 89) < 3:  # condition
                 sumx += i
                 sumy += j
@@ -128,33 +128,33 @@ def visit_next(img: tp.Image) -> tp.Coordinate:
     """
     检测「访问下位」按钮
     """
-    h, w, _ = img.shape
+    height, weight, _ = img.shape
 
     # set a new scan line: right
-    r = w
-    while np.max(img[:, r-1]) < 100:
-        r -= 1
-    r -= 1
+    right = weight
+    while np.max(img[:, right-1]) < 100:
+        right -= 1
+    right -= 1
 
     # set a new scan line: up
-    u = 0
-    for i in range(h):
-        if img[i, r, 0] > 150 > img[i, r, 1] > 40 > img[i, r, 2]:
-            u = i
+    up = 0
+    for i in range(height):
+        if img[i, right, 0] > 150 > img[i, right, 1] > 40 > img[i, right, 2]:
+            up = i
             break
-    if u == 0:
+    if up == 0:
         return None
 
     # set a new scan line: down
-    d = 0
-    for i in range(u, h):
-        if not (img[i, r, 0] > 150 > img[i, r, 1] > 40 > img[i, r, 2]):
-            d = i
+    down = 0
+    for i in range(up, height):
+        if not (img[i, right, 0] > 150 > img[i, right, 1] > 40 > img[i, right, 2]):
+            down = i
             break
-    if d == 0:
+    if down == 0:
         return None
 
     # detect successful
-    point = (r - 10, (u + d) // 2)
+    point = (right - 10, (up + down) // 2)
     logger.debug(f'detector.visit_next: {point}')
     return point
