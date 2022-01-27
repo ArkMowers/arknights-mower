@@ -77,7 +77,7 @@ def build_config(path: str, module: bool) -> None:
 def load_config(path: str) -> None:
     """ load config from PATH """
     global __ydoc, PATH
-    PATH = path
+    PATH = Path(path)
     with PATH.open('r', encoding='utf8') as f:
         __ydoc = yaml.load(f)
     init_config()
