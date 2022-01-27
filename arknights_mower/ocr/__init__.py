@@ -5,7 +5,8 @@ from ..utils.log import logger
 from ..data.ocr import ocr_error
 
 ocrhandle = OcrHandle()
-ocronline = API(api_key=config.OCR_APIKEY, language=Language.Chinese_Simplified)
+ocronline = API(api_key=config.OCR_APIKEY,
+                language=Language.Chinese_Simplified)
 
 
 def ocr_rectify(img, pre, valid, text=''):

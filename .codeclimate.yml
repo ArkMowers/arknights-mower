@@ -68,3 +68,4 @@ plugins:
 exclude_patterns:
   - "arknights_mower/data/*.py"
   - "**/*.png"
+  - "arknights_mower/ocr/*.py"
