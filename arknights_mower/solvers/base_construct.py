@@ -28,7 +28,7 @@ class BaseConstructSolver(BaseSolver):
         self.arrange = arrange
         self.clue_collect = clue_collect
         self.drone_room = drone_room
-        self.todo_task = True   # 基建 Todo 是否未被处理
+        self.todo_task = False   # 基建 Todo 是否未被处理
 
         logger.info('Start: 基建')
         super().run()
@@ -331,7 +331,7 @@ class BaseConstructSolver(BaseSolver):
             clues.append(segment.get_poly(x1, x2, y3, y2))
 
         # 忽视一些只有一半的线索
-        clues = [x for x in clues if x[1][1] - x[0][1] >= self.recog.h / 5]
+        clues = [x.tolist() for x in clues if x[1][1] - x[0][1] >= self.recog.h / 5]
         logger.debug(clues)
         return clues
 

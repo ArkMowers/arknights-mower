@@ -66,4 +66,4 @@ class Device(object):
         logger.debug(f'swipe: {points}')
         points_num = len(points)
         duration //= points_num - 1
-        self.minitouch.smooth_swipe(points, duration=duration, part=part)
+        self.minitouch.smooth_swipe(points, duration=duration, part=part, fall=fall, lift=lift)

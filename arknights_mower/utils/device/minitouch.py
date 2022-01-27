@@ -4,6 +4,7 @@ import os
 import time
 import socket
 # import random
+from typing import Union
 
 from .client import Client
 from .utils import download_file, is_port_using
@@ -200,7 +201,7 @@ class MiniTouch(object):
         with MNTConnection(self.port) as conn:
             builder.publish(conn)
 
-    def swipe(self, points: list[tuple[int, int]], pressure: int = 100, duration: int = None, fall: bool = True, lift: bool = True) -> None:
+    def swipe(self, points: list[tuple[int, int]], pressure: int = 100, duration: Union[list[int], int] = None, fall: bool = True, lift: bool = True) -> None:
         """
         swipe between points one by one, with pressure and duration
 
@@ -213,19 +214,23 @@ class MiniTouch(object):
         self.check_server_alive()
         self.check_mnt_alive()
 
-        builder = CommandBuilder()
         points = [list(map(int, point)) for point in points]
+        if not isinstance(duration, list):
+            duration = [duration] * (len(points) - 1)
+        assert len(duration) + 1 == len(points)
+
+        builder = CommandBuilder()
         with MNTConnection(self.port) as conn:
             if fall:
                 x, y = points[0]
                 builder.down(0, x, y, pressure)
                 builder.publish(conn)
 
-            for point in points:
+            for idx, point in enumerate(points[1:]):
                 x, y = point
                 builder.move(0, x, y, pressure)
-                if duration:
-                    builder.wait(duration)
+                if duration[idx-1]:
+                    builder.wait(duration[idx-1])
                 builder.commit()
             builder.publish(conn)
 
@@ -233,7 +238,7 @@ class MiniTouch(object):
                 builder.up(0)
                 builder.publish(conn)
 
-    def smooth_swipe(self, points: list[tuple[int, int]], pressure: int = 100, duration: int = None, part: int = 10, fall: bool = True, lift: bool = True) -> None:
+    def smooth_swipe(self, points: list[tuple[int, int]], pressure: int = 100, duration: Union[list[int], int] = None, part: int = 10, fall: bool = True, lift: bool = True) -> None:
         """
         swipe between points one by one, with pressure and duration
         it will split distance between points into pieces
@@ -246,9 +251,14 @@ class MiniTouch(object):
         :param lift: if True, "lift" the last touch point
         """
         points = [list(map(int, point)) for point in points]
+        if not isinstance(duration, list):
+            duration = [duration] * (len(points) - 1)
+        assert len(duration) + 1 == len(points)
+        
         new_points = [points[0]]
+        new_duration = []
         for id in range(1, len(points)):
-            pre_point = points[id - 1]
+            pre_point = points[id-1]
             cur_point = points[id]
             offset = (
                 (cur_point[0] - pre_point[0]) // part,
@@ -256,9 +266,13 @@ class MiniTouch(object):
             )
             new_points += [
                 (pre_point[0] + i * offset[0], pre_point[1] + i * offset[1])
-                for i in range(1, part)
+                for i in range(1, part+1)
             ]
-        self.swipe(new_points, pressure, duration // part, fall, lift)
+            if duration[id-1] is None:
+                new_duration += [None] * part
+            else:
+                new_duration += [duration[id-1] // part] * part
+        self.swipe(new_points, pressure, new_duration, fall, lift)
 
 
 class MNTConnection(object):
