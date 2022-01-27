@@ -21,6 +21,6 @@
 ROOT=`git rev-parse --show-toplevel`
 VERSION=${1:1}
 
+sed -i "s/__version__ = '[0-9\.a]\+'/__version__ = '$VERSION'/g" "$ROOT/arknights_mower/__init__.py"
 git add "$ROOT/arknights_mower/__init__.py"
-git add "$ROOT/doc/CHANGELOG/$VERSION.md"
 git commit -m "release: v$VERSION"
