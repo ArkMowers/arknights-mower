@@ -122,8 +122,8 @@ def credit(img: tp.Image, draw: bool = False) -> list[tp.Scope]:
                 ret.append(((x1, y1), (x2, y2)))
 
         if draw:
-            for x1, x2 in zip(split_x[:-1], split_x[1:]):
-                for y1, y2 in zip(split_y[:-1], split_y[1:]):
+            for y1, y2 in zip(split_y[:-1], split_y[1:]):
+                for x1, x2 in zip(split_x[:-1], split_x[1:]):
                     cv2.polylines(img, [get_poly(x1, x2, y1, y2)],
                                   True, 0, 10, cv2.LINE_AA)
             plt.imshow(img)
@@ -137,80 +137,79 @@ def credit(img: tp.Image, draw: bool = False) -> list[tp.Scope]:
         raise RecognizeError(e)
 
 
-def recruit(im, draw=False):
+def recruit(img: tp.Image, draw: bool = False) -> list[tp.Scope]:
     """
     公招特供的图像分割算法
     """
     try:
-        x, y, z = im.shape
-        u, d = 0, x
-        l, r = y//2-100, y//2-50
+        height, weight, _ = img.shape
+        left, right = weight//2-100, weight//2-50
 
-        def adj_x(i):
+        def adj_x(i: int) -> int:
             if i == 0:
                 return 0
-            s = 0
-            for j in range(l, r):
+            sum = 0
+            for j in range(left, right):
                 for k in range(3):
-                    s += abs(int(im[i, j, k]) - int(im[i-1, j, k]))
-            return int(s / (r-l))
+                    sum += abs(int(img[i, j, k]) - int(img[i-1, j, k]))
+            return sum // (right-left)
 
-        def adj_y(j):
+        def adj_y(j: int) -> int:
             if j == 0:
                 return 0
-            s = 0
-            for i in range(u, d):
+            sum = 0
+            for i in range(up_2, down_2):
                 for k in range(3):
-                    s += abs(int(im[i, j, k]) - int(im[i, j-1, k]))
-            return int(s / (d-u))
+                    sum += abs(int(img[i, j, k]) - int(img[i, j-1, k]))
+            return int(sum / (down_2-up_2))
 
-        def average(i):
-            s = 0
-            for j in range(l, r):
-                s += np.sum(im[i, j, :3])
-            return int(s / (r-l) / 3)
+        def average(i: int) -> int:
+            sum = 0
+            for j in range(left, right):
+                sum += np.sum(img[i, j, :3])
+            return sum // (right-left) // 3
 
-        def minus(i):
+        def minus(i: int) -> int:
             s = 0
-            for j in range(l, r):
-                s += int(im[i, j, 2]) - int(im[i, j, 0])
-            return int(s / (r-l))
+            for j in range(left, right):
+                s += int(img[i, j, 2]) - int(img[i, j, 0])
+            return s // (right-left)
 
         up = 0
         while minus(up) > -100:
             up += 1
         while not (adj_x(up) > 80 and minus(up) > -10 and average(up) > 210):
             up += 1
-        u, d = up-90, up-40
+        up_2, down_2 = up-90, up-40
 
         left = 0
-        while np.max(im[:, left]) < 100:
+        while np.max(img[:, left]) < 100:
             left += 1
         left += 1
         while adj_y(left) < 50:
             left += 1
 
-        right = y - 1
-        while np.max(im[:, right]) < 100:
+        right = weight - 1
+        while np.max(img[:, right]) < 100:
             right -= 1
         while adj_y(right) < 50:
             right -= 1
 
         split_x = [left, (left + right) // 2, right]
-        down = x - 1
+        down = height - 1
         split_y = [up, (up + down) // 2, down]
 
         ret = []
-        for x1, x2 in zip(split_x[:-1], split_x[1:]):
-            for y1, y2 in zip(split_y[:-1], split_y[1:]):
+        for y1, y2 in zip(split_y[:-1], split_y[1:]):
+            for x1, x2 in zip(split_x[:-1], split_x[1:]):
                 ret.append(((x1, y1), (x2, y2)))
 
         if draw:
-            for x1, x2 in zip(split_x[:-1], split_x[1:]):
-                for y1, y2 in zip(split_y[:-1], split_y[1:]):
-                    cv2.polylines(im, [get_poly(x1, x2, y1, y2)],
+            for y1, y2 in zip(split_y[:-1], split_y[1:]):
+                for x1, x2 in zip(split_x[:-1], split_x[1:]):
+                    cv2.polylines(img, [get_poly(x1, x2, y1, y2)],
                                   True, 0, 10, cv2.LINE_AA)
-            plt.imshow(im)
+            plt.imshow(img)
             plt.show()
 
         logger.debug(f'segment.recruit: {ret}')
@@ -218,7 +217,7 @@ def recruit(im, draw=False):
 
     except Exception as e:
         logger.debug(traceback.format_exc())
-        raise RecognizeError
+        raise RecognizeError(e)
 
 
 def base(im, central, draw=False):
