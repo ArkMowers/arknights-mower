@@ -108,19 +108,8 @@ class BaseConstructSolver(BaseSolver):
 
         logger.info('基建：线索')
 
-        # 获取基建各个房间的位置
-        base_room = segment.base(self.recog.img, self.find('control_central'))
-
-        # 将画面外的部分删去
-        room = base_room['meeting']
-        for i in range(4):
-            room[i, 0] = max(room[i, 0], 0)
-            room[i, 0] = min(room[i, 0], self.recog.w)
-            room[i, 1] = max(room[i, 1], 0)
-            room[i, 1] = min(room[i, 1], self.recog.h)
-
-        # 点击会客室
-        self.tap(room[0], interval=3, rebuild=False)
+        # 进入会客室
+        self.enter_room('meeting')
 
         # 点击线索详情
         self.tap((111, self.recog.h-10), interval=3)
@@ -206,8 +195,8 @@ class BaseConstructSolver(BaseSolver):
 
     def switch_camp(self, id: int) -> tuple[int, int]:
         """ 切换阵营 """
-        x = ((id+0.5)*x2+(8-id-0.5)*x1) // 8
-        y = (y0+y1)//2
+        x = ((id+0.5) * x2 + (8-id-0.5) * x1) // 8
+        y = (y0 + y1) // 2
         return x, y
 
     def recog_bar(self) -> None:
@@ -335,8 +324,8 @@ class BaseConstructSolver(BaseSolver):
         logger.debug(clues)
         return clues
 
-    def drone(self, room):
-        logger.info('基建：无人机加速')
+    def enter_room(self, room: str) -> tp.Rectangle:
+        """ 获取房间的位置并进入 """
 
         # 获取基建各个房间的位置
         base_room = segment.base(self.recog.img, self.find('control_central'))
@@ -349,8 +338,14 @@ class BaseConstructSolver(BaseSolver):
             room[i, 1] = max(room[i, 1], 0)
             room[i, 1] = min(room[i, 1], self.recog.h)
 
-        # 点击该房间
+        # 点击进入
         self.tap(room[0], interval=3, rebuild=False)
+
+    def drone(self, room: str):
+        logger.info('基建：无人机加速')
+
+        # 点击进入该房间
+        self.enter_room(room)
 
         # 进入房间详情
         self.tap((111, self.recog.h-10), interval=3)
