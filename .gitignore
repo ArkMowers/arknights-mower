@@ -10,6 +10,7 @@ screenshot_right/*
 test/*
 test_*
 test.py
+release.sh
 
 # Windows
 venv64
