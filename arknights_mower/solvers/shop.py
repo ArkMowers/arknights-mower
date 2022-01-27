@@ -3,6 +3,7 @@ from __future__ import annotations
 from ..ocr import ocrhandle, ocr_rectify
 from ..utils import segment
 from ..utils.device import Device
+from ..utils.image import scope2slice
 from ..utils.log import logger
 from ..utils.recognize import Scene, RecognizeError
 from ..utils.solver import Recognizer, BaseSolver
@@ -60,9 +61,8 @@ class ShopSolver(BaseSolver):
         valid = []
         for seg in segments:
             if self.find('shop_sold', scope=seg) is None:
-                scope = ((seg[0][1], seg[0][1] + (seg[1][1]-seg[0][1])//4),
-                         (seg[0][0], seg[1][0]))
-                img = self.recog.img[scope]
+                scope = (seg[0], (seg[1][0], seg[0][1] + (seg[1][1]-seg[0][1])//4))
+                img = self.recog.img[scope2slice(scope)]
                 ocr = ocrhandle.predict(img)[0]
                 if ocr[1] not in shop_items:
                     ocr[1] = ocr_rectify(img, ocr, shop_items, '物品名称')

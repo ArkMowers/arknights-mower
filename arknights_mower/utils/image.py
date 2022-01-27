@@ -61,7 +61,7 @@ def scope2slice(scope: tp.Scope) -> tp.Slice:
     """ ((x0, y0), (x1, y1)) -> ((y0, y1), (x0, x1)) """
     if scope is None:
         return slice(None), slice(None)
-    return (scope[0][1], scope[1][1]), (scope[0][0], scope[1][0])
+    return slice(scope[0][1], scope[1][1]), slice(scope[0][0], scope[1][0])
 
 
 def cropimg(img: tp.Image, scope: tp.Scope) -> tp.Image:
