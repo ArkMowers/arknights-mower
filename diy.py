@@ -6,7 +6,7 @@ from arknights_mower.utils import config
 
 
 # 指定无人机加速第三层第三个房间的制造
-drone_room='room_3_3'
+drone_room = 'room_3_3'
 
 # 指定关卡序列的作战计划
 ope_lists = [['AP-5', 1], ['1-7', -1]]

@@ -1,17 +1,24 @@
+from __future__ import annotations
+
 import sys
 import shutil
 import ruamel.yaml
-from ruamel.yaml.comments import CommentedSeq
+from typing import Any
 from pathlib import Path
 from collections import Mapping
+from ruamel.yaml.comments import CommentedSeq
 
-from ..__init__ import __rootdir__, __system__, __pyinstall__
+from . import typealias as tp
+from .. import __rootdir__, __system__, __pyinstall__
 
 yaml = ruamel.yaml.YAML()
 __ydoc = None
 
+BASE_CONSTRUCT_PLAN: dict[str, tp.BasePlan]
+OPE_PLAN: list[tp.OpePlan]
 
-def __dig_mapping(path):
+
+def __dig_mapping(path: str):
     path = path.split('/')
     parent_maps = path[:-1]
     current_map = __ydoc
@@ -25,7 +32,7 @@ def __dig_mapping(path):
     return current_map, path[-1]
 
 
-def __get(path, default=None):
+def __get(path: str, default: Any = None):
     try:
         current_map, k = __dig_mapping(path)
     except (KeyError, TypeError) as e:
@@ -35,7 +42,7 @@ def __get(path, default=None):
     return current_map[k]
 
 
-def __get_list(path, default=list()):
+def __get_list(path: str, default: Any = list()):
     item = __get(path)
     if item is None:
         return default
@@ -45,7 +52,7 @@ def __get_list(path, default=list()):
         return list(item)
 
 
-def __set(path, value):
+def __set(path: str, value: Any):
     try:
         current_map, k = __dig_mapping(path)
     except (KeyError, TypeError):
@@ -53,9 +60,10 @@ def __set(path, value):
     current_map[k] = value
 
 
-def build_config(path, module):
+def build_config(path: str, module: bool) -> None:
+    """ build config via template """
     global __ydoc
-    with Path(f'{__rootdir__}/template/config.yaml').open('r', encoding='utf8') as f:
+    with Path(f'{__rootdir__}/templates/config.yaml').open('r', encoding='utf8') as f:
         loader = yaml.load_all(f)
         next(loader)  # discard first document (used for comment)
         __ydoc = next(loader)
@@ -66,28 +74,44 @@ def build_config(path, module):
         yaml.dump(__ydoc, f)
 
 
-def load_config(path):
+def load_config(path: str) -> None:
+    """ load config from PATH """
     global __ydoc, PATH
-    PATH = path
+    PATH = Path(path)
     with PATH.open('r', encoding='utf8') as f:
         __ydoc = yaml.load(f)
     init_config()
 
 
-def save_config():
+def save_config() -> None:
+    """ save config into PATH """
     global PATH
     with PATH.open('w', encoding='utf8') as f:
         yaml.dump(__ydoc, f)
 
 
-def init_config():
-
-    global ADB_BINARY, ADB_DEVICE, ADB_FIXUPS
+def init_config() -> None:
+    """ init config from __ydoc """
+    global ADB_BINARY, ADB_DEVICE, ADB_CONNECT
     ADB_BINARY = __get('device/adb_binary', [])
     ADB_DEVICE = __get('device/adb_device', [])
-    ADB_FIXUPS = __get('device/adb_no_device_fixups', [])
-    if len(ADB_BINARY) == 0:
-        ADB_BINARY = [shutil.which('adb')]
+    ADB_CONNECT = __get('device/adb_connect', [])
+    if shutil.which('adb') is not None:
+        ADB_BINARY.append(shutil.which('adb'))
+
+    global ADB_BUILDIN
+    ADB_BUILDIN = None
+
+    global ADB_SERVER_IP, ADB_SERVER_PORT, ADB_SERVER_TIMEOUT
+    ADB_SERVER_IP = __get('device/adb_server/ip', '127.0.0.1')
+    ADB_SERVER_PORT = __get('device/adb_server/port', 5037)
+    ADB_SERVER_TIMEOUT = __get('device/adb_server/timeout', 5)
+
+    global ADB_TOUCH_DEVICE
+    ADB_TOUCH_DEVICE = __get('adb_touch_device', None)
+
+    global ADB_MNT_PORT
+    ADB_MNT_PORT = __get('adb_mnt_port', 20937)
 
     global APPNAME
     APPNAME = __get('app/package_name', 'com.hypergryph.arknights') + \
@@ -105,16 +129,14 @@ def init_config():
     global OCR_APIKEY
     OCR_APIKEY = __get('ocr/ocr_space_api', 'c7431c9d7288957')
 
-    global BASE_CONSTRUCT_PLAN, BASE_CONSTRUCT_CLUE, BASE_CONSTRUCT_DRONE
+    global BASE_CONSTRUCT_PLAN
     BASE_CONSTRUCT_PLAN = __get('arrangement', None)
-    BASE_CONSTRUCT_CLUE = __get('base_construct/clue_collect', False)
-    BASE_CONSTRUCT_DRONE = __get('base_construct/drone_room', None)
 
     global SCHEDULE_PLAN
     SCHEDULE_PLAN = __get('schedule', None)
 
     global RECRUIT_PRIORITY, SHOP_PRIORITY
-    RECRUIT_PRIORITY = __get('priority/recruit', ['火神', '因陀罗'])
+    RECRUIT_PRIORITY = __get('priority/recruit', None)
     SHOP_PRIORITY = __get('priority/shop', None)
 
     global OPE_TIMES, OPE_POTION, OPE_ORIGINITE, OPE_ELIMINATE, OPE_PLAN
@@ -128,15 +150,18 @@ def init_config():
         OPE_PLAN = [[x[0], int(x[1])] for x in OPE_PLAN]
 
 
-def update_ope_plan(plan):
+def update_ope_plan(plan: list[tp.OpePlan]) -> None:
+    """ update operation plan """
     global OPE_PLAN
     OPE_PLAN = plan
     print([f'{x[0]},{x[1]}' for x in OPE_PLAN])
     __set('operation/plan', [f'{x[0]},{x[1]}' for x in OPE_PLAN])
+    # TODO 其他参数也应该更新
     save_config()
 
 
-def init_debug(module):
+def init_debug(module: bool) -> None:
+    """ init LOGFILE_PATH & SCREENSHOT_PATH """
     global LOGFILE_PATH, SCREENSHOT_PATH
     if __pyinstall__:
         LOGFILE_PATH = Path(sys.executable).parent.joinpath('log')
@@ -146,14 +171,33 @@ def init_debug(module):
             LOGFILE_PATH = Path.home().joinpath('arknights-mower')
             SCREENSHOT_PATH = Path.home().joinpath('arknights-mower/screenshot')
         elif __system__ == 'linux':
-            LOGFILE_PATH = '/var/log/arknights-mower'
-            SCREENSHOT_PATH = '/var/log/arknights-mower/screenshot'
+            LOGFILE_PATH = Path('/var/log/arknights-mower')
+            SCREENSHOT_PATH = Path('/var/log/arknights-mower/screenshot')
+        elif __system__ == 'darwin':
+            LOGFILE_PATH = Path('/var/log/arknights-mower')
+            SCREENSHOT_PATH = Path('/var/log/arknights-mower/screenshot')
         else:
-            print(f'Unknown system: {__system__}')
-            raise NotImplementedError
+            raise NotImplementedError(f'Unknown system: {__system__}')
     else:
         LOGFILE_PATH = __rootdir__.parent.joinpath('log')
         SCREENSHOT_PATH = __rootdir__.parent.joinpath('screenshot')
+
+
+def init_adb_buildin() -> Path:
+    """ init ADB_BUILDIN & ADB_BUILDIN_DIR """
+    global ADB_BUILDIN_DIR, ADB_BUILDIN
+    ADB_BUILDIN = None
+    if __pyinstall__:
+        ADB_BUILDIN_DIR = Path(sys.executable).parent.joinpath('adb-buildin')
+    elif __system__ == 'windows':
+        ADB_BUILDIN_DIR = Path.home().joinpath('arknights-mower/adb-buildin')
+    elif __system__ == 'linux':
+        ADB_BUILDIN_DIR = Path.home().joinpath('.arknights-mower')
+    elif __system__ == 'darwin':
+        ADB_BUILDIN_DIR = Path.home().joinpath('.arknights-mower')
+    else:
+        raise NotImplementedError(f'Unknown system: {__system__}')
+    return ADB_BUILDIN_DIR
 
 
 init_config()

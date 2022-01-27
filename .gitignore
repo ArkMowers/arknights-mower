@@ -1,20 +1,20 @@
-# WSL
+!main.spec
+*.yaml
+!arknights_mower/templates/*.yaml
 
+# WSL
 log/*
 data/*
 screenshot/*
 screenshot_right/*
 test/*
 test_*
-!main.spec
-config.yaml
-release_*.sh
+test.py
 
 # Windows
-
 venv64
 release_test.bat
-public/*
+publish/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

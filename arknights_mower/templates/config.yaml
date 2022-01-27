@@ -24,23 +24,32 @@ device:
   # - D:\leidian\LDPlayer\adb.exe             # 雷电模拟器
   # - C:\Program Files\Nox\bin\nox_adb.exe    # 夜神模拟器
   # - C:\Program Files\BlueStacks\HD-Adb.exe  # BlueStacks
-  # - C:\Program Files (x86)\MuMu\emulator\nemu\vmonitor\bin\adb_server.exe   # MuMu模拟器
+  # - C:\Program Files (x86)\MuMu\emulator\nemu\vmonitor\bin\adb_server.exe   # MuMu 模拟器
   
   # 优先选择指定设备进行操作，指定 adb devices 中列出的名称
   # 若都无法连接则优先选择在线的设备进行连接
   adb_device:
     - 127.0.0.1:62026
 
-  # 无设备连接时进行的操作
-  # 如果某个操作报告成功，则不再执行后续定义的操作
-  adb_no_device_fixups:
-    - run: adb_connect # 连接 ADB TCP/IP 端口
-      target:
-        - 127.0.0.1:5555 # 大部分模拟器
-        - 127.0.0.1:7555 # MuMu模拟器
+  # 无设备连接时进行的连接操作
+  adb_connect:
+    - 127.0.0.1:5555 # 大部分模拟器
+    - 127.0.0.1:7555 # MuMu模拟器
+
+  # 连接 ADB Server 参数，默认无需修改
+  # adb_server: 
+  #   ip: 127.0.0.1
+  #   port: 5037
+  #   timeout: 5
+
+  # 指定设备上的 Touch Device，若无则自动检测
+  # adb_touch_device: /dev/input/event4
+
+  # minitouch 使用的转发端口
+  # adb_mnt_port: 20937
 
 app:
-  package_name: com.hypergryph.arknights
+  package_name: com.hypergryph.arknights  # 官服
   # package_name: com.hypergryph.arknights.bilibili   # Bilibili 服
   activity_name: com.u8.sdk.U8UnityContext
 
@@ -278,13 +287,6 @@ arrangement:
       - 砾
       - 夜烟
       - 斑点
-
-# 基建
-base_construct:
-  # 是否处理会客室线索
-  clue_collect: true
-  # 无人机加速房间（仅限制造站）
-  # drone_room: room_3_3
 
 # 作战
 operation:

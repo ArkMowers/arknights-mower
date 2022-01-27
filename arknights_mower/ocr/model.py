@@ -99,7 +99,3 @@ class OcrHandle(object):
             result[i][1] = fix(result[i][1])
         logger.debug(result)
         return result
-
-
-if __name__ == '__main__':
-    pass

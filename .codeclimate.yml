@@ -1,0 +1,71 @@
+version: "2" # required to adjust maintainability checks
+
+checks:
+  argument-count:
+    enabled: true
+    config:
+      threshold: 4
+  complex-logic:
+    enabled: true
+    config:
+      threshold: 4
+  file-lines:
+    enabled: true
+    config:
+      threshold: 250
+  method-complexity:
+    enabled: true
+    config:
+      threshold: 5
+  method-count:
+    enabled: true
+    config:
+      threshold: 20
+  method-lines:
+    enabled: true
+    config:
+      threshold: 25
+  nested-control-flow:
+    enabled: true
+    config:
+      threshold: 4
+  return-statements:
+    enabled: true
+    config:
+      threshold: 4
+  similar-code:
+    enabled: true
+    config:
+      threshold: #language-specific defaults. overrides affect all languages.
+  identical-code:
+    enabled: true
+    config:
+      threshold: #language-specific defaults. overrides affect all languages.
+
+plugins:
+  bandit:
+    enabled: true
+    checks:
+      assert_used:
+        enabled: false
+      blacklist:
+        enabled: false
+      subprocess_without_shell_equals_true:
+        enabled: false
+  pep8:
+    enabled: true
+    checks:
+      E501:
+        enabled: false
+  sonar-python:
+    enabled: true
+    checks:
+      python:S1871:
+        enabled: false
+      python:S125:
+        enabled: false
+
+exclude_patterns:
+  - "arknights_mower/data/*.py"
+  - "**/*.png"
+  - "arknights_mower/ocr/*.py"

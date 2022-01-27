@@ -1,3 +1,5 @@
+# list of scene defined
+
 scene_list = [
     [-1, 'UNKNOWN', '未知'],
     [0, 'UNDEFINED', '未定义'],
@@ -25,6 +27,7 @@ scene_list = [
     [303, 'FRIEND_VISITING', '基建内访问好友'],
     [401, 'MISSION_DAILY', '日常任务'],
     [402, 'MISSION_WEEKLY', '周常任务'],
+    [403, 'MISSION_TRAINEE', '见习任务'],
     [501, 'TERMINAL_MAIN', '终端主界面'],
     [502, 'TERMINAL_MAIN_THEME', '主题曲'],
     [503, 'TERMINAL_EPISODE', '插曲'],

@@ -1,3 +1,5 @@
+# name of each room in the basement
+
 base_room_list = [
     'central',
     'meeting',

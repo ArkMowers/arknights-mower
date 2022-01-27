@@ -1,3 +1,5 @@
+# list of supported levels
+
 level_list = {
     '0-1': {'zone_id': 'main_0', 'ap_cost': 6, 'code': '0-1', 'name': '坍塌'},
     '0-2': {'zone_id': 'main_0', 'ap_cost': 6, 'code': '0-2', 'name': '守卫'},
@@ -292,6 +294,8 @@ level_list = {
     'DM-8': {'zone_id': 'act17d5_zone1', 'ap_cost': 18, 'code': 'DM-8', 'name': '离散'},
 }
 
+# open zones
+
 zone_list = {
     'main_0': ['黑暗时代·上', 0, 0, 0],
     'main_1': ['黑暗时代·下', 0, 0, 1],
@@ -322,11 +326,15 @@ zone_list = {
     'act6sre_zone1': ['密林悍将归来', 2, 4],
 }
 
+# theme name in English
+
 theme_list = [
     'HOUROFANAWAKENING',
     'SHATTEROFAVISION',
     'SHADOWOFADYINGSUN',
 ]
+
+# list of supported weekly levels
 
 weekly_zones = []
 for key in zone_list:

@@ -1,7 +1,0 @@
-- fix: 修改特征点过少的判断逻辑
-- fix: 修改作战等待逻辑和剿灭选择逻辑
-- feat: 增加配置文件功能   
-- feat: 增加计划任务功能
-- fix: 更新了 OCR 识别错误库
-- fix: 若上一次是剿灭作战或切换作战关卡则清空等待时长记录
-- fix: 将打包插件 papeloto/action-zip@v1 更换成 vimtor/action-zip@v1

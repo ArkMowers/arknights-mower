@@ -1,0 +1,28 @@
+#!/bin/bash
+#
+# Runs during git flow release start
+#
+# Positional arguments:
+# $1    Version
+#
+# Return VERSION - When VERSION is returned empty, git-flow will stop as the
+# version is necessary
+#
+# The following variables are available as they are exported by git-flow:
+#
+# MASTER_BRANCH - The branch defined as Master
+# DEVELOP_BRANCH - The branch defined as Develop
+#
+# VERSION=$1
+
+VERSION=$1
+VERSION_RE="^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(a[1-9][0-9]*)?$"
+if [[ ! $VERSION =~ $VERSION_RE ]]
+then
+    # echo "Illegal version format: $VERSION"
+    exit 1
+fi
+
+# Return the VERSION
+echo $VERSION
+exit 0

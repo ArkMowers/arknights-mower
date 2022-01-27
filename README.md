@@ -9,6 +9,7 @@
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/arknights-mower?style=flat-square)](https://pypi.org/project/arknights-mower/)
 [![GitHub Workflow Status](https://img.shields.io/github/workflow/status/Konano/arknights-mower/Upload%20PyPI?style=flat-square)](https://github.com/Konano/arknights-mower/actions/workflows/python-publish.yml)
 ![GitHub last commit (branch)](https://img.shields.io/github/last-commit/Konano/arknights-mower/main?style=flat-square)
+[![Code Climate maintainability](https://img.shields.io/codeclimate/maintainability/Konano/arknights-mower?style=flat-square)](https://codeclimate.com/github/Konano/arknights-mower)
 
 7*24 小时不间断长草，让你忘掉这个游戏！
 
@@ -16,7 +17,7 @@
 
 ## ⚠ 注意事项
 
-- 本程序不支持国服以外的明日方舟区服。
+- 本程序不支持国服以外的明日方舟区服，支持官服和 Bilibili 服。
 - 原理上，使用本程序没有任何被判定为作弊并被封号的风险，但是作者不对使用此程序造成的任何损失负责。
 - 开发作者课业繁重，有时不太能及时反馈和修复 Bug，见谅一下。
 
@@ -94,13 +95,13 @@ Pypi 版本只支持命令行模式启动，Windows 可执行文件版本支持�
 
 ```
 $ arknights-mower
-usage: arknights-mower command [command args] [-d]
+usage: arknights-mower command [command args] [--config filepath] [--debug]
 commands (prefix abbreviation accepted):
     base [plan] [-c] [-d[F][N]]
         自动处理基建的信赖/货物/订单/线索/无人机
         plan 表示选择的基建干员排班计划（需要搭配配置文件使用）
-        -c 是否自动使用线索
-        -d 是否自动消耗无人机，F 表示从上往下第几层（1-3），N 表示从左往右第几个房间（1-3），仅支持制造站
+        -c 是否自动收集并使用线索
+        -d 是否自动消耗无人机，F 表示第几层（1-3），N 表示从左往右第几个房间（1-3），仅支持制造站
     credit
         自动访友获取信用点
     mail
@@ -109,25 +110,29 @@ commands (prefix abbreviation accepted):
         收集每日任务和每周任务奖励
     shop [items ...]
         自动前往商店消费信用点
-        items 优先考虑的物品，默认为从上到下从左到右购买
+        items 优先考虑的物品，若不指定则使用配置文件中的优先级，默认为从上到下从左到右购买
     recruit [agents ...]
         自动进行公共招募
-        agents 优先考虑的公招干员，默认为火神和因陀罗
-    operation [level] [times] [-r[N]] [-R[N]] [-e]
+        agents 优先考虑的公招干员，若不指定则使用配置文件中的优先级，默认为高稀有度优先
+    operation [level] [n] [-r[N]] [-R[N]] [-e]
         自动进行作战，可指定次数或直到理智不足
         level 指定关卡名称，未指定则默认前往上一次关卡
-        times 指定作战次数，未指定则默认作战直到理智不足
+        n 指定作战次数，未指定则默认作战直到理智不足
         -r 是否自动回复理智，最多回复 N 次，N 未指定则表示不限制回复次数
         -R 是否使用源石回复理智，最多回复 N 次，N 未指定则表示不限制回复次数
         -e 是否优先处理未完成的每周剿灭
-    schedule
-        执行配置文件中的计划任务
+    operation --plan
+        （使用配置文件中的参数以及计划）自动进行作战
     version
         输出版本信息
     help
         输出本段消息
-    -d
-        启用调试功能，调试信息将会输出到 /var/log/arknights-mower/ 中
+    schedule
+        执行配置文件中的计划任务
+    --debug
+        启用调试功能，调试信息将会输出到 /root/work/arknights-mower/log 中
+    --config filepath
+        指定配置文件，默认使用 /root/work/arknights-mower/config.yaml
 ```
 
 命令行模式下的具体使用例子如下：
@@ -265,7 +270,7 @@ Solver().base(arrange=plan)
 
 ## 常见问题 Q&A
 
-- 提示 `ADB Server 未开启。请运行 adb server 以启动 ADB Server。`：需要自行启动 ADB，夜神模拟器自带的 ADB 在崩溃后也会出现这一错误提示，重启模拟器有几率解决这一问题。
+- <del>提示 `ADB Server 未开启。请运行 adb server 以启动 ADB Server。`：需要自行启动 ADB，夜神模拟器自带的 ADB 在崩溃后也会出现这一错误提示，重启模拟器有几率解决这一问题。</del>
 - 大量出现 `识别出了点小差错` 并卡死在特定界面：当前版本非 1080p（1920x1080）分辨率下有些界面的识别可能出现错误，将模拟器修改为 1080p 分辨率可以解决大部分问题。如果分辨率修改并未解决问题，请在 Issue 页面提出。
 
 ## 遇到报错？想要更多功能？
