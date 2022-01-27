@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from ..ocr import ocrhandle, ocr_rectify
-from ..utils import config
 from ..utils import segment
 from ..utils.device import Device
 from ..utils.log import logger
 from ..utils.recognize import Recognizer, Scene, RecognizeError
-from ..utils.solver import BaseSolver, StrategyError
+from ..utils.solver import BaseSolver
 from ..data.recruit import recruit_database, recruit_tag, recruit_agent
 
 
@@ -45,7 +44,7 @@ class RecruitSolver(BaseSolver):
         logger.info(f'目标干员：{priority if priority else "无，高稀有度优先"}')
         super().run()
 
-    def trasition(self) -> bool:
+    def transition(self) -> bool:
         if self.scene() == Scene.INDEX:
             self.tap_element('index_recruit')
         elif self.scene() == Scene.RECRUIT_MAIN:
