@@ -22,7 +22,8 @@ class BaseSolver:
 
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
         # self.device = device if device is not None else (recog.device if recog is not None else Device())
-        assert device is None and recog is not None
+        if device is None and recog is not None:
+            raise RuntimeError
         self.device = device if device is not None else Device()
         self.recog = recog if recog is not None else Recognizer(self.device)
         if self.device.current_focus() != config.APPNAME:
