@@ -95,13 +95,13 @@ Pypi 版本只支持命令行模式启动，Windows 可执行文件版本支持�
 
 ```
 $ arknights-mower
-usage: arknights-mower command [command args] [-d]
+usage: arknights-mower command [command args] [--config filepath] [--debug]
 commands (prefix abbreviation accepted):
     base [plan] [-c] [-d[F][N]]
         自动处理基建的信赖/货物/订单/线索/无人机
         plan 表示选择的基建干员排班计划（需要搭配配置文件使用）
-        -c 是否自动使用线索
-        -d 是否自动消耗无人机，F 表示从上往下第几层（1-3），N 表示从左往右第几个房间（1-3），仅支持制造站
+        -c 是否自动收集并使用线索
+        -d 是否自动消耗无人机，F 表示第几层（1-3），N 表示从左往右第几个房间（1-3），仅支持制造站
     credit
         自动访友获取信用点
     mail
@@ -110,25 +110,29 @@ commands (prefix abbreviation accepted):
         收集每日任务和每周任务奖励
     shop [items ...]
         自动前往商店消费信用点
-        items 优先考虑的物品，默认为从上到下从左到右购买
+        items 优先考虑的物品，若不指定则使用配置文件中的优先级，默认为从上到下从左到右购买
     recruit [agents ...]
         自动进行公共招募
-        agents 优先考虑的公招干员，默认为火神和因陀罗
-    operation [level] [times] [-r[N]] [-R[N]] [-e]
+        agents 优先考虑的公招干员，若不指定则使用配置文件中的优先级，默认为高稀有度优先
+    operation [level] [n] [-r[N]] [-R[N]] [-e]
         自动进行作战，可指定次数或直到理智不足
         level 指定关卡名称，未指定则默认前往上一次关卡
-        times 指定作战次数，未指定则默认作战直到理智不足
+        n 指定作战次数，未指定则默认作战直到理智不足
         -r 是否自动回复理智，最多回复 N 次，N 未指定则表示不限制回复次数
         -R 是否使用源石回复理智，最多回复 N 次，N 未指定则表示不限制回复次数
         -e 是否优先处理未完成的每周剿灭
-    schedule
-        执行配置文件中的计划任务
+    operation --plan
+        （使用配置文件中的参数以及计划）自动进行作战
     version
         输出版本信息
     help
         输出本段消息
-    -d
-        启用调试功能，调试信息将会输出到 /var/log/arknights-mower/ 中
+    schedule
+        执行配置文件中的计划任务
+    --debug
+        启用调试功能，调试信息将会输出到 /root/work/arknights-mower/log 中
+    --config filepath
+        指定配置文件，默认使用 /root/work/arknights-mower/config.yaml
 ```
 
 命令行模式下的具体使用例子如下：
