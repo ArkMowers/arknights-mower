@@ -384,7 +384,7 @@ class BaseConstructSolver(BaseSolver):
             while len(agent):
                 try:
                     # 识别干员
-                    ret = segment.agent(self.recog.img, True)  # 返回的顺序是从左往右从上往下
+                    ret = segment.agent(self.recog.img)  # 返回的顺序是从左往右从上往下
                 except RecognizeError as e:
                     logger.warning(e)
                     error_count += 1
