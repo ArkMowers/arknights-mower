@@ -170,7 +170,7 @@ class BaseSolver:
         登录进游戏
         """
         retry_times = config.MAX_RETRYTIME
-        while retry_times and self.is_login() is False:
+        while retry_times and not self.is_login():
             try:
                 if self.scene() == Scene.LOGIN_START:
                     self.tap((self.recog.w // 2, self.recog.h - 10), 3)

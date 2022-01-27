@@ -129,7 +129,7 @@ def operation(args: list[str] = [], device: Device = None):
                     assert originite == 0
                     originite = val
                 elif p[1] == 'e':
-                    assert eliminate is False
+                    assert not eliminate
                     eliminate = True
             elif p.find('-') == -1:
                 assert times == -1

@@ -56,7 +56,7 @@ class BaseConstructSolver(BaseSolver):
         if self.find('control_central') is None:
             self.back()
             return
-        if self.todo_task is False:
+        if not self.todo_task:
             # 处理基建 Todo
             notification = detector.infra_notification(self.recog.img)
             if notification is None:

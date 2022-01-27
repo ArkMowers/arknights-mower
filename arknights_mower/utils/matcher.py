@@ -63,7 +63,7 @@ class Matcher(object):
             rect, score = rect_score
 
         # use SVC to determine if the score falls within the legal range
-        if judge and SVC.predict([score])[0] is False:
+        if judge and not SVC.predict([score])[0]:  # numpy.bool_
             logger.debug(f'match fail: {score}')
             return None  # failed in matching
         else:

@@ -147,7 +147,7 @@ class OpeSolver(BaseSolver):
 
     def operator_before(self) -> bool:
         # 关卡未选定，退回到终端主界面选择关卡
-        if self.level_choosed is False:
+        if not self.level_choosed:
             self.get_navigation()
             self.tap_element('nav_terminal')
             return

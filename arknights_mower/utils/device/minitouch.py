@@ -125,7 +125,7 @@ class MiniTouch(object):
 
         # make sure minitouch is up
         time.sleep(1)
-        if self.check_mnt_alive(False) is False:
+        if not self.check_mnt_alive(False):
             raise RuntimeError('minitouch did not work. see https://github.com/Konano/arknights-mower/issues/82')
 
     def __server_stop(self) -> None:
@@ -161,7 +161,7 @@ class MiniTouch(object):
             self.__forward_port()
             self.__start_mnt()
             time.sleep(1)
-            if (self.process and self.process.poll() is None) is False:
+            if not (self.process and self.process.poll() is None):
                 raise RuntimeError('minitouch did not work. see https://github.com/Konano/arknights-mower/issues/82')
             return True
         return False
