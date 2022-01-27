@@ -61,7 +61,7 @@ class BaseSolver:
     def get_pos(self, poly: tp.Location, x_rate: float = 0.5, y_rate: float = 0.5) -> tp.Coordinate:
         """ get the pos form tp.Location """
         if poly is None:
-            raise RecognizeError
+            raise RecognizeError('poly is empty')
         elif len(poly) == 4:
             # tp.Rectangle
             x = (poly[0][0] * (1-x_rate) + poly[1][0] * (1-x_rate) +
@@ -195,7 +195,7 @@ class BaseSolver:
                 elif self.scene() == Scene.CONFIRM:
                     self.tap(detector.confirm(self.recog.img))
                 else:
-                    raise RecognizeError
+                    raise RecognizeError('Unanticipated scene: login')
             except RecognizeError as e:
                 logger.warning(f'识别出了点小差错 qwq: {e}')
                 retry_times -= 1
@@ -255,7 +255,7 @@ class BaseSolver:
                     mid_y = (mail[0][1] + mail[1][1]) // 2
                     self.tap((mid_y, mid_y))
                 else:
-                    raise RecognizeError
+                    raise RecognizeError('Unanticipated scene: back_to_index')
             except RecognizeError as e:
                 logger.warning(f'识别出了点小差错 qwq: {e}')
                 retry_times -= 1

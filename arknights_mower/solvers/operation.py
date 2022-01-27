@@ -122,7 +122,7 @@ class OpeSolver(BaseSolver):
         elif self.scene() != Scene.UNKNOWN:
             self.back_to_index()
         else:
-            raise RecognizeError
+            raise RecognizeError('Unanticipated scene: Operation')
 
     def terminal_main(self) -> bool:
         eliminate_todo = self.find('terminal_eliminate')
@@ -308,7 +308,7 @@ class OpeSolver(BaseSolver):
             self.switch_bottom(4)
             self.choose_zone_resource(zone)
         else:
-            raise RecognizeError
+            raise RecognizeError('Unknown zone')
 
         # 关卡选择核心逻辑
         ocr, levels = self.ocr_level()
@@ -346,7 +346,7 @@ class OpeSolver(BaseSolver):
             if x[1] == level:
                 self.tap(x[2])
                 return
-        raise RecognizeError
+        raise RecognizeError('Level recognition error')
 
     def switch_bottom(self, id: int) -> None:
         id = id * 2 + 1
@@ -378,9 +378,9 @@ class OpeSolver(BaseSolver):
                         act_id = zone_list[f'main_{episode}'][2]
                         break
                     except Exception:
-                        raise RecognizeError
+                        raise RecognizeError('Unknown episode')
             if act_id == -1 or _act_id == act_id:
-                raise RecognizeError
+                raise RecognizeError('Unknown error')
 
         # 定位 Episode 编号
         cover = self.find(f'main_{episode}')
@@ -430,7 +430,7 @@ class OpeSolver(BaseSolver):
             if _weekly == weekly:
                 break
         if zone[0] not in weekly:
-            raise RecognizeError
+            raise RecognizeError('Not as expected')
         for x in ocr:
             if x[1] == zone[0]:
                 for item in unable:
