@@ -175,7 +175,8 @@ class Matcher(object):
 
             # measure the rate of good match within the rectangle (x-axis)
             better = filter(
-                lambda m: rect[0] < ori_kp[m.trainIdx].pt < rect[1], good)
+                lambda m:
+                    rect[0][0] < ori_kp[m.trainIdx].pt[0] < rect[1][0] and rect[0][1] < ori_kp[m.trainIdx].pt[1] < rect[1][1], good)
             better_kp_x = [qry_kp[m.queryIdx].pt[0] for m in better]
             if len(better_kp_x):
                 good_area_rate = np.ptp(better_kp_x) / w
