@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import cv2
 import traceback
 import imagehash
@@ -58,52 +60,52 @@ def get_poly(x1: int, x2: int, y1: int, y2: int) -> tp.Rectangle:
     return np.array([[x1, y1], [x1, y2], [x2, y2], [x2, y1]])
 
 
-def credit(im, draw=False):
+def credit(img: tp.Image, draw: bool = False) -> list[tp.Scope]:
     """
     信用交易所特供的图像分割算法
     """
     try:
-        x, y, z = im.shape
+        height, weight, _ = img.shape
 
-        l, r = 0, y
-        while np.max(im[:, r-1]) < 100:
-            r -= 1
-        while np.max(im[:, l]) < 100:
-            l += 1
+        left, right = 0, weight
+        while np.max(img[:, right-1]) < 100:
+            right -= 1
+        while np.max(img[:, left]) < 100:
+            left += 1
 
-        def average(i):
-            n, s = 0, 0
-            for j in range(l, r):
-                if im[i, j, 0] == im[i, j, 1] and im[i, j, 0] == im[i, j, 2]:
-                    n += 1
-                    s += im[i, j, 0]
-            return int(s / n)
+        def average(i: int) -> int:
+            num, sum = 0, 0
+            for j in range(left, right):
+                if img[i, j, 0] == img[i, j, 1] and img[i, j, 1] == img[i, j, 2]:
+                    num += 1
+                    sum += img[i, j, 0]
+            return sum // num
 
-        def ptp(j):
-            mx = -999999
-            mn = 999999
-            for i in range(up, up2):
-                mn = min(mn, im[i, j, 0])
-                mx = max(mx, im[i, j, 0])
-            return mx - mn
+        def ptp(j: int) -> int:
+            maxval = -999999
+            minval = 999999
+            for i in range(up_1, up_2):
+                minval = min(minval, img[i, j, 0])
+                maxval = max(maxval, img[i, j, 0])
+            return maxval - minval
 
-        up = 0
-        fg = False
-        while fg is False or average(up) >= 250:
-            fg |= average(up) >= 250
-            up += 1
+        up_1 = 0
+        flag = False
+        while not flag or average(up_1) >= 250:
+            flag |= average(up_1) >= 250  # numpy.bool_
+            up_1 += 1
 
-        up2 = up
-        fg = False
-        while fg is False or average(up2) < 220:
-            fg |= average(up2) < 220
-            up2 += 1
+        up_2 = up_1
+        flag = False
+        while not flag or average(up_2) < 220:
+            flag |= average(up_2) < 220
+            up_2 += 1
 
-        down = x - 1
+        down = height - 1
         while average(down) < 180:
             down -= 1
 
-        right = y - 1
+        right = weight - 1
         while ptp(right) < 50:
             right -= 1
 
@@ -111,21 +113,20 @@ def credit(im, draw=False):
         while ptp(left) < 50:
             left += 1
 
-        split_x = [left] + [left + (right - left) //
-                            5 * i for i in range(1, 5)] + [right]
-        split_y = [up, (up + down) // 2, down]
+        split_x = [left + (right - left) // 5 * i for i in range(0, 6)] 
+        split_y = [up_1, (up_1 + down) // 2, down]
 
         ret = []
-        for x1, x2 in zip(split_x[:-1], split_x[1:]):
-            for y1, y2 in zip(split_y[:-1], split_y[1:]):
+        for y1, y2 in zip(split_y[:-1], split_y[1:]):
+            for x1, x2 in zip(split_x[:-1], split_x[1:]):
                 ret.append(((x1, y1), (x2, y2)))
 
         if draw:
             for x1, x2 in zip(split_x[:-1], split_x[1:]):
                 for y1, y2 in zip(split_y[:-1], split_y[1:]):
-                    cv2.polylines(im, [get_poly(x1, x2, y1, y2)],
+                    cv2.polylines(img, [get_poly(x1, x2, y1, y2)],
                                   True, 0, 10, cv2.LINE_AA)
-            plt.imshow(im)
+            plt.imshow(img)
             plt.show()
 
         logger.debug(f'segment.credit: {ret}')
@@ -133,7 +134,7 @@ def credit(im, draw=False):
 
     except Exception as e:
         logger.debug(traceback.format_exc())
-        raise RecognizeError
+        raise RecognizeError(e)
 
 
 def recruit(im, draw=False):
