@@ -1,11 +1,10 @@
 import numpy as np
-from typing import Optional
 
 from . import typealias as tp
 from .log import logger
 
 
-def confirm(img: tp.Image) -> Optional(tp.Coordinate):
+def confirm(img: tp.Image) -> tp.Coordinate:
     """
     检测是否出现确认界面
     """
@@ -54,7 +53,7 @@ def confirm(img: tp.Image) -> Optional(tp.Coordinate):
     return point
 
 
-def infra_notification(img: tp.Image) -> Optional(tp.Coordinate):
+def infra_notification(img: tp.Image) -> tp.Coordinate:
     """
     检测基建内是否存在蓝色通知
     前置条件：已经处于基建内
@@ -91,7 +90,7 @@ def infra_notification(img: tp.Image) -> Optional(tp.Coordinate):
     return point
 
 
-def announcement_close(img: tp.Image) -> Optional(tp.Coordinate):
+def announcement_close(img: tp.Image) -> tp.Coordinate:
     """
     检测「关闭公告」按钮
     """
@@ -125,22 +124,22 @@ def announcement_close(img: tp.Image) -> Optional(tp.Coordinate):
     return None
 
 
-def visit_next(im):
+def visit_next(img: tp.Image) -> tp.Coordinate:
     """
     检测「访问下位」按钮
     """
-    h, w, _ = im.shape
+    h, w, _ = img.shape
 
     # set a new scan line: right
     r = w
-    while np.max(im[:, r-1]) < 100:
+    while np.max(img[:, r-1]) < 100:
         r -= 1
     r -= 1
 
     # set a new scan line: up
     u = 0
     for i in range(h):
-        if im[i, r, 0] > 150 > im[i, r, 1] > 40 > im[i, r, 2]:
+        if img[i, r, 0] > 150 > img[i, r, 1] > 40 > img[i, r, 2]:
             u = i
             break
     if u == 0:
@@ -149,7 +148,7 @@ def visit_next(im):
     # set a new scan line: down
     d = 0
     for i in range(u, h):
-        if not (im[i, r, 0] > 150 > im[i, r, 1] > 40 > im[i, r, 2]):
+        if not (img[i, r, 0] > 150 > img[i, r, 1] > 40 > img[i, r, 2]):
             d = i
             break
     if d == 0:
