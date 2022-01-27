@@ -133,6 +133,25 @@ class BaseSolver:
         if interval > 0:
             self.sleep(interval, rebuild)
 
+    def swipe_noinertia(self, start: tp.Coordinate, movement: tp.Coordinate, duration: int = 100, interval: float = 1, rebuild: bool = False) -> None:
+        """ swipe with no inertia (movement should be vertical) """
+        points = [start]
+        if movement[0] == 0:
+            dis = abs(movement[1])
+            points.append((start[0]+100, start[1]))
+            points.append((start[0]+100, start[1]+movement[1]))
+            points.append((start[0], start[1]+movement[1]))
+        else:
+            dis = abs(movement[0])
+            points.append((start[0], start[1]+100))
+            points.append((start[0]+movement[0], start[1]+100))
+            points.append((start[0]+movement[0], start[1]))
+        self.device.swipe([points[0], points[1]], duration=100)
+        self.device.swipe([points[1], points[2]], duration=dis*duration//100)
+        self.device.swipe([points[2], points[3]], duration=100)
+        if interval > 0:
+            self.sleep(interval, rebuild)
+
     def back(self, interval: float = 1, rebuild: bool = True) -> None:
         """ send back keyevent """
         self.device.send_keyevent(KeyCode.KEYCODE_BACK)
