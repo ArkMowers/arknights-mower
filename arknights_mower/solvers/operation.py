@@ -91,151 +91,26 @@ class OpeSolver(BaseSolver):
         if self.scene() == Scene.INDEX:
             self.tap_element('index_terminal')
         elif self.scene() == Scene.TERMINAL_MAIN:
-            eliminate_todo = self.find('terminal_eliminate')
-            # 检查每周剿灭完成情况
-            if eliminate_todo is not None:
-                self.eliminate_state = 1
-            else:
-                self.eliminate_state = 2
-            # 如果每周剿灭未完成且设定为优先处理
-            if self.eliminate and eliminate_todo is not None:
-                self.tap(eliminate_todo)
-                return
-            try:
-                # 选择关卡
-                self.choose_level(self.plan[0][0])
-            except LevelUnopenError:
-                logger.error(f'关卡 {self.plan[0][0]} 未开放，请重新指定')
-                self.unopen.append(self.plan[0])
-                self.switch_plan()
-                return
-            self.level_choosed = True
+            return self.terminal_main()
         elif self.scene() == Scene.OPERATOR_BEFORE:
-            # 关卡未选定，退回到终端主界面选择关卡
-            if self.level_choosed is False:
-                self.get_navigation()
-                self.tap_element('nav_terminal')
-                return
-            # 激活代理作战
-            agency = self.find('ope_agency')
-            if agency is not None:
-                self.tap(agency)
-                return
-            # 重置普通关卡等待时长
-            if self.wait_pre != 10:
-                self.wait_start = 0
-                self.wait_pre = 10
-            # 点击开始作战
-            self.tap_element('ope_start')
-            # 确定可以开始作战后扣除相应的消耗药剂或者源石
-            if self.recover_state == 1:
-                logger.info('use potion to recover sanity')
-                self.potion -= 1
-            elif self.recover_state == 2:
-                logger.info('use originite to recover sanity')
-                self.originite -= 1
-            self.recover_state = 0
+            return self.operator_before()
         elif self.scene() == Scene.OPERATOR_ELIMINATE:
-            # 如果每周剿灭完成情况未知，退回到终端主界面选择关卡
-            if self.eliminate_state == 0:
-                self.get_navigation()
-                self.tap_element('nav_terminal')
-                return
-            # 如果每周剿灭已完成但仍然在剿灭关卡前，则只可能是 pre_ope 为剿灭关卡，此时应该退出
-            if self.eliminate_state == 2:
-                logger.warning('检测到关卡为剿灭，但每周剿灭任务已完成')
-                return True
-            # 激活代理作战
-            agency = self.find('ope_agency')
-            if agency is not None:
-                self.tap(agency)
-                return
-            # 重置剿灭关卡等待时长
-            if self.wait_pre != 60:
-                self.wait_start = 0
-                self.wait_pre = 60
-            # 点击开始作战
-            self.tap_element('ope_start')
-            # 确定可以开始作战后扣除相应的消耗药剂或者源石
-            if self.recover_state == 1:
-                logger.info('use potion to recover sanity')
-                self.potion -= 1
-            elif self.recover_state == 2:
-                logger.info('use originite to recover sanity')
-                self.originite -= 1
-            self.recover_state = 0
+            return self.operator_before_elimi()
         elif self.scene() == Scene.OPERATOR_SELECT:
             self.tap_element('ope_select_start')
         elif self.scene() == Scene.OPERATOR_ONGOING:
-            if self.wait_total < self.wait_start:
-                if self.wait_total == 0:
-                    logger.info(f'等待 {self.wait_start} 秒')
-                self.wait_total += self.wait_pre
-                if self.wait_total == self.wait_start:
-                    self.sleep(self.wait_pre)
-                else:
-                    time.sleep(self.wait_pre)
-            else:
-                logger.info(f'等待 {self.wait_pre} 秒')
-                self.wait_total += self.wait_pre
-                self.sleep(self.wait_pre)
+            self.ope_ongoing()
         elif self.scene() == Scene.OPERATOR_FINISH:
-            # 更新 wait_start
-            if self.wait_total > 0:
-                if self.wait_start == 0:
-                    self.wait_start = self.wait_total - self.wait_pre
-                else:
-                    self.wait_start = min(
-                        self.wait_start + self.wait_pre, self.wait_total - self.wait_pre)
-                self.wait_total = 0
-            # 如果关卡选定则扣除任务次数
-            if self.level_choosed:
-                self.plan[0][1] -= 1
-            # 随便点击某处退出结算界面
-            self.tap((self.recog.w // 2, 10))
+            self.ope_finish()
         elif self.scene() == Scene.OPERATOR_ELIMINATE_FINISH:
-            # 每周剿灭完成情况变为未知
-            self.eliminate_state = 0
-            # 随便点击某处退出结算界面
-            self.tap((self.recog.w // 2, 10))
+            self.ope_finish_elimi()
         elif self.scene() == Scene.OPERATOR_GIVEUP:
-            # 代理出现失误
             logger.error('代理出现失误')
             return True
         elif self.scene() == Scene.OPERATOR_RECOVER_POTION:
-            if self.potion == 0:
-                if self.originite != 0:
-                    # 转而去使用源石恢复
-                    self.tap_element('ope_recover_originite')
-                    return
-                # 关闭恢复界面
-                self.tap_element('ope_recover_choose', 0.05)
-                return True
-            elif self.recover_state:
-                # 正在恢复中，防止网络波动
-                self.sleep(3)
-            else:
-                # 选择药剂恢复体力
-                self.tap_element('ope_recover_choose', 0.95)
-                # 修改状态
-                self.recover_state = 1
+            return self.recover_potion()
         elif self.scene() == Scene.OPERATOR_RECOVER_ORIGINITE:
-            if self.originite == 0:
-                if self.potion != 0:
-                    # 转而去使用药剂恢复
-                    self.tap_element('ope_recover_potion')
-                    return
-                # 关闭恢复界面
-                self.tap_element('ope_recover_choose', 0.05)
-                return True
-            elif self.recover_state:
-                # 正在恢复中，防止网络波动
-                self.sleep(3)
-            else:
-                # 选择源石恢复体力
-                self.tap_element('ope_recover_choose', 0.95)
-                # 修改状态
-                self.recover_state = 2
+            return self.recover_originite()
         elif self.scene() == Scene.LOADING:
             self.sleep(3)
         elif self.scene() == Scene.UPGRADE:
@@ -248,6 +123,154 @@ class OpeSolver(BaseSolver):
             self.back_to_index()
         else:
             raise RecognizeError
+
+    def terminal_main(self) -> bool:
+        eliminate_todo = self.find('terminal_eliminate')
+        # 检查每周剿灭完成情况
+        if eliminate_todo is not None:
+            self.eliminate_state = 1
+        else:
+            self.eliminate_state = 2
+        # 如果每周剿灭未完成且设定为优先处理
+        if self.eliminate and eliminate_todo is not None:
+            self.tap(eliminate_todo)
+            return
+        try:
+            # 选择关卡
+            self.choose_level(self.plan[0][0])
+        except LevelUnopenError:
+            logger.error(f'关卡 {self.plan[0][0]} 未开放，请重新指定')
+            self.unopen.append(self.plan[0])
+            self.switch_plan()
+            return
+        self.level_choosed = True
+
+    def operator_before(self) -> bool:
+        # 关卡未选定，退回到终端主界面选择关卡
+        if self.level_choosed is False:
+            self.get_navigation()
+            self.tap_element('nav_terminal')
+            return
+        # 激活代理作战
+        agency = self.find('ope_agency')
+        if agency is not None:
+            self.tap(agency)
+            return
+        # 重置普通关卡等待时长
+        if self.wait_pre != 10:
+            self.wait_start = 0
+            self.wait_pre = 10
+        # 点击开始作战
+        self.tap_element('ope_start')
+        # 确定可以开始作战后扣除相应的消耗药剂或者源石
+        if self.recover_state == 1:
+            logger.info('use potion to recover sanity')
+            self.potion -= 1
+        elif self.recover_state == 2:
+            logger.info('use originite to recover sanity')
+            self.originite -= 1
+        self.recover_state = 0
+
+    def operator_before_elimi(self) -> bool:
+        # 如果每周剿灭完成情况未知，退回到终端主界面选择关卡
+        if self.eliminate_state == 0:
+            self.get_navigation()
+            self.tap_element('nav_terminal')
+            return
+        # 如果每周剿灭已完成但仍然在剿灭关卡前，则只可能是 pre_ope 为剿灭关卡，此时应该退出
+        if self.eliminate_state == 2:
+            logger.warning('检测到关卡为剿灭，但每周剿灭任务已完成')
+            return True
+        # 激活代理作战
+        agency = self.find('ope_agency')
+        if agency is not None:
+            self.tap(agency)
+            return
+        # 重置剿灭关卡等待时长
+        if self.wait_pre != 60:
+            self.wait_start = 0
+            self.wait_pre = 60
+        # 点击开始作战
+        self.tap_element('ope_start')
+        # 确定可以开始作战后扣除相应的消耗药剂或者源石
+        if self.recover_state == 1:
+            logger.info('use potion to recover sanity')
+            self.potion -= 1
+        elif self.recover_state == 2:
+            logger.info('use originite to recover sanity')
+            self.originite -= 1
+        self.recover_state = 0
+
+    def ope_ongoing(self) -> None:
+        if self.wait_total < self.wait_start:
+            if self.wait_total == 0:
+                logger.info(f'等待 {self.wait_start} 秒')
+            self.wait_total += self.wait_pre
+            if self.wait_total == self.wait_start:
+                self.sleep(self.wait_pre)
+            else:
+                time.sleep(self.wait_pre)
+        else:
+            logger.info(f'等待 {self.wait_pre} 秒')
+            self.wait_total += self.wait_pre
+            self.sleep(self.wait_pre)
+
+    def ope_finish(self) -> None:
+        # 更新 wait_start
+        if self.wait_total > 0:
+            if self.wait_start == 0:
+                self.wait_start = self.wait_total - self.wait_pre
+            else:
+                self.wait_start = min(
+                    self.wait_start + self.wait_pre, self.wait_total - self.wait_pre)
+            self.wait_total = 0
+        # 如果关卡选定则扣除任务次数
+        if self.level_choosed:
+            self.plan[0][1] -= 1
+        # 随便点击某处退出结算界面
+        self.tap((self.recog.w // 2, 10))
+    
+    def ope_finish_elimi(self) -> None:
+        # 每周剿灭完成情况变为未知
+        self.eliminate_state = 0
+        # 随便点击某处退出结算界面
+        self.tap((self.recog.w // 2, 10))
+
+    def recover_potion(self) -> bool:
+        if self.potion == 0:
+            if self.originite != 0:
+                # 转而去使用源石恢复
+                self.tap_element('ope_recover_originite')
+                return
+            # 关闭恢复界面
+            self.tap_element('ope_recover_choose', 0.05)
+            return True
+        elif self.recover_state:
+            # 正在恢复中，防止网络波动
+            self.sleep(3)
+        else:
+            # 选择药剂恢复体力
+            self.tap_element('ope_recover_choose', 0.95)
+            # 修改状态
+            self.recover_state = 1
+
+    def recover_originite(self) -> bool:
+        if self.originite == 0:
+            if self.potion != 0:
+                # 转而去使用药剂恢复
+                self.tap_element('ope_recover_potion')
+                return
+            # 关闭恢复界面
+            self.tap_element('ope_recover_choose', 0.05)
+            return True
+        elif self.recover_state:
+            # 正在恢复中，防止网络波动
+            self.sleep(3)
+        else:
+            # 选择源石恢复体力
+            self.tap_element('ope_recover_choose', 0.95)
+            # 修改状态
+            self.recover_state = 2
 
     def ocr_level(self) -> list:
         ocr = ocrhandle.predict(self.recog.img)
