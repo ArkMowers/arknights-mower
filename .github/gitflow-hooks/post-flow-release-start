@@ -21,6 +21,6 @@
 ROOT=`git rev-parse --show-toplevel`
 VERSION=${1:1}
 
-sed -i "s/[0-9]\+\.[0-9]\+\.[0-9]\+/$VERSION/g" "$ROOT/arknights_mower/__init__.py"
+sed -i "s/__version__ = '[0-9\.a]\+'/__version__ = '$VERSION'/g" "$ROOT/arknights_mower/__init__.py"
 cp "$ROOT/doc/CHANGELOG/release.md" "$ROOT/doc/CHANGELOG/$VERSION.md"
 code "$ROOT/doc/CHANGELOG/$VERSION.md"
