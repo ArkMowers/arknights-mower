@@ -189,7 +189,7 @@ def recruit(img: tp.Image, draw: bool = False) -> list[tp.Scope]:
 
 def base(img: tp.Image, central: tp.Scope, draw: bool = False) -> dict[str, tp.Rectangle]:
     """
-    基建布局的图像分割算法  # TODO need test
+    基建布局的图像分割算法
     """
     try:
         ret = {}
@@ -271,20 +271,20 @@ def base(img: tp.Image, central: tp.Scope, draw: bool = False) -> dict[str, tp.R
         raise RecognizeError(e)
 
 
-def worker(img: tp.Image, draw: bool = False):
+def worker(img: tp.Image, draw: bool = False) -> tuple[list[tp.Rectangle], tp.Rectangle, bool]:
     """
     进驻总览的图像分割算法
     """
     try:
-        h, w, _ = img.shape
+        height, weight, _ = img.shape
 
-        l, r = 0, w
-        while np.max(img[:, r-1]) < 100:
-            r -= 1
-        while np.max(img[:, l]) < 100:
-            l += 1
+        left, right = 0, weight
+        while np.max(img[:, right-1]) < 100:
+            right -= 1
+        while np.max(img[:, left]) < 100:
+            left += 1
 
-        x0 = r-1
+        x0 = right-1
         while np.average(img[:, x0, 1]) >= 100:
             x0 -= 1
         x0 -= 2
@@ -292,7 +292,7 @@ def worker(img: tp.Image, draw: bool = False):
         seg = []
         remove_mode = False
         pre, st = int(img[0, x0, 1]), 0
-        for y in range(1, h):
+        for y in range(1, height):
             remove_mode |= img[y, x0, 0] - img[y, x0, 1] > 40
             if np.ptp(img[y, x0]) <= 1 or int(img[y, x0, 0]) - int(img[y, x0, 1]) > 40:
                 now = int(img[y, x0, 1])
@@ -307,8 +307,8 @@ def worker(img: tp.Image, draw: bool = False):
                 seg.append((st, y))
                 st = 0
         # if st != 0:
-        #     seg.append((st, h))
-        logger.debug(seg)
+        #     seg.append((st, height))
+        logger.debug(f'segment.worker: seg {seg}')
 
         remove_button = get_poly(x0-10, x0, seg[0][0], seg[0][1])
         seg = seg[1:]
