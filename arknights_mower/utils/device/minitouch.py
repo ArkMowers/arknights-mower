@@ -218,13 +218,14 @@ class MiniTouch(object):
 
             builder.publish(conn)
 
-    def swipe(self, points: list[tuple[int, int]], display_frames: tuple[int, int, int], pressure: int = 100, duration: Union[list[int], int] = None, fall: bool = True, lift: bool = True) -> None:
+    def swipe(self, points: list[tuple[int, int]], display_frames: tuple[int, int, int], pressure: int = 100, duration: Union[list[int], int] = None, up_wait: int = None, fall: bool = True, lift: bool = True) -> None:
         """
         swipe between points one by one, with pressure and duration
 
         :param points: list, look like [(x1, y1), (x2, y2), ...]
         :param display_frames: tuple[int, int, int], which means [weight, high, rotation] by "adb shell dumpsys window | grep DisplayFrames"
         :param pressure: default to 100
+        :param duration: in milliseconds
         :param duration: in milliseconds
         :param fall: if True, "fall" the first touch point
         :param lift: if True, "lift" the last touch point
@@ -254,11 +255,11 @@ class MiniTouch(object):
 
             if lift:
                 builder.up(0)
-                if duration[-1]:
-                    builder.wait(duration[-1] * 10)
+                if up_wait:
+                    builder.wait(up_wait)
                 builder.publish(conn)
 
-    def smooth_swipe(self, points: list[tuple[int, int]], display_frames: tuple[int, int, int], pressure: int = 100, duration: Union[list[int], int] = None, part: int = 10, fall: bool = True, lift: bool = True) -> None:
+    def smooth_swipe(self, points: list[tuple[int, int]], display_frames: tuple[int, int, int], pressure: int = 100, duration: Union[list[int], int] = None, up_wait: int = None, part: int = 10, fall: bool = True, lift: bool = True) -> None:
         """
         swipe between points one by one, with pressure and duration
         it will split distance between points into pieces
@@ -267,6 +268,7 @@ class MiniTouch(object):
         :param display_frames: tuple[int, int, int], which means [weight, high, rotation] by "adb shell dumpsys window | grep DisplayFrames"
         :param pressure: default to 100
         :param duration: in milliseconds
+        :param up_wait: in milliseconds
         :param part: default to 10
         :param fall: if True, "fall" the first touch point
         :param lift: if True, "lift" the last touch point
