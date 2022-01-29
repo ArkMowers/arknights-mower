@@ -21,39 +21,6 @@ class FloodCheckFailed(Exception):
     pass
 
 
-agent_ahash = None
-
-
-def agent_ahash_init():
-    global agent_ahash
-    if agent_ahash is None:
-        logger.debug('agent_ahash_init')
-        agent_ahash = {}
-        font = ImageFont.truetype(
-            f'{__rootdir__}/fonts/SourceHanSansSC-Bold.otf', size=30, encoding='utf-8')
-        for text in agent_list:
-            dt = np.zeros((500, 500, 3), dtype=int)
-            img = Image.fromarray(np.uint8(dt))
-            ImageDraw.Draw(img).text((0, 0), text, (255, 255, 255), font=font)
-            img = np.array(img)
-
-            x0 = 0
-            while (img[:, x0] == 0).all():
-                x0 += 1
-            x1 = img.shape[1]
-            while (img[:, x1-1] == 0).all():
-                x1 -= 1
-            y0 = 0
-            while (img[y0, x0:x1] == 0).all():
-                y0 += 1
-            y1 = img.shape[0]
-            while (img[y1-1, x0:x1] == 0).all():
-                y1 -= 1
-
-            agent_ahash[text] = str(imagehash.average_hash(
-                Image.fromarray(img[y0:y1, x0:x1]), 16))
-
-
 def get_poly(x1: int, x2: int, y1: int, y2: int) -> tp.Rectangle:
     x1, x2 = int(x1), int(x2)
     y1, y2 = int(y1), int(y2)
@@ -220,9 +187,9 @@ def recruit(img: tp.Image, draw: bool = False) -> list[tp.Scope]:
         raise RecognizeError(e)
 
 
-def base(im, central, draw=False):
+def base(img: tp.Image, central: tp.Scope, draw: bool = False) -> dict[str, tp.Rectangle]:
     """
-    基建布局的图像分割算法
+    基建布局的图像分割算法  # TODO need test
     """
     try:
         ret = {}
@@ -292,8 +259,8 @@ def base(im, central, draw=False):
 
         if draw:
             polys = list(ret.values())
-            cv2.polylines(im, polys, True, (255, 0, 0), 10, cv2.LINE_AA)
-            plt.imshow(im)
+            cv2.polylines(img, polys, True, (255, 0, 0), 10, cv2.LINE_AA)
+            plt.imshow(img)
             plt.show()
 
         logger.debug(f'segment.base: {ret}')
@@ -301,34 +268,34 @@ def base(im, central, draw=False):
 
     except Exception as e:
         logger.debug(traceback.format_exc())
-        raise RecognizeError
+        raise RecognizeError(e)
 
 
-def worker(im, draw=False):
+def worker(img: tp.Image, draw: bool = False):
     """
     进驻总览的图像分割算法
     """
     try:
-        h, w, _ = im.shape
+        h, w, _ = img.shape
 
         l, r = 0, w
-        while np.max(im[:, r-1]) < 100:
+        while np.max(img[:, r-1]) < 100:
             r -= 1
-        while np.max(im[:, l]) < 100:
+        while np.max(img[:, l]) < 100:
             l += 1
 
         x0 = r-1
-        while np.average(im[:, x0, 1]) >= 100:
+        while np.average(img[:, x0, 1]) >= 100:
             x0 -= 1
         x0 -= 2
 
         seg = []
         remove_mode = False
-        pre, st = int(im[0, x0, 1]), 0
+        pre, st = int(img[0, x0, 1]), 0
         for y in range(1, h):
-            remove_mode |= im[y, x0, 0] - im[y, x0, 1] > 40
-            if np.ptp(im[y, x0]) <= 1 or int(im[y, x0, 0]) - int(im[y, x0, 1]) > 40:
-                now = int(im[y, x0, 1])
+            remove_mode |= img[y, x0, 0] - img[y, x0, 1] > 40
+            if np.ptp(img[y, x0]) <= 1 or int(img[y, x0, 0]) - int(img[y, x0, 1]) > 40:
+                now = int(img[y, x0, 1])
                 if abs(now - pre) > 20:
                     if now < pre and st == 0:
                         st = y
@@ -349,7 +316,7 @@ def worker(im, draw=False):
         for i in range(1, len(seg)):
             if seg[i][1] - seg[i][0] > 9:
                 x1 = x0
-                while im[seg[i][1]-3, x1-1, 2] < 100:
+                while img[seg[i][1]-3, x1-1, 2] < 100:
                     x1 -= 1
                 break
 
@@ -359,8 +326,8 @@ def worker(im, draw=False):
                 ret.append(get_poly(x1, x0, seg[i][0], seg[i][1]))
 
         if draw:
-            cv2.polylines(im, ret, True, (255, 0, 0), 10, cv2.LINE_AA)
-            plt.imshow(im)
+            cv2.polylines(img, ret, True, (255, 0, 0), 10, cv2.LINE_AA)
+            plt.imshow(img)
             plt.show()
 
         logger.debug(f'segment.worker: {[x.tolist() for x in ret]}')
@@ -368,7 +335,40 @@ def worker(im, draw=False):
 
     except Exception as e:
         logger.debug(traceback.format_exc())
-        raise RecognizeError
+        raise RecognizeError(e)
+
+
+agent_ahash = None
+
+
+def agent_ahash_init():
+    global agent_ahash
+    if agent_ahash is None:
+        logger.debug('agent_ahash_init')
+        agent_ahash = {}
+        font = ImageFont.truetype(
+            f'{__rootdir__}/fonts/SourceHanSansSC-Bold.otf', size=30, encoding='utf-8')
+        for text in agent_list:
+            dt = np.zeros((500, 500, 3), dtype=int)
+            img = Image.fromarray(np.uint8(dt))
+            ImageDraw.Draw(img).text((0, 0), text, (255, 255, 255), font=font)
+            img = np.array(img)
+
+            x0 = 0
+            while (img[:, x0] == 0).all():
+                x0 += 1
+            x1 = img.shape[1]
+            while (img[:, x1-1] == 0).all():
+                x1 -= 1
+            y0 = 0
+            while (img[y0, x0:x1] == 0).all():
+                y0 += 1
+            y1 = img.shape[0]
+            while (img[y1-1, x0:x1] == 0).all():
+                y1 -= 1
+
+            agent_ahash[text] = str(imagehash.average_hash(
+                Image.fromarray(img[y0:y1, x0:x1]), 16))
 
 
 def agent(im, draw=False):

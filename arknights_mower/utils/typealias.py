@@ -1,6 +1,6 @@
 import numpy as np
 from numpy.typing import NDArray
-from typing import Tuple, Literal, List, Union, Dict
+from typing import Tuple, List, Union, Dict
 
 
 # Image
@@ -19,7 +19,7 @@ Rectangle = Tuple[Coordinate, Coordinate, Coordinate, Coordinate]
 Location = Union[Rectangle, Scope, Coordinate]
 
 # Matcher
-Hash = List[Literal[0, 1]]
+Hash = List[int]
 Score = Tuple[float, float, float, float]
 
 # Operation Plan
