@@ -11,6 +11,7 @@ from ..utils.priority_queue import PriorityQueue
 from ..utils.datetime import the_same_day
 from ..utils.operation import operation_times
 from ..utils.recognize import Recognizer
+from ..utils.operation import parse_operation_params
 from .operation import OpeSolver
 
 task_priority = {'base': 0, 'recruit': 1, 'mail': 2, 'credit': 3, 'shop': 4, 'mission': 5, 'operation': 6}
@@ -28,8 +29,8 @@ def operation_one(args: list[str] = [], device: Device = None) -> bool:
     remain_plan = OpeSolver(device).run(level, 1, 0, 0, eliminate)
     for plan in remain_plan:
         if plan[1] != 0:
-            return false
-    return true
+            return False
+    return True
 
 
 class Task(object):
@@ -70,14 +71,17 @@ class Task(object):
         if self.pending:
             return False
         if self.start_up():
+            if self.last_run is not None:
+                return False
             self.pending = True
+            self.last_run = now
             return True
         if self.tag[:4] == 'day_':
             # 同一天 and 跑过了
             if self.last_run is not None and the_same_day(now, self.last_run):
                 return False
             # 还没到时间
-            if str(now.hour) + ':' + str(now.minute) < self.tag.replace('_', ':')[4:]:
+            if now.strftime('%H:%M') < self.tag.replace('_', ':')[4:]:
                 return False
             self.pending = True
             self.last_run = now
