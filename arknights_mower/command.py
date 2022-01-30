@@ -173,7 +173,8 @@ def schedule(args: list[str] = [], device: Device = None):
     """
     schedule
         执行配置文件中的计划任务
-        -n 忽略之前中断的计划任务
+        计划执行时会自动存档至本地磁盘，启动时若检测到有存档，则会使用存档内容继续完成计划
+        -n 忽略之前中断的计划任务，按照配置文件重新开始新的计划
     """
     new_schedule = False
 
