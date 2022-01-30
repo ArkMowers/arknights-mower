@@ -142,6 +142,13 @@ def help(args: list[str] = [], device: Device = None):
     print(f'    --config filepath\n        指定配置文件，默认使用 {config.PATH}')
 
 
+"""
+commands for schedule
+operation will be replaced by operation_one in ScheduleSolver
+"""
+schedule_cmds = [base, credit, mail, mission, shop, recruit, operation]
+
+
 def add_tasks(solver: ScheduleSolver = None, tag: str = ''):
     """
     为 schedule 模块添加任务
@@ -166,52 +173,32 @@ def schedule(args: list[str] = [], device: Device = None):
     """
     schedule
         执行配置文件中的计划任务
+        -n 忽略之前中断的计划任务
     """
+    new_schedule = False
+
+    try:
+        for p in args:
+            if p[0] == '-':
+                if p[1] == 'n':
+                    new_schedule = True
+    except Exception:
+        raise ParamError
+
     solver = ScheduleSolver(device)
-    if config.SCHEDULE_PLAN is not None:
-        for tag in config.SCHEDULE_PLAN.keys():
-            add_tasks(solver, tag)
-       # sd.every().hour.do(task, tag='per_hour', device=device)
-       # for tag in config.SCHEDULE_PLAN.keys():
-       #     if tag[:4] == 'day_':
-       #         sd.every().day.at(tag.replace('_', ':')[4:]).do(
-       #             task, tag=tag, device=device)
-       # task(device=device)
-       # while True:
-       #     sd.run_pending()
-       #     time.sleep(60)
-    else:
-        logger.warning('empty plan')
+    if new_schedule or solver.load_from_disk(schedule_cmds, match_cmd) is False:
+        if config.SCHEDULE_PLAN is not None:
+            for tag in config.SCHEDULE_PLAN.keys():
+                add_tasks(solver, tag)
+        else:
+            logger.warning('empty plan')
+        solver.per_run()
     solver.run()
-
-
-def task(tag: str = 'start_up', device: Device = None):
-    """ run single task """
-    plan = config.SCHEDULE_PLAN.get(tag)
-    if plan is not None:
-        for args in plan:
-            args = args.split()
-            if 'schedule' in args:
-                logger.error(
-                    'Found `schedule` in `schedule`. Are you kidding me?')
-                raise NotImplementedError
-            try:
-                target_cmd = match_cmd(args[0])
-                if target_cmd is not None:
-                    target_cmd(args[1:], device)
-            except Exception as e:
-                logger.error(e)
 
 
 # all available commands
 global_cmds = [base, credit, mail, mission, shop,
                recruit, operation, version, help, schedule]
-
-"""
-commands for schedule
-operation will be replaced by operation_one in ScheduleSolver
-"""
-schedule_cmds = [base, credit, mail, mission, shop, recruit, operation]
 
 
 def match_cmd(prefix: str, avail_cmds: list[str] = global_cmds):
