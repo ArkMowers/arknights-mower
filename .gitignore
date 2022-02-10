@@ -9,13 +9,17 @@ screenshot/*
 screenshot_right/*
 test/*
 test_*
-test.py
 release.sh
 
 # Windows
 venv64
 release_test.bat
 publish/*
+
+# Myself
+test.py
+cron.py
+cron.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
