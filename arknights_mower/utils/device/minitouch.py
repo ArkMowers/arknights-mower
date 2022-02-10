@@ -176,7 +176,7 @@ class MiniTouch(object):
         check compatibility mode and convert coordinate
         see details: https://github.com/Konano/arknights-mower/issues/85
         """
-        if config.COMPATIBILITY_MODE != 'yes':
+        if not config.COMPATIBILITY_MODE:
             return point
         x, y = point
         w, h, r = display_frames

@@ -147,7 +147,8 @@ class BaseSolver:
             points.append((start[0], start[1]+100))
             points.append((start[0]+movement[0], start[1]+100))
             points.append((start[0]+movement[0], start[1]))
-        self.device.minitouch.smooth_swipe(points, display_frames=self.device.display_frames(), duration=[200, dis*duration//100, 200], up_wait=500)
+        self.device.minitouch.smooth_swipe(points, display_frames=self.device.display_frames(),
+                                           duration=[200, dis*duration//100, 200], up_wait=500)
         if interval > 0:
             self.sleep(interval, rebuild)
 
