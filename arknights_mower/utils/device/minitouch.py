@@ -171,11 +171,28 @@ class MiniTouch(object):
         """ check if adb server alive """
         return self.client.check_server_alive()
 
-    def tap(self, points: list[tuple[int, int]], pressure: int = 100, duration: int = None, lift: bool = True) -> None:
+    def convert_coordinate(self, point: tuple[int, int], display_frames: tuple[int, int, int], max_x: int, max_y: int) -> tuple[int, int]:
+        """
+        check compatibility mode and convert coordinate
+        see details: https://github.com/Konano/arknights-mower/issues/85
+        """
+        if not config.COMPATIBILITY_MODE:
+            return point
+        x, y = point
+        w, h, r = display_frames
+        if r == 1:
+            return [(h - y) * max_x // h, x * max_y // w]
+        if r == 3:
+            return [y * max_x // h, (w - x) * max_y // w]
+        logger.debug(f'warning: unexpected rotation parameter: display_frames({w}, {h}, {r})')
+        return point
+
+    def tap(self, points: list[tuple[int, int]], display_frames: tuple[int, int, int], pressure: int = 100, duration: int = None, lift: bool = True) -> None:
         """
         tap on screen with pressure and duration
 
         :param points: list[int], look like [(x1, y1), (x2, y2), ...]
+        :param display_frames: tuple[int, int, int], which means [weight, high, rotation] by "adb shell dumpsys window | grep DisplayFrames"
         :param pressure: default to 100
         :param duration: in milliseconds
         :param lift: if True, "lift" the touch point
@@ -185,28 +202,30 @@ class MiniTouch(object):
 
         builder = CommandBuilder()
         points = [list(map(int, point)) for point in points]
-        for id, point in enumerate(points):
-            x, y = point
-            builder.down(id, x, y, pressure)
-        builder.commit()
-
-        if duration:
-            builder.wait(duration)
+        with MNTConnection(self.port) as conn:
+            for id, point in enumerate(points):
+                x, y = self.convert_coordinate(point, display_frames, int(conn.max_x), int(conn.max_y))
+                builder.down(id, x, y, pressure)
             builder.commit()
 
-        if lift:
-            for id in range(len(points)):
-                builder.up(id)
+            if duration:
+                builder.wait(duration)
+                builder.commit()
 
-        with MNTConnection(self.port) as conn:
+            if lift:
+                for id in range(len(points)):
+                    builder.up(id)
+
             builder.publish(conn)
 
-    def swipe(self, points: list[tuple[int, int]], pressure: int = 100, duration: Union[list[int], int] = None, fall: bool = True, lift: bool = True) -> None:
+    def swipe(self, points: list[tuple[int, int]], display_frames: tuple[int, int, int], pressure: int = 100, duration: Union[list[int], int] = None, up_wait: int = None, fall: bool = True, lift: bool = True) -> None:
         """
         swipe between points one by one, with pressure and duration
 
         :param points: list, look like [(x1, y1), (x2, y2), ...]
+        :param display_frames: tuple[int, int, int], which means [weight, high, rotation] by "adb shell dumpsys window | grep DisplayFrames"
         :param pressure: default to 100
+        :param duration: in milliseconds
         :param duration: in milliseconds
         :param fall: if True, "fall" the first touch point
         :param lift: if True, "lift" the last touch point
@@ -222,12 +241,12 @@ class MiniTouch(object):
         builder = CommandBuilder()
         with MNTConnection(self.port) as conn:
             if fall:
-                x, y = points[0]
+                x, y = self.convert_coordinate(points[0], display_frames, int(conn.max_x), int(conn.max_y))
                 builder.down(0, x, y, pressure)
                 builder.publish(conn)
 
             for idx, point in enumerate(points[1:]):
-                x, y = point
+                x, y = self.convert_coordinate(point, display_frames, int(conn.max_x), int(conn.max_y))
                 builder.move(0, x, y, pressure)
                 if duration[idx-1]:
                     builder.wait(duration[idx-1])
@@ -236,16 +255,20 @@ class MiniTouch(object):
 
             if lift:
                 builder.up(0)
+                if up_wait:
+                    builder.wait(up_wait)
                 builder.publish(conn)
 
-    def smooth_swipe(self, points: list[tuple[int, int]], pressure: int = 100, duration: Union[list[int], int] = None, part: int = 10, fall: bool = True, lift: bool = True) -> None:
+    def smooth_swipe(self, points: list[tuple[int, int]], display_frames: tuple[int, int, int], pressure: int = 100, duration: Union[list[int], int] = None, up_wait: int = None, part: int = 10, fall: bool = True, lift: bool = True) -> None:
         """
         swipe between points one by one, with pressure and duration
         it will split distance between points into pieces
 
         :param points: list, look like [(x1, y1), (x2, y2), ...]
+        :param display_frames: tuple[int, int, int], which means [weight, high, rotation] by "adb shell dumpsys window | grep DisplayFrames"
         :param pressure: default to 100
         :param duration: in milliseconds
+        :param up_wait: in milliseconds
         :param part: default to 10
         :param fall: if True, "fall" the first touch point
         :param lift: if True, "lift" the last touch point
@@ -272,7 +295,7 @@ class MiniTouch(object):
                 new_duration += [None] * part
             else:
                 new_duration += [duration[id-1] // part] * part
-        self.swipe(new_points, pressure, new_duration, fall, lift)
+        self.swipe(new_points, display_frames, pressure, new_duration, fall, lift)
 
 
 class MNTConnection(object):
