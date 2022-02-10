@@ -44,7 +44,7 @@ class OpeSolver(BaseSolver):
             return
         if plan is not None:
             for x in plan:
-                if x[0] not in level_list.keys() or level_list[x[0]]['ap_cost'] == 0 or x[0] != 'pre_ope':
+                if x[0] != 'pre_ope' and (x[0] not in level_list.keys() or level_list[x[0]]['ap_cost'] == 0):
                     logger.error(f'不支持关卡 {x[0]}，请重新指定')
                     return
         if level is not None:
