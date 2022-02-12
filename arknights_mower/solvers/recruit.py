@@ -24,6 +24,8 @@ class RecruitPoss(object):
     def __str__(self) -> str:
         return "%s,%s,%s,%s" % (self.choose, self.max, self.min, self.ls)
 
+    def __repr__(self) -> str:
+        return "%s,%s,%s,%s" % (self.choose, self.max, self.min, self.ls)
 
 class RecruitSolver(BaseSolver):
     """
