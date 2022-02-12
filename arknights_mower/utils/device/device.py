@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import Optional
 
 from .client import Client
@@ -79,3 +80,10 @@ class Device(object):
         points_num = len(points)
         duration //= points_num - 1
         self.minitouch.smooth_swipe(points, self.display_frames(), duration=duration, part=part, fall=fall, lift=lift)
+
+    def check_current_focus(self):
+        """ check if the application is in the foreground """
+        if self.current_focus() != config.APPNAME:
+            self.launch(config.APPNAME)
+            # wait for app to finish launching
+            time.sleep(10)

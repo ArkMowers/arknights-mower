@@ -171,6 +171,7 @@ class Recognizer(object):
             self.scene = Scene.LOADING
         else:
             self.scene = Scene.UNKNOWN
+            self.device.check_current_focus()
         # save screencap to analyse
         if config.SCREENSHOT_PATH is not None:
             save_screenshot(

@@ -26,10 +26,7 @@ class BaseSolver:
             raise RuntimeError
         self.device = device if device is not None else Device()
         self.recog = recog if recog is not None else Recognizer(self.device)
-        if self.device.current_focus() != config.APPNAME:
-            self.device.launch(config.APPNAME)
-            # wait for app to finish launching
-            time.sleep(10)
+        self.device.check_current_focus()
 
     def run(self) -> None:
         retry_times = config.MAX_RETRYTIME
