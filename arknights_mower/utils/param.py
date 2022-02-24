@@ -1,4 +1,11 @@
-def parse_operation_params(args: list[str] = []) -> [str, int, int, int, bool]:
+from .typealias import ParamArgs
+
+
+class ParamError(ValueError):
+    """ 参数错误 """
+
+
+def parse_operation_params(args: ParamArgs = []):
     level = None
     times = -1
     potion = 0
@@ -28,10 +35,9 @@ def parse_operation_params(args: list[str] = []) -> [str, int, int, int, bool]:
                 level = p
     except Exception:
         raise ParamError
-    return [level, times, potion, originite, eliminate]
+    return level, times, potion, originite, eliminate
 
 
-def operation_times(args: list[str] = []) -> int:
+def operation_times(args: ParamArgs = []) -> int:
     _, times, _, _, _ = parse_operation_params(args)
     return times
-

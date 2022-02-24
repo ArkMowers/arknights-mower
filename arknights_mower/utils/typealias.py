@@ -27,3 +27,6 @@ OpePlan = Tuple[str, int]
 
 # BaseConstruct Plan
 BasePlan = Dict[str, List[str]]
+
+# Parameter
+ParamArgs = List[str]

@@ -1,18 +1,11 @@
 from __future__ import annotations
 
-import time
-import schedule as sd
-
 from . import __version__
 from .solvers import *
 from .utils import config
 from .utils.log import logger
 from .utils.device import Device
-from .utils.operation import parse_operation_params
-
-
-class ParamError(ValueError):
-    """ 参数错误 """
+from .utils.param import ParamError, parse_operation_params
 
 
 def mail(args: list[str] = [], device: Device = None):
