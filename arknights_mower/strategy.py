@@ -30,7 +30,7 @@ class Solver(object):
 
     def recruit(self, priority: list[str] = None) -> None:
         """
-        :param priority: list[str], 优先考虑的公招干员，默认为火神和因陀罗
+        :param priority: list[str], 优先考虑的公招干员，默认为高稀有度优先
         """
         RecruitSolver(self.device, self.recog).run(priority)
 
