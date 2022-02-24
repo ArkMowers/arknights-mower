@@ -406,7 +406,7 @@ class OpeSolver(BaseSolver):
     def choose_zone_resource(self, zone: list) -> None:
         """ 识别资源收集区域 """
         ocr = ocrhandle.predict(self.recog.img)
-        unable = list(filter(lambda x: x[1] == '不可进入', ocr))
+        unable = list(filter(lambda x: x[1] in ['不可进入', '关卡尚未开放'], ocr))
         ocr = list(filter(lambda x: x[1] in weekly_zones, ocr))
         weekly = sorted([x[1] for x in ocr])
         while zone[0] not in weekly:
@@ -414,7 +414,7 @@ class OpeSolver(BaseSolver):
             self.swipe((self.recog.w // 4, self.recog.h // 4),
                        (self.recog.w // 16, 0))
             ocr = ocrhandle.predict(self.recog.img)
-            unable = list(filter(lambda x: x[1] == '不可进入', ocr))
+            unable = list(filter(lambda x: x[1] in ['不可进入', '关卡尚未开放'], ocr))
             ocr = list(filter(lambda x: x[1] in weekly_zones, ocr))
             weekly = sorted([x[1] for x in ocr])
             if _weekly == weekly:
@@ -424,7 +424,7 @@ class OpeSolver(BaseSolver):
             self.swipe((self.recog.w // 4, self.recog.h // 4),
                        (-self.recog.w // 16, 0))
             ocr = ocrhandle.predict(self.recog.img)
-            unable = list(filter(lambda x: x[1] == '不可进入', ocr))
+            unable = list(filter(lambda x: x[1] in ['不可进入', '关卡尚未开放'], ocr))
             ocr = list(filter(lambda x: x[1] in weekly_zones, ocr))
             weekly = sorted([x[1] for x in ocr])
             if _weekly == weekly:
