@@ -5,6 +5,8 @@
 
 ---
 
+version: 1
+
 debug:
   # 是否启动调试模式
   enabled: true

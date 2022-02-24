@@ -11,6 +11,11 @@ from . import typealias as tp
 from .. import __rootdir__, __system__, __pyinstall__
 from .yaml import yaml
 
+# The lowest version supported
+VERSION_SUPPORTED_MIN = 1
+VERSION_SUPPORTED_MAX = 1
+
+
 __ydoc = None
 
 BASE_CONSTRUCT_PLAN: dict[str, tp.BasePlan]
@@ -79,6 +84,8 @@ def load_config(path: str) -> None:
     PATH = Path(path)
     with PATH.open('r', encoding='utf8') as f:
         __ydoc = yaml.load(f)
+    if not VERSION_SUPPORTED_MIN <= __get('version', 1) <= VERSION_SUPPORTED_MAX:
+        raise RuntimeError('The current version of the config file is not supported')
     init_config()
 
 
