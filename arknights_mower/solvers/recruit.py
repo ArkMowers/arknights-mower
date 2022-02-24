@@ -211,6 +211,13 @@ class RecruitSolver(BaseSolver):
                     possibility[_o].max = max(possibility[_o].max, agent_level)
                     possibility[_o].min = min(possibility[_o].min, agent_level)
         
+        # 检查是否存在无法从公开招募中获得的干员
+        for considering in priority:
+            for x in considering:
+                if agent_level_dict.get(x) is None:
+                    logger.error(f'该干员并不能在公开招募中获得：{x}')
+                    raise RuntimeError
+        
         best = RecruitPoss(0)
 
         # 按照优先级判断，必定选中同一星级干员
