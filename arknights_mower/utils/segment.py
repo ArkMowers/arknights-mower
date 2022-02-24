@@ -32,9 +32,9 @@ def credit(img: tp.Image, draw: bool = False) -> list[tp.Scope]:
     信用交易所特供的图像分割算法
     """
     try:
-        height, weight, _ = img.shape
+        height, width, _ = img.shape
 
-        left, right = 0, weight
+        left, right = 0, width
         while np.max(img[:, right-1]) < 100:
             right -= 1
         while np.max(img[:, left]) < 100:
@@ -72,7 +72,7 @@ def credit(img: tp.Image, draw: bool = False) -> list[tp.Scope]:
         while average(down) < 180:
             down -= 1
 
-        right = weight - 1
+        right = width - 1
         while ptp(right) < 50:
             right -= 1
 
@@ -109,8 +109,8 @@ def recruit(img: tp.Image, draw: bool = False) -> list[tp.Scope]:
     公招特供的图像分割算法
     """
     try:
-        height, weight, _ = img.shape
-        left, right = weight//2-100, weight//2-50
+        height, width, _ = img.shape
+        left, right = width//2-100, width//2-50
 
         def adj_x(i: int) -> int:
             if i == 0:
@@ -156,7 +156,7 @@ def recruit(img: tp.Image, draw: bool = False) -> list[tp.Scope]:
         while adj_y(left) < 50:
             left += 1
 
-        right = weight - 1
+        right = width - 1
         while np.max(img[:, right]) < 100:
             right -= 1
         while adj_y(right) < 50:
@@ -276,9 +276,9 @@ def worker(img: tp.Image, draw: bool = False) -> tuple[list[tp.Rectangle], tp.Re
     进驻总览的图像分割算法
     """
     try:
-        height, weight, _ = img.shape
+        height, width, _ = img.shape
 
-        left, right = 0, weight
+        left, right = 0, width
         while np.max(img[:, right-1]) < 100:
             right -= 1
         while np.max(img[:, left]) < 100:
