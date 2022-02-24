@@ -7,14 +7,14 @@ from collections.abc import Callable
 from ruamel.yaml import yaml_object
 
 from ..utils import config
+from ..utils.datetime import the_same_day
 from ..utils.device import Device
 from ..utils.log import logger
-from ..utils.solver import BaseSolver
+from ..utils.param import parse_operation_params, operation_times
 from ..utils.priority_queue import PriorityQueue
-from ..utils.datetime import the_same_day
-from ..utils.operation import operation_times
+from ..utils.solver import BaseSolver
+from ..utils.typealias import ParamArgs
 from ..utils.recognize import Recognizer
-from ..utils.operation import parse_operation_params
 from ..utils.yaml import yaml
 from .operation import OpeSolver
 
@@ -25,7 +25,7 @@ class ScheduleLogError(ValueError):
     """ Schedule log 文件解析错误 """
 
 
-def operation_one(args: list[str] = [], device: Device = None) -> bool:
+def operation_one(args: ParamArgs = [], device: Device = None) -> bool:
     """
     只为 schedule 模块使用的单次作战操作
     目前不支持使用源石和体力药
@@ -47,7 +47,7 @@ class Task(object):
     单个任务
     """
 
-    def __init__(self, tag: str = '', cmd: Callable = None, args: list[str] = [], device: Device = None):
+    def __init__(self, tag: str = '', cmd: Callable = None, args: ParamArgs = [], device: Device = None):
         self.cmd = cmd
         self.cmd_args = args
         self.tag = tag
@@ -96,7 +96,7 @@ class Task(object):
         self.finish = finish
 
     def reset(self):
-        if tag != 'per_hour':
+        if self.tag != 'per_hour':
             self.last_run = None
         self.pending = False
         self.finish = 0
@@ -185,7 +185,7 @@ class ScheduleSolver(BaseSolver):
             yaml.dump(self, f)
         logger.info('计划已存档')
 
-    def load_from_disk(self, cmd_list: list[Callable] = [], matcher: Callable = None) -> bool:
+    def load_from_disk(self, cmd_list = [], matcher: Callable = None) -> bool:
         try:
             with self.schedule_log_path.open('r', encoding='utf8') as f:
                 data = yaml.load(f)
@@ -208,7 +208,7 @@ class ScheduleSolver(BaseSolver):
         logger.info('发现中断的计划，将继续执行')
         return True
 
-    def add_task(self, tag: str = '', cmd: Callable = None, args: list[str] = []):
+    def add_task(self, tag: str = '', cmd: Callable = None, args: ParamArgs = []):
         task = Task(tag, cmd, args, self.device)
         self.tasks.append(task)
 
