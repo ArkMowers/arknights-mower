@@ -250,9 +250,8 @@ class ScheduleSolver(BaseSolver):
                     self.pending_list.push(task)
 
             task = self.pending_list.pop()
-            if task is not None:
-                if task.run() is False:
-                    self.pending_list.push(task)
+            if task is not None and task.run() is False:
+                self.pending_list.push(task)
 
             self.dump_to_disk()
             time.sleep(60)
