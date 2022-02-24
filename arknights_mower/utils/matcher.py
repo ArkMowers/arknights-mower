@@ -96,7 +96,7 @@ class Matcher(object):
                 logger.debug('feature points is less than 2')
                 return None
 
-            # the height & weight of query image
+            # the height & width of query image
             h, w = query.shape
 
             # the feature point of query image

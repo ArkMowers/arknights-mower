@@ -5,6 +5,8 @@
 
 ---
 
+version: 1
+
 debug:
   # 是否启动调试模式
   enabled: true
@@ -101,8 +103,8 @@ schedule:
 priority:
   # 公招优先级
   recruit:
-    - 因陀罗
-    - 火神
+    - [因陀罗, 火神]
+    # - [Lancet-2, Castle-3, THRM-EX, 正义骑士号]
   # 商店优先级
   shop: 
     - 招聘许可

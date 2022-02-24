@@ -18,7 +18,8 @@ from ..utils.recognize import Recognizer
 from ..utils.yaml import yaml
 from .operation import OpeSolver
 
-task_priority = {'base': 0, 'recruit': 1, 'mail': 2, 'credit': 3, 'shop': 4, 'mission': 5, 'operation': 6}
+task_priority = {'base': 0, 'recruit': 1, 'mail': 2,
+                 'credit': 3, 'shop': 4, 'mission': 5, 'operation': 6}
 
 
 class ScheduleLogError(ValueError):
@@ -89,7 +90,8 @@ class Task(object):
         if last_run == '':
             self.last_run = None
         else:
-            self.last_run = datetime.datetime.strptime(last_run, '%Y-%m-%d %H:%M:%S')
+            self.last_run = datetime.datetime.strptime(
+                last_run, '%Y-%m-%d %H:%M:%S')
         self.idx = idx
         self.pending = pending
         self.total = total
@@ -173,23 +175,25 @@ class ScheduleSolver(BaseSolver):
         self.pending_list = PriorityQueue()
         self.device = device
         self.last_run = None
-        self.schedule_log_path = Path(config.LOGFILE_PATH).joinpath('schedule.log')
+        self.schedule_log_path = Path(
+            config.LOGFILE_PATH).joinpath('schedule.log')
 
     @classmethod
     def to_yaml(cls, representer, data):
         return representer.represent_mapping('Schedule', {'last_run': data.last_run.strftime('%Y-%m-%d %H:%M:%S'),
-                                              'tasks': data.tasks})
+                                                          'tasks': data.tasks})
 
     def dump_to_disk(self):
         with self.schedule_log_path.open('w', encoding='utf8') as f:
             yaml.dump(self, f)
         logger.info('计划已存档')
 
-    def load_from_disk(self, cmd_list = [], matcher: Callable = None) -> bool:
+    def load_from_disk(self, cmd_list=[], matcher: Callable = None) -> bool:
         try:
             with self.schedule_log_path.open('r', encoding='utf8') as f:
                 data = yaml.load(f)
-            self.last_run = datetime.datetime.strptime(data['last_run'], '%Y-%m-%d %H:%M:%S')
+            self.last_run = datetime.datetime.strptime(
+                data['last_run'], '%Y-%m-%d %H:%M:%S')
             for task in data['tasks']:
                 cmd = matcher(task['cmd'], cmd_list)
                 if cmd is None:
@@ -246,9 +250,8 @@ class ScheduleSolver(BaseSolver):
                     self.pending_list.push(task)
 
             task = self.pending_list.pop()
-            if task is not None:
-                if task.run() is False:
-                    self.pending_list.push(task)
+            if task is not None and task.run() is False:
+                self.pending_list.push(task)
 
             self.dump_to_disk()
             time.sleep(60)
