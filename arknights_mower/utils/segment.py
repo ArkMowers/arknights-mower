@@ -32,9 +32,9 @@ def credit(img: tp.Image, draw: bool = False) -> list[tp.Scope]:
     信用交易所特供的图像分割算法
     """
     try:
-        height, weight, _ = img.shape
+        height, width, _ = img.shape
 
-        left, right = 0, weight
+        left, right = 0, width
         while np.max(img[:, right-1]) < 100:
             right -= 1
         while np.max(img[:, left]) < 100:
@@ -72,7 +72,7 @@ def credit(img: tp.Image, draw: bool = False) -> list[tp.Scope]:
         while average(down) < 180:
             down -= 1
 
-        right = weight - 1
+        right = width - 1
         while ptp(right) < 50:
             right -= 1
 
@@ -109,8 +109,8 @@ def recruit(img: tp.Image, draw: bool = False) -> list[tp.Scope]:
     公招特供的图像分割算法
     """
     try:
-        height, weight, _ = img.shape
-        left, right = weight//2-100, weight//2-50
+        height, width, _ = img.shape
+        left, right = width//2-100, width//2-50
 
         def adj_x(i: int) -> int:
             if i == 0:
@@ -156,7 +156,7 @@ def recruit(img: tp.Image, draw: bool = False) -> list[tp.Scope]:
         while adj_y(left) < 50:
             left += 1
 
-        right = weight - 1
+        right = width - 1
         while np.max(img[:, right]) < 100:
             right -= 1
         while adj_y(right) < 50:
@@ -189,7 +189,7 @@ def recruit(img: tp.Image, draw: bool = False) -> list[tp.Scope]:
 
 def base(img: tp.Image, central: tp.Scope, draw: bool = False) -> dict[str, tp.Rectangle]:
     """
-    基建布局的图像分割算法  # TODO need test
+    基建布局的图像分割算法
     """
     try:
         ret = {}
@@ -271,20 +271,20 @@ def base(img: tp.Image, central: tp.Scope, draw: bool = False) -> dict[str, tp.R
         raise RecognizeError(e)
 
 
-def worker(img: tp.Image, draw: bool = False):
+def worker(img: tp.Image, draw: bool = False) -> tuple[list[tp.Rectangle], tp.Rectangle, bool]:
     """
     进驻总览的图像分割算法
     """
     try:
-        h, w, _ = img.shape
+        height, width, _ = img.shape
 
-        l, r = 0, w
-        while np.max(img[:, r-1]) < 100:
-            r -= 1
-        while np.max(img[:, l]) < 100:
-            l += 1
+        left, right = 0, width
+        while np.max(img[:, right-1]) < 100:
+            right -= 1
+        while np.max(img[:, left]) < 100:
+            left += 1
 
-        x0 = r-1
+        x0 = right-1
         while np.average(img[:, x0, 1]) >= 100:
             x0 -= 1
         x0 -= 2
@@ -292,7 +292,7 @@ def worker(img: tp.Image, draw: bool = False):
         seg = []
         remove_mode = False
         pre, st = int(img[0, x0, 1]), 0
-        for y in range(1, h):
+        for y in range(1, height):
             remove_mode |= img[y, x0, 0] - img[y, x0, 1] > 40
             if np.ptp(img[y, x0]) <= 1 or int(img[y, x0, 0]) - int(img[y, x0, 1]) > 40:
                 now = int(img[y, x0, 1])
@@ -307,8 +307,8 @@ def worker(img: tp.Image, draw: bool = False):
                 seg.append((st, y))
                 st = 0
         # if st != 0:
-        #     seg.append((st, h))
-        logger.debug(seg)
+        #     seg.append((st, height))
+        logger.debug(f'segment.worker: seg {seg}')
 
         remove_button = get_poly(x0-10, x0, seg[0][0], seg[0][1])
         seg = seg[1:]
