@@ -23,7 +23,7 @@ class CreditSolver(BaseSolver):
         elif self.scene() == Scene.FRIEND_LIST_OFF:
             self.tap_element('friend_list')
         elif self.scene() == Scene.FRIEND_LIST_ON:
-            down = self.find('friend_list_on')[1][1]
+            down = self.find('friend_list_on', strict=True)[1][1]
             scope = [(0, 0), (100000, down)]
             if not self.tap_element('friend_visit', scope=scope, detected=True):
                 self.sleep(1)

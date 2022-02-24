@@ -118,7 +118,7 @@ class BaseConstructSolver(BaseSolver):
         self.find('clue_summary') and self.back()
 
         # 识别右侧按钮
-        (x0, y0), (x1, y1) = self.find('clue_func')
+        (x0, y0), (x1, y1) = self.find('clue_func', strict=True)
 
         logger.info('接收赠送线索')
         self.tap(((x0+x1)//2, (y0*3+y1)//4), interval=3, rebuild=False)
@@ -203,7 +203,7 @@ class BaseConstructSolver(BaseSolver):
         """ 识别阵营选择栏 """
         global x1, x2, y0, y1
 
-        (x1, y0), (x2, y1) = self.find('clue_nav')
+        (x1, y0), (x2, y1) = self.find('clue_nav', strict=True)
         while int(self.recog.img[y0, x1-1].max()) - int(self.recog.img[y0, x1].max()) <= 1:
             x1 -= 1
         while int(self.recog.img[y0, x2].max()) - int(self.recog.img[y0, x2-1].max()) <= 1:
@@ -328,7 +328,7 @@ class BaseConstructSolver(BaseSolver):
         """ 获取房间的位置并进入 """
 
         # 获取基建各个房间的位置
-        base_room = segment.base(self.recog.img, self.find('control_central'))
+        base_room = segment.base(self.recog.img, self.find('control_central', strict=True))
 
         # 将画面外的部分删去
         room = base_room[room]

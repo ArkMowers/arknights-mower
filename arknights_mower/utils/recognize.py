@@ -187,7 +187,7 @@ class Recognizer(object):
         """ find navigation button """
         return self.find('nav_button', thres=128, scope=((0, 0), (100+self.w//4, self.h//10)))
 
-    def find(self, res: str, draw: bool = False, scope: tp.Scope = None, thres: int = None, judge: bool = True) -> tp.Scope:
+    def find(self, res: str, draw: bool = False, scope: tp.Scope = None, thres: int = None, judge: bool = True, strict: bool = False) -> tp.Scope:
         """
         查找元素是否出现在画面中
 
@@ -195,7 +195,8 @@ class Recognizer(object):
         :param draw: 是否将识别结果输出到屏幕
         :param scope: ((x0, y0), (x1, y1))，提前限定元素可能出现的范围
         :param thres: 是否在匹配前对图像进行二值化处理
-        :param judge: 是否假如更加精准的判断
+        :param judge: 是否加入更加精确的判断
+        :param strict: 是否启用严格模式，未找到时报错
 
         :return ret: 若匹配成功，则返回元素在游戏界面中出现的位置，否则返回 None
         """
@@ -212,6 +213,8 @@ class Recognizer(object):
             res_img = loadimg(res, True)
             matcher = self.matcher
             ret = matcher.match(res_img, draw=draw, scope=scope, judge=judge)
+        if strict and ret is None:
+            raise RecognizeError(f"Can't find '{res}'") 
         return ret
 
     # def score(self, item, draw=False, scope=None, thres=None):
