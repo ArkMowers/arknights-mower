@@ -28,6 +28,7 @@ class RecruitPoss(object):
     def __repr__(self) -> str:
         return "%s,%s,%s,%s,%s" % (self.choose, self.max, self.min, self.poss, self.ls)
 
+
 class RecruitSolver(BaseSolver):
     """
     自动进行公招
@@ -186,7 +187,7 @@ class RecruitSolver(BaseSolver):
                 for tag in agent_tags:
                     if tag in tags:
                         valid_9 |= (1 << tags.index(tag))
-            
+
             # 统计 3 小时公招的可能性
             valid_3 = None
             if 1 <= agent_level <= 4:
@@ -210,14 +211,14 @@ class RecruitSolver(BaseSolver):
                     possibility[_o].ls.append(agent_name)
                     possibility[_o].max = max(possibility[_o].max, agent_level)
                     possibility[_o].min = min(possibility[_o].min, agent_level)
-        
+
         # 检查是否存在无法从公开招募中获得的干员
         for considering in priority:
             for x in considering:
                 if agent_level_dict.get(x) is None:
                     logger.error(f'该干员并不能在公开招募中获得：{x}')
                     raise RuntimeError
-        
+
         best = RecruitPoss(0)
 
         # 按照优先级判断，必定选中同一星级干员
@@ -239,7 +240,7 @@ class RecruitSolver(BaseSolver):
                         best = possibility[o]
                 if best.poss > 0:
                     break
-        
+
         # 按照优先级判断，必定选中星级 >= 4 的干员
         # 附加限制：min_level >= 4
         if best.poss == 0:
@@ -255,7 +256,7 @@ class RecruitSolver(BaseSolver):
                         best = possibility[o]
                 if best.poss > 0:
                     break
-        
+
         # 按照等级下限判断，必定选中星级 >= 4 的干员
         # 附加限制：min_level >= 4
         if best.poss == 0:
@@ -280,7 +281,7 @@ class RecruitSolver(BaseSolver):
                         best = possibility[o]
                 if best.poss > 0:
                     break
-        
+
         # 按照等级下限判断，默认高稀有度优先
         if best.poss == 0:
             logger.debug('choose: min_level')
