@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import sys
 import shutil
-import ruamel.yaml
 from typing import Any
 from pathlib import Path
 from collections import Mapping
@@ -10,8 +9,8 @@ from ruamel.yaml.comments import CommentedSeq
 
 from . import typealias as tp
 from .. import __rootdir__, __system__, __pyinstall__
+from .yaml import yaml
 
-yaml = ruamel.yaml.YAML()
 __ydoc = None
 
 BASE_CONSTRUCT_PLAN: dict[str, tp.BasePlan]

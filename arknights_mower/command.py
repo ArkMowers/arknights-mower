@@ -8,6 +8,7 @@ from .solvers import *
 from .utils import config
 from .utils.log import logger
 from .utils.device import Device
+from .utils.operation import parse_operation_params
 
 
 class ParamError(ValueError):
@@ -110,35 +111,7 @@ def operation(args: list[str] = [], device: Device = None):
         config.update_ope_plan(remain_plan)
         return
 
-    level = None
-    times = -1
-    potion = 0
-    originite = 0
-    eliminate = False
-
-    try:
-        for p in args:
-            if p[0] == '-':
-                val = -1
-                if len(p) > 2:
-                    val = int(p[2:])
-                if p[1] == 'r':
-                    assert potion == 0
-                    potion = val
-                elif p[1] == 'R':
-                    assert originite == 0
-                    originite = val
-                elif p[1] == 'e':
-                    assert not eliminate
-                    eliminate = True
-            elif p.find('-') == -1:
-                assert times == -1
-                times = int(p)
-            else:
-                assert level is None
-                level = p
-    except Exception:
-        raise ParamError
+    level, times, potion, originite, eliminate = parse_operation_params(args)
 
     OpeSolver(device).run(level, times, potion, originite, eliminate)
 
@@ -169,27 +142,17 @@ def help(args: list[str] = [], device: Device = None):
     print(f'    --config filepath\n        指定配置文件，默认使用 {config.PATH}')
 
 
-def schedule(args: list[str] = [], device: Device = None):
-    """
-    schedule
-        执行配置文件中的计划任务
-    """
-    if config.SCHEDULE_PLAN is not None:
-        sd.every().hour.do(task, tag='per_hour', device=device)
-        for tag in config.SCHEDULE_PLAN.keys():
-            if tag[:4] == 'day_':
-                sd.every().day.at(tag.replace('_', ':')[4:]).do(
-                    task, tag=tag, device=device)
-        task(device=device)
-        while True:
-            sd.run_pending()
-            time.sleep(60)
-    else:
-        logger.warning('empty plan')
+"""
+commands for schedule
+operation will be replaced by operation_one in ScheduleSolver
+"""
+schedule_cmds = [base, credit, mail, mission, shop, recruit, operation]
 
 
-def task(tag: str = 'start_up', device: Device = None):
-    """ run single task """
+def add_tasks(solver: ScheduleSolver = None, tag: str = ''):
+    """
+    为 schedule 模块添加任务
+    """
     plan = config.SCHEDULE_PLAN.get(tag)
     if plan is not None:
         for args in plan:
@@ -199,11 +162,39 @@ def task(tag: str = 'start_up', device: Device = None):
                     'Found `schedule` in `schedule`. Are you kidding me?')
                 raise NotImplementedError
             try:
-                target_cmd = match_cmd(args[0])
+                target_cmd = match_cmd(args[0], schedule_cmds)
                 if target_cmd is not None:
-                    target_cmd(args[1:], device)
+                    solver.add_task(tag, target_cmd, args[1:])
             except Exception as e:
                 logger.error(e)
+
+
+def schedule(args: list[str] = [], device: Device = None):
+    """
+    schedule
+        执行配置文件中的计划任务
+        计划执行时会自动存档至本地磁盘，启动时若检测到有存档，则会使用存档内容继续完成计划
+        -n 忽略之前中断的计划任务，按照配置文件重新开始新的计划
+    """
+    new_schedule = False
+
+    try:
+        for p in args:
+            if p[0] == '-':
+                if p[1] == 'n':
+                    new_schedule = True
+    except Exception:
+        raise ParamError
+
+    solver = ScheduleSolver(device)
+    if new_schedule or solver.load_from_disk(schedule_cmds, match_cmd) is False:
+        if config.SCHEDULE_PLAN is not None:
+            for tag in config.SCHEDULE_PLAN.keys():
+                add_tasks(solver, tag)
+        else:
+            logger.warning('empty plan')
+        solver.per_run()
+    solver.run()
 
 
 # all available commands
