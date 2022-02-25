@@ -46,6 +46,7 @@ scene_list = [
     [701, 'SHOP_OTHERS', '商店除了信用兑换处以外的界面'],
     [702, 'SHOP_CREDIT', '信用兑换处'],
     [703, 'SHOP_CREDIT_CONFIRM', '兑换确认'],
+    [704, 'SHOP_ASSIST', '助战使用次数'],
     [801, 'RECRUIT_MAIN', '公招主界面'],
     [802, 'RECRUIT_TAGS', '挑选标签时'],
     [803, 'RECRUIT_AGENT', '开包干员展示'],

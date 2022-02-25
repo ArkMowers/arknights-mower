@@ -44,6 +44,8 @@ class ShopSolver(BaseSolver):
                 self.tap_element('shop_cart')
             else:
                 return True
+        elif self.scene() == Scene.SHOP_ASSIST:
+            self.back()
         elif self.scene() == Scene.MATERIEL:
             self.tap_element('materiel_ico')
         elif self.scene() == Scene.LOADING:
