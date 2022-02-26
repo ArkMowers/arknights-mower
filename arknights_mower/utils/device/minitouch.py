@@ -68,6 +68,7 @@ class MiniTouch(object):
     def __init__(self, client: Client, touch_device: str = config.ADB_TOUCH_DEVICE) -> None:
         self.client = client
         self.touch_device = touch_device
+        self.process = None
         self.start()
 
     def start(self) -> None:
