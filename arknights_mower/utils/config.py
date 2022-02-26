@@ -117,10 +117,10 @@ def init_config() -> None:
     COMPATIBILITY_MODE = __get('device/compatibility_mode', False)
 
     global ADB_TOUCH_DEVICE
-    ADB_TOUCH_DEVICE = __get('adb_touch_device', None)
+    ADB_TOUCH_DEVICE = __get('device/adb_touch_device', None)
 
     global ADB_MNT_PORT
-    ADB_MNT_PORT = __get('adb_mnt_port', 20937)
+    ADB_MNT_PORT = __get('device/adb_mnt_port', 20937)
 
     global APPNAME
     APPNAME = __get('app/package_name', 'com.hypergryph.arknights') + \
