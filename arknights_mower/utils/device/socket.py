@@ -11,10 +11,12 @@ class Socket(object):
     def __init__(self, server: tuple[str, int], timeout: int) -> None:
         logger.debug(f'server: {server}, timeout: {timeout}')
         try:
+            self.sock = None
             self.sock = socket.create_connection(server, timeout=timeout)
             self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        except ConnectionRefusedError:
-            logger.error(f'ConnectionRefusedError: {self.server}')
+        except ConnectionRefusedError as e:
+            logger.error(f'ConnectionRefusedError: {server}')
+            raise e
 
     def __enter__(self) -> Socket:
         return self

@@ -68,6 +68,7 @@ class Client(object):
 
     def __exec(self, cmd: str, adb_bin: str = None) -> None:
         """ exec command with adb_bin """
+        logger.debug(f'client.__exec: {cmd}')
         if adb_bin is None:
             adb_bin = self.adb_bin
         subprocess.run([adb_bin, cmd], check=True)
@@ -95,7 +96,6 @@ class Client(object):
         """ check adb_bin if it works """
         try:
             self.__exec('start-server', adb_bin)
-            time.sleep(10)
             if self.check_server_alive(False):
                 return True
             self.__exec('kill-server', adb_bin)
