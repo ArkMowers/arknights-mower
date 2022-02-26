@@ -83,6 +83,7 @@ class Client(object):
                     error_limit -= 1
                     self.__exec('kill-server')
                     self.__exec('start-server')
+                    time.sleep(10)
                     continue
                 return
 
@@ -94,10 +95,12 @@ class Client(object):
         """ check adb_bin if it works """
         try:
             self.__exec('start-server', adb_bin)
+            time.sleep(10)
             if self.check_server_alive(False):
                 return True
             self.__exec('kill-server', adb_bin)
             self.__exec('start-server', adb_bin)
+            time.sleep(10)
             if self.check_server_alive(False):
                 return True
         except (FileNotFoundError, subprocess.CalledProcessError):
@@ -124,6 +127,7 @@ class Client(object):
                     error_limit -= 1
                     self.__exec('kill-server')
                     self.__exec('start-server')
+                    time.sleep(10)
                     self.__init_device()
                     continue
                 raise e
