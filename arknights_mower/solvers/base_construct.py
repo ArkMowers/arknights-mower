@@ -373,7 +373,7 @@ class BaseConstructSolver(BaseSolver):
 
         checked = set()  # 已经识别过的干员
         pre = set()  # 上次识别出的干员
-        error_count = 0
+        error_count, restart = 0, False
         while True:
 
             while len(agent):
@@ -381,11 +381,23 @@ class BaseConstructSolver(BaseSolver):
                     # 识别干员
                     ret = segment.agent(self.recog.img)  # 返回的顺序是从左往右从上往下
                 except RecognizeError as e:
-                    logger.warning(e)
                     error_count += 1
-                    if error_count >= 3:
+                    if error_count < 3:
+                        logger.debug(e)
+                        self.sleep(3)
+                    elif not restart:
+                        # 重新滑动到最左边并重置变量
+                        logger.warning(e)
+                        h, w = self.recog.h, self.recog.w
+                        for _ in range(9):
+                            self.swipe((w//2, h//2), (w//2, 0), interval=0)
+                        self.swipe((w//2, h//2), (w//2, 0),
+                                   interval=3, rebuild=False)
+                        checked = set()
+                        pre = set()
+                        error_count, restart = 0, True
+                    else:
                         raise e
-                    self.sleep(3)
                     continue
 
                 # 提取识别出来的干员的名字
