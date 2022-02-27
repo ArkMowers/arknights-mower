@@ -374,15 +374,12 @@ def agent_sift_init():
         origin_kp, origin_des = SIFT.detectAndCompute(origin, None)
 
 
-def sift_recog(img, scope, draw=False):
+def sift_recog(query, resolution, draw=False):
     """
     使用 SIFT 提取特征点识别干员名称
     """
     agent_sift_init()
 
-    resolution, _, _ = img.shape
-
-    query = img[scope[0, 1]:scope[2, 1], scope[0, 0]:scope[2, 0]]
     query = cv2.cvtColor(np.array(query), cv2.COLOR_RGB2GRAY)
 
     # the height & width of query image
@@ -526,8 +523,9 @@ def agent(img, draw=False):
 
         # draw for debug
         if draw:
-            cv2.polylines(img, ret, True, (255, 0, 0), 3, cv2.LINE_AA)
-            plt.imshow(img)
+            __img = img.copy()
+            cv2.polylines(__img, ret, True, (255, 0, 0), 3, cv2.LINE_AA)
+            plt.imshow(__img)
             plt.show()
 
         # 确定位置后开始精确识别
@@ -548,7 +546,8 @@ def agent(img, draw=False):
                     ret_agent.append(x[1])
                     ret_succ.append(poly)
                     continue
-                res = sift_recog(img, poly)
+                __img = img[poly[0, 1]:poly[2, 1], poly[0, 0]:poly[2, 0]]
+                res = sift_recog(__img, resolution, draw)
                 if res is not None:
                     logger.debug(f'干员名称识别修正：{x[1]} -> {res}')
                     ocr_error[x[1]] = res
@@ -558,24 +557,28 @@ def agent(img, draw=False):
                 logger.warning(
                     f'干员名称识别异常：{x[1]} 为不存在的数据，请报告至 https://github.com/Konano/arknights-mower/issues')
                 save_screenshot(
-                    img2bytes(img[poly[0, 1]:poly[2, 1], poly[0, 0]:poly[2, 0]]), subdir=f'agent/{height}x{width}')
+                    img2bytes(__img), subdir=f'agent/{height}x{width}')
             else:
-                res = sift_recog(img, poly)
+                __img = img[poly[0, 1]:poly[2, 1], poly[0, 0]:poly[2, 0]]
+                if 80 <= np.min(__img):
+                    continue
+                res = sift_recog(__img, resolution, draw)
                 if res is not None:
                     ret_agent.append(res)
                     ret_succ.append(poly)
                     continue
                 logger.warning(f'干员名称识别异常：区域 {poly.tolist()}')
                 save_screenshot(
-                    img2bytes(img[poly[0, 1]:poly[2, 1], poly[0, 0]:poly[2, 0]]), subdir=f'agent/{height}x{width}')
+                    img2bytes(__img), subdir=f'agent/{height}x{width}')
             ret_fail.append(poly)
 
         if len(ret_fail):
             save_screenshot(
                 img2bytes(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)), subdir=f'agentlist/{height}x{width}')
             if draw:
-                cv2.polylines(img, ret_fail, True, (255, 0, 0), 3, cv2.LINE_AA)
-                plt.imshow(img)
+                __img = img.copy()
+                cv2.polylines(__img, ret_fail, True, (255, 0, 0), 3, cv2.LINE_AA)
+                plt.imshow(__img)
                 plt.show()
 
         logger.debug(f'segment.agent: {ret_agent}')
