@@ -68,6 +68,7 @@ class Client(object):
 
     def __exec(self, cmd: str, adb_bin: str = None) -> None:
         """ exec command with adb_bin """
+        logger.debug(f'client.__exec: {cmd}')
         if adb_bin is None:
             adb_bin = self.adb_bin
         subprocess.run([adb_bin, cmd], check=True)
@@ -83,6 +84,7 @@ class Client(object):
                     error_limit -= 1
                     self.__exec('kill-server')
                     self.__exec('start-server')
+                    time.sleep(10)
                     continue
                 return
 
@@ -98,6 +100,7 @@ class Client(object):
                 return True
             self.__exec('kill-server', adb_bin)
             self.__exec('start-server', adb_bin)
+            time.sleep(10)
             if self.check_server_alive(False):
                 return True
         except (FileNotFoundError, subprocess.CalledProcessError):
@@ -124,6 +127,7 @@ class Client(object):
                     error_limit -= 1
                     self.__exec('kill-server')
                     self.__exec('start-server')
+                    time.sleep(10)
                     self.__init_device()
                     continue
                 raise e

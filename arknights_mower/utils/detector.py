@@ -1,7 +1,11 @@
+import cv2
 import numpy as np
 
 from . import typealias as tp
 from .log import logger
+from .matcher import Matcher
+from .image import loadimg
+from .. import __rootdir__
 
 
 def confirm(img: tp.Image) -> tp.Coordinate:
@@ -158,3 +162,14 @@ def visit_next(img: tp.Image) -> tp.Coordinate:
     point = (right - 10, (up + down) // 2)
     logger.debug(f'detector.visit_next: {point}')
     return point
+
+
+on_shift = loadimg(f'{__rootdir__}/resources/agent_on_shift.png', True)
+
+
+def is_on_shift(img: tp.Image) -> bool:
+    """
+    检测干员是否正在工作中
+    """
+    matcher = Matcher(cv2.cvtColor(img, cv2.COLOR_RGB2GRAY))
+    return matcher.match(on_shift, judge=False) is not None

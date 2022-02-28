@@ -1,6 +1,6 @@
 # recruit database
 
-# TODO: check/update from gamedata
+# TODO check/update from gamedata
 
 recruit_database = [
     ('Lancet-2', 1, ['医疗干员', '远程位', '治疗', '支援机械']),

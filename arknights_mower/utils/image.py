@@ -14,6 +14,11 @@ def bytes2img(data: bytes, gray: bool = False) -> Union[tp.Image, tp.GrayImage]:
         return cv2.cvtColor(cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
 
 
+def img2bytes(img) -> bytes:
+    """ bytes -> image """
+    return cv2.imencode('.png', img)[1]
+
+
 def loadimg(filename: str, gray: bool = False) -> Union[tp.Image, tp.GrayImage]:
     """ load image from file """
     logger.debug(filename)

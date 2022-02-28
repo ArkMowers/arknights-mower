@@ -103,4 +103,5 @@ class Session(object):
         """ returns list of devices that the adb server knows """
         resp = self.request('host:devices').response().decode(errors='ignore')
         devices = [tuple(line.split('\t')) for line in resp.splitlines()]
+        logger.debug(devices)
         return devices

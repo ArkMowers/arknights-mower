@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from ..utils import detector, segment
+from ..utils import detector, segment, character_recognize
 from ..utils import typealias as tp
 from ..utils.device import Device
 from ..utils.log import logger
@@ -363,29 +363,43 @@ class BaseConstructSolver(BaseSolver):
 
     def choose_agent(self, agent: list[str]) -> None:
         logger.info(f'安排干员：{agent}')
-        agent = set(agent)
-
-        # 滑动到最左边
         h, w = self.recog.h, self.recog.w
-        for _ in range(9):
-            self.swipe((w//2, h//2), (w//2, 0), interval=0)
-        self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
 
-        checked = set()  # 已经识别过的干员
-        pre = set()  # 上次识别出的干员
-        error_count = 0
-        while True:
+        # 在 agent 中 'Free' 表示任意空闲干员
+        free_num = agent.count('Free')
+        agent = set(agent) - set(['Free'])
+
+        # 安排指定干员
+        if len(agent):
+
+            # 滑动到最左边
+            for _ in range(9):
+                self.swipe((w//2, h//2), (w//2, 0), interval=0)
+            self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
+            checked = set()  # 已经识别过的干员
+            pre = set()  # 上次识别出的干员
+            error_count, restart = 0, False
 
             while len(agent):
                 try:
                     # 识别干员
-                    ret = segment.agent(self.recog.img)  # 返回的顺序是从左往右从上往下
+                    ret = character_recognize.agent(self.recog.img)  # 返回的顺序是从左往右从上往下
                 except RecognizeError as e:
-                    logger.warning(e)
                     error_count += 1
-                    if error_count >= 3:
+                    if error_count < 3:
+                        logger.debug(e)
+                        self.sleep(3)
+                    elif not restart:
+                        # 重新滑动到最左边并重置变量
+                        logger.warning(e)
+                        for _ in range(9):
+                            self.swipe((w//2, h//2), (w//2, 0), interval=0)
+                        self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
+                        checked = set()
+                        pre = set()
+                        error_count, restart = 0, True
+                    else:
                         raise e
-                    self.sleep(3)
                     continue
 
                 # 提取识别出来的干员的名字
@@ -394,7 +408,7 @@ class BaseConstructSolver(BaseSolver):
                     error_count += 1
                     if error_count >= 3:
                         logger.warning(f'未找到干员：{list(agent)}')
-                        return
+                        break
                 else:
                     pre = agent_name
 
@@ -405,16 +419,59 @@ class BaseConstructSolver(BaseSolver):
                 for name in agent_name & agent:
                     for y in ret:
                         if y[0] == name:
-                            self.tap((y[1][0]), rebuild=False)
+                            self.tap((y[1][0]), interval=0, rebuild=False)
                             break
                     agent.remove(name)
 
                 # 如果已经完成选择则退出
                 if len(agent) == 0:
-                    return
+                    break
 
                 st = ret[-2][1][2]  # 起点
                 ed = ret[0][1][1]   # 终点
+                self.swipe_noinertia(st, (ed[0]-st[0], 0))
+
+        # 安排空闲干员
+        if free_num:
+
+            # 滑动到最左边
+            for _ in range(9):
+                self.swipe((w//2, h//2), (w//2, 0), interval=0)
+            self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
+            
+            while free_num:
+                try:
+                    # 识别空闲干员
+                    ret, st, ed = segment.free_agent(self.recog.img)  # 返回的顺序是从左往右从上往下
+                except RecognizeError as e:
+                    error_count += 1
+                    if error_count < 3:
+                        logger.debug(e)
+                        self.sleep(3)
+                    elif not restart:
+                        # 重新滑动到最左边并重置变量
+                        logger.warning(e)
+                        h, w = self.recog.h, self.recog.w
+                        for _ in range(9):
+                            self.swipe((w//2, h//2), (w//2, 0), interval=0)
+                        self.swipe((w//2, h//2), (w//2, 0),
+                                    interval=3, rebuild=False)
+                        checked = set()
+                        pre = set()
+                        error_count, restart = 0, True
+                    else:
+                        raise e
+                    continue
+
+                while free_num and len(ret):
+                    self.tap(ret[0], interval=0, rebuild=False)
+                    free_num -= 1
+                    ret = ret[1:]
+
+                # 如果已经完成选择则退出
+                if free_num == 0:
+                    break
+                
                 self.swipe_noinertia(st, (ed[0]-st[0], 0))
 
     def agent_arrange(self, plan: tp.BasePlan) -> None:

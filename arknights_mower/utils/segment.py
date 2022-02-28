@@ -2,18 +2,15 @@ from __future__ import annotations
 
 import cv2
 import traceback
-import imagehash
 import numpy as np
 from matplotlib import pyplot as plt
-from PIL import Image, ImageDraw, ImageFont
 
 from . import typealias as tp
-from .image import rgb2gray, thres0
-from .log import logger
+from . import detector
 from .recognize import RecognizeError
 from .. import __rootdir__
 from ..data.agent import agent_list
-from ..data.ocr import ocr_error
+from .log import logger
 from ..ocr import ocrhandle
 
 
@@ -80,7 +77,7 @@ def credit(img: tp.Image, draw: bool = False) -> list[tp.Scope]:
         while ptp(left) < 50:
             left += 1
 
-        split_x = [left + (right - left) // 5 * i for i in range(0, 6)] 
+        split_x = [left + (right - left) // 5 * i for i in range(0, 6)]
         split_y = [up_1, (up_1 + down) // 2, down]
 
         ret = []
@@ -338,61 +335,30 @@ def worker(img: tp.Image, draw: bool = False) -> tuple[list[tp.Rectangle], tp.Re
         raise RecognizeError(e)
 
 
-agent_ahash = None
-
-
-def agent_ahash_init():
-    global agent_ahash
-    if agent_ahash is None:
-        logger.debug('agent_ahash_init')
-        agent_ahash = {}
-        font = ImageFont.truetype(
-            f'{__rootdir__}/fonts/SourceHanSansSC-Bold.otf', size=30, encoding='utf-8')
-        for text in agent_list:
-            dt = np.zeros((500, 500, 3), dtype=int)
-            img = Image.fromarray(np.uint8(dt))
-            ImageDraw.Draw(img).text((0, 0), text, (255, 255, 255), font=font)
-            img = np.array(img)
-
-            x0 = 0
-            while (img[:, x0] == 0).all():
-                x0 += 1
-            x1 = img.shape[1]
-            while (img[:, x1-1] == 0).all():
-                x1 -= 1
-            y0 = 0
-            while (img[y0, x0:x1] == 0).all():
-                y0 += 1
-            y1 = img.shape[0]
-            while (img[y1-1, x0:x1] == 0).all():
-                y1 -= 1
-
-            agent_ahash[text] = str(imagehash.average_hash(
-                Image.fromarray(img[y0:y1, x0:x1]), 16))
-
-
-def agent(im, draw=False):
+def agent(img, draw=False):
     """
     干员总览的图像分割算法
     """
     try:
-        h, w, _ = im.shape
+        height, width, _ = img.shape
+        resolution = height
+        left, right = 0, width
 
-        # gray = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
-        # gray = 255 - gray
+        # 异形屏适配
+        while np.max(img[:, right-1]) < 100:
+            right -= 1
+        while np.max(img[:, left]) < 100:
+            left += 1
 
-        l, r = 0, w
-        while np.max(im[:, r-1]) < 100:
-            r -= 1
-        while np.max(im[:, l]) < 100:
-            l += 1
-
-        x0 = l + 1
-        while not (im[h-1, x0-1, 0] > im[h-1, x0, 0] + 10 and abs(int(im[h-1, x0, 0]) - int(im[h-1, x0+1, 0])) < 5):
+        # 去除左侧干员详情
+        x0 = left + 1
+        while not (img[height-1, x0-1, 0] > img[height-1, x0, 0] + 10 and abs(int(img[height-1, x0, 0]) - int(img[height-1, x0+1, 0])) < 5):
             x0 += 1
 
-        ocr = ocrhandle.predict(im[:, x0:r])
+        # ocr 初步识别干员名称
+        ocr = ocrhandle.predict(img[:, x0:right])
 
+        # 保留上下两行皆被成功识别出来的干员名称的识别结果
         segs = [(min(x[2][0][1], x[2][1][1]), max(x[2][2][1], x[2][3][1]))
                 for x in ocr if x[1] in agent_list]
         while True:
@@ -411,13 +377,16 @@ def agent(im, draw=False):
             else:
                 break
         segs = sorted(segs)
+
+        # 计算纵向的四个高度，[y0, y1] 是第一行干员名称的纵向坐标范围，[y2, y3] 是第二行干员名称的纵向坐标范围
         for x in segs:
-            if x[1] < h // 2:
+            if x[1] < height // 2:
                 y0, y1 = x
             y2, y3 = x
         card_gap = y1 - y0
         logger.debug([y0, y1, y2, y3])
 
+        # 预计算：横向坐标范围集合
         x_set = set()
         for x in ocr:
             if x[1] in agent_list and (y0 <= x[2][0][1] <= y1 or y2 <= x[2][0][1] <= y3):
@@ -425,200 +394,102 @@ def agent(im, draw=False):
                 x_set.add(x[2][2][0])
         x_set = sorted(x_set)
         logger.debug(x_set)
+
+        # 排除掉一些重叠的范围，获得最终的横向坐标范围
+        x_gap = 40 * (resolution / 1080)
         x_set = [x_set[0]] + \
-            [y for x, y in zip(x_set[:-1], x_set[1:]) if y - x > 80]
+            [y for x, y in zip(x_set[:-1], x_set[1:]) if y - x > x_gap * 2]
         gap = [y - x for x, y in zip(x_set[:-1], x_set[1:])]
-        gap = [x for x in gap if x - np.min(gap) < 40]
+        gap = [x for x in gap if x - np.min(gap) < x_gap]
         gap = int(np.average(gap))
         for x, y in zip(x_set[:-1], x_set[1:]):
-            if y - x > 40:
+            if y - x > x_gap:
                 gap_num = round((y - x) / gap)
                 for i in range(1, gap_num):
                     x_set.append(int(x + (y - x) / gap_num * i))
         while np.min(x_set) > 0:
             x_set.append(np.min(x_set) - gap)
-        while np.max(x_set) < r - x0:
+        while np.max(x_set) < right - x0:
             x_set.append(np.max(x_set) + gap)
         x_set = sorted(x_set)
         logger.debug(x_set)
 
+        # 获得所有的干员名称对应位置
         ret = []
         for x1, x2 in zip(x_set[:-1], x_set[1:]):
-            if 0 <= x1+card_gap and x0+x2+5 <= r:
+            if 0 <= x1+card_gap and x0+x2+5 <= right:
                 ret += [get_poly(x0+x1+card_gap, x0+x2+5, y0, y1),
                         get_poly(x0+x1+card_gap, x0+x2+5, y2, y3)]
 
-        def poly_center(poly):
-            return (np.average([x[0] for x in poly]), np.average([x[1] for x in poly]))
-
-        def in_poly(poly, p):
-            return poly[0, 0] <= p[0] <= poly[2, 0] and poly[0, 1] <= p[1] <= poly[2, 1]
-
-        # if draw:
-        #     cv2.polylines(im, ret, True, (255, 0, 0), 3, cv2.LINE_AA)
-        #     plt.imshow(im)
-        #     plt.show()
-
-        def flood(img, dt):
-            h, w = img.shape
-            while True:
-                pre_count = (dt > 0).sum()
-                for x in range(1, w):
-                    dt[:, x][(dt[:, x-1] > 0) & (img[:, x] > 0)] = 1
-                for y in range(h-2, -1, -1):
-                    dt[y][(dt[y+1] > 0) & (img[y] > 0)] = 1
-                for x in range(w-2, -1, -1):
-                    dt[:, x][(dt[:, x+1] > 0) & (img[:, x] > 0)] = 1
-                for y in range(1, h):
-                    dt[y][(dt[y-1] > 0) & (img[y] > 0)] = 1
-                if pre_count == (dt > 0).sum():
-                    break
-
-        def ahash_recog(origin_img, scope):
-            agent_ahash_init()
-            origin_img = origin_img[scope[0, 1]:scope[2, 1], scope[0, 0]:scope[2, 0]]
-            h, w = origin_img.shape[:2]
-            thresh = 70
-            while True:
-                try:
-                    img = rgb2gray(thres0(origin_img, thresh))
-                    dt = np.zeros((h, w), dtype=np.uint8)
-                    for y in range(h):
-                        if img[y, w-1] != 0:
-                            dt[y, w-1] = 1
-                    flood(img, dt)
-                    for y in range(h-1, h//2, -1):
-                        count = 0
-                        for x in range(w-1, -1, -1):
-                            if dt[y, x] != 0:
-                                count += 1
-                            else:
-                                break
-                        if not (dt[y, :] > 0).all():
-                            for x in range(w):
-                                if dt[y, x] != 0:
-                                    count += 1
-                                else:
-                                    break
-                        if (dt[y] > 0).sum() != count:
-                            logger.debug(f'{y}, {count}')
-                            raise FloodCheckFailed
-
-                    for y in range(h):
-                        if img[y, 0] != 0:
-                            dt[y, 0] = 1
-                    for x in range(w):
-                        if img[h-1, x] != 0:
-                            dt[h-1, x] = 1
-                        if img[0, x] != 0:
-                            dt[0, x] = 1
-                    flood(img, dt)
-                    img[dt > 0] = 0
-                    if (img > 0).sum() == 0:
-                        raise FloodCheckFailed
-
-                    x0, x1, y0, y1 = 0, w, 0, h
-                    while True:
-                        while (img[y0:y1, x0] == 0).all():
-                            x0 += 1
-                        while (img[y0:y1, x1-1] == 0).all():
-                            x1 -= 1
-                        while (img[y0, x0:x1] == 0).all():
-                            y0 += 1
-                        while (img[y1-1, x0:x1] == 0).all():
-                            y1 -= 1
-                        for x in range(x0, x1-10+1):
-                            if (img[y0:y1, x:x+10] == 0).all():
-                                x0 = x
-                                break
-                        if (img[y0:y1, x0] == 0).all():
-                            continue
-                        for y in range(y0, y1-10+1):
-                            if (img[y:y+10, x0:x1] == 0).all():
-                                y0 = y
-                                break
-                        if (img[y0, x0:x1] == 0).all():
-                            continue
-                        break
-
-                    dt = np.zeros((y1-y0, x1-x0, 3), dtype=np.uint8)
-                    dt[:, :, 0] = img[y0:y1, x0:x1]
-                    dt[:, :, 1] = img[y0:y1, x0:x1]
-                    dt[:, :, 2] = img[y0:y1, x0:x1]
-                    ahash = str(imagehash.average_hash(Image.fromarray(dt), 16))
-                    p = [(bin(int(ahash, 16) ^ int(agent_ahash[x], 16)).count('1'), x) for x in agent_ahash.keys()]
-                    p = sorted(p)
-                    logger.debug(p[:10])
-                    if p[1][0] - p[0][0] < 10:
-                        raise FloodCheckFailed
-                    logger.debug(p[0][1])
-                    return p[0][1]
-
-                except FloodCheckFailed:
-                    thresh += 5
-                    logger.debug(f'add thresh to {thresh}')
-                    if thresh > 100:
-                        break
-                    continue
-            return None
-
-        ret_succ = []
-        ret_fail = []
-        ret_agent = []
-        for poly in ret:
-            found_ocr, fx = None, 0
-            for x in ocr:
-                cx, cy = poly_center(x[2])
-                if in_poly(poly, (cx+x0, cy)) and cx > fx:
-                    fx = cx
-                    found_ocr = x
-
-            if found_ocr is not None:
-                x = found_ocr
-                if x[1] in agent_list:
-                    ret_agent.append(x[1])
-                    ret_succ.append(poly)
-                    continue
-                res = ocrhandle.predict(
-                    thres0(im[poly[0, 1]-20:poly[2, 1]+20, poly[0, 0]-20:poly[2, 0]+20], 70))
-                if len(res) > 0 and res[0][1] in agent_list:
-                    x = res[0]
-                    ret_agent.append(x[1])
-                    ret_succ.append(poly)
-                    continue
-                res = ahash_recog(im, poly)
-                if res is not None:
-                    logger.warning(f'干员名称识别异常：{x[1]} 应为 {res}')
-                    ocr_error[x[1]] = res
-                    ret_agent.append(res)
-                    ret_succ.append(poly)
-                    continue
-                logger.warning(
-                    f'干员名称识别异常：{x[1]} 为不存在的数据，请报告至 https://github.com/Konano/arknights-mower/issues')
-            else:
-                res = ocrhandle.predict(
-                    thres0(im[poly[0, 1]-20:poly[2, 1]+20, poly[0, 0]-20:poly[2, 0]+20], 70))
-                if len(res) > 0 and res[0][1] in agent_list:
-                    res = res[0][1]
-                    ret_agent.append(res)
-                    ret_succ.append(poly)
-                    continue
-                res = ahash_recog(im, poly)
-                if res is not None:
-                    ret_agent.append(res)
-                    ret_succ.append(poly)
-                    continue
-                logger.warning(f'干员名称识别异常：区域 {poly}')
-            ret_fail.append(poly)
-
-        if draw and len(ret_fail):
-            cv2.polylines(im, ret_fail, True, (255, 0, 0), 3, cv2.LINE_AA)
-            plt.imshow(im)
+        # draw for debug
+        if draw:
+            __img = img.copy()
+            cv2.polylines(__img, ret, True, (255, 0, 0), 3, cv2.LINE_AA)
+            plt.imshow(__img)
             plt.show()
 
-        logger.debug(f'segment.agent: {ret_agent}')
         logger.debug(f'segment.agent: {[x.tolist() for x in ret]}')
-        return list(zip(ret_agent, ret_succ))
+        return ret
+
+    except Exception as e:
+        logger.debug(traceback.format_exc())
+        raise RecognizeError(e)
+
+
+def free_agent(img, draw=False):
+    """
+    识别未在工作中的干员
+    """
+    try:
+        height, width, _ = img.shape
+        resolution = height
+        left, right = 0, width
+
+        # 异形屏适配
+        while np.max(img[:, right-1]) < 100:
+            right -= 1
+        while np.max(img[:, left]) < 100:
+            left += 1
+
+        # 去除左侧干员详情
+        x0 = left + 1
+        while not (img[height-1, x0-1, 0] > img[height-1, x0, 0] + 10 and abs(int(img[height-1, x0, 0]) - int(img[height-1, x0+1, 0])) < 5):
+            x0 += 1
+
+        # 获取分割结果
+        ret = agent(img, draw)
+        st = ret[-2][2]  # 起点
+        ed = ret[0][1]   # 终点
+
+        # 去除空白的干员框，同时收集 y 坐标
+        y_set = set()
+        for poly in ret:
+            __img = img[poly[0, 1]:poly[2, 1], poly[0, 0]:poly[2, 0]]
+            y_set.add(poly[0, 1])
+            y_set.add(poly[2, 1])
+            if 80 <= np.min(__img):
+                ret.remove(poly)
+
+        y1, y2, y4, y5 = sorted(list(y_set))
+        y0 = height - y5
+        y3 = y0 - y2 + y5
+
+        ret_free = []
+        for poly in ret:
+            poly[poly == y1] = y0
+            poly[poly == y4] = y3
+            __img = img[poly[0, 1]:poly[2, 1], poly[0, 0]:poly[2, 0]]
+            if not detector.is_on_shift(__img):
+                ret_free.append(poly)
+
+        if draw:
+            __img = img.copy()
+            cv2.polylines(__img, ret_free, True, (255, 0, 0), 3, cv2.LINE_AA)
+            plt.imshow(__img)
+            plt.show()
+
+        logger.debug(f'segment.free_agent: {[x.tolist() for x in ret_free]}')
+        return ret_free, st, ed
 
     except Exception as e:
         logger.debug(traceback.format_exc())
