@@ -17,6 +17,7 @@ class RecruitPoss(object):
         self.max = max  # 等级上限
         self.min = min  # 等级下限
         self.poss = 0  # 可能性
+        self.lv2a3 = False  # 是否包含等级为 2 和 3 的干员
         self.ls = []  # 可能的干员列表
 
     def __lt__(self, another: RecruitPoss) -> bool:
@@ -204,6 +205,7 @@ class RecruitSolver(BaseSolver):
                     possibility[o].ls.append(agent_name)
                     possibility[o].max = max(possibility[o].max, agent_level)
                     possibility[o].min = min(possibility[o].min, agent_level)
+                    possibility[o].lv2a3 |= 2 <= agent_level <= 3
                 _o = o + (1 << 5)
                 if valid_3 is not None and o & valid_3 == o:
                     if _o not in possibility.keys():
@@ -211,6 +213,7 @@ class RecruitSolver(BaseSolver):
                     possibility[_o].ls.append(agent_name)
                     possibility[_o].max = max(possibility[_o].max, agent_level)
                     possibility[_o].min = min(possibility[_o].min, agent_level)
+                    possibility[_o].lv2a3 |= 2 <= agent_level <= 3
 
         # 检查是否存在无法从公开招募中获得的干员
         for considering in priority:
@@ -222,9 +225,9 @@ class RecruitSolver(BaseSolver):
         best = RecruitPoss(0)
 
         # 按照优先级判断，必定选中同一星级干员
-        # 附加限制：min_level = agent_level
+        # 附加限制：min_level == agent_level
         if best.poss == 0:
-            logger.debug('choose: priority, min_level = agent_level')
+            logger.debug('choose: priority, min_level == agent_level')
             for considering in priority:
                 for o in possibility.keys():
                     possibility[o].poss = 0
@@ -235,6 +238,24 @@ class RecruitSolver(BaseSolver):
                                 possibility[o].poss += 1 / len(possibility[o].ls)
                             elif agent_level == 1 and agent_level == possibility[o].min == possibility[o].max:
                                 # 必定选中一星干员的特殊逻辑
+                                possibility[o].poss += 1 / len(possibility[o].ls)
+                    if best < possibility[o]:
+                        best = possibility[o]
+                if best.poss > 0:
+                    break
+
+        # 按照优先级判断，若目标干员 1 星且该组合不存在 2/3 星的可能，则选择
+        # 附加限制：min_level == agent_level == 1 and not lv2a3
+        if best.poss == 0:
+            logger.debug('choose: priority, min_level == agent_level == 1 and not lv2a3')
+            for considering in priority:
+                for o in possibility.keys():
+                    possibility[o].poss = 0
+                    for x in considering:
+                        if x in possibility[o].ls:
+                            agent_level = agent_level_dict[x]
+                            if agent_level == possibility[o].min == 1 and not possibility[o].lv2a3:
+                                # 特殊判断：选中一星和四星干员的 Tag 组合
                                 possibility[o].poss += 1 / len(possibility[o].ls)
                     if best < possibility[o]:
                         best = possibility[o]
