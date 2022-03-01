@@ -251,6 +251,8 @@ class BaseSolver:
                     mail = self.find('mail')
                     mid_y = (mail[0][1] + mail[1][1]) // 2
                     self.tap((mid_y, mid_y))
+                elif self.scene() == Scene.INFRA_ARRANGE_CONFIRM:
+                    self.tap((self.recog.w // 3, self.recog.h - 10))
                 else:
                     raise RecognizeError('Unanticipated scene: back_to_index')
             except RecognizeError as e:

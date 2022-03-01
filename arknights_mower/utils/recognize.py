@@ -113,6 +113,8 @@ class Recognizer(object):
             self.scene = Scene.INFRA_ARRANGE
         elif self.find('hidden_eye', thres=250, scope=((self.w//4*3, self.h//4*3), (self.w, self.h))) is not None:
             self.scene = Scene.INFRA_DETAILS
+        elif self.find('arrange_confirm') is not None:
+            self.scene = Scene.INFRA_ARRANGE_CONFIRM
         elif self.find('friend_list') is not None:
             self.scene = Scene.FRIEND_LIST_OFF
         elif self.find("mission_trainee_on") is not None:
