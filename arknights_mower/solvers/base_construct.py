@@ -544,7 +544,7 @@ class BaseConstructSolver(BaseSolver):
                                 raise e
                             # 返回基建干员进驻总览
                             self.recog.update()
-                            while self.scene() not in [Scene.INFRA_ARRANGE, Scene.INFRA_MAIN]:
+                            while self.scene() not in [Scene.INFRA_ARRANGE, Scene.INFRA_MAIN] and self.scene() // 100 != 1:
                                 pre_scene = self.scene()
                                 self.back(interval=3)
                                 if self.scene() == pre_scene:
