@@ -430,6 +430,7 @@ class BaseConstructSolver(BaseSolver):
             for _ in range(9):
                 self.swipe((w//2, h//2), (w//2, 0), interval=0)
             self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
+            error_count = 0
 
             while free_num:
                 try:
