@@ -36,6 +36,7 @@ class BaseSolver:
                     break
             except RecognizeError as e:
                 logger.warning(f'识别出了点小差错 qwq: {e}')
+                self.recog.save_screencap('failure')
                 retry_times -= 1
                 self.sleep(3)
                 continue
@@ -195,6 +196,7 @@ class BaseSolver:
                     raise RecognizeError('Unanticipated scene: login')
             except RecognizeError as e:
                 logger.warning(f'识别出了点小差错 qwq: {e}')
+                self.recog.save_screencap('failure')
                 retry_times -= 1
                 self.sleep(3)
                 continue
@@ -257,6 +259,7 @@ class BaseSolver:
                     raise RecognizeError('Unanticipated scene: back_to_index')
             except RecognizeError as e:
                 logger.warning(f'识别出了点小差错 qwq: {e}')
+                self.recog.save_screencap('failure')
                 retry_times -= 1
                 self.sleep(3)
                 continue
