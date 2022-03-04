@@ -13,6 +13,8 @@ debug:
   logfile:
     # 日志存放路径
     path: ./log
+    # 日志数量
+    amount: 3
   screenshot:
     # 截图存放路径
     path: ./screenshot
