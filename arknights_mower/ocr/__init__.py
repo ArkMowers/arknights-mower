@@ -26,13 +26,13 @@ def ocr_rectify(img, pre, valid, text=''):
     res = ocronline.predict(img, pre[2])
     if res is None or res == pre_res:
         logger.warning(
-            f'{text}识别异常：{pre_res} 为不存在的数据，请报告至 https://github.com/Konano/arknights-mower/issues')
+            f'{text}识别异常：{pre_res} 为不存在的数据')
     elif res not in valid:
         logger.warning(
-            f'{text}识别异常：{pre_res} 和 {res} 均为不存在的数据，请报告至 https://github.com/Konano/arknights-mower/issues')
+            f'{text}识别异常：{pre_res} 和 {res} 均为不存在的数据')
     else:
         logger.warning(
-            f'{text}识别异常：{pre_res} 应为 {res}，请报告至 https://github.com/Konano/arknights-mower/issues')
+            f'{text}识别异常：{pre_res} 应为 {res}')
         ocr_error[pre_res] = res
         pre_res = res
     return pre_res
