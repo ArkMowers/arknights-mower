@@ -178,7 +178,7 @@ def is_on_shift(img: tp.Image) -> bool:
     if matcher.match(distracted, judge=False) is not None:
         return False
     width = img.shape[1]
-    __width = int(width * 0.8)
-    left_up = np.count_nonzero(np.all(img[0, :__width] <= 62, axis=1)) / __width
+    __width = int(width * 0.7)
+    left_up = np.count_nonzero(np.all(img[0, :__width] <= 62, axis=1) & np.all(30 <= img[0, :__width], axis=1)) / __width
     logger.debug(f'is_on_shift: {left_up}')
-    return left_up > 0.2
+    return left_up > 0.3
