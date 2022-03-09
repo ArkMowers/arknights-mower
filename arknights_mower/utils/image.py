@@ -3,7 +3,7 @@ import numpy as np
 from typing import Union
 
 from . import typealias as tp
-from .log import logger
+from .log import logger, save_screenshot
 
 
 def bytes2img(data: bytes, gray: bool = False) -> Union[tp.Image, tp.GrayImage]:
@@ -34,21 +34,21 @@ def thres2(img: tp.GrayImage, thresh: int) -> tp.GrayImage:
     return ret
 
 
-def thres0(img: tp.Image, thresh: int) -> tp.Image:
-    """ delete pixel, filter: value > thresh """
-    ret = img.copy()
-    if len(ret.shape) == 3:
-        # ret[rgb2gray(img) <= thresh] = 0
-        z0 = ret[:, :, 0]
-        z1 = ret[:, :, 1]
-        z2 = ret[:, :, 2]
-        _ = (z0 <= thresh) | (z1 <= thresh) | (z2 <= thresh)
-        z0[_] = 0
-        z1[_] = 0
-        z2[_] = 0
-    else:
-        ret[ret <= thresh] = 0
-    return ret
+# def thres0(img: tp.Image, thresh: int) -> tp.Image:
+#     """ delete pixel, filter: value > thresh """
+#     ret = img.copy()
+#     if len(ret.shape) == 3:
+#         # ret[rgb2gray(img) <= thresh] = 0
+#         z0 = ret[:, :, 0]
+#         z1 = ret[:, :, 1]
+#         z2 = ret[:, :, 2]
+#         _ = (z0 <= thresh) | (z1 <= thresh) | (z2 <= thresh)
+#         z0[_] = 0
+#         z1[_] = 0
+#         z2[_] = 0
+#     else:
+#         ret[ret <= thresh] = 0
+#     return ret
 
 
 # def thres0(img: tp.Image, thresh: int) -> tp.Image:  # not support multichannel image
@@ -72,3 +72,7 @@ def scope2slice(scope: tp.Scope) -> tp.Slice:
 def cropimg(img: tp.Image, scope: tp.Scope) -> tp.Image:
     """ crop image """
     return img[scope2slice(scope)]
+
+
+def saveimg(img, folder='failure'):
+    save_screenshot(img2bytes(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)), subdir=f'{folder}/{img.shape[0]}x{img.shape[1]}')

@@ -9,11 +9,11 @@ from PIL import Image, ImageDraw, ImageFont
 
 from . import segment
 from ..ocr import ocrhandle
-from .image import img2bytes
-from .log import logger, save_screenshot
+from .image import saveimg
+from .log import logger
 from .recognize import RecognizeError
 from .. import __rootdir__
-from ..data.agent import agent_list
+from ..data import agent_list
 
 
 def poly_center(poly):
@@ -168,8 +168,7 @@ def agent(img, draw=False):
                     continue
                 logger.warning(
                     f'干员名称识别异常：{x[1]} 为不存在的数据，请报告至 https://github.com/Konano/arknights-mower/issues')
-                save_screenshot(
-                    img2bytes(__img), subdir=f'agent/{height}x{width}')
+                saveimg(__img, 'failure_agent')
             else:
                 __img = img[poly[0, 1]:poly[2, 1], poly[0, 0]:poly[2, 0]]
                 if 80 <= np.min(__img):
@@ -180,13 +179,11 @@ def agent(img, draw=False):
                     ret_succ.append(poly)
                     continue
                 logger.warning(f'干员名称识别异常：区域 {poly.tolist()}')
-                save_screenshot(
-                    img2bytes(__img), subdir=f'agent/{height}x{width}')
+                saveimg(__img, 'failure_agent')
             ret_fail.append(poly)
 
         if len(ret_fail):
-            save_screenshot(
-                img2bytes(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)), subdir=f'agentlist/{height}x{width}')
+            saveimg(img, 'failure')
             if draw:
                 __img = img.copy()
                 cv2.polylines(__img, ret_fail, True,

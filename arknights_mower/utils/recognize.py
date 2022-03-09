@@ -55,6 +55,9 @@ class Recognizer(object):
         """ get the color of the pixel """
         return self.img[y][x]
 
+    def save_screencap(self, folder):
+        save_screenshot(self.screencap, subdir=f'{folder}/{self.h}x{self.w}')
+
     def get_scene(self) -> int:
         """ get the current scene in the game """
         if self.scene != Scene.UNDEFINED:
@@ -113,6 +116,8 @@ class Recognizer(object):
             self.scene = Scene.INFRA_ARRANGE
         elif self.find('hidden_eye', thres=250, scope=((self.w//4*3, self.h//4*3), (self.w, self.h))) is not None:
             self.scene = Scene.INFRA_DETAILS
+        elif self.find('arrange_confirm') is not None:
+            self.scene = Scene.INFRA_ARRANGE_CONFIRM
         elif self.find('friend_list') is not None:
             self.scene = Scene.FRIEND_LIST_OFF
         elif self.find("mission_trainee_on") is not None:
@@ -176,8 +181,7 @@ class Recognizer(object):
             self.device.check_current_focus()
         # save screencap to analyse
         if config.SCREENSHOT_PATH is not None:
-            save_screenshot(
-                self.screencap, subdir=f'{self.scene}/{self.h}x{self.w}')
+            self.save_screencap(self.scene)
         logger.info(f'Scene: {self.scene}: {SceneComment[self.scene]}')
         return self.scene
 

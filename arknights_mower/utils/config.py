@@ -126,9 +126,10 @@ def init_config() -> None:
     APPNAME = __get('app/package_name', 'com.hypergryph.arknights') + \
         '/' + __get('app/activity_name', 'com.u8.sdk.U8UnityContext')
 
-    global DEBUG_MODE, LOGFILE_PATH, SCREENSHOT_PATH, SCREENSHOT_MAXNUM
+    global DEBUG_MODE, LOGFILE_PATH, LOGFILE_AMOUNT, SCREENSHOT_PATH, SCREENSHOT_MAXNUM
     DEBUG_MODE = __get('debug/enabled', False)
     LOGFILE_PATH = __get('debug/logfile/path', None)
+    LOGFILE_AMOUNT = __get('debug/logfile/amount', 3)
     SCREENSHOT_PATH = __get('debug/screenshot/path', None)
     SCREENSHOT_MAXNUM = __get('debug/screenshot/max_total', 20)
 

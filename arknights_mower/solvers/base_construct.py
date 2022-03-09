@@ -8,7 +8,7 @@ from ..utils.device import Device
 from ..utils.log import logger
 from ..utils.recognize import Recognizer, Scene, RecognizeError
 from ..utils.solver import BaseSolver
-from ..data.base import base_room_list
+from ..data import base_room_list
 
 
 class BaseConstructSolver(BaseSolver):
@@ -361,8 +361,9 @@ class BaseConstructSolver(BaseSolver):
         self.back(interval=2, rebuild=False)
         self.back(interval=2)
 
-    def choose_agent(self, agent: list[str]) -> None:
+    def choose_agent(self, agent: list[str], skip_free: int = 0) -> None:
         logger.info(f'安排干员：{agent}')
+        logger.debug(f'skip_free: {skip_free}')
         h, w = self.recog.h, self.recog.w
 
         # 在 agent 中 'Free' 表示任意空闲干员
@@ -378,7 +379,7 @@ class BaseConstructSolver(BaseSolver):
             self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
             checked = set()  # 已经识别过的干员
             pre = set()  # 上次识别出的干员
-            error_count, restart = 0, False
+            error_count = 0
 
             while len(agent):
                 try:
@@ -389,15 +390,6 @@ class BaseConstructSolver(BaseSolver):
                     if error_count < 3:
                         logger.debug(e)
                         self.sleep(3)
-                    elif not restart:
-                        # 重新滑动到最左边并重置变量
-                        logger.warning(e)
-                        for _ in range(9):
-                            self.swipe((w//2, h//2), (w//2, 0), interval=0)
-                        self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
-                        checked = set()
-                        pre = set()
-                        error_count, restart = 0, True
                     else:
                         raise e
                     continue
@@ -438,7 +430,8 @@ class BaseConstructSolver(BaseSolver):
             for _ in range(9):
                 self.swipe((w//2, h//2), (w//2, 0), interval=0)
             self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
-            
+            error_count = 0
+
             while free_num:
                 try:
                     # 识别空闲干员
@@ -448,30 +441,22 @@ class BaseConstructSolver(BaseSolver):
                     if error_count < 3:
                         logger.debug(e)
                         self.sleep(3)
-                    elif not restart:
-                        # 重新滑动到最左边并重置变量
-                        logger.warning(e)
-                        h, w = self.recog.h, self.recog.w
-                        for _ in range(9):
-                            self.swipe((w//2, h//2), (w//2, 0), interval=0)
-                        self.swipe((w//2, h//2), (w//2, 0),
-                                    interval=3, rebuild=False)
-                        checked = set()
-                        pre = set()
-                        error_count, restart = 0, True
                     else:
                         raise e
                     continue
 
                 while free_num and len(ret):
-                    self.tap(ret[0], interval=0, rebuild=False)
-                    free_num -= 1
+                    if skip_free > 0:
+                        skip_free -= 1
+                    else:
+                        self.tap(ret[0], interval=0, rebuild=False)
+                        free_num -= 1
                     ret = ret[1:]
 
                 # 如果已经完成选择则退出
                 if free_num == 0:
                     break
-                
+
                 self.swipe_noinertia(st, (ed[0]-st[0], 0))
 
     def agent_arrange(self, plan: tp.BasePlan) -> None:
@@ -544,13 +529,41 @@ class BaseConstructSolver(BaseSolver):
             for block in ret:
                 if base_room_list[idx] in plan.keys():
                     # 对这个房间进行换班
-                    x = (7*block[0][0]+3*block[2][0])//10
-                    y = (block[0][1]+block[2][1])//2
-                    self.tap((x, y), rebuild=False)
-                    self.choose_agent(plan[base_room_list[idx]])
-                    self.recog.update()
-                    self.tap_element('comfirm_blue', detected=True,
-                                     judge=False, interval=3, rebuild=False)
+                    finished = False
+                    skip_free = 0
+                    error_count = 0
+                    while not finished:
+                        x = (7*block[0][0]+3*block[2][0])//10
+                        y = (block[0][1]+block[2][1])//2
+                        self.tap((x, y), rebuild=False)
+                        try:
+                            self.choose_agent(
+                                plan[base_room_list[idx]], skip_free)
+                        except RecognizeError as e:
+                            error_count += 1
+                            if error_count >= 3:
+                                raise e
+                            # 返回基建干员进驻总览
+                            self.recog.update()
+                            while self.scene() not in [Scene.INFRA_ARRANGE, Scene.INFRA_MAIN] and self.scene() // 100 != 1:
+                                pre_scene = self.scene()
+                                self.back(interval=3)
+                                if self.scene() == pre_scene:
+                                    break
+                            if self.scene() != Scene.INFRA_ARRANGE:
+                                raise e
+                            continue
+                        self.recog.update()
+                        self.tap_element(
+                            'comfirm_blue', detected=True, judge=False, interval=3)
+                        if self.scene() == Scene.INFRA_ARRANGE_CONFIRM:
+                            x = self.recog.w // 3
+                            y = self.recog.h - 10
+                            self.tap((x, y), rebuild=False)
+                            skip_free += plan[base_room_list[idx]].count('Free')
+                            self.back()
+                        else:
+                            finished = True
                 idx += 1
 
             # 换班结束

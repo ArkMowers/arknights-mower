@@ -81,7 +81,7 @@ class OcrHandle(object):
                     partImg = Image.fromarray(partImg_array).convert('L')
                     simPred = self.crnn_handle.predict(partImg)
             except Exception as e:
-                print(traceback.format_exc())
+                logger.debug(traceback.format_exc())
                 continue
 
             if simPred.strip() != '':

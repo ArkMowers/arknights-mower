@@ -9,7 +9,7 @@ from . import typealias as tp
 from . import detector
 from .recognize import RecognizeError
 from .. import __rootdir__
-from ..data.agent import agent_list
+from ..data import agent_list
 from .log import logger
 from ..ocr import ocrhandle
 
@@ -476,8 +476,8 @@ def free_agent(img, draw=False):
 
         ret_free = []
         for poly in ret:
-            poly[poly == y1] = y0
-            poly[poly == y4] = y3
+            poly[:, 1][poly[:, 1] == y1] = y0
+            poly[:, 1][poly[:, 1] == y4] = y3
             __img = img[poly[0, 1]:poly[2, 1], poly[0, 0]:poly[2, 0]]
             if not detector.is_on_shift(__img):
                 ret_free.append(poly)

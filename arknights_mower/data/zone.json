@@ -1,0 +1,182 @@
+{
+    "main_0": {
+        "type": "MAINLINE",
+        "name": "黑暗时代·上",
+        "chapterIndex": 0,
+        "zoneIndex": 0
+    },
+    "main_1": {
+        "type": "MAINLINE",
+        "name": "黑暗时代·下",
+        "chapterIndex": 0,
+        "zoneIndex": 1
+    },
+    "main_2": {
+        "type": "MAINLINE",
+        "name": "异卵同生",
+        "chapterIndex": 0,
+        "zoneIndex": 2
+    },
+    "main_3": {
+        "type": "MAINLINE",
+        "name": "二次呼吸",
+        "chapterIndex": 0,
+        "zoneIndex": 3
+    },
+    "main_4": {
+        "type": "MAINLINE",
+        "name": "急性衰竭",
+        "chapterIndex": 1,
+        "zoneIndex": 0
+    },
+    "main_5": {
+        "type": "MAINLINE",
+        "name": "靶向药物",
+        "chapterIndex": 1,
+        "zoneIndex": 1
+    },
+    "main_6": {
+        "type": "MAINLINE",
+        "name": "局部坏死",
+        "chapterIndex": 1,
+        "zoneIndex": 2
+    },
+    "main_7": {
+        "type": "MAINLINE",
+        "name": "苦难摇篮",
+        "chapterIndex": 1,
+        "zoneIndex": 3
+    },
+    "main_8": {
+        "type": "MAINLINE",
+        "name": "怒号光明",
+        "chapterIndex": 1,
+        "zoneIndex": 4
+    },
+    "main_9": {
+        "type": "MAINLINE",
+        "name": "风暴瞭望",
+        "chapterIndex": 2,
+        "zoneIndex": 0
+    },
+    "weekly_1": {
+        "type": "WEEKLY",
+        "name": "固若金汤",
+        "chapterIndex": null,
+        "zoneIndex": null
+    },
+    "weekly_2": {
+        "type": "WEEKLY",
+        "name": "摧枯拉朽",
+        "chapterIndex": null,
+        "zoneIndex": null
+    },
+    "weekly_3": {
+        "type": "WEEKLY",
+        "name": "势不可挡",
+        "chapterIndex": null,
+        "zoneIndex": null
+    },
+    "weekly_4": {
+        "type": "WEEKLY",
+        "name": "身先士卒",
+        "chapterIndex": null,
+        "zoneIndex": null
+    },
+    "weekly_5": {
+        "type": "WEEKLY",
+        "name": "粉碎防御",
+        "chapterIndex": null,
+        "zoneIndex": null
+    },
+    "weekly_6": {
+        "type": "WEEKLY",
+        "name": "空中威胁",
+        "chapterIndex": null,
+        "zoneIndex": null
+    },
+    "weekly_7": {
+        "type": "WEEKLY",
+        "name": "战术演习",
+        "chapterIndex": null,
+        "zoneIndex": null
+    },
+    "weekly_8": {
+        "type": "WEEKLY",
+        "name": "资源保障",
+        "chapterIndex": null,
+        "zoneIndex": null
+    },
+    "weekly_9": {
+        "type": "WEEKLY",
+        "name": "货物运送",
+        "chapterIndex": null,
+        "zoneIndex": null
+    },
+    "permanent_sub_1_Darknights_Memoir": {
+        "type": "BRANCHLINE",
+        "name": "生于黑夜",
+        "chapterIndex": null,
+        "zoneIndex": 1
+    },
+    "permanent_sub_2_A_Walk_In_The_Dust": {
+        "type": "BRANCHLINE",
+        "name": "遗尘漫步",
+        "chapterIndex": null,
+        "zoneIndex": 2
+    },
+    "permanent_sub_3_Under_Tides": {
+        "type": "BRANCHLINE",
+        "name": "覆潮之下",
+        "chapterIndex": null,
+        "zoneIndex": 3
+    },
+    "permanent_sidestory_1_Grani_And_The_Treasure_Of_Knights": {
+        "type": "SIDESTORY",
+        "name": "骑兵与猎人",
+        "chapterIndex": null,
+        "zoneIndex": 1
+    },
+    "permanent_sidestory_2_Heart_Of_Surging_Flame": {
+        "type": "SIDESTORY",
+        "name": "火蓝之心",
+        "chapterIndex": null,
+        "zoneIndex": 2
+    },
+    "permanent_sidestory_3_Code_Of_Brawl": {
+        "type": "SIDESTORY",
+        "name": "喧闹法则",
+        "chapterIndex": null,
+        "zoneIndex": 3
+    },
+    "permanent_sidestory_4_Twilight_Of_Wolumonde": {
+        "type": "SIDESTORY",
+        "name": "沃伦姆德的薄暮",
+        "chapterIndex": null,
+        "zoneIndex": 4
+    },
+    "permanent_sidestory_5_The_Great_Chief_Returns": {
+        "type": "SIDESTORY",
+        "name": "密林悍将归来",
+        "chapterIndex": null,
+        "zoneIndex": 5
+    },
+    "permanent_sidestory_6_Maria_Nearl": {
+        "type": "SIDESTORY",
+        "name": "玛莉娅·临光",
+        "chapterIndex": null,
+        "zoneIndex": 6
+    },
+    "permanent_sidestory_7_Mansfield_Break": {
+        "type": "SIDESTORY",
+        "name": "孤岛风云",
+        "chapterIndex": null,
+        "zoneIndex": 7
+    },
+    "permanent_sidestory_8_Who_is_Real": {
+        "type": "SIDESTORY",
+        "name": "画中人",
+        "chapterIndex": null,
+        "zoneIndex": 8
+    }
+}
