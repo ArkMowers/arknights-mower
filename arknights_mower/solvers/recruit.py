@@ -6,7 +6,7 @@ from ..utils.device import Device
 from ..utils.log import logger
 from ..utils.recognize import Recognizer, Scene, RecognizeError
 from ..utils.solver import BaseSolver
-from ..data.recruit import recruit_database, recruit_tag, recruit_agent
+from ..data import recruit_tag, recruit_agent
 
 
 class RecruitPoss(object):
@@ -153,7 +153,7 @@ class RecruitSolver(BaseSolver):
                 agent = ocr_rectify(
                     self.recog.img, agent_ocr, agent_with_suf, '干员名称')[:-3]
             if agent in recruit_agent.keys():
-                if 2 <= recruit_agent[agent][1] <= 4:
+                if 2 <= recruit_agent[agent]['stars'] <= 4:
                     logger.info(f'获得干员：{agent}')
                 else:
                     logger.critical(f'获得干员：{agent}')
@@ -169,8 +169,10 @@ class RecruitSolver(BaseSolver):
         agent_level_dict = {}
 
         # 挨个干员判断可能性
-        for x in recruit_database:
-            agent_name, agent_level, agent_tags = x
+        for x in recruit_agent.values():
+            agent_name = x['name']
+            agent_level = x['stars']
+            agent_tags = x['tags']
             agent_level_dict[agent_name] = agent_level
 
             # 高级资深干员需要有特定的 tag

@@ -7,7 +7,7 @@ from ..utils.image import scope2slice
 from ..utils.log import logger
 from ..utils.recognize import Scene, RecognizeError
 from ..utils.solver import Recognizer, BaseSolver
-from ..data.item import shop_items
+from ..data import shop_items
 
 
 class ShopSolver(BaseSolver):

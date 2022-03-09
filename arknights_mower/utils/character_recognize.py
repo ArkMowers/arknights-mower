@@ -13,7 +13,7 @@ from .image import saveimg
 from .log import logger
 from .recognize import RecognizeError
 from .. import __rootdir__
-from ..data.agent import agent_list
+from ..data import agent_list
 
 
 def poly_center(poly):

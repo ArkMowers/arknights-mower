@@ -2,7 +2,7 @@ from PIL import Image
 import numpy as np
 import re
 
-from ..data.ocr import ocr_error
+from ..data import ocr_error
 from ..utils.log import logger
 
 

@@ -8,7 +8,7 @@ from ..utils.device import Device
 from ..utils.log import logger
 from ..utils.recognize import Recognizer, Scene, RecognizeError
 from ..utils.solver import BaseSolver
-from ..data.base import base_room_list
+from ..data import base_room_list
 
 
 class BaseConstructSolver(BaseSolver):

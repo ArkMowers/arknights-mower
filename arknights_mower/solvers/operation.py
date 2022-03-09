@@ -10,7 +10,7 @@ from ..utils.image import scope2slice
 from ..utils.log import logger
 from ..utils.recognize import Scene, RecognizeError
 from ..utils.solver import BaseSolver, StrategyError
-from ..data.level import level_list, zone_list, theme_list, weekly_zones
+from ..data import chapter_list, weekly_zones, level_list, zone_list
 
 
 BOTTOM_TAP_NUMER = 8
@@ -288,23 +288,23 @@ class OpeSolver(BaseSolver):
         zone_name = level_list[level]['zone_id']
         zone = zone_list[zone_name]
         logger.info(f'关卡：{level}')
-        logger.info(f'章节：{zone[0]}')
+        logger.info(f'章节：{zone["name"]}')
 
         # 识别导航栏，辅助识别章节
         scope = self.recog.nav_button()
         scope[1][1] = self.recog.h
 
         # 选择章节/区域
-        if zone[1] == 0:
+        if zone['type'] == 'MAINLINE':
             self.switch_bottom(1)
             self.choose_zone_theme(zone, scope)
-        elif zone[1] == 1:
+        elif zone['type'] == 'BRANCHLINE':
             self.switch_bottom(2)
             self.choose_zone_supple(zone, scope)
-        elif zone[1] == 2:
+        elif zone['type'] == 'SIDESTORY':
             self.switch_bottom(3)
             self.choose_zone_supple(zone, scope)
-        elif zone[1] == 3:
+        elif zone['type'] == 'WEEKLY':
             self.switch_bottom(4)
             self.choose_zone_resource(zone)
         else:
@@ -317,8 +317,8 @@ class OpeSolver(BaseSolver):
         retry_times = 3
         while level not in levels:
             _levels = levels
-            self.swipe_noinertia((self.recog.w // 4, self.recog.h // 4),
-                                 (self.recog.w // 16, 0))
+            self.swipe_noinertia((self.recog.w // 2, self.recog.h // 4),
+                                 (self.recog.w // 3, 0), 20)
             ocr, levels = self.ocr_level()
             if _levels == levels:
                 retry_times -= 1
@@ -331,8 +331,8 @@ class OpeSolver(BaseSolver):
         retry_times = 3
         while level not in levels:
             _levels = levels
-            self.swipe_noinertia((self.recog.w // 4, self.recog.h // 4),
-                                 (-self.recog.w // 16, 0))
+            self.swipe_noinertia((self.recog.w // 2, self.recog.h // 4),
+                                 (-self.recog.w // 3, 0), 20)
             ocr, levels = self.ocr_level()
             if _levels == levels:
                 retry_times -= 1
@@ -355,19 +355,19 @@ class OpeSolver(BaseSolver):
 
     def choose_zone_theme(self, zone: list, scope: tp.Scope) -> None:
         """ 识别主题曲区域 """
-        # 定位 Action 编号
+        # 定位 Chapter 编号
         ocr = []
         act_id = 999
-        while act_id != zone[2]:
+        while act_id != zone['chapterIndex']:
             _act_id = act_id
             act_id = -1
             for x in ocr:
-                if zone[2] < _act_id:
-                    if x[1].upper().replace(' ', '') == theme_list[_act_id-1]:
+                if zone['chapterIndex'] < _act_id:
+                    if x[1].upper().replace(' ', '') == chapter_list[_act_id-1].replace(' ', ''):
                         self.tap(x[2])
                         break
                 else:
-                    if x[1].upper().replace(' ', '') == theme_list[_act_id+1]:
+                    if x[1].upper().replace(' ', '') == chapter_list[_act_id+1].replace(' ', ''):
                         self.tap(x[2])
                         break
             ocr = ocrhandle.predict(self.recog.img[scope2slice(scope)])
@@ -375,7 +375,7 @@ class OpeSolver(BaseSolver):
                 if x[1][:7].upper() == 'EPISODE' and len(x[1]) == 9:
                     try:
                         episode = int(x[1][-2:])
-                        act_id = zone_list[f'main_{episode}'][2]
+                        act_id = zone_list[f'main_{episode}']['chapterIndex']
                         break
                     except Exception:
                         raise RecognizeError('Unknown episode')
@@ -384,24 +384,46 @@ class OpeSolver(BaseSolver):
 
         # 定位 Episode 编号
         cover = self.find(f'main_{episode}')
-        while zone[3] < episode:
+        while zone['zoneIndex'] < episode:
             self.swipe_noinertia((cover[0][0], cover[0][1]),
-                                 (cover[1][0] - cover[0][0], 0), 200)
+                                 (cover[1][0] - cover[0][0], 0))
             episode -= 1
-        while episode < zone[3]:
+        while episode < zone['zoneIndex']:
             self.swipe_noinertia((cover[1][0], cover[0][1]),
-                                 (cover[0][0] - cover[1][0], 0), 200)
+                                 (cover[0][0] - cover[1][0], 0))
             episode += 1
         self.tap(cover)
 
     def choose_zone_supple(self, zone: list, scope: tp.Scope) -> None:
         """ 识别别传/插曲区域 """
-        ocr = ocrhandle.predict(self.recog.img[scope2slice(scope)])
-        for x in ocr:
-            if x[1] == zone[0]:
-                self.tap(x[2])
-        self.tap_element('enter')
-        # TODO 别传现在长度已经超过了屏幕，需要多次滑动查找
+        try_times = 5
+        zoneIndex = {}
+        for x in zone_list.values():
+            zoneIndex[x['name'].replace('·', '')] = x['zoneIndex']
+        while try_times:
+            try_times -= 1
+            ocr = ocrhandle.predict(self.recog.img[scope2slice(scope)])
+            zones = set()
+            for x in ocr:
+                if x[1] in zoneIndex.keys():
+                    zones.add(zoneIndex[x[1]])
+            logger.debug(zones)
+            if zone['zoneIndex'] in zones:
+                for x in ocr:
+                    if x[1] == zone['name'].replace('·', ''):
+                        self.tap(x[2])
+                        self.tap_element('enter')
+                        return
+                raise RecognizeError
+            else:
+                st, ed = None, None
+                for x in ocr:
+                    if x[1] in zoneIndex.keys() and zoneIndex[x[1]] == min(zones):
+                        ed = x[2][0]
+                    elif x[1] in zoneIndex.keys() and zoneIndex[x[1]] == max(zones):
+                        st = x[2][0]
+                logger.debug((st, ed))
+                self.swipe_noinertia(st, (0, ed[1]-st[1]))
 
     def choose_zone_resource(self, zone: list) -> None:
         """ 识别资源收集区域 """
@@ -409,7 +431,7 @@ class OpeSolver(BaseSolver):
         unable = list(filter(lambda x: x[1] in ['不可进入', '本日16:00开启'], ocr))
         ocr = list(filter(lambda x: x[1] in weekly_zones, ocr))
         weekly = sorted([x[1] for x in ocr])
-        while zone[0] not in weekly:
+        while zone['name'] not in weekly:
             _weekly = weekly
             self.swipe((self.recog.w // 4, self.recog.h // 4),
                        (self.recog.w // 16, 0))
@@ -419,7 +441,7 @@ class OpeSolver(BaseSolver):
             weekly = sorted([x[1] for x in ocr])
             if _weekly == weekly:
                 break
-        while zone[0] not in weekly:
+        while zone['name'] not in weekly:
             _weekly = weekly
             self.swipe((self.recog.w // 4, self.recog.h // 4),
                        (-self.recog.w // 16, 0))
@@ -429,10 +451,10 @@ class OpeSolver(BaseSolver):
             weekly = sorted([x[1] for x in ocr])
             if _weekly == weekly:
                 break
-        if zone[0] not in weekly:
+        if zone['name'] not in weekly:
             raise RecognizeError('Not as expected')
         for x in ocr:
-            if x[1] == zone[0]:
+            if x[1] == zone['name']:
                 for item in unable:
                     if x[2][0][0] < item[2][0][0] < x[2][1][0]:
                         raise LevelUnopenError

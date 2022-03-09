@@ -2,7 +2,7 @@ from .model import OcrHandle
 from .ocrspace import API, Language
 from ..utils import config
 from ..utils.log import logger
-from ..data.ocr import ocr_error
+from ..data import ocr_error
 
 ocrhandle = OcrHandle()
 ocronline = API(api_key=config.OCR_APIKEY,

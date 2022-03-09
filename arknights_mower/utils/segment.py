@@ -9,7 +9,7 @@ from . import typealias as tp
 from . import detector
 from .recognize import RecognizeError
 from .. import __rootdir__
-from ..data.agent import agent_list
+from ..data import agent_list
 from .log import logger
 from ..ocr import ocrhandle
 
