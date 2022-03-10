@@ -150,6 +150,8 @@ class Recognizer(object):
             self.scene = Scene.LOGIN_QUICKLY
         elif self.find('login_account') is not None:
             self.scene = Scene.LOGIN_MAIN
+        elif self.find('register') is not None:
+            self.scene = Scene.LOGIN_REGISTER
         elif self.find('login_loading') is not None:
             self.scene = Scene.LOGIN_LOADING
         elif self.find('login_iknow') is not None:

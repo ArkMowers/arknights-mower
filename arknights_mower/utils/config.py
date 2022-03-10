@@ -122,6 +122,10 @@ def init_config() -> None:
     global ADB_MNT_PORT
     ADB_MNT_PORT = __get('device/adb_mnt_port', 20937)
 
+    global USERNAME, PASSWORD
+    USERNAME = __get('account/username', None)
+    PASSWORD = __get('account/password', None)
+
     global APPNAME
     APPNAME = __get('app/package_name', 'com.hypergryph.arknights') + \
         '/' + __get('app/activity_name', 'com.u8.sdk.U8UnityContext')

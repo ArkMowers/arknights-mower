@@ -17,6 +17,7 @@ scene_list = [
     [104, 'LOGIN_LOADING', '登陆中'],
     [105, 'LOGIN_START', '启动'],
     [106, 'LOGIN_ANNOUNCE', '启动界面公告'],
+    [107, 'LOGIN_REGISTER', '注册'],
     [201, 'INFRA_MAIN', '基建全局视角'],
     [202, 'INFRA_TODOLIST', '基建待办事项'],
     [203, 'INFRA_CONFIDENTIAL', '线索主界面'],
