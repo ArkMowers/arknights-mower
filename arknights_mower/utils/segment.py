@@ -290,7 +290,7 @@ def worker(img: tp.Image, draw: bool = False) -> tuple[list[tp.Rectangle], tp.Re
         remove_mode = False
         pre, st = int(img[0, x0, 1]), 0
         for y in range(1, height):
-            remove_mode |= img[y, x0, 0] - img[y, x0, 1] > 40
+            remove_mode |= int(img[y, x0, 0]) - int(img[y, x0, 1]) > 40
             if np.ptp(img[y, x0]) <= 1 or int(img[y, x0, 0]) - int(img[y, x0, 1]) > 40:
                 now = int(img[y, x0, 1])
                 if abs(now - pre) > 20:
