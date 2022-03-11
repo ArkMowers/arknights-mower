@@ -44,7 +44,7 @@ for x in zone_table['zones'].values():
             'type': x['type'],
             'name': x['zoneNameSecond'],
             'chapterIndex': chapterIndex,
-            'zoneIndex': x['zoneIndex']
+            'zoneIndex': int(x['zoneID'].split('_')[1])
         }
     elif x['type'] == 'WEEKLY':
         zone[x['zoneID']] = {
