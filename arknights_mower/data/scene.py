@@ -11,6 +11,7 @@ scene_list = [
     [6, 'UPGRADE', '升级'],
     [7, 'SKIP', '跳过'],
     [8, 'DOUBLE_CONFIRM', '二次确认'],
+    [9, 'CONNECTING', '正在提交反馈至神经'],
     [101, 'LOGIN_MAIN', '登陆页面'],
     [102, 'LOGIN_INPUT', '登陆页面（输入）'],
     [103, 'LOGIN_QUICKLY', '登陆页面（快速）'],

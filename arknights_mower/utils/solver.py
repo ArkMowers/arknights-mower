@@ -195,6 +195,8 @@ class BaseSolver:
                     self.sleep(3)
                 elif self.scene() == Scene.LOADING:
                     self.sleep(3)
+                elif self.scene() == Scene.CONNECTING:
+                    self.sleep(3)
                 elif self.scene() == Scene.CONFIRM:
                     self.tap(detector.confirm(self.recog.img))
                 else:
@@ -243,6 +245,8 @@ class BaseSolver:
                 elif self.scene() == Scene.CONFIRM:
                     self.tap(detector.confirm(self.recog.img))
                 elif self.scene() == Scene.LOADING:
+                    self.sleep(3)
+                elif self.scene() == Scene.CONNECTING:
                     self.sleep(3)
                 elif self.scene() == Scene.SKIP:
                     self.tap_element('skip')

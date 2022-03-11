@@ -44,6 +44,8 @@ class BaseConstructSolver(BaseSolver):
             self.back()
         elif self.scene() == Scene.LOADING:
             self.sleep(3)
+        elif self.scene() == Scene.CONNECTING:
+            self.sleep(3)
         elif self.get_navigation():
             self.tap_element('nav_infrastructure')
         elif self.scene() != Scene.UNKNOWN:
@@ -494,8 +496,11 @@ class BaseConstructSolver(BaseSolver):
                     self.tap((block[2][0]-5, block[2][1]-5))
                     dc = self.find('double_confirm')
                     if dc is not None:
-                        self.tap((dc[1][0], (dc[0][1]+dc[1][1]) // 2),
-                                 rebuild=False)
+                        self.tap((dc[1][0], (dc[0][1]+dc[1][1]) // 2))
+                    while self.scene() == Scene.CONNECTING:
+                        self.sleep(3)
+                    if self.scene() != Scene.INFRA_ARRANGE:
+                        raise RecognizeError
                 idx += 1
 
             # 如果全部需要清空的房间都清空了就
@@ -566,6 +571,8 @@ class BaseConstructSolver(BaseSolver):
                             self.back()
                         else:
                             finished = True
+                        while self.scene() == Scene.CONNECTING:
+                            self.sleep(3)
                 idx += 1
 
             # 换班结束

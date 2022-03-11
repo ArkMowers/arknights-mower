@@ -62,7 +62,9 @@ class Recognizer(object):
         """ get the current scene in the game """
         if self.scene != Scene.UNDEFINED:
             return self.scene
-        if self.find('index_nav', thres=250, scope=((0, 0), (100+self.w//4, self.h//10))) is not None:
+        if self.find('connecting', scope=((self.w//2, self.h//10*8), (self.w//4*3, self.h))) is not None:
+            self.scene = Scene.CONNECTING
+        elif self.find('index_nav', thres=250, scope=((0, 0), (100+self.w//4, self.h//10))) is not None:
             self.scene = Scene.INDEX
         elif self.find('nav_index') is not None:
             self.scene = Scene.NAVIGATION_BAR

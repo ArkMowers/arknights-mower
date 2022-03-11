@@ -113,6 +113,8 @@ class OpeSolver(BaseSolver):
             return self.recover_originite()
         elif self.scene() == Scene.LOADING:
             self.sleep(3)
+        elif self.scene() == Scene.CONNECTING:
+            self.sleep(3)
         elif self.scene() == Scene.UPGRADE:
             self.tap_element('upgrade')
         elif self.scene() == Scene.OPERATOR_DROP:

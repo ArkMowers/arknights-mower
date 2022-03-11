@@ -50,6 +50,8 @@ class ShopSolver(BaseSolver):
             self.tap_element('materiel_ico')
         elif self.scene() == Scene.LOADING:
             self.sleep(3)
+        elif self.scene() == Scene.CONNECTING:
+            self.sleep(3)
         elif self.get_navigation():
             self.tap_element('nav_shop')
         elif self.scene() != Scene.UNKNOWN:
