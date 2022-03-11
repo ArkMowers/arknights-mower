@@ -27,37 +27,37 @@
         "type": "MAINLINE",
         "name": "急性衰竭",
         "chapterIndex": 1,
-        "zoneIndex": 0
+        "zoneIndex": 4
     },
     "main_5": {
         "type": "MAINLINE",
         "name": "靶向药物",
         "chapterIndex": 1,
-        "zoneIndex": 1
+        "zoneIndex": 5
     },
     "main_6": {
         "type": "MAINLINE",
         "name": "局部坏死",
         "chapterIndex": 1,
-        "zoneIndex": 2
+        "zoneIndex": 6
     },
     "main_7": {
         "type": "MAINLINE",
         "name": "苦难摇篮",
         "chapterIndex": 1,
-        "zoneIndex": 3
+        "zoneIndex": 7
     },
     "main_8": {
         "type": "MAINLINE",
         "name": "怒号光明",
         "chapterIndex": 1,
-        "zoneIndex": 4
+        "zoneIndex": 8
     },
     "main_9": {
         "type": "MAINLINE",
         "name": "风暴瞭望",
         "chapterIndex": 2,
-        "zoneIndex": 0
+        "zoneIndex": 9
     },
     "weekly_1": {
         "type": "WEEKLY",
