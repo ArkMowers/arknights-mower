@@ -358,7 +358,7 @@ def agent(img, draw=False):
         # ocr 初步识别干员名称
         ocr = ocrhandle.predict(img[:, x0:right])
 
-        # 保留上下两行皆被成功识别出来的干员名称的识别结果
+        # 收集成功识别出来的干员名称识别结果，提取 y 范围，并将重叠的范围进行合并
         segs = [(min(x[2][0][1], x[2][1][1]), max(x[2][2][1], x[2][3][1]))
                 for x in ocr if x[1] in agent_list]
         while True:
@@ -381,36 +381,40 @@ def agent(img, draw=False):
         # 计算纵向的四个高度，[y0, y1] 是第一行干员名称的纵向坐标范围，[y2, y3] 是第二行干员名称的纵向坐标范围
         y0 = y1 = y2 = y3 = None
         for x in segs:
-            if x[1] < height // 2:
+            if x[1] < height // 2:  # FIXME 是否需要改成 x[0]
                 y0, y1 = x
             else:
                 y2, y3 = x
         if y0 is None or y2 is None:
             raise RecognizeError
-        card_gap = y1 - y0
-        logger.debug([y0, y1, y2, y3])
+        hpx = y1 - y0  # 卡片上干员名称的高度
+        logger.debug((segs, [y0, y1, y2, y3]))
 
         # 预计算：横向坐标范围集合
         x_set = set()
         for x in ocr:
             if x[1] in agent_list and (y0 <= x[2][0][1] <= y1 or y2 <= x[2][0][1] <= y3):
+                # 只考虑矩形右边端点
                 x_set.add(x[2][1][0])
                 x_set.add(x[2][2][0])
         x_set = sorted(x_set)
         logger.debug(x_set)
 
         # 排除掉一些重叠的范围，获得最终的横向坐标范围
-        x_gap = 40 * (resolution / 1080)
+        gap = 160 * (resolution / 1080)  # 卡片宽度下限
         x_set = [x_set[0]] + \
-            [y for x, y in zip(x_set[:-1], x_set[1:]) if y - x > x_gap * 2]
+            [y for x, y in zip(x_set[:-1], x_set[1:]) if y - x > gap]
         gap = [y - x for x, y in zip(x_set[:-1], x_set[1:])]
-        gap = [x for x in gap if x - np.min(gap) < x_gap]
-        gap = int(np.average(gap))
+        logger.debug(sorted(gap))
+        gap = int(np.median(gap))  # 干员卡片宽度
         for x, y in zip(x_set[:-1], x_set[1:]):
-            if y - x > x_gap:
+            if y - x > gap:
                 gap_num = round((y - x) / gap)
                 for i in range(1, gap_num):
                     x_set.append(int(x + (y - x) / gap_num * i))
+        if x_set[-1] - x_set[-2] < gap:
+            # 如果最后一个间隔不足宽度则丢弃，避免出现「梅尔」只露出一半识别成「梅」算作成功识别的情况
+            x_set = x_set[:-1]
         while np.min(x_set) > 0:
             x_set.append(np.min(x_set) - gap)
         while np.max(x_set) < right - x0:
@@ -421,9 +425,9 @@ def agent(img, draw=False):
         # 获得所有的干员名称对应位置
         ret = []
         for x1, x2 in zip(x_set[:-1], x_set[1:]):
-            if 0 <= x1+card_gap and x0+x2+5 <= right:
-                ret += [get_poly(x0+x1+card_gap, x0+x2+5, y0, y1),
-                        get_poly(x0+x1+card_gap, x0+x2+5, y2, y3)]
+            if 0 <= x1+hpx and x0+x2+5 <= right:
+                ret += [get_poly(x0+x1+hpx, x0+x2+5, y0, y1),
+                        get_poly(x0+x1+hpx, x0+x2+5, y2, y3)]
 
         # draw for debug
         if draw:
