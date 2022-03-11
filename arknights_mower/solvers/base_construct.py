@@ -516,6 +516,8 @@ class BaseConstructSolver(BaseSolver):
         room_total = len(base_room_list)
         while idx < room_total:
             ret, switch, mode = segment.worker(self.recog.img)
+            if len(ret) == 0:
+                raise RecognizeError('未识别到进驻总览中的房间列表')
 
             # 关闭撤下干员按钮
             if mode:

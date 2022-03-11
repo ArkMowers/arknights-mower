@@ -379,10 +379,14 @@ def agent(img, draw=False):
         segs = sorted(segs)
 
         # 计算纵向的四个高度，[y0, y1] 是第一行干员名称的纵向坐标范围，[y2, y3] 是第二行干员名称的纵向坐标范围
+        y0 = y1 = y2 = y3 = None
         for x in segs:
             if x[1] < height // 2:
                 y0, y1 = x
-            y2, y3 = x
+            else:
+                y2, y3 = x
+        if y0 is None or y2 is None:
+            raise RecognizeError
         card_gap = y1 - y0
         logger.debug([y0, y1, y2, y3])
 
