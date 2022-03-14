@@ -367,6 +367,7 @@ class BaseConstructSolver(BaseSolver):
         logger.info(f'安排干员：{agent}')
         logger.debug(f'skip_free: {skip_free}')
         h, w = self.recog.h, self.recog.w
+        first_time = True
 
         # 在 agent 中 'Free' 表示任意空闲干员
         free_num = agent.count('Free')
@@ -375,10 +376,13 @@ class BaseConstructSolver(BaseSolver):
         # 安排指定干员
         if len(agent):
 
-            # 滑动到最左边
-            for _ in range(9):
-                self.swipe((w//2, h//2), (w//2, 0), interval=0)
-            self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
+            if not first_time:
+                # 滑动到最左边
+                for _ in range(9):
+                    self.swipe((w//2, h//2), (w//2, 0), interval=0)
+                self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
+            first_time = False
+
             checked = set()  # 已经识别过的干员
             pre = set()  # 上次识别出的干员
             error_count = 0
@@ -428,10 +432,13 @@ class BaseConstructSolver(BaseSolver):
         # 安排空闲干员
         if free_num:
 
-            # 滑动到最左边
-            for _ in range(9):
-                self.swipe((w//2, h//2), (w//2, 0), interval=0)
-            self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
+            if not first_time:
+                # 滑动到最左边
+                for _ in range(9):
+                    self.swipe((w//2, h//2), (w//2, 0), interval=0)
+                self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
+            first_time = False
+
             error_count = 0
 
             while free_num:
@@ -468,11 +475,11 @@ class BaseConstructSolver(BaseSolver):
         # 进入进驻总览
         self.tap_element('infra_overview', interval=2)
 
-        # 滑动到最顶
-        h, w = self.recog.h, self.recog.w
-        for _ in range(4):
-            self.swipe((w//2, h//2), (0, h//2), interval=0)
-        self.swipe((w//2, h//2), (0, h//2), rebuild=False)
+        # 滑动到最顶（从首页进入默认最顶无需滑动）
+        # h, w = self.recog.h, self.recog.w
+        # for _ in range(4):
+        #     self.swipe((w//2, h//2), (0, h//2), interval=0)
+        # self.swipe((w//2, h//2), (0, h//2), rebuild=False)
 
         logger.info('撤下干员中……')
         idx = 0
