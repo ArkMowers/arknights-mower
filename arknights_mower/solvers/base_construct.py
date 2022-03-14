@@ -58,7 +58,16 @@ class BaseConstructSolver(BaseSolver):
         if self.find('control_central') is None:
             self.back()
             return
-        if not self.todo_task:
+        if self.clue_collect:
+            self.clue()
+            self.clue_collect = False
+        elif self.drone_room is not None:
+            self.drone(self.drone_room)
+            self.drone_room = None
+        elif self.arrange is not None:
+            self.agent_arrange(self.arrange)
+            self.arrange = None
+        elif not self.todo_task:
             # 处理基建 Todo
             notification = detector.infra_notification(self.recog.img)
             if notification is None:
@@ -68,15 +77,6 @@ class BaseConstructSolver(BaseSolver):
                 self.tap(notification)
             else:
                 self.todo_task = True
-        elif self.clue_collect:
-            self.clue()
-            self.clue_collect = False
-        elif self.drone_room is not None:
-            self.drone(self.drone_room)
-            self.drone_room = None
-        elif self.arrange is not None:
-            self.agent_arrange(self.arrange)
-            self.arrange = None
         else:
             return True
 
@@ -341,7 +341,9 @@ class BaseConstructSolver(BaseSolver):
             room[i, 1] = min(room[i, 1], self.recog.h)
 
         # 点击进入
-        self.tap(room[0], interval=3, rebuild=False)
+        self.tap(room[0], interval=3)
+        while self.find('control_central') is not None:
+            self.tap(room[0], interval=3)
 
     def drone(self, room: str):
         logger.info('基建：无人机加速')
