@@ -412,6 +412,7 @@ def agent(img, draw=False):
                 gap_num = round((y - x) / gap)
                 for i in range(1, gap_num):
                     x_set.append(int(x + (y - x) / gap_num * i))
+        x_set = sorted(x_set)
         if x_set[-1] - x_set[-2] < gap:
             # 如果最后一个间隔不足宽度则丢弃，避免出现「梅尔」只露出一半识别成「梅」算作成功识别的情况
             x_set = x_set[:-1]
