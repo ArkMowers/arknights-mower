@@ -477,6 +477,7 @@ class BaseConstructSolver(BaseSolver):
         logger.info('撤下干员中……')
         idx = 0
         room_total = len(base_room_list)
+        need_empty = set(list(plan.keys()))
         while idx < room_total:
             # switch: 撤下干员按钮
             ret, switch, mode = segment.worker(self.recog.img)
@@ -492,7 +493,8 @@ class BaseConstructSolver(BaseSolver):
 
             for block in ret:
                 # 清空在换班计划中的房间
-                if base_room_list[idx] in plan.keys():
+                if base_room_list[idx] in need_empty:
+                    need_empty.remove(base_room_list[idx])
                     self.tap((block[2][0]-5, block[2][1]-5))
                     dc = self.find('double_confirm')
                     if dc is not None:
@@ -504,7 +506,7 @@ class BaseConstructSolver(BaseSolver):
                 idx += 1
 
             # 如果全部需要清空的房间都清空了就
-            if idx == room_total:
+            if idx == room_total or len(need_empty) == 0:
                 break
             block = ret[-1]
             top = switch[2][1]
@@ -519,6 +521,7 @@ class BaseConstructSolver(BaseSolver):
         logger.info('安排干员工作……')
         idx = 0
         room_total = len(base_room_list)
+        need_empty = set(list(plan.keys()))
         while idx < room_total:
             ret, switch, mode = segment.worker(self.recog.img)
             if len(ret) == 0:
@@ -534,7 +537,8 @@ class BaseConstructSolver(BaseSolver):
                 ret = ret[-(room_total-idx):]
 
             for block in ret:
-                if base_room_list[idx] in plan.keys():
+                if base_room_list[idx] in need_empty:
+                    need_empty.remove(base_room_list[idx])
                     # 对这个房间进行换班
                     finished = False
                     skip_free = 0
@@ -576,7 +580,7 @@ class BaseConstructSolver(BaseSolver):
                 idx += 1
 
             # 换班结束
-            if idx == room_total:
+            if idx == room_total or len(need_empty) == 0:
                 break
             block = ret[-1]
             top = switch[2][1]
