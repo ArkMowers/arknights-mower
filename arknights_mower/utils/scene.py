@@ -1,4 +1,4 @@
-from ..data.scene import scene_list
+from ..data import scene_list
 
 
 class Scene:
@@ -8,6 +8,9 @@ class Scene:
 SceneComment = {}
 
 
-for scene in scene_list:
-    setattr(Scene, scene[1], scene[0])
-    SceneComment[scene[0]] = scene[2]
+for scene in scene_list.keys():
+    id = int(scene)
+    label = scene_list[scene]['label']
+    comment = scene_list[scene]['comment']
+    setattr(Scene, label, id)
+    SceneComment[id] = comment
