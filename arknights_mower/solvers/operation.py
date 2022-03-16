@@ -68,7 +68,8 @@ class OpeSolver(BaseSolver):
         self.wait_start = 0  # 作战时第一次等待的时长
         self.wait_total = 0  # 作战时累计等待的时长
         self.level_choosed = plan[0][0] == 'pre_ope'  # 是否已经选定关卡
-        self.unopen = []
+        self.unopen = []  # 未开放的关卡
+        self.failed = False  # 作战代理是否正常运作
 
         logger.info('Start: 作战')
         logger.debug(f'plan: {plan}')
@@ -104,9 +105,13 @@ class OpeSolver(BaseSolver):
             self.ope_finish()
         elif self.scene() == Scene.OPERATOR_ELIMINATE_FINISH:
             self.ope_finish_elimi()
-        elif self.scene() == Scene.OPERATOR_GIVEUP:
+        elif self.scene() == Scene.OPERATOR_GIVEUP:  # TODO 得找个稳定复现代理三星变两星的地图
             logger.error('代理出现失误')
             return True
+        elif self.scene() == Scene.OPERATOR_FAILED:
+            logger.error('代理出现失误')
+            self.failed = True
+            self.tap((self.recog.w // 2, 10))
         elif self.scene() == Scene.OPERATOR_RECOVER_POTION:
             return self.recover_potion()
         elif self.scene() == Scene.OPERATOR_RECOVER_ORIGINITE:
@@ -153,6 +158,9 @@ class OpeSolver(BaseSolver):
             self.get_navigation()
             self.tap_element('nav_terminal')
             return
+        # 代理出现过失误，终止作战
+        if self.failed:
+            return True
         # 激活代理作战
         agency = self.find('ope_agency')
         if agency is not None:
@@ -182,6 +190,9 @@ class OpeSolver(BaseSolver):
         # 如果每周剿灭已完成但仍然在剿灭关卡前，则只可能是 pre_ope 为剿灭关卡，此时应该退出
         if self.eliminate_state == 2:
             logger.warning('检测到关卡为剿灭，但每周剿灭任务已完成')
+            return True
+        # 代理出现过失误，终止作战
+        if self.failed:
             return True
         # 激活代理作战
         agency = self.find('ope_agency')

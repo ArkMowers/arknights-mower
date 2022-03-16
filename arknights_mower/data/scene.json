@@ -179,6 +179,10 @@
         "label": "OPERATOR_GIVEUP",
         "comment": "代理失误"
     },
+    "613": {
+        "label": "OPERATOR_FAILED",
+        "comment": "代理作战失败"
+    },
     "701": {
         "label": "SHOP_OTHERS",
         "comment": "商店除了信用兑换处以外的界面"
