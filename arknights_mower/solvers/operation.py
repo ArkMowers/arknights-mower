@@ -170,6 +170,7 @@ class OpeSolver(BaseSolver):
         if self.wait_pre != 10:
             self.wait_start = 0
             self.wait_pre = 10
+        self.wait_total = 0
         # 点击开始作战
         self.tap_element('ope_start')
         # 确定可以开始作战后扣除相应的消耗药剂或者源石
@@ -203,6 +204,7 @@ class OpeSolver(BaseSolver):
         if self.wait_pre != 60:
             self.wait_start = 0
             self.wait_pre = 60
+        self.wait_total = 0
         # 点击开始作战
         self.tap_element('ope_start')
         # 确定可以开始作战后扣除相应的消耗药剂或者源石
