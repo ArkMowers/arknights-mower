@@ -258,14 +258,18 @@ class OpeSolver(BaseSolver):
                 self.tap_element('ope_recover_originite')
                 return
             # 关闭恢复界面
-            self.tap_element('ope_recover_choose', 0.05)
+            if not self.tap_element('ope_recover_choose', 0.05, detected=True):
+                self.back()
             return True
         elif self.recover_state:
             # 正在恢复中，防止网络波动
             self.sleep(3)
         else:
             # 选择药剂恢复体力
-            self.tap_element('ope_recover_choose', 0.95)
+            if not self.tap_element('ope_recover_choose', 0.95, detected=True):
+                # 使用次数未归零但已经没有药剂可以恢复体力了
+                self.potion = 0
+                return
             # 修改状态
             self.recover_state = 1
 
@@ -276,14 +280,18 @@ class OpeSolver(BaseSolver):
                 self.tap_element('ope_recover_potion')
                 return
             # 关闭恢复界面
-            self.tap_element('ope_recover_choose', 0.05)
+            if not self.tap_element('ope_recover_choose', 0.05, detected=True):
+                self.back()
             return True
         elif self.recover_state:
             # 正在恢复中，防止网络波动
             self.sleep(3)
         else:
             # 选择源石恢复体力
-            self.tap_element('ope_recover_choose', 0.95)
+            if not self.tap_element('ope_recover_choose', 0.95, detected=True):
+                # 使用次数未归零但已经没有源石可以恢复体力了
+                self.originite = 0
+                return
             # 修改状态
             self.recover_state = 2
 
