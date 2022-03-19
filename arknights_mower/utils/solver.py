@@ -199,8 +199,10 @@ class BaseSolver:
                     self.sleep(3)
                 elif self.scene() == Scene.CONFIRM:
                     self.tap(detector.confirm(self.recog.img))
+                elif self.scene() == Scene.UNKNOWN:
+                    raise RecognizeError('Unknown scene')
                 else:
-                    raise RecognizeError('Unanticipated scene: login')
+                    raise RecognizeError('Unanticipated scene')
             except RecognizeError as e:
                 logger.warning(f'识别出了点小差错 qwq: {e}')
                 self.recog.save_screencap('failure')
@@ -265,11 +267,13 @@ class BaseSolver:
                     self.tap((mid_y, mid_y))
                 elif self.scene() == Scene.INFRA_ARRANGE_CONFIRM:
                     self.tap((self.recog.w // 3, self.recog.h - 10))
+                elif self.scene() == Scene.UNKNOWN:
+                    raise RecognizeError('Unknown scene')
                 elif pre_scene is None or pre_scene != self.scene():
                     pre_scene = self.scene()
                     self.back()
                 else:
-                    raise RecognizeError('Unanticipated scene: back_to_index')
+                    raise RecognizeError('Unanticipated scene')
             except RecognizeError as e:
                 logger.warning(f'识别出了点小差错 qwq: {e}')
                 self.recog.save_screencap('failure')

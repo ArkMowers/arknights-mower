@@ -66,4 +66,4 @@ class MissionSolver(BaseSolver):
         elif self.scene() != Scene.UNKNOWN:
             self.back_to_index()
         else:
-            raise RecognizeError('Unanticipated scene: Mission')
+            raise RecognizeError('Unknown scene')

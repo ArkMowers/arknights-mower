@@ -86,7 +86,7 @@ class RecruitSolver(BaseSolver):
         elif self.scene() != Scene.UNKNOWN:
             self.back_to_index()
         else:
-            raise RecognizeError('Unanticipated scene: Recruit')
+            raise RecognizeError('Unknown scene')
 
     def recruit_tags(self) -> bool:
         """ 识别公招标签的逻辑 """

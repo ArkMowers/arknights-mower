@@ -129,7 +129,7 @@ class OpeSolver(BaseSolver):
         elif self.scene() != Scene.UNKNOWN:
             self.back_to_index()
         else:
-            raise RecognizeError('Unanticipated scene: Operation')
+            raise RecognizeError('Unknown scene')
 
     def terminal_main(self) -> bool:
         eliminate_todo = self.find('terminal_eliminate')

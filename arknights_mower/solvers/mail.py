@@ -40,4 +40,4 @@ class MailSolver(BaseSolver):
         elif self.scene() != Scene.UNKNOWN:
             self.back_to_index()
         else:
-            raise RecognizeError('Unanticipated scene: Mail')
+            raise RecognizeError('Unknown scene')
