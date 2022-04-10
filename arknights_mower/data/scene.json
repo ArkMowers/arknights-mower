@@ -71,6 +71,10 @@
         "label": "LOGIN_REGISTER",
         "comment": "注册"
     },
+    "108": {
+        "label": "LOGIN_CAPTCHA",
+        "comment": "滑动验证码"
+    },
     "201": {
         "label": "INFRA_MAIN",
         "comment": "基建全局视角"

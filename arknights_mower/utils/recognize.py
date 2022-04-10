@@ -170,8 +170,12 @@ class Recognizer(object):
             self.scene = Scene.UPGRADE
         elif detector.confirm(self.img) is not None:
             self.scene = Scene.CONFIRM
-        elif self.find('login_captcha') is not None:
+        elif self.find('login_verify') is not None:
             self.scene = Scene.LOGIN_INPUT
+        elif self.find('login_captcha') is not None:
+            self.scene = Scene.LOGIN_CAPTCHA
+        elif self.find('login_connecting') is not None:
+            self.scene = Scene.LOGIN_LOADING
         elif self.find('main_theme') is not None:
             self.scene = Scene.TERMINAL_MAIN_THEME
         elif self.find('episode') is not None:

@@ -181,6 +181,9 @@ class BaseSolver:
                     self.tap_element('login_account', 0.25)
                 elif self.scene() == Scene.LOGIN_REGISTER:
                     self.back(2)
+                elif self.scene() == Scene.LOGIN_CAPTCHA:
+                    exit()
+                    # self.back(600)  # TODO: Pending
                 elif self.scene() == Scene.LOGIN_INPUT:
                     input_area = self.find('login_username')
                     if input_area is not None:
