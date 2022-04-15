@@ -59,6 +59,12 @@
         "chapterIndex": 2,
         "zoneIndex": 9
     },
+    "main_10": {
+        "type": "MAINLINE",
+        "name": "破碎日冕",
+        "chapterIndex": 2,
+        "zoneIndex": 10
+    },
     "weekly_1": {
         "type": "WEEKLY",
         "name": "固若金汤",
