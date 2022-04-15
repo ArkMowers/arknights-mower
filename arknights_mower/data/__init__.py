@@ -49,6 +49,11 @@ weekly_zones = json.loads(
     Path(f'{__rootdir__}/data/weekly.json').read_text('utf-8'))
 
 
+# list of scene defined
+scene_list = json.loads(
+    Path(f'{__rootdir__}/data/scene.json').read_text('utf-8'))
+
+
 # recruit database
 recruit_agent = json.loads(
     Path(f'{__rootdir__}/data/recruit.json').read_text('utf-8'))

@@ -181,6 +181,9 @@ class BaseSolver:
                     self.tap_element('login_account', 0.25)
                 elif self.scene() == Scene.LOGIN_REGISTER:
                     self.back(2)
+                elif self.scene() == Scene.LOGIN_CAPTCHA:
+                    exit()
+                    # self.back(600)  # TODO: Pending
                 elif self.scene() == Scene.LOGIN_INPUT:
                     input_area = self.find('login_username')
                     if input_area is not None:
@@ -195,10 +198,14 @@ class BaseSolver:
                     self.sleep(3)
                 elif self.scene() == Scene.LOADING:
                     self.sleep(3)
+                elif self.scene() == Scene.CONNECTING:
+                    self.sleep(3)
                 elif self.scene() == Scene.CONFIRM:
                     self.tap(detector.confirm(self.recog.img))
+                elif self.scene() == Scene.UNKNOWN:
+                    raise RecognizeError('Unknown scene')
                 else:
-                    raise RecognizeError('Unanticipated scene: login')
+                    raise RecognizeError('Unanticipated scene')
             except RecognizeError as e:
                 logger.warning(f'识别出了点小差错 qwq: {e}')
                 self.recog.save_screencap('failure')
@@ -230,6 +237,7 @@ class BaseSolver:
         """
         logger.info('back to index')
         retry_times = config.MAX_RETRYTIME
+        pre_scene = None
         while retry_times and self.scene() != Scene.INDEX:
             try:
                 if self.get_navigation():
@@ -243,6 +251,8 @@ class BaseSolver:
                 elif self.scene() == Scene.CONFIRM:
                     self.tap(detector.confirm(self.recog.img))
                 elif self.scene() == Scene.LOADING:
+                    self.sleep(3)
+                elif self.scene() == Scene.CONNECTING:
                     self.sleep(3)
                 elif self.scene() == Scene.SKIP:
                     self.tap_element('skip')
@@ -260,8 +270,13 @@ class BaseSolver:
                     self.tap((mid_y, mid_y))
                 elif self.scene() == Scene.INFRA_ARRANGE_CONFIRM:
                     self.tap((self.recog.w // 3, self.recog.h - 10))
+                elif self.scene() == Scene.UNKNOWN:
+                    raise RecognizeError('Unknown scene')
+                elif pre_scene is None or pre_scene != self.scene():
+                    pre_scene = self.scene()
+                    self.back()
                 else:
-                    raise RecognizeError('Unanticipated scene: back_to_index')
+                    raise RecognizeError('Unanticipated scene')
             except RecognizeError as e:
                 logger.warning(f'识别出了点小差错 qwq: {e}')
                 self.recog.save_screencap('failure')

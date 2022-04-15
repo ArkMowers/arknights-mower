@@ -3,6 +3,7 @@ from __future__ import annotations
 from .solvers import *
 from .utils.device import Device
 from .utils.recognize import Recognizer
+from .utils.solver import BaseSolver
 from .utils import typealias as tp
 
 
@@ -55,3 +56,6 @@ class Solver(object):
 
     def mail(self) -> None:
         MailSolver(self.device, self.recog).run()
+
+    def index(self) -> None:
+        BaseSolver(self.device, self.recog).back_to_index()

@@ -50,12 +50,14 @@ class ShopSolver(BaseSolver):
             self.tap_element('materiel_ico')
         elif self.scene() == Scene.LOADING:
             self.sleep(3)
+        elif self.scene() == Scene.CONNECTING:
+            self.sleep(3)
         elif self.get_navigation():
             self.tap_element('nav_shop')
         elif self.scene() != Scene.UNKNOWN:
             self.back_to_index()
         else:
-            raise RecognizeError('Unanticipated scene: Shop')
+            raise RecognizeError('Unknown scene')
 
     def shop_credit(self) -> bool:
         """ 购买物品逻辑 """
@@ -65,7 +67,10 @@ class ShopSolver(BaseSolver):
             if self.find('shop_sold', scope=seg) is None:
                 scope = (seg[0], (seg[1][0], seg[0][1] + (seg[1][1]-seg[0][1])//4))
                 img = self.recog.img[scope2slice(scope)]
-                ocr = ocrhandle.predict(img)[0]
+                ocr = ocrhandle.predict(img)
+                if len(ocr) == 0:
+                    raise RecognizeError
+                ocr = ocr[0]
                 if ocr[1] not in shop_items:
                     ocr[1] = ocr_rectify(img, ocr, shop_items, '物品名称')
                 valid.append((seg, ocr[1]))

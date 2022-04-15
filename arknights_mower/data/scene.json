@@ -1,0 +1,226 @@
+{
+    "-1": {
+        "label": "UNKNOWN",
+        "comment": "未知"
+    },
+    "0": {
+        "label": "UNDEFINED",
+        "comment": "未定义"
+    },
+    "1": {
+        "label": "INDEX",
+        "comment": "首页"
+    },
+    "2": {
+        "label": "MATERIEL",
+        "comment": "物资领取确认"
+    },
+    "3": {
+        "label": "ANNOUNCEMENT",
+        "comment": "公告"
+    },
+    "4": {
+        "label": "MAIL",
+        "comment": "邮件信箱"
+    },
+    "5": {
+        "label": "NAVIGATION_BAR",
+        "comment": "导航栏返回"
+    },
+    "6": {
+        "label": "UPGRADE",
+        "comment": "升级"
+    },
+    "7": {
+        "label": "SKIP",
+        "comment": "跳过"
+    },
+    "8": {
+        "label": "DOUBLE_CONFIRM",
+        "comment": "二次确认"
+    },
+    "9": {
+        "label": "CONNECTING",
+        "comment": "正在提交反馈至神经"
+    },
+    "101": {
+        "label": "LOGIN_MAIN",
+        "comment": "登陆页面"
+    },
+    "102": {
+        "label": "LOGIN_INPUT",
+        "comment": "登陆页面（输入）"
+    },
+    "103": {
+        "label": "LOGIN_QUICKLY",
+        "comment": "登陆页面（快速）"
+    },
+    "104": {
+        "label": "LOGIN_LOADING",
+        "comment": "登陆中"
+    },
+    "105": {
+        "label": "LOGIN_START",
+        "comment": "启动"
+    },
+    "106": {
+        "label": "LOGIN_ANNOUNCE",
+        "comment": "启动界面公告"
+    },
+    "107": {
+        "label": "LOGIN_REGISTER",
+        "comment": "注册"
+    },
+    "108": {
+        "label": "LOGIN_CAPTCHA",
+        "comment": "滑动验证码"
+    },
+    "201": {
+        "label": "INFRA_MAIN",
+        "comment": "基建全局视角"
+    },
+    "202": {
+        "label": "INFRA_TODOLIST",
+        "comment": "基建待办事项"
+    },
+    "203": {
+        "label": "INFRA_CONFIDENTIAL",
+        "comment": "线索主界面"
+    },
+    "204": {
+        "label": "INFRA_ARRANGE",
+        "comment": "基建干员进驻总览"
+    },
+    "205": {
+        "label": "INFRA_DETAILS",
+        "comment": "基建放大查看"
+    },
+    "206": {
+        "label": "INFRA_ARRANGE_CONFIRM",
+        "comment": "基建干员排班二次确认"
+    },
+    "301": {
+        "label": "FRIEND_LIST_OFF",
+        "comment": "好友列表（未选中）"
+    },
+    "302": {
+        "label": "FRIEND_LIST_ON",
+        "comment": "好友列表（选中）"
+    },
+    "303": {
+        "label": "FRIEND_VISITING",
+        "comment": "基建内访问好友"
+    },
+    "401": {
+        "label": "MISSION_DAILY",
+        "comment": "日常任务"
+    },
+    "402": {
+        "label": "MISSION_WEEKLY",
+        "comment": "周常任务"
+    },
+    "403": {
+        "label": "MISSION_TRAINEE",
+        "comment": "见习任务"
+    },
+    "501": {
+        "label": "TERMINAL_MAIN",
+        "comment": "终端主界面"
+    },
+    "502": {
+        "label": "TERMINAL_MAIN_THEME",
+        "comment": "主题曲"
+    },
+    "503": {
+        "label": "TERMINAL_EPISODE",
+        "comment": "插曲"
+    },
+    "504": {
+        "label": "TERMINAL_BIOGRAPHY",
+        "comment": "别传"
+    },
+    "505": {
+        "label": "TERMINAL_COLLECTION",
+        "comment": "资源收集"
+    },
+    "602": {
+        "label": "OPERATOR_BEFORE",
+        "comment": "作战前，关卡已选定"
+    },
+    "603": {
+        "label": "OPERATOR_SELECT",
+        "comment": "作战前，正在编队"
+    },
+    "604": {
+        "label": "OPERATOR_ONGOING",
+        "comment": "作战中"
+    },
+    "605": {
+        "label": "OPERATOR_FINISH",
+        "comment": "作战结束"
+    },
+    "607": {
+        "label": "OPERATOR_RECOVER_POTION",
+        "comment": "恢复理智（药剂）"
+    },
+    "608": {
+        "label": "OPERATOR_RECOVER_ORIGINITE",
+        "comment": "恢复理智（源石）"
+    },
+    "609": {
+        "label": "OPERATOR_DROP",
+        "comment": "掉落物品详细说明页"
+    },
+    "610": {
+        "label": "OPERATOR_ELIMINATE",
+        "comment": "剿灭作战前，关卡已选定"
+    },
+    "611": {
+        "label": "OPERATOR_ELIMINATE_FINISH",
+        "comment": "剿灭作战结束"
+    },
+    "612": {
+        "label": "OPERATOR_GIVEUP",
+        "comment": "代理失误"
+    },
+    "613": {
+        "label": "OPERATOR_FAILED",
+        "comment": "代理作战失败"
+    },
+    "701": {
+        "label": "SHOP_OTHERS",
+        "comment": "商店除了信用兑换处以外的界面"
+    },
+    "702": {
+        "label": "SHOP_CREDIT",
+        "comment": "信用兑换处"
+    },
+    "703": {
+        "label": "SHOP_CREDIT_CONFIRM",
+        "comment": "兑换确认"
+    },
+    "704": {
+        "label": "SHOP_ASSIST",
+        "comment": "助战使用次数"
+    },
+    "801": {
+        "label": "RECRUIT_MAIN",
+        "comment": "公招主界面"
+    },
+    "802": {
+        "label": "RECRUIT_TAGS",
+        "comment": "挑选标签时"
+    },
+    "803": {
+        "label": "RECRUIT_AGENT",
+        "comment": "开包干员展示"
+    },
+    "9998": {
+        "label": "LOADING",
+        "comment": "场景跳转时的等待界面"
+    },
+    "9999": {
+        "label": "CONFIRM",
+        "comment": "确认对话框"
+    }
+}

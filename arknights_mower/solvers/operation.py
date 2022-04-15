@@ -68,7 +68,8 @@ class OpeSolver(BaseSolver):
         self.wait_start = 0  # 作战时第一次等待的时长
         self.wait_total = 0  # 作战时累计等待的时长
         self.level_choosed = plan[0][0] == 'pre_ope'  # 是否已经选定关卡
-        self.unopen = []
+        self.unopen = []  # 未开放的关卡
+        self.failed = False  # 作战代理是否正常运作
 
         logger.info('Start: 作战')
         logger.debug(f'plan: {plan}')
@@ -104,14 +105,20 @@ class OpeSolver(BaseSolver):
             self.ope_finish()
         elif self.scene() == Scene.OPERATOR_ELIMINATE_FINISH:
             self.ope_finish_elimi()
-        elif self.scene() == Scene.OPERATOR_GIVEUP:
+        elif self.scene() == Scene.OPERATOR_GIVEUP:  # TODO 得找个稳定复现代理三星变两星的地图
             logger.error('代理出现失误')
             return True
+        elif self.scene() == Scene.OPERATOR_FAILED:
+            logger.error('代理出现失误')
+            self.failed = True
+            self.tap((self.recog.w // 2, 10))
         elif self.scene() == Scene.OPERATOR_RECOVER_POTION:
             return self.recover_potion()
         elif self.scene() == Scene.OPERATOR_RECOVER_ORIGINITE:
             return self.recover_originite()
         elif self.scene() == Scene.LOADING:
+            self.sleep(3)
+        elif self.scene() == Scene.CONNECTING:
             self.sleep(3)
         elif self.scene() == Scene.UPGRADE:
             self.tap_element('upgrade')
@@ -122,7 +129,7 @@ class OpeSolver(BaseSolver):
         elif self.scene() != Scene.UNKNOWN:
             self.back_to_index()
         else:
-            raise RecognizeError('Unanticipated scene: Operation')
+            raise RecognizeError('Unknown scene')
 
     def terminal_main(self) -> bool:
         eliminate_todo = self.find('terminal_eliminate')
@@ -151,6 +158,9 @@ class OpeSolver(BaseSolver):
             self.get_navigation()
             self.tap_element('nav_terminal')
             return
+        # 代理出现过失误，终止作战
+        if self.failed:
+            return True
         # 激活代理作战
         agency = self.find('ope_agency')
         if agency is not None:
@@ -160,6 +170,7 @@ class OpeSolver(BaseSolver):
         if self.wait_pre != 10:
             self.wait_start = 0
             self.wait_pre = 10
+        self.wait_total = 0
         # 点击开始作战
         self.tap_element('ope_start')
         # 确定可以开始作战后扣除相应的消耗药剂或者源石
@@ -181,6 +192,9 @@ class OpeSolver(BaseSolver):
         if self.eliminate_state == 2:
             logger.warning('检测到关卡为剿灭，但每周剿灭任务已完成')
             return True
+        # 代理出现过失误，终止作战
+        if self.failed:
+            return True
         # 激活代理作战
         agency = self.find('ope_agency')
         if agency is not None:
@@ -190,6 +204,7 @@ class OpeSolver(BaseSolver):
         if self.wait_pre != 60:
             self.wait_start = 0
             self.wait_pre = 60
+        self.wait_total = 0
         # 点击开始作战
         self.tap_element('ope_start')
         # 确定可以开始作战后扣除相应的消耗药剂或者源石
@@ -243,14 +258,18 @@ class OpeSolver(BaseSolver):
                 self.tap_element('ope_recover_originite')
                 return
             # 关闭恢复界面
-            self.tap_element('ope_recover_choose', 0.05)
+            if not self.tap_element('ope_recover_choose', 0.05, detected=True):
+                self.back()
             return True
         elif self.recover_state:
             # 正在恢复中，防止网络波动
             self.sleep(3)
         else:
             # 选择药剂恢复体力
-            self.tap_element('ope_recover_choose', 0.95)
+            if not self.tap_element('ope_recover_choose', 0.95, detected=True):
+                # 使用次数未归零但已经没有药剂可以恢复体力了
+                self.potion = 0
+                return
             # 修改状态
             self.recover_state = 1
 
@@ -261,14 +280,18 @@ class OpeSolver(BaseSolver):
                 self.tap_element('ope_recover_potion')
                 return
             # 关闭恢复界面
-            self.tap_element('ope_recover_choose', 0.05)
+            if not self.tap_element('ope_recover_choose', 0.05, detected=True):
+                self.back()
             return True
         elif self.recover_state:
             # 正在恢复中，防止网络波动
             self.sleep(3)
         else:
             # 选择源石恢复体力
-            self.tap_element('ope_recover_choose', 0.95)
+            if not self.tap_element('ope_recover_choose', 0.95, detected=True):
+                # 使用次数未归零但已经没有源石可以恢复体力了
+                self.originite = 0
+                return
             # 修改状态
             self.recover_state = 2
 

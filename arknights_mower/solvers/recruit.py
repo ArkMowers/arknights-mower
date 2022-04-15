@@ -79,12 +79,14 @@ class RecruitSolver(BaseSolver):
             self.tap_element('materiel_ico')
         elif self.scene() == Scene.LOADING:
             self.sleep(3)
+        elif self.scene() == Scene.CONNECTING:
+            self.sleep(3)
         elif self.get_navigation():
             self.tap_element('nav_recruit')
         elif self.scene() != Scene.UNKNOWN:
             self.back_to_index()
         else:
-            raise RecognizeError('Unanticipated scene: Recruit')
+            raise RecognizeError('Unknown scene')
 
     def recruit_tags(self) -> bool:
         """ 识别公招标签的逻辑 """

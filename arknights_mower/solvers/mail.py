@@ -31,6 +31,8 @@ class MailSolver(BaseSolver):
             self.tap_element('read_mail')
         elif self.scene() == Scene.LOADING:
             self.sleep(3)
+        elif self.scene() == Scene.CONNECTING:
+            self.sleep(3)
         elif self.scene() == Scene.MATERIEL:
             self.tap_element('materiel_ico')
         elif self.get_navigation():
@@ -38,4 +40,4 @@ class MailSolver(BaseSolver):
         elif self.scene() != Scene.UNKNOWN:
             self.back_to_index()
         else:
-            raise RecognizeError('Unanticipated scene: Mail')
+            raise RecognizeError('Unknown scene')

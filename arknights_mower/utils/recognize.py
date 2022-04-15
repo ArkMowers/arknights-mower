@@ -62,7 +62,9 @@ class Recognizer(object):
         """ get the current scene in the game """
         if self.scene != Scene.UNDEFINED:
             return self.scene
-        if self.find('index_nav', thres=250, scope=((0, 0), (100+self.w//4, self.h//10))) is not None:
+        if self.find('connecting', scope=((self.w//2, self.h//10*8), (self.w//4*3, self.h))) is not None:
+            self.scene = Scene.CONNECTING
+        elif self.find('index_nav', thres=250, scope=((0, 0), (100+self.w//4, self.h//10))) is not None:
             self.scene = Scene.INDEX
         elif self.find('nav_index') is not None:
             self.scene = Scene.NAVIGATION_BAR
@@ -102,6 +104,8 @@ class Recognizer(object):
             self.scene = Scene.OPERATOR_ELIMINATE
         elif self.find('ope_giveup') is not None:
             self.scene = Scene.OPERATOR_GIVEUP
+        elif self.find('ope_failed') is not None:
+            self.scene = Scene.OPERATOR_FAILED
         elif self.find('friend_list_on') is not None:
             self.scene = Scene.FRIEND_LIST_ON
         elif self.find('credit_visiting') is not None:
@@ -166,8 +170,12 @@ class Recognizer(object):
             self.scene = Scene.UPGRADE
         elif detector.confirm(self.img) is not None:
             self.scene = Scene.CONFIRM
-        elif self.find('login_captcha') is not None:
+        elif self.find('login_verify') is not None:
             self.scene = Scene.LOGIN_INPUT
+        elif self.find('login_captcha') is not None:
+            self.scene = Scene.LOGIN_CAPTCHA
+        elif self.find('login_connecting') is not None:
+            self.scene = Scene.LOGIN_LOADING
         elif self.find('main_theme') is not None:
             self.scene = Scene.TERMINAL_MAIN_THEME
         elif self.find('episode') is not None:

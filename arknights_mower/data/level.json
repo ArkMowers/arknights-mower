@@ -1085,6 +1085,96 @@
         "code": "9-19",
         "name": "长夜枪火"
     },
+    "10-2": {
+        "zone_id": "main_10",
+        "ap_cost": 21,
+        "code": "10-2",
+        "name": "抢夺目标"
+    },
+    "10-3": {
+        "zone_id": "main_10",
+        "ap_cost": 21,
+        "code": "10-3",
+        "name": "低下头"
+    },
+    "10-4": {
+        "zone_id": "main_10",
+        "ap_cost": 21,
+        "code": "10-4",
+        "name": "鸣铳示警"
+    },
+    "10-5": {
+        "zone_id": "main_10",
+        "ap_cost": 21,
+        "code": "10-5",
+        "name": "城市的呼吸"
+    },
+    "10-6": {
+        "zone_id": "main_10",
+        "ap_cost": 21,
+        "code": "10-6",
+        "name": "虽非同族"
+    },
+    "10-7": {
+        "zone_id": "main_10",
+        "ap_cost": 24,
+        "code": "10-7",
+        "name": "痛觉相连"
+    },
+    "10-8": {
+        "zone_id": "main_10",
+        "ap_cost": 21,
+        "code": "10-8",
+        "name": "无暇哀悼"
+    },
+    "10-9": {
+        "zone_id": "main_10",
+        "ap_cost": 21,
+        "code": "10-9",
+        "name": "他乡故知"
+    },
+    "10-10": {
+        "zone_id": "main_10",
+        "ap_cost": 21,
+        "code": "10-10",
+        "name": "旧日之影"
+    },
+    "10-11": {
+        "zone_id": "main_10",
+        "ap_cost": 24,
+        "code": "10-11",
+        "name": "千疮百孔"
+    },
+    "10-12": {
+        "zone_id": "main_10",
+        "ap_cost": 21,
+        "code": "10-12",
+        "name": "仇怨的尽头"
+    },
+    "10-14": {
+        "zone_id": "main_10",
+        "ap_cost": 21,
+        "code": "10-14",
+        "name": "瞄准"
+    },
+    "10-15": {
+        "zone_id": "main_10",
+        "ap_cost": 24,
+        "code": "10-15",
+        "name": "逃离炮火"
+    },
+    "10-16": {
+        "zone_id": "main_10",
+        "ap_cost": 21,
+        "code": "10-16",
+        "name": "血刃高悬"
+    },
+    "10-17": {
+        "zone_id": "main_10",
+        "ap_cost": 24,
+        "code": "10-17",
+        "name": "坚城高墙"
+    },
     "S9-1": {
         "zone_id": "main_9",
         "ap_cost": 18,

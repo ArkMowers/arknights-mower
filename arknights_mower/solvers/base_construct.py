@@ -44,19 +44,30 @@ class BaseConstructSolver(BaseSolver):
             self.back()
         elif self.scene() == Scene.LOADING:
             self.sleep(3)
+        elif self.scene() == Scene.CONNECTING:
+            self.sleep(3)
         elif self.get_navigation():
             self.tap_element('nav_infrastructure')
         elif self.scene() != Scene.UNKNOWN:
             self.back_to_index()
         else:
-            raise RecognizeError('Unanticipated scene: Base Construction')
+            raise RecognizeError('Unknown scene')
 
     def infra_main(self) -> None:
         """ 位于基建首页 """
         if self.find('control_central') is None:
             self.back()
             return
-        if not self.todo_task:
+        if self.clue_collect:
+            self.clue()
+            self.clue_collect = False
+        elif self.drone_room is not None:
+            self.drone(self.drone_room)
+            self.drone_room = None
+        elif self.arrange is not None:
+            self.agent_arrange(self.arrange)
+            self.arrange = None
+        elif not self.todo_task:
             # 处理基建 Todo
             notification = detector.infra_notification(self.recog.img)
             if notification is None:
@@ -66,15 +77,6 @@ class BaseConstructSolver(BaseSolver):
                 self.tap(notification)
             else:
                 self.todo_task = True
-        elif self.clue_collect:
-            self.clue()
-            self.clue_collect = False
-        elif self.drone_room is not None:
-            self.drone(self.drone_room)
-            self.drone_room = None
-        elif self.arrange is not None:
-            self.agent_arrange(self.arrange)
-            self.arrange = None
         else:
             return True
 
@@ -339,7 +341,9 @@ class BaseConstructSolver(BaseSolver):
             room[i, 1] = min(room[i, 1], self.recog.h)
 
         # 点击进入
-        self.tap(room[0], interval=3, rebuild=False)
+        self.tap(room[0], interval=3)
+        while self.find('control_central') is not None:
+            self.tap(room[0], interval=3)
 
     def drone(self, room: str):
         logger.info('基建：无人机加速')
@@ -365,6 +369,7 @@ class BaseConstructSolver(BaseSolver):
         logger.info(f'安排干员：{agent}')
         logger.debug(f'skip_free: {skip_free}')
         h, w = self.recog.h, self.recog.w
+        first_time = True
 
         # 在 agent 中 'Free' 表示任意空闲干员
         free_num = agent.count('Free')
@@ -373,10 +378,13 @@ class BaseConstructSolver(BaseSolver):
         # 安排指定干员
         if len(agent):
 
-            # 滑动到最左边
-            for _ in range(9):
-                self.swipe((w//2, h//2), (w//2, 0), interval=0)
-            self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
+            if not first_time:
+                # 滑动到最左边
+                for _ in range(9):
+                    self.swipe((w//2, h//2), (w//2, 0), interval=0)
+                self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
+            first_time = False
+
             checked = set()  # 已经识别过的干员
             pre = set()  # 上次识别出的干员
             error_count = 0
@@ -426,10 +434,13 @@ class BaseConstructSolver(BaseSolver):
         # 安排空闲干员
         if free_num:
 
-            # 滑动到最左边
-            for _ in range(9):
-                self.swipe((w//2, h//2), (w//2, 0), interval=0)
-            self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
+            if not first_time:
+                # 滑动到最左边
+                for _ in range(9):
+                    self.swipe((w//2, h//2), (w//2, 0), interval=0)
+                self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
+            first_time = False
+
             error_count = 0
 
             while free_num:
@@ -466,15 +477,16 @@ class BaseConstructSolver(BaseSolver):
         # 进入进驻总览
         self.tap_element('infra_overview', interval=2)
 
-        # 滑动到最顶
-        h, w = self.recog.h, self.recog.w
-        for _ in range(4):
-            self.swipe((w//2, h//2), (0, h//2), interval=0)
-        self.swipe((w//2, h//2), (0, h//2), rebuild=False)
+        # 滑动到最顶（从首页进入默认最顶无需滑动）
+        # h, w = self.recog.h, self.recog.w
+        # for _ in range(4):
+        #     self.swipe((w//2, h//2), (0, h//2), interval=0)
+        # self.swipe((w//2, h//2), (0, h//2), rebuild=False)
 
         logger.info('撤下干员中……')
         idx = 0
         room_total = len(base_room_list)
+        need_empty = set(list(plan.keys()))
         while idx < room_total:
             # switch: 撤下干员按钮
             ret, switch, mode = segment.worker(self.recog.img)
@@ -490,16 +502,20 @@ class BaseConstructSolver(BaseSolver):
 
             for block in ret:
                 # 清空在换班计划中的房间
-                if base_room_list[idx] in plan.keys():
+                if base_room_list[idx] in need_empty:
+                    need_empty.remove(base_room_list[idx])
                     self.tap((block[2][0]-5, block[2][1]-5))
                     dc = self.find('double_confirm')
                     if dc is not None:
-                        self.tap((dc[1][0], (dc[0][1]+dc[1][1]) // 2),
-                                 rebuild=False)
+                        self.tap((dc[1][0], (dc[0][1]+dc[1][1]) // 2))
+                    while self.scene() == Scene.CONNECTING:
+                        self.sleep(3)
+                    if self.scene() != Scene.INFRA_ARRANGE:
+                        raise RecognizeError
                 idx += 1
 
             # 如果全部需要清空的房间都清空了就
-            if idx == room_total:
+            if idx == room_total or len(need_empty) == 0:
                 break
             block = ret[-1]
             top = switch[2][1]
@@ -514,8 +530,11 @@ class BaseConstructSolver(BaseSolver):
         logger.info('安排干员工作……')
         idx = 0
         room_total = len(base_room_list)
+        need_empty = set(list(plan.keys()))
         while idx < room_total:
             ret, switch, mode = segment.worker(self.recog.img)
+            if len(ret) == 0:
+                raise RecognizeError('未识别到进驻总览中的房间列表')
 
             # 关闭撤下干员按钮
             if mode:
@@ -527,7 +546,8 @@ class BaseConstructSolver(BaseSolver):
                 ret = ret[-(room_total-idx):]
 
             for block in ret:
-                if base_room_list[idx] in plan.keys():
+                if base_room_list[idx] in need_empty:
+                    need_empty.remove(base_room_list[idx])
                     # 对这个房间进行换班
                     finished = False
                     skip_free = 0
@@ -564,10 +584,12 @@ class BaseConstructSolver(BaseSolver):
                             self.back()
                         else:
                             finished = True
+                        while self.scene() == Scene.CONNECTING:
+                            self.sleep(3)
                 idx += 1
 
             # 换班结束
-            if idx == room_total:
+            if idx == room_total or len(need_empty) == 0:
                 break
             block = ret[-1]
             top = switch[2][1]

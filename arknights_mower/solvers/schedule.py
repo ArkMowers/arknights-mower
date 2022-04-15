@@ -188,7 +188,9 @@ class ScheduleSolver(BaseSolver):
             yaml.dump(self, f)
         logger.info('计划已存档')
 
-    def load_from_disk(self, cmd_list=[], matcher: Callable = None) -> bool:
+    def load_from_disk(self, cmd_list=None, matcher: Callable = None) -> bool:
+        if cmd_list is None:
+            cmd_list = []
         try:
             with self.schedule_log_path.open('r', encoding='utf8') as f:
                 data = yaml.load(f)
