@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import socket
 
-from ..log import logger
+from ...log import logger
 
 
 class Socket(object):
@@ -78,7 +78,18 @@ class Socket(object):
         if result != b'OKAY':
             raise RuntimeError(self.recv_response())
 
+    def recv(self, len: int) -> bytes:
+        return self.sock.recv(len)
+
     def send(self, data: bytes) -> Socket:
         """ send data to server """
         self.sock.send(data)
         return self
+
+    def sendall(self, data: bytes) -> Socket:
+        """ send data to server """
+        self.sock.sendall(data)
+        return self
+
+    def recv_into(self, buffer, nbytes: int) -> None:
+        self.sock.recv_into(buffer, nbytes)

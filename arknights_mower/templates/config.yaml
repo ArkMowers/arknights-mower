@@ -46,14 +46,18 @@ device:
   #   port: 5037
   #   timeout: 5
 
+  # 选择控制方式，默认自动选择
+  # adb_control_client: minitouch  # Android 10 及以上不支持
+  # adb_control_client: scrcpy
+
   # 指定设备上的 Touch Device，若无则自动检测
-  # adb_touch_device: /dev/input/event4
+  # mnt_touch_device: /dev/input/event4
 
   # minitouch 使用的转发端口
-  # adb_mnt_port: 20937
+  # mnt_port: 20937
 
   # minitouch 兼容模式，当打开时, 用于处理在某些模拟器下无法正确处理分辨率和旋转的情况, 默认关闭
-  # compatibility_mode: false
+  # mnt_compatibility_mode: false
 
 account:
   # 账户以及密码
