@@ -5,10 +5,12 @@ import socket
 import subprocess
 from typing import Optional, Union
 
+from .socket import Socket
 from .session import Session
-from .utils import run_cmd, adb_buildin
-from .. import config
-from ..log import logger
+from .utils import adb_buildin, run_cmd
+
+from ... import config
+from ...log import logger
 
 
 class Client(object):
@@ -114,7 +116,7 @@ class Client(object):
             raise RuntimeError('ADB server is not working')
         return Session().device(self.device_id)
 
-    def run(self, cmd: str) -> Optional(bytes):
+    def run(self, cmd: str) -> Optional[bytes]:
         """ run adb exec command """
         logger.debug(f'command: {cmd}')
         error_limit = 3
@@ -135,18 +137,18 @@ class Client(object):
             logger.debug(f'response: {repr(resp)}')
         return resp
 
-    def shell(self, cmd: str, decode: bool = False) -> Union[bytes, str]:
-        """ run adb shell command with adb_bin """
-        cmd = [self.adb_bin, '-s', self.device_id, 'shell'] + cmd.split(' ')
-        return run_cmd(cmd, decode)
-
-    def shell_ext(self, cmd: str, decode: bool = False) -> Union[bytes, str]:
+    def cmd(self, cmd: str, decode: bool = False) -> Union[bytes, str]:
         """ run adb command with adb_bin """
         cmd = [self.adb_bin, '-s', self.device_id] + cmd.split(' ')
         return run_cmd(cmd, decode)
 
-    def push(self, filepath: str, target: str) -> None:
-        """ push file into device """
+    def cmd_shell(self, cmd: str, decode: bool = False) -> Union[bytes, str]:
+        """ run adb shell command with adb_bin """
+        cmd = [self.adb_bin, '-s', self.device_id, 'shell'] + cmd.split(' ')
+        return run_cmd(cmd, decode)
+
+    def cmd_push(self, filepath: str, target: str) -> None:
+        """ push file into device with adb_bin """
         cmd = [self.adb_bin, '-s', self.device_id, 'push', filepath, target]
         run_cmd(cmd)
 
@@ -154,3 +156,19 @@ class Client(object):
         logger.debug(f'run process: {path}, args: {args}')
         cmd = [self.adb_bin, '-s', self.device_id, 'shell', path] + args
         return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=stderr)
+
+    def push(self, target_path: str, target: bytes) -> None:
+        """ push file into device """
+        self.session().push(target_path, target)
+
+    def stream(self, cmd: str) -> Socket:
+        """ run adb command, return socket """
+        return self.session().request(cmd, True).sock
+    
+    def stream_shell(self, cmd: str) -> Socket:
+        """ run adb shell command, return socket """
+        return self.stream('shell:' + cmd)
+
+    def android_version(self) -> str:
+        """ get android_version """
+        return self.cmd_shell('getprop ro.build.version.release', True)

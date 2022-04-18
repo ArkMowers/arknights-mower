@@ -116,24 +116,24 @@ class BaseSolver:
     def swipe(self, start: tp.Coordinate, movement: tp.Coordinate, duration: int = 100, interval: float = 1, rebuild: bool = True) -> None:
         """ swipe """
         end = (start[0] + movement[0], start[1] + movement[1])
-        self.device.swipe([start, end], duration=duration)
+        self.device.swipe(start, end, duration=duration)
         if interval > 0:
             self.sleep(interval, rebuild)
 
-    def swipe_seq(self, points: list[tp.Coordinate], duration: int = 100, interval: float = 1, rebuild: bool = True) -> None:
-        """ swipe with point sequence """
-        self.device.swipe(points, duration=duration)
-        if interval > 0:
-            self.sleep(interval, rebuild)
+    # def swipe_seq(self, points: list[tp.Coordinate], duration: int = 100, interval: float = 1, rebuild: bool = True) -> None:
+    #     """ swipe with point sequence """
+    #     self.device.swipe(points, duration=duration)
+    #     if interval > 0:
+    #         self.sleep(interval, rebuild)
 
-    def swipe_move(self, start: tp.Coordinate, movements: list[tp.Coordinate], duration: int = 100, interval: float = 1, rebuild: bool = True) -> None:
-        """ swipe with start and movement sequence """
-        points = [start]
-        for move in movements:
-            points.append((points[-1][0] + move[0], points[-1][1] + move[1]))
-        self.device.swipe(points, duration=duration)
-        if interval > 0:
-            self.sleep(interval, rebuild)
+    # def swipe_move(self, start: tp.Coordinate, movements: list[tp.Coordinate], duration: int = 100, interval: float = 1, rebuild: bool = True) -> None:
+    #     """ swipe with start and movement sequence """
+    #     points = [start]
+    #     for move in movements:
+    #         points.append((points[-1][0] + move[0], points[-1][1] + move[1]))
+    #     self.device.swipe(points, duration=duration)
+    #     if interval > 0:
+    #         self.sleep(interval, rebuild)
 
     def swipe_noinertia(self, start: tp.Coordinate, movement: tp.Coordinate, duration: int = 100, interval: float = 1, rebuild: bool = False) -> None:
         """ swipe with no inertia (movement should be vertical) """
@@ -148,8 +148,7 @@ class BaseSolver:
             points.append((start[0], start[1]+100))
             points.append((start[0]+movement[0], start[1]+100))
             points.append((start[0]+movement[0], start[1]))
-        self.device.minitouch.smooth_swipe(points, display_frames=self.device.display_frames(),
-                                           duration=[200, dis*duration//100, 200], up_wait=500)
+        self.device.swipe_ext(points, durations=[200, dis*duration//100, 200])
         if interval > 0:
             self.sleep(interval, rebuild)
 

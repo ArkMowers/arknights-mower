@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import time
 import socket
+import struct
 
 from .socket import Socket
-from .. import config
-from ..log import logger
+
+from ... import config
+from ...log import logger
 
 
 class Session(object):
@@ -105,3 +108,25 @@ class Session(object):
         devices = [tuple(line.split('\t')) for line in resp.splitlines()]
         logger.debug(devices)
         return devices
+
+    def push(self, target_path: str, target: bytes, mode=0o100755, mtime: int = None):
+        """ push data to device """
+        self.request('sync:', True)
+        request = b'%s,%d' % (target_path.encode(), mode)
+        self.sock.send(b'SEND' + struct.pack('<I', len(request)) + request)
+        buf = bytearray(65536+8)
+        buf[0:4] = b'DATA'
+        idx = 0
+        while idx < len(target):
+            content = target[idx:idx+65536]
+            content_len = len(content)
+            idx += content_len
+            buf[4:8] = struct.pack('<I', content_len)
+            buf[8:8+content_len] = content
+            self.sock.sendall(bytes(buf[0:8+content_len]))
+        if mtime is None:
+            mtime = int(time.time())
+        self.sock.send(b'DONE' + struct.pack('<I', mtime))
+        response = self.sock.recv_exactly(8)
+        if response[:4] != b'OKAY':
+            raise RuntimeError('push failed')

@@ -1,2 +1,2 @@
 from .device import Device
-from .utils import KeyCode
+from .adb_client.const import KeyCode

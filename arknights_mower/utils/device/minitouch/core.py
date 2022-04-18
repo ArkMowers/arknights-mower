@@ -2,70 +2,27 @@ from __future__ import annotations
 
 import os
 import time
-import socket
 # import random
 from typing import Union
 
-from .client import Client
-from .utils import download_file, is_port_using
-from .. import config
-from ..log import logger, log_sync
+from .command import CommandBuilder
+from .session import Session
 
-MNT_PATH = '/data/local/tmp/minitouch'
+from ..adb_client import ADBClient
+from ..utils import download_file
+from ... import config
+from ...log import logger, log_sync
+
+
 # MNT_PREBUILT_URL = 'https://github.com/williamfzc/stf-binaries/raw/master/node_modules/minitouch-prebuilt/prebuilt'
 MNT_PREBUILT_URL = 'https://oss.nano.ac/arknights_mower/minitouch'
-DEFAULT_HOST = '127.0.0.1'
-DEFAULT_DELAY = 0.05
+MNT_PATH = '/data/local/tmp/minitouch'
 
 
-class CommandBuilder(object):
-    """ Build command str for minitouch """
-
-    def __init__(self) -> None:
-        self.content = ''
-        self.delay = 0
-
-    def append(self, new_content: str) -> None:
-        self.content += new_content + '\n'
-
-    def commit(self) -> None:
-        """ add minitouch command: 'c\n' """
-        self.append('c')
-
-    def wait(self, ms: int) -> None:
-        """ add minitouch command: 'w <ms>\n' """
-        self.append(f'w {ms}')
-        self.delay += ms
-
-    def up(self, contact_id: int) -> None:
-        """ add minitouch command: 'u <contact_id>\n' """
-        self.append(f'u {contact_id}')
-
-    def down(self, contact_id: int, x: int, y: int, pressure: int) -> None:
-        """ add minitouch command: 'd <contact_id> <x> <y> <pressure>\n' """
-        self.append(f'd {contact_id} {x} {y} {pressure}')
-
-    def move(self, contact_id: int, x: int, y: int, pressure: int) -> None:
-        """ add minitouch command: 'm <contact_id> <x> <y> <pressure>\n' """
-        self.append(f'm {contact_id} {x} {y} {pressure}')
-
-    def publish(self, connection: MNTConnection):
-        """ apply current commands to device """
-        self.commit()
-        logger.debug('send operation: %s' % self.content.replace('\n', '\\n'))
-        connection.send(self.content)
-        time.sleep(self.delay / 1000 + DEFAULT_DELAY)
-        self.reset()
-
-    def reset(self):
-        """ clear current commands """
-        self.content = ''
-
-
-class MiniTouch(object):
+class Client(object):
     """ Use minitouch to control Android devices easily """
 
-    def __init__(self, client: Client, touch_device: str = config.ADB_TOUCH_DEVICE) -> None:
+    def __init__(self, client: ADBClient, touch_device: str = config.MNT_TOUCH_DEVICE) -> None:
         self.client = client
         self.touch_device = touch_device
         self.process = None
@@ -92,13 +49,13 @@ class MiniTouch(object):
 
     def __get_abi(self) -> str:
         """ query device ABI """
-        abi = self.client.shell('getprop ro.product.cpu.abi', True).strip()
+        abi = self.client.cmd_shell('getprop ro.product.cpu.abi', True).strip()
         logger.debug(f'device_abi: {abi}')
         return abi
 
     def __is_mnt_existed(self) -> bool:
         """ check if minitouch is existed in the device """
-        file_list = self.client.shell('ls /data/local/tmp', True)
+        file_list = self.client.cmd_shell('ls /data/local/tmp', True)
         return 'minitouch' in file_list
 
     def __download_mnt(self) -> None:
@@ -108,8 +65,8 @@ class MiniTouch(object):
         mnt_path = download_file(url)
 
         # push and grant
-        self.client.push(mnt_path, MNT_PATH)
-        self.client.shell(f'chmod 777 {MNT_PATH}')
+        self.client.cmd_push(mnt_path, MNT_PATH)
+        self.client.cmd_shell(f'chmod 777 {MNT_PATH}')
         logger.info('minitouch already installed in {MNT_PATH}')
 
         # remove temp
@@ -118,7 +75,7 @@ class MiniTouch(object):
     def __server(self) -> None:
         """ execute minitouch with adb shell """
         # self.port = self.__get_port()
-        self.port = config.ADB_MNT_PORT
+        self.port = config.MNT_PORT
         self.__forward_port()
         self.process = None
         r, self.stderr = os.pipe()
@@ -143,7 +100,7 @@ class MiniTouch(object):
 
     def __forward_port(self) -> None:
         """ allow pc access minitouch with port """
-        output = self.client.shell_ext(
+        output = self.client.cmd(
             f'forward tcp:{self.port} localabstract:minitouch')
         logger.debug(f'output: {output}')
 
@@ -177,7 +134,7 @@ class MiniTouch(object):
         check compatibility mode and convert coordinate
         see details: https://github.com/Konano/arknights-mower/issues/85
         """
-        if not config.COMPATIBILITY_MODE:
+        if not config.MNT_COMPATIBILITY_MODE:
             return point
         x, y = point
         w, h, r = display_frames
@@ -203,7 +160,7 @@ class MiniTouch(object):
 
         builder = CommandBuilder()
         points = [list(map(int, point)) for point in points]
-        with MNTConnection(self.port) as conn:
+        with Session(self.port) as conn:
             for id, point in enumerate(points):
                 x, y = self.convert_coordinate(point, display_frames, int(conn.max_x), int(conn.max_y))
                 builder.down(id, x, y, pressure)
@@ -219,7 +176,7 @@ class MiniTouch(object):
 
             builder.publish(conn)
 
-    def swipe(self, points: list[tuple[int, int]], display_frames: tuple[int, int, int], pressure: int = 100, duration: Union[list[int], int] = None, up_wait: int = None, fall: bool = True, lift: bool = True) -> None:
+    def swipe(self, points: list[tuple[int, int]], display_frames: tuple[int, int, int], pressure: int = 100, duration: Union[list[int], int] = None, up_wait: int = 0, fall: bool = True, lift: bool = True) -> None:
         """
         swipe between points one by one, with pressure and duration
 
@@ -240,7 +197,7 @@ class MiniTouch(object):
         assert len(duration) + 1 == len(points)
 
         builder = CommandBuilder()
-        with MNTConnection(self.port) as conn:
+        with Session(self.port) as conn:
             if fall:
                 x, y = self.convert_coordinate(points[0], display_frames, int(conn.max_x), int(conn.max_y))
                 builder.down(0, x, y, pressure)
@@ -260,7 +217,7 @@ class MiniTouch(object):
                     builder.wait(up_wait)
                 builder.publish(conn)
 
-    def smooth_swipe(self, points: list[tuple[int, int]], display_frames: tuple[int, int, int], pressure: int = 100, duration: Union[list[int], int] = None, up_wait: int = None, part: int = 10, fall: bool = True, lift: bool = True) -> None:
+    def smooth_swipe(self, points: list[tuple[int, int]], display_frames: tuple[int, int, int], pressure: int = 100, duration: Union[list[int], int] = None, up_wait: int = 0, part: int = 10, fall: bool = True, lift: bool = True) -> None:
         """
         swipe between points one by one, with pressure and duration
         it will split distance between points into pieces
@@ -296,55 +253,4 @@ class MiniTouch(object):
                 new_duration += [None] * part
             else:
                 new_duration += [duration[id-1] // part] * part
-        self.swipe(new_points, display_frames, pressure, new_duration, fall, lift)
-
-
-class MNTConnection(object):
-    """ manage socket connection between pc and android """
-
-    def __init__(self, port: int, buf_size: int = 0) -> None:
-        self.port = port
-        self.buf_size = buf_size
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.connect((DEFAULT_HOST, port))
-        socket_out = self.sock.makefile()
-
-        # v <version>
-        # protocol version, usually it is 1. needn't use this
-        socket_out.readline()
-
-        # ^ <max-contacts> <max-x> <max-y> <max-pressure>
-        _, max_contacts, max_x, max_y, max_pressure, *_ = (
-            socket_out.readline().strip().split(' '))
-        self.max_contacts = max_contacts
-        self.max_x = max_x
-        self.max_y = max_y
-        self.max_pressure = max_pressure
-
-        # $ <pid>
-        _, pid = socket_out.readline().strip().split(' ')
-        self.pid = pid
-
-        logger.debug(
-            f'minitouch running on port: {self.port}, pid: {self.pid}')
-        logger.debug(
-            f'max_contact: {max_contacts}; max_x: {max_x}; max_y: {max_y}; max_pressure: {max_pressure}')
-
-    def __enter__(self) -> MNTConnection:
-        return self
-
-    def __exit__(self, exc_type, exc_value, exc_traceback) -> None:
-        pass
-
-    def __del__(self) -> None:
-        self.close()
-
-    def close(self) -> None:
-        """ cancel connection """
-        self.sock and self.sock.close()
-        self.sock = None
-
-    def send(self, content: str) -> bytes:
-        content = content.encode('utf8')
-        self.sock.sendall(content)
-        return self.sock.recv(self.buf_size)
+        self.swipe(new_points, display_frames, pressure, new_duration, up_wait, fall, lift)
