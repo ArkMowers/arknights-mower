@@ -30,7 +30,7 @@ jobs:
       - name: Make package
         shell: cmd
         run: |
-          venv64\Scripts\pyinstaller .\main.spec --onefile
+          venv64\Scripts\pyinstaller .\main.spec
           md public
           move dist\main.exe public\arknights_mower.exe
       - name: Package into zip
