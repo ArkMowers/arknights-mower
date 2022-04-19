@@ -46,9 +46,9 @@ device:
   #   port: 5037
   #   timeout: 5
 
-  # 选择控制方式，默认自动选择
-  # adb_control_client: minitouch  # Android 10 及以上不支持
+  # 选择控制方式，，可选项为 [minitouch, scrcpy]，默认选择 scrcpy
   # adb_control_client: scrcpy
+  # adb_control_client: minitouch  # Android 10 及以上不支持
 
   # 指定设备上的 Touch Device，若无则自动检测
   # mnt_touch_device: /dev/input/event4

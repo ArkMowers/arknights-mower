@@ -42,17 +42,17 @@ class Device(object):
 
         def swipe(self, start: tuple[int, int], end: tuple[int, int], duration: int) -> None:
             if self.minitouch:
-                self.minitouch.smooth_swipe(
+                self.minitouch.swipe(
                     [start, end], self.device.display_frames(), duration=duration)
             elif self.scrcpy:
-                duration /= 1000
-                self.scrcpy.swipe(start[0], start[1], end[0], end[1], duration)
+                self.scrcpy.swipe(
+                    start[0], start[1], end[0], end[1], duration / 1000)
             else:
                 raise NotImplementedError
 
         def swipe_ext(self, points: list[tuple[int, int]], durations: list[int], up_wait: int) -> None:
             if self.minitouch:
-                self.minitouch.smooth_swipe(
+                self.minitouch.swipe(
                     points, self.device.display_frames(), duration=durations, up_wait=up_wait)
             elif self.scrcpy:
                 total = len(durations)

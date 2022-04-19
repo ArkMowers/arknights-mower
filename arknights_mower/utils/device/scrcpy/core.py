@@ -3,7 +3,9 @@ from __future__ import annotations
 import time
 import socket
 import struct
+import functools
 import threading
+import traceback
 import numpy as np
 from typing import Optional, Tuple
 
@@ -13,6 +15,10 @@ from .control import ControlSender
 from ..adb_client import ADBClient
 from ..adb_client.socket import Socket
 from .... import __rootdir__
+from ...log import logger
+
+
+SCR_PATH = '/data/local/tmp/minitouch'
 
 
 class Client:
@@ -62,17 +68,30 @@ class Client:
         self.displayid = displayid
 
         # Need to destroy
-        self.alive = False
         self.__server_stream: Optional[Socket] = None
         self.__video_socket: Optional[Socket] = None
         self.control_socket: Optional[Socket] = None
         self.control_socket_lock = threading.Lock()
 
-        self.loop_thread = None
         self.start()
 
     def __del__(self) -> None:
         self.stop()
+
+    def __start_server(self) -> None:
+        """
+        Start server and get the connection
+        """
+        cmdline = f'CLASSPATH={SCR_PATH} app_process /data/local/tmp com.genymobile.scrcpy.Server 1.21 log_level=verbose control=true tunnel_forward=true'
+        if self.displayid is not None:
+            cmdline += f' display_id={self.displayid}'
+        self.__server_stream: Socket = self.client.stream_shell(cmdline)
+        # Wait for server to start
+        response = self.__server_stream.recv(100)
+        logger.debug(response)
+        if b'[server]' not in response:
+            raise ConnectionError(
+                'Failed to start scrcpy-server: ' + response.decode('utf-8', 'ignore'))
 
     def __deploy_server(self) -> None:
         """
@@ -81,17 +100,8 @@ class Client:
         server_file_path = __rootdir__ / 'vendor' / \
             'scrcpy-server-novideo' / 'scrcpy-server-novideo.jar'
         server_buf = server_file_path.read_bytes()
-        self.client.push(
-            '/data/local/tmp/scrcpy-server-novideo.jar', server_buf)
-        cmdline = 'CLASSPATH=/data/local/tmp/scrcpy-server-novideo.jar app_process /data/local/tmp com.genymobile.scrcpy.Server 1.21 log_level=verbose control=true tunnel_forward=true'
-        if self.displayid is not None:
-            cmdline += f' display_id={self.displayid}'
-        self.__server_stream: Socket = self.client.stream_shell(cmdline)
-        # Wait for server to start
-        response = self.__server_stream.recv(50)
-        if b'[server]' not in response:
-            raise ConnectionError(
-                "Failed to start scrcpy-server: " + response.decode("utf-8", "ignore"))
+        self.client.push(SCR_PATH, server_buf)
+        self.__start_server()
 
     def __init_server_connection(self) -> None:
         """
@@ -125,18 +135,27 @@ class Client:
         """
         Start listening video stream
         """
-        assert self.alive is False
-
-        self.__deploy_server()
-        self.__init_server_connection()
-        self.loop_thread = threading.Thread(target=self.__stream_loop)
-        self.loop_thread.start()
+        try_count = 0
+        while try_count < 3:
+            try:
+                self.__deploy_server()
+                time.sleep(0.5)
+                self.__init_server_connection()
+                break
+            except ConnectionError:
+                logger.debug(traceback.format_exc())
+                logger.warning('Failed to connect scrcpy-server.')
+                self.stop()
+                logger.warning('Try again in 10 seconds...')
+                time.sleep(10)
+                try_count += 1
+        else:
+            raise RuntimeError('Failed to connect scrcpy-server.')
 
     def stop(self) -> None:
         """
         Stop listening (both threaded and blocked)
         """
-        self.alive = False
         if self.__server_stream is not None:
             self.__server_stream.close()
             self.__server_stream = None
@@ -147,47 +166,35 @@ class Client:
             self.__video_socket.close()
             self.__video_socket = None
 
-    def _handle_control(self, buf):
-        pass
+    def check_adb_alive(self) -> bool:
+        """ check if adb server alive """
+        return self.client.check_server_alive()
 
-    def __stream_loop(self) -> None:
-        """
-        Core loop for video parsing
-        """
-        import selectors
-        select = selectors.DefaultSelector()
-        select.register(self.__server_stream.sock,
-                        selectors.EVENT_READ, data='log')
-        select.register(self.__video_socket.sock,
-                        selectors.EVENT_READ, data='video')
-        select.register(self.control_socket.sock,
-                        selectors.EVENT_READ, data='control')
-        buffer = np.empty(262144, dtype=np.uint8)
-        while self.alive:
-            events = select.select(timeout=1)
-            for key, mask in events:
-                tag = key.data
-                if tag == 'control':
-                    rcvlen = self.control_socket.recv_into(buffer, 262144)
-                    if rcvlen == 0:
-                        break
-                    self._handle_control(buffer[:rcvlen])
-                elif tag == 'video':
-                    rcvlen = self.__video_socket.recv_into(buffer, 262144)
-                    if rcvlen == 0:
-                        break
-                elif tag == 'log':
-                    rcvlen = self.__server_stream.recv_into(buffer, 262144)
-                    if rcvlen == 0:
-                        break
-        if self.alive:
-            self.stop()
+    def stable(f):
+        @functools.wraps(f)
+        def inner(self: Client, *args, **kwargs):
+            try_count = 0
+            while try_count < 3:
+                try:
+                    f(self, *args, **kwargs)
+                    break
+                except (ConnectionResetError, BrokenPipeError):
+                    self.stop()
+                    time.sleep(1)
+                    self.check_adb_alive()
+                    self.start()
+                    try_count += 1
+            else:
+                raise RuntimeError('Failed to start scrcpy-server.')
+        return inner
 
+    @stable
     def tap(self, x: int, y: int) -> None:
         self.control.tap(x, y)
 
+    @stable
     def swipe(self, x0, y0, x1, y1, move_duraion: float = 1, hold_before_release: float = 0, fall: bool = True, lift: bool = True):
-        frame_time = 1/100
+        frame_time = 1 / 60
 
         start_time = time.perf_counter()
         end_time = start_time + move_duraion

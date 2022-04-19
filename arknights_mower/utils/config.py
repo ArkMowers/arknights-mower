@@ -114,7 +114,7 @@ def init_config() -> None:
     ADB_SERVER_TIMEOUT = __get('device/adb_server/timeout', 5)
 
     global ADB_CONTROL_CLIENT
-    ADB_CONTROL_CLIENT = __get('device/adb_control_client', 'auto')
+    ADB_CONTROL_CLIENT = __get('device/adb_control_client', 'scrcpy')
 
     global MNT_TOUCH_DEVICE
     MNT_TOUCH_DEVICE = __get('device/mnt_touch_device', None)

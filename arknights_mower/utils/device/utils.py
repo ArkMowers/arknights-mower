@@ -18,14 +18,14 @@ def download_file(target_url: str) -> str:
     return file_name
 
 
-def is_port_using(host: str, port: int) -> bool:
-    """ if port is using by others, return True. else return False """
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.settimeout(1)
+# def is_port_using(host: str, port: int) -> bool:
+#     """ if port is using by others, return True. else return False """
+#     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+#     s.settimeout(1)
 
-    try:
-        result = s.connect_ex((host, port))
-        # if port is using, return code should be 0. (can be connected)
-        return result == 0
-    finally:
-        s.close()
+#     try:
+#         result = s.connect_ex((host, port))
+#         # if port is using, return code should be 0. (can be connected)
+#         return result == 0
+#     finally:
+#         s.close()
