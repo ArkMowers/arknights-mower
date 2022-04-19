@@ -1,5 +1,7 @@
+import os
 import json
 import requests
+import fontforge
 
 
 proxies = {'http': 'http://localhost:11223'}
@@ -22,6 +24,30 @@ for x in character_table.values():
     if x['displayNumber'] is not None:
         agent.append(x['name'])
 dump(agent, 'agent.json')
+
+agent_charset = set(''.join(agent))
+Chinese, unChinese = [], []
+for c in agent_charset:
+    if ord(c) < 256:
+        unChinese.append(c)
+    else:
+        Chinese.append(c)
+with open('build/Chinese.txt', 'w') as f:
+    f.write(''.join(Chinese))
+with open('build/unChinese.txt', 'w') as f:
+    f.write(''.join(unChinese))
+
+command = 'java.exe -jar FontPruner/sfnttool.jar -c build/Chinese.txt  build/unChinese.txt FontPruner/SourceHanSansSC-Bold.ttf build/SourceHanSansSC-Bold.ttf'
+if os.system(command) is False:
+    raise Exception('build new font error!' + command)
+
+
+ttf_file = 'build/SourceHanSansSC-Bold.ttf'
+otf_file = 'arknights_mower/fonts/SourceHanSansSC-Bold.otf'
+
+font = fontforge.open(ttf_file)
+font.generate(otf_file)
+font.close()
 
 
 chapter = []
