@@ -43,6 +43,10 @@ class Session(object):
                 self.sock = Socket(self.server, self.timeout)
                 if reconnect:
                     self.device(self.device_id)
+            except:
+                self.sock = Socket(self.server, self.timeout)
+                if reconnect:
+                    self.device(self.device_id)
         raise socket.timeout(f'server: {self.server}')
 
     def response(self, recv_all: bool = False) -> bytes:
