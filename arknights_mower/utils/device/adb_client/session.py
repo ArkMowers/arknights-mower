@@ -43,7 +43,7 @@ class Session(object):
                 self.sock = Socket(self.server, self.timeout)
                 if reconnect:
                     self.device(self.device_id)
-            except:
+            except RuntimeError:
                 self.sock = Socket(self.server, self.timeout)
                 if reconnect:
                     self.device(self.device_id)
