@@ -43,6 +43,10 @@
         "label": "CONNECTING",
         "comment": "正在提交反馈至神经"
     },
+    "10": {
+        "label": "NETWORK_CHECK",
+        "comment": "网络拨测"
+    },
     "101": {
         "label": "LOGIN_MAIN",
         "comment": "登陆页面"
@@ -74,6 +78,14 @@
     "108": {
         "label": "LOGIN_CAPTCHA",
         "comment": "滑动验证码"
+    },
+    "109": {
+        "label": "LOGIN_BILIBILI",
+        "comment": "B 服登陆界面"
+    },
+    "110": {
+        "label": "LOGIN_MAIN_NOENTRY",
+        "comment": "登陆页面（无按钮入口）"
     },
     "201": {
         "label": "INFRA_MAIN",

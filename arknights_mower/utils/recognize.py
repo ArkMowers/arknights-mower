@@ -97,7 +97,10 @@ class Recognizer(object):
         elif self.find('ope_recover_originite_on') is not None:
             self.scene = Scene.OPERATOR_RECOVER_ORIGINITE
         elif self.find('double_confirm') is not None:
-            self.scene = Scene.DOUBLE_CONFIRM
+            if self.find('network_check') is not None:
+                self.scene = Scene.NETWORK_CHECK
+            else:
+                self.scene = Scene.DOUBLE_CONFIRM
         elif self.find('ope_firstdrop') is not None:
             self.scene = Scene.OPERATOR_DROP
         elif self.find('ope_eliminate') is not None:
@@ -150,8 +153,11 @@ class Recognizer(object):
             self.scene = Scene.SHOP_CREDIT_CONFIRM
         elif self.find('shop_assist') is not None:
             self.scene = Scene.SHOP_ASSIST
-        elif self.find('login_awake') is not None:
-            self.scene = Scene.LOGIN_QUICKLY
+        elif self.find('login_logo') is not None:
+            if self.find('login_awake') is not None:
+                self.scene = Scene.LOGIN_QUICKLY
+            else:
+                self.scene = Scene.LOGIN_MAIN_NOENTRY
         elif self.find('login_account') is not None:
             self.scene = Scene.LOGIN_MAIN
         elif self.find('register') is not None:
@@ -184,7 +190,11 @@ class Recognizer(object):
             self.scene = Scene.TERMINAL_BIOGRAPHY
         elif self.find('collection') is not None:
             self.scene = Scene.TERMINAL_COLLECTION
+        elif self.find('login_bilibili') is not None:
+            self.scene = Scene.LOGIN_BILIBILI
         elif self.find('loading6') is not None:
+            self.scene = Scene.LOADING
+        elif self.find('loading7') is not None:
             self.scene = Scene.LOADING
         else:
             self.scene = Scene.UNKNOWN
