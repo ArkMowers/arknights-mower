@@ -423,11 +423,22 @@ class BaseConstructSolver(BaseSolver):
                             if y[0] == '菲亚梅塔':
                                 self.tap((y[1][0]), interval=0, rebuild=False)
                                 break
-                        agent.remove('菲亚梅塔')
-                        # 滑动到最左边
+                        agent.remove('菲亚梅塔')      
+                              
+                        # 如果菲亚梅塔是 the only one
+                        if len(agent) == 0:
+                            break
+                        # 否则滑动到最左边
                         for _ in range(9):
                             self.swipe((w//2, h//2), (w//2, 0), interval=0.5)
                         self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
+                        
+                        # reset the statuses and cancel the rightward-swiping
+                        checked = set()
+                        pre = set() 
+                        error_count = 0
+                        continue
+                    
                 else:
                     for name in agent_name & agent:
                         for y in ret:
@@ -436,9 +447,9 @@ class BaseConstructSolver(BaseSolver):
                                 break
                         agent.remove(name)
 
-                # 如果已经完成选择则退出
-                if len(agent) == 0:
-                    break
+                    # 如果已经完成选择则退出
+                    if len(agent) == 0:
+                        break
 
                 st = ret[-2][1][2]  # 起点
                 ed = ret[0][1][1]   # 终点
