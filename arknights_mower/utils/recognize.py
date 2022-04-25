@@ -153,7 +153,7 @@ class Recognizer(object):
             self.scene = Scene.SHOP_CREDIT_CONFIRM
         elif self.find('shop_assist') is not None:
             self.scene = Scene.SHOP_ASSIST
-        elif self.find('login_logo') is not None:
+        elif self.find('login_logo') is not None and self.find('hypergryph') is not None:
             if self.find('login_awake') is not None:
                 self.scene = Scene.LOGIN_QUICKLY
             else:
