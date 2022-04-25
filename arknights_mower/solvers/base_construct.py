@@ -426,8 +426,8 @@ class BaseConstructSolver(BaseSolver):
                         agent.remove('菲亚梅塔')
                         # 滑动到最左边
                         for _ in range(9):
-                            self.swipe((w//2, h//2), (w//2, 0), interval=0)
-                            self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
+                            self.swipe((w//2, h//2), (w//2, 0), interval=0.5)
+                        self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
                 else:
                     for name in agent_name & agent:
                         for y in ret:
