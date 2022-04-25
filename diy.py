@@ -5,7 +5,7 @@ from arknights_mower.utils.log import logger, init_fhlr
 from arknights_mower.utils import config
 
 
-# 指定无人机加速第三层第三个房间的制造
+# 指定无人机加速第三层第三个房间的制造或贸易订单
 drone_room = 'room_3_3'
 
 # 指定关卡序列的作战计划
