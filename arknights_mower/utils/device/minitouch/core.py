@@ -125,7 +125,7 @@ class Client(object):
             return True
         return False
 
-    def check_server_alive(self) -> bool:
+    def check_adb_alive(self) -> bool:
         """ check if adb server alive """
         return self.client.check_server_alive()
 
@@ -155,7 +155,7 @@ class Client(object):
         :param duration: in milliseconds
         :param lift: if True, "lift" the touch point
         """
-        self.check_server_alive()
+        self.check_adb_alive()
         self.check_mnt_alive()
 
         builder = CommandBuilder()
@@ -176,7 +176,7 @@ class Client(object):
 
             builder.publish(conn)
 
-    def swipe(self, points: list[tuple[int, int]], display_frames: tuple[int, int, int], pressure: int = 100, duration: Union[list[int], int] = None, up_wait: int = 0, fall: bool = True, lift: bool = True) -> None:
+    def __swipe(self, points: list[tuple[int, int]], display_frames: tuple[int, int, int], pressure: int = 100, duration: Union[list[int], int] = None, up_wait: int = 0, fall: bool = True, lift: bool = True) -> None:
         """
         swipe between points one by one, with pressure and duration
 
@@ -184,11 +184,11 @@ class Client(object):
         :param display_frames: tuple[int, int, int], which means [weight, high, rotation] by "adb shell dumpsys window | grep DisplayFrames"
         :param pressure: default to 100
         :param duration: in milliseconds
-        :param duration: in milliseconds
+        :param up_wait: in milliseconds
         :param fall: if True, "fall" the first touch point
         :param lift: if True, "lift" the last touch point
         """
-        self.check_server_alive()
+        self.check_adb_alive()
         self.check_mnt_alive()
 
         points = [list(map(int, point)) for point in points]
@@ -217,7 +217,7 @@ class Client(object):
                     builder.wait(up_wait)
                 builder.publish(conn)
 
-    def smooth_swipe(self, points: list[tuple[int, int]], display_frames: tuple[int, int, int], pressure: int = 100, duration: Union[list[int], int] = None, up_wait: int = 0, part: int = 10, fall: bool = True, lift: bool = True) -> None:
+    def swipe(self, points: list[tuple[int, int]], display_frames: tuple[int, int, int], pressure: int = 100, duration: Union[list[int], int] = None, up_wait: int = 0, part: int = 10, fall: bool = True, lift: bool = True) -> None:
         """
         swipe between points one by one, with pressure and duration
         it will split distance between points into pieces
@@ -253,4 +253,4 @@ class Client(object):
                 new_duration += [None] * part
             else:
                 new_duration += [duration[id-1] // part] * part
-        self.swipe(new_points, display_frames, pressure, new_duration, up_wait, fall, lift)
+        self.__swipe(new_points, display_frames, pressure, new_duration, up_wait, fall, lift)

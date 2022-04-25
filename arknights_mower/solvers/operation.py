@@ -341,7 +341,7 @@ class OpeSolver(BaseSolver):
         while level not in levels:
             _levels = levels
             self.swipe_noinertia((self.recog.w // 2, self.recog.h // 4),
-                                 (self.recog.w // 3, 0), 20)
+                                 (self.recog.w // 3, 0), 100)
             ocr, levels = self.ocr_level()
             if _levels == levels:
                 retry_times -= 1
@@ -355,7 +355,7 @@ class OpeSolver(BaseSolver):
         while level not in levels:
             _levels = levels
             self.swipe_noinertia((self.recog.w // 2, self.recog.h // 4),
-                                 (-self.recog.w // 3, 0), 20)
+                                 (-self.recog.w // 3, 0), 100)
             ocr, levels = self.ocr_level()
             if _levels == levels:
                 retry_times -= 1

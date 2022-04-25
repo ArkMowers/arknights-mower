@@ -76,7 +76,7 @@ class Socket(object):
         """ check if first 4 bytes is "OKAY" """
         result = self.recv_exactly(4)
         if result != b'OKAY':
-            raise RuntimeError(self.recv_response())
+            raise ConnectionError(self.recv_response())
 
     def recv(self, len: int) -> bytes:
         return self.sock.recv(len)

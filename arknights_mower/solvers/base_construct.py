@@ -381,7 +381,7 @@ class BaseConstructSolver(BaseSolver):
             if not first_time:
                 # 滑动到最左边
                 for _ in range(9):
-                    self.swipe((w//2, h//2), (w//2, 0), interval=0)
+                    self.swipe((w//2, h//2), (w//2, 0), interval=0.5)
                 self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
             first_time = False
 
@@ -437,7 +437,7 @@ class BaseConstructSolver(BaseSolver):
             if not first_time:
                 # 滑动到最左边
                 for _ in range(9):
-                    self.swipe((w//2, h//2), (w//2, 0), interval=0)
+                    self.swipe((w//2, h//2), (w//2, 0), interval=0.5)
                 self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
             first_time = False
 
@@ -524,7 +524,7 @@ class BaseConstructSolver(BaseSolver):
         # 滑动到顶部
         h, w = self.recog.h, self.recog.w
         for _ in range(4):
-            self.swipe((w//2, h//2), (0, h//2), interval=0)
+            self.swipe((w//2, h//2), (0, h//2), interval=0.5)
         self.swipe((w//2, h//2), (0, h//2), rebuild=False)
 
         logger.info('安排干员工作……')
