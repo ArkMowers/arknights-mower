@@ -87,6 +87,10 @@
         "label": "LOGIN_MAIN_NOENTRY",
         "comment": "登陆页面（无按钮入口）"
     },
+    "111": {
+        "label": "LOGIN_CADPA_DETAIL",
+        "comment": "游戏适龄提示"
+    },
     "201": {
         "label": "INFRA_MAIN",
         "comment": "基建全局视角"

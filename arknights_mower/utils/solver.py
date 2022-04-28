@@ -203,6 +203,8 @@ class BaseSolver:
                     self.tap(detector.confirm(self.recog.img))
                 elif self.scene() == Scene.LOGIN_MAIN_NOENTRY:
                     self.sleep(3)
+                elif self.scene() == Scene.LOGIN_CADPA_DETAIL:
+                    self.back(2)
                 elif self.scene() == Scene.LOGIN_BILIBILI:
                     self.tap_element('login_bilibili_entry')
                 elif self.scene() == Scene.NETWORK_CHECK:

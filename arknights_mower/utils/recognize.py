@@ -156,10 +156,12 @@ class Recognizer(object):
         elif self.find('login_logo') is not None and self.find('hypergryph') is not None:
             if self.find('login_awake') is not None:
                 self.scene = Scene.LOGIN_QUICKLY
+            elif self.find('login_account') is not None:
+                self.scene = Scene.LOGIN_MAIN
+            elif self.find('login_iknow') is not None:
+                self.scene = Scene.LOGIN_ANNOUNCE
             else:
                 self.scene = Scene.LOGIN_MAIN_NOENTRY
-        elif self.find('login_account') is not None:
-            self.scene = Scene.LOGIN_MAIN
         elif self.find('register') is not None:
             self.scene = Scene.LOGIN_REGISTER
         elif self.find('login_loading') is not None:
@@ -167,7 +169,10 @@ class Recognizer(object):
         elif self.find('login_iknow') is not None:
             self.scene = Scene.LOGIN_ANNOUNCE
         elif self.find('12cadpa') is not None:
-            self.scene = Scene.LOGIN_START
+            if self.find('cadpa_detail') is not None:
+                self.scene = Scene.LOGIN_CADPA_DETAIL
+            else:
+                self.scene = Scene.LOGIN_START
         elif detector.announcement_close(self.img) is not None:
             self.scene = Scene.ANNOUNCEMENT
         elif self.find('skip') is not None:
