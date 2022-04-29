@@ -238,5 +238,9 @@
     "9999": {
         "label": "CONFIRM",
         "comment": "确认对话框"
+    },
+    "9997": {
+        "label": "ARRANGE_ORDER_OPTIONS",
+        "comment": "干员进驻设施排序界面"
     }
 }

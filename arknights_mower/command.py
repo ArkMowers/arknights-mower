@@ -18,15 +18,17 @@ def mail(args: list[str] = [], device: Device = None):
 
 def base(args: list[str] = [], device: Device = None):
     """
-    base [plan] [-c] [-d[F][N]]
+    base [plan] [-c] [-d[F][N]] [-f[F][N]]
         自动处理基建的信赖/货物/订单/线索/无人机
         plan 表示选择的基建干员排班计划（需要搭配配置文件使用）
         -c 是否自动收集并使用线索
         -d 是否自动消耗无人机，F 表示第几层（1-3），N 表示从左往右第几个房间（1-3）
+        -f 是否使用菲亚梅塔恢复特定房间干员心情，恢复后恢复原位且工作位置不变，F、N含义同上
     """
     arrange = None
     clue_collect = False
     drone_room = None
+    fia_room = None
 
     try:
         for p in args:
@@ -37,12 +39,16 @@ def base(args: list[str] = [], device: Device = None):
                     assert '1' <= p[2] <= '3'
                     assert '1' <= p[3] <= '3'
                     drone_room = f'room_{p[2]}_{p[3]}'
+                elif p[1] == 'f':
+                    assert '1' <= p[2] <= '3'
+                    assert '1' <= p[3] <= '3'
+                    fia_room = f'room_{p[2]}_{p[3]}'
             elif arrange is None:
                 arrange = config.BASE_CONSTRUCT_PLAN.get(p)
     except Exception:
         raise ParamError
 
-    BaseConstructSolver(device).run(arrange, clue_collect, drone_room)
+    BaseConstructSolver(device).run(arrange, clue_collect, drone_room, fia_room)
 
 
 def credit(args: list[str] = [], device: Device = None):
