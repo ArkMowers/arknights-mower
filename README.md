@@ -284,3 +284,11 @@ Solver().base(arrange=plan)
 
 - [Telegram Group](https://t.me/joinchat/eFkqRj1IWm9kYTBl)
 - [QQ Group](https://jq.qq.com/?_wv=1027&k=4gWboTVI): 239200680
+
+## Star History
+
+<div align="center">
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Konano/arknights-mower&type=Date)](https://star-history.com/#Konano/arknights-mower&Date)
+
+</div>
