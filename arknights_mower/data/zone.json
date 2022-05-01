@@ -137,6 +137,12 @@
         "chapterIndex": null,
         "zoneIndex": 3
     },
+    "permanent_sub_4_Stultifera_Navis": {
+        "type": "BRANCHLINE",
+        "name": "愚人号",
+        "chapterIndex": null,
+        "zoneIndex": 4
+    },
     "permanent_sidestory_1_Grani_And_The_Treasure_Of_Knights": {
         "type": "SIDESTORY",
         "name": "骑兵与猎人",
