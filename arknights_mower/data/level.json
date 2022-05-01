@@ -1217,6 +1217,24 @@
         "code": "H9-6",
         "name": "急雨行动-3"
     },
+    "H10-1": {
+        "zone_id": "main_10",
+        "ap_cost": 10,
+        "code": "H10-1",
+        "name": "日晕行动-1"
+    },
+    "H10-2": {
+        "zone_id": "main_10",
+        "ap_cost": 10,
+        "code": "H10-2",
+        "name": "日晕行动-2"
+    },
+    "H10-3": {
+        "zone_id": "main_10",
+        "ap_cost": 10,
+        "code": "H10-3",
+        "name": "日晕行动-3"
+    },
     "CE-1": {
         "zone_id": "weekly_9",
         "ap_cost": 10,
@@ -1246,6 +1264,12 @@
         "ap_cost": 30,
         "code": "CE-5",
         "name": "机密情报押运"
+    },
+    "CE-6": {
+        "zone_id": "weekly_9",
+        "ap_cost": 36,
+        "code": "CE-6",
+        "name": "实验原件押运"
     },
     "SK-1": {
         "zone_id": "weekly_8",
@@ -1306,6 +1330,12 @@
         "ap_cost": 30,
         "code": "LS-5",
         "name": "歼灭战演习"
+    },
+    "LS-6": {
+        "zone_id": "weekly_7",
+        "ap_cost": 36,
+        "code": "LS-6",
+        "name": "运动战演习"
     },
     "AP-1": {
         "zone_id": "weekly_5",
@@ -1564,6 +1594,66 @@
         "ap_cost": 18,
         "code": "SV-9",
         "name": "笃信者"
+    },
+    "SN-1": {
+        "zone_id": "permanent_sub_4_Stultifera_Navis",
+        "ap_cost": 9,
+        "code": "SN-1",
+        "name": "中心广场"
+    },
+    "SN-2": {
+        "zone_id": "permanent_sub_4_Stultifera_Navis",
+        "ap_cost": 9,
+        "code": "SN-2",
+        "name": "广场南路"
+    },
+    "SN-3": {
+        "zone_id": "permanent_sub_4_Stultifera_Navis",
+        "ap_cost": 9,
+        "code": "SN-3",
+        "name": "安静的步道"
+    },
+    "SN-4": {
+        "zone_id": "permanent_sub_4_Stultifera_Navis",
+        "ap_cost": 12,
+        "code": "SN-4",
+        "name": "灯塔入口"
+    },
+    "SN-5": {
+        "zone_id": "permanent_sub_4_Stultifera_Navis",
+        "ap_cost": 12,
+        "code": "SN-5",
+        "name": "灯塔控制室"
+    },
+    "SN-6": {
+        "zone_id": "permanent_sub_4_Stultifera_Navis",
+        "ap_cost": 15,
+        "code": "SN-6",
+        "name": "中央通道"
+    },
+    "SN-7": {
+        "zone_id": "permanent_sub_4_Stultifera_Navis",
+        "ap_cost": 15,
+        "code": "SN-7",
+        "name": "黄金回廊"
+    },
+    "SN-8": {
+        "zone_id": "permanent_sub_4_Stultifera_Navis",
+        "ap_cost": 21,
+        "code": "SN-8",
+        "name": "观测所"
+    },
+    "SN-9": {
+        "zone_id": "permanent_sub_4_Stultifera_Navis",
+        "ap_cost": 21,
+        "code": "SN-9",
+        "name": "信号灯组"
+    },
+    "SN-10": {
+        "zone_id": "permanent_sub_4_Stultifera_Navis",
+        "ap_cost": 21,
+        "code": "SN-10",
+        "name": "礼仪广场"
     },
     "GT-1": {
         "zone_id": "permanent_sidestory_1_Grani_And_The_Treasure_Of_Knights",

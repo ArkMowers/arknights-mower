@@ -23,7 +23,7 @@ class BaseConstructSolver(BaseSolver):
         """
         :param arrange: dict(room_name: [agent,...]), 基建干员安排
         :param clue_collect: bool, 是否收取线索
-        :param drone_room: str, 是否使用无人机加速（仅支持制造站）
+        :param drone_room: str, 是否使用无人机加速
         """
         self.arrange = arrange
         self.clue_collect = clue_collect
@@ -360,6 +360,20 @@ class BaseConstructSolver(BaseSolver):
             self.tap(accelerate)
             self.tap_element('all_in')
             self.tap(accelerate, y_rate=1)
+            
+        else:
+            accelerate = self.find('bill_accelerate')
+            while(accelerate):
+                logger.info('贸易站加速')
+                self.tap(accelerate)
+                self.tap_element('all_in')
+                self.tap((self.recog.w*0.75, self.recog.h*0.8), interval=3)  # relative position 0.75, 0.8
+
+                st = accelerate[1]   # 起点
+                ed = accelerate[0]   # 终点
+                # 0.95, 1.05 are offset compensations
+                self.swipe_noinertia(st, (ed[0]*0.95-st[0]*1.05, 0), rebuild=True)    
+                accelerate = self.find('bill_accelerate')
 
         logger.info('返回基建主界面')
         self.back(interval=2, rebuild=False)
@@ -416,16 +430,40 @@ class BaseConstructSolver(BaseSolver):
                 checked |= agent_name
 
                 # 如果出现了需要的干员则选择
-                for name in agent_name & agent:
-                    for y in ret:
-                        if y[0] == name:
-                            self.tap((y[1][0]), interval=0, rebuild=False)
+                # 优先安排菲亚梅塔
+                if '菲亚梅塔' in agent:
+                    if '菲亚梅塔' in agent_name:
+                        for y in ret:
+                            if y[0] == '菲亚梅塔':
+                                self.tap((y[1][0]), interval=0, rebuild=False)
+                                break
+                        agent.remove('菲亚梅塔')      
+                              
+                        # 如果菲亚梅塔是 the only one
+                        if len(agent) == 0:
                             break
-                    agent.remove(name)
+                        # 否则滑动到最左边
+                        for _ in range(9):
+                            self.swipe((w//2, h//2), (w//2, 0), interval=0.5)
+                        self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
+                        
+                        # reset the statuses and cancel the rightward-swiping
+                        checked = set()
+                        pre = set() 
+                        error_count = 0
+                        continue
+                    
+                else:
+                    for name in agent_name & agent:
+                        for y in ret:
+                            if y[0] == name:
+                                self.tap((y[1][0]), interval=0, rebuild=False)
+                                break
+                        agent.remove(name)
 
-                # 如果已经完成选择则退出
-                if len(agent) == 0:
-                    break
+                    # 如果已经完成选择则退出
+                    if len(agent) == 0:
+                        break
 
                 st = ret[-2][1][2]  # 起点
                 ed = ret[0][1][1]   # 终点

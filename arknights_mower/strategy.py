@@ -18,7 +18,7 @@ class Solver(object):
         """
         :param arrange: dict(room_name: [agent,...]), 基建干员安排
         :param clue_collect: bool, 是否收取线索
-        :param drone_room: str, 是否使用无人机加速（仅支持制造站）
+        :param drone_room: str, 是否使用无人机加速
         """
         BaseConstructSolver(self.device, self.recog).run(
             arrange, clue_collect, drone_room)
