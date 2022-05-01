@@ -172,7 +172,10 @@ class OpeSolver(BaseSolver):
             self.wait_pre = 10
         self.wait_total = 0
         # 点击开始作战
-        self.tap_element('ope_start')
+        # ope_start_SN 对应三周年活动愚人船的UI
+        ope_start = self.find('ope_start') or self.find('ope_start_SN')
+        if ope_start:
+            self.tap(ope_start)
         # 确定可以开始作战后扣除相应的消耗药剂或者源石
         if self.recover_state == 1:
             logger.info('use potion to recover sanity')
