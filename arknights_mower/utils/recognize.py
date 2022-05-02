@@ -105,6 +105,8 @@ class Recognizer(object):
             self.scene = Scene.OPERATOR_DROP
         elif self.find('ope_eliminate') is not None:
             self.scene = Scene.OPERATOR_ELIMINATE
+        elif self.find('ope_elimi_agency_panel') is not None:
+            self.scene = Scene.OPERATOR_ELIMINATE_AGENCY
         elif self.find('ope_giveup') is not None:
             self.scene = Scene.OPERATOR_GIVEUP
         elif self.find('ope_failed') is not None:

@@ -203,6 +203,10 @@
         "label": "OPERATOR_FAILED",
         "comment": "代理作战失败"
     },
+    "614": {
+        "label": "OPERATOR_ELIMINATE_AGENCY",
+        "comment": "剿灭代理卡使用确认"
+    },
     "701": {
         "label": "SHOP_OTHERS",
         "comment": "商店除了信用兑换处以外的界面"
