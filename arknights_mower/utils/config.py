@@ -160,7 +160,7 @@ def init_config() -> None:
     OPE_TIMES = __get('operation/times', -1)
     OPE_POTION = __get('operation/potion', 0)
     OPE_ORIGINITE = __get('operation/originite', 0)
-    OPE_ELIMINATE = __get('operation/eliminate', False)
+    OPE_ELIMINATE = int(__get('operation/eliminate', 0))  # convert bool to int
     OPE_PLAN = __get('operation/plan', None)
     if OPE_PLAN is not None:
         OPE_PLAN = [x.split(',') for x in OPE_PLAN]
