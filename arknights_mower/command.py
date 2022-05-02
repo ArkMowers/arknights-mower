@@ -87,13 +87,13 @@ def mission(args: list[str] = [], device: Device = None):
 
 def operation(args: list[str] = [], device: Device = None):
     """
-    operation [level] [n] [-r[N]] [-R[N]] [-e]
+    operation [level] [n] [-r[N]] [-R[N]] [-e|-E]
         自动进行作战，可指定次数或直到理智不足
         level 指定关卡名称，未指定则默认前往上一次关卡
         n 指定作战次数，未指定则默认作战直到理智不足
         -r 是否自动回复理智，最多回复 N 次，N 未指定则表示不限制回复次数
         -R 是否使用源石回复理智，最多回复 N 次，N 未指定则表示不限制回复次数
-        -e 是否优先处理未完成的每周剿灭
+        -e 是否优先处理未完成的每周剿灭，优先使用代理卡；-E 表示只使用代理卡而不消耗理智
     operation --plan
         （使用配置文件中的参数以及计划）自动进行作战
     """

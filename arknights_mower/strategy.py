@@ -35,13 +35,13 @@ class Solver(object):
         """
         RecruitSolver(self.device, self.recog).run(priority)
 
-    def ope(self, level: str = None, times: int = -1, potion: int = 0, originite: int = 0, eliminate: bool = False, plan: list[tp.OpePlan] = None) -> list[tp.OpePlan]:
+    def ope(self, level: str = None, times: int = -1, potion: int = 0, originite: int = 0, eliminate: int = 0, plan: list[tp.OpePlan] = None) -> list[tp.OpePlan]:
         """
         :param level: str, 指定关卡，默认为前往上一次关卡或当前界面关卡
         :param times: int, 作战的次数上限，-1 为无限制，默认为 -1
         :param potion: int, 使用药剂恢复体力的次数上限，-1 为无限制，默认为 0
         :param originite: int, 使用源石恢复体力的次数上限，-1 为无限制，默认为 0
-        :param eliminate: bool, 是否优先处理未完成的每周剿灭，默认为 False
+        :param eliminate: int, 是否优先处理未完成的每周剿灭，0 为忽略剿灭，1 为优先剿灭，2 为优先剿灭但只消耗代理卡，默认为 0
         :param plan: [[str, int]...], 指定多个关卡以及次数，优先级高于 level
 
         :return remain_plan: [[str, int]...], 未完成的计划

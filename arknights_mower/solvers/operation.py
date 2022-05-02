@@ -28,13 +28,13 @@ class OpeSolver(BaseSolver):
     def __init__(self, device=None, recog=None):
         super().__init__(device, recog)
 
-    def run(self, level: str = None, times: int = -1, potion: int = 0, originite: int = 0, eliminate: bool = False, plan: list = None):
+    def run(self, level: str = None, times: int = -1, potion: int = 0, originite: int = 0, eliminate: int = 0, plan: list = None):
         """
         :param level: str, 指定关卡，默认为前往上一次关卡或当前界面关卡
         :param times: int, 作战的次数上限，-1 为无限制，默认为 -1
         :param potion: int, 使用药剂恢复体力的次数上限，-1 为无限制，默认为 0
         :param originite: int, 使用源石恢复体力的次数上限，-1 为无限制，默认为 0
-        :param eliminate: bool, 是否优先处理未完成的每周剿灭，默认为 False
+        :param eliminate: int, 是否优先处理未完成的每周剿灭，0 为忽略剿灭，1 为优先剿灭，2 为优先剿灭但只消耗代理卡，默认为 0
         :param plan: [[str, int]...], 指定多个关卡以及次数，优先级高于 level
 
         :return remain_plan: [[str, int]...], 未完成的计划
@@ -63,7 +63,7 @@ class OpeSolver(BaseSolver):
         self.plan = plan
 
         self.recover_state = 0  # 有关体力恢复的状态，0 为未知，1 为体力药剂恢复中，2 为源石恢复中（防止网络波动）
-        self.eliminate_state = 0  # 有关每周剿灭的状态，0 为未知，1 为未完成，2 为已完成
+        self.eliminate_state = 0  # 有关每周剿灭的状态，0 为未知，1 为未完成，2 为已完成，3 为未完成但无代理卡可用
         self.wait_pre = 10  # 作战时每次等待的时长，普通关卡为 10s，剿灭关卡为 60s
         self.wait_start = 0  # 作战时第一次等待的时长
         self.wait_total = 0  # 作战时累计等待的时长
@@ -97,6 +97,8 @@ class OpeSolver(BaseSolver):
             return self.operator_before()
         elif self.scene() == Scene.OPERATOR_ELIMINATE:
             return self.operator_before_elimi()
+        elif self.scene() == Scene.OPERATOR_ELIMINATE_AGENCY:
+            self.tap_element('ope_elimi_agency_confirm')
         elif self.scene() == Scene.OPERATOR_SELECT:
             self.tap_element('ope_select_start')
         elif self.scene() == Scene.OPERATOR_ONGOING:
@@ -132,16 +134,17 @@ class OpeSolver(BaseSolver):
             raise RecognizeError('Unknown scene')
 
     def terminal_main(self) -> bool:
-        eliminate_todo = self.find('terminal_eliminate')
-        # 检查每周剿灭完成情况
-        if eliminate_todo is not None:
-            self.eliminate_state = 1
-        else:
-            self.eliminate_state = 2
-        # 如果每周剿灭未完成且设定为优先处理
-        if self.eliminate and eliminate_todo is not None:
-            self.tap(eliminate_todo)
-            return
+        if self.eliminate_state != 3:
+            eliminate_todo = self.find('terminal_eliminate')
+            # 检查每周剿灭完成情况
+            if eliminate_todo is not None:
+                self.eliminate_state = 1
+            else:
+                self.eliminate_state = 2
+            # 如果每周剿灭未完成且设定为优先处理
+            if self.eliminate and eliminate_todo is not None:
+                self.tap(eliminate_todo)
+                return
         try:
             # 选择关卡
             self.choose_level(self.plan[0][0])
@@ -195,13 +198,27 @@ class OpeSolver(BaseSolver):
         if self.eliminate_state == 2:
             logger.warning('检测到关卡为剿灭，但每周剿灭任务已完成')
             return True
+        # 如果剿灭代理卡已经用完但仍然在剿灭关卡前，则只可能是 pre_ope 为剿灭关卡，此时应该退出
+        if self.eliminate_state == 3:
+            logger.warning('检测到关卡为剿灭，但剿灭代理卡已经用完')
+            return True
         # 代理出现过失误，终止作战
         if self.failed:
             return True
         # 激活代理作战
+        agency = self.find('ope_elimi_agency')
+        if agency is not None:
+            self.tap(agency)
+            return
         agency = self.find('ope_agency')
         if agency is not None:
             self.tap(agency)
+            return
+        # 若只想用代理卡，但此时代理卡已经用光，则退回到终端主界面选择关卡
+        if self.eliminate == 2 and self.find('ope_elimi_agenct_used') is None:
+            self.eliminate_state = 3
+            self.get_navigation()
+            self.tap_element('nav_terminal')
             return
         # 重置剿灭关卡等待时长
         if self.wait_pre != 60:
@@ -245,6 +262,9 @@ class OpeSolver(BaseSolver):
         # 如果关卡选定则扣除任务次数
         if self.level_choosed:
             self.plan[0][1] -= 1
+        # 若每周剿灭未完成则剿灭完成状态变为未知
+        if self.eliminate_state == 1:
+            self.eliminate_state = 0
         # 随便点击某处退出结算界面
         self.tap((self.recog.w // 2, 10))
 
