@@ -643,7 +643,6 @@ class BaseConstructSolver(BaseSolver):
         logger.info('返回基建主界面')
         self.back()
 
-<<<<<<< HEAD
     def choose_agent_in_order(self, agent: list[str], exclude: list[str] = [], exclude_checked_in: bool = False, dormitory: bool = False):
         """ 
         按照顺序选择干员，只选择未在工作、未注意力涣散、未在休息的空闲干员 
@@ -653,11 +652,6 @@ class BaseConstructSolver(BaseSolver):
         :param exclude_checked_in: 是否仅选择未进驻干员
         :param dormitory: 是否是入驻宿舍，如果不是，则不选择注意力涣散的干员
         """
-=======
-    def choose_agent_in_order(self, agent: list[str], exclude: list[str] = [], exclude_checked_in: bool = False):
-        """ 按照顺序选择干员，只选择未在工作、未注意力涣散、未在休息的空闲干员 """
-        # 是否仅选择未进驻干员
->>>>>>> ceb7378 (feat: support using Fiammetta recover others' emotion)
         if exclude_checked_in:
             self.tap_element('arrange_order_options')
             self.tap_element('arrange_non_check_in')
@@ -675,16 +669,11 @@ class BaseConstructSolver(BaseSolver):
             while found == 0:
                 ret = character_recognize.agent(self.recog.img)
                 ret = np.array(ret, dtype=object).reshape(-1, 2, 2).reshape(-1, 2)
-<<<<<<< HEAD
                 # 'Free'代表占位符，选择空闲干员
-=======
-                # 'Free'代表占位符
->>>>>>> ceb7378 (feat: support using Fiammetta recover others' emotion)
                 if agent[idx] == 'Free':
                     for x in ret:
                         x[1][0, 1] -= 155
                         x[1][2, 1] -= 155
-<<<<<<< HEAD
                         # 不选择已进驻的干员，如果非宿舍则进一步不选择精神涣散的干员
                         if not (self.find('agent_on_shift', scope=(x[1][0], x[1][2]))
                                 or self.find('agent_resting', scope=(x[1][0], x[1][2]))
@@ -695,18 +684,6 @@ class BaseConstructSolver(BaseSolver):
                                     _free = x[0]
                                     found = 1
                                     break
-=======
-                        # 只选择未在工作、未注意力涣散、未在休息的干员
-                        if not (self.find('agent_on_shift', scope=(x[1][0], x[1][2]))
-                                or self.find('distracted', scope=(x[1][0], x[1][2]))
-                                or self.find('agent_resting', scope=(x[1][0], x[1][2]))):
-                            if not x[0] in agent and not x[0] in exclude:
-                                self.tap(x[1], x_rate=0.5, y_rate=0.5, interval=0)
-                                agent[idx] = x[0]
-                                _free = x[0]
-                                found = 1
-                                break
->>>>>>> ceb7378 (feat: support using Fiammetta recover others' emotion)
 
                 elif agent[idx] != 'Free':
                     for x in ret:
@@ -761,26 +738,16 @@ class BaseConstructSolver(BaseSolver):
                 # 已经滑动到底部
                 ret = ret[-(room_total-idx):]
 
-<<<<<<< HEAD
             fia_resting = self.find('fia_resting') or self.find('fia_resting_elite2')
-=======
-            fia_resting = self.find('fia_resting')
->>>>>>> ceb7378 (feat: support using Fiammetta recover others' emotion)
             if fia_resting:
                 logger.info('菲亚梅塔还在休息')
                 break
 
             for block in ret:
-<<<<<<< HEAD
                 fia_full = self.find('fia_full', scope=(block[0], block[2])) \
                                 or self.find('fia_full_elite2', scope=(block[0], block[2]))
                 if fia_full:
                     fia_full = base_room_list[idx] if 'dormitory' in base_room_list[idx] else None
-=======
-                fia_full = self.find('fia_full', scope=(block[0], block[2]))
-                if fia_full:
-                    fia_full = base_room_list[idx]
->>>>>>> ceb7378 (feat: support using Fiammetta recover others' emotion)
                     break
                 idx += 1
 
@@ -791,11 +758,7 @@ class BaseConstructSolver(BaseSolver):
             top = switch[2][1]
             self.swipe_noinertia(tuple(block[1]), (0, top-block[1][1]), rebuild=True)
 
-<<<<<<< HEAD
         if not fia_resting and not fia_full:
-=======
-        if not fia_resting and not 'dormitory' in fia_full:
->>>>>>> ceb7378 (feat: support using Fiammetta recover others' emotion)
             logger.warning('未找到菲亚梅塔，使用本功能前请将菲亚梅塔置于宿舍！')
         elif fia_full:
             logger.info('菲亚梅塔心情已满，位于%s', fia_full)
@@ -805,11 +768,7 @@ class BaseConstructSolver(BaseSolver):
 
             # 进入进驻详情
             if not self.find('arrange_check_in_on'):
-<<<<<<< HEAD
                 self.tap_element('arrange_check_in', interval=2, rebuild=False)
-=======
-                self.tap_element('arrange_check_in', interval=1, rebuild=False)
->>>>>>> ceb7378 (feat: support using Fiammetta recover others' emotion)
             self.tap((self.recog.w*0.82, self.recog.h*0.25), interval=2)
             # 确保按工作状态排序 防止出错
             self.tap((self.recog.w*BY_TRUST[0], self.recog.h*BY_TRUST[1]), interval=0)
@@ -857,11 +816,7 @@ class BaseConstructSolver(BaseSolver):
             # 重新进入干员进驻页面，目的是加快安排速度
             self.back(interval=2)
             if not self.find('arrange_check_in_on'):
-<<<<<<< HEAD
                 self.tap_element('arrange_check_in', interval=2, rebuild=False)
-=======
-                self.tap_element('arrange_check_in', interval=1, rebuild=False)
->>>>>>> ceb7378 (feat: support using Fiammetta recover others' emotion)
             logger.info('安排一位空闲干员替换心情最差的%s', _recover)
             self.tap((self.recog.w*0.82, self.recog.h*0.25), interval=2)
             # 按工作状态排序，加快安排速度
@@ -870,23 +825,14 @@ class BaseConstructSolver(BaseSolver):
             # 安排空闲干员
             _free = self.choose_agent_in_order(_temp_on_shift_agents, exclude_checked_in=True)
             self.tap_element('comfirm_blue', detected=True, judge=False, interval=3)
-<<<<<<< HEAD
             self.back(interval=2)
-=======
-            self.back(interval=1.5)
->>>>>>> ceb7378 (feat: support using Fiammetta recover others' emotion)
 
             logger.info('进入菲亚梅塔所在宿舍，为%s恢复心情', _recover)
             self.enter_room(fia_full)
             # 进入进驻详情
             if not self.find('arrange_check_in_on'):
-<<<<<<< HEAD
                 self.tap_element('arrange_check_in', interval=2, rebuild=False)
             self.tap((self.recog.w*0.82, self.recog.h*0.25), interval=2)
-=======
-                self.tap_element('arrange_check_in', interval=1, rebuild=False)
-            self.tap((self.recog.w*0.82, self.recog.h*0.25), interval=1)
->>>>>>> ceb7378 (feat: support using Fiammetta recover others' emotion)
 
             rest_agents = [_recover, '菲亚梅塔']
             self.choose_agent_in_order(rest_agents, exclude_checked_in=True)
@@ -894,13 +840,8 @@ class BaseConstructSolver(BaseSolver):
 
             logger.info('恢复完毕，填满宿舍')
             rest_agents = '菲亚梅塔 Free Free Free Free'.split()
-<<<<<<< HEAD
             self.tap((self.recog.w*0.82, self.recog.h*0.25), interval=2)
             self.choose_agent_in_order(rest_agents, exclude=[_recover], dormitory=True)
-=======
-            self.tap((self.recog.w*0.82, self.recog.h*0.25), interval=1)
-            self.choose_agent_in_order(rest_agents, exclude=[_recover])
->>>>>>> ceb7378 (feat: support using Fiammetta recover others' emotion)
             self.tap_element('comfirm_blue', detected=True, judge=False, interval=3)
 
             logger.info('恢复原职')
