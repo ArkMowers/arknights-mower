@@ -643,7 +643,7 @@ class BaseConstructSolver(BaseSolver):
         logger.info('返回基建主界面')
         self.back()
 
-    def choose_agent_in_order(self, agent: list[str], exclude: list[str] = [], exclude_checked_in: bool = False, dormitory: bool = False):
+    def choose_agent_in_order(self, agent: list[str], exclude: list[str] = None, exclude_checked_in: bool = False, dormitory: bool = False):
         """ 
         按照顺序选择干员，只选择未在工作、未注意力涣散、未在休息的空闲干员 
         
@@ -652,6 +652,8 @@ class BaseConstructSolver(BaseSolver):
         :param exclude_checked_in: 是否仅选择未进驻干员
         :param dormitory: 是否是入驻宿舍，如果不是，则不选择注意力涣散的干员
         """
+        if exclude is None:
+            exclude = []
         if exclude_checked_in:
             self.tap_element('arrange_order_options')
             self.tap_element('arrange_non_check_in')
