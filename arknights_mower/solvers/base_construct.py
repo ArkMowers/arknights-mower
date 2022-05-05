@@ -19,15 +19,17 @@ class BaseConstructSolver(BaseSolver):
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
         super().__init__(device, recog)
 
-    def run(self, arrange: dict[str, tp.BasePlan] = None, clue_collect: bool = False, drone_room: str = None) -> None:
+    def run(self, arrange: dict[str, tp.BasePlan] = None, clue_collect: bool = False, drone_room: str = None, fia_room: str = None) -> None:
         """
         :param arrange: dict(room_name: [agent,...]), 基建干员安排
         :param clue_collect: bool, 是否收取线索
         :param drone_room: str, 是否使用无人机加速
+        :param fia_room: str, 是否使用菲亚梅塔恢复心情
         """
         self.arrange = arrange
         self.clue_collect = clue_collect
         self.drone_room = drone_room
+        self.fia_room = fia_room
         self.todo_task = False   # 基建 Todo 是否未被处理
 
         logger.info('Start: 基建')
@@ -48,6 +50,8 @@ class BaseConstructSolver(BaseSolver):
             self.sleep(3)
         elif self.get_navigation():
             self.tap_element('nav_infrastructure')
+        elif self.scene() == Scene.INFRA_ARRANGE_ORDER:
+            self.sleep(3)
         elif self.scene() != Scene.UNKNOWN:
             self.back_to_index()
         else:
@@ -64,6 +68,9 @@ class BaseConstructSolver(BaseSolver):
         elif self.drone_room is not None:
             self.drone(self.drone_room)
             self.drone_room = None
+        elif self.fia_room is not None:
+            self.fia(self.fia_room)
+            self.fia_room = None
         elif self.arrange is not None:
             self.agent_arrange(self.arrange)
             self.arrange = None
@@ -99,7 +106,7 @@ class BaseConstructSolver(BaseSolver):
             self.tap(factory)
             tapped = True
         if not tapped:
-            self.tap((111, self.recog.h-10))
+            self.tap((self.recog.w*0.05, self.recog.h*0.95))
             self.todo_task = True
 
     def clue(self) -> None:
@@ -114,7 +121,7 @@ class BaseConstructSolver(BaseSolver):
         self.enter_room('meeting')
 
         # 点击线索详情
-        self.tap((111, self.recog.h-10), interval=3)
+        self.tap((self.recog.w*0.05, self.recog.h*0.95), interval=3)
 
         # 如果是线索交流的报告则返回
         self.find('clue_summary') and self.back()
@@ -125,7 +132,7 @@ class BaseConstructSolver(BaseSolver):
         logger.info('接收赠送线索')
         self.tap(((x0+x1)//2, (y0*3+y1)//4), interval=3, rebuild=False)
         self.tap((self.recog.w-10, self.recog.h-10), interval=3, rebuild=False)
-        self.tap((111, self.recog.h-10), interval=3, rebuild=False)
+        self.tap((self.recog.w*0.05, self.recog.h*0.95), interval=3, rebuild=False)
 
         logger.info('领取会客室线索')
         self.tap(((x0+x1)//2, (y0*5-y1)//4), interval=3)
@@ -184,7 +191,7 @@ class BaseConstructSolver(BaseSolver):
                     self.tap(((x1+x2)//2, y1+3), rebuild=False)
 
             # 返回线索主界面
-            self.tap((111, self.recog.h-10), interval=3, rebuild=False)
+            self.tap((self.recog.w*0.05, self.recog.h*0.95), interval=3, rebuild=False)
 
         # 线索交流开启
         if clue_unlock is not None and get_all_clue:
@@ -352,7 +359,7 @@ class BaseConstructSolver(BaseSolver):
         self.enter_room(room)
 
         # 进入房间详情
-        self.tap((111, self.recog.h-10), interval=3)
+        self.tap((self.recog.w*0.05, self.recog.h*0.95), interval=3)
 
         accelerate = self.find('factory_accelerate')
         if accelerate:
@@ -363,7 +370,7 @@ class BaseConstructSolver(BaseSolver):
             
         else:
             accelerate = self.find('bill_accelerate')
-            while(accelerate):
+            while accelerate:
                 logger.info('贸易站加速')
                 self.tap(accelerate)
                 self.tap_element('all_in')
@@ -635,6 +642,220 @@ class BaseConstructSolver(BaseSolver):
 
         logger.info('返回基建主界面')
         self.back()
+
+    def choose_agent_in_order(self, agent: list[str], exclude: list[str] = None, exclude_checked_in: bool = False, dormitory: bool = False):
+        """ 
+        按照顺序选择干员，只选择未在工作、未注意力涣散、未在休息的空闲干员 
+        
+        :param agent: 指定入驻干员列表
+        :param exclude: 排除干员列表，不选择这些干员
+        :param exclude_checked_in: 是否仅选择未进驻干员
+        :param dormitory: 是否是入驻宿舍，如果不是，则不选择注意力涣散的干员
+        """
+        if exclude is None:
+            exclude = []
+        if exclude_checked_in:
+            self.tap_element('arrange_order_options')
+            self.tap_element('arrange_non_check_in')
+            self.tap_element('arrange_blue_yes')
+        self.tap_element('arrange_clean')
+
+        h, w = self.recog.h, self.recog.w
+        first_time = True
+        far_left = True
+        _free = None
+        idx = 0
+        while idx < len(agent):
+            logger.info('寻找干员: %s', agent[idx])
+            found = 0
+            while found == 0:
+                ret = character_recognize.agent(self.recog.img)
+                ret = np.array(ret, dtype=object).reshape(-1, 2, 2).reshape(-1, 2)
+                # 'Free'代表占位符，选择空闲干员
+                if agent[idx] == 'Free':
+                    for x in ret:
+                        x[1][0, 1] -= 155
+                        x[1][2, 1] -= 155
+                        # 不选择已进驻的干员，如果非宿舍则进一步不选择精神涣散的干员
+                        if not (self.find('agent_on_shift', scope=(x[1][0], x[1][2]))
+                                or self.find('agent_resting', scope=(x[1][0], x[1][2]))
+                                or (not dormitory and self.find('distracted', scope=(x[1][0], x[1][2])))):
+                                if not x[0] in agent and not x[0] in exclude:
+                                    self.tap(x[1], x_rate=0.5, y_rate=0.5, interval=0)
+                                    agent[idx] = x[0]
+                                    _free = x[0]
+                                    found = 1
+                                    break
+
+                elif agent[idx] != 'Free':
+                    for x in ret:
+                        if x[0] == agent[idx]:
+                            self.tap(x[1], x_rate=0.5, y_rate=0.5, interval=0)
+                            found = 1
+                            break
+
+                if found == 1:
+                    idx += 1
+                    first_time = True
+                    break
+
+                if first_time and not far_left and agent[idx] != 'Free':
+                    # 如果是寻找这位干员目前为止的第一次滑动, 且目前不是最左端，则滑动到最左端
+                    for _ in range(9):
+                        self.swipe((w//2, h//2), (w//2, 0), interval=0.5)
+                    self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=True)
+                    far_left = True
+                    first_time = False
+                else:
+                    st = ret[-2][1][2]  # 起点
+                    ed = ret[0][1][1]   # 终点
+                    self.swipe_noinertia(st, (ed[0]-st[0], 0), rebuild=True)
+                    far_left = False
+                    first_time = False
+        self.recog.update()
+        return _free
+
+    def fia(self, room: str):
+        """ 
+        使用菲亚梅塔恢复指定房间心情最差的干员的心情，同时保持工位顺序不变
+        目前仅支持制造站、贸易站、发电站 （因为其他房间在输入命令时较为繁琐，且需求不大）
+        使用前需要菲亚梅塔位于任意一间宿舍
+        """
+        # 基建干员选择界面，导航栏四个排序选项的相对位置
+        BY_STATUS = [0.622, 0.05]   # 按工作状态排序
+        BY_SKILL = [0.680, 0.05]    # 按技能排序
+        BY_EMO = [0.755, 0.05]      # 按心情排序
+        BY_TRUST = [0.821, 0.05]    # 按信赖排序
+
+        logger.info('基建：使用菲亚梅塔恢复心情')
+        self.tap_element('infra_overview', interval=2)
+
+        logger.info('查询菲亚梅塔状态')
+        idx = 0
+        room_total = len(base_room_list)
+        fia_resting = fia_full = None
+        while idx < room_total:
+            ret, switch, _ = segment.worker(self.recog.img)
+            if room_total-idx < len(ret):
+                # 已经滑动到底部
+                ret = ret[-(room_total-idx):]
+
+            fia_resting = self.find('fia_resting') or self.find('fia_resting_elite2')
+            if fia_resting:
+                logger.info('菲亚梅塔还在休息')
+                break
+
+            for block in ret:
+                fia_full = self.find('fia_full', scope=(block[0], block[2])) \
+                                or self.find('fia_full_elite2', scope=(block[0], block[2]))
+                if fia_full:
+                    fia_full = base_room_list[idx] if 'dormitory' in base_room_list[idx] else None
+                    break
+                idx += 1
+
+            if fia_full:
+                break
+
+            block = ret[-1]
+            top = switch[2][1]
+            self.swipe_noinertia(tuple(block[1]), (0, top-block[1][1]), rebuild=True)
+
+        if not fia_resting and not fia_full:
+            logger.warning('未找到菲亚梅塔，使用本功能前请将菲亚梅塔置于宿舍！')
+        elif fia_full:
+            logger.info('菲亚梅塔心情已满，位于%s', fia_full)
+            logger.info('查询指定房间状态')
+            self.back(interval=2)
+            self.enter_room(room)
+
+            # 进入进驻详情
+            if not self.find('arrange_check_in_on'):
+                self.tap_element('arrange_check_in', interval=2, rebuild=False)
+            self.tap((self.recog.w*0.82, self.recog.h*0.25), interval=2)
+            # 确保按工作状态排序 防止出错
+            self.tap((self.recog.w*BY_TRUST[0], self.recog.h*BY_TRUST[1]), interval=0)
+            self.tap((self.recog.w*BY_STATUS[0], self.recog.h*BY_STATUS[1]), interval=0.1)
+            # 记录房间中的干员及其工位顺序
+            ret = character_recognize.agent(self.recog.img)
+            ret = np.array(ret, dtype=object).reshape(-1, 2, 2).reshape(-1, 2)
+            on_shift_agents = []
+            for x in ret:
+                x[1][0, 1] -= 155
+                x[1][2, 1] -= 155
+                if self.find('agent_on_shift', scope=(x[1][0], x[1][2])) \
+                        or self.find('distracted', scope=(x[1][0], x[1][2])):
+                    self.tap(x[1], x_rate=0.5, y_rate=0.5, interval=0)
+                    on_shift_agents.append(x[0])
+            if len(on_shift_agents) == 0:
+                logger.warning('该房间没有干员在工作')
+                return
+            logger.info('房间内的干员顺序为: %s', on_shift_agents)
+
+            # 确保按心情升序排列
+            self.tap((self.recog.w*BY_TRUST[0], self.recog.h*BY_TRUST[1]), interval=0)
+            self.tap((self.recog.w*BY_EMO[0], self.recog.h*BY_EMO[1]), interval=0)
+            self.tap((self.recog.w*BY_EMO[0], self.recog.h*BY_EMO[1]), interval=0.1)
+            # 寻找这个房间里心情最低的干员,
+            _temp_on_shift_agents = on_shift_agents.copy()
+            while not 'Free' in _temp_on_shift_agents:
+                ret = character_recognize.agent(self.recog.img)
+                ret = np.array(ret, dtype=object).reshape(-1, 2, 2).reshape(-1, 2)
+                for x in ret:
+                    if x[0] in _temp_on_shift_agents:
+                        # 用占位符替代on_shift_agents中这个agent
+                        _temp_on_shift_agents[_temp_on_shift_agents.index(x[0])] = 'Free'
+                        logger.info('房间内心情最差的干员为: %s', x[0])
+                        _recover = x[0]
+                        break
+                if 'Free' in _temp_on_shift_agents:
+                    break
+
+                st = ret[-2][1][2]  # 起点
+                ed = ret[0][1][1]   # 终点
+                self.swipe_noinertia(st, (ed[0]-st[0], 0), rebuild=True)
+
+            # 用一位空闲干员替换上述心情最差的干员
+            # 重新进入干员进驻页面，目的是加快安排速度
+            self.back(interval=2)
+            if not self.find('arrange_check_in_on'):
+                self.tap_element('arrange_check_in', interval=2, rebuild=False)
+            logger.info('安排一位空闲干员替换心情最差的%s', _recover)
+            self.tap((self.recog.w*0.82, self.recog.h*0.25), interval=2)
+            # 按工作状态排序，加快安排速度
+            self.tap((self.recog.w*BY_TRUST[0], self.recog.h*BY_TRUST[1]), interval=0)
+            self.tap((self.recog.w*BY_STATUS[0], self.recog.h*BY_STATUS[1]), interval=0.1)
+            # 安排空闲干员
+            _free = self.choose_agent_in_order(_temp_on_shift_agents, exclude_checked_in=True)
+            self.tap_element('comfirm_blue', detected=True, judge=False, interval=3)
+            self.back(interval=2)
+
+            logger.info('进入菲亚梅塔所在宿舍，为%s恢复心情', _recover)
+            self.enter_room(fia_full)
+            # 进入进驻详情
+            if not self.find('arrange_check_in_on'):
+                self.tap_element('arrange_check_in', interval=2, rebuild=False)
+            self.tap((self.recog.w*0.82, self.recog.h*0.25), interval=2)
+
+            rest_agents = [_recover, '菲亚梅塔']
+            self.choose_agent_in_order(rest_agents, exclude_checked_in=True)
+            self.tap_element('comfirm_blue', detected=True, judge=False, interval=3)
+
+            logger.info('恢复完毕，填满宿舍')
+            rest_agents = '菲亚梅塔 Free Free Free Free'.split()
+            self.tap((self.recog.w*0.82, self.recog.h*0.25), interval=2)
+            self.choose_agent_in_order(rest_agents, exclude=[_recover], dormitory=True)
+            self.tap_element('comfirm_blue', detected=True, judge=False, interval=3)
+
+            logger.info('恢复原职')
+            self.back(interval=2)
+            self.enter_room(room)
+            if not self.find('arrange_check_in_on'):
+                self.tap_element('arrange_check_in', interval=2, rebuild=False)
+            self.tap((self.recog.w*0.82, self.recog.h*0.25), interval=2)
+            self.choose_agent_in_order(on_shift_agents)
+            self.tap_element('comfirm_blue', detected=True, judge=False, interval=3)
+            
+            self.back(interval=2)
 
     # def clue_statis(self):
 

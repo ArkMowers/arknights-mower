@@ -115,6 +115,10 @@
         "label": "INFRA_ARRANGE_CONFIRM",
         "comment": "基建干员排班二次确认"
     },
+    "207": {
+        "label": "INFRA_ARRANGE_ORDER",
+        "comment": "干员进驻设施排序界面"
+    },
     "301": {
         "label": "FRIEND_LIST_OFF",
         "comment": "好友列表（未选中）"

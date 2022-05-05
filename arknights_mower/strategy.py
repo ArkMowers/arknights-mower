@@ -14,14 +14,15 @@ class Solver(object):
         self.device = device if device is not None else Device()
         self.recog = recog if recog is not None else Recognizer(self.device)
 
-    def base(self, arrange: tp.BasePlan = None, clue_collect: bool = False, drone_room: str = None) -> None:
+    def base(self, arrange: tp.BasePlan = None, clue_collect: bool = False, drone_room: str = None, fia_room: str = None) -> None:
         """
         :param arrange: dict(room_name: [agent,...]), 基建干员安排
         :param clue_collect: bool, 是否收取线索
         :param drone_room: str, 是否使用无人机加速
+        :param fia_room: str, 是否使用菲亚梅塔恢复心情
         """
         BaseConstructSolver(self.device, self.recog).run(
-            arrange, clue_collect, drone_room)
+            arrange, clue_collect, drone_room, fia_room)
 
     def credit(self) -> None:
         CreditSolver(self.device, self.recog).run()

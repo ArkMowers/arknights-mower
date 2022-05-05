@@ -8,6 +8,10 @@ from arknights_mower.utils import config
 # 指定无人机加速第三层第三个房间的制造或贸易订单
 drone_room = 'room_3_3'
 
+# 指定使用菲亚梅塔恢复第一层第二个房间心情最差的干员的心情
+# 恢复后回到原工作岗位，工作顺序不变，以保证最大效率
+fia_room = 'room_1_2'
+
 # 指定关卡序列的作战计划
 ope_lists = [['AP-5', 1], ['1-7', -1]]
 
@@ -126,7 +130,7 @@ def simulate():
     global ope_lists
     cli = Solver()
     cli.mail()  # 邮件
-    cli.base(clue_collect=True, drone_room=drone_room, arrange=plan)  # 基建
+    cli.base(clue_collect=True, drone_room=drone_room, fia_room=fia_room, arrange=plan)  # 基建
     cli.credit()  # 信用
     ope_lists = cli.ope(eliminate=True, plan=ope_lists)  # 行动，返回未完成的作战计划
     cli.shop(shop_priority)  # 商店
