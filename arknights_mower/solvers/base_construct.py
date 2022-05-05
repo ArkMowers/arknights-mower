@@ -50,7 +50,7 @@ class BaseConstructSolver(BaseSolver):
             self.sleep(3)
         elif self.get_navigation():
             self.tap_element('nav_infrastructure')
-        elif self.scene() == Scene.ARRANGE_ORDER_OPTIONS:
+        elif self.scene() == Scene.INFRA_ARRANGE_ORDER:
             self.sleep(3)
         elif self.scene() != Scene.UNKNOWN:
             self.back_to_index()

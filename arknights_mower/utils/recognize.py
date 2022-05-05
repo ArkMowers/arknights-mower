@@ -202,7 +202,7 @@ class Recognizer(object):
         elif self.find('loading7') is not None:
             self.scene = Scene.LOADING
         elif self.find('arrange_order_options_scene') is not None:
-            self.scene = Scene.ARRANGE_ORDER_OPTIONS
+            self.scene = Scene.INFRA_ARRANGE_ORDER
         else:
             self.scene = Scene.UNKNOWN
             self.device.check_current_focus()
