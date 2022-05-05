@@ -105,6 +105,8 @@ class Recognizer(object):
             self.scene = Scene.OPERATOR_DROP
         elif self.find('ope_eliminate') is not None:
             self.scene = Scene.OPERATOR_ELIMINATE
+        elif self.find('ope_elimi_agency_panel') is not None:
+            self.scene = Scene.OPERATOR_ELIMINATE_AGENCY
         elif self.find('ope_giveup') is not None:
             self.scene = Scene.OPERATOR_GIVEUP
         elif self.find('ope_failed') is not None:
@@ -201,6 +203,8 @@ class Recognizer(object):
             self.scene = Scene.LOADING
         elif self.find('loading7') is not None:
             self.scene = Scene.LOADING
+        elif self.find('arrange_order_options_scene') is not None:
+            self.scene = Scene.INFRA_ARRANGE_ORDER
         else:
             self.scene = Scene.UNKNOWN
             self.device.check_current_focus()

@@ -10,7 +10,7 @@ def parse_operation_params(args: ParamArgs = []):
     times = -1
     potion = 0
     originite = 0
-    eliminate = False
+    eliminate = 0
 
     try:
         for p in args:
@@ -25,8 +25,11 @@ def parse_operation_params(args: ParamArgs = []):
                     assert originite == 0
                     originite = val
                 elif p[1] == 'e':
-                    assert not eliminate
-                    eliminate = True
+                    assert eliminate == 0
+                    eliminate = 1
+                elif p[1] == 'E':
+                    assert eliminate == 0
+                    eliminate = 2
             elif p.find('-') == -1:
                 assert times == -1
                 times = int(p)
