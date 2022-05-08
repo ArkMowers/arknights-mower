@@ -307,6 +307,32 @@ arrangement:
       - 砾
       - 夜烟
       - 斑点
+  # 让心情最低的干员进宿舍恢复的计划
+  plan_recover:
+    dormitory_1:
+      - Free
+      - Free
+      - Free
+      - Free
+      - Free
+    dormitory_2:
+      - Free
+      - Free
+      - Free
+      - Free
+      - Free
+    dormitory_3:
+      - Free
+      - Free
+      - Free
+      - Free
+      - Free
+    dormitory_4:
+      - Free
+      - Free
+      - Free
+      - Free
+      - Free
 
 # 作战
 operation:
