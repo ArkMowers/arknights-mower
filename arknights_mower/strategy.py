@@ -29,8 +29,9 @@ class Solver(object):
                 raise KeyboardInterrupt
             signal.signal(signal.SIGALRM, handler)
             signal.alarm(self.timeout * 3600)
-            f(self, *args, **kwargs)
+            ret = f(self, *args, **kwargs)
             signal.alarm(0)
+            return ret
         return inner
 
     @timer
