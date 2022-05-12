@@ -70,7 +70,7 @@ class Matcher(object):
             logger.debug(f'match success: {score}')
             return rect  # success in matching
 
-    def score(self, query: tp.GrayImage, draw: bool = False, scope: tp.Scope = None) -> Optional(Tuple[tp.Scope, tp.Score]):
+    def score(self, query: tp.GrayImage, draw: bool = False, scope: tp.Scope = None, only_score: bool = False) -> Optional(Tuple[tp.Scope, tp.Score]):
         """ scoring of image matching """
         try:
             # if feature points is empty
@@ -210,7 +210,10 @@ class Matcher(object):
             ssim = compare_ssim(query, rect_img, multichannel=True)
 
             # return final rectangle and four dimensions of scoring
-            return rect, (good_matches_rate, good_area_rate, hash, ssim)
+            if only_score:
+                return (good_matches_rate, good_area_rate, hash, ssim)
+            else:
+                return rect, (good_matches_rate, good_area_rate, hash, ssim)
 
         except Exception as e:
             logger.error(e)
