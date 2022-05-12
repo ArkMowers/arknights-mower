@@ -20,6 +20,7 @@ publish/*
 test.py
 cron.py
 cron.json
+cron.bak.json
 cute.json
 
 # Byte-compiled / optimized / DLL files
