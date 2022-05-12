@@ -636,7 +636,7 @@ class BaseConstructSolver(BaseSolver):
                 if base_room_list[idx] in need_empty:
                     need_empty.remove(base_room_list[idx])
                     # 对这个房间进行换班
-                    finished = False
+                    finished = len(plan[base_room_list[idx]]) == 0
                     skip_free = 0
                     error_count = 0
                     while not finished:
