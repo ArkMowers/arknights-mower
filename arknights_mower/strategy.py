@@ -13,7 +13,7 @@ from .utils import typealias as tp
 class Solver(object):
     """ Integration solver """
 
-    def __init__(self, device: Device = None, recog: Recognizer = None, timeout: int = 12) -> None:
+    def __init__(self, device: Device = None, recog: Recognizer = None, timeout: int = 99) -> None:
         """
         :param timeout: int, 操作限时，单位为小时
         """
