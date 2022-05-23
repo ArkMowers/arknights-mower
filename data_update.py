@@ -22,7 +22,7 @@ agent = []
 character_table = json.loads(requests_get('excel/character_table.json'))
 for x in character_table.values():
     if x['displayNumber'] is not None:
-        agent.append(x['name'])
+        agent.append(x['name'].strip())
 dump(agent, 'agent.json')
 
 agent_charset = set(''.join(agent))

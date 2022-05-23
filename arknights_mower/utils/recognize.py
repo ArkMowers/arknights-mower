@@ -3,7 +3,7 @@ from __future__ import annotations
 import cv2
 import time
 import numpy as np
-from typing import Optional
+from typing import Optional, List
 
 from .. import __rootdir__
 from . import config, detector
@@ -252,27 +252,28 @@ class Recognizer(object):
             raise RecognizeError(f"Can't find '{res}'") 
         return ret
 
-    # def score(self, item, draw=False, scope=None, thres=None):
-    #     """
-    #     查找元素是否出现在画面中，并返回分数
+    def score(self, res: str, draw: bool = False, scope: tp.Scope = None, thres: int = None) -> Optional[List[float]]:
+        """
+        查找元素是否出现在画面中，并返回分数
 
-    #     :param item: str , 待识别元素资源文件名
-    #     :param draw: bool, 是否将识别结果输出到屏幕
-    #     :param scope: ((x0, y0), (x1, y1))，提前限定元素可能出现的范围
-    #     :param thres: 是否在匹配前对图像进行二值化处理
+        :param res: 待识别元素资源文件名
+        :param draw: 是否将识别结果输出到屏幕
+        :param scope: ((x0, y0), (x1, y1))，提前限定元素可能出现的范围
+        :param thres: 是否在匹配前对图像进行二值化处理
 
-    #     :return ret: 若匹配成功，则返回元素的匹配得分，否则返回 None
-    #     """
-    #     logger.debug(f'score {item}')
-    #     resource = f'{__rootdir__}/resources/{item}.png'
-    #     if thres is not None:
-    #         # 对图像二值化处理
-    #         image = thres2(loadimg(resource), thres)
-    #         gray_img = self.gray[scope[0][1]:scope[1][1], scope[0][0]:scope[1][0]]
-    #         matcher = Matcher(thres2(gray_img, thres))
-    #         ret = matcher.score(image, draw=draw)
-    #     else:
-    #         image = loadimg(f'{__rootdir__}/resources/{item}.png')
-    #         matcher = self.matcher
-    #         ret = matcher.score(image, draw=draw, scope=scope)
-    #     return ret[1:] if ret is not None else None
+        :return ret: 若匹配成功，则返回元素在游戏界面中出现的位置，否则返回 None
+        """
+        logger.debug(f'find: {res}')
+        res = f'{__rootdir__}/resources/{res}.png'
+
+        if thres is not None:
+            # 对图像二值化处理
+            res_img = thres2(loadimg(res, True), thres)
+            gray_img = cropimg(self.gray, scope)
+            matcher = Matcher(thres2(gray_img, thres))
+            score = matcher.score(res_img, draw=draw, only_score=True)
+        else:
+            res_img = loadimg(res, True)
+            matcher = self.matcher
+            score = matcher.score(res_img, draw=draw, scope=scope, only_score=True)
+        return score

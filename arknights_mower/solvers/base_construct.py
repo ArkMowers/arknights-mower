@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from enum import Enum
 
 from ..utils import detector, segment, character_recognize
 from ..utils import typealias as tp
@@ -9,6 +10,20 @@ from ..utils.log import logger
 from ..utils.recognize import Recognizer, Scene, RecognizeError
 from ..utils.solver import BaseSolver
 from ..data import base_room_list
+
+
+class ArrangeOrder(Enum):
+    STATUS = 1
+    SKILL = 2
+    FEELING = 3
+    TRUST = 4
+
+arrange_order_res = {
+    ArrangeOrder.STATUS: ('arrange_status', 0.1),
+    ArrangeOrder.SKILL: ('arrange_skill', 0.35),
+    ArrangeOrder.FEELING: ('arrange_feeling', 0.65),
+    ArrangeOrder.TRUST: ('arrange_trust', 0.9),
+}
 
 
 class BaseConstructSolver(BaseSolver):
@@ -386,7 +401,26 @@ class BaseConstructSolver(BaseSolver):
         self.back(interval=2, rebuild=False)
         self.back(interval=2)
 
-    def choose_agent(self, agent: list[str], skip_free: int = 0) -> None:
+    def get_arrange_order(self) -> ArrangeOrder:
+        best_score, best_order = 0, None
+        for order in ArrangeOrder:
+            score = self.recog.score(arrange_order_res[order][0])
+            if score is not None and score[0] > best_score:
+                best_score, best_order = score[0], order
+        logger.debug((best_score, best_order))
+        return best_order
+
+    def switch_arrange_order(self, order: ArrangeOrder) -> None:
+        self.tap_element(arrange_order_res[order][0], x_rate=arrange_order_res[order][1], judge=False)
+
+    def arrange_order(self, order: ArrangeOrder) -> None:
+        if self.get_arrange_order() != order:
+            self.switch_arrange_order(order)
+
+    def choose_agent(self, agent: list[str], skip_free: int = 0, order: ArrangeOrder = None) -> None:
+        """
+        :param order: ArrangeOrder, 选择干员时右上角的排序功能
+        """
         logger.info(f'安排干员：{agent}')
         logger.debug(f'skip_free: {skip_free}')
         h, w = self.recog.h, self.recog.w
@@ -404,6 +438,10 @@ class BaseConstructSolver(BaseSolver):
                 for _ in range(9):
                     self.swipe((w//2, h//2), (w//2, 0), interval=0.5)
                 self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
+            else:
+                # 第一次进入按技能排序
+                if order is not None:
+                    self.arrange_order(order)
             first_time = False
 
             checked = set()  # 已经识别过的干员
@@ -484,6 +522,10 @@ class BaseConstructSolver(BaseSolver):
                 for _ in range(9):
                     self.swipe((w//2, h//2), (w//2, 0), interval=0.5)
                 self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
+            else:
+                # 第一次进入按技能排序
+                if order is not None:
+                    self.arrange_order(order)
             first_time = False
 
             error_count = 0
@@ -594,16 +636,20 @@ class BaseConstructSolver(BaseSolver):
                 if base_room_list[idx] in need_empty:
                     need_empty.remove(base_room_list[idx])
                     # 对这个房间进行换班
-                    finished = False
+                    finished = len(plan[base_room_list[idx]]) == 0
                     skip_free = 0
                     error_count = 0
                     while not finished:
                         x = (7*block[0][0]+3*block[2][0])//10
                         y = (block[0][1]+block[2][1])//2
-                        self.tap((x, y), rebuild=False)
+                        self.tap((x, y))
                         try:
+                            if base_room_list[idx].startswith('dormitory'):
+                                default_order = ArrangeOrder.FEELING
+                            else:
+                                default_order = ArrangeOrder.SKILL
                             self.choose_agent(
-                                plan[base_room_list[idx]], skip_free)
+                                plan[base_room_list[idx]], skip_free, default_order)
                         except RecognizeError as e:
                             error_count += 1
                             if error_count >= 3:

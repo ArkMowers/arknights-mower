@@ -44,6 +44,8 @@ class RecruitSolver(BaseSolver):
         """
         self.priority = priority
         self.recruiting = 0
+        self.has_ticket = True  # 默认含有招募票
+        self.can_refresh = True  # 默认可以刷新
 
         logger.info('Start: 公招')
         logger.info(f'目标干员：{priority if priority else "无，高稀有度优先"}')
@@ -53,6 +55,8 @@ class RecruitSolver(BaseSolver):
         if self.scene() == Scene.INDEX:
             self.tap_element('index_recruit')
         elif self.scene() == Scene.RECRUIT_MAIN:
+            if not self.has_ticket and not self.can_refresh:
+                return True
             segments = segment.recruit(self.recog.img)
             tapped = False
             for idx, seg in enumerate(segments):
@@ -90,6 +94,11 @@ class RecruitSolver(BaseSolver):
 
     def recruit_tags(self) -> bool:
         """ 识别公招标签的逻辑 """
+        if self.find('recruit_no_ticket') is not None:
+            self.has_ticket = False
+        if self.find('recruit_no_refresh') is not None:
+            self.can_refresh = False
+            
         needs = self.find('career_needs', judge=False)
         avail_level = self.find('available_level', judge=False)
         budget = self.find('recruit_budget', judge=False)
@@ -118,10 +127,21 @@ class RecruitSolver(BaseSolver):
                     self.tap_element('double_confirm', 0.8,
                                      interval=3, judge=False)
                     continue
+            elif not self.has_ticket and best.choose < (1 << 5) and best.min <= 4:
+                # refresh, when no ticket
+                if self.tap_element('recruit_refresh', detected=True):
+                    self.tap_element('double_confirm', 0.8,
+                                     interval=3, judge=False)
+                    continue
             break
-        logger.info(f'选择：{choose}')
+
+        # 如果没有招募券则只刷新标签不选人
+        if not self.has_ticket:
+            self.back()
+            return
 
         # tap selected tags
+        logger.info(f'选择：{choose}')
         for x in ocr:
             color = self.recog.img[up+x[2][0][1]-5, left+x[2][0][0]-5]
             if (color[2] < 100) != (x[1] not in choose):
@@ -136,7 +156,7 @@ class RecruitSolver(BaseSolver):
             [self.tap_element('one_hour', 0.5, 0.2, 0) for _ in range(5)]
 
         # start recruit
-        self.tap((avail_level[1][0], budget[0][1]), interval=5)
+        self.tap((avail_level[1][0], budget[0][1]), interval=3)
 
     def recruit_result(self) -> bool:
         """ 识别公招招募到的干员 """
