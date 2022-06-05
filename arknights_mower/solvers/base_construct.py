@@ -626,13 +626,10 @@ class BaseConstructSolver(BaseSolver):
                         self.tap_element(
                             'comfirm_blue', detected=True, judge=False, interval=3)
                         if self.scene() == Scene.INFRA_ARRANGE_CONFIRM:
-                            x = self.recog.w // 3
+                            x = self.recog.w // 3 * 2  # double confirm
                             y = self.recog.h - 10
                             self.tap((x, y), rebuild=False)
-                            skip_free += plan[base_room_list[idx]].count('Free')
-                            self.back()
-                        else:
-                            finished = True
+                        finished = True
                         while self.scene() == Scene.CONNECTING:
                             self.sleep(3)
                 idx += 1
