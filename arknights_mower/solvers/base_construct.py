@@ -564,56 +564,6 @@ class BaseConstructSolver(BaseSolver):
         # 进入进驻总览
         self.tap_element('infra_overview', interval=2)
 
-        # 滑动到最顶（从首页进入默认最顶无需滑动）
-        # h, w = self.recog.h, self.recog.w
-        # for _ in range(4):
-        #     self.swipe((w//2, h//2), (0, h//2), interval=0)
-        # self.swipe((w//2, h//2), (0, h//2), rebuild=False)
-
-        logger.info('撤下干员中……')
-        idx = 0
-        room_total = len(base_room_list)
-        need_empty = set(list(plan.keys()))
-        while idx < room_total:
-            # switch: 撤下干员按钮
-            ret, switch, mode = segment.worker(self.recog.img)
-
-            # 点击撤下干员按钮
-            if not mode:
-                self.tap((switch[0][0]+5, switch[0][1]+5), rebuild=False)
-                continue
-
-            if room_total-idx < len(ret):
-                # 已经滑动到底部
-                ret = ret[-(room_total-idx):]
-
-            for block in ret:
-                # 清空在换班计划中的房间
-                if base_room_list[idx] in need_empty:
-                    need_empty.remove(base_room_list[idx])
-                    self.tap((block[2][0]-5, block[2][1]-5))
-                    dc = self.find('double_confirm')
-                    if dc is not None:
-                        self.tap((dc[1][0], (dc[0][1]+dc[1][1]) // 2))
-                    while self.scene() == Scene.CONNECTING:
-                        self.sleep(3)
-                    if self.scene() != Scene.INFRA_ARRANGE:
-                        raise RecognizeError
-                idx += 1
-
-            # 如果全部需要清空的房间都清空了就
-            if idx == room_total or len(need_empty) == 0:
-                break
-            block = ret[-1]
-            top = switch[2][1]
-            self.swipe_noinertia(tuple(block[1]), (0, top-block[1][1]))
-
-        # 滑动到顶部
-        h, w = self.recog.h, self.recog.w
-        for _ in range(4):
-            self.swipe((w//2, h//2), (0, h//2), interval=0.5)
-        self.swipe((w//2, h//2), (0, h//2), rebuild=False)
-
         logger.info('安排干员工作……')
         idx = 0
         room_total = len(base_room_list)
@@ -643,6 +593,14 @@ class BaseConstructSolver(BaseSolver):
                         x = (7*block[0][0]+3*block[2][0])//10
                         y = (block[0][1]+block[2][1])//2
                         self.tap((x, y))
+                        
+                        # 清空已工作中的干员
+                        if self.find('arrange_clean') is not None:
+                            self.tap_element('arrange_clean')
+                        else:
+                            # 对于只有一个干员的房间，没有清空按钮，需要点击干员清空
+                            self.tap((self.recog.w*0.38, self.recog.h*0.3), interval=0)
+
                         try:
                             if base_room_list[idx].startswith('dormitory'):
                                 default_order = ArrangeOrder.FEELING
@@ -668,13 +626,10 @@ class BaseConstructSolver(BaseSolver):
                         self.tap_element(
                             'comfirm_blue', detected=True, judge=False, interval=3)
                         if self.scene() == Scene.INFRA_ARRANGE_CONFIRM:
-                            x = self.recog.w // 3
+                            x = self.recog.w // 3 * 2  # double confirm
                             y = self.recog.h - 10
                             self.tap((x, y), rebuild=False)
-                            skip_free += plan[base_room_list[idx]].count('Free')
-                            self.back()
-                        else:
-                            finished = True
+                        finished = True
                         while self.scene() == Scene.CONNECTING:
                             self.sleep(3)
                 idx += 1
