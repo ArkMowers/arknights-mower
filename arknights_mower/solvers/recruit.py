@@ -259,10 +259,11 @@ class RecruitSolver(BaseSolver):
                         if x in possibility[o].ls:
                             agent_level = agent_level_dict[x]
                             if agent_level != 1 and agent_level == possibility[o].min:
-                                possibility[o].poss += 1 / len(possibility[o].ls)
+                                possibility[o].poss += 1
                             elif agent_level == 1 and agent_level == possibility[o].min == possibility[o].max:
                                 # 必定选中一星干员的特殊逻辑
-                                possibility[o].poss += 1 / len(possibility[o].ls)
+                                possibility[o].poss += 1
+                    possibility[o].poss /= len(possibility[o].ls)
                     if best < possibility[o]:
                         best = possibility[o]
                 if best.poss > 0:
