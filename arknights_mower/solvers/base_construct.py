@@ -66,7 +66,7 @@ class BaseConstructSolver(BaseSolver):
         elif self.get_navigation():
             self.tap_element('nav_infrastructure')
         elif self.scene() == Scene.INFRA_ARRANGE_ORDER:
-            self.sleep(3)
+            self.tap_element('arrange_blue_yes')
         elif self.scene() != Scene.UNKNOWN:
             self.back_to_index()
         else:
@@ -407,6 +407,8 @@ class BaseConstructSolver(BaseSolver):
             score = self.recog.score(arrange_order_res[order][0])
             if score is not None and score[0] > best_score:
                 best_score, best_order = score[0], order
+        # if best_score < 0.6:
+        #     raise RecognizeError
         logger.debug((best_score, best_order))
         return best_order
 
