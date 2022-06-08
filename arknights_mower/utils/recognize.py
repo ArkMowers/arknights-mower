@@ -1,18 +1,19 @@
 from __future__ import annotations
 
-import cv2
 import time
+from typing import List, Optional
+
+import cv2
 import numpy as np
-from typing import Optional, List
 
 from .. import __rootdir__
 from . import config, detector
-from .log import logger, save_screenshot
-from .scene import Scene, SceneComment
-from .image import bytes2img, loadimg, thres2, cropimg
-from .matcher import Matcher
-from .device import Device
 from . import typealias as tp
+from .device import Device
+from .image import bytes2img, cropimg, loadimg, thres2
+from .log import logger, save_screenshot
+from .matcher import Matcher
+from .scene import Scene, SceneComment
 
 
 class RecognizeError(Exception):

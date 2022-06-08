@@ -1,9 +1,9 @@
 import numpy as np
-from PIL import Image
 import onnxruntime as rt
+from PIL import Image
 
-from .utils import strLabelConverter, resizeNormalize
 from .keys import alphabetChinese as alphabet
+from .utils import resizeNormalize, strLabelConverter
 
 converter = strLabelConverter(''.join(alphabet))
 

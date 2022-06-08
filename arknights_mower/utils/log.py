@@ -1,11 +1,12 @@
+import logging
 import os
 import sys
-import time
-import logging
-import colorlog
 import threading
-from pathlib import Path
+import time
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
+
+import colorlog
 
 from . import config
 

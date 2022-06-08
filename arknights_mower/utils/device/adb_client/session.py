@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import time
 import socket
 import struct
-
-from .socket import Socket
+import time
 
 from ... import config
 from ...log import logger
+from .socket import Socket
 
 
 class Session(object):

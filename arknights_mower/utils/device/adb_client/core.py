@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-import time
 import socket
 import subprocess
+import time
 from typing import Optional, Union
-
-from .socket import Socket
-from .session import Session
-from .utils import adb_buildin, run_cmd
 
 from ... import config
 from ...log import logger
+from .session import Session
+from .socket import Socket
+from .utils import adb_buildin, run_cmd
 
 
 class Client(object):

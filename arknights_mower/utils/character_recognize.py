@@ -1,19 +1,20 @@
 from __future__ import annotations
 
-import cv2
 import traceback
-import numpy as np
 from copy import deepcopy
+
+import cv2
+import numpy as np
 from matplotlib import pyplot as plt
 from PIL import Image, ImageDraw, ImageFont
 
-from . import segment
+from .. import __rootdir__
+from ..data import agent_list
 from ..ocr import ocrhandle
+from . import segment
 from .image import saveimg
 from .log import logger
 from .recognize import RecognizeError
-from .. import __rootdir__
-from ..data import agent_list
 
 
 def poly_center(poly):

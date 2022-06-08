@@ -4,7 +4,6 @@ import socket
 
 from ...log import logger
 
-
 DEFAULT_HOST = '127.0.0.1'
 
 

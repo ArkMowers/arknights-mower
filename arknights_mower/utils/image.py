@@ -1,6 +1,7 @@
+from typing import Union
+
 import cv2
 import numpy as np
-from typing import Union
 
 from . import typealias as tp
 from .log import logger, save_screenshot

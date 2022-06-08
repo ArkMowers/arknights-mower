@@ -1,11 +1,11 @@
 import cv2
 import numpy as np
 
+from .. import __rootdir__
 from . import typealias as tp
+from .image import loadimg
 from .log import logger
 from .matcher import Matcher
-from .image import loadimg
-from .. import __rootdir__
 
 
 def confirm(img: tp.Image) -> tp.Coordinate:

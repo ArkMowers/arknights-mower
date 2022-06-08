@@ -1,15 +1,16 @@
 from __future__ import annotations
 
-import numpy as np
 from enum import Enum
 
-from ..utils import detector, segment, character_recognize
+import numpy as np
+
+from ..data import base_room_list
+from ..utils import character_recognize, detector, segment
 from ..utils import typealias as tp
 from ..utils.device import Device
 from ..utils.log import logger
-from ..utils.recognize import Recognizer, Scene, RecognizeError
+from ..utils.recognize import RecognizeError, Recognizer, Scene
 from ..utils.solver import BaseSolver
-from ..data import base_room_list
 
 
 class ArrangeOrder(Enum):

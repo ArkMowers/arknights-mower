@@ -1,22 +1,21 @@
 from __future__ import annotations
 
-import time
+import functools
 import socket
 import struct
-import functools
 import threading
+import time
 import traceback
-import numpy as np
 from typing import Optional, Tuple
 
-from . import const
-from .control import ControlSender
+import numpy as np
 
-from ..adb_client import ADBClient
-from ..adb_client.socket import Socket
 from .... import __rootdir__
 from ...log import logger
-
+from ..adb_client import ADBClient
+from ..adb_client.socket import Socket
+from . import const
+from .control import ControlSender
 
 SCR_PATH = '/data/local/tmp/minitouch'
 

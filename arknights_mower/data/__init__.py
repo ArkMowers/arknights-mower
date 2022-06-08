@@ -3,7 +3,6 @@ from pathlib import Path
 
 from .. import __rootdir__
 
-
 # agents list in Arknights
 agent_list = json.loads(
     Path(f'{__rootdir__}/data/agent.json').read_text('utf-8'))

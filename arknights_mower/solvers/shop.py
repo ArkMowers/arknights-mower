@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from ..ocr import ocrhandle, ocr_rectify
+from ..data import shop_items
+from ..ocr import ocr_rectify, ocrhandle
 from ..utils import segment
 from ..utils.device import Device
 from ..utils.image import scope2slice
 from ..utils.log import logger
-from ..utils.recognize import Scene, RecognizeError
-from ..utils.solver import Recognizer, BaseSolver
-from ..data import shop_items
+from ..utils.recognize import RecognizeError, Scene
+from ..utils.solver import BaseSolver, Recognizer
 
 
 class ShopSolver(BaseSolver):

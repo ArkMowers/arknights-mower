@@ -3,8 +3,8 @@ from __future__ import annotations
 from . import __version__
 from .solvers import *
 from .utils import config
-from .utils.log import logger
 from .utils.device import Device
+from .utils.log import logger
 from .utils.param import ParamError, parse_operation_params
 
 

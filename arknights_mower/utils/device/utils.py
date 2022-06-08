@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-import tempfile
-import requests
 import socket
+import tempfile
 
-from ..log import logger
+import requests
+
 from ... import __system__
+from ..log import logger
 
 
 def download_file(target_url: str) -> str:

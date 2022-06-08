@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from ..ocr import ocrhandle, ocr_rectify
+from ..data import recruit_agent, recruit_tag
+from ..ocr import ocr_rectify, ocrhandle
 from ..utils import segment
 from ..utils.device import Device
 from ..utils.log import logger
-from ..utils.recognize import Recognizer, Scene, RecognizeError
+from ..utils.recognize import RecognizeError, Recognizer, Scene
 from ..utils.solver import BaseSolver
-from ..data import recruit_tag, recruit_agent
 
 
 class RecruitPoss(object):

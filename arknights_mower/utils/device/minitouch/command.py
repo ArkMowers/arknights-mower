@@ -2,10 +2,8 @@ from __future__ import annotations
 
 import time
 
-from .session import Session
-
 from ...log import logger
-
+from .session import Session
 
 DEFAULT_DELAY = 0.05
 

@@ -1,6 +1,6 @@
 import cv2
-import pyclipper
 import numpy as np
+import pyclipper
 from shapely.geometry import Polygon
 
 

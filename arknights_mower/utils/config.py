@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-import sys
 import shutil
-from typing import Any
-from pathlib import Path
+import sys
 from collections import Mapping
+from pathlib import Path
+from typing import Any
+
 from ruamel.yaml.comments import CommentedSeq
 
+from .. import __pyinstall__, __rootdir__, __system__
 from . import typealias as tp
-from .. import __rootdir__, __system__, __pyinstall__
 from .yaml import yaml
 
 # The lowest version supported

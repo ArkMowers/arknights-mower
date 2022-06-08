@@ -1,18 +1,19 @@
 from __future__ import annotations
 
-import cv2
 import pickle
-import sklearn
 import traceback
-import numpy as np
 from typing import Optional, Tuple
+
+import cv2
+import numpy as np
+import sklearn
 from matplotlib import pyplot as plt
 from skimage.metrics import structural_similarity as compare_ssim
 
+from .. import __rootdir__
 from . import typealias as tp
 from .image import cropimg
 from .log import logger
-from .. import __rootdir__
 
 MATCHER_DEBUG = False
 FLANN_INDEX_KDTREE = 0

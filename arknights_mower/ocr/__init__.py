@@ -1,8 +1,8 @@
-from .model import OcrHandle
-from .ocrspace import API, Language
+from ..data import ocr_error
 from ..utils import config
 from ..utils.log import logger
-from ..data import ocr_error
+from .model import OcrHandle
+from .ocrspace import API, Language
 
 ocrhandle = OcrHandle()
 ocronline = API(api_key=config.OCR_APIKEY,

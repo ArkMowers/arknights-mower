@@ -5,14 +5,12 @@ import time
 # import random
 from typing import Union
 
-from .command import CommandBuilder
-from .session import Session
-
+from ... import config
+from ...log import log_sync, logger
 from ..adb_client import ADBClient
 from ..utils import download_file
-from ... import config
-from ...log import logger, log_sync
-
+from .command import CommandBuilder
+from .session import Session
 
 # MNT_PREBUILT_URL = 'https://github.com/williamfzc/stf-binaries/raw/master/node_modules/minitouch-prebuilt/prebuilt'
 MNT_PREBUILT_URL = 'https://oss.nano.ac/arknights_mower/minitouch'

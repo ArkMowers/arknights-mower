@@ -2,7 +2,7 @@ import sys
 import traceback
 from pathlib import Path
 
-from . import __rootdir__, __pyinstall__
+from . import __pyinstall__, __rootdir__
 from .command import *
 from .utils import config
 from .utils.device import Device

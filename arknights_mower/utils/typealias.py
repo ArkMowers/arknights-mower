@@ -1,7 +1,7 @@
+from typing import Dict, List, Tuple, Union
+
 import numpy as np
 from numpy.typing import NDArray
-from typing import Tuple, List, Union, Dict
-
 
 # Image
 Image = NDArray[np.int8]

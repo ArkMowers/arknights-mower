@@ -1,6 +1,7 @@
-from PIL import Image
-import numpy as np
 import re
+
+import numpy as np
+from PIL import Image
 
 from ..data import ocr_error
 from ..utils.log import logger

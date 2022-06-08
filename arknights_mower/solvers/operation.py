@@ -3,15 +3,14 @@ from __future__ import annotations
 import time
 import traceback
 
+from ..data import chapter_list, level_list, weekly_zones, zone_list
 from ..ocr import ocrhandle
 from ..utils import config
 from ..utils import typealias as tp
 from ..utils.image import scope2slice
 from ..utils.log import logger
-from ..utils.recognize import Scene, RecognizeError
+from ..utils.recognize import RecognizeError, Scene
 from ..utils.solver import BaseSolver, StrategyError
-from ..data import chapter_list, weekly_zones, level_list, zone_list
-
 
 BOTTOM_TAP_NUMER = 8
 
