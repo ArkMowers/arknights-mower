@@ -38,8 +38,7 @@ def main(module: bool = True) -> None:
             config.build_config(config_path, module)
     else:
         if not config_path.exists():
-            logger.error(
-                f'The configuration file does not exist: {config_path}')
+            logger.error(f'The configuration file does not exist: {config_path}')
             return
     try:
         logger.info(f'Loading the configuration file: {config_path}')

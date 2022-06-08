@@ -32,8 +32,9 @@ def __dig_mapping(path: str):
             raise KeyError(path)
         current_map = current_map[k]
         if not isinstance(current_map, Mapping):
-            raise TypeError('config key %s is not a mapping' %
-                            '/'.join(path[:idx+1]))
+            raise TypeError(
+                'config key %s is not a mapping' % '/'.join(path[: idx + 1])
+            )
     return current_map, path[-1]
 
 
