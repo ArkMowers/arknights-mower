@@ -383,7 +383,7 @@ class BaseConstructSolver(BaseSolver):
             self.tap(accelerate)
             self.tap_element('all_in')
             self.tap(accelerate, y_rate=1)
-            
+
         else:
             accelerate = self.find('bill_accelerate')
             while accelerate:
@@ -395,7 +395,7 @@ class BaseConstructSolver(BaseSolver):
                 st = accelerate[1]   # 起点
                 ed = accelerate[0]   # 终点
                 # 0.95, 1.05 are offset compensations
-                self.swipe_noinertia(st, (ed[0]*0.95-st[0]*1.05, 0), rebuild=True)    
+                self.swipe_noinertia(st, (ed[0]*0.95-st[0]*1.05, 0), rebuild=True)
                 accelerate = self.find('bill_accelerate')
 
         logger.info('返回基建主界面')
@@ -485,8 +485,8 @@ class BaseConstructSolver(BaseSolver):
                             if y[0] == '菲亚梅塔':
                                 self.tap((y[1][0]), interval=0, rebuild=False)
                                 break
-                        agent.remove('菲亚梅塔')      
-                              
+                        agent.remove('菲亚梅塔')
+
                         # 如果菲亚梅塔是 the only one
                         if len(agent) == 0:
                             break
@@ -494,13 +494,13 @@ class BaseConstructSolver(BaseSolver):
                         for _ in range(9):
                             self.swipe((w//2, h//2), (w//2, 0), interval=0.5)
                         self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
-                        
+
                         # reset the statuses and cancel the rightward-swiping
                         checked = set()
-                        pre = set() 
+                        pre = set()
                         error_count = 0
                         continue
-                    
+
                 else:
                     for name in agent_name & agent:
                         for y in ret:
@@ -596,7 +596,7 @@ class BaseConstructSolver(BaseSolver):
                         x = (7*block[0][0]+3*block[2][0])//10
                         y = (block[0][1]+block[2][1])//2
                         self.tap((x, y))
-                        
+
                         # 若不是空房间，则清空工作中的干员
                         if self.find('arrange_empty_room') is None:
                             if self.find('arrange_clean') is not None:
@@ -649,9 +649,9 @@ class BaseConstructSolver(BaseSolver):
         self.back()
 
     def choose_agent_in_order(self, agent: list[str], exclude: list[str] = None, exclude_checked_in: bool = False, dormitory: bool = False):
-        """ 
-        按照顺序选择干员，只选择未在工作、未注意力涣散、未在休息的空闲干员 
-        
+        """
+        按照顺序选择干员，只选择未在工作、未注意力涣散、未在休息的空闲干员
+
         :param agent: 指定入驻干员列表
         :param exclude: 排除干员列表，不选择这些干员
         :param exclude_checked_in: 是否仅选择未进驻干员
@@ -685,7 +685,7 @@ class BaseConstructSolver(BaseSolver):
                         if not (self.find('agent_on_shift', scope=(x[1][0], x[1][2]))
                                 or self.find('agent_resting', scope=(x[1][0], x[1][2]))
                                 or (not dormitory and self.find('distracted', scope=(x[1][0], x[1][2])))):
-                                if not x[0] in agent and not x[0] in exclude:
+                                if x[0] not in agent and x[0] not in exclude:
                                     self.tap(x[1], x_rate=0.5, y_rate=0.5, interval=0)
                                     agent[idx] = x[0]
                                     _free = x[0]
@@ -721,7 +721,7 @@ class BaseConstructSolver(BaseSolver):
         return _free
 
     def fia(self, room: str):
-        """ 
+        """
         使用菲亚梅塔恢复指定房间心情最差的干员的心情，同时保持工位顺序不变
         目前仅支持制造站、贸易站、发电站 （因为其他房间在输入命令时较为繁琐，且需求不大）
         使用前需要菲亚梅塔位于任意一间宿舍
@@ -802,7 +802,7 @@ class BaseConstructSolver(BaseSolver):
             self.tap((self.recog.w*BY_EMO[0], self.recog.h*BY_EMO[1]), interval=0.1)
             # 寻找这个房间里心情最低的干员,
             _temp_on_shift_agents = on_shift_agents.copy()
-            while not 'Free' in _temp_on_shift_agents:
+            while 'Free' not in _temp_on_shift_agents:
                 ret = character_recognize.agent(self.recog.img)
                 ret = np.array(ret, dtype=object).reshape(-1, 2, 2).reshape(-1, 2)
                 for x in ret:
@@ -859,7 +859,7 @@ class BaseConstructSolver(BaseSolver):
             self.tap((self.recog.w*0.82, self.recog.h*0.25), interval=2)
             self.choose_agent_in_order(on_shift_agents)
             self.tap_element('comfirm_blue', detected=True, judge=False, interval=3)
-            
+
             self.back(interval=2)
 
     # def clue_statis(self):
