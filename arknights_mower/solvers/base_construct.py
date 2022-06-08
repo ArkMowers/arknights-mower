@@ -596,12 +596,13 @@ class BaseConstructSolver(BaseSolver):
                         y = (block[0][1]+block[2][1])//2
                         self.tap((x, y))
                         
-                        # 清空已工作中的干员
-                        if self.find('arrange_clean') is not None:
-                            self.tap_element('arrange_clean')
-                        else:
-                            # 对于只有一个干员的房间，没有清空按钮，需要点击干员清空
-                            self.tap((self.recog.w*0.38, self.recog.h*0.3), interval=0)
+                        # 若不是空房间，则清空工作中的干员
+                        if self.find('arrange_empty_room') is None:
+                            if self.find('arrange_clean') is not None:
+                                self.tap_element('arrange_clean')
+                            else:
+                                # 对于只有一个干员的房间，没有清空按钮，需要点击干员清空
+                                self.tap((self.recog.w*0.38, self.recog.h*0.3), interval=0)
 
                         try:
                             if base_room_list[idx].startswith('dormitory'):
