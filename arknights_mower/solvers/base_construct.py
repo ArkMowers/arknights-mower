@@ -632,7 +632,7 @@ class BaseConstructSolver(BaseSolver):
                         if self.scene() == Scene.INFRA_ARRANGE_CONFIRM:
                             x = self.recog.w // 3 * 2  # double confirm
                             y = self.recog.h - 10
-                            self.tap((x, y), rebuild=False)
+                            self.tap((x, y), rebuild=True)
                         finished = True
                         while self.scene() == Scene.CONNECTING:
                             self.sleep(3)
