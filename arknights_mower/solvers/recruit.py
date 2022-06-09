@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from ..ocr import ocrhandle, ocr_rectify
+from ..data import recruit_agent, recruit_tag
+from ..ocr import ocr_rectify, ocrhandle
 from ..utils import segment
 from ..utils.device import Device
 from ..utils.log import logger
-from ..utils.recognize import Recognizer, Scene, RecognizeError
+from ..utils.recognize import RecognizeError, Recognizer, Scene
 from ..utils.solver import BaseSolver
-from ..data import recruit_tag, recruit_agent
 
 
 class RecruitPoss(object):
@@ -98,7 +98,7 @@ class RecruitSolver(BaseSolver):
             self.has_ticket = False
         if self.find('recruit_no_refresh') is not None:
             self.can_refresh = False
-            
+
         needs = self.find('career_needs', judge=False)
         avail_level = self.find('available_level', judge=False)
         budget = self.find('recruit_budget', judge=False)
@@ -259,10 +259,11 @@ class RecruitSolver(BaseSolver):
                         if x in possibility[o].ls:
                             agent_level = agent_level_dict[x]
                             if agent_level != 1 and agent_level == possibility[o].min:
-                                possibility[o].poss += 1 / len(possibility[o].ls)
+                                possibility[o].poss += 1
                             elif agent_level == 1 and agent_level == possibility[o].min == possibility[o].max:
                                 # 必定选中一星干员的特殊逻辑
-                                possibility[o].poss += 1 / len(possibility[o].ls)
+                                possibility[o].poss += 1
+                    possibility[o].poss /= len(possibility[o].ls)
                     if best < possibility[o]:
                         best = possibility[o]
                 if best.poss > 0:
@@ -271,7 +272,8 @@ class RecruitSolver(BaseSolver):
         # 按照优先级判断，若目标干员 1 星且该组合不存在 2/3 星的可能，则选择
         # 附加限制：min_level == agent_level == 1 and not lv2a3
         if best.poss == 0:
-            logger.debug('choose: priority, min_level == agent_level == 1 and not lv2a3')
+            logger.debug(
+                'choose: priority, min_level == agent_level == 1 and not lv2a3')
             for considering in priority:
                 for o in possibility.keys():
                     possibility[o].poss = 0
@@ -280,7 +282,8 @@ class RecruitSolver(BaseSolver):
                             agent_level = agent_level_dict[x]
                             if agent_level == possibility[o].min == 1 and not possibility[o].lv2a3:
                                 # 特殊判断：选中一星和四星干员的 Tag 组合
-                                possibility[o].poss += 1 / len(possibility[o].ls)
+                                possibility[o].poss += 1
+                    possibility[o].poss /= len(possibility[o].ls)
                     if best < possibility[o]:
                         best = possibility[o]
                 if best.poss > 0:
@@ -296,7 +299,8 @@ class RecruitSolver(BaseSolver):
                     if possibility[o].min >= 4:
                         for x in considering:
                             if x in possibility[o].ls:
-                                possibility[o].poss += 1 / len(possibility[o].ls)
+                                possibility[o].poss += 1
+                    possibility[o].poss /= len(possibility[o].ls)
                     if best < possibility[o]:
                         best = possibility[o]
                 if best.poss > 0:
@@ -321,7 +325,8 @@ class RecruitSolver(BaseSolver):
                     possibility[o].poss = 0
                     for x in considering:
                         if x in possibility[o].ls:
-                            possibility[o].poss += 1 / len(possibility[o].ls)
+                            possibility[o].poss += 1
+                    possibility[o].poss /= len(possibility[o].ls)
                     if best < possibility[o]:
                         best = possibility[o]
                 if best.poss > 0:

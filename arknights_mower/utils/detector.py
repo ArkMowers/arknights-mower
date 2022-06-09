@@ -1,11 +1,11 @@
 import cv2
 import numpy as np
 
+from .. import __rootdir__
 from . import typealias as tp
+from .image import loadimg
 from .log import logger
 from .matcher import Matcher
-from .image import loadimg
-from .. import __rootdir__
 
 
 def confirm(img: tp.Image) -> tp.Coordinate:
@@ -166,7 +166,7 @@ def visit_next(img: tp.Image) -> tp.Coordinate:
 
 on_shift = loadimg(f'{__rootdir__}/resources/agent_on_shift.png', True)
 distracted = loadimg(f'{__rootdir__}/resources/distracted.png', True)
-
+resting = loadimg(f'{__rootdir__}/resources/agent_resting.png', True)
 
 def is_on_shift(img: tp.Image) -> bool:
     """
@@ -174,6 +174,8 @@ def is_on_shift(img: tp.Image) -> bool:
     """
     matcher = Matcher(cv2.cvtColor(img, cv2.COLOR_RGB2GRAY))
     if matcher.match(on_shift, judge=False) is not None:
+        return True
+    if matcher.match(resting, judge=False) is not None:
         return True
     if matcher.match(distracted, judge=False) is not None:
         return False

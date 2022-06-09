@@ -4,10 +4,10 @@ import shutil
 import subprocess
 from typing import Union
 
-from ..utils import download_file
+from .... import __system__
 from ... import config
 from ...log import logger
-from .... import __system__
+from ..utils import download_file
 
 ADB_BUILDIN_URL = 'https://oss.nano.ac/arknights_mower/adb-binaries'
 ADB_BUILDIN_FILELIST = {

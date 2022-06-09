@@ -1,6 +1,6 @@
 from ..utils.device import Device
 from ..utils.log import logger
-from ..utils.recognize import Recognizer, Scene, RecognizeError
+from ..utils.recognize import RecognizeError, Recognizer, Scene
 from ..utils.solver import BaseSolver
 
 

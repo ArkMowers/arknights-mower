@@ -1,14 +1,15 @@
-import cv2
 import copy
 import traceback
+
+import cv2
 import numpy as np
 from PIL import Image
 
-from .config import dbnet_model_path, crnn_model_path
-from .dbnet import DBNET
-from .crnn import CRNNHandle
-from .utils import fix
 from ..utils.log import logger
+from .config import crnn_model_path, dbnet_model_path
+from .crnn import CRNNHandle
+from .dbnet import DBNET
+from .utils import fix
 
 
 def sorted_boxes(dt_boxes):

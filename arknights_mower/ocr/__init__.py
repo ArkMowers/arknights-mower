@@ -1,12 +1,10 @@
-from .model import OcrHandle
-from .ocrspace import API, Language
+from ..data import ocr_error
 from ..utils import config
 from ..utils.log import logger
-from ..data import ocr_error
+from .model import OcrHandle
+from .ocrspace import API, Language
 
 ocrhandle = OcrHandle()
-ocronline = API(api_key=config.OCR_APIKEY,
-                language=Language.Chinese_Simplified)
 
 
 def ocr_rectify(img, pre, valid, text=''):
@@ -22,6 +20,10 @@ def ocr_rectify(img, pre, valid, text=''):
     :return res: str | None, 识别的结果
     """
     logger.warning(f'{text}识别异常：正在调用在线 OCR 处理异常结果……')
+
+    global ocronline
+    ocronline = API(api_key=config.OCR_APIKEY,
+                    language=Language.Chinese_Simplified)
     pre_res = pre[1]
     res = ocronline.predict(img, pre[2])
     if res is None or res == pre_res:

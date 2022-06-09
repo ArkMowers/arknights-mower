@@ -3,11 +3,11 @@ from __future__ import annotations
 import time
 from typing import Optional
 
+from .. import config
+from ..log import logger, save_screenshot
 from .adb_client import ADBClient
 from .minitouch import MiniTouch
 from .scrcpy import Scrcpy
-from .. import config
-from ..log import logger, save_screenshot
 
 
 class Device(object):

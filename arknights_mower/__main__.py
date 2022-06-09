@@ -2,7 +2,7 @@ import sys
 import traceback
 from pathlib import Path
 
-from . import __rootdir__, __pyinstall__
+from . import __pyinstall__, __rootdir__
 from .command import *
 from .utils import config
 from .utils.device import Device
@@ -38,8 +38,7 @@ def main(module: bool = True) -> None:
             config.build_config(config_path, module)
     else:
         if not config_path.exists():
-            logger.error(
-                f'The configuration file does not exist: {config_path}')
+            logger.error(f'The configuration file does not exist: {config_path}')
             return
     try:
         logger.info(f'Loading the configuration file: {config_path}')

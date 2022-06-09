@@ -1,11 +1,12 @@
+import logging
 import os
 import sys
-import time
-import logging
-import colorlog
 import threading
-from pathlib import Path
+import time
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
+
+import colorlog
 
 from . import config
 
@@ -62,8 +63,12 @@ def init_fhlr() -> None:
         return
     folder = Path(config.LOGFILE_PATH)
     folder.mkdir(exist_ok=True, parents=True)
-    fhlr = RotatingFileHandler(folder.joinpath('runtime.log'), encoding='utf8',
-                               maxBytes=10 * 1024 * 1024, backupCount=config.LOGFILE_AMOUNT)
+    fhlr = RotatingFileHandler(
+        folder.joinpath('runtime.log'),
+        encoding='utf8',
+        maxBytes=10 * 1024 * 1024,
+        backupCount=config.LOGFILE_AMOUNT,
+    )
     fhlr.setFormatter(basic_formatter)
     fhlr.setLevel('DEBUG')
     fhlr.addFilter(PackagePathFilter())
@@ -73,8 +78,7 @@ def init_fhlr() -> None:
 def set_debug_mode() -> None:
     """ set debud mode on """
     if config.DEBUG_MODE:
-        logger.info(
-            f'Start debug mode, log is stored in {config.LOGFILE_PATH}')
+        logger.info(f'Start debug mode, log is stored in {config.LOGFILE_PATH}')
         init_fhlr()
 
 
@@ -85,7 +89,7 @@ def save_screenshot(img: bytes, subdir: str = '') -> None:
     folder = Path(config.SCREENSHOT_PATH).joinpath(subdir)
     folder.mkdir(exist_ok=True, parents=True)
     if subdir != '-1' and len(list(folder.iterdir())) > config.SCREENSHOT_MAXNUM:
-        for x in list(folder.iterdir())[:-config.SCREENSHOT_MAXNUM]:
+        for x in list(folder.iterdir())[: -config.SCREENSHOT_MAXNUM]:
             logger.debug(f'remove screenshot: {x.name}')
             x.unlink()
     filename = time.strftime('%Y%m%d%H%M%S.png', time.localtime())

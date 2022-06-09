@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-import sys
 import shutil
-from typing import Any
-from pathlib import Path
+import sys
 from collections import Mapping
+from pathlib import Path
+from typing import Any
+
 from ruamel.yaml.comments import CommentedSeq
 
+from .. import __pyinstall__, __rootdir__, __system__
 from . import typealias as tp
-from .. import __rootdir__, __system__, __pyinstall__
 from .yaml import yaml
 
 # The lowest version supported
@@ -31,8 +32,9 @@ def __dig_mapping(path: str):
             raise KeyError(path)
         current_map = current_map[k]
         if not isinstance(current_map, Mapping):
-            raise TypeError('config key %s is not a mapping' %
-                            '/'.join(path[:idx+1]))
+            raise TypeError(
+                'config key %s is not a mapping' % '/'.join(path[: idx + 1])
+            )
     return current_map, path[-1]
 
 

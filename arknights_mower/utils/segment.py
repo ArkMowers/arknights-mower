@@ -1,17 +1,18 @@
 from __future__ import annotations
 
-import cv2
 import traceback
+
+import cv2
 import numpy as np
 from matplotlib import pyplot as plt
 
-from . import typealias as tp
-from . import detector
-from .recognize import RecognizeError
 from .. import __rootdir__
 from ..data import agent_list
-from .log import logger
 from ..ocr import ocrhandle
+from . import detector
+from . import typealias as tp
+from .log import logger
+from .recognize import RecognizeError
 
 
 class FloodCheckFailed(Exception):

@@ -1,6 +1,7 @@
+from typing import Union
+
 import cv2
 import numpy as np
-from typing import Union
 
 from . import typealias as tp
 from .log import logger, save_screenshot
@@ -11,7 +12,10 @@ def bytes2img(data: bytes, gray: bool = False) -> Union[tp.Image, tp.GrayImage]:
     if gray:
         return cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_GRAYSCALE)
     else:
-        return cv2.cvtColor(cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
+        return cv2.cvtColor(
+            cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR),
+            cv2.COLOR_BGR2RGB,
+        )
 
 
 def img2bytes(img) -> bytes:
@@ -75,4 +79,7 @@ def cropimg(img: tp.Image, scope: tp.Scope) -> tp.Image:
 
 
 def saveimg(img, folder='failure'):
-    save_screenshot(img2bytes(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)), subdir=f'{folder}/{img.shape[0]}x{img.shape[1]}')
+    save_screenshot(
+        img2bytes(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)),
+        subdir=f'{folder}/{img.shape[0]}x{img.shape[1]}',
+    )

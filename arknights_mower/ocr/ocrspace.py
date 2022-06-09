@@ -1,12 +1,13 @@
+import base64
 import traceback
+
 import cv2
 import numpy
-import base64
 import requests
 
-from .utils import fix
 from ..utils.log import logger
 from ..utils.recognize import RecognizeError
+from .utils import fix
 
 
 class Language:

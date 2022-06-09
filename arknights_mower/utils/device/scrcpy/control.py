@@ -243,7 +243,7 @@ class ControlSender:
                 self.touch(next_x, next_y, const.ACTION_UP)
                 break
             sleep(move_steps_delay)
-    
+
     def tap(self, x, y, hold_time: float = 0.07) -> None:
         """
         Tap on screen

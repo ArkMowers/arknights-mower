@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-import signal
 import functools
+import signal
+
 from .solvers import *
+from .utils import typealias as tp
 from .utils.device import Device
 from .utils.log import logger
 from .utils.recognize import Recognizer
 from .utils.solver import BaseSolver
-from .utils import typealias as tp
 
 
 class Solver(object):

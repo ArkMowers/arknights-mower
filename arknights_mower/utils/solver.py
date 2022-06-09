@@ -1,15 +1,14 @@
 from __future__ import annotations
-from abc import abstractmethod
 
 import time
 import traceback
+from abc import abstractmethod
 
-from . import config
-from . import detector
+from ..utils import typealias as tp
+from . import config, detector
 from .device import Device, KeyCode
 from .log import logger
-from .recognize import Recognizer, Scene, RecognizeError
-from ..utils import typealias as tp
+from .recognize import RecognizeError, Recognizer, Scene
 
 
 class StrategyError(Exception):

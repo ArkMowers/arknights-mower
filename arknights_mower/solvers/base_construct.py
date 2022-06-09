@@ -1,15 +1,16 @@
 from __future__ import annotations
 
-import numpy as np
 from enum import Enum
 
-from ..utils import detector, segment, character_recognize
+import numpy as np
+
+from ..data import base_room_list
+from ..utils import character_recognize, detector, segment
 from ..utils import typealias as tp
 from ..utils.device import Device
 from ..utils.log import logger
-from ..utils.recognize import Recognizer, Scene, RecognizeError
+from ..utils.recognize import RecognizeError, Recognizer, Scene
 from ..utils.solver import BaseSolver
-from ..data import base_room_list
 
 
 class ArrangeOrder(Enum):
@@ -66,7 +67,7 @@ class BaseConstructSolver(BaseSolver):
         elif self.get_navigation():
             self.tap_element('nav_infrastructure')
         elif self.scene() == Scene.INFRA_ARRANGE_ORDER:
-            self.sleep(3)
+            self.tap_element('arrange_blue_yes')
         elif self.scene() != Scene.UNKNOWN:
             self.back_to_index()
         else:
@@ -382,7 +383,7 @@ class BaseConstructSolver(BaseSolver):
             self.tap(accelerate)
             self.tap_element('all_in')
             self.tap(accelerate, y_rate=1)
-            
+
         else:
             accelerate = self.find('bill_accelerate')
             while accelerate:
@@ -394,7 +395,7 @@ class BaseConstructSolver(BaseSolver):
                 st = accelerate[1]   # 起点
                 ed = accelerate[0]   # 终点
                 # 0.95, 1.05 are offset compensations
-                self.swipe_noinertia(st, (ed[0]*0.95-st[0]*1.05, 0), rebuild=True)    
+                self.swipe_noinertia(st, (ed[0]*0.95-st[0]*1.05, 0), rebuild=True)
                 accelerate = self.find('bill_accelerate')
 
         logger.info('返回基建主界面')
@@ -407,6 +408,8 @@ class BaseConstructSolver(BaseSolver):
             score = self.recog.score(arrange_order_res[order][0])
             if score is not None and score[0] > best_score:
                 best_score, best_order = score[0], order
+        # if best_score < 0.6:
+        #     raise RecognizeError
         logger.debug((best_score, best_order))
         return best_order
 
@@ -482,8 +485,8 @@ class BaseConstructSolver(BaseSolver):
                             if y[0] == '菲亚梅塔':
                                 self.tap((y[1][0]), interval=0, rebuild=False)
                                 break
-                        agent.remove('菲亚梅塔')      
-                              
+                        agent.remove('菲亚梅塔')
+
                         # 如果菲亚梅塔是 the only one
                         if len(agent) == 0:
                             break
@@ -491,13 +494,13 @@ class BaseConstructSolver(BaseSolver):
                         for _ in range(9):
                             self.swipe((w//2, h//2), (w//2, 0), interval=0.5)
                         self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
-                        
+
                         # reset the statuses and cancel the rightward-swiping
                         checked = set()
-                        pre = set() 
+                        pre = set()
                         error_count = 0
                         continue
-                    
+
                 else:
                     for name in agent_name & agent:
                         for y in ret:
@@ -564,56 +567,6 @@ class BaseConstructSolver(BaseSolver):
         # 进入进驻总览
         self.tap_element('infra_overview', interval=2)
 
-        # 滑动到最顶（从首页进入默认最顶无需滑动）
-        # h, w = self.recog.h, self.recog.w
-        # for _ in range(4):
-        #     self.swipe((w//2, h//2), (0, h//2), interval=0)
-        # self.swipe((w//2, h//2), (0, h//2), rebuild=False)
-
-        logger.info('撤下干员中……')
-        idx = 0
-        room_total = len(base_room_list)
-        need_empty = set(list(plan.keys()))
-        while idx < room_total:
-            # switch: 撤下干员按钮
-            ret, switch, mode = segment.worker(self.recog.img)
-
-            # 点击撤下干员按钮
-            if not mode:
-                self.tap((switch[0][0]+5, switch[0][1]+5), rebuild=False)
-                continue
-
-            if room_total-idx < len(ret):
-                # 已经滑动到底部
-                ret = ret[-(room_total-idx):]
-
-            for block in ret:
-                # 清空在换班计划中的房间
-                if base_room_list[idx] in need_empty:
-                    need_empty.remove(base_room_list[idx])
-                    self.tap((block[2][0]-5, block[2][1]-5))
-                    dc = self.find('double_confirm')
-                    if dc is not None:
-                        self.tap((dc[1][0], (dc[0][1]+dc[1][1]) // 2))
-                    while self.scene() == Scene.CONNECTING:
-                        self.sleep(3)
-                    if self.scene() != Scene.INFRA_ARRANGE:
-                        raise RecognizeError
-                idx += 1
-
-            # 如果全部需要清空的房间都清空了就
-            if idx == room_total or len(need_empty) == 0:
-                break
-            block = ret[-1]
-            top = switch[2][1]
-            self.swipe_noinertia(tuple(block[1]), (0, top-block[1][1]))
-
-        # 滑动到顶部
-        h, w = self.recog.h, self.recog.w
-        for _ in range(4):
-            self.swipe((w//2, h//2), (0, h//2), interval=0.5)
-        self.swipe((w//2, h//2), (0, h//2), rebuild=False)
-
         logger.info('安排干员工作……')
         idx = 0
         room_total = len(base_room_list)
@@ -643,6 +596,15 @@ class BaseConstructSolver(BaseSolver):
                         x = (7*block[0][0]+3*block[2][0])//10
                         y = (block[0][1]+block[2][1])//2
                         self.tap((x, y))
+
+                        # 若不是空房间，则清空工作中的干员
+                        if self.find('arrange_empty_room') is None:
+                            if self.find('arrange_clean') is not None:
+                                self.tap_element('arrange_clean')
+                            else:
+                                # 对于只有一个干员的房间，没有清空按钮，需要点击干员清空
+                                self.tap((self.recog.w*0.38, self.recog.h*0.3), interval=0)
+
                         try:
                             if base_room_list[idx].startswith('dormitory'):
                                 default_order = ArrangeOrder.FEELING
@@ -668,13 +630,10 @@ class BaseConstructSolver(BaseSolver):
                         self.tap_element(
                             'comfirm_blue', detected=True, judge=False, interval=3)
                         if self.scene() == Scene.INFRA_ARRANGE_CONFIRM:
-                            x = self.recog.w // 3
+                            x = self.recog.w // 3 * 2  # double confirm
                             y = self.recog.h - 10
-                            self.tap((x, y), rebuild=False)
-                            skip_free += plan[base_room_list[idx]].count('Free')
-                            self.back()
-                        else:
-                            finished = True
+                            self.tap((x, y), rebuild=True)
+                        finished = True
                         while self.scene() == Scene.CONNECTING:
                             self.sleep(3)
                 idx += 1
@@ -690,9 +649,9 @@ class BaseConstructSolver(BaseSolver):
         self.back()
 
     def choose_agent_in_order(self, agent: list[str], exclude: list[str] = None, exclude_checked_in: bool = False, dormitory: bool = False):
-        """ 
-        按照顺序选择干员，只选择未在工作、未注意力涣散、未在休息的空闲干员 
-        
+        """
+        按照顺序选择干员，只选择未在工作、未注意力涣散、未在休息的空闲干员
+
         :param agent: 指定入驻干员列表
         :param exclude: 排除干员列表，不选择这些干员
         :param exclude_checked_in: 是否仅选择未进驻干员
@@ -726,7 +685,7 @@ class BaseConstructSolver(BaseSolver):
                         if not (self.find('agent_on_shift', scope=(x[1][0], x[1][2]))
                                 or self.find('agent_resting', scope=(x[1][0], x[1][2]))
                                 or (not dormitory and self.find('distracted', scope=(x[1][0], x[1][2])))):
-                                if not x[0] in agent and not x[0] in exclude:
+                                if x[0] not in agent and x[0] not in exclude:
                                     self.tap(x[1], x_rate=0.5, y_rate=0.5, interval=0)
                                     agent[idx] = x[0]
                                     _free = x[0]
@@ -762,7 +721,7 @@ class BaseConstructSolver(BaseSolver):
         return _free
 
     def fia(self, room: str):
-        """ 
+        """
         使用菲亚梅塔恢复指定房间心情最差的干员的心情，同时保持工位顺序不变
         目前仅支持制造站、贸易站、发电站 （因为其他房间在输入命令时较为繁琐，且需求不大）
         使用前需要菲亚梅塔位于任意一间宿舍
@@ -843,7 +802,7 @@ class BaseConstructSolver(BaseSolver):
             self.tap((self.recog.w*BY_EMO[0], self.recog.h*BY_EMO[1]), interval=0.1)
             # 寻找这个房间里心情最低的干员,
             _temp_on_shift_agents = on_shift_agents.copy()
-            while not 'Free' in _temp_on_shift_agents:
+            while 'Free' not in _temp_on_shift_agents:
                 ret = character_recognize.agent(self.recog.img)
                 ret = np.array(ret, dtype=object).reshape(-1, 2, 2).reshape(-1, 2)
                 for x in ret:
@@ -900,7 +859,7 @@ class BaseConstructSolver(BaseSolver):
             self.tap((self.recog.w*0.82, self.recog.h*0.25), interval=2)
             self.choose_agent_in_order(on_shift_agents)
             self.tap_element('comfirm_blue', detected=True, judge=False, interval=3)
-            
+
             self.back(interval=2)
 
     # def clue_statis(self):

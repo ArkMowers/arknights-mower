@@ -1,6 +1,6 @@
-from pathlib import Path
 import platform
 import sys
+from pathlib import Path
 
 # Use sys.frozen to check if run through pyinstaller frozen exe, and sys._MEIPASS to get temp path.
 if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
@@ -15,4 +15,4 @@ else:
 __cli__ = not (__pyinstall__ and not sys.argv[1:])
 
 __system__ = platform.system().lower()
-__version__ = '2.1.3'
+__version__ = '2.1.4'

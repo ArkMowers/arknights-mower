@@ -1,8 +1,8 @@
-import os
 import json
-import requests
-import fontforge
+import os
 
+import fontforge
+import requests
 
 proxies = {'http': 'http://localhost:11223'}
 datadir = 'arknights_mower/data/'
@@ -70,24 +70,28 @@ for x in zone_table['zones'].values():
             'type': x['type'],
             'name': x['zoneNameSecond'],
             'chapterIndex': chapterIndex,
-            'zoneIndex': int(x['zoneID'].split('_')[1])
+            'zoneIndex': int(x['zoneID'].split('_')[1]),
         }
     elif x['type'] == 'WEEKLY':
         zone[x['zoneID']] = {
             'type': x['type'],
             'name': x['zoneNameSecond'],
             'chapterIndex': None,
-            'zoneIndex': None
+            'zoneIndex': None,
         }
 
 stage_table = json.loads(requests_get('excel/stage_table.json'))
 for x in stage_table['stages'].values():
-    if x['zoneId'] in zone.keys() and x['canBattleReplay'] and not x['levelId'].startswith('Activities'):
+    if (
+        x['zoneId'] in zone.keys()
+        and x['canBattleReplay']
+        and not x['levelId'].startswith('Activities')
+    ):
         level[x['code']] = {
             'zone_id': x['zoneId'],
             'ap_cost': x['apCost'],
             'code': x['code'],
-            'name': x['name']
+            'name': x['name'],
         }
 
 retro_table = json.loads(requests_get('excel/retro_table.json'))
@@ -97,14 +101,14 @@ for x in retro_table['retroActList'].values():
             'type': 'BRANCHLINE',
             'name': x['name'],
             'chapterIndex': None,
-            'zoneIndex': x['index']
+            'zoneIndex': x['index'],
         }
     elif x['type'] == 0:
         zone[x['retroId']] = {
             'type': 'SIDESTORY',
             'name': x['name'],
             'chapterIndex': None,
-            'zoneIndex': x['index']
+            'zoneIndex': x['index'],
         }
 zoneToRetro = retro_table['zoneToRetro']
 for x in retro_table['stageList'].values():
@@ -113,7 +117,7 @@ for x in retro_table['stageList'].values():
             'zone_id': zoneToRetro[x['zoneId']],
             'ap_cost': x['apCost'],
             'code': x['code'],
-            'name': x['name']
+            'name': x['name'],
         }
 
 dump(zone, 'zone.json')
