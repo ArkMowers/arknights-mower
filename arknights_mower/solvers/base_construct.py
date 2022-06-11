@@ -137,7 +137,7 @@ class BaseConstructSolver(BaseSolver):
         self.enter_room('meeting')
 
         # 点击线索详情
-        self.tap((self.recog.w*0.05, self.recog.h*0.95), interval=3)
+        self.tap((self.recog.w*0.1, self.recog.h*0.9), interval=3)
 
         # 如果是线索交流的报告则返回
         self.find('clue_summary') and self.back()
