@@ -55,8 +55,6 @@ class RecruitSolver(BaseSolver):
         if self.scene() == Scene.INDEX:
             self.tap_element('index_recruit')
         elif self.scene() == Scene.RECRUIT_MAIN:
-            if not self.has_ticket and not self.can_refresh:
-                return True
             segments = segment.recruit(self.recog.img)
             tapped = False
             for idx, seg in enumerate(segments):
@@ -65,6 +63,8 @@ class RecruitSolver(BaseSolver):
                 if self.tap_element('recruit_finish', scope=seg, detected=True):
                     tapped = True
                     break
+                if not self.has_ticket and not self.can_refresh:
+                    continue
                 required = self.find('job_requirements', scope=seg)
                 if required is None:
                     self.tap(seg)
@@ -137,6 +137,7 @@ class RecruitSolver(BaseSolver):
 
         # 如果没有招募券则只刷新标签不选人
         if not self.has_ticket:
+            logger.debug('OK')
             self.back()
             return
 
