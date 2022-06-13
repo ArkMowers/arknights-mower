@@ -252,8 +252,8 @@ class BaseConstructSolver(BaseSolver):
             return y2
         # x3: 右边黑色 mask 边缘
         x3 = self.recog_view_mask_right()
-        # x4: 四分之三的位置，用来定位单个线索
-        x4 = (x1 + 3 * x2) // 4
+        # x4: 用来区分单个线索
+        x4 = (54 * x1 + 25 * x2) // 79
 
         logger.debug(f'recog_view: y2:{y2}, x3:{x3}, x4:{x4}')
 
