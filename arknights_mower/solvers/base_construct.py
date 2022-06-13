@@ -438,8 +438,9 @@ class BaseConstructSolver(BaseSolver):
 
             if not first_time:
                 # 滑动到最左边
+                self.sleep(interval=0.5, rebuild=False)
                 for _ in range(9):
-                    self.swipe((w//2, h//2), (w//2, 0), interval=0.5)
+                    self.swipe_only((w//2, h//2), (w//2, 0), interval=0.5)
                 self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
             else:
                 # 第一次进入按技能排序
@@ -491,8 +492,9 @@ class BaseConstructSolver(BaseSolver):
                         if len(agent) == 0:
                             break
                         # 否则滑动到最左边
+                        self.sleep(interval=0.5, rebuild=False)
                         for _ in range(9):
-                            self.swipe((w//2, h//2), (w//2, 0), interval=0.5)
+                            self.swipe_only((w//2, h//2), (w//2, 0), interval=0.5)
                         self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
 
                         # reset the statuses and cancel the rightward-swiping
@@ -522,8 +524,9 @@ class BaseConstructSolver(BaseSolver):
 
             if not first_time:
                 # 滑动到最左边
+                self.sleep(interval=0.5, rebuild=False)
                 for _ in range(9):
-                    self.swipe((w//2, h//2), (w//2, 0), interval=0.5)
+                    self.swipe_only((w//2, h//2), (w//2, 0), interval=0.5)
                 self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
             else:
                 # 第一次进入按技能排序
@@ -706,8 +709,9 @@ class BaseConstructSolver(BaseSolver):
 
                 if first_time and not far_left and agent[idx] != 'Free':
                     # 如果是寻找这位干员目前为止的第一次滑动, 且目前不是最左端，则滑动到最左端
+                    self.sleep(interval=0.5, rebuild=False)
                     for _ in range(9):
-                        self.swipe((w//2, h//2), (w//2, 0), interval=0.5)
+                        self.swipe_only((w//2, h//2), (w//2, 0), interval=0.5)
                     self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=True)
                     far_left = True
                     first_time = False
