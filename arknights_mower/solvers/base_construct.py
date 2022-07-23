@@ -631,7 +631,7 @@ class BaseConstructSolver(BaseSolver):
                             continue
                         self.recog.update()
                         self.tap_element(
-                            'comfirm_blue', detected=True, judge=False, interval=3)
+                            'confirm_blue', detected=True, judge=False, interval=3)
                         if self.scene() == Scene.INFRA_ARRANGE_CONFIRM:
                             x = self.recog.w // 3 * 2  # double confirm
                             y = self.recog.h - 10
@@ -835,7 +835,9 @@ class BaseConstructSolver(BaseSolver):
             self.tap((self.recog.w*BY_STATUS[0], self.recog.h*BY_STATUS[1]), interval=0.1)
             # 安排空闲干员
             _free = self.choose_agent_in_order(_temp_on_shift_agents, exclude_checked_in=True)
-            self.tap_element('comfirm_blue', detected=True, judge=False, interval=3)
+            self.tap_element('confirm_blue', detected=True, judge=False, interval=3)
+            while self.scene() == Scene.CONNECTING:
+                self.sleep(3)
             self.back(interval=2)
 
             logger.info('进入菲亚梅塔所在宿舍，为%s恢复心情', _recover)
@@ -847,13 +849,17 @@ class BaseConstructSolver(BaseSolver):
 
             rest_agents = [_recover, '菲亚梅塔']
             self.choose_agent_in_order(rest_agents, exclude_checked_in=True)
-            self.tap_element('comfirm_blue', detected=True, judge=False, interval=3)
+            self.tap_element('confirm_blue', detected=True, judge=False, interval=3)
+            while self.scene() == Scene.CONNECTING:
+                self.sleep(3)
 
             logger.info('恢复完毕，填满宿舍')
             rest_agents = '菲亚梅塔 Free Free Free Free'.split()
             self.tap((self.recog.w*0.82, self.recog.h*0.25), interval=2)
             self.choose_agent_in_order(rest_agents, exclude=[_recover], dormitory=True)
-            self.tap_element('comfirm_blue', detected=True, judge=False, interval=3)
+            self.tap_element('confirm_blue', detected=True, judge=False, interval=3)
+            while self.scene() == Scene.CONNECTING:
+                self.sleep(3)
 
             logger.info('恢复原职')
             self.back(interval=2)
@@ -862,8 +868,9 @@ class BaseConstructSolver(BaseSolver):
                 self.tap_element('arrange_check_in', interval=2, rebuild=False)
             self.tap((self.recog.w*0.82, self.recog.h*0.25), interval=2)
             self.choose_agent_in_order(on_shift_agents)
-            self.tap_element('comfirm_blue', detected=True, judge=False, interval=3)
-
+            self.tap_element('confirm_blue', detected=True, judge=False, interval=3)
+            while self.scene() == Scene.CONNECTING:
+                self.sleep(3)
             self.back(interval=2)
 
     # def clue_statis(self):
