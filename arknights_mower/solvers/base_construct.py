@@ -504,12 +504,17 @@ class BaseConstructSolver(BaseSolver):
                         continue
 
                 else:
-                    for name in agent_name & agent:
-                        for y in ret:
-                            if y[0] == name:
-                                self.tap((y[1][0]), interval=0, rebuild=False)
-                                break
-                        agent.remove(name)
+                    for y in ret:
+                        name = y[0]
+                        if name in agent_name & agent:
+                            self.tap((y[1][0]), interval=0, rebuild=False)
+                            agent.remove(name)
+                    # for name in agent_name & agent:
+                    #     for y in ret:
+                    #         if y[0] == name:
+                    #             self.tap((y[1][0]), interval=0, rebuild=False)
+                    #             break
+                    #     agent.remove(name)
 
                     # 如果已经完成选择则退出
                     if len(agent) == 0:
