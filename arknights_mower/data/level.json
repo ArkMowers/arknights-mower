@@ -2056,5 +2056,59 @@
         "ap_cost": 18,
         "code": "WR-10",
         "name": " 夕"
+    },
+    "DH-1": {
+        "zone_id": "permanent_sidestory_9_Dossoles_Holiday",
+        "ap_cost": 9,
+        "code": "DH-1",
+        "name": "意外入选"
+    },
+    "DH-2": {
+        "zone_id": "permanent_sidestory_9_Dossoles_Holiday",
+        "ap_cost": 9,
+        "code": "DH-2",
+        "name": "首轮竞赛"
+    },
+    "DH-3": {
+        "zone_id": "permanent_sidestory_9_Dossoles_Holiday",
+        "ap_cost": 9,
+        "code": "DH-3",
+        "name": "拔铳相助"
+    },
+    "DH-4": {
+        "zone_id": "permanent_sidestory_9_Dossoles_Holiday",
+        "ap_cost": 12,
+        "code": "DH-4",
+        "name": "铁人三项"
+    },
+    "DH-5": {
+        "zone_id": "permanent_sidestory_9_Dossoles_Holiday",
+        "ap_cost": 12,
+        "code": "DH-5",
+        "name": "曲径求胜"
+    },
+    "DH-6": {
+        "zone_id": "permanent_sidestory_9_Dossoles_Holiday",
+        "ap_cost": 12,
+        "code": "DH-6",
+        "name": "紧追猛赶"
+    },
+    "DH-7": {
+        "zone_id": "permanent_sidestory_9_Dossoles_Holiday",
+        "ap_cost": 18,
+        "code": "DH-7",
+        "name": "沙滩阻击"
+    },
+    "DH-8": {
+        "zone_id": "permanent_sidestory_9_Dossoles_Holiday",
+        "ap_cost": 18,
+        "code": "DH-8",
+        "name": "抢滩登陆"
+    },
+    "DH-9": {
+        "zone_id": "permanent_sidestory_9_Dossoles_Holiday",
+        "ap_cost": 18,
+        "code": "DH-9",
+        "name": "鼠胆龙威"
     }
 }

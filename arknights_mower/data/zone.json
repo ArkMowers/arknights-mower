@@ -190,5 +190,11 @@
         "name": "画中人",
         "chapterIndex": null,
         "zoneIndex": 8
+    },
+    "permanent_sidestory_9_Dossoles_Holiday": {
+        "type": "SIDESTORY",
+        "name": "多索雷斯假日",
+        "chapterIndex": null,
+        "zoneIndex": 9
     }
 }
