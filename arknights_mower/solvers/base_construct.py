@@ -137,7 +137,7 @@ class BaseConstructSolver(BaseSolver):
         self.enter_room('meeting')
 
         # 点击线索详情
-        self.tap((self.recog.w*0.05, self.recog.h*0.95), interval=3)
+        self.tap((self.recog.w*0.1, self.recog.h*0.9), interval=3)
 
         # 如果是线索交流的报告则返回
         self.find('clue_summary') and self.back()
@@ -252,8 +252,8 @@ class BaseConstructSolver(BaseSolver):
             return y2
         # x3: 右边黑色 mask 边缘
         x3 = self.recog_view_mask_right()
-        # x4: 四分之三的位置，用来定位单个线索
-        x4 = (x1 + 3 * x2) // 4
+        # x4: 用来区分单个线索
+        x4 = (54 * x1 + 25 * x2) // 79
 
         logger.debug(f'recog_view: y2:{y2}, x3:{x3}, x4:{x4}')
 
@@ -438,8 +438,9 @@ class BaseConstructSolver(BaseSolver):
 
             if not first_time:
                 # 滑动到最左边
+                self.sleep(interval=0.5, rebuild=False)
                 for _ in range(9):
-                    self.swipe((w//2, h//2), (w//2, 0), interval=0.5)
+                    self.swipe_only((w//2, h//2), (w//2, 0), interval=0.5)
                 self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
             else:
                 # 第一次进入按技能排序
@@ -491,8 +492,9 @@ class BaseConstructSolver(BaseSolver):
                         if len(agent) == 0:
                             break
                         # 否则滑动到最左边
+                        self.sleep(interval=0.5, rebuild=False)
                         for _ in range(9):
-                            self.swipe((w//2, h//2), (w//2, 0), interval=0.5)
+                            self.swipe_only((w//2, h//2), (w//2, 0), interval=0.5)
                         self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
 
                         # reset the statuses and cancel the rightward-swiping
@@ -502,12 +504,17 @@ class BaseConstructSolver(BaseSolver):
                         continue
 
                 else:
-                    for name in agent_name & agent:
-                        for y in ret:
-                            if y[0] == name:
-                                self.tap((y[1][0]), interval=0, rebuild=False)
-                                break
-                        agent.remove(name)
+                    for y in ret:
+                        name = y[0]
+                        if name in agent_name & agent:
+                            self.tap((y[1][0]), interval=0, rebuild=False)
+                            agent.remove(name)
+                    # for name in agent_name & agent:
+                    #     for y in ret:
+                    #         if y[0] == name:
+                    #             self.tap((y[1][0]), interval=0, rebuild=False)
+                    #             break
+                    #     agent.remove(name)
 
                     # 如果已经完成选择则退出
                     if len(agent) == 0:
@@ -522,8 +529,9 @@ class BaseConstructSolver(BaseSolver):
 
             if not first_time:
                 # 滑动到最左边
+                self.sleep(interval=0.5, rebuild=False)
                 for _ in range(9):
-                    self.swipe((w//2, h//2), (w//2, 0), interval=0.5)
+                    self.swipe_only((w//2, h//2), (w//2, 0), interval=0.5)
                 self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
             else:
                 # 第一次进入按技能排序
@@ -628,7 +636,7 @@ class BaseConstructSolver(BaseSolver):
                             continue
                         self.recog.update()
                         self.tap_element(
-                            'comfirm_blue', detected=True, judge=False, interval=3)
+                            'confirm_blue', detected=True, judge=False, interval=3)
                         if self.scene() == Scene.INFRA_ARRANGE_CONFIRM:
                             x = self.recog.w // 3 * 2  # double confirm
                             y = self.recog.h - 10
@@ -706,8 +714,9 @@ class BaseConstructSolver(BaseSolver):
 
                 if first_time and not far_left and agent[idx] != 'Free':
                     # 如果是寻找这位干员目前为止的第一次滑动, 且目前不是最左端，则滑动到最左端
+                    self.sleep(interval=0.5, rebuild=False)
                     for _ in range(9):
-                        self.swipe((w//2, h//2), (w//2, 0), interval=0.5)
+                        self.swipe_only((w//2, h//2), (w//2, 0), interval=0.5)
                     self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=True)
                     far_left = True
                     first_time = False
@@ -831,7 +840,9 @@ class BaseConstructSolver(BaseSolver):
             self.tap((self.recog.w*BY_STATUS[0], self.recog.h*BY_STATUS[1]), interval=0.1)
             # 安排空闲干员
             _free = self.choose_agent_in_order(_temp_on_shift_agents, exclude_checked_in=True)
-            self.tap_element('comfirm_blue', detected=True, judge=False, interval=3)
+            self.tap_element('confirm_blue', detected=True, judge=False, interval=3)
+            while self.scene() == Scene.CONNECTING:
+                self.sleep(3)
             self.back(interval=2)
 
             logger.info('进入菲亚梅塔所在宿舍，为%s恢复心情', _recover)
@@ -843,13 +854,17 @@ class BaseConstructSolver(BaseSolver):
 
             rest_agents = [_recover, '菲亚梅塔']
             self.choose_agent_in_order(rest_agents, exclude_checked_in=True)
-            self.tap_element('comfirm_blue', detected=True, judge=False, interval=3)
+            self.tap_element('confirm_blue', detected=True, judge=False, interval=3)
+            while self.scene() == Scene.CONNECTING:
+                self.sleep(3)
 
             logger.info('恢复完毕，填满宿舍')
             rest_agents = '菲亚梅塔 Free Free Free Free'.split()
             self.tap((self.recog.w*0.82, self.recog.h*0.25), interval=2)
             self.choose_agent_in_order(rest_agents, exclude=[_recover], dormitory=True)
-            self.tap_element('comfirm_blue', detected=True, judge=False, interval=3)
+            self.tap_element('confirm_blue', detected=True, judge=False, interval=3)
+            while self.scene() == Scene.CONNECTING:
+                self.sleep(3)
 
             logger.info('恢复原职')
             self.back(interval=2)
@@ -858,8 +873,9 @@ class BaseConstructSolver(BaseSolver):
                 self.tap_element('arrange_check_in', interval=2, rebuild=False)
             self.tap((self.recog.w*0.82, self.recog.h*0.25), interval=2)
             self.choose_agent_in_order(on_shift_agents)
-            self.tap_element('comfirm_blue', detected=True, judge=False, interval=3)
-
+            self.tap_element('confirm_blue', detected=True, judge=False, interval=3)
+            while self.scene() == Scene.CONNECTING:
+                self.sleep(3)
             self.back(interval=2)
 
     # def clue_statis(self):

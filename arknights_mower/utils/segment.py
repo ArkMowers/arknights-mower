@@ -471,14 +471,23 @@ def free_agent(img, draw=False):
         st = ret[-2][2]  # 起点
         ed = ret[0][1]   # 终点
 
-        # 去除空白的干员框，同时收集 y 坐标
+        # 收集 y 坐标并初步筛选
         y_set = set()
+        __ret = []
         for poly in ret:
             __img = img[poly[0, 1]:poly[2, 1], poly[0, 0]:poly[2, 0]]
             y_set.add(poly[0, 1])
             y_set.add(poly[2, 1])
+            # 去除空白的干员框
             if 80 <= np.min(__img):
-                ret.remove(poly)
+                logger.debug(f'drop(empty): {poly.tolist()}')
+                continue
+            # 去除被选中的蓝框
+            elif np.count_nonzero(__img[:, :, 0] >= 224) == 0 or np.count_nonzero(__img[:, :, 0] == 0) > 0:
+                logger.debug(f'drop(selected): {poly.tolist()}')
+                continue
+            __ret.append(poly)
+        ret = __ret
 
         y1, y2, y4, y5 = sorted(list(y_set))
         y0 = height - y5
