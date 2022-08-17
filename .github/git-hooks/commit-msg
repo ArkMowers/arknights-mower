@@ -3,7 +3,7 @@
 # https://www.conventionalcommits.org/zh-hans/v1.0.0-beta.4/
 
 COMMIT_MESSAGE=`cat $1`
-COMMIT_RE="^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|release|hotfix|workflow|update)(\(.+\))?: .{1,100}"
+COMMIT_RE="^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|release|hotfix|workflow|update|typo)(\(.+\))?: .{1,100}"
 MERGE_RE="^Merge "
 
 if [[ ! $COMMIT_MESSAGE =~ $COMMIT_RE ]] && [[ ! $COMMIT_MESSAGE =~ $MERGE_RE ]]
