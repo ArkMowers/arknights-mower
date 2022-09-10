@@ -277,6 +277,10 @@ Solver().base(arrange=plan)
 
 ## 常见问题 Q&A
 
+#### 运行时出现错误：An error occurred when loading the configuration file
+
+配置文件出现格式错误，可以结合 [在线 YAML 校验器](https://www.bejson.com/validators/yaml_editor/) 进行检查。
+
 #### 大量出现「识别出了点小差错」并卡死在特定界面
 
 当前版本在非 1080p（1920x1080）分辨率下，对于部分界面的识别可能会出现错误，将模拟器修改为 1080p 分辨率可以解决大部分问题。如果在分辨率修改后问题仍未解决，可以在 Issue 页面提出。
