@@ -23,5 +23,6 @@ git config core.hooksPath `git rev-parse --show-toplevel`/.github/git-hooks
 - revert: Revert the last commit.
 - style: Changes that do not affect the meaning of the code.
 - test: Adding missing tests or correcting existing tests.
+- typo: Typographical error.
 - update: Data updates.
 - workflow: Changes to our workflow configuration files and scripts.

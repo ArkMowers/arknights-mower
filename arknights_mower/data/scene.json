@@ -49,19 +49,19 @@
     },
     "101": {
         "label": "LOGIN_MAIN",
-        "comment": "登陆页面"
+        "comment": "登录页面"
     },
     "102": {
         "label": "LOGIN_INPUT",
-        "comment": "登陆页面（输入）"
+        "comment": "登录页面（输入）"
     },
     "103": {
         "label": "LOGIN_QUICKLY",
-        "comment": "登陆页面（快速）"
+        "comment": "登录页面（快速）"
     },
     "104": {
         "label": "LOGIN_LOADING",
-        "comment": "登陆中"
+        "comment": "登录中"
     },
     "105": {
         "label": "LOGIN_START",
@@ -81,11 +81,11 @@
     },
     "109": {
         "label": "LOGIN_BILIBILI",
-        "comment": "B 服登陆界面"
+        "comment": "B 服登录界面"
     },
     "110": {
         "label": "LOGIN_MAIN_NOENTRY",
-        "comment": "登陆页面（无按钮入口）"
+        "comment": "登录页面（无按钮入口）"
     },
     "111": {
         "label": "LOGIN_CADPA_DETAIL",
