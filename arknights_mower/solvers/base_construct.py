@@ -59,6 +59,8 @@ class BaseConstructSolver(BaseSolver):
         elif self.scene() == Scene.INFRA_TODOLIST:
             return self.todo_list()
         elif self.scene() == Scene.INFRA_DETAILS:
+            if self.find('arrange_check_in_on'):
+                self.tap_element('arrange_check_in_on')
             self.back()
         elif self.scene() == Scene.LOADING:
             self.sleep(3)
