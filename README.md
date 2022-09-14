@@ -195,6 +195,8 @@ from arknights_mower.strategy import Solver
 plan = {
     # 阶段 1
     'plan_1': {
+        # 控制中枢
+        'contral': ['夕', '令', '凯尔希', '阿米娅', '玛恩纳'],
         # 办公室
         'contact': ['艾雅法拉'],
         # 宿舍
