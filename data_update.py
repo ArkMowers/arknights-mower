@@ -112,7 +112,7 @@ for x in retro_table['retroActList'].values():
         }
 zoneToRetro = retro_table['zoneToRetro']
 for x in retro_table['stageList'].values():
-    if x['hardStagedId'] is None and x['canBattleReplay'] and x['zoneId'].endswith('1'):
+    if x['hardStagedId'] is None and x['canBattleReplay'] and x['zoneId'].endswith('1') and x['zoneId'] in zoneToRetro.keys():
         level[x['code']] = {
             'zone_id': zoneToRetro[x['zoneId']],
             'ap_cost': x['apCost'],
