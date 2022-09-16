@@ -59,6 +59,8 @@ class BaseConstructSolver(BaseSolver):
         elif self.scene() == Scene.INFRA_TODOLIST:
             return self.todo_list()
         elif self.scene() == Scene.INFRA_DETAILS:
+            if self.find('arrange_check_in_on'):
+                self.tap_element('arrange_check_in_on')
             self.back()
         elif self.scene() == Scene.LOADING:
             self.sleep(3)
@@ -754,20 +756,22 @@ class BaseConstructSolver(BaseSolver):
                 # 已经滑动到底部
                 ret = ret[-(room_total-idx):]
 
-            fia_resting = self.find('fia_resting') or self.find('fia_resting_elite2')
-            if fia_resting:
-                logger.info('菲亚梅塔还在休息')
-                break
-
             for block in ret:
-                fia_full = self.find('fia_full', scope=(block[0], block[2])) \
-                                or self.find('fia_full_elite2', scope=(block[0], block[2]))
-                if fia_full:
-                    fia_full = base_room_list[idx] if 'dormitory' in base_room_list[idx] else None
-                    break
+                if 'dormitory' in base_room_list[idx]:
+                    fia_resting = self.find('fia_resting', scope=(block[0], block[2])) \
+                            or self.find('fia_resting_elite2', scope=(block[0], block[2]))
+                    if fia_resting:
+                        logger.info('菲亚梅塔还在休息')
+                        break
+                    
+                    fia_full = self.find('fia_full', scope=(block[0], block[2])) \
+                            or self.find('fia_full_elite2', scope=(block[0], block[2]))
+                    if fia_full:
+                        fia_full = base_room_list[idx]
+                        break
                 idx += 1
 
-            if fia_full:
+            if fia_full or fia_resting:
                 break
 
             block = ret[-1]
@@ -776,12 +780,12 @@ class BaseConstructSolver(BaseSolver):
 
         if not fia_resting and not fia_full:
             logger.warning('未找到菲亚梅塔，使用本功能前请将菲亚梅塔置于宿舍！')
+            
         elif fia_full:
             logger.info('菲亚梅塔心情已满，位于%s', fia_full)
             logger.info('查询指定房间状态')
             self.back(interval=2)
             self.enter_room(room)
-
             # 进入进驻详情
             if not self.find('arrange_check_in_on'):
                 self.tap_element('arrange_check_in', interval=2, rebuild=False)
@@ -827,37 +831,31 @@ class BaseConstructSolver(BaseSolver):
                 st = ret[-2][1][2]  # 起点
                 ed = ret[0][1][1]   # 终点
                 self.swipe_noinertia(st, (ed[0]-st[0], 0), rebuild=True)
-
-            # 用一位空闲干员替换上述心情最差的干员
-            # 重新进入干员进驻页面，目的是加快安排速度
+            self.back(interval=2)        
             self.back(interval=2)
-            if not self.find('arrange_check_in_on'):
-                self.tap_element('arrange_check_in', interval=2, rebuild=False)
-            logger.info('安排一位空闲干员替换心情最差的%s', _recover)
-            self.tap((self.recog.w*0.82, self.recog.h*0.25), interval=2)
-            # 按工作状态排序，加快安排速度
-            self.tap((self.recog.w*BY_TRUST[0], self.recog.h*BY_TRUST[1]), interval=0)
-            self.tap((self.recog.w*BY_STATUS[0], self.recog.h*BY_STATUS[1]), interval=0.1)
-            # 安排空闲干员
-            _free = self.choose_agent_in_order(_temp_on_shift_agents, exclude_checked_in=True)
-            self.tap_element('confirm_blue', detected=True, judge=False, interval=3)
-            while self.scene() == Scene.CONNECTING:
-                self.sleep(3)
-            self.back(interval=2)
-
+            
             logger.info('进入菲亚梅塔所在宿舍，为%s恢复心情', _recover)
             self.enter_room(fia_full)
             # 进入进驻详情
             if not self.find('arrange_check_in_on'):
                 self.tap_element('arrange_check_in', interval=2, rebuild=False)
             self.tap((self.recog.w*0.82, self.recog.h*0.25), interval=2)
-
+            # 确保按心情升序排列
+            self.tap((self.recog.w*BY_TRUST[0], self.recog.h*BY_TRUST[1]), interval=0)
+            self.tap((self.recog.w*BY_EMO[0], self.recog.h*BY_EMO[1]), interval=0)
+            self.tap((self.recog.w*BY_EMO[0], self.recog.h*BY_EMO[1]), interval=0.1)
+            # 选择待恢复干员和菲亚梅塔
             rest_agents = [_recover, '菲亚梅塔']
-            self.choose_agent_in_order(rest_agents, exclude_checked_in=True)
-            self.tap_element('confirm_blue', detected=True, judge=False, interval=3)
+            self.choose_agent_in_order(rest_agents, exclude_checked_in=False)
+            self.tap_element('confirm_blue', detected=True, judge=False, interval=1)
+            # double confirm
+            if self.scene() == Scene.INFRA_ARRANGE_CONFIRM:
+                x = self.recog.w // 3 * 2  
+                y = self.recog.h - 10
+                self.tap((x, y), rebuild=True)
             while self.scene() == Scene.CONNECTING:
                 self.sleep(3)
-
+                
             logger.info('恢复完毕，填满宿舍')
             rest_agents = '菲亚梅塔 Free Free Free Free'.split()
             self.tap((self.recog.w*0.82, self.recog.h*0.25), interval=2)
