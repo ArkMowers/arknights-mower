@@ -165,7 +165,7 @@ def visit_next(img: tp.Image) -> tp.Coordinate:
 
 
 on_shift = loadimg(f'{__rootdir__}/resources/agent_on_shift.png', True)
-distracted = loadimg(f'{__rootdir__}/resources/distracted.png', True)
+distracted = loadimg(f'{__rootdir__}/resources/agent_distracted.png', True)
 resting = loadimg(f'{__rootdir__}/resources/agent_resting.png', True)
 
 def is_on_shift(img: tp.Image) -> bool:
