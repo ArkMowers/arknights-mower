@@ -1,0 +1,5 @@
+{
+    "default":{"upper limit": 24,"lower limit": 0},
+    "令":{"lower limit": 13},
+    "夕": {"upper limit": 11}
+}

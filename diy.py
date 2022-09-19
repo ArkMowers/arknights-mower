@@ -1,5 +1,6 @@
 import time
 import schedule
+from py_linq import Enumerable
 from arknights_mower.strategy import Solver
 from arknights_mower.utils.log import logger, init_fhlr
 from arknights_mower.utils import config
@@ -131,13 +132,13 @@ def simulate():
     '''
     global ope_lists
     cli = Solver()
-    cli.mail()  # 邮件
+    #cli.mail()  # 邮件
     cli.base(clue_collect=True, drone_room=drone_room, fia_room=fia_room, arrange=plan)  # 基建
-    cli.credit()  # 信用
-    ope_lists = cli.ope(eliminate=True, plan=ope_lists)  # 行动，返回未完成的作战计划
-    cli.shop(shop_priority)  # 商店
-    cli.recruit()  # 公招
-    cli.mission()  # 任务
+    #cli.credit()  # 信用
+    #ope_lists = cli.ope(eliminate=True, plan=ope_lists)  # 行动，返回未完成的作战计划
+    #cli.shop(shop_priority)  # 商店
+    #cli.recruit()  # 公招
+    #cli.mission()  # 任务
 
 
 def schedule_task():
@@ -151,7 +152,9 @@ def schedule_task():
         time.sleep(60)
 
 
-debuglog()
-savelog()
+#debuglog()
+#savelog()
 simulate()
-schedule_task()
+#schedule_task()
+
+

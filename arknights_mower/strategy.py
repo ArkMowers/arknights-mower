@@ -4,6 +4,7 @@ import functools
 import signal
 
 from .solvers import *
+from .solvers.base_schedule import BaseSchedulerSolver
 from .utils import typealias as tp
 from .utils.device import Device
 from .utils.log import logger
@@ -43,7 +44,7 @@ class Solver(object):
         :param drone_room: str, 是否使用无人机加速
         :param fia_room: str, 是否使用菲亚梅塔恢复心情
         """
-        BaseConstructSolver(self.device, self.recog).run(
+        BaseSchedulerSolver(self.device, self.recog).run(
             arrange, clue_collect, drone_room, fia_room)
 
     @timer
