@@ -10,6 +10,7 @@
 [![GitHub Workflow Status](https://img.shields.io/github/workflow/status/Konano/arknights-mower/Upload%20PyPI?style=flat-square)](https://github.com/Konano/arknights-mower/actions/workflows/python-publish.yml)
 ![GitHub last commit (branch)](https://img.shields.io/github/last-commit/Konano/arknights-mower/main?style=flat-square)
 [![Code Climate maintainability](https://img.shields.io/codeclimate/maintainability/Konano/arknights-mower?style=flat-square)](https://codeclimate.com/github/Konano/arknights-mower)
+[![Telegram Group Online](https://img.shields.io/endpoint?color=blue&style=flat-square&url=https%3A%2F%2Ftg.sumanjay.workers.dev%2Fark_mover)](https://t.me/ark_mover)
 
 7*24 小时不间断长草，让你忘掉这个游戏！
 
@@ -297,7 +298,7 @@ Solver().base(arrange=plan)
 
 也欢迎加入交流群讨论：
 
-- [Telegram Group](https://t.me/joinchat/eFkqRj1IWm9kYTBl)
+- [Telegram Group](https://t.me/ark_mover)
 - [QQ Group](https://jq.qq.com/?_wv=1027&k=4gWboTVI): 239200680
 
 ## Star History
