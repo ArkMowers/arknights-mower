@@ -55,11 +55,12 @@ class Solver(object):
         MissionSolver(self.device, self.recog).run()
 
     @timer
-    def recruit(self, priority: list[str] = None) -> None:
+    def recruit(self, priority: list[str] = None, expedite: int = 0) -> None:
         """
         :param priority: list[str], 优先考虑的公招干员，默认为高稀有度优先
+        :param expedite: int, 使用加急许可的数量，默认不使用
         """
-        RecruitSolver(self.device, self.recog).run(priority)
+        RecruitSolver(self.device, self.recog).run(priority, expedite)
 
     @timer
     def ope(self, level: str = None, times: int = -1, potion: int = 0, originite: int = 0, eliminate: int = 0, plan: list[tp.OpePlan] = None) -> list[tp.OpePlan]:

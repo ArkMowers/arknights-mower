@@ -73,14 +73,28 @@ def shop(args: list[str] = [], device: Device = None):
 
 def recruit(args: list[str] = [], device: Device = None):
     """
-    recruit [agents ...]
+    recruit [-e[N]] [agents ...] 
         自动进行公共招募
-        agents 优先考虑的公招干员，若不指定则使用配置文件中的优先级，默认为高稀有度优先
+        -e     是否使用加急许可加速，最多使用 N 次，N 未指定则表示不限制使用次数
+        agents 优先考虑的公招干员，若不指定则使用配置文件中的优先级，默认为高稀有度优先    
     """
-    if len(args) == 0:
-        RecruitSolver(device).run(config.RECRUIT_PRIORITY)
-    else:
-        RecruitSolver(device).run(args)
+    agents = []
+    expedite = 0   # 默认使用0次加急许可
+
+    try:
+        for p in args:
+            if p[0] == '-':
+                if p[1] == 'e':
+                    expedite = int(p[2:]) if len(p) > 2 else 9999
+            else:
+                agents.append(p)
+    except Exception:
+        raise ParamError
+    
+    if len(agents) == 0:
+        agents = config.RECRUIT_PRIORITY
+
+    RecruitSolver(device).run(agents, expedite)
 
 
 def mission(args: list[str] = [], device: Device = None):

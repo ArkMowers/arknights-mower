@@ -38,16 +38,18 @@ class RecruitSolver(BaseSolver):
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
         super().__init__(device, recog)
 
-    def run(self, priority: list[str] = None) -> None:
+    def run(self, priority: list[str] = None, expedite: int = 0) -> None:
         """
         :param priority: list[str], 优先考虑的公招干员，默认为高稀有度优先
+        :param expedite: int, 使用加急许可的数量，默认不使用
         """
         self.priority = priority
+        self.expedite = expedite
         self.recruiting = 0
         self.has_ticket = True  # 默认含有招募票
         self.can_refresh = True  # 默认可以刷新
 
-        logger.info('Start: 公招')
+        logger.info('Start: 公招, 使用加急许可 %d 张' % expedite)
         logger.info(f'目标干员：{priority if priority else "无，高稀有度优先"}')
         super().run()
 
@@ -58,18 +60,33 @@ class RecruitSolver(BaseSolver):
             segments = segment.recruit(self.recog.img)
             tapped = False
             for idx, seg in enumerate(segments):
+                self.processing_idx = idx
+                required = self.find('job_requirements', scope=seg)
+                if required:
+                    self.recruiting |= (1 << idx)
+                    
                 if self.recruiting & (1 << idx) != 0:
+                    if self.expedite > 0:
+                        logger.info('使用加急许可，加速公招')
+                        if self.tap_element('recruit_expedite', scope=seg, detected=True):
+                            if self.tap_element('double_confirm', 0.8, interval=3, judge=False, detected=True):
+                                self.expedite -= 1
+                                self.recruiting -= (1 << idx)
+                            else:
+                                logger.warning('加急许可数量不足')
+                                self.sleep(3)       # 防止误识别为招聘许可不足
+                                self.expedite = 0
+                    else:
                     continue
+                    
                 if self.tap_element('recruit_finish', scope=seg, detected=True):
                     tapped = True
                     break
                 if not self.has_ticket and not self.can_refresh:
                     continue
-                required = self.find('job_requirements', scope=seg)
-                if required is None:
+                if required is None and self.recruiting & (1 << idx) == 0:
                     self.tap(seg)
                     tapped = True
-                    self.recruiting |= (1 << idx)
                     break
             if not tapped:
                 return True
@@ -95,6 +112,7 @@ class RecruitSolver(BaseSolver):
     def recruit_tags(self) -> bool:
         """ 识别公招标签的逻辑 """
         if self.find('recruit_no_ticket') is not None:
+            logger.warning('招聘许可数量不足')
             self.has_ticket = False
         if self.find('recruit_no_refresh') is not None:
             self.can_refresh = False
