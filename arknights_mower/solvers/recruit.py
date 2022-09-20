@@ -45,6 +45,7 @@ class RecruitSolver(BaseSolver):
         """
         self.priority = priority
         self.expedite = expedite
+        self.processing_idx = 0  # 正在处理的公招位, 用于跳过6星招募位
         self.recruiting = 0
         self.has_ticket = True  # 默认含有招募票
         self.can_refresh = True  # 默认可以刷新
@@ -77,7 +78,7 @@ class RecruitSolver(BaseSolver):
                                 self.sleep(3)       # 防止误识别为招聘许可不足
                                 self.expedite = 0
                     else:
-                    continue
+                        continue
                     
                 if self.tap_element('recruit_finish', scope=seg, detected=True):
                     tapped = True
@@ -158,7 +159,13 @@ class RecruitSolver(BaseSolver):
             logger.debug('OK')
             self.back()
             return
-
+        # 如果该招募位包含6星标签, 则跳过该招募位
+        if '高级资深干员' in tags:
+            logger.warning('出现「高级资深干员」标签，跳过该招募位')
+            self.recruiting |= (1 << self.processing_idx)
+            self.back()
+            return
+            
         # tap selected tags
         logger.info(f'选择：{choose}')
         for x in ocr:
