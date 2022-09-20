@@ -10,7 +10,6 @@ from PIL import Image, ImageDraw, ImageFont
 
 from .. import __rootdir__
 from ..data import agent_list
-from ..ocr import ocrhandl
 from . import segment
 from .image import saveimg
 from .log import logger
