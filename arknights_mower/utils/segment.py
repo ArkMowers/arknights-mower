@@ -439,7 +439,7 @@ def agent(img, draw=False):
             plt.show()
 
         logger.debug(f'segment.agent: {[x.tolist() for x in ret]}')
-        return ret
+        return ret, ocr
 
     except Exception as e:
         logger.debug(traceback.format_exc())

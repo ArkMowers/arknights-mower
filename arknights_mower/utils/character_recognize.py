@@ -10,7 +10,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from .. import __rootdir__
 from ..data import agent_list
-from ..ocr import ocrhandle
+from ..ocr import ocrhandl
 from . import segment
 from .image import saveimg
 from .log import logger
@@ -140,11 +140,8 @@ def agent(img, draw=False):
         ):
             x0 += 1
 
-        # ocr 初步识别干员名称
-        ocr = ocrhandle.predict(img[:, x0:right])
-
         # 获取分割结果
-        ret = segment.agent(img, draw)
+        ret, ocr = segment.agent(img, draw)
 
         # 确定位置后开始精确识别
         ret_succ = []
