@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import shutil
 import sys
-from collections import Mapping
+try:
+    from collections.abc import Mapping
+except ImportError:
+    from collections import Mapping
 from pathlib import Path
 from typing import Any
 
