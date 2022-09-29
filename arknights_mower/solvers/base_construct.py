@@ -685,22 +685,28 @@ class BaseConstructSolver(BaseSolver):
             found = 0
             while found == 0:
                 ret = character_recognize.agent(self.recog.img)
-                ret = np.array(ret, dtype=object).reshape(-1, 2, 2).reshape(-1, 2)
                 # 'Free'代表占位符，选择空闲干员
                 if agent[idx] == 'Free':
                     for x in ret:
-                        x[1][0, 1] -= 155
-                        x[1][2, 1] -= 155
-                        # 不选择已进驻的干员，如果非宿舍则进一步不选择精神涣散的干员
-                        if not (self.find('agent_on_shift', scope=(x[1][0], x[1][2]))
-                                or self.find('agent_resting', scope=(x[1][0], x[1][2]))
-                                or (not dormitory and self.find('distracted', scope=(x[1][0], x[1][2])))):
-                                if x[0] not in agent and x[0] not in exclude:
-                                    self.tap(x[1], x_rate=0.5, y_rate=0.5, interval=0)
-                                    agent[idx] = x[0]
-                                    _free = x[0]
-                                    found = 1
-                                    break
+                        status_coord = x[1].copy()
+                        status_coord[0, 1] -= 0.147*self.recog.h
+                        status_coord[2, 1] -= 0.135*self.recog.h
+                        
+                        room_coord = x[1].copy()
+                        room_coord[0, 1] -= 0.340*self.recog.h
+                        room_coord[2, 1] -= 0.340*self.recog.h
+
+                        if x[0] not in agent and x[0] not in exclude:
+                            # 不选择已进驻的干员，如果非宿舍则进一步不选择精神涣散的干员
+                            if not (self.find('agent_on_shift', scope=(status_coord[0], status_coord[2]))
+                                    or self.find('agent_resting', scope=(status_coord[0], status_coord[2]))
+                                    or self.find('agent_in_dormitory', scope=(room_coord[0], room_coord[2]))
+                                    or (not dormitory and self.find('agent_distracted', scope=(status_coord[0], status_coord[2])))):
+                                self.tap(x[1], x_rate=0.5, y_rate=0.5, interval=0)
+                                agent[idx] = x[0]
+                                _free = x[0]
+                                found = 1
+                                break
 
                 elif agent[idx] != 'Free':
                     for x in ret:
@@ -795,13 +801,12 @@ class BaseConstructSolver(BaseSolver):
             self.tap((self.recog.w*BY_STATUS[0], self.recog.h*BY_STATUS[1]), interval=0.1)
             # 记录房间中的干员及其工位顺序
             ret = character_recognize.agent(self.recog.img)
-            ret = np.array(ret, dtype=object).reshape(-1, 2, 2).reshape(-1, 2)
             on_shift_agents = []
             for x in ret:
-                x[1][0, 1] -= 155
-                x[1][2, 1] -= 155
+                x[1][0, 1] -= 0.147*self.recog.h
+                x[1][2, 1] -= 0.135*self.recog.h
                 if self.find('agent_on_shift', scope=(x[1][0], x[1][2])) \
-                        or self.find('distracted', scope=(x[1][0], x[1][2])):
+                        or self.find('agent_distracted', scope=(x[1][0], x[1][2])):
                     self.tap(x[1], x_rate=0.5, y_rate=0.5, interval=0)
                     on_shift_agents.append(x[0])
             if len(on_shift_agents) == 0:
@@ -817,7 +822,6 @@ class BaseConstructSolver(BaseSolver):
             _temp_on_shift_agents = on_shift_agents.copy()
             while 'Free' not in _temp_on_shift_agents:
                 ret = character_recognize.agent(self.recog.img)
-                ret = np.array(ret, dtype=object).reshape(-1, 2, 2).reshape(-1, 2)
                 for x in ret:
                     if x[0] in _temp_on_shift_agents:
                         # 用占位符替代on_shift_agents中这个agent
@@ -840,10 +844,6 @@ class BaseConstructSolver(BaseSolver):
             if not self.find('arrange_check_in_on'):
                 self.tap_element('arrange_check_in', interval=2, rebuild=False)
             self.tap((self.recog.w*0.82, self.recog.h*0.25), interval=2)
-            # 确保按心情升序排列
-            self.tap((self.recog.w*BY_TRUST[0], self.recog.h*BY_TRUST[1]), interval=0)
-            self.tap((self.recog.w*BY_EMO[0], self.recog.h*BY_EMO[1]), interval=0)
-            self.tap((self.recog.w*BY_EMO[0], self.recog.h*BY_EMO[1]), interval=0.1)
             # 选择待恢复干员和菲亚梅塔
             rest_agents = [_recover, '菲亚梅塔']
             self.choose_agent_in_order(rest_agents, exclude_checked_in=False)
