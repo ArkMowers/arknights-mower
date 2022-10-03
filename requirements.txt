@@ -11,3 +11,6 @@ tornado==6.1
 requests==2.22.0
 ruamel.yaml==0.17.17
 schedule~=1.1.0
+setuptools~=60.2.0
+Pillow~=9.2.0
+pytesseract~=0.3.10

@@ -36,7 +36,10 @@ class Solver(object):
             return ret
         return inner
 
-    @timer
+    def base_scheduler (self,tasks=[],plan={},current_base={},)-> None:
+        # 返还所有排班计划以及 当前基建干员位置
+        return BaseSchedulerSolver(self.device, self.recog).run(tasks,plan,current_base)
+
     def base(self, arrange: tp.BasePlan = None, clue_collect: bool = False, drone_room: str = None, fia_room: str = None) -> None:
         """
         :param arrange: dict(room_name: [agent,...]), 基建干员安排
@@ -44,7 +47,7 @@ class Solver(object):
         :param drone_room: str, 是否使用无人机加速
         :param fia_room: str, 是否使用菲亚梅塔恢复心情
         """
-        BaseSchedulerSolver(self.device, self.recog).run(
+        BaseSolver(self.device, self.recog).run(
             arrange, clue_collect, drone_room, fia_room)
 
     @timer

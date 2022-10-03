@@ -1,0 +1,6 @@
+{
+    "default":{"upper_limit": 24,"lower_limit": 0,"exaust_require": false},
+    "令":{"lower_limit": 13},
+    "夕": {"upper_limit": 11},
+    "稀音":{"exaust_require": true}
+}

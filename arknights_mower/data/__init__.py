@@ -9,7 +9,7 @@ agent_list = json.loads(
 
 # agents base skills
 agent_base_config = json.loads(
-    Path(f'{__rootdir__}/data/agentbase.json').read_text('utf-8'))
+    Path(f'{__rootdir__}/data/agent-base.json').read_text('utf-8'))
 
 # name of each room in the basement
 base_room_list = json.loads(

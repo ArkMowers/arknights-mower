@@ -27,12 +27,14 @@ class BaseSolver:
         self.recog = recog if recog is not None else Recognizer(self.device)
         self.device.check_current_focus()
 
-    def run(self) -> None:
+    def run(self)-> None:
         retry_times = config.MAX_RETRYTIME
+        result =None
         while retry_times > 0:
             try:
-                if self.transition():
-                    break
+                result = self.transition()
+                if result:
+                    return result
             except RecognizeError as e:
                 logger.warning(f'识别出了点小差错 qwq: {e}')
                 self.recog.save_screencap('failure')
