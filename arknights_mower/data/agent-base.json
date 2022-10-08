@@ -1,6 +1,21 @@
 {
-    "default":{"upper_limit": 24,"lower_limit": 0,"exaust_require": false},
-    "令":{"lower_limit": 13},
-    "夕": {"upper_limit": 11},
-    "稀音":{"exaust_require": true}
+    "Default":{"UpperLimit": 24,"LowerLimit": 0,"ExaustRequire": false,"ArrangeOrder":[2,"false"]},
+    "令":{"LowerLimit": 13,"ArrangeOrder":[2,"true"]},
+    "夕": {"UpperLimit": 11,"ArrangeOrder":[2,"true"]},
+    "稀音":{"ExaustRequire": true},
+    "龙舌兰":{"ArrangeOrder":[2,"true"]},
+    "但书":{"ArrangeOrder":[2,"true"]},
+    "黑键":{"ArrangeOrder":[2,"true"]},
+    "波登可":{"ArrangeOrder":[ 2, "false" ]},
+    "夜莺":{"ArrangeOrder":[ 2, "false" ]},
+    "菲亚梅塔":{"ArrangeOrder":[ 2, "false" ]},
+    "流明":{"ArrangeOrder":[ 2, "false" ]},
+    "蜜莓":{"ArrangeOrder":[ 2, "false" ]},
+    "闪灵":{"ArrangeOrder":[ 2, "false" ]},
+    "杜林":{"ArrangeOrder":[ 2, "false" ]},
+    "褐果":{"ArrangeOrder":[ 2, "false" ]},
+    "车尔尼":{"ArrangeOrder":[ 2, "false" ]},
+    "安比尔":{"ArrangeOrder":[ 2, "false" ]},
+    "爱丽丝":{"ArrangeOrder":[ 2, "false" ]},
+    "桃金娘":{"ArrangeOrder":[ 2, "false" ]}
 }

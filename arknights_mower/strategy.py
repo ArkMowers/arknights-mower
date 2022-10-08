@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import functools
-import signal
 
 from .solvers import *
 from .solvers.base_schedule import BaseSchedulerSolver
 from .utils import typealias as tp
 from .utils.device import Device
-from .utils.log import logger
 from .utils.recognize import Recognizer
 from .utils.solver import BaseSolver
 
@@ -23,18 +21,6 @@ class Solver(object):
         self.recog = recog if recog is not None else Recognizer(self.device)
         self.timeout = timeout
 
-    def timer(f):
-        @functools.wraps(f)
-        def inner(self: Solver, *args, **kwargs):
-            def handler(signum, frame):
-                logger.warning('Operation timed out')
-                raise KeyboardInterrupt
-            signal.signal(signal.SIGALRM, handler)
-            signal.alarm(self.timeout * 3600)
-            ret = f(self, *args, **kwargs)
-            signal.alarm(0)
-            return ret
-        return inner
 
     def base_scheduler (self,tasks=[],plan={},current_base={},)-> None:
         # 返还所有排班计划以及 当前基建干员位置
@@ -50,22 +36,18 @@ class Solver(object):
         BaseSolver(self.device, self.recog).run(
             arrange, clue_collect, drone_room, fia_room)
 
-    @timer
     def credit(self) -> None:
         CreditSolver(self.device, self.recog).run()
 
-    @timer
     def mission(self) -> None:
         MissionSolver(self.device, self.recog).run()
 
-    @timer
     def recruit(self, priority: list[str] = None) -> None:
         """
         :param priority: list[str], 优先考虑的公招干员，默认为高稀有度优先
         """
         RecruitSolver(self.device, self.recog).run(priority)
 
-    @timer
     def ope(self, level: str = None, times: int = -1, potion: int = 0, originite: int = 0, eliminate: int = 0, plan: list[tp.OpePlan] = None) -> list[tp.OpePlan]:
         """
         :param level: str, 指定关卡，默认为前往上一次关卡或当前界面关卡
@@ -79,17 +61,14 @@ class Solver(object):
         """
         return OpeSolver(self.device, self.recog).run(level, times, potion, originite, eliminate, plan)
 
-    @timer
     def shop(self, priority: bool = None) -> None:
         """
         :param priority: list[str], 使用信用点购买东西的优先级, 若无指定则默认购买第一件可购买的物品
         """
         ShopSolver(self.device, self.recog).run(priority)
 
-    @timer
     def mail(self) -> None:
         MailSolver(self.device, self.recog).run()
 
-    @timer
     def index(self) -> None:
         BaseSolver(self.device, self.recog).back_to_index()

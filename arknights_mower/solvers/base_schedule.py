@@ -1,4 +1,5 @@
 from __future__ import annotations
+import copy
 from ..data import agent_base_config
 
 from enum import Enum
@@ -22,10 +23,10 @@ class ArrangeOrder(Enum):
 
 
 arrange_order_res = {
-    ArrangeOrder.STATUS: ('arrange_status', 0.1),
-    ArrangeOrder.SKILL: ('arrange_skill', 0.35),
-    ArrangeOrder.FEELING: ('arrange_feeling', 0.65),
-    ArrangeOrder.TRUST: ('arrange_trust', 0.9),
+    ArrangeOrder.STATUS: (1560, 96),
+    ArrangeOrder.SKILL: (1720, 96),
+    ArrangeOrder.FEELING: (1880, 96),
+    ArrangeOrder.TRUST: (2050, 96),
 }
 
 
@@ -37,16 +38,18 @@ class BaseSchedulerSolver(BaseSolver):
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
         super().__init__(device, recog)
 
-    def run(self, tasks, plans,current_base) -> None:
+    def run(self, tasks, plans, current_base) -> None:
         """
         :param clue_collect: bool, 是否收取线索
         """
-        self.global_plan= plans[plans["default"]]
+        # self.choose_agent(tasks[0]["plan"]["room_1_1"])
+        self.global_plan = plans[ plans[ "default" ] ]
         self.tasks = tasks
-        if len(self.tasks)>0:
+        if len(self.tasks) > 0:
             # 找到时间最近的一次单个任务
-            self.task = self.tasks[0]
-        else: self.task = None
+            self.task = self.tasks[ 0 ]
+        else:
+            self.task = None
         self.todo_task = False
         self.current_base = current_base
         self.planned = False
@@ -82,19 +85,19 @@ class BaseSchedulerSolver(BaseSolver):
         else:
             raise RecognizeError('Unknown scene')
 
-    def infra_main(self) :
+    def infra_main(self):
         """ 位于基建首页 """
         if self.find('control_central') is None:
             self.back()
             return
         if self.task is not None:
-            self.agent_arrange(self.task["plan"])
-            del self.tasks[0]
+            self.agent_arrange(self.task[ "plan" ])
+            del self.tasks[ 0 ]
             self.task = None
-        elif not self.planned :
-            #self.agent_get_mood()
+        elif not self.planned:
+            # self.agent_get_mood()
             self.plan_solver()
-            self.planned =True
+            self.planned = True
         elif not self.todo_task:
             # 处理基建 Todo
             notification = detector.infra_notification(self.recog.img)
@@ -113,19 +116,20 @@ class BaseSchedulerSolver(BaseSolver):
 
     def plan_solver(self):
         currentBase = self.current_base
-        plan_1 =self.global_plan
-        #currentBase = {'central': [{'mood': 17, 'agent': '夕'}, {'mood': 5, 'agent': '令'}, {'mood': 21, 'agent': '森蚺'}, {'mood': 21, 'agent': '布丁'}, {'mood': -1}], 'meeting': [{'mood': 11, 'agent': '陈'}, {'mood': 11, 'agent': '红'}, {'mood': -1}, {'mood': -1}, {'mood': -1}], 'room_1_1': [{'mood': 24, 'agent': '巫恋'}, {'mood': 9, 'agent': '卡夫卡'}, {'mood': 4, 'agent': '黑键'}, {'mood': -1}, {'mood': -1}], 'room_1_2': [{'mood': 22, 'agent': '异客'}, {'mood': 22, 'agent': '温蒂'}, {'mood': 22, 'agent': '掠风'}, {'mood': -1}, {'mood': -1}], 'room_1_3': [{'mood': 21, 'agent': 'Lancet-2'}, {'mood': -1}, {'mood': -1}, {'mood': -1}, {'mood': -1}], 'dormitory_1': [{'mood': 24, 'agent': '流明'}, {'mood': 24, 'agent': '蜜莓'}, {'mood': 8, 'agent': '焰尾'}, {'mood': 16, 'agent': '远牙'}, {'mood': 24, 'agent': '星极'}], 'factory': [{'mood': -1}, {'mood': -1}, {'mood': -1}, {'mood': -1}, {'mood': -1}], 'room_2_1': [{'mood': 24, 'agent': '红豆'}, {'mood': 23, 'agent': '泡泡'}, {'mood': 23, 'agent': '火神'}, {'mood': -1}, {'mood': -1}], 'room_2_2': [{'mood': 5, 'agent': '砾'}, {'mood': 13, 'agent': '迷迭香'}, {'mood': 19, 'agent': '槐琥'}, {'mood': -1}, {'mood': -1}], 'room_2_3': [{'mood': 17, 'agent': '炎狱炎熔'}, {'mood': -1}, {'mood': -1}, {'mood': -1}, {'mood': -1}], 'dormitory_2': [{'mood': 24, 'agent': '闪灵'}, {'mood': 24, 'agent': '杜林'}, {'mood': 10, 'agent': '灰毫'}, {'mood': 16, 'agent': '雷蛇'}, {'mood': -1}], 'contact': [{'mood': 12, 'agent': '絮雨'}, {'mood': -1}, {'mood': -1}, {'mood': -1}, {'mood': -1}], 'room_3_1': [{'mood': 9, 'agent': '食铁兽'}, {'mood': 12, 'agent': '至简'}, {'mood': 16, 'agent': '断罪者'}, {'mood': -1}, {'mood': -1}], 'room_3_2': [{'mood': 17, 'agent': '稀音'}, {'mood': 20, 'agent': '帕拉斯'}, {'mood': 20, 'agent': '红云'}, {'mood': -1}, {'mood': -1}], 'room_3_3': [{'mood': 21, 'agent': '正义骑士号'}, {'mood': -1}, {'mood': -1}, {'mood': -1}, {'mood': -1}], 'dormitory_3': [{'mood': 24, 'agent': '凛冬'}, {'mood': 24, 'agent': '爱丽丝'}, {'mood': 24, 'agent': '车尔尼'}, {'mood': 14, 'agent': '野鬃'}, {'mood': 24, 'agent': '夜烟'}], 'train': [{'mood': -1}, {'mood': 24, 'agent': '推进之王'}, {'mood': -1}, {'mood': -1}, {'mood': -1}], 'dormitory_4': [{'mood': 24, 'agent': '夜莺'}, {'mood': 24, 'agent': '波登可'}, {'mood': 5, 'agent': '菲亚梅塔'}, {'mood': 18, 'agent': '凯尔希'}, {'mood': 24, 'agent': '白雪'}]}
-        if len(self.check_in_and_out(plan_1))>0:
-            #处理龙舌兰和但书的插拔
+        plan_1 = self.global_plan
+        # currentBase = {'central': [{'mood': 17, 'agent': '夕'}, {'mood': 5, 'agent': '令'}, {'mood': 21, 'agent': '森蚺'}, {'mood': 21, 'agent': '布丁'}, {'mood': -1}], 'meeting': [{'mood': 11, 'agent': '陈'}, {'mood': 11, 'agent': '红'}, {'mood': -1}, {'mood': -1}, {'mood': -1}], 'room_1_1': [{'mood': 24, 'agent': '巫恋'}, {'mood': 9, 'agent': '卡夫卡'}, {'mood': 4, 'agent': '黑键'}, {'mood': -1}, {'mood': -1}], 'room_1_2': [{'mood': 22, 'agent': '异客'}, {'mood': 22, 'agent': '温蒂'}, {'mood': 22, 'agent': '掠风'}, {'mood': -1}, {'mood': -1}], 'room_1_3': [{'mood': 21, 'agent': 'Lancet-2'}, {'mood': -1}, {'mood': -1}, {'mood': -1}, {'mood': -1}], 'dormitory_1': [{'mood': 24, 'agent': '流明'}, {'mood': 24, 'agent': '蜜莓'}, {'mood': 8, 'agent': '焰尾'}, {'mood': 16, 'agent': '远牙'}, {'mood': 24, 'agent': '星极'}], 'factory': [{'mood': -1}, {'mood': -1}, {'mood': -1}, {'mood': -1}, {'mood': -1}], 'room_2_1': [{'mood': 24, 'agent': '红豆'}, {'mood': 23, 'agent': '泡泡'}, {'mood': 23, 'agent': '火神'}, {'mood': -1}, {'mood': -1}], 'room_2_2': [{'mood': 5, 'agent': '砾'}, {'mood': 13, 'agent': '迷迭香'}, {'mood': 19, 'agent': '槐琥'}, {'mood': -1}, {'mood': -1}], 'room_2_3': [{'mood': 17, 'agent': '炎狱炎熔'}, {'mood': -1}, {'mood': -1}, {'mood': -1}, {'mood': -1}], 'dormitory_2': [{'mood': 24, 'agent': '闪灵'}, {'mood': 24, 'agent': '杜林'}, {'mood': 10, 'agent': '灰毫'}, {'mood': 16, 'agent': '雷蛇'}, {'mood': -1}], 'contact': [{'mood': 12, 'agent': '絮雨'}, {'mood': -1}, {'mood': -1}, {'mood': -1}, {'mood': -1}], 'room_3_1': [{'mood': 9, 'agent': '食铁兽'}, {'mood': 12, 'agent': '至简'}, {'mood': 16, 'agent': '断罪者'}, {'mood': -1}, {'mood': -1}], 'room_3_2': [{'mood': 17, 'agent': '稀音'}, {'mood': 20, 'agent': '帕拉斯'}, {'mood': 20, 'agent': '红云'}, {'mood': -1}, {'mood': -1}], 'room_3_3': [{'mood': 21, 'agent': '正义骑士号'}, {'mood': -1}, {'mood': -1}, {'mood': -1}, {'mood': -1}], 'dormitory_3': [{'mood': 24, 'agent': '凛冬'}, {'mood': 24, 'agent': '爱丽丝'}, {'mood': 24, 'agent': '车尔尼'}, {'mood': 14, 'agent': '野鬃'}, {'mood': 24, 'agent': '夜烟'}], 'train': [{'mood': -1}, {'mood': 24, 'agent': '推进之王'}, {'mood': -1}, {'mood': -1}, {'mood': -1}], 'dormitory_4': [{'mood': 24, 'agent': '夜莺'}, {'mood': 24, 'agent': '波登可'}, {'mood': 5, 'agent': '菲亚梅塔'}, {'mood': 18, 'agent': '凯尔希'}, {'mood': 24, 'agent': '白雪'}]}
+        if len(self.check_in_and_out(plan_1)) > 0:
+            # 处理龙舌兰和但书的插拔
             for room in self.check_in_and_out(plan_1):
-                #self.get_in_and_out_time(room)
-                in_out_plan ={}
-                in_out_plan[room] = []
-                for x in plan_1[room]:
-                    if '但书' in x['replacement'] or '龙舌兰' in x['replacement']:
-                        in_out_plan[ room ].append(x['replacement'][0])
-                    else : in_out_plan[ room ].append(x["agent"])
-                self.tasks.append({"time":self.get_in_and_out_time(room),"plan":in_out_plan})
+                if any(room in obj[ "plan" ].keys() for obj in self.tasks): continue;
+                in_out_plan = {}
+                in_out_plan[ room ] = [ ]
+                for x in plan_1[ room ]:
+                    if '但书' in x[ 'replacement' ] or '龙舌兰' in x[ 'replacement' ]:
+                        in_out_plan[ room ].append(x[ 'replacement' ][ 0 ])
+                    else:
+                        in_out_plan[ room ].append(x[ "agent" ])
+                self.tasks.append({"time": self.get_in_and_out_time(room), "plan": in_out_plan})
         # totalAgent = [ ]
         # for key in currentBase:
         #     if (key == 'train' or key == 'factory'): continue
@@ -134,7 +138,7 @@ class BaseSchedulerSolver(BaseSolver):
         #         # 排除识别错误
         #         if data[ "mood" ] == -1 or "agent" not in data.keys(): continue
         #         if (data[ "agent" ] in agent_base_config.keys()):
-        #             # 如果有设置下限，则减去下限值 eg: 令 not in
+        #             # 如果有设置下限，则减去下限值 eg: 令
         #             if ("lower limit" in agent_base_config[ currentBase[ key ][ idx ][ "agent" ] ]):
         #                 data[ "mood" ] = data[ "mood" ] - agent_base_config[ currentBase[ key ][ idx ][ "agent" ] ][
         #                     "lower limit" ]
@@ -180,42 +184,45 @@ class BaseSchedulerSolver(BaseSolver):
         #     # 硬编了4 应该从free里代替
         #     output_plan[ "dormitory_" + str(idx + 1) ][ 4 ] = agent[ "agent" ];
         # print(output_plan)
-        # # 执行换班的同时 获得时间数据
+        # 执行换班的同时 获得时间数据
         return
 
-    def check_in_and_out(self ,plan):
+    def check_in_and_out(self, plan):
         res = {}
         for x, y in plan.items():
             if not x.startswith('room'): continue
-            if any(('但书' in obj['replacement'] or '龙舌兰' in obj['replacement'])for obj in y):
-                res[x]=y
+            if any(('但书' in obj[ 'replacement' ] or '龙舌兰' in obj[ 'replacement' ]) for obj in y):
+                res[ x ] = y
         return res
-    def get_in_and_out_time(self,room):
+
+    def get_in_and_out_time(self, room):
         logger.info('基建：读取插拔时间')
         # 点击进入该房间
         self.enter_room(room)
         # 进入房间详情
         self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3)
-        time_in_seconds = self.read_time((650,660,815,710))
-        execute_time = datetime.now()+timedelta(seconds=(time_in_seconds-600))
-        logger.info('下一次进行插拔的时间为：' +execute_time.strftime("%H:%M:%S"))
+        time_in_seconds = self.read_time((650, 660, 815, 710))
+        execute_time = datetime.now() + timedelta(seconds=(time_in_seconds - 600))
+        logger.info('下一次进行插拔的时间为：' + execute_time.strftime("%H:%M:%S"))
         logger.info('返回基建主界面')
         self.back(interval=2, rebuild=False)
         self.back(interval=2)
         return execute_time
-    def read_time(self,cord,upperlimit=8800):
-        # 刷新图片
-        self.recog.start()
-        time_str = segment.read_screen(self.recog.img,type='text',cord=cord)
-        try:
-            h,m,s = time_str.split(':')
-            seconds = int(h)*3600+int(m)*60+int(s)
-            if seconds>upperlimit:
-                raise RecognizeError("数值超出最大值")
-            else: return seconds
-        except :
-            return self.read_time(cord,upperlimit)
 
+    def read_time(self, cord, upperlimit=8800):
+        # 刷新图片
+        self.recog.update()
+        time_str = segment.read_screen(self.recog.img, type='text', cord=cord)
+        try:
+            h, m, s = time_str.split(':')
+            seconds = int(h) * 3600 + int(m) * 60 + int(s)
+            if seconds > upperlimit:
+                raise RecognizeError("数值超出最大值")
+            else:
+                return seconds
+        except:
+            logger.error("读取失败"+"--> "+time_str)
+            return self.read_time(cord, upperlimit)
 
     def todo_list(self) -> None:
         """ 处理基建 Todo 列表 """
@@ -464,6 +471,7 @@ class BaseSchedulerSolver(BaseSolver):
         clues = [ x.tolist() for x in clues if x[ 1 ][ 1 ] - x[ 0 ][ 1 ] >= self.recog.h / 5 ]
         logger.debug(clues)
         return clues
+
     def enter_room(self, room: str) -> tp.Rectangle:
         """ 获取房间的位置并进入 """
 
@@ -483,7 +491,7 @@ class BaseSchedulerSolver(BaseSolver):
         while self.find('control_central') is not None:
             self.tap(room[ 0 ], interval=3)
 
-    def drone(self, room: str,one_time = False):
+    def drone(self, room: str, one_time=False, not_return=False):
         logger.info('基建：无人机加速')
 
         # 点击进入该房间
@@ -505,13 +513,13 @@ class BaseSchedulerSolver(BaseSolver):
                 self.tap(accelerate)
                 self.tap_element('all_in')
                 self.tap((self.recog.w * 0.75, self.recog.h * 0.8), interval=3)  # relative position 0.75, 0.8
-                if one_time :break;
+                if one_time: break;
                 st = accelerate[ 1 ]  # 起点
                 ed = accelerate[ 0 ]  # 终点
                 # 0.95, 1.05 are offset compensations
                 self.swipe_noinertia(st, (ed[ 0 ] * 0.95 - st[ 0 ] * 1.05, 0), rebuild=True)
                 accelerate = self.find('bill_accelerate')
-
+        if not_return: return
         logger.info('返回基建主界面')
         self.back(interval=2, rebuild=False)
         self.back(interval=2)
@@ -527,160 +535,141 @@ class BaseSchedulerSolver(BaseSolver):
         logger.debug((best_score, best_order))
         return best_order
 
-    def switch_arrange_order(self, order: ArrangeOrder) -> None:
-        self.tap_element(arrange_order_res[ order ][ 0 ], x_rate=arrange_order_res[ order ][ 1 ], judge=False)
+    def switch_arrange_order(self, index: int, asc="false") -> None:
+        #  点击 需要的
+        self.tap(arrange_order_res[ ArrangeOrder(index) ], interval=0, rebuild=False)
+        # 点个不需要的
+        if index < 4:
+            self.tap(arrange_order_res[ ArrangeOrder(index + 1) ], interval=0, rebuild=False)
+        else:
+            self.tap(arrange_order_res[ ArrangeOrder(index + 1) ], interval=0, rebuild=False)
+        # 切回来
+        self.tap(arrange_order_res[ ArrangeOrder(index) ], interval=0, rebuild=False)
+        # 倒序
+        if asc != "false":
+            self.tap(arrange_order_res[ ArrangeOrder(index) ], interval=0, rebuild=False)
 
-    def arrange_order(self, order: ArrangeOrder) -> None:
-        if self.get_arrange_order() != order:
-            self.switch_arrange_order(order)
+    def scan_agant(self, agent: list[ str ],order_matters=False):
+        error_count = 0
+        try:
+            # 识别干员
+            self.recog.update()
+            ret = character_recognize.agent(self.recog.img)  # 返回的顺序是从左往右从上往下
+            # 提取识别出来的干员的名字
+            agent_name = set([x[0] for x in ret])
+            agent_size = len(agent)
+            if order_matters:
+                # 按照顺序
+                while len(agent) > 0:
+                    if any(agent[0] == obj for obj in agent_name):
+                        y = next((e for e in ret if e[0] == agent[0]), None)
+                        self.tap((y[1][0]), interval=0.5, rebuild=False)
+                        agent.remove(agent[0])
+                        continue
+                    break
+            else:
+                # 任意顺序
+                for y in ret:
+                    name = y[0]
+                    if name in agent:
+                        self.tap((y[1][0]), interval=0.5, rebuild=False)
+                        agent.remove(name)
+            return agent_size != len(agent), ret
+        except RecognizeError as e:
+            error_count += 1
+            if error_count < 3:
+                logger.debug(e)
+                self.sleep(3)
+            else:
+                raise e
 
-    def choose_agent(self, agent: list[ str ], skip_free: int = 0, order: ArrangeOrder = None) -> None:
+    def get_order(self, name):
+        if (name in agent_base_config.keys()):
+            if "ArrangeOrder" in agent_base_config[ name ].keys():
+                return True,agent_base_config[ name ][ "ArrangeOrder" ]
+            else:
+                return False,agent_base_config[ "Default" ][ "ArrangeOrder" ]
+        return False, agent_base_config[ "Default" ][ "ArrangeOrder" ]
+
+    def choose_agent(self, agent_list: list[ str ], skip_free: int = 0, is_dorm=False) -> None:
         """
         :param order: ArrangeOrder, 选择干员时右上角的排序功能
         """
+        agent = copy.deepcopy(agent_list)
         logger.info(f'安排干员：{agent}')
+        # 若不是空房间，则清空工作中的干员
+
         logger.debug(f'skip_free: {skip_free}')
         h, w = self.recog.h, self.recog.w
         first_time = True
-
         # 在 agent 中 'Free' 表示任意空闲干员
         free_num = agent.count('Free')
-        agent = set(agent) - set([ 'Free' ])
+        for i in range(agent.count("Free")):
+            agent.remove("Free")
+        order_matters = ("菲亚梅塔" in agent and len(agent_list)==2) or "巫恋" in agent_list or "卡夫卡" in agent_list or "柏喙" in agent_list
+        is_clear = False
+        index_change = False
+        pre_order = [ 2, False ]
+        right_swipe = 0
+        while len(agent) > 0:
+            if first_time:
+                # 清空
+                if is_dorm:
+                    self.switch_arrange_order(3, "true")
+                    pre_order = [3,'true']
+                if len(agent) > 1:
+                    self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0)
+                else:
+                    self.tap((self.recog.w * 0.38, self.recog.h * 0.3), interval=0)
 
-        # 安排指定干员
-        if len(agent):
+                changed, ret = self.scan_agant(agent)
+                if changed:
+                    if len(agent) == 0: break;
+                    index_change = True
 
-            if not first_time:
-                # 滑动到最左边
-                self.sleep(interval=0.5, rebuild=False)
-                for _ in range(9):
-                    self.swipe_only((w // 2, h // 2), (w // 2, 0), interval=0.5)
-                self.swipe((w // 2, h // 2), (w // 2, 0), interval=3, rebuild=False)
-            else:
-                # 第一次进入按技能排序
-                if order is not None:
-                    self.arrange_order(order)
+            # 如果选中了人，则可能需要重新排序
+            if index_change or first_time:
+                # 第一次则调整
+                is_custom, arrange_type = self.get_order(agent[0])
+                if is_dorm and not is_custom :
+                    arrange_type = (3,'true')
+                #如果重新排序则滑到最左边
+                if pre_order[ 0 ] != arrange_type[ 0 ] or pre_order[ 1 ] != arrange_type[ 1 ]:
+                    self.switch_arrange_order(arrange_type[ 0 ], arrange_type[ 1 ])
+                    # 滑倒最左边
+                    self.sleep(interval=0.5, rebuild=False)
+                    for _ in range(right_swipe):
+                        self.swipe_only((w // 2, h // 2), (w // 2, 0), interval=0.5)
+                    self.swipe((w // 2, h // 2), (w // 2, 0), interval=3, rebuild=False)
+                    #重置右划次数
+                    right_swipe = 0
+                    pre_order = arrange_type
             first_time = False
 
-            checked = set()  # 已经识别过的干员
-            pre = set()  # 上次识别出的干员
-            error_count = 0
-
-            while len(agent):
-                try:
-                    # 识别干员
-                    ret = character_recognize.agent(self.recog.img)  # 返回的顺序是从左往右从上往下
-                except RecognizeError as e:
-                    error_count += 1
-                    if error_count < 3:
-                        logger.debug(e)
-                        self.sleep(3)
-                    else:
-                        raise e
-                    continue
-
-                # 提取识别出来的干员的名字
-                agent_name = set([ x[ 0 ] for x in ret ])
-                if agent_name == pre:
-                    error_count += 1
-                    if error_count >= 3:
-                        logger.warning(f'未找到干员：{list(agent)}')
-                        break
-                else:
-                    pre = agent_name
-
-                # 更新已经识别过的干员
-                checked |= agent_name
-
-                # 如果出现了需要的干员则选择
-                # 优先安排菲亚梅塔
-                if '菲亚梅塔' in agent:
-                    if '菲亚梅塔' in agent_name:
-                        for y in ret:
-                            if y[ 0 ] == '菲亚梅塔':
-                                self.tap((y[ 1 ][ 0 ]), interval=0, rebuild=False)
-                                break
-                        agent.remove('菲亚梅塔')
-
-                        # 如果菲亚梅塔是 the only one
-                        if len(agent) == 0:
-                            break
-                        # 否则滑动到最左边
-                        self.sleep(interval=0.5, rebuild=False)
-                        for _ in range(9):
-                            self.swipe_only((w // 2, h // 2), (w // 2, 0), interval=0.5)
-                        self.swipe((w // 2, h // 2), (w // 2, 0), interval=3, rebuild=False)
-
-                        # reset the statuses and cancel the rightward-swiping
-                        checked = set()
-                        pre = set()
-                        error_count = 0
-                        continue
-
-                else:
-                    for y in ret:
-                        name = y[ 0 ]
-                        if name in agent_name & agent:
-                            self.tap((y[ 1 ][ 0 ]), interval=0, rebuild=False)
-                            agent.remove(name)
-                    # for name in agent_name & agent:
-                    #     for y in ret:
-                    #         if y[0] == name:
-                    #             self.tap((y[1][0]), interval=0, rebuild=False)
-                    #             break
-                    #     agent.remove(name)
-
-                    # 如果已经完成选择则退出
-                    if len(agent) == 0:
-                        break
-
+            changed, ret = self.scan_agant(agent)
+            if not changed:
+                # 如果没找到
+                if len(agent) == 0: break;
+                index_change = False
                 st = ret[ -2 ][ 1 ][ 2 ]  # 起点
                 ed = ret[ 0 ][ 1 ][ 1 ]  # 终点
                 self.swipe_noinertia(st, (ed[ 0 ] - st[ 0 ], 0))
-
-        # 安排空闲干员
-        if free_num:
-
-            if not first_time:
-                # 滑动到最左边
-                self.sleep(interval=0.5, rebuild=False)
-                for _ in range(9):
-                    self.swipe_only((w // 2, h // 2), (w // 2, 0), interval=0.5)
-                self.swipe((w // 2, h // 2), (w // 2, 0), interval=3, rebuild=False)
+                right_swipe+=1
             else:
-                # 第一次进入按技能排序
-                if order is not None:
-                    self.arrange_order(order)
-            first_time = False
+                # 如果找到了
+                index_change = True
+        # 再次排序
+        if order_matters:
+            for _ in range(right_swipe):
+                self.swipe_only((w // 2, h // 2), (w // 2, 0), interval=0.5)
+            self.swipe((w // 2, h // 2), (w // 2, 0), interval=3, rebuild=False)
+            self.switch_arrange_order(3, 'true')
+            self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0)
+            agent_with_order = copy.deepcopy(agent_list)
+            self.scan_agant(agent_with_order,True)
+        # 安排空闲干员
+        first_time = True
 
-            error_count = 0
-
-            while free_num:
-                try:
-                    # 识别空闲干员
-                    ret, st, ed = segment.free_agent(self.recog.img)  # 返回的顺序是从左往右从上往下
-                except RecognizeError as e:
-                    error_count += 1
-                    if error_count < 3:
-                        logger.debug(e)
-                        self.sleep(3)
-                    else:
-                        raise e
-                    continue
-
-                while free_num and len(ret):
-                    if skip_free > 0:
-                        skip_free -= 1
-                    else:
-                        self.tap(ret[ 0 ], interval=0, rebuild=False)
-                        free_num -= 1
-                    ret = ret[ 1: ]
-
-                # 如果已经完成选择则退出
-                if free_num == 0:
-                    break
-
-                self.swipe_noinertia(st, (ed[ 0 ] - st[ 0 ], 0))
     def agent_get_mood(self) -> None:
         self.tap_element('infra_overview', interval=2)
         logger.info('基建：记录心情')
@@ -715,7 +704,7 @@ class BaseSchedulerSolver(BaseSolver):
     def agent_arrange(self, plan: tp.BasePlan) -> None:
         """ 基建排班 """
         logger.info('基建：排班')
-        in_and_out=[];
+        in_and_out = [ ]
         # 进入进驻总览
         self.tap_element('infra_overview', interval=2)
 
@@ -748,22 +737,9 @@ class BaseSchedulerSolver(BaseSolver):
                         x = (7 * block[ 0 ][ 0 ] + 3 * block[ 2 ][ 0 ]) // 10
                         y = (block[ 0 ][ 1 ] + block[ 2 ][ 1 ]) // 2
                         self.tap((x, y))
-
-                        # 若不是空房间，则清空工作中的干员
-                        if self.find('arrange_empty_room') is None:
-                            if self.find('arrange_clean') is not None:
-                                self.tap_element('arrange_clean')
-                            else:
-                                # 对于只有一个干员的房间，没有清空按钮，需要点击干员清空
-                                self.tap((self.recog.w * 0.38, self.recog.h * 0.3), interval=0)
-
                         try:
-                            if base_room_list[ idx ].startswith('dormitory'):
-                                default_order = ArrangeOrder.FEELING
-                            else:
-                                default_order = ArrangeOrder.SKILL
                             self.choose_agent(
-                                plan[ base_room_list[ idx ] ], skip_free, default_order)
+                                plan[ base_room_list[ idx ] ], skip_free, base_room_list[ idx ].startswith('dormitory'))
                         except RecognizeError as e:
                             error_count += 1
                             if error_count >= 3:
@@ -797,358 +773,19 @@ class BaseSchedulerSolver(BaseSolver):
             # 换班结束
             if idx == room_total or len(need_empty) == 0:
                 break
-            block = ret[ -1 ]
-            top = switch[ 2 ][ 1 ]
-            self.swipe_noinertia(tuple(block[ 1 ]), (0, top - block[ 1 ][ 1 ]))
+            block = ret[-1]
+            top = switch[2][1]
+            self.swipe_noinertia(tuple(block[1]), (0, top - block[1][1]))
 
-        if len(in_and_out)>0:
+        if len(in_and_out) > 0:
             self.back()
             for room in in_and_out:
                 logger.info("开始插拔")
-                self.drone(room,True)
-                self.agent_arrange({room:[ data[ "agent" ] for data in self.global_plan[room] ]})
-            return
+                self.drone(room,True,True)
+                self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
+                self.choose_agent([ data[ "agent" ] for data in self.global_plan[ room ] ])
+                self.recog.update()
+                self.tap_element('confirm_blue', detected=True, judge=False, interval=3)
+                self.back(interval=2)
         logger.info('返回基建主界面')
         self.back()
-
-    def choose_agent_in_order(self, agent: list[ str ], exclude: list[ str ] = None, exclude_checked_in: bool = False,
-                              dormitory: bool = False):
-        """
-        按照顺序选择干员，只选择未在工作、未注意力涣散、未在休息的空闲干员
-        :param agent: 指定入驻干员列表
-        :param exclude: 排除干员列表，不选择这些干员
-        :param exclude_checked_in: 是否仅选择未进驻干员
-        :param dormitory: 是否是入驻宿舍，如果不是，则不选择注意力涣散的干员
-        """
-        if exclude is None:
-            exclude = [ ]
-        if exclude_checked_in:
-            self.tap_element('arrange_order_options')
-            self.tap_element('arrange_non_check_in')
-            self.tap_element('arrange_blue_yes')
-        self.tap_element('arrange_clean')
-
-        h, w = self.recog.h, self.recog.w
-        first_time = True
-        far_left = True
-        _free = None
-        idx = 0
-        while idx < len(agent):
-            logger.info('寻找干员: %s', agent[ idx ])
-            found = 0
-            while found == 0:
-                ret = character_recognize.agent(self.recog.img)
-                ret = np.array(ret, dtype=object).reshape(-1, 2, 2).reshape(-1, 2)
-                # 'Free'代表占位符，选择空闲干员
-                if agent[ idx ] == 'Free':
-                    for x in ret:
-                        x[ 1 ][ 0, 1 ] -= 155
-                        x[ 1 ][ 2, 1 ] -= 155
-                        # 不选择已进驻的干员，如果非宿舍则进一步不选择精神涣散的干员
-                        if not (self.find('agent_on_shift', scope=(x[ 1 ][ 0 ], x[ 1 ][ 2 ]))
-                                or self.find('agent_resting', scope=(x[ 1 ][ 0 ], x[ 1 ][ 2 ]))
-                                or (not dormitory and self.find('distracted', scope=(x[ 1 ][ 0 ], x[ 1 ][ 2 ])))):
-                            if x[ 0 ] not in agent and x[ 0 ] not in exclude:
-                                self.tap(x[ 1 ], x_rate=0.5, y_rate=0.5, interval=0)
-                                agent[ idx ] = x[ 0 ]
-                                _free = x[ 0 ]
-                                found = 1
-                                break
-
-                elif agent[ idx ] != 'Free':
-                    for x in ret:
-                        if x[ 0 ] == agent[ idx ]:
-                            self.tap(x[ 1 ], x_rate=0.5, y_rate=0.5, interval=0)
-                            found = 1
-                            break
-
-                if found == 1:
-                    idx += 1
-                    first_time = True
-                    break
-
-                if first_time and not far_left and agent[ idx ] != 'Free':
-                    # 如果是寻找这位干员目前为止的第一次滑动, 且目前不是最左端，则滑动到最左端
-                    self.sleep(interval=0.5, rebuild=False)
-                    for _ in range(9):
-                        self.swipe_only((w // 2, h // 2), (w // 2, 0), interval=0.5)
-                    self.swipe((w // 2, h // 2), (w // 2, 0), interval=3, rebuild=True)
-                    far_left = True
-                    first_time = False
-                else:
-                    st = ret[ -2 ][ 1 ][ 2 ]  # 起点
-                    ed = ret[ 0 ][ 1 ][ 1 ]  # 终点
-                    self.swipe_noinertia(st, (ed[ 0 ] - st[ 0 ], 0), rebuild=True)
-                    far_left = False
-                    first_time = False
-        self.recog.update()
-        return _free
-
-    def fia(self, room: str):
-        """
-        使用菲亚梅塔恢复指定房间心情最差的干员的心情，同时保持工位顺序不变
-        目前仅支持制造站、贸易站、发电站 （因为其他房间在输入命令时较为繁琐，且需求不大）
-        使用前需要菲亚梅塔位于任意一间宿舍
-        """
-        # 基建干员选择界面，导航栏四个排序选项的相对位置
-        BY_STATUS = [ 0.622, 0.05 ]  # 按工作状态排序
-        BY_SKILL = [ 0.680, 0.05 ]  # 按技能排序
-        BY_EMO = [ 0.755, 0.05 ]  # 按心情排序
-        BY_TRUST = [ 0.821, 0.05 ]  # 按信赖排序
-
-        logger.info('基建：使用菲亚梅塔恢复心情')
-        self.tap_element('infra_overview', interval=2)
-
-        logger.info('查询菲亚梅塔状态')
-        idx = 0
-        room_total = len(base_room_list)
-        fia_resting = fia_full = None
-        while idx < room_total:
-            ret, switch, _ = segment.worker(self.recog.img)
-            if room_total - idx < len(ret):
-                # 已经滑动到底部
-                ret = ret[ -(room_total - idx): ]
-
-            fia_resting = self.find('fia_resting') or self.find('fia_resting_elite2')
-            if fia_resting:
-                logger.info('菲亚梅塔还在休息')
-                break
-
-            for block in ret:
-                fia_full = self.find('fia_full', scope=(block[ 0 ], block[ 2 ])) \
-                           or self.find('fia_full_elite2', scope=(block[ 0 ], block[ 2 ]))
-                if fia_full:
-                    fia_full = base_room_list[ idx ] if 'dormitory' in base_room_list[ idx ] else None
-                    break
-                idx += 1
-
-            if fia_full:
-                break
-
-            block = ret[ -1 ]
-            top = switch[ 2 ][ 1 ]
-            self.swipe_noinertia(tuple(block[ 1 ]), (0, top - block[ 1 ][ 1 ]), rebuild=True)
-
-        if not fia_resting and not fia_full:
-            logger.warning('未找到菲亚梅塔，使用本功能前请将菲亚梅塔置于宿舍！')
-        elif fia_full:
-            logger.info('菲亚梅塔心情已满，位于%s', fia_full)
-            logger.info('查询指定房间状态')
-            self.back(interval=2)
-            self.enter_room(room)
-
-            # 进入进驻详情
-            if not self.find('arrange_check_in_on'):
-                self.tap_element('arrange_check_in', interval=2, rebuild=False)
-            self.tap((self.recog.w * 0.82, self.recog.h * 0.25), interval=2)
-            # 确保按工作状态排序 防止出错
-            self.tap((self.recog.w * BY_TRUST[ 0 ], self.recog.h * BY_TRUST[ 1 ]), interval=0)
-            self.tap((self.recog.w * BY_STATUS[ 0 ], self.recog.h * BY_STATUS[ 1 ]), interval=0.1)
-            # 记录房间中的干员及其工位顺序
-            ret = character_recognize.agent(self.recog.img)
-            ret = np.array(ret, dtype=object).reshape(-1, 2, 2).reshape(-1, 2)
-            on_shift_agents = [ ]
-            for x in ret:
-                x[ 1 ][ 0, 1 ] -= 155
-                x[ 1 ][ 2, 1 ] -= 155
-                if self.find('agent_on_shift', scope=(x[ 1 ][ 0 ], x[ 1 ][ 2 ])) \
-                        or self.find('distracted', scope=(x[ 1 ][ 0 ], x[ 1 ][ 2 ])):
-                    self.tap(x[ 1 ], x_rate=0.5, y_rate=0.5, interval=0)
-                    on_shift_agents.append(x[ 0 ])
-            if len(on_shift_agents) == 0:
-                logger.warning('该房间没有干员在工作')
-                return
-            logger.info('房间内的干员顺序为: %s', on_shift_agents)
-
-            # 确保按心情升序排列
-            self.tap((self.recog.w * BY_TRUST[ 0 ], self.recog.h * BY_TRUST[ 1 ]), interval=0)
-            self.tap((self.recog.w * BY_EMO[ 0 ], self.recog.h * BY_EMO[ 1 ]), interval=0)
-            self.tap((self.recog.w * BY_EMO[ 0 ], self.recog.h * BY_EMO[ 1 ]), interval=0.1)
-            # 寻找这个房间里心情最低的干员,
-            _temp_on_shift_agents = on_shift_agents.copy()
-            while 'Free' not in _temp_on_shift_agents:
-                ret = character_recognize.agent(self.recog.img)
-                ret = np.array(ret, dtype=object).reshape(-1, 2, 2).reshape(-1, 2)
-                for x in ret:
-                    if x[ 0 ] in _temp_on_shift_agents:
-                        # 用占位符替代on_shift_agents中这个agent
-                        _temp_on_shift_agents[ _temp_on_shift_agents.index(x[ 0 ]) ] = 'Free'
-                        logger.info('房间内心情最差的干员为: %s', x[ 0 ])
-                        _recover = x[ 0 ]
-                        break
-                if 'Free' in _temp_on_shift_agents:
-                    break
-
-                st = ret[ -2 ][ 1 ][ 2 ]  # 起点
-                ed = ret[ 0 ][ 1 ][ 1 ]  # 终点
-                self.swipe_noinertia(st, (ed[ 0 ] - st[ 0 ], 0), rebuild=True)
-
-            # 用一位空闲干员替换上述心情最差的干员
-            # 重新进入干员进驻页面，目的是加快安排速度
-            self.back(interval=2)
-            if not self.find('arrange_check_in_on'):
-                self.tap_element('arrange_check_in', interval=2, rebuild=False)
-            logger.info('安排一位空闲干员替换心情最差的%s', _recover)
-            self.tap((self.recog.w * 0.82, self.recog.h * 0.25), interval=2)
-            # 按工作状态排序，加快安排速度
-            self.tap((self.recog.w * BY_TRUST[ 0 ], self.recog.h * BY_TRUST[ 1 ]), interval=0)
-            self.tap((self.recog.w * BY_STATUS[ 0 ], self.recog.h * BY_STATUS[ 1 ]), interval=0.1)
-            # 安排空闲干员
-            _free = self.choose_agent_in_order(_temp_on_shift_agents, exclude_checked_in=True)
-            self.tap_element('confirm_blue', detected=True, judge=False, interval=3)
-            while self.scene() == Scene.CONNECTING:
-                self.sleep(3)
-            self.back(interval=2)
-
-            logger.info('进入菲亚梅塔所在宿舍，为%s恢复心情', _recover)
-            self.enter_room(fia_full)
-            # 进入进驻详情
-            if not self.find('arrange_check_in_on'):
-                self.tap_element('arrange_check_in', interval=2, rebuild=False)
-            self.tap((self.recog.w * 0.82, self.recog.h * 0.25), interval=2)
-
-            rest_agents = [ _recover, '菲亚梅塔' ]
-            self.choose_agent_in_order(rest_agents, exclude_checked_in=True)
-            self.tap_element('confirm_blue', detected=True, judge=False, interval=3)
-            while self.scene() == Scene.CONNECTING:
-                self.sleep(3)
-
-            logger.info('恢复完毕，填满宿舍')
-            rest_agents = '菲亚梅塔 Free Free Free Free'.split()
-            self.tap((self.recog.w * 0.82, self.recog.h * 0.25), interval=2)
-            self.choose_agent_in_order(rest_agents, exclude=[ _recover ], dormitory=True)
-            self.tap_element('confirm_blue', detected=True, judge=False, interval=3)
-            while self.scene() == Scene.CONNECTING:
-                self.sleep(3)
-
-            logger.info('恢复原职')
-            self.back(interval=2)
-            self.enter_room(room)
-            if not self.find('arrange_check_in_on'):
-                self.tap_element('arrange_check_in', interval=2, rebuild=False)
-            self.tap((self.recog.w * 0.82, self.recog.h * 0.25), interval=2)
-            self.choose_agent_in_order(on_shift_agents)
-            self.tap_element('confirm_blue', detected=True, judge=False, interval=3)
-            while self.scene() == Scene.CONNECTING:
-                self.sleep(3)
-            self.back(interval=2)
-
-    # def clue_statis(self):
-
-    #     clues = {'all': {}, 'own': {}}
-
-    #     self.recog_bar()
-    #     self.tap(((x1*7+x2)//8, y0//2), rebuild=False)
-    #     self.tap(((x1*7.5+x2*0.5)//8, (y0+y1)//2), rebuild=False)
-    #     self.recog_view(only_y2=False)
-
-    #     if x3 is None:
-    #         return clues
-
-    #     for i in range(1, 8):
-
-    #         self.tap((((i+0.5)*x2+(8-i-0.5)*x1)//8, (y0+y1)//2), rebuild=False)
-    #         self.clear_clue_mask()
-    #         self.recog_view()
-
-    #         count = 0
-    #         if y2 < self.recog.h - 20:
-    #             count = len(self.ori_clue())
-    #         else:
-    #             while True:
-    #                 restart = False
-    #                 count = 0
-    #                 ret = self.ori_clue()
-    #                 while True:
-
-    #                     y4 = 0
-    #                     for poly in ret:
-    #                         count += 1
-    #                         y4 = poly[0, 1]
-
-    #                     self.tap((x4, y4+10), rebuild=False)
-    #                     self.device.swipe([(x4, y4), (x4, y1+10), (0, y1+10)], duration=(y4-y1-10)*3)
-    #                     self.sleep(1, rebuild=False)
-
-    #                     mask = self.get_clue_mask()
-    #                     if mask is not None:
-    #                         self.clear_clue_mask()
-    #                     ret = self.ori_clue()
-
-    #                     if mask is None or not (ret[0][0, 1] <= mask <= ret[-1][1, 1]):
-    #                         # 漂移了的话
-    #                         restart = True
-    #                         break
-
-    #                     if ret[0][0, 1] <= mask <= ret[0][1, 1]:
-    #                         count -= 1
-    #                         continue
-    #                     else:
-    #                         for poly in ret:
-    #                             if mask < poly[0, 1]:
-    #                                 count += 1
-    #                         break
-
-    #                 if restart:
-    #                     self.swipe((x4, y1+10), (0, 1000),
-    #                                duration=500, interval=3, rebuild=False)
-    #                     continue
-    #                 break
-
-    #         clues['all'][i] = count
-
-    #     self.tap(((x1+x2)//2, y0//2), rebuild=False)
-
-    #     for i in range(1, 8):
-    #         self.tap((((i+0.5)*x2+(8-i-0.5)*x1)//8, (y0+y1)//2), rebuild=False)
-
-    #         self.clear_clue_mask()
-    #         self.recog_view()
-
-    #         count = 0
-    #         if y2 < self.recog.h - 20:
-    #             count = len(self.ori_clue())
-    #         else:
-    #             while True:
-    #                 restart = False
-    #                 count = 0
-    #                 ret = self.ori_clue()
-    #                 while True:
-
-    #                     y4 = 0
-    #                     for poly in ret:
-    #                         count += 1
-    #                         y4 = poly[0, 1]
-
-    #                     self.tap((x4, y4+10), rebuild=False)
-    #                     self.device.swipe([(x4, y4), (x4, y1+10), (0, y1+10)], duration=(y4-y1-10)*3)
-    #                     self.sleep(1, rebuild=False)
-
-    #                     mask = self.get_clue_mask()
-    #                     if mask is not None:
-    #                         self.clear_clue_mask()
-    #                     ret = self.ori_clue()
-
-    #                     if mask is None or not (ret[0][0, 1] <= mask <= ret[-1][1, 1]):
-    #                         # 漂移了的话
-    #                         restart = True
-    #                         break
-
-    #                     if ret[0][0, 1] <= mask <= ret[0][1, 1]:
-    #                         count -= 1
-    #                         continue
-    #                     else:
-    #                         for poly in ret:
-    #                             if mask < poly[0, 1]:
-    #                                 count += 1
-    #                         break
-
-    #                 if restart:
-    #                     self.swipe((x4, y1+10), (0, 1000),
-    #                                duration=500, interval=3, rebuild=False)
-    #                     continue
-    #                 break
-
-    #         clues['own'][i] = count
-
-    #     return clues

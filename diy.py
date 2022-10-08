@@ -1,5 +1,6 @@
 import time
 import schedule
+import numpy as np
 from datetime import datetime
 from py_linq import Enumerable
 from arknights_mower.strategy import Solver
@@ -40,12 +41,12 @@ plan = {
                               ],
                  'contact': [ {'agent': '絮语', 'group': '絮雨', 'replacement': [ '艾雅法拉' ]} ],
                  # 宿舍
-                 'dormitory_1': [ {'agent': '波登可', 'time': ''},
+                 'dormitory_4': [ {'agent': '波登可', 'time': ''},
                                   {'agent': '夜莺', 'time': ''},
                                   {'agent': '菲亚梅塔', 'replacement': [ '迷迭香', '黑键', '絮雨' ]},
                                   {'agent': 'Free', 'time': ''},
                                   {'agent': 'Free', 'time': ''} ],
-                 'dormitory_4': [ {'agent': '流明', 'time': ''},
+                 'dormitory_1': [ {'agent': '流明', 'time': ''},
                                   {'agent': '蜜莓', 'time': ''},
                                   {'agent': 'Free', 'time': ''},
                                   {'agent': 'Free', 'time': ''},
@@ -53,31 +54,31 @@ plan = {
                                   ],
                  'dormitory_2': [ {'agent': '闪灵', 'time': ''},
                                   {'agent': '杜林', 'time': ''},
-                                  {'agent': 'Free', 'time': ''},
+                                  {'agent': '褐果', 'time': ''},
                                   {'agent': 'Free', 'time': ''},
                                   {'agent': 'Free', 'time': ''}
                                   ],
                  'dormitory_3': [ {'agent': '车尔尼', 'time': ''},
                                   {'agent': '安比尔', 'time': ''},
                                   {'agent': '爱丽丝', 'time': ''},
-                                  {'agent': 'Free', 'time': ''},
+                                  {'agent': '桃金娘', 'time': ''},
                                   {'agent': 'Free', 'time': ''}
                                   ],
 
                  # 会客室
                  'meeting': [ {'agent': '陈', 'replacement': [ '星极' ]},
                               {'agent': '红', 'replacement': [ '远山' ]}, ],
-                 'room_1_1': [ {'agent': '图耶', 'group': '图耶', 'replacement': [ '能天使' ]},
-                               {'agent': '鸿雪', 'group': '图耶', 'Type': '', 'replacement': [ '雪雉' ]},
+                 'room_1_1': [ {'agent': '空弦', 'group': '', 'replacement': [ '能天使' ]},
+                               {'agent': '雪雉', 'group': '', 'replacement': [ '龙舌兰' ]},
                                {'agent': '黑键', 'replacement': [ '但书' ]} ],
                  'room_1_2': [ {'agent': '稀音', 'group': '稀音', 'replacement': [ '' ]},
                                {'agent': '红云', 'group': '稀音', 'Type': '', 'replacement': [ '' ]},
                                {'agent': '帕拉斯', 'group': '稀音', 'time': '', 'replacement': [ '' ]} ],
                  'room_1_3': [ {'agent': '晨曦格雷伊', 'group': '异客', 'time': '', 'replacement': [ '雷蛇' ]} ],
-                 'room_2_1': [ {'agent': '灰毫', 'group': '红松骑士', 'replacement': [ '菲亚梅塔' ]},
-                               {'agent': '远牙', 'group': '红松骑士', 'Type': '', 'replacement': [ '柏喙' ]},
-                               {'agent': '野鬃', 'group': '红松骑士', 'time': '', 'replacement': [ '菲亚梅塔' ]} ],
-                 'room_2_2': [ {'agent': '迷迭香', 'group': '迷迭香', 'replacement': [ '菲亚梅塔' ]},
+                 'room_2_1': [ {'agent': '灰毫', 'group': '红松骑士', 'replacement': [ '' ]},
+                               {'agent': '远牙', 'group': '红松骑士', 'Type': '', 'replacement': [ '' ]},
+                               {'agent': '野鬃', 'group': '红松骑士', 'time': '', 'replacement': [ '' ]} ],
+                 'room_2_2': [ {'agent': '迷迭香', 'group': '', 'replacement': [ '' ]},
                                {'agent': '砾', 'group': '', 'Type': '', 'replacement': [ '斑点' ]},
                                {'agent': '至简', 'group': '', 'time': '', 'replacement': [ '夜烟' ]} ],
                  'room_2_3': [ {'agent': '雷蛇', 'group': '', 'time': '', 'replacement': [ '炎狱炎熔' ]} ],
@@ -171,14 +172,21 @@ def simulate():
 
     cli = Solver()
     # 第一次执行任务
-    tasks = [{"plan":{"room_1_1":['图耶', '鸿雪', '但书']},"time":datetime.now()}]
-    #cli.mail()  # 邮件
+    # datetime(2022, 10, 3, 3, 8, 59, 342380)
+    tasks = [{"plan":{'room_1_1': ['空弦', '龙舌兰', '但书']},"time":datetime.now()}]
+    # tasks = [{"plan":{"room_1_1":['图耶', '鸿雪', '但书']},"time":datetime.now()},
+    #          {"plan":{'dormitory_1': ['迷迭香','菲亚梅塔'],'room_2_2': ['迷迭香','槐琥','砾']},"time":datetime(2022, 10, 3, 3, 15, 55, 342380)},
+    #           {"plan":{'dormitory_1': ['夜莺', '菲亚梅塔','焰尾','Free','Free']},"time":datetime(2022, 10, 3, 15, 56, 59, 342380)}]
+
+    # #cli.mail()  # 邮件
     while True:
         output = cli.base_scheduler(tasks=tasks,plan=plan)  # 基建
         tasks = output
         #current_base =out_current_base
-        logger.info("休息: " + str((tasks[ 0 ][ "time" ] - datetime.now()).total_seconds()) + " 秒")
-        time.sleep((tasks[ 0 ][ "time" ] - datetime.now()).total_seconds())
+        logger.info(tasks)
+        #logger.info("休息: " + str((tasks[ 0 ][ "time" ] - datetime.now()).total_seconds()) + " 秒")
+        sleep_time=(tasks[ 0 ][ "time" ] - datetime.now()).total_seconds()
+        if sleep_time>0 : time.sleep(sleep_time)
 
     #cli.credit()  # 信用
     #ope_lists = cli.ope(eliminate=True, plan=ope_lists)  # 行动，返回未完成的作战计划
