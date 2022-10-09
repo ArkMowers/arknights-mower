@@ -68,7 +68,7 @@ plan = {
                  # 会客室
                  'meeting': [ {'agent': '陈', 'replacement': [ '星极' ]},
                               {'agent': '红', 'replacement': [ '远山' ]}, ],
-                 'room_1_1': [ {'agent': '空弦', 'group': '', 'replacement': [ '能天使' ]},
+                 'room_1_1': [ {'agent': '能天使', 'group': '', 'replacement': [ '能天使' ]},
                                {'agent': '雪雉', 'group': '', 'replacement': [ '龙舌兰' ]},
                                {'agent': '黑键', 'replacement': [ '但书' ]} ],
                  'room_1_2': [ {'agent': '稀音', 'group': '稀音', 'replacement': [ '' ]},
@@ -185,6 +185,7 @@ def simulate():
         #current_base =out_current_base
         logger.info(tasks)
         #logger.info("休息: " + str((tasks[ 0 ][ "time" ] - datetime.now()).total_seconds()) + " 秒")
+        if len(tasks)==0: continue
         sleep_time=(tasks[ 0 ][ "time" ] - datetime.now()).total_seconds()
         if sleep_time>0 : time.sleep(sleep_time)
 

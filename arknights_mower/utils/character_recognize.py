@@ -9,7 +9,7 @@ from matplotlib import pyplot as plt
 from PIL import Image, ImageDraw, ImageFont
 
 from .. import __rootdir__
-from ..data import agent_list
+from ..data import agent_list, ocr_error
 from . import segment
 from .image import saveimg
 from .log import logger
@@ -153,37 +153,51 @@ def agent(img, draw=False):
                 if in_poly(poly, (cx + x0, cy)) and cx > fx:
                     fx = cx
                     found_ocr = x
-
-            if found_ocr is not None:
-                x = found_ocr
-                if x[1] in agent_list and x[1] not in ['砾', '陈']:  # ocr 经常会把这两个搞错
-                    ret_agent.append(x[1])
+            __img = img[poly[0, 1]: poly[2, 1], poly[0, 0]: poly[2, 0]]
+            try:
+                if found_ocr is not None:
+                    x = found_ocr
+                    if x[1] in agent_list and x[1] not in ['砾', '陈']:  # ocr 经常会把这两个搞错
+                        ret_agent.append(x[1])
+                        ret_succ.append(poly)
+                        continue
+                    res = sift_recog(__img, resolution, draw)
+                    if res is not None:
+                        logger.debug(f'干员名称识别修正：{x[1]} -> {res}')
+                        ret_agent.append(res)
+                        ret_succ.append(poly)
+                        continue
+                    logger.warning(
+                        f'干员名称识别异常：{x[1]} 为不存在的数据，请报告至 https://github.com/Konano/arknights-mower/issues'
+                    )
+                    saveimg(__img, 'failure_agent')
+                    raise Exception("启动 Plan B")
+                else:
+                    if 80 <= np.min(__img):
+                        continue
+                    res = sift_recog(__img, resolution, draw)
+                    if res is not None:
+                        ret_agent.append(res)
+                        ret_succ.append(poly)
+                        continue
+                    logger.warning(f'干员名称识别异常：区域 {poly.tolist()}')
+                    saveimg(__img, 'failure_agent')
+                    raise Exception("启动 Plan B")
+                ret_fail.append(poly)
+                raise Exception("启动 Plan B")
+            except Exception as e:
+                # 大哥不行了，二哥上！
+                name = segment.read_screen(__img,
+                                           langurage="chi_sim",
+                                           type="text")
+                logger.info(f'备选方案识别结果： {name}')
+                ret_fail.append(poly)
+                if name in ocr_error.keys():
+                    name = ocr_error[name]
+                else:
+                    ret_agent.append(name)
                     ret_succ.append(poly)
                     continue
-                __img = img[poly[0, 1] : poly[2, 1], poly[0, 0] : poly[2, 0]]
-                res = sift_recog(__img, resolution, draw)
-                if res is not None:
-                    logger.debug(f'干员名称识别修正：{x[1]} -> {res}')
-                    ret_agent.append(res)
-                    ret_succ.append(poly)
-                    continue
-                logger.warning(
-                    f'干员名称识别异常：{x[1]} 为不存在的数据，请报告至 https://github.com/Konano/arknights-mower/issues'
-                )
-                saveimg(__img, 'failure_agent')
-            else:
-                __img = img[poly[0, 1] : poly[2, 1], poly[0, 0] : poly[2, 0]]
-                if 80 <= np.min(__img):
-                    continue
-                res = sift_recog(__img, resolution, draw)
-                if res is not None:
-                    ret_agent.append(res)
-                    ret_succ.append(poly)
-                    continue
-                logger.warning(f'干员名称识别异常：区域 {poly.tolist()}')
-                saveimg(__img, 'failure_agent')
-            ret_fail.append(poly)
-
         if len(ret_fail):
             saveimg(img, 'failure')
             if draw:
