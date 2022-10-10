@@ -7,7 +7,14 @@ from arknights_mower.strategy import Solver
 from arknights_mower.utils.log import logger, init_fhlr
 from arknights_mower.utils import config
 
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
+qq_address= "xxx@qq.com"
+mail_pass= "从QQ邮箱帐户设置—>生成授权码"
+to= ['任何邮箱']
+email_notification = True;
 # 指定无人机加速第三层第三个房间的制造或贸易订单
 drone_room = 'room_3_3'
 
@@ -183,8 +190,23 @@ def simulate():
         output = cli.base_scheduler(tasks=tasks,plan=plan)  # 基建
         tasks = output
         #current_base =out_current_base
+        if email_notification:
+            # 发邮件
+            msg = MIMEMultipart()
+            conntent = str(tasks)
+            # 把内容加进去
+            msg.attach(MIMEText(conntent, 'plain', 'utf-8'))
+            msg['Subject'] = "任务数据"
+            msg['From'] = qq_address
+            s = smtplib.SMTP_SSL("smtp.qq.com", 465)
+            # 登录邮箱
+            s.login(qq_address, mail_pass)
+            # 开始发送
+            s.sendmail(qq_address, to, msg.as_string())
+            logger.info("邮件发送成功")
+
         logger.info(tasks)
-        #logger.info("休息: " + str((tasks[ 0 ][ "time" ] - datetime.now()).total_seconds()) + " 秒")
+        logger.info("休息: " + str((tasks[ 0 ][ "time" ] - datetime.now()).total_seconds()) + " 秒")
         if len(tasks)==0: continue
         sleep_time=(tasks[ 0 ][ "time" ] - datetime.now()).total_seconds()
         if sleep_time>0 : time.sleep(sleep_time)
