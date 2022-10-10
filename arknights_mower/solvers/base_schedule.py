@@ -782,7 +782,7 @@ class BaseSchedulerSolver(BaseSolver):
             for room in in_and_out:
                 logger.info("开始插拔")
                 self.drone(room,True,True)
-                self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
+                self.tap((self.recog.w * 0.22, self.recog.h * 0.95), interval=0.5)
                 self.choose_agent([ data[ "agent" ] for data in self.global_plan[ room ] ])
                 self.recog.update()
                 self.tap_element('confirm_blue', detected=True, judge=False, interval=3)

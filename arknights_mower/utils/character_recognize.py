@@ -190,7 +190,7 @@ def agent(img, draw=False):
                 name = segment.read_screen(__img,
                                            langurage="chi_sim",
                                            type="text")
-                logger.info(f'备选方案识别结果： {name}')
+                logger.warning(f'备选方案识别结果： {name}')
                 ret_fail.append(poly)
                 if name in ocr_error.keys():
                     name = ocr_error[name]
