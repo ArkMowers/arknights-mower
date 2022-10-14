@@ -880,7 +880,13 @@ class BaseSchedulerSolver(BaseSolver):
             fia_change_room= self.operators[replace_agent]["room"]
             self.back(interval=2)
             del self.tasks[0]
-            self.tasks.append({'time':datetime.now(),'plan':{ fia_room:self.current_base[fia_room],fia_change_room: self.current_base[fia_change_room]}})
+            if len(self.current_base.keys()) > 0:
+                fia_room_plan = [data["agent"] for data in self.current_base[fia_room]]
+                fia_change_room_plan = [data["agent"] for data in self.current_base[fia_change_room]]
+            else:
+                fia_room_plan = [data["agent"] for data in self.currentPlan[fia_room]]
+                fia_change_room_plan = [data["agent"] for data in self.currentPlan[fia_change_room]]
+            self.tasks.append({'time':datetime.now(),'plan':{ fia_room:fia_room_plan,fia_change_room: fia_change_room_plan}})
             #急速换班
             self.todo_task = False
             self.planned = False
