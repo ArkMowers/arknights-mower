@@ -14,6 +14,7 @@ from . import segment
 from .image import saveimg
 from .log import logger
 from .recognize import RecognizeError
+from ..ocr import ocrhandle
 
 
 def poly_center(poly):
@@ -62,14 +63,15 @@ def agent_sift_init():
         origin_kp, origin_des = SIFT.detectAndCompute(origin, None)
 
 
-def sift_recog(query, resolution, draw=False):
+def sift_recog(query, resolution, draw=False,reverse = False):
     """
     使用 SIFT 提取特征点识别干员名称
     """
     agent_sift_init()
-
     query = cv2.cvtColor(np.array(query), cv2.COLOR_RGB2GRAY)
-
+    if reverse :
+        # 干员总览界面图像色度反转
+        query = 255 -query
     # the height & width of query image
     height, width = query.shape
 
@@ -162,8 +164,8 @@ def agent(img, draw=False):
                         ret_succ.append(poly)
                         continue
                     res = sift_recog(__img, resolution, draw)
-                    if res is not None:
-                        logger.debug(f'干员名称识别修正：{x[1]} -> {res}')
+                    if (res is not None) and res in agent_list:
+                        logger.warning(f'干员名称识别修正：{x[1]} -> {res}')
                         ret_agent.append(res)
                         ret_succ.append(poly)
                         continue
@@ -213,3 +215,45 @@ def agent(img, draw=False):
     except Exception as e:
         logger.debug(traceback.format_exc())
         raise RecognizeError(e)
+
+
+def agent_with_mood(img ,mood_only=False,length=5, draw: bool = False) :
+    try:
+        height, width, _ = img.shape
+        result = []
+        index = 0
+        x0 = int(width*600/2496);y0 = int(height*1005/1404);x1 = int(width*780/2496);y1 = int(height*1310/1404);h = int((y1 - y0) / 5)
+        a0 = int(width*80/2496); b0 = int(height*1005/1404); a1 = int(width*275/2496); b1 = int(height*1310/1404); ah = int((b1 - b0) / 5)
+        while index < length:
+            data ={}
+            data ["mood"]=segment.read_screen(img[ (y0+h*index):(y0+h*(index+1)), x0:x1 ],type="mood")
+            if not mood_only:
+                #如果不是没人在基建
+                if data["mood"]!='':
+                    __img = img[ (b0 + ah * index):(b0 + ah * (index + 1)), a0:a1 ]
+                    ocr = ocrhandle.predict(__img)
+                    if len(ocr) > 0 and ocr[0][1] in agent_list and ocr[0][1] not in ['砾', '陈']: name = ocr[0][1]
+                    else :
+                        res = sift_recog(__img, height, draw,True)
+                        if (res is not None) and res in agent_list:
+                            logger.warning(f'干员名称识别修正 -> {res}')
+                            name = res
+                        else:
+                            saveimg(__img, 'failure_agent')
+                            name = segment.read_screen(img[ (b0 + ah * index):(b0 + ah * (index + 1)), a0:a1 ],
+                                                   langurage="chi_sim",
+                                                   type="text")
+                    # 这两个名字太长会被挡住
+                    if  name in ocr_error.keys():
+                        data[ "agent" ] = ocr_error[ name ]
+                    elif name == '' and draw:
+                        plt.imshow(__img)
+                    else:
+                        data[ "agent" ] = name
+            result.append(data)
+            index = index + 1
+        return result
+    except Exception as e:
+        logger.debug(traceback.format_exc())
+        raise RecognizeError(e)
+

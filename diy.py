@@ -113,6 +113,8 @@ def savelog():
     config.LOGFILE_PATH = './log'
     config.SCREENSHOT_PATH = './screenshot'
     config.SCREENSHOT_MAXNUM = 100
+    config.ADB_DEVICE = ['127.0.0.1:62001']
+    config.ADB_CONNECT = ['127.0.0.1:62001']
     init_fhlr()
 
 def send_email(tasks):
@@ -189,7 +191,7 @@ def schedule_task():
         time.sleep(60)
 
 
-# debuglog()
-# savelog()
+debuglog()
+savelog()
 simulate()
 # schedule_task()
