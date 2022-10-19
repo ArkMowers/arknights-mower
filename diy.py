@@ -156,6 +156,8 @@ def simulate():
     base_scheduler.resting=[]
     base_scheduler.dorm_count=4
     base_scheduler.tasks = tasks
+    # 读取心情开关，有菲亚梅塔或者希望全自动换班得设置为 true
+    base_scheduler.read_mood = True
     # #cli.mail()  # 邮件
     while True:
         # output = cli.base_scheduler(tasks=tasks,plan=plan)  # 基建

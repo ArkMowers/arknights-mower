@@ -96,7 +96,9 @@ class BaseSchedulerSolver(BaseSolver):
                 self.agent_arrange(self.task["plan"])
                 del self.tasks[0]
             except Exception as e:
-                logger.exception("error")
+                logger.exception(e)
+                self.planned = True
+                self.todo_task = True
             self.task = None
         elif not self.todo_task:
             # 处理基建 Todo
@@ -110,7 +112,8 @@ class BaseSchedulerSolver(BaseSolver):
                 self.todo_task = True
         elif not self.planned:
             try:
-                self.agent_get_mood()
+                if self.read_mood:
+                    self.agent_get_mood()
                 self.plan_solver()
             except Exception as e:
                 logger.exception("error")
@@ -144,94 +147,95 @@ class BaseSchedulerSolver(BaseSolver):
                     else:
                         in_out_plan[ room ].append(x[ "agent" ])
                 self.tasks.append({"time": self.get_in_and_out_time(room), "plan": in_out_plan})
-        total_agent = [ ]
-        error_agent = [ ]
         # 准备数据
-        logger.info(current_base)
-        for key in current_base:
-            if (key == 'train' or key == 'factory'): continue
-            for idx, operator in enumerate(current_base[ key ]):
-                data = current_base[ key ][ idx ]
-                if len(data.keys())!=2 or (data["mood"] =='' and data["agent"]==''):
-                    # 跳过空房间
-                    continue
-                # 排除识别错误
-                elif data[ "mood" ] == -1 or data["agent"] not in agent_list:
-                    # 把错误的名字清除
-                    logger.error("干员名字或者心情 识别错误： 房间:"+key+" Index:"+str(idx)+" 识别结果:名字"+data["agent"])
-                    data["agent"] = ''
-                    continue
-                if (data[ "agent" ] in agent_base_config.keys()):
-                    # 如果有设置下限，则减去下限值 eg: 令
-                    if ("LowerLimit" in agent_base_config[ current_base[ key ][ idx ][ "agent" ] ]):
-                        data[ "mood" ] = data[ "mood" ] - agent_base_config[ current_base[ key ][ idx ][ "agent" ] ][
-                            "LowerLimit" ]
-                # assign group 数据到干员
-                if "group" in plan[ key ][ idx ].keys():
-                    data[ "group" ] = plan[ key ][ idx ][ "group" ]
-                else:
-                    data[ "group" ] = "None"
-                # 把额外数据传过去
-                if "replacement" in plan[ key ][ idx ].keys():
-                    data[ "replacement" ] = plan[ key ][ idx ][ "replacement" ]
-                else:
-                    data[ "replacement" ] = "None"
-                data[ "current_room" ] = key
-                data[ "room_index" ] = idx
-                total_agent.append(data)
-        # 纠错
-        # for agent in self.operators.keys():
-        #     if not any(((agent == obj["agent"] and obj["type"]=='high') for obj in total_agent)):
-        #         error_agent.append(self.operators[agent])
-        #     else:
-        #         data = next((x for x in total_agent if x["agent"]==agent),None)
-        #         if data is not None:
-        #             self.operators[agent]["mood"] = data["mood"]
-        # if len(error_agent)>0:
-        #     output_plan = {}
-        #     for data in error_agent:
-        #         output_plan[data["room"]] = self.get_plan(room)
-        #     self.tasks.append({"plan":output_plan,"time":datetime.now()})
-        #     return
-        total_agent.sort(key=lambda x: x["mood"], reverse=False)
-        # if len(self.resting)< self.dorm_count:
-        #
-        #     # 根据剩余心情排序
-        #
-        #     # 根据使用宿舍数量，输出需要休息的干员列表
-        #     number_of_dorm = 4
-        #     rest_agent = [ ]
-        #     for agent in total_agent:
-        #         if len(rest_agent) >= number_of_dorm:
-        #             break
-        #         if (len([ value for value in rest_agent if value[ "agent" ] == agent[ "agent" ] ]) > 0):
-        #             continue
-        #         if "group" in agent.keys():
-        #             # 如果在group里则同时上下班
-        #             self.get_group(rest_agent, total_agent, agent[ "group" ], agent[ "agent" ])
-        #         rest_agent.append(agent)
-        #         total_agent.remove(agent)
-        #     output_plan = {}
-        #     # 输出转换后的换班plan
-        #     for idx, agent in enumerate(rest_agent):
-        #         # 需要增加逻辑如果 replacement 不支持则使用顺位
-        #         if agent[ "room" ] not in output_plan.keys():
-        #             output_plan[ agent[ "room" ] ] = [ data[ "agent" ] for data in plan[ agent[ "room" ] ] ]
-        #         output_plan[ agent[ "room" ] ][ agent[ "index" ] ] = agent[ "replacement" ][ 0 ];
-        #         # 宿舍换班
-        #         output_plan[ "dormitory_" + str(idx + 1) ] = [ data[ "agent" ] for data in
-        #                                                        plan[ "dormitory_" + str(idx + 1) ] ]
-        #         # 硬编了4 应该从free里代替
-        #         output_plan[ "dormitory_" + str(idx + 1) ][ 4 ] = agent[ "agent" ];
-        #     print(output_plan)
-        fia_plan, fia_room = self.check_fia()
-        if fia_room is not None and fia_plan is not None:
-            if not any(fia_room in obj["plan"].keys() and len(obj["plan"][fia_room]) == 2 for obj in self.tasks):
-                if next(obj for obj in total_agent if obj["agent"] == '菲亚梅塔')["mood"] ==24:
-                    change_time = datetime.now()
-                else : change_time = self.get_time(fia_room,'菲亚梅塔')
-                logger.info('下一次进行菲亚梅塔充能：' + change_time.strftime("%H:%M:%S"))
-                self.tasks.append({"time": change_time, "plan": {fia_room:[next(obj for obj in total_agent if obj["agent"] in fia_plan["replacement"])["agent"],"菲亚梅塔"]}})
+        if self.read_mood:
+            total_agent = []
+            error_agent = []
+            logger.info(current_base)
+            for key in current_base:
+                if (key == 'train' or key == 'factory'): continue
+                for idx, operator in enumerate(current_base[ key ]):
+                    data = current_base[ key ][ idx ]
+                    if len(data.keys())!=2 or (data["mood"] =='' and data["agent"]==''):
+                        # 跳过空房间
+                        continue
+                    # 排除识别错误
+                    elif data[ "mood" ] == -1 or data["agent"] not in agent_list:
+                        # 把错误的名字清除
+                        logger.error("干员名字或者心情 识别错误： 房间:"+key+" Index:"+str(idx)+" 识别结果:名字"+data["agent"])
+                        data["agent"] = ''
+                        continue
+                    if (data[ "agent" ] in agent_base_config.keys()):
+                        # 如果有设置下限，则减去下限值 eg: 令
+                        if ("LowerLimit" in agent_base_config[ current_base[ key ][ idx ][ "agent" ] ]):
+                            data[ "mood" ] = data[ "mood" ] - agent_base_config[ current_base[ key ][ idx ][ "agent" ] ][
+                                "LowerLimit" ]
+                    # assign group 数据到干员
+                    if "group" in plan[ key ][ idx ].keys():
+                        data[ "group" ] = plan[ key ][ idx ][ "group" ]
+                    else:
+                        data[ "group" ] = "None"
+                    # 把额外数据传过去
+                    if "replacement" in plan[ key ][ idx ].keys():
+                        data[ "replacement" ] = plan[ key ][ idx ][ "replacement" ]
+                    else:
+                        data[ "replacement" ] = "None"
+                    data[ "current_room" ] = key
+                    data[ "room_index" ] = idx
+                    total_agent.append(data)
+            # 纠错
+            # for agent in self.operators.keys():
+            #     if not any(((agent == obj["agent"] and obj["type"]=='high') for obj in total_agent)):
+            #         error_agent.append(self.operators[agent])
+            #     else:
+            #         data = next((x for x in total_agent if x["agent"]==agent),None)
+            #         if data is not None:
+            #             self.operators[agent]["mood"] = data["mood"]
+            # if len(error_agent)>0:
+            #     output_plan = {}
+            #     for data in error_agent:
+            #         output_plan[data["room"]] = self.get_plan(room)
+            #     self.tasks.append({"plan":output_plan,"time":datetime.now()})
+            #     return
+            total_agent.sort(key=lambda x: x["mood"], reverse=False)
+            # if len(self.resting)< self.dorm_count:
+            #
+            #     # 根据剩余心情排序
+            #
+            #     # 根据使用宿舍数量，输出需要休息的干员列表
+            #     number_of_dorm = 4
+            #     rest_agent = [ ]
+            #     for agent in total_agent:
+            #         if len(rest_agent) >= number_of_dorm:
+            #             break
+            #         if (len([ value for value in rest_agent if value[ "agent" ] == agent[ "agent" ] ]) > 0):
+            #             continue
+            #         if "group" in agent.keys():
+            #             # 如果在group里则同时上下班
+            #             self.get_group(rest_agent, total_agent, agent[ "group" ], agent[ "agent" ])
+            #         rest_agent.append(agent)
+            #         total_agent.remove(agent)
+            #     output_plan = {}
+            #     # 输出转换后的换班plan
+            #     for idx, agent in enumerate(rest_agent):
+            #         # 需要增加逻辑如果 replacement 不支持则使用顺位
+            #         if agent[ "room" ] not in output_plan.keys():
+            #             output_plan[ agent[ "room" ] ] = [ data[ "agent" ] for data in plan[ agent[ "room" ] ] ]
+            #         output_plan[ agent[ "room" ] ][ agent[ "index" ] ] = agent[ "replacement" ][ 0 ];
+            #         # 宿舍换班
+            #         output_plan[ "dormitory_" + str(idx + 1) ] = [ data[ "agent" ] for data in
+            #                                                        plan[ "dormitory_" + str(idx + 1) ] ]
+            #         # 硬编了4 应该从free里代替
+            #         output_plan[ "dormitory_" + str(idx + 1) ][ 4 ] = agent[ "agent" ];
+            #     print(output_plan)
+            fia_plan, fia_room = self.check_fia()
+            if fia_room is not None and fia_plan is not None:
+                if not any(fia_room in obj["plan"].keys() and len(obj["plan"][fia_room]) == 2 for obj in self.tasks):
+                    if next(obj for obj in total_agent if obj["agent"] == '菲亚梅塔')["mood"] ==24:
+                        change_time = datetime.now()
+                    else : change_time = self.get_time(fia_room,'菲亚梅塔')
+                    logger.info('下一次进行菲亚梅塔充能：' + change_time.strftime("%H:%M:%S"))
+                    self.tasks.append({"time": change_time, "plan": {fia_room:[next(obj for obj in total_agent if obj["agent"] in fia_plan["replacement"])["agent"],"菲亚梅塔"]}})
     def get_agent(self):
         plan = self.currentPlan
         high_production = [ ]
@@ -701,7 +705,7 @@ class BaseSchedulerSolver(BaseSolver):
         pre_order = [ 2, False ]
         right_swipe = 0
         while len(agent) > 0:
-            if right_swipe>20:
+            if right_swipe>50:
                 # 到底了则返回再来一次
                 for _ in range(right_swipe):
                     self.swipe_only((w // 2, h // 2), (w // 2, 0), interval=0.5)
@@ -866,7 +870,7 @@ class BaseSchedulerSolver(BaseSolver):
                         while self.scene() == Scene.CONNECTING:
                             self.sleep(3)
                         # 插拔逻辑
-                        if '但书' in plan[ base_room_list[ idx ] ] or '龙舌兰' in plan[ base_room_list[ idx ] ]:
+                        if ('但书' in plan[ base_room_list[ idx ] ] or '龙舌兰' in plan[ base_room_list[ idx ] ]) and not base_room_list[ idx ].startswith('dormitory'):
                             in_and_out.append(base_room_list[ idx ])
                         if '菲亚梅塔' in plan[ base_room_list[ idx ] ] and len(plan[ base_room_list[ idx ] ])==2:
                             fia_room = base_room_list[ idx ];
@@ -900,7 +904,6 @@ class BaseSchedulerSolver(BaseSolver):
             replace_agent = plan[fia_room][0]
             fia_change_room= self.operators[replace_agent]["room"]
             self.back(interval=2)
-            del self.tasks[0]
             if len(self.current_base.keys()) > 0:
                 fia_room_plan = [data["agent"] for data in self.current_base[fia_room]]
                 fia_change_room_plan = [data["agent"] for data in self.current_base[fia_change_room]]
