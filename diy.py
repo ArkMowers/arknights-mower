@@ -115,13 +115,13 @@ def savelog():
     config.SCREENSHOT_MAXNUM = 100
     config.ADB_DEVICE = ['127.0.0.1:62001']
     config.ADB_CONNECT = ['127.0.0.1:62001']
+    config.PASSWORD = '你的密码'
     init_fhlr()
 
 def send_email(tasks):
     try:
         msg = MIMEMultipart()
         conntent = str(tasks)
-        # 把内容加进去
         msg.attach(MIMEText(conntent, 'plain', 'utf-8'))
         msg['Subject'] = "任务数据"
         msg['From'] = email_address
@@ -144,10 +144,15 @@ def simulate():
     # 第一次执行任务
     # datetime(2022, 10, 3, 3, 8, 59, 342380)
     # tasks = [{"plan": {'room_1_1': ['能天使','但书','龙舌兰']}, "time": datetime.now()}]
-    # tasks = [{"plan":{"room_1_1":['图耶', '鸿雪', '但书']},"time":datetime.now()},
-    #          {"plan":{'dormitory_1': ['迷迭香','菲亚梅塔'],'room_2_2': ['迷迭香','槐琥','砾']},"time":datetime(2022, 10, 3, 3, 15, 55, 342380)},
-    #           {"plan":{'dormitory_1': ['夜莺', '菲亚梅塔','焰尾','Free','Free']},"time":datetime(2022, 10, 3, 15, 56, 59, 342380)}]
-
+    tasks =  [#{'time': datetime(2022, 10, 20, 18, 25, 51, 268286), 'plan': {'room_1_1': ['能天使', '龙舌兰', '但书']}},
+               #{'time': datetime(2022, 10, 20, 19, 00, 31, 511427), 'plan':{'dormitory_4': ['迷迭香', '菲亚梅塔']} },
+              {'time': datetime(2022, 10, 20, 19, 00, 31, 118454), 'plan': {'central': ['焰尾','布丁','森蚺','夕','令'],'dormitory_1': ['流明','蜜莓','红','澄闪', '凯尔希']
+                  #,'dormitory_2': ['凛冬', '爱丽丝', '车尔尼', '星极', '香草']}},
+             ,'dormitory_2': ['闪灵', '杜林', '陈', '炎狱炎熔', '香草'], 'meeting':['星极','远山'],'dormitory_4': ['迷迭香', '菲亚梅塔']}}
+            #{'time': datetime(2022, 10, 20, 0, 3, 31, 118454), 'plan': {'room_1_1': ['能天使', '龙舌兰', '但书']}},
+             # {'time': datetime(2022, 10, 20, 3, 3, 20, 147573), 'plan': {'dormitory_4': ['絮雨', '菲亚梅塔']}},
+            #{'time': datetime(2022, 10, 20, 5, 45, 20, 147573), 'plan': {'dormitory_1': ['流明','蜜莓','稀音','红云', '帕拉斯'],'room_3_2': ['白雪','泡泡','火神']}}
+              ]
     tasks = []
     base_scheduler = BaseSchedulerSolver(cli.device,cli.recog)
     base_scheduler.operators = {}
@@ -161,20 +166,17 @@ def simulate():
     # #cli.mail()  # 邮件
     while True:
         # output = cli.base_scheduler(tasks=tasks,plan=plan)  # 基建
-
+        if len(base_scheduler.tasks) > 0:
+            (base_scheduler.tasks.sort(key=lambda x: x["time"], reverse=False))
+            sleep_time = (tasks[0]["time"] - datetime.now()).total_seconds()
+            if email_notification:
+                # 发邮件
+                send_email(base_scheduler.tasks)
+            logger.info(base_scheduler.tasks)
+            if sleep_time > 0:
+                logger.info("休息: " + str((tasks[0]["time"] - datetime.now()).total_seconds()) + " 秒")
+                time.sleep(sleep_time)
         base_scheduler.run()
-        tasks = base_scheduler.tasks
-        # current_base =out_current_base
-        if email_notification:
-            # 发邮件
-            send_email(tasks)
-        logger.info(tasks)
-        if len(tasks) == 0: continue
-        sleep_time = (tasks[0]["time"] - datetime.now()).total_seconds()
-        if sleep_time > 0:
-            logger.info("休息: " + str((tasks[0]["time"] - datetime.now()).total_seconds()) + " 秒")
-            time.sleep(sleep_time)
-
 
     # cli.credit()  # 信用
     # ope_lists = cli.ope(eliminate=True, plan=ope_lists)  # 行动，返回未完成的作战计划
@@ -193,7 +195,7 @@ def schedule_task():
         time.sleep(60)
 
 
-debuglog()
+# debuglog()
 savelog()
 simulate()
 # schedule_task()

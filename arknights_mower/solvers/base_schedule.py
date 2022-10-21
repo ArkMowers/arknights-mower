@@ -119,9 +119,6 @@ class BaseSchedulerSolver(BaseSolver):
                 logger.exception("error")
             self.planned = True
         else:
-            if len(self.tasks) > 0:
-                # 找到时间最近的一次单个任务
-                (self.tasks.sort(key=lambda x: x[ "time" ], reverse=False))
             return True
 
     def get_plan(self,room,index=-1):
@@ -699,7 +696,7 @@ class BaseSchedulerSolver(BaseSolver):
         # TODO 后面想到好办法remove这一行 会有空字符是从currentPlan里面读取的
         for i in range(agent.count("")):
             agent.remove("")
-        order_matters = ("菲亚梅塔" in agent and len(agent_list)==2) or "巫恋" in agent_list or "卡夫卡" in agent_list or "柏喙" in agent_list
+        order_matters = ("菲亚梅塔" in agent and len(agent_list)==2) or "巫恋" in agent_list or "卡夫卡" in agent_list or "柏喙" in agent_list or is_dorm
         is_clear = False
         index_change = False
         pre_order = [ 2, False ]
