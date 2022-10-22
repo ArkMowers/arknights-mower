@@ -622,17 +622,17 @@ class BaseSchedulerSolver(BaseSolver):
         return best_order
 
     def switch_arrange_order(self, index: int, asc="false") -> None:
-        self.tap((self.recog.w*arrange_order_res[ ArrangeOrder(index) ][0],self.recog.h*arrange_order_res[ ArrangeOrder(index) ][1]), interval=0.2, rebuild=False)
+        self.tap((self.recog.w*arrange_order_res[ ArrangeOrder(index) ][0],self.recog.h*arrange_order_res[ ArrangeOrder(index) ][1]), interval=0, rebuild=False)
         # 点个不需要的
         if index < 4:
-            self.tap((self.recog.w*arrange_order_res[ ArrangeOrder(index+1) ][0],self.recog.h*arrange_order_res[ ArrangeOrder(index) ][1]), interval=0.2, rebuild=False)
+            self.tap((self.recog.w*arrange_order_res[ ArrangeOrder(index+1) ][0],self.recog.h*arrange_order_res[ ArrangeOrder(index) ][1]), interval=0, rebuild=False)
         else:
-            self.tap((self.recog.w*arrange_order_res[ ArrangeOrder(index-1) ][0],self.recog.h*arrange_order_res[ ArrangeOrder(index) ][1]), interval=0.2, rebuild=False)
+            self.tap((self.recog.w*arrange_order_res[ ArrangeOrder(index-1) ][0],self.recog.h*arrange_order_res[ ArrangeOrder(index) ][1]), interval=0, rebuild=False)
         # 切回来
-        self.tap((self.recog.w*arrange_order_res[ ArrangeOrder(index) ][0],self.recog.h*arrange_order_res[ ArrangeOrder(index) ][1]), interval=0.2, rebuild=False)
+        self.tap((self.recog.w*arrange_order_res[ ArrangeOrder(index) ][0],self.recog.h*arrange_order_res[ ArrangeOrder(index) ][1]), interval=0, rebuild=False)
         # 倒序
         if asc != "false":
-            self.tap((self.recog.w*arrange_order_res[ ArrangeOrder(index) ][0],self.recog.h*arrange_order_res[ ArrangeOrder(index) ][1]), interval=0.2, rebuild=False)
+            self.tap((self.recog.w*arrange_order_res[ ArrangeOrder(index) ][0],self.recog.h*arrange_order_res[ ArrangeOrder(index) ][1]), interval=0, rebuild=False)
         self.sleep(1)
 
     def scan_agant(self, agent: list[ str ],order_matters=False,error_count = 0):
@@ -893,7 +893,7 @@ class BaseSchedulerSolver(BaseSolver):
                     in_and_out_plan = [data["agent"] for data in self.currentPlan[room]]
                 replace_plan[room] =in_and_out_plan
                 self.back(interval=2)
-            self.tasks.append( {'time': datetime.now(), 'plan': replace_plan})
+            self.tasks.append( {'time': self.tasks[0]['time'], 'plan': replace_plan})
             # 急速换班
             self.todo_task = True
             self.planned = True
