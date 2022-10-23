@@ -629,7 +629,7 @@ class BaseSchedulerSolver(BaseSolver):
         else:
             self.tap((self.recog.w*arrange_order_res[ ArrangeOrder(index-1) ][0],self.recog.h*arrange_order_res[ ArrangeOrder(index) ][1]), interval=0, rebuild=False)
         # 切回来
-        self.tap((self.recog.w*arrange_order_res[ ArrangeOrder(index) ][0],self.recog.h*arrange_order_res[ ArrangeOrder(index) ][1]), interval=0, rebuild=False)
+        self.tap((self.recog.w*arrange_order_res[ ArrangeOrder(index) ][0],self.recog.h*arrange_order_res[ ArrangeOrder(index) ][1]), interval=0.5, rebuild=False)
         # 倒序
         if asc != "false":
             self.tap((self.recog.w*arrange_order_res[ ArrangeOrder(index) ][0],self.recog.h*arrange_order_res[ ArrangeOrder(index) ][1]), interval=0, rebuild=False)
@@ -755,16 +755,19 @@ class BaseSchedulerSolver(BaseSolver):
                 index_change = True
         # 再次排序
         if order_matters:
+            logger.debug("开始重新排序")
             for _ in range(right_swipe):
                 self.swipe_only((w // 2, h // 2), (w // 2, 0), interval=0.5)
             self.swipe((w // 2, h // 2), (w // 2, 0), interval=3, rebuild=False)
             agent_with_order = copy.deepcopy(agent_list)
+            logger.debug(f'排序干员: {agent_with_order}')
+            logger.debug(f'排序干员: {agent_list}')
             if "菲亚梅塔" in agent_with_order:
                 self.switch_arrange_order(2,"true")
             else:
                 self.switch_arrange_order(3)
             self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
-            self.scan_agant(agent_with_order,True)
+            self.scan_agant(agent_with_order,True,0)
         # 安排空闲干员
         first_time = True
 

@@ -134,13 +134,24 @@ def send_email(tasks):
     except Exception as e:
         logger.error("邮件发送失败")
 
+def inialize(tasks=[]):
+    cli = Solver()
+    base_scheduler = BaseSchedulerSolver(cli.device,cli.recog)
+    base_scheduler.operators = {}
+    base_scheduler.global_plan = plan
+    base_scheduler.current_base = {}
+    base_scheduler.resting=[]
+    base_scheduler.dorm_count=4
+    base_scheduler.tasks = tasks
+    # 读取心情开关，有菲亚梅塔或者希望全自动换班得设置为 true
+    base_scheduler.read_mood = True
+    return base_scheduler
 def simulate():
     '''
     具体调用方法可见各个函数的参数说明
     '''
-    global ope_list, tasks, cuttent_base
+    global ope_list
 
-    cli = Solver()
     # 第一次执行任务
     # datetime(2022, 10, 3, 3, 8, 59, 342380)
     # tasks = [{"plan": {'room_1_1': ['能天使','但书','龙舌兰']}, "time": datetime.now()}]
@@ -154,30 +165,36 @@ def simulate():
             #{'time': datetime(2022, 10, 20, 5, 45, 20, 147573), 'plan': {'dormitory_1': ['流明','蜜莓','稀音','红云', '帕拉斯'],'room_3_2': ['白雪','泡泡','火神']}}
               ]
     tasks = []
-    base_scheduler = BaseSchedulerSolver(cli.device,cli.recog)
-    base_scheduler.operators = {}
-    base_scheduler.global_plan = plan
-    base_scheduler.current_base = {}
-    base_scheduler.resting=[]
-    base_scheduler.dorm_count=4
-    base_scheduler.tasks = tasks
-    # 读取心情开关，有菲亚梅塔或者希望全自动换班得设置为 true
-    base_scheduler.read_mood = True
+    reconnect_max_tries = 10
+    reconnect_tries = 0
+    base_scheduler = inialize(tasks)
+
     # #cli.mail()  # 邮件
     while True:
         # output = cli.base_scheduler(tasks=tasks,plan=plan)  # 基建
-        if len(base_scheduler.tasks) > 0:
-            (base_scheduler.tasks.sort(key=lambda x: x["time"], reverse=False))
-            sleep_time = (tasks[0]["time"] - datetime.now()).total_seconds()
-            if email_notification:
-                # 发邮件
-                send_email(base_scheduler.tasks)
-            logger.info(base_scheduler.tasks)
-            if sleep_time > 0:
-                logger.info("休息: " + str((tasks[0]["time"] - datetime.now()).total_seconds()) + " 秒")
-                time.sleep(sleep_time)
-        base_scheduler.run()
-
+        try:
+            if len(base_scheduler.tasks) > 0:
+                (base_scheduler.tasks.sort(key=lambda x: x["time"], reverse=False))
+                sleep_time = (tasks[0]["time"] - datetime.now()).total_seconds()
+                if email_notification:
+                    # 发邮件
+                    send_email(base_scheduler.tasks)
+                logger.info(base_scheduler.tasks)
+                if sleep_time > 0:
+                    logger.info("休息: " + str((tasks[0]["time"] - datetime.now()).total_seconds()) + " 秒")
+                    time.sleep(sleep_time)
+            base_scheduler.run()
+            reconnect_tries = 0
+        except ConnectionError as e:
+            reconnect_tries +=1
+            if reconnect_tries < reconnect_max_tries:
+                logger.warning(f'连接端口断开....正在重连....')
+                base_scheduler = inialize(base_scheduler.tasks)
+                continue
+            else:
+                raise Exception(e)
+        except Exception as E:
+            logger.error(f"出错--->{e}")
     # cli.credit()  # 信用
     # ope_lists = cli.ope(eliminate=True, plan=ope_lists)  # 行动，返回未完成的作战计划
     # cli.shop(shop_priority)  # 商店
