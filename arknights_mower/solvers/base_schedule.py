@@ -53,6 +53,9 @@ class BaseSchedulerSolver(BaseSolver):
         self.planned = False
         if len(self.operators.keys()) ==0:
             self.get_agent()
+        # print(self.operators)
+        # self.current_base = {'central': [{'mood': 18, 'agent': '凯尔希'}, {'mood': 16, 'agent': '琴柳'}, {'mood': 18, 'agent': '玛恩纳'}, {'mood': 24, 'agent': '清道夫'}, {'mood': 23, 'agent': '焰尾'}], 'meeting': [{'mood': 19, 'agent': '红'}, {'mood': 20, 'agent': '陈'}], 'room_1_1': [{'mood': 15, 'agent': '黑键'}, {'mood': 23, 'agent': '空弦'},{'mood': 20, 'agent': '雪雉'}], 'room_1_2': [{'mood': 7, 'agent': '砾'}, {'mood': 17, 'agent': '迷迭香'}, {'mood': 20, 'agent': '槐琥'}], 'room_1_3': [{'mood': 18, 'agent': '澄闪'}], 'dormitory_1': [{'mood': 24, 'agent': '流明'}, {'mood': 24, 'agent': '蜜莓'}, {'mood': 24, 'agent': 'Lancet-2'}, {'mood': 18, 'agent': '夕'}, {'mood': 5, 'agent': '能天使'}], 'room_2_1': [{'mood': 7, 'agent': '异客'}, {'mood': 7,'agent': '森蚺'}, {'mood': 7, 'agent': '温蒂'}], 'room_2_2': [{'mood': 23, 'agent': '灰毫'}, {'mood': 23, 'agent': '远牙'}, {'mood': 23, 'agent': '野鬃'}], 'room_2_3': [{'mood': 18, 'agent': '雷蛇'}], 'dormitory_2': [{'mood': 24, 'agent': '夜莺'}, {'mood': 24, 'agent': '杜林'}, {'mood': 22, 'agent': 'Castle-3'}, {'mood': 24, 'agent': '火神'}, {'mood': 23, 'agent': '红豆'}], 'contact': [{'mood': 11, 'agent': '絮雨'}], 'room_3_1': [{'mood': 15, 'agent': '至简'}, {'mood': 18, 'agent': '断罪者'}, {'mood': 20, 'agent': '食铁兽'}], 'room_3_2': [{'mood': 11, 'agent': '红云'}, {'mood': 3, 'agent': '稀音'}, {'mood': 11, 'agent': '帕拉斯'}], 'room_3_3': [{'mood': 6, 'agent': '承曦格雷伊'}], 'dormitory_3': [{'mood': 24, 'agent': '凛冬'}, {'mood': 24, 'agent': '爱丽丝'}, {'mood': 24, 'agent': '车尔尼'}, {'mood': 24, 'agent': '星极'}, {'mood': 5, 'agent': '令'}], 'dormitory_4': [{'mood': 15, 'agent': '菲亚梅塔'}, {'mood': 24, 'agent': '波登可'}, {'mood': 24, 'agent': '安比尔'}, {'mood': 22, 'agent': '远山'}, {'mood': 23, 'agent': '泡泡'}]}
+        # self.plan_solver()
         return super().run()
 
     def get_group(self, rest_agent, agent, groupname, name):
@@ -113,7 +116,12 @@ class BaseSchedulerSolver(BaseSolver):
         elif not self.planned:
             try:
                 if self.read_mood:
-                    self.agent_get_mood()
+                    # 1.5 小时以内不需要重新读取心情
+                    if self.scan_time is None or self.scan_time< (datetime.now() - timedelta(seconds=5400)):
+                        self.agent_get_mood()
+                        self.scan_time = datetime.now()
+                    else:
+                        logger.info('跳过心情读取')
                 self.plan_solver()
             except Exception as e:
                 logger.exception("error")
@@ -131,7 +139,7 @@ class BaseSchedulerSolver(BaseSolver):
     def plan_solver(self):
         current_base = self.current_base
         plan = self.currentPlan
-        # current_base = {'central': [{'mood': 17, 'agent': '夕'}, {'mood': 5, 'agent': '令'}, {'mood': 21, 'agent': '森蚺'}, {'mood': 21, 'agent': '布丁'}, {'mood': -1}], 'meeting': [{'mood': 11, 'agent': '陈'}, {'mood': 11, 'agent': '红'}, {'mood': -1}, {'mood': -1}, {'mood': -1}], 'room_1_1': [{'mood': 24, 'agent': '巫恋'}, {'mood': 9, 'agent': '卡夫卡'}, {'mood': 4, 'agent': '黑键'}, {'mood': -1}, {'mood': -1}], 'room_1_2': [{'mood': 22, 'agent': '异客'}, {'mood': 22, 'agent': '温蒂'}, {'mood': 22, 'agent': '掠风'}, {'mood': -1}, {'mood': -1}], 'room_1_3': [{'mood': 21, 'agent': 'Lancet-2'}, {'mood': -1}, {'mood': -1}, {'mood': -1}, {'mood': -1}], 'dormitory_1': [{'mood': 24, 'agent': '流明'}, {'mood': 24, 'agent': '蜜莓'}, {'mood': 8, 'agent': '焰尾'}, {'mood': 16, 'agent': '远牙'}, {'mood': 24, 'agent': '星极'}], 'factory': [{'mood': -1}, {'mood': -1}, {'mood': -1}, {'mood': -1}, {'mood': -1}], 'room_2_1': [{'mood': 24, 'agent': '红豆'}, {'mood': 23, 'agent': '泡泡'}, {'mood': 23, 'agent': '火神'}, {'mood': -1}, {'mood': -1}], 'room_2_2': [{'mood': 5, 'agent': '砾'}, {'mood': 13, 'agent': '迷迭香'}, {'mood': 19, 'agent': '槐琥'}, {'mood': -1}, {'mood': -1}], 'room_2_3': [{'mood': 17, 'agent': '炎狱炎熔'}, {'mood': -1}, {'mood': -1}, {'mood': -1}, {'mood': -1}], 'dormitory_2': [{'mood': 24, 'agent': '闪灵'}, {'mood': 24, 'agent': '杜林'}, {'mood': 10, 'agent': '灰毫'}, {'mood': 16, 'agent': '雷蛇'}, {'mood': -1}], 'contact': [{'mood': 12, 'agent': '絮雨'}, {'mood': -1}, {'mood': -1}, {'mood': -1}, {'mood': -1}], 'room_3_1': [{'mood': 9, 'agent': '食铁兽'}, {'mood': 12, 'agent': '至简'}, {'mood': 16, 'agent': '断罪者'}, {'mood': -1}, {'mood': -1}], 'room_3_2': [{'mood': 17, 'agent': '稀音'}, {'mood': 20, 'agent': '帕拉斯'}, {'mood': 20, 'agent': '红云'}, {'mood': -1}, {'mood': -1}], 'room_3_3': [{'mood': 21, 'agent': '正义骑士号'}, {'mood': -1}, {'mood': -1}, {'mood': -1}, {'mood': -1}], 'dormitory_3': [{'mood': 24, 'agent': '凛冬'}, {'mood': 24, 'agent': '爱丽丝'}, {'mood': 24, 'agent': '车尔尼'}, {'mood': 14, 'agent': '野鬃'}, {'mood': 24, 'agent': '夜烟'}], 'train': [{'mood': -1}, {'mood': 24, 'agent': '推进之王'}, {'mood': -1}, {'mood': -1}, {'mood': -1}], 'dormitory_4': [{'mood': 24, 'agent': '夜莺'}, {'mood': 24, 'agent': '波登可'}, {'mood': 5, 'agent': '菲亚梅塔'}, {'mood': 18, 'agent': '凯尔希'}, {'mood': 24, 'agent': '白雪'}]}
+        # current_base = {'central': [{'mood': 1, 'agent': '凯尔希'}, {'mood': 1, 'agent': '琴柳'}, {'mood': 20, 'agent': '玛恩纳'}, {'mood': 24, 'agent': '焰尾'}, {'mood': 23, 'agent': '临光'}], 'meeting': [{'mood': 20, 'agent': '红'}, {'mood': 20, 'agent': '陈'}], 'room_1_1': [{'mood': 16, 'agent': '能天使'}, {'mood': 14, 'agent': '黑键'}, {'mood': 11, 'agent': '空弦'}], 'room_1_2': [{'mood': 15, 'agent': '迷迭香'}, {'mood': 20, 'agent': '槐琥'}, {'mood': 23, 'agent': '斑点'}], 'room_1_3': [{'mood': 9, 'agent': '雷蛇'}], 'dormitory_1': [{'mood': 24, 'agent': '流明'}, {'mood': 24, 'agent': '蜜莓'}, {'mood': 24, 'agent': '夜烟'}, {'mood': 24, 'agent': '坚雷'}, {'mood': 16, 'agent': '夕'}], 'room_2_1': [{'mood': 4, 'agent': '森蚺'}, {'mood': 5, 'agent': '温蒂'}, {'mood': 4, 'agent': '异客'}], 'room_2_2': [{'mood': 21, 'agent': '帕拉斯'}, {'mood': 20, 'agent': '稀音'}, {'mood': 21, 'agent': '红云'}], 'room_2_3': [{'mood': 9, 'agent': '承曦格雷伊'}], 'dormitory_2': [{'mood': 24, 'agent': '闪灵'}, {'mood': 24, 'agent': '杜林'}, {'mood': 24, 'agent': '清道夫'}, {'mood': 10, 'agent': '砾'}, {'mood': 23, 'agent': '红豆'}], 'contact': [{'mood': 6, 'agent': '絮雨'}], 'room_3_1': [{'mood': 9, 'agent': '食铁兽'}, {'mood': 18, 'agent': '至简'}, {'mood': 13, 'agent': '断罪者'}], 'room_3_2': [{'mood': 23, 'agent': '野鬃'}, {'mood': 23, 'agent': '远牙'}, {'mood': 23, 'agent': '灰毫'}], 'room_3_3': [{'mood': 4, 'agent': '澄闪'}], 'dormitory_3': [{'mood': 24, 'agent': '凛冬'}, {'mood': 24, 'agent': '爱丽丝'}, {'mood': 24, 'agent': '车尔尼'}, {'mood': 24, 'agent': '星极'}, {'mood': 3, 'agent': '令'}], 'dormitory_4': [{'mood': 24, 'agent': '夜莺'}, {'mood': 24, 'agent': '波登可'}, {'mood': 20, 'agent': '菲亚梅塔'}, {'mood': 24, 'agent': '远山'}, {'mood': 22, 'agent': '火神'}]}
         if len(self.check_in_and_out()) > 0:
             # 处理龙舌兰和但书的插拔
             for room in self.check_in_and_out():
@@ -148,83 +156,56 @@ class BaseSchedulerSolver(BaseSolver):
         if self.read_mood:
             total_agent = []
             error_agent = []
-            logger.info(current_base)
+            logger.info(f'当前基地心情--> {current_base}')
             for key in current_base:
                 if (key == 'train' or key == 'factory'): continue
-                for idx, operator in enumerate(current_base[ key ]):
-                    data = current_base[ key ][ idx ]
-                    if len(data.keys())!=2 or (data["mood"] =='' and data["agent"]==''):
+                for idx, operator in enumerate(current_base[key]):
+                    data = current_base[key][idx]
+                    if len(data.keys()) != 2 or (data["mood"] == '' and data["agent"] == ''):
                         # 跳过空房间
                         continue
                     # 排除识别错误
-                    elif data[ "mood" ] == -1 or data["agent"] not in agent_list:
+                    elif data["mood"] == -1 or data["agent"] not in agent_list:
                         # 把错误的名字清除
-                        logger.error("干员名字或者心情 识别错误： 房间:"+key+" Index:"+str(idx)+" 识别结果:名字"+data["agent"])
+                        logger.error("干员名字或者心情 识别错误： 房间:" + key + " Index:" + str(idx) + " 识别结果:名字" + data["agent"])
                         data["agent"] = ''
                         continue
-                    if (data[ "agent" ] in agent_base_config.keys()):
+                    if (data["agent"] in agent_base_config.keys()):
                         # 如果有设置下限，则减去下限值 eg: 令
-                        if ("LowerLimit" in agent_base_config[ current_base[ key ][ idx ][ "agent" ] ]):
-                            data[ "mood" ] = data[ "mood" ] - agent_base_config[ current_base[ key ][ idx ][ "agent" ] ][
-                                "LowerLimit" ]
-                    # assign group 数据到干员
-                    if "group" in plan[ key ][ idx ].keys():
-                        data[ "group" ] = plan[ key ][ idx ][ "group" ]
-                    else:
-                        data[ "group" ] = "None"
+                        if ("LowerLimit" in agent_base_config[current_base[key][idx]["agent"]]):
+                            data["mood"] = data["mood"] - agent_base_config[current_base[key][idx]["agent"]][
+                                "LowerLimit"]
                     # 把额外数据传过去
-                    if "replacement" in plan[ key ][ idx ].keys():
-                        data[ "replacement" ] = plan[ key ][ idx ][ "replacement" ]
-                    else:
-                        data[ "replacement" ] = "None"
-                    data[ "current_room" ] = key
-                    data[ "room_index" ] = idx
+                    data["current_room"] = key
+                    data["room_index"] = idx
+                    # 记录上班状态
+                    if data["agent"] in self.operators.keys():
+                        if key.startswith('dormitory'):
+                            # 改从config里面获取 exaust require的人
+                            if data["agent"] in ["稀音","巫恋",'卡夫卡','柏喙']:
+                                self.resting.append(data)
+                            self.operators[data["agent"]]['resting'] = True
+                        else:
+                            self.operators[data["agent"]]['resting'] = False
                     total_agent.append(data)
             # 纠错
-            # for agent in self.operators.keys():
+            # for agent in operators.keys():
             #     if not any(((agent == obj["agent"] and obj["type"]=='high') for obj in total_agent)):
-            #         error_agent.append(self.operators[agent])
+            #         error_agent.append(operators[agent])
             #     else:
             #         data = next((x for x in total_agent if x["agent"]==agent),None)
             #         if data is not None:
-            #             self.operators[agent]["mood"] = data["mood"]
+            #             operators[agent]["mood"] = data["mood"]
             # if len(error_agent)>0:
             #     output_plan = {}
             #     for data in error_agent:
-            #         output_plan[data["room"]] = self.get_plan(room)
-            #     self.tasks.append({"plan":output_plan,"time":datetime.now()})
+            #         output_plan[data["room"]] = get_plan(room)
+            #     tasks.append({"plan":output_plan,"time":datetime.now()})
             #     return
+            # 根据剩余心情排序
             total_agent.sort(key=lambda x: x["mood"], reverse=False)
-            # if len(self.resting)< self.dorm_count:
-            #
-            #     # 根据剩余心情排序
-            #
-            #     # 根据使用宿舍数量，输出需要休息的干员列表
-            #     number_of_dorm = 4
-            #     rest_agent = [ ]
-            #     for agent in total_agent:
-            #         if len(rest_agent) >= number_of_dorm:
-            #             break
-            #         if (len([ value for value in rest_agent if value[ "agent" ] == agent[ "agent" ] ]) > 0):
-            #             continue
-            #         if "group" in agent.keys():
-            #             # 如果在group里则同时上下班
-            #             self.get_group(rest_agent, total_agent, agent[ "group" ], agent[ "agent" ])
-            #         rest_agent.append(agent)
-            #         total_agent.remove(agent)
-            #     output_plan = {}
-            #     # 输出转换后的换班plan
-            #     for idx, agent in enumerate(rest_agent):
-            #         # 需要增加逻辑如果 replacement 不支持则使用顺位
-            #         if agent[ "room" ] not in output_plan.keys():
-            #             output_plan[ agent[ "room" ] ] = [ data[ "agent" ] for data in plan[ agent[ "room" ] ] ]
-            #         output_plan[ agent[ "room" ] ][ agent[ "index" ] ] = agent[ "replacement" ][ 0 ];
-            #         # 宿舍换班
-            #         output_plan[ "dormitory_" + str(idx + 1) ] = [ data[ "agent" ] for data in
-            #                                                        plan[ "dormitory_" + str(idx + 1) ] ]
-            #         # 硬编了4 应该从free里代替
-            #         output_plan[ "dormitory_" + str(idx + 1) ][ 4 ] = agent[ "agent" ];
-            #     print(output_plan)
+            # 目前有换班的计划后面改
+            logger.debug(f'当前基地数据--> {total_agent}')
             fia_plan, fia_room = self.check_fia()
             if fia_room is not None and fia_plan is not None:
                 if not any(fia_room in obj["plan"].keys() and len(obj["plan"][fia_room]) == 2 for obj in self.tasks):
@@ -233,20 +214,111 @@ class BaseSchedulerSolver(BaseSolver):
                     else : change_time = self.get_time(fia_room,'菲亚梅塔')
                     logger.info('下一次进行菲亚梅塔充能：' + change_time.strftime("%H:%M:%S"))
                     self.tasks.append({"time": change_time, "plan": {fia_room:[next(obj for obj in total_agent if obj["agent"] in fia_plan["replacement"])["agent"],"菲亚梅塔"]}})
+            try:
+                actuall_resting = len(self.resting)
+                if len(self.resting) < self.dorm_count:
+                    # 根据使用宿舍数量，输出需要休息的干员列表
+                    number_of_dorm = self.dorm_count
+                    for agent in total_agent:
+                        if actuall_resting >= number_of_dorm:
+                            break
+                        if (len([value for value in self.resting if value["agent"] == agent["agent"]]) > 0):
+                            continue
+                        # 忽略掉菲亚梅塔充能的干员
+                        if fia_room is not None and fia_plan is not None and agent['agent'] in fia_plan["replacement"]:
+                            continue
+                        if agent['agent'] in self.operators.keys() and self.operators[agent['agent']]['group'] != '':
+                            # 如果在group里则同时上下班
+                            group_resting = [x for x in total_agent if
+                                             self.operators[x['agent']]['group'] == self.operators[agent['agent']][
+                                                 'group']]
+                            group_restingCount = 0
+                            for x in group_resting:
+                                if self.operators[x['agent']]['restingpriority'] == 'low':
+                                    continue
+                                else:
+                                    group_restingCount += 1
+                            if group_restingCount + actuall_resting <= self.dorm_count:
+                                self.resting.extend(group_resting)
+                                actuall_resting += group_restingCount
+                            else:
+                                continue
+                        else:
+                            self.resting.append(agent)
+                            actuall_resting += 1
+                        total_agent.remove(agent)
+                    #      输出转换后的换班plan
+                output_plan = self.get_swap_plan(self.resting)
+                logger.info(f'休息人选为->{self.resting}')
+                logger.info(f'排班计划为->{output_plan}')
+            except Exception as e:
+                logger.error(f'计算排班计划出错->{e}')
+
+    def get_swap_plan(self,agent_list=[]):
+        result = {}
+        agents = copy.deepcopy(agent_list)
+        # 替换计划
+        for a in agent_list:
+            if a['current_room'] not in result.keys():
+                result[a['current_room']]= copy.deepcopy( [data["agent"] for data in self.current_base[a['current_room']]])
+            # 获取替换组且没有在上班的 排除但书或者龙舌兰
+            __replacement = next((obj for obj in self.operators[a['agent']]['replacement'] if self.operators[obj]['resting']==True and obj not in ['但书','龙舌兰']),None)
+            if __replacement is not None:
+                self.operators[ __replacement ][ 'resting' ]=False
+                result[ a[ 'current_room' ] ][a[ 'room_index' ]] = __replacement
+            else:
+                raise Exception("没有足够的替换组可用")
+        # 从休息计划里 规划出排班计划 并且立刻执行
+        for i in range(1, self.dorm_count+1):
+            # 记录房间可以放几个干员：
+            #  agent.count('Free')
+            dorm_plan =[data["agent"] for data in self.currentPlan['dormitory_'+str(i)]]
+
+            # 塞一个最优组进去
+            __next = next((obj for obj in agents if self.operators[obj["agent"]]['restingpriority']=='high'),None)
+            if __next is not None:
+                dorm_plan[dorm_plan.index('Free')]= __next["agent"]
+                agents.remove(__next)
+            else :
+                break
+            free_num = dorm_plan.count('Free')
+            while free_num>0:
+                __next_low = next((obj for obj in agents if self.operators[ obj[ "agent" ] ][ 'restingpriority' ] == 'low'),None )
+                if __next_low is not None :
+                    dorm_plan[dorm_plan.index('Free')]= __next_low[ "agent" ]
+                    agents.remove(__next_low)
+                    free_num -=1
+                else: break
+            result['dormitory_'+str(i)] = dorm_plan
+        return result
     def get_agent(self):
         plan = self.currentPlan
         high_production = [ ]
         replacements = [ ]
         for room in plan.keys():
             for idx,data in enumerate(plan[ room ]):
-                high_production.append({"name":data["agent"],"room":room,"index":idx})
+                __high={"name":data["agent"],"room":room,"index":idx,"group":data["group"],'replacement':data["replacement"],'restingpriority':'high'}
+                if __high[ 'name' ] in agent_base_config.keys() and 'RestingPriority' in agent_base_config[
+                    __high[ 'name' ] ].keys() and agent_base_config[ __high[ 'name' ] ][ 'RestingPriority' ] == 'low':
+                    __high["restingpriority"]='low'
+                high_production.append(__high)
                 if "replacement" in data.keys() and data["agent"]!='菲亚梅塔' :
                     replacements.extend(data["replacement"])
         for agent in high_production:
-            agent["type"]="high"
+            if agent["room"].startswith('dormitory'):
+                agent[ "type" ] = "low"
+            else:
+                agent["type"]="high"
             self.operators[agent["name"]] = agent
         for agent in replacements:
-            self.operators[ agent ] = {"type": "low","name":agent}
+            if agent in self.operators.keys():
+                if 'type' in self.operators[agent].keys()and self.operators[agent]['type'] =='high':
+                    continue
+                else:
+                    self.operators[ agent ] = {"type": "low", "name": agent, "group": '', 'restingpriority': 'low',
+                                               'resting': True}
+            else:
+                self.operators[ agent ] = {"type": "low","name":agent,"group":'','restingpriority':'low','resting':True}
 
     def check_in_and_out(self):
         res = {}
@@ -633,7 +705,6 @@ class BaseSchedulerSolver(BaseSolver):
         # 倒序
         if asc != "false":
             self.tap((self.recog.w*arrange_order_res[ ArrangeOrder(index) ][0],self.recog.h*arrange_order_res[ ArrangeOrder(index) ][1]), interval=0, rebuild=False)
-        self.sleep(1)
 
     def scan_agant(self, agent: list[ str ],order_matters=False,error_count = 0):
         try:
@@ -706,7 +777,6 @@ class BaseSchedulerSolver(BaseSolver):
                 # 到底了则返回再来一次
                 for _ in range(right_swipe):
                     self.swipe_only((w // 2, h // 2), (w // 2, 0), interval=0.5)
-                self.swipe((w // 2, h // 2), (w // 2, 0), interval=3, rebuild=False)
                 right_swipe = 0
             if first_time:
                 # 清空
@@ -735,7 +805,6 @@ class BaseSchedulerSolver(BaseSolver):
                     self.sleep(interval=0.5, rebuild=True)
                     for _ in range(right_swipe):
                         self.swipe_only((w // 2, h // 2), (w // 2, 0), interval=0.5)
-                    self.swipe((w // 2, h // 2), (w // 2, 0), interval=3, rebuild=False)
                     #重置右划次数
                     right_swipe = 0
                     pre_order = arrange_type
@@ -755,13 +824,10 @@ class BaseSchedulerSolver(BaseSolver):
                 index_change = True
         # 再次排序
         if order_matters:
-            logger.debug("开始重新排序")
             for _ in range(right_swipe):
                 self.swipe_only((w // 2, h // 2), (w // 2, 0), interval=0.5)
             self.swipe((w // 2, h // 2), (w // 2, 0), interval=3, rebuild=False)
             agent_with_order = copy.deepcopy(agent_list)
-            logger.debug(f'排序干员: {agent_with_order}')
-            logger.debug(f'排序干员: {agent_list}')
             if "菲亚梅塔" in agent_with_order:
                 self.switch_arrange_order(2,"true")
             else:

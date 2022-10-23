@@ -1,8 +1,8 @@
 {
     "Default":{"UpperLimit": 24,"LowerLimit": 0,"ExaustRequire": false,"ArrangeOrder":[2,"false"]},
-    "令":{"LowerLimit": 13,"ArrangeOrder":[2,"true"]},
-    "夕": {"UpperLimit": 11,"ArrangeOrder":[2,"true"]},
-    "稀音":{"ExaustRequire": true},
+    "令":{"UpperLimit": 11,"ArrangeOrder":[2,"true"]},
+    "夕": {"LowerLimit": 13,"ArrangeOrder":[2,"true"]},
+    "稀音":{"ExaustRequire": true,"ArrangeOrder":[2,"true"]},
     "龙舌兰":{"ArrangeOrder":[2,"true"]},
     "空弦":{"ArrangeOrder":[2,"true"]},
     "但书":{"ArrangeOrder":[2,"true"]},
@@ -20,5 +20,7 @@
     "车尔尼":{"ArrangeOrder":[ 2, "false" ]},
     "安比尔":{"ArrangeOrder":[ 2, "false" ]},
     "爱丽丝":{"ArrangeOrder":[ 2, "false" ]},
-    "桃金娘":{"ArrangeOrder":[ 2, "false" ]}
+    "桃金娘":{"ArrangeOrder":[ 2, "false" ]},
+    "帕拉斯": {"RestingPriority": "low"},
+    "红云": {"RestingPriority": "low","ArrangeOrder":[2,"true"]}
 }
