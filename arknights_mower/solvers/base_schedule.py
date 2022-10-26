@@ -42,7 +42,6 @@ class BaseSchedulerSolver(BaseSolver):
         """
         :param clue_collect: bool, 是否收取线索
         """
-
         self.currentPlan = self.global_plan[ self.global_plan[ "default" ] ]
         if len(self.tasks) > 0:
             # 找到时间最近的一次单个任务
@@ -165,6 +164,7 @@ class BaseSchedulerSolver(BaseSolver):
                     data = current_base[key][idx]
                     # 如果是空房间
                     if data["mood"] == -1:
+                        data["agent"] = ''
                         if not need_fix:
                             fix_plan[key] = [''] *len(plan[key])
                             need_fix = True
@@ -217,6 +217,15 @@ class BaseSchedulerSolver(BaseSolver):
                         fix_plan[miss_list[key]['room']] = [x['agent'] for x in current_base[miss_list[key]['room']]]
                     fix_plan[miss_list[key]['room']][miss_list[key]['index']]=key
             if len(fix_plan.keys())>0:
+                # 不能在房间里安排同一个人 如果有重复则换成Free
+                # 还要修复确保同一组在同时上班
+                fix_agents = []
+                for key in fix_plan:
+                    for idx,fix_agent in enumerate(fix_plan[key]):
+                        if fix_agent not in fix_agents:
+                            fix_agents.append(fix_agent)
+                        else:
+                            fix_plan[key][idx]="Free"
                 self.tasks.append({"plan": fix_plan, "time": datetime.now()})
                 logger.info(f'纠错任务为-->{fix_plan}')
                 return
@@ -725,7 +734,7 @@ class BaseSchedulerSolver(BaseSolver):
         if asc != "false":
             self.tap((self.recog.w*arrange_order_res[ ArrangeOrder(index) ][0],self.recog.h*arrange_order_res[ ArrangeOrder(index) ][1]), interval=0, rebuild=False)
 
-    def scan_agant(self, agent: list[ str ],order_matters=False,error_count = 0):
+    def scan_agant(self, agent: list[ str ],order_matters=False,error_count = 0,max_agent_count=-1):
         try:
             # 识别干员
             self.recog.update()
@@ -733,6 +742,7 @@ class BaseSchedulerSolver(BaseSolver):
             # 提取识别出来的干员的名字
             agent_name = set([x[0] for x in ret])
             agent_size = len(agent)
+            select_name = []
             if order_matters:
                 # 按照顺序
                 while len(agent) > 0:
@@ -749,13 +759,20 @@ class BaseSchedulerSolver(BaseSolver):
                     if name in agent:
                         self.tap((y[1][0]), interval=0.5, rebuild=False)
                         agent.remove(name)
+                        # 如果是按照个数选择 Free
+                        if max_agent_count!=-1:
+                            select_name.append(name)
+                            if len(select_name)>=max_agent_count:
+                                return select_name,ret
+                if max_agent_count != -1:
+                    return select_name, ret
             return agent_size != len(agent), ret
         except Exception as e:
             error_count += 1
             if error_count < 3:
                 logger.error(e)
                 self.sleep(3)
-                return self.scan_agant(agent,order_matters,error_count)
+                return self.scan_agant(agent,order_matters,error_count,max_agent_count)
             else:
                 raise e
 
@@ -782,9 +799,6 @@ class BaseSchedulerSolver(BaseSolver):
         free_num = agent.count('Free')
         for i in range(agent.count("Free")):
             agent.remove("Free")
-        # TODO 后面想到好办法remove这一行 会有空字符是从currentPlan里面读取的
-        for i in range(agent.count("")):
-            agent.remove("")
         order_matters = True
         is_clear = False
         index_change = False
@@ -818,10 +832,7 @@ class BaseSchedulerSolver(BaseSolver):
                     self.switch_arrange_order(arrange_type[ 0 ], arrange_type[ 1 ])
                     # 滑倒最左边
                     self.sleep(interval=0.5, rebuild=True)
-                    for _ in range(right_swipe):
-                        self.swipe_only((w // 2, h // 2), (w // 2, 0), interval=0.5)
-                    #重置右划次数
-                    right_swipe = 0
+                    right_swipe = self.swipe_left(right_swipe, w, h)
                     pre_order = arrange_type
             first_time = False
 
@@ -837,10 +848,39 @@ class BaseSchedulerSolver(BaseSolver):
             else:
                 # 如果找到了
                 index_change = True
+        # 安排空闲干员
+        if free_num:
+            if free_num == len(agent_list):
+                self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
+            if not first_time:
+                # 滑动到最左边
+                self.sleep(interval=0.5, rebuild=False)
+                right_swipe = self.swipe_left(right_swipe, w, h)
+            self.tap((self.recog.w * 0.95, self.recog.h * 0.05), interval=0.1)
+            self.recog.update()
+            if self.find('not_in_dorm') is None:
+                self.tap((self.recog.w * 0.3, self.recog.h * 0.5), interval=0.1)
+            # 确认
+            self.tap((self.recog.w * 0.8, self.recog.h * 0.8), interval=0.1)
+            self.switch_arrange_order(3, "true")
+            # 只选择在列表里面的
+            free_list = [v["name"] for k,v in self.operators.items() if v["name"] not in agent_list]
+            while free_num:
+                selected_name,ret = self.scan_agant(free_list,max_agent_count=free_num)
+                free_num -= len(selected_name)
+                while len(selected_name)>0:
+                    agent_list[agent_list.index('Free')] = selected_name[0]
+                    selected_name.remove(selected_name[0])
+                if free_num == 0:
+                    break
+                else :
+                    st = ret[-2][1][2]  # 起点
+                    ed = ret[0][1][1]  # 终点
+                    self.swipe_noinertia(st, (ed[0] - st[0], 0))
+                    right_swipe += 1
         # 排序
         if order_matters and len(agent_list) != 1:
-            for _ in range(right_swipe):
-                self.swipe_only((w // 2, h // 2), (w // 2, 0), interval=0.5)
+            right_swipe = self.swipe_left(right_swipe,w,h)
             agent_with_order = copy.deepcopy(agent_list)
             if "菲亚梅塔" in agent_with_order:
                 self.switch_arrange_order(2,"true")
@@ -848,8 +888,11 @@ class BaseSchedulerSolver(BaseSolver):
                 self.switch_arrange_order(3)
             self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
             self.scan_agant(agent_with_order,True,0)
-        # 安排空闲干员
-        first_time = True
+
+    def swipe_left(self,right_swipe,w,h):
+        for _ in range(right_swipe):
+            self.swipe_only((w // 2, h // 2), (w // 2, 0), interval=0.5)
+        return 0
 
     def agent_get_mood(self) -> None:
         self.tap_element('infra_overview', interval=2)
@@ -989,7 +1032,7 @@ class BaseSchedulerSolver(BaseSolver):
                 logger.info("开始插拔")
                 self.drone(room,True,True)
                 self.tap((self.recog.w * 0.22, self.recog.h * 0.95), interval=0.5)
-                in_and_out_plan = [data["agent"] for data in self.currentPlan[room]]
+                in_and_out_plan = [data["agent"] for data in self.current_base[room]]
                 replace_plan[room] =in_and_out_plan
                 self.back(interval=2)
             self.tasks.append( {'time': self.tasks[0]['time'], 'plan': replace_plan})
@@ -1000,7 +1043,7 @@ class BaseSchedulerSolver(BaseSolver):
             replace_agent = plan[fia_room][0]
             fia_change_room= self.operators[replace_agent]["room"]
             self.back(interval=2)
-            if len(self.current_base.keys()) > 1:
+            if len(self.current_base.keys()) >3:
                 fia_room_plan = [data["agent"] for data in self.current_base[fia_room]]
                 fia_change_room_plan = [data["agent"] for data in self.current_base[fia_change_room]]
             else:
