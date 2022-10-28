@@ -54,8 +54,6 @@ class BaseSchedulerSolver(BaseSolver):
             self.get_agent()
         if len(self.scan_time.keys())==0:
             self.scan_time = {k: None for k,v in self.currentPlan.items()}
-        # self.current_base= {'room_1_1': [{'mood': 13, 'agent': '黑键'}, {'mood': 21, 'agent': '图耶'}, {'mood': 21, 'agent': '鸿雪'}], 'central': [{'mood': 18, 'agent': '焰尾'}, {'mood': 8, 'agent': '琴柳'}, {'mood': 8, 'agent': '凯尔希'}, {'mood': 24, 'agent': '夕'}, {'mood': 10, 'agent': '令'}], 'meeting': [{'mood': 7, 'agent': '陈'}, {'mood': 7, 'agent': '红'}], 'room_1_2': [{'mood': 19, 'agent': '迷迭香'}, {'mood': 13, 'agent': '砾'}, {'mood': 23, 'agent': '夜烟'}], 'room_1_3': [{'mood': 19, 'agent': '炎狱炎熔'}], 'dormitory_1': [{'mood': 24, 'agent': '流明'}, {'mood': 24, 'agent': '蜜莓'}, {'mood': 23, 'agent': '夕'}, {'mood': 24, 'agent': '火神'}, {'mood': 24, 'agent': '泡泡'}], 'room_2_1': [{'mood': 22, 'agent': '稀音'}, {'mood': 22, 'agent': '红云'}, {'mood': 22, 'agent': '帕拉斯'}], 'room_2_2': [{'mood': 15, 'agent': '异客'}, {'mood': 14, 'agent': '森蚺'}, {'mood': 15, 'agent': '温蒂'}], 'room_2_3': [{'mood': 21, 'agent': '承曦格雷伊'}], 'dormitory_2': [{'mood': 24, 'agent': '闪灵'}, {'mood': 24, 'agent': '杜林'}, {'mood': 24, 'agent': '褐果'}, {'mood': 10, 'agent': '令'}, {'mood': 23, 'agent': '能天使'}], 'contact': [{'mood': 23, 'agent': '絮雨'}], 'room_3_1': [{'mood': 9, 'agent': '食铁兽'}, {'mood': 12, 'agent': '断罪者'}, {'mood': 18, 'agent': '槐琥'}], 'room_3_2': [{'mood': 17, 'agent': '灰毫'}, {'mood': 18, 'agent': '远牙'}, {'mood': 18, 'agent': '野鬃'}], 'room_3_3': [{'mood': 6, 'agent': '雷蛇'}], 'dormitory_3': [{'mood': 24, 'agent': '车尔尼'}, {'mood': 24, 'agent': '安比尔'}, {'mood': 24, 'agent': '爱丽丝'}, {'mood': 24, 'agent': '桃金娘'}, {'mood': 24, 'agent': '澄闪'}], 'dormitory_4': [{'mood': 24, 'agent': '波登可'}, {'mood': 24, 'agent': '夜莺'}, {'mood': 4, 'agent': '菲亚梅塔'}, {'mood': 17, 'agent': '至简'}, {'mood': 24, 'agent': '空弦'}]}
-        # self.plan_solver()
         return super().run()
 
     def get_group(self, rest_agent, agent, groupname, name):
@@ -134,21 +132,6 @@ class BaseSchedulerSolver(BaseSolver):
     def plan_solver(self):
         current_base = copy.deepcopy(self.current_base)
         plan = self.currentPlan
-        if len(self.check_in_and_out()) > 0:
-            # 处理龙舌兰和但书的插拔
-            for room in self.check_in_and_out():
-                if any(room in obj[ "plan" ].keys() for obj in self.tasks): continue;
-                in_out_plan = {}
-                in_out_plan[ room ] = [ ]
-                for idx,x in enumerate( plan[ room ]):
-                    if '但书' in x[ 'replacement' ] or '龙舌兰' in x[ 'replacement' ]:
-                        in_out_plan[ room ].append(x[ 'replacement' ][ 0 ])
-                    # 如果有现有计划则保持目前基地不变
-                    elif room in self.currentPlan.keys():
-                        in_out_plan[room].append(self.currentPlan[room][idx]["agent"])
-                    else:
-                        in_out_plan[ room ].append(x[ "agent" ])
-                self.tasks.append({"time": self.get_in_and_out_time(room), "plan": in_out_plan})
         # 准备数据
         if self.read_mood:
             total_agent = []
@@ -278,6 +261,21 @@ class BaseSchedulerSolver(BaseSolver):
                 logger.info(f'排班计划为->{output_plan}')
             except Exception as e:
                 logger.error(f'计算排班计划出错->{e}')
+        if len(self.check_in_and_out()) > 0:
+            # 处理龙舌兰和但书的插拔
+            for room in self.check_in_and_out():
+                if any(room in obj[ "plan" ].keys() for obj in self.tasks): continue;
+                in_out_plan = {}
+                in_out_plan[ room ] = [ ]
+                for idx,x in enumerate( plan[ room ]):
+                    if '但书' in x[ 'replacement' ] or '龙舌兰' in x[ 'replacement' ]:
+                        in_out_plan[ room ].append(x[ 'replacement' ][ 0 ])
+                    # 如果有现有计划则保持目前基地不变
+                    elif room in self.currentPlan.keys():
+                        in_out_plan[room].append(self.currentPlan[room][idx]["agent"])
+                    else:
+                        in_out_plan[ room ].append(x[ "agent" ])
+                self.tasks.append({"time": self.get_in_and_out_time(room), "plan": in_out_plan})
 
     def get_swap_plan(self,agent_list=[]):
         result = {}
@@ -287,10 +285,9 @@ class BaseSchedulerSolver(BaseSolver):
             if a['current_room'] not in result.keys():
                 result[a['current_room']]= copy.deepcopy( [data["agent"] for data in self.current_base[a['current_room']]])
             # 获取替换组且没有在上班的 排除但书或者龙舌兰
-            __replacement = next((obj for obj in self.operators[a['agent']]['replacement'] if (not (self.operators[obj]['current_room']==True and self.operators[obj]['working']==True)) and obj not in ['但书','龙舌兰']),None)
+            __replacement = next((obj for obj in self.operators[a['agent']]['replacement'] if (not (self.operators[obj]['current_room']!='' and not self.operators[obj]['current_room'].startswith('dormitory'))) and obj not in ['但书','龙舌兰']),None)
             if __replacement is not None:
-                self.operators[ __replacement ][ 'working' ]=True
-                self.operators[__replacement]['current_room'] = True
+                self.operators[__replacement]['current_room'] = a['current_room']
                 result[ a[ 'current_room' ] ][a[ 'room_index' ]] = __replacement
             else:
                 raise Exception(f"{a['agent']} 没有足够的替换组可用")
