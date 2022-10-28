@@ -22,5 +22,8 @@
     "爱丽丝":{"ArrangeOrder":[ 2, "false" ]},
     "桃金娘":{"ArrangeOrder":[ 2, "false" ]},
     "帕拉斯": {"RestingPriority": "low"},
-    "红云": {"RestingPriority": "low","ArrangeOrder":[2,"true"]}
+    "红云": {"RestingPriority": "low","ArrangeOrder":[2,"true"]},
+    "承曦格雷伊": {"ArrangeOrder":[2,"true"]},
+    "图耶":{"ArrangeOrder":[2,"true"]},
+    "鸿雪": {"ArrangeOrder":[2,"true"]}
 }

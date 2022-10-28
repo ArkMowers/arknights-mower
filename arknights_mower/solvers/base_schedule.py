@@ -52,6 +52,8 @@ class BaseSchedulerSolver(BaseSolver):
         self.planned = False
         if len(self.operators.keys()) ==0:
             self.get_agent()
+        if len(self.scan_time.keys())==0:
+            self.scan_time = {k: None for k,v in self.currentPlan.items()}
         return super().run()
 
     def get_group(self, rest_agent, agent, groupname, name):
@@ -112,12 +114,7 @@ class BaseSchedulerSolver(BaseSolver):
         elif not self.planned:
             try:
                 if self.read_mood:
-                    # 1.5 小时以内不需要重新读取心情
-                    if self.scan_time is None or self.scan_time< (datetime.now() - timedelta(seconds=5400)):
-                        self.agent_get_mood()
-                        self.scan_time = datetime.now()
-                    else:
-                        logger.info('跳过心情读取')
+                    self.agent_get_mood()
                 self.plan_solver()
             except Exception as e:
                 logger.exception("error")
@@ -133,7 +130,7 @@ class BaseSchedulerSolver(BaseSolver):
         return result
 
     def plan_solver(self):
-        current_base = self.current_base
+        current_base = copy.deepcopy(self.current_base)
         plan = self.currentPlan
         # current_base = {'central': [{'mood': 1, 'agent': '凯尔希'}, {'mood': 1, 'agent': '琴柳'}, {'mood': 20, 'agent': '玛恩纳'}, {'mood': 24, 'agent': '焰尾'}, {'mood': 23, 'agent': '临光'}], 'meeting': [{'mood': 20, 'agent': '红'}, {'mood': 20, 'agent': '陈'}], 'room_1_1': [{'mood': 16, 'agent': '能天使'}, {'mood': 14, 'agent': '黑键'}, {'mood': 11, 'agent': '空弦'}], 'room_1_2': [{'mood': 15, 'agent': '迷迭香'}, {'mood': 20, 'agent': '槐琥'}, {'mood': 23, 'agent': '斑点'}], 'room_1_3': [{'mood': 9, 'agent': '雷蛇'}], 'dormitory_1': [{'mood': 24, 'agent': '流明'}, {'mood': 24, 'agent': '蜜莓'}, {'mood': 24, 'agent': '夜烟'}, {'mood': 24, 'agent': '坚雷'}, {'mood': 16, 'agent': '夕'}], 'room_2_1': [{'mood': 4, 'agent': '森蚺'}, {'mood': 5, 'agent': '温蒂'}, {'mood': 4, 'agent': '异客'}], 'room_2_2': [{'mood': 21, 'agent': '帕拉斯'}, {'mood': 20, 'agent': '稀音'}, {'mood': 21, 'agent': '红云'}], 'room_2_3': [{'mood': 9, 'agent': '承曦格雷伊'}], 'dormitory_2': [{'mood': 24, 'agent': '闪灵'}, {'mood': 24, 'agent': '杜林'}, {'mood': 24, 'agent': '清道夫'}, {'mood': 10, 'agent': '砾'}, {'mood': 23, 'agent': '红豆'}], 'contact': [{'mood': 6, 'agent': '絮雨'}], 'room_3_1': [{'mood': 9, 'agent': '食铁兽'}, {'mood': 18, 'agent': '至简'}, {'mood': 13, 'agent': '断罪者'}], 'room_3_2': [{'mood': 23, 'agent': '野鬃'}, {'mood': 23, 'agent': '远牙'}, {'mood': 23, 'agent': '灰毫'}], 'room_3_3': [{'mood': 4, 'agent': '澄闪'}], 'dormitory_3': [{'mood': 24, 'agent': '凛冬'}, {'mood': 24, 'agent': '爱丽丝'}, {'mood': 24, 'agent': '车尔尼'}, {'mood': 24, 'agent': '星极'}, {'mood': 3, 'agent': '令'}], 'dormitory_4': [{'mood': 24, 'agent': '夜莺'}, {'mood': 24, 'agent': '波登可'}, {'mood': 20, 'agent': '菲亚梅塔'}, {'mood': 24, 'agent': '远山'}, {'mood': 22, 'agent': '火神'}]}
         if len(self.check_in_and_out()) > 0:
@@ -142,9 +139,12 @@ class BaseSchedulerSolver(BaseSolver):
                 if any(room in obj[ "plan" ].keys() for obj in self.tasks): continue;
                 in_out_plan = {}
                 in_out_plan[ room ] = [ ]
-                for x in plan[ room ]:
+                for idx,x in enumerate( plan[ room ]):
                     if '但书' in x[ 'replacement' ] or '龙舌兰' in x[ 'replacement' ]:
                         in_out_plan[ room ].append(x[ 'replacement' ][ 0 ])
+                    # 如果有现有计划则保持目前基地不变
+                    elif room in self.currentPlan.keys():
+                        in_out_plan[room].append(self.currentPlan[room][idx]["agent"])
                     else:
                         in_out_plan[ room ].append(x[ "agent" ])
                 self.tasks.append({"time": self.get_in_and_out_time(room), "plan": in_out_plan})
@@ -173,8 +173,7 @@ class BaseSchedulerSolver(BaseSolver):
                     if (data["agent"] in agent_base_config.keys()):
                         # 如果有设置下限，则减去下限值 eg: 令
                         if ("LowerLimit" in agent_base_config[current_base[key][idx]["agent"]]):
-                            data["mood"] = data["mood"] - agent_base_config[current_base[key][idx]["agent"]][
-                                "LowerLimit"]
+                            data["mood"] = data["mood"] - agent_base_config[current_base[key][idx]["agent"]]["LowerLimit"]
                     # 把额外数据传过去
                     data["current_room"] = key
                     data["room_index"] = idx
@@ -729,10 +728,10 @@ class BaseSchedulerSolver(BaseSolver):
         else:
             self.tap((self.recog.w*arrange_order_res[ ArrangeOrder(index-1) ][0],self.recog.h*arrange_order_res[ ArrangeOrder(index) ][1]), interval=0, rebuild=False)
         # 切回来
-        self.tap((self.recog.w*arrange_order_res[ ArrangeOrder(index) ][0],self.recog.h*arrange_order_res[ ArrangeOrder(index) ][1]), interval=0.5, rebuild=False)
+        self.tap((self.recog.w*arrange_order_res[ ArrangeOrder(index) ][0],self.recog.h*arrange_order_res[ ArrangeOrder(index) ][1]), interval=0.2, rebuild=True)
         # 倒序
         if asc != "false":
-            self.tap((self.recog.w*arrange_order_res[ ArrangeOrder(index) ][0],self.recog.h*arrange_order_res[ ArrangeOrder(index) ][1]), interval=0, rebuild=False)
+            self.tap((self.recog.w*arrange_order_res[ ArrangeOrder(index) ][0],self.recog.h*arrange_order_res[ ArrangeOrder(index) ][1]), interval=0.2, rebuild=True)
 
     def scan_agant(self, agent: list[ str ],order_matters=False,error_count = 0,max_agent_count=-1):
         try:
@@ -914,9 +913,15 @@ class BaseSchedulerSolver(BaseSolver):
             for block in ret:
                 y = (block[ 0 ][ 1 ] + block[ 2 ][ 1 ]) // 2
                 x = (block[ 2 ][ 0 ] - block[ 0 ][ 0 ]) // 7 + block[ 0 ][ 0 ]
-                self.tap((x, y), rebuild=False)
                 if base_room_list[ idx ] not in [ 'train', 'factory']:
+                    if (self.scan_time[base_room_list[idx]] is not None) and self.scan_time[base_room_list[idx]] > (
+                            datetime.now() - timedelta(seconds=5400)):
+                        logger.debug(f'距离 {base_room_list[idx]} 上次记录时间未超过1.5小时，跳过本次记录')
+                        idx += 1
+                        continue
+                    self.tap((x, y), interval=0.1, rebuild=True)
                     self.current_base[ base_room_list[ idx ] ] = character_recognize.agent_with_mood(self.recog.img,length= len(self.currentPlan[base_room_list[ idx ]]))
+                    self.scan_time[base_room_list[idx]] = datetime.now()
                 idx += 1
             # 识别结束
             if idx == room_total == 0:
@@ -979,6 +984,10 @@ class BaseSchedulerSolver(BaseSolver):
                             self.tap((x0, y0), rebuild=False)
                             self.current_base[base_room_list[idx]] = character_recognize.agent_with_mood(
                                     self.recog.img, length=len(self.currentPlan[base_room_list[idx]]))
+                            self.scan_time[base_room_list[idx]] = datetime.now()
+                        else:
+                            # 干员变动则重新扫描心情
+                            self.scan_time[base_room_list[ idx ]]=None
                         try:
                              # 如果是单人房间则外部撤下干员
                             if len(plan[ base_room_list[ idx ] ])==1:
@@ -1054,8 +1063,4 @@ class BaseSchedulerSolver(BaseSolver):
             self.todo_task = True
             self.planned = True
         logger.info('返回基建主界面')
-        if len(in_and_out)==0 or fia_room=='':
-            # 换人则重新读取基建数据
-            # 以后可以优化成系统计算
-            self.scan_time=None
         self.back()
