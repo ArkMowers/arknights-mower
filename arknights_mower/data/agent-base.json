@@ -3,6 +3,7 @@
     "令":{"UpperLimit": 11,"ArrangeOrder":[2,"true"]},
     "夕": {"LowerLimit": 13,"ArrangeOrder":[2,"true"]},
     "稀音":{"ExaustRequire": true,"ArrangeOrder":[2,"true"]},
+    "巫恋":{"ExaustRequire": true,"ArrangeOrder":[2,"true"]},
     "龙舌兰":{"ArrangeOrder":[2,"true"]},
     "空弦":{"ArrangeOrder":[2,"true"]},
     "但书":{"ArrangeOrder":[2,"true"]},
