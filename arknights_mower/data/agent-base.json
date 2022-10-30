@@ -25,9 +25,14 @@
     "桃金娘":{"ArrangeOrder":[ 2, "false" ]},
     "帕拉斯": {"RestingPriority": "low"},
     "红云": {"RestingPriority": "low","ArrangeOrder":[2,"true"]},
+    "远牙": {"RestingPriority": "low"},
     "承曦格雷伊": {"ArrangeOrder":[2,"true"]},
     "图耶":{"ArrangeOrder":[2,"true"]},
     "鸿雪": {"ArrangeOrder":[2,"true"]},
     "远牙齿": {"RestingPriority": "low"},
-    "孑":{"ArrangeOrder":[2,"true"]}
+    "孑":{"ArrangeOrder":[2,"true"]},
+    "清道夫":{"ArrangeOrder":[2,"true"]},
+     "临光":{"ArrangeOrder":[2,"true"]},
+     "杜宾":{"ArrangeOrder":[2,"true"]},
+     "坚雷":{"ArrangeOrder":[2,"true"]}
 }
