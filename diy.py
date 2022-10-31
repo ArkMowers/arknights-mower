@@ -50,13 +50,13 @@ plan = {
     "default": "plan_1",
     "plan_1": {
         # 办公室
-        'central': [{'agent': '焰尾', 'group': '红松骑士', 'replacement': ["玛恩纳", "清道夫", "临光", "杜宾", '坚雷']},
-                    {'agent': '琴柳', 'group': '絮雨', 'replacement': ["玛恩纳", "清道夫", "临光", "杜宾", '坚雷']},
+        'central': [{'agent': '焰尾', 'group': '红松骑士', 'replacement': ["玛恩纳", "清道夫", "临光", "杜宾", '坚雷','布丁']},
+                    {'agent': '琴柳', 'group': '', 'replacement': ["玛恩纳", "清道夫", "临光", "杜宾", '坚雷']},
                     {'agent': '凯尔希', 'replacement': ["玛恩纳", "清道夫", "临光", "杜宾", '坚雷'], 'group': ''},
                     {'agent': '夕', 'group': '夕', 'replacement': ["玛恩纳", "清道夫", "临光", "杜宾", '坚雷']},
                     {'agent': '令', 'group': '夕', 'replacement': ["玛恩纳", "清道夫", "临光", "杜宾", '坚雷']},
                     ],
-        'contact': [{'agent': '絮雨', 'group': '絮雨', 'replacement': ['艾雅法拉']}],
+        'contact': [{'agent': '絮雨', 'group': '絮雨', 'replacement': []}],
         # 宿舍
         'dormitory_1': [{'agent': '流明', 'group': '', 'replacement': []},
                         {'agent': '蜜莓', 'group': '', 'replacement': []},
@@ -82,29 +82,30 @@ plan = {
                         {'agent': 'Free', 'group': '', 'replacement': []},
                         {'agent': 'Free', 'group': '', 'replacement': []}],
         # 会客室
-        'meeting': [{'agent': '陈', 'replacement': ['星极'], 'group': ''},
-                    {'agent': '红', 'replacement': ['远山'], 'group': ''}, ],
-        'room_1_1': [{'agent': '能天使', 'group': '', 'replacement': ['能天使', '雪雉']},
-                     {'agent': '空弦', 'group': '', 'replacement': ['龙舌兰', '能天使', '雪雉']},
-                     {'agent': '黑键', 'group': '', 'replacement': ['但书']}],
-        'room_1_2': [{'agent': '迷迭香', 'group': '', 'replacement': ['']},
+        'meeting': [{'agent': '陈', 'replacement': ['星极','远山'], 'group': ''},
+                    {'agent': '红', 'replacement': ['远山','星极'], 'group': ''}, ],
+        'room_1_1': [{'agent': '黑键', 'group': '', 'replacement': []},
+                     {'agent': '图耶', 'group': '图耶', 'replacement': ['但书','空弦','雪雉','能天使']},
+                     {'agent': '鸿雪', 'group': '图耶', 'replacement': ['龙舌兰', '空弦','能天使', '雪雉']}
+                     ],
+        'room_1_2': [{'agent': '迷迭香', 'group': '', 'replacement': []},
                      {'agent': '砾', 'group': '', 'Type': '', 'replacement': ['夜烟', '斑点']},
                      {'agent': '至简', 'group': '', 'replacement': ['夜烟', '斑点']}],
-        'room_1_3': [{'agent': '承曦格雷伊', 'group': '异客', 'replacement': ['炎狱炎熔', '雷蛇', '澄闪']}],
-        'room_2_1': [{'agent': '异客', 'group': '异客', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3', '火神','泡泡']},
-                     {'agent': '森蚺', 'group': '异客', 'Type': '', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3', '火神','泡泡']},
-                     {'agent': '温蒂', 'group': '异客', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3', '火神','泡泡']}],
-        'room_2_2': [{'agent': '稀音', 'group': '稀音', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3', '火神','泡泡']},
-                     {'agent': '红云', 'group': '稀音', 'Type': '', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3', '火神','泡泡']},
-                     {'agent': '帕拉斯', 'group': '稀音', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3', '火神','泡泡']}],
-        'room_2_3': [{'agent': '澄闪', 'group': '', 'replacement': ['炎狱炎熔', '雷蛇']}],
-        'room_3_1': [{'agent': '食铁兽', 'group': '', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3', '火神','泡泡']},
-                     {'agent': '断罪者', 'group': '', 'Type': '', 'replacement': ['炎狱炎熔', '雷蛇', '澄闪']},
-                     {'agent': '槐琥', 'group': '', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3', '火神','泡泡']}],
-        'room_3_2': [{'agent': '灰毫', 'group': '红松骑士', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3', '火神','泡泡']},
-                     {'agent': '远牙', 'group': '红松骑士', 'Type': '', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3', '火神','泡泡']},
-                     {'agent': '野鬃', 'group': '红松骑士', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3', '火神','泡泡']}],
-        'room_3_3': [{'agent': '雷蛇', 'group': '', 'replacement': ['炎狱炎熔', '澄闪','Lancet-2']}]
+        'room_1_3': [{'agent': '承曦格雷伊', 'group': '异客', 'replacement': ['炎狱炎熔', '雷蛇', '澄闪','伊芙利特']}],
+        'room_2_2': [{'agent': '异客', 'group': '异客', 'replacement': ['调香师','水月','香草']},
+                     {'agent': '森蚺', 'group': '异客', 'Type': '', 'replacement': ['调香师','水月','香草']},
+                     {'agent': '温蒂', 'group': '异客', 'replacement': ['调香师','水月','香草']}],
+        'room_2_1': [{'agent': '稀音', 'group': '稀音', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']},
+                     {'agent': '红云', 'group': '稀音', 'Type': '', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']},
+                     {'agent': '帕拉斯', 'group': '稀音', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']}],
+        'room_2_3': [{'agent': '澄闪', 'group': '', 'replacement': ['炎狱炎熔', '雷蛇','伊芙利特']}],
+        'room_3_1': [{'agent': '食铁兽', 'group': '', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']},
+                     {'agent': '断罪者', 'group': '', 'Type': '', 'replacement':['霜叶', '红豆', '白雪', 'Castle-3']},
+                     {'agent': '槐琥', 'group': '', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']}],
+        'room_3_2': [{'agent': '灰毫', 'group': '红松骑士', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']},
+                     {'agent': '远牙', 'group': '红松骑士', 'Type': '', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']},
+                     {'agent': '野鬃', 'group': '红松骑士', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']}],
+        'room_3_3': [{'agent': '雷蛇', 'group': '', 'replacement': ['炎狱炎熔', '澄闪','伊芙利特']}]
     }
 }
 
@@ -157,29 +158,14 @@ def inialize(tasks=[]):
     # 读取心情开关，有菲亚梅塔或者希望全自动换班得设置为 true
     base_scheduler.read_mood = True
     base_scheduler.scan_time = {}
-    # base_scheduler.current_base={'central': [{'mood': 12, 'agent': '凯尔希'}, {'mood': 12, 'agent': '琴柳'}, {'mood': 7, 'agent': '焰尾'}, {'mood': 7, 'agent': '令'}, {'mood': 20, 'agent': '夕'}], 'meeting': [{'mood': 13, 'agent': '红'}, {'mood': 15, 'agent': '陈'}], 'room_1_1': [{'mood': 19, 'agent': '能天使'}, {'mood': 19, 'agent': '黑键'}, {'mood': 8, 'agent': '空弦'}], 'room_1_2': [{'mood': 8, 'agent': '迷迭香'}, {'mood': 12, 'agent': '砾'}, {'mood': 23, 'agent': '槐琥'}], 'room_1_3': [{'mood': 12, 'agent': '雷蛇'}], 'dormitory_1': [{'mood': 24, 'agent': '流明'}, {'mood': 24, 'agent': '蜜莓'}, {'mood': 12, 'agent': '承曦格雷伊'}, {'mood': 24, 'agent': '夜烟'}, {'mood': 24, 'agent': '霜叶'}], 'room_2_1': [{'mood': 10, 'agent': '帕拉斯'}, {'mood': 0, 'agent': '稀音'}, {'mood': 10, 'agent': '红云'}], 'room_2_2': [{'mood': 8, 'agent': '远牙'}, {'mood': 8, 'agent': '野鬃'}, {'mood': 9, 'agent': '灰毫'}], 'room_2_3': [{'mood': 12, 'agent': '澄闪'}], 'dormitory_2': [{'mood': 24, 'agent': '闪灵'}, {'mood': 24, 'agent': '杜林'}, {'mood': 24, 'agent': 'Castle-3'}, {'mood': 24, 'agent': 'Lancet-2'}, {'mood': 13, 'agent': '温蒂'}], 'contact': [{'mood': 12, 'agent': '絮雨'}], 'room_3_1': [{'mood': 22, 'agent': '食铁兽'}, {'mood': 20, 'agent': '断罪者'}, {'mood': 18, 'agent': '至简'}], 'room_3_2': [{'mood': 23, 'agent': '白雪'}, {'mood': 21, 'agent': '泡泡'}, {'mood': 21, 'agent': '火神'}], 'room_3_3': [{'mood': 23, 'agent': '炎狱炎熔'}], 'dormitory_3': [{'mood': 24, 'agent': '车尔尼'}, {'mood': 24, 'agent': '安比尔'}, {'mood': 24, 'agent': '爱丽丝'}, {'mood': 24, 'agent': '星极'}, {'mood': 13, 'agent': '森蚺'}], 'dormitory_4': [{'mood': 22, 'agent': '菲亚梅塔'}, {'mood': 24, 'agent': '夜莺'}, {'mood': 24, 'agent': '波登可'}, {'mood': 24, 'agent': '玛恩纳'}, {'mood': 13, 'agent': '异客'}]}
     return base_scheduler
 def simulate():
     '''
     具体调用方法可见各个函数的参数说明
     '''
     global ope_list
-
     # 第一次执行任务
-    # datetime(2022, 10, 3, 3, 8, 59, 342380)
     # tasks = [{"plan": {'room_1_1': ['能天使','但书','龙舌兰']}, "time": datetime.now()}]
-    tasks =  [#{'time': datetime(2022, 10, 20, 18, 25, 51, 268286), 'plan': {'room_1_1': ['能天使', '龙舌兰', '但书']}},
-               #{'time': datetime(2022, 10, 20, 19, 00, 31, 511427), 'plan':{'dormitory_4': ['迷迭香', '菲亚梅塔']} },
-             #  {'time': datetime(2022, 10, 21, 1, 33, 31, 118454), 'plan': {'central': ['焰尾','布丁','森蚺','夕','令'],'dormitory_1': ['流明','蜜莓','红','澄闪', '凯尔希']
-             #,'dormitory_2': ['凛冬', '爱丽丝', '车尔尼', '星极', '香草']}},
-             # ,'dormitory_2': ['闪灵', '杜林', '陈', '炎狱炎熔', '香草'], 'meeting':['星极','远山'],'dormitory_4': ['迷迭香', '菲亚梅塔']}}
-            #{'time': datetime(2022, 10, 20, 0, 3, 31, 118454), 'plan': {'room_1_1': ['能天使', '龙舌兰', '但书']}},
-             # {'time': datetime(2022, 10, 20, 3, 3, 20, 147573), 'plan': {'dormitory_4': ['絮雨', '菲亚梅塔']}},
-#        {'time': datetime(2022, 10, 20, 23, 25, 5, 383340), 'plan': {'room_1_1': ['能天使', '龙舌兰', '但书']}},
-            #{'time': datetime(2022, 10, 21, 1, 32, 20, 147573), 'plan': {'room_2_2': ['灰毫', '远牙', '野鬃'],'central': ['焰尾', '琴柳', '凯尔希','夕', '令'],
-          #   'dormitory_1': ['流明', '蜜莓','正义骑士号','空','阿米娅'], 'dormitory_4': ['波登可', '夜莺', '菲亚梅塔','布丁','斑点'], 'dormitory_3': ['车尔尼', '安比尔', '爱丽丝', '凛冬','Lancet-2'] }},
-         {'time': datetime(2022, 10, 21, 2, 34, 20, 147573), 'plan': {'room_3_1': ['食铁兽', '至简', '断罪者'], 'dormitory_2': ['闪灵','杜林','四月','香草','白雪']}}
-              ]
     tasks= []
     reconnect_max_tries = 10
     reconnect_tries = 0
