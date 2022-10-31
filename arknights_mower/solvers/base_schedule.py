@@ -102,6 +102,10 @@ class BaseSchedulerSolver(BaseSolver):
             try:
                 self.agent_arrange(self.task["plan"])
                 del self.tasks[0]
+                # # 如果下个任务10分钟内，则跳过计划阶段
+                # if len(self.tasks)>1 and self.tasks[0]['time']< datetime.now()+ timedelta(seconds=6000):
+                #     self.planned = True
+                #     self.todo_task = True
             except Exception as e:
                 logger.exception(e)
                 self.planned = True
@@ -442,11 +446,12 @@ class BaseSchedulerSolver(BaseSolver):
             else:
                 raise Exception(f"{a['agent']} 没有足够的替换组可用")
         group_info = {}
-        recover_plan = []
         read_time_rooms = []
+        need_recover_room=[]
         # 从休息计划里 规划出排班计划 并且立刻执行
         for room in [k for k, v in self.currentPlan.items() if (k not in resting_dorm) and k.startswith('dormitory')]:
             # 记录房间可以放几个干员：
+            need_full = False
             dorm_plan = [data["agent"] for data in self.currentPlan[room]]
             # 塞一个最优组进去
             next_agent = next((obj for obj in agents if self.operators[obj["agent"]]['resting_priority'] == 'high'),
@@ -454,7 +459,8 @@ class BaseSchedulerSolver(BaseSolver):
             if skip_read_time:
                 if 'exaust_require' in self.operators[next_agent['agent']].keys() and \
                         self.operators[next_agent['agent']]["exaust_require"]:
-                    read_time_rooms.append(room)
+                    need_recover_room.append(room)
+                    read_time_rooms.append((room))
             else:
                 read_time_rooms.append(room)
             planned_agent = []
@@ -486,16 +492,15 @@ class BaseSchedulerSolver(BaseSolver):
                     if _room not in result.keys():
                         result[_room] = ['Current'] * len(self.currentPlan[_room])
                     result[_room][self.operators[_item_name]['index']] = _item_name
-            group_name = ''
-            if self.operators[next_agent['agent']]["group"] != '':
-                group_name = self.operators[next_agent['agent']]["group"]
+            if room in need_recover_room:
+                group_name = self.operators[next_agent['agent']]["agent"]
             else:
                 # 未分组则强制分组
                 group_name = 'default'
             if not group_name in group_info.keys():
-                group_info[group_name] = {'room': room, 'plan': {}}
+                group_info[group_name] = {'type': room, 'plan': {}}
             else:
-                group_info[group_name]['room'] += ',' + room
+                group_info[group_name]['type'] += ',' + room
             for planned in planned_agent:
                 if self.operators[planned]['current_room'] not in group_info[group_name]['plan']:
                     group_info[group_name]['plan'][self.operators[planned]['current_room']] = ['Current'] * len(
@@ -503,9 +508,6 @@ class BaseSchedulerSolver(BaseSolver):
                 group_info[group_name]['plan'][self.operators[planned]['current_room']][
                     self.operators[planned]['index']] = planned
         logger.debug(f'生成的分组计划:{group_info}')
-        if len(group_info.keys()) > 0:
-            for p in group_info.keys():
-                recover_plan.append({"type": group_info[p]['room'], 'plan': group_info[p]['plan']})
         error_count = 0
         time_result = {}
         logger.debug(f'生成的排班计划为->{result}')
@@ -524,14 +526,13 @@ class BaseSchedulerSolver(BaseSolver):
                 logger.exception(e)
                 error_count += 1
                 continue
-        for _plan in recover_plan:
-            if ',' not in _plan["type"]:
-                if _plan['type'] not in read_time_rooms:
-                    _plan["time"] = datetime.now() + timedelta(seconds=(3600))
-                else:
-                    _plan["time"] = time_result[_plan["type"]]
+        for key, _plan in group_info.items():
+
+            if 'default' != key:
+                _plan["time"] = time_result[_plan["type"]]
+                self.tasks.append({"type": _plan['type'], 'plan': _plan['plan'],'time':_plan['time']})
             else:
-                # 有小组
+                # 合在一起则取最小恢复时间
                 min_time = datetime.max
                 __time = datetime.now()
                 for dorm in _plan["type"].split(','):
@@ -540,7 +541,18 @@ class BaseSchedulerSolver(BaseSolver):
                     if min_time > time_result[dorm]:
                         min_time = time_result[dorm]
                 _plan["time"] = min_time
-        self.tasks.extend(recover_plan)
+                # 如果有任何已有plan
+                existing_plan = next((e for e in self.tasks if 'type' in e.keys() and e['type'].startswith('dormitory')), None)
+                if existing_plan is not None and existing_plan['time']<_plan["time"]:
+                    for k in _plan['plan']:
+                        if k not in existing_plan['plan']:
+                            existing_plan['plan'][k]= _plan['plan'][k]
+                        else:
+                            for idx,_a in enumerate( _plan['plan'][k]):
+                                if _plan['plan'][k][idx]!='Current':
+                                    existing_plan['plan'][k][idx] = _plan['plan'][k][idx]
+                else:
+                    self.tasks.append({"type": _plan['type'], 'plan': _plan['plan'], 'time': _plan['time']})
 
     def get_agent(self):
         plan = self.currentPlan
