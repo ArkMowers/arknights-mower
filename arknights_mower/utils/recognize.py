@@ -69,6 +69,8 @@ class Recognizer(object):
             self.scene = Scene.INDEX
         elif self.find('nav_index') is not None:
             self.scene = Scene.NAVIGATION_BAR
+        elif self.find('close_mine') is not None:
+            self.scene = Scene.CLOSE_MINE
         elif self.find('materiel_ico') is not None:
             self.scene = Scene.MATERIEL
         elif self.find('read_mail') is not None:

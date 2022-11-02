@@ -91,6 +91,10 @@
         "label": "LOGIN_CADPA_DETAIL",
         "comment": "游戏适龄提示"
     },
+    "112": {
+        "label": "CLOSE_MINE",
+        "comment": "产业合作洽谈会"
+    },
     "201": {
         "label": "INFRA_MAIN",
         "comment": "基建全局视角"
