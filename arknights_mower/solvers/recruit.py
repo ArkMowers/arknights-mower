@@ -73,6 +73,10 @@ class RecruitSolver(BaseSolver):
                     break
             if not tapped:
                 return True
+        elif self.scene() == Scene.LOADING:
+            self.sleep(3)
+        elif self.scene() == Scene.CONNECTING:
+            self.sleep(3)
         elif self.scene() == Scene.RECRUIT_TAGS:
             return self.recruit_tags()
         elif self.scene() == Scene.SKIP:
@@ -81,10 +85,7 @@ class RecruitSolver(BaseSolver):
             return self.recruit_result()
         elif self.scene() == Scene.MATERIEL:
             self.tap_element('materiel_ico')
-        elif self.scene() == Scene.LOADING:
-            self.sleep(3)
-        elif self.scene() == Scene.CONNECTING:
-            self.sleep(3)
+
         elif self.get_navigation():
             self.tap_element('nav_recruit')
         elif self.scene() != Scene.UNKNOWN:
