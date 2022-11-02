@@ -257,6 +257,8 @@ class BaseSolver:
             try:
                 if self.get_navigation():
                     self.tap_element('nav_index')
+                elif self.scene() == Scene.CLOSE_MINE:
+                    self.tap_element('close_mine')
                 elif self.scene() == Scene.ANNOUNCEMENT:
                     self.tap(detector.announcement_close(self.recog.img))
                 elif self.scene() == Scene.MATERIEL:
