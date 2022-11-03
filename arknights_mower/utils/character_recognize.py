@@ -165,7 +165,6 @@ def agent(img, draw=False):
                         continue
                     res = sift_recog(__img, resolution, draw)
                     if (res is not None) and res in agent_list:
-                        logger.warning(f'干员名称识别修正：{x[1]} -> {res}')
                         ret_agent.append(res)
                         ret_succ.append(poly)
                         continue
@@ -236,7 +235,6 @@ def agent_with_mood(img ,mood_only=False,length=5, draw: bool = False) :
                     else :
                         res = sift_recog(__img, height, draw,True)
                         if (res is not None) and res in agent_list:
-                            logger.warning(f'干员名称识别修正 -> {res}')
                             name = res
                         else:
                             saveimg(__img, 'failure_agent')

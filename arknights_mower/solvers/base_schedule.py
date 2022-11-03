@@ -59,7 +59,6 @@ class BaseSchedulerSolver(BaseSolver):
             self.get_agent()
         if len(self.scan_time.keys()) == 0:
             self.scan_time = {k: None for k, v in self.currentPlan.items()}
-        self.last_room = ''
         return super().run()
 
     def get_group(self, rest_agent, agent, groupname, name):
@@ -90,6 +89,7 @@ class BaseSchedulerSolver(BaseSolver):
             self.tap_element('arrange_blue_yes')
         elif self.scene() != Scene.UNKNOWN:
             self.back_to_index()
+            self.last_room = ''
         else:
             raise RecognizeError('Unknown scene')
 
@@ -102,10 +102,6 @@ class BaseSchedulerSolver(BaseSolver):
             try:
                 self.agent_arrange(self.task["plan"])
                 del self.tasks[0]
-                # # 如果下个任务10分钟内，则跳过计划阶段
-                # if len(self.tasks)>1 and self.tasks[0]['time']< datetime.now()+ timedelta(seconds=6000):
-                #     self.planned = True
-                #     self.todo_task = True
             except Exception as e:
                 logger.exception(e)
                 self.planned = True
@@ -150,6 +146,9 @@ class BaseSchedulerSolver(BaseSolver):
         room_total = len(base_room_list)
         idx = 0
         pre_result = []
+        room_total = len(base_room_list)
+        need_read = set(list(k for k,v in self.scan_time.items() if not (v is not None and v>(
+                            datetime.now() - timedelta(seconds=5400)))))
         while idx < room_total:
             ret, switch, mode = segment.worker(self.recog.img)
             if len(ret) == 0:
@@ -163,14 +162,9 @@ class BaseSchedulerSolver(BaseSolver):
                 # 已经滑动到底部
                 ret = ret[-(room_total - idx):]
             for block in ret:
-                y = (block[0][1] + block[2][1]) // 2
-                x = (block[2][0] - block[0][0]) // 7 + block[0][0]
-                if base_room_list[idx] not in ['train', 'factory']:
-                    if (self.scan_time[base_room_list[idx]] is not None) and self.scan_time[base_room_list[idx]] > (
-                            datetime.now() - timedelta(seconds=5400)):
-                        logger.debug(f'距离 {base_room_list[idx]} 上次记录时间未超过1.5小时，跳过本次记录')
-                        idx += 1
-                        continue
+                if base_room_list[idx] in need_read:
+                    y = (block[0][1] + block[2][1]) // 2
+                    x = (block[2][0] - block[0][0]) // 7 + block[0][0]
                     while True:
                         self.tap((x, y), interval=0.1, rebuild=True)
                         self.current_base[base_room_list[idx]] = character_recognize.agent_with_mood(self.recog.img,
@@ -189,7 +183,7 @@ class BaseSchedulerSolver(BaseSolver):
                             break
                 idx += 1
             # 识别结束
-            if idx == room_total == 0:
+            if idx == room_total or len(need_read) == 0:
                 break
             block = ret[-1]
             top = switch[2][1]
@@ -263,6 +257,10 @@ class BaseSchedulerSolver(BaseSolver):
         if len(miss_list.keys()) > 0:
             # 替换到他应该的位置
             for key in miss_list:
+                if miss_list[key]['group'] !='':
+                    # 如果还有其他小组成员没满心情则忽略
+                    if next((k for k,v in self.operators.items() if v['group'] == miss_list[key]['group'] and not (v['mood'] == -1 or v['mood'] == 24)), None) is not None:
+                        continue
                 if miss_list[key]['room'] not in fix_plan.keys():
                     fix_plan[miss_list[key]['room']] = [x['agent'] for x in current_base[miss_list[key]['room']]]
                 fix_plan[miss_list[key]['room']][miss_list[key]['index']] = key
@@ -292,6 +290,25 @@ class BaseSchedulerSolver(BaseSolver):
 
     def plan_solver(self):
         plan = self.currentPlan
+        # 如果下个 普通任务 <10 分钟则跳过 plan
+        if (next((e for e in self.tasks if 'type' not in e.keys() and e['time'] < datetime.now() + timedelta(seconds=900)),
+              None)) is not None:
+             return
+        if len(self.check_in_and_out()) > 0:
+            # 处理龙舌兰和但书的插拔
+            for room in self.check_in_and_out():
+                if any(room in obj["plan"].keys() for obj in self.tasks): continue;
+                in_out_plan = {}
+                in_out_plan[room] = []
+                for idx, x in enumerate(plan[room]):
+                    if '但书' in x['replacement'] or '龙舌兰' in x['replacement']:
+                        in_out_plan[room].append(x['replacement'][0])
+                    # 如果有现有计划则保持目前基地不变
+                    elif room in self.currentPlan.keys():
+                        in_out_plan[room].append(self.currentPlan[room][idx]["agent"])
+                    else:
+                        in_out_plan[room].append(x["agent"])
+                self.tasks.append({"time": self.get_in_and_out_time(room), "plan": in_out_plan})
         # 准备数据
         if self.read_mood:
             # 根据剩余心情排序
@@ -377,6 +394,9 @@ class BaseSchedulerSolver(BaseSolver):
                             #     self.taks.append(
                             #         {"type": self.operators[agent['agent']], 'plan': {}, 'time': change_time})
                             continue
+                        # 忽略掉心情值没低于上限的8的
+                        if agent['mood']> self.operators[agent['agent']]["upper_limit"]-8:
+                            continue
                         if agent['agent'] in self.operators.keys() and self.operators[agent['agent']]['group'] != '':
                             # 如果在group里则同时上下班
                             group_resting = [x for x in self.total_agent if
@@ -413,21 +433,7 @@ class BaseSchedulerSolver(BaseSolver):
                         self.tasks.remove(task)
 
                 logger.exception(f'计算排班计划出错->{e}')
-        if len(self.check_in_and_out()) > 0:
-            # 处理龙舌兰和但书的插拔
-            for room in self.check_in_and_out():
-                if any(room in obj["plan"].keys() for obj in self.tasks): continue;
-                in_out_plan = {}
-                in_out_plan[room] = []
-                for idx, x in enumerate(plan[room]):
-                    if '但书' in x['replacement'] or '龙舌兰' in x['replacement']:
-                        in_out_plan[room].append(x['replacement'][0])
-                    # 如果有现有计划则保持目前基地不变
-                    elif room in self.currentPlan.keys():
-                        in_out_plan[room].append(self.currentPlan[room][idx]["agent"])
-                    else:
-                        in_out_plan[room].append(x["agent"])
-                self.tasks.append({"time": self.get_in_and_out_time(room), "plan": in_out_plan})
+
 
     def get_swap_plan(self, resting_dorm, operators, skip_read_time):
         result = {}
@@ -551,6 +557,7 @@ class BaseSchedulerSolver(BaseSolver):
                             for idx,_a in enumerate( _plan['plan'][k]):
                                 if _plan['plan'][k][idx]!='Current':
                                     existing_plan['plan'][k][idx] = _plan['plan'][k][idx]
+                    existing_plan['type']=existing_plan['type']+','+_plan["time"]
                 else:
                     self.tasks.append({"type": _plan['type'], 'plan': _plan['plan'], 'time': _plan['time']})
 
@@ -562,13 +569,16 @@ class BaseSchedulerSolver(BaseSolver):
             for idx, data in enumerate(plan[room]):
                 __high = {"name": data["agent"], "room": room, "index": idx, "group": data["group"],
                           'replacement': data["replacement"], 'resting_priority': 'high', 'current_room': '',
-                          'exaust_require': False}
+                          'exaust_require': False,"upper_limit":24}
                 if __high['name'] in agent_base_config.keys() and 'RestingPriority' in agent_base_config[
                     __high['name']].keys() and agent_base_config[__high['name']]['RestingPriority'] == 'low':
                     __high["resting_priority"] = 'low'
                 if __high['name'] in agent_base_config.keys() and 'ExaustRequire' in agent_base_config[
                     __high['name']].keys() and agent_base_config[__high['name']]['ExaustRequire'] == True:
                     __high["exaust_require"] = True
+                if __high['name'] in agent_base_config.keys() and 'UpperLimit' in agent_base_config[
+                    __high['name']].keys():
+                    __high["upper_limit"] = agent_base_config[__high['name']]['UpperLimit']
                 high_production.append(__high)
                 if "replacement" in data.keys() and data["agent"] != '菲亚梅塔':
                     replacements.extend(data["replacement"])
@@ -584,10 +594,10 @@ class BaseSchedulerSolver(BaseSolver):
                     continue
                 else:
                     self.operators[agent] = {"type": "low", "name": agent, "group": '', 'resting_priority': 'low',
-                                             "index": -1, 'current_room': '', 'mood': 24}
+                                             "index": -1, 'current_room': '', 'mood': 24,"upper_limit":24}
             else:
                 self.operators[agent] = {"type": "low", "name": agent, "group": '', 'current_room': '',
-                                         'resting_priority': 'low', "index": -1, 'mood': 24}
+                                         'resting_priority': 'low', "index": -1, 'mood': 24,"upper_limit":24}
 
     def check_in_and_out(self):
         res = {}

@@ -1,7 +1,7 @@
 {
     "Default":{"UpperLimit": 24,"LowerLimit": 0,"ExaustRequire": false,"ArrangeOrder":[2,"false"]},
     "令":{"UpperLimit": 11,"ArrangeOrder":[2,"true"]},
-    "夕": {"LowerLimit": 13,"ArrangeOrder":[2,"true"]},
+    "夕": {"UpperLimit": 11,"LowerLimit": 13,"ArrangeOrder":[2,"true"]},
     "稀音":{"ExaustRequire": true,"ArrangeOrder":[2,"true"]},
     "巫恋":{"ExaustRequire": true,"ArrangeOrder":[2,"true"]},
     "柏喙":{"ExaustRequire": true,"ArrangeOrder":[2,"true"]},

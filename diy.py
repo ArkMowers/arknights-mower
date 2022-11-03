@@ -91,21 +91,21 @@ plan = {
         'room_1_2': [{'agent': '迷迭香', 'group': '', 'replacement': []},
                      {'agent': '砾', 'group': '', 'Type': '', 'replacement': ['夜烟', '斑点']},
                      {'agent': '至简', 'group': '', 'replacement': ['夜烟', '斑点']}],
-        'room_1_3': [{'agent': '承曦格雷伊', 'group': '异客', 'replacement': ['炎狱炎熔', '雷蛇', '澄闪','伊芙利特']}],
-        'room_2_2': [{'agent': '异客', 'group': '异客', 'replacement': ['调香师','水月','香草']},
-                     {'agent': '森蚺', 'group': '异客', 'Type': '', 'replacement': ['调香师','水月','香草']},
-                     {'agent': '温蒂', 'group': '异客', 'replacement': ['调香师','水月','香草']}],
+        'room_1_3': [{'agent': '承曦格雷伊', 'group': '异客', 'replacement': ['炎狱炎熔','格雷伊']}],
+        'room_2_2': [{'agent': '温蒂', 'group': '异客', 'replacement': ['调香师','水月','香草']},
+                     {'agent': '异客', 'group': '异客', 'Type': '', 'replacement': ['调香师','水月','香草']},
+                     {'agent': '森蚺', 'group': '异客', 'replacement': ['调香师','水月','香草']}],
         'room_2_1': [{'agent': '稀音', 'group': '稀音', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']},
-                     {'agent': '红云', 'group': '稀音', 'Type': '', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']},
-                     {'agent': '帕拉斯', 'group': '稀音', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']}],
-        'room_2_3': [{'agent': '澄闪', 'group': '', 'replacement': ['炎狱炎熔', '雷蛇','伊芙利特']}],
+                     {'agent': '帕拉斯', 'group': '稀音', 'Type': '', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']},
+                     {'agent': '红云', 'group': '稀音', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']}],
+        'room_2_3': [{'agent': '澄闪', 'group': '', 'replacement': ['炎狱炎熔', '格雷伊']}],
         'room_3_1': [{'agent': '食铁兽', 'group': '', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']},
                      {'agent': '断罪者', 'group': '', 'Type': '', 'replacement':['霜叶', '红豆', '白雪', 'Castle-3']},
                      {'agent': '槐琥', 'group': '', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']}],
         'room_3_2': [{'agent': '灰毫', 'group': '红松骑士', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']},
                      {'agent': '远牙', 'group': '红松骑士', 'Type': '', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']},
                      {'agent': '野鬃', 'group': '红松骑士', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']}],
-        'room_3_3': [{'agent': '雷蛇', 'group': '', 'replacement': ['炎狱炎熔', '澄闪','伊芙利特']}]
+        'room_3_3': [{'agent': '雷蛇', 'group': '', 'replacement': ['炎狱炎熔','格雷伊']}]
     }
 }
 
@@ -158,6 +158,7 @@ def inialize(tasks=[]):
     # 读取心情开关，有菲亚梅塔或者希望全自动换班得设置为 true
     base_scheduler.read_mood = True
     base_scheduler.scan_time = {}
+    base_scheduler.last_room = ''
     return base_scheduler
 def simulate():
     '''
