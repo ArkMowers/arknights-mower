@@ -213,6 +213,7 @@ def agent(img, draw=False):
 
     except Exception as e:
         logger.debug(traceback.format_exc())
+        saveimg(img, 'failure_agent')
         raise RecognizeError(e)
 
 
@@ -221,7 +222,7 @@ def agent_with_mood(img ,mood_only=False,length=5, draw: bool = False) :
         height, width, _ = img.shape
         result = []
         index = 0
-        x0 = int(width*600/2496);y0 = int(height*1005/1404);x1 = int(width*780/2496);y1 = int(height*1310/1404);h = int((y1 - y0) / 5)
+        x0 = int(width*470/1920);y0 = int(height*765/1080);x1 = int(width*590/1920);y1 = int(height*1010/1080);h = int((y1 - y0) / 5)
         a0 = int(width*80/2496); b0 = int(height*1005/1404); a1 = int(width*275/2496); b1 = int(height*1310/1404); ah = int((b1 - b0) / 5)
         while index < length:
             data ={}
@@ -231,16 +232,12 @@ def agent_with_mood(img ,mood_only=False,length=5, draw: bool = False) :
                 if data["mood"]!='':
                     __img = img[ (b0 + ah * index):(b0 + ah * (index + 1)), a0:a1 ]
                     ocr = ocrhandle.predict(__img)
+                    name =''
                     if len(ocr) > 0 and ocr[0][1] in agent_list and ocr[0][1] not in ['砾', '陈']: name = ocr[0][1]
                     else :
                         res = sift_recog(__img, height, draw,True)
                         if (res is not None) and res in agent_list:
                             name = res
-                        else:
-                            saveimg(__img, 'failure_agent')
-                            name = segment.read_screen(img[ (b0 + ah * index):(b0 + ah * (index + 1)), a0:a1 ],
-                                                   langurage="chi_sim",
-                                                   type="text")
                     # 这两个名字太长会被挡住
                     if  name in ocr_error.keys():
                         data[ "agent" ] = ocr_error[ name ]

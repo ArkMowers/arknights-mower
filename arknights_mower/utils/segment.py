@@ -5,8 +5,7 @@ import traceback
 import cv2
 import numpy as np
 from matplotlib import pyplot as plt
-from ..data import ocr_error
-from .. import __rootdir__
+from .image import saveimg
 from ..data import agent_list
 from ..ocr import ocrhandle
 from . import detector
@@ -271,21 +270,41 @@ def base(img: tp.Image, central: tp.Scope, draw: bool = False) -> dict[ str, tp.
 def read_screen(img,type="mood",langurage="eng",limit =24,cord=None,draw=False ) -> int:
     if cord is not None :
         img = img[ cord[1]:cord[3], cord[0]:cord[2] ]
+    if type=='mood':
+        # 心情图片太小，复制8次提高准确率
+        for x in range(0, 3):
+            img = cv2.vconcat([img, img])
+        draw = True
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[ 1 ]
     thresh = 255 - thresh
     if draw :plt.imshow(img)
     if type=="text": return (pytesseract.image_to_string(thresh, lang=langurage, config='--psm 6')).strip()
+    elif type=='time':
+        _config = r'-c tessedit_char_whitelist=0123456789: --psm 6'
+        return (pytesseract.image_to_string(thresh, lang=langurage, config=_config)).strip()
     elif type=="mood":
-        data = (pytesseract.image_to_string(thresh, lang=langurage, config='--psm 6')).strip()
+        _config = r'-c tessedit_char_whitelist=0123456789/- --psm 6'
+        data = (pytesseract.image_to_string(thresh, lang=langurage, config=_config)).strip()
         try:
-            number = int(data.split('/')[0])
+            result = {}
+            for value in data.splitlines():
+                if value =='': continue
+                if value not in result.keys():
+                    result[value]=1
+                else :
+                    result[value]+=1
+            # 取出现次数最多的
+            number = int(max(result, key=result.get).split('/')[0])
             if number>limit:
+                saveimg(thresh, 'error_mood')
                 return limit
             else : return number
         except Exception as e:
             # 空的时候是没人在基建
-            if not data=='':
+            if data=='/':
+                return -1
+            elif not data=='':
                 logger.warning("读取结果有误:-->" + data)
                 return -1
             else :
