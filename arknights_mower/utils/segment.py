@@ -302,10 +302,10 @@ def read_screen(img,type="mood",langurage="eng",limit =24,cord=None,draw=False )
             else : return number
         except Exception as e:
             # 空的时候是没人在基建
-            if data=='/':
+            if data in ['--/--','/']:
                 return -1
-            elif not data=='':
-                logger.warning("读取结果有误:-->" + data)
+            elif data!='':
+                saveimg(thresh, 'error_mood')
                 return -1
             else :
                 return data

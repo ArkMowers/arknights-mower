@@ -227,12 +227,12 @@ def agent_with_mood(img ,mood_only=False,length=5, draw: bool = False) :
         while index < length:
             data ={}
             data ["mood"]=segment.read_screen(img[ (y0+h*index):(y0+h*(index+1)), x0:x1 ],type="mood")
+            name = ''
             if not mood_only:
                 #如果不是没人在基建
-                if data["mood"]!='':
+                if data["mood"]!=-1:
                     __img = img[ (b0 + ah * index):(b0 + ah * (index + 1)), a0:a1 ]
                     ocr = ocrhandle.predict(__img)
-                    name =''
                     if len(ocr) > 0 and ocr[0][1] in agent_list and ocr[0][1] not in ['砾', '陈']: name = ocr[0][1]
                     else :
                         res = sift_recog(__img, height, draw,True)
