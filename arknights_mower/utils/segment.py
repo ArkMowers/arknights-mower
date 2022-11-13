@@ -302,13 +302,10 @@ def read_screen(img,type="mood",langurage="eng",limit =24,cord=None,draw=False )
             else : return number
         except Exception as e:
             # 空的时候是没人在基建
-            if data in ['--/--','/']:
-                return -1
-            elif data!='':
+            if '--/--' not in data and '/' not in data:
+                logger.warning(f'读取错误:{data}')
                 saveimg(thresh, 'error_mood')
-                return -1
-            else :
-                return data
+            return -1
 
 
 def worker(img: tp.Image, draw: bool = False) -> tuple[ list[ tp.Rectangle ], tp.Rectangle, bool ]:
