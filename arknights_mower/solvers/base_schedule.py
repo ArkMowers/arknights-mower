@@ -446,7 +446,7 @@ class BaseSchedulerSolver(BaseSolver):
                         if agent['agent'] in exclude_list:
                             continue
                         # 忽略掉低效率的干员
-                        if agent['agent'] in self.operators.keys() and self.operators[agent['agent']]['type']=='low':
+                        if agent['agent'] in self.operators.keys() and self.operators[agent['agent']]['type']!='high':
                             continue
                         # 忽略掉正在休息的
                         if agent['current_room'] in resting_dorm:
