@@ -269,7 +269,7 @@ class BaseSchedulerSolver(BaseSolver):
                 # 记录数据
                 if data["agent"] not in self.operators.keys():
                     # 如果出现没预设的干员则新建
-                    self.operators[data["agent"]] = {"type": "low", "name": data["agent"], "group": '',
+                    self.operators[data["agent"]] = {"type": "", "name": data["agent"], "group": '',
                                                      'resting_priority': 'low'}
                 self.operators[data["agent"]]['mood'] = data["mood"]
                 self.operators[data["agent"]]['current_room'] = key
@@ -1152,12 +1152,13 @@ class BaseSchedulerSolver(BaseSolver):
         # 如果重复进入宿舍则需要排序
         logger.info(f'上次进入房间为：{self.last_room},本次房间为：{room}')
         if self.last_room.startswith('dorm') and is_dorm:
-            self.tap((self.recog.w * 0.95, self.recog.h * 0.05), interval=0.1)
+            logger.info('开始重设过滤器')
+            self.tap((self.recog.w * 0.95, self.recog.h * 0.05), interval=0.5)
             self.recog.update()
             if self.find('not_in_dorm') is not None:
-                self.tap((self.recog.w * 0.3, self.recog.h * 0.5), interval=0.1)
+                self.tap((self.recog.w * 0.3, self.recog.h * 0.5), interval=0.5)
             # 确认
-            self.tap((self.recog.w * 0.8, self.recog.h * 0.8), interval=0.1)
+            self.tap((self.recog.w * 0.8, self.recog.h * 0.8), interval=0.5)
         while len(agent) > 0:
             if right_swipe > 50:
                 # 到底了则返回再来一次
@@ -1210,17 +1211,17 @@ class BaseSchedulerSolver(BaseSolver):
                 # 滑动到最左边
                 self.sleep(interval=0.5, rebuild=False)
                 right_swipe = self.swipe_left(right_swipe, w, h)
-            self.tap((self.recog.w * 0.95, self.recog.h * 0.05), interval=0.1)
+            self.tap((self.recog.w * 0.95, self.recog.h * 0.05), interval=0.5)
             self.recog.update()
             if self.find('not_in_dorm') is None:
-                self.tap((self.recog.w * 0.3, self.recog.h * 0.5), interval=0.1)
+                self.tap((self.recog.w * 0.3, self.recog.h * 0.5), interval=0.5)
             # 确认
-            self.tap((self.recog.w * 0.8, self.recog.h * 0.8), interval=0.1)
+            self.tap((self.recog.w * 0.8, self.recog.h * 0.8), interval=0.5)
             self.switch_arrange_order(3, "true")
             # 只选择在列表里面的
             # 替换组小于20才休息，防止进入就满心情进行网络连接
             free_list = [v["name"] for k, v in self.operators.items() if
-                         v["name"] not in agents and v["type"] == 'low' and 'mood' in v.keys() and v["mood"] < 20]
+                         v["name"] not in agents and ((v["type"] == 'low' and 'mood' in v.keys() and v["mood"] < 20) or v["type"]=="")]
             free_list.extend([_name for _name in agent_list if _name not in self.operators.keys()])
             while free_num:
                 selected_name, ret = self.scan_agant(free_list, max_agent_count=free_num)
