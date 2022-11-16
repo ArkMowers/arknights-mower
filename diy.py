@@ -30,6 +30,9 @@ shop_priority = ['招聘许可', '赤金', '龙门币', '初级作战记录', '�
 # 公招选取标签时优先选择的干员的优先级（从高到低）
 recruit_priority = ['因陀罗', '火神']
 
+# Free 干员安排黑名单
+free_blacklist= []
+
 # 全自动基建排班计划：
 # 这里定义了一套全自动基建的排班计划 plan_1
 # agent 为常驻高效组的干员名
@@ -159,6 +162,7 @@ def inialize(tasks=[]):
     base_scheduler.read_mood = True
     base_scheduler.scan_time = {}
     base_scheduler.last_room = ''
+    base_scheduler.free_blacklist = free_blacklist
     return base_scheduler
 def simulate():
     '''

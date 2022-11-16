@@ -1129,6 +1129,9 @@ class BaseSchedulerSolver(BaseSolver):
         """
         :param order: ArrangeOrder, 选择干员时右上角的排序功能
         """
+        for idx, n in enumerate(agents):
+            if n == '':
+                agents[idx] = 'Free'
         agent = copy.deepcopy(agents)
         logger.info(f'{"安排干员" if not read_time else "读取心情"}：{agent}')
         # 若不是空房间，则清空工作中的干员
@@ -1223,6 +1226,7 @@ class BaseSchedulerSolver(BaseSolver):
             free_list = [v["name"] for k, v in self.operators.items() if
                          v["name"] not in agents and ((v["type"] == 'low' and 'mood' in v.keys() and v["mood"] < 20) or v["type"]=="")]
             free_list.extend([_name for _name in agent_list if _name not in self.operators.keys()])
+            free_list = list(set(free_list) - set(self.free_blacklist))
             while free_num:
                 selected_name, ret = self.scan_agant(free_list, max_agent_count=free_num)
                 free_num -= len(selected_name)
