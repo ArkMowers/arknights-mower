@@ -136,8 +136,10 @@ class BaseSchedulerSolver(BaseSolver):
         if self.error:
             logger.info("由于出现错误情况，生成一次空任务来执行纠错")
             self.scan_time = {}
-            room = next(iter(self.currentPlan.keys()))
-            self.tasks.append({'time': datetime.now(), 'plan': {room: ['Current'] * len(self.currentPlan[room])}})
+            # 如果没有任何时间小于当前时间的任务才生成空任务
+            if (next((e for e in self.tasks if e['time'] < datetime.now()),None)) is None:
+                room = next(iter(self.currentPlan.keys()))
+                self.tasks.append({'time': datetime.now(), 'plan': {room: ['Current'] * len(self.currentPlan[room])}})
         return True
 
     def infra_main(self):
@@ -713,12 +715,8 @@ class BaseSchedulerSolver(BaseSolver):
             self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.2)
             self.tap((self.recog.w * 0.82, self.recog.h * 0.2), interval=0.2)
         self.choose_agent([name], room, read_time=True)
-        if "菲亚梅塔" == name:
-            upperLimit = 43200
-        else:
-            upperLimit = 21600
         time_in_seconds = self.read_time((int(self.recog.w * 540 / 2496), int(self.recog.h * 380 / 1404),
-                                          int(self.recog.w * 710 / 2496), int(self.recog.h * 430 / 1404)), upperLimit)
+                                          int(self.recog.w * 710 / 2496), int(self.recog.h * 430 / 1404)))
         execute_time = datetime.now() + timedelta(seconds=(time_in_seconds + adjustment))
         logger.info(name + ' 心情恢复时间为：' + execute_time.strftime("%H:%M:%S"))
         logger.info('返回基建主界面')
@@ -742,24 +740,19 @@ class BaseSchedulerSolver(BaseSolver):
         self.back(interval=2)
         return execute_time
 
-    def read_time(self, cord, upperlimit=8800, error_count=0):
+    def read_time(self, cord, error_count=0):
         # 刷新图片
         self.recog.update()
         time_str = segment.read_screen(self.recog.img, type='time', cord=cord)
         try:
             h, m, s = time_str.split(':')
-            seconds = int(h) * 3600 + int(m) * 60 + int(s)
-            if seconds > upperlimit:
-                logger.error("数值超出最大值" + "--> " + str(seconds))
-                raise RecognizeError("")
-            else:
-                return seconds
+            return int(h) * 3600 + int(m) * 60 + int(s)
         except:
             logger.error("读取失败" + "--> " + time_str)
             if error_count > 50:
                 raise Exception(f"读取失败{error_count}次超过上限")
             else:
-                return self.read_time(cord, upperlimit, error_count + 1)
+                return self.read_time(cord, error_count + 1)
 
     def todo_list(self) -> None:
         """ 处理基建 Todo 列表 """
@@ -1179,6 +1172,7 @@ class BaseSchedulerSolver(BaseSolver):
         index_change = False
         pre_order = [2, False]
         right_swipe = 0
+        retry_count = 0
         if read_time:
             # 不需要排序
             self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
@@ -1189,12 +1183,14 @@ class BaseSchedulerSolver(BaseSolver):
         if self.last_room.startswith('dorm') and is_dorm:
             self.reset_filter()
         while len(agent) > 0:
+            if retry_count > 3: raise Exception(f"到达最大尝试次数 3次")
             if right_swipe > max_swipe:
                 # 到底了则返回再来一次
                 for _ in range(right_swipe):
                     self.swipe_only((w // 2, h // 2), (w // 2, 0), interval=0.5)
                 right_swipe = 0
                 max_swipe = 50
+                retry_count += 1
                 self.reset_filter()
             if first_time:
                 # 清空
@@ -1225,8 +1221,8 @@ class BaseSchedulerSolver(BaseSolver):
             changed, ret = self.scan_agant(agent)
             if len(agent) == 0: break;
             if not changed:
-                # 如果没找到
-                if ret[0][0]==first_name:
+                # 如果没找到 而且右移次数大于5
+                if ret[0][0] == first_name and right_swipe > 5:
                     max_swipe = right_swipe
                 else :
                     first_name = ret[0][0]

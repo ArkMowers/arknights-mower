@@ -270,7 +270,7 @@ def base(img: tp.Image, central: tp.Scope, draw: bool = False) -> dict[ str, tp.
 def read_screen(img,type="mood",langurage="eng",limit =24,cord=None,draw=False ) -> int:
     if cord is not None :
         img = img[ cord[1]:cord[3], cord[0]:cord[2] ]
-    if type=='mood':
+    if type=='mood' or type=="time":
         # 心情图片太小，复制8次提高准确率
         for x in range(0, 3):
             img = cv2.vconcat([img, img])
@@ -280,11 +280,9 @@ def read_screen(img,type="mood",langurage="eng",limit =24,cord=None,draw=False )
     thresh = 255 - thresh
     if draw :plt.imshow(img)
     if type=="text": return (pytesseract.image_to_string(thresh, lang=langurage, config='--psm 6')).strip()
-    elif type=='time':
+    elif type=="mood" or type=='time':
         _config = r'-c tessedit_char_whitelist=0123456789: --psm 6'
-        return (pytesseract.image_to_string(thresh, lang=langurage, config=_config)).strip()
-    elif type=="mood":
-        _config = r'-c tessedit_char_whitelist=0123456789/- --psm 6'
+        if type=='mood':_config = r'-c tessedit_char_whitelist=0123456789/- --psm 6'
         data = (pytesseract.image_to_string(thresh, lang=langurage, config=_config)).strip()
         try:
             result = {}
@@ -295,11 +293,14 @@ def read_screen(img,type="mood",langurage="eng",limit =24,cord=None,draw=False )
                 else :
                     result[value]+=1
             # 取出现次数最多的
-            number = int(max(result, key=result.get).split('/')[0])
-            if number>limit:
-                saveimg(thresh, 'error_mood')
-                return limit
-            else : return number
+            if type =="mood":
+                number = int(max(result, key=result.get).split('/')[0])
+                if number>limit:
+                    saveimg(thresh, 'error_mood')
+                    return limit
+                else : return number
+            else:
+                return max(result, key=result.get)
         except Exception as e:
             # 空的时候是没人在基建
             if '--/--' not in data and '/' not in data:
