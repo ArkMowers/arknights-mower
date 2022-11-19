@@ -110,8 +110,8 @@ class BaseSchedulerSolver(BaseSolver):
             _room = self.operators[name]['current_room']
             idx =[ a['agent'] for a in self.current_base[_room] ].index(i)
             operators.append({'agent':i,'current_room':_room,'room_index': idx })
-            if 'resting_priority' in self.operators[i].keys() and self.operators[i]['resting_priority']:
-                room_need+=1
+            # if 'resting_priority' in self.operators[i].keys() and self.operators[i]['resting_priority']=='high':
+            #     room_need+=1
         resting_dorm=[]
         ignore  =[]
         if next((e for e in self.tasks if 'type'in e.keys() and e['type'].startswith("dorm")), None) is not None:
@@ -127,6 +127,7 @@ class BaseSchedulerSolver(BaseSolver):
         # 执行全部任务
         for task in self.tasks:
             if 'type' in task.keys() and 'dorm'in task['type'] and 'plan' in task.keys():
+                # TODO 移除 resting_room 的干员比如说有巫恋在休息
                 self.agent_arrange(task['plan'])
                 self.tasks.remove(task)
         self.get_swap_plan(resting_dorm, operators,False)
@@ -431,10 +432,10 @@ class BaseSchedulerSolver(BaseSolver):
                         bundle.append(agent)
                     for planned in bundle:
                         if self.operators[planned]['current_room'] not in exaust_plan['plan']:
-                            exaust_plan['plan'][self.operators[planned]['current_room']] = [
+                            exaust_plan['plan'][self.operators[planned]['room']] = [
                                                                                                'Current'] * len(
                                 self.currentPlan[self.operators[planned]['room']])
-                        exaust_plan['plan'][self.operators[planned]['current_room']][
+                        exaust_plan['plan'][self.operators[planned]['room']][
                             self.operators[planned]['index']] = planned
                     total_exaust_plan.append(exaust_plan)
                 self.tasks.extend(total_exaust_plan)
@@ -1206,7 +1207,7 @@ class BaseSchedulerSolver(BaseSolver):
             if index_change or first_time:
                 # 第一次则调整
                 is_custom, arrange_type = self.get_order(agent[0])
-                if is_dorm or not is_custom:
+                if is_dorm and not ('room' in self.operators[agent[0]].keys() and self.operators[agent[0]]['room'].startswith('dormitory')):
                     arrange_type = (3, 'true')
                 # 如果重新排序则滑到最左边
                 if pre_order[0] != arrange_type[0] or pre_order[1] != arrange_type[1]:
