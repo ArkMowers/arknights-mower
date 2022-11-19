@@ -459,7 +459,7 @@ class BaseSchedulerSolver(BaseSolver):
                         if (len([value for value in need_to_rest if value["agent"] == agent["agent"]]) > 0):
                             continue
                         # 心情耗尽组如果心情 小于2 则记录时间
-                        if agent['agent'] in self.exaust_agent and agent['mood']<3:
+                        if agent['agent'] in self.exaust_agent and agent['mood']<3 and not self.operators[agent['agent']]['current_room'].startswith('dormitory'):
                             if next((e for e in self.tasks if 'type'in e.keys() and e['type']==agent['agent']), None) is None:
                                 rest_time = self.get_time(agent['current_room'], agent['agent'],adjustment=-600)
                                 # plan 是空的是因为得动态生成
