@@ -1140,9 +1140,8 @@ class BaseSchedulerSolver(BaseSolver):
                 return False, agent_base_config["Default"]["ArrangeOrder"]
         return False, agent_base_config["Default"]["ArrangeOrder"]
     def reset_filter(self):
-        logger.info('开始重设过滤器')
-        self.tap((self.recog.w * 0.95, self.recog.h * 0.05), interval=0.5)
-        self.recog.update()
+        logger.info('开始移除未进驻')
+        self.tap((self.recog.w * 0.95, self.recog.h * 0.05), interval=1)
         if self.find('not_in_dorm') is not None:
             self.tap((self.recog.w * 0.3, self.recog.h * 0.5), interval=0.5)
         # 确认
@@ -1207,7 +1206,7 @@ class BaseSchedulerSolver(BaseSolver):
             if index_change or first_time:
                 # 第一次则调整
                 is_custom, arrange_type = self.get_order(agent[0])
-                if is_dorm and not is_custom:
+                if is_dorm or not is_custom:
                     arrange_type = (3, 'true')
                 # 如果重新排序则滑到最左边
                 if pre_order[0] != arrange_type[0] or pre_order[1] != arrange_type[1]:
