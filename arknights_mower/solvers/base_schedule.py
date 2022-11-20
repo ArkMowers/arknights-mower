@@ -311,7 +311,7 @@ class BaseSchedulerSolver(BaseSolver):
             for key in miss_list:
                 if miss_list[key]['group'] !='':
                     # 如果还有其他小组成员没满心情则忽略
-                    if next((k for k,v in self.operators.items() if v['group'] == miss_list[key]['group'] and not (v['mood'] == -1 or v['mood'] == 24)), None) is not None:
+                    if next((k for k,v in self.operators.items() if v['group'] == miss_list[key]['group'] and v['current_room'].startswith('dormitory') and not (v['mood'] == -1 or v['mood'] == 24)), None) is not None:
                         continue
                 if miss_list[key]['room'] not in fix_plan.keys():
                     fix_plan[miss_list[key]['room']] = [x['agent'] for x in current_base[miss_list[key]['room']]]
