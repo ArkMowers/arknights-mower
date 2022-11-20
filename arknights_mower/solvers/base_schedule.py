@@ -1140,11 +1140,13 @@ class BaseSchedulerSolver(BaseSolver):
             else:
                 return False, agent_base_config["Default"]["ArrangeOrder"]
         return False, agent_base_config["Default"]["ArrangeOrder"]
-    def reset_filter(self):
-        logger.info('开始移除未进驻')
+    def detail_filter(self,turn_on, type="not_in_dorm"):
+        logger.info(f'开始 {("打开" if turn_on else "关闭")} {type} 筛选')
         self.tap((self.recog.w * 0.95, self.recog.h * 0.05), interval=1)
-        if self.find('not_in_dorm') is not None:
-            self.tap((self.recog.w * 0.3, self.recog.h * 0.5), interval=0.5)
+        if type=="not_in_dorm" :
+            not_in_dorm = self.find('not_in_dorm')
+            if turn_on ^ (not_in_dorm is not None):
+                self.tap((self.recog.w * 0.3, self.recog.h * 0.5), interval=0.5)
         # 确认
         self.tap((self.recog.w * 0.8, self.recog.h * 0.8), interval=0.5)
 
@@ -1181,7 +1183,7 @@ class BaseSchedulerSolver(BaseSolver):
         # 如果重复进入宿舍则需要排序
         logger.info(f'上次进入房间为：{self.last_room},本次房间为：{room}')
         if self.last_room.startswith('dorm') and is_dorm:
-            self.reset_filter()
+            self.detail_filter(False)
         while len(agent) > 0:
             if retry_count > 3: raise Exception(f"到达最大尝试次数 3次")
             if right_swipe > max_swipe:
@@ -1191,7 +1193,7 @@ class BaseSchedulerSolver(BaseSolver):
                 right_swipe = 0
                 max_swipe = 50
                 retry_count += 1
-                self.reset_filter()
+                self.detail_filter(False)
             if first_time:
                 # 清空
                 if is_dorm:
@@ -1242,12 +1244,7 @@ class BaseSchedulerSolver(BaseSolver):
                 # 滑动到最左边
                 self.sleep(interval=0.5, rebuild=False)
                 right_swipe = self.swipe_left(right_swipe, w, h)
-            self.tap((self.recog.w * 0.95, self.recog.h * 0.05), interval=0.5)
-            self.recog.update()
-            if self.find('not_in_dorm') is None:
-                self.tap((self.recog.w * 0.3, self.recog.h * 0.5), interval=0.5)
-            # 确认
-            self.tap((self.recog.w * 0.8, self.recog.h * 0.8), interval=0.5)
+            self.detail_filter(True)
             self.switch_arrange_order(3, "true")
             # 只选择在列表里面的
             # 替换组小于20才休息，防止进入就满心情进行网络连接
@@ -1396,7 +1393,10 @@ class BaseSchedulerSolver(BaseSolver):
                             self.tap((x0, y0), rebuild=True)
                         # 如果需要读取时间
                         if base_room_list[idx] in read_time_room:
-                            self.tap((x, y))
+                            self.recog.update()
+                            while self.scene() == Scene.INFRA_ARRANGE:
+                                self.tap((x, y))
+                                self.sleep(1)
                             index = [data["agent"] for data in self.currentPlan[base_room_list[idx]]].index('Free')
                             adj = 0 if self.operators[plan[base_room_list[idx]][index]]["exaust_require"] else -600
                             time = self.get_time(base_room_list[idx], plan[base_room_list[idx]][index], adjustment=adj,
