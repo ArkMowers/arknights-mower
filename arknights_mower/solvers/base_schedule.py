@@ -351,15 +351,10 @@ class BaseSchedulerSolver(BaseSolver):
             for room in self.check_in_and_out():
                 if any(room in obj["plan"].keys() and 'type' not in obj.keys() for obj in self.tasks): continue;
                 in_out_plan = {}
-                in_out_plan[room] = []
+                in_out_plan[room] = ['Current']* len(plan[room])
                 for idx, x in enumerate(plan[room]):
                     if '但书' in x['replacement'] or '龙舌兰' in x['replacement']:
-                        in_out_plan[room].append(x['replacement'][0])
-                    # 如果有现有计划则保持目前基地不变
-                    elif room in self.currentPlan.keys():
-                        in_out_plan[room].append(self.currentPlan[room][idx]["agent"])
-                    else:
-                        in_out_plan[room].append(x["agent"])
+                        in_out_plan[room][idx]=x['replacement'][0]
                 self.tasks.append({"time": self.get_in_and_out_time(room), "plan": in_out_plan})
         # 准备数据
         if self.read_mood:
