@@ -1,11 +1,15 @@
 from __future__ import annotations
 import copy
-from ..data import agent_base_config, agent_list
-
+import time
 from enum import Enum
 from datetime import datetime, timedelta
 import numpy as np
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
+from ..data import agent_base_config, agent_list
+from arknights_mower.utils import config
 from ..data import base_room_list
 from ..utils import character_recognize, detector, segment
 from ..utils import typealias as tp
@@ -13,6 +17,8 @@ from ..utils.device import Device
 from ..utils.log import logger
 from ..utils.recognize import RecognizeError, Recognizer, Scene
 from ..utils.solver import BaseSolver
+## Maa
+from arknights_mower.utils.asst import Asst, Message
 
 
 class ArrangeOrder(Enum):
@@ -142,9 +148,10 @@ class BaseSchedulerSolver(BaseSolver):
                 room = next(iter(self.currentPlan.keys()))
                 self.tasks.append({'time': datetime.now(), 'plan': {room: ['Current'] * len(self.currentPlan[room])}})
             # 如果没有任何时间小于当前时间的任务-10分钟 则清空任务
-            elif (next((e for e in self.tasks if e['time'] < datetime.now()-timedelta(seconds=600)), None)) is not None:
+            if (next((e for e in self.tasks if e['time'] < datetime.now()-timedelta(seconds=600)), None)) is not None:
                 logger.info("检测到执行超过10分钟的任务，清空全部任务")
                 self.tasks = []
+                self.back_to_index()
         return True
 
     def infra_main(self):
@@ -475,7 +482,7 @@ class BaseSchedulerSolver(BaseSolver):
                         if agent['current_room'] in resting_dorm:
                             continue
                         # 忽略掉心情值没低于上限的8的
-                        if agent['mood']> self.operators[agent['agent']]["upper_limit"]-8:
+                        if agent['mood']> int(self.operators[agent['agent']]["upper_limit"]*self.resting_treshhold):
                             continue
                         if agent['agent'] in self.operators.keys() and self.operators[agent['agent']]['group'] != '':
                             # 如果在group里则同时上下班
@@ -1450,3 +1457,108 @@ class BaseSchedulerSolver(BaseSolver):
         self.back()
         if len(read_time_room) > 0:
             return time_result
+    def inialize_maa(self):
+        # 请设置为存放 dll 文件及资源的路径
+        path = 'F:\MAA-v4.6.5-beta.3-win-x64'
+
+        # 外服需要再额外传入增量资源路径，例如
+        Asst.load(path=path)
+
+        # 若需要获取详细执行信息，请传入 callback 参数
+        # 例如 asst = Asst(callback=my_callback)
+        self.MAA = Asst()
+
+        # 请自行配置 adb 环境变量，或修改为 adb 可执行程序的路径
+        if self.MAA.connect('D:\\Program Files\\Nox\\bin\\adb.exe', '127.0.0.1:62001'):
+            logger.info("MAA 连接成功")
+        else:
+            logger.info("MAA 连接失败")
+            raise Exception("MAA 连接失败")
+    def maa_plan_solver(self):
+        try:
+            logger.info("休息时长超过9分钟，启动MAA")
+            self.send_email('休息时长超过9分钟，启动MAA')
+            # 任务及参数请参考 docs/集成文档.md
+            self.inialize_maa()
+            self.MAA.append_task('StartUp')
+            self.MAA.append_task('Fight', {
+                'stage': 'AP-5',
+                'medicine': 0,
+                'stone': 0,
+                'times': 999,
+                'report_to_penguin': True,
+                'client_type': '',
+                'penguin_id': '',
+                'DrGrandet': False,
+                'server': 'CN'
+            })
+            self.MAA.append_task('Recruit', {
+                'select': [4],
+                'confirm': [3, 4],
+                'times': 4,
+                'refresh': True
+            })
+            self.MAA.append_task('Visit')
+            self.MAA.append_task('Mall', {
+                'shopping': True,
+                'buy_first': ['招聘许可', '龙门币', '赤金'],
+                'blacklist': ['家具', '碳', '加急'],
+            })
+            self.MAA.append_task('Award')
+            # asst.append_task('Copilot', {
+            #     'stage_name': '千层蛋糕',
+            #     'filename': './GA-EX8-raid.json',
+            #     'formation': False
+            # })
+            self.MAA.append_task('Roguelike', {
+                'mode': 0,
+                'starts_count': 9999999,
+                'investment_enabled':True,
+                'investments_count':9999999,
+                'stop_when_investment_full':False,
+                'squad':'以人为本分队',
+                'roles':'取长补短',
+                'theme': 'Mizuki',
+                'core_char':'棘刺'
+            })
+            self.MAA.start()
+            logger.info(f"MAA 启动")
+            hard_stop = False
+            while self.MAA.running():
+                # 5分钟之前就停止
+                if (self.tasks[0]["time"] - datetime.now()).total_seconds() < 300:
+                    self.MAA.stop()
+                    hard_stop = True
+                else:
+                    time.sleep(0)
+            self.send_email('MAA停止')
+            if hard_stop:
+                logger.info(f"由于maa任务并未完成，重启软件")
+                # 目前没有做肉鸽的导航，只能重启软件
+                self.device.exit('com.hypergryph.arknights')
+                self.device.launch(config.APPNAME)
+                time.sleep(10)
+            remaining_time =(self.tasks[0]["time"] - datetime.now()).total_seconds()
+            logger.info(f"开始休息 {remaining_time} 秒")
+            time.sleep(remaining_time)
+            self.MAA = None
+        except Exception as e :
+            logger.error(e)
+            self.MAA = None
+            time.sleep((self.tasks[0]["time"] - datetime.now()).total_seconds())
+
+    def send_email(self,tasks):
+        try:
+            msg = MIMEMultipart()
+            conntent = str(tasks)
+            msg.attach(MIMEText(conntent, 'plain', 'utf-8'))
+            msg['Subject'] = "任务数据"
+            msg['From'] = self.email_config['account']
+            s = smtplib.SMTP_SSL("smtp.qq.com", 465)
+            # 登录邮箱
+            s.login(self.email_config['account'], self.email_config['pass_code'])
+            # 开始发送
+            s.sendmail(self.email_config['account'], self.email_config['receipts'], msg.as_string())
+            logger.info("邮件发送成功")
+        except Exception as e:
+            logger.error("邮件发送失败")
