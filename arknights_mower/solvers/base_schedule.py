@@ -141,6 +141,10 @@ class BaseSchedulerSolver(BaseSolver):
             if (next((e for e in self.tasks if e['time'] < datetime.now()),None)) is None:
                 room = next(iter(self.currentPlan.keys()))
                 self.tasks.append({'time': datetime.now(), 'plan': {room: ['Current'] * len(self.currentPlan[room])}})
+            # 如果没有任何时间小于当前时间的任务-10分钟 则清空任务
+            elif (next((e for e in self.tasks if e['time'] < datetime.now()-timedelta(seconds=600)), None)) is not None:
+                logger.info("检测到执行超过10分钟的任务，清空全部任务")
+                self.tasks = []
         return True
 
     def infra_main(self):

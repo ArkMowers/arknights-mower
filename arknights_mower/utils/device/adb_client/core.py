@@ -41,10 +41,10 @@ class Client(object):
     def __init_device(self) -> None:
         # wait for the newly started ADB server to probe emulators
         time.sleep(1)
-        if self.device_id is None:
+        if self.device_id is None or self.device_id not in config.ADB_DEVICE:
             self.device_id = self.__choose_devices()
-        if self.device_id is None:
-            if self.connect is None:
+        if self.device_id is None or self.device_id not in config.ADB_DEVICE:
+            if self.connect is None or self.device_id not in config.ADB_CONNECT:
                 for connect in config.ADB_CONNECT:
                     Session().connect(connect)
             else:

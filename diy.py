@@ -4,6 +4,7 @@ from datetime import datetime
 
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
 from arknights_mower.strategy import Solver
+from arknights_mower.utils.device import Device
 from arknights_mower.utils.log import logger, init_fhlr
 from arknights_mower.utils import config
 
@@ -91,27 +92,27 @@ plan = {
         'meeting': [{'agent': '陈', 'replacement': ['星极','远山'], 'group': ''},
                     {'agent': '红', 'replacement': ['远山','星极'], 'group': ''}, ],
         'room_1_1': [{'agent': '黑键', 'group': '', 'replacement': []},
-                     {'agent': '图耶', 'group': '图耶', 'replacement': ['但书','空弦','雪雉','能天使']},
-                     {'agent': '鸿雪', 'group': '图耶', 'replacement': ['龙舌兰', '空弦','能天使', '雪雉']}
+                     {'agent': '图耶', 'group': '图耶', 'replacement': ['但书', '空弦', '雪雉', '能天使']},
+                     {'agent': '鸿雪', 'group': '图耶', 'replacement': ['龙舌兰', '空弦', '能天使', '雪雉']}
                      ],
         'room_1_2': [{'agent': '迷迭香', 'group': '', 'replacement': []},
                      {'agent': '砾', 'group': '', 'Type': '', 'replacement': ['夜烟', '斑点']},
                      {'agent': '至简', 'group': '', 'replacement': ['夜烟', '斑点']}],
-        'room_1_3': [{'agent': '承曦格雷伊', 'group': '异客', 'replacement': ['炎狱炎熔','格雷伊']}],
-        'room_2_2': [{'agent': '温蒂', 'group': '异客', 'replacement': ['调香师','水月','香草']},
-                     {'agent': '异客', 'group': '异客', 'Type': '', 'replacement': ['调香师','水月','香草']},
-                     {'agent': '森蚺', 'group': '异客', 'replacement': ['调香师','水月','香草']}],
+        'room_1_3': [{'agent': '承曦格雷伊', 'group': '异客', 'replacement': ['炎狱炎熔', '格雷伊']}],
+        'room_2_2': [{'agent': '温蒂', 'group': '异客', 'replacement': ['调香师', '水月', '香草']},
+                     {'agent': '异客', 'group': '异客', 'Type': '', 'replacement': ['调香师', '水月', '香草']},
+                     {'agent': '森蚺', 'group': '异客', 'replacement': ['调香师', '水月', '香草']}],
         'room_2_1': [{'agent': '稀音', 'group': '稀音', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']},
                      {'agent': '帕拉斯', 'group': '稀音', 'Type': '', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']},
                      {'agent': '红云', 'group': '稀音', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']}],
         'room_2_3': [{'agent': '澄闪', 'group': '', 'replacement': ['炎狱炎熔', '格雷伊']}],
         'room_3_1': [{'agent': '食铁兽', 'group': '', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']},
-                     {'agent': '断罪者', 'group': '', 'Type': '', 'replacement':['霜叶', '红豆', '白雪', 'Castle-3']},
+                     {'agent': '断罪者', 'group': '', 'Type': '', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']},
                      {'agent': '槐琥', 'group': '', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']}],
         'room_3_2': [{'agent': '灰毫', 'group': '红松骑士', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']},
                      {'agent': '远牙', 'group': '红松骑士', 'Type': '', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']},
                      {'agent': '野鬃', 'group': '红松骑士', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']}],
-        'room_3_3': [{'agent': '雷蛇', 'group': '', 'replacement': ['炎狱炎熔','格雷伊']}]
+        'room_3_3': [{'agent': '雷蛇', 'group': '', 'replacement': ['炎狱炎熔', '格雷伊']}]
     }
 }
 
@@ -153,7 +154,9 @@ def send_email(tasks):
         logger.error("邮件发送失败")
 
 def inialize(tasks=[]):
-    cli = Solver()
+    savelog()
+    device = Device()
+    cli = Solver(device)
     base_scheduler = BaseSchedulerSolver(cli.device,cli.recog)
     base_scheduler.operators = {}
     base_scheduler.global_plan = plan
@@ -223,6 +226,6 @@ def schedule_task():
 
 
 # debuglog()
-savelog()
+# savelog()
 simulate()
 # schedule_task()
