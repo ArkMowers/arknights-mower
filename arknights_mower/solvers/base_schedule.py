@@ -437,7 +437,7 @@ class BaseSchedulerSolver(BaseSolver):
                     else:
                         bundle.append(agent)
                     for planned in bundle:
-                        if self.operators[planned]['current_room'] not in exaust_plan['plan']:
+                        if self.operators[planned]['room'] not in exaust_plan['plan']:
                             exaust_plan['plan'][self.operators[planned]['room']] = [
                                                                                                'Current'] * len(
                                 self.currentPlan[self.operators[planned]['room']])
@@ -1432,6 +1432,9 @@ class BaseSchedulerSolver(BaseSolver):
                 self.drone(room, True, True)
                 self.tap((self.recog.w * 0.22, self.recog.h * 0.95), interval=0.5)
                 in_and_out_plan = [data["agent"] for data in self.current_base[room]]
+                # 防止由于意外导致的死循环
+                if '但书' in in_and_out_plan or '龙舌兰' in in_and_out_plan:
+                    in_and_out_plan = [data["agent"] for data in self.currentPlan[room]]
                 replace_plan[room] = in_and_out_plan
                 self.back(interval=2)
             self.tasks.append({'time': self.tasks[0]['time'], 'plan': replace_plan})
