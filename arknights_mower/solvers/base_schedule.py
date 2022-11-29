@@ -17,6 +17,7 @@ from ..utils.device import Device
 from ..utils.log import logger
 from ..utils.recognize import RecognizeError, Recognizer, Scene
 from ..utils.solver import BaseSolver
+from ..utils.datetime import the_same_day,the_same_time
 ## Maa
 from arknights_mower.utils.asst import Asst, Message
 
@@ -722,9 +723,9 @@ class BaseSchedulerSolver(BaseSolver):
             self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.2)
             self.tap((self.recog.w * 0.82, self.recog.h * 0.2), interval=0.2)
         self.choose_agent([name], room, read_time=True)
-        time_in_seconds = self.read_time((int(self.recog.w * 540 / 2496), int(self.recog.h * 380 / 1404),
+        execute_time = self.double_read_time((int(self.recog.w * 540 / 2496), int(self.recog.h * 380 / 1404),
                                           int(self.recog.w * 710 / 2496), int(self.recog.h * 430 / 1404)))
-        execute_time = datetime.now() + timedelta(seconds=(time_in_seconds + adjustment))
+        execute_time = execute_time + timedelta(seconds=(adjustment))
         logger.info(name + ' 心情恢复时间为：' + execute_time.strftime("%H:%M:%S"))
         logger.info('返回基建主界面')
         self.back(interval=2, rebuild=False)
@@ -737,15 +738,38 @@ class BaseSchedulerSolver(BaseSolver):
         # 点击进入该房间
         self.enter_room(room)
         # 进入房间详情
-        self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3)
-        time_in_seconds = self.read_time((int(self.recog.w * 650 / 2496), int(self.recog.h * 660 / 1404),
+        error_count=0
+        while self.find('bill_accelerate') is None:
+            if error_count > 5:
+                raise Exception('未成功进入无人机界面')
+            self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=1)
+            error_count += 1
+        execute_time = self.double_read_time((int(self.recog.w * 650 / 2496), int(self.recog.h * 660 / 1404),
                                           int(self.recog.w * 815 / 2496), int(self.recog.h * 710 / 1404)))
-        execute_time = datetime.now() + timedelta(seconds=(time_in_seconds - 600))
+        execute_time = execute_time- timedelta(seconds=( 600))
         logger.info('下一次进行插拔的时间为：' + execute_time.strftime("%H:%M:%S"))
         logger.info('返回基建主界面')
         self.back(interval=2, rebuild=False)
         self.back(interval=2)
         return execute_time
+
+    def double_read_time(self, cord, error_count=0):
+        self.recog.update()
+        time_in_seconds = self.read_time(cord)
+        execute_time = datetime.now() + timedelta(seconds=(time_in_seconds))
+        time.sleep(2)
+        self.recog.update()
+        logger.info('基建：读取插拔时间二次确认')
+        time_in_seconds_2 = self.read_time(cord)
+        execute_time_2 = datetime.now() + timedelta(seconds=(time_in_seconds_2))
+        logger.info('二次确认时间为：' + execute_time_2.strftime("%H:%M:%S"))
+        if the_same_time(execute_time,execute_time_2):
+            return execute_time
+        else :
+            if error_count>25:
+                raise Exception("验证错误 超过上限")
+            error_count+=1
+            return self.double_read_time(cord,error_count)
 
     def read_time(self, cord, error_count=0):
         # 刷新图片
