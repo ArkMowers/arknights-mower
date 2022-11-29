@@ -142,7 +142,6 @@ def savelog():
     init_fhlr()
 
 def inialize(tasks=[]):
-    savelog()
     device = Device()
     cli = Solver(device)
     base_scheduler = BaseSchedulerSolver(cli.device,cli.recog)
@@ -206,4 +205,5 @@ def simulate():
 
 
 # debuglog()
+savelog()
 simulate()
