@@ -191,7 +191,15 @@ def simulate():
             reconnect_tries +=1
             if reconnect_tries < reconnect_max_tries:
                 logger.warning(f'连接端口断开....正在重连....')
-                base_scheduler = inialize(base_scheduler.tasks)
+                connected = False
+                while not connected:
+                    try:
+                        base_scheduler = inialize(base_scheduler.tasks)
+                        break;
+                    except Exception as ce:
+                        logger.error(ce)
+                        time.sleep(5)
+                        continue
                 continue
             else:
                 raise Exception(e)

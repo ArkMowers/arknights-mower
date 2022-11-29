@@ -142,6 +142,7 @@ class BaseSchedulerSolver(BaseSolver):
         # 如果有任何报错，则生成一个空
         if self.error:
             logger.info("由于出现错误情况，生成一次空任务来执行纠错")
+            self.scan_time={}
             # 如果没有任何时间小于当前时间的任务才生成空任务
             if (next((e for e in self.tasks if e['time'] < datetime.now()),None)) is None:
                 room = next(iter(self.currentPlan.keys()))
@@ -1175,12 +1176,12 @@ class BaseSchedulerSolver(BaseSolver):
 
         self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3)
         # 关闭掉房间总览
-        # error_count=0
-        # while self.find('factory_accelerate') is None:
-        #     if error_count > 5:
-        #         raise Exception('未成功进入无人机界面')
-        #     self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3)
-        #     error_count += 1
+        error_count=0
+        while self.find('factory_accelerate') is None and self.find('bill_accelerate') is None:
+            if error_count > 5:
+                raise Exception('未成功进入无人机界面')
+            self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3)
+            error_count += 1
 
         accelerate = self.find('factory_accelerate')
         if accelerate:
