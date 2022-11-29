@@ -9,7 +9,6 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 from ..data import agent_base_config, agent_list
-from arknights_mower.utils import config
 from ..data import base_room_list
 from ..utils import character_recognize, detector, segment
 from ..utils import typealias as tp
@@ -67,7 +66,7 @@ class BaseSchedulerSolver(BaseSolver):
             self.get_agent()
         if len(self.scan_time.keys()) == 0:
             self.scan_time = {k: None for k, v in self.currentPlan.items()}
-        # self.current_base = {'room_1_3': [{'mood': 18, 'agent': '承曦格雷伊'}], 'central': [{'mood': 9, 'agent': '焰尾'}, {'mood': 20, 'agent': '琴柳'}, {'mood': 18, 'agent': '凯尔希'}, {'mood': 20, 'agent': '夕'}, {'mood': 9, 'agent': '令'}], 'meeting': [{'mood': 10, 'agent': '陈'}, {'mood': 6, 'agent': '红'}], 'room_1_1': [{'mood': 17, 'agent': '黑键'}, {'mood': 14, 'agent': '图耶'}, {'mood': 13, 'agent': '鸿雪'}], 'room_1_2': [{'mood': 13, 'agent': '迷迭香'}, {'mood': 9, 'agent': '砾'}, {'mood': 8, 'agent': '至简'}], 'dormitory_1': [{'mood': 24, 'agent': '流明'}, {'mood': 24, 'agent': '闪灵'}, {'mood': 24, 'agent': '水月'}, {'mood': 24, 'agent': '炎狱炎熔'}, {'mood': 23, 'agent': '清道夫'}], 'room_2_1': [{'mood': 6, 'agent': '稀音'}, {'mood': 13, 'agent': '帕拉斯'}, {'mood': 13, 'agent': '红云'}], 'room_2_2': [{'mood': 18, 'agent': '温蒂'}, {'mood': 18, 'agent': '异客'}, {'mood': 17, 'agent': '森蚺'}], 'room_2_3': [{'mood': 17, 'agent': '澄闪'}], 'dormitory_2': [{'mood': 24, 'agent': '蜜莓'}, {'mood': 24, 'agent': '杜林'}, {'mood': 24, 'agent': '褐果'}, {'mood': 24, 'agent': '空'}, {'mood': 22, 'agent': '能天使'}], 'contact': [{'mood': 21, 'agent': '絮雨'}], 'room_3_1': [{'mood': 8, 'agent': '食铁兽'}, {'mood': 7, 'agent': '断罪者'}, {'mood': 12, 'agent': '槐琥'}], 'room_3_2': [{'mood': 10, 'agent': '灰毫'}, {'mood': 10, 'agent': '远牙'}, {'mood': 9, 'agent': '野鬃'}], 'room_3_3': [{'mood': 10, 'agent': '雷蛇'}], 'dormitory_3': [{'mood': 24, 'agent': '车尔尼'}, {'mood': 24, 'agent': '安比尔'}, {'mood': 24, 'agent': '爱丽丝'}, {'mood': 24, 'agent': '桃金娘'}, {'mood': 24, 'agent': '红豆'}], 'dormitory_4': [{'mood': 24, 'agent': '波登可'}, {'mood': 24, 'agent': '夜莺'}, {'mood': 17, 'agent': '菲亚梅塔'}, {'mood': 24, 'agent': '霜叶'}, {'mood': 24, 'agent': '夜烟'}]}
+        # self.get_agent_from_room('central')
         return super().run()
 
     def get_group(self, rest_agent, agent, groupname, name):
@@ -143,7 +142,6 @@ class BaseSchedulerSolver(BaseSolver):
         # 如果有任何报错，则生成一个空
         if self.error:
             logger.info("由于出现错误情况，生成一次空任务来执行纠错")
-            self.scan_time = {}
             # 如果没有任何时间小于当前时间的任务才生成空任务
             if (next((e for e in self.tasks if e['time'] < datetime.now()),None)) is None:
                 room = next(iter(self.currentPlan.keys()))
@@ -163,7 +161,8 @@ class BaseSchedulerSolver(BaseSolver):
         if self.task is not None:
             try:
                 if len(self.task["plan"].keys())>0:
-                    self.agent_arrange(self.task["plan"])
+                    # self.agent_arrange(self.task["plan"])
+                    self.agent_arrange_2(self.task["plan"])
                 else:
                     self.overtake_room()
                 del self.tasks[0]
@@ -187,13 +186,13 @@ class BaseSchedulerSolver(BaseSolver):
             try:
                 # 如果有任何type 则会最后修正
                 if self.read_mood:
-                    mood_result = self.agent_get_mood()
+                    mood_result = self.agent_get_mood_2()
                     if mood_result is not None:
                         return True
                 self.plan_solver()
             except Exception as e:
                 # 重新扫描
-
+                self.scan_time={}
                 self.error = True
                 logger.exception({e})
             self.planned = True
@@ -207,6 +206,118 @@ class BaseSchedulerSolver(BaseSolver):
             result.append(data["agent"])
         return result
 
+    def agent_get_mood_2(self):
+
+        logger.info('基建：记录心情')
+        room_total = len(base_room_list)
+        idx = 0
+        pre_result = []
+        room_total = len(base_room_list)
+        need_read = set(list(k for k,v in self.scan_time.items() if not (v is not None and v>(
+                            datetime.now() - timedelta(seconds=5400)))))
+
+        for room in need_read:
+            error_count=0
+            while True:
+                try:
+                    self.enter_room(room)
+                    self.current_base[room] = self.get_agent_from_room(room)
+                    logger.info(f'房间 {room} 心情为：{self.current_base[room]}')
+                    break
+                except Exception as e:
+                    if error_count>3: raise e
+                    logger.error(e)
+                    error_count+=1
+                    self.back()
+                    continue
+            self.back()
+        if '' in self.operators.keys(): self.operators['']['current_room'] = ''
+        logger.info(self.operators)
+        for room in self.currentPlan.keys():
+            for idx,item in enumerate(self.currentPlan[room]):
+                _name = next((k for k,v in self.operators.items() if v['current_room'] == room and v['index']==idx),None)
+                if  _name is None or _name =='' :
+                    self.current_base[room][idx] = {"agent": "", "mood": -1}
+                else :
+                    self.current_base[room][idx]= {"mood":self.operators[_name]['mood'],"agent":_name}
+        current_base = copy.deepcopy(self.current_base)
+        plan = self.currentPlan
+        self.total_agent = []
+        fix_plan = {}
+        for key in current_base:
+            if (key == 'train' or key == 'factory'): continue
+            need_fix = False
+            for idx, operator in enumerate(current_base[key]):
+                data = current_base[key][idx]
+                # 如果是空房间
+                if data["mood"] == -1:
+                    if not need_fix:
+                        fix_plan[key] = [''] * len(plan[key])
+                        need_fix = True
+                    fix_plan[key][idx] = plan[key][idx]["agent"]
+                    continue
+                if (data["agent"] in agent_base_config.keys()):
+                    # 如果有设置下限，则减去下限值 eg: 令
+                    if ("LowerLimit" in agent_base_config[current_base[key][idx]["agent"]]):
+                        data["mood"] = data["mood"] - agent_base_config[current_base[key][idx]["agent"]]["LowerLimit"]
+                # 把额外数据传过去
+                data["current_room"] = key
+                data["room_index"] = idx
+                # 记录数据
+                self.total_agent.append(data)
+                # 随意人员则跳过
+                if plan[key][idx]["agent"] == 'Free':
+                    continue
+                if not (data['agent'] == plan[key][idx]['agent'] or (
+                        (data["agent"] in plan[key][idx]["replacement"]) and len(plan[key][idx]["replacement"]) > 0)):
+                    if not need_fix:
+                        fix_plan[key] = [''] * len(plan[key])
+                        need_fix = True
+                    fix_plan[key][idx] = plan[key][idx]["agent"]
+                elif need_fix:
+                    fix_plan[key][idx] = data["agent"]
+            # 检查是否有空名
+            if need_fix:
+                for idx, fix_agent in enumerate(fix_plan[key]):
+                    if fix_plan[key][idx] == '':
+                        # 则使用当前干员
+                        fix_plan[key][idx] = 'Current'
+        # 最后如果有任何高效组心情没有记录 或者高效组在宿舍
+        miss_list = {k: v for (k, v) in self.operators.items() if
+                     (v['type'] == 'high' and (v['mood'] == -1 or (v['mood'] == 24) and v['current_room'].startswith('dormitory')))}
+        if len(miss_list.keys()) > 0:
+            # 替换到他应该的位置
+            for key in miss_list:
+                if miss_list[key]['group'] !='':
+                    # 如果还有其他小组成员没满心情则忽略
+                    if next((k for k,v in self.operators.items() if v['group'] == miss_list[key]['group'] and v['current_room'].startswith('dormitory') and not (v['mood'] == -1 or v['mood'] == 24)), None) is not None:
+                        continue
+                if miss_list[key]['room'] not in fix_plan.keys():
+                    fix_plan[miss_list[key]['room']] = [x['agent'] for x in current_base[miss_list[key]['room']]]
+                fix_plan[miss_list[key]['room']][miss_list[key]['index']] = key
+        if len(fix_plan.keys()) > 0:
+            # 不能在房间里安排同一个人 如果有重复则换成Free
+            # 还要修复确保同一组在同时上班
+            fix_agents = []
+            remove_keys = []
+            for key in fix_plan:
+                # 如果 type有，则跳过宿舍的纠错（会触发plan_solver）
+                if self.task_type is not None and key.startswith('dormitory'):
+                    remove_keys.append(key)
+                else:
+                    for idx, fix_agent in enumerate(fix_plan[key]):
+                        if fix_agent not in fix_agents:
+                            fix_agents.append(fix_agent)
+                        else:
+                            fix_plan[key][idx] = "Free" if fix_plan[key][idx] not in ['Free', 'Current'] else \
+                                fix_plan[key][idx]
+            if len(remove_keys) > 0:
+                for item in remove_keys:
+                    del fix_plan[item]
+            if len(fix_plan.keys()) > 0:
+                self.tasks.append({"plan": fix_plan, "time": datetime.now()})
+                logger.info(f'纠错任务为-->{fix_plan}')
+                return "self_correction"
     def agent_get_mood(self):
         self.tap_element('infra_overview', interval=2)
         logger.info('基建：记录心情')
@@ -382,9 +493,12 @@ class BaseSchedulerSolver(BaseSolver):
                     if self.operators["菲亚梅塔"]["mood"] == 24:
                         change_time = datetime.now()
                     else:
-                        change_time = self.get_time(fia_room, '菲亚梅塔')
-                    logger.info('下一次进行菲亚梅塔充能：' + change_time.strftime("%H:%M:%S"))
-                    self.tasks.append({"time": change_time, "plan": {fia_room: [
+                        self.enter_room(fia_room)
+                        fia_idx = self.operators['菲亚梅塔']['index']
+                        result = self.get_agent_from_room(fia_room, [fia_idx])
+                        self.back()
+                    logger.info('下一次进行菲亚梅塔充能：' + result[fia_idx]['time'].strftime("%H:%M:%S"))
+                    self.tasks.append({"time": result[fia_idx]['time'], "plan": {fia_room: [
                         next(obj for obj in self.total_agent if obj["agent"] in fia_plan)["agent"],
                         "菲亚梅塔"]}})
                 exclude_list.append("菲亚梅塔")
@@ -607,7 +721,7 @@ class BaseSchedulerSolver(BaseSolver):
         logger.info(f'生成的排班计划为->{result}')
         while error_count < 3:
             try:
-                time_result = self.agent_arrange(result, read_time_rooms)
+                time_result = self.agent_arrange_2(result, read_time_rooms)
                 if time_result is None and len(read_time_rooms) > 0:
                     raise Exception("读取时间失败")
                 else:
@@ -1058,7 +1172,15 @@ class BaseSchedulerSolver(BaseSolver):
         # 点击进入该房间
         self.enter_room(room)
         # 进入房间详情
+
         self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3)
+        # 关闭掉房间总览
+        # error_count=0
+        # while self.find('factory_accelerate') is None:
+        #     if error_count > 5:
+        #         raise Exception('未成功进入无人机界面')
+        #     self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3)
+        #     error_count += 1
 
         accelerate = self.find('factory_accelerate')
         if accelerate:
@@ -1120,6 +1242,57 @@ class BaseSchedulerSolver(BaseSolver):
         if asc != "false":
             self.tap((self.recog.w * arrange_order_res[ArrangeOrder(index)][0],
                       self.recog.h * arrange_order_res[ArrangeOrder(index)][1]), interval=0.2, rebuild=True)
+    def get_agent_detail(self,cord,errorCount = 0):
+        self.tap(cord, interval=0.5)
+        try:
+            name,mood = character_recognize.agent_with_mood_2(self.recog.img)
+            if mood !=-1:
+               #记录干员心情
+                if name in self.operators.keys():
+                    self.operators[name]['mood'] =mood
+                else :
+                    self.operators[name] = {"type": "low", "name": name, "group": '', 'resting_priority': 'low',
+                                             "index": -1, 'current_room': '', 'mood': mood, "upper_limit": 24}
+        except Exception as e:
+            if errorCount>3:
+                raise e
+            else :
+                logger.error(e)
+                errorCount+=1
+                self.get_agent_detail(cord,errorCount)
+
+        # 选人的时候读取名字 心情
+        # 并且记录心情到self.operators
+        # 如果名字没出现 则再点击一次
+
+    def scan_agant_2(self, agent: list[str], error_count=0, max_agent_count=-1):
+        try:
+            # 识别干员
+            self.recog.update()
+            ret = character_recognize.agent(self.recog.img)  # 返回的顺序是从左往右从上往下
+            # 提取识别出来的干员的名字
+            agent_name = set([x[0] for x in ret])
+            agent_size = len(agent)
+            select_name = []
+            for y in ret:
+                name = y[0]
+                if name in agent:
+                    select_name.append(name)
+                    self.get_agent_detail((y[1][0]))
+                    agent.remove(name)
+                    # 如果是按照个数选择 Free
+                    if max_agent_count != -1:
+                        if len(select_name) >= max_agent_count:
+                            return select_name, ret
+            return select_name, ret
+        except Exception as e:
+            error_count += 1
+            if error_count < 3:
+                logger.exception(e)
+                self.sleep(3)
+                return self.scan_agant(agent, error_count, max_agent_count)
+            else:
+                raise e
 
     def scan_agant(self, agent: list[str], order_matters=False, error_count=0, max_agent_count=-1):
         try:
@@ -1179,6 +1352,142 @@ class BaseSchedulerSolver(BaseSolver):
                 self.tap((self.recog.w * 0.3, self.recog.h * 0.5), interval=0.5)
         # 确认
         self.tap((self.recog.w * 0.8, self.recog.h * 0.8), interval=0.5)
+
+    def choose_agent_2(self, agents: list[str], room: str) -> None:
+        """
+        :param order: ArrangeOrder, 选择干员时右上角的排序功能
+        """
+        first_name = ''
+        max_swipe = 50
+        for idx, n in enumerate(agents):
+            if n == '':
+                agents[idx] = 'Free'
+        agent = copy.deepcopy(agents)
+        logger.info(f'安排干员 ：{agent}')
+        # 若不是空房间，则清空工作中的干员
+        is_dorm = room.startswith("dorm")
+        h, w = self.recog.h, self.recog.w
+        first_time = True
+        # 在 agent 中 'Free' 表示任意空闲干员
+        free_num = agent.count('Free')
+        for i in range(agent.count("Free")):
+            agent.remove("Free")
+        order_matters = True
+        is_clear = False
+        index_change = False
+        pre_order = [2, False]
+        right_swipe = 0
+        retry_count = 0
+        # 如果重复进入宿舍则需要排序
+        selected=[]
+        logger.info(f'上次进入房间为：{self.last_room},本次房间为：{room}')
+        if self.last_room.startswith('dorm') and is_dorm:
+            self.detail_filter(False)
+        while len(agent) > 0:
+            if retry_count > 3: raise Exception(f"到达最大尝试次数 3次")
+            if right_swipe > max_swipe:
+                # 到底了则返回再来一次
+                for _ in range(right_swipe):
+                    self.swipe_only((w // 2, h // 2), (w // 2, 0), interval=0.5)
+                right_swipe = 0
+                max_swipe = 50
+                retry_count += 1
+                self.detail_filter(False)
+            if first_time:
+                # 清空
+                if is_dorm:
+                    self.switch_arrange_order(3, "true")
+                    pre_order = [3, 'true']
+                self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
+                changed, ret = self.scan_agant_2(agent)
+                if changed:
+                    selected.extend(changed)
+                    if len(agent) == 0: break
+                    index_change = True
+
+            # 如果选中了人，则可能需要重新排序
+            if index_change or first_time:
+                # 第一次则调整
+                is_custom, arrange_type = self.get_order(agent[0])
+                if is_dorm and not (
+                        'room' in self.operators[agent[0]].keys() and self.operators[agent[0]]['room'].startswith(
+                        'dormitory')):
+                    arrange_type = (3, 'true')
+                # 如果重新排序则滑到最左边
+                if pre_order[0] != arrange_type[0] or pre_order[1] != arrange_type[1]:
+                    self.switch_arrange_order(arrange_type[0], arrange_type[1])
+                    # 滑倒最左边
+                    self.sleep(interval=0.5, rebuild=True)
+                    right_swipe = self.swipe_left(right_swipe, w, h)
+                    pre_order = arrange_type
+            first_time = False
+
+            changed, ret = self.scan_agant_2(agent)
+            if changed:
+                selected.extend(changed)
+                # 如果找到了
+                index_change = True
+            else:
+                # 如果没找到 而且右移次数大于5
+                if ret[0][0] == first_name and right_swipe > 5:
+                    max_swipe = right_swipe
+                else:
+                    first_name = ret[0][0]
+                index_change = False
+                st = ret[-2][1][2]  # 起点
+                ed = ret[0][1][1]  # 终点
+                self.swipe_noinertia(st, (ed[0] - st[0], 0))
+                right_swipe += 1
+            if len(agent) == 0: break;
+
+        # 安排空闲干员
+        if free_num:
+            if free_num == len(agents):
+                self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
+            if not first_time:
+                # 滑动到最左边
+                self.sleep(interval=0.5, rebuild=False)
+                right_swipe = self.swipe_left(right_swipe, w, h)
+            self.detail_filter(True)
+            self.switch_arrange_order(3, "true")
+            # 只选择在列表里面的
+            # 替换组小于20才休息，防止进入就满心情进行网络连接
+            free_list = [v["name"] for k, v in self.operators.items() if
+                         v["name"] not in agents and (
+                                     (v["type"] == 'low' and 'mood' in v.keys() and v["mood"] < 20) or v["type"] == "")]
+            free_list.extend([_name for _name in agent_list if _name not in self.operators.keys()])
+            free_list = list(set(free_list) - set(self.free_blacklist))
+            while free_num:
+                selected_name, ret = self.scan_agant_2(free_list, max_agent_count=free_num)
+                selected.extend(selected_name)
+                free_num -= len(selected_name)
+                while len(selected_name) > 0:
+                    agents[agents.index('Free')] = selected_name[0]
+                    selected_name.remove(selected_name[0])
+                if free_num == 0:
+                    break
+                else:
+                    st = ret[-2][1][2]  # 起点
+                    ed = ret[0][1][1]  # 终点
+                    self.swipe_noinertia(st, (ed[0] - st[0], 0))
+                    right_swipe += 1
+        # 排序
+        if len(agents) != 1:
+            # 左移
+            self.swipe_left(right_swipe, w, h)
+            self.tap((self.recog.w * arrange_order_res[ArrangeOrder.SKILL][0],self.recog.h * arrange_order_res[ArrangeOrder.SKILL][1]), interval=0, rebuild=False)
+            position = [(0.35, 0.35),(0.35, 0.75),(0.45, 0.35),(0.45, 0.75),(0.55, 0.35)]
+            not_match = False
+            for idx, item in enumerate(agents):
+                if agents[idx] != selected[idx] or not_match:
+                    not_match = True
+                    p_idx = selected.index(agents[idx])
+                    self.tap((self.recog.w * position[p_idx][0], self.recog.h * position[p_idx][1]), interval=0,
+                             rebuild=False)
+                    self.tap((self.recog.w * position[p_idx][0], self.recog.h * position[p_idx][1]), interval=0,
+                             rebuild=False)
+        self.last_room = room
+        logger.info(f"设置上次房间为{self.last_room}")
 
     def choose_agent(self, agents: list[str], room: str, read_time=False) -> None:
         """
@@ -1312,6 +1621,172 @@ class BaseSchedulerSolver(BaseSolver):
         for _ in range(right_swipe):
             self.swipe_only((w // 2, h // 2), (w // 2, 0), interval=0.5)
         return 0
+    def get_agent_from_room(self,room, read_time_index =[]):
+        error_count=0
+        while self.find('room_detail') is None:
+            if error_count > 3:
+                raise Exception('未成功进入房间')
+            self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
+            error_count += 1
+        length = len(self.currentPlan[room])
+        if length>=3 : self.swipe((self.recog.w * 0.8, self.recog.h * 0.8), (0, self.recog.h * 0.4), interval=3, rebuild=True)
+        name_p = [((1460,155) ,(1700, 210)),((1460,370) , (1700, 420)),((1460,585)  ,(1700, 630)),((1460,560)  ,(1700, 610)),((1460,775),(1700, 820))]
+        time_p = [((1650,270,1780, 305)),((1650,480,1780, 515)),((1650,690,1780, 725)),((1650,665,1780, 700)),((1650,875,1780, 910))]
+        mood_p = [((1685, 215, 1735, 255)), ((1685, 425, 1735, 465)), ((1685, 635, 1735, 675)),((1685, 615, 1735, 645)), ((1685, 825, 1735, 865))]
+        result = []
+        swiped = False
+        for i in range(0, length):
+            if i>=3 and not swiped:
+                self.swipe((self.recog.w * 0.8, self.recog.h * 0.8), (0, -self.recog.h * 0.4), interval=3, rebuild=True)
+                swiped = True
+            data = {}
+            data['agent'] = character_recognize.agent_name(self.recog.img[name_p[i][0][1]:name_p[i][1][1] , name_p[i][0][0]:name_p[i][1][0] ],self.recog.h)
+            data['mood'] = segment.read_screen(self.recog.img,cord=mood_p[i],change_color=True)
+            if data['agent'] not in self.operators.keys():
+                self.operators[data['agent']] ={"type": "low", "name": data['agent'], "group": '', 'current_room': '','resting_priority': 'low', "index": i, 'mood': data['mood'] ,"upper_limit":24}
+            else:
+                self.operators[data['agent']]['mood']=data['mood']
+                self.operators[data['agent']]['index'] =i
+            self.operators[data['agent']]['current_room'] = room
+            if i in read_time_index:
+                if data['mood']==24:
+                    data['time'] = datetime.now()
+                else :data['time'] = self.double_read_time(time_p[i])
+            result.append(data)
+        self.scan_time[room] = datetime.now()
+        return result
+
+    def agent_arrange_2(self, plan: tp.BasePlan, read_time_room=[],metadata=[]):
+        logger.info('基建：排班')
+        in_and_out = []
+        fia_room = ""
+        rooms = list(plan.keys())
+        # 优先替换工作站再替换宿舍
+        rooms.sort(key=lambda x: x.startswith('dorm'), reverse=False)
+        time_result={}
+        for room in rooms:
+            finished = False
+            choose_error= 0
+            while not finished:
+                try:
+                    error_count = 0
+                    self.enter_room(room)
+                    while self.find('room_detail') is None:
+                        if error_count >3:
+                            raise Exception('未成功进入房间')
+                        self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
+                        error_count += 1
+                    error_count = 0
+                    update_base = False
+                    if ('但书' in plan[room] or '龙舌兰' in plan[room]) and not \
+                            room.startswith('dormitory'):
+                        in_and_out.append(room)
+                        update_base = True
+                    if '菲亚梅塔' in plan[room] and len(plan[room]) == 2:
+                        fia_room = room
+                        update_base = True
+                    # 如果需要更新当前阵容
+                    self.scan_time[room] = None
+                    # 是否该干员变动影响其他房间
+                    update_room = []
+                    for operator in (plan[room]):
+                        if operator in self.operators.keys() and self.operators[operator]['current_room']!='' and self.operators[operator]['current_room'] != room:
+                            update_room.append(self.operators[operator]['current_room'])
+                    for __room in update_room:
+                        self.scan_time[__room] = None
+                    if update_base or 'Current' in plan[room]:
+                        self.current_base[room] = self.get_agent_from_room(room)
+                        # 纠错 因为网络连接导致房间移位
+                        if 'Current' in plan[room]:
+                            # replace current
+                            for current_idx, _name in enumerate(plan[room]):
+                                if _name == 'Current':
+                                    current_name = self.current_base[room][current_idx]["agent"]
+                                    if current_name in agent_list:
+                                        plan[room][current_idx] = current_name
+                                    else:
+                                        # 如果空房间或者名字错误，则使用default干员
+                                        plan[room][current_idx] = \
+                                        self.currentPlan[room][current_idx]["agent"]
+                            self.scan_time[room] = None
+                    while self.find('arrange_order_options') is None:
+                        if error_count >3:
+                            raise Exception('未成功进入干员选择界面')
+                        self.tap((self.recog.w * 0.82, self.recog.h * 0.2), interval=1)
+                        error_count += 1
+                    error_count=0
+                    self.choose_agent_2(plan[room], room)
+                    self.recog.update()
+                    self.tap_element('confirm_blue', detected=True, judge=False, interval=3)
+                    if self.get_infra_scene() == Scene.INFRA_ARRANGE_CONFIRM:
+                        x0 = self.recog.w // 3 * 2  # double confirm
+                        y0 = self.recog.h - 10
+                        self.tap((x0, y0), rebuild=True)
+                    time_index = []
+                    # 如果需要读取时间
+                    if room in read_time_room:
+                        time_index = [[data["agent"] for data in self.currentPlan[room]].index('Free')]
+                    current = self.get_agent_from_room(room,time_index)
+                    for idx,name in enumerate(plan[room]):
+                        if current[idx]['agent']!=name:
+                            raise Exception('检测到安排干员未成功')
+                    #  如果不匹配，则退出主界面再重新进房间一次
+                    if room in read_time_room:
+                        time_result[room] = current[time_index[0]]['time']
+                    # update current_room
+                    for operator in (plan[room]):
+                        if operator in self.operators.keys():
+                            self.operators[operator]['current_room'] = room
+                    for _operator in self.operators.keys():
+                        if 'current_room' in self.operators[_operator].keys() and self.operators[_operator]['current_room']=='room' and _operator not in plan[room]:
+                            self.operators[_operator]['current_room']=''
+                            logger.info(f'重设 {_operator} 至空闲')
+                    finished = True
+                    # back to 基地主界面
+                    while self.scene() == Scene.CONNECTING:
+                        self.sleep(3)
+                except Exception as e :
+                    logger.error(e)
+                    self.back()
+                    if choose_error>3:
+                        raise e
+                    else: continue
+                    choose_error += 1
+            self.back(0.5)
+        if len(in_and_out) > 0:
+            self.back()
+            replace_plan = {}
+            for room in in_and_out:
+                logger.info("开始插拔")
+                self.drone(room, True, True)
+                self.tap((self.recog.w * 0.22, self.recog.h * 0.95), interval=0.5)
+                in_and_out_plan = [data["agent"] for data in self.current_base[room]]
+                # 防止由于意外导致的死循环
+                if '但书' in in_and_out_plan or '龙舌兰' in in_and_out_plan:
+                    in_and_out_plan = [data["agent"] for data in self.currentPlan[room]]
+                replace_plan[room] = in_and_out_plan
+                self.back(interval=2)
+            self.tasks.append({'time': self.tasks[0]['time'], 'plan': replace_plan})
+            # 急速换班
+            self.todo_task = True
+            self.planned = True
+        if fia_room != '':
+            replace_agent = plan[fia_room][0]
+            fia_change_room = self.operators[replace_agent]["room"]
+            self.back(interval=2)
+            if len(self.current_base.keys()) > 3:
+                fia_room_plan = [data["agent"] for data in self.current_base[fia_room]]
+                fia_change_room_plan = [data["agent"] for data in self.current_base[fia_change_room]]
+            else:
+                fia_room_plan = [data["agent"] for data in self.currentPlan[fia_room]]
+                fia_change_room_plan = [data["agent"] for data in self.currentPlan[fia_change_room]]
+            self.tasks.append(
+                {'time': datetime.now(), 'plan': {fia_room: fia_room_plan, fia_change_room: fia_change_room_plan}})
+            # 急速换班
+            self.todo_task = True
+            self.planned = True
+        logger.info('返回基建主界面')
+
 
     def agent_arrange(self, plan: tp.BasePlan, read_time_room=[]):
         """ 基建排班 """
@@ -1496,7 +1971,7 @@ class BaseSchedulerSolver(BaseSolver):
         self.MAA = Asst()
 
         # 请自行配置 adb 环境变量，或修改为 adb 可执行程序的路径
-        if self.MAA.connect('D:\\Program Files\\Nox\\bin\\adb.exe', '127.0.0.1:62001'):
+        if self.MAA.connect('D:\\Program Files (x86)\\MuMu\\emulator\\nemu\\vmonitor\\bin\\adb_server.exe', '127.0.0.1:62001'):
             logger.info("MAA 连接成功")
         else:
             logger.info("MAA 连接失败")
@@ -1509,7 +1984,7 @@ class BaseSchedulerSolver(BaseSolver):
             self.inialize_maa()
             self.MAA.append_task('StartUp')
             self.MAA.append_task('Fight', {
-                'stage': 'AP-5',
+                'stage': 'CE-6',
                 'medicine': 0,
                 'stone': 0,
                 'times': 999,
@@ -1537,17 +2012,17 @@ class BaseSchedulerSolver(BaseSolver):
             #     'filename': './GA-EX8-raid.json',
             #     'formation': False
             # })
-            self.MAA.append_task('Roguelike', {
-                'mode': 0,
-                'starts_count': 9999999,
-                'investment_enabled':True,
-                'investments_count':9999999,
-                'stop_when_investment_full':False,
-                'squad':'以人为本分队',
-                'roles':'取长补短',
-                'theme': 'Mizuki',
-                'core_char':'棘刺'
-            })
+            # self.MAA.append_task('Roguelike', {
+            #     'mode': 0,
+            #     'starts_count': 9999999,
+            #     'investment_enabled':True,
+            #     'investments_count':9999999,
+            #     'stop_when_investment_full':False,
+            #     'squad':'以人为本分队',
+            #     'roles':'取长补短',
+            #     'theme': 'Mizuki',
+            #     'core_char':'棘刺'
+            # })
             self.MAA.start()
             logger.info(f"MAA 启动")
             hard_stop = False
@@ -1560,11 +2035,10 @@ class BaseSchedulerSolver(BaseSolver):
                     time.sleep(0)
             self.send_email('MAA停止')
             if hard_stop:
-                logger.info(f"由于maa任务并未完成，重启软件")
+                logger.info(f"由于maa任务并未完成，等待3分钟重启软件")
+                time.sleep(180)
                 # 目前没有做肉鸽的导航，只能重启软件
                 self.device.exit('com.hypergryph.arknights')
-                self.device.launch(config.APPNAME)
-                time.sleep(10)
             remaining_time =(self.tasks[0]["time"] - datetime.now()).total_seconds()
             logger.info(f"开始休息 {remaining_time} 秒")
             time.sleep(remaining_time)

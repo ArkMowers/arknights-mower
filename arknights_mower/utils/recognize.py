@@ -217,6 +217,51 @@ class Recognizer(object):
         logger.info(f'Scene: {self.scene}: {SceneComment[self.scene]}')
         return self.scene
 
+    def get_infra_scene(self)-> int:
+        if self.scene != Scene.UNDEFINED:
+            return self.scene
+        if self.find('connecting', scope=((self.w//2, self.h//10*8), (self.w//4*3, self.h))) is not None:
+            self.scene = Scene.CONNECTING
+        elif self.find('double_confirm') is not None:
+            if self.find('network_check') is not None:
+                self.scene = Scene.NETWORK_CHECK
+            else:
+                self.scene = Scene.DOUBLE_CONFIRM
+        elif self.find('infra_overview') is not None:
+            self.scene = Scene.INFRA_MAIN
+        elif self.find('infra_todo') is not None:
+            self.scene = Scene.INFRA_TODOLIST
+        elif self.find('clue') is not None:
+            self.scene = Scene.INFRA_CONFIDENTIAL
+        elif self.find('arrange_check_in') or self.find('arrange_check_in_on') is not None:
+            self.scene = Scene.INFRA_DETAILS
+        elif self.find('infra_overview_in') is not None:
+            self.scene = Scene.INFRA_ARRANGE
+        elif self.find('arrange_confirm') is not None:
+            self.scene = Scene.INFRA_ARRANGE_CONFIRM
+        elif self.find('arrange_order_options_scene') is not None:
+            self.scene = Scene.INFRA_ARRANGE_ORDER
+        elif self.find('loading') is not None:
+            self.scene = Scene.LOADING
+        elif self.find('loading2') is not None:
+            self.scene = Scene.LOADING
+        elif self.find('loading3') is not None:
+            self.scene = Scene.LOADING
+        elif self.find('loading4') is not None:
+            self.scene = Scene.LOADING
+        elif self.find('index_nav', thres=250, scope=((0, 0), (100+self.w//4, self.h//10))) is not None:
+            self.scene = Scene.INDEX
+        elif self.is_black():
+            self.scene = Scene.LOADING
+        else:
+            self.scene = Scene.UNKNOWN
+            self.device.check_current_focus()
+        # save screencap to analyse
+        if config.SCREENSHOT_PATH is not None:
+            self.save_screencap(self.scene)
+        logger.info(f'Scene: {self.scene}: {SceneComment[self.scene]}')
+        return self.scene
+
     def is_black(self) -> None:
         """ check if the current scene is all black """
         return np.max(self.gray[:, 105:-105]) < 16

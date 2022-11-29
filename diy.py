@@ -60,7 +60,7 @@ plan = {
     # 阶段 1
     "default": "plan_1",
     "plan_1": {
-        # 办公室
+        # 中枢
         'central': [{'agent': '焰尾', 'group': '红松骑士', 'replacement': ["玛恩纳", "清道夫", "临光", "杜宾", '坚雷','布丁']},
                     {'agent': '琴柳', 'group': '', 'replacement': ["玛恩纳", "清道夫", "临光", "杜宾", '坚雷']},
                     {'agent': '凯尔希', 'replacement': ["玛恩纳", "清道夫", "临光", "杜宾", '坚雷'], 'group': ''},
@@ -94,10 +94,10 @@ plan = {
                         {'agent': 'Free', 'group': '', 'replacement': []}],
         # 会客室
         'meeting': [{'agent': '陈', 'replacement': ['星极','远山'], 'group': ''},
-                    {'agent': '红', 'replacement': ['远山','星极'], 'group': ''}, ],
+                    {'agent': '红', 'replacement': ['远山','星极'], 'group': ''} ],
         'room_1_1': [{'agent': '黑键', 'group': '', 'replacement': []},
-                     {'agent': '图耶', 'group': '图耶', 'replacement': ['但书','空弦','雪雉','能天使']},
-                     {'agent': '鸿雪', 'group': '图耶', 'replacement': ['龙舌兰', '空弦','能天使', '雪雉']}
+                     {'agent': '图耶', 'group': '图耶', 'replacement': ['但书','伺夜']},
+                     {'agent': '鸿雪', 'group': '图耶', 'replacement': ['龙舌兰', '空弦']}
                      ],
         'room_1_2': [{'agent': '迷迭香', 'group': '', 'replacement': []},
                      {'agent': '砾', 'group': '', 'Type': '', 'replacement': ['夜烟', '斑点']},
