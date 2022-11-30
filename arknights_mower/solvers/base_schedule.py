@@ -208,7 +208,6 @@ class BaseSchedulerSolver(BaseSolver):
         return result
 
     def agent_get_mood_2(self):
-
         logger.info('基建：记录心情')
         room_total = len(base_room_list)
         idx = 0
@@ -236,11 +235,13 @@ class BaseSchedulerSolver(BaseSolver):
         logger.info(self.operators)
         for room in self.currentPlan.keys():
             for idx,item in enumerate(self.currentPlan[room]):
-                _name = next((k for k,v in self.operators.items() if v['current_room'] == room and v['index']==idx),None)
+                _name = next((k for k,v in self.operators.items() if v['current_room'] == room and 'current_index' in v.keys() and v['current_index']==idx),None)
+                if room not in self.current_base.keys():
+                    self.current_base[room] = [''] * len(self.currentPlan[room])
                 if  _name is None or _name =='' :
                     self.current_base[room][idx] = {"agent": "", "mood": -1}
                 else :
-                    self.current_base[room][idx]= {"mood":self.operators[_name]['mood'],"agent":_name}
+                    self.current_base[room][idx] = {"mood": self.operators[_name]['mood'], "agent": _name}
         current_base = copy.deepcopy(self.current_base)
         plan = self.currentPlan
         self.total_agent = []
@@ -627,7 +628,7 @@ class BaseSchedulerSolver(BaseSolver):
                         self.get_swap_plan(resting_dorm, need_to_rest, min_mood < 3 and min_mood!=-99)
                     # 关闭跳过宿舍
                     self.task_type = None
-                    self_correction = self.agent_get_mood()
+                    self_correction = self.agent_get_mood_2()
                     if self_correction is not None:
                         return
             except Exception as e:
@@ -1624,16 +1625,18 @@ class BaseSchedulerSolver(BaseSolver):
         return 0
     def get_agent_from_room(self,room, read_time_index =[]):
         error_count=0
+        if room =='meeting':
+            time.sleep(3)
         while self.find('room_detail') is None:
             if error_count > 3:
                 raise Exception('未成功进入房间')
             self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
             error_count += 1
         length = len(self.currentPlan[room])
-        if length>=3 : self.swipe((self.recog.w * 0.8, self.recog.h * 0.8), (0, self.recog.h * 0.4), interval=3, rebuild=True)
+        if length>3 : self.swipe((self.recog.w * 0.8, self.recog.h * 0.8), (0, self.recog.h * 0.4), interval=3, rebuild=True)
         name_p = [((1460,155) ,(1700, 210)),((1460,370) , (1700, 420)),((1460,585)  ,(1700, 630)),((1460,560)  ,(1700, 610)),((1460,775),(1700, 820))]
         time_p = [((1650,270,1780, 305)),((1650,480,1780, 515)),((1650,690,1780, 725)),((1650,665,1780, 700)),((1650,875,1780, 910))]
-        mood_p = [((1685, 215, 1735, 255)), ((1685, 425, 1735, 465)), ((1685, 635, 1735, 675)),((1685, 615, 1735, 645)), ((1685, 825, 1735, 865))]
+        mood_p = [((1685, 215, 1735, 255)), ((1685, 425, 1735, 465)), ((1685, 635, 1735, 675)),((1685, 615, 1735, 655)), ((1685, 825, 1735, 865))]
         result = []
         swiped = False
         for i in range(0, length):
@@ -1644,10 +1647,10 @@ class BaseSchedulerSolver(BaseSolver):
             data['agent'] = character_recognize.agent_name(self.recog.img[name_p[i][0][1]:name_p[i][1][1] , name_p[i][0][0]:name_p[i][1][0] ],self.recog.h)
             data['mood'] = segment.read_screen(self.recog.img,cord=mood_p[i],change_color=True)
             if data['agent'] not in self.operators.keys():
-                self.operators[data['agent']] ={"type": "low", "name": data['agent'], "group": '', 'current_room': '','resting_priority': 'low', "index": i, 'mood': data['mood'] ,"upper_limit":24}
+                self.operators[data['agent']] ={"type": "low", "name": data['agent'], "group": '', 'current_room': '','resting_priority': 'low', "index": -1, 'mood': data['mood'] ,"upper_limit":24}
             else:
                 self.operators[data['agent']]['mood']=data['mood']
-                self.operators[data['agent']]['index'] =i
+                self.operators[data['agent']]['current_index'] =i
             self.operators[data['agent']]['current_room'] = room
             if i in read_time_index:
                 if data['mood']==24:
@@ -1755,7 +1758,6 @@ class BaseSchedulerSolver(BaseSolver):
                     choose_error += 1
             self.back(0.5)
         if len(in_and_out) > 0:
-            self.back()
             replace_plan = {}
             for room in in_and_out:
                 logger.info("开始插拔")
@@ -1787,8 +1789,8 @@ class BaseSchedulerSolver(BaseSolver):
             self.todo_task = True
             self.planned = True
         logger.info('返回基建主界面')
-
-
+        if len(read_time_room) > 0:
+            return time_result
     def agent_arrange(self, plan: tp.BasePlan, read_time_room=[]):
         """ 基建排班 """
         logger.info('基建：排班')
@@ -1962,7 +1964,7 @@ class BaseSchedulerSolver(BaseSolver):
             return time_result
     def inialize_maa(self):
         # 请设置为存放 dll 文件及资源的路径
-        path = 'F:\MAA-v4.6.5-beta.3-win-x64'
+        path = 'F:\MAA-v4.6.5-beta.3-win-x64 - Copy'
 
         # 外服需要再额外传入增量资源路径，例如
         Asst.load(path=path)
