@@ -300,7 +300,7 @@ def read_screen(img, type="mood", langurage="eng", limit=24, cord=None, change_c
                 __str = max(result, key=result.get)
                 __str = __str[0:len(__str)-idx]
                 if '/' in __str:
-                    __str.replace('/','')
+                    __str= __str[0:__str.index('/')]
                 number = int(__str)
                 if number>limit:
                     saveimg(thresh, 'error_mood')
@@ -319,7 +319,7 @@ def read_screen(img, type="mood", langurage="eng", limit=24, cord=None, change_c
                         __str = max(result, key=result.get)
                         __str = __str[0:len(__str) - 3]
                         if '/' in __str:
-                            __str.replace('/', '')
+                            __str = __str[0:__str.index('/')]
                         number = int(__str)
                     return number
             else:
