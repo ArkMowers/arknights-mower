@@ -169,6 +169,10 @@ class BaseSolver:
         """ get the current scene in the game """
         return self.recog.get_scene()
 
+    def get_infra_scene(self) -> int:
+        """ get the current scene in the infra """
+        return self.recog.get_infra_scene()
+
     def is_login(self):
         """ check if you are logged in """
         return not (self.scene() // 100 == 1 or self.scene() // 100 == 99 or self.scene() == -1)

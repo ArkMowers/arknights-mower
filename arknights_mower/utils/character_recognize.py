@@ -246,3 +246,32 @@ def agent_with_mood(img ,length=5, draw: bool = False) :
         logger.debug(traceback.format_exc())
         raise RecognizeError(e)
 
+def agent_with_mood_2(img , draw: bool = False) :
+    try:
+        height, width, _ = img.shape
+
+        x0 = int(width*20/1920);y0 = int(height*135/1080);x1 = int(width*265/1920);y1 = int(height*190/1080)
+        a0 = int(width*455/1920); b0 = int(height*140/1080); a1 = int(width*555/1920); b1 = int(height*185/1080)
+        mood =segment.read_screen(img[ b0:b1, a0:a1 ],type="mood")
+        name = ''
+        if mood!=-1:
+            __img = img[y0:y1 , x0:x1 ]
+            name = agent_name(__img, height, reverse=True, draw=draw)
+        return name,mood
+    except Exception as e:
+        logger.debug(traceback.format_exc())
+        raise RecognizeError(e)
+
+def agent_name(__img, height,reverse = False, draw: bool = False):
+    ocr = ocrhandle.predict(__img)
+    name = ''
+    try:
+        if len(ocr) > 0 and ocr[0][1] in agent_list and ocr[0][1] not in ['砾', '陈']:
+            name = ocr[0][1]
+        else:
+            res = sift_recog(__img, height, draw, reverse)
+            if (res is not None) and res in agent_list:
+                name = res
+    except Exception as e:
+        saveimg(__img, 'failure_agent')
+    return name
