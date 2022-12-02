@@ -1963,18 +1963,14 @@ class BaseSchedulerSolver(BaseSolver):
         if len(read_time_room) > 0:
             return time_result
     def inialize_maa(self):
-        # 请设置为存放 dll 文件及资源的路径
-        path = 'F:\MAA-v4.6.5-beta.3-win-x64 - Copy'
-
         # 外服需要再额外传入增量资源路径，例如
-        Asst.load(path=path)
+        Asst.load(path=self.MAA_PATH)
 
         # 若需要获取详细执行信息，请传入 callback 参数
         # 例如 asst = Asst(callback=my_callback)
         self.MAA = Asst()
-
         # 请自行配置 adb 环境变量，或修改为 adb 可执行程序的路径
-        if self.MAA.connect('D:\\Program Files (x86)\\MuMu\\emulator\\nemu\\vmonitor\\bin\\adb_server.exe', '127.0.0.1:62001'):
+        if self.MAA.connect(self.MAA_ADB, self.ADB_CONNECT):
             logger.info("MAA 连接成功")
         else:
             logger.info("MAA 连接失败")

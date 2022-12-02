@@ -15,6 +15,10 @@ email_config= {
     'receipts':['任何邮箱'],
     'notify':False
 }
+# 请设置为存放 dll 文件及资源的路径
+maa_path ='F:\MAA-v4.6.5-beta.3-win-x64'
+# 请设置MAA adb 路径
+maa_adb_path= 'D:\\Program Files (x86)\\MuMu\\emulator\\nemu\\vmonitor\\bin\\adb_server.exe'
 
 # 指定无人机加速第三层第三个房间的制造或贸易订单
 drone_room = 'room_3_3'
@@ -159,6 +163,9 @@ def inialize(tasks=[]):
     base_scheduler.resting_treshhold=resting_treshhold
     base_scheduler.MAA = None
     base_scheduler.email_config = email_config
+    base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
+    base_scheduler.MAA_PATH = maa_path
+    base_scheduler.MAA_ADB = maa_adb_path
     return base_scheduler
 def simulate():
     '''
