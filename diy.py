@@ -174,14 +174,12 @@ def simulate():
     global ope_list
     # 第一次执行任务
     # tasks = [{"plan": {'room_1_1': ['能天使','但书','龙舌兰']}, "time": datetime.now()}]
-    tasks=[]
+    tasks =[]
     reconnect_max_tries = 10
     reconnect_tries = 0
     base_scheduler = inialize(tasks)
 
-    # #cli.mail()  # 邮件
     while True:
-        # output = cli.base_scheduler(tasks=tasks,plan=plan)  # 基建
         try:
             if len(base_scheduler.tasks) > 0:
                 (base_scheduler.tasks.sort(key=lambda x: x["time"], reverse=False))
@@ -202,7 +200,7 @@ def simulate():
                 while not connected:
                     try:
                         base_scheduler = inialize(base_scheduler.tasks)
-                        break;
+                        break
                     except Exception as ce:
                         logger.error(ce)
                         time.sleep(5)
