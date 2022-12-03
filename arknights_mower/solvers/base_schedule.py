@@ -1803,13 +1803,9 @@ class BaseSchedulerSolver(BaseSolver):
         if fia_room != '':
             replace_agent = plan[fia_room][0]
             fia_change_room = self.operators[replace_agent]["room"]
-            self.back(interval=2)
-            if len(self.current_base.keys()) > 3:
-                fia_room_plan = [data["agent"] for data in self.current_base[fia_room]]
-                fia_change_room_plan = [data["agent"] for data in self.current_base[fia_change_room]]
-            else:
-                fia_room_plan = [data["agent"] for data in self.currentPlan[fia_room]]
-                fia_change_room_plan = [data["agent"] for data in self.currentPlan[fia_change_room]]
+            fia_room_plan = [data["agent"] for data in self.current_base[fia_room]]
+            fia_change_room_plan = ['Current']*len(self.currentPlan[fia_change_room])
+            fia_change_room_plan[self.operators[replace_agent]["index"]] = replace_agent
             self.tasks.append(
                 {'time': datetime.now(), 'plan': {fia_room: fia_room_plan, fia_change_room: fia_change_room_plan}})
             # 急速换班
