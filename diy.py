@@ -15,6 +15,10 @@ email_config= {
     'receipts':['任何邮箱'],
     'notify':False
 }
+# 请设置为存放 dll 文件及资源的路径
+maa_path ='F:\MAA-v4.6.5-beta.3-win-x64'
+# 请设置MAA adb 路径
+maa_adb_path= 'D:\\Program Files (x86)\\MuMu\\emulator\\nemu\\vmonitor\\bin\\adb_server.exe'
 
 # 指定无人机加速第三层第三个房间的制造或贸易订单
 drone_room = 'room_3_3'
@@ -60,7 +64,7 @@ plan = {
     # 阶段 1
     "default": "plan_1",
     "plan_1": {
-        # 办公室
+        # 中枢
         'central': [{'agent': '焰尾', 'group': '红松骑士', 'replacement': ["玛恩纳", "清道夫", "临光", "杜宾", '坚雷','布丁']},
                     {'agent': '琴柳', 'group': '', 'replacement': ["玛恩纳", "清道夫", "临光", "杜宾", '坚雷']},
                     {'agent': '凯尔希', 'replacement': ["玛恩纳", "清道夫", "临光", "杜宾", '坚雷'], 'group': ''},
@@ -94,10 +98,10 @@ plan = {
                         {'agent': 'Free', 'group': '', 'replacement': []}],
         # 会客室
         'meeting': [{'agent': '陈', 'replacement': ['星极','远山'], 'group': ''},
-                    {'agent': '红', 'replacement': ['远山','星极'], 'group': ''}, ],
+                    {'agent': '红', 'replacement': ['远山','星极'], 'group': ''} ],
         'room_1_1': [{'agent': '黑键', 'group': '', 'replacement': []},
-                     {'agent': '图耶', 'group': '图耶', 'replacement': ['但书','空弦','雪雉','能天使']},
-                     {'agent': '鸿雪', 'group': '图耶', 'replacement': ['龙舌兰', '空弦','能天使', '雪雉']}
+                     {'agent': '图耶', 'group': '图耶', 'replacement': ['但书','伺夜']},
+                     {'agent': '鸿雪', 'group': '图耶', 'replacement': ['龙舌兰', '空弦']}
                      ],
         'room_1_2': [{'agent': '迷迭香', 'group': '', 'replacement': []},
                      {'agent': '砾', 'group': '', 'Type': '', 'replacement': ['夜烟', '斑点']},
@@ -159,6 +163,9 @@ def inialize(tasks=[]):
     base_scheduler.resting_treshhold=resting_treshhold
     base_scheduler.MAA = None
     base_scheduler.email_config = email_config
+    base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
+    base_scheduler.MAA_PATH = maa_path
+    base_scheduler.MAA_ADB = maa_adb_path
     return base_scheduler
 def simulate():
     '''
@@ -167,14 +174,12 @@ def simulate():
     global ope_list
     # 第一次执行任务
     # tasks = [{"plan": {'room_1_1': ['能天使','但书','龙舌兰']}, "time": datetime.now()}]
-    tasks=[]
+    tasks =[]
     reconnect_max_tries = 10
     reconnect_tries = 0
     base_scheduler = inialize(tasks)
 
-    # #cli.mail()  # 邮件
     while True:
-        # output = cli.base_scheduler(tasks=tasks,plan=plan)  # 基建
         try:
             if len(base_scheduler.tasks) > 0:
                 (base_scheduler.tasks.sort(key=lambda x: x["time"], reverse=False))
@@ -191,7 +196,15 @@ def simulate():
             reconnect_tries +=1
             if reconnect_tries < reconnect_max_tries:
                 logger.warning(f'连接端口断开....正在重连....')
-                base_scheduler = inialize(base_scheduler.tasks)
+                connected = False
+                while not connected:
+                    try:
+                        base_scheduler = inialize(base_scheduler.tasks)
+                        break
+                    except Exception as ce:
+                        logger.error(ce)
+                        time.sleep(5)
+                        continue
                 continue
             else:
                 raise Exception(e)
