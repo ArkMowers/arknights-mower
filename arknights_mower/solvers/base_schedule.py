@@ -535,7 +535,7 @@ class BaseSchedulerSolver(BaseSolver):
                 exclude_list = copy.deepcopy(fia_plan)
                 if not any(fia_room in obj["plan"].keys() and len(obj["plan"][fia_room]) == 2 for obj in self.tasks):
                     fia_idx = self.operators['菲亚梅塔']['index']
-                    result = {}
+                    result = [{}]*(fia_idx+1)
                     result[fia_idx]['time'] =datetime.now()
                     if self.operators["菲亚梅塔"]["mood"] != 24:
                         self.enter_room(fia_room)
