@@ -322,8 +322,7 @@ class BaseSchedulerSolver(BaseSolver):
                         fix_plan[key][idx] = 'Current'
         # 最后如果有任何高效组心情没有记录 或者高效组在宿舍
         miss_list = {k: v for (k, v) in self.operators.items() if
-                     (v['type'] == 'high' and (
-                                 v['mood'] == -1 or (v['mood'] == 24) and v['current_room'].startswith('dormitory')))}
+                     (v['type'] == 'high' and ('mood' not in v.keys() or (v['mood'] == -1 or (v['mood'] == 24) and v['current_room'].startswith('dormitory'))))}
         if len(miss_list.keys()) > 0:
             # 替换到他应该的位置
             for key in miss_list:
@@ -535,11 +534,11 @@ class BaseSchedulerSolver(BaseSolver):
             if fia_room is not None and fia_plan is not None:
                 exclude_list = copy.deepcopy(fia_plan)
                 if not any(fia_room in obj["plan"].keys() and len(obj["plan"][fia_room]) == 2 for obj in self.tasks):
-                    if self.operators["菲亚梅塔"]["mood"] == 24:
-                        change_time = datetime.now()
-                    else:
+                    fia_idx = self.operators['菲亚梅塔']['index']
+                    result = {}
+                    result[fia_idx]['time'] =datetime.now()
+                    if self.operators["菲亚梅塔"]["mood"] != 24:
                         self.enter_room(fia_room)
-                        fia_idx = self.operators['菲亚梅塔']['index']
                         result = self.get_agent_from_room(fia_room, [fia_idx])
                         self.back()
                     logger.info('下一次进行菲亚梅塔充能：' + result[fia_idx]['time'].strftime("%H:%M:%S"))
