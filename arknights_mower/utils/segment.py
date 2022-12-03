@@ -267,18 +267,18 @@ def base(img: tp.Image, central: tp.Scope, draw: bool = False) -> dict[ str, tp.
     except Exception as e:
         logger.debug(traceback.format_exc())
         raise RecognizeError(e)
-def read_screen(img, type="mood", langurage="eng", limit=24, cord=None, change_color=False, draw=False) -> int:
+def read_screen(img, type="mood", langurage="eng", limit=24,black_background = False, cord=None, change_color=False, draw=False) -> int:
     if cord is not None :
         img = img[ cord[1]:cord[3], cord[0]:cord[2] ]
     if 'mood' in type or type=="time":
         # 心情图片太小，复制8次提高准确率
-        for x in range(0, 3):
+        for x in range(0, 4):
             img = cv2.vconcat([img, img])
     if change_color: img[img == 137] = 255
     if draw : plt.imshow(img)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[ 1 ]
-    thresh = 255 - thresh
+    if not black_background : thresh = 255 - thresh
     if "mood" in type or type=='time':
         _config = r'-c tessedit_char_whitelist=0123456789: --psm 6'
         if type=='mood':_config = r'-c tessedit_char_whitelist=0123456789/- --psm 6'
@@ -295,9 +295,15 @@ def read_screen(img, type="mood", langurage="eng", limit=24, cord=None, change_c
             if "mood" in type:
                 number = 0
                 idx = 4
+                substring  = '/'+str(limit)
+                __str = next((e for e in result.keys() if substring in e), None)
+                if __str is None:
+                     __str = max(result, key=result.get)
                 if type =='mood':
-                    idx = 3
-                __str = max(result, key=result.get)
+                    if '/' not in __str:
+                        idx = 2
+                    else:
+                        idx = 3
                 __str = __str[0:len(__str)-idx]
                 if '/' in __str:
                     __str= __str[0:__str.index('/')]

@@ -252,7 +252,7 @@ def agent_with_mood_2(img , draw: bool = False) :
 
         x0 = int(width*20/1920);y0 = int(height*135/1080);x1 = int(width*265/1920);y1 = int(height*190/1080)
         a0 = int(width*455/1920); b0 = int(height*140/1080); a1 = int(width*555/1920); b1 = int(height*185/1080)
-        mood =segment.read_screen(img[ b0:b1, a0:a1 ],type="mood")
+        mood =segment.read_screen(img[ b0:b1, a0:a1 ],type="mood",black_background = True)
         name = ''
         if mood!=-1:
             __img = img[y0:y1 , x0:x1 ]
