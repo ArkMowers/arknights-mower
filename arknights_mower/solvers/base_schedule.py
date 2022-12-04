@@ -1643,7 +1643,7 @@ class BaseSchedulerSolver(BaseSolver):
             self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
             error_count += 1
         length = len(self.currentPlan[room])
-        if length > 3: self.swipe((self.recog.w * 0.8, self.recog.h * 0.8), (0, self.recog.h * 0.4), interval=3,
+        if length > 3: self.swipe((self.recog.w * 0.8, self.recog.h * 0.8), (0, self.recog.h * 0.4), interval=1,
                                   rebuild=True)
         name_p = [((1460, 155), (1700, 210)), ((1460, 370), (1700, 420)), ((1460, 585), (1700, 630)),
                   ((1460, 560), (1700, 610)), ((1460, 775), (1700, 820))]
@@ -1655,11 +1655,20 @@ class BaseSchedulerSolver(BaseSolver):
         swiped = False
         for i in range(0, length):
             if i >= 3 and not swiped:
-                self.swipe((self.recog.w * 0.8, self.recog.h * 0.8), (0, -self.recog.h * 0.4), interval=3, rebuild=True)
+                self.swipe((self.recog.w * 0.8, self.recog.h * 0.8), (0, -self.recog.h * 0.4), interval=1, rebuild=True)
                 swiped = True
             data = {}
             data['agent'] = character_recognize.agent_name(
                 self.recog.img[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]], self.recog.h)
+            error_count = 0
+            while i>=3 and data['agent'] !='' and (next((e for e in result if e['agent'] == data['agent']), None)) is not None:
+                logger.warning("检测到滑动可能失败")
+                self.swipe((self.recog.w * 0.8, self.recog.h * 0.8), (0, -self.recog.h * 0.4), interval=1, rebuild=True)
+                data['agent'] = character_recognize.agent_name(
+                    self.recog.img[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]], self.recog.h)
+                error_count+=1
+                if error_count>4:
+                    raise Exception("超过出错上限")
             data['mood'] = segment.read_screen(self.recog.img, cord=mood_p[i], change_color=True)
             if data['agent'] not in self.operators.keys():
                 self.operators[data['agent']] = {"type": "low", "name": data['agent'], "group": '', 'current_room': '',
