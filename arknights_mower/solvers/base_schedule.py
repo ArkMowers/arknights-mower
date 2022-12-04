@@ -1771,6 +1771,7 @@ class BaseSchedulerSolver(BaseSolver):
                         self.sleep(3)
                 except Exception as e:
                     logger.error(e)
+                    choose_error += 1
                     self.back()
                     if choose_error > 3:
                         raise e
