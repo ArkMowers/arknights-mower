@@ -682,12 +682,7 @@ class BaseSchedulerSolver(BaseSolver):
                     # if self_correction is not None:
                     #     return
             except Exception as e:
-                # 清空出错的任务
-                for task in self.tasks:
-                    if 'type' in task.keys():
-                        self.tasks.remove(task)
                 logger.exception(f'计算排班计划出错->{e}')
-                self.agent_get_mood_2()
 
     def get_swap_plan(self, resting_dorm, operators, skip_read_time):
         result = {}
