@@ -1802,7 +1802,7 @@ class BaseSchedulerSolver(BaseSolver):
             fia_change_room_plan = ['Current']*len(self.currentPlan[fia_change_room])
             fia_change_room_plan[self.operators[replace_agent]["index"]] = replace_agent
             self.tasks.append(
-                {'time': datetime.now(), 'plan': {fia_room: fia_room_plan, fia_change_room: fia_change_room_plan}})
+                {'time': self.tasks[0]['time'], 'plan': {fia_room: fia_room_plan, fia_change_room: fia_change_room_plan}})
             # 急速换班
             self.todo_task = True
             self.planned = True
