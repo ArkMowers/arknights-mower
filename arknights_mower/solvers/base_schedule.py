@@ -1786,7 +1786,6 @@ class BaseSchedulerSolver(BaseSolver):
                         raise e
                     else:
                         continue
-                    choose_error += 1
             self.back(0.5)
         if len(in_and_out) > 0:
             replace_plan = {}
@@ -2075,7 +2074,7 @@ class BaseSchedulerSolver(BaseSolver):
             logger.error(e)
             self.MAA = None
             remaining_time = (self.tasks[0]["time"] - datetime.now()).total_seconds()
-            if time >0:
+            if remaining_time >0:
                 logger.info(f"开始休息 {remaining_time} 秒")
                 time.sleep(remaining_time)
 
