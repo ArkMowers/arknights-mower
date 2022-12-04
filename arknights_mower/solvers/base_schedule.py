@@ -2065,7 +2065,10 @@ class BaseSchedulerSolver(BaseSolver):
         except Exception as e:
             logger.error(e)
             self.MAA = None
-            time.sleep((self.tasks[0]["time"] - datetime.now()).total_seconds())
+            remaining_time = (self.tasks[0]["time"] - datetime.now()).total_seconds()
+            if time >0:
+                logger.info(f"开始休息 {remaining_time} 秒")
+                time.sleep(remaining_time)
 
     def send_email(self, tasks):
         try:
