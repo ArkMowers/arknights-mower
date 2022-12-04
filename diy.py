@@ -183,7 +183,7 @@ def simulate():
         try:
             if len(base_scheduler.tasks) > 0:
                 (base_scheduler.tasks.sort(key=lambda x: x["time"], reverse=False))
-                sleep_time = (tasks[0]["time"] - datetime.now()).total_seconds()
+                sleep_time = (base_scheduler.tasks[0]["time"] - datetime.now()).total_seconds()
                 logger.info(base_scheduler.tasks)
                 base_scheduler.send_email(base_scheduler.tasks)
                 # 如果任务间隔时间超过9分钟则启动MAA
