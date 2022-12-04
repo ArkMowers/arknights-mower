@@ -307,6 +307,8 @@ def read_screen(img, type="mood", langurage="eng", limit=24,black_background = F
                 __str = __str[0:len(__str)-idx]
                 if '/' in __str:
                     __str= __str[0:__str.index('/')]
+                if ''==__str:
+                    return 0
                 number = int(__str)
                 if number>limit:
                     saveimg(thresh, 'error_mood')
