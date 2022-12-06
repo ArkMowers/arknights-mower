@@ -2011,6 +2011,8 @@ class BaseSchedulerSolver(BaseSolver):
             self.inialize_maa()
             self.MAA.append_task('StartUp')
             self.MAA.append_task('Fight', {
+                # 空值表示上一次
+                # 'stage': '',
                 'stage': 'BI-8',
                 'medicine': 0,
                 'stone': 0,
@@ -2032,6 +2034,7 @@ class BaseSchedulerSolver(BaseSolver):
                 'shopping': True,
                 'buy_first': ['招聘许可', '龙门币', '赤金'],
                 'blacklist': ['家具', '碳', '加急'],
+                'credit_fight':True
             })
             self.MAA.append_task('Award')
             # asst.append_task('Copilot', {
