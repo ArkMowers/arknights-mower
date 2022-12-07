@@ -423,7 +423,6 @@ class BaseSchedulerSolver(BaseSolver):
                     while error_count < 3:
                         try:
                             self.enter_room(self.operators[agent]['current_room'])
-
                             time_result = self.get_agent_from_room(self.operators[agent]['current_room'],[__index])
                             if time_result is None:
                                 raise Exception("读取时间失败")
@@ -481,7 +480,7 @@ class BaseSchedulerSolver(BaseSolver):
                     min_mood = -99
                     for agent in self.total_agent:
                         if actuall_resting >= number_of_dorm:
-                            if min_mood == -1:
+                            if min_mood == -99:
                                 min_mood = agent['mood']
                             break
                         if (len([value for value in need_to_rest if value["agent"] == agent["agent"]]) > 0):
