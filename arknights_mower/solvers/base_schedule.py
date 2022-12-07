@@ -288,7 +288,7 @@ class BaseSchedulerSolver(BaseSolver):
             for idx, operator in enumerate(current_base[key]):
                 data = current_base[key][idx]
                 # 如果是空房间
-                if data["mood"] == -1:
+                if data["agent"] == '':
                     if not need_fix:
                         fix_plan[key] = [''] * len(plan[key])
                         need_fix = True
@@ -1466,7 +1466,7 @@ class BaseSchedulerSolver(BaseSolver):
                     while self.scene() == Scene.CONNECTING:
                         self.sleep(3)
                 except Exception as e:
-                    logger.error(e)
+                    logger.exception(e)
                     choose_error += 1
                     self.back()
                     if choose_error > 3:
