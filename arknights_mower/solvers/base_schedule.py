@@ -138,9 +138,9 @@ class BaseSchedulerSolver(BaseSolver):
                 self.tasks.remove(task)
         self.get_swap_plan(resting_dorm, operators, False)
         self.task_type = None
-    def handle_error(self):
+    def handle_error(self,force = False):
         # 如果有任何报错，则生成一个空
-        if self.error:
+        if self.error or force:
             logger.info("由于出现错误情况，生成一次空任务来执行纠错")
             self.scan_time = {}
             # 如果没有任何时间小于当前时间的任务才生成空任务
@@ -419,9 +419,12 @@ class BaseSchedulerSolver(BaseSolver):
                     error_count = 0
                     time_result = None
                     # 读取时间
+                    __index = self.operators[agent]['current_index']
                     while error_count < 3:
                         try:
-                            time_result = self.get_time(self.operators[agent]['current_room'], agent)
+                            self.enter_room(self.operators[agent]['current_room'])
+
+                            time_result = self.get_agent_from_room(self.operators[agent]['current_room'],[__index])
                             if time_result is None:
                                 raise Exception("读取时间失败")
                             else:
@@ -434,6 +437,7 @@ class BaseSchedulerSolver(BaseSolver):
                             logger.exception(e)
                             error_count += 1
                             continue
+                    time_result = time_result[__index]['time']
                     # 如果已经有现有plan 则比对时间
                     if next((k for k in total_exaust_plan if
                              next((k for k, v in k['plan'].items() if agent in v), None) is not None),
@@ -461,6 +465,7 @@ class BaseSchedulerSolver(BaseSolver):
                         exaust_plan['plan'][self.operators[planned]['room']][
                             self.operators[planned]['index']] = planned
                     total_exaust_plan.append(exaust_plan)
+                    self.back()
                 self.tasks.extend(total_exaust_plan)
                 resting_dorm = []
                 for task in self.tasks:
@@ -1454,7 +1459,7 @@ class BaseSchedulerSolver(BaseSolver):
                             self.operators[operator]['current_room'] = room
                     for _operator in self.operators.keys():
                         if 'current_room' in self.operators[_operator].keys() and self.operators[_operator][
-                            'current_room'] == 'room' and _operator not in plan[room]:
+                            'current_room'] == room and _operator not in plan[room]:
                             self.operators[_operator]['current_room'] = ''
                             logger.info(f'重设 {_operator} 至空闲')
                     finished = True
