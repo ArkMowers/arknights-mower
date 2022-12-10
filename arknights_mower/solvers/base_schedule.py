@@ -335,16 +335,12 @@ class BaseSchedulerSolver(BaseSolver):
             fix_agents = []
             remove_keys = []
             for key in fix_plan:
-                # 如果 type有，则跳过宿舍的纠错（会触发plan_solver）
-                if self.task_type is not None and key.startswith('dormitory'):
-                    remove_keys.append(key)
-                else:
-                    for idx, fix_agent in enumerate(fix_plan[key]):
-                        if fix_agent not in fix_agents:
-                            fix_agents.append(fix_agent)
-                        else:
-                            fix_plan[key][idx] = "Free" if fix_plan[key][idx] not in ['Free', 'Current'] else \
-                                fix_plan[key][idx]
+                for idx, fix_agent in enumerate(fix_plan[key]):
+                    if fix_agent not in fix_agents:
+                        fix_agents.append(fix_agent)
+                    else:
+                        fix_plan[key][idx] = "Free" if fix_plan[key][idx] not in ['Free', 'Current'] else \
+                            fix_plan[key][idx]
             if len(remove_keys) > 0:
                 for item in remove_keys:
                     del fix_plan[item]
