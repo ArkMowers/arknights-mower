@@ -53,13 +53,8 @@ class BaseSchedulerSolver(BaseSolver):
         if len(self.tasks) > 0:
             # 找到时间最近的一次单个任务
             self.task = self.tasks[0]
-            if 'type' in self.task.keys():
-                self.task_type = self.task
-            else:
-                self.task_type = None
         else:
             self.task = None
-            self.task_type = None
         self.todo_task = False
         self.planned = False
         if len(self.operators.keys()) == 0:
@@ -137,7 +132,6 @@ class BaseSchedulerSolver(BaseSolver):
                 self.agent_arrange_2(task['plan'])
                 self.tasks.remove(task)
         self.get_swap_plan(resting_dorm, operators, False)
-        self.task_type = None
     def handle_error(self,force = False):
         # 如果有任何报错，则生成一个空
         if self.error or force:
@@ -490,9 +484,11 @@ class BaseSchedulerSolver(BaseSolver):
                         self.operators[agent['agent']]['current_room'].startswith('dormitory'):
                             if next((e for e in self.tasks if 'type' in e.keys() and e['type'] == agent['agent']),
                                     None) is None:
-                                rest_time = self.get_time(agent['current_room'], agent['agent'], adjustment=-600)
+                                self.enter_room(agent['current_room'])
+                                result = self.get_agent_from_room(agent['current_room'], [agent['current_index']])
+                                self.back()
                                 # plan 是空的是因为得动态生成
-                                self.tasks.append({"time": rest_time, "plan": {}, "type": agent['agent']})
+                                self.tasks.append({"time": result[agent['current_index']]['time'], "plan": {}, "type": agent['agent']})
                             else:
                                 continue
                         # 忽略掉菲亚梅塔充能的干员
@@ -533,11 +529,6 @@ class BaseSchedulerSolver(BaseSolver):
                     if len(need_to_rest) > 0:
                         self.get_swap_plan(resting_dorm, need_to_rest, min_mood < 3 and min_mood != -99)
                     return
-                    # # 关闭跳过宿舍
-                    # self.task_type = None
-                    # self_correction = self.agent_get_mood_2()
-                    # if self_correction is not None:
-                    #     return
             except Exception as e:
                 logger.exception(f'计算排班计划出错->{e}')
 
@@ -691,23 +682,6 @@ class BaseSchedulerSolver(BaseSolver):
             if 'replacement' in self.operators['菲亚梅塔'].keys():
                 return self.operators['菲亚梅塔']['replacement'], self.operators['菲亚梅塔']['room']
         return None, None
-
-    def get_time(self, room, name, adjustment=0, skip_enter_room=False):
-        if not skip_enter_room:
-            self.enter_room(room)
-            self.tap((self.recog.w * 0.05, self.recog.h * 0.2), interval=0.2)
-            self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.2)
-            self.tap((self.recog.w * 0.82, self.recog.h * 0.2), interval=0.2)
-        self.choose_agent([name], room, read_time=True)
-        execute_time = self.double_read_time((int(self.recog.w * 540 / 2496), int(self.recog.h * 380 / 1404),
-                                              int(self.recog.w * 710 / 2496), int(self.recog.h * 430 / 1404)))
-        execute_time = execute_time + timedelta(seconds=(adjustment))
-        logger.info(name + ' 心情恢复时间为：' + execute_time.strftime("%H:%M:%S"))
-        logger.info('返回基建主界面')
-        self.back(interval=2, rebuild=False)
-        if not skip_enter_room:
-            self.back(interval=2, rebuild=True)
-        return execute_time
 
     def get_in_and_out_time(self, room):
         logger.info('基建：读取插拔时间')
