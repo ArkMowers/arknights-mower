@@ -408,6 +408,10 @@ def agent(img, draw=False):
         gap = [y - x for x, y in zip(x_set[:-1], x_set[1:])]
         logger.debug(sorted(gap))
         gap = int(np.median(gap))  # 干员卡片宽度
+        
+        gap_max = 190 * (resolution / 1080)  # 卡片宽度上限, 防止存在将两个干员的名字拼在一起（例如“缄默德克萨斯"出现时）
+        gap = gap_max if gap > gap_max else gap
+        
         for x, y in zip(x_set[:-1], x_set[1:]):
             if y - x > gap:
                 gap_num = round((y - x) / gap)
