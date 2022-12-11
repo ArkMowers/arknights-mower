@@ -480,11 +480,12 @@ class BaseSchedulerSolver(BaseSolver):
                         self.operators[agent['agent']]['current_room'].startswith('dormitory'):
                             if next((e for e in self.tasks if 'type' in e.keys() and e['type'] == agent['agent']),
                                     None) is None:
-                                self.enter_room(agent['current_room'])
-                                result = self.get_agent_from_room(agent['current_room'], [agent['current_index']])
+                                __agent = self.operators[agent['agent']]
+                                self.enter_room(__agent['current_room'])
+                                result = self.get_agent_from_room(__agent['current_room'], [__agent['current_index']])
                                 self.back()
                                 # plan 是空的是因为得动态生成
-                                self.tasks.append({"time": result[agent['current_index']]['time'], "plan": {}, "type": agent['agent']})
+                                self.tasks.append({"time": result[__agent['current_index']]['time'], "plan": {}, "type": __agent['agent']})
                             else:
                                 continue
                         # 忽略掉菲亚梅塔充能的干员
@@ -1333,7 +1334,7 @@ class BaseSchedulerSolver(BaseSolver):
             self.operators[data['agent']]['current_index'] = i
             self.operators[data['agent']]['current_room'] = room
             if i in read_time_index:
-                if data['mood'] == 24:
+                if data['mood'] in [24, 0]:
                     data['time'] = datetime.now()
                 else:
                     data['time'] = self.double_read_time(time_p[i])
@@ -1494,11 +1495,11 @@ class BaseSchedulerSolver(BaseSolver):
             self.send_email('休息时长超过9分钟，启动MAA')
             # 任务及参数请参考 docs/集成文档.md
             self.inialize_maa()
-            self.MAA.append_task('StartUp')
+            # self.MAA.append_task('StartUp')
             self.MAA.append_task('Fight', {
                 # 空值表示上一次
                 # 'stage': '',
-                'stage': 'BI-8',
+                'stage': '1-7',
                 'medicine': 0,
                 'stone': 0,
                 'times': 999,
