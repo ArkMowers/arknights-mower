@@ -487,7 +487,7 @@ class BaseSchedulerSolver(BaseSolver):
                                 result = self.get_agent_from_room(__agent['current_room'], [__agent['current_index']])
                                 self.back()
                                 # plan 是空的是因为得动态生成
-                                self.tasks.append({"time": result[__agent['current_index']]['time'], "plan": {}, "type": __agent['agent']})
+                                self.tasks.append({"time": result[__agent['current_index']]['time'], "plan": {}, "type": __agent['name']})
                             else:
                                 continue
                         # 忽略掉菲亚梅塔充能的干员
