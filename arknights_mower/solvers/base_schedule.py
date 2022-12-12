@@ -136,7 +136,6 @@ class BaseSchedulerSolver(BaseSolver):
         # 如果有任何报错，则生成一个空
         if self.error or force:
             logger.info("由于出现错误情况，生成一次空任务来执行纠错")
-            self.scan_time = {}
             # 如果没有任何时间小于当前时间的任务才生成空任务
             if (next((e for e in self.tasks if e['time'] < datetime.now()), None)) is None:
                 room = next(iter(self.currentPlan.keys()))
@@ -226,7 +225,6 @@ class BaseSchedulerSolver(BaseSolver):
                 self.plan_solver()
             except Exception as e:
                 # 重新扫描
-                self.scan_time = {}
                 self.error = True
                 logger.exception({e})
             self.planned = True
