@@ -1121,7 +1121,8 @@ class BaseSchedulerSolver(BaseSolver):
                 name = y[0]
                 if name in agent:
                     select_name.append(name)
-                    self.get_agent_detail((y[1][0]))
+                    # self.get_agent_detail((y[1][0]))
+                    self.tap((y[1][0]))
                     agent.remove(name)
                     # 如果是按照个数选择 Free
                     if max_agent_count != -1:
