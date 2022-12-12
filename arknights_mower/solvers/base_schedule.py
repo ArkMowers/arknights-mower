@@ -276,6 +276,8 @@ class BaseSchedulerSolver(BaseSolver):
         plan = self.currentPlan
         self.total_agent = []
         fix_plan = {}
+        if next((k for k in self.tasks if k['time'] <datetime.now()),None) is not None:
+            logger.info('有未完成的任务，跳过纠错')
         for key in current_base:
             if (key == 'train' or key == 'factory'): continue
             need_fix = False
@@ -609,6 +611,7 @@ class BaseSchedulerSolver(BaseSolver):
                         self.currentPlan[self.operators[planned]['room']])
                 group_info[group_name]['plan'][self.operators[planned]['current_room']][
                     self.operators[planned]['index']] = planned
+            group_info[group_name]['plan'][room]=[x['agent'] for x in self.currentPlan[room]]
         logger.info(f'生成的分组计划:{group_info}')
         logger.info(f'生成的排班计划为->{result}')
         self.tasks.append(
@@ -700,14 +703,14 @@ class BaseSchedulerSolver(BaseSolver):
         self.back(interval=2)
         return execute_time
 
-    def double_read_time(self, cord, error_count=0):
+    def double_read_time(self, cord,upperLimit = 9000, error_count=0,):
         self.recog.update()
-        time_in_seconds = self.read_time(cord)
+        time_in_seconds = self.read_time(cord,upperLimit)
         execute_time = datetime.now() + timedelta(seconds=(time_in_seconds))
         time.sleep(2)
         self.recog.update()
-        logger.info('基建：读取插拔时间二次确认')
-        time_in_seconds_2 = self.read_time(cord)
+        logger.info('基建：读取时间二次确认')
+        time_in_seconds_2 = self.read_time(cord,upperLimit)
         execute_time_2 = datetime.now() + timedelta(seconds=(time_in_seconds_2))
         logger.info('二次确认时间为：' + execute_time_2.strftime("%H:%M:%S"))
         if the_same_time(execute_time, execute_time_2):
@@ -716,21 +719,26 @@ class BaseSchedulerSolver(BaseSolver):
             if error_count > 25:
                 raise Exception("验证错误 超过上限")
             error_count += 1
-            return self.double_read_time(cord, error_count)
+            return self.double_read_time(cord,upperLimit, error_count)
 
-    def read_time(self, cord, error_count=0):
+    def read_time(self, cord,upperlimit, error_count=0,):
         # 刷新图片
         self.recog.update()
         time_str = segment.read_screen(self.recog.img, type='time', cord=cord)
         try:
             h, m, s = time_str.split(':')
-            return int(h) * 3600 + int(m) * 60 + int(s)
+            if int(m)>60 or int(s)>60:
+                raise Exception(f"读取错误")
+            res =  int(h) * 3600 + int(m) * 60 + int(s)
+            if res>upperlimit:
+                raise Exception(f"超过读取上限")
+            else :return res
         except:
             logger.error("读取失败" + "--> " + time_str)
             if error_count > 50:
                 raise Exception(f"读取失败{error_count}次超过上限")
             else:
-                return self.read_time(cord, error_count + 1)
+                return self.read_time(cord,upperlimit, error_count + 1)
 
     def todo_list(self) -> None:
         """ 处理基建 Todo 列表 """
@@ -1029,10 +1037,11 @@ class BaseSchedulerSolver(BaseSolver):
                 self.tap(accelerate)
                 self.tap_element('all_in')
                 self.tap((self.recog.w * 0.75, self.recog.h * 0.8), interval=3)  # relative position 0.75, 0.8
+                self.recog.save_screencap('run_order')
                 if one_time:
                     drone_count = segment.read_screen(self.recog.img, type='drone_mood', cord=(
-                        int(self.recog.w * 1150 / 1920), int(self.recog.h * 35 / 1080), int(self.recog.w * 1300 / 1920),
-                        int(self.recog.h * 68 / 1080)), limit=200)
+                        int(self.recog.w * 1150 / 1920), int(self.recog.h * 35 / 1080), int(self.recog.w * 1295 / 1920),
+                        int(self.recog.h * 72 / 1080)), limit=200)
                     logger.info(f'当前无人机数量为：{drone_count}')
                     if drone_count < 92:
                         logger.info(f"无人机数量小于92->停止")
@@ -1079,14 +1088,14 @@ class BaseSchedulerSolver(BaseSolver):
     def get_agent_detail(self, cord, errorCount=0):
         self.tap(cord, interval=0.5)
         try:
-            name, mood = character_recognize.agent_with_mood_2(self.recog.img)
-            if mood != -1:
-                # 记录干员心情
-                if name in self.operators.keys():
-                    self.operators[name]['mood'] = mood
-                else:
-                    self.operators[name] = {"type": "low", "name": name, "group": '', 'resting_priority': 'low',
-                                            "index": -1, 'current_room': '', 'mood': mood, "upper_limit": 24}
+            width = self.recog.w
+            height = self.recog.h
+            x0 = int(width * 20 / 1920)
+            y0 = int(height * 125 / 1080)
+            x1 = int(width * 265 / 1920)
+            y1 = int(height * 200 / 1080)
+            name = character_recognize.agent_name(self.recog.img[y0:y1 , x0:x1 ],height=height*1.5,reverse=True)
+            if name =='' :raise Exception("检测到选择干员未成功")
         except Exception as e:
             if errorCount > 3:
                 raise e
@@ -1124,7 +1133,7 @@ class BaseSchedulerSolver(BaseSolver):
             if error_count < 3:
                 logger.exception(e)
                 self.sleep(3)
-                return self.scan_agant(agent, error_count, max_agent_count)
+                return self.scan_agant_2(agent, error_count, max_agent_count)
             else:
                 raise e
 
@@ -1246,8 +1255,7 @@ class BaseSchedulerSolver(BaseSolver):
             # 只选择在列表里面的
             # 替换组小于20才休息，防止进入就满心情进行网络连接
             free_list = [v["name"] for k, v in self.operators.items() if
-                         v["name"] not in agents and (
-                                 (v["type"] == 'low' and 'mood' in v.keys() and v["mood"] < 20) or v["type"] == "")]
+                         v["name"] not in agents and v["type"] != 'high']
             free_list.extend([_name for _name in agent_list if _name not in self.operators.keys()])
             free_list = list(set(free_list) - set(self.free_blacklist))
             while free_num:
@@ -1304,8 +1312,8 @@ class BaseSchedulerSolver(BaseSolver):
                   ((1460, 560), (1700, 610)), ((1460, 775), (1700, 820))]
         time_p = [((1650, 270, 1780, 305)), ((1650, 480, 1780, 515)), ((1650, 690, 1780, 725)),
                   ((1650, 665, 1780, 700)), ((1650, 875, 1780, 910))]
-        mood_p = [((1685, 216, 1780, 256)), ((1685, 425, 1780, 465)), ((1685, 635, 1780, 675)),
-                  ((1685, 615, 1780, 655)), ((1685, 825, 1780, 865))]
+        mood_p = [((1685, 213, 1780, 256)), ((1685, 422, 1780, 465)), ((1685, 632, 1780, 675)),
+                  ((1685, 612, 1780, 655)), ((1685, 822, 1780, 865))]
         result = []
         swiped = False
         for i in range(0, length):
@@ -1314,13 +1322,13 @@ class BaseSchedulerSolver(BaseSolver):
                 swiped = True
             data = {}
             data['agent'] = character_recognize.agent_name(
-                self.recog.img[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]], self.recog.h)
+                self.recog.img[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]], self.recog.h*1.1)
             error_count = 0
             while i>=3 and data['agent'] !='' and (next((e for e in result if e['agent'] == data['agent']), None)) is not None:
                 logger.warning("检测到滑动可能失败")
                 self.swipe((self.recog.w * 0.8, self.recog.h * 0.8), (0, -self.recog.h * 0.4), interval=1, rebuild=True)
                 data['agent'] = character_recognize.agent_name(
-                    self.recog.img[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]], self.recog.h)
+                    self.recog.img[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]], self.recog.h*1.1)
                 error_count+=1
                 if error_count>4:
                     raise Exception("超过出错上限")
@@ -1334,10 +1342,13 @@ class BaseSchedulerSolver(BaseSolver):
             self.operators[data['agent']]['current_index'] = i
             self.operators[data['agent']]['current_room'] = room
             if i in read_time_index:
-                if data['mood'] in [24, 0]:
+                if data['mood'] in [24] or (data['mood'] == 0 and not room.startswith('dorm')):
                     data['time'] = datetime.now()
                 else:
-                    data['time'] = self.double_read_time(time_p[i])
+                    upperLimit = 21600
+                    if data['agent']=='菲亚梅塔':
+                        upperLimit = 43200
+                    data['time'] = self.double_read_time(time_p[i],upperLimit=upperLimit)
             result.append(data)
         self.scan_time[room] = datetime.now()
         return result

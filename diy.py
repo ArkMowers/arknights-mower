@@ -145,28 +145,37 @@ def savelog():
     config.PASSWORD = '你的密码'
     init_fhlr()
 
-def inialize(tasks=[]):
+def inialize(tasks,scheduler=None):
     device = Device()
     cli = Solver(device)
-    base_scheduler = BaseSchedulerSolver(cli.device,cli.recog)
-    base_scheduler.operators = {}
-    base_scheduler.global_plan = plan
-    base_scheduler.current_base = {}
-    base_scheduler.resting=[]
-    base_scheduler.dorm_count=4
-    base_scheduler.tasks = tasks
-    # 读取心情开关，有菲亚梅塔或者希望全自动换班得设置为 true
-    base_scheduler.read_mood = True
-    base_scheduler.scan_time = {}
-    base_scheduler.last_room = ''
-    base_scheduler.free_blacklist = free_blacklist
-    base_scheduler.resting_treshhold=resting_treshhold
-    base_scheduler.MAA = None
-    base_scheduler.email_config = email_config
-    base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
-    base_scheduler.MAA_PATH = maa_path
-    base_scheduler.MAA_ADB = maa_adb_path
-    return base_scheduler
+    if scheduler is None:
+        base_scheduler = BaseSchedulerSolver(cli.device, cli.recog)
+        base_scheduler.device
+        base_scheduler.operators = {}
+        base_scheduler.global_plan = plan
+        base_scheduler.current_base = {}
+        base_scheduler.resting=[]
+        base_scheduler.dorm_count=4
+        base_scheduler.tasks = tasks
+        # 读取心情开关，有菲亚梅塔或者希望全自动换班得设置为 true
+        base_scheduler.read_mood = True
+        base_scheduler.scan_time = {}
+        base_scheduler.last_room = ''
+        base_scheduler.free_blacklist = free_blacklist
+        base_scheduler.resting_treshhold=resting_treshhold
+        base_scheduler.MAA = None
+        base_scheduler.email_config = email_config
+        base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
+        base_scheduler.MAA_PATH = maa_path
+        base_scheduler.MAA_ADB = maa_adb_path
+        base_scheduler.error = False
+        return base_scheduler
+    else :
+        scheduler.device=cli.device
+        scheduler.recog=cli.recog
+        scheduler.handle_error(True)
+        return scheduler
+
 def simulate():
     '''
     具体调用方法可见各个函数的参数说明
@@ -199,7 +208,7 @@ def simulate():
                 connected = False
                 while not connected:
                     try:
-                        base_scheduler = inialize(base_scheduler.tasks)
+                        base_scheduler = inialize([],base_scheduler)
                         break
                     except Exception as ce:
                         logger.error(ce)
@@ -209,7 +218,7 @@ def simulate():
             else:
                 raise Exception(e)
         except Exception as E:
-            logger.error(f"程序出错--->{E}")
+            logger.exception(f"程序出错--->{E}")
     # cli.credit()  # 信用
     # ope_lists = cli.ope(eliminate=True, plan=ope_lists)  # 行动，返回未完成的作战计划
     # cli.shop(shop_priority)  # 商店

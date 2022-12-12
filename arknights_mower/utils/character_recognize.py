@@ -216,52 +216,6 @@ def agent(img, draw=False):
         saveimg(img, 'failure_agent')
         raise RecognizeError(e)
 
-
-def agent_with_mood(img ,length=5, draw: bool = False) :
-    try:
-        height, width, _ = img.shape
-        result = []
-        index = 0
-        x0 = int(width*470/1920);y0 = int(height*765/1080);x1 = int(width*590/1920);y1 = int(height*1010/1080);h = int((y1 - y0) / 5)
-        a0 = int(width*80/2496); b0 = int(height*1005/1404); a1 = int(width*275/2496); b1 = int(height*1310/1404); ah = int((b1 - b0) / 5)
-        while index < length:
-            data ={}
-            data ["mood"]=segment.read_screen(img[ (y0+h*index):(y0+h*(index+1)), x0:x1 ],type="mood")
-            name = ''
-                #如果不是没人在基建
-            if data["mood"]!=-1:
-                __img = img[ (b0 + ah * index):(b0 + ah * (index + 1)), a0:a1 ]
-                ocr = ocrhandle.predict(__img)
-                if len(ocr) > 0 and ocr[0][1] in agent_list and ocr[0][1] not in ['砾', '陈']: name = ocr[0][1]
-                else :
-                    res = sift_recog(__img, height, draw,True)
-                    if (res is not None) and res in agent_list:
-                        name = res
-                # 这两个名字太长会被挡住
-            data[ "agent" ] = name
-            result.append(data)
-            index = index + 1
-        return result
-    except Exception as e:
-        logger.debug(traceback.format_exc())
-        raise RecognizeError(e)
-
-def agent_with_mood_2(img , draw: bool = False) :
-    try:
-        height, width, _ = img.shape
-
-        x0 = int(width*20/1920);y0 = int(height*135/1080);x1 = int(width*265/1920);y1 = int(height*190/1080)
-        a0 = int(width*455/1920); b0 = int(height*140/1080); a1 = int(width*555/1920); b1 = int(height*185/1080)
-        mood =segment.read_screen(img[ b0:b1, a0:a1 ],type="mood",black_background = True)
-        name = ''
-        if mood!=-1:
-            __img = img[y0:y1 , x0:x1 ]
-            name = agent_name(__img, height, reverse=True, draw=draw)
-        return name,mood
-    except Exception as e:
-        logger.debug(traceback.format_exc())
-        raise RecognizeError(e)
-
 def agent_name(__img, height,reverse = False, draw: bool = False):
     ocr = ocrhandle.predict(__img)
     name = ''
@@ -272,6 +226,8 @@ def agent_name(__img, height,reverse = False, draw: bool = False):
             res = sift_recog(__img, height, draw, reverse)
             if (res is not None) and res in agent_list:
                 name = res
+            else:
+                raise Exception("识别错误")
     except Exception as e:
         saveimg(__img, 'failure_agent')
     return name
