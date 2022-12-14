@@ -138,6 +138,7 @@ def simulate():
     cli.shop(shop_priority)  # 商店
     cli.recruit()  # 公招
     cli.mission()  # 任务
+    cli.sleep()    # 模拟器休眠
 
 
 def schedule_task():

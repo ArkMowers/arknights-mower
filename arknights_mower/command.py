@@ -209,9 +209,15 @@ def schedule(args: list[str] = [], device: Device = None):
     solver.run()
 
 
+def sleep(args: list[str] = [], device: Device = None):
+    """
+    使模拟器休眠
+    """
+    device.send_keyevent(223)
+
 # all available commands
 global_cmds = [base, credit, mail, mission, shop,
-               recruit, operation, version, help, schedule]
+               recruit, operation, version, help, schedule, sleep]
 
 
 def match_cmd(prefix: str, avail_cmds: list[str] = global_cmds):

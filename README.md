@@ -41,6 +41,7 @@
 - 自动消耗无人机加速制造站或贸易站
 - 自动更换基建排班干员（建议搭配配置文件使用, 也可命令行直接输入）
 - 自动使用菲亚梅塔恢复指定房间心情最低干员的心情并重回岗位（工作位置不变以避免重新暖机） [[参考使用场景](https://www.bilibili.com/video/BV1mZ4y1z7wx)]
+- 任务完成后，可使得模拟器自动休眠，节省资源
 - 支持游戏任意分辨率（低于 1080p 的分辨率可能会有一些问题）
 
 ## 安装
@@ -126,12 +127,14 @@ commands (prefix abbreviation accepted):
         -e 是否优先处理未完成的每周剿灭，优先使用代理卡；-E 表示只使用代理卡而不消耗理智
     operation --plan
         （使用配置文件中的参数以及计划）自动进行作战
+    schedule
+        执行配置文件中的计划任务
+    sleep
+        模拟器休眠，以节省资源（其他命令均可自动唤醒模拟器）
     version
         输出版本信息
     help
         输出本段消息
-    schedule
-        执行配置文件中的计划任务
     --debug
         启用调试功能，调试信息将会输出到 /root/work/arknights-mower/log 中
     --config filepath
@@ -153,6 +156,8 @@ arknights-mower operation 1-7 99 -R5
 # 重复刷 1-7 关卡 99 次，使用源石自动回复理智，最多消耗 5 颗
 arknights-mower operation GT-1 99 -r5 -R5
 # 重复刷 GT-1 关卡 99 次，使用理智药以及源石自动回复理智，最多消耗 5 瓶理智药和 5 颗源石
+arknights-mower operation -r; arknights-mower sleep
+# 重复刷上一次关卡，使用理智药自动回复理智，直到理智药用完为止；刷完后模拟器自动休眠
 arknights-mower recruit 因陀罗 火神
 # 公招自动化，优先选择保底星数高的组合，若有多种标签组合保底星数一致则优先选择包含优先级高的干员的组合，公招干员的优先级从高到低分别是因陀罗和火神，默认为高稀有度优先
 arknights-mower shop 招聘许可 赤金 龙门币
