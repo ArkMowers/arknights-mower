@@ -272,62 +272,56 @@ def read_screen(img, type="mood", langurage="eng", limit=24, cord=None, change_c
         img = img[ cord[1]:cord[3], cord[0]:cord[2] ]
     if 'mood' in type or type=="time":
         # 心情图片太小，复制8次提高准确率
-        for x in range(0, 3):
+        for x in range(0, 4):
             img = cv2.vconcat([img, img])
     if change_color: img[img == 137] = 255
     if draw : plt.imshow(img)
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[ 1 ]
-    thresh = 255 - thresh
     if "mood" in type or type=='time':
-        _config = r'-c tessedit_char_whitelist=0123456789: --psm 6'
-        if type=='mood':_config = r'-c tessedit_char_whitelist=0123456789/- --psm 6'
-        data = (pytesseract.image_to_string(thresh, lang=langurage, config=_config)).strip()
         try:
-            result = {}
-            for value in data.splitlines():
-                if value =='': continue
-                if value not in result.keys():
-                    result[value]=1
-                else :
-                    result[value]+=1
-            # 取出现次数最多的
+            _config = r'-c tessedit_char_whitelist=0123456789: --psm 6'
+            if type=='mood':_config = r'-c tessedit_char_whitelist=0123456789/- --psm 6'
+            text = pytesseract.image_to_data(img,lang=langurage, config=_config, output_type='data.frame' )
+            if type =='time': saveimg(img, 'data')
+            text = text[text.conf != -1]
+            lines = text.groupby(['page_num', 'block_num', 'par_num', 'line_num'], group_keys=True)['text'] \
+                .apply(lambda x: ' '.join(map(str,list(x)))).tolist()
+            confs = text.groupby(['page_num', 'block_num', 'par_num', 'line_num'], group_keys=True)['conf'].mean().tolist()
+            line_conf = []
+            for i in range(len(lines)):
+                if lines[i].strip():
+                    line_conf.append((lines[i], round(confs[i], 3)))
+            logger.debug(str(line_conf))
+            __str = ''
+            # if 'mood' in type:
+            if (line_conf[len(line_conf) - 1][1] > 0.0 or (max(line_conf, key=lambda tup: tup[1])) == 0.0) and 'mood'in type:
+                __str=line_conf[len(line_conf) - 1][0]
+            else :
+                __str = (max(line_conf, key=lambda tup: tup[1]))[0]
+            if '.0' in __str:
+                __str = __str[0:__str.index('.0')]
+            # else:
+            #     # 时间就找最大出现次数
+            #     x = [i[0] for i in line_conf]
+            #     __str = max(set(x), key=x.count)
             if "mood" in type:
-                number = 0
                 idx = 4
-                if type =='mood':
-                    idx = 3
-                __str = max(result, key=result.get)
+                if type =='mood' : idx = 3
                 __str = __str[0:len(__str)-idx]
                 if '/' in __str:
                     __str= __str[0:__str.index('/')]
+                if ''==__str:
+                    return 0
                 number = int(__str)
                 if number>limit:
-                    saveimg(thresh, 'error_mood')
+                    saveimg(img, 'error_mood')
                     return limit
-                else :
-                    # 7，10 容易识别成1
-                    if number ==1 and type=='mood':
-                        data = (pytesseract.image_to_string(img, lang=langurage, config=_config)).strip()
-                        result = {}
-                        for value in data.splitlines():
-                            if value == '': continue
-                            if value not in result.keys():
-                                result[value] = 1
-                            else:
-                                result[value] += 1
-                        __str = max(result, key=result.get)
-                        __str = __str[0:len(__str) - 3]
-                        if '/' in __str:
-                            __str = __str[0:__str.index('/')]
-                        number = int(__str)
-                    return number
+                return number
             else:
-                return max(result, key=result.get)
+                return __str
         except Exception as e:
             # 空的时候是没人在基建
-            logger.warning(f'读取错误:{data}')
-            saveimg(thresh, 'error_mood')
+            logger.warning(f'读取错误:{__str}')
+            saveimg(img, 'error_mood')
             return -1
 
 def worker(img: tp.Image, draw: bool = False) -> tuple[ list[ tp.Rectangle ], tp.Rectangle, bool ]:
