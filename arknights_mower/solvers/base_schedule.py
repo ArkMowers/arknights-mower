@@ -276,6 +276,7 @@ class BaseSchedulerSolver(BaseSolver):
         fix_plan = {}
         if next((k for k in self.tasks if k['time'] <datetime.now()),None) is not None:
             logger.info('有未完成的任务，跳过纠错')
+            return
         for key in current_base:
             if (key == 'train' or key == 'factory'): continue
             need_fix = False
