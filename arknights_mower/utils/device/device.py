@@ -82,6 +82,10 @@ class Device(object):
         """ launch the application """
         self.run(f'am start -n {app}')
 
+    def exit(self, app: str) -> None:
+        """ launch the application """
+        self.run(f'am force-stop {app}')
+
     def send_keyevent(self, keycode: int) -> None:
         """ send a key event """
         logger.debug(f'keyevent: {keycode}')

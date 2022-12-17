@@ -195,6 +195,8 @@ from arknights_mower.strategy import Solver
 plan = {
     # 阶段 1
     'plan_1': {
+        # 控制中枢
+        'contral': ['夕', '令', '凯尔希', '阿米娅', '玛恩纳'],
         # 办公室
         'contact': ['艾雅法拉'],
         # 宿舍
@@ -276,6 +278,10 @@ Solver().base(arrange=plan)
 欢迎大家提交 Pull requests 增加更多的功能！
 
 ## 常见问题 Q&A
+
+#### 运行时出现错误：An error occurred when loading the configuration file
+
+配置文件出现格式错误，可以结合 [在线 YAML 校验器](https://www.bejson.com/validators/yaml_editor/) 进行检查。
 
 #### 大量出现「识别出了点小差错」并卡死在特定界面
 

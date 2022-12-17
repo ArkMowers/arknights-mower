@@ -26,7 +26,7 @@ jobs:
           python -m venv venv64
           venv64\Scripts\python -m pip install --upgrade pip wheel setuptools
           venv64\Scripts\python -m pip install -r requirements.txt
-          venv64\Scripts\python -m pip install pyinstaller
+          venv64\Scripts\python -m pip install pyinstaller==5.4.1
       - name: Make package
         shell: cmd
         run: |
