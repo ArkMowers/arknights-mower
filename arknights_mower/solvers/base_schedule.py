@@ -1090,7 +1090,7 @@ class BaseSchedulerSolver(BaseSolver):
             width = self.recog.w
             height = self.recog.h
             x0 = int(width * 20 / 1920)
-            y0 = int(height * 125 / 1080)
+            y0 = int(height * 130 / 1080)
             x1 = int(width * 265 / 1920)
             y1 = int(height * 200 / 1080)
             name = character_recognize.agent_name(self.recog.img[y0:y1 , x0:x1 ],height=height*1.5,reverse=True)
@@ -1102,10 +1102,6 @@ class BaseSchedulerSolver(BaseSolver):
                 logger.error(e)
                 errorCount += 1
                 self.get_agent_detail(cord, errorCount)
-
-        # 选人的时候读取名字 心情
-        # 并且记录心情到self.operators
-        # 如果名字没出现 则再点击一次
 
     def scan_agant_2(self, agent: list[str], error_count=0, max_agent_count=-1):
         try:
