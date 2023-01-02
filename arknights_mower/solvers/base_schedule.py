@@ -9,14 +9,13 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 from ..data import agent_base_config, agent_list
-from ..data import base_room_list
 from ..utils import character_recognize, detector, segment
 from ..utils import typealias as tp
 from ..utils.device import Device
 from ..utils.log import logger
 from ..utils.recognize import RecognizeError, Recognizer, Scene
 from ..utils.solver import BaseSolver
-from ..utils.datetime import the_same_day, the_same_time
+from ..utils.datetime import the_same_time
 ## Maa
 from arknights_mower.utils.asst import Asst, Message
 
@@ -129,7 +128,7 @@ class BaseSchedulerSolver(BaseSolver):
         for task in self.tasks:
             if 'type' in task.keys() and 'dorm' in task['type'] and 'plan' in task.keys():
                 # TODO 移除 resting_room 的干员比如说有巫恋在休息
-                self.agent_arrange_2(task['plan'])
+                self.agent_arrange(task['plan'])
                 self.tasks.remove(task)
         self.get_swap_plan(resting_dorm, operators, False)
     def handle_error(self,force = False):
@@ -193,7 +192,7 @@ class BaseSchedulerSolver(BaseSolver):
                     read_time_room = []
                     if 'metadata' in self.task.keys():
                         read_time_room = self.task['metadata']['room']
-                    time_result = self.agent_arrange_2(self.task["plan"], read_time_room)
+                    time_result = self.agent_arrange(self.task["plan"], read_time_room)
                     if 'metadata' in self.task.keys():
                         self.plan_metadata(time_result)
                 else:
@@ -219,7 +218,7 @@ class BaseSchedulerSolver(BaseSolver):
             try:
                 # 如果有任何type 则会最后修正
                 if self.read_mood:
-                    mood_result = self.agent_get_mood_2()
+                    mood_result = self.agent_get_mood()
                     if mood_result is not None:
                         return True
                 self.plan_solver()
@@ -238,7 +237,7 @@ class BaseSchedulerSolver(BaseSolver):
             result.append(data["agent"])
         return result
 
-    def agent_get_mood_2(self):
+    def agent_get_mood(self):
         logger.info('基建：记录心情')
         need_read = set(list(k for k, v in self.scan_time.items() if not (v is not None and v > (
                 datetime.now() - timedelta(seconds=5400)))))
@@ -724,6 +723,7 @@ class BaseSchedulerSolver(BaseSolver):
         # 刷新图片
         self.recog.update()
         time_str = segment.read_screen(self.recog.img, type='time', cord=cord)
+        logger.debug(time_str)
         try:
             h, m, s = time_str.split(':')
             if int(m)>60 or int(s)>60:
@@ -1103,7 +1103,7 @@ class BaseSchedulerSolver(BaseSolver):
                 errorCount += 1
                 self.get_agent_detail(cord, errorCount)
 
-    def scan_agant_2(self, agent: list[str], error_count=0, max_agent_count=-1):
+    def scan_agant(self, agent: list[str], error_count=0, max_agent_count=-1):
         try:
             # 识别干员
             self.recog.update()
@@ -1129,7 +1129,7 @@ class BaseSchedulerSolver(BaseSolver):
             if error_count < 3:
                 logger.exception(e)
                 self.sleep(3)
-                return self.scan_agant_2(agent, error_count, max_agent_count)
+                return self.scan_agant(agent, error_count, max_agent_count)
             else:
                 raise e
 
@@ -1151,7 +1151,7 @@ class BaseSchedulerSolver(BaseSolver):
         # 确认
         self.tap((self.recog.w * 0.8, self.recog.h * 0.8), interval=0.5)
 
-    def choose_agent_2(self, agents: list[str], room: str) -> None:
+    def choose_agent(self, agents: list[str], room: str) -> None:
         """
         :param order: ArrangeOrder, 选择干员时右上角的排序功能
         """
@@ -1197,7 +1197,7 @@ class BaseSchedulerSolver(BaseSolver):
                     self.switch_arrange_order(3, "true")
                     pre_order = [3, 'true']
                 self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
-                changed, ret = self.scan_agant_2(agent)
+                changed, ret = self.scan_agant(agent)
                 if changed:
                     selected.extend(changed)
                     if len(agent) == 0: break
@@ -1220,7 +1220,7 @@ class BaseSchedulerSolver(BaseSolver):
                     pre_order = arrange_type
             first_time = False
 
-            changed, ret = self.scan_agant_2(agent)
+            changed, ret = self.scan_agant(agent)
             if changed:
                 selected.extend(changed)
                 # 如果找到了
@@ -1255,7 +1255,7 @@ class BaseSchedulerSolver(BaseSolver):
             free_list.extend([_name for _name in agent_list if _name not in self.operators.keys()])
             free_list = list(set(free_list) - set(self.free_blacklist))
             while free_num:
-                selected_name, ret = self.scan_agant_2(free_list, max_agent_count=free_num)
+                selected_name, ret = self.scan_agant(free_list, max_agent_count=free_num)
                 selected.extend(selected_name)
                 free_num -= len(selected_name)
                 while len(selected_name) > 0:
@@ -1349,7 +1349,7 @@ class BaseSchedulerSolver(BaseSolver):
         self.scan_time[room] = datetime.now()
         return result
 
-    def agent_arrange_2(self, plan: tp.BasePlan, read_time_room=[]):
+    def agent_arrange(self, plan: tp.BasePlan, read_time_room=[]):
         logger.info('基建：排班')
         in_and_out = []
         fia_room = ""
@@ -1372,7 +1372,7 @@ class BaseSchedulerSolver(BaseSolver):
                     error_count = 0
                     update_base = False
                     if ('但书' in plan[room] or '龙舌兰' in plan[room]) and not \
-                            room.startswith('dormitory'):
+                            room.startswith('dormitory') and room not in in_and_out:
                         in_and_out.append(room)
                         update_base = True
                     if '菲亚梅塔' in plan[room] and len(plan[room]) == 2:
@@ -1409,7 +1409,7 @@ class BaseSchedulerSolver(BaseSolver):
                         self.tap((self.recog.w * 0.82, self.recog.h * 0.2), interval=1)
                         error_count += 1
                     error_count = 0
-                    self.choose_agent_2(plan[room], room)
+                    self.choose_agent(plan[room], room)
                     self.recog.update()
                     self.tap_element('confirm_blue', detected=True, judge=False, interval=3)
                     if self.get_infra_scene() == Scene.INFRA_ARRANGE_CONFIRM:
@@ -1457,13 +1457,13 @@ class BaseSchedulerSolver(BaseSolver):
             for room in in_and_out:
                 logger.info("开始插拔")
                 self.drone(room, True, True)
-                self.tap((self.recog.w * 0.22, self.recog.h * 0.95), interval=0.5)
                 in_and_out_plan = [data["agent"] for data in self.current_base[room]]
                 # 防止由于意外导致的死循环
                 if '但书' in in_and_out_plan or '龙舌兰' in in_and_out_plan:
                     in_and_out_plan = [data["agent"] for data in self.currentPlan[room]]
                 replace_plan[room] = in_and_out_plan
-                self.back(interval=2)
+                self.back(interval=0.5)
+                self.back(interval=0.5)
             self.tasks.append({'time': self.tasks[0]['time'], 'plan': replace_plan})
             # 急速换班
             self.todo_task = True
@@ -1502,11 +1502,11 @@ class BaseSchedulerSolver(BaseSolver):
             self.send_email('休息时长超过9分钟，启动MAA')
             # 任务及参数请参考 docs/集成文档.md
             self.inialize_maa()
-            # self.MAA.append_task('StartUp')
+            self.MAA.append_task('StartUp')
             self.MAA.append_task('Fight', {
                 # 空值表示上一次
                 # 'stage': '',
-                'stage': '1-7',
+                'stage': '',
                 'medicine': 0,
                 'stone': 0,
                 'times': 999,
@@ -1526,8 +1526,8 @@ class BaseSchedulerSolver(BaseSolver):
             self.MAA.append_task('Mall', {
                 'shopping': True,
                 'buy_first': ['招聘许可', '龙门币', '赤金'],
-                'blacklist': ['家具', '碳', '加急'],
-                'credit_fight':True
+                'blacklist': ['家具', '碳', '加急']
+                # 'credit_fight':True
             })
             self.MAA.append_task('Award')
             # asst.append_task('Copilot', {
