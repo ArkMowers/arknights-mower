@@ -143,6 +143,8 @@ class BaseSchedulerSolver(BaseSolver):
             if (next((e for e in self.tasks if e['time'] < datetime.now() - timedelta(seconds=600)), None)) is not None:
                 logger.info("检测到执行超过10分钟的任务，清空全部任务")
                 self.tasks = []
+                self.scan_time = {}
+                self.operators = {}
                 self.back_to_index()
         return True
 
@@ -1035,13 +1037,16 @@ class BaseSchedulerSolver(BaseSolver):
                 logger.info('贸易站加速')
                 self.tap(accelerate)
                 self.tap_element('all_in')
-                self.tap((self.recog.w * 0.75, self.recog.h * 0.8), interval=3)  # relative position 0.75, 0.8
-                self.recog.save_screencap('run_order')
+                self.tap((self.recog.w * 0.75, self.recog.h * 0.8))
+                while self.get_infra_scene() == Scene.CONNECTING:
+                    self.sleep(3)
                 if one_time:
                     drone_count = segment.read_screen(self.recog.img, type='drone_mood', cord=(
                         int(self.recog.w * 1150 / 1920), int(self.recog.h * 35 / 1080), int(self.recog.w * 1295 / 1920),
                         int(self.recog.h * 72 / 1080)), limit=200)
                     logger.info(f'当前无人机数量为：{drone_count}')
+                    self.recog.update()
+                    self.recog.save_screencap('run_order')
                     if drone_count < 92:
                         logger.info(f"无人机数量小于92->停止")
                         break
@@ -1207,7 +1212,7 @@ class BaseSchedulerSolver(BaseSolver):
             if index_change or first_time:
                 # 第一次则调整
                 is_custom, arrange_type = self.get_order(agent[0])
-                if is_dorm and not (
+                if is_dorm and not (agent[0] in self.operators.keys() and
                         'room' in self.operators[agent[0]].keys() and self.operators[agent[0]]['room'].startswith(
                     'dormitory')):
                     arrange_type = (3, 'true')
@@ -1273,7 +1278,7 @@ class BaseSchedulerSolver(BaseSolver):
             # 左移
             self.swipe_left(right_swipe, w, h)
             self.tap((self.recog.w * arrange_order_res[ArrangeOrder.SKILL][0],
-                      self.recog.h * arrange_order_res[ArrangeOrder.SKILL][1]), interval=0, rebuild=False)
+                      self.recog.h * arrange_order_res[ArrangeOrder.SKILL][1]), interval=0.5, rebuild=False)
             position = [(0.35, 0.35), (0.35, 0.75), (0.45, 0.35), (0.45, 0.75), (0.55, 0.35)]
             not_match = False
             for idx, item in enumerate(agents):
