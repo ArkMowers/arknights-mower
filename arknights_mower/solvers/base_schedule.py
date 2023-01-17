@@ -1175,8 +1175,6 @@ class BaseSchedulerSolver(BaseSolver):
         free_num = agent.count('Free')
         for i in range(agent.count("Free")):
             agent.remove("Free")
-        order_matters = True
-        is_clear = False
         index_change = False
         pre_order = [2, False]
         right_swipe = 0
