@@ -1047,7 +1047,8 @@ class BaseSchedulerSolver(BaseSolver):
                     logger.info(f'当前无人机数量为：{drone_count}')
                     self.recog.update()
                     self.recog.save_screencap('run_order')
-                    if drone_count < 92:
+                    # 200 为识别错误
+                    if drone_count < 92 or drone_count ==200:
                         logger.info(f"无人机数量小于92->停止")
                         break
                 st = accelerate[1]  # 起点
