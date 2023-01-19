@@ -279,7 +279,7 @@ class BaseSchedulerSolver(BaseSolver):
             logger.info('有未完成的任务，跳过纠错')
             return
         for key in current_base:
-            if (key == 'train' or key == 'factory'): continue
+            if (key == 'train'): continue
             need_fix = False
             for idx, operator in enumerate(current_base[key]):
                 data = current_base[key][idx]
@@ -497,7 +497,7 @@ class BaseSchedulerSolver(BaseSolver):
                         if agent['agent'] in self.operators.keys() and self.operators[agent['agent']]['type'] != 'high':
                             continue
                         # 忽略掉正在休息的
-                        if agent['current_room'] in resting_dorm:
+                        if agent['current_room'] in resting_dorm or agent['current_room'] in ['factory']:
                             continue
                         # 忽略掉心情值没低于上限的8的
                         if agent['mood'] > int(self.operators[agent['agent']]["upper_limit"] * self.resting_treshhold):
