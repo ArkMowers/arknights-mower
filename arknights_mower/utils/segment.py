@@ -293,7 +293,7 @@ def read_screen(img, type="mood", langurage="eng", limit=24, cord=None, change_c
             logger.debug(str(line_conf))
             __str = ''
             if 'mood' in type:
-                if line_conf[len(line_conf) - 1][1] > 0.0 or (max(line_conf, key=lambda tup: tup[1])) == 0.0:
+                if line_conf[len(line_conf) - 1][1] > 0.0 or (max(line_conf, key=lambda tup: tup[1])) == 0.0 or limit == 200:
                     __str=line_conf[len(line_conf) - 1][0]
                 else:
                     __str = (max(line_conf, key=lambda tup: tup[1]))[0]

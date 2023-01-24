@@ -104,7 +104,6 @@ class BaseSchedulerSolver(BaseSolver):
                               'group' in v.keys() and v['group'] == self.operators[name]['group']])
         else:
             candidate.append(name)
-        room_need = 0
         operators = []
         for i in candidate:
             _room = self.operators[name]['current_room']
@@ -121,7 +120,7 @@ class BaseSchedulerSolver(BaseSolver):
                     for a in v:
                         if a == "Current":
                             continue
-                        elif 'exaust_require' in self.operators[a].keys() and self.operators[a]['exaust_require']:
+                        elif 'exhaust_require' in self.operators[a].keys() and self.operators[a]['exhaust_require']:
                             ignore.append(a)
         resting_dorm.extend([self.operators[a]['current_room'] for a in ignore])
         # 执行全部任务
@@ -496,6 +495,8 @@ class BaseSchedulerSolver(BaseSolver):
                         # 忽略掉低效率的干员
                         if agent['agent'] in self.operators.keys() and self.operators[agent['agent']]['type'] != 'high':
                             continue
+                        if 'resting_priority' in self.operators.keys() and self.operators[agent['agent']]['resting_priority'] != 'high':
+                            continue
                         # 忽略掉正在休息的
                         if agent['current_room'] in resting_dorm or agent['current_room'] in ['factory']:
                             continue
@@ -566,11 +567,14 @@ class BaseSchedulerSolver(BaseSolver):
             else:
                 break
             if skip_read_time:
-                if 'exaust_require' in self.operators[next_agent['agent']].keys() and \
-                        self.operators[next_agent['agent']]["exaust_require"]:
+                if 'rest_in_full' in self.operators[next_agent['agent']].keys() and \
+                        self.operators[next_agent['agent']]["rest_in_full"]:
                     need_recover_room.append(room)
                     read_time_rooms.append((room))
             else:
+                if 'rest_in_full' in self.operators[next_agent['agent']].keys() and \
+                        self.operators[next_agent['agent']]["rest_in_full"]:
+                    skip_read_time = True
                 read_time_rooms.append(room)
             free_num = dorm_plan.count('Free')
             while free_num > 0:
@@ -625,16 +629,19 @@ class BaseSchedulerSolver(BaseSolver):
             for idx, data in enumerate(plan[room]):
                 __high = {"name": data["agent"], "room": room, "index": idx, "group": data["group"],
                           'replacement': data["replacement"], 'resting_priority': 'high', 'current_room': '',
-                          'exaust_require': False, "upper_limit": 24}
+                          'exhaust_require': False, "upper_limit": 24,"rest_in_full":False}
                 if __high['name'] in agent_base_config.keys() and 'RestingPriority' in agent_base_config[
                     __high['name']].keys() and agent_base_config[__high['name']]['RestingPriority'] == 'low':
                     __high["resting_priority"] = 'low'
-                if __high['name'] in agent_base_config.keys() and 'ExaustRequire' in agent_base_config[
-                    __high['name']].keys() and agent_base_config[__high['name']]['ExaustRequire'] == True:
-                    __high["exaust_require"] = True
+                if __high['name'] in agent_base_config.keys() and 'ExhaustRequire' in agent_base_config[
+                    __high['name']].keys() and agent_base_config[__high['name']]['ExhaustRequire'] == True:
+                    __high["exhaust_require"] = True
                 if __high['name'] in agent_base_config.keys() and 'UpperLimit' in agent_base_config[
                     __high['name']].keys():
                     __high["upper_limit"] = agent_base_config[__high['name']]['UpperLimit']
+                if __high['name'] in agent_base_config.keys() and 'RestInFull' in agent_base_config[
+                    __high['name']].keys() and agent_base_config[__high['name']]['RestInFull'] == True:
+                    __high["rest_in_full"] = True
                 high_production.append(__high)
                 if "replacement" in data.keys() and data["agent"] != '菲亚梅塔':
                     replacements.extend(data["replacement"])
@@ -650,23 +657,23 @@ class BaseSchedulerSolver(BaseSolver):
                     continue
                 else:
                     self.operators[agent] = {"type": "low", "name": agent, "group": '', 'resting_priority': 'low',
-                                             "index": -1, 'current_room': '', 'mood': 24, "upper_limit": 24}
+                                             "index": -1, 'current_room': '', 'mood': 24, "upper_limit": 24,"rest_in_full":False}
             else:
                 self.operators[agent] = {"type": "low", "name": agent, "group": '', 'current_room': '',
-                                         'resting_priority': 'low', "index": -1, 'mood': 24, "upper_limit": 24}
+                                         'resting_priority': 'low', "index": -1, 'mood': 24, "upper_limit": 24,"rest_in_full":False}
         self.exaust_agent = []
-        if next((k for k, v in self.operators.items() if 'exaust_require' in v.keys() and v["exaust_require"]),
+        if next((k for k, v in self.operators.items() if 'exhaust_require' in v.keys() and v["exhaust_require"]),
                 None) is not None:
-            exaust_require = [v for k, v in self.operators.items() if
-                              'exaust_require' in v.keys() and v["exaust_require"]]
-            for i in exaust_require:
+            exhaust_require = [v for k, v in self.operators.items() if
+                              'exhaust_require' in v.keys() and v["exhaust_require"]]
+            for i in exhaust_require:
                 if i['name'] in self.exaust_agent: continue
                 if 'group' in i.keys() and i['group'] != '':
                     self.exaust_agent.extend([v['name'] for k, v in self.operators.items() if
                                               'group' in v.keys() and v['group'] == i['group']])
                 else:
                     self.exaust_agent.append(i['name'])
-        logger.info(f'需要休息满心情的干员为: {self.exaust_agent}')
+        logger.info(f'需要用尽心情的干员为: {self.exaust_agent}')
 
     def check_in_and_out(self):
         res = {}
@@ -1432,7 +1439,7 @@ class BaseSchedulerSolver(BaseSolver):
                     if room in read_time_room:
                         __name = plan[room][[data["agent"] for data in self.currentPlan[room]].index('Free')]
                         time_result[room] = current[time_index[0]]['time']
-                        if not self.operators[__name]['exaust_require']:
+                        if not self.operators[__name]['exhaust_require']:
                             time_result[room] = time_result[room] - timedelta(seconds=600)
                     # update current_room
                     for operator in (plan[room]):
