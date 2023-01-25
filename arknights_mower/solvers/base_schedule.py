@@ -160,13 +160,16 @@ class BaseSchedulerSolver(BaseSolver):
                 # 合在一起则取最小恢复时间
                 min_time = datetime.max
                 __time = datetime.now()
-                for dorm in _plan["type"].split(','):
-                    if dorm not in read_time_rooms:
-                        # 如果没有读取任何时间，则只休息1小时替换下一组
-                        time_result[dorm] = __time + timedelta(seconds=(3600))
-                    if min_time > time_result[dorm]:
-                        min_time = time_result[dorm]
-                _plan["time"] = min_time
+                if len(self.task['metadata']['room']) == 0:
+                    # 如果没有读取任何时间，则只休息1小时替换下一组
+                    _plan["time"] = __time + timedelta(seconds=(3600))
+                else:
+                    for dorm in _plan["type"].split(','):
+                        if dorm not in read_time_rooms:
+                            continue
+                        if dorm in time_result.keys() and min_time > time_result[dorm]:
+                            min_time = time_result[dorm]
+                    _plan["time"] = min_time
                 # 如果有任何已有plan
                 existing_plan = next(
                     (e for e in self.tasks if 'type' in e.keys() and e['type'].startswith('dormitory')), None)

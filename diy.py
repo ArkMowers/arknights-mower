@@ -65,11 +65,11 @@ plan = {
     "default": "plan_1",
     "plan_1": {
         # 中枢
-        'central': [{'agent': '焰尾', 'group': '红松骑士', 'replacement': ["玛恩纳", "清道夫", "临光", "杜宾", '坚雷','布丁']},
-                    {'agent': '琴柳', 'group': '', 'replacement': ["玛恩纳", "清道夫", "临光", "杜宾", '坚雷']},
-                    {'agent': '凯尔希', 'replacement': ["玛恩纳", "清道夫", "临光", "杜宾", '坚雷'], 'group': ''},
-                    {'agent': '夕', 'group': '夕', 'replacement': ["玛恩纳", "清道夫", "临光", "杜宾", '坚雷']},
-                    {'agent': '令', 'group': '夕', 'replacement': ["玛恩纳", "清道夫", "临光", "杜宾", '坚雷']},
+        'central': [{'agent': '焰尾', 'group': '红松骑士', 'replacement': ["凯尔希","诗怀雅"]},
+                    {'agent': '琴柳', 'group': '', 'replacement': ["凯尔希","阿米娅"]},
+                    {'agent': '重岳', 'group': '夕', 'replacement': ["玛恩纳", "清道夫", "凯尔希", "阿米娅", '坚雷']},
+                    {'agent': '夕', 'group': '夕', 'replacement': ["玛恩纳", "清道夫", "凯尔希", "阿米娅", '坚雷']},
+                    {'agent': '令', 'group': '夕', 'replacement': ["玛恩纳", "清道夫", "凯尔希", "阿米娅", '坚雷']},
                     ],
         'contact': [{'agent': '絮雨', 'group': '絮雨', 'replacement': []}],
         # 宿舍
@@ -86,40 +86,44 @@ plan = {
                         {'agent': 'Free', 'group': '', 'replacement': []}
                         ],
         'dormitory_3': [{'agent': '车尔尼', 'group': '', 'replacement': []},
-                        {'agent': '安比尔', 'group': '', 'replacement': []},
+                        {'agent': '斥罪', 'group': '', 'replacement': []},
                         {'agent': '爱丽丝', 'group': '', 'replacement': []},
                         {'agent': '桃金娘', 'group': '', 'replacement': []},
                         {'agent': 'Free', 'group': '', 'replacement': []}
                         ],
         'dormitory_4': [{'agent': '波登可', 'group': '', 'replacement': []},
                         {'agent': '夜莺', 'group': '', 'replacement': []},
-                        {'agent': '菲亚梅塔', 'group': '', 'replacement': ['迷迭香', '黑键', '絮雨']},
+                        {'agent': '菲亚梅塔', 'group': '', 'replacement': ['迷迭香', '黑键', '絮雨','至简']},
                         {'agent': 'Free', 'group': '', 'replacement': []},
                         {'agent': 'Free', 'group': '', 'replacement': []}],
+        'factory':[{'agent': '年', 'replacement': ['九色鹿','芳汀'], 'group': '夕'}],
         # 会客室
         'meeting': [{'agent': '陈', 'replacement': ['星极','远山'], 'group': ''},
                     {'agent': '红', 'replacement': ['远山','星极'], 'group': ''} ],
         'room_1_1': [{'agent': '黑键', 'group': '', 'replacement': []},
-                     {'agent': '图耶', 'group': '图耶', 'replacement': ['但书','伺夜']},
-                     {'agent': '鸿雪', 'group': '图耶', 'replacement': ['龙舌兰', '空弦']}
+                     {'agent': '乌有', 'group': '夕', 'replacement': ['但书','图耶']},
+                     {'agent': '空弦', 'group': '夕', 'replacement': ['龙舌兰', '鸿雪']}
+                     # {'agent': '伺夜', 'group': '图耶', 'replacement': ['但书','能天使']},
+                     # {'agent': '空弦', 'group': '图耶', 'replacement': ['龙舌兰', '雪雉']}
                      ],
         'room_1_2': [{'agent': '迷迭香', 'group': '', 'replacement': []},
-                     {'agent': '砾', 'group': '', 'Type': '', 'replacement': ['夜烟', '斑点']},
-                     {'agent': '至简', 'group': '', 'replacement': ['夜烟', '斑点']}],
+                     {'agent': '砾', 'group': '', 'Type': '', 'replacement': ['斑点','夜烟']},
+                     {'agent': '至简', 'group': '', 'replacement': []}],
         'room_1_3': [{'agent': '承曦格雷伊', 'group': '异客', 'replacement': ['炎狱炎熔','格雷伊']}],
-        'room_2_2': [{'agent': '温蒂', 'group': '异客', 'replacement': ['调香师','水月','香草']},
-                     {'agent': '异客', 'group': '异客', 'Type': '', 'replacement': ['调香师','水月','香草']},
-                     {'agent': '森蚺', 'group': '异客', 'replacement': ['调香师','水月','香草']}],
-        'room_3_1': [{'agent': '稀音', 'group': '稀音', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']},
-                     {'agent': '帕拉斯', 'group': '稀音', 'Type': '', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']},
-                     {'agent': '红云', 'group': '稀音', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']}],
+        'room_2_2': [{'agent': '温蒂', 'group': '异客', 'replacement': ['火神']},
+                     # {'agent': '异客', 'group': '异客', 'Type': '', 'replacement': ['贝娜']},
+                     {'agent': '异客', 'group': '异客', 'Type': '', 'replacement': ['贝娜']},
+                     {'agent': '森蚺', 'group': '异客', 'replacement': ['泡泡']}],
+        'room_3_1': [{'agent': '稀音', 'group': '稀音', 'replacement': ['贝娜']},
+                     {'agent': '帕拉斯', 'group': '稀音', 'Type': '', 'replacement': ['泡泡']},
+                     {'agent': '红云', 'group': '稀音', 'replacement': ['火神']}],
         'room_2_3': [{'agent': '澄闪', 'group': '', 'replacement': ['炎狱炎熔', '格雷伊']}],
-        'room_2_1': [{'agent': '食铁兽', 'group': '', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']},
-                     {'agent': '断罪者', 'group': '', 'Type': '', 'replacement':['霜叶', '红豆', '白雪', 'Castle-3']},
-                     {'agent': '槐琥', 'group': '', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']}],
-        'room_3_2': [{'agent': '灰毫', 'group': '红松骑士', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']},
-                     {'agent': '远牙', 'group': '红松骑士', 'Type': '', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']},
-                     {'agent': '野鬃', 'group': '红松骑士', 'replacement': ['霜叶', '红豆', '白雪', 'Castle-3']}],
+        'room_2_1': [{'agent': '食铁兽', 'group': '食铁兽', 'replacement': ['泡泡']},
+                     {'agent': '断罪者', 'group': '食铁兽', 'replacement': ['火神']},
+                     {'agent': '槐琥', 'group': '食铁兽', 'replacement': ['贝娜']}],
+        'room_3_2': [{'agent': '灰毫', 'group': '红松骑士', 'replacement': ['贝娜']},
+                     {'agent': '远牙', 'group': '红松骑士', 'Type': '', 'replacement': ['泡泡']},
+                     {'agent': '野鬃', 'group': '红松骑士', 'replacement': ['火神']}],
         'room_3_3': [{'agent': '雷蛇', 'group': '', 'replacement': ['炎狱炎熔','格雷伊']}]
     }
 }
@@ -139,7 +143,7 @@ def savelog():
     '''
     config.LOGFILE_PATH = './log'
     config.SCREENSHOT_PATH = './screenshot'
-    config.SCREENSHOT_MAXNUM = 100
+    config.SCREENSHOT_MAXNUM = 1000
     config.ADB_DEVICE = ['127.0.0.1:62001']
     config.ADB_CONNECT = ['127.0.0.1:62001']
     config.PASSWORD = '你的密码'
