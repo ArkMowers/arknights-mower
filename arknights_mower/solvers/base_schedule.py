@@ -557,7 +557,6 @@ class BaseSchedulerSolver(BaseSolver):
         # 从休息计划里 规划出排班计划 并且立刻执行
         for room in [k for k, v in self.currentPlan.items() if (k not in resting_dorm) and k.startswith('dormitory')]:
             # 记录房间可以放几个干员：
-            need_full = False
             dorm_plan = [data["agent"] for data in self.currentPlan[room]]
             # 塞一个最优组进去
             next_agent = next((obj for obj in agents if self.operators[obj["agent"]]['resting_priority'] == 'high'),
@@ -1058,7 +1057,7 @@ class BaseSchedulerSolver(BaseSolver):
                     self.recog.update()
                     self.recog.save_screencap('run_order')
                     # 200 为识别错误
-                    if drone_count < 92 or drone_count ==200:
+                    if drone_count < 100 or drone_count ==200:
                         logger.info(f"无人机数量小于92->停止")
                         break
                 st = accelerate[1]  # 起点
@@ -1515,7 +1514,10 @@ class BaseSchedulerSolver(BaseSolver):
             logger.info("休息时长超过9分钟，启动MAA")
             self.send_email('休息时长超过9分钟，启动MAA')
             # 任务及参数请参考 docs/集成文档.md
-            self.inialize_maa()
+            if self.MAA is None:
+                self.inialize_maa()
+            self.MAA.stop()
+            self.sleep(10)
             self.MAA.append_task('StartUp')
             self.MAA.append_task('Fight', {
                 # 空值表示上一次
@@ -1539,7 +1541,7 @@ class BaseSchedulerSolver(BaseSolver):
             self.MAA.append_task('Visit')
             self.MAA.append_task('Mall', {
                 'shopping': True,
-                'buy_first': ['招聘许可', '龙门币', '赤金'],
+                'buy_first': ['龙门币', '赤金'],
                 'blacklist': ['家具', '碳', '加急']
                 # 'credit_fight':True
             })
@@ -1555,10 +1557,10 @@ class BaseSchedulerSolver(BaseSolver):
             #     'investment_enabled':True,
             #     'investments_count':9999999,
             #     'stop_when_investment_full':False,
-            #     'squad':'以人为本分队',
+            #     'squad':'指挥分队',
             #     'roles':'取长补短',
             #     'theme': 'Mizuki',
-            #     'core_char':'棘刺'
+            #     'core_char':'海沫'
             # })
             self.MAA.start()
             logger.info(f"MAA 启动")
@@ -1576,10 +1578,24 @@ class BaseSchedulerSolver(BaseSolver):
                 time.sleep(180)
                 # 目前没有做肉鸽的导航，只能重启软件
                 self.device.exit('com.hypergryph.arknights')
+            else:
+                self.back_to_reclamation_algorithm()
+                self.MAA.append_task('ReclamationAlgorithm')
+                self.MAA.start()
+                while self.MAA.running():
+                    # 5分钟之前就停止
+                    if (self.tasks[0]["time"] - datetime.now()).total_seconds() < 30:
+                        self.MAA.stop()
+                        hard_stop = True
+                    else:
+                        time.sleep(0)
+                if hard_stop:
+                    # 目前没有做肉鸽的导航，只能重启软件
+                    self.device.exit('com.hypergryph.arknights')
             remaining_time = (self.tasks[0]["time"] - datetime.now()).total_seconds()
             logger.info(f"开始休息 {remaining_time} 秒")
             time.sleep(remaining_time)
-            self.MAA = None
+            self.MAA.stop()
         except Exception as e:
             logger.error(e)
             self.MAA = None
