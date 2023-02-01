@@ -316,6 +316,8 @@ class BaseSolver:
     def back_to_reclamation_algorithm(self):
         self.recog.update()
         while self.find('index_terminal') is None:
+            if self.scene() == Scene.UNKNOWN:
+                self.device.exit('com.hypergryph.arknights')
             self.back_to_index()
         logger.info('导航至生息演算')
         self.tap_element('index_terminal', 0.5)

@@ -1497,32 +1497,43 @@ class BaseSchedulerSolver(BaseSolver):
             return time_result
 
     def inialize_maa(self):
-        # 外服需要再额外传入增量资源路径，例如
-        Asst.load(path=self.MAA_PATH)
-
         # 若需要获取详细执行信息，请传入 callback 参数
         # 例如 asst = Asst(callback=my_callback)
-        self.MAA = Asst()
-        # 请自行配置 adb 环境变量，或修改为 adb 可执行程序的路径
-        if self.MAA.connect(self.MAA_ADB, self.ADB_CONNECT):
-            logger.info("MAA 连接成功")
-        else:
-            logger.info("MAA 连接失败")
-            raise Exception("MAA 连接失败")
+        if self.MAA is None:
+            Asst.load(path=self.MAA_PATH)
+            self.MAA = Asst()
+            # 请自行配置 adb 环境变量，或修改为 adb 可执行程序的路径
+            if self.MAA.connect(self.MAA_ADB, self.ADB_CONNECT):
+                logger.info("MAA 连接成功")
+            else:
+                logger.info("MAA 连接失败")
+                raise Exception("MAA 连接失败")
     def maa_plan_solver(self):
         try:
             logger.info("休息时长超过9分钟，启动MAA")
             self.send_email('休息时长超过9分钟，启动MAA')
             # 任务及参数请参考 docs/集成文档.md
-            if self.MAA is None:
-                self.inialize_maa()
+            self.inialize_maa()
             self.MAA.stop()
             self.sleep(10)
             self.MAA.append_task('StartUp')
             self.MAA.append_task('Fight', {
                 # 空值表示上一次
                 # 'stage': '',
-                'stage': '',
+                'stage': 'AP-5',
+                'medicine': 0,
+                'stone': 0,
+                'times': 999,
+                'report_to_penguin': True,
+                'client_type': '',
+                'penguin_id': '',
+                'DrGrandet': False,
+                'server': 'CN'
+            })
+            self.MAA.append_task('Fight', {
+                # 空值表示上一次
+                # 'stage': '',
+                'stage': '1-7',
                 'medicine': 0,
                 'stone': 0,
                 'times': 999,
@@ -1578,20 +1589,20 @@ class BaseSchedulerSolver(BaseSolver):
                 time.sleep(180)
                 # 目前没有做肉鸽的导航，只能重启软件
                 self.device.exit('com.hypergryph.arknights')
+            # 生息演算逻辑 开始
             else:
-                self.back_to_reclamation_algorithm()
-                self.MAA.append_task('ReclamationAlgorithm')
-                self.MAA.start()
-                while self.MAA.running():
-                    # 5分钟之前就停止
-                    if (self.tasks[0]["time"] - datetime.now()).total_seconds() < 30:
-                        self.MAA.stop()
-                        hard_stop = True
-                    else:
-                        time.sleep(0)
-                if hard_stop:
-                    # 目前没有做肉鸽的导航，只能重启软件
-                    self.device.exit('com.hypergryph.arknights')
+                while (self.tasks[0]["time"] - datetime.now()).total_seconds() > 30:
+                    self.inialize_maa()
+                    self.back_to_reclamation_algorithm()
+                    self.MAA.append_task('ReclamationAlgorithm')
+                    self.MAA.start()
+                    while self.MAA.running():
+                        if (self.tasks[0]["time"] - datetime.now()).total_seconds() < 30:
+                            self.MAA.stop()
+                            break
+                        else:
+                            time.sleep(0)
+            # 生息演算逻辑 结束
             remaining_time = (self.tasks[0]["time"] - datetime.now()).total_seconds()
             logger.info(f"开始休息 {remaining_time} 秒")
             time.sleep(remaining_time)
@@ -1603,6 +1614,7 @@ class BaseSchedulerSolver(BaseSolver):
             if remaining_time >0:
                 logger.info(f"开始休息 {remaining_time} 秒")
                 time.sleep(remaining_time)
+        self.device.exit('com.hypergryph.arknights')
 
     def send_email(self, tasks):
         try:
