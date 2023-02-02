@@ -1,5 +1,4 @@
 import time
-import schedule
 from datetime import datetime
 
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
@@ -19,6 +18,15 @@ email_config= {
 maa_path ='F:\MAA-v4.6.5-beta.3-win-x64'
 # 请设置MAA adb 路径
 maa_adb_path= 'D:\\Program Files (x86)\\MuMu\\emulator\\nemu\\vmonitor\\bin\\adb_server.exe'
+
+# 以下配置，第一个设置为true的首先生效
+# 是否启动肉鸽
+roguelike = False
+# 是否启动生息演算
+reclamation_algorithm = False
+# 是否启动保全派驻
+stationary_security_service = False
+
 
 # 指定无人机加速第三层第三个房间的制造或贸易订单
 drone_room = 'room_3_3'
@@ -172,6 +180,9 @@ def inialize(tasks,scheduler=None):
         base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
         base_scheduler.MAA_PATH = maa_path
         base_scheduler.MAA_ADB = maa_adb_path
+        base_scheduler.Roguelike = roguelike
+        base_scheduler.Reclamation_Algorithm = reclamation_algorithm
+        base_scheduler.Stationary_Security_Service = stationary_security_service
         base_scheduler.error = False
         return base_scheduler
     else :

@@ -18,6 +18,7 @@ from ..utils.solver import BaseSolver
 from ..utils.datetime import the_same_time
 ## Maa
 from arknights_mower.utils.asst import Asst, Message
+import json
 
 
 class ArrangeOrder(Enum):
@@ -1496,12 +1497,20 @@ class BaseSchedulerSolver(BaseSolver):
         if len(read_time_room) > 0:
             return time_result
 
+    @Asst.CallBackType
+    def log_maa(msg, details, arg):
+        m = Message(msg)
+        d = json.loads(details.decode('utf-8'))
+        logger.debug(d)
+        logger.debug(m)
+        logger.debug(arg)
+
     def inialize_maa(self):
         # 若需要获取详细执行信息，请传入 callback 参数
         # 例如 asst = Asst(callback=my_callback)
         if self.MAA is None:
             Asst.load(path=self.MAA_PATH)
-            self.MAA = Asst()
+            self.MAA = Asst(callback=self.log_maa)
             # 请自行配置 adb 环境变量，或修改为 adb 可执行程序的路径
             if self.MAA.connect(self.MAA_ADB, self.ADB_CONNECT):
                 logger.info("MAA 连接成功")
@@ -1530,19 +1539,6 @@ class BaseSchedulerSolver(BaseSolver):
                 'DrGrandet': False,
                 'server': 'CN'
             })
-            self.MAA.append_task('Fight', {
-                # 空值表示上一次
-                # 'stage': '',
-                'stage': '1-7',
-                'medicine': 0,
-                'stone': 0,
-                'times': 999,
-                'report_to_penguin': True,
-                'client_type': '',
-                'penguin_id': '',
-                'DrGrandet': False,
-                'server': 'CN'
-            })
             self.MAA.append_task('Recruit', {
                 'select': [4],
                 'confirm': [3, 4],
@@ -1562,17 +1558,6 @@ class BaseSchedulerSolver(BaseSolver):
             #     'filename': './GA-EX8-raid.json',
             #     'formation': False
             # })
-            # self.MAA.append_task('Roguelike', {
-            #     'mode': 0,
-            #     'starts_count': 9999999,
-            #     'investment_enabled':True,
-            #     'investments_count':9999999,
-            #     'stop_when_investment_full':False,
-            #     'squad':'指挥分队',
-            #     'roles':'取长补短',
-            #     'theme': 'Mizuki',
-            #     'core_char':'海沫'
-            # })
             self.MAA.start()
             logger.info(f"MAA 启动")
             hard_stop = False
@@ -1587,14 +1572,31 @@ class BaseSchedulerSolver(BaseSolver):
             if hard_stop:
                 logger.info(f"由于maa任务并未完成，等待3分钟重启软件")
                 time.sleep(180)
-                # 目前没有做肉鸽的导航，只能重启软件
                 self.device.exit('com.hypergryph.arknights')
-            # 生息演算逻辑 开始
-            else:
+            elif self.Roguelike or self.Reclamation_Algorithm or self.Stationary_Security_Service :
                 while (self.tasks[0]["time"] - datetime.now()).total_seconds() > 30:
                     self.inialize_maa()
-                    self.back_to_reclamation_algorithm()
-                    self.MAA.append_task('ReclamationAlgorithm')
+                    if self.Roguelike:
+                        self.MAA.append_task('Roguelike', {
+                            'mode': 0,
+                            'starts_count': 9999999,
+                            'investment_enabled':True,
+                            'investments_count':9999999,
+                            'stop_when_investment_full':False,
+                            'squad':'指挥分队',
+                            'roles':'取长补短',
+                            'theme': 'Mizuki',
+                            'core_char':'海沫'
+                        })
+                    elif self.Reclamation_Algorithm:
+                        self.back_to_reclamation_algorithm()
+                        self.MAA.append_task('ReclamationAlgorithm')
+                    # elif self.Stationary_Security_Service :
+                    #     self.MAA.append_task('SSSCopilot', {
+                    #         'filename': "F:\\MAA-v4.10.5-win-x64\\resource\\copilot\\SSS_阿卡胡拉丛林.json",
+                    #         'formation': False,
+                    #         'loop_times':99
+                    #     })
                     self.MAA.start()
                     while self.MAA.running():
                         if (self.tasks[0]["time"] - datetime.now()).total_seconds() < 30:
@@ -1602,6 +1604,7 @@ class BaseSchedulerSolver(BaseSolver):
                             break
                         else:
                             time.sleep(0)
+                    self.device.exit('com.hypergryph.arknights')
             # 生息演算逻辑 结束
             remaining_time = (self.tasks[0]["time"] - datetime.now()).total_seconds()
             logger.info(f"开始休息 {remaining_time} 秒")
@@ -1614,7 +1617,7 @@ class BaseSchedulerSolver(BaseSolver):
             if remaining_time >0:
                 logger.info(f"开始休息 {remaining_time} 秒")
                 time.sleep(remaining_time)
-        self.device.exit('com.hypergryph.arknights')
+            self.device.exit('com.hypergryph.arknights')
 
     def send_email(self, tasks):
         try:
