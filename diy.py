@@ -14,31 +14,31 @@ email_config= {
     'receipts':['任何邮箱'],
     'notify':False
 }
-# 请设置为存放 dll 文件及资源的路径
-maa_path ='F:\MAA-v4.6.5-beta.3-win-x64'
-# 请设置MAA adb 路径
-maa_adb_path= 'D:\\Program Files (x86)\\MuMu\\emulator\\nemu\\vmonitor\\bin\\adb_server.exe'
-
-# 以下配置，第一个设置为true的首先生效
-# 是否启动肉鸽
-roguelike = False
-# 是否启动生息演算
-reclamation_algorithm = False
-# 是否启动保全派驻
-stationary_security_service = False
-
-
-# 指定无人机加速第三层第三个房间的制造或贸易订单
-drone_room = 'room_3_3'
-
-# 指定关卡序列的作战计划
-ope_lists = [['AP-5', 1], ['1-7', -1]]
-
-# 使用信用点购买东西的优先级（从高到低）
-shop_priority = ['招聘许可', '赤金', '龙门币', '初级作战记录', '技巧概要·卷2', '基础作战记录', '技巧概要·卷1']
-
-# 公招选取标签时优先选择的干员的优先级（从高到低）
-recruit_priority = ['因陀罗', '火神']
+maa_config = {
+    # 请设置为存放 dll 文件及资源的路径
+    "maa_path":'F:\\MAA-v4.10.5-win-x64',
+    # 请设置为存放 dll 文件及资源的路径
+    "maa_adb_path":"D:\\Program Files\\Nox\\bin\\adb.exe",
+    # adb 地址
+    "maa_adb":['127.0.0.1:62001'],
+    # maa 运行的时间间隔，以小时计
+    "maa_execution_gap":4,
+    # 以下配置，第一个设置为true的首先生效
+    # 是否启动肉鸽
+    "roguelike":False,
+    # 是否启动生息演算
+    "reclamation_algorithm":False,
+    # 是否启动保全派驻
+    "stationary_security_service":False,
+    "last_execution": None,
+    "weekly_plan":[{"weekday":"周一","stage":['AP-5'],"medicine":0},
+                   {"weekday":"周二","stage":['CE-6'],"medicine":0},
+                   {"weekday":"周三","stage":['1-7'],"medicine":0},
+                   {"weekday":"周四","stage":['AP-5'],"medicine":0},
+                   {"weekday":"周五","stage":['1-7'],"medicine":0},
+                   {"weekday":"周六","stage":['AP-5'],"medicine":0},
+                   {"weekday":"周日","stage":['AP-5'],"medicine":0}]
+}
 
 # Free (宿舍填充)干员安排黑名单
 free_blacklist= []
@@ -152,8 +152,8 @@ def savelog():
     config.LOGFILE_PATH = './log'
     config.SCREENSHOT_PATH = './screenshot'
     config.SCREENSHOT_MAXNUM = 1000
-    config.ADB_DEVICE = ['127.0.0.1:62001']
-    config.ADB_CONNECT = ['127.0.0.1:62001']
+    config.ADB_DEVICE = maa_config['maa_adb']
+    config.ADB_CONNECT = maa_config['maa_adb']
     config.PASSWORD = '你的密码'
     init_fhlr()
 
@@ -162,7 +162,6 @@ def inialize(tasks,scheduler=None):
     cli = Solver(device)
     if scheduler is None:
         base_scheduler = BaseSchedulerSolver(cli.device, cli.recog)
-        base_scheduler.device
         base_scheduler.operators = {}
         base_scheduler.global_plan = plan
         base_scheduler.current_base = {}
@@ -178,11 +177,7 @@ def inialize(tasks,scheduler=None):
         base_scheduler.MAA = None
         base_scheduler.email_config = email_config
         base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
-        base_scheduler.MAA_PATH = maa_path
-        base_scheduler.MAA_ADB = maa_adb_path
-        base_scheduler.Roguelike = roguelike
-        base_scheduler.Reclamation_Algorithm = reclamation_algorithm
-        base_scheduler.Stationary_Security_Service = stationary_security_service
+        base_scheduler.maa_config = maa_config
         base_scheduler.error = False
         return base_scheduler
     else :

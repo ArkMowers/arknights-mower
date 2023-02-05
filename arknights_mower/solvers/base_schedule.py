@@ -15,9 +15,9 @@ from ..utils.device import Device
 from ..utils.log import logger
 from ..utils.recognize import RecognizeError, Recognizer, Scene
 from ..utils.solver import BaseSolver
-from ..utils.datetime import the_same_time
+from ..utils.datetime import the_same_time,get_server_weekday
 ## Maa
-from arknights_mower.utils.asst import Asst, Message
+from arknights_mower.utils.asst import Asst, Message, InstanceOptionType
 import json
 
 
@@ -1508,90 +1508,101 @@ class BaseSchedulerSolver(BaseSolver):
     def inialize_maa(self):
         # 若需要获取详细执行信息，请传入 callback 参数
         # 例如 asst = Asst(callback=my_callback)
-        if self.MAA is None:
-            Asst.load(path=self.MAA_PATH)
-            self.MAA = Asst(callback=self.log_maa)
-            # 请自行配置 adb 环境变量，或修改为 adb 可执行程序的路径
-            if self.MAA.connect(self.MAA_ADB, self.ADB_CONNECT):
-                logger.info("MAA 连接成功")
-            else:
-                logger.info("MAA 连接失败")
-                raise Exception("MAA 连接失败")
+        Asst.load(path=self.maa_config['maa_path'])
+        self.MAA = Asst(callback=self.log_maa)
+        # self.MAA.set_instance_option(2, 'maatouch')
+        # 请自行配置 adb 环境变量，或修改为 adb 可执行程序的路径
+        if self.MAA.connect(self.maa_config['maa_adb_path'], self.ADB_CONNECT):
+            logger.info("MAA 连接成功")
+        else:
+            logger.info("MAA 连接失败")
+            raise Exception("MAA 连接失败")
+
     def maa_plan_solver(self):
         try:
-            logger.info("休息时长超过9分钟，启动MAA")
-            self.send_email('休息时长超过9分钟，启动MAA')
-            # 任务及参数请参考 docs/集成文档.md
-            self.inialize_maa()
-            self.MAA.stop()
-            self.sleep(10)
-            self.MAA.append_task('StartUp')
-            self.MAA.append_task('Fight', {
-                # 空值表示上一次
-                # 'stage': '',
-                'stage': 'AP-5',
-                'medicine': 0,
-                'stone': 0,
-                'times': 999,
-                'report_to_penguin': True,
-                'client_type': '',
-                'penguin_id': '',
-                'DrGrandet': False,
-                'server': 'CN'
-            })
-            self.MAA.append_task('Recruit', {
-                'select': [4],
-                'confirm': [3, 4],
-                'times': 4,
-                'refresh': True
-            })
-            self.MAA.append_task('Visit')
-            self.MAA.append_task('Mall', {
-                'shopping': True,
-                'buy_first': ['龙门币', '赤金'],
-                'blacklist': ['家具', '碳', '加急']
-                # 'credit_fight':True
-            })
-            self.MAA.append_task('Award')
-            # asst.append_task('Copilot', {
-            #     'stage_name': '千层蛋糕',
-            #     'filename': './GA-EX8-raid.json',
-            #     'formation': False
-            # })
-            self.MAA.start()
-            logger.info(f"MAA 启动")
-            hard_stop = False
-            while self.MAA.running():
-                # 5分钟之前就停止
-                if (self.tasks[0]["time"] - datetime.now()).total_seconds() < 300:
-                    self.MAA.stop()
-                    hard_stop = True
+            if self.maa_config['last_execution'] is not None and datetime.now() - timedelta(seconds=self.maa_config['maa_execution_gap']*3600)< self.maa_config['last_execution']:
+                logger.info("间隔未超过设定时间，不启动maa")
+            else:
+                self.send_email('休息时长超过9分钟，启动MAA')
+                self.back_to_index()
+                # 任务及参数请参考 docs/集成文档.md
+                self.inialize_maa()
+                self.MAA.append_task('StartUp')
+                _plan= self.maa_config['weekly_plan'][get_server_weekday()]
+                logger.info(f"现在服务器是{_plan['weekday']}")
+                for stage in _plan["stage"]:
+                    logger.info(f"添加关卡:{stage}")
+                    self.MAA.append_task('Fight', {
+                        # 空值表示上一次
+                        # 'stage': '',
+                        'stage': stage,
+                        'medicine': _plan["medicine"],
+                        'stone': 0,
+                        'times': 999,
+                        'report_to_penguin': True,
+                        'client_type': '',
+                        'penguin_id': '',
+                        'DrGrandet': False,
+                        'server': 'CN'
+                    })
+                self.MAA.append_task('Recruit', {
+                    'select': [4],
+                    'confirm': [3, 4],
+                    'times': 4,
+                    'refresh': True
+                })
+                self.MAA.append_task('Visit')
+                self.MAA.append_task('Mall', {
+                    'shopping': True,
+                    'buy_first': ['龙门币', '赤金'],
+                    'blacklist': ['家具', '碳', '加急'],
+                    'credit_fight':True
+                })
+                self.MAA.append_task('Award')
+                # asst.append_task('Copilot', {
+                #     'stage_name': '千层蛋糕',
+                #     'filename': './GA-EX8-raid.json',
+                #     'formation': False
+                # })
+                self.MAA.start()
+                logger.info(f"MAA 启动")
+                hard_stop = False
+                while self.MAA.running():
+                    # 5分钟之前就停止
+                    if (self.tasks[0]["time"] - datetime.now()).total_seconds() < 300:
+                        self.MAA.stop()
+                        hard_stop = True
+                    else:
+                        time.sleep(0)
+                self.send_email('MAA停止')
+                if hard_stop:
+                    logger.info(f"由于maa任务并未完成，等待3分钟重启软件")
+                    time.sleep(180)
+                    self.device.exit('com.hypergryph.arknights')
                 else:
-                    time.sleep(0)
-            self.send_email('MAA停止')
-            if hard_stop:
-                logger.info(f"由于maa任务并未完成，等待3分钟重启软件")
-                time.sleep(180)
-                self.device.exit('com.hypergryph.arknights')
-            elif self.Roguelike or self.Reclamation_Algorithm or self.Stationary_Security_Service :
+                    logger.info(f"记录MAA 本次执行时间")
+                    self.maa_config['last_execution'] = datetime.now()
+                    logger.info(self.maa_config['last_execution'])
+            if self.maa_config['roguelike'] or self.maa_config['reclamation_algorithm'] or self.maa_config[
+                'stationary_security_service']:
                 while (self.tasks[0]["time"] - datetime.now()).total_seconds() > 30:
                     self.inialize_maa()
-                    if self.Roguelike:
+                    if self.maa_config['roguelike']:
                         self.MAA.append_task('Roguelike', {
                             'mode': 0,
                             'starts_count': 9999999,
-                            'investment_enabled':True,
-                            'investments_count':9999999,
-                            'stop_when_investment_full':False,
-                            'squad':'指挥分队',
-                            'roles':'取长补短',
+                            'investment_enabled': True,
+                            'investments_count': 9999999,
+                            'stop_when_investment_full': False,
+                            'squad': '指挥分队',
+                            'roles': '取长补短',
                             'theme': 'Mizuki',
-                            'core_char':'海沫'
+                            'core_char': '海沫'
                         })
-                    elif self.Reclamation_Algorithm:
-                        self.back_to_reclamation_algorithm()
+                    elif self.maa_config['reclamation_algorithm']:
+                        self.back_to_maa_config['reclamation_algorithm']()
                         self.MAA.append_task('ReclamationAlgorithm')
-                    # elif self.Stationary_Security_Service :
+                    # elif self.maa_config['stationary_security_service'] :
                     #     self.MAA.append_task('SSSCopilot', {
                     #         'filename': "F:\\MAA-v4.10.5-win-x64\\resource\\copilot\\SSS_阿卡胡拉丛林.json",
                     #         'formation': False,
@@ -1609,12 +1620,12 @@ class BaseSchedulerSolver(BaseSolver):
             remaining_time = (self.tasks[0]["time"] - datetime.now()).total_seconds()
             logger.info(f"开始休息 {remaining_time} 秒")
             time.sleep(remaining_time)
-            self.MAA.stop()
+            self.MAA = None
         except Exception as e:
             logger.error(e)
             self.MAA = None
             remaining_time = (self.tasks[0]["time"] - datetime.now()).total_seconds()
-            if remaining_time >0:
+            if remaining_time > 0:
                 logger.info(f"开始休息 {remaining_time} 秒")
                 time.sleep(remaining_time)
             self.device.exit('com.hypergryph.arknights')
@@ -1624,7 +1635,7 @@ class BaseSchedulerSolver(BaseSolver):
             msg = MIMEMultipart()
             conntent = str(tasks)
             msg.attach(MIMEText(conntent, 'plain', 'utf-8'))
-            msg['Subject'] = "任务数据"
+            msg['Subject'] = self.email_config['subject']
             msg['From'] = self.email_config['account']
             s = smtplib.SMTP_SSL("smtp.qq.com", 465)
             # 登录邮箱
