@@ -292,11 +292,17 @@ def read_screen(img, type="mood", langurage="eng", limit=24, cord=None, change_c
                     line_conf.append((lines[i], round(confs[i], 3)))
             logger.debug(str(line_conf))
             __str = ''
-            # if 'mood' in type:
-            if (line_conf[len(line_conf) - 1][1] > 0.0 or (max(line_conf, key=lambda tup: tup[1])) == 0.0) and 'mood'in type:
-                __str=line_conf[len(line_conf) - 1][0]
-            else :
-                __str = (max(line_conf, key=lambda tup: tup[1]))[0]
+            if 'mood' in type:
+                if line_conf[len(line_conf) - 1][1] > 0.0 or (max(line_conf, key=lambda tup: tup[1])) == 0.0 or limit == 200:
+                    __str=line_conf[len(line_conf) - 1][0]
+                else:
+                    __str = (max(line_conf, key=lambda tup: tup[1]))[0]
+            else:
+                _data = (max(line_conf, key=lambda tup: tup[1]))
+                if _data[1]<70.0:
+                    __str = line_conf[len(line_conf) - 1][0]
+                else:
+                    __str = _data[0]
             if '.0' in __str:
                 __str = __str[0:__str.index('.0')]
             # else:
