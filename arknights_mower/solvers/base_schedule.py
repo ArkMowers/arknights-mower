@@ -146,6 +146,7 @@ class BaseSchedulerSolver(BaseSolver):
                 self.scan_time = {}
                 self.operators = {}
                 self.back_to_index()
+                self.device.exit('com.hypergryph.arknights')
         return True
 
     def plan_metadata(self, time_result):
@@ -243,6 +244,9 @@ class BaseSchedulerSolver(BaseSolver):
         return result
 
     def agent_get_mood(self):
+        if next((k for k in self.tasks if k['time'] <datetime.now()),None) is not None:
+            logger.info('有未完成的任务，跳过纠错')
+            return
         logger.info('基建：记录心情')
         need_read = set(list(k for k, v in self.scan_time.items() if not (v is not None and v > (
                 datetime.now() - timedelta(seconds=5400)))))
@@ -278,9 +282,6 @@ class BaseSchedulerSolver(BaseSolver):
         plan = self.currentPlan
         self.total_agent = []
         fix_plan = {}
-        if next((k for k in self.tasks if k['time'] <datetime.now()),None) is not None:
-            logger.info('有未完成的任务，跳过纠错')
-            return
         for key in current_base:
             if (key == 'train'): continue
             need_fix = False
@@ -1361,6 +1362,16 @@ class BaseSchedulerSolver(BaseSolver):
                     data['time'] = self.double_read_time(time_p[i],upperLimit=upperLimit)
             result.append(data)
         self.scan_time[room] = datetime.now()
+        # update current_room
+        for item in result:
+            operator = item['agent']
+            if operator in self.operators.keys():
+                self.operators[operator]['current_room'] = room
+        for _operator in self.operators.keys():
+            if 'current_room' in self.operators[_operator].keys() and self.operators[_operator][
+                'current_room'] == room and _operator not in [res['agent'] for res in result] :
+                self.operators[_operator]['current_room'] = ''
+                logger.info(f'重设 {_operator} 至空闲')
         return result
 
     def agent_arrange(self, plan: tp.BasePlan, read_time_room=[]):
@@ -1444,15 +1455,6 @@ class BaseSchedulerSolver(BaseSolver):
                         time_result[room] = current[time_index[0]]['time']
                         if not self.operators[__name]['exhaust_require']:
                             time_result[room] = time_result[room] - timedelta(seconds=600)
-                    # update current_room
-                    for operator in (plan[room]):
-                        if operator in self.operators.keys():
-                            self.operators[operator]['current_room'] = room
-                    for _operator in self.operators.keys():
-                        if 'current_room' in self.operators[_operator].keys() and self.operators[_operator][
-                            'current_room'] == room and _operator not in plan[room]:
-                            self.operators[_operator]['current_room'] = ''
-                            logger.info(f'重设 {_operator} 至空闲')
                     finished = True
                     # back to 基地主界面
                     while self.scene() == Scene.CONNECTING:
@@ -1460,7 +1462,14 @@ class BaseSchedulerSolver(BaseSolver):
                 except Exception as e:
                     logger.exception(e)
                     choose_error += 1
-                    self.back()
+                    self.recog.update()
+                    back_count = 0
+                    while self.get_infra_scene() != Scene.INFRA_MAIN:
+                        self.back()
+                        self.recog.update()
+                        back_count+=1
+                        if back_count>10:
+                            break
                     if choose_error > 3:
                         raise e
                     else:
@@ -1619,6 +1628,7 @@ class BaseSchedulerSolver(BaseSolver):
             # 生息演算逻辑 结束
             remaining_time = (self.tasks[0]["time"] - datetime.now()).total_seconds()
             logger.info(f"开始休息 {remaining_time} 秒")
+            self.send_email("脚本停止")
             time.sleep(remaining_time)
             self.MAA = None
         except Exception as e:
