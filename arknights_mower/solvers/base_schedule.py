@@ -8,18 +8,22 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-from ..data import agent_base_config, agent_list
+from ..data import agent_list
 from ..utils import character_recognize, detector, segment
 from ..utils import typealias as tp
 from ..utils.device import Device
 from ..utils.log import logger
 from ..utils.recognize import RecognizeError, Recognizer, Scene
 from ..utils.solver import BaseSolver
-from ..utils.datetime import the_same_time,get_server_weekday
+from ..utils.datetime import get_server_weekday
+from paddleocr import PaddleOCR
+import cv2
+
 ## Maa
-from arknights_mower.utils.asst import Asst, Message, InstanceOptionType
+from arknights_mower.utils.asst import Asst, Message
 import json
 
+ocr = None
 
 class ArrangeOrder(Enum):
     STATUS = 1
@@ -61,7 +65,6 @@ class BaseSchedulerSolver(BaseSolver):
             self.get_agent()
         if len(self.scan_time.keys()) == 0:
             self.scan_time = {k: None for k, v in self.currentPlan.items()}
-        # self.get_agent_from_room('central')
         return super().run()
 
     def get_group(self, rest_agent, agent, groupname, name):
@@ -244,7 +247,8 @@ class BaseSchedulerSolver(BaseSolver):
         return result
 
     def agent_get_mood(self):
-        if next((k for k in self.tasks if k['time'] <datetime.now()),None) is not None:
+        # 如果5分钟之内有任务则跳过心情读取
+        if next((k for k in self.tasks if k['time'] <datetime.now()+ timedelta(seconds=300)),None) is not None:
             logger.info('有未完成的任务，跳过纠错')
             return
         logger.info('基建：记录心情')
@@ -294,10 +298,10 @@ class BaseSchedulerSolver(BaseSolver):
                         need_fix = True
                     fix_plan[key][idx] = plan[key][idx]["agent"]
                     continue
-                if (data["agent"] in agent_base_config.keys()):
+                if (data["agent"] in self.agent_base_config.keys()):
                     # 如果有设置下限，则减去下限值 eg: 令
-                    if ("LowerLimit" in agent_base_config[current_base[key][idx]["agent"]]):
-                        data["mood"] = data["mood"] - agent_base_config[current_base[key][idx]["agent"]]["LowerLimit"]
+                    if ("LowerLimit" in self.agent_base_config[current_base[key][idx]["agent"]]):
+                        data["mood"] = data["mood"] - self.agent_base_config[current_base[key][idx]["agent"]]["LowerLimit"]
                 # 把额外数据传过去
                 data["current_room"] = key
                 data["room_index"] = idx
@@ -432,7 +436,8 @@ class BaseSchedulerSolver(BaseSolver):
                             logger.exception(e)
                             error_count += 1
                             continue
-                    time_result = time_result[__index]['time']
+                    # 5分钟gap
+                    time_result = time_result[__index]['time'] - timedelta(seconds=(300))
                     # 如果已经有现有plan 则比对时间
                     if next((k for k in total_exaust_plan if
                              next((k for k, v in k['plan'].items() if agent in v), None) is not None),
@@ -605,7 +610,7 @@ class BaseSchedulerSolver(BaseSolver):
                             result[_room] = ['Current'] * len(self.currentPlan[_room])
                         result[_room][self.operators[_item_name]['index']] = _item_name
             if room in need_recover_room:
-                group_name = self.operators[next_agent['agent']]["agent"]
+                group_name = self.operators[next_agent['agent']]["name"]
             else:
                 # 未分组则强制分组
                 group_name = 'default'
@@ -634,17 +639,17 @@ class BaseSchedulerSolver(BaseSolver):
                 __high = {"name": data["agent"], "room": room, "index": idx, "group": data["group"],
                           'replacement': data["replacement"], 'resting_priority': 'high', 'current_room': '',
                           'exhaust_require': False, "upper_limit": 24,"rest_in_full":False}
-                if __high['name'] in agent_base_config.keys() and 'RestingPriority' in agent_base_config[
-                    __high['name']].keys() and agent_base_config[__high['name']]['RestingPriority'] == 'low':
+                if __high['name'] in self.agent_base_config.keys() and 'RestingPriority' in self.agent_base_config[
+                    __high['name']].keys() and self.agent_base_config[__high['name']]['RestingPriority'] == 'low':
                     __high["resting_priority"] = 'low'
-                if __high['name'] in agent_base_config.keys() and 'ExhaustRequire' in agent_base_config[
-                    __high['name']].keys() and agent_base_config[__high['name']]['ExhaustRequire'] == True:
+                if __high['name'] in self.agent_base_config.keys() and 'ExhaustRequire' in self.agent_base_config[
+                    __high['name']].keys() and self.agent_base_config[__high['name']]['ExhaustRequire'] == True:
                     __high["exhaust_require"] = True
-                if __high['name'] in agent_base_config.keys() and 'UpperLimit' in agent_base_config[
+                if __high['name'] in self.agent_base_config.keys() and 'UpperLimit' in self.agent_base_config[
                     __high['name']].keys():
-                    __high["upper_limit"] = agent_base_config[__high['name']]['UpperLimit']
-                if __high['name'] in agent_base_config.keys() and 'RestInFull' in agent_base_config[
-                    __high['name']].keys() and agent_base_config[__high['name']]['RestInFull'] == True:
+                    __high["upper_limit"] = self.agent_base_config[__high['name']]['UpperLimit']
+                if __high['name'] in self.agent_base_config.keys() and 'RestInFull' in self.agent_base_config[
+                    __high['name']].keys() and self.agent_base_config[__high['name']]['RestInFull'] == True:
                     __high["rest_in_full"] = True
                 high_production.append(__high)
                 if "replacement" in data.keys() and data["agent"] != '菲亚梅塔':
@@ -714,28 +719,68 @@ class BaseSchedulerSolver(BaseSolver):
         self.back(interval=2)
         return execute_time
 
-    def double_read_time(self, cord,upperLimit = 9000, error_count=0,):
+    def double_read_time(self, cord,upperLimit = 9000):
         self.recog.update()
         time_in_seconds = self.read_time(cord,upperLimit)
         execute_time = datetime.now() + timedelta(seconds=(time_in_seconds))
-        time.sleep(2)
-        self.recog.update()
-        logger.info('基建：读取时间二次确认')
-        time_in_seconds_2 = self.read_time(cord,upperLimit)
-        execute_time_2 = datetime.now() + timedelta(seconds=(time_in_seconds_2))
-        logger.info('二次确认时间为：' + execute_time_2.strftime("%H:%M:%S"))
-        if the_same_time(execute_time, execute_time_2):
-            return execute_time
-        else:
-            if error_count > 25:
-                raise Exception("验证错误 超过上限")
-            error_count += 1
-            return self.double_read_time(cord,upperLimit, error_count)
+        return execute_time
+        # time.sleep(2)
+        # self.recog.update()
+        # logger.info('基建：读取时间二次确认')
+        # time_in_seconds_2 = self.read_time(cord,upperLimit)
+        # execute_time_2 = datetime.now() + timedelta(seconds=(time_in_seconds_2))
+        # logger.info('二次确认时间为：' + execute_time_2.strftime("%H:%M:%S"))
+        # if the_same_time(execute_time, execute_time_2):
+        #     return execute_time
+        # else:
+        #     if error_count > 25:
+        #         raise Exception("验证错误 超过上限")
+        #     error_count += 1
+        #     return self.double_read_time(cord,upperLimit, error_count)
 
-    def read_time(self, cord,upperlimit, error_count=0,):
+    def initialize_paddle(self):
+        global ocr
+        if ocr is None:
+            ocr = PaddleOCR(use_angle_cls=True, lang='en')
+
+    def read_screen(self,img, type="mood", langurage="eng", limit=24, cord=None, change_color=False, draw=False):
+        if cord is not None:
+            img = img[cord[1]:cord[3], cord[0]:cord[2]]
+        if 'mood' in type or type == "time":
+            # 心情图片太小，复制8次提高准确率
+            for x in range(0, 4):
+                img = cv2.vconcat([img, img])
+        if change_color: img[img == 137] = 255
+        try:
+            self.initialize_paddle()
+            rets = ocr.ocr(img, cls=True)
+            line_conf = []
+            for idx in range(len(rets[0])):
+                res = rets[0][idx]
+                if 'mood' in type and ('/' + str(limit)) in res[1]:
+                    line_conf.append(res[1])
+                else:
+                    line_conf.append(res[1])
+            logger.debug(line_conf)
+            if len(line_conf) == 0 and 'mood' in type: return -1
+            x = [i[0] for i in line_conf]
+            __str = max(set(x), key=x.count)
+            print(__str)
+            if "mood" in type:
+                number = int(__str[0:__str.index('/')])
+                return number
+            elif 'time' in type:
+                if '.' in __str:
+                    __str = __str.replace(".", ":")
+            return __str
+        except Exception as e :
+            logger.exception(e)
+            return limit
+
+    def read_time(self, cord,upperlimit, error_count=0):
         # 刷新图片
         self.recog.update()
-        time_str = segment.read_screen(self.recog.img, type='time', cord=cord)
+        time_str = self.read_screen(self.recog.img, type='time', cord=cord)
         logger.debug(time_str)
         try:
             h, m, s = time_str.split(':')
@@ -1052,7 +1097,7 @@ class BaseSchedulerSolver(BaseSolver):
                 while self.get_infra_scene() == Scene.CONNECTING:
                     self.sleep(3)
                 if one_time:
-                    drone_count = segment.read_screen(self.recog.img, type='drone_mood', cord=(
+                    drone_count = self.read_screen(self.recog.img, type='drone_mood', cord=(
                         int(self.recog.w * 1150 / 1920), int(self.recog.h * 35 / 1080), int(self.recog.w * 1295 / 1920),
                         int(self.recog.h * 72 / 1080)), limit=200)
                     logger.info(f'当前无人机数量为：{drone_count}')
@@ -1151,12 +1196,12 @@ class BaseSchedulerSolver(BaseSolver):
                 raise e
 
     def get_order(self, name):
-        if (name in agent_base_config.keys()):
-            if "ArrangeOrder" in agent_base_config[name].keys():
-                return True, agent_base_config[name]["ArrangeOrder"]
+        if (name in self.agent_base_config.keys()):
+            if "ArrangeOrder" in self.agent_base_config[name].keys():
+                return True, self.agent_base_config[name]["ArrangeOrder"]
             else:
-                return False, agent_base_config["Default"]["ArrangeOrder"]
-        return False, agent_base_config["Default"]["ArrangeOrder"]
+                return False, self.agent_base_config["Default"]["ArrangeOrder"]
+        return False, self.agent_base_config["Default"]["ArrangeOrder"]
 
     def detail_filter(self, turn_on, type="not_in_dorm"):
         logger.info(f'开始 {("打开" if turn_on else "关闭")} {type} 筛选')
@@ -1343,7 +1388,7 @@ class BaseSchedulerSolver(BaseSolver):
                 error_count+=1
                 if error_count>4:
                     raise Exception("超过出错上限")
-            data['mood'] = segment.read_screen(self.recog.img, cord=mood_p[i], change_color=True)
+            data['mood'] = self.read_screen(self.recog.img, cord=mood_p[i], change_color=True)
             if data['agent'] not in self.operators.keys():
                 self.operators[data['agent']] = {"type": "low", "name": data['agent'], "group": '', 'current_room': '',
                                                  'resting_priority': 'low', "index": -1, 'mood': data['mood'],
@@ -1468,8 +1513,8 @@ class BaseSchedulerSolver(BaseSolver):
                         self.back()
                         self.recog.update()
                         back_count+=1
-                        if back_count>10:
-                            break
+                        if back_count>3:
+                            raise e
                     if choose_error > 3:
                         raise e
                     else:
@@ -1595,6 +1640,7 @@ class BaseSchedulerSolver(BaseSolver):
             if self.maa_config['roguelike'] or self.maa_config['reclamation_algorithm'] or self.maa_config[
                 'stationary_security_service']:
                 while (self.tasks[0]["time"] - datetime.now()).total_seconds() > 30:
+                    self.MAA = None
                     self.inialize_maa()
                     if self.maa_config['roguelike']:
                         self.MAA.append_task('Roguelike', {
