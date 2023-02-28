@@ -54,6 +54,7 @@ class BaseSchedulerSolver(BaseSolver):
         """
         self.currentPlan = self.global_plan[self.global_plan["default"]]
         self.error = False
+        self.handle_error(True)
         if len(self.tasks) > 0:
             # 找到时间最近的一次单个任务
             self.task = self.tasks[0]
@@ -136,11 +137,13 @@ class BaseSchedulerSolver(BaseSolver):
         self.get_swap_plan(resting_dorm, operators, False)
     def handle_error(self,force = False):
         # 如果有任何报错，则生成一个空
+        if self.scene() == Scene.UNKNOWN:
+            self.device.exit('com.hypergryph.arknights')
         if self.error or force:
-            logger.info("由于出现错误情况，生成一次空任务来执行纠错")
             # 如果没有任何时间小于当前时间的任务才生成空任务
             if (next((e for e in self.tasks if e['time'] < datetime.now()), None)) is None:
                 room = next(iter(self.currentPlan.keys()))
+                logger.info("由于出现错误情况，生成一次空任务来执行纠错")
                 self.tasks.append({'time': datetime.now(), 'plan': {room: ['Current'] * len(self.currentPlan[room])}})
             # 如果没有任何时间小于当前时间的任务-10分钟 则清空任务
             if (next((e for e in self.tasks if e['time'] < datetime.now() - timedelta(seconds=600)), None)) is not None:
@@ -148,8 +151,6 @@ class BaseSchedulerSolver(BaseSolver):
                 self.tasks = []
                 self.scan_time = {}
                 self.operators = {}
-                self.back_to_index()
-                self.device.exit('com.hypergryph.arknights')
         return True
 
     def plan_metadata(self, time_result):
@@ -227,7 +228,7 @@ class BaseSchedulerSolver(BaseSolver):
             try:
                 # 如果有任何type 则会最后修正
                 if self.read_mood:
-                    mood_result = self.agent_get_mood()
+                    mood_result = self.agent_get_mood(True)
                     if mood_result is not None:
                         return True
                 self.plan_solver()
@@ -246,7 +247,7 @@ class BaseSchedulerSolver(BaseSolver):
             result.append(data["agent"])
         return result
 
-    def agent_get_mood(self):
+    def agent_get_mood(self,skip_dorm = False):
         # 如果5分钟之内有任务则跳过心情读取
         if next((k for k in self.tasks if k['time'] <datetime.now()+ timedelta(seconds=300)),None) is not None:
             logger.info('有未完成的任务，跳过纠错')
@@ -345,6 +346,8 @@ class BaseSchedulerSolver(BaseSolver):
             fix_agents = []
             remove_keys = []
             for key in fix_plan:
+                if skip_dorm and 'dormitory' in key:
+                    remove_keys.append(key)
                 for idx, fix_agent in enumerate(fix_plan[key]):
                     if fix_agent not in fix_agents:
                         fix_agents.append(fix_agent)
@@ -538,7 +541,10 @@ class BaseSchedulerSolver(BaseSolver):
                     logger.info(f'休息人选为->{need_to_rest}')
                     if len(need_to_rest) > 0:
                         self.get_swap_plan(resting_dorm, need_to_rest, min_mood < 3 and min_mood != -99)
-                    return
+                    # 如果下个 普通任务 >5 分钟则补全宿舍
+                    if (next((e for e in self.tasks if e['time'] < datetime.now() + timedelta(seconds=300)),
+                                 None)) is None:
+                        self.agent_get_mood()
             except Exception as e:
                 logger.exception(f'计算排班计划出错->{e}')
 
@@ -624,7 +630,7 @@ class BaseSchedulerSolver(BaseSolver):
                         self.currentPlan[self.operators[planned]['room']])
                 group_info[group_name]['plan'][self.operators[planned]['current_room']][
                     self.operators[planned]['index']] = planned
-            group_info[group_name]['plan'][room]=[x['agent'] for x in self.currentPlan[room]]
+            # group_info[group_name]['plan'][room]=[x['agent'] for x in self.currentPlan[room]]
         logger.info(f'生成的分组计划:{group_info}')
         logger.info(f'生成的排班计划为->{result}')
         self.tasks.append(
@@ -757,8 +763,10 @@ class BaseSchedulerSolver(BaseSolver):
             line_conf = []
             for idx in range(len(rets[0])):
                 res = rets[0][idx]
-                if 'mood' in type and ('/' + str(limit)) in res[1]:
-                    line_conf.append(res[1])
+                if 'mood' in type :
+                    # filter 掉不符合规范的结果
+                    if ('/' + str(limit)) in res[1][0]:
+                        line_conf.append(res[1])
                 else:
                     line_conf.append(res[1])
             logger.debug(line_conf)
@@ -1610,13 +1618,14 @@ class BaseSchedulerSolver(BaseSolver):
                     'shopping': True,
                     'buy_first': ['龙门币', '赤金'],
                     'blacklist': ['家具', '碳', '加急'],
-                    'credit_fight':True
+                    'credit_fight':False
                 })
                 self.MAA.append_task('Award')
                 # asst.append_task('Copilot', {
                 #     'stage_name': '千层蛋糕',
                 #     'filename': './GA-EX8-raid.json',
                 #     'formation': False
+
                 # })
                 self.MAA.start()
                 logger.info(f"MAA 启动")
