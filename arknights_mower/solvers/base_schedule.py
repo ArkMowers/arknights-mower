@@ -542,9 +542,9 @@ class BaseSchedulerSolver(BaseSolver):
                     if len(need_to_rest) > 0:
                         self.get_swap_plan(resting_dorm, need_to_rest, min_mood < 3 and min_mood != -99)
                     # 如果下个 普通任务 >5 分钟则补全宿舍
-                    if (next((e for e in self.tasks if e['time'] < datetime.now() + timedelta(seconds=300)),
-                                 None)) is None:
-                        self.agent_get_mood()
+                if (next((e for e in self.tasks if e['time'] < datetime.now() + timedelta(seconds=300)),
+                             None)) is None:
+                    self.agent_get_mood()
             except Exception as e:
                 logger.exception(f'计算排班计划出错->{e}')
 
@@ -1592,6 +1592,7 @@ class BaseSchedulerSolver(BaseSolver):
                 self.MAA.append_task('StartUp')
                 _plan= self.maa_config['weekly_plan'][get_server_weekday()]
                 logger.info(f"现在服务器是{_plan['weekday']}")
+                fights = []
                 for stage in _plan["stage"]:
                     logger.info(f"添加关卡:{stage}")
                     self.MAA.append_task('Fight', {
@@ -1607,6 +1608,7 @@ class BaseSchedulerSolver(BaseSolver):
                         'DrGrandet': False,
                         'server': 'CN'
                     })
+                    fights.append(stage)
                 self.MAA.append_task('Recruit', {
                     'select': [4],
                     'confirm': [3, 4],
@@ -1618,7 +1620,7 @@ class BaseSchedulerSolver(BaseSolver):
                     'shopping': True,
                     'buy_first': ['龙门币', '赤金'],
                     'blacklist': ['家具', '碳', '加急'],
-                    'credit_fight':False
+                    'credit_fight':fights[len(fights)-1]!=''
                 })
                 self.MAA.append_task('Award')
                 # asst.append_task('Copilot', {
