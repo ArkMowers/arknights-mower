@@ -730,26 +730,14 @@ class BaseSchedulerSolver(BaseSolver):
         time_in_seconds = self.read_time(cord,upperLimit)
         execute_time = datetime.now() + timedelta(seconds=(time_in_seconds))
         return execute_time
-        # time.sleep(2)
-        # self.recog.update()
-        # logger.info('基建：读取时间二次确认')
-        # time_in_seconds_2 = self.read_time(cord,upperLimit)
-        # execute_time_2 = datetime.now() + timedelta(seconds=(time_in_seconds_2))
-        # logger.info('二次确认时间为：' + execute_time_2.strftime("%H:%M:%S"))
-        # if the_same_time(execute_time, execute_time_2):
-        #     return execute_time
-        # else:
-        #     if error_count > 25:
-        #         raise Exception("验证错误 超过上限")
-        #     error_count += 1
-        #     return self.double_read_time(cord,upperLimit, error_count)
+
 
     def initialize_paddle(self):
         global ocr
         if ocr is None:
             ocr = PaddleOCR(use_angle_cls=True, lang='en')
 
-    def read_screen(self,img, type="mood", langurage="eng", limit=24, cord=None, change_color=False, draw=False):
+    def read_screen(self,img, type="mood",limit=24, cord=None, change_color=False):
         if cord is not None:
             img = img[cord[1]:cord[3], cord[0]:cord[2]]
         if 'mood' in type or type == "time":
@@ -1154,25 +1142,6 @@ class BaseSchedulerSolver(BaseSolver):
             self.tap((self.recog.w * arrange_order_res[ArrangeOrder(index)][0],
                       self.recog.h * arrange_order_res[ArrangeOrder(index)][1]), interval=0.2, rebuild=True)
 
-    def get_agent_detail(self, cord, errorCount=0):
-        self.tap(cord, interval=0.5)
-        try:
-            width = self.recog.w
-            height = self.recog.h
-            x0 = int(width * 20 / 1920)
-            y0 = int(height * 130 / 1080)
-            x1 = int(width * 265 / 1920)
-            y1 = int(height * 200 / 1080)
-            name = character_recognize.agent_name(self.recog.img[y0:y1 , x0:x1 ],height=height*1.5,reverse=True)
-            if name =='' :raise Exception("检测到选择干员未成功")
-        except Exception as e:
-            if errorCount > 3:
-                raise e
-            else:
-                logger.error(e)
-                errorCount += 1
-                self.get_agent_detail(cord, errorCount)
-
     def scan_agant(self, agent: list[str], error_count=0, max_agent_count=-1):
         try:
             # 识别干员
@@ -1410,7 +1379,7 @@ class BaseSchedulerSolver(BaseSolver):
                     data['time'] = datetime.now()
                 else:
                     upperLimit = 21600
-                    if data['agent']=='菲亚梅塔':
+                    if data['agent']in ['菲亚梅塔','刻俄柏']:
                         upperLimit = 43200
                     data['time'] = self.double_read_time(time_p[i],upperLimit=upperLimit)
             result.append(data)
