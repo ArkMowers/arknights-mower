@@ -9,7 +9,7 @@ from matplotlib import pyplot as plt
 from PIL import Image, ImageDraw, ImageFont
 
 from .. import __rootdir__
-from ..data import agent_list, ocr_error
+from ..data import agent_list
 from . import segment
 from .image import saveimg
 from .log import logger
