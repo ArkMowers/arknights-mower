@@ -60,8 +60,9 @@ class Client(object):
         for device in config.ADB_DEVICE:
             if device in devices:
                 return device
-        if len(devices) > 0:
-            return devices[0]
+        # if len(devices) > 0:
+        #     logger.debug(devices[0])
+        #     return devices[0]
 
     def __available_devices(self) -> list[str]:
         """ return available devices """

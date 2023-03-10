@@ -23,7 +23,7 @@ class ShopSolver(BaseSolver):
         :param priority: list[str], 使用信用点购买东西的优先级, 若无指定则默认购买第一件可购买的物品
         """
         self.priority = priority
-
+        self.buying = None
         logger.info('Start: 商店')
         logger.info('购买期望：%s' % priority if priority else '无，购买到信用点用完为止')
         super().run()
@@ -42,6 +42,11 @@ class ShopSolver(BaseSolver):
         elif self.scene() == Scene.SHOP_CREDIT_CONFIRM:
             if self.find('shop_credit_not_enough') is None:
                 self.tap_element('shop_cart')
+            elif len(self.priority) > 0:
+                # 移除优先级中买不起的物品
+                self.priority.remove(self.buying) 
+                logger.info('信用点不足，放弃购买%s，看看别的...' % self.buying)
+                self.back()
             else:
                 return True
         elif self.scene() == Scene.SHOP_ASSIST:
@@ -84,4 +89,5 @@ class ShopSolver(BaseSolver):
             if valid[0][1] not in priority:
                 return True
         logger.info(f'实际购买顺序：{[x[1] for x in valid]}')
+        self.buying = valid[0][1]
         self.tap(valid[0][0], interval=3)

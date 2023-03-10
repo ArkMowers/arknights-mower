@@ -14,11 +14,7 @@ setuptools~=60.2.0
 Pillow~=9.2.0
 pytesseract~=0.3.10
 pandas==1.5.2
-opencv-python~=4.5.5.64
-scikit-learn~=1.0
-scikit-image~=0.18.3
-pytz~=2022.6
 pyyaml==6.0
-
-
 PySimpleGUI~=4.60.4
+pytz~=2022.6
+paddleocr==2.6.1.3
