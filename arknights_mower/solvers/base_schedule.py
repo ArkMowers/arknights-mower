@@ -541,12 +541,12 @@ class BaseSchedulerSolver(BaseSolver):
                     logger.info(f'休息人选为->{need_to_rest}')
                     if len(need_to_rest) > 0:
                         self.get_swap_plan(resting_dorm, need_to_rest, min_mood < 3 and min_mood != -99)
-                    # 如果下个 普通任务 >5 分钟则补全宿舍
-                if (next((e for e in self.tasks if e['time'] < datetime.now() + timedelta(seconds=300)),
-                             None)) is None:
-                    self.agent_get_mood()
             except Exception as e:
                 logger.exception(f'计算排班计划出错->{e}')
+                # 如果下个 普通任务 >5 分钟则补全宿舍
+            if (next((e for e in self.tasks if e['time'] < datetime.now() + timedelta(seconds=300)),
+                     None)) is None:
+                self.agent_get_mood()
 
     def get_swap_plan(self, resting_dorm, operators, skip_read_time):
         result = {}
@@ -725,11 +725,11 @@ class BaseSchedulerSolver(BaseSolver):
         self.back(interval=2)
         return execute_time
 
-    def double_read_time(self, cord, upperLimit=36000, error_count=0,):
+    def double_read_time(self, cord,upperLimit = 36000):
         if upperLimit < 36000:
             upperLimit = 36000
         self.recog.update()
-        time_in_seconds = self.read_time(cord, upperLimit)
+        time_in_seconds = self.read_time(cord,upperLimit)
         execute_time = datetime.now() + timedelta(seconds=(time_in_seconds))
         return execute_time
 
@@ -738,8 +738,8 @@ class BaseSchedulerSolver(BaseSolver):
         global ocr
         if ocr is None:
             ocr = PaddleOCR(use_angle_cls=True, lang='en')
-            
-    def read_screen(self,img, type="mood",limit=24, cord=None, change_color=False):
+
+    def read_screen(self, img, type="mood", limit=24, cord=None, change_color=False):
         if cord is not None:
             img = img[cord[1]:cord[3], cord[0]:cord[2]]
         if 'mood' in type or type == "time":
@@ -774,11 +774,11 @@ class BaseSchedulerSolver(BaseSolver):
         except Exception as e :
             logger.exception(e)
             return limit
-            
-    def read_time(self, cord, upperlimit, error_count=0):
+
+    def read_time(self, cord,upperlimit, error_count=0):
         # 刷新图片
         self.recog.update()
-        time_str = segment.read_screen(self.recog.img, type='time', cord=cord)
+        time_str = self.read_screen(self.recog.img, type='time', cord=cord)
         logger.debug(str(time_str))
         try:
             h, m, s = str(time_str).split(':')
@@ -1381,7 +1381,7 @@ class BaseSchedulerSolver(BaseSolver):
                     data['time'] = datetime.now()
                 else:
                     upperLimit = 21600
-                    if data['agent']in ['菲亚梅塔','刻俄柏']:
+                    if data['agent']in ['菲亚梅塔'] or data['agent'] in self.exaust_agent:
                         upperLimit = 43200
                     data['time'] = self.double_read_time(time_p[i],upperLimit=upperLimit)
             result.append(data)
@@ -1674,7 +1674,6 @@ class BaseSchedulerSolver(BaseSolver):
             self.device.exit('com.hypergryph.arknights')
 
     def send_email(self, tasks):
-        return
         try:
             msg = MIMEMultipart()
             conntent = str(tasks)
@@ -1689,3 +1688,4 @@ class BaseSchedulerSolver(BaseSolver):
             logger.info("邮件发送成功")
         except Exception as e:
             logger.error("邮件发送失败")
+            logger.exception(e)
