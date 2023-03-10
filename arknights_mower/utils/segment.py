@@ -5,14 +5,12 @@ import traceback
 import cv2
 import numpy as np
 from matplotlib import pyplot as plt
-from .image import saveimg
 from ..data import agent_list
 from ..ocr import ocrhandle
 from . import detector
 from . import typealias as tp
 from .log import logger
 from .recognize import RecognizeError
-import pytesseract
 
 
 class FloodCheckFailed(Exception):
@@ -267,68 +265,6 @@ def base(img: tp.Image, central: tp.Scope, draw: bool = False) -> dict[ str, tp.
     except Exception as e:
         logger.debug(traceback.format_exc())
         raise RecognizeError(e)
-def read_screen(img, type="mood", langurage="eng", limit=24, cord=None, change_color=False, draw=False) -> int:
-    if cord is not None :
-        img = img[ cord[1]:cord[3], cord[0]:cord[2] ]
-    if 'mood' in type or type=="time":
-        # 心情图片太小，复制8次提高准确率
-        for x in range(0, 4):
-            img = cv2.vconcat([img, img])
-    if change_color: img[img == 137] = 255
-    if draw : plt.imshow(img)
-    if "mood" in type or type=='time':
-        try:
-            _config = r'-c tessedit_char_whitelist=0123456789: --psm 6'
-            if type=='mood':_config = r'-c tessedit_char_whitelist=0123456789/- --psm 6'
-            text = pytesseract.image_to_data(img,lang=langurage, config=_config, output_type='data.frame' )
-            if type =='time': saveimg(img, 'data')
-            text = text[text.conf != -1]
-            lines = text.groupby(['page_num', 'block_num', 'par_num', 'line_num'], group_keys=True)['text'] \
-                .apply(lambda x: ' '.join(map(str,list(x)))).tolist()
-            confs = text.groupby(['page_num', 'block_num', 'par_num', 'line_num'], group_keys=True)['conf'].mean().tolist()
-            line_conf = []
-            for i in range(len(lines)):
-                if lines[i].strip():
-                    line_conf.append((lines[i], round(confs[i], 3)))
-            logger.debug(str(line_conf))
-            __str = ''
-            if 'mood' in type:
-                if line_conf[len(line_conf) - 1][1] > 0.0 or (max(line_conf, key=lambda tup: tup[1])) == 0.0 or limit == 200:
-                    __str=line_conf[len(line_conf) - 1][0]
-                else:
-                    __str = (max(line_conf, key=lambda tup: tup[1]))[0]
-            else:
-                _data = (max(line_conf, key=lambda tup: tup[1]))
-                if _data[1]<70.0:
-                    __str = line_conf[len(line_conf) - 1][0]
-                else:
-                    __str = _data[0]
-            if '.0' in __str:
-                __str = __str[0:__str.index('.0')]
-            # else:
-            #     # 时间就找最大出现次数
-            #     x = [i[0] for i in line_conf]
-            #     __str = max(set(x), key=x.count)
-            if "mood" in type:
-                idx = 4
-                if type =='mood' : idx = 3
-                __str = __str[0:len(__str)-idx]
-                if '/' in __str:
-                    __str= __str[0:__str.index('/')]
-                if ''==__str:
-                    return 0
-                number = int(__str)
-                if number>limit:
-                    saveimg(img, 'error_mood')
-                    return limit
-                return number
-            else:
-                return __str
-        except Exception as e:
-            # 空的时候是没人在基建
-            logger.warning(f'读取错误:{__str}')
-            saveimg(img, 'error_mood')
-            return -1
 
 def worker(img: tp.Image, draw: bool = False) -> tuple[ list[ tp.Rectangle ], tp.Rectangle, bool ]:
     """

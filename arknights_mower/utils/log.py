@@ -66,7 +66,7 @@ logger.addHandler(chlr)
 logger.addHandler(ehlr)
 
 
-def init_fhlr(pipe) -> None:
+def init_fhlr(pipe=None) -> None:
     """ initialize log file """
     if config.LOGFILE_PATH is None:
         return
