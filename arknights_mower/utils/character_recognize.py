@@ -217,7 +217,12 @@ def agent(img, draw=False):
         raise RecognizeError(e)
 
 def agent_name(__img, height,reverse = False, draw: bool = False):
-    ocr = ocrhandle.predict(__img)
+    query = cv2.cvtColor(np.array(__img), cv2.COLOR_RGB2GRAY)
+    h, w= query.shape
+    dim = (w*4, h*4)
+    # resize image
+    resized = cv2.resize(__img, dim, interpolation=cv2.INTER_AREA)
+    ocr = ocrhandle.predict(resized)
     name = ''
     try:
         if len(ocr) > 0 and ocr[0][1] in agent_list and ocr[0][1] not in ['砾', '陈']:

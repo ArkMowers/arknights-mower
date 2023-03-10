@@ -136,6 +136,49 @@ plan = {
     }
 }
 
+agent_base_config = {
+    "Default":{"UpperLimit": 24,"LowerLimit": 0,"ExhaustRequire": False,"ArrangeOrder":[2,"false"],"RestInFull": False},
+    "令":{"ArrangeOrder":[2,"true"]},
+    "夕": {"ArrangeOrder":[2,"true"]},
+    "稀音":{"ExhaustRequire": True,"ArrangeOrder":[2,"true"],"RestInFull": True},
+    "巫恋":{"ArrangeOrder":[2,"true"]},
+    "柏喙":{"ExhaustRequire": True,"ArrangeOrder":[2,"true"]},
+    "龙舌兰":{"ArrangeOrder":[2,"true"]},
+    "空弦":{"ArrangeOrder":[2,"true"],"RestingPriority": "low"},
+    "伺夜":{"ArrangeOrder":[2,"true"]},
+    "绮良":{"ArrangeOrder":[2,"true"]},
+    "但书":{"ArrangeOrder":[2,"true"]},
+    "泡泡":{"ArrangeOrder":[2,"true"]},
+    "火神":{"ArrangeOrder":[2,"true"]},
+    "黑键":{"ArrangeOrder":[2,"true"]},
+    "波登可":{"ArrangeOrder":[ 2, "false" ]},
+    "夜莺":{"ArrangeOrder":[ 2, "false" ]},
+    "菲亚梅塔":{"ArrangeOrder":[ 2, "false" ]},
+    "流明":{"ArrangeOrder":[ 2, "false" ]},
+    "蜜莓":{"ArrangeOrder":[ 2, "false" ]},
+    "闪灵":{"ArrangeOrder":[ 2, "false" ]},
+    "杜林":{"ArrangeOrder":[ 2, "false" ]},
+    "褐果":{"ArrangeOrder":[ 2, "false" ]},
+    "车尔尼":{"ArrangeOrder":[ 2, "false" ]},
+    "安比尔":{"ArrangeOrder":[ 2, "false" ]},
+    "爱丽丝":{"ArrangeOrder":[ 2, "false" ]},
+    "桃金娘":{"ArrangeOrder":[ 2, "false" ]},
+    "帕拉斯": {"RestingPriority": "low"},
+    "红云": {"RestingPriority": "low","ArrangeOrder":[2,"true"]},
+    "承曦格雷伊": {"ArrangeOrder":[2,"true"]},
+    "乌有":{"ArrangeOrder":[2,"true"],"RestingPriority": "low"},
+    "图耶":{"ArrangeOrder":[2,"true"]},
+    "鸿雪": {"ArrangeOrder":[2,"true"]},
+    "孑":{"ArrangeOrder":[2,"true"]},
+    "清道夫":{"ArrangeOrder":[2,"true"]},
+    "临光":{"ArrangeOrder":[2,"true"]},
+    "杜宾":{"ArrangeOrder":[2,"true"]},
+    "焰尾":{"RestInFull": True},
+    "重岳":{"ArrangeOrder":[2,"true"]},
+    "坚雷":{"ArrangeOrder":[2,"true"]},
+    "年":{"RestingPriority": "low"}
+}
+
 
 def debuglog():
     '''
@@ -179,6 +222,7 @@ def inialize(tasks,scheduler=None):
         base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
         base_scheduler.maa_config = maa_config
         base_scheduler.error = False
+        base_scheduler.agent_base_config = agent_base_config
         return base_scheduler
     else :
         scheduler.device=cli.device
