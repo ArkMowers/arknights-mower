@@ -27,12 +27,14 @@ class BaseSolver:
         self.recog = recog if recog is not None else Recognizer(self.device)
         self.device.check_current_focus()
 
-    def run(self) -> None:
+    def run(self)-> None:
         retry_times = config.MAX_RETRYTIME
+        result =None
         while retry_times > 0:
             try:
-                if self.transition():
-                    break
+                result = self.transition()
+                if result:
+                    return result
             except RecognizeError as e:
                 logger.warning(f'识别出了点小差错 qwq: {e}')
                 self.recog.save_screencap('failure')
@@ -167,6 +169,10 @@ class BaseSolver:
         """ get the current scene in the game """
         return self.recog.get_scene()
 
+    def get_infra_scene(self) -> int:
+        """ get the current scene in the infra """
+        return self.recog.get_infra_scene()
+
     def is_login(self):
         """ check if you are logged in """
         return not (self.scene() // 100 == 1 or self.scene() // 100 == 99 or self.scene() == -1)
@@ -255,6 +261,8 @@ class BaseSolver:
             try:
                 if self.get_navigation():
                     self.tap_element('nav_index')
+                elif self.scene() == Scene.CLOSE_MINE:
+                    self.tap_element('close_mine')
                 elif self.scene() == Scene.ANNOUNCEMENT:
                     self.tap(detector.announcement_close(self.recog.img))
                 elif self.scene() == Scene.MATERIEL:
@@ -304,3 +312,14 @@ class BaseSolver:
 
         if self.scene() != Scene.INDEX:
             raise StrategyError
+
+    def back_to_reclamation_algorithm(self):
+        self.recog.update()
+        while self.find('index_terminal') is None:
+            if self.scene() == Scene.UNKNOWN:
+                self.device.exit('com.hypergryph.arknights')
+            self.back_to_index()
+        logger.info('导航至生息演算')
+        self.tap_element('index_terminal', 0.5)
+        self.tap((self.recog.w*0.2, self.recog.h*0.8),interval=0.5)
+
