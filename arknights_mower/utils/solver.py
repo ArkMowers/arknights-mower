@@ -92,8 +92,8 @@ class BaseSolver:
         self.device.send_text(str(text))
         self.device.tap((0, 0))
 
-    def find(self, res: str, draw: bool = False, scope: tp.Scope = None, thres: int = None, judge: bool = True, strict: bool = False) -> tp.Scope:
-        return self.recog.find(res, draw, scope, thres, judge, strict)
+    def find(self, res: str, draw: bool = False, scope: tp.Scope = None, thres: int = None, judge: bool = True, strict: bool = False, score = 0.0) -> tp.Scope:
+        return self.recog.find(res, draw, scope, thres, judge, strict,score)
 
     def tap(self, poly: tp.Location, x_rate: float = 0.5, y_rate: float = 0.5, interval: float = 1, rebuild: bool = True) -> None:
         """ tap """

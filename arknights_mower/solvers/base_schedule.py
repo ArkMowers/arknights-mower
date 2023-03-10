@@ -1184,10 +1184,14 @@ class BaseSchedulerSolver(BaseSolver):
 
     def detail_filter(self, turn_on, type="not_in_dorm"):
         logger.info(f'开始 {("打开" if turn_on else "关闭")} {type} 筛选')
-        self.tap((self.recog.w * 0.95, self.recog.h * 0.05), interval=1)
+        error_count = 0
+        while self.find("arrange_order_options_scene") is None and error_count<4:
+            self.tap((self.recog.w * 0.95, self.recog.h * 0.05), interval=1)
+            error_count+=1
+        if error_count>=4: raise Exception("进入筛选界面失败")
         if type == "not_in_dorm":
-            not_in_dorm = self.find('not_in_dorm')
-            if turn_on ^ (not_in_dorm is not None):
+            not_in_dorm = self.find('arrange_non_check_in',score=0.85)
+            if turn_on ^ (not_in_dorm is None):
                 self.tap((self.recog.w * 0.3, self.recog.h * 0.5), interval=0.5)
         # 确认
         self.tap((self.recog.w * 0.8, self.recog.h * 0.8), interval=0.5)
