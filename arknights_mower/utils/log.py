@@ -61,7 +61,7 @@ ehlr.setLevel('WARNING')
 ehlr.addFilter(PackagePathFilter())
 
 logger = logging.getLogger(__name__)
-logger.setLevel('DEBUG')
+logger.setLevel('INFO')
 logger.addHandler(chlr)
 logger.addHandler(ehlr)
 

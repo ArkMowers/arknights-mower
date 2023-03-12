@@ -15,6 +15,7 @@ a = Analysis(
         ('arknights_mower/resources', 'arknights_mower/__init__/resources'),
         ('arknights_mower/data', 'arknights_mower/__init__/data'),
         ('arknights_mower/vendor', 'arknights_mower/__init__/vendor'),
+        ('arknights_mower/paddleocr', '.'),
         ('venv64/Lib/site-packages/onnxruntime/capi/onnxruntime_providers_shared.dll', 'onnxruntime/capi/'),
         ('venv64/Lib/site-packages/shapely/DLLs/geos.dll', '.'),
         ('venv64/Lib/site-packages/shapely/DLLs/geos_c.dll', '.')
