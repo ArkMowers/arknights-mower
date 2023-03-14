@@ -12,7 +12,8 @@ email_config= {
     'account':"xxx@qq.com",
     'pass_code':'从QQ邮箱帐户设置—>生成授权码',
     'receipts':['任何邮箱'],
-    'notify':False
+    'notify':False,
+    'subject': '任务数据'
 }
 maa_config = {
     # 请设置为存放 dll 文件及资源的路径
@@ -138,8 +139,12 @@ plan = {
 
 agent_base_config = {
     "Default":{"UpperLimit": 24,"LowerLimit": 0,"ExhaustRequire": False,"ArrangeOrder":[2,"false"],"RestInFull": False},
-    "令":{"ArrangeOrder":[2,"true"]},
-    "夕": {"ArrangeOrder":[2,"true"]},
+    # 卡贸易站
+    "令":{"UpperLimit": 11,"LowerLimit": 13,"ArrangeOrder":[2,"true"]},
+    "夕": {"UpperLimit": 11,"ArrangeOrder":[2,"true"]},
+    # 卡制造站
+    #"令": {"UpperLimit": 11, "LowerLimit": 13, "ArrangeOrder": [2, "true"]},
+    #"夕": {"UpperLimit": 11, "ArrangeOrder": [2, "true"]},
     "稀音":{"ExhaustRequire": True,"ArrangeOrder":[2,"true"],"RestInFull": True},
     "巫恋":{"ArrangeOrder":[2,"true"]},
     "柏喙":{"ExhaustRequire": True,"ArrangeOrder":[2,"true"]},
