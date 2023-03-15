@@ -1677,12 +1677,14 @@ class BaseSchedulerSolver(BaseSolver):
                 time.sleep(remaining_time)
             self.device.exit('com.hypergryph.arknights')
 
-    def send_email(self, tasks):
+    def send_email(self, context,subject):
+        if 'mail_enable' in self.email_config.keys() and self.email_config['mail_enable'] == 0:
+            logger.info('邮件功能未开启')
+            return
         try:
             msg = MIMEMultipart()
-            conntent = str(tasks)
-            msg.attach(MIMEText(conntent, 'plain', 'utf-8'))
-            msg['Subject'] = self.email_config['subject']
+            msg.attach(MIMEText(str(context), 'plain', 'utf-8'))
+            msg['Subject'] = self.email_config['subject']+(str(subject)if subject else '')
             msg['From'] = self.email_config['account']
             s = smtplib.SMTP_SSL("smtp.qq.com", 465)
             # 登录邮箱

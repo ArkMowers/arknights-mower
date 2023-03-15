@@ -12,7 +12,6 @@ from arknights_mower.utils.log import logger, init_fhlr
 from arknights_mower.utils import config
 from arknights_mower.data import agent_list
 
-
 yaml = YAML()
 confUrl = './conf.yml';
 conf = {}
@@ -116,8 +115,17 @@ def inialize(tasks, scheduler=None):
         base_scheduler.scan_time = {}
         base_scheduler.last_room = ''
         base_scheduler.free_blacklist = list(filter(None, conf['free_blacklist'].replace('，', ',').split(',')))
+        logger.info('宿舍黑名单：' + str(base_scheduler.free_blacklist))
         base_scheduler.resting_treshhold = 0.5
         base_scheduler.MAA = None
+        base_scheduler.email_config = {
+            'mail_enable': conf['mail_enable'],
+            'subject': '[Mower通知]',
+            'account': conf['account'],
+            'pass_code': conf['pass_code'],
+            'receipts': [conf['account']],
+            'notify': False
+        }
         base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
         base_scheduler.error = False
         base_scheduler.agent_base_config = agent_base_config
@@ -142,11 +150,14 @@ def simulate():
             if len(base_scheduler.tasks) > 0:
                 (base_scheduler.tasks.sort(key=lambda x: x["time"], reverse=False))
                 sleep_time = (base_scheduler.tasks[0]["time"] - datetime.now()).total_seconds()
-                logger.info(base_scheduler.tasks)
-                if sleep_time >= 0:
+                logger.debug(base_scheduler.tasks)
+                if sleep_time > 0:
                     remaining_time = (base_scheduler.tasks[0]["time"] - datetime.now()).total_seconds()
-                    logger.info(
-                        f"开始休息 {'%.2f' % (remaining_time / 60)} 分钟，到{base_scheduler.tasks[0]['time'].strftime('%H:%M:%S')}")
+                    subject = f"开始休息 {'%.2f' % (remaining_time / 60)} 分钟，到{base_scheduler.tasks[0]['time'].strftime('%H:%M:%S')}"
+                    context = f"下一次任务:{base_scheduler.tasks[0]['plan']}"
+                    logger.info(context)
+                    logger.info(subject)
+                    base_scheduler.send_email(context, subject)
                     time.sleep(sleep_time)
             base_scheduler.run()
             reconnect_tries = 0
@@ -186,6 +197,11 @@ def load_conf():
     conf['free_blacklist'] = conf['free_blacklist'] if 'free_blacklist' in conf.keys() else ''
     conf['ling_xi'] = conf['ling_xi'] if 'ling_xi' in conf.keys() else 1
     conf['rest_in_full'] = conf['rest_in_full'] if 'rest_in_full' in conf.keys() else ''
+    conf['mail_enable'] = conf['mail_enable'] if 'mail_enable' in conf.keys() else 0
+    conf['account'] = conf['account'] if 'account' in conf.keys() else ''
+    conf['pass_code'] = conf['pass_code'] if 'pass_code' in conf.keys() else ''
+    conf['maa_enable'] = conf['maa_enable'] if 'maa_enable' in conf.keys() else ''
+    conf['maa_path'] = conf['maa_path'] if 'maa_path' in conf.keys() else ''
 
 
 def write_conf():
@@ -306,8 +322,28 @@ def menu():
     ling_xi_3 = sg.Radio('均衡模式', 'ling_xi', default=conf['ling_xi'] == 3,
                          key='radio_ling_xi_3', enable_events=True)
     rest_in_full_title = sg.Text('需要回满心情的干员：', size=25)
-    rest_in_full = sg.InputText(conf['rest_in_full'] if 'rest_in_full' in conf.keys() else '', size=60,
+    rest_in_full = sg.InputText(conf['rest_in_full'], size=60,
                                 key='conf_rest_in_full', enable_events=True)
+    # mail
+    mail_enable_1 = sg.Radio('启用', 'mail_enable', default=conf['mail_enable'] == 1,
+                             key='radio_mail_enable_1', enable_events=True)
+    mail_enable_0 = sg.Radio('禁用', 'mail_enable', default=conf['mail_enable'] == 0,
+                             key='radio_mail_enable_0', enable_events=True)
+    account_title = sg.Text('QQ邮箱', size=25)
+    account = sg.InputText(conf['account'], size=60, key='conf_account', enable_events=True)
+    pass_code_title = sg.Text('授权码', size=25)
+    pass_code = sg.Input(conf['pass_code'], size=60, key='conf_pass_code', enable_events=True, password_char='*')
+    mail_frame = sg.Frame('邮件提醒',
+                          [[mail_enable_1, mail_enable_0], [account_title, account], [pass_code_title, pass_code]])
+    # maa
+    maa_enable_1 = sg.Radio('启用', 'maa_enable', default=conf['maa_enable'] == 1,
+                            key='radio_maa_enable_1', enable_events=True)
+    maa_enable_0 = sg.Radio('禁用', 'maa_enable', default=conf['maa_enable'] == 0,
+                            key='radio_maa_enable_0', enable_events=True)
+    maa_path_title = sg.Text('MAA地址', size=25)
+    maa_path = sg.InputText(conf['maa_path'], size=60, key='conf_maa_path', enable_events=True)
+    maa_frame = sg.Frame('MAA',
+                          [[maa_enable_1, maa_enable_0], [maa_path_title, maa_path]])
     # --------组装页面
     main_tab = sg.Tab('  主页  ', [[adb_title, adb],
                                  [free_blacklist_title, free_blacklist],
@@ -318,7 +354,8 @@ def menu():
     plan_tab = sg.Tab('  排班表 ', [[left_area, central_area, right_area], [setting_area]], element_justification="center")
 
     setting_tab = sg.Tab('  高级设置 ',
-                         [[ling_xi_title, ling_xi_1, ling_xi_2, ling_xi_3], [rest_in_full_title, rest_in_full]])
+                         [[ling_xi_title, ling_xi_1, ling_xi_2, ling_xi_3], [rest_in_full_title, rest_in_full],
+                          [mail_frame],[maa_frame]])
     window = sg.Window('Mower', [[sg.TabGroup([[main_tab, plan_tab, setting_tab]], border_width=0,
                                               tab_border_width=0, focus_color='#bcc8e5',
                                               selected_background_color='#d4dae8', background_color='#aab6d3',
@@ -338,13 +375,10 @@ def menu():
             v_index = event.rindex('_')
             conf[event[6:v_index]] = int(event[v_index + 1:])
         elif event == 'planFile' and plan_file.get() != conf['planFile']:  # 排班表
-            btn = None
             write_plan()
             load_plan(plan_file.get())
             plan_file.update(conf['planFile'])
         elif event.startswith('btn_'):  # 设施按钮
-            if btn is not None:
-                save_btn(btn)
             btn = event
             init_btn(event)
         elif event == 'savePlan':  # 保存设施信息
