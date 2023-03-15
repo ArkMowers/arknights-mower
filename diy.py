@@ -203,6 +203,8 @@ def savelog():
     config.ADB_DEVICE = maa_config['maa_adb']
     config.ADB_CONNECT = maa_config['maa_adb']
     config.PASSWORD = '你的密码'
+    config.APPNAME = 'com.hypergryph.arknights'  # 官服
+    #  com.hypergryph.arknights.bilibili   # Bilibili 服
     init_fhlr()
 
 def inialize(tasks,scheduler=None):
@@ -210,8 +212,7 @@ def inialize(tasks,scheduler=None):
     cli = Solver(device)
     if scheduler is None:
         base_scheduler = BaseSchedulerSolver(cli.device, cli.recog)
-        base_scheduler.package_name= 'com.hypergryph.arknights'  # 官服
-        #  com.hypergryph.arknights.bilibili   # Bilibili 服
+        base_scheduler.package_name= config.APPNAME
         base_scheduler.operators = {}
         base_scheduler.global_plan = plan
         base_scheduler.current_base = {}
