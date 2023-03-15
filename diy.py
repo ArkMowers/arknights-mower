@@ -210,6 +210,8 @@ def inialize(tasks,scheduler=None):
     cli = Solver(device)
     if scheduler is None:
         base_scheduler = BaseSchedulerSolver(cli.device, cli.recog)
+        base_scheduler.package_name= 'com.hypergryph.arknights'  # 官服
+        #  com.hypergryph.arknights.bilibili   # Bilibili 服
         base_scheduler.operators = {}
         base_scheduler.global_plan = plan
         base_scheduler.current_base = {}

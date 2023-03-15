@@ -44,6 +44,7 @@ class BaseSchedulerSolver(BaseSolver):
     """
     收集基建的产物：物资、赤金、信赖
     """
+    package_name = ''
 
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
         super().__init__(device, recog)
@@ -138,7 +139,7 @@ class BaseSchedulerSolver(BaseSolver):
     def handle_error(self,force = False):
         # 如果有任何报错，则生成一个空
         if self.scene() == Scene.UNKNOWN:
-            self.device.exit('com.hypergryph.arknights')
+            self.device.exit(self.package_name)
         if self.error or force:
             # 如果没有任何时间小于当前时间的任务才生成空任务
             if (next((e for e in self.tasks if e['time'] < datetime.now()), None)) is None:
@@ -1619,7 +1620,7 @@ class BaseSchedulerSolver(BaseSolver):
                 if hard_stop:
                     logger.info(f"由于maa任务并未完成，等待3分钟重启软件")
                     time.sleep(180)
-                    self.device.exit('com.hypergryph.arknights')
+                    self.device.exit(self.package_name)
                 else:
                     logger.info(f"记录MAA 本次执行时间")
                     self.maa_config['last_execution'] = datetime.now()
@@ -1657,7 +1658,7 @@ class BaseSchedulerSolver(BaseSolver):
                             break
                         else:
                             time.sleep(0)
-                    self.device.exit('com.hypergryph.arknights')
+                    self.device.exit(self.package_name)
             # 生息演算逻辑 结束
             remaining_time = (self.tasks[0]["time"] - datetime.now()).total_seconds()
             logger.info(f"开始休息 {'%.2f' % (remaining_time/60)} 分钟，到{self.tasks[0]['time'].strftime('%H:%M:%S')}")
@@ -1671,7 +1672,7 @@ class BaseSchedulerSolver(BaseSolver):
             if remaining_time > 0:
                 logger.info(f"开始休息 {'%.2f' % (remaining_time/60)} 分钟，到{self.tasks[0]['time'].strftime('%H:%M:%S')}")
                 time.sleep(remaining_time)
-            self.device.exit('com.hypergryph.arknights')
+            self.device.exit(self.package_name)
 
     def send_email(self, tasks):
         try:
