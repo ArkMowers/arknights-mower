@@ -1,16 +1,14 @@
+import importlib
 import json
+import sys
 from multiprocessing import Pipe, Process, freeze_support
 import time
-from datetime import datetime
 import PySimpleGUI as sg
 import os
 from ruamel.yaml import YAML
-from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
-from arknights_mower.strategy import Solver
-from arknights_mower.utils.device import Device
-from arknights_mower.utils.log import logger, init_fhlr
-from arknights_mower.utils import config
+from arknights_mower.utils.log import logger
 from arknights_mower.data import agent_list
+from arknights_mower.__main__ import main
 
 yaml = YAML()
 confUrl = './conf.yml';
@@ -20,165 +18,6 @@ global window
 buffer = ''
 line = 0
 half_line_index = 0
-
-agent_base_config = {
-    "Default": {"UpperLimit": 24, "LowerLimit": 0, "ExhaustRequire": False, "ArrangeOrder": [2, "false"],
-                "RestInFull": False},
-    "令": {"ArrangeOrder": [2, "true"]},
-    "夕": {"ArrangeOrder": [2, "true"]},
-    "稀音": {"ExhaustRequire": True, "ArrangeOrder": [2, "true"], "RestInFull": True},
-    "巫恋": {"ArrangeOrder": [2, "true"]},
-    "柏喙": {"ExhaustRequire": True, "ArrangeOrder": [2, "true"]},
-    "龙舌兰": {"ArrangeOrder": [2, "true"]},
-    "空弦": {"ArrangeOrder": [2, "true"], "RestingPriority": "low"},
-    "伺夜": {"ArrangeOrder": [2, "true"]},
-    "绮良": {"ArrangeOrder": [2, "true"]},
-    "但书": {"ArrangeOrder": [2, "true"]},
-    "泡泡": {"ArrangeOrder": [2, "true"]},
-    "火神": {"ArrangeOrder": [2, "true"]},
-    "黑键": {"ArrangeOrder": [2, "true"]},
-    "波登可": {"ArrangeOrder": [2, "false"]},
-    "夜莺": {"ArrangeOrder": [2, "false"]},
-    "菲亚梅塔": {"ArrangeOrder": [2, "false"]},
-    "流明": {"ArrangeOrder": [2, "false"]},
-    "蜜莓": {"ArrangeOrder": [2, "false"]},
-    "闪灵": {"ArrangeOrder": [2, "false"]},
-    "杜林": {"ArrangeOrder": [2, "false"]},
-    "褐果": {"ArrangeOrder": [2, "false"]},
-    "车尔尼": {"ArrangeOrder": [2, "false"]},
-    "安比尔": {"ArrangeOrder": [2, "false"]},
-    "爱丽丝": {"ArrangeOrder": [2, "false"]},
-    "桃金娘": {"ArrangeOrder": [2, "false"]},
-    "帕拉斯": {"RestingPriority": "low"},
-    "红云": {"RestingPriority": "low", "ArrangeOrder": [2, "true"]},
-    "承曦格雷伊": {"ArrangeOrder": [2, "true"]},
-    "乌有": {"ArrangeOrder": [2, "true"], "RestingPriority": "low"},
-    "图耶": {"ArrangeOrder": [2, "true"]},
-    "鸿雪": {"ArrangeOrder": [2, "true"]},
-    "孑": {"ArrangeOrder": [2, "true"]},
-    "清道夫": {"ArrangeOrder": [2, "true"]},
-    "临光": {"ArrangeOrder": [2, "true"]},
-    "杜宾": {"ArrangeOrder": [2, "true"]},
-    "焰尾": {"RestInFull": True},
-    "重岳": {"ArrangeOrder": [2, "true"]},
-    "坚雷": {"ArrangeOrder": [2, "true"]},
-    "年": {"RestingPriority": "low"}
-}
-
-
-# 执行自动排班
-def start(c, p, child_conn):
-    global plan
-    global conf
-    conf = c
-    plan = p
-    config.LOGFILE_PATH = './log'
-    config.SCREENSHOT_PATH = './screenshot'
-    config.SCREENSHOT_MAXNUM = 1000
-    config.ADB_DEVICE = [conf['adb']]
-    config.ADB_CONNECT = [conf['adb']]
-    config.ADB_CONNECT = [conf['adb']]
-    init_fhlr(child_conn)
-    if conf['ling_xi'] == 1:
-        agent_base_config['令']['UpperLimit'] = 11
-        agent_base_config['夕']['UpperLimit'] = 11
-        agent_base_config['夕']['LowerLimit'] = 13
-    elif conf['ling_xi'] == 2:
-        agent_base_config['夕']['UpperLimit'] = 11
-        agent_base_config['令']['UpperLimit'] = 11
-        agent_base_config['令']['LowerLimit'] = 13
-    for key in list(filter(None, conf['rest_in_full'].replace('，', ',').split(','))):
-        if key in agent_base_config.keys():
-            agent_base_config[key]['RestInFull'] = True
-        else:
-            agent_base_config[key] = {'RestInFull': True}
-    logger.info('开始运行Mower')
-    simulate()
-
-
-def inialize(tasks, scheduler=None):
-    device = Device()
-    cli = Solver(device)
-    if scheduler is None:
-        base_scheduler = BaseSchedulerSolver(cli.device, cli.recog)
-        base_scheduler.operators = {}
-        plan1 = {}
-        for key in plan:
-            plan1[key] = plan[key]['plans']
-        base_scheduler.global_plan = {'default': "plan_1", "plan_1": plan1}
-        base_scheduler.current_base = {}
-        base_scheduler.resting = []
-        base_scheduler.dorm_count = 4
-        base_scheduler.tasks = tasks
-        # 读取心情开关，有菲亚梅塔或者希望全自动换班得设置为 true
-        base_scheduler.read_mood = True
-        base_scheduler.scan_time = {}
-        base_scheduler.last_room = ''
-        base_scheduler.free_blacklist = list(filter(None, conf['free_blacklist'].replace('，', ',').split(',')))
-        logger.info('宿舍黑名单：' + str(base_scheduler.free_blacklist))
-        base_scheduler.resting_treshhold = 0.5
-        base_scheduler.MAA = None
-        base_scheduler.email_config = {
-            'mail_enable': conf['mail_enable'],
-            'subject': '[Mower通知]',
-            'account': conf['account'],
-            'pass_code': conf['pass_code'],
-            'receipts': [conf['account']],
-            'notify': False
-        }
-        base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
-        base_scheduler.error = False
-        base_scheduler.agent_base_config = agent_base_config
-        return base_scheduler
-    else:
-        scheduler.device = cli.device
-        scheduler.recog = cli.recog
-        scheduler.handle_error(True)
-        return scheduler
-
-
-def simulate():
-    '''
-    具体调用方法可见各个函数的参数说明
-    '''
-    tasks = []
-    reconnect_max_tries = 10
-    reconnect_tries = 0
-    base_scheduler = inialize(tasks)
-    while True:
-        try:
-            if len(base_scheduler.tasks) > 0:
-                (base_scheduler.tasks.sort(key=lambda x: x["time"], reverse=False))
-                sleep_time = (base_scheduler.tasks[0]["time"] - datetime.now()).total_seconds()
-                logger.debug(base_scheduler.tasks)
-                if sleep_time > 0:
-                    remaining_time = (base_scheduler.tasks[0]["time"] - datetime.now()).total_seconds()
-                    subject = f"开始休息 {'%.2f' % (remaining_time / 60)} 分钟，到{base_scheduler.tasks[0]['time'].strftime('%H:%M:%S')}"
-                    context = f"下一次任务:{base_scheduler.tasks[0]['plan']}"
-                    logger.info(context)
-                    logger.info(subject)
-                    base_scheduler.send_email(context, subject)
-                    time.sleep(sleep_time)
-            base_scheduler.run()
-            reconnect_tries = 0
-        except ConnectionError as e:
-            reconnect_tries += 1
-            if reconnect_tries < reconnect_max_tries:
-                logger.warning(f'连接端口断开....正在重连....')
-                connected = False
-                while not connected:
-                    try:
-                        base_scheduler = inialize([], base_scheduler)
-                        break
-                    except Exception as ce:
-                        logger.error(ce)
-                        time.sleep(5)
-                        continue
-                continue
-            else:
-                raise Exception(e)
-        except Exception as E:
-            logger.exception(f"程序出错--->{E}")
 
 
 # 读取写入配置文件
@@ -192,6 +31,7 @@ def load_conf():
             conf = yaml.load(c)
             if conf is None:
                 conf = {}
+    conf['package_type'] = conf['package_type'] if 'package_type' in conf.keys() else 1
     conf['adb'] = conf['adb'] if 'adb' in conf.keys() else ''
     conf['planFile'] = conf['planFile'] if 'planFile' in conf.keys() else './plan.json'  # 默认排班表地址
     conf['free_blacklist'] = conf['free_blacklist'] if 'free_blacklist' in conf.keys() else ''
@@ -202,6 +42,16 @@ def load_conf():
     conf['pass_code'] = conf['pass_code'] if 'pass_code' in conf.keys() else ''
     conf['maa_enable'] = conf['maa_enable'] if 'maa_enable' in conf.keys() else ''
     conf['maa_path'] = conf['maa_path'] if 'maa_path' in conf.keys() else ''
+    conf['maa_adb_path'] = conf['maa_adb_path'] if 'maa_adb_path' in conf.keys() else ''
+    conf['maa_weekly_plan'] = conf['maa_weekly_plan'] if 'maa_weekly_plan' in conf.keys() else [
+        {"weekday": "周一", "stage": ['AP-5'], "medicine": 0},
+        {"weekday": "周二", "stage": ['CE-6'], "medicine": 0},
+        {"weekday": "周三", "stage": ['1-7'], "medicine": 0},
+        {"weekday": "周四", "stage": ['AP-5'], "medicine": 0},
+        {"weekday": "周五", "stage": ['1-7'], "medicine": 0},
+        {"weekday": "周六", "stage": ['AP-5'], "medicine": 0},
+        {"weekday": "周日", "stage": ['AP-5'], "medicine": 0}
+    ]
 
 
 def write_conf():
@@ -253,6 +103,11 @@ def menu():
     load_conf()
     sg.theme('LightBlue2')
     # --------主页
+    package_type_title = sg.Text('服务器:', size=10)
+    package_type_1 = sg.Radio('官服', 'package_type', default=conf['package_type'] == 1,
+                              key='radio_package_type_1', enable_events=True)
+    package_type_2 = sg.Radio('BiliBili服', 'package_type', default=conf['package_type'] == 2,
+                              key='radio_package_type_2', enable_events=True)
     adb_title = sg.Text('adb连接地址:', size=10)
     adb = sg.InputText(conf['adb'], size=60, key='conf_adb', enable_events=True)
     # 黑名单
@@ -336,16 +191,32 @@ def menu():
     mail_frame = sg.Frame('邮件提醒',
                           [[mail_enable_1, mail_enable_0], [account_title, account], [pass_code_title, pass_code]])
     # maa
+
     maa_enable_1 = sg.Radio('启用', 'maa_enable', default=conf['maa_enable'] == 1,
                             key='radio_maa_enable_1', enable_events=True)
     maa_enable_0 = sg.Radio('禁用', 'maa_enable', default=conf['maa_enable'] == 0,
                             key='radio_maa_enable_0', enable_events=True)
     maa_path_title = sg.Text('MAA地址', size=25)
     maa_path = sg.InputText(conf['maa_path'], size=60, key='conf_maa_path', enable_events=True)
-    maa_frame = sg.Frame('MAA',
-                          [[maa_enable_1, maa_enable_0], [maa_path_title, maa_path]])
+    maa_adb_path_title = sg.Text('adb地址', size=25)
+    maa_adb_path = sg.InputText(conf['maa_adb_path'], size=60, key='conf_maa_adb_path', enable_events=True)
+    maa_weekly_plan_title = sg.Text('周计划', size=25)
+    maa_layout = [[maa_enable_1, maa_enable_0], [maa_path_title, maa_path], [maa_adb_path_title, maa_adb_path],
+                  [maa_weekly_plan_title]]
+    for i, v in enumerate(conf['maa_weekly_plan']):
+        maa_layout.append([
+            sg.Text(f"-- {v['weekday']}:", size=15),
+            sg.Text('关卡:', size=5),
+            sg.InputText(",".join(v['stage']), size=15, key='maa_weekly_plan_stage_' + str(i), enable_events=True),
+            sg.Text('理智药:', size=10),
+            sg.Spin([l for l in range(0, 999)], initial_value=v['medicine'], size=5,
+                    key='maa_weekly_plan_medicine_' + str(i), enable_events=True, readonly=True)
+        ])
+
+    maa_frame = sg.Frame('MAA', maa_layout)
     # --------组装页面
-    main_tab = sg.Tab('  主页  ', [[adb_title, adb],
+    main_tab = sg.Tab('  主页  ', [[package_type_title, package_type_1, package_type_2],
+                                 [adb_title, adb],
                                  [free_blacklist_title, free_blacklist],
                                  [plan_title, plan_file, plan_select],
                                  [output],
@@ -355,11 +226,12 @@ def menu():
 
     setting_tab = sg.Tab('  高级设置 ',
                          [[ling_xi_title, ling_xi_1, ling_xi_2, ling_xi_3], [rest_in_full_title, rest_in_full],
-                          [mail_frame],[maa_frame]])
+                          [mail_frame], [maa_frame]])
     window = sg.Window('Mower', [[sg.TabGroup([[main_tab, plan_tab, setting_tab]], border_width=0,
                                               tab_border_width=0, focus_color='#bcc8e5',
                                               selected_background_color='#d4dae8', background_color='#aab6d3',
-                                              tab_background_color='#aab6d3')]], font='微软雅黑', finalize=True)
+                                              tab_background_color='#aab6d3')]], font='微软雅黑', finalize=True,
+                       resizable=True)
 
     load_plan(conf['planFile'])
     btn = None
@@ -378,6 +250,12 @@ def menu():
             write_plan()
             load_plan(plan_file.get())
             plan_file.update(conf['planFile'])
+        elif event.startswith('maa_weekly_plan_stage_'):  # 关卡名
+            v_index = event.rindex('_')
+            conf['maa_weekly_plan'][int(event[v_index + 1:])]['stage'] = [window[event].get()]
+        elif event.startswith('maa_weekly_plan_medicine_'):  # 体力药
+            v_index = event.rindex('_')
+            conf['maa_weekly_plan'][int(event[v_index + 1:])]['medicine'] = int(window[event].get())
         elif event.startswith('btn_'):  # 设施按钮
             btn = event
             init_btn(event)
@@ -393,7 +271,7 @@ def menu():
             off_btn.update(visible=True)
             clear()
             parent_conn, child_conn = Pipe()
-            main_thread = Process(target=start, args=(conf, plan, child_conn), daemon=True)
+            main_thread = Process(target=main, args=(conf, plan, child_conn), daemon=True)
             main_thread.start()
             window.perform_long_operation(lambda: log(parent_conn), 'log')
         elif event == 'off':
@@ -490,6 +368,5 @@ def clear():
 
 
 if __name__ == '__main__':
-    # logger.info(123)
     freeze_support()
     menu()

@@ -8,6 +8,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
+
 from ..data import agent_list
 from ..utils import character_recognize, detector, segment
 from ..utils import typealias as tp
@@ -738,7 +739,8 @@ class BaseSchedulerSolver(BaseSolver):
     def initialize_paddle(self):
         global ocr
         if ocr is None:
-            ocr = PaddleOCR(use_angle_cls=True, lang='en')
+            ocr = PaddleOCR(enable_mkldnn=True,use_angle_cls=False)
+
 
     def read_screen(self, img, type="mood", limit=24, cord=None, change_color=False):
         if cord is not None:
@@ -1661,8 +1663,11 @@ class BaseSchedulerSolver(BaseSolver):
                     self.device.exit(self.package_name)
             # 生息演算逻辑 结束
             remaining_time = (self.tasks[0]["time"] - datetime.now()).total_seconds()
-            logger.info(f"开始休息 {'%.2f' % (remaining_time/60)} 分钟，到{self.tasks[0]['time'].strftime('%H:%M:%S')}")
-            self.send_email("脚本停止")
+            subject = f"开始休息 {'%.2f' % (remaining_time / 60)} 分钟，到{self.tasks[0]['time'].strftime('%H:%M:%S')}"
+            context = f"下一次任务:{self.tasks[0]['plan']}"
+            logger.info(context)
+            logger.info(subject)
+            self.send_email(context, subject)
             time.sleep(remaining_time)
             self.MAA = None
         except Exception as e:
@@ -1674,7 +1679,7 @@ class BaseSchedulerSolver(BaseSolver):
                 time.sleep(remaining_time)
             self.device.exit(self.package_name)
 
-    def send_email(self, context,subject):
+    def send_email(self, context,subject=''):
         if 'mail_enable' in self.email_config.keys() and self.email_config['mail_enable'] == 0:
             logger.info('邮件功能未开启')
             return
