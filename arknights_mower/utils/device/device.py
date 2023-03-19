@@ -142,7 +142,7 @@ class Device(object):
 
     def check_current_focus(self):
         """ check if the application is in the foreground """
-        if self.current_focus() != config.APPNAME:
-            self.launch(config.APPNAME)
+        if self.current_focus() != f"{config.APPNAME}/{config.APP_ACTIVITY_NAME}":
+            self.launch(f"{config.APPNAME}/{config.APP_ACTIVITY_NAME}")
             # wait for app to finish launching
             time.sleep(10)

@@ -135,8 +135,10 @@ def init_config() -> None:
     PASSWORD = __get('account/password', None)
 
     global APPNAME
-    APPNAME = __get('app/package_name', 'com.hypergryph.arknights') + \
-        '/' + __get('app/activity_name', 'com.u8.sdk.U8UnityContext')
+    APPNAME = __get('app/package_name', 'com.hypergryph.arknights') 
+
+    global APP_ACTIVITY_NAME
+    APP_ACTIVITY_NAME = __get('app/activity_name','com.u8.sdk.U8UnityContext')
 
     global DEBUG_MODE, LOGFILE_PATH, LOGFILE_AMOUNT, SCREENSHOT_PATH, SCREENSHOT_MAXNUM
     DEBUG_MODE = __get('debug/enabled', False)
