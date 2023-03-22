@@ -61,7 +61,7 @@ def inialize(tasks, scheduler=None):
         base_scheduler.dorm_count = 4
         base_scheduler.tasks = tasks
         # 读取心情开关，有菲亚梅塔或者希望全自动换班得设置为 true
-        base_scheduler.read_mood = True
+        base_scheduler.read_mood = conf['run_mode'] == 1
         base_scheduler.scan_time = {}
         base_scheduler.last_room = ''
         base_scheduler.free_blacklist = list(filter(None, conf['free_blacklist'].replace('，', ',').split(',')))
@@ -138,8 +138,11 @@ def simulate():
         except Exception as E:
             logger.exception(f"程序出错--->{E}")
 
+
 agent_base_config = {}
 maa_config = {}
+
+
 def __init_params__():
     global agent_base_config
     global maa_config
