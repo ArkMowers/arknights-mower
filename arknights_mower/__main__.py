@@ -58,7 +58,7 @@ def inialize(tasks, scheduler=None):
         base_scheduler.global_plan = {'default': "plan_1", "plan_1": plan1}
         base_scheduler.current_base = {}
         base_scheduler.resting = []
-        base_scheduler.dorm_count = 4
+        base_scheduler.max_resting_count = 4
         base_scheduler.tasks = tasks
         # 读取心情开关，有菲亚梅塔或者希望全自动换班得设置为 true
         base_scheduler.read_mood = conf['run_mode'] == 1

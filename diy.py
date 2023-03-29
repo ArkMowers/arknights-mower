@@ -202,6 +202,7 @@ def savelog():
     config.SCREENSHOT_MAXNUM = 1000
     config.ADB_DEVICE = maa_config['maa_adb']
     config.ADB_CONNECT = maa_config['maa_adb']
+    config.MAX_RETRYTIME = 10
     config.PASSWORD = '你的密码'
     config.APPNAME = 'com.hypergryph.arknights'  # 官服
     #  com.hypergryph.arknights.bilibili   # Bilibili 服
@@ -217,7 +218,7 @@ def inialize(tasks,scheduler=None):
         base_scheduler.global_plan = plan
         base_scheduler.current_base = {}
         base_scheduler.resting=[]
-        base_scheduler.dorm_count=4
+        base_scheduler.max_resting_count=4
         base_scheduler.tasks = tasks
         # 读取心情开关，有菲亚梅塔或者希望全自动换班得设置为 true
         base_scheduler.read_mood = True
