@@ -8,6 +8,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
+
 from ..data import agent_list
 from ..utils import character_recognize, detector, segment
 from ..utils.operators import Operators, Operator, Dormitory
@@ -46,6 +47,7 @@ class BaseSchedulerSolver(BaseSolver):
     """
     收集基建的产物：物资、赤金、信赖
     """
+    package_name = ''
 
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
         super().__init__(device, recog)
@@ -196,7 +198,7 @@ class BaseSchedulerSolver(BaseSolver):
     def handle_error(self, force=False):
         # 如果有任何报错，则生成一个空
         if self.scene() == Scene.UNKNOWN:
-            self.device.exit('com.hypergryph.arknights')
+            self.device.exit(self.package_name)
         if self.error or force:
             # 如果没有任何时间小于当前时间的任务才生成空任务
             if (next((e for e in self.tasks if e['time'] < datetime.now()), None)) is None:
@@ -663,7 +665,8 @@ class BaseSchedulerSolver(BaseSolver):
     def initialize_paddle(self):
         global ocr
         if ocr is None:
-            ocr = PaddleOCR(use_angle_cls=True, lang='en')
+            ocr = PaddleOCR(enable_mkldnn=True,use_angle_cls=False)
+
 
     def read_screen(self, img, type="mood", limit=24, cord=None, change_color=False):
         if cord is not None:
@@ -1546,7 +1549,7 @@ class BaseSchedulerSolver(BaseSolver):
                 if hard_stop:
                     logger.info(f"由于maa任务并未完成，等待3分钟重启软件")
                     time.sleep(180)
-                    self.device.exit('com.hypergryph.arknights')
+                    self.device.exit(self.package_name)
                 else:
                     logger.info(f"记录MAA 本次执行时间")
                     self.maa_config['last_execution'] = datetime.now()
@@ -1584,11 +1587,14 @@ class BaseSchedulerSolver(BaseSolver):
                             break
                         else:
                             time.sleep(0)
-                    self.device.exit('com.hypergryph.arknights')
+                    self.device.exit(self.package_name)
             # 生息演算逻辑 结束
             remaining_time = (self.tasks[0]["time"] - datetime.now()).total_seconds()
-            logger.info(f"开始休息 {'%.2f' % (remaining_time / 60)} 分钟，到{self.tasks[0]['time'].strftime('%H:%M:%S')}")
-            self.send_email("脚本停止")
+            subject = f"开始休息 {'%.2f' % (remaining_time / 60)} 分钟，到{self.tasks[0]['time'].strftime('%H:%M:%S')}"
+            context = f"下一次任务:{self.tasks[0]['plan']}"
+            logger.info(context)
+            logger.info(subject)
+            self.send_email(context, subject)
             time.sleep(remaining_time)
             self.MAA = None
         except Exception as e:
@@ -1598,14 +1604,16 @@ class BaseSchedulerSolver(BaseSolver):
             if remaining_time > 0:
                 logger.info(f"开始休息 {'%.2f' % (remaining_time / 60)} 分钟，到{self.tasks[0]['time'].strftime('%H:%M:%S')}")
                 time.sleep(remaining_time)
-            self.device.exit('com.hypergryph.arknights')
+            self.device.exit(self.package_name)
 
-    def send_email(self, tasks):
+    def send_email(self, context,subject=''):
+        if 'mail_enable' in self.email_config.keys() and self.email_config['mail_enable'] == 0:
+            logger.info('邮件功能未开启')
+            return
         try:
             msg = MIMEMultipart()
-            conntent = str(tasks)
-            msg.attach(MIMEText(conntent, 'plain', 'utf-8'))
-            msg['Subject'] = self.email_config['subject']
+            msg.attach(MIMEText(str(context), 'plain', 'utf-8'))
+            msg['Subject'] = self.email_config['subject']+(str(subject)if subject else '')
             msg['From'] = self.email_config['account']
             s = smtplib.SMTP_SSL("smtp.qq.com", 465, timeout=10.0)
             # 登录邮箱
