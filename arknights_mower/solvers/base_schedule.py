@@ -278,6 +278,8 @@ class BaseSchedulerSolver(BaseSolver):
                     if __dorm is not None:
                         _type.append('dorm' + str(_dorm_idx))
                         planned_index.append(_dorm_idx)
+                        if __dorm.time is not None and __dorm.time < _time:
+                            _time = __dorm.time
                     if x not in low_priority:
                         low_priority.append(x)
                 # 生成单个任务
@@ -551,8 +553,8 @@ class BaseSchedulerSolver(BaseSolver):
         agents.sort(key=lambda x: self.op_data.operators[x].mood)
         # 进行位置数量的初步判定
         # 对于252可能需要进行额外判定，由于 low_free 性质等同于 high_free
+        success = True
         if high_free - _high >= 0 and low_free - _low >= 0:
-            success = True
             for agent in agents:
                 if not success:
                     break
@@ -583,8 +585,10 @@ class BaseSchedulerSolver(BaseSolver):
                     for idx, name in enumerate(__plan[k]):
                         if plan[k][idx] == 'Current' and name != 'Current':
                             plan[k][idx] = name
-            else:
-                _low, _high = 0, 0
+        else:
+            success = False
+        if not success:
+            _high, _low = 0, 0
         return exist_replacement, plan, high_free - _high, low_free - _low
 
     def initialize_operators(self):
