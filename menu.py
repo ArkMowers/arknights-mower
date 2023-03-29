@@ -35,6 +35,7 @@ def load_conf():
     conf['adb'] = conf['adb'] if 'adb' in conf.keys() else ''
     conf['planFile'] = conf['planFile'] if 'planFile' in conf.keys() else './plan.json'  # 默认排班表地址
     conf['free_blacklist'] = conf['free_blacklist'] if 'free_blacklist' in conf.keys() else ''
+    conf['run_mode'] = conf['run_mode'] if 'run_mode' in conf.keys() else 1
     conf['ling_xi'] = conf['ling_xi'] if 'ling_xi' in conf.keys() else 1
     conf['rest_in_full'] = conf['rest_in_full'] if 'rest_in_full' in conf.keys() else ''
     conf['mail_enable'] = conf['mail_enable'] if 'mail_enable' in conf.keys() else 0
@@ -169,6 +170,11 @@ def menu():
                              expand_x=True)
 
     # --------高级设置页面
+    run_mode_title = sg.Text('运行模式：', size=25)
+    run_mode_1 = sg.Radio('换班模式', 'run_mode', default=conf['run_mode'] == 1,
+                         key='radio_run_mode_1', enable_events=True)
+    run_mode_2 = sg.Radio('仅跑单模式', 'run_mode', default=conf['run_mode'] == 2,
+                         key='radio_run_mode_2', enable_events=True)
     ling_xi_title = sg.Text('令夕模式（令夕上班时起作用）：', size=25)
     ling_xi_1 = sg.Radio('感知信息', 'ling_xi', default=conf['ling_xi'] == 1,
                          key='radio_ling_xi_1', enable_events=True)
@@ -225,7 +231,7 @@ def menu():
     plan_tab = sg.Tab('  排班表 ', [[left_area, central_area, right_area], [setting_area]], element_justification="center")
 
     setting_tab = sg.Tab('  高级设置 ',
-                         [[ling_xi_title, ling_xi_1, ling_xi_2, ling_xi_3], [rest_in_full_title, rest_in_full],
+                         [[run_mode_title,run_mode_1,run_mode_2],[ling_xi_title, ling_xi_1, ling_xi_2, ling_xi_3], [rest_in_full_title, rest_in_full],
                           [mail_frame], [maa_frame]])
     window = sg.Window('Mower', [[sg.TabGroup([[main_tab, plan_tab, setting_tab]], border_width=0,
                                               tab_border_width=0, focus_color='#bcc8e5',
