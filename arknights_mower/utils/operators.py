@@ -22,14 +22,15 @@ class Operators(object):
 
     def update_detail(self,name, mood, current_room, current_index):
         agent = self.operators[name]
-        agent.current_room = current_room
-        agent.current_index = current_index
-        agent.mood = mood
+
         agent.time_stamp = datetime.now()
         # 如果移出宿舍，则清除对应宿舍数据 且重新记录高效组心情
         if agent.current_room.startswith('dorm') and not current_room.startswith('dorm') and agent.is_high():
             self.refresh_dorm_time(agent.current_room,agent.current_index,{'agent':''})
             agent.time_stamp = None
+        agent.current_room = current_room
+        agent.current_index = current_index
+        agent.mood = mood
         # 如果是高效组且没有记录时间，则返还index
         if agent.current_room.startswith('dorm') and agent.is_high():
             for dorm in self.dorm:
