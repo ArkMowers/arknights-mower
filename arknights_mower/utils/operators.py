@@ -79,10 +79,10 @@ class Operators(object):
             operator.resting_priority = self.config[operator.name]['RestingPriority']
         if operator.name in self.config.keys() and 'ExhaustRequire' in self.config[operator.name].keys():
             operator.exhaust_require = self.config[operator.name]['ExhaustRequire']
-        if operator.name in self.config.keys() and 'UpperLimit' in self.config[operator.name].keys():
-            operator.upper_limit = self.config[operator.name]['UpperLimit']
         if operator.name in self.config.keys() and 'RestInFull' in self.config[operator.name].keys():
             operator.rest_in_full = self.config[operator.name]['RestInFull']
+        if operator.name in self.config.keys() and 'LowerLimit' in self.config[operator.name].keys():
+            operator.lower_limit = self.config[operator.name]['LowerLimit']
         self.operators[operator.name] = operator
         # 需要用尽心情干员逻辑
         if (operator.exhaust_require or operator.group in self.exhaust_group) \
