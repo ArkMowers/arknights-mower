@@ -8,7 +8,6 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-
 from ..data import agent_list
 from ..utils import character_recognize, detector, segment
 from ..utils.operators import Operators, Operator, Dormitory
@@ -248,7 +247,7 @@ class BaseSchedulerSolver(BaseSolver):
                     _idx, __dorm = self.op_data.get_dorm_by_name(x)
                     if x in self.op_data.operators.keys() and self.op_data.operators[x].rest_in_full:
                         if __dorm is not None and __dorm.time is not None:
-                            if __dorm.time > _time:
+                            if __dorm.time > _time and self.op_data.operators[x].resting_priority == 'high':
                                 _time = __dorm.time
                     __type.append('dorm' + str(_idx))
                     planned_index.append(_idx)
@@ -278,7 +277,8 @@ class BaseSchedulerSolver(BaseSolver):
                     if __dorm is not None:
                         _type.append('dorm' + str(_dorm_idx))
                         planned_index.append(_dorm_idx)
-                        if __dorm.time is not None and __dorm.time < _time:
+                        if __dorm.time is not None and __dorm.time < _time and self.op_data.operators[
+                            x].resting_priority == 'high':
                             _time = __dorm.time
                     if x not in low_priority:
                         low_priority.append(x)
@@ -608,14 +608,14 @@ class BaseSchedulerSolver(BaseSolver):
         # 竖向遍历出效率高到低
         for dorm in dorm_names:
             for _idx, _dorm in enumerate(plan[dorm]):
-                if _dorm['agent'] == 'Free' and (dorm + str(_idx)) not in added and len(added)<self.max_resting_count:
+                if _dorm['agent'] == 'Free' and (dorm + str(_idx)) not in added and len(added) < self.max_resting_count:
                     self.op_data.dorm.append(Dormitory((dorm, _idx)))
                     added.append(dorm + str(_idx))
                     break
         # VIP休息位用完后横向遍历
         for dorm in dorm_names:
             for _idx, _dorm in enumerate(plan[dorm]):
-                if _dorm['agent'] == 'Free' and (dorm + str(_idx)) not in added :
+                if _dorm['agent'] == 'Free' and (dorm + str(_idx)) not in added:
                     self.op_data.dorm.append(Dormitory((dorm, _idx)))
                     added.append(dorm + str(_idx))
         # low_free 的排序
@@ -669,8 +669,7 @@ class BaseSchedulerSolver(BaseSolver):
     def initialize_paddle(self):
         global ocr
         if ocr is None:
-            ocr = PaddleOCR(enable_mkldnn=True,use_angle_cls=False)
-
+            ocr = PaddleOCR(enable_mkldnn=True, use_angle_cls=False)
 
     def read_screen(self, img, type="mood", limit=24, cord=None, change_color=False):
         if cord is not None:
@@ -1610,14 +1609,14 @@ class BaseSchedulerSolver(BaseSolver):
                 time.sleep(remaining_time)
             self.device.exit(self.package_name)
 
-    def send_email(self, context,subject=''):
+    def send_email(self, context, subject=''):
         if 'mail_enable' in self.email_config.keys() and self.email_config['mail_enable'] == 0:
             logger.info('邮件功能未开启')
             return
         try:
             msg = MIMEMultipart()
             msg.attach(MIMEText(str(context), 'plain', 'utf-8'))
-            msg['Subject'] = self.email_config['subject']+(str(subject)if subject else '')
+            msg['Subject'] = self.email_config['subject'] + (str(subject) if subject else '')
             msg['From'] = self.email_config['account']
             s = smtplib.SMTP_SSL("smtp.qq.com", 465, timeout=10.0)
             # 登录邮箱
