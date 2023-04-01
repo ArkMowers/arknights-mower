@@ -83,6 +83,8 @@ class Operators(object):
             operator.upper_limit = self.config[operator.name]['UpperLimit']
         if operator.name in self.config.keys() and 'RestInFull' in self.config[operator.name].keys():
             operator.rest_in_full = self.config[operator.name]['RestInFull']
+        if operator.name in self.config.keys() and 'LowerLimit' in self.config[operator.name].keys():
+            operator.lower_limit = self.config[operator.name]['LowerLimit']
         self.operators[operator.name] = operator
         # 需要用尽心情干员逻辑
         if (operator.exhaust_require or operator.group in self.exhaust_group) \
