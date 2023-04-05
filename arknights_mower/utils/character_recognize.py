@@ -188,10 +188,6 @@ def agent(img, draw=False):
                 raise Exception("启动 Plan B")
             except Exception as e:
                 # 大哥不行了，二哥上！
-                name = segment.read_screen(__img,
-                                           langurage="chi_sim",
-                                           type="text")
-                logger.warning(f'备选方案识别结果： {name}')
                 ret_fail.append(poly)
                 if name in ocr_error.keys():
                     name = ocr_error[name]
