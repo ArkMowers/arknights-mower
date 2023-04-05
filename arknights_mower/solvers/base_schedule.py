@@ -256,6 +256,7 @@ class BaseSchedulerSolver(BaseSolver):
                     if __room not in __plan.keys():
                         __plan[__room] = ['Current'] * len(self.currentPlan[__room])
                     __plan[__room][self.op_data.operators[x].index] = x
+                if __time < datetime.now(): __time = datetime.now()
                 self.tasks.append({"type": ','.join(__type), 'plan': __plan, 'time': __time})
             # 如果非 rest in full， 则同组取时间最小值
             else:
@@ -286,8 +287,10 @@ class BaseSchedulerSolver(BaseSolver):
                 # 生成单个任务
         if len(_plan.items()) > 0:
             _time -= timedelta(minutes=8)
+            if _time < datetime.now(): _time = datetime.now()
             self.tasks.append({"type": ','.join(_type), 'plan': _plan,
                                'time': _time if not short_rest else (datetime.now() + timedelta(hours=0.5))})
+
 
     def infra_main(self):
         """ 位于基建首页 """
@@ -537,6 +540,7 @@ class BaseSchedulerSolver(BaseSolver):
             except Exception as e:
                 logger.exception(e)
                 # 如果下个 普通任务 >5 分钟则补全宿舍
+            logger.debug('tasks:'+str(self.tasks))
             if (next((e for e in self.tasks if e['time'] < datetime.now() + timedelta(seconds=300)),
                      None)) is None:
                 self.agent_get_mood()
@@ -1043,8 +1047,8 @@ class BaseSchedulerSolver(BaseSolver):
                     self.recog.update()
                     self.recog.save_screencap('run_order')
                     # 200 为识别错误
-                    if drone_count < 100 or drone_count == 200:
-                        logger.info(f"无人机数量小于92->停止")
+                    if drone_count < self.drone_count_limit or drone_count == 200:
+                        logger.info(f"无人机数量小于{self.drone_count_limit}->停止")
                         break
                 st = accelerate[1]  # 起点
                 ed = accelerate[0]  # 终点
@@ -1491,12 +1495,13 @@ class BaseSchedulerSolver(BaseSolver):
             raise Exception("MAA 连接失败")
 
     def maa_plan_solver(self):
+
         try:
             if self.maa_config['last_execution'] is not None and datetime.now() - timedelta(
                     seconds=self.maa_config['maa_execution_gap'] * 3600) < self.maa_config['last_execution']:
                 logger.info("间隔未超过设定时间，不启动maa")
             else:
-                self.send_email('休息时长超过9分钟，启动MAA')
+                self.send_email('启动MAA')
                 self.back_to_index()
                 # 任务及参数请参考 docs/集成文档.md
                 self.inialize_maa()

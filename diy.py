@@ -231,6 +231,7 @@ def inialize(tasks,scheduler=None):
         base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
         base_scheduler.maa_config = maa_config
         base_scheduler.error = False
+        base_scheduler.drone_count_limit = 92 # 无人机高于于该值时才使用
         base_scheduler.agent_base_config = agent_base_config
         return base_scheduler
     else :

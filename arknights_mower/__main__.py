@@ -58,10 +58,13 @@ def inialize(tasks, scheduler=None):
         base_scheduler.global_plan = {'default': "plan_1", "plan_1": plan1}
         base_scheduler.current_base = {}
         base_scheduler.resting = []
-        base_scheduler.max_resting_count = 4
+        base_scheduler.max_resting_count = conf['max_resting_count']
+        base_scheduler.drone_count_limit = conf['drone_count_limit']
         base_scheduler.tasks = tasks
         # 读取心情开关，有菲亚梅塔或者希望全自动换班得设置为 true
         base_scheduler.read_mood = conf['run_mode'] == 1
+        # 干员宿舍回复阈值
+        # 高效组心情低于 UpperLimit  * 阈值 (向下取整)的时候才会会安排休息
 
         base_scheduler.scan_time = {}
         base_scheduler.last_room = ''
@@ -108,10 +111,15 @@ def simulate():
                 (base_scheduler.tasks.sort(key=lambda x: x["time"], reverse=False))
                 sleep_time = (base_scheduler.tasks[0]["time"] - datetime.now()).total_seconds()
                 logger.debug(base_scheduler.tasks)
+                remaining_time = (base_scheduler.tasks[0]["time"] - datetime.now()).total_seconds()
                 if sleep_time > 540 and conf['maa_enable'] == 1:
+                    subject = f"下次任务在{base_scheduler.tasks[0]['time'].strftime('%H:%M:%S')}"
+                    context = f"下一次任务:{base_scheduler.tasks[0]['plan']}"
+                    logger.info(context)
+                    logger.info(subject)
+                    base_scheduler.send_email(context, subject)
                     base_scheduler.maa_plan_solver()
                 elif sleep_time > 0:
-                    remaining_time = (base_scheduler.tasks[0]["time"] - datetime.now()).total_seconds()
                     subject = f"开始休息 {'%.2f' % (remaining_time / 60)} 分钟，到{base_scheduler.tasks[0]['time'].strftime('%H:%M:%S')}"
                     context = f"下一次任务:{base_scheduler.tasks[0]['plan']}"
                     logger.info(context)

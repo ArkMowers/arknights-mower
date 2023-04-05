@@ -41,7 +41,7 @@ def load_conf():
     conf['mail_enable'] = conf['mail_enable'] if 'mail_enable' in conf.keys() else 0
     conf['account'] = conf['account'] if 'account' in conf.keys() else ''
     conf['pass_code'] = conf['pass_code'] if 'pass_code' in conf.keys() else ''
-    conf['maa_enable'] = conf['maa_enable'] if 'maa_enable' in conf.keys() else ''
+    conf['maa_enable'] = conf['maa_enable'] if 'maa_enable' in conf.keys() else 0
     conf['maa_path'] = conf['maa_path'] if 'maa_path' in conf.keys() else ''
     conf['maa_adb_path'] = conf['maa_adb_path'] if 'maa_adb_path' in conf.keys() else ''
     conf['maa_weekly_plan'] = conf['maa_weekly_plan'] if 'maa_weekly_plan' in conf.keys() else [
@@ -53,6 +53,8 @@ def load_conf():
         {"weekday": "周六", "stage": ['AP-5'], "medicine": 0},
         {"weekday": "周日", "stage": ['AP-5'], "medicine": 0}
     ]
+    conf['max_resting_count'] = conf['max_resting_count'] if 'max_resting_count' in conf.keys() else 4
+    conf['drone_count_limit'] = conf['drone_count_limit'] if 'drone_count_limit' in conf.keys() else 92
 
 
 def write_conf():
@@ -182,6 +184,13 @@ def menu():
                          key='radio_ling_xi_2', enable_events=True)
     ling_xi_3 = sg.Radio('均衡模式', 'ling_xi', default=conf['ling_xi'] == 3,
                          key='radio_ling_xi_3', enable_events=True)
+
+    max_resting_count_title = sg.Text('最大分组数：', size=25,key='max_resting_count_title')
+    max_resting_count = sg.InputText(conf['max_resting_count'], size=5,
+                                key='int_max_resting_count', enable_events=True)
+    drone_count_limit_title = sg.Text('无人机使用阈值：', size=25,key='drone_count_limit_title')
+    drone_count_limit = sg.InputText(conf['drone_count_limit'], size=5,
+                                key='int_drone_count_limit', enable_events=True)
     rest_in_full_title = sg.Text('需要回满心情的干员：', size=25)
     rest_in_full = sg.InputText(conf['rest_in_full'], size=60,
                                 key='conf_rest_in_full', enable_events=True)
@@ -231,13 +240,15 @@ def menu():
     plan_tab = sg.Tab('  排班表 ', [[left_area, central_area, right_area], [setting_area]], element_justification="center")
 
     setting_tab = sg.Tab('  高级设置 ',
-                         [[run_mode_title,run_mode_1,run_mode_2],[ling_xi_title, ling_xi_1, ling_xi_2, ling_xi_3], [rest_in_full_title, rest_in_full],
-                          [mail_frame], [maa_frame]])
+                         [[run_mode_title,run_mode_1,run_mode_2],[ling_xi_title, ling_xi_1, ling_xi_2, ling_xi_3],
+                          [max_resting_count_title,max_resting_count,sg.Text('', size=16),drone_count_limit_title,drone_count_limit],
+                          [rest_in_full_title, rest_in_full],
+                          [mail_frame], [maa_frame]],pad= ((10,10),(10,10)) )
     window = sg.Window('Mower', [[sg.TabGroup([[main_tab, plan_tab, setting_tab]], border_width=0,
                                               tab_border_width=0, focus_color='#bcc8e5',
                                               selected_background_color='#d4dae8', background_color='#aab6d3',
                                               tab_background_color='#aab6d3')]], font='微软雅黑', finalize=True,
-                       resizable=True)
+                       resizable=False)
 
     load_plan(conf['planFile'])
     btn = None
@@ -249,6 +260,12 @@ def menu():
         elif event.startswith('conf_'):
             key = event[5:]
             conf[key] = window[event].get()
+        elif event.startswith('int_'):
+            key = event[4:]
+            try:
+                conf[key] = int(window[event].get())
+            except ValueError:
+                println(f'[{window[key+"_title"].get()}]需为数字')
         elif event.startswith('radio_'):
             v_index = event.rindex('_')
             conf[event[6:v_index]] = int(event[v_index + 1:])
