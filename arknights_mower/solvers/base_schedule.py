@@ -52,6 +52,7 @@ class BaseSchedulerSolver(BaseSolver):
         super().__init__(device, recog)
         self.op_data = None
         self.max_resting_count = 4
+        self.party_time = None
 
     def run(self) -> None:
         """
@@ -65,6 +66,8 @@ class BaseSchedulerSolver(BaseSolver):
             self.task = self.tasks[0]
         else:
             self.task = None
+        if self.party_time is not None and self.party_time<datetime.now():
+            self.party_time = None
         self.todo_task = False
         self.planned = False
         if self.op_data is None:
@@ -189,9 +192,7 @@ class BaseSchedulerSolver(BaseSolver):
                     self.tasks.append({'time': datetime.now(), 'plan': plan})
                     # 执行完提前换班任务再次执行本任务
                     self.tasks.append({'time': datetime.now(), 'plan': self.task['plan']})
-            # 急速换班
-            self.todo_task = True
-            self.planned = True
+            self.skip()
             return
 
     def handle_error(self, force=False):
@@ -308,20 +309,9 @@ class BaseSchedulerSolver(BaseSolver):
                 del self.tasks[0]
             except Exception as e:
                 logger.exception(e)
-                self.planned = True
-                self.todo_task = True
+                self.skip()
                 self.error = True
             self.task = None
-        elif not self.todo_task:
-            # 处理基建 Todo
-            notification = detector.infra_notification(self.recog.img)
-            if notification is None:
-                self.sleep(1)
-                notification = detector.infra_notification(self.recog.img)
-            if notification is not None:
-                self.tap(notification)
-            else:
-                self.todo_task = True
         elif not self.planned:
             try:
                 # 如果有任何type 则会最后修正
@@ -335,6 +325,17 @@ class BaseSchedulerSolver(BaseSolver):
                 self.error = True
                 logger.exception({e})
             self.planned = True
+        elif not self.todo_task:
+            notification = detector.infra_notification(self.recog.img)
+            if self.party_time is None:
+                self.clue()
+            if notification is None:
+                self.sleep(1)
+                notification = detector.infra_notification(self.recog.img)
+            if notification is not None:
+                self.tap(notification)
+            else:
+                self.todo_task = True
         else:
             return self.handle_error()
 
@@ -697,6 +698,8 @@ class BaseSchedulerSolver(BaseSolver):
             __str = max(set(x), key=x.count)
             print(__str)
             if "mood" in type:
+                if '.' in __str:
+                    __str = __str.replace(".", "")
                 number = int(__str[0:__str.index('/')])
                 return number
             elif 'time' in type:
@@ -837,10 +840,13 @@ class BaseSchedulerSolver(BaseSolver):
         # 线索交流开启
         if clue_unlock is not None and get_all_clue:
             self.tap(clue_unlock)
+            self.party_time = datetime.now() + timedelta(days=1)
+            logger.info("为期一天的趴体开始")
         else:
             # 记录趴体时间
-
-            self.back(interval=2, rebuild=False)
+            self.back(interval=2)
+            self.party_time = self.double_read_time((1765, 422, 1920, 515))
+            logger.info(f"趴体结束时间为： {self.party_time}")
 
         logger.info('返回基建主界面')
         self.back(interval=2)
@@ -1391,7 +1397,6 @@ class BaseSchedulerSolver(BaseSolver):
                             raise Exception('未成功进入干员选择界面')
                         self.tap((self.recog.w * 0.82, self.recog.h * 0.2), interval=1)
                         error_count += 1
-                    error_count = 0
                     self.choose_agent(plan[room], room)
                     self.recog.update()
                     self.tap_element('confirm_blue', detected=True, judge=False, interval=3)
@@ -1446,9 +1451,7 @@ class BaseSchedulerSolver(BaseSolver):
                 self.back(interval=0.5)
                 self.back(interval=0.5)
             self.tasks.append({'time': self.tasks[0]['time'], 'plan': replace_plan})
-            # 急速换班
-            self.todo_task = True
-            self.planned = True
+            self.skip()
         if fia_data is not None:
             replace_agent = fia_data[1]
             fia_change_room = self.op_data.operators[replace_agent].room
@@ -1459,9 +1462,12 @@ class BaseSchedulerSolver(BaseSolver):
                 {'time': self.tasks[0]['time'],
                  'plan': {fia_data[0]: fia_room_plan, fia_change_room: fia_change_room_plan}})
             # 急速换班
-            self.todo_task = True
-            self.planned = True
+            self.skip()
         logger.info('返回基建主界面')
+
+    def skip(self):
+        self.todo_task = True
+        self.planned = True
 
     @Asst.CallBackType
     def log_maa(msg, details, arg):
