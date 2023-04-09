@@ -53,6 +53,7 @@ class BaseSchedulerSolver(BaseSolver):
         self.op_data = None
         self.max_resting_count = 4
         self.party_time = None
+        self.drone_time = None
 
     def run(self) -> None:
         """
@@ -222,6 +223,11 @@ class BaseSchedulerSolver(BaseSolver):
         _type = []
         # 第一个心情低的且小于3 则只休息半小时
         short_rest = False
+        self.total_agent = list(
+            v for k, v in self.op_data.operators.items() if v.is_high() and not v.room.startswith('dorm') and not v.current_room.startswith('dorm'))
+        self.total_agent.sort(key=lambda x: x.mood - x.lower_limit, reverse=False)
+        if next((a for a in self.total_agent if (a.name not in self.op_data.exhaust_agent) and a.mood<=3),None) is not None:
+            short_rest= True
         low_priority = []
         for idx, dorm in enumerate(self.op_data.dorm):
             # Filter out resting priority low
@@ -242,7 +248,10 @@ class BaseSchedulerSolver(BaseSolver):
                     __rest_agent.append(dorm.name)
                 else:
                     __rest_agent.extend(self.op_data.groups[self.op_data.operators[dorm.name].group])
-                __time = dorm.time
+                if dorm.time is not None:
+                    __time = dorm.time
+                else:
+                    __time = datetime.max
                 for x in __rest_agent:
                     # 如果同小组也是rest_in_full则取最大休息时间 否则忽略
                     _idx, __dorm = self.op_data.get_dorm_by_name(x)
@@ -250,7 +259,8 @@ class BaseSchedulerSolver(BaseSolver):
                         if __dorm is not None and __dorm.time is not None:
                             if __dorm.time > _time and self.op_data.operators[x].resting_priority == 'high':
                                 _time = __dorm.time
-                    __type.append('dorm' + str(_idx))
+                    if _idx is not None:
+                        __type.append('dorm' + str(_idx))
                     planned_index.append(_idx)
                     __room = self.op_data.operators[x].room
                     if __room not in __plan.keys():
@@ -330,6 +340,11 @@ class BaseSchedulerSolver(BaseSolver):
             self.planned = True
         elif not self.todo_task:
             notification = detector.infra_notification(self.recog.img)
+            if self.drone_room is not None:
+                if self.drone_time is None or self.drone_time < datetime.now()- timedelta(hours=self.drone_execution_gap):
+                    self.drone(self.drone_room)
+                    logger.info(f"记录本次无人机使用时间为:{datetime.now()}")
+                    self.drone_time = datetime.now()
             if self.party_time is None:
                 self.clue()
             if notification is None:
@@ -347,6 +362,7 @@ class BaseSchedulerSolver(BaseSolver):
         if not force and next((k for k in self.tasks if k['time'] < datetime.now() + timedelta(seconds=300)),
                               None) is not None:
             logger.info('有未完成的任务，跳过纠错')
+            self.skip()
             return
         logger.info('基建：记录心情')
         need_read = set(v.room for k, v in self.op_data.operators.items() if v.need_to_refresh())
@@ -409,15 +425,23 @@ class BaseSchedulerSolver(BaseSolver):
             # 替换到他应该的位置
             logger.debug(f"高效组心情没有记录 或者高效组在宿舍{str(miss_list)}")
             for key in miss_list:
-                if miss_list[key].group != '' and miss_list[key].current_room.startswith("dorm"):
+                _agent = miss_list[key]
+                if _agent.group != '' and _agent.current_room.startswith("dorm"):
                     # 如果还有其他小组成员在休息且没满心情则忽略
                     if next((k for k, v in self.op_data.operators.items() if
-                             v.group == miss_list[key].group and not v.not_valid() and v.current_room.startswith(
+                             v.group == _agent.group and not v.not_valid() and v.current_room.startswith(
                                  "dorm")), None) is not None:
                         continue
-                if miss_list[key].room not in fix_plan.keys():
-                    fix_plan[miss_list[key].room] = [x['agent'] for x in current_base[miss_list[key].room]]
-                fix_plan[miss_list[key].room][miss_list[key].index] = key
+                if _agent.room not in fix_plan.keys():
+                    fix_plan[_agent.room] = ['Current'] * len(current_base[_agent.room])
+                fix_plan[_agent.room][_agent.index] = key
+                # 如果是错位：
+                if (_agent.current_index != -1 and _agent.current_index != _agent.index) or (_agent.current_room !=""and _agent.room != _agent.current_room):
+                    moved_room = _agent.current_room
+                    moved_index = _agent.current_index
+                    if moved_room not in fix_plan.keys():
+                        fix_plan[moved_room] = ['Current'] * len(self.currentPlan[moved_room])
+                    fix_plan[moved_room][moved_index] = self.currentPlan[moved_room][moved_index]["agent"]
         if len(fix_plan.keys()) > 0:
             # 不能在房间里安排同一个人 如果有重复则换成Free
             # 还要修复确保同一组在同时上班
@@ -431,12 +455,6 @@ class BaseSchedulerSolver(BaseSolver):
                             None) is None and skip_dorm:
                         remove_keys.append(key)
                         continue
-                for idx, fix_agent in enumerate(fix_plan[key]):
-                    if fix_agent not in fix_agents:
-                        fix_agents.append(fix_agent)
-                    else:
-                        fix_plan[key][idx] = "Free" if fix_plan[key][idx] not in ['Free', 'Current'] else \
-                            fix_plan[key][idx]
             if len(remove_keys) > 0:
                 for item in remove_keys:
                     del fix_plan[item]
@@ -514,14 +532,21 @@ class BaseSchedulerSolver(BaseSolver):
                                     None) is None:
                                 self.enter_room(op.current_room)
                                 result = self.get_agent_from_room(op.current_room, [op.current_index])
+                                _time = datetime.now()
+                                if result[op.current_index]['time'] is not None:
+                                    _time = result[op.current_index]['time']
                                 self.back()
                                 # plan 是空的是因为得动态生成
                                 exhaust_type = op.name
                                 if op.group != '':
                                     exhaust_type = ','.join(self.op_data.groups[op.group])
-                                self.tasks.append({"time": result[op.current_index]['time'] if result[op.current_index][
-                                                                                                   'time'] is not None else datetime.now(),
-                                                   "plan": {}, "type": exhaust_type})
+                                if _time<datetime.now() and op.mood>0:
+                                    continue
+                                elif _time >= datetime.now() or (_time<datetime.now() and op.mood==0):
+                                    self.tasks.append({"time": _time,"plan": {}, "type": exhaust_type})
+                                    # 防止和其他排班冲突
+                                    if _time<datetime.now() and op.mood==0:
+                                        break
                         continue
                     if op.group != '':
                         # 如果在group里则同时上下班
@@ -846,12 +871,13 @@ class BaseSchedulerSolver(BaseSolver):
             self.tap(clue_unlock)
             self.party_time = datetime.now() + timedelta(days=1)
             logger.info("为期一天的趴体开始")
-        else:
+        elif clue_unlock is None:
             # 记录趴体时间
             self.back(interval=2)
             self.party_time = self.double_read_time((1765, 422, 1920, 515))
             logger.info(f"趴体结束时间为： {self.party_time}")
-
+        else:
+            self.back(interval=2)
         logger.info('返回基建主界面')
         self.back(interval=2)
 
@@ -1007,9 +1033,11 @@ class BaseSchedulerSolver(BaseSolver):
         while self.find('control_central') is not None:
             self.tap(_room[0], interval=3)
 
-    def drone(self, room: str, one_time=False, not_return=False):
+    def drone(self, room: str, not_customize=False, not_return=False):
         logger.info('基建：无人机加速')
-
+        all_in = 0
+        if not not_customize:
+            all_in = len(self.check_in_and_out())
         # 点击进入该房间
         self.enter_room(room)
         # 进入房间详情
@@ -1025,11 +1053,23 @@ class BaseSchedulerSolver(BaseSolver):
 
         accelerate = self.find('factory_accelerate')
         if accelerate:
+            drone_count = self.read_screen(self.recog.img, type='drone_mood', cord=(
+                int(self.recog.w * 1150 / 1920), int(self.recog.h * 35 / 1080), int(self.recog.w * 1295 / 1920),
+                int(self.recog.h * 72 / 1080)), limit=200)
+            if drone_count< self.drone_count_limit or drone_count == 200:
+                logger.info(f"无人机数量不够 {drone_count}")
+                return
             logger.info('制造站加速')
             self.tap(accelerate)
             self.tap_element('all_in')
+            # 如果不是全部all in
+            if all_in>0:
+                tap_times = all_in * 10
+                _count = 0
+                while _count<tap_times:
+                    self.tap((self.recog.w * 0.45, self.recog.h * 0.5), interval=0, rebuild=False)
+                    _count += 1
             self.tap(accelerate, y_rate=1)
-
         else:
             accelerate = self.find('bill_accelerate')
             while accelerate:
@@ -1039,7 +1079,9 @@ class BaseSchedulerSolver(BaseSolver):
                 self.tap((self.recog.w * 0.75, self.recog.h * 0.8))
                 while self.get_infra_scene() == Scene.CONNECTING:
                     self.sleep(3)
-                if one_time:
+                if self.drone_room is not None:
+                    break
+                if not_customize:
                     drone_count = self.read_screen(self.recog.img, type='drone_mood', cord=(
                         int(self.recog.w * 1150 / 1920), int(self.recog.h * 35 / 1080), int(self.recog.w * 1295 / 1920),
                         int(self.recog.h * 72 / 1080)), limit=200)
@@ -1351,6 +1393,7 @@ class BaseSchedulerSolver(BaseSolver):
             if self.op_data.operators[_operator].current_room == room and _operator not in [res['agent'] for res in
                                                                                             result]:
                 self.op_data.operators[_operator].current_room = ''
+                self.op_data.operators[_operator].current_index = -1
                 logger.info(f'重设 {_operator} 至空闲')
         return result
 

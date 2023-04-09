@@ -9,10 +9,15 @@ from arknights_mower.utils import config
 
 
 email_config= {
+    # 发信账户
     'account':"xxx@qq.com",
-    'pass_code':'从QQ邮箱帐户设置—>生成授权码',
+    # 在QQ邮箱“帐户设置-账户-开启SMTP服务”中，按照指示开启服务获得授权码
+    'pass_code':'xxx',
+    # 收件人邮箱
     'receipts':['任何邮箱'],
+    # 是否提醒，暂时没用
     'notify':False,
+    # 邮件主题
     'subject': '任务数据'
 }
 maa_config = {
@@ -48,6 +53,12 @@ free_blacklist= []
     # 高效组心情低于 UpperLimit  * 阈值 (向下取整)的时候才会会安排休息
     # UpperLimit：默认24，特殊技能干员如夕，令可能会有所不同(设置在 agent-base.json 文件可以自行更改)
 resting_treshhold = 0.5
+
+# 跑单如果all in 贸易站则 不需要修改设置
+# 如果需要无人机加速其他房间则可以修改成房间名字如 'room_1_1'
+drone_room = None
+# 无人机执行间隔时间 （小时）
+drone_execution_gap = 4
 
 # 全自动基建排班计划：
 # 这里定义了一套全自动基建的排班计划 plan_1
@@ -137,6 +148,12 @@ plan = {
     }
 }
 
+# UpperLimit、LowerLimit：心情上下限
+# ExhaustRequire：是否强制工作到红脸再休息
+# ArrangeOrder：指定在宿舍外寻找干员的方式
+# RestInFull：是否强制休息到24心情再工作，与ExhaustRequire一起帮助暖机类技能工作更长时间
+# RestingPriority：休息优先级，低优先级不会使用单回技能。
+
 agent_base_config = {
     "Default":{"UpperLimit": 24,"LowerLimit": 0,"ExhaustRequire": False,"ArrangeOrder":[2,"false"],"RestInFull": False},
     # 卡贸易站
@@ -208,35 +225,39 @@ def savelog():
     #  com.hypergryph.arknights.bilibili   # Bilibili 服
     init_fhlr()
 
-def inialize(tasks,scheduler=None):
+
+def inialize(tasks, scheduler=None):
     device = Device()
     cli = Solver(device)
     if scheduler is None:
         base_scheduler = BaseSchedulerSolver(cli.device, cli.recog)
-        base_scheduler.package_name= config.APPNAME
+        base_scheduler.package_name = config.APPNAME
         base_scheduler.operators = {}
         base_scheduler.global_plan = plan
         base_scheduler.current_base = {}
-        base_scheduler.resting=[]
-        base_scheduler.max_resting_count=4
+        base_scheduler.resting = []
+        # 同时休息最大人数
+        base_scheduler.max_resting_count = 4
         base_scheduler.tasks = tasks
         # 读取心情开关，有菲亚梅塔或者希望全自动换班得设置为 true
         base_scheduler.read_mood = True
         base_scheduler.scan_time = {}
         base_scheduler.last_room = ''
         base_scheduler.free_blacklist = free_blacklist
-        base_scheduler.resting_treshhold=resting_treshhold
+        base_scheduler.resting_treshhold = resting_treshhold
         base_scheduler.MAA = None
         base_scheduler.email_config = email_config
         base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
         base_scheduler.maa_config = maa_config
         base_scheduler.error = False
-        base_scheduler.drone_count_limit = 92 # 无人机高于于该值时才使用
+        base_scheduler.drone_count_limit = 92  # 无人机高于于该值时才使用
+        base_scheduler.drone_room = drone_room
+        base_scheduler.drone_execution_gap = drone_execution_gap
         base_scheduler.agent_base_config = agent_base_config
         return base_scheduler
-    else :
-        scheduler.device=cli.device
-        scheduler.recog=cli.recog
+    else:
+        scheduler.device = cli.device
+        scheduler.recog = cli.recog
         scheduler.handle_error(True)
         return scheduler
 
