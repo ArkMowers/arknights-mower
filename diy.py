@@ -54,6 +54,12 @@ free_blacklist= []
     # UpperLimit：默认24，特殊技能干员如夕，令可能会有所不同(设置在 agent-base.json 文件可以自行更改)
 resting_treshhold = 0.5
 
+# 跑单如果all in 贸易站则 不需要修改设置
+# 如果需要无人机加速其他房间则可以修改成房间名字如 'room_1_1'
+drone_room = None
+# 无人机执行间隔时间 （小时）
+drone_execution_gap = 4
+
 # 全自动基建排班计划：
 # 这里定义了一套全自动基建的排班计划 plan_1
 # agent 为常驻高效组的干员名
@@ -245,6 +251,8 @@ def inialize(tasks, scheduler=None):
         base_scheduler.maa_config = maa_config
         base_scheduler.error = False
         base_scheduler.drone_count_limit = 92  # 无人机高于于该值时才使用
+        base_scheduler.drone_room = drone_room
+        base_scheduler.drone_execution_gap = drone_execution_gap
         base_scheduler.agent_base_config = agent_base_config
         return base_scheduler
     else:
