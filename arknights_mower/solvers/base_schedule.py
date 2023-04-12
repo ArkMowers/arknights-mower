@@ -53,6 +53,7 @@ class BaseSchedulerSolver(BaseSolver):
         self.op_data = None
         self.max_resting_count = 4
         self.party_time = None
+        self.drone_time = None
 
     def run(self) -> None:
         """
@@ -339,6 +340,11 @@ class BaseSchedulerSolver(BaseSolver):
             self.planned = True
         elif not self.todo_task:
             notification = detector.infra_notification(self.recog.img)
+            if self.drone_room is not None:
+                if self.drone_time is None or self.drone_time < datetime.now()- timedelta(hours=self.drone_execution_gap):
+                    self.drone(self.drone_room)
+                    logger.info(f"记录本次无人机使用时间为:{datetime.now()}")
+                    self.drone_time = datetime.now()
             if self.party_time is None:
                 self.clue()
             if notification is None:
@@ -417,7 +423,7 @@ class BaseSchedulerSolver(BaseSolver):
         miss_list = {k: v for (k, v) in self.op_data.operators.items() if v.not_valid()}
         if len(miss_list.keys()) > 0:
             # 替换到他应该的位置
-            logger.debug(f"高效组心情没有记录 或者高效组在宿舍{str(miss_list)}")
+            logger.debug(f"高效组心情没有记录{str(miss_list)}")
             for key in miss_list:
                 _agent = miss_list[key]
                 if _agent.group != '' and _agent.current_room.startswith("dorm"):
@@ -426,8 +432,16 @@ class BaseSchedulerSolver(BaseSolver):
                              v.group == _agent.group and not v.not_valid() and v.current_room.startswith(
                                  "dorm")), None) is not None:
                         continue
+                elif _agent.group != '':
+                    # 把所有小组成员都移到工作站
+                    agents = self.op_data.groups[_agent.group]
+                    for a in agents:
+                        __agent = self.op_data.operators[a]
+                        if __agent.room not in fix_plan.keys():
+                            fix_plan[__agent.room] = ['Current'] * len(self.currentPlan[__agent.room])
+                        fix_plan[__agent.room][__agent.index] = a
                 if _agent.room not in fix_plan.keys():
-                    fix_plan[_agent.room] = ['Current'] * len(current_base[_agent.room])
+                    fix_plan[_agent.room] = ['Current'] * len(self.currentPlan[_agent.room])
                 fix_plan[_agent.room][_agent.index] = key
                 # 如果是错位：
                 if (_agent.current_index != -1 and _agent.current_index != _agent.index) or (_agent.current_room !=""and _agent.room != _agent.current_room):
@@ -538,6 +552,9 @@ class BaseSchedulerSolver(BaseSolver):
                                     continue
                                 elif _time >= datetime.now() or (_time<datetime.now() and op.mood==0):
                                     self.tasks.append({"time": _time,"plan": {}, "type": exhaust_type})
+                                    # 防止和其他排班冲突
+                                    if _time<datetime.now() and op.mood==0:
+                                        break
                         continue
                     if op.group != '':
                         # 如果在group里则同时上下班
@@ -1024,9 +1041,11 @@ class BaseSchedulerSolver(BaseSolver):
         while self.find('control_central') is not None:
             self.tap(_room[0], interval=3)
 
-    def drone(self, room: str, one_time=False, not_return=False):
+    def drone(self, room: str, not_customize=False, not_return=False):
         logger.info('基建：无人机加速')
-
+        all_in = 0
+        if not not_customize:
+            all_in = len(self.check_in_and_out())
         # 点击进入该房间
         self.enter_room(room)
         # 进入房间详情
@@ -1042,11 +1061,23 @@ class BaseSchedulerSolver(BaseSolver):
 
         accelerate = self.find('factory_accelerate')
         if accelerate:
+            drone_count = self.read_screen(self.recog.img, type='drone_mood', cord=(
+                int(self.recog.w * 1150 / 1920), int(self.recog.h * 35 / 1080), int(self.recog.w * 1295 / 1920),
+                int(self.recog.h * 72 / 1080)), limit=200)
+            if drone_count< self.drone_count_limit or drone_count == 200:
+                logger.info(f"无人机数量不够 {drone_count}")
+                return
             logger.info('制造站加速')
             self.tap(accelerate)
             self.tap_element('all_in')
+            # 如果不是全部all in
+            if all_in>0:
+                tap_times = all_in * 10
+                _count = 0
+                while _count<tap_times:
+                    self.tap((self.recog.w * 0.45, self.recog.h * 0.5), interval=0, rebuild=False)
+                    _count += 1
             self.tap(accelerate, y_rate=1)
-
         else:
             accelerate = self.find('bill_accelerate')
             while accelerate:
@@ -1056,7 +1087,9 @@ class BaseSchedulerSolver(BaseSolver):
                 self.tap((self.recog.w * 0.75, self.recog.h * 0.8))
                 while self.get_infra_scene() == Scene.CONNECTING:
                     self.sleep(3)
-                if one_time:
+                if self.drone_room is not None:
+                    break
+                if not_customize:
                     drone_count = self.read_screen(self.recog.img, type='drone_mood', cord=(
                         int(self.recog.w * 1150 / 1920), int(self.recog.h * 35 / 1080), int(self.recog.w * 1295 / 1920),
                         int(self.recog.h * 72 / 1080)), limit=200)
@@ -1368,6 +1401,7 @@ class BaseSchedulerSolver(BaseSolver):
             if self.op_data.operators[_operator].current_room == room and _operator not in [res['agent'] for res in
                                                                                             result]:
                 self.op_data.operators[_operator].current_room = ''
+                self.op_data.operators[_operator].current_index = -1
                 logger.info(f'重设 {_operator} 至空闲')
         return result
 
