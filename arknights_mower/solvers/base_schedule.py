@@ -426,7 +426,13 @@ class BaseSchedulerSolver(BaseSolver):
             logger.debug(f"高效组心情没有记录{str(miss_list)}")
             for key in miss_list:
                 _agent = miss_list[key]
-                if _agent.group != '':
+                if _agent.group != '' and _agent.current_room.startswith("dorm"):
+                    # 如果还有其他小组成员在休息且没满心情则忽略
+                    if next((k for k, v in self.op_data.operators.items() if
+                             v.group == _agent.group and not v.not_valid() and v.current_room.startswith(
+                                 "dorm")), None) is not None:
+                        continue
+                elif _agent.group != '':
                     # 把所有小组成员都移到工作站
                     agents = self.op_data.groups[_agent.group]
                     for a in agents:
