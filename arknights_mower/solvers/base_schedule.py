@@ -24,6 +24,8 @@ import cv2
 from arknights_mower.utils.asst import Asst, Message
 import json
 
+from arknights_mower.riic_digit_reader import DigitReader
+
 ocr = None
 
 
@@ -54,6 +56,7 @@ class BaseSchedulerSolver(BaseSolver):
         self.max_resting_count = 4
         self.party_time = None
         self.drone_time = None
+        self.digit_reader = DigitReader()
 
     def run(self) -> None:
         """
@@ -750,7 +753,7 @@ class BaseSchedulerSolver(BaseSolver):
     def read_time(self, cord, upperlimit, error_count=0):
         # 刷新图片
         self.recog.update()
-        time_str = self.read_screen(self.recog.img, type='time', cord=cord)
+        time_str = self.digit_reader.get_time(self.recog.gray)
         try:
             h, m, s = str(time_str).split(':')
             if int(m) > 60 or int(s) > 60:
@@ -1061,9 +1064,7 @@ class BaseSchedulerSolver(BaseSolver):
 
         accelerate = self.find('factory_accelerate')
         if accelerate:
-            drone_count = self.read_screen(self.recog.img, type='drone_mood', cord=(
-                int(self.recog.w * 1150 / 1920), int(self.recog.h * 35 / 1080), int(self.recog.w * 1295 / 1920),
-                int(self.recog.h * 72 / 1080)), limit=200)
+            drone_count = self.digit_reader.get_drone(self.recog.gray)
             if drone_count< self.drone_count_limit or drone_count == 200:
                 logger.info(f"无人机数量不够 {drone_count}")
                 return
@@ -1090,9 +1091,7 @@ class BaseSchedulerSolver(BaseSolver):
                 if self.drone_room is not None:
                     break
                 if not_customize:
-                    drone_count = self.read_screen(self.recog.img, type='drone_mood', cord=(
-                        int(self.recog.w * 1150 / 1920), int(self.recog.h * 35 / 1080), int(self.recog.w * 1295 / 1920),
-                        int(self.recog.h * 72 / 1080)), limit=200)
+                    drone_count = self.digit_reader.get_drone(self.recog.gray)
                     logger.info(f'当前无人机数量为：{drone_count}')
                     self.recog.update()
                     self.recog.save_screencap('run_order')
