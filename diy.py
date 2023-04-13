@@ -254,6 +254,7 @@ def inialize(tasks, scheduler=None):
         base_scheduler.drone_room = drone_room
         base_scheduler.drone_execution_gap = drone_execution_gap
         base_scheduler.agent_base_config = agent_base_config
+        base_scheduler.run_order_delay = 10  # 跑单提前10分钟运行
         return base_scheduler
     else:
         scheduler.device = cli.device

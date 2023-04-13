@@ -87,6 +87,9 @@ def inialize(tasks, scheduler=None):
         base_scheduler.maa_config = maa_config
         base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
         base_scheduler.error = False
+        base_scheduler.drone_room = None if conf['drone_room'] == '' else conf['drone_room']
+        base_scheduler.drone_execution_gap = 4
+        base_scheduler.run_order_delay = conf['run_order_delay']
         base_scheduler.agent_base_config = agent_base_config
         return base_scheduler
     else:
@@ -147,8 +150,11 @@ def simulate():
         except Exception as E:
             logger.exception(f"程序出错--->{E}")
 
+
 agent_base_config = {}
 maa_config = {}
+
+
 def __init_params__():
     global agent_base_config
     global maa_config

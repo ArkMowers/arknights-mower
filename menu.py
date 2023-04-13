@@ -53,8 +53,10 @@ def load_conf():
         {"weekday": "周六", "stage": ['AP-5'], "medicine": 0},
         {"weekday": "周日", "stage": ['AP-5'], "medicine": 0}
     ]
-    conf['max_resting_count'] = conf['max_resting_count'] if 'max_resting_count' in conf.keys() else 4
-    conf['drone_count_limit'] = conf['drone_count_limit'] if 'drone_count_limit' in conf.keys() else 92
+    conf['max_resting_count'] = conf['max_resting_count'] if 'max_resting_count' in conf.keys() else 4  # 最大组人数
+    conf['drone_count_limit'] = conf['drone_count_limit'] if 'drone_count_limit' in conf.keys() else 92  # 无人机阈值
+    conf['run_order_delay'] = conf['run_order_delay'] if 'run_order_delay' in conf.keys() else 10  # 跑单提前10分钟运行
+    conf['drone_room'] = conf['drone_room'] if 'drone_room' in conf.keys() else ''  # 无人机使用房间
 
 
 def write_conf():
@@ -166,7 +168,7 @@ def menu():
                                sg.InputText('', size=30, key='replacement' + str(i))
                                ]], key='setArea' + str(i), visible=False)
         setting_layout.append([set_area])
-    setting_layout.append([sg.Button('保存', key='savePlan', visible=False)])
+    setting_layout.append([sg.Button('保存', key='savePlan', visible=False),sg.Button('清空', key='clearPlan', visible=False)])
     setting_area = sg.Column(setting_layout, element_justification="center",
                              vertical_alignment="bottom",
                              expand_x=True)
@@ -174,9 +176,9 @@ def menu():
     # --------高级设置页面
     run_mode_title = sg.Text('运行模式：', size=25)
     run_mode_1 = sg.Radio('换班模式', 'run_mode', default=conf['run_mode'] == 1,
-                         key='radio_run_mode_1', enable_events=True)
+                          key='radio_run_mode_1', enable_events=True)
     run_mode_2 = sg.Radio('仅跑单模式', 'run_mode', default=conf['run_mode'] == 2,
-                         key='radio_run_mode_2', enable_events=True)
+                          key='radio_run_mode_2', enable_events=True)
     ling_xi_title = sg.Text('令夕模式（令夕上班时起作用）：', size=25)
     ling_xi_1 = sg.Radio('感知信息', 'ling_xi', default=conf['ling_xi'] == 1,
                          key='radio_ling_xi_1', enable_events=True)
@@ -185,15 +187,23 @@ def menu():
     ling_xi_3 = sg.Radio('均衡模式', 'ling_xi', default=conf['ling_xi'] == 3,
                          key='radio_ling_xi_3', enable_events=True)
 
-    max_resting_count_title = sg.Text('最大分组数：', size=25,key='max_resting_count_title')
+    max_resting_count_title = sg.Text('最大组人数：', size=25, key='max_resting_count_title')
     max_resting_count = sg.InputText(conf['max_resting_count'], size=5,
-                                key='int_max_resting_count', enable_events=True)
-    drone_count_limit_title = sg.Text('无人机使用阈值：', size=25,key='drone_count_limit_title')
+                                     key='int_max_resting_count', enable_events=True)
+    drone_count_limit_title = sg.Text('无人机使用阈值：', size=25, key='drone_count_limit_title')
     drone_count_limit = sg.InputText(conf['drone_count_limit'], size=5,
-                                key='int_drone_count_limit', enable_events=True)
+                                     key='int_drone_count_limit', enable_events=True)
+    run_order_delay_title = sg.Text('跑单前置延时(分钟)：', size=25, key='run_order_delay_title')
+    run_order_delay = sg.InputText(conf['run_order_delay'], size=5,
+                                   key='int_run_order_delay', enable_events=True)
+    drone_room_title = sg.Text('无人机使用房间（room_X_X）：', size=25, key='drone_room_title')
+    drone_room = sg.InputText(conf['drone_room'], size=15,
+                              key='conf_drone_room', enable_events=True)
     rest_in_full_title = sg.Text('需要回满心情的干员：', size=25)
     rest_in_full = sg.InputText(conf['rest_in_full'], size=60,
                                 key='conf_rest_in_full', enable_events=True)
+
+    # --------外部调用设置页面
     # mail
     mail_enable_1 = sg.Radio('启用', 'mail_enable', default=conf['mail_enable'] == 1,
                              key='radio_mail_enable_1', enable_events=True)
@@ -238,13 +248,16 @@ def menu():
                                  [on_btn, off_btn]])
 
     plan_tab = sg.Tab('  排班表 ', [[left_area, central_area, right_area], [setting_area]], element_justification="center")
-
     setting_tab = sg.Tab('  高级设置 ',
-                         [[run_mode_title,run_mode_1,run_mode_2],[ling_xi_title, ling_xi_1, ling_xi_2, ling_xi_3],
-                          [max_resting_count_title,max_resting_count,sg.Text('', size=16),drone_count_limit_title,drone_count_limit],
-                          [rest_in_full_title, rest_in_full],
-                          [mail_frame], [maa_frame]],pad= ((10,10),(10,10)) )
-    window = sg.Window('Mower', [[sg.TabGroup([[main_tab, plan_tab, setting_tab]], border_width=0,
+                         [[run_mode_title, run_mode_1, run_mode_2], [ling_xi_title, ling_xi_1, ling_xi_2, ling_xi_3],
+                          [max_resting_count_title, max_resting_count, sg.Text('', size=16), run_order_delay_title,
+                           run_order_delay],
+                          [drone_room_title, drone_room, sg.Text('', size=7), drone_count_limit_title,
+                           drone_count_limit],
+                          [rest_in_full_title, rest_in_full]], pad=((10, 10), (10, 10)))
+    other_tab = sg.Tab('  外部调用 ',
+                       [[mail_frame], [maa_frame]], pad=((10, 10), (10, 10)))
+    window = sg.Window('Mower', [[sg.TabGroup([[main_tab, plan_tab, setting_tab, other_tab]], border_width=0,
                                               tab_border_width=0, focus_color='#bcc8e5',
                                               selected_background_color='#d4dae8', background_color='#aab6d3',
                                               tab_background_color='#aab6d3')]], font='微软雅黑', finalize=True,
@@ -252,12 +265,17 @@ def menu():
 
     load_plan(conf['planFile'])
     btn = None
+    bind_scirpt()  # 为基建布局左边的站点排序绑定事件
+    drag_task = DragTask()
     while True:
         event, value = window.Read()
-
         if event == sg.WIN_CLOSED:
             break
-        elif event.startswith('conf_'):
+        if event.endswith('-script'):  # 触发事件，进行处理
+            run_script(event[:event.rindex('-')], drag_task)
+            continue
+        drag_task.clear()  # 拖拽事件连续不间断，若未触发事件，则初始化
+        if event.startswith('conf_'):
             key = event[5:]
             conf[key] = window[event].get()
         elif event.startswith('int_'):
@@ -265,7 +283,7 @@ def menu():
             try:
                 conf[key] = int(window[event].get())
             except ValueError:
-                println(f'[{window[key+"_title"].get()}]需为数字')
+                println(f'[{window[key + "_title"].get()}]需为数字')
         elif event.startswith('radio_'):
             v_index = event.rindex('_')
             conf[event[6:v_index]] = int(event[v_index + 1:])
@@ -284,11 +302,12 @@ def menu():
             init_btn(event)
         elif event == 'savePlan':  # 保存设施信息
             save_btn(btn)
-
+        elif event == 'clearPlan': # 清空当前设施信息
+            clear_btn(btn)
         elif event == 'on':
-            if adb.get() == '':
-                println('adb未设置！')
-                continue
+            # if adb.get() == '':
+            #     println('adb未设置！')
+            #     continue
 
             on_btn.update(visible=False)
             off_btn.update(visible=True)
@@ -309,6 +328,46 @@ def menu():
     write_plan()
 
 
+def bind_scirpt():
+    for i in range(3):
+        for j in range(3):
+            event = f'btn_room_{str(i + 1)}_{str(j + 1)}'
+            window[event].bind("<B1-Motion>", "-motion-script")
+            window[event].bind("<ButtonRelease-1>", "-ButtonRelease-script")
+            window[event].bind("<Enter>", "-Enter-script")
+
+
+def run_script(event, drag_task):
+    # logger.info(f"{event}:{drag_task}")
+    if event.endswith('-motion'):  # 拖拽事件，标志拖拽开始
+        if drag_task.step == 0 or drag_task.step == 2:  # 若为2说明拖拽结束未进入其他元素，则初始化
+            drag_task.btn = event[:event.rindex('-')]  # 记录初始按钮
+            drag_task.step = 1  # 初始化键位，并推进任务步骤
+    elif event.endswith('-ButtonRelease'):  # 松开按钮事件，标志着拖拽结束
+        if drag_task.step == 1 :
+            drag_task.step = 2  # 推进任务步骤
+    elif event.endswith('-Enter'):  # 进入元素事件，拖拽结束鼠标若在其他元素，会进入此事件
+        if drag_task.step == 2:
+            drag_task.new_btn = event[:event.rindex('-')]  # 记录需交换的按钮
+            swtich_plan(drag_task)
+            drag_task.clear()
+        else:
+            drag_task.clear()
+
+
+def swtich_plan(drag_task):
+    key1 = drag_task.btn[4:]
+    key2 = drag_task.new_btn[4:]
+    value1 = plan[key1] if key1 in plan else None;
+    value2 = plan[key2] if key2 in plan else None;
+    if value1 is not None:
+        plan[key2] = value1
+    if value2 is not None:
+        plan[key1] = value2
+    write_plan()
+    load_plan(conf['planFile'])
+
+
 def init_btn(event):
     room_key = event[4:]
     station_name = plan[room_key]['name'] if room_key in plan.keys() else ''
@@ -327,6 +386,7 @@ def init_btn(event):
         window['station_type_col'].update(visible=False)
         window['station_type'].update('')
     window['savePlan'].update(visible=True)
+    window['clearPlan'].update(visible=True)
     for i in range(1, 6):
         if i > visible_cnt:
             window['setArea' + str(i)].update(visible=False)
@@ -351,6 +411,14 @@ def save_btn(btn):
         elif btn.startswith('btn_dormitory'):  # 宿舍
             plan1['plans'].append({'agent': 'Free', 'group': '', 'replacement': []})
     plan[btn[4:]] = plan1
+    write_plan()
+    load_plan(conf['planFile'])
+
+
+def clear_btn(btn):
+    if btn[4:] in plan:
+        plan.pop(btn[4:])
+    init_btn(btn)
     write_plan()
     load_plan(conf['planFile'])
 
@@ -388,6 +456,21 @@ def clear():
     buffer = ''
     window['log'].update(value=buffer)
     line = 0
+
+
+class DragTask:
+    def __init__(self):
+        self.btn = None
+        self.new_btn = None
+        self.step = 0
+
+    def clear(self):
+        self.btn = None
+        self.new_btn = None
+        self.step = 0
+
+    def __repr__(self):
+        return f"btn:{self.btn},new_btn:{self.new_btn},step:{self.step}"
 
 
 if __name__ == '__main__':
