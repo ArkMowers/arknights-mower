@@ -423,7 +423,7 @@ class BaseSchedulerSolver(BaseSolver):
         miss_list = {k: v for (k, v) in self.op_data.operators.items() if v.not_valid()}
         if len(miss_list.keys()) > 0:
             # 替换到他应该的位置
-            logger.debug(f"高效组心情没有记录 或者高效组在宿舍{str(miss_list)}")
+            logger.debug(f"高效组心情没有记录{str(miss_list)}")
             for key in miss_list:
                 _agent = miss_list[key]
                 if _agent.group != '' and _agent.current_room.startswith("dorm"):
@@ -432,8 +432,16 @@ class BaseSchedulerSolver(BaseSolver):
                              v.group == _agent.group and not v.not_valid() and v.current_room.startswith(
                                  "dorm")), None) is not None:
                         continue
+                elif _agent.group != '':
+                    # 把所有小组成员都移到工作站
+                    agents = self.op_data.groups[_agent.group]
+                    for a in agents:
+                        __agent = self.op_data.operators[a]
+                        if __agent.room not in fix_plan.keys():
+                            fix_plan[__agent.room] = ['Current'] * len(self.currentPlan[__agent.room])
+                        fix_plan[__agent.room][__agent.index] = a
                 if _agent.room not in fix_plan.keys():
-                    fix_plan[_agent.room] = ['Current'] * len(current_base[_agent.room])
+                    fix_plan[_agent.room] = ['Current'] * len(self.currentPlan[_agent.room])
                 fix_plan[_agent.room][_agent.index] = key
                 # 如果是错位：
                 if (_agent.current_index != -1 and _agent.current_index != _agent.index) or (_agent.current_room !=""and _agent.room != _agent.current_room):
