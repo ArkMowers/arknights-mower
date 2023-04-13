@@ -204,7 +204,7 @@ class BaseSchedulerSolver(BaseSolver):
             # 如果没有任何时间小于当前时间的任务才生成空任务
             if (next((e for e in self.tasks if e['time'] < datetime.now()), None)) is None:
                 room = next(iter(self.currentPlan.keys()))
-                logger.info("由于出现错误情况，生成一次空任务来执行纠错")
+                logger.debug("由于出现错误情况，生成一次空任务来执行纠错")
                 self.tasks.append({'time': datetime.now(), 'plan': {}})
             # 如果没有任何时间小于当前时间的任务-10分钟 则清空任务
             if (next((e for e in self.tasks if e['time'] < datetime.now() - timedelta(seconds=600)), None)) is not None:
@@ -687,7 +687,7 @@ class BaseSchedulerSolver(BaseSolver):
             error_count += 1
         execute_time = self.double_read_time((int(self.recog.w * 650 / 2496), int(self.recog.h * 660 / 1404),
                                               int(self.recog.w * 815 / 2496), int(self.recog.h * 710 / 1404)))
-        execute_time = execute_time - timedelta(seconds=(600))
+        execute_time = execute_time - timedelta(seconds=(60*self.run_order_delay))
         logger.info('下一次进行插拔的时间为：' + execute_time.strftime("%H:%M:%S"))
         logger.info('返回基建主界面')
         self.back(interval=2, rebuild=False)
@@ -1027,9 +1027,9 @@ class BaseSchedulerSolver(BaseSolver):
 
         # 获取基建各个房间的位置
         base_room = segment.base(self.recog.img, self.find('control_central', strict=True))
-
         # 将画面外的部分删去
         _room = base_room[room]
+
         for i in range(4):
             _room[i, 0] = max(_room[i, 0], 0)
             _room[i, 0] = min(_room[i, 0], self.recog.w)
@@ -1064,19 +1064,22 @@ class BaseSchedulerSolver(BaseSolver):
             drone_count = self.read_screen(self.recog.img, type='drone_mood', cord=(
                 int(self.recog.w * 1150 / 1920), int(self.recog.h * 35 / 1080), int(self.recog.w * 1295 / 1920),
                 int(self.recog.h * 72 / 1080)), limit=200)
-            if drone_count< self.drone_count_limit or drone_count == 200:
-                logger.info(f"无人机数量不够 {drone_count}")
+            logger.info(f'当前无人机数量为：{drone_count}')
+            if drone_count< self.drone_count_limit :
+                logger.info(f"无人机数量小于{self.drone_count_limit}->停止")
                 return
             logger.info('制造站加速')
             self.tap(accelerate)
-            self.tap_element('all_in')
+            # self.tap_element('all_in')
             # 如果不是全部all in
-            if all_in>0:
-                tap_times = all_in * 10
+            if all_in > 0:
+                tap_times = drone_count - self.drone_count_limit  # 修改为无人机阈值
                 _count = 0
-                while _count<tap_times:
-                    self.tap((self.recog.w * 0.45, self.recog.h * 0.5), interval=0, rebuild=False)
+                while _count < tap_times:
+                    self.tap((self.recog.w * 0.7, self.recog.h * 0.5), interval=0.1, rebuild=False)
                     _count += 1
+            else:
+                self.tap_element('all_in')
             self.tap(accelerate, y_rate=1)
         else:
             accelerate = self.find('bill_accelerate')
@@ -1097,7 +1100,7 @@ class BaseSchedulerSolver(BaseSolver):
                     self.recog.update()
                     self.recog.save_screencap('run_order')
                     # 200 为识别错误
-                    if drone_count < self.drone_count_limit or drone_count == 200:
+                    if drone_count < self.drone_count_limit:
                         logger.info(f"无人机数量小于{self.drone_count_limit}->停止")
                         break
                 st = accelerate[1]  # 起点
@@ -1539,7 +1542,8 @@ class BaseSchedulerSolver(BaseSolver):
         self.MAA = Asst(callback=self.log_maa)
         # self.MAA.set_instance_option(2, 'maatouch')
         # 请自行配置 adb 环境变量，或修改为 adb 可执行程序的路径
-        if self.MAA.connect(self.maa_config['maa_adb_path'], self.ADB_CONNECT):
+        # logger.info(self.device.client.device_id)
+        if self.MAA.connect(self.maa_config['maa_adb_path'], self.device.client.device_id):
             logger.info("MAA 连接成功")
         else:
             logger.info("MAA 连接失败")
