@@ -15,8 +15,8 @@ email_config= {
     'pass_code':'xxx',
     # 收件人邮箱
     'receipts':['任何邮箱'],
-    # 是否提醒，暂时没用
-    'notify':False,
+    # 是否启用邮件提醒
+    'mail_enable':False,
     # 邮件主题
     'subject': '任务数据'
 }
