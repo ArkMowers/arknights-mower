@@ -20,10 +20,10 @@ class Operators(object):
         self.dorm = []
         self.max_resting_count = max_resting_count
 
-    def update_detail(self,name, mood, current_room, current_index):
+    def update_detail(self,name, mood, current_room, current_index,update_time = False):
         agent = self.operators[name]
-
-        agent.time_stamp = datetime.now()
+        if update_time:
+            agent.time_stamp = datetime.now()
         # 如果移出宿舍，则清除对应宿舍数据 且重新记录高效组心情
         if agent.current_room.startswith('dorm') and not current_room.startswith('dorm') and agent.is_high():
             self.refresh_dorm_time(agent.current_room,agent.current_index,{'agent':''})

@@ -1374,13 +1374,15 @@ class BaseSchedulerSolver(BaseSolver):
             _mood = 24
             # 如果房间不为空
             if _name != '':
-                if _name not in self.op_data.operators.keys():
+                if _name not in self.op_data.operators.keys() and _name in agent_list:
                     self.op_data.add(Operator(_name, ""))
+                update_time=False
                 if self.op_data.operators[_name].need_to_refresh():
                     _mood = self.read_screen(self.recog.img, cord=mood_p[i], change_color=True)
+                    update_time = True
                 else:
                     _mood = self.op_data.operators[_name].mood
-                high_no_time = self.op_data.update_detail(_name, _mood, room, i)
+                high_no_time = self.op_data.update_detail(_name, _mood, room, i,update_time)
                 if high_no_time is not None:
                     logger.debug(f"检测到高效组休息时间数据不存在:{room},{high_no_time}")
                     read_time_index.append(high_no_time)
