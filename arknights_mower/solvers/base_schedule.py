@@ -1066,7 +1066,7 @@ class BaseSchedulerSolver(BaseSolver):
                 int(self.recog.w * 1150 / 1920), int(self.recog.h * 35 / 1080), int(self.recog.w * 1295 / 1920),
                 int(self.recog.h * 72 / 1080)), limit=201)
             logger.info(f'当前无人机数量为：{drone_count}')
-            if drone_count< self.drone_count_limit :
+            if drone_count< self.drone_count_limit or drone_count == 201:
                 logger.info(f"无人机数量小于{self.drone_count_limit}->停止")
                 return
             logger.info('制造站加速')
@@ -1096,12 +1096,12 @@ class BaseSchedulerSolver(BaseSolver):
                 if not_customize:
                     drone_count = self.read_screen(self.recog.img, type='drone_mood', cord=(
                         int(self.recog.w * 1150 / 1920), int(self.recog.h * 35 / 1080), int(self.recog.w * 1295 / 1920),
-                        int(self.recog.h * 72 / 1080)), limit=200)
+                        int(self.recog.h * 72 / 1080)), limit=201)
                     logger.info(f'当前无人机数量为：{drone_count}')
                     self.recog.update()
                     self.recog.save_screencap('run_order')
                     # 200 为识别错误
-                    if drone_count < self.drone_count_limit:
+                    if drone_count < self.drone_count_limit or drone_count == 201:
                         logger.info(f"无人机数量小于{self.drone_count_limit}->停止")
                         break
                 st = accelerate[1]  # 起点
