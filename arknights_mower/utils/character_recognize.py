@@ -9,7 +9,7 @@ from matplotlib import pyplot as plt
 from PIL import Image, ImageDraw, ImageFont
 
 from .. import __rootdir__
-from ..data import agent_list
+from ..data import agent_list,ocr_error
 from . import segment
 from .image import saveimg
 from .log import logger
@@ -172,7 +172,7 @@ def agent(img, draw=False):
                         f'干员名称识别异常：{x[1]} 为不存在的数据，请报告至 https://github.com/Konano/arknights-mower/issues'
                     )
                     saveimg(__img, 'failure_agent')
-                    raise Exception("启动 Plan B")
+                    raise Exception(x[1])
                 else:
                     if 80 <= np.min(__img):
                         continue
@@ -189,9 +189,13 @@ def agent(img, draw=False):
             except Exception as e:
                 # 大哥不行了，二哥上！
                 ret_fail.append(poly)
-                if name in ocr_error.keys():
-                    name = ocr_error[name]
-                else:
+                if "Plan B" not in e:
+                    if e in ocr_error.keys():
+                        name = ocr_error[e]
+                    elif "Off" in e:
+                        name = 'U-Official'
+                    else:
+                        continue
                     ret_agent.append(name)
                     ret_succ.append(poly)
                     continue
