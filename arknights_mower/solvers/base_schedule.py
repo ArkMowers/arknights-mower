@@ -54,6 +54,7 @@ class BaseSchedulerSolver(BaseSolver):
         self.max_resting_count = 4
         self.party_time = None
         self.drone_time = None
+        self.run_order_delay=10
 
     def run(self) -> None:
         """
