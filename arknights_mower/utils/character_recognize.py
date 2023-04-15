@@ -188,11 +188,12 @@ def agent(img, draw=False):
                 raise Exception("启动 Plan B")
             except Exception as e:
                 # 大哥不行了，二哥上！
+                _msg = str(e)
                 ret_fail.append(poly)
-                if "Plan B" not in e:
-                    if e in ocr_error.keys():
-                        name = ocr_error[e]
-                    elif "Off" in e:
+                if "Plan B" not in _msg:
+                    if _msg in ocr_error.keys():
+                        name = ocr_error[_msg]
+                    elif "Off" in _msg:
                         name = 'U-Official'
                     else:
                         continue
