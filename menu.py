@@ -362,8 +362,12 @@ def swtich_plan(drag_task):
     value2 = plan[key2] if key2 in plan else None;
     if value1 is not None:
         plan[key2] = value1
+    elif key2 in plan:
+        plan.pop(key2)
     if value2 is not None:
         plan[key1] = value2
+    elif key1 in plan:
+        plan.pop(key1)
     write_plan()
     load_plan(conf['planFile'])
 
