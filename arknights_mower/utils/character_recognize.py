@@ -228,7 +228,7 @@ def agent_name(__img, height,reverse = False, draw: bool = False):
     try:
         if len(ocr) > 0 and ocr[0][1] in agent_list and ocr[0][1] not in ['砾', '陈']:
             name = ocr[0][1]
-        elif ocr[0][1] in ocr_error.keys():
+        elif len(ocr) > 0 and ocr[0][1] in ocr_error.keys():
             name = ocr_error[ocr[0][1]]
         else:
             res = sift_recog(__img, height, draw, reverse)
