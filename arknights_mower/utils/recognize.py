@@ -69,6 +69,8 @@ class Recognizer(object):
             self.scene = Scene.INDEX
         elif self.find('nav_index') is not None:
             self.scene = Scene.NAVIGATION_BAR
+        elif self.find('close_mine') is not None:
+            self.scene = Scene.CLOSE_MINE
         elif self.find('materiel_ico') is not None:
             self.scene = Scene.MATERIEL
         elif self.find('read_mail') is not None:
@@ -215,6 +217,51 @@ class Recognizer(object):
         logger.info(f'Scene: {self.scene}: {SceneComment[self.scene]}')
         return self.scene
 
+    def get_infra_scene(self)-> int:
+        if self.scene != Scene.UNDEFINED:
+            return self.scene
+        if self.find('connecting', scope=((self.w//2, self.h//10*8), (self.w//4*3, self.h))) is not None:
+            self.scene = Scene.CONNECTING
+        elif self.find('double_confirm') is not None:
+            if self.find('network_check') is not None:
+                self.scene = Scene.NETWORK_CHECK
+            else:
+                self.scene = Scene.DOUBLE_CONFIRM
+        elif self.find('infra_overview') is not None:
+            self.scene = Scene.INFRA_MAIN
+        elif self.find('infra_todo') is not None:
+            self.scene = Scene.INFRA_TODOLIST
+        elif self.find('clue') is not None:
+            self.scene = Scene.INFRA_CONFIDENTIAL
+        elif self.find('arrange_check_in') or self.find('arrange_check_in_on') is not None:
+            self.scene = Scene.INFRA_DETAILS
+        elif self.find('infra_overview_in') is not None:
+            self.scene = Scene.INFRA_ARRANGE
+        elif self.find('arrange_confirm') is not None:
+            self.scene = Scene.INFRA_ARRANGE_CONFIRM
+        elif self.find('arrange_order_options_scene') is not None:
+            self.scene = Scene.INFRA_ARRANGE_ORDER
+        elif self.find('loading') is not None:
+            self.scene = Scene.LOADING
+        elif self.find('loading2') is not None:
+            self.scene = Scene.LOADING
+        elif self.find('loading3') is not None:
+            self.scene = Scene.LOADING
+        elif self.find('loading4') is not None:
+            self.scene = Scene.LOADING
+        elif self.find('index_nav', thres=250, scope=((0, 0), (100+self.w//4, self.h//10))) is not None:
+            self.scene = Scene.INDEX
+        elif self.is_black():
+            self.scene = Scene.LOADING
+        else:
+            self.scene = Scene.UNKNOWN
+            self.device.check_current_focus()
+        # save screencap to analyse
+        if config.SCREENSHOT_PATH is not None:
+            self.save_screencap(self.scene)
+        logger.info(f'Scene: {self.scene}: {SceneComment[self.scene]}')
+        return self.scene
+
     def is_black(self) -> None:
         """ check if the current scene is all black """
         return np.max(self.gray[:, 105:-105]) < 16
@@ -223,7 +270,7 @@ class Recognizer(object):
         """ find navigation button """
         return self.find('nav_button', thres=128, scope=((0, 0), (100+self.w//4, self.h//10)))
 
-    def find(self, res: str, draw: bool = False, scope: tp.Scope = None, thres: int = None, judge: bool = True, strict: bool = False) -> tp.Scope:
+    def find(self, res: str, draw: bool = False, scope: tp.Scope = None, thres: int = None, judge: bool = True, strict: bool = False,score = 0.0) -> tp.Scope:
         """
         查找元素是否出现在画面中
 
@@ -233,6 +280,7 @@ class Recognizer(object):
         :param thres: 是否在匹配前对图像进行二值化处理
         :param judge: 是否加入更加精确的判断
         :param strict: 是否启用严格模式，未找到时报错
+        :param strict: 是否启用分数限制，有些图片精确识别需要提高分数阈值
 
         :return ret: 若匹配成功，则返回元素在游戏界面中出现的位置，否则返回 None
         """
@@ -244,11 +292,11 @@ class Recognizer(object):
             res_img = thres2(loadimg(res, True), thres)
             gray_img = cropimg(self.gray, scope)
             matcher = Matcher(thres2(gray_img, thres))
-            ret = matcher.match(res_img, draw=draw, judge=judge)
+            ret = matcher.match(res_img, draw=draw, judge=judge,prescore=score)
         else:
             res_img = loadimg(res, True)
             matcher = self.matcher
-            ret = matcher.match(res_img, draw=draw, scope=scope, judge=judge)
+            ret = matcher.match(res_img, draw=draw, scope=scope, judge=judge,prescore=score)
         if strict and ret is None:
             raise RecognizeError(f"Can't find '{res}'") 
         return ret

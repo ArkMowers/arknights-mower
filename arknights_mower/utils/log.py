@@ -7,7 +7,6 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 import colorlog
-
 from . import config
 
 BASIC_FORMAT = '%(asctime)s - %(levelname)s - %(relativepath)s:%(lineno)d - %(funcName)s - %(message)s'
@@ -40,6 +39,16 @@ class MaxFilter(object):
             return True
 
 
+class Handler(logging.StreamHandler):
+    def __init__(self, pipe):
+        logging.StreamHandler.__init__(self)
+        self.pipe = pipe
+
+    def emit(self, record):
+        record = f'{record.message}'
+        self.pipe.send(record)
+
+
 chlr = logging.StreamHandler(stream=sys.stdout)
 chlr.setFormatter(color_formatter)
 chlr.setLevel('INFO')
@@ -57,7 +66,7 @@ logger.addHandler(chlr)
 logger.addHandler(ehlr)
 
 
-def init_fhlr() -> None:
+def init_fhlr(pipe=None) -> None:
     """ initialize log file """
     if config.LOGFILE_PATH is None:
         return
@@ -73,6 +82,10 @@ def init_fhlr() -> None:
     fhlr.setLevel('DEBUG')
     fhlr.addFilter(PackagePathFilter())
     logger.addHandler(fhlr)
+    if pipe is not None:
+        wh = Handler(pipe)
+        wh.setLevel(logging.INFO)
+        logger.addHandler(wh)
 
 
 def set_debug_mode() -> None:
@@ -113,3 +126,5 @@ class log_sync(threading.Thread):
         while True:
             line = self.pipe.readline().strip()
             logger.debug(f'{self.process}: {line}')
+
+

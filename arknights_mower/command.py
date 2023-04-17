@@ -20,15 +20,19 @@ def base(args: list[str] = [], device: Device = None):
     """
     base [plan] [-c] [-d[F][N]] [-f[F][N]]
         自动处理基建的信赖/货物/订单/线索/无人机
-        plan 表示选择的基建干员排班计划（需要搭配配置文件使用）
+        plan 表示选择的基建干员排班计划（建议搭配配置文件使用, 也可命令行直接输入）
         -c 是否自动收集并使用线索
         -d 是否自动消耗无人机，F 表示第几层（1-3），N 表示从左往右第几个房间（1-3）
         -f 是否使用菲亚梅塔恢复特定房间干员心情，恢复后恢复原位且工作位置不变，F、N 含义同上
     """
+    from .data import base_room_list, agent_list
+    
     arrange = None
     clue_collect = False
     drone_room = None
     fia_room = None
+    any_room = []
+    agents = []
 
     try:
         for p in args:
@@ -45,8 +49,17 @@ def base(args: list[str] = [], device: Device = None):
                     fia_room = f'room_{p[2]}_{p[3]}'
             elif arrange is None:
                 arrange = config.BASE_CONSTRUCT_PLAN.get(p)
+                if arrange is None:
+                    if p in base_room_list:
+                        any_room.append(p)
+                        agents.append([])
+                    elif p in agent_list or 'free' == p.lower():
+                        agents[-1].append(p)                
     except Exception:
         raise ParamError
+    
+    if arrange is None and any_room is not None and len(agents) > 0:
+        arrange = dict(zip(any_room, agents))
 
     BaseConstructSolver(device).run(arrange, clue_collect, drone_room, fia_room)
 

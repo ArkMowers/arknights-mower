@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import http
 import socket
 import tempfile
 
@@ -12,12 +13,11 @@ from ..log import logger
 def download_file(target_url: str) -> str:
     """ download file to temp path, and return its file path for further usage """
     logger.debug(f'downloading: {target_url}')
-    resp = requests.get(target_url)
+    resp = requests.get(target_url, verify=False)
     with tempfile.NamedTemporaryFile('wb+', delete=False) as f:
         file_name = f.name
         f.write(resp.content)
     return file_name
-
 
 # def is_port_using(host: str, port: int) -> bool:
 #     """ if port is using by others, return True. else return False """

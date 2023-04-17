@@ -41,15 +41,27 @@ class Client(object):
     def __init_device(self) -> None:
         # wait for the newly started ADB server to probe emulators
         time.sleep(1)
-        if self.device_id is None:
+        if self.device_id is None or self.device_id not in config.ADB_DEVICE:
             self.device_id = self.__choose_devices()
-        if self.device_id is None:
+        if self.device_id is None :
             if self.connect is None:
-                for connect in config.ADB_CONNECT:
-                    Session().connect(connect)
+                if config.ADB_DEVICE[0] != '':
+                    for connect in config.ADB_CONNECT:
+                        Session().connect(connect)
             else:
                 Session().connect(self.connect)
             self.device_id = self.__choose_devices()
+        elif self.connect is None:
+            Session().connect(self.device_id)
+
+        # if self.device_id is None or self.device_id not in config.ADB_DEVICE:
+        #     if self.connect is None or self.device_id not in config.ADB_CONNECT:
+        #         for connect in config.ADB_CONNECT:
+        #             Session().connect(connect)
+        #     else:
+        #         Session().connect(self.connect)
+        #     self.device_id = self.__choose_devices()
+        logger.info(self.__available_devices())
         if self.device_id not in self.__available_devices():
             logger.error('未检测到相应设备。请运行 `adb devices` 确认列表中列出了目标模拟器或设备。')
             raise RuntimeError('Device connection failure')
@@ -60,8 +72,10 @@ class Client(object):
         for device in config.ADB_DEVICE:
             if device in devices:
                 return device
-        if len(devices) > 0:
+        if len(devices) > 0 and config.ADB_DEVICE[0] == '':
+            logger.debug(devices[0])
             return devices[0]
+
 
     def __available_devices(self) -> list[str]:
         """ return available devices """
@@ -163,7 +177,7 @@ class Client(object):
     def stream(self, cmd: str) -> Socket:
         """ run adb command, return socket """
         return self.session().request(cmd, True).sock
-    
+
     def stream_shell(self, cmd: str) -> Socket:
         """ run adb shell command, return socket """
         return self.stream('shell:' + cmd)
