@@ -1083,8 +1083,6 @@ class BaseSchedulerSolver(BaseSolver):
             else:
                 self.tap_element('all_in')
             self.tap(accelerate, y_rate=1)
-            # logger.info(f"记录本次无人机使用时间为:{datetime.now()}")
-            # self.drone_time = datetime.now()
         else:
             accelerate = self.find('bill_accelerate')
             while accelerate:
