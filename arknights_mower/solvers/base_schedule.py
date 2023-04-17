@@ -344,8 +344,6 @@ class BaseSchedulerSolver(BaseSolver):
             if self.drone_room is not None:
                 if self.drone_time is None or self.drone_time < datetime.now()- timedelta(hours=self.drone_execution_gap):
                     self.drone(self.drone_room)
-                    logger.info(f"记录本次无人机使用时间为:{datetime.now()}")
-                    self.drone_time = datetime.now()
             if self.party_time is None:
                 self.clue()
             if notification is None:
@@ -536,7 +534,7 @@ class BaseSchedulerSolver(BaseSolver):
                     if op.mood > int((op.upper_limit - op.lower_limit) * self.resting_treshhold + op.lower_limit):
                         continue
                     if op.name in self.op_data.exhaust_agent:
-                        if op.mood <= 2:
+                        if op.mood <= 0:
                             if next((e for e in self.tasks if 'type' in e.keys() and op.name in e['type']),
                                     None) is None:
                                 self.enter_room(op.current_room)
@@ -746,7 +744,7 @@ class BaseSchedulerSolver(BaseSolver):
             return __str
         except Exception as e:
             logger.exception(e)
-            return limit
+            return limit+1
 
     def read_time(self, cord, upperlimit, error_count=0):
         # 刷新图片
@@ -1064,9 +1062,9 @@ class BaseSchedulerSolver(BaseSolver):
         if accelerate:
             drone_count = self.read_screen(self.recog.img, type='drone_mood', cord=(
                 int(self.recog.w * 1150 / 1920), int(self.recog.h * 35 / 1080), int(self.recog.w * 1295 / 1920),
-                int(self.recog.h * 72 / 1080)), limit=201)
+                int(self.recog.h * 72 / 1080)), limit=200)
             logger.info(f'当前无人机数量为：{drone_count}')
-            if drone_count< self.drone_count_limit or drone_count == 201:
+            if drone_count < self.drone_count_limit or drone_count > 200:
                 logger.info(f"无人机数量小于{self.drone_count_limit}->停止")
                 return
             logger.info('制造站加速')
@@ -1082,6 +1080,8 @@ class BaseSchedulerSolver(BaseSolver):
             else:
                 self.tap_element('all_in')
             self.tap(accelerate, y_rate=1)
+            logger.info(f"记录本次无人机使用时间为:{datetime.now()}")
+            self.drone_time = datetime.now()
         else:
             accelerate = self.find('bill_accelerate')
             while accelerate:
@@ -1096,7 +1096,7 @@ class BaseSchedulerSolver(BaseSolver):
                 if not_customize:
                     drone_count = self.read_screen(self.recog.img, type='drone_mood', cord=(
                         int(self.recog.w * 1150 / 1920), int(self.recog.h * 35 / 1080), int(self.recog.w * 1295 / 1920),
-                        int(self.recog.h * 72 / 1080)), limit=201)
+                        int(self.recog.h * 72 / 1080)), limit=200)
                     logger.info(f'当前无人机数量为：{drone_count}')
                     self.recog.update()
                     self.recog.save_screencap('run_order')
