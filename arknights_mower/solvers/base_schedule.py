@@ -344,6 +344,8 @@ class BaseSchedulerSolver(BaseSolver):
             if self.drone_room is not None:
                 if self.drone_time is None or self.drone_time < datetime.now()- timedelta(hours=self.drone_execution_gap):
                     self.drone(self.drone_room)
+                    logger.info(f"记录本次无人机使用时间为:{datetime.now()}")
+                    self.drone_time = datetime.now()
             if self.party_time is None:
                 self.clue()
             if notification is None:
@@ -1080,8 +1082,6 @@ class BaseSchedulerSolver(BaseSolver):
             else:
                 self.tap_element('all_in')
             self.tap(accelerate, y_rate=1)
-            logger.info(f"记录本次无人机使用时间为:{datetime.now()}")
-            self.drone_time = datetime.now()
         else:
             accelerate = self.find('bill_accelerate')
             while accelerate:
