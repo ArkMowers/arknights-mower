@@ -55,6 +55,7 @@ class BaseSchedulerSolver(BaseSolver):
         self.party_time = None
         self.drone_time = None
         self.run_order_delay=10
+        self.enable_party = True
 
     def run(self) -> None:
         """
@@ -344,7 +345,9 @@ class BaseSchedulerSolver(BaseSolver):
             if self.drone_room is not None:
                 if self.drone_time is None or self.drone_time < datetime.now()- timedelta(hours=self.drone_execution_gap):
                     self.drone(self.drone_room)
-            if self.party_time is None:
+                    logger.info(f"记录本次无人机使用时间为:{datetime.now()}")
+                    self.drone_time = datetime.now()
+            if self.party_time is None and self.enable_party :
                 self.clue()
             if notification is None:
                 self.sleep(1)
@@ -1080,8 +1083,8 @@ class BaseSchedulerSolver(BaseSolver):
             else:
                 self.tap_element('all_in')
             self.tap(accelerate, y_rate=1)
-            logger.info(f"记录本次无人机使用时间为:{datetime.now()}")
-            self.drone_time = datetime.now()
+            # logger.info(f"记录本次无人机使用时间为:{datetime.now()}")
+            # self.drone_time = datetime.now()
         else:
             accelerate = self.find('bill_accelerate')
             while accelerate:
