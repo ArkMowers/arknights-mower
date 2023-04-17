@@ -55,6 +55,7 @@ class BaseSchedulerSolver(BaseSolver):
         self.party_time = None
         self.drone_time = None
         self.run_order_delay=10
+        self.enable_party = True
 
     def run(self) -> None:
         """
@@ -346,7 +347,7 @@ class BaseSchedulerSolver(BaseSolver):
                     self.drone(self.drone_room)
                     logger.info(f"记录本次无人机使用时间为:{datetime.now()}")
                     self.drone_time = datetime.now()
-            if self.party_time is None:
+            if self.party_time is None and self.enable_party :
                 self.clue()
             if notification is None:
                 self.sleep(1)

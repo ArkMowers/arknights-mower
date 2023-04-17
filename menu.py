@@ -57,6 +57,7 @@ def load_conf():
     conf['drone_count_limit'] = conf['drone_count_limit'] if 'drone_count_limit' in conf.keys() else 92  # 无人机阈值
     conf['run_order_delay'] = conf['run_order_delay'] if 'run_order_delay' in conf.keys() else 10  # 跑单提前10分钟运行
     conf['drone_room'] = conf['drone_room'] if 'drone_room' in conf.keys() else ''  # 无人机使用房间
+    conf['enable_party'] = conf['enable_party'] if 'enable_party' in conf.keys() else 1  # 是否启用收取线索
 
 
 def write_conf():
@@ -186,7 +187,11 @@ def menu():
                          key='radio_ling_xi_2', enable_events=True)
     ling_xi_3 = sg.Radio('均衡模式', 'ling_xi', default=conf['ling_xi'] == 3,
                          key='radio_ling_xi_3', enable_events=True)
-
+    enable_party_title = sg.Text('线索收集：', size=25)
+    enable_party_1 = sg.Radio('启用', 'enable_party', default=conf['enable_party'] == 1,
+                             key='radio_enable_party_1', enable_events=True)
+    enable_party_0 = sg.Radio('禁用', 'enable_party', default=conf['enable_party'] == 0,
+                             key='radio_enable_party_0', enable_events=True)
     max_resting_count_title = sg.Text('最大组人数：', size=25, key='max_resting_count_title')
     max_resting_count = sg.InputText(conf['max_resting_count'], size=5,
                                      key='int_max_resting_count', enable_events=True)
@@ -250,6 +255,7 @@ def menu():
     plan_tab = sg.Tab('  排班表 ', [[left_area, central_area, right_area], [setting_area]], element_justification="center")
     setting_tab = sg.Tab('  高级设置 ',
                          [[run_mode_title, run_mode_1, run_mode_2], [ling_xi_title, ling_xi_1, ling_xi_2, ling_xi_3],
+                          [enable_party_title,enable_party_1,enable_party_0],
                           [max_resting_count_title, max_resting_count, sg.Text('', size=16), run_order_delay_title,
                            run_order_delay],
                           [drone_room_title, drone_room, sg.Text('', size=7), drone_count_limit_title,
