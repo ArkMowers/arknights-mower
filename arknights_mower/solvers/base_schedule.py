@@ -10,6 +10,7 @@ from email.mime.multipart import MIMEMultipart
 
 from ..data import agent_list
 from ..utils import character_recognize, detector, segment
+from ..utils.digit_reader import DigitReader
 from ..utils.operators import Operators, Operator, Dormitory
 from ..utils import typealias as tp
 from ..utils.device import Device
@@ -56,6 +57,7 @@ class BaseSchedulerSolver(BaseSolver):
         self.drone_time = None
         self.run_order_delay=10
         self.enable_party = True
+        self.digit_reader = DigitReader()
 
     def run(self) -> None:
         """
@@ -688,7 +690,7 @@ class BaseSchedulerSolver(BaseSolver):
             self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=1)
             error_count += 1
         execute_time = self.double_read_time((int(self.recog.w * 650 / 2496), int(self.recog.h * 660 / 1404),
-                                              int(self.recog.w * 815 / 2496), int(self.recog.h * 710 / 1404)))
+                                              int(self.recog.w * 815 / 2496), int(self.recog.h * 710 / 1404)),use_digit_reader=True)
         execute_time = execute_time - timedelta(seconds=(60*self.run_order_delay))
         logger.info('下一次进行插拔的时间为：' + execute_time.strftime("%H:%M:%S"))
         logger.info('返回基建主界面')
@@ -696,11 +698,11 @@ class BaseSchedulerSolver(BaseSolver):
         self.back(interval=2)
         return execute_time
 
-    def double_read_time(self, cord, upperLimit=None):
+    def double_read_time(self, cord, upperLimit=None,use_digit_reader = False):
         if upperLimit is not None and upperLimit < 36000:
             upperLimit = 36000
         self.recog.update()
-        time_in_seconds = self.read_time(cord, upperLimit)
+        time_in_seconds = self.read_time(cord, upperLimit,use_digit_reader)
         if time_in_seconds is None:
             return datetime.now()
         execute_time = datetime.now() + timedelta(seconds=(time_in_seconds))
@@ -749,10 +751,13 @@ class BaseSchedulerSolver(BaseSolver):
             logger.exception(e)
             return limit+1
 
-    def read_time(self, cord, upperlimit, error_count=0):
+    def read_time(self, cord, upperlimit, error_count=0,use_digit_reader = False):
         # 刷新图片
         self.recog.update()
-        time_str = self.read_screen(self.recog.img, type='time', cord=cord)
+        if use_digit_reader:
+            time_str = self.digit_reader.get_time(self.recog.gray)
+        else:
+            time_str = self.read_screen(self.recog.img, type='time', cord=cord)
         try:
             h, m, s = str(time_str).split(':')
             if int(m) > 60 or int(s) > 60:
@@ -768,7 +773,7 @@ class BaseSchedulerSolver(BaseSolver):
                 logger.exception(f"读取失败{error_count}次超过上限")
                 return None
             else:
-                return self.read_time(cord, upperlimit, error_count + 1)
+                return self.read_time(cord, upperlimit, error_count + 1,use_digit_reader)
 
     def todo_list(self) -> None:
         """ 处理基建 Todo 列表 """
@@ -1084,9 +1089,7 @@ class BaseSchedulerSolver(BaseSolver):
 
         accelerate = self.find('factory_accelerate')
         if accelerate:
-            drone_count = self.read_screen(self.recog.img, type='drone_mood', cord=(
-                int(self.recog.w * 1150 / 1920), int(self.recog.h * 35 / 1080), int(self.recog.w * 1295 / 1920),
-                int(self.recog.h * 72 / 1080)), limit=200)
+            drone_count = self.digit_reader.get_drone(self.recog.gray)
             logger.info(f'当前无人机数量为：{drone_count}')
             if drone_count < self.drone_count_limit or drone_count > 200:
                 logger.info(f"无人机数量小于{self.drone_count_limit}->停止")
@@ -1116,9 +1119,7 @@ class BaseSchedulerSolver(BaseSolver):
                 if self.drone_room is not None:
                     break
                 if not_customize:
-                    drone_count = self.read_screen(self.recog.img, type='drone_mood', cord=(
-                        int(self.recog.w * 1150 / 1920), int(self.recog.h * 35 / 1080), int(self.recog.w * 1295 / 1920),
-                        int(self.recog.h * 72 / 1080)), limit=200)
+                    drone_count = self.digit_reader.get_drone(self.recog.gray)
                     logger.info(f'当前无人机数量为：{drone_count}')
                     self.recog.update()
                     self.recog.save_screencap('run_order')
@@ -1534,7 +1535,7 @@ class BaseSchedulerSolver(BaseSolver):
                 self.back(interval=0.5)
                 self.back(interval=0.5)
             self.tasks.append({'time': self.tasks[0]['time'], 'plan': replace_plan})
-            self.skip()
+            self.skip(False)
         if fia_data is not None:
             replace_agent = fia_data[1]
             fia_change_room = self.op_data.operators[replace_agent].room
@@ -1548,9 +1549,11 @@ class BaseSchedulerSolver(BaseSolver):
             self.skip()
         logger.info('返回基建主界面')
 
-    def skip(self):
+    def skip(self,skip_all=True):
         self.todo_task = True
         self.planned = True
+        if skip_all:
+            self.todo_task = True
 
     @Asst.CallBackType
     def log_maa(msg, details, arg):
