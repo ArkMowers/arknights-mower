@@ -734,7 +734,11 @@ class BaseSchedulerSolver(BaseSolver):
                 else:
                     line_conf.append(res[1])
             logger.debug(line_conf)
-            if len(line_conf) == 0 and 'mood' in type: return -1
+            if len(line_conf) == 0 :
+                if 'mood' in type:
+                    return -1
+                else:
+                    return ""
             x = [i[0] for i in line_conf]
             __str = max(set(x), key=x.count)
             if "mood" in type:
@@ -916,7 +920,10 @@ class BaseSchedulerSolver(BaseSolver):
         while self.find('clue_unselect') is None:
             if error_count > 3:
                 raise Exception('未成功放置线索')
-            self.tap(((last_ori[0][0] + last_ori[2][0]) / 2, (last_ori[0][1] + last_ori[2][1]) / 2))
+            self.tap(((last_ori[0][0] + last_ori[2][0]) / 2, (last_ori[0][1] + last_ori[2][1]) / 2),interval=1)
+            self.recog.update()
+            while self.get_infra_scene() == Scene.CONNECTING:
+                self.sleep(2)
             error_count += 1
 
     def switch_camp(self, id: int) -> tuple[int, int]:
