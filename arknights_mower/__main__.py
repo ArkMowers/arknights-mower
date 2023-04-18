@@ -25,17 +25,35 @@ def main(c, p, child_conn):
     init_fhlr(child_conn)
     if conf['ling_xi'] == 1:
         agent_base_config['令']['UpperLimit'] = 11
-        agent_base_config['夕']['UpperLimit'] = 11
-        agent_base_config['夕']['LowerLimit'] = 13
+        assist = '夕' if conf['ling_xi_assist'] == '' else conf['ling_xi_assist']
+        if assist in agent_base_config.keys():
+            agent_base_config[assist]['UpperLimit'] = 11
+            agent_base_config[assist]['LowerLimit'] = 13
+        else:
+            agent_base_config[assist] = {'UpperLimit': 11,'LowerLimit':13}
     elif conf['ling_xi'] == 2:
         agent_base_config['夕']['UpperLimit'] = 11
-        agent_base_config['令']['UpperLimit'] = 11
-        agent_base_config['令']['LowerLimit'] = 13
+        assist = '令' if conf['ling_xi_assist'] == '' else conf['ling_xi_assist']
+        if assist in agent_base_config.keys():
+            agent_base_config[assist]['UpperLimit'] = 11
+            agent_base_config[assist]['LowerLimit'] = 13
+        else:
+            agent_base_config[assist] = {'UpperLimit': 11,'LowerLimit':13}
     for key in list(filter(None, conf['rest_in_full'].replace('，', ',').split(','))):
         if key in agent_base_config.keys():
             agent_base_config[key]['RestInFull'] = True
         else:
             agent_base_config[key] = {'RestInFull': True}
+    for key in list(filter(None, conf['exhaust_require'].replace('，', ',').split(','))):
+        if key in agent_base_config.keys():
+            agent_base_config[key]['ExhaustRequire'] = True
+        else:
+            agent_base_config[key] = {'ExhaustRequire': True}
+    for key in list(filter(None, conf['resting_priority'].replace('，', ',').split(','))):
+        if key in agent_base_config.keys():
+            agent_base_config[key]['RestingPriority'] = 'low'
+        else:
+            agent_base_config[key] = {'RestingPriority': 'low'}
     logger.info('开始运行Mower')
     simulate()
 

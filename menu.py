@@ -37,7 +37,10 @@ def load_conf():
     conf['free_blacklist'] = conf['free_blacklist'] if 'free_blacklist' in conf.keys() else ''
     conf['run_mode'] = conf['run_mode'] if 'run_mode' in conf.keys() else 1
     conf['ling_xi'] = conf['ling_xi'] if 'ling_xi' in conf.keys() else 1
-    conf['rest_in_full'] = conf['rest_in_full'] if 'rest_in_full' in conf.keys() else ''
+    conf['rest_in_full'] = conf['rest_in_full'] if 'rest_in_full' in conf.keys() else '' # 需回满心情的干员
+    conf['exhaust_require'] = conf['exhaust_require'] if 'exhaust_require' in conf.keys() else '' # 需用尽心情的干员
+    conf['resting_priority'] = conf['resting_priority'] if 'resting_priority' in conf.keys() else '' # 宿舍低优先级干员
+    conf['ling_xi_assist'] = conf['ling_xi_assist'] if 'ling_xi_assist' in conf.keys() else '' # 协助令夕心情调配的干员
     conf['mail_enable'] = conf['mail_enable'] if 'mail_enable' in conf.keys() else 0
     conf['account'] = conf['account'] if 'account' in conf.keys() else ''
     conf['pass_code'] = conf['pass_code'] if 'pass_code' in conf.keys() else ''
@@ -208,6 +211,18 @@ def menu():
     rest_in_full = sg.InputText(conf['rest_in_full'], size=60,
                                 key='conf_rest_in_full', enable_events=True)
 
+    exhaust_require_title = sg.Text('需用尽心情的干员：', size=25)
+    exhaust_require = sg.InputText(conf['exhaust_require'], size=60,
+                                key='conf_exhaust_require', enable_events=True)
+
+    resting_priority_title = sg.Text('宿舍低优先级干员：', size=25)
+    resting_priority = sg.InputText(conf['resting_priority'], size=60,
+                                key='conf_resting_priority', enable_events=True)
+    ling_xi_assist_title = sg.Text('协助令夕心情调配的干员：', size=25)
+    ling_xi_assist = sg.InputText(conf['ling_xi_assist'], size=60,
+                                key='conf_ling_xi_assist', enable_events=True)
+
+
     # --------外部调用设置页面
     # mail
     mail_enable_1 = sg.Radio('启用', 'mail_enable', default=conf['mail_enable'] == 1,
@@ -256,11 +271,14 @@ def menu():
     setting_tab = sg.Tab('  高级设置 ',
                          [[run_mode_title, run_mode_1, run_mode_2], [ling_xi_title, ling_xi_1, ling_xi_2, ling_xi_3],
                           [enable_party_title,enable_party_1,enable_party_0],
-                          [max_resting_count_title, max_resting_count, sg.Text('', size=16), run_order_delay_title,
-                           run_order_delay],
-                          [drone_room_title, drone_room, sg.Text('', size=7), drone_count_limit_title,
-                           drone_count_limit],
-                          [rest_in_full_title, rest_in_full]], pad=((10, 10), (10, 10)))
+                          [max_resting_count_title, max_resting_count, sg.Text('', size=16), run_order_delay_title,run_order_delay],
+                          [drone_room_title, drone_room, sg.Text('', size=7), drone_count_limit_title,drone_count_limit],
+                          [rest_in_full_title, rest_in_full],
+                          [exhaust_require_title, exhaust_require],
+                          [resting_priority_title, resting_priority],
+                          [ling_xi_assist_title, ling_xi_assist]
+                          ], pad=((10, 10), (10, 10)))
+
     other_tab = sg.Tab('  外部调用 ',
                        [[mail_frame], [maa_frame]], pad=((10, 10), (10, 10)))
     window = sg.Window('Mower', [[sg.TabGroup([[main_tab, plan_tab, setting_tab, other_tab]], border_width=0,
@@ -283,11 +301,11 @@ def menu():
         drag_task.clear()  # 拖拽事件连续不间断，若未触发事件，则初始化
         if event.startswith('conf_'):
             key = event[5:]
-            conf[key] = window[event].get()
+            conf[key] = window[event].get().strip()
         elif event.startswith('int_'):
             key = event[4:]
             try:
-                conf[key] = int(window[event].get())
+                conf[key] = int(window[event].get().strip())
             except ValueError:
                 println(f'[{window[key + "_title"].get()}]需为数字')
         elif event.startswith('radio_'):
