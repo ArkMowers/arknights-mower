@@ -737,7 +737,6 @@ class BaseSchedulerSolver(BaseSolver):
             if len(line_conf) == 0 and 'mood' in type: return -1
             x = [i[0] for i in line_conf]
             __str = max(set(x), key=x.count)
-            print(__str)
             if "mood" in type:
                 if '.' in __str:
                     __str = __str.replace(".", "")
@@ -746,6 +745,9 @@ class BaseSchedulerSolver(BaseSolver):
             elif 'time' in type:
                 if '.' in __str:
                     __str = __str.replace(".", ":")
+            elif 'name' in type and __str not in agent_list:
+                __str = character_recognize.agent_name(img, self.recog.h * 1.1)
+            logger.debug(__str)
             return __str
         except Exception as e:
             logger.exception(e)
@@ -1382,16 +1384,14 @@ class BaseSchedulerSolver(BaseSolver):
                 self.swipe((self.recog.w * 0.8, self.recog.h * 0.8), (0, -self.recog.h * 0.4), interval=1, rebuild=True)
                 swiped = True
             data = {}
-            _name = character_recognize.agent_name(
-                self.recog.img[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]], self.recog.h * 1.1)
+            _name = self.read_screen(self.recog.img[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]],type="name")
             error_count = 0
             while i >= 3 and _name != '' and (
                     next((e for e in result if e['agent'] == _name), None)) is not None:
                 logger.warning("检测到滑动可能失败")
                 self.swipe((self.recog.w * 0.8, self.recog.h * 0.8), (0, -self.recog.h * 0.4), interval=1, rebuild=True)
-                _name = character_recognize.agent_name(
-                    self.recog.img[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]],
-                    self.recog.h * 1.1)
+                _name = self.read_screen(
+                    self.recog.img[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]], type="name")
                 error_count += 1
                 if error_count > 4:
                     raise Exception("超过出错上限")
