@@ -791,6 +791,9 @@ class BaseSchedulerSolver(BaseSolver):
             self.tap((self.recog.w * 0.05, self.recog.h * 0.95))
             self.todo_task = True
 
+    def share_clue(self):
+        pass
+
     def clue(self) -> None:
         # 一些识别时会用到的参数
         global x1, x2, x3, x4, y0, y1, y2
@@ -808,6 +811,13 @@ class BaseSchedulerSolver(BaseSolver):
         # 如果是线索交流的报告则返回
         self.find('clue_summary') and self.back()
 
+        # 关闭掉房间总览
+        error_count = 0
+        while self.find('clue_func') is None:
+            if error_count > 5:
+                raise Exception('未成功进入线索详情界面')
+            self.tap((self.recog.w * 0.1, self.recog.h * 0.9), interval=3)
+            error_count += 1
         # 识别右侧按钮
         (x0, y0), (x1, y1) = self.find('clue_func', strict=True)
 
@@ -819,12 +829,25 @@ class BaseSchedulerSolver(BaseSolver):
         logger.info('领取会客室线索')
         self.tap(((x0 + x1) // 2, (y0 * 5 - y1) // 4), interval=3)
         obtain = self.find('clue_obtain')
+        clue_inventory_full = False
+        if self.find('clue_full') is not None:
+            clue_inventory_full = True
         if obtain is not None and self.get_color(self.get_pos(obtain, 0.25, 0.5))[0] < 20:
             self.tap(obtain, interval=2)
             if self.find('clue_full') is not None:
                 self.back()
         else:
             self.back()
+        if not clue_inventory_full:
+            pass
+            # self.back()
+            # self.tap((x1, y1), interval=0.5)
+            # self.recog_bar()
+            # # 获得和线索视图相关的数据
+            # self.recog_view(only_y2=False)
+            # for i in range(1, 8):
+            #     # 切换阵营
+            #     self.tap(self.switch_camp(i))
 
         logger.info('放置线索')
         clue_unlock = self.find('clue_unlock')
@@ -845,50 +868,48 @@ class BaseSchedulerSolver(BaseSolver):
             get_all_clue = True
             for i in range(1, 8):
                 # 切换阵营
-                self.tap(self.switch_camp(i), rebuild=False)
-
-                # 清空界面内被选中的线索
-                self.clear_clue_mask()
-
-                # 获得和线索视图有关的数据
-                self.recog_view()
-
-                # 检测该阵营线索数量为 0
-                if len(self.ori_clue()) == 0:
+                self.tap(self.switch_camp(i))
+                if self.find('clue_notfound') is not None:
                     logger.info(f'无线索 {i}')
                     get_all_clue = False
                     break
-
-            # 检测是否拥有全部线索
-            if get_all_clue:
-                for i in range(1, 8):
-                    # 切换阵营
-                    self.tap(self.switch_camp(i), rebuild=False)
-
-                    # 获得和线索视图有关的数据
-                    self.recog_view()
-
-                    # 放置线索
-                    logger.info(f'放置线索 {i}')
-                    self.tap(((x1 + x2) // 2, y1 + 3), rebuild=False)
-
-            # 返回线索主界面
-            self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3, rebuild=False)
+                if self.find('clue_unselect') is not None:
+                    logger.debug('检验到线索已放置')
+                    continue
+                # 获得和线索视图有关的数据
+                self.recog_view()
+                ori_results = self.ori_clue()
+                last_ori = ori_results[len(ori_results) - 1]
+                if len(ori_results) == 3:
+                    # 下滑选择最后一个 优先赠送线索
+                    for swiptimes in range(1,3):
+                        self.swipe((self.recog.w * 0.8, self.recog.h * 0.8), (0, -self.recog.h * 0.4),rebuild=False)
+                    self.recog.update()
+                logger.info(f"放置线索{i}")
+                self.place_clue(last_ori)
 
         # 线索交流开启
         if clue_unlock is not None and get_all_clue:
             self.tap(clue_unlock)
             self.party_time = datetime.now() + timedelta(days=1)
-            logger.info("为期一天的趴体开始")
+            logger.info("为期一天的impart开始")
         elif clue_unlock is None:
             # 记录趴体时间
             self.back(interval=2)
             self.party_time = self.double_read_time((1765, 422, 1920, 515))
-            logger.info(f"趴体结束时间为： {self.party_time}")
+            logger.info(f"impart结束时间为： {self.party_time}")
         else:
             self.back(interval=2)
         logger.info('返回基建主界面')
         self.back(interval=2)
+
+    def place_clue(self,last_ori):
+        error_count =0
+        while self.find('clue_unselect') is None:
+            if error_count > 3:
+                raise Exception('未成功放置线索')
+            self.tap(((last_ori[0][0] + last_ori[2][0]) / 2, (last_ori[0][1] + last_ori[2][1]) / 2))
+            error_count += 1
 
     def switch_camp(self, id: int) -> tuple[int, int]:
         """ 切换阵营 """
