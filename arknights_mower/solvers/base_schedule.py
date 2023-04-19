@@ -349,7 +349,7 @@ class BaseSchedulerSolver(BaseSolver):
                     self.drone(self.drone_room)
                     logger.info(f"记录本次无人机使用时间为:{datetime.now()}")
                     self.drone_time = datetime.now()
-            if self.party_time is None and self.enable_party :
+            if self.party_time is None and self.enable_party:
                 self.clue()
             if notification is None:
                 self.sleep(1)
@@ -418,7 +418,7 @@ class BaseSchedulerSolver(BaseSolver):
                     continue
                 if not (_name == plan[key][idx]['agent'] or (
                         (_name in plan[key][idx]["replacement"]) and len(plan[key][idx]["replacement"]) > 0) or not
-                        self.op_data.operators[_name].need_to_refresh()):
+                        self.op_data.operators[_name].need_to_refresh(1.5)):
                     if not need_fix:
                         fix_plan[key] = ['Current'] * len(plan[key])
                         need_fix = True
@@ -737,6 +737,9 @@ class BaseSchedulerSolver(BaseSolver):
             if len(line_conf) == 0 :
                 if 'mood' in type:
                     return -1
+                elif 'name' in type:
+                    logger.debug("使用老版识别")
+                    return character_recognize.agent_name(img, self.recog.h * 1.1)
                 else:
                     return ""
             x = [i[0] for i in line_conf]
@@ -750,6 +753,7 @@ class BaseSchedulerSolver(BaseSolver):
                 if '.' in __str:
                     __str = __str.replace(".", ":")
             elif 'name' in type and __str not in agent_list:
+                logger.debug("使用老版识别")
                 __str = character_recognize.agent_name(img, self.recog.h * 1.1)
             logger.debug(__str)
             return __str
