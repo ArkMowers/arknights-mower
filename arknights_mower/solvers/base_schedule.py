@@ -418,7 +418,7 @@ class BaseSchedulerSolver(BaseSolver):
                     continue
                 if not (_name == plan[key][idx]['agent'] or (
                         (_name in plan[key][idx]["replacement"]) and len(plan[key][idx]["replacement"]) > 0) or not
-                        self.op_data.operators[_name].need_to_refresh(1.5)):
+                        self.op_data.operators[_name].need_to_refresh(2.5)):
                     if not need_fix:
                         fix_plan[key] = ['Current'] * len(plan[key])
                         need_fix = True

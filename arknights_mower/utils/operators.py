@@ -204,5 +204,5 @@ class Operator(object):
                     return True
                 else:
                     return False
-            return self.need_to_refresh(1.5) or self.current_room != self.room or self.index != self.current_index
+            return self.need_to_refresh(2.5) or self.current_room != self.room or self.index != self.current_index
         return False
