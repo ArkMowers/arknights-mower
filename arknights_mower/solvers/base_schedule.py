@@ -561,6 +561,9 @@ class BaseSchedulerSolver(BaseSolver):
                                         break
                         continue
                     if op.group != '':
+                        if op.group in self.op_data.exhaust_group:
+                            # 忽略掉用尽心情的分组
+                            continue
                         # 如果在group里则同时上下班
                         group_resting = self.op_data.groups[op.group]
                         _replacement, _plan, high_free, low_free = self.get_resting_plan(
@@ -601,6 +604,10 @@ class BaseSchedulerSolver(BaseSolver):
                 if not success:
                     break
                 x = self.op_data.operators[agent]
+                if self.op_data.get_dorm_by_name(x.name)[0] is not None:
+                    # 如果干员已经被安排了
+                    success = False
+                    break
                 _rep = next((obj for obj in x.replacement if (not (
                         self.op_data.operators[obj].current_room != '' and not self.op_data.operators[
                     obj].current_room.startswith('dormitory'))) and obj not in ['但书',
@@ -1129,13 +1136,13 @@ class BaseSchedulerSolver(BaseSolver):
                 self.tap((self.recog.w * 0.75, self.recog.h * 0.8))
                 while self.get_infra_scene() == Scene.CONNECTING:
                     self.sleep(3)
+                self.recog.update()
+                self.recog.save_screencap('run_order')
                 if self.drone_room is not None:
                     break
                 if not_customize:
                     drone_count = self.digit_reader.get_drone(self.recog.gray)
                     logger.info(f'当前无人机数量为：{drone_count}')
-                    self.recog.update()
-                    self.recog.save_screencap('run_order')
                     # 200 为识别错误
                     if drone_count < self.drone_count_limit or drone_count == 201:
                         logger.info(f"无人机数量小于{self.drone_count_limit}->停止")
