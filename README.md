@@ -1,11 +1,10 @@
 
 
 <center>
+<img src="https://github.com/Konano/arknights-mower/raw/main/logo.png">
+<h1>arknights-mower</h1>
+</center>
 
-
-![logo](https://github.com/Konano/arknights-mower/raw/main/logo.png)
-
-# arknights-mower
 
 [![GitHub License](https://img.shields.io/github/license/Konano/arknights-mower?style=flat-square)](https://github.com/Konano/arknights-mower/blob/master/LICENSE)
 [![PyPI](https://img.shields.io/pypi/v/arknights-mower?style=flat-square)](https://pypi.org/project/arknights-mower/)
@@ -14,10 +13,10 @@
 ![GitHub last commit (branch)](https://img.shields.io/github/last-commit/Konano/arknights-mower/main?style=flat-square)
 [![Code Climate maintainability](https://img.shields.io/codeclimate/maintainability/Konano/arknights-mower?style=flat-square)](https://codeclimate.com/github/Konano/arknights-mower)
 [![Telegram Group Online](https://img.shields.io/endpoint?color=blue&style=flat-square&url=https%3A%2F%2Ftg.sumanjay.workers.dev%2Fark_mover)](https://t.me/ark_mover)
-
+<center>
 7*24 小时不间断长草，让你忘掉这个游戏！
-
 </center>
+
 
 ## ⚠ 注意事项
 
