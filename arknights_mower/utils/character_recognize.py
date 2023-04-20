@@ -168,7 +168,7 @@ def agent(img, draw=False):
                         ret_agent.append(res)
                         ret_succ.append(poly)
                         continue
-                    logger.warning(
+                    logger.debug(
                         f'干员名称识别异常：{x[1]} 为不存在的数据，请报告至 https://github.com/Konano/arknights-mower/issues'
                     )
                     saveimg(__img, 'failure_agent')
