@@ -1,4 +1,4 @@
-<div align="center">
+
 
 ![logo](https://github.com/Konano/arknights-mower/raw/main/logo.png)
 
@@ -14,7 +14,6 @@
 
 7*24 小时不间断长草，让你忘掉这个游戏！
 
-</div>
 
 ## ⚠ 注意事项
 
@@ -303,8 +302,6 @@ Solver().base(arrange=plan)
 
 ## Star History
 
-<div align="center">
 
 [![Star History Chart](https://api.star-history.com/svg?repos=Konano/arknights-mower&type=Date)](https://star-history.com/#Konano/arknights-mower&Date)
 
-</div>
