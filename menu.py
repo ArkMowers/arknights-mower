@@ -165,7 +165,7 @@ def menu():
     # 排班表设置标签
     for i in range(1, 6):
         set_area = sg.Column([[sg.Text('干员：'),
-                               sg.InputCombo(['Free'] + agent_list, size=20, key='agent' + str(i)),
+                               sg.Combo(['Free'] + agent_list, size=20, key='agent' + str(i), change_submits=True),
                                sg.Text('组：'),
                                sg.InputText('', size=15, key='group' + str(i)),
                                sg.Text('替换：'),
@@ -299,10 +299,10 @@ def menu():
             run_script(event[:event.rindex('-')], drag_task)
             continue
         drag_task.clear()  # 拖拽事件连续不间断，若未触发事件，则初始化
-        if event.startswith('conf_'):
+        if event.startswith('conf_'): # conf开头，为字符串输入的配置
             key = event[5:]
             conf[key] = window[event].get().strip()
-        elif event.startswith('int_'):
+        elif event.startswith('int_'): # int开头，为数值型输入的配置
             key = event[4:]
             try:
                 conf[key] = int(window[event].get().strip())
@@ -324,15 +324,17 @@ def menu():
         elif event.startswith('btn_'):  # 设施按钮
             btn = event
             init_btn(event)
+        elif event.endswith('-agent_change'): #干员填写
+            input_agent = window[event[:event.rindex('-')]].get().strip()
+            window[event[:event.rindex('-')]].update(value=input_agent,values=list(filter(lambda s:input_agent in s,['Free'] + agent_list)))
+        elif event.startswith('agent'):
+            input_agent = window[event].get().strip()
+            window[event].update(value=input_agent,values=list(filter(lambda s:input_agent in s,['Free'] + agent_list)))
         elif event == 'savePlan':  # 保存设施信息
             save_btn(btn)
         elif event == 'clearPlan': # 清空当前设施信息
             clear_btn(btn)
         elif event == 'on':
-            # if adb.get() == '':
-            #     println('adb未设置！')
-            #     continue
-
             on_btn.update(visible=False)
             off_btn.update(visible=True)
             clear()
@@ -359,6 +361,9 @@ def bind_scirpt():
             window[event].bind("<B1-Motion>", "-motion-script")
             window[event].bind("<ButtonRelease-1>", "-ButtonRelease-script")
             window[event].bind("<Enter>", "-Enter-script")
+    for i in range(5):
+        event = f'agent{str(i + 1)}'
+        window[event].bind("<Key>", "-agent_change")
 
 
 def run_script(event, drag_task):

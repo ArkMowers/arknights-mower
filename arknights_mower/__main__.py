@@ -55,6 +55,7 @@ def main(c, p, child_conn):
         else:
             agent_base_config[key] = {'RestingPriority': 'low'}
     logger.info('开始运行Mower')
+    logger.debug(agent_base_config)
     simulate()
 
 
