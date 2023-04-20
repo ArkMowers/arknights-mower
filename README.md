@@ -1,6 +1,8 @@
 
 
-<div style="text-align: center;">
+<center>
+
+
 ![logo](https://github.com/Konano/arknights-mower/raw/main/logo.png)
 
 # arknights-mower
@@ -15,7 +17,7 @@
 
 7*24 小时不间断长草，让你忘掉这个游戏！
 
-</div>
+</center>
 
 ## ⚠ 注意事项
 
