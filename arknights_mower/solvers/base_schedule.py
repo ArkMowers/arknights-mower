@@ -910,7 +910,8 @@ class BaseSchedulerSolver(BaseSolver):
                     self.recog.update()
                 logger.info(f"放置线索{i}")
                 self.place_clue(last_ori)
-
+                # 返回线索主界面
+            self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3, rebuild=False)
         # 线索交流开启
         if clue_unlock is not None and get_all_clue:
             self.tap(clue_unlock)
