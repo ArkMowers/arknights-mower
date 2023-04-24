@@ -1588,6 +1588,14 @@ class BaseSchedulerSolver(BaseSolver):
         for room in self.reload_room:
             try:
                 self.enter_room(room)
+                self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=0.5)
+                # 补货
+                self.tap((self.recog.w * 0.75, self.recog.h * 0.3), interval=0.5)
+                self.tap((self.recog.w * 0.75, self.recog.h * 0.9), interval=0.5)
+                while self.get_infra_scene() == Scene.CONNECTING:
+                    self.sleep(2)
+                self.back()
+                self.back()
             except Exception as e:
                 logger.error(e)
                 error = True
