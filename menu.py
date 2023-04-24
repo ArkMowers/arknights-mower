@@ -60,6 +60,7 @@ def load_conf():
     conf['drone_count_limit'] = conf['drone_count_limit'] if 'drone_count_limit' in conf.keys() else 92  # 无人机阈值
     conf['run_order_delay'] = conf['run_order_delay'] if 'run_order_delay' in conf.keys() else 10  # 跑单提前10分钟运行
     conf['drone_room'] = conf['drone_room'] if 'drone_room' in conf.keys() else ''  # 无人机使用房间
+    conf['reload_room'] = conf['reload_room'] if 'reload_room' in conf.keys() else ''  # 搓玉补货房间
     conf['enable_party'] = conf['enable_party'] if 'enable_party' in conf.keys() else 1  # 是否启用收取线索
 
 
@@ -205,8 +206,11 @@ def menu():
     run_order_delay = sg.InputText(conf['run_order_delay'], size=5,
                                    key='int_run_order_delay', enable_events=True)
     drone_room_title = sg.Text('无人机使用房间（room_X_X）：', size=25, key='drone_room_title')
+    reload_room_title = sg.Text('搓玉补货房间（逗号分隔房间名）：', size=25, key='reload_room_title')
     drone_room = sg.InputText(conf['drone_room'], size=15,
                               key='conf_drone_room', enable_events=True)
+    reload_room = sg.InputText(conf['reload_room'], size=30,
+                              key='conf_reload_room', enable_events=True)
     rest_in_full_title = sg.Text('需要回满心情的干员：', size=25)
     rest_in_full = sg.InputText(conf['rest_in_full'], size=60,
                                 key='conf_rest_in_full', enable_events=True)
@@ -273,6 +277,7 @@ def menu():
                           [enable_party_title,enable_party_1,enable_party_0],
                           [max_resting_count_title, max_resting_count, sg.Text('', size=16), run_order_delay_title,run_order_delay],
                           [drone_room_title, drone_room, sg.Text('', size=7), drone_count_limit_title,drone_count_limit],
+                          [reload_room_title, reload_room],
                           [rest_in_full_title, rest_in_full],
                           [exhaust_require_title, exhaust_require],
                           [resting_priority_title, resting_priority],

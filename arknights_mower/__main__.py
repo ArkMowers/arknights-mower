@@ -106,6 +106,7 @@ def inialize(tasks, scheduler=None):
         base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
         base_scheduler.error = False
         base_scheduler.drone_room = None if conf['drone_room'] == '' else conf['drone_room']
+        base_scheduler.reload_room = list(filter(None, conf['reload_room'].replace('，', ',').split(',')))
         base_scheduler.drone_execution_gap = 4
         base_scheduler.run_order_delay = conf['run_order_delay']
         base_scheduler.agent_base_config = agent_base_config
@@ -147,6 +148,10 @@ def simulate():
                     logger.info(subject)
                     base_scheduler.send_email(context, subject)
                     time.sleep(sleep_time)
+            if 'type' in base_scheduler.tasks[0].keys() and base_scheduler.tasks[0]['type'].split('_')[0] == 'maa':
+                logger.info(f"开始执行 MAA {base_scheduler.tasks[0]['type'].split('_')[1]} 任务")
+                base_scheduler.maa_plan_solver((base_scheduler.tasks[0]['type'].split('_')[1]).split(','), one_time=True)
+                del base_scheduler.tasks[0]
             base_scheduler.run()
             reconnect_tries = 0
         except ConnectionError as e:
