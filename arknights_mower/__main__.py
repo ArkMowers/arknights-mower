@@ -27,18 +27,16 @@ def main(c, p, child_conn):
         agent_base_config['令']['UpperLimit'] = 11
         assist = '夕' if conf['ling_xi_assist'] == '' else conf['ling_xi_assist']
         if assist in agent_base_config.keys():
-            agent_base_config[assist]['UpperLimit'] = 11
             agent_base_config[assist]['LowerLimit'] = 13
         else:
-            agent_base_config[assist] = {'UpperLimit': 11,'LowerLimit':13}
+            agent_base_config[assist] = {'LowerLimit':13}
     elif conf['ling_xi'] == 2:
         agent_base_config['夕']['UpperLimit'] = 11
         assist = '令' if conf['ling_xi_assist'] == '' else conf['ling_xi_assist']
         if assist in agent_base_config.keys():
-            agent_base_config[assist]['UpperLimit'] = 11
             agent_base_config[assist]['LowerLimit'] = 13
         else:
-            agent_base_config[assist] = {'UpperLimit': 11,'LowerLimit':13}
+            agent_base_config[assist] = {'LowerLimit':13}
     for key in list(filter(None, conf['rest_in_full'].replace('，', ',').split(','))):
         if key in agent_base_config.keys():
             agent_base_config[key]['RestInFull'] = True

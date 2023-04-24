@@ -60,12 +60,13 @@ drone_room = None
 # 无人机执行间隔时间 （小时）
 drone_execution_gap = 4
 
+reload_room = []
+
 # 全自动基建排班计划：
 # 这里定义了一套全自动基建的排班计划 plan_1
 # agent 为常驻高效组的干员名
 
 # group 为干员编队，你希望任何编队的人一起上下班则给他们编一样的名字
-    # 编队最大数不支持超过4个干员 否则可能会在计算自动排班的时候报错
 # replacement 为替换组干员备选
     # 暖机干员的自动换班
         # 目前只支持一个暖机干员休息
@@ -85,13 +86,13 @@ plan = {
     "default": "plan_1",
     "plan_1": {
         # 中枢
-        'central': [{'agent': '焰尾', 'group': '红松骑士', 'replacement': ["凯尔希","诗怀雅"]},
-                    {'agent': '琴柳', 'group': '', 'replacement': ["凯尔希","阿米娅"]},
-                    {'agent': '重岳', 'group': '夕', 'replacement': ["玛恩纳", "清道夫", "凯尔希", "阿米娅", '坚雷']},
-                    {'agent': '夕', 'group': '夕', 'replacement': ["玛恩纳", "清道夫", "凯尔希", "阿米娅", '坚雷']},
-                    {'agent': '令', 'group': '夕', 'replacement': ["玛恩纳", "清道夫", "凯尔希", "阿米娅", '坚雷']},
+        'central': [{'agent': '焰尾', 'group': '红松骑士', 'replacement': [ "阿米娅","凯尔希",]},
+                    {'agent': '琴柳', 'group': '夕', 'replacement': [ "阿米娅","凯尔希","玛恩纳"]},
+                    {'agent': '重岳', 'group': '', 'replacement': ["玛恩纳", "清道夫", "凯尔希", "阿米娅", '坚雷']},
+                    {'agent': '夕', 'group': '夕', 'replacement': ["阿米娅","凯尔希","玛恩纳", "清道夫", "阿米娅", '坚雷']},
+                    {'agent': '令', 'group': '', 'replacement': ["玛恩纳", "清道夫", "凯尔希", "阿米娅", '坚雷']},
                     ],
-        'contact': [{'agent': '絮雨', 'group': '絮雨', 'replacement': []}],
+        'contact': [{'agent': '桑葚', 'group': '', 'replacement': ['艾雅法拉']}],
         # 宿舍
         'dormitory_1': [{'agent': '流明', 'group': '', 'replacement': []},
                         {'agent': '闪灵', 'group': '', 'replacement': []},
@@ -113,23 +114,23 @@ plan = {
                         ],
         'dormitory_4': [{'agent': '波登可', 'group': '', 'replacement': []},
                         {'agent': '夜莺', 'group': '', 'replacement': []},
-                        {'agent': '菲亚梅塔', 'group': '', 'replacement': ['迷迭香', '黑键', '絮雨','至简']},
+                        {'agent': '菲亚梅塔', 'group': '', 'replacement': ['重岳', '令', '乌有']},
                         {'agent': 'Free', 'group': '', 'replacement': []},
                         {'agent': 'Free', 'group': '', 'replacement': []}],
-        'factory':[{'agent': '年', 'replacement': ['九色鹿','芳汀'], 'group': '夕'}],
+        'factory': [{'agent': '年', 'replacement': ['九色鹿', '芳汀'], 'group': '夕'}],
         # 会客室
-        'meeting': [{'agent': '陈', 'replacement': ['星极','远山'], 'group': ''},
-                    {'agent': '红', 'replacement': ['远山','星极'], 'group': ''} ],
-        'room_1_1': [{'agent': '黑键', 'group': '', 'replacement': []},
-                     {'agent': '乌有', 'group': '夕', 'replacement': ['但书','图耶']},
-                     {'agent': '空弦', 'group': '夕', 'replacement': ['龙舌兰', '鸿雪']}
+        'meeting': [{'agent': '伊内丝', 'replacement': ['陈', '红', '远山'], 'group': ''},
+                    {'agent': '见行者', 'replacement': ['陈', '红', '星极'], 'group': ''}],
+        'room_1_1': [{'agent': '乌有', 'group': '', 'replacement': ['伺夜']},
+                     {'agent': '空弦', 'group': '图耶', 'replacement': ['龙舌兰', '鸿雪']},
+                     {'agent': '伺夜', 'group': '图耶', 'replacement': ['但书','图耶']},
                      # {'agent': '伺夜', 'group': '图耶', 'replacement': ['但书','能天使']},
-                     # {'agent': '空弦', 'group': '图耶', 'replacement': ['龙舌兰', '雪雉']}
+                     # {'agent': '空弦', '鸿雪': '图耶', 'replacement': ['龙舌兰', '雪雉']}
                      ],
-        'room_1_2': [{'agent': '迷迭香', 'group': '', 'replacement': []},
-                     {'agent': '砾', 'group': '', 'Type': '', 'replacement': ['斑点','夜烟']},
-                     {'agent': '至简', 'group': '', 'replacement': []}],
-        'room_1_3': [{'agent': '承曦格雷伊', 'group': '异客', 'replacement': ['炎狱炎熔','格雷伊']}],
+        'room_1_2': [{'agent': '槐琥', 'group': '槐琥', 'replacement': ['贝娜']},
+                     {'agent': '砾', 'group': '槐琥', 'Type': '', 'replacement': ['泡泡']},
+                     {'agent': '至简', 'group': '槐琥', 'replacement': ['火神']}],
+        'room_1_3': [{'agent': '承曦格雷伊', 'group': '异客', 'replacement': ['炎狱炎熔', '格雷伊']}],
         'room_2_2': [{'agent': '温蒂', 'group': '异客', 'replacement': ['火神']},
                      # {'agent': '异客', 'group': '异客', 'Type': '', 'replacement': ['贝娜']},
                      {'agent': '异客', 'group': '异客', 'Type': '', 'replacement': ['贝娜']},
@@ -137,14 +138,14 @@ plan = {
         'room_3_1': [{'agent': '稀音', 'group': '稀音', 'replacement': ['贝娜']},
                      {'agent': '帕拉斯', 'group': '稀音', 'Type': '', 'replacement': ['泡泡']},
                      {'agent': '红云', 'group': '稀音', 'replacement': ['火神']}],
-        'room_2_3': [{'agent': '澄闪', 'group': '', 'replacement': ['炎狱炎熔', '格雷伊']}],
+        'room_2_3': [{'agent': '澄闪', 'group': '澄闪', 'replacement': ['炎狱炎熔', '格雷伊']}],
         'room_2_1': [{'agent': '食铁兽', 'group': '食铁兽', 'replacement': ['泡泡']},
                      {'agent': '断罪者', 'group': '食铁兽', 'replacement': ['火神']},
-                     {'agent': '槐琥', 'group': '食铁兽', 'replacement': ['贝娜']}],
+                     {'agent': '截云', 'group': '夕', 'replacement': ['迷迭香']}],
         'room_3_2': [{'agent': '灰毫', 'group': '红松骑士', 'replacement': ['贝娜']},
                      {'agent': '远牙', 'group': '红松骑士', 'Type': '', 'replacement': ['泡泡']},
                      {'agent': '野鬃', 'group': '红松骑士', 'replacement': ['火神']}],
-        'room_3_3': [{'agent': '雷蛇', 'group': '', 'replacement': ['炎狱炎熔','格雷伊']}]
+        'room_3_3': [{'agent': '雷蛇', 'group': '澄闪', 'replacement': ['炎狱炎熔', '格雷伊']}]
     }
 }
 
@@ -155,39 +156,37 @@ plan = {
 # RestingPriority：休息优先级，低优先级不会使用单回技能。
 
 agent_base_config = {
-    "Default":{"UpperLimit": 24,"LowerLimit": 0,"ExhaustRequire": False,"ArrangeOrder":[2,"false"],"RestInFull": False},
-    # 卡贸易站
-    "令":{"UpperLimit": 11,"LowerLimit": 13,"ArrangeOrder":[2,"true"]},
-    "夕": {"UpperLimit": 11,"ArrangeOrder":[2,"true"]},
-    # 卡制造站
-    #"令": {"UpperLimit": 11, "LowerLimit": 13, "ArrangeOrder": [2, "true"]},
-    #"夕": {"UpperLimit": 11, "ArrangeOrder": [2, "true"]},
-    "稀音":{"ExhaustRequire": True,"ArrangeOrder":[2,"true"],"RestInFull": True},
-    "巫恋":{"ArrangeOrder":[2,"true"]},
-    "柏喙":{"ExhaustRequire": True,"ArrangeOrder":[2,"true"]},
-    "龙舌兰":{"ArrangeOrder":[2,"true"]},
-    "空弦":{"ArrangeOrder":[2,"true"],"RestingPriority": "low"},
-    "伺夜":{"ArrangeOrder":[2,"true"]},
-    "绮良":{"ArrangeOrder":[2,"true"]},
-    "但书":{"ArrangeOrder":[2,"true"]},
-    "泡泡":{"ArrangeOrder":[2,"true"]},
-    "火神":{"ArrangeOrder":[2,"true"]},
-    "黑键":{"ArrangeOrder":[2,"true"]},
-    "波登可":{"ArrangeOrder":[ 2, "false" ]},
-    "夜莺":{"ArrangeOrder":[ 2, "false" ]},
-    "菲亚梅塔":{"ArrangeOrder":[ 2, "false" ]},
-    "流明":{"ArrangeOrder":[ 2, "false" ]},
-    "蜜莓":{"ArrangeOrder":[ 2, "false" ]},
-    "闪灵":{"ArrangeOrder":[ 2, "false" ]},
-    "杜林":{"ArrangeOrder":[ 2, "false" ]},
-    "褐果":{"ArrangeOrder":[ 2, "false" ]},
-    "车尔尼":{"ArrangeOrder":[ 2, "false" ]},
-    "安比尔":{"ArrangeOrder":[ 2, "false" ]},
-    "爱丽丝":{"ArrangeOrder":[ 2, "false" ]},
-    "桃金娘":{"ArrangeOrder":[ 2, "false" ]},
+    "Default": {"UpperLimit": 24, "LowerLimit": 0, "ExhaustRequire": False, "ArrangeOrder": [2, "false"],
+                "RestInFull": False},
+    "琴柳": {"UpperLimit": 19, "LowerLimit": 13},
+    "令": {"ArrangeOrder": [2, "true"]},
+    "夕": {"UpperLimit": 6, "ArrangeOrder": [2, "true"]},
+    "稀音": {"ExhaustRequire": True, "ArrangeOrder": [2, "true"], "RestInFull": True},
+    "巫恋": {"ArrangeOrder": [2, "true"]},
+    "柏喙": {"ExhaustRequire": True, "ArrangeOrder": [2, "true"]},
+    "龙舌兰": {"ArrangeOrder": [2, "true"]},
+    "空弦": {"ArrangeOrder": [2, "true"], "RestingPriority": "low"},
+    "伺夜": {"ArrangeOrder": [2, "true"], "RestingPriority": "low"},
+    "绮良": {"ArrangeOrder": [2, "true"]},
+    "但书": {"ArrangeOrder": [2, "true"]},
+    "泡泡": {"ArrangeOrder": [2, "true"]},
+    "火神": {"ArrangeOrder": [2, "true"]},
+    "黑键": {"ArrangeOrder": [2, "true"]},
+    "波登可": {"ArrangeOrder": [2, "false"]},
+    "夜莺": {"ArrangeOrder": [2, "false"]},
+    "菲亚梅塔": {"ArrangeOrder": [2, "false"]},
+    "流明": {"ArrangeOrder": [2, "false"]},
+    "蜜莓": {"ArrangeOrder": [2, "false"]},
+    "闪灵": {"ArrangeOrder": [2, "false"]},
+    "杜林": {"ArrangeOrder": [2, "false"]},
+    "褐果": {"ArrangeOrder": [2, "false"]},
+    "车尔尼": {"ArrangeOrder": [2, "false"]},
+    "安比尔": {"ArrangeOrder": [2, "false"]},
+    "爱丽丝": {"ArrangeOrder": [2, "false"]},
+    "桃金娘": {"ArrangeOrder": [2, "false"]},
     "帕拉斯": {"RestingPriority": "low"},
     "红云": {"RestingPriority": "low", "ArrangeOrder": [2, "true"]},
-    "承曦格雷伊": {"ArrangeOrder": [2, "true"],"RestInFull": True},
+    "承曦格雷伊": {"ArrangeOrder": [2, "true"], "RestInFull": True},
     "乌有": {"ArrangeOrder": [2, "true"], "RestingPriority": "low"},
     "图耶": {"ArrangeOrder": [2, "true"]},
     "鸿雪": {"ArrangeOrder": [2, "true"]},
@@ -256,6 +255,7 @@ def inialize(tasks, scheduler=None):
         base_scheduler.drone_execution_gap = drone_execution_gap
         base_scheduler.agent_base_config = agent_base_config
         base_scheduler.run_order_delay = 10  # 跑单提前10分钟运行
+        base_scheduler.reload_room = reload_room
         return base_scheduler
     else:
         scheduler.device = cli.device
@@ -285,17 +285,21 @@ def simulate():
                 # 如果任务间隔时间超过9分钟则启动MAA
                 if sleep_time > 540:
                     base_scheduler.maa_plan_solver()
-                elif  sleep_time > 0 : time.sleep(sleep_time)
+                elif sleep_time > 0:
+                    time.sleep(sleep_time)
+            if 'type' in base_scheduler.tasks[0].keys() and base_scheduler.tasks[0]['type'].split('_')[0] == 'maa':
+                base_scheduler.maa_plan_solver((base_scheduler.tasks[0]['type'].split('_')[1]).split(','), one_time=True)
+                del base_scheduler.tasks[0]
             base_scheduler.run()
             reconnect_tries = 0
         except ConnectionError as e:
-            reconnect_tries +=1
+            reconnect_tries += 1
             if reconnect_tries < reconnect_max_tries:
                 logger.warning(f'连接端口断开....正在重连....')
                 connected = False
                 while not connected:
                     try:
-                        base_scheduler = inialize([],base_scheduler)
+                        base_scheduler = inialize([], base_scheduler)
                         break
                     except Exception as ce:
                         logger.error(ce)

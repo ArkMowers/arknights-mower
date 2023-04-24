@@ -55,6 +55,8 @@ class BaseSchedulerSolver(BaseSolver):
         self.max_resting_count = 4
         self.party_time = None
         self.drone_time = None
+        self.reload_time = None
+        self.reload_room = None
         self.run_order_delay=10
         self.enable_party = True
         self.digit_reader = DigitReader()
@@ -323,6 +325,8 @@ class BaseSchedulerSolver(BaseSolver):
                 # 如果任务名称包含干员名,则为动态生成的
                 elif 'type' in self.task.keys() and self.task['type'].split(',')[0] in agent_list:
                     self.overtake_room()
+                elif 'type' in self.task.keys() and self.task['type'] == 'impart':
+                    self.skip(False)
                 del self.tasks[0]
             except Exception as e:
                 logger.exception(e)
@@ -351,6 +355,9 @@ class BaseSchedulerSolver(BaseSolver):
                     self.drone_time = datetime.now()
             if self.party_time is None and self.enable_party:
                 self.clue()
+            if self.reload_room is not None:
+                if self.reload_time is None or self.reload_time < datetime.now()- timedelta(hours=24):
+                    self.reload()
             if notification is None:
                 self.sleep(1)
                 notification = detector.infra_notification(self.recog.img)
@@ -925,6 +932,10 @@ class BaseSchedulerSolver(BaseSolver):
         else:
             self.back(interval=2)
         logger.info('返回基建主界面')
+        if self.party_time is not None:
+            if (next((e for e in self.tasks if e['time'] == self.party_time and e['type']=="maa_Mall"), None)) is None:
+                self.tasks.append({'time': self.party_time - timedelta(milliseconds=1), 'plan': {},'type': 'impart'})
+                self.tasks.append({'time': self.party_time, 'plan': {}, 'type': 'maa_Mall'})
         self.back(interval=2)
 
     def place_clue(self,last_ori):
@@ -1225,7 +1236,7 @@ class BaseSchedulerSolver(BaseSolver):
         logger.info(f'开始 {("打开" if turn_on else "关闭")} {type} 筛选')
         self.tap((self.recog.w * 0.95, self.recog.h * 0.05), interval=1)
         if type == "not_in_dorm":
-            not_in_dorm = self.find('arrange_non_check_in', score=0.85)
+            not_in_dorm = self.find('arrange_non_check_in', score=0.9)
             if turn_on ^ (not_in_dorm is None):
                 self.tap((self.recog.w * 0.3, self.recog.h * 0.5), interval=0.5)
         # 确认
@@ -1434,7 +1445,7 @@ class BaseSchedulerSolver(BaseSolver):
             data['agent'] = _name
             data['mood'] = _mood
             if i in read_time_index:
-                if _mood in [24] or (_mood == 0 and not room.startswith('dorm')):
+                if _mood ==24 :
                     data['time'] = datetime.now()
                 else:
                     upperLimit = 21600
@@ -1569,10 +1580,27 @@ class BaseSchedulerSolver(BaseSolver):
         logger.info('返回基建主界面')
 
     def skip(self,skip_all=True):
-        self.todo_task = True
         self.planned = True
         if skip_all:
             self.todo_task = True
+    def reload(self):
+        error = False
+        for room in self.reload_room:
+            try:
+                self.enter_room(room)
+            except Exception as e:
+                logger.error(e)
+                error = True
+                self.recog.update()
+                back_count = 0
+                while self.get_infra_scene() != Scene.INFRA_MAIN:
+                    self.back()
+                    self.recog.update()
+                    back_count += 1
+                    if back_count > 3:
+                        raise e
+        if not error:
+            self.reload_time = datetime.now()
 
     @Asst.CallBackType
     def log_maa(msg, details, arg):
@@ -1587,6 +1615,7 @@ class BaseSchedulerSolver(BaseSolver):
         # 例如 asst = Asst(callback=my_callback)
         Asst.load(path=self.maa_config['maa_path'])
         self.MAA = Asst(callback=self.log_maa)
+        self.stages = []
         # self.MAA.set_instance_option(2, 'maatouch')
         # 请自行配置 adb 环境变量，或修改为 adb 可执行程序的路径
         # logger.info(self.device.client.device_id)
@@ -1596,10 +1625,52 @@ class BaseSchedulerSolver(BaseSolver):
             logger.info("MAA 连接失败")
             raise Exception("MAA 连接失败")
 
-    def maa_plan_solver(self):
-
+    def append_maa_task(self, type):
+        if type in ['StartUp','Visit','Award']:
+            self.MAA.append_task(type)
+        elif type == 'Fight':
+            _plan = self.maa_config['weekly_plan'][get_server_weekday()]
+            logger.info(f"现在服务器是{_plan['weekday']}")
+            for stage in _plan["stage"]:
+                logger.info(f"添加关卡:{stage}")
+                self.MAA.append_task('Fight', {
+                    # 空值表示上一次
+                    # 'stage': '',
+                    'stage': stage,
+                    'medicine': _plan["medicine"],
+                    'stone': 0,
+                    'times': 999,
+                    'report_to_penguin': True,
+                    'client_type': '',
+                    'penguin_id': '',
+                    'DrGrandet': False,
+                    'server': 'CN'
+                })
+                self.stages.append(stage)
+        elif type =='Recruit':
+            self.MAA.append_task('Recruit', {
+                'select': [4],
+                'confirm': [3, 4],
+                'times': 4,
+                'refresh': True,
+                "recruitment_time": {
+                    "3": 460,
+                    "4": 540
+                }
+            })
+        elif type == 'Mall':
+            credit_fight = False
+            if len(self.stages) > 0 and self.stages[- 1] != '':
+                credit_fight = True
+            self.MAA.append_task('Mall', {
+                'shopping': True,
+                'buy_first': ['龙门币', '赤金'],
+                'blacklist': ['家具', '碳', '加急'],
+                'credit_fight':credit_fight
+            })
+    def maa_plan_solver(self,tasks ='All',one_time = False):
         try:
-            if self.maa_config['last_execution'] is not None and datetime.now() - timedelta(
+            if not one_time and self.maa_config['last_execution'] is not None and datetime.now() - timedelta(
                     seconds=self.maa_config['maa_execution_gap'] * 3600) < self.maa_config['last_execution']:
                 logger.info("间隔未超过设定时间，不启动maa")
             else:
@@ -1607,44 +1678,10 @@ class BaseSchedulerSolver(BaseSolver):
                 self.back_to_index()
                 # 任务及参数请参考 docs/集成文档.md
                 self.inialize_maa()
-                self.MAA.append_task('StartUp')
-                _plan = self.maa_config['weekly_plan'][get_server_weekday()]
-                logger.info(f"现在服务器是{_plan['weekday']}")
-                fights = []
-                for stage in _plan["stage"]:
-                    logger.info(f"添加关卡:{stage}")
-                    self.MAA.append_task('Fight', {
-                        # 空值表示上一次
-                        # 'stage': '',
-                        'stage': stage,
-                        'medicine': _plan["medicine"],
-                        'stone': 0,
-                        'times': 999,
-                        'report_to_penguin': True,
-                        'client_type': '',
-                        'penguin_id': '',
-                        'DrGrandet': False,
-                        'server': 'CN'
-                    })
-                    fights.append(stage)
-                self.MAA.append_task('Recruit', {
-                    'select': [4],
-                    'confirm': [3, 4],
-                    'times': 4,
-                    'refresh': True,
-                    "recruitment_time": {
-                        "3": 460,
-                        "4": 540
-                    }
-                })
-                self.MAA.append_task('Visit')
-                self.MAA.append_task('Mall', {
-                    'shopping': True,
-                    'buy_first': ['龙门币', '赤金'],
-                    'blacklist': ['家具', '碳', '加急'],
-                    'credit_fight': fights[len(fights) - 1] != ''
-                })
-                self.MAA.append_task('Award')
+                if tasks == 'All':
+                    tasks = ['StartUp','Fight','Recruit','Visit','Mall','Award']
+                for maa_task in tasks:
+                    self.append_maa_task(maa_task)
                 # asst.append_task('Copilot', {
                 #     'stage_name': '千层蛋糕',
                 #     'filename': './GA-EX8-raid.json',
@@ -1652,11 +1689,18 @@ class BaseSchedulerSolver(BaseSolver):
 
                 # })
                 self.MAA.start()
+                stop_time = None
+                if one_time:
+                    stop_time = datetime.now()+timedelta(minutes=5)
                 logger.info(f"MAA 启动")
                 hard_stop = False
                 while self.MAA.running():
+                    # 单次任务默认5分钟
+                    if one_time and stop_time < datetime.now():
+                        self.MAA.stop()
+                        hard_stop = True
                     # 5分钟之前就停止
-                    if (self.tasks[0]["time"] - datetime.now()).total_seconds() < 300:
+                    elif not one_time and (self.tasks[0]["time"] - datetime.now()).total_seconds() < 300:
                         self.MAA.stop()
                         hard_stop = True
                     else:
@@ -1666,7 +1710,7 @@ class BaseSchedulerSolver(BaseSolver):
                     logger.info(f"由于maa任务并未完成，等待3分钟重启软件")
                     time.sleep(180)
                     self.device.exit(self.package_name)
-                else:
+                elif not one_time:
                     logger.info(f"记录MAA 本次执行时间")
                     self.maa_config['last_execution'] = datetime.now()
                     logger.info(self.maa_config['last_execution'])
@@ -1705,7 +1749,8 @@ class BaseSchedulerSolver(BaseSolver):
                             time.sleep(0)
                     self.device.exit(self.package_name)
             # 生息演算逻辑 结束
-            remaining_time = (self.tasks[0]["time"] - datetime.now()).total_seconds()
+            remaining_time = 0 if one_time and len(self.tasks) == 1 else (
+                        self.tasks[1 if one_time else 0]["time"] - datetime.now()).total_seconds()
             subject = f"开始休息 {'%.2f' % (remaining_time / 60)} 分钟，到{self.tasks[0]['time'].strftime('%H:%M:%S')}"
             context = f"下一次任务:{self.tasks[0]['plan']}"
             logger.info(context)
