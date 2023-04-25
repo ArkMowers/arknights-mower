@@ -602,7 +602,7 @@ class BaseSchedulerSolver(BaseSolver):
             else:
                 _high += 1
         # 排序
-        agents.sort(key=lambda x: self.op_data.operators[x].mood)
+        agents.sort(key=lambda x: self.op_data.operators[x].mood- self.op_data.operators[x].lower_limit, reverse=False)
         # 进行位置数量的初步判定
         # 对于252可能需要进行额外判定，由于 low_free 性质等同于 high_free
         success = True
