@@ -148,7 +148,7 @@ def simulate():
                     logger.info(subject)
                     base_scheduler.send_email(context, subject)
                     time.sleep(sleep_time)
-            if 'type' in base_scheduler.tasks[0].keys() and base_scheduler.tasks[0]['type'].split('_')[0] == 'maa':
+            if len(base_scheduler.tasks) > 0 and 'type' in base_scheduler.tasks[0].keys() and base_scheduler.tasks[0]['type'].split('_')[0] == 'maa':
                 logger.info(f"开始执行 MAA {base_scheduler.tasks[0]['type'].split('_')[1]} 任务")
                 base_scheduler.maa_plan_solver((base_scheduler.tasks[0]['type'].split('_')[1]).split(','), one_time=True)
                 del base_scheduler.tasks[0]
