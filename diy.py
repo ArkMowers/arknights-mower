@@ -290,6 +290,7 @@ def simulate():
             if len(base_scheduler.tasks) > 0 and 'type' in base_scheduler.tasks[0].keys() and base_scheduler.tasks[0]['type'].split('_')[0] == 'maa':
                 base_scheduler.maa_plan_solver((base_scheduler.tasks[0]['type'].split('_')[1]).split(','), one_time=True)
                 del base_scheduler.tasks[0]
+                continue
             base_scheduler.run()
             reconnect_tries = 0
         except ConnectionError as e:

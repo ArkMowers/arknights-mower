@@ -203,13 +203,11 @@ class BaseSchedulerSolver(BaseSolver):
             return
 
     def handle_error(self, force=False):
-        # 如果有任何报错，则生成一个空
         if self.scene() == Scene.UNKNOWN:
             self.device.exit(self.package_name)
         if self.error or force:
             # 如果没有任何时间小于当前时间的任务才生成空任务
             if (next((e for e in self.tasks if e['time'] < datetime.now()), None)) is None:
-                room = next(iter(self.currentPlan.keys()))
                 logger.debug("由于出现错误情况，生成一次空任务来执行纠错")
                 self.tasks.append({'time': datetime.now(), 'plan': {}})
             # 如果没有任何时间小于当前时间的任务-10分钟 则清空任务
@@ -217,6 +215,9 @@ class BaseSchedulerSolver(BaseSolver):
                 logger.info("检测到执行超过10分钟的任务，清空全部任务")
                 self.tasks = []
                 self.op_data = None
+        if (next((e for e in self.tasks if e['time'] < datetime.now()+timedelta(hours=3)), None)) is None:
+                logger.debug("2小时内没有其他任务，生成一个空任务")
+                self.tasks.append({'time': datetime.now()+timedelta(hours=3), 'plan': {}})
         return True
 
     def plan_metadata(self):
