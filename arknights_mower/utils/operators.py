@@ -24,7 +24,7 @@ class Operators(object):
         agent = self.operators[name]
         if update_time:
             if agent.time_stamp is not None and agent.mood > mood:
-                agent.depletion_rate = 0 - (agent.mood - mood) * 3600 / (
+                agent.depletion_rate = (agent.mood - mood) * 3600 / (
                     (datetime.now() - agent.time_stamp).total_seconds())
             agent.time_stamp = datetime.now()
         # 如果移出宿舍，则清除对应宿舍数据 且重新记录高效组心情

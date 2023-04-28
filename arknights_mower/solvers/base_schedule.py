@@ -505,7 +505,7 @@ class BaseSchedulerSolver(BaseSolver):
             # 根据剩余心情排序
             self.total_agent = list(
                 v for k, v in self.op_data.operators.items() if v.is_high() and not v.room.startswith('dorm'))
-            self.total_agent.sort(key=lambda x: x.mood - x.lower_limit, reverse=False)
+            self.total_agent.sort(key=lambda x: x.mood, reverse=False)
             # 目前有换班的计划后面改
             logger.debug(f'当前基地数据--> {self.total_agent}')
             fia_plan, fia_room = self.check_fia()
@@ -525,6 +525,8 @@ class BaseSchedulerSolver(BaseSolver):
                         next(obj for obj in self.total_agent if obj.name in fia_plan).name,
                         "菲亚梅塔"]}})
             try:
+                # 重新排序
+                self.total_agent.sort(key=lambda x: x.mood - x.lower_limit, reverse=False)
                 # 自动生成任务
                 self.plan_metadata()
                 # 剩余高效组位置
@@ -546,7 +548,7 @@ class BaseSchedulerSolver(BaseSolver):
                     if op.mood > int((op.upper_limit - op.lower_limit) * self.resting_treshhold + op.lower_limit):
                         continue
                     if op.name in self.op_data.exhaust_agent:
-                        if op.mood <= 0:
+                        if op.mood <= 2:
                             if next((e for e in self.tasks if 'type' in e.keys() and op.name in e['type']),
                                     None) is None:
                                 self.enter_room(op.current_room)
@@ -554,18 +556,15 @@ class BaseSchedulerSolver(BaseSolver):
                                 _time = datetime.now()
                                 if result[op.current_index]['time'] is not None:
                                     _time = result[op.current_index]['time']
+                                elif op.mood != 0.0:
+                                    _time = datetime.now() + timedelta(
+                                        hours=op.mood / op.depletion_rate) - timedelta(minutes=10)
                                 self.back()
                                 # plan 是空的是因为得动态生成
                                 exhaust_type = op.name
                                 if op.group != '':
                                     exhaust_type = ','.join(self.op_data.groups[op.group])
-                                if _time<datetime.now() and op.mood>0:
-                                    continue
-                                elif _time >= datetime.now() or (_time<datetime.now() and op.mood==0):
-                                    self.tasks.append({"time": _time,"plan": {}, "type": exhaust_type})
-                                    # 防止和其他排班冲突
-                                    if _time<datetime.now() and op.mood==0:
-                                        break
+                                self.tasks.append({"time": _time,"plan": {}, "type": exhaust_type})
                         continue
                     if op.group != '':
                         if op.group in self.op_data.exhaust_group:
