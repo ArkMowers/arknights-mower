@@ -1,6 +1,7 @@
 from __future__ import annotations
 import copy
 import time
+import sys
 from enum import Enum
 from datetime import datetime, timedelta
 import numpy as np
@@ -725,7 +726,11 @@ class BaseSchedulerSolver(BaseSolver):
     def initialize_paddle(self):
         global ocr
         if ocr is None:
-            ocr = PaddleOCR(enable_mkldnn=True, use_angle_cls=False)
+            # mac 平台不支持 mkldnn 加速，关闭以修复 mac 运行时错误
+            if sys.platform == 'darwin':
+                ocr = PaddleOCR(enable_mkldnn=False, use_angle_cls=False)
+            else:
+                ocr = PaddleOCR(enable_mkldnn=True, use_angle_cls=False)
 
     def read_screen(self, img, type="mood", limit=24, cord=None, change_color=False):
         if cord is not None:
@@ -1225,11 +1230,8 @@ class BaseSchedulerSolver(BaseSolver):
                 raise e
 
     def get_order(self, name):
-        if (name in self.agent_base_config.keys()):
-            if "ArrangeOrder" in self.agent_base_config[name].keys():
-                return True, self.agent_base_config[name]["ArrangeOrder"]
-            else:
-                return False, self.agent_base_config["Default"]["ArrangeOrder"]
+        if name in self.agent_base_config and "ArrangeOrder" in self.agent_base_config[name]:
+            return True, self.agent_base_config[name]["ArrangeOrder"]
         return False, self.agent_base_config["Default"]["ArrangeOrder"]
 
     def detail_filter(self, turn_on, type="not_in_dorm"):
