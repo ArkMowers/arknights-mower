@@ -158,9 +158,8 @@ plan = {
 agent_base_config = {
     "Default": {"UpperLimit": 24, "LowerLimit": 0, "ExhaustRequire": False, "ArrangeOrder": [2, "false"],
                 "RestInFull": False},
-    "琴柳": {"UpperLimit": 19, "LowerLimit": 13},
-    "令": {"ArrangeOrder": [2, "true"]},
-    "夕": {"UpperLimit": 6, "ArrangeOrder": [2, "true"]},
+    "令": {"LowerLimit": 12,"ArrangeOrder": [2, "true"]},
+    "夕": {"UpperLimit": 12, "ArrangeOrder": [2, "true"]},
     "稀音": {"ExhaustRequire": True, "ArrangeOrder": [2, "true"], "RestInFull": True},
     "巫恋": {"ArrangeOrder": [2, "true"]},
     "柏喙": {"ExhaustRequire": True, "ArrangeOrder": [2, "true"]},
@@ -199,6 +198,7 @@ agent_base_config = {
     "坚雷": {"ArrangeOrder": [2, "true"]},
     "年": {"RestingPriority": "low"},
     "伊内丝": {"ExhaustRequire": True, "ArrangeOrder": [2, "true"], "RestInFull": True},
+    "铅踝":{"LowerLimit": 8,"UpperLimit": 12},
 }
 
 
@@ -216,7 +216,7 @@ def savelog():
     '''
     config.LOGFILE_PATH = './log'
     config.SCREENSHOT_PATH = './screenshot'
-    config.SCREENSHOT_MAXNUM = 1000
+    config.SCREENSHOT_MAXNUM = 30
     config.ADB_DEVICE = maa_config['maa_adb']
     config.ADB_CONNECT = maa_config['maa_adb']
     config.MAX_RETRYTIME = 10

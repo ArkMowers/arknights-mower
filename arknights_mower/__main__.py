@@ -24,19 +24,19 @@ def main(c, p, child_conn):
                                                        'package_type'] == 1 else 'com.hypergryph.arknights.bilibili'  # 服务器
     init_fhlr(child_conn)
     if conf['ling_xi'] == 1:
-        agent_base_config['令']['UpperLimit'] = 11
+        agent_base_config['令']['UpperLimit'] = 12
         assist = '夕' if conf['ling_xi_assist'] == '' else conf['ling_xi_assist']
         if assist in agent_base_config.keys():
-            agent_base_config[assist]['LowerLimit'] = 13
+            agent_base_config[assist]['LowerLimit'] = 12
         else:
-            agent_base_config[assist] = {'LowerLimit':13}
+            agent_base_config[assist] = {'LowerLimit':12}
     elif conf['ling_xi'] == 2:
-        agent_base_config['夕']['UpperLimit'] = 11
+        agent_base_config['夕']['UpperLimit'] = 12
         assist = '令' if conf['ling_xi_assist'] == '' else conf['ling_xi_assist']
         if assist in agent_base_config.keys():
-            agent_base_config[assist]['LowerLimit'] = 13
+            agent_base_config[assist]['LowerLimit'] = 12
         else:
-            agent_base_config[assist] = {'LowerLimit':13}
+            agent_base_config[assist] = {'LowerLimit':12}
     for key in list(filter(None, conf['rest_in_full'].replace('，', ',').split(','))):
         if key in agent_base_config.keys():
             agent_base_config[key]['RestInFull'] = True

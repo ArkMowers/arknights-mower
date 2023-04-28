@@ -1387,6 +1387,37 @@ class BaseSchedulerSolver(BaseSolver):
             self.swipe_only((w // 2, h // 2), (w // 2, 0), interval=0.5)
         return 0
 
+    def read_accurate_mood(self,img, cord):
+        try:
+            img = img[cord[1]:cord[3], cord[0]:cord[2]]
+            # Convert the image to grayscale
+            gray_image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+            blurred_image = cv2.GaussianBlur(gray_image, (5, 5), 0)
+
+            # Threshold the image to isolate the progress bar region
+            contours, hierarchy = cv2.findContours(blurred_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+            # Calculate the bounding box of the progress bar
+            x, y, w, h = cv2.boundingRect(contours[0])
+
+            # Crop the progress bar region
+            progress_bar = img[y:y + h, x:x + w]
+
+            # Convert the progress bar to grayscale
+            gray_pb = cv2.cvtColor(progress_bar, cv2.COLOR_BGR2GRAY)
+
+            # Threshold the progress bar to isolate the gray fill
+            ret, thresh_pb = cv2.threshold(gray_pb, 137, 255, cv2.THRESH_BINARY)
+
+            # Calculate the ratio of colored pixels to the total number of pixels in the progress bar region
+            total_pixels = w * h
+            colored_pixels = cv2.countNonZero(thresh_pb)
+            return colored_pixels / total_pixels * 24
+
+        except Exception:
+            return 24
+
     def get_agent_from_room(self, room, read_time_index=None):
         if read_time_index is None:
             read_time_index = []
@@ -1405,8 +1436,8 @@ class BaseSchedulerSolver(BaseSolver):
                   ((1460, 560), (1700, 610)), ((1460, 775), (1700, 820))]
         time_p = [((1650, 270, 1780, 305)), ((1650, 480, 1780, 515)), ((1650, 690, 1780, 725)),
                   ((1650, 665, 1780, 700)), ((1650, 875, 1780, 910))]
-        mood_p = [((1685, 213, 1780, 256)), ((1685, 422, 1780, 465)), ((1685, 632, 1780, 675)),
-                  ((1685, 612, 1780, 655)), ((1685, 822, 1780, 865))]
+        mood_p = [((1470, 219, 1780, 221)), ((1470, 428, 1780, 430)), ((1470, 637, 1780, 639)),
+                  ((1470, 615, 1780, 617)), ((1470, 823, 1780, 825))]
         result = []
         swiped = False
         for i in range(0, length):
@@ -1432,11 +1463,12 @@ class BaseSchedulerSolver(BaseSolver):
                     self.op_data.add(Operator(_name, ""))
                 update_time=False
                 if self.op_data.operators[_name].need_to_refresh():
-                    _mood = self.read_screen(self.recog.img, cord=mood_p[i], change_color=True)
+                    _mood = self.read_accurate_mood(self.recog.img, cord=mood_p[i])
                     update_time = True
                 else:
                     _mood = self.op_data.operators[_name].mood
                 high_no_time = self.op_data.update_detail(_name, _mood, room, i,update_time)
+                data['depletion_rate'] = self.op_data.operators[_name].depletion_rate
                 if high_no_time is not None:
                     logger.debug(f"检测到高效组休息时间数据不存在:{room},{high_no_time}")
                     read_time_index.append(high_no_time)

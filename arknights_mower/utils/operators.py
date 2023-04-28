@@ -11,7 +11,7 @@ class Operators(object):
     dorm = []
     max_resting_count = 4
 
-    def __init__(self, config,max_resting_count):
+    def __init__(self, config, max_resting_count):
         self.config = config
         self.operators = {}
         self.groups = {}
@@ -20,13 +20,16 @@ class Operators(object):
         self.dorm = []
         self.max_resting_count = max_resting_count
 
-    def update_detail(self,name, mood, current_room, current_index,update_time = False):
+    def update_detail(self, name, mood, current_room, current_index, update_time=False):
         agent = self.operators[name]
         if update_time:
+            if agent.time_stamp is not None and agent.mood > mood:
+                agent.depletion_rate = 0 - (agent.mood - mood) * 3600 / (
+                    (datetime.now() - agent.time_stamp).total_seconds())
             agent.time_stamp = datetime.now()
         # 如果移出宿舍，则清除对应宿舍数据 且重新记录高效组心情
         if agent.current_room.startswith('dorm') and not current_room.startswith('dorm') and agent.is_high():
-            self.refresh_dorm_time(agent.current_room,agent.current_index,{'agent':''})
+            self.refresh_dorm_time(agent.current_room, agent.current_index, {'agent': ''})
             agent.time_stamp = None
         if self.get_dorm_by_name(name)[0] is not None and not current_room.startswith('dorm') and agent.is_high():
             _dorm = self.get_dorm_by_name(name)[1]
@@ -41,7 +44,7 @@ class Operators(object):
                 if dorm.position[0] == current_room and dorm.position[1] == current_index and dorm.time is None:
                     return current_index
 
-    def refresh_dorm_time(self,room,index, agent):
+    def refresh_dorm_time(self, room, index, agent):
         for idx, dorm in enumerate(self.dorm):
             # Filter out resting priority low
             # if idx >= self.max_resting_count:
@@ -51,30 +54,38 @@ class Operators(object):
                 _name = agent['agent']
                 if _name in self.operators.keys() and self.operators[_name].is_high():
                     dorm.name = _name
-                    dorm.time = agent['time']
+                    _agent = self.operators[_name]
+                    # 如果干员有心情上限，则按比例修改休息时间
+                    if _agent.mood != 24:
+                        sec_remaining = (_agent.upper_limit - _agent.mood) * (
+                            (agent['time'] - _agent.time_stamp).total_seconds()) / (24 - _agent.mood)
+                        dorm.time = _agent.time_stamp + timedelta(seconds=sec_remaining)
+                    else:
+                        dorm.time = agent['time']
                 else:
                     dorm.name = ''
                     dorm.time = None
                 break
 
-    def get_refresh_index(self,room,plan):
+    def get_refresh_index(self, room, plan):
         ret = []
         for idx, dorm in enumerate(self.dorm):
             # Filter out resting priority low
             if idx >= self.max_resting_count:
                 break
             if dorm.position[0] == room:
-                for i,_name in enumerate(plan):
-                    if _name in self.operators.keys() and self.operators[_name].is_high() and self.operators[_name].resting_priority=='high' and not self.operators[_name].room.startswith('dorm'):
+                for i, _name in enumerate(plan):
+                    if _name in self.operators.keys() and self.operators[_name].is_high() and self.operators[
+                        _name].resting_priority == 'high' and not self.operators[_name].room.startswith('dorm'):
                         ret.append(i)
                 break
         return ret
 
-    def get_dorm_by_name(self,name):
+    def get_dorm_by_name(self, name):
         for idx, dorm in enumerate(self.dorm):
             if dorm.name == name:
                 return idx, dorm
-        return None,None
+        return None, None
 
     def add(self, operator):
         if operator.name not in agent_list:
@@ -108,7 +119,7 @@ class Operators(object):
         if free_type == 'high':
             idx = 0
             for dorm in self.dorm:
-                if dorm.name =='' or (dorm.name in self.operators.keys() and not self.operators[dorm.name].is_high()):
+                if dorm.name == '' or (dorm.name in self.operators.keys() and not self.operators[dorm.name].is_high()):
                     ret += 1
                 if idx == count - 1:
                     break
@@ -118,7 +129,7 @@ class Operators(object):
             idx = -1
             while idx < 0:
                 dorm = self.dorm[idx]
-                if dorm.name =='' or (dorm.name in self.operators.keys() and not self.operators[dorm.name].is_high()):
+                if dorm.name == '' or (dorm.name in self.operators.keys() and not self.operators[dorm.name].is_high()):
                     ret += 1
                 if idx == count - len(self.dorm):
                     break
@@ -126,15 +137,16 @@ class Operators(object):
                     idx -= 1
         return ret
 
-    def assign_dorm(self,name):
-        is_high = self.operators[name].resting_priority=='high'
+    def assign_dorm(self, name):
+        is_high = self.operators[name].resting_priority == 'high'
         if is_high:
-            _room = next(obj for obj in self.dorm if obj.name not in self.operators.keys() or not self.operators[obj.name].is_high())
+            _room = next(obj for obj in self.dorm if
+                         obj.name not in self.operators.keys() or not self.operators[obj.name].is_high())
         else:
             _room = None
             idx = -1
             while idx < 0:
-                if self.dorm[idx].name=='':
+                if self.dorm[idx].name == '':
                     _room = self.dorm[idx]
                     break
                 else:
@@ -147,8 +159,8 @@ class Operators(object):
         op = []
         dorm = []
         for k, v in self.operators.items():
-            op.append("'"+k+"': "+ str(vars(v)))
-        ret += "'operators': {" + ','.join(op)+"},"
+            op.append("'" + k + "': " + str(vars(v)))
+        ret += "'operators': {" + ','.join(op) + "},"
         for v in self.dorm:
             dorm.append(str(vars(v)))
         ret += "'dorms': [" + ','.join(dorm) + "]}"
@@ -165,6 +177,7 @@ class Dormitory(object):
 
 class Operator(object):
     time_stamp = None
+    depletion_rate = 0
 
     def __init__(self, name, room, index=-1, group='', replacement=[], resting_priority='low', current_room='',
                  exhaust_require=False,
@@ -185,15 +198,17 @@ class Operator(object):
         self.mood = mood
         self.current_index = current_index
         self.lower_limit = lower_limit
+        self.depletion_rate = 0
 
     def is_high(self):
-        return self.operator_type =='high'
+        return self.operator_type == 'high'
 
     def need_to_refresh(self, h=2):
         # 是否需要读取心情
         if self.operator_type == 'high':
             if self.time_stamp is None or (
-                    self.time_stamp is not None and self.time_stamp + timedelta(hours=h) < datetime.now()):
+                    self.time_stamp is not None and self.time_stamp + timedelta(hours=h) < datetime.now()) or (
+                    self.current_room.startswith("dorm") and not self.room.startswith("dorm")):
                 return True
         return False
 
