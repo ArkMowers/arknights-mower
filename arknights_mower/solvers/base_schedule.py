@@ -60,12 +60,12 @@ class BaseSchedulerSolver(BaseSolver):
         self.run_order_delay=10
         self.enable_party = True
         self.digit_reader = DigitReader()
+        self.error = False
 
     def run(self) -> None:
         """
         :param clue_collect: bool, 是否收取线索
         """
-        self.currentPlan = self.global_plan[self.global_plan["default"]]
         self.error = False
         self.handle_error(True)
         if len(self.tasks) > 0:
@@ -77,7 +77,7 @@ class BaseSchedulerSolver(BaseSolver):
             self.party_time = None
         self.todo_task = False
         self.planned = False
-        if self.op_data is None:
+        if self.op_data is None or self.op_data.operators is None:
             self.initialize_operators()
         return super().run()
 
@@ -194,7 +194,7 @@ class BaseSchedulerSolver(BaseSolver):
                 plan = {}
                 for room in rooms:
                     if room not in plan.keys():
-                        plan[room] = [data["agent"] for data in self.currentPlan[room]]
+                        plan[room] = [data["agent"] for data in self.current_plan[room]]
                 if len(plan.keys()) > 0:
                     self.tasks.append({'time': datetime.now(), 'plan': plan})
                     # 执行完提前换班任务再次执行本任务
@@ -214,10 +214,9 @@ class BaseSchedulerSolver(BaseSolver):
             if (next((e for e in self.tasks if e['time'] < datetime.now() - timedelta(seconds=600)), None)) is not None:
                 logger.info("检测到执行超过10分钟的任务，清空全部任务")
                 self.tasks = []
-                self.op_data = None
-        if (next((e for e in self.tasks if e['time'] < datetime.now()+timedelta(hours=3)), None)) is None:
-                logger.debug("2小时内没有其他任务，生成一个空任务")
-                self.tasks.append({'time': datetime.now()+timedelta(hours=3), 'plan': {}})
+        elif (next((e for e in self.tasks if e['time'] < datetime.now()+timedelta(hours=2.5)), None)) is None:
+                logger.debug("2.5小时内没有其他任务，生成一个空任务")
+                self.tasks.append({'time': datetime.now()+timedelta(hours=2.5), 'plan': {}})
         return True
 
     def plan_metadata(self):
@@ -237,6 +236,7 @@ class BaseSchedulerSolver(BaseSolver):
             short_rest= True
         low_priority = []
         for idx, dorm in enumerate(self.op_data.dorm):
+            logger.debug(f'开始计算{dorm}')
             # Filter out resting priority low
             if idx >= self.max_resting_count:
                 break
@@ -271,13 +271,14 @@ class BaseSchedulerSolver(BaseSolver):
                     planned_index.append(_idx)
                     __room = self.op_data.operators[x].room
                     if __room not in __plan.keys():
-                        __plan[__room] = ['Current'] * len(self.currentPlan[__room])
+                        __plan[__room] = ['Current'] * len(self.current_plan[__room])
                     __plan[__room][self.op_data.operators[x].index] = x
                 if __time < datetime.now(): __time = datetime.now()
                 self.tasks.append({"type": ','.join(__type), 'plan': __plan, 'time': __time})
             # 如果非 rest in full， 则同组取时间最小值
             else:
                 if dorm.time is not None and dorm.time < _time:
+                    logger.debug(f"更新任务时间{dorm.time}")
                     _time = dorm.time
                 __room = self.op_data.operators[_name].room
                 __rest_agent = []
@@ -285,12 +286,13 @@ class BaseSchedulerSolver(BaseSolver):
                     __rest_agent.append(_name)
                 else:
                     __rest_agent.extend(self.op_data.groups[self.op_data.operators[_name].group])
+                logger.debug(f"小组分组为{__rest_agent}")
                 for x in __rest_agent:
                     if x in low_priority:
                         continue
                     __room = self.op_data.operators[x].room
                     if __room not in _plan.keys():
-                        _plan[__room] = ['Current'] * len(self.currentPlan[__room])
+                        _plan[__room] = ['Current'] * len(self.current_plan[__room])
                     _plan[__room][self.op_data.operators[x].index] = x
                     _dorm_idx, __dorm = self.op_data.get_dorm_by_name(x)
                     if __dorm is not None:
@@ -298,6 +300,7 @@ class BaseSchedulerSolver(BaseSolver):
                         planned_index.append(_dorm_idx)
                         if __dorm.time is not None and __dorm.time < _time and self.op_data.operators[
                             x].resting_priority == 'high':
+                            logger.debug(f"更新任务时间{dorm.time}")
                             _time = __dorm.time
                     if x not in low_priority:
                         low_priority.append(x)
@@ -394,19 +397,19 @@ class BaseSchedulerSolver(BaseSolver):
                     continue
             self.back()
         logger.debug(self.op_data.print())
-        for room in self.currentPlan.keys():
-            for idx, item in enumerate(self.currentPlan[room]):
+        for room in self.current_plan.keys():
+            for idx, item in enumerate(self.current_plan[room]):
                 _name = next((k for k, v in self.op_data.operators.items() if
                               v.current_room == room and v.current_index == idx),
                              None)
                 if room not in self.current_base.keys():
-                    self.current_base[room] = [''] * len(self.currentPlan[room])
+                    self.current_base[room] = [''] * len(self.current_plan[room])
                 if _name is None or _name == '':
                     self.current_base[room][idx] = {"agent": "", "mood": -1}
                 else:
                     self.current_base[room][idx] = {"mood": self.op_data.operators[_name].mood, "agent": _name}
         current_base = copy.deepcopy(self.current_base)
-        plan = self.currentPlan
+        plan = self.current_plan
         fix_plan = {}
         for key in current_base:
             if key == 'train': continue
@@ -426,7 +429,7 @@ class BaseSchedulerSolver(BaseSolver):
                     continue
                 if not (_name == plan[key][idx]['agent'] or (
                         (_name in plan[key][idx]["replacement"]) and len(plan[key][idx]["replacement"]) > 0) or not
-                        self.op_data.operators[_name].need_to_refresh(2.5)):
+                        self.op_data.operators[_name].need_to_refresh(h=2.5)):
                     if not need_fix:
                         fix_plan[key] = ['Current'] * len(plan[key])
                         need_fix = True
@@ -450,18 +453,18 @@ class BaseSchedulerSolver(BaseSolver):
                     for a in agents:
                         __agent = self.op_data.operators[a]
                         if __agent.room not in fix_plan.keys():
-                            fix_plan[__agent.room] = ['Current'] * len(self.currentPlan[__agent.room])
+                            fix_plan[__agent.room] = ['Current'] * len(self.current_plan[__agent.room])
                         fix_plan[__agent.room][__agent.index] = a
                 if _agent.room not in fix_plan.keys():
-                    fix_plan[_agent.room] = ['Current'] * len(self.currentPlan[_agent.room])
+                    fix_plan[_agent.room] = ['Current'] * len(self.current_plan[_agent.room])
                 fix_plan[_agent.room][_agent.index] = key
                 # 如果是错位：
                 if (_agent.current_index != -1 and _agent.current_index != _agent.index) or (_agent.current_room !=""and _agent.room != _agent.current_room):
                     moved_room = _agent.current_room
                     moved_index = _agent.current_index
                     if moved_room not in fix_plan.keys():
-                        fix_plan[moved_room] = ['Current'] * len(self.currentPlan[moved_room])
-                    fix_plan[moved_room][moved_index] = self.currentPlan[moved_room][moved_index]["agent"]
+                        fix_plan[moved_room] = ['Current'] * len(self.current_plan[moved_room])
+                    fix_plan[moved_room][moved_index] = self.current_plan[moved_room][moved_index]["agent"]
         if len(fix_plan.keys()) > 0:
             # 不能在房间里安排同一个人 如果有重复则换成Free
             # 还要修复确保同一组在同时上班
@@ -484,7 +487,7 @@ class BaseSchedulerSolver(BaseSolver):
                 return "self_correction"
 
     def plan_solver(self):
-        plan = self.currentPlan
+        plan = self.current_plan
         # 如果下个 普通任务 <10 分钟则跳过 plan
         if (
                 next((e for e in self.tasks if e['time'] < datetime.now() + timedelta(seconds=600)),
@@ -623,7 +626,7 @@ class BaseSchedulerSolver(BaseSolver):
                 if _rep is not None:
                     __replacement.append(_rep)
                     if x.room not in __plan.keys():
-                        __plan[x.room] = ['Current'] * len(self.currentPlan[x.room])
+                        __plan[x.room] = ['Current'] * len(self.current_plan[x.room])
                     __plan[x.room][x.index] = _rep
                 else:
                     success = False
@@ -648,7 +651,7 @@ class BaseSchedulerSolver(BaseSolver):
         return exist_replacement, plan, high_free - _high, low_free - _low
 
     def initialize_operators(self):
-        plan = self.currentPlan
+        plan = self.current_plan
         self.op_data = Operators(self.agent_base_config, self.max_resting_count)
         for room in plan.keys():
             for idx, data in enumerate(plan[room]):
@@ -681,7 +684,7 @@ class BaseSchedulerSolver(BaseSolver):
 
     def check_in_and_out(self):
         res = {}
-        for x, y in self.currentPlan.items():
+        for x, y in self.current_plan.items():
             if not x.startswith('room'): continue
             if any(('但书' in obj['replacement'] or '龙舌兰' in obj['replacement']) for obj in y):
                 res[x] = y
@@ -922,8 +925,13 @@ class BaseSchedulerSolver(BaseSolver):
         # 线索交流开启
         if clue_unlock is not None and get_all_clue:
             self.tap(clue_unlock)
-            self.party_time = datetime.now() + timedelta(days=1)
-            logger.info("为期一天的impart开始")
+            self.party_time = self.double_read_time((1765, 422, 1920, 515))
+            if self.party_time < datetime.now():
+                logger.info(f"检测到impart开启失败!")
+                self.party_time = None
+                self.error = True
+            else:
+                logger.info("为期一天的impart开始")
         elif clue_unlock is None:
             # 记录趴体时间
             self.back(interval=2)
@@ -1429,7 +1437,7 @@ class BaseSchedulerSolver(BaseSolver):
                 raise Exception('未成功进入房间')
             self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
             error_count += 1
-        length = len(self.currentPlan[room])
+        length = len(self.current_plan[room])
         if length > 3: self.swipe((self.recog.w * 0.8, self.recog.h * 0.8), (0, self.recog.h * 0.4), interval=1,
                                   rebuild=True)
         name_p = [((1460, 155), (1700, 210)), ((1460, 370), (1700, 420)), ((1460, 585), (1700, 630)),
@@ -1462,7 +1470,7 @@ class BaseSchedulerSolver(BaseSolver):
                 if _name not in self.op_data.operators.keys() and _name in agent_list:
                     self.op_data.add(Operator(_name, ""))
                 update_time=False
-                if self.op_data.operators[_name].need_to_refresh():
+                if self.op_data.operators[_name].need_to_refresh(r=room):
                     _mood = self.read_accurate_mood(self.recog.img, cord=mood_p[i])
                     update_time = True
                 else:
@@ -1537,7 +1545,7 @@ class BaseSchedulerSolver(BaseSolver):
                                     else:
                                         # 如果空房间或者名字错误，则使用default干员
                                         plan[room][current_idx] = \
-                                            self.currentPlan[room][current_idx]["agent"]
+                                            self.current_plan[room][current_idx]["agent"]
                     while self.find('arrange_order_options') is None:
                         if error_count > 3:
                             raise Exception('未成功进入干员选择界面')
@@ -1592,7 +1600,7 @@ class BaseSchedulerSolver(BaseSolver):
                 in_and_out_plan = [data["agent"] for data in self.current_base[room]]
                 # 防止由于意外导致的死循环
                 if '但书' in in_and_out_plan or '龙舌兰' in in_and_out_plan:
-                    in_and_out_plan = [data["agent"] for data in self.currentPlan[room]]
+                    in_and_out_plan = [data["agent"] for data in self.current_plan[room]]
                 replace_plan[room] = in_and_out_plan
                 self.back(interval=0.5)
                 self.back(interval=0.5)
@@ -1602,7 +1610,7 @@ class BaseSchedulerSolver(BaseSolver):
             replace_agent = fia_data[1]
             fia_change_room = self.op_data.operators[replace_agent].room
             fia_room_plan = [data["agent"] for data in self.current_base[fia_data[0]]]
-            fia_change_room_plan = ['Current'] * len(self.currentPlan[fia_change_room])
+            fia_change_room_plan = ['Current'] * len(self.current_plan[fia_change_room])
             fia_change_room_plan[self.op_data.operators[replace_agent].index] = replace_agent
             self.tasks.append(
                 {'time': self.tasks[0]['time'],
@@ -1796,7 +1804,12 @@ class BaseSchedulerSolver(BaseSolver):
             logger.info(context)
             logger.info(subject)
             self.send_email(context, subject)
-            time.sleep(remaining_time)
+            if one_time:
+                if len(self.tasks)>0:
+                    del self.tasks[0]
+                self.handle_error(True)
+            if remaining_time>0:
+                time.sleep(remaining_time)
             self.MAA = None
         except Exception as e:
             logger.error(e)
