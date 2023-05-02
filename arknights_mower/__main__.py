@@ -1,53 +1,65 @@
+import atexit
+import os
 import time
 from datetime import datetime
+from arknights_mower.utils.log import logger
+import json
+
+from arknights_mower.utils.pipe import Pipe
 
 conf = {}
 plan = {}
+operators = {}
 
 
 # 执行自动排班
-def main(c, p, child_conn):
+def main(c, p, o={}, child_conn=None):
     __init_params__()
-    from arknights_mower.utils.log import logger, init_fhlr
+    from arknights_mower.utils.log import init_fhlr
     from arknights_mower.utils import config
     global plan
     global conf
+    global operators
     conf = c
     plan = p
+    operators = o
     config.LOGFILE_PATH = './log'
     config.SCREENSHOT_PATH = './screenshot'
-    config.SCREENSHOT_MAXNUM = 1000
+    config.SCREENSHOT_MAXNUM = 50
     config.ADB_DEVICE = [conf['adb']]
     config.ADB_CONNECT = [conf['adb']]
     config.ADB_CONNECT = [conf['adb']]
     config.APPNAME = 'com.hypergryph.arknights' if conf[
                                                        'package_type'] == 1 else 'com.hypergryph.arknights.bilibili'  # 服务器
     init_fhlr(child_conn)
-    if conf['ling_xi'] == 1:
+    Pipe.conn = child_conn
+    if plan['conf']['ling_xi'] == 1:
         agent_base_config['令']['UpperLimit'] = 12
-        assist = '夕' if conf['ling_xi_assist'] == '' else conf['ling_xi_assist']
-        if assist in agent_base_config.keys():
-            agent_base_config[assist]['LowerLimit'] = 12
-        else:
-            agent_base_config[assist] = {'LowerLimit':12}
-    elif conf['ling_xi'] == 2:
+        agent_base_config['夕']['LowerLimit'] = 12
+        # assist = '夕' if conf['ling_xi_assist'] == '' else conf['ling_xi_assist']
+        # if assist in agent_base_config.keys():
+        #     agent_base_config[assist]['LowerLimit'] = 12
+        # else:
+        #     agent_base_config[assist] = {'LowerLimit':12}
+    elif plan['conf']['ling_xi'] == 2:
         agent_base_config['夕']['UpperLimit'] = 12
-        assist = '令' if conf['ling_xi_assist'] == '' else conf['ling_xi_assist']
-        if assist in agent_base_config.keys():
-            agent_base_config[assist]['LowerLimit'] = 12
-        else:
-            agent_base_config[assist] = {'LowerLimit':12}
-    for key in list(filter(None, conf['rest_in_full'].replace('，', ',').split(','))):
+        agent_base_config['令']['LowerLimit'] = 12
+        # assist = '令' if conf['ling_xi_assist'] == '' else conf['ling_xi_assist']
+        # if assist in agent_base_config.keys():
+        #     agent_base_config[assist]['LowerLimit'] = 12
+        # else:
+        #     agent_base_config[assist] = {'LowerLimit':12}
+    for key in list(filter(None, plan['conf']['rest_in_full'].replace('，', ',').split(','))):
         if key in agent_base_config.keys():
             agent_base_config[key]['RestInFull'] = True
         else:
             agent_base_config[key] = {'RestInFull': True}
-    for key in list(filter(None, conf['exhaust_require'].replace('，', ',').split(','))):
+    for key in list(filter(None, plan['conf']['exhaust_require'].replace('，', ',').split(','))):
         if key in agent_base_config.keys():
             agent_base_config[key]['ExhaustRequire'] = True
         else:
             agent_base_config[key] = {'ExhaustRequire': True}
-    for key in list(filter(None, conf['resting_priority'].replace('，', ',').split(','))):
+    for key in list(filter(None, plan['conf']['resting_priority'].replace('，', ',').split(','))):
         if key in agent_base_config.keys():
             agent_base_config[key]['RestingPriority'] = 'low'
         else:
@@ -58,7 +70,6 @@ def main(c, p, child_conn):
 
 
 def inialize(tasks, scheduler=None):
-    from arknights_mower.utils.log import logger
     from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
     from arknights_mower.strategy import Solver
     from arknights_mower.utils.device import Device
@@ -69,13 +80,16 @@ def inialize(tasks, scheduler=None):
         base_scheduler = BaseSchedulerSolver(cli.device, cli.recog)
         base_scheduler.operators = {}
         plan1 = {}
-        for key in plan:
-            plan1[key] = plan[key]['plans']
+        for key in plan[plan['default']]:
+            plan1[key] = plan[plan['default']][key]['plans']
+        plan[plan['default']] = plan1
+        logger.debug(plan)
         base_scheduler.package_name = config.APPNAME  # 服务器
-        base_scheduler.global_plan = {'default': "plan_1", "plan_1": plan1}
+        base_scheduler.global_plan = plan
+        base_scheduler.current_plan = plan1
         base_scheduler.current_base = {}
         base_scheduler.resting = []
-        base_scheduler.max_resting_count = conf['max_resting_count']
+        base_scheduler.max_resting_count = plan['conf']['max_resting_count']
         base_scheduler.drone_count_limit = conf['drone_count_limit']
         base_scheduler.tasks = tasks
         base_scheduler.enable_party = conf['enable_party'] == 1  # 是否使用线索
@@ -119,14 +133,17 @@ def inialize(tasks, scheduler=None):
 
 
 def simulate():
-    from arknights_mower.utils.log import logger
     '''
     具体调用方法可见各个函数的参数说明
     '''
     tasks = []
     reconnect_max_tries = 10
     reconnect_tries = 0
+    global base_scheduler
     base_scheduler = inialize(tasks)
+    base_scheduler.initialize_operators()
+    if operators != {}:
+        base_scheduler.op_data.operators = operators
     while True:
         try:
             if len(base_scheduler.tasks) > 0:
@@ -173,6 +190,30 @@ def simulate():
                 raise Exception(e)
         except Exception as E:
             logger.exception(f"程序出错--->{E}")
+
+
+def save_state(op_data,file='state.json'):
+    if not os.path.exists('tmp'):
+        os.makedirs('tmp')
+    with open('tmp/' + file, 'w') as f:
+        if op_data is not None :
+            json.dump(vars(op_data), f, default=str)
+
+
+def load_state(file='state.json'):
+
+    if not os.path.exists('tmp/' + file):
+        return None
+    with open('tmp/' + file, 'r') as f:
+        state = json.load(f)
+    operators = {k: eval(v) for k, v in state['operators'].items()}
+    for k,v in operators.items():
+        if not v.time_stamp == 'None':
+            v.time_stamp = datetime.strptime(v.time_stamp, '%Y-%m-%d %H:%M:%S.%f')
+        else:
+            v.time_stamp = None
+    logger.info("基建配置已加载！")
+    return operators
 
 
 agent_base_config = {}

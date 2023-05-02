@@ -15,6 +15,7 @@ from ..utils.operators import Operators, Operator, Dormitory
 from ..utils import typealias as tp
 from ..utils.device import Device
 from ..utils.log import logger
+from ..utils.pipe import push_operators
 from ..utils.recognize import RecognizeError, Recognizer, Scene
 from ..utils.solver import BaseSolver
 from ..utils.datetime import get_server_weekday
@@ -1426,6 +1427,8 @@ class BaseSchedulerSolver(BaseSolver):
         except Exception:
             return 24
 
+
+    @push_operators
     def get_agent_from_room(self, room, read_time_index=None):
         if read_time_index is None:
             read_time_index = []
@@ -1712,8 +1715,8 @@ class BaseSchedulerSolver(BaseSolver):
                 credit_fight = True
             self.MAA.append_task('Mall', {
                 'shopping': True,
-                'buy_first': ['龙门币', '赤金'],
-                'blacklist': ['家具', '碳', '加急'],
+                'buy_first': ['招聘许可'],
+                'blacklist': ['家具', '碳', '加急许可'],
                 'credit_fight':credit_fight
             })
     def maa_plan_solver(self,tasks ='All',one_time = False):
