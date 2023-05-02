@@ -1,12 +1,15 @@
 import time
 from datetime import datetime
+import atexit
+import json
+import os
 
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
 from arknights_mower.strategy import Solver
 from arknights_mower.utils.device import Device
 from arknights_mower.utils.log import logger, init_fhlr
 from arknights_mower.utils import config
-
+from arknights_mower.utils.operators import Operators, Operator
 
 email_config= {
     # 发信账户
@@ -61,6 +64,9 @@ drone_room = None
 drone_execution_gap = 4
 
 reload_room = []
+
+# 基地数据json文件保存名
+state_file_name = 'state.json'
 
 # 全自动基建排班计划：
 # 这里定义了一套全自动基建的排班计划 plan_1
@@ -236,12 +242,12 @@ def inialize(tasks, scheduler=None):
         base_scheduler.global_plan = plan
         base_scheduler.current_base = {}
         base_scheduler.resting = []
+        base_scheduler.current_plan = base_scheduler.global_plan[base_scheduler.global_plan["default"]]
         # 同时休息最大人数
         base_scheduler.max_resting_count = 4
         base_scheduler.tasks = tasks
         # 读取心情开关，有菲亚梅塔或者希望全自动换班得设置为 true
         base_scheduler.read_mood = True
-        base_scheduler.scan_time = {}
         base_scheduler.last_room = ''
         base_scheduler.free_blacklist = free_blacklist
         base_scheduler.resting_treshhold = resting_treshhold
@@ -263,17 +269,38 @@ def inialize(tasks, scheduler=None):
         scheduler.handle_error(True)
         return scheduler
 
+def save_state():
+    with open(state_file_name, 'w') as f:
+        if base_scheduler is not None and base_scheduler.op_data is not None:
+            json.dump(vars(base_scheduler.op_data), f, default=str)
+
+def load_state():
+    if not os.path.exists(state_file_name):
+        return None
+
+    with open(state_file_name, 'r') as f:
+        state = json.load(f)
+    operators = {k: eval(v) for k, v in state['operators'].items()}
+    for k,v in operators.items():
+        if not v.time_stamp=='None':
+            v.time_stamp = datetime.strptime(v.time_stamp, '%Y-%m-%d %H:%M:%S.%f')
+        else:
+            v.time_stamp = None
+    return operators
+
 def simulate():
     '''
     具体调用方法可见各个函数的参数说明
     '''
-    global ope_list
+    global ope_list,base_scheduler
     # 第一次执行任务
     # tasks = [{"plan": {'room_1_1': ['能天使','但书','龙舌兰']}, "time": datetime.now()}]
     tasks =[]
     reconnect_max_tries = 10
     reconnect_tries = 0
     base_scheduler = inialize(tasks)
+    base_scheduler.initialize_operators()
+    base_scheduler.op_data.operators = load_state()
 
     while True:
         try:
@@ -289,7 +316,6 @@ def simulate():
                     time.sleep(sleep_time)
             if len(base_scheduler.tasks) > 0 and 'type' in base_scheduler.tasks[0].keys() and base_scheduler.tasks[0]['type'].split('_')[0] == 'maa':
                 base_scheduler.maa_plan_solver((base_scheduler.tasks[0]['type'].split('_')[1]).split(','), one_time=True)
-                del base_scheduler.tasks[0]
                 continue
             base_scheduler.run()
             reconnect_tries = 0
@@ -319,5 +345,6 @@ def simulate():
 
 
 # debuglog()
+atexit.register(save_state)
 savelog()
 simulate()

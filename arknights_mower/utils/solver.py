@@ -263,6 +263,8 @@ class BaseSolver:
                     self.tap_element('nav_index')
                 elif self.scene() == Scene.CLOSE_MINE:
                     self.tap_element('close_mine')
+                elif self.scene() == Scene.CHECK_IN:
+                    self.tap_element('check_in')
                 elif self.scene() == Scene.ANNOUNCEMENT:
                     self.tap(detector.announcement_close(self.recog.img))
                 elif self.scene() == Scene.MATERIEL:

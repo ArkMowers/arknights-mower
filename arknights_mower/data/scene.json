@@ -95,6 +95,10 @@
         "label": "CLOSE_MINE",
         "comment": "产业合作洽谈会"
     },
+    "113": {
+    "label": "CHECK_IN",
+    "comment": "4周年签到"
+    },
     "201": {
         "label": "INFRA_MAIN",
         "comment": "基建全局视角"

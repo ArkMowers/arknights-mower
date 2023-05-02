@@ -20,6 +20,9 @@ class Operators(object):
         self.dorm = []
         self.max_resting_count = max_resting_count
 
+    def __repr__(self):
+        return f'Operators(operators={self.operators})'
+
     def update_detail(self, name, mood, current_room, current_index, update_time=False):
         agent = self.operators[name]
         if update_time:
@@ -174,6 +177,8 @@ class Dormitory(object):
         self.name = name
         self.time = time
 
+    def __repr__(self):
+        return f"Dormitory(position={self.position},name='{self.name}',time='{self.time}')"
 
 class Operator(object):
     time_stamp = None
@@ -181,12 +186,11 @@ class Operator(object):
 
     def __init__(self, name, room, index=-1, group='', replacement=[], resting_priority='low', current_room='',
                  exhaust_require=False,
-                 mood=24, upper_limit=24, rest_in_full=False, current_index=-1, lower_limit=0, operator_type="low"):
+                 mood=24, upper_limit=24, rest_in_full=False, current_index=-1, lower_limit=0, operator_type="low",
+                 depletion_rate=0, time_stamp=None):
         self.name = name
         self.room = room
         self.operator_type = operator_type
-        # if room.startswith('dormitory'):
-        #     self.operator_type = "low"
         self.index = index
         self.group = group
         self.replacement = replacement
@@ -198,17 +202,18 @@ class Operator(object):
         self.mood = mood
         self.current_index = current_index
         self.lower_limit = lower_limit
-        self.depletion_rate = 0
+        self.depletion_rate = depletion_rate
+        self.time_stamp = time_stamp
 
     def is_high(self):
         return self.operator_type == 'high'
 
-    def need_to_refresh(self, h=2):
+    def need_to_refresh(self, h=2, r=""):
         # 是否需要读取心情
         if self.operator_type == 'high':
             if self.time_stamp is None or (
                     self.time_stamp is not None and self.time_stamp + timedelta(hours=h) < datetime.now()) or (
-                    self.current_room.startswith("dorm") and not self.room.startswith("dorm")):
+                    r.startswith("dorm") and not self.room.startswith("dorm")):
                 return True
         return False
 
@@ -221,3 +226,6 @@ class Operator(object):
                     return False
             return self.need_to_refresh(2.5) or self.current_room != self.room or self.index != self.current_index
         return False
+
+    def __repr__(self):
+        return f"Operator(name='{self.name}', room='{self.room}', index={self.index}, group='{self.group}', replacement={self.replacement}, resting_priority='{self.resting_priority}', current_room='{self.current_room}',exhaust_require={self.exhaust_require},mood={self.mood}, upper_limit={self.upper_limit}, rest_in_full={self.rest_in_full}, current_index={self.current_index}, lower_limit={self.lower_limit}, operator_type='{self.operator_type}',depletion_rate={self.depletion_rate},time_stamp='{self.time_stamp}')"
