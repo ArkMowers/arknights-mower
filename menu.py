@@ -1,116 +1,64 @@
-import importlib
 import json
-import sys
 from multiprocessing import Pipe, Process, freeze_support
 import time
 import PySimpleGUI as sg
 import os
 from ruamel.yaml import YAML
+
+from arknights_mower.utils.conf import load_conf, save_conf, load_plan, write_plan
 from arknights_mower.utils.log import logger
 from arknights_mower.data import agent_list
 from arknights_mower.__main__ import main
 
 yaml = YAML()
-confUrl = './conf.yml';
+# confUrl = './conf.yml'
 conf = {}
 plan = {}
+current_plan = {}
+operators = {}
 global window
 buffer = ''
 line = 0
 half_line_index = 0
 
 
-# 读取写入配置文件
-def load_conf():
-    global conf
-    global confUrl
-    if not os.path.isfile(confUrl):
-        open(confUrl, 'w')  # 创建空配置文件
-    else:
-        with open(confUrl, 'r', encoding='utf8') as c:
-            conf = yaml.load(c)
-            if conf is None:
-                conf = {}
-    conf['package_type'] = conf['package_type'] if 'package_type' in conf.keys() else 1
-    conf['adb'] = conf['adb'] if 'adb' in conf.keys() else ''
-    conf['planFile'] = conf['planFile'] if 'planFile' in conf.keys() else './plan.json'  # 默认排班表地址
-    conf['free_blacklist'] = conf['free_blacklist'] if 'free_blacklist' in conf.keys() else ''
-    conf['run_mode'] = conf['run_mode'] if 'run_mode' in conf.keys() else 1
-    conf['ling_xi'] = conf['ling_xi'] if 'ling_xi' in conf.keys() else 1
-    conf['rest_in_full'] = conf['rest_in_full'] if 'rest_in_full' in conf.keys() else '' # 需回满心情的干员
-    conf['exhaust_require'] = conf['exhaust_require'] if 'exhaust_require' in conf.keys() else '' # 需用尽心情的干员
-    conf['resting_priority'] = conf['resting_priority'] if 'resting_priority' in conf.keys() else '' # 宿舍低优先级干员
-    conf['ling_xi_assist'] = conf['ling_xi_assist'] if 'ling_xi_assist' in conf.keys() else '' # 协助令夕心情调配的干员
-    conf['mail_enable'] = conf['mail_enable'] if 'mail_enable' in conf.keys() else 0
-    conf['account'] = conf['account'] if 'account' in conf.keys() else ''
-    conf['pass_code'] = conf['pass_code'] if 'pass_code' in conf.keys() else ''
-    conf['maa_enable'] = conf['maa_enable'] if 'maa_enable' in conf.keys() else 0
-    conf['maa_path'] = conf['maa_path'] if 'maa_path' in conf.keys() else ''
-    conf['maa_adb_path'] = conf['maa_adb_path'] if 'maa_adb_path' in conf.keys() else ''
-    conf['maa_weekly_plan'] = conf['maa_weekly_plan'] if 'maa_weekly_plan' in conf.keys() else [
-        {"weekday": "周一", "stage": ['AP-5'], "medicine": 0},
-        {"weekday": "周二", "stage": ['CE-6'], "medicine": 0},
-        {"weekday": "周三", "stage": ['1-7'], "medicine": 0},
-        {"weekday": "周四", "stage": ['AP-5'], "medicine": 0},
-        {"weekday": "周五", "stage": ['1-7'], "medicine": 0},
-        {"weekday": "周六", "stage": ['AP-5'], "medicine": 0},
-        {"weekday": "周日", "stage": ['AP-5'], "medicine": 0}
-    ]
-    conf['max_resting_count'] = conf['max_resting_count'] if 'max_resting_count' in conf.keys() else 4  # 最大组人数
-    conf['drone_count_limit'] = conf['drone_count_limit'] if 'drone_count_limit' in conf.keys() else 92  # 无人机阈值
-    conf['run_order_delay'] = conf['run_order_delay'] if 'run_order_delay' in conf.keys() else 10  # 跑单提前10分钟运行
-    conf['drone_room'] = conf['drone_room'] if 'drone_room' in conf.keys() else ''  # 无人机使用房间
-    conf['reload_room'] = conf['reload_room'] if 'reload_room' in conf.keys() else ''  # 搓玉补货房间
-    conf['enable_party'] = conf['enable_party'] if 'enable_party' in conf.keys() else 1  # 是否启用收取线索
-
-
-def write_conf():
-    global conf
-    global confUrl
-    with open(confUrl, 'w', encoding='utf8') as c:
-        yaml.default_flow_style = False
-        yaml.dump(conf, c)
-
-
-# 读取排班表
-def load_plan(url):
+def build_plan(url):
     global plan
-    if not os.path.isfile(url):
-        with open(url, 'w') as f:
-            json.dump(plan, f)  # 创建空json文件
-        return
+    global current_plan
     try:
-        with open(url, 'r', encoding='utf8') as fp:
-            plan = json.loads(fp.read())
+        plan = load_plan(url)
+        current_plan = plan[plan['default']]
         conf['planFile'] = url
         for i in range(1, 4):
             for j in range(1, 4):
                 window[f'btn_room_{str(i)}_{str(j)}'].update('待建造', button_color=('white', '#4f4945'))
-        for key in plan:
-            if type(plan[key]).__name__ == 'list':  # 兼容旧版格式
-                plan[key] = {'plans': plan[key], 'name': ''}
-            elif plan[key]['name'] == '贸易站':
+        for key in current_plan:
+            if type(current_plan[key]).__name__ == 'list':  # 兼容旧版格式
+                current_plan[key] = {'plans': current_plan[key], 'name': ''}
+            elif current_plan[key]['name'] == '贸易站':
                 window['btn_' + key].update('贸易站', button_color=('#4f4945', '#33ccff'))
-            elif plan[key]['name'] == '制造站':
+            elif current_plan[key]['name'] == '制造站':
                 window['btn_' + key].update('制造站', button_color=('#4f4945', '#ffcc00'))
-            elif plan[key]['name'] == '发电站':
+            elif current_plan[key]['name'] == '发电站':
                 window['btn_' + key].update('发电站', button_color=('#4f4945', '#ccff66'))
+        window['plan_radio_ling_xi_' + str(plan['conf']['ling_xi'])].update(True)
+        window['plan_int_max_resting_count'].update(plan['conf']['max_resting_count'])
+        window['plan_conf_exhaust_require'].update(plan['conf']['exhaust_require'])
+        window['plan_conf_rest_in_full'].update(plan['conf']['rest_in_full'])
+        window['plan_conf_resting_priority'].update(plan['conf']['resting_priority'])
     except Exception as e:
         logger.error(e)
         println('json格式错误！')
-
-
-# 写入排班表
-def write_plan():
-    with open(conf['planFile'], 'w', encoding='utf8') as c:
-        json.dump(plan, c, ensure_ascii=False)
 
 
 # 主页面
 def menu():
     global window
     global buffer
-    load_conf()
+    global conf
+    global plan
+    conf = load_conf()
+    plan = load_plan(conf['planFile'])
     sg.theme('LightBlue2')
     # --------主页
     package_type_title = sg.Text('服务器:', size=10)
@@ -173,7 +121,8 @@ def menu():
                                sg.InputText('', size=30, key='replacement' + str(i))
                                ]], key='setArea' + str(i), visible=False)
         setting_layout.append([set_area])
-    setting_layout.append([sg.Button('保存', key='savePlan', visible=False),sg.Button('清空', key='clearPlan', visible=False)])
+    setting_layout.append(
+        [sg.Button('保存', key='savePlan', visible=False), sg.Button('清空', key='clearPlan', visible=False)])
     setting_area = sg.Column(setting_layout, element_justification="center",
                              vertical_alignment="bottom",
                              expand_x=True)
@@ -185,20 +134,20 @@ def menu():
     run_mode_2 = sg.Radio('仅跑单模式', 'run_mode', default=conf['run_mode'] == 2,
                           key='radio_run_mode_2', enable_events=True)
     ling_xi_title = sg.Text('令夕模式（令夕上班时起作用）：', size=25)
-    ling_xi_1 = sg.Radio('感知信息', 'ling_xi', default=conf['ling_xi'] == 1,
-                         key='radio_ling_xi_1', enable_events=True)
-    ling_xi_2 = sg.Radio('人间烟火', 'ling_xi', default=conf['ling_xi'] == 2,
-                         key='radio_ling_xi_2', enable_events=True)
-    ling_xi_3 = sg.Radio('均衡模式', 'ling_xi', default=conf['ling_xi'] == 3,
-                         key='radio_ling_xi_3', enable_events=True)
+    ling_xi_1 = sg.Radio('感知信息', 'ling_xi', default=plan['conf']['ling_xi'] == 1,
+                         key='plan_radio_ling_xi_1', enable_events=True)
+    ling_xi_2 = sg.Radio('人间烟火', 'ling_xi', default=plan['conf']['ling_xi'] == 2,
+                         key='plan_radio_ling_xi_2', enable_events=True)
+    ling_xi_3 = sg.Radio('均衡模式', 'ling_xi', default=plan['conf']['ling_xi'] == 3,
+                         key='plan_radio_ling_xi_3', enable_events=True)
     enable_party_title = sg.Text('线索收集：', size=25)
     enable_party_1 = sg.Radio('启用', 'enable_party', default=conf['enable_party'] == 1,
-                             key='radio_enable_party_1', enable_events=True)
+                              key='radio_enable_party_1', enable_events=True)
     enable_party_0 = sg.Radio('禁用', 'enable_party', default=conf['enable_party'] == 0,
-                             key='radio_enable_party_0', enable_events=True)
+                              key='radio_enable_party_0', enable_events=True)
     max_resting_count_title = sg.Text('最大组人数：', size=25, key='max_resting_count_title')
-    max_resting_count = sg.InputText(conf['max_resting_count'], size=5,
-                                     key='int_max_resting_count', enable_events=True)
+    max_resting_count = sg.InputText(plan['conf']['max_resting_count'], size=5,
+                                     key='plan_int_max_resting_count', enable_events=True)
     drone_count_limit_title = sg.Text('无人机使用阈值：', size=25, key='drone_count_limit_title')
     drone_count_limit = sg.InputText(conf['drone_count_limit'], size=5,
                                      key='int_drone_count_limit', enable_events=True)
@@ -210,22 +159,21 @@ def menu():
     drone_room = sg.InputText(conf['drone_room'], size=15,
                               key='conf_drone_room', enable_events=True)
     reload_room = sg.InputText(conf['reload_room'], size=30,
-                              key='conf_reload_room', enable_events=True)
+                               key='conf_reload_room', enable_events=True)
     rest_in_full_title = sg.Text('需要回满心情的干员：', size=25)
-    rest_in_full = sg.InputText(conf['rest_in_full'], size=60,
-                                key='conf_rest_in_full', enable_events=True)
+    rest_in_full = sg.InputText(plan['conf']['rest_in_full'], size=60,
+                                key='plan_conf_rest_in_full', enable_events=True)
 
     exhaust_require_title = sg.Text('需用尽心情的干员：', size=25)
-    exhaust_require = sg.InputText(conf['exhaust_require'], size=60,
-                                key='conf_exhaust_require', enable_events=True)
+    exhaust_require = sg.InputText(plan['conf']['exhaust_require'], size=60,
+                                   key='plan_conf_exhaust_require', enable_events=True)
 
     resting_priority_title = sg.Text('宿舍低优先级干员：', size=25)
-    resting_priority = sg.InputText(conf['resting_priority'], size=60,
-                                key='conf_resting_priority', enable_events=True)
-    ling_xi_assist_title = sg.Text('协助令夕心情调配的干员：', size=25)
-    ling_xi_assist = sg.InputText(conf['ling_xi_assist'], size=60,
-                                key='conf_ling_xi_assist', enable_events=True)
-
+    resting_priority = sg.InputText(plan['conf']['resting_priority'], size=60,
+                                    key='plan_conf_resting_priority', enable_events=True)
+    # ling_xi_assist_title = sg.Text('协助令夕心情调配的干员：', size=25)
+    # ling_xi_assist = sg.InputText(conf['ling_xi_assist'], size=60,
+    #                             key='conf_ling_xi_assist', enable_events=True)
 
     # --------外部调用设置页面
     # mail
@@ -274,14 +222,16 @@ def menu():
     plan_tab = sg.Tab('  排班表 ', [[left_area, central_area, right_area], [setting_area]], element_justification="center")
     setting_tab = sg.Tab('  高级设置 ',
                          [[run_mode_title, run_mode_1, run_mode_2], [ling_xi_title, ling_xi_1, ling_xi_2, ling_xi_3],
-                          [enable_party_title,enable_party_1,enable_party_0],
-                          [max_resting_count_title, max_resting_count, sg.Text('', size=16), run_order_delay_title,run_order_delay],
-                          [drone_room_title, drone_room, sg.Text('', size=7), drone_count_limit_title,drone_count_limit],
+                          [enable_party_title, enable_party_1, enable_party_0],
+                          [max_resting_count_title, max_resting_count, sg.Text('', size=16), run_order_delay_title,
+                           run_order_delay],
+                          [drone_room_title, drone_room, sg.Text('', size=7), drone_count_limit_title,
+                           drone_count_limit],
                           [reload_room_title, reload_room],
                           [rest_in_full_title, rest_in_full],
                           [exhaust_require_title, exhaust_require],
                           [resting_priority_title, resting_priority],
-                          [ling_xi_assist_title, ling_xi_assist]
+                          # [ling_xi_assist_title, ling_xi_assist]   去除协助令夕心情调配项
                           ], pad=((10, 10), (10, 10)))
 
     other_tab = sg.Tab('  外部调用 ',
@@ -291,8 +241,7 @@ def menu():
                                               selected_background_color='#d4dae8', background_color='#aab6d3',
                                               tab_background_color='#aab6d3')]], font='微软雅黑', finalize=True,
                        resizable=False)
-
-    load_plan(conf['planFile'])
+    build_plan(conf['planFile'])
     btn = None
     bind_scirpt()  # 为基建布局左边的站点排序绑定事件
     drag_task = DragTask()
@@ -304,10 +253,23 @@ def menu():
             run_script(event[:event.rindex('-')], drag_task)
             continue
         drag_task.clear()  # 拖拽事件连续不间断，若未触发事件，则初始化
-        if event.startswith('conf_'): # conf开头，为字符串输入的配置
+
+        if event.startswith('plan_conf_'):  # plan_conf开头，为字符串输入的排班表配置
+            key = event[10:]
+            plan['conf'][key] = window[event].get().strip()
+        elif event.startswith('plan_int_'):  # plan_int开头，为数值型输入的配置
+            key = event[9:]
+            try:
+                plan['conf'][key] = int(window[event].get().strip())
+            except ValueError:
+                println(f'[{window[key + "_title"].get()}]需为数字')
+        elif event.startswith('plan_radio_'):
+            v_index = event.rindex('_')
+            plan['conf'][event[11:v_index]] = int(event[v_index + 1:])
+        elif event.startswith('conf_'):  # conf开头，为字符串输入的配置
             key = event[5:]
             conf[key] = window[event].get().strip()
-        elif event.startswith('int_'): # int开头，为数值型输入的配置
+        elif event.startswith('int_'):  # int开头，为数值型输入的配置
             key = event[4:]
             try:
                 conf[key] = int(window[event].get().strip())
@@ -317,8 +279,8 @@ def menu():
             v_index = event.rindex('_')
             conf[event[6:v_index]] = int(event[v_index + 1:])
         elif event == 'planFile' and plan_file.get() != conf['planFile']:  # 排班表
-            write_plan()
-            load_plan(plan_file.get())
+            write_plan(plan, conf['planFile'])
+            build_plan(plan_file.get())
             plan_file.update(conf['planFile'])
         elif event.startswith('maa_weekly_plan_stage_'):  # 关卡名
             v_index = event.rindex('_')
@@ -329,24 +291,26 @@ def menu():
         elif event.startswith('btn_'):  # 设施按钮
             btn = event
             init_btn(event)
-        elif event.endswith('-agent_change'): #干员填写
+        elif event.endswith('-agent_change'):  # 干员填写
             input_agent = window[event[:event.rindex('-')]].get().strip()
-            window[event[:event.rindex('-')]].update(value=input_agent,values=list(filter(lambda s:input_agent in s,['Free'] + agent_list)))
+            window[event[:event.rindex('-')]].update(value=input_agent, values=list(
+                filter(lambda s: input_agent in s, ['Free'] + agent_list)))
         elif event.startswith('agent'):
             input_agent = window[event].get().strip()
-            window[event].update(value=input_agent,values=list(filter(lambda s:input_agent in s,['Free'] + agent_list)))
+            window[event].update(value=input_agent,
+                                 values=list(filter(lambda s: input_agent in s, ['Free'] + agent_list)))
         elif event == 'savePlan':  # 保存设施信息
             save_btn(btn)
-        elif event == 'clearPlan': # 清空当前设施信息
+        elif event == 'clearPlan':  # 清空当前设施信息
             clear_btn(btn)
         elif event == 'on':
             on_btn.update(visible=False)
             off_btn.update(visible=True)
             clear()
             parent_conn, child_conn = Pipe()
-            main_thread = Process(target=main, args=(conf, plan, child_conn), daemon=True)
+            main_thread = Process(target=main, args=(conf, plan,operators, child_conn), daemon=True)
             main_thread.start()
-            window.perform_long_operation(lambda: log(parent_conn), 'log')
+            window.perform_long_operation(lambda: recv(parent_conn),'recv')
         elif event == 'off':
             println('停止运行')
             child_conn.close()
@@ -355,8 +319,8 @@ def menu():
             off_btn.update(visible=False)
 
     window.close()
-    write_conf()
-    write_plan()
+    save_conf(conf)
+    write_plan(plan, conf['planFile'])
 
 
 def bind_scirpt():
@@ -378,38 +342,38 @@ def run_script(event, drag_task):
             drag_task.btn = event[:event.rindex('-')]  # 记录初始按钮
             drag_task.step = 1  # 初始化键位，并推进任务步骤
     elif event.endswith('-ButtonRelease'):  # 松开按钮事件，标志着拖拽结束
-        if drag_task.step == 1 :
+        if drag_task.step == 1:
             drag_task.step = 2  # 推进任务步骤
     elif event.endswith('-Enter'):  # 进入元素事件，拖拽结束鼠标若在其他元素，会进入此事件
         if drag_task.step == 2:
             drag_task.new_btn = event[:event.rindex('-')]  # 记录需交换的按钮
-            swtich_plan(drag_task)
+            switch_plan(drag_task)
             drag_task.clear()
         else:
             drag_task.clear()
 
 
-def swtich_plan(drag_task):
+def switch_plan(drag_task):
     key1 = drag_task.btn[4:]
     key2 = drag_task.new_btn[4:]
-    value1 = plan[key1] if key1 in plan else None;
-    value2 = plan[key2] if key2 in plan else None;
+    value1 = current_plan[key1] if key1 in current_plan else None;
+    value2 = current_plan[key2] if key2 in current_plan else None;
     if value1 is not None:
-        plan[key2] = value1
-    elif key2 in plan:
-        plan.pop(key2)
+        current_plan[key2] = value1
+    elif key2 in current_plan:
+        current_plan.pop(key2)
     if value2 is not None:
-        plan[key1] = value2
-    elif key1 in plan:
-        plan.pop(key1)
-    write_plan()
-    load_plan(conf['planFile'])
+        current_plan[key1] = value2
+    elif key1 in current_plan:
+        current_plan.pop(key1)
+    write_plan(plan, conf['planFile'])
+    build_plan(conf['planFile'])
 
 
 def init_btn(event):
     room_key = event[4:]
-    station_name = plan[room_key]['name'] if room_key in plan.keys() else ''
-    plans = plan[room_key]['plans'] if room_key in plan.keys() else []
+    station_name = current_plan[room_key]['name'] if room_key in current_plan.keys() else ''
+    plans = current_plan[room_key]['plans'] if room_key in current_plan.keys() else []
     if room_key.startswith('room'):
         window['station_type_col'].update(visible=True)
         window['station_type'].update(station_name)
@@ -448,25 +412,29 @@ def save_btn(btn):
             plan1['plans'].append({'agent': agent, 'group': group, 'replacement': replacement})
         elif btn.startswith('btn_dormitory'):  # 宿舍
             plan1['plans'].append({'agent': 'Free', 'group': '', 'replacement': []})
-    plan[btn[4:]] = plan1
-    write_plan()
-    load_plan(conf['planFile'])
+    current_plan[btn[4:]] = plan1
+    write_plan(plan, conf['planFile'])
+    build_plan(conf['planFile'])
 
 
 def clear_btn(btn):
-    if btn[4:] in plan:
-        plan.pop(btn[4:])
+    if btn[4:] in current_plan:
+        current_plan.pop(btn[4:])
     init_btn(btn)
-    write_plan()
-    load_plan(conf['planFile'])
+    write_plan(plan, conf['planFile'])
+    build_plan(conf['planFile'])
 
 
-# 输出日志
-def log(pipe):
+# 接收推送
+def recv(pipe):
     try:
         while True:
             msg = pipe.recv()
-            println(msg)
+            if msg['type'] == 'log':
+                println(msg['data'])
+            elif msg['type'] == 'operators':
+                global operators
+                operators = msg['data']
     except EOFError:
         pipe.close()
 
