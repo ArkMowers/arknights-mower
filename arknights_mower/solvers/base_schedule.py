@@ -351,19 +351,19 @@ class BaseSchedulerSolver(BaseSolver):
                 # 重新扫描
                 self.error = True
                 logger.exception({e})
+            if self.party_time is None and self.enable_party:
+                self.clue()
+            if self.drone_room is not None and (self.drone_time is None or self.drone_time < datetime.now() - timedelta(
+                    hours=self.drone_execution_gap)):
+                self.drone(self.drone_room)
+                logger.info(f"记录本次无人机使用时间为:{datetime.now()}")
+                self.drone_time = datetime.now()
+            if self.reload_room is not None and (
+                    self.reload_time is None or self.reload_time < datetime.now() - timedelta(hours=24)):
+                self.reload()
             self.planned = True
         elif not self.todo_task:
             notification = detector.infra_notification(self.recog.img)
-            if self.drone_room is not None:
-                if self.drone_time is None or self.drone_time < datetime.now()- timedelta(hours=self.drone_execution_gap):
-                    self.drone(self.drone_room)
-                    logger.info(f"记录本次无人机使用时间为:{datetime.now()}")
-                    self.drone_time = datetime.now()
-            if self.party_time is None and self.enable_party:
-                self.clue()
-            if self.reload_room is not None:
-                if self.reload_time is None or self.reload_time < datetime.now()- timedelta(hours=24):
-                    self.reload()
             if notification is None:
                 self.sleep(1)
                 notification = detector.infra_notification(self.recog.img)
@@ -561,7 +561,7 @@ class BaseSchedulerSolver(BaseSolver):
                                 result = self.get_agent_from_room(op.current_room, [op.current_index])
                                 _time = datetime.now()
                                 if result[op.current_index]['time'] is not None:
-                                    _time = result[op.current_index]['time']
+                                    _time = result[op.current_index]['time'] - timedelta(minutes=10)
                                 elif op.mood != 0.0:
                                     _time = datetime.now() + timedelta(
                                         hours=op.mood / op.depletion_rate) - timedelta(minutes=10)

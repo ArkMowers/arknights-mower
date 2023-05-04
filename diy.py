@@ -300,8 +300,13 @@ def simulate():
     reconnect_tries = 0
     base_scheduler = inialize(tasks)
     base_scheduler.initialize_operators()
-    base_scheduler.op_data.operators = load_state()
-
+    _loaded_operators = load_state()
+    if _loaded_operators is not None:
+        for k,v in _loaded_operators.items():
+            if k in base_scheduler.op_data.operators:
+                # 只复制心情数据
+                base_scheduler.op_data.operators[k].mood = v.mood
+                base_scheduler.op_data.operators[k].time_stamp = v.time_stamp
     while True:
         try:
             if len(base_scheduler.tasks) > 0:
