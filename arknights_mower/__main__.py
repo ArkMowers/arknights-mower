@@ -36,19 +36,9 @@ def main(c, p, o={}, child_conn=None):
     if plan['conf']['ling_xi'] == 1:
         agent_base_config['令']['UpperLimit'] = 12
         agent_base_config['夕']['LowerLimit'] = 12
-        # assist = '夕' if conf['ling_xi_assist'] == '' else conf['ling_xi_assist']
-        # if assist in agent_base_config.keys():
-        #     agent_base_config[assist]['LowerLimit'] = 12
-        # else:
-        #     agent_base_config[assist] = {'LowerLimit':12}
     elif plan['conf']['ling_xi'] == 2:
         agent_base_config['夕']['UpperLimit'] = 12
         agent_base_config['令']['LowerLimit'] = 12
-        # assist = '令' if conf['ling_xi_assist'] == '' else conf['ling_xi_assist']
-        # if assist in agent_base_config.keys():
-        #     agent_base_config[assist]['LowerLimit'] = 12
-        # else:
-        #     agent_base_config[assist] = {'LowerLimit':12}
     for key in list(filter(None, plan['conf']['rest_in_full'].replace('，', ',').split(','))):
         if key in agent_base_config.keys():
             agent_base_config[key]['RestInFull'] = True
@@ -143,7 +133,11 @@ def simulate():
     base_scheduler = inialize(tasks)
     base_scheduler.initialize_operators()
     if operators != {}:
-        base_scheduler.op_data.operators = operators
+        for k, v in operators.items():
+            if k in base_scheduler.op_data.operators:
+                # 只复制心情数据
+                base_scheduler.op_data.operators[k].mood = v.mood
+                base_scheduler.op_data.operators[k].time_stamp = v.time_stamp
     while True:
         try:
             if len(base_scheduler.tasks) > 0:
