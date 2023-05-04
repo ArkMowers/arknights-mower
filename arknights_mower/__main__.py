@@ -232,7 +232,7 @@ def __init_params__():
         "巫恋": {"ArrangeOrder": [2, "true"]},
         "柏喙": {"ExhaustRequire": True, "ArrangeOrder": [2, "true"]},
         "龙舌兰": {"ArrangeOrder": [2, "true"]},
-        "空弦": {"ArrangeOrder": [2, "true"], "RestingPriority": "low"},
+        "空弦": {"ArrangeOrder": [2, "true"]},
         "伺夜": {"ArrangeOrder": [2, "true"]},
         "绮良": {"ArrangeOrder": [2, "true"]},
         "但书": {"ArrangeOrder": [2, "true"]},
@@ -251,10 +251,9 @@ def __init_params__():
         "安比尔": {"ArrangeOrder": [2, "false"]},
         "爱丽丝": {"ArrangeOrder": [2, "false"]},
         "桃金娘": {"ArrangeOrder": [2, "false"]},
-        "帕拉斯": {"RestingPriority": "low"},
-        "红云": {"RestingPriority": "low", "ArrangeOrder": [2, "true"]},
+        "红云": {"ArrangeOrder": [2, "true"]},
         "承曦格雷伊": {"ArrangeOrder": [2, "true"]},
-        "乌有": {"ArrangeOrder": [2, "true"], "RestingPriority": "low"},
+        "乌有": {"ArrangeOrder": [2, "true"]},
         "图耶": {"ArrangeOrder": [2, "true"]},
         "鸿雪": {"ArrangeOrder": [2, "true"]},
         "孑": {"ArrangeOrder": [2, "true"]},
@@ -264,7 +263,8 @@ def __init_params__():
         "焰尾": {"RestInFull": True},
         "重岳": {"ArrangeOrder": [2, "true"]},
         "坚雷": {"ArrangeOrder": [2, "true"]},
-        "年": {"RestingPriority": "low"}
+        "年": {"RestingPriority": "low"},
+        "伊内丝": {"ExhaustRequire": True, "ArrangeOrder": [2, "true"], "RestInFull": True},
     }
     maa_config = {
         # maa 运行的时间间隔，以小时计
