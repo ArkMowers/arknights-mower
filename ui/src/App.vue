@@ -148,8 +148,216 @@
         </n-space>
       </div>
     </n-tab-pane>
-    <n-tab-pane name="advanced" tab="高级设置"></n-tab-pane>
-    <n-tab-pane name="external" tab="外部调用"></n-tab-pane>
+    <n-tab-pane name="advanced" tab="高级设置">
+      <div class="home-container">
+        <n-space justify="center">
+          <table>
+            <tr>
+              <td>运行模式：</td>
+              <td colspan="3">
+                <n-space>
+                  <n-radio value="full" name="mode">换班模式</n-radio>
+                  <n-radio value="orders_only" name="mode">仅跑单模式</n-radio>
+                </n-space>
+              </td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>令夕模式（令夕上班时起作用）：</td>
+              <td colspan="3">
+                <n-space>
+                  <n-radio value="感知信息" name="令夕">感知信息</n-radio>
+                  <n-radio value="人间烟火" name="令夕">人间烟火</n-radio>
+                  <n-radio value="balanced" name="令夕">均衡模式</n-radio>
+                </n-space>
+              </td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>线索收集：</td>
+              <td colspan="3">
+                <n-space>
+                  <n-radio value="enabled" name="clue">启用</n-radio>
+                  <n-radio value="disabled" name="clue">禁用</n-radio>
+                </n-space>
+              </td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>最大组人数：</td>
+              <td class="table-space">
+                <n-input></n-input>
+              </td>
+              <td>跑单前置延时（分钟）：</td>
+              <td>
+                <n-input></n-input>
+              </td>
+            </tr>
+            <tr>
+              <td>无人机使用房间（room_X_X）：</td>
+              <td class="table-space">
+                <n-input></n-input>
+              </td>
+              <td>无人机使用阈值：</td>
+              <td>
+                <n-input></n-input>
+              </td>
+            </tr>
+            <tr>
+              <td>搓玉补货房间（逗号分隔房间名）：</td>
+              <td colspan="3">
+                <n-input></n-input>
+              </td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>需要回满心情的干员：</td>
+              <td colspan="3">
+                <n-select multiple filterable tag :options="operators" />
+              </td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>需要用尽心情的干员：</td>
+              <td colspan="3">
+                <n-select multiple filterable tag :options="operators" />
+              </td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>宿舍低优先级干员：</td>
+              <td colspan="3">
+                <n-select multiple filterable tag :options="operators" />
+              </td>
+              <td></td>
+              <td></td>
+            </tr>
+          </table>
+        </n-space>
+      </div>
+    </n-tab-pane>
+    <n-tab-pane name="external" tab="外部调用">
+      <div class="home-container">
+        <n-card>
+          <template #header>
+            <n-checkbox></n-checkbox>
+            邮件提醒
+          </template>
+          <template #default>
+            <table>
+              <tr>
+                <td class="table-space">QQ邮箱</td>
+                <td class="table-space"><n-input></n-input></td>
+                <td class="table-space">授权码</td>
+                <td><n-input></n-input></td>
+              </tr>
+            </table>
+          </template>
+        </n-card>
+        <n-card>
+          <template #header>
+            <n-checkbox></n-checkbox>
+            MAA
+          </template>
+          <template #default>
+            <table>
+              <tr>
+                <td class="table-space">MAA地址</td>
+                <td class="table-space"><n-input></n-input></td>
+                <td class="table-space">adb地址</td>
+                <td><n-input></n-input></td>
+              </tr>
+            </table>
+            <n-h4>周计划</n-h4>
+            <table>
+              <tr>
+                <td class="table-space">周一</td>
+                <td>关卡：</td>
+                <td class="table-space">
+                  <n-input></n-input>
+                </td>
+                <td>理智药</td>
+                <td>
+                  <n-input-number clearable></n-input-number>
+                </td>
+              </tr>
+              <tr>
+                <td class="table-space">周二</td>
+                <td>关卡：</td>
+                <td class="table-space">
+                  <n-input></n-input>
+                </td>
+                <td>理智药</td>
+                <td>
+                  <n-input-number clearable></n-input-number>
+                </td>
+              </tr>
+              <tr>
+                <td class="table-space">周三</td>
+                <td>关卡：</td>
+                <td class="table-space">
+                  <n-input></n-input>
+                </td>
+                <td>理智药</td>
+                <td>
+                  <n-input-number clearable></n-input-number>
+                </td>
+              </tr>
+              <tr>
+                <td class="table-space">周四</td>
+                <td>关卡：</td>
+                <td class="table-space">
+                  <n-input></n-input>
+                </td>
+                <td>理智药</td>
+                <td>
+                  <n-input-number clearable></n-input-number>
+                </td>
+              </tr>
+              <tr>
+                <td class="table-space">周五</td>
+                <td>关卡：</td>
+                <td class="table-space">
+                  <n-input></n-input>
+                </td>
+                <td>理智药</td>
+                <td>
+                  <n-input-number clearable></n-input-number>
+                </td>
+              </tr>
+              <tr>
+                <td class="table-space">周六</td>
+                <td>关卡：</td>
+                <td class="table-space">
+                  <n-input></n-input>
+                </td>
+                <td>理智药</td>
+                <td>
+                  <n-input-number clearable></n-input-number>
+                </td>
+              </tr>
+              <tr>
+                <td class="table-space">周日</td>
+                <td>关卡：</td>
+                <td class="table-space">
+                  <n-input></n-input>
+                </td>
+                <td>理智药</td>
+                <td>
+                  <n-input-number clearable></n-input-number>
+                </td>
+              </tr>
+            </table>
+          </template>
+        </n-card>
+      </div>
+    </n-tab-pane>
   </n-tabs>
 </template>
 
@@ -220,6 +428,10 @@ const facility_type = ref('trading_post')
 .table-space {
   padding-right: 20px;
 }
+
+td {
+  height: 34px;
+}
 </style>
 
 <style>
@@ -232,5 +444,11 @@ const facility_type = ref('trading_post')
   display: flex;
   flex-direction: column;
   overflow: scroll;
+}
+
+.n-card-header__main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 </style>
