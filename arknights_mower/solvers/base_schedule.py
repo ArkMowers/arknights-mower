@@ -19,7 +19,7 @@ from ..utils.log import logger
 from ..utils.pipe import push_operators
 from ..utils.recognize import RecognizeError, Recognizer, Scene
 from ..utils.solver import BaseSolver
-from ..utils.datetime import get_server_weekday
+from ..utils.datetime import get_server_weekday, the_same_time
 from paddleocr import PaddleOCR
 import cv2
 
@@ -78,6 +78,7 @@ class BaseSchedulerSolver(BaseSolver):
         if self.party_time is not None and self.party_time<datetime.now():
             self.party_time = None
         self.todo_task = False
+        self.collect_notification = False
         self.planned = False
         if self.op_data is None or self.op_data.operators is None:
             self.initialize_operators()
@@ -233,8 +234,8 @@ class BaseSchedulerSolver(BaseSolver):
         short_rest = False
         self.total_agent = list(
             v for k, v in self.op_data.operators.items() if v.is_high() and not v.room.startswith('dorm') and not v.current_room.startswith('dorm'))
-        self.total_agent.sort(key=lambda x: x.mood - x.lower_limit, reverse=False)
-        if next((a for a in self.total_agent if (a.name not in self.op_data.exhaust_agent) and a.mood<=3),None) is not None:
+        self.total_agent.sort(key=lambda x: x.current_mood() - x.lower_limit, reverse=False)
+        if next((a for a in self.total_agent if (a.name not in self.op_data.exhaust_agent) and a.current_mood()<=3),None) is not None:
             short_rest= True
         low_priority = []
         for idx, dorm in enumerate(self.op_data.dorm):
@@ -332,7 +333,7 @@ class BaseSchedulerSolver(BaseSolver):
                 elif 'type' in self.task.keys() and self.task['type'].split(',')[0] in agent_list:
                     self.overtake_room()
                 elif 'type' in self.task.keys() and self.task['type'] == 'impart':
-                    self.skip(False)
+                    self.skip(['planned','collect_notification'])
                 del self.tasks[0]
             except Exception as e:
                 logger.exception(e)
@@ -345,12 +346,15 @@ class BaseSchedulerSolver(BaseSolver):
                 if self.read_mood:
                     mood_result = self.agent_get_mood(True)
                     if mood_result is not None:
+                        self.skip(['planned','todo_task','collect_notification'])
                         return True
                 self.plan_solver()
             except Exception as e:
                 # 重新扫描
                 self.error = True
                 logger.exception({e})
+            self.planned = True
+        elif not self.todo_task:
             if self.party_time is None and self.enable_party:
                 self.clue()
             if self.drone_room is not None and (self.drone_time is None or self.drone_time < datetime.now() - timedelta(
@@ -361,16 +365,15 @@ class BaseSchedulerSolver(BaseSolver):
             if self.reload_room is not None and (
                     self.reload_time is None or self.reload_time < datetime.now() - timedelta(hours=24)):
                 self.reload()
-            self.planned = True
-        elif not self.todo_task:
+            self.todo_task = True
+        elif not self.collect_notification:
             notification = detector.infra_notification(self.recog.img)
             if notification is None:
                 self.sleep(1)
                 notification = detector.infra_notification(self.recog.img)
             if notification is not None:
                 self.tap(notification)
-            else:
-                self.todo_task = True
+            self.collect_notification = True
         else:
             return self.handle_error()
 
@@ -409,7 +412,7 @@ class BaseSchedulerSolver(BaseSolver):
                 if _name is None or _name == '':
                     self.current_base[room][idx] = {"agent": "", "mood": -1}
                 else:
-                    self.current_base[room][idx] = {"mood": self.op_data.operators[_name].mood, "agent": _name}
+                    self.current_base[room][idx] = {"mood": self.op_data.operators[_name].current_mood(), "agent": _name}
         current_base = copy.deepcopy(self.current_base)
         plan = self.current_plan
         fix_plan = {}
@@ -511,7 +514,7 @@ class BaseSchedulerSolver(BaseSolver):
             # 根据剩余心情排序
             self.total_agent = list(
                 v for k, v in self.op_data.operators.items() if v.is_high() and not v.room.startswith('dorm'))
-            self.total_agent.sort(key=lambda x: x.mood, reverse=False)
+            self.total_agent.sort(key=lambda x: x.current_mood(), reverse=False)
             # 目前有换班的计划后面改
             logger.debug(f'当前基地数据--> {self.total_agent}')
             fia_plan, fia_room = self.check_fia()
@@ -532,7 +535,7 @@ class BaseSchedulerSolver(BaseSolver):
                         "菲亚梅塔"]}})
             try:
                 # 重新排序
-                self.total_agent.sort(key=lambda x: x.mood - x.lower_limit, reverse=False)
+                self.total_agent.sort(key=lambda x: x.current_mood() - x.lower_limit, reverse=False)
                 # 自动生成任务
                 self.plan_metadata()
                 # 剩余高效组位置
@@ -547,14 +550,16 @@ class BaseSchedulerSolver(BaseSolver):
                         break
                     if fia_room is not None and op.name in self.op_data.operators['菲亚梅塔'].replacement:
                         continue
+                    if op.name in self.op_data.workaholic_agent:
+                        continue
                     # 忽略掉正在休息的
                     if op.current_room.startswith("dorm") or op.current_room in ['factory']:
                         continue
                     # 忽略掉心情值没低于上限的的
-                    if op.mood > int((op.upper_limit - op.lower_limit) * self.resting_treshhold + op.lower_limit):
+                    if op.current_mood() > int((op.upper_limit - op.lower_limit) * self.resting_treshhold + op.lower_limit):
                         continue
                     if op.name in self.op_data.exhaust_agent:
-                        if op.mood <= 2:
+                        if op.current_mood() <= 2:
                             if next((e for e in self.tasks if 'type' in e.keys() and op.name in e['type']),
                                     None) is None:
                                 self.enter_room(op.current_room)
@@ -562,9 +567,9 @@ class BaseSchedulerSolver(BaseSolver):
                                 _time = datetime.now()
                                 if result[op.current_index]['time'] is not None:
                                     _time = result[op.current_index]['time'] - timedelta(minutes=10)
-                                elif op.mood != 0.0:
+                                elif op.current_mood() != 0.0:
                                     _time = datetime.now() + timedelta(
-                                        hours=op.mood / op.depletion_rate) - timedelta(minutes=10)
+                                        hours=op.current_mood() / op.depletion_rate) - timedelta(minutes=10)
                                 self.back()
                                 # plan 是空的是因为得动态生成
                                 exhaust_type = op.name
@@ -602,12 +607,13 @@ class BaseSchedulerSolver(BaseSolver):
         __replacement = []
         __plan = {}
         for x in agents:
+            if self.op_data.operators[x].workaholic : continue
             if self.op_data.operators[x].resting_priority == 'low':
                 _low += 1
             else:
                 _high += 1
         # 排序
-        agents.sort(key=lambda x: self.op_data.operators[x].mood- self.op_data.operators[x].lower_limit, reverse=False)
+        agents.sort(key=lambda x: self.op_data.operators[x].current_mood()- self.op_data.operators[x].lower_limit, reverse=False)
         # 进行位置数量的初步判定
         # 对于252可能需要进行额外判定，由于 low_free 性质等同于 high_free
         success = True
@@ -636,6 +642,8 @@ class BaseSchedulerSolver(BaseSolver):
                 # 记录替换组
                 exist_replacement.extend(__replacement)
                 for x in agents:
+                    if self.op_data.operators[x].workaholic:
+                        continue
                     _dorm = self.op_data.assign_dorm(x)
                     if _dorm.position[0] not in plan.keys():
                         plan[_dorm.position[0]] = ['Current'] * 5
@@ -947,7 +955,7 @@ class BaseSchedulerSolver(BaseSolver):
             self.back(interval=2)
         logger.info('返回基建主界面')
         if self.party_time is not None:
-            if (next((e for e in self.tasks if e['time'] == self.party_time and e['type']=="maa_Mall"), None)) is None:
+            if (next((e for e in self.tasks if the_same_time(e['time'],self.party_time) and e['type']=="maa_Mall"), None)) is None:
                 self.tasks.append({'time': self.party_time - timedelta(milliseconds=1), 'plan': {},'type': 'impart'})
                 self.tasks.append({'time': self.party_time, 'plan': {}, 'type': 'maa_Mall'})
         self.back(interval=2)
@@ -1479,7 +1487,7 @@ class BaseSchedulerSolver(BaseSolver):
                     _mood = self.read_accurate_mood(self.recog.img, cord=mood_p[i])
                     update_time = True
                 else:
-                    _mood = self.op_data.operators[_name].mood
+                    _mood = self.op_data.operators[_name].current_mood()
                 high_no_time = self.op_data.update_detail(_name, _mood, room, i,update_time)
                 data['depletion_rate'] = self.op_data.operators[_name].depletion_rate
                 if high_no_time is not None:
@@ -1610,7 +1618,7 @@ class BaseSchedulerSolver(BaseSolver):
                 self.back(interval=0.5)
                 self.back(interval=0.5)
             self.tasks.append({'time': self.tasks[0]['time'], 'plan': replace_plan})
-            self.skip(False)
+            self.skip(['planned','todo_task'])
         if fia_data is not None:
             replace_agent = fia_data[1]
             fia_change_room = self.op_data.operators[replace_agent].room
@@ -1624,10 +1632,16 @@ class BaseSchedulerSolver(BaseSolver):
             self.skip()
         logger.info('返回基建主界面')
 
-    def skip(self,skip_all=True):
-        self.planned = True
-        if skip_all:
+    def skip(self, task_names ='All'):
+        if task_names == 'All':
+            task_names = ['planned', 'collect_notification', 'todo_task']
+        if 'planned' in task_names:
+            self.planned = True
+        if 'todo_task':
             self.todo_task = True
+        if 'collect_notification':
+            self.collect_notification = True
+
     def reload(self):
         error = False
         for room in self.reload_room:
@@ -1697,7 +1711,8 @@ class BaseSchedulerSolver(BaseSolver):
                     'client_type': '',
                     'penguin_id': '',
                     'DrGrandet': False,
-                    'server': 'CN'
+                    'server': 'CN',
+                    'expiring_medicine':9999
                 })
                 self.stages.append(stage)
         elif type =='Recruit':

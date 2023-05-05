@@ -19,6 +19,7 @@ class Operators(object):
         self.exhaust_group = []
         self.dorm = []
         self.max_resting_count = max_resting_count
+        self.workaholic_agent = []
 
     def __repr__(self):
         return f'Operators(operators={self.operators})'
@@ -103,6 +104,8 @@ class Operators(object):
             operator.lower_limit = self.config[operator.name]['LowerLimit']
         if operator.name in self.config.keys() and 'UpperLimit' in self.config[operator.name].keys():
             operator.upper_limit = self.config[operator.name]['UpperLimit']
+        if operator.name in self.config.keys() and 'Workaholic' in self.config[operator.name].keys():
+            operator.workaholic = self.config[operator.name]['Workaholic']
         self.operators[operator.name] = operator
         # 需要用尽心情干员逻辑
         if (operator.exhaust_require or operator.group in self.exhaust_group) \
@@ -116,6 +119,8 @@ class Operators(object):
                 self.groups[operator.group] = [operator.name]
             else:
                 self.groups[operator.group].append(operator.name)
+        if operator.workaholic and operator.name not in self.workaholic_agent:
+            self.workaholic_agent.append(operator.workaholic)
 
     def available_free(self, free_type='high', count=4):
         ret = 0
@@ -183,6 +188,7 @@ class Dormitory(object):
 class Operator(object):
     time_stamp = None
     depletion_rate = 0
+    workaholic = False
 
     def __init__(self, name, room, index=-1, group='', replacement=[], resting_priority='low', current_room='',
                  exhaust_require=False,
@@ -218,6 +224,8 @@ class Operator(object):
         return False
 
     def not_valid(self):
+        if self.workaholic:
+            return True
         if self.operator_type == 'high':
             if not self.room.startswith("dorm") and self.current_room.startswith("dorm"):
                 if self.mood == -1 or self.mood == 24:
@@ -226,6 +234,15 @@ class Operator(object):
                     return False
             return self.need_to_refresh(2.5) or self.current_room != self.room or self.index != self.current_index
         return False
+
+    def current_mood(self):
+        predict = self.mood
+        if self.time_stamp is not None:
+            predict = self.mood - self.depletion_rate * (datetime.now() - self.time_stamp).total_seconds() / 3600
+        if 0 <= predict <= 24:
+            return predict
+        else:
+            return self.mood
 
     def __repr__(self):
         return f"Operator(name='{self.name}', room='{self.room}', index={self.index}, group='{self.group}', replacement={self.replacement}, resting_priority='{self.resting_priority}', current_room='{self.current_room}',exhaust_require={self.exhaust_require},mood={self.mood}, upper_limit={self.upper_limit}, rest_in_full={self.rest_in_full}, current_index={self.current_index}, lower_limit={self.lower_limit}, operator_type='{self.operator_type}',depletion_rate={self.depletion_rate},time_stamp='{self.time_stamp}')"

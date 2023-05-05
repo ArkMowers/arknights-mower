@@ -9,7 +9,8 @@ from arknights_mower.strategy import Solver
 from arknights_mower.utils.device import Device
 from arknights_mower.utils.log import logger, init_fhlr
 from arknights_mower.utils import config
-from arknights_mower.utils.operators import Operators, Operator
+# 下面不能删除
+from arknights_mower.utils.operators import Operators, Operator,Dormitory
 
 email_config= {
     # 发信账户
@@ -163,7 +164,7 @@ plan = {
 
 agent_base_config = {
     "Default": {"UpperLimit": 24, "LowerLimit": 0, "ExhaustRequire": False, "ArrangeOrder": [2, "false"],
-                "RestInFull": False},
+                "RestInFull": False,"Workaholic":False},
     "令": {"LowerLimit": 12,"ArrangeOrder": [2, "true"]},
     "夕": {"UpperLimit": 12, "ArrangeOrder": [2, "true"]},
     "稀音": {"ExhaustRequire": True, "ArrangeOrder": [2, "true"], "RestInFull": True},
@@ -276,17 +277,24 @@ def save_state():
 
 def load_state():
     if not os.path.exists(state_file_name):
-        return None
+        return None,None
 
     with open(state_file_name, 'r') as f:
         state = json.load(f)
     operators = {k: eval(v) for k, v in state['operators'].items()}
+    dorm = [eval(k) for k in state['dorm']]
     for k,v in operators.items():
         if not v.time_stamp=='None':
             v.time_stamp = datetime.strptime(v.time_stamp, '%Y-%m-%d %H:%M:%S.%f')
         else:
             v.time_stamp = None
-    return operators
+    for v in dorm:
+        if not v.time=='None':
+            v.time = datetime.strptime(v.time, '%Y-%m-%d %H:%M:%S.%f')
+        else:
+            v.time = None
+    return operators,dorm
+
 
 def simulate():
     '''
@@ -300,13 +308,18 @@ def simulate():
     reconnect_tries = 0
     base_scheduler = inialize(tasks)
     base_scheduler.initialize_operators()
-    _loaded_operators = load_state()
+    _loaded_operators,_loaded_dorms = load_state()
     if _loaded_operators is not None:
         for k,v in _loaded_operators.items():
             if k in base_scheduler.op_data.operators:
                 # 只复制心情数据
                 base_scheduler.op_data.operators[k].mood = v.mood
                 base_scheduler.op_data.operators[k].time_stamp = v.time_stamp
+                base_scheduler.op_data.operators[k].depletion_rate = v.depletion_rate
+                base_scheduler.op_data.operators[k].current_room = v.current_room
+                base_scheduler.op_data.operators[k].current_index = v.current_index
+    if _loaded_dorms is not None:
+        base_scheduler.op_data.dorm = _loaded_dorms
     while True:
         try:
             if len(base_scheduler.tasks) > 0:
