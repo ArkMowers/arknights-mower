@@ -190,7 +190,7 @@ class BaseSchedulerSolver(BaseSolver):
                                 _rooms.append(__room)
                         # 跳过需要休息满
                         if not is_exhaust_require:
-                            rooms.extend(__room)
+                            rooms.extend(_rooms)
                             remove_idx.append(idx)
                 for idx in remove_idx:
                     del self.tasks[idx]
@@ -214,8 +214,8 @@ class BaseSchedulerSolver(BaseSolver):
                 logger.debug("由于出现错误情况，生成一次空任务来执行纠错")
                 self.tasks.append({'time': datetime.now(), 'plan': {}})
             # 如果没有任何时间小于当前时间的任务-10分钟 则清空任务
-            if (next((e for e in self.tasks if e['time'] < datetime.now() - timedelta(seconds=600)), None)) is not None:
-                logger.info("检测到执行超过10分钟的任务，清空全部任务")
+            if (next((e for e in self.tasks if e['time'] < datetime.now() - timedelta(seconds=900)), None)) is not None:
+                logger.info("检测到执行超过15分钟的任务，清空全部任务")
                 self.tasks = []
         elif (next((e for e in self.tasks if e['time'] < datetime.now()+timedelta(hours=2.5)), None)) is None:
                 logger.debug("2.5小时内没有其他任务，生成一个空任务")
@@ -277,7 +277,11 @@ class BaseSchedulerSolver(BaseSolver):
                         __plan[__room] = ['Current'] * len(self.current_plan[__room])
                     __plan[__room][self.op_data.operators[x].index] = x
                 if __time < datetime.now(): __time = datetime.now()
-                self.tasks.append({"type": ','.join(__type), 'plan': __plan, 'time': __time})
+                if _time != datetime.max:
+                    self.tasks.append({"type": ','.join(__type), 'plan': __plan, 'time': __time})
+                else:
+                    logger.debug("检测到时间数据不存在")
+                    self.error= True
             # 如果非 rest in full， 则同组取时间最小值
             else:
                 if dorm.time is not None and dorm.time < _time:
@@ -309,11 +313,14 @@ class BaseSchedulerSolver(BaseSolver):
                         low_priority.append(x)
                 # 生成单个任务
         if len(_plan.items()) > 0:
-            _time -= timedelta(minutes=8)
-            if _time < datetime.now(): _time = datetime.now()
-            self.tasks.append({"type": ','.join(_type), 'plan': _plan,
-                               'time': _time if not short_rest else (datetime.now() + timedelta(hours=0.5))})
-
+            if _time != datetime.max:
+                _time -= timedelta(minutes=8)
+                if _time < datetime.now(): _time = datetime.now()
+                self.tasks.append({"type": ','.join(_type), 'plan': _plan,
+                                   'time': _time if not short_rest else (datetime.now() + timedelta(hours=0.5))})
+            else:
+                logger.debug("检测到时间数据不存在")
+                self.error = True
 
     def infra_main(self):
         """ 位于基建首页 """
