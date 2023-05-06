@@ -21,6 +21,7 @@ a = Analysis(
         ('venv/Lib/site-packages/paddle/libs/mkldnn.dll', '.'),
         ('venv/Lib/site-packages/paddle/libs/mklml.dll', '.'),
         ('venv/Lib/site-packages/shapely/DLLs/geos.dll', '.'),
+        ('venv/Lib/site-packages/paddle/fluid/proto/framework_pb2.py', '.'),
         ('venv/Lib/site-packages/paddle/fluid/libpaddle.lib', '.'),
         ('venv/Lib/site-packages/paddle/fluid/libpaddle.pyd', '.'),
         ('venv/Lib/site-packages/shapely/DLLs/geos_c.dll', '.')],
