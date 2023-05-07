@@ -24,6 +24,12 @@ class Operators(object):
     def __repr__(self):
         return f'Operators(operators={self.operators})'
 
+    def reset_dorm_time(self):
+        for name in self.operators.keys():
+            agent = self.operators[name]
+            if agent.room.startswith("dorm"):
+                agent.time_stamp = None
+
     def update_detail(self, name, mood, current_room, current_index, update_time=False):
         agent = self.operators[name]
         if update_time:

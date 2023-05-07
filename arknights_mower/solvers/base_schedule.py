@@ -277,11 +277,11 @@ class BaseSchedulerSolver(BaseSolver):
                         __plan[__room] = ['Current'] * len(self.current_plan[__room])
                     __plan[__room][self.op_data.operators[x].index] = x
                 if __time < datetime.now(): __time = datetime.now()
-                if _time != datetime.max:
+                if __time != datetime.max:
                     self.tasks.append({"type": ','.join(__type), 'plan': __plan, 'time': __time})
                 else:
-                    logger.debug("检测到时间数据不存在")
-                    self.error= True
+                    self.op_data.reset_dorm_time()
+                    self.error = True
             # 如果非 rest in full， 则同组取时间最小值
             else:
                 if dorm.time is not None and dorm.time < _time:
@@ -320,6 +320,7 @@ class BaseSchedulerSolver(BaseSolver):
                                    'time': _time if not short_rest else (datetime.now() + timedelta(hours=0.5))})
             else:
                 logger.debug("检测到时间数据不存在")
+                self.op_data.reset_dorm_time()
                 self.error = True
 
     def infra_main(self):
@@ -846,7 +847,24 @@ class BaseSchedulerSolver(BaseSolver):
             self.todo_task = True
 
     def share_clue(self):
-        pass
+        global x1, x2, x3, x4, y0, y1, y2
+        x1, x2, x3, x4 = 0, 0, 0, 0
+        y0, y1, y2 = 0, 0, 0
+
+        logger.info('基建：赠送线索')
+
+        # 进入会客室
+        self.enter_room('meeting')
+
+        # 关闭掉房间总览
+        error_count = 0
+        while self.find('clue_func') is None:
+            if error_count > 5:
+                raise Exception('未成功进入线索详情界面')
+            self.tap((self.recog.w * 0.1, self.recog.h * 0.9), interval=3)
+            error_count += 1
+        # 识别右侧按钮
+        (x0, y0), (x1, y1) = self.find('clue_func', strict=True)
 
     def clue(self) -> None:
         # 一些识别时会用到的参数

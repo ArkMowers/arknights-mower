@@ -282,18 +282,12 @@ def load_state():
     with open(state_file_name, 'r') as f:
         state = json.load(f)
     operators = {k: eval(v) for k, v in state['operators'].items()}
-    dorm = [eval(k) for k in state['dorm']]
     for k,v in operators.items():
         if not v.time_stamp=='None':
             v.time_stamp = datetime.strptime(v.time_stamp, '%Y-%m-%d %H:%M:%S.%f')
         else:
             v.time_stamp = None
-    for v in dorm:
-        if not v.time=='None':
-            v.time = datetime.strptime(v.time, '%Y-%m-%d %H:%M:%S.%f')
-        else:
-            v.time = None
-    return operators,dorm
+    return operators
 
 
 def simulate():
@@ -308,18 +302,16 @@ def simulate():
     reconnect_tries = 0
     base_scheduler = inialize(tasks)
     base_scheduler.initialize_operators()
-    _loaded_operators,_loaded_dorms = load_state()
+    _loaded_operators = load_state()
     if _loaded_operators is not None:
         for k,v in _loaded_operators.items():
-            if k in base_scheduler.op_data.operators:
+            if k in base_scheduler.op_data.operators and not base_scheduler.op_data.operators[k].room.startswith("dorm"):
                 # 只复制心情数据
                 base_scheduler.op_data.operators[k].mood = v.mood
                 base_scheduler.op_data.operators[k].time_stamp = v.time_stamp
                 base_scheduler.op_data.operators[k].depletion_rate = v.depletion_rate
                 base_scheduler.op_data.operators[k].current_room = v.current_room
                 base_scheduler.op_data.operators[k].current_index = v.current_index
-    if _loaded_dorms is not None:
-        base_scheduler.op_data.dorm = _loaded_dorms
     while True:
         try:
             if len(base_scheduler.tasks) > 0:
