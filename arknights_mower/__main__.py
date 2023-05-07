@@ -133,11 +133,14 @@ def simulate():
     base_scheduler = inialize(tasks)
     base_scheduler.initialize_operators()
     if operators != {}:
-        for k, v in operators.items():
-            if k in base_scheduler.op_data.operators:
+        for k,v in operators.items():
+            if k in base_scheduler.op_data.operators and not base_scheduler.op_data.operators[k].room.startswith("dorm"):
                 # 只复制心情数据
                 base_scheduler.op_data.operators[k].mood = v.mood
                 base_scheduler.op_data.operators[k].time_stamp = v.time_stamp
+                base_scheduler.op_data.operators[k].depletion_rate = v.depletion_rate
+                base_scheduler.op_data.operators[k].current_room = v.current_room
+                base_scheduler.op_data.operators[k].current_index = v.current_index
     while True:
         try:
             if len(base_scheduler.tasks) > 0:
