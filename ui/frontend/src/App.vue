@@ -1,45 +1,7 @@
 <template>
   <n-tabs type="segment" class="tabs">
     <n-tab-pane name="home" tab="主页">
-      <div class="home-container">
-        <table>
-          <tr>
-            <td>服务器：</td>
-            <td>
-              <n-radio value="official" name="server">官服</n-radio>
-              <n-radio value="bilibili" name="server">BiliBili服</n-radio>
-            </td>
-            <td></td>
-          </tr>
-          <tr>
-            <td>adb连接地址：</td>
-            <td>
-              <n-input></n-input>
-            </td>
-            <td></td>
-          </tr>
-          <tr>
-            <td>宿舍黑名单：</td>
-            <td>
-              <n-input></n-input>
-            </td>
-            <td></td>
-          </tr>
-          <tr>
-            <td>排班表：</td>
-            <td>
-              <n-input></n-input>
-            </td>
-            <td>
-              <n-button>...</n-button>
-            </td>
-          </tr>
-        </table>
-        <n-log class="log" :log="'114514'" />
-        <div>
-          <n-button type="primary">开始执行</n-button>
-        </div>
-      </div>
+      <home />
     </n-tab-pane>
     <n-tab-pane name="plan" tab="排班表">
       <div class="plan-container">
@@ -362,7 +324,12 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import home from '@/components/Home.vue'
+import { useConfigStore } from '@/stores/config'
+
+const store = useConfigStore()
+const { load_config } = store
 
 const facility_types = [
   { label: '贸易站', value: 'trading_post' },
@@ -380,6 +347,10 @@ const operators = [
 ]
 
 const facility_type = ref('trading_post')
+
+onMounted(() => {
+  load_config()
+})
 </script>
 
 <style scoped>
@@ -389,13 +360,6 @@ const facility_type = ref('trading_post')
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-
-.log {
-  flex-grow: 1;
-  border: 1px solid rgb(224, 224, 230);
-  border-radius: 3px;
-  padding: 4px;
 }
 
 .tabs {

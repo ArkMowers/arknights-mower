@@ -10,8 +10,10 @@
     "format": "prettier --write src/"
   },
   "dependencies": {
+    "axios": "^1.4.0",
     "pinia": "^2.0.32",
-    "vue": "^3.2.47"
+    "vue": "^3.2.47",
+    "vue-axios": "^3.5.2"
   },
   "devDependencies": {
     "@rushstack/eslint-patch": "^1.2.0",
