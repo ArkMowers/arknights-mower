@@ -48,7 +48,7 @@ export const useConfigStore = defineStore('config', () => {
     reload_room.value = response.data.reload_room
     rest_in_full.value = response.data.rest_in_full
     resting_priority.value = response.data.resting_priority
-    run_mode.value = response.data.run_mode
+    run_mode.value = response.data.run_mode == 1 ? 'orders_only' : 'full'
     run_order_delay.value = response.data.run_order_delay
   }
 
