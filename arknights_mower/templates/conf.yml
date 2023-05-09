@@ -42,3 +42,4 @@ rest_in_full: ''
 resting_priority: ''
 run_mode: 1
 run_order_delay: 10
+start_automatically: false

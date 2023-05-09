@@ -128,6 +128,8 @@ def menu():
                              expand_x=True)
 
     # --------高级设置页面
+    start_automatically = sg.Checkbox('启动mower时自动开始任务', default=conf['start_automatically'],
+                                      key='conf_start_automatically', enable_events=True)
     run_mode_title = sg.Text('运行模式：', size=25)
     run_mode_1 = sg.Radio('换班模式', 'run_mode', default=conf['run_mode'] == 1,
                           key='radio_run_mode_1', enable_events=True)
@@ -221,7 +223,8 @@ def menu():
 
     plan_tab = sg.Tab('  排班表 ', [[left_area, central_area, right_area], [setting_area]], element_justification="center")
     setting_tab = sg.Tab('  高级设置 ',
-                         [[run_mode_title, run_mode_1, run_mode_2], [ling_xi_title, ling_xi_1, ling_xi_2, ling_xi_3],
+                         [
+                          [run_mode_title, run_mode_1, run_mode_2], [ling_xi_title, ling_xi_1, ling_xi_2, ling_xi_3],
                           [enable_party_title, enable_party_1, enable_party_0],
                           [max_resting_count_title, max_resting_count, sg.Text('', size=16), run_order_delay_title,
                            run_order_delay],
@@ -232,6 +235,7 @@ def menu():
                           [exhaust_require_title, exhaust_require],
                           [resting_priority_title, resting_priority],
                           # [ling_xi_assist_title, ling_xi_assist]   去除协助令夕心情调配项
+                             [start_automatically],
                           ], pad=((10, 10), (10, 10)))
 
     other_tab = sg.Tab('  外部调用 ',
@@ -245,6 +249,8 @@ def menu():
     btn = None
     bind_scirpt()  # 为基建布局左边的站点排序绑定事件
     drag_task = DragTask()
+    if conf['start_automatically']:
+        start()
     while True:
         event, value = window.Read()
         if event == sg.WIN_CLOSED:
@@ -268,7 +274,8 @@ def menu():
             plan['conf'][event[11:v_index]] = int(event[v_index + 1:])
         elif event.startswith('conf_'):  # conf开头，为字符串输入的配置
             key = event[5:]
-            conf[key] = window[event].get().strip()
+            value = window[event].get()
+            conf[key] = value.strip() if isinstance(value, str) else value
         elif event.startswith('int_'):  # int开头，为数值型输入的配置
             key = event[4:]
             try:
@@ -304,13 +311,7 @@ def menu():
         elif event == 'clearPlan':  # 清空当前设施信息
             clear_btn(btn)
         elif event == 'on':
-            on_btn.update(visible=False)
-            off_btn.update(visible=True)
-            clear()
-            parent_conn, child_conn = Pipe()
-            main_thread = Process(target=main, args=(conf, plan,operators, child_conn), daemon=True)
-            main_thread.start()
-            window.perform_long_operation(lambda: recv(parent_conn),'recv')
+            start()
         elif event == 'off':
             println('停止运行')
             child_conn.close()
@@ -321,6 +322,18 @@ def menu():
     window.close()
     save_conf(conf)
     write_plan(plan, conf['planFile'])
+
+
+def start():
+    global main_thread, child_conn
+    window['on'].update(visible=False)
+    window['off'].update(visible=True)
+    clear()
+    parent_conn, child_conn = Pipe()
+    main_thread = Process(target=main, args=(conf, plan, operators, child_conn), daemon=True)
+    main_thread.start()
+    window.perform_long_operation(lambda: recv(parent_conn), 'recv')
+
 
 
 def bind_scirpt():
