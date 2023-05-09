@@ -25,6 +25,7 @@ export const useConfigStore = defineStore('config', () => {
   const resting_priority = ref('')
   const run_mode = ref(1)
   const run_order_delay = ref(10)
+  const start_automatically = ref(false)
 
   async function load_config() {
     const response = await axios.get('http://localhost:8000/load-conf')
@@ -50,6 +51,7 @@ export const useConfigStore = defineStore('config', () => {
     resting_priority.value = response.data.resting_priority
     run_mode.value = response.data.run_mode == 1 ? 'orders_only' : 'full'
     run_order_delay.value = response.data.run_order_delay
+    start_automatically.value = response.data.start_automatically
   }
 
   return {
@@ -75,6 +77,7 @@ export const useConfigStore = defineStore('config', () => {
     rest_in_full,
     resting_priority,
     run_mode,
-    run_order_delay
+    run_order_delay,
+    start_automatically
   }
 })

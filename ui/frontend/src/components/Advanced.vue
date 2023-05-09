@@ -4,7 +4,19 @@ import { storeToRefs } from 'pinia'
 
 const store = useConfigStore()
 
-const { run_mode, ling_xi, enable_party } = storeToRefs(store)
+const {
+  run_mode,
+  ling_xi,
+  enable_party,
+  max_resting_count,
+  run_order_delay,
+  drone_room,
+  drone_count_limit,
+  reload_room,
+  rest_in_full,
+  exhaust_require,
+  resting_priority
+} = storeToRefs(store)
 
 const operators = [
   { label: '孑', value: 'Jaye' },
@@ -63,27 +75,27 @@ const operators = [
         <tr>
           <td>最大组人数：</td>
           <td class="table-space">
-            <n-input></n-input>
+            <n-input v-model:value="max_resting_count"></n-input>
           </td>
           <td>跑单前置延时（分钟）：</td>
           <td>
-            <n-input></n-input>
+            <n-input v-model:value="run_order_delay"></n-input>
           </td>
         </tr>
         <tr>
           <td>无人机使用房间（room_X_X）：</td>
           <td class="table-space">
-            <n-input></n-input>
+            <n-input v-model:value="drone_room"></n-input>
           </td>
           <td>无人机使用阈值：</td>
           <td>
-            <n-input></n-input>
+            <n-input v-model:value="drone_count_limit"></n-input>
           </td>
         </tr>
         <tr>
           <td>搓玉补货房间（逗号分隔房间名）：</td>
           <td colspan="3">
-            <n-input></n-input>
+            <n-input v-model:value="reload_room"></n-input>
           </td>
           <td></td>
           <td></td>
@@ -91,7 +103,7 @@ const operators = [
         <tr>
           <td>需要回满心情的干员：</td>
           <td colspan="3">
-            <n-select multiple filterable tag :options="operators" />
+            <n-input v-model:value="rest_in_full"></n-input>
           </td>
           <td></td>
           <td></td>
@@ -99,7 +111,7 @@ const operators = [
         <tr>
           <td>需要用尽心情的干员：</td>
           <td colspan="3">
-            <n-select multiple filterable tag :options="operators" />
+            <n-input v-model:value="exhaust_require"></n-input>
           </td>
           <td></td>
           <td></td>
@@ -107,7 +119,7 @@ const operators = [
         <tr>
           <td>宿舍低优先级干员：</td>
           <td colspan="3">
-            <n-select multiple filterable tag :options="operators" />
+            <n-input v-model:value="resting_priority"></n-input>
           </td>
           <td></td>
           <td></td>
