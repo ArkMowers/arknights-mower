@@ -15,7 +15,8 @@ const {
   reload_room,
   rest_in_full,
   exhaust_require,
-  resting_priority
+  resting_priority,
+  start_automatically
 } = storeToRefs(store)
 
 const operators = [
@@ -123,6 +124,11 @@ const operators = [
           </td>
           <td></td>
           <td></td>
+        </tr>
+        <tr>
+          <td colspan="4">
+            <n-checkbox v-model:checked="start_automatically">启动mower时自动开始任务</n-checkbox>
+          </td>
         </tr>
       </table>
     </n-space>
