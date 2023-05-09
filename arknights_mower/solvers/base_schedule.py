@@ -752,14 +752,13 @@ class BaseSchedulerSolver(BaseSolver):
             else:
                 ocr = PaddleOCR(enable_mkldnn=True, use_angle_cls=False)
 
-    def read_screen(self, img, type="mood", limit=24, cord=None, change_color=False):
+    def read_screen(self, img, type="mood", limit=24, cord=None):
         if cord is not None:
             img = img[cord[1]:cord[3], cord[0]:cord[2]]
         if 'mood' in type or type == "time":
             # 心情图片太小，复制8次提高准确率
             for x in range(0, 4):
                 img = cv2.vconcat([img, img])
-        if change_color: img[img == 137] = 255
         try:
             self.initialize_paddle()
             rets = ocr.ocr(img, cls=True)
@@ -778,7 +777,7 @@ class BaseSchedulerSolver(BaseSolver):
                     return -1
                 elif 'name' in type:
                     logger.debug("使用老版识别")
-                    return character_recognize.agent_name(img, self.recog.h * 1.1)
+                    return character_recognize.agent_name(img, self.recog.h)
                 else:
                     return ""
             x = [i[0] for i in line_conf]
@@ -793,7 +792,7 @@ class BaseSchedulerSolver(BaseSolver):
                     __str = __str.replace(".", ":")
             elif 'name' in type and __str not in agent_list:
                 logger.debug("使用老版识别")
-                __str = character_recognize.agent_name(img, self.recog.h * 1.1)
+                __str = character_recognize.agent_name(img, self.recog.h)
             logger.debug(__str)
             return __str
         except Exception as e:

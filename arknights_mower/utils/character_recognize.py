@@ -63,15 +63,20 @@ def agent_sift_init():
         origin_kp, origin_des = SIFT.detectAndCompute(origin, None)
 
 
-def sift_recog(query, resolution, draw=False,reverse = False):
+def sift_recog(query, resolution, draw=False,bigfont = False):
     """
     使用 SIFT 提取特征点识别干员名称
     """
     agent_sift_init()
+    # 大号字体修改参数
+    if bigfont:
+        SIFT = cv2.SIFT_create(
+            contrastThreshold=0.1,
+            edgeThreshold=20
+        )
+    else:
+        SIFT = cv2.SIFT_create()
     query = cv2.cvtColor(np.array(query), cv2.COLOR_RGB2GRAY)
-    if reverse :
-        # 干员总览界面图像色度反转
-        query = 255 -query
     # the height & width of query image
     height, width = query.shape
 
@@ -217,7 +222,7 @@ def agent(img, draw=False):
         saveimg(img, 'failure_agent')
         raise RecognizeError(e)
 
-def agent_name(__img, height,reverse = False, draw: bool = False):
+def agent_name(__img, height, draw: bool = False):
     query = cv2.cvtColor(np.array(__img), cv2.COLOR_RGB2GRAY)
     h, w= query.shape
     dim = (w*4, h*4)
@@ -231,7 +236,7 @@ def agent_name(__img, height,reverse = False, draw: bool = False):
         elif len(ocr) > 0 and ocr[0][1] in ocr_error.keys():
             name = ocr_error[ocr[0][1]]
         else:
-            res = sift_recog(__img, height, draw, reverse)
+            res = sift_recog(__img, height, draw,bigfont=True)
             if (res is not None) and res in agent_list:
                 name = res
             else:
