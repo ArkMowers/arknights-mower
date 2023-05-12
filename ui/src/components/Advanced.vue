@@ -16,17 +16,8 @@ const {
   start_automatically
 } = storeToRefs(config_store)
 
-const { ling_xi, max_resting_count, resting_priority, exhaust_require, rest_in_full } =
+const { ling_xi, max_resting_count, resting_priority, exhaust_require, rest_in_full, operators } =
   storeToRefs(plan_store)
-
-const operators = [
-  { label: '孑', value: 'Jaye' },
-  { label: '拉普兰德', value: 'Lappland' },
-  { label: '德克萨斯', value: 'Texas' },
-  { label: '泰拉大陆调查团', value: 'TerraResearchCommission' },
-  { label: '但书', value: 'Proviso' },
-  { label: '龙舌兰', value: 'Tequila' }
-]
 </script>
 
 <template>
@@ -104,7 +95,8 @@ const operators = [
         <tr>
           <td>需要回满心情的干员：</td>
           <td colspan="3">
-            <n-input v-model:value="rest_in_full"></n-input>
+            <!-- <n-input v-model:value="rest_in_full"></n-input> -->
+            <n-select multiple filterable tag :options="operators" />
           </td>
           <td></td>
           <td></td>
@@ -112,7 +104,8 @@ const operators = [
         <tr>
           <td>需要用尽心情的干员：</td>
           <td colspan="3">
-            <n-input v-model:value="exhaust_require"></n-input>
+            <!-- <n-input v-model:value="exhaust_require"></n-input> -->
+            <n-select multiple filterable tag :options="operators" />
           </td>
           <td></td>
           <td></td>
@@ -120,7 +113,8 @@ const operators = [
         <tr>
           <td>宿舍低优先级干员：</td>
           <td colspan="3">
-            <n-input v-model:value="resting_priority"></n-input>
+            <!-- <n-input v-model:value="resting_priority"></n-input> -->
+            <n-select multiple filterable tag :options="operators" />
           </td>
           <td></td>
           <td></td>

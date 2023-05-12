@@ -29,11 +29,12 @@ const config_store = useConfigStore()
 const { load_config } = config_store
 
 const plan_store = usePlanStore()
-const { load_plan } = plan_store
+const { load_plan, load_operators } = plan_store
 
 onMounted(async () => {
   await load_config()
   await load_plan()
+  await load_operators()
 })
 </script>
 

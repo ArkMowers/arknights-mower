@@ -1,17 +1,14 @@
 <script setup>
+import { storeToRefs } from 'pinia'
+import { usePlanStore } from '@/stores/plan'
+
+const plan_store = usePlanStore()
+const { operators } = storeToRefs(plan_store)
+
 const facility_types = [
   { label: '贸易站', value: 'trading_post' },
   { label: '制造站', value: 'factory' },
   { label: '发电站', value: 'power_plant' }
-]
-
-const operators = [
-  { label: '孑', value: 'Jaye' },
-  { label: '拉普兰德', value: 'Lappland' },
-  { label: '德克萨斯', value: 'Texas' },
-  { label: '泰拉大陆调查团', value: 'TerraResearchCommission' },
-  { label: '但书', value: 'Proviso' },
-  { label: '龙舌兰', value: 'Tequila' }
 ]
 
 const facility_type = ref('trading_post')
@@ -73,10 +70,10 @@ const facility_type = ref('trading_post')
         <tr>
           <td>干员：</td>
           <td class="table-space">
-            <n-select multiple filterable tag :options="operators" class="operator-select" />
+            <n-select filterable tag :options="operators" class="operator-select" />
           </td>
           <td>组：</td>
-          <td class="table-space">
+          <td class="table-space group">
             <n-input></n-input>
           </td>
           <td>替换：</td>
@@ -87,10 +84,10 @@ const facility_type = ref('trading_post')
         <tr>
           <td>干员：</td>
           <td class="table-space">
-            <n-select multiple filterable tag :options="operators" class="operator-select" />
+            <n-select filterable tag :options="operators" class="operator-select" />
           </td>
           <td>组：</td>
-          <td class="table-space">
+          <td class="table-space group">
             <n-input></n-input>
           </td>
           <td>替换：</td>
@@ -101,10 +98,10 @@ const facility_type = ref('trading_post')
         <tr>
           <td>干员：</td>
           <td class="table-space">
-            <n-select multiple filterable tag :options="operators" class="operator-select" />
+            <n-select filterable tag :options="operators" class="operator-select" />
           </td>
           <td>组：</td>
-          <td class="table-space">
+          <td class="table-space group">
             <n-input></n-input>
           </td>
           <td>替换：</td>
@@ -131,17 +128,21 @@ const facility_type = ref('trading_post')
 }
 
 .operator-select {
-  width: 200px;
+  width: 150px;
 }
 
 .replacement-select {
-  width: 200px;
+  width: 300px;
 }
 
 .plan-container {
-  min-width: 810px;
+  min-width: 750px;
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.group {
+  width: 120px;
 }
 </style>
