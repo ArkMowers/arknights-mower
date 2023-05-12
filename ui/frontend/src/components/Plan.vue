@@ -131,7 +131,7 @@ const facility_type = ref('trading_post')
 }
 
 .operator-select {
-  width: 380px;
+  width: 200px;
 }
 
 .replacement-select {
@@ -139,7 +139,7 @@ const facility_type = ref('trading_post')
 }
 
 .plan-container {
-  min-width: 980px;
+  min-width: 810px;
   display: flex;
   flex-direction: column;
   gap: 12px;

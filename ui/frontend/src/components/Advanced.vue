@@ -1,23 +1,23 @@
 <script setup>
 import { useConfigStore } from '@/stores/config'
+import { usePlanStore } from '@/stores/plan'
 import { storeToRefs } from 'pinia'
 
-const store = useConfigStore()
+const config_store = useConfigStore()
+const plan_store = usePlanStore()
 
 const {
   run_mode,
-  ling_xi,
   enable_party,
-  max_resting_count,
   run_order_delay,
   drone_room,
   drone_count_limit,
   reload_room,
-  rest_in_full,
-  exhaust_require,
-  resting_priority,
   start_automatically
-} = storeToRefs(store)
+} = storeToRefs(config_store)
+
+const { ling_xi, max_resting_count, resting_priority, exhaust_require, rest_in_full } =
+  storeToRefs(plan_store)
 
 const operators = [
   { label: '孑', value: 'Jaye' },

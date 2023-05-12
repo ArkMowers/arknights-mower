@@ -16,18 +16,24 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { onMounted } from 'vue'
 import home from '@/components/Home.vue'
 import plan from '@/components/Plan.vue'
 import advanced from '@/components/Advanced.vue'
 import external from '@/components/External.vue'
+
 import { useConfigStore } from '@/stores/config'
+import { usePlanStore } from '@/stores/plan'
 
-const store = useConfigStore()
-const { load_config } = store
+const config_store = useConfigStore()
+const { load_config } = config_store
 
-onMounted(() => {
-  load_config()
+const plan_store = usePlanStore()
+const { load_plan } = plan_store
+
+onMounted(async () => {
+  await load_config()
+  await load_plan()
 })
 </script>
 
@@ -69,5 +75,9 @@ td {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.n-checkbox {
+  align-items: center;
 }
 </style>
