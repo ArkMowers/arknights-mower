@@ -42,9 +42,9 @@ const { ling_xi, max_resting_count, resting_priority, exhaust_require, rest_in_f
           <td colspan="3">
             <n-radio-group v-model:value="ling_xi">
               <n-space>
-                <n-radio :value="1">感知信息</n-radio>
-                <n-radio :value="2">人间烟火</n-radio>
-                <n-radio :value="3">均衡模式</n-radio>
+                <n-radio :value="'1'">感知信息</n-radio>
+                <n-radio :value="'2'">人间烟火</n-radio>
+                <n-radio :value="'3'">均衡模式</n-radio>
               </n-space>
             </n-radio-group>
           </td>
@@ -95,8 +95,7 @@ const { ling_xi, max_resting_count, resting_priority, exhaust_require, rest_in_f
         <tr>
           <td>需要回满心情的干员：</td>
           <td colspan="3">
-            <!-- <n-input v-model:value="rest_in_full"></n-input> -->
-            <n-select multiple filterable tag :options="operators" />
+            <n-select multiple filterable tag :options="operators" v-model:value="rest_in_full" />
           </td>
           <td></td>
           <td></td>
@@ -104,8 +103,13 @@ const { ling_xi, max_resting_count, resting_priority, exhaust_require, rest_in_f
         <tr>
           <td>需要用尽心情的干员：</td>
           <td colspan="3">
-            <!-- <n-input v-model:value="exhaust_require"></n-input> -->
-            <n-select multiple filterable tag :options="operators" />
+            <n-select
+              multiple
+              filterable
+              tag
+              :options="operators"
+              v-model:value="exhaust_require"
+            />
           </td>
           <td></td>
           <td></td>
@@ -113,8 +117,13 @@ const { ling_xi, max_resting_count, resting_priority, exhaust_require, rest_in_f
         <tr>
           <td>宿舍低优先级干员：</td>
           <td colspan="3">
-            <!-- <n-input v-model:value="resting_priority"></n-input> -->
-            <n-select multiple filterable tag :options="operators" />
+            <n-select
+              multiple
+              filterable
+              tag
+              :options="operators"
+              v-model:value="resting_priority"
+            />
           </td>
           <td></td>
           <td></td>

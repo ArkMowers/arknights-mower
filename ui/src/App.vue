@@ -1,18 +1,20 @@
 <template>
-  <n-tabs type="segment" class="tabs">
-    <n-tab-pane name="home" tab="主页">
-      <home />
-    </n-tab-pane>
-    <n-tab-pane name="plan" tab="排班表">
-      <plan />
-    </n-tab-pane>
-    <n-tab-pane name="advanced" tab="高级设置">
-      <advanced />
-    </n-tab-pane>
-    <n-tab-pane name="external" tab="外部调用">
-      <external />
-    </n-tab-pane>
-  </n-tabs>
+  <n-config-provider :locale="zhCN" :date-locale="dateZhCN">
+    <n-tabs type="segment" class="tabs">
+      <n-tab-pane name="home" tab="主页">
+        <home />
+      </n-tab-pane>
+      <n-tab-pane name="plan" tab="排班表">
+        <plan />
+      </n-tab-pane>
+      <n-tab-pane name="advanced" tab="高级设置">
+        <advanced />
+      </n-tab-pane>
+      <n-tab-pane name="external" tab="外部调用">
+        <external />
+      </n-tab-pane>
+    </n-tabs>
+  </n-config-provider>
 </template>
 
 <script setup>
@@ -21,6 +23,7 @@ import home from '@/components/Home.vue'
 import plan from '@/components/Plan.vue'
 import advanced from '@/components/Advanced.vue'
 import external from '@/components/External.vue'
+import { zhCN, dateZhCN } from 'naive-ui'
 
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
