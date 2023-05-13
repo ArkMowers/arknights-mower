@@ -1,5 +1,5 @@
 <template>
-  <n-config-provider :locale="zhCN" :date-locale="dateZhCN">
+  <n-config-provider :locale="zhCN" :date-locale="dateZhCN" class="provider">
     <n-tabs type="segment" class="tabs">
       <n-tab-pane name="home" tab="主页">
         <home />
@@ -43,6 +43,10 @@ onMounted(async () => {
 
 <style scoped>
 .tabs {
+  height: 100%;
+}
+
+.provider {
   height: 100%;
 }
 </style>
