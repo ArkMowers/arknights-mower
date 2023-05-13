@@ -1,5 +1,7 @@
 <template>
+  <!-- <n-config-provider :locale="zhCN" :date-locale="dateZhCN" class="provider" :theme="darkTheme"> -->
   <n-config-provider :locale="zhCN" :date-locale="dateZhCN" class="provider">
+    <n-global-style />
     <n-tabs type="segment" class="tabs">
       <n-tab-pane name="home" tab="主页">
         <home />
@@ -23,7 +25,7 @@ import home from '@/components/Home.vue'
 import plan from '@/components/Plan.vue'
 import advanced from '@/components/Advanced.vue'
 import external from '@/components/External.vue'
-import { zhCN, dateZhCN } from 'naive-ui'
+import { zhCN, dateZhCN, darkTheme } from 'naive-ui'
 
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
