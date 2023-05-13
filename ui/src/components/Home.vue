@@ -58,6 +58,7 @@ const { adb, package_type, free_blacklist, plan_file } = storeToRefs(store)
   display: flex;
   flex-direction: column;
   gap: 8px;
+  overflow: hidden;
 }
 
 .log {
