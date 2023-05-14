@@ -277,7 +277,7 @@ def save_state():
 
 def load_state():
     if not os.path.exists(state_file_name):
-        return None,None
+        return None
 
     with open(state_file_name, 'r') as f:
         state = json.load(f)
