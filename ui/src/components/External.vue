@@ -4,8 +4,16 @@ import { storeToRefs } from 'pinia'
 
 const store = useConfigStore()
 
-const { mail_enable, account, pass_code, maa_enable, maa_path, maa_adb_path, maa_weekly_plan } =
-  storeToRefs(store)
+const {
+  mail_enable,
+  account,
+  pass_code,
+  maa_enable,
+  maa_path,
+  maa_adb_path,
+  maa_weekly_plan,
+  maa_rg_enable
+} = storeToRefs(store)
 </script>
 
 <template>
@@ -40,6 +48,17 @@ const { mail_enable, account, pass_code, maa_enable, maa_path, maa_adb_path, maa
             <td class="table-space"><n-input v-model:value="maa_path"></n-input></td>
             <td class="table-space">adb地址</td>
             <td><n-input v-model:value="maa_adb_path"></n-input></td>
+          </tr>
+          <tr>
+            <td class="table-space">肉鸽：</td>
+            <td colspan="3">
+              <n-radio-group v-model:value="maa_rg_enable">
+                <n-space>
+                  <n-radio :value="1">启用</n-radio>
+                  <n-radio :value="0">禁用</n-radio>
+                </n-space>
+              </n-radio-group>
+            </td>
           </tr>
         </table>
         <n-h3>周计划</n-h3>
