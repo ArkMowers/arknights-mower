@@ -60,6 +60,7 @@ class BaseSchedulerSolver(BaseSolver):
         self.reload_time = None
         self.reload_room = None
         self.run_order_delay=10
+        self.clue_count_limit = 9
         self.enable_party = True
         self.digit_reader = DigitReader()
         self.error = False
@@ -80,6 +81,7 @@ class BaseSchedulerSolver(BaseSolver):
         self.todo_task = False
         self.collect_notification = False
         self.planned = False
+        self.clue_count = 0
         if self.op_data is None or self.op_data.operators is None:
             self.initialize_operators()
         return super().run()
@@ -365,6 +367,8 @@ class BaseSchedulerSolver(BaseSolver):
         elif not self.todo_task:
             if self.party_time is None and self.enable_party:
                 self.clue()
+            if self.clue_count>self.clue_count_limit and self.enable_party:
+                self.share_clue()
             if self.drone_room is not None and (self.drone_time is None or self.drone_time < datetime.now() - timedelta(
                     hours=self.drone_execution_gap)):
                 self.drone(self.drone_room)
@@ -851,7 +855,6 @@ class BaseSchedulerSolver(BaseSolver):
         y0, y1, y2 = 0, 0, 0
 
         logger.info('基建：赠送线索')
-
         # 进入会客室
         self.enter_room('meeting')
 
@@ -864,6 +867,31 @@ class BaseSchedulerSolver(BaseSolver):
             error_count += 1
         # 识别右侧按钮
         (x0, y0), (x1, y1) = self.find('clue_func', strict=True)
+
+        self.tap(((x0 + x1) // 2, (y0 + y1 * 3) // 4), interval=3, rebuild=True)
+        while self.get_infra_scene() == Scene.CONNECTING:
+            self.sleep(2)
+        self.recog_bar()
+        self.recog_view(only_y2=False)
+        for i in range(1, 8):
+            # 切换阵营
+            self.tap(self.switch_camp(i))
+            # 获得和线索视图有关的数据
+            self.recog_view()
+            ori_results = self.ori_clue()
+            if len(ori_results) >1:
+                last_ori = ori_results[0]
+                self.tap(((last_ori[0][0] + last_ori[2][0]) / 2, (last_ori[0][1] + last_ori[2][1]) / 2), interval=1)
+                self.tap((self.recog.w * 0.93, self.recog.h * 0.15), interval=3)
+                logger.info(f'赠送线索 {i} -->给一位随机的幸运儿')
+                break
+            else:
+                continue
+        while self.get_infra_scene() == Scene.CONNECTING:
+            self.sleep(2)
+        self.tap((self.recog.w * 0.95, self.recog.h * 0.05), interval=3)
+        self.back()
+        self.back()
 
     def clue(self) -> None:
         # 一些识别时会用到的参数
@@ -900,26 +928,12 @@ class BaseSchedulerSolver(BaseSolver):
         logger.info('领取会客室线索')
         self.tap(((x0 + x1) // 2, (y0 * 5 - y1) // 4), interval=3)
         obtain = self.find('clue_obtain')
-        clue_inventory_full = False
-        if self.find('clue_full') is not None:
-            clue_inventory_full = True
         if obtain is not None and self.get_color(self.get_pos(obtain, 0.25, 0.5))[0] < 20:
             self.tap(obtain, interval=2)
             if self.find('clue_full') is not None:
                 self.back()
         else:
             self.back()
-        if not clue_inventory_full:
-            pass
-            # self.back()
-            # self.tap((x1, y1), interval=0.5)
-            # self.recog_bar()
-            # # 获得和线索视图相关的数据
-            # self.recog_view(only_y2=False)
-            # for i in range(1, 8):
-            #     # 切换阵营
-            #     self.tap(self.switch_camp(i))
-
         logger.info('放置线索')
         clue_unlock = self.find('clue_unlock')
         if clue_unlock is not None:
@@ -1469,6 +1483,11 @@ class BaseSchedulerSolver(BaseSolver):
         error_count = 0
         if room == 'meeting':
             time.sleep(3)
+            self.recog.update()
+            clue_res = self.read_screen(self.recog.img,limit=10,cord= (645,977,755,1018))
+            if clue_res!=-1:
+                self.clue_count =clue_res
+                logger.info(f'当前拥有线索数量为{self.clue_count}')
         while self.find('room_detail') is None:
             if error_count > 3:
                 raise Exception('未成功进入房间')
