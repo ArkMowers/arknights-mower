@@ -106,6 +106,7 @@ def inialize(tasks, scheduler=None):
         maa_config['maa_adb_path'] = conf['maa_adb_path']
         maa_config['maa_adb'] = conf['adb']
         maa_config['weekly_plan'] = conf['maa_weekly_plan']
+        maa_config['roguelike'] = conf['maa_rg_enable'] == 1
         base_scheduler.maa_config = maa_config
         base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
         base_scheduler.error = False

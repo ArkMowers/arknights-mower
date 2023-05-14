@@ -195,12 +195,17 @@ def menu():
                             key='radio_maa_enable_1', enable_events=True)
     maa_enable_0 = sg.Radio('禁用', 'maa_enable', default=conf['maa_enable'] == 0,
                             key='radio_maa_enable_0', enable_events=True)
+    maa_rg_title = sg.Text('肉鸽：', size=10)
+    maa_rg_enable_1 = sg.Radio('启用', 'maa_rg_enable', default=conf['maa_rg_enable'] == 1,
+                            key='radio_maa_rg_enable_1', enable_events=True)
+    maa_rg_enable_0 = sg.Radio('禁用', 'maa_rg_enable', default=conf['maa_rg_enable'] == 0,
+                            key='radio_maa_rg_enable_0', enable_events=True)
     maa_path_title = sg.Text('MAA地址', size=25)
     maa_path = sg.InputText(conf['maa_path'], size=60, key='conf_maa_path', enable_events=True)
     maa_adb_path_title = sg.Text('adb地址', size=25)
     maa_adb_path = sg.InputText(conf['maa_adb_path'], size=60, key='conf_maa_adb_path', enable_events=True)
     maa_weekly_plan_title = sg.Text('周计划', size=25)
-    maa_layout = [[maa_enable_1, maa_enable_0], [maa_path_title, maa_path], [maa_adb_path_title, maa_adb_path],
+    maa_layout = [[maa_enable_1, maa_enable_0],[maa_rg_title,maa_rg_enable_1,maa_rg_enable_0], [maa_path_title, maa_path], [maa_adb_path_title, maa_adb_path],
                   [maa_weekly_plan_title]]
     for i, v in enumerate(conf['maa_weekly_plan']):
         maa_layout.append([
