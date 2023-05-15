@@ -86,14 +86,6 @@ class BaseSchedulerSolver(BaseSolver):
             self.initialize_operators()
         return super().run()
 
-    def get_group(self, rest_agent, agent, groupname, name):
-        for element in agent:
-            if element['group'] == groupname and name != element["agent"]:
-                rest_agent.append(element)
-                # 从大组里删除
-                agent.remove(element)
-        return
-
     def transition(self) -> None:
         self.recog.update()
         if self.scene() == Scene.INDEX:
@@ -1860,17 +1852,16 @@ class BaseSchedulerSolver(BaseSolver):
                             time.sleep(0)
                     self.device.exit(self.package_name)
             # 生息演算逻辑 结束
-            remaining_time = 0 if one_time and len(self.tasks) == 1 else (
-                        self.tasks[1 if one_time else 0]["time"] - datetime.now()).total_seconds()
+            if one_time:
+                if len(self.tasks)>0:
+                    del self.tasks[0]
+                return
+            remaining_time =(self.tasks[0]["time"] - datetime.now()).total_seconds()
             subject = f"开始休息 {'%.2f' % (remaining_time / 60)} 分钟，到{self.tasks[0]['time'].strftime('%H:%M:%S')}"
             context = f"下一次任务:{self.tasks[0]['plan']}"
             logger.info(context)
             logger.info(subject)
             self.send_email(context, subject)
-            if one_time:
-                if len(self.tasks)>0:
-                    del self.tasks[0]
-                self.handle_error(True)
             if remaining_time>0:
                 time.sleep(remaining_time)
             self.MAA = None
