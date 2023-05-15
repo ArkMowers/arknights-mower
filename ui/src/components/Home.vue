@@ -1,28 +1,39 @@
 <script setup>
 import { useConfigStore } from '@/stores/config'
+import { useMowerStore } from '@/stores/mower'
 import { storeToRefs } from 'pinia'
-import { onMounted, inject, ref } from 'vue'
+import { onMounted, inject, nextTick, watch } from 'vue'
 
-const store = useConfigStore()
+const config_store = useConfigStore()
+const mower_store = useMowerStore()
 
-const { adb, package_type, free_blacklist, plan_file } = storeToRefs(store)
+const { adb, package_type, free_blacklist, plan_file } = storeToRefs(config_store)
+const { log, ws } = storeToRefs(mower_store)
+const { listen_ws } = mower_store
 
 const axios = inject('axios')
 
-const log = ref('')
 const running = ref(false)
 
-let ws = {}
+function scroll_log() {
+  nextTick(() => {
+    document.querySelector('pre:last-child')?.scrollIntoView()
+  })
+}
+
+watch(log, (new_log, old_log) => {
+  scroll_log()
+})
 
 onMounted(() => {
-  ws = new WebSocket('ws://localhost:8000/log')
-  ws.onmessage = (event) => {
-    log.value += event.data + '\n'
+  scroll_log()
+  if (!ws.value) {
+    listen_ws()
   }
 })
 
 function send_hello() {
-  ws.send('Hello!')
+  ws.value.send('Hello!')
 }
 
 function start() {
