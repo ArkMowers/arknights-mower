@@ -1,10 +1,39 @@
 <script setup>
 import { useConfigStore } from '@/stores/config'
 import { storeToRefs } from 'pinia'
+import { onMounted, inject, ref } from 'vue'
 
 const store = useConfigStore()
 
 const { adb, package_type, free_blacklist, plan_file } = storeToRefs(store)
+
+const axios = inject('axios')
+
+const log = ref('')
+const running = ref(false)
+
+let ws = {}
+
+onMounted(() => {
+  ws = new WebSocket('ws://localhost:8000/log')
+  ws.onmessage = (event) => {
+    log.value += event.data + '\n'
+  }
+})
+
+function send_hello() {
+  ws.send('Hello!')
+}
+
+function start() {
+  running.value = true
+  axios.get('http://localhost:8000/start')
+}
+
+function stop() {
+  running.value = false
+  axios.get('http://localhost:8000/stop')
+}
 </script>
 
 <template>
@@ -44,9 +73,10 @@ const { adb, package_type, free_blacklist, plan_file } = storeToRefs(store)
         </td>
       </tr>
     </table>
-    <n-log class="log" :log="'114514'" />
+    <n-log class="log" :log="log" />
     <div>
-      <n-button type="primary">开始执行</n-button>
+      <n-button type="error" @click="stop" v-if="running">立即停止</n-button>
+      <n-button type="primary" @click="start" v-else>开始执行</n-button>
     </div>
   </div>
 </template>
@@ -63,6 +93,7 @@ const { adb, package_type, free_blacklist, plan_file } = storeToRefs(store)
 
 .log {
   flex-grow: 1;
+  overflow: hidden;
   border: 1px solid rgb(224, 224, 230);
   border-radius: 3px;
   padding: 4px;
