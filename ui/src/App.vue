@@ -21,6 +21,7 @@
 
 <script setup>
 import { onMounted } from 'vue'
+import { storeToRefs } from 'pinia'
 import home from '@/components/Home.vue'
 import plan from '@/components/Plan.vue'
 import advanced from '@/components/Advanced.vue'
@@ -29,6 +30,7 @@ import { zhCN, dateZhCN, darkTheme } from 'naive-ui'
 
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
+import { useMowerStore } from '@/stores/mower'
 
 const config_store = useConfigStore()
 const { load_config } = config_store
@@ -36,10 +38,19 @@ const { load_config } = config_store
 const plan_store = usePlanStore()
 const { load_plan, load_operators } = plan_store
 
+const mower_store = useMowerStore()
+const { ws } = storeToRefs(mower_store)
+const { get_running, listen_ws } = mower_store
+
 onMounted(async () => {
   await load_config()
   await load_plan()
   await load_operators()
+  await get_running()
+
+  if (!ws.value) {
+    listen_ws()
+  }
 })
 </script>
 

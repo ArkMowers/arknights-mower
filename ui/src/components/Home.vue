@@ -8,12 +8,10 @@ const config_store = useConfigStore()
 const mower_store = useMowerStore()
 
 const { adb, package_type, free_blacklist, plan_file } = storeToRefs(config_store)
-const { log, ws } = storeToRefs(mower_store)
+const { log, ws, running } = storeToRefs(mower_store)
 const { listen_ws } = mower_store
 
 const axios = inject('axios')
-
-const running = ref(false)
 
 function scroll_log() {
   nextTick(() => {
@@ -27,9 +25,6 @@ watch(log, (new_log, old_log) => {
 
 onMounted(() => {
   scroll_log()
-  if (!ws.value) {
-    listen_ws()
-  }
 })
 
 function send_hello() {
