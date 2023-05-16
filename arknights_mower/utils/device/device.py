@@ -101,7 +101,7 @@ class Device(object):
 
     def screencap(self, save: bool = False) -> bytes:
         """ get a screencap """
-        command = 'screencap -p'
+        command = 'screencap -p 2>/dev/null'
         screencap = self.run(command)
         if save:
             save_screenshot(screencap)
