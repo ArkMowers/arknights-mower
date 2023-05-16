@@ -27,9 +27,14 @@ export const usePlanStore = defineStore('plan', () => {
     const response = await axios.get('http://localhost:8000/plan')
     ling_xi.value = response.data.conf.ling_xi.toString()
     max_resting_count.value = response.data.conf.max_resting_count.toString()
-    exhaust_require.value = response.data.conf.exhaust_require.split(',')
-    rest_in_full.value = response.data.conf.rest_in_full.split(',')
-    resting_priority.value = response.data.conf.resting_priority.split(',')
+    exhaust_require.value =
+      response.data.conf.exhaust_require == '' ? [] : response.data.conf.exhaust_require.split(',')
+    rest_in_full.value =
+      response.data.conf.rest_in_full == '' ? [] : response.data.conf.rest_in_full.split(',')
+    resting_priority.value =
+      response.data.conf.resting_priority == ''
+        ? []
+        : response.data.conf.resting_priority.split(',')
 
     const full_plan = response.data.plan1
     for (const i in facility_operator_limit) {

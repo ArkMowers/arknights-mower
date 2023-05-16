@@ -29,7 +29,7 @@ export const useConfigStore = defineStore('config', () => {
     drone_count_limit.value = response.data.drone_count_limit.toString()
     drone_room.value = response.data.drone_room
     enable_party.value = response.data.enable_party != 0
-    free_blacklist.value = response.data.free_blacklist
+    free_blacklist.value = response.data.free_blacklist == '' ? [] : response.data.free_blacklist
     maa_adb_path.value = response.data.maa_adb_path
     maa_enable.value = response.data.maa_enable != 0
     maa_path.value = response.data.maa_path

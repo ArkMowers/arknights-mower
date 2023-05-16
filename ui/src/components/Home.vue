@@ -65,7 +65,7 @@ function stop() {
       <tr>
         <td>宿舍黑名单：</td>
         <td>
-          <n-input v-model:value="free_blacklist"></n-input>
+          <n-select multiple filterable tag :options="operators" v-model:value="free_blacklist" />
         </td>
         <td></td>
       </tr>
