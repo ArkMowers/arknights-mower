@@ -86,10 +86,20 @@ async def read_log(read):
     connection.close()
 
 
+@app.get("/running")
+async def running():
+    global mower_process
+    return mower_process is not None
+
+
 @app.get("/start")
 async def start(background_tasks: BackgroundTasks):
     global conf
     global plan
+    global mower_process
+
+    if mower_process is not None:
+        return "OK"
 
     read, write = multiprocessing.Pipe()
     mower_process = multiprocessing.Process(
@@ -104,11 +114,28 @@ async def start(background_tasks: BackgroundTasks):
     )
     mower_process.start()
     background_tasks.add_task(read_log, read)
+
     return "OK"
 
 
+async def clear_log_queue():
+    global queue
+    while not queue.empty():
+        await queue.get()
+
+
 @app.get("/stop")
-async def stop():
+async def stop(background_tasks: BackgroundTasks):
+    global mower_process
+
+    if mower_process is None:
+        return "OK"
+
+    mower_process.terminate()
+    mower_process = None
+
+    background_tasks.add_task(clear_log_queue)
+
     return "OK"
 
 
