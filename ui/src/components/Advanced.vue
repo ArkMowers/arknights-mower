@@ -18,6 +18,8 @@ const {
 
 const { ling_xi, max_resting_count, resting_priority, exhaust_require, rest_in_full, operators } =
   storeToRefs(plan_store)
+
+const { left_side_facility } = plan_store
 </script>
 
 <template>
@@ -77,7 +79,7 @@ const { ling_xi, max_resting_count, resting_priority, exhaust_require, rest_in_f
         <tr>
           <td>无人机使用房间（room_X_X）：</td>
           <td class="table-space">
-            <n-input v-model:value="drone_room"></n-input>
+            <n-select :options="left_side_facility" v-model:value="drone_room" />
           </td>
           <td>无人机使用阈值：</td>
           <td>
@@ -85,9 +87,15 @@ const { ling_xi, max_resting_count, resting_priority, exhaust_require, rest_in_f
           </td>
         </tr>
         <tr>
-          <td>搓玉补货房间（逗号分隔房间名）：</td>
+          <td>搓玉补货房间：</td>
           <td colspan="3">
-            <n-input v-model:value="reload_room"></n-input>
+            <n-select
+              multiple
+              filterable
+              tag
+              :options="left_side_facility"
+              v-model:value="reload_room"
+            />
           </td>
           <td></td>
           <td></td>

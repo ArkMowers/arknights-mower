@@ -1,15 +1,17 @@
 <script setup>
 import { useConfigStore } from '@/stores/config'
 import { useMowerStore } from '@/stores/mower'
+import { usePlanStore } from '@/stores/plan'
 import { storeToRefs } from 'pinia'
 import { onMounted, inject, nextTick, watch } from 'vue'
 
 const config_store = useConfigStore()
 const mower_store = useMowerStore()
+const plan_store = usePlanStore()
 
 const { adb, package_type, free_blacklist, plan_file } = storeToRefs(config_store)
 const { log, ws, running } = storeToRefs(mower_store)
-const { listen_ws } = mower_store
+const { operators } = storeToRefs(plan_store)
 
 const axios = inject('axios')
 

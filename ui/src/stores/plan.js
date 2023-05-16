@@ -13,10 +13,14 @@ export const usePlanStore = defineStore('plan', () => {
 
   const operators = ref([])
 
+  const left_side_facility = []
+
   const facility_operator_limit = { central: 5, meeting: 2, factory: 1, contact: 1 }
   for (let i = 1; i <= 3; ++i) {
     for (let j = 1; j <= 3; ++j) {
-      facility_operator_limit[`room_${i}_${j}`] = 3
+      const facility_name = `room_${i}_${j}`
+      facility_operator_limit[facility_name] = 3
+      left_side_facility.push({ label: facility_name, value: facility_name })
     }
   }
   for (let i = 0; i <= 4; ++i) {
@@ -79,6 +83,7 @@ export const usePlanStore = defineStore('plan', () => {
     resting_priority,
     plan,
     operators,
-    facility_operator_limit
+    facility_operator_limit,
+    left_side_facility
   }
 })
