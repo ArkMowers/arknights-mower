@@ -64,6 +64,7 @@ class BaseSchedulerSolver(BaseSolver):
         self.enable_party = True
         self.digit_reader = DigitReader()
         self.error = False
+        self.clue_count = 0
 
     def run(self) -> None:
         """
@@ -81,7 +82,6 @@ class BaseSchedulerSolver(BaseSolver):
         self.todo_task = False
         self.collect_notification = False
         self.planned = False
-        self.clue_count = 0
         if self.op_data is None or self.op_data.operators is None:
             self.initialize_operators()
         return super().run()
@@ -216,6 +216,38 @@ class BaseSchedulerSolver(BaseSolver):
                 self.tasks.append({'time': datetime.now()+timedelta(hours=2.5), 'plan': {}})
         return True
 
+    def plan_fia(self):
+        fia_plan, fia_room = self.check_fia()
+        if fia_room is not None and fia_plan is not None:
+            current_time = self.task['time']
+            candidate_lst = []
+            # 复制最后一位的当前信息
+            last_candidate = copy.deepcopy(self.op_data.operators[self.op_data.operators['菲亚梅塔'].replacement[-1]])
+            plan_last = True
+            for name in self.op_data.operators['菲亚梅塔'].replacement[:-1]:
+                if name in self.op_data.operators:
+                    # 必须有心情消耗速率才可以进行计算
+                    if not 0 < self.op_data.operators[name].depletion_rate < 2:
+                        logger.info(f'{name}的心情消耗速率缺失或不在合理范围内')
+                        plan_last = False
+                    # 复制除去最后一位的当前信息
+                    data = copy.deepcopy(self.op_data.operators[name])
+                    data.mood = data.current_mood()
+                    candidate_lst.append(data)
+            self.skip()
+            # 排序
+            candidate_lst.sort(key=lambda x: (x.mood - x.lower_limit) / (x.upper_limit - x.lower_limit), reverse=False)
+            print(candidate_lst)
+            name = candidate_lst[0].name
+            # 只有主要充能干员心情在20以上才会考虑额外干员
+            if plan_last and candidate_lst[0].current_mood() >= 20:
+                mood = last_candidate.current_mood()
+                logger.debug(f'{last_candidate.name},mood:{mood}')
+                if self.op_data.predict_fia(copy.deepcopy(candidate_lst),mood):
+                    name = last_candidate.name
+            self.tasks.append({'time': current_time,
+                               'plan': {fia_room: [name, '菲亚梅塔']}})
+
     def plan_metadata(self):
         planned_index = []
         for t in self.tasks:
@@ -332,6 +364,8 @@ class BaseSchedulerSolver(BaseSolver):
                     if metadata is not None:
                         self.plan_metadata()
                 # 如果任务名称包含干员名,则为动态生成的
+                elif 'type' in self.task.keys() and self.task['type']=='菲亚梅塔':
+                    self.plan_fia()
                 elif 'type' in self.task.keys() and self.task['type'].split(',')[0] in agent_list:
                     self.overtake_room()
                 elif 'type' in self.task.keys() and self.task['type'] == 'impart':
@@ -523,7 +557,7 @@ class BaseSchedulerSolver(BaseSolver):
             logger.debug(f'当前基地数据--> {self.total_agent}')
             fia_plan, fia_room = self.check_fia()
             if fia_room is not None and fia_plan is not None:
-                if not any(fia_room in obj["plan"].keys() and len(obj["plan"][fia_room]) == 2 for obj in self.tasks):
+                if not any('type' in obj.keys() and obj['type']=='菲亚梅塔' for obj in self.tasks):
                     fia_idx = self.op_data.operators['菲亚梅塔'].current_index if self.op_data.operators[
                                                                                   '菲亚梅塔'].current_index != -1 else \
                         self.op_data.operators['菲亚梅塔'].index
@@ -534,9 +568,7 @@ class BaseSchedulerSolver(BaseSolver):
                         result = self.get_agent_from_room(fia_room, [fia_idx])
                         self.back()
                     logger.info('下一次进行菲亚梅塔充能：' + result[fia_idx]['time'].strftime("%H:%M:%S"))
-                    self.tasks.append({"time": result[fia_idx]['time'], "plan": {fia_room: [
-                        next(obj for obj in self.total_agent if obj.name in fia_plan).name,
-                        "菲亚梅塔"]}})
+                    self.tasks.append({"time": result[fia_idx]['time'], "plan": {},'type':"菲亚梅塔"})
             try:
                 # 重新排序
                 self.total_agent.sort(key=lambda x: x.current_mood() - x.lower_limit, reverse=False)
@@ -552,7 +584,7 @@ class BaseSchedulerSolver(BaseSolver):
                     # 忽略掉菲亚梅塔充能的干员
                     if high_free == 0 or low_free == 0:
                         break
-                    if fia_room is not None and op.name in self.op_data.operators['菲亚梅塔'].replacement:
+                    if fia_room is not None and op.name in self.op_data.operators['菲亚梅塔'].replacement[:-1]:
                         continue
                     if op.name in self.op_data.workaholic_agent:
                         continue
@@ -633,7 +665,7 @@ class BaseSchedulerSolver(BaseSolver):
                 _rep = next((obj for obj in x.replacement if (not (
                         self.op_data.operators[obj].current_room != '' and not self.op_data.operators[
                     obj].current_room.startswith('dormitory'))) and obj not in ['但书',
-                                                                                '龙舌兰'] and obj not in exist_replacement and obj not in __replacement),
+                                                                                '龙舌兰'] and obj not in exist_replacement and obj not in __replacement and self.op_data.operators[obj].current_room != x.room),
                             None)
                 if _rep is not None:
                     __replacement.append(_rep)
@@ -876,6 +908,7 @@ class BaseSchedulerSolver(BaseSolver):
                 self.tap(((last_ori[0][0] + last_ori[2][0]) / 2, (last_ori[0][1] + last_ori[2][1]) / 2), interval=1)
                 self.tap((self.recog.w * 0.93, self.recog.h * 0.15), interval=3)
                 logger.info(f'赠送线索 {i} -->给一位随机的幸运儿')
+                self.clue_count-=1
                 break
             else:
                 continue
@@ -1855,10 +1888,11 @@ class BaseSchedulerSolver(BaseSolver):
             if one_time:
                 if len(self.tasks)>0:
                     del self.tasks[0]
+                self.MAA = None
                 return
             remaining_time =(self.tasks[0]["time"] - datetime.now()).total_seconds()
             subject = f"开始休息 {'%.2f' % (remaining_time / 60)} 分钟，到{self.tasks[0]['time'].strftime('%H:%M:%S')}"
-            context = f"下一次任务:{self.tasks[0]['plan']}"
+            context = f"下一次任务:{self.tasks[0]['plan'] if len(self.tasks[0]['plan']) != 0 else '空任务' if 'type' not in self.tasks[0] else self.tasks[0]['type']}"
             logger.info(context)
             logger.info(subject)
             self.send_email(context, subject)

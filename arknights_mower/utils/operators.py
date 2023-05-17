@@ -24,6 +24,19 @@ class Operators(object):
     def __repr__(self):
         return f'Operators(operators={self.operators})'
 
+    def predict_fia(self, operators, fia_mood, hours=240):
+        recover_hours = (24 - fia_mood) / 2
+        for agent in operators:
+            agent.mood -= agent.depletion_rate * recover_hours
+            if agent.mood < 0.0:
+                return False
+        if recover_hours >= hours or 0 < recover_hours < 1:
+            return True
+        operators.sort(key=lambda x: (x.mood-x.lower_limit)/(x.upper_limit - x.lower_limit), reverse=False)
+        fia_mood = operators[0].mood
+        operators[0].mood = 24
+        return self.predict_fia(operators, fia_mood, hours - recover_hours)
+
     def reset_dorm_time(self):
         for name in self.operators.keys():
             agent = self.operators[name]
