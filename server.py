@@ -3,44 +3,38 @@
 from arknights_mower.utils.conf import load_conf, save_conf, load_plan, write_plan
 from arknights_mower.__main__ import main
 
-from fastapi import FastAPI, WebSocket, BackgroundTasks
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-
-import asyncio_pipe
+from flask import Flask
+from flask_cors import CORS
+from flask_sock import Sock
 
 import os
-import asyncio
 import multiprocessing
-import time
+from threading import Thread
+import json
+import queue
 
-app = FastAPI()
 
-origins = [
-    "http://127.0.0.1:5173",
-    "http://127.0.0.1:4173",
-]
+app = Flask(__name__)
+sock = Sock(app)
+CORS(app)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 conf = {}
 plan = {}
+mower_process = None
+read = None
+queue = queue.SimpleQueue()
+operators = {}
 
 
-@app.get("/conf")
+@app.route("/conf")
 def load_config():
     global conf
     conf = load_conf()
     return conf
 
 
-@app.get("/plan")
+@app.route("/plan")
 def load_plan_from_json():
     global conf
     global plan
@@ -48,58 +42,51 @@ def load_plan_from_json():
     return plan
 
 
-@app.get("/operator")
-async def operator_list():
-    return FileResponse(
+@app.route("/operator")
+def operator_list():
+    with open(
         os.path.join(
             os.getcwd(),
             "arknights_mower",
             "data",
             "agent.json",
-        )
-    )
+        ),
+        "w",
+    ) as f:
+        return json.load(f)
 
 
-mower_process = None
-read = None
-queue = asyncio.Queue()
-operators = {}
-
-
-async def read_log(read):
+def read_log(read):
     global queue
     global operators
-
-    connection = asyncio_pipe.Connection(read)
-    while True:
-        try:
-            log_line = await connection.recv()
-            if log_line["type"] == "log":
-                await queue.put(
-                    f"{time.strftime('%m-%d %H:%M:%S')} {log_line['data']}".strip()
-                )
-            elif log_line["type"] == "operators":
-                operators = log_line["data"]
-        except:
-            print("Connection closed!")
-            break
-    connection.close()
-
-
-@app.get("/running")
-async def running():
     global mower_process
-    return mower_process is not None
+
+    try:
+        while True:
+            msg = read.recv()
+            if msg["type"] == "log":
+                queue.put(msg["data"])
+            elif msg["type"] == "operators":
+                operators = msg["data"]
+    except EOFError:
+        read.close()
 
 
-@app.get("/start")
-async def start(background_tasks: BackgroundTasks):
+@app.route("/running")
+def running():
+    global mower_process
+    return "false" if mower_process is None else "true"
+
+
+@app.route("/start")
+def start():
     global conf
     global plan
     global mower_process
+    global operators
 
     if mower_process is not None:
-        return "OK"
+        return "Mower is already running."
 
     read, write = multiprocessing.Pipe()
     mower_process = multiprocessing.Process(
@@ -113,37 +100,28 @@ async def start(background_tasks: BackgroundTasks):
         daemon=True,
     )
     mower_process.start()
-    background_tasks.add_task(read_log, read)
 
-    return "OK"
+    Thread(target=read_log, args=(read,)).start()
 
-
-async def clear_log_queue():
-    global queue
-    while not queue.empty():
-        await queue.get()
+    return "Mower started."
 
 
-@app.get("/stop")
-async def stop(background_tasks: BackgroundTasks):
+@app.route("/stop")
+def stop():
     global mower_process
 
     if mower_process is None:
-        return "OK"
+        return "Mower is not running."
 
     mower_process.terminate()
     mower_process = None
 
-    background_tasks.add_task(clear_log_queue)
-
-    return "OK"
+    return "Mower stopped."
 
 
-@app.websocket("/log")
-async def log(ws: WebSocket):
+@sock.route("/log")
+def log(ws):
     global queue
-
-    await ws.accept()
     while True:
-        log_line = await queue.get()
-        await ws.send_text(log_line)
+        data = queue.get()
+        ws.send(data)
