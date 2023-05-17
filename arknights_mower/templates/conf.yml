@@ -4,6 +4,7 @@ drone_count_limit: 92
 drone_room: ''
 enable_party: 1
 exhaust_require: ''
+workaholic: ''
 free_blacklist: ''
 ling_xi: 1
 maa_adb_path: D:\Program Files\Nox\bin\adb.exe

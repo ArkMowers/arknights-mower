@@ -139,7 +139,7 @@ class Operators(object):
             else:
                 self.groups[operator.group].append(operator.name)
         if operator.workaholic and operator.name not in self.workaholic_agent:
-            self.workaholic_agent.append(operator.workaholic)
+            self.workaholic_agent.append(operator.name)
 
     def available_free(self, free_type='high', count=4):
         ret = 0
@@ -244,7 +244,7 @@ class Operator(object):
 
     def not_valid(self):
         if self.workaholic:
-            return True
+            return False
         if self.operator_type == 'high':
             if not self.room.startswith("dorm") and self.current_room.startswith("dorm"):
                 if self.mood == -1 or self.mood == 24:
