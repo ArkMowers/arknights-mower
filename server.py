@@ -51,7 +51,7 @@ def operator_list():
             "data",
             "agent.json",
         ),
-        "w",
+        "r",
     ) as f:
         return json.load(f)
 
