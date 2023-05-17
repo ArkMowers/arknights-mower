@@ -37,7 +37,7 @@
 
 ## 安装
 
-在 [Releases](https://github.com/Konano/arknights-mower/releases) 下载 Windows 可执行文件版本。
+在 [Releases](https://github.com/ArkMowers/arknights-mower/releases) 下载 Windows 可执行文件版本。
 或进入下方qq群文件领取，目前软件迭代速度较快，进入群内可获取一手版本
 
 ## 使用教程
@@ -65,6 +65,6 @@
 
 <div align="center">
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Konano/arknights-mower&type=Date)](https://star-history.com/#Konano/arknights-mower&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=ArkMowers/arknights-mower&type=Date)](https://star-history.com/#ArkMowers/arknights-mower&Date)
 
 </div>
