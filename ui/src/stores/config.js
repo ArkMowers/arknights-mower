@@ -41,7 +41,7 @@ export const useConfigStore = defineStore('config', () => {
     package_type.value = response.data.package_type == 1 ? 'official' : 'bilibili'
     plan_file.value = response.data.planFile
     reload_room.value = response.data.reload_room
-    run_mode.value = response.data.run_mode == 1 ? 'orders_only' : 'full'
+    run_mode.value = response.data.run_mode == 2 ? 'orders_only' : 'full'
     run_order_delay.value = response.data.run_order_delay.toString()
     start_automatically.value = response.data.start_automatically
   }
