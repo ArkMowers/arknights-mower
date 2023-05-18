@@ -3,7 +3,7 @@
 from arknights_mower.utils.conf import load_conf, save_conf, load_plan, write_plan
 from arknights_mower.__main__ import main
 
-from flask import Flask
+from flask import Flask, send_from_directory
 from flask_cors import CORS
 from flask_sock import Sock
 
@@ -14,7 +14,7 @@ import json
 import queue
 
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder="dist", static_url_path="")
 sock = Sock(app)
 CORS(app)
 
@@ -25,6 +25,11 @@ mower_process = None
 read = None
 queue = queue.SimpleQueue()
 operators = {}
+
+
+@app.route("/")
+def serve_index():
+    return send_from_directory("dist", "index.html")
 
 
 @app.route("/conf")
