@@ -84,6 +84,9 @@ class BaseSchedulerSolver(BaseSolver):
         self.planned = False
         if self.op_data is None or self.op_data.operators is None:
             self.initialize_operators()
+        for name in self.op_data.workaholic_agent:
+            if name not in self.free_blacklist:
+                self.free_blacklist.append(name)
         return super().run()
 
     def transition(self) -> None:
@@ -335,6 +338,7 @@ class BaseSchedulerSolver(BaseSolver):
                             x].resting_priority == 'high':
                             logger.debug(f"更新任务时间{dorm.time}")
                             _time = __dorm.time
+
                     if x not in low_priority:
                         low_priority.append(x)
                 # 生成单个任务
@@ -612,6 +616,9 @@ class BaseSchedulerSolver(BaseSolver):
                                 if op.group != '':
                                     exhaust_type = ','.join(self.op_data.groups[op.group])
                                 self.tasks.append({"time": _time,"plan": {}, "type": exhaust_type})
+                                # 如果是生成的过去时间，则停止 plan 其他
+                                if _time < datetime.now():
+                                    break
                         continue
                     if op.group != '':
                         if op.group in self.op_data.exhaust_group:

@@ -49,6 +49,11 @@ def main(c, p, o={}, child_conn=None):
             agent_base_config[key]['ExhaustRequire'] = True
         else:
             agent_base_config[key] = {'ExhaustRequire': True}
+    for key in list(filter(None, plan['conf']['workaholic'].replace('，', ',').split(','))):
+        if key in agent_base_config.keys():
+            agent_base_config[key]['Workaholic'] = True
+        else:
+            agent_base_config[key] = {'Workaholic': True}
     for key in list(filter(None, plan['conf']['resting_priority'].replace('，', ',').split(','))):
         if key in agent_base_config.keys():
             agent_base_config[key]['RestingPriority'] = 'low'

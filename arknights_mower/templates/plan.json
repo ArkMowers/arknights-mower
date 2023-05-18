@@ -6,7 +6,8 @@
     "max_resting_count": 4,
     "exhaust_require": "",
     "rest_in_full": "",
-    "resting_priority": ""
+    "resting_priority": "",
+    "workaholic": ""
   }
 
 }
