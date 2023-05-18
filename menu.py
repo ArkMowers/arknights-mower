@@ -229,9 +229,8 @@ def menu():
 
     plan_tab = sg.Tab('  排班表 ', [[left_area, central_area, right_area], [setting_area]], element_justification="center")
     setting_tab = sg.Tab('  高级设置 ',
-                         [
-                          [run_mode_title, run_mode_1, run_mode_2], [ling_xi_title, ling_xi_1, ling_xi_2, ling_xi_3],
-                          [enable_party_title, enable_party_1, enable_party_0],
+                         [[run_mode_title, run_mode_1, run_mode_2], [ling_xi_title, ling_xi_1, ling_xi_2, ling_xi_3],
+                          [enable_party_title,enable_party_1,enable_party_0],
                           [max_resting_count_title, max_resting_count, sg.Text('', size=16), run_order_delay_title,
                            run_order_delay],
                           [drone_room_title, drone_room, sg.Text('', size=7), drone_count_limit_title,
