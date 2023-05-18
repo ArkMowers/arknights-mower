@@ -39,6 +39,7 @@
 ## 安装
 
 在 [Releases](https://github.com/Konano/arknights-mower/releases) 下载 Windows 可执行文件版本。
+在 [action](https://github.com/Konano/arknights-mower/actions/workflows/pyinstaller-win-shawn.yml) 产物下载最新测试版本
 或进入下方qq群文件领取，目前软件迭代速度较快，进入群内可获取一手版本
 
 ## 使用教程
