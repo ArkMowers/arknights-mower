@@ -1,17 +1,17 @@
 
 
 <center>
-<img src="https://github.com/Konano/arknights-mower/raw/main/logo.png">
+<img src="https://github.com/ArkMowers/arknights-mower/raw/main/logo.png">
 <h1>arknights-mower</h1>
 </center>
 
 
-[![GitHub License](https://img.shields.io/github/license/Konano/arknights-mower?style=flat-square)](https://github.com/Konano/arknights-mower/blob/master/LICENSE)
+[![GitHub License](https://img.shields.io/github/license/ArkMowers/arknights-mower?style=flat-square)](https://github.com/ArkMowers/arknights-mower/blob/master/LICENSE)
 [![PyPI](https://img.shields.io/pypi/v/arknights-mower?style=flat-square)](https://pypi.org/project/arknights-mower/)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/arknights-mower?style=flat-square)](https://pypi.org/project/arknights-mower/)
-[![GitHub Workflow Status](https://img.shields.io/github/workflow/status/Konano/arknights-mower/Upload%20PyPI?style=flat-square)](https://github.com/Konano/arknights-mower/actions/workflows/python-publish.yml)
-![GitHub last commit (branch)](https://img.shields.io/github/last-commit/Konano/arknights-mower/main?style=flat-square)
-[![Code Climate maintainability](https://img.shields.io/codeclimate/maintainability/Konano/arknights-mower?style=flat-square)](https://codeclimate.com/github/Konano/arknights-mower)
+[![GitHub Workflow Status](https://img.shields.io/github/workflow/status/ArkMowers/arknights-mower/Upload%20PyPI?style=flat-square)](https://github.com/ArkMowers/arknights-mower/actions/workflows/python-publish.yml)
+![GitHub last commit (branch)](https://img.shields.io/github/last-commit/ArkMowers/arknights-mower/main?style=flat-square)
+[![Code Climate maintainability](https://img.shields.io/codeclimate/maintainability/ArkMowers/arknights-mower?style=flat-square)](https://codeclimate.com/github/ArkMowers/arknights-mower)
 [![Telegram Group Online](https://img.shields.io/endpoint?color=blue&style=flat-square&url=https%3A%2F%2Ftg.sumanjay.workers.dev%2Fark_mover)](https://t.me/ark_mover)
 <center>
 7*24 小时不间断长草，让你忘掉这个游戏！
@@ -38,8 +38,8 @@
 
 ## 安装
 
-在 [Releases](https://github.com/Konano/arknights-mower/releases) 下载 Windows 可执行文件版本。
-在 [action](https://github.com/Konano/arknights-mower/actions/workflows/pyinstaller-win-shawn.yml) 产物下载最新测试版本
+在 [Releases](https://github.com/ArkMowers/arknights-mower/releases) 下载 Windows 可执行文件版本。
+在 [action](https://github.com/ArkMowers/arknights-mower/actions/workflows/pyinstaller-win-shawn.yml) 产物下载最新测试版本
 或进入下方qq群文件领取，目前软件迭代速度较快，进入群内可获取一手版本
 
 ## 使用教程
@@ -65,5 +65,5 @@
 ## Star History
 
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Konano/arknights-mower&type=Date)](https://star-history.com/#Konano/arknights-mower&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=ArkMowers/arknights-mower&type=Date)](https://star-history.com/#ArkMowers/arknights-mower&Date)
 
