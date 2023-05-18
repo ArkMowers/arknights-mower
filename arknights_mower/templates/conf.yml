@@ -1,0 +1,47 @@
+
+adb: 127.0.0.1:62001
+drone_count_limit: 92
+drone_room: ''
+enable_party: 1
+exhaust_require: ''
+workaholic: ''
+free_blacklist: ''
+ling_xi: 1
+maa_adb_path: D:\Program Files\Nox\bin\adb.exe
+maa_enable: 0
+maa_rg_enable: 0
+maa_path: D:\MAA-v4.13.0-win-x64
+maa_weekly_plan:
+  - medicine: 0
+    stage: ['']
+    weekday: 周一
+  - medicine: 0
+    stage: ['']
+    weekday: 周二
+  - medicine: 0
+    stage: ['']
+    weekday: 周三
+  - medicine: 0
+    stage: ['']
+    weekday: 周四
+  - medicine: 0
+    stage: ['']
+    weekday: 周五
+  - medicine: 0
+    stage: ['']
+    weekday: 周六
+  - medicine: 0
+    stage: ['']
+    weekday: 周日
+mail_enable: 0
+account: ''
+pass_code: ''
+max_resting_count: 8
+package_type: 1
+planFile: ./plan.json
+reload_room: ''
+rest_in_full: ''
+resting_priority: ''
+run_mode: 1
+run_order_delay: 10
+start_automatically: false

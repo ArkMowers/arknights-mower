@@ -1,0 +1,13 @@
+{
+  "default": "plan1",
+  "plan1": {},
+  "conf": {
+    "ling_xi": 1,
+    "max_resting_count": 4,
+    "exhaust_require": "",
+    "rest_in_full": "",
+    "resting_priority": "",
+    "workaholic": ""
+  }
+
+}

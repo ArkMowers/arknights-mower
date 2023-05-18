@@ -1,47 +1,70 @@
+import atexit
+import os
 import time
 from datetime import datetime
+from arknights_mower.utils.log import logger
+import json
+
+from arknights_mower.utils.pipe import Pipe
 
 conf = {}
 plan = {}
+operators = {}
 
 
 # 执行自动排班
-def main(c, p, child_conn):
+def main(c, p, o={}, child_conn=None):
     __init_params__()
-    from arknights_mower.utils.log import logger, init_fhlr
+    from arknights_mower.utils.log import init_fhlr
     from arknights_mower.utils import config
     global plan
     global conf
+    global operators
     conf = c
     plan = p
+    operators = o
     config.LOGFILE_PATH = './log'
     config.SCREENSHOT_PATH = './screenshot'
-    config.SCREENSHOT_MAXNUM = 1000
+    config.SCREENSHOT_MAXNUM = 50
     config.ADB_DEVICE = [conf['adb']]
     config.ADB_CONNECT = [conf['adb']]
     config.ADB_CONNECT = [conf['adb']]
     config.APPNAME = 'com.hypergryph.arknights' if conf[
                                                        'package_type'] == 1 else 'com.hypergryph.arknights.bilibili'  # 服务器
     init_fhlr(child_conn)
-    if conf['ling_xi'] == 1:
-        agent_base_config['令']['UpperLimit'] = 11
-        agent_base_config['夕']['UpperLimit'] = 11
-        agent_base_config['夕']['LowerLimit'] = 13
-    elif conf['ling_xi'] == 2:
-        agent_base_config['夕']['UpperLimit'] = 11
-        agent_base_config['令']['UpperLimit'] = 11
-        agent_base_config['令']['LowerLimit'] = 13
-    for key in list(filter(None, conf['rest_in_full'].replace('，', ',').split(','))):
+    Pipe.conn = child_conn
+    if plan['conf']['ling_xi'] == 1:
+        agent_base_config['令']['UpperLimit'] = 12
+        agent_base_config['夕']['LowerLimit'] = 12
+    elif plan['conf']['ling_xi'] == 2:
+        agent_base_config['夕']['UpperLimit'] = 12
+        agent_base_config['令']['LowerLimit'] = 12
+    for key in list(filter(None, plan['conf']['rest_in_full'].replace('，', ',').split(','))):
         if key in agent_base_config.keys():
             agent_base_config[key]['RestInFull'] = True
         else:
             agent_base_config[key] = {'RestInFull': True}
+    for key in list(filter(None, plan['conf']['exhaust_require'].replace('，', ',').split(','))):
+        if key in agent_base_config.keys():
+            agent_base_config[key]['ExhaustRequire'] = True
+        else:
+            agent_base_config[key] = {'ExhaustRequire': True}
+    for key in list(filter(None, plan['conf']['workaholic'].replace('，', ',').split(','))):
+        if key in agent_base_config.keys():
+            agent_base_config[key]['Workaholic'] = True
+        else:
+            agent_base_config[key] = {'Workaholic': True}
+    for key in list(filter(None, plan['conf']['resting_priority'].replace('，', ',').split(','))):
+        if key in agent_base_config.keys():
+            agent_base_config[key]['RestingPriority'] = 'low'
+        else:
+            agent_base_config[key] = {'RestingPriority': 'low'}
     logger.info('开始运行Mower')
+    logger.debug(agent_base_config)
     simulate()
 
 
 def inialize(tasks, scheduler=None):
-    from arknights_mower.utils.log import logger
     from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
     from arknights_mower.strategy import Solver
     from arknights_mower.utils.device import Device
@@ -52,13 +75,16 @@ def inialize(tasks, scheduler=None):
         base_scheduler = BaseSchedulerSolver(cli.device, cli.recog)
         base_scheduler.operators = {}
         plan1 = {}
-        for key in plan:
-            plan1[key] = plan[key]['plans']
+        for key in plan[plan['default']]:
+            plan1[key] = plan[plan['default']][key]['plans']
+        plan[plan['default']] = plan1
+        logger.debug(plan)
         base_scheduler.package_name = config.APPNAME  # 服务器
-        base_scheduler.global_plan = {'default': "plan_1", "plan_1": plan1}
+        base_scheduler.global_plan = plan
+        base_scheduler.current_plan = plan1
         base_scheduler.current_base = {}
         base_scheduler.resting = []
-        base_scheduler.max_resting_count = conf['max_resting_count']
+        base_scheduler.max_resting_count = plan['conf']['max_resting_count']
         base_scheduler.drone_count_limit = conf['drone_count_limit']
         base_scheduler.tasks = tasks
         base_scheduler.enable_party = conf['enable_party'] == 1  # 是否使用线索
@@ -85,10 +111,12 @@ def inialize(tasks, scheduler=None):
         maa_config['maa_adb_path'] = conf['maa_adb_path']
         maa_config['maa_adb'] = conf['adb']
         maa_config['weekly_plan'] = conf['maa_weekly_plan']
+        maa_config['roguelike'] = conf['maa_rg_enable'] == 1
         base_scheduler.maa_config = maa_config
         base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
         base_scheduler.error = False
         base_scheduler.drone_room = None if conf['drone_room'] == '' else conf['drone_room']
+        base_scheduler.reload_room = list(filter(None, conf['reload_room'].replace('，', ',').split(',')))
         base_scheduler.drone_execution_gap = 4
         base_scheduler.run_order_delay = conf['run_order_delay']
         base_scheduler.agent_base_config = agent_base_config
@@ -101,14 +129,24 @@ def inialize(tasks, scheduler=None):
 
 
 def simulate():
-    from arknights_mower.utils.log import logger
     '''
     具体调用方法可见各个函数的参数说明
     '''
     tasks = []
     reconnect_max_tries = 10
     reconnect_tries = 0
+    global base_scheduler
     base_scheduler = inialize(tasks)
+    base_scheduler.initialize_operators()
+    if operators != {}:
+        for k,v in operators.items():
+            if k in base_scheduler.op_data.operators and not base_scheduler.op_data.operators[k].room.startswith("dorm"):
+                # 只复制心情数据
+                base_scheduler.op_data.operators[k].mood = v.mood
+                base_scheduler.op_data.operators[k].time_stamp = v.time_stamp
+                base_scheduler.op_data.operators[k].depletion_rate = v.depletion_rate
+                base_scheduler.op_data.operators[k].current_room = v.current_room
+                base_scheduler.op_data.operators[k].current_index = v.current_index
     while True:
         try:
             if len(base_scheduler.tasks) > 0:
@@ -130,6 +168,10 @@ def simulate():
                     logger.info(subject)
                     base_scheduler.send_email(context, subject)
                     time.sleep(sleep_time)
+            if len(base_scheduler.tasks) > 0 and 'type' in base_scheduler.tasks[0].keys() and base_scheduler.tasks[0]['type'].split('_')[0] == 'maa':
+                logger.info(f"开始执行 MAA {base_scheduler.tasks[0]['type'].split('_')[1]} 任务")
+                base_scheduler.maa_plan_solver((base_scheduler.tasks[0]['type'].split('_')[1]).split(','), one_time=True)
+                continue
             base_scheduler.run()
             reconnect_tries = 0
         except ConnectionError as e:
@@ -152,6 +194,30 @@ def simulate():
             logger.exception(f"程序出错--->{E}")
 
 
+def save_state(op_data,file='state.json'):
+    if not os.path.exists('tmp'):
+        os.makedirs('tmp')
+    with open('tmp/' + file, 'w') as f:
+        if op_data is not None :
+            json.dump(vars(op_data), f, default=str)
+
+
+def load_state(file='state.json'):
+
+    if not os.path.exists('tmp/' + file):
+        return None
+    with open('tmp/' + file, 'r') as f:
+        state = json.load(f)
+    operators = {k: eval(v) for k, v in state['operators'].items()}
+    for k,v in operators.items():
+        if not v.time_stamp == 'None':
+            v.time_stamp = datetime.strptime(v.time_stamp, '%Y-%m-%d %H:%M:%S.%f')
+        else:
+            v.time_stamp = None
+    logger.info("基建配置已加载！")
+    return operators
+
+
 agent_base_config = {}
 maa_config = {}
 
@@ -168,7 +234,7 @@ def __init_params__():
         "巫恋": {"ArrangeOrder": [2, "true"]},
         "柏喙": {"ExhaustRequire": True, "ArrangeOrder": [2, "true"]},
         "龙舌兰": {"ArrangeOrder": [2, "true"]},
-        "空弦": {"ArrangeOrder": [2, "true"], "RestingPriority": "low"},
+        "空弦": {"ArrangeOrder": [2, "true"]},
         "伺夜": {"ArrangeOrder": [2, "true"]},
         "绮良": {"ArrangeOrder": [2, "true"]},
         "但书": {"ArrangeOrder": [2, "true"]},
@@ -187,10 +253,9 @@ def __init_params__():
         "安比尔": {"ArrangeOrder": [2, "false"]},
         "爱丽丝": {"ArrangeOrder": [2, "false"]},
         "桃金娘": {"ArrangeOrder": [2, "false"]},
-        "帕拉斯": {"RestingPriority": "low"},
-        "红云": {"RestingPriority": "low", "ArrangeOrder": [2, "true"]},
+        "红云": {"ArrangeOrder": [2, "true"]},
         "承曦格雷伊": {"ArrangeOrder": [2, "true"]},
-        "乌有": {"ArrangeOrder": [2, "true"], "RestingPriority": "low"},
+        "乌有": {"ArrangeOrder": [2, "true"]},
         "图耶": {"ArrangeOrder": [2, "true"]},
         "鸿雪": {"ArrangeOrder": [2, "true"]},
         "孑": {"ArrangeOrder": [2, "true"]},
@@ -200,7 +265,8 @@ def __init_params__():
         "焰尾": {"RestInFull": True},
         "重岳": {"ArrangeOrder": [2, "true"]},
         "坚雷": {"ArrangeOrder": [2, "true"]},
-        "年": {"RestingPriority": "low"}
+        "年": {"RestingPriority": "low"},
+        "伊内丝": {"ExhaustRequire": True, "ArrangeOrder": [2, "true"], "RestInFull": True},
     }
     maa_config = {
         # maa 运行的时间间隔，以小时计

@@ -46,7 +46,7 @@ class Handler(logging.StreamHandler):
 
     def emit(self, record):
         record = f'{record.message}'
-        self.pipe.send(record)
+        self.pipe.send({'type':'log','data':record})
 
 
 chlr = logging.StreamHandler(stream=sys.stdout)

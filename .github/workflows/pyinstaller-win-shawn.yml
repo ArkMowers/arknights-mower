@@ -1,0 +1,36 @@
+name: dev_shawn分支自动打包
+
+on:
+  push:
+    branches:
+      - dev_shawn
+
+jobs:
+  build-win-amd64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Python 3.8 amd64
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.8
+          architecture: x64
+      - name: Install dependencies
+        shell: cmd
+        run: |
+          python -m venv venv
+          venv\Scripts\python -m pip install -r requirements.txt
+          venv\Scripts\python -m pip install pyinstaller
+      - name: Patch Paddle
+        shell: cmd
+        run: |
+          copy .\packaging\image.py .\venv\Lib\site-packages\paddle\dataset\image.py /y
+          copy .\packaging\network.py .\venv\Lib\site-packages\paddleocr\ppocr\utils\network.py /y
+      - name: Make package
+        shell: cmd
+        run: |
+          venv\Scripts\pyinstaller .\menu.spec
+      - uses: actions/upload-artifact@v3
+        with:
+          name: mower
+          path: dist\mower.exe
