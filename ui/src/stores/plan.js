@@ -28,7 +28,7 @@ export const usePlanStore = defineStore('plan', () => {
   }
 
   async function load_plan() {
-    const response = await axios.get('http://localhost:8000/plan')
+    const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/plan`)
     ling_xi.value = response.data.conf.ling_xi.toString()
     max_resting_count.value = response.data.conf.max_resting_count.toString()
     exhaust_require.value =
@@ -57,7 +57,7 @@ export const usePlanStore = defineStore('plan', () => {
   }
 
   async function load_operators() {
-    const response = await axios.get('http://localhost:8000/operator')
+    const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/operator`)
     const option_list = [
       {
         value: 'Free',

@@ -24,7 +24,7 @@ export const useConfigStore = defineStore('config', () => {
   const start_automatically = ref(false)
 
   async function load_config() {
-    const response = await axios.get('http://localhost:8000/conf')
+    const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/conf`)
     adb.value = response.data.adb
     drone_count_limit.value = response.data.drone_count_limit.toString()
     drone_room.value = response.data.drone_room

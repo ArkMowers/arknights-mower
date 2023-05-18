@@ -10,7 +10,7 @@ const mower_store = useMowerStore()
 const plan_store = usePlanStore()
 
 const { adb, package_type, free_blacklist, plan_file } = storeToRefs(config_store)
-const { log, ws, running } = storeToRefs(mower_store)
+const { log, running } = storeToRefs(mower_store)
 const { operators } = storeToRefs(plan_store)
 
 const axios = inject('axios')
@@ -29,18 +29,15 @@ onMounted(() => {
   scroll_log()
 })
 
-function send_hello() {
-  ws.value.send('Hello!')
-}
-
 function start() {
   running.value = true
-  axios.get('http://localhost:8000/start')
+  log.value = ''
+  axios.get(`${import.meta.env.VITE_HTTP_URL}/start`)
 }
 
 function stop() {
   running.value = false
-  axios.get('http://localhost:8000/stop')
+  axios.get(`${import.meta.env.VITE_HTTP_URL}/stop`)
 }
 </script>
 
