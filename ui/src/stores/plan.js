@@ -3,11 +3,12 @@ import { ref } from 'vue'
 import axios from 'axios'
 
 export const usePlanStore = defineStore('plan', () => {
-  const ling_xi = ref(1)
-  const max_resting_count = ref('')
-  const exhaust_require = ref('')
-  const rest_in_full = ref('')
-  const resting_priority = ref('')
+  const ling_xi = ref('1')
+  const max_resting_count = ref([])
+  const exhaust_require = ref([])
+  const rest_in_full = ref([])
+  const resting_priority = ref([])
+  const workaholic = ref([])
 
   const plan = ref({})
 
@@ -39,6 +40,8 @@ export const usePlanStore = defineStore('plan', () => {
       response.data.conf.resting_priority == ''
         ? []
         : response.data.conf.resting_priority.split(',')
+    workaholic.value =
+      response.data.conf.workaholic == '' ? [] : response.data.conf.workaholic.split(',')
 
     const full_plan = response.data.plan1
     for (const i in facility_operator_limit) {
@@ -81,6 +84,7 @@ export const usePlanStore = defineStore('plan', () => {
     exhaust_require,
     rest_in_full,
     resting_priority,
+    workaholic,
     plan,
     operators,
     facility_operator_limit,

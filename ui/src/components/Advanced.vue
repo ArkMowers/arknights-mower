@@ -16,8 +16,15 @@ const {
   start_automatically
 } = storeToRefs(config_store)
 
-const { ling_xi, max_resting_count, resting_priority, exhaust_require, rest_in_full, operators } =
-  storeToRefs(plan_store)
+const {
+  ling_xi,
+  max_resting_count,
+  resting_priority,
+  exhaust_require,
+  rest_in_full,
+  operators,
+  workaholic
+} = storeToRefs(plan_store)
 
 const { left_side_facility } = plan_store
 </script>
@@ -118,6 +125,14 @@ const { left_side_facility } = plan_store
               :options="operators"
               v-model:value="exhaust_require"
             />
+          </td>
+          <td></td>
+          <td></td>
+        </tr>
+        <tr>
+          <td>0心情工作的干员：</td>
+          <td colspan="3">
+            <n-select multiple filterable tag :options="operators" v-model:value="workaholic" />
           </td>
           <td></td>
           <td></td>
