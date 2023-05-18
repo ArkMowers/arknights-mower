@@ -600,6 +600,7 @@ class BaseSchedulerSolver(BaseSolver):
                         continue
                     if op.name in self.op_data.exhaust_agent:
                         if op.current_mood() <= 2:
+
                             if next((e for e in self.tasks if 'type' in e.keys() and op.name in e['type']),
                                     None) is None:
                                 self.enter_room(op.current_room)

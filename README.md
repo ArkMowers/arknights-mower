@@ -11,6 +11,7 @@
 ![GitHub last commit (branch)](https://img.shields.io/github/last-commit/ArkMowers/arknights-mower/main?style=flat-square)
 [![Code Climate maintainability](https://img.shields.io/codeclimate/maintainability/ArkMowers/arknights-mower?style=flat-square)](https://codeclimate.com/github/ArkMowers/arknights-mower)
 
+
 7*24 小时不间断长草，让你忘掉这个游戏！
 
 </div>
