@@ -44,6 +44,7 @@ def build_plan(url):
         window['plan_radio_ling_xi_' + str(plan['conf']['ling_xi'])].update(True)
         window['plan_int_max_resting_count'].update(plan['conf']['max_resting_count'])
         window['plan_conf_exhaust_require'].update(plan['conf']['exhaust_require'])
+        window['plan_conf_workaholic'].update(plan['conf']['workaholic'])
         window['plan_conf_rest_in_full'].update(plan['conf']['rest_in_full'])
         window['plan_conf_resting_priority'].update(plan['conf']['resting_priority'])
     except Exception as e:
@@ -170,13 +171,13 @@ def menu():
     exhaust_require = sg.InputText(plan['conf']['exhaust_require'], size=60,
                                    key='plan_conf_exhaust_require', enable_events=True)
 
+    workaholic_title = sg.Text('0心情工作的干员：', size=25)
+    workaholic = sg.InputText(plan['conf']['workaholic'], size=60,
+                                   key='plan_conf_workaholic', enable_events=True)
+
     resting_priority_title = sg.Text('宿舍低优先级干员：', size=25)
     resting_priority = sg.InputText(plan['conf']['resting_priority'], size=60,
                                     key='plan_conf_resting_priority', enable_events=True)
-    # ling_xi_assist_title = sg.Text('协助令夕心情调配的干员：', size=25)
-    # ling_xi_assist = sg.InputText(conf['ling_xi_assist'], size=60,
-    #                             key='conf_ling_xi_assist', enable_events=True)
-
     # --------外部调用设置页面
     # mail
     mail_enable_1 = sg.Radio('启用', 'mail_enable', default=conf['mail_enable'] == 1,
@@ -228,9 +229,8 @@ def menu():
 
     plan_tab = sg.Tab('  排班表 ', [[left_area, central_area, right_area], [setting_area]], element_justification="center")
     setting_tab = sg.Tab('  高级设置 ',
-                         [
-                          [run_mode_title, run_mode_1, run_mode_2], [ling_xi_title, ling_xi_1, ling_xi_2, ling_xi_3],
-                          [enable_party_title, enable_party_1, enable_party_0],
+                         [[run_mode_title, run_mode_1, run_mode_2], [ling_xi_title, ling_xi_1, ling_xi_2, ling_xi_3],
+                          [enable_party_title,enable_party_1,enable_party_0],
                           [max_resting_count_title, max_resting_count, sg.Text('', size=16), run_order_delay_title,
                            run_order_delay],
                           [drone_room_title, drone_room, sg.Text('', size=7), drone_count_limit_title,
@@ -238,9 +238,9 @@ def menu():
                           [reload_room_title, reload_room],
                           [rest_in_full_title, rest_in_full],
                           [exhaust_require_title, exhaust_require],
+                          [workaholic_title,workaholic],
                           [resting_priority_title, resting_priority],
-                          # [ling_xi_assist_title, ling_xi_assist]   去除协助令夕心情调配项
-                             [start_automatically],
+                          [start_automatically],
                           ], pad=((10, 10), (10, 10)))
 
     other_tab = sg.Tab('  外部调用 ',
