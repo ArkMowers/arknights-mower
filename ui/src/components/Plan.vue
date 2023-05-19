@@ -241,7 +241,7 @@ function clear() {
 }
 
 .replacement-select {
-  width: 400px;
+  min-width: 400px;
 }
 
 .plan-container {
