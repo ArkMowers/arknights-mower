@@ -12,6 +12,7 @@ import multiprocessing
 from threading import Thread
 import json
 import queue
+import time
 
 
 app = Flask(__name__, static_folder="dist", static_url_path="")
@@ -70,7 +71,7 @@ def read_log(read):
         while True:
             msg = read.recv()
             if msg["type"] == "log":
-                queue.put(msg["data"])
+                queue.put(time.strftime("%m-%d %H:%M:%S ") + msg["data"])
             elif msg["type"] == "operators":
                 operators = msg["data"]
     except EOFError:
