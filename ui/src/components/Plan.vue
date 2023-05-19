@@ -22,6 +22,9 @@ const button_type = {
 }
 
 const operator_limit = computed(() => {
+  if (facility.value.startsWith('room') && plan.value[facility.value].name == '发电站') {
+    return 1
+  }
   return facility_operator_limit[facility.value] || 0
 })
 
@@ -192,7 +195,7 @@ function clear() {
     <n-space justify="center">
       <table>
         <tr v-for="i in operator_limit" :key="i">
-          <td>干员：</td>
+          <td class="select-label">干员：</td>
           <td class="table-space">
             <n-select
               filterable
@@ -202,11 +205,11 @@ function clear() {
               v-model:value="plan[facility].plans[i - 1].agent"
             />
           </td>
-          <td>组：</td>
+          <td class="select-label">组：</td>
           <td class="table-space group">
             <n-input v-model:value="plan[facility].plans[i - 1].group"></n-input>
           </td>
-          <td>替换：</td>
+          <td class="select-label">替换：</td>
           <td>
             <n-select
               multiple
@@ -230,6 +233,10 @@ function clear() {
 <style scoped>
 .w90 {
   width: 90px;
+}
+
+.select-label {
+  width: 44px;
 }
 
 .type-select {
