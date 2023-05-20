@@ -10,17 +10,18 @@
 [![GitHub Workflow Status](https://img.shields.io/github/workflow/status/ArkMowers/arknights-mower/Upload%20PyPI?style=flat-square)](https://github.com/ArkMowers/arknights-mower/actions/workflows/python-publish.yml)
 ![GitHub last commit (branch)](https://img.shields.io/github/last-commit/ArkMowers/arknights-mower/main?style=flat-square)
 [![Code Climate maintainability](https://img.shields.io/codeclimate/maintainability/ArkMowers/arknights-mower?style=flat-square)](https://codeclimate.com/github/ArkMowers/arknights-mower)
-
-
-7*24 小时不间断长草，让你忘掉这个游戏！
+  
+7\*24 小时不间断长草，让你忘掉这个游戏！
 
 </div>
+
 ## ⚠ 注意事项
 
 - 本程序不支持国服以外的明日方舟区服，支持官服和 Bilibili 服。
 - 原理上，使用本程序没有任何被判定为作弊并被封号的风险，但是作者不对使用此程序造成的任何损失负责。
 - 开发组人数稀少，有时不太能及时反馈和修复 Bug，见谅一下。也欢迎更多有能力有意向的朋友参与。
-- 本软件目前仅支持1920*1080 分辨率，使用夜神模拟器可以解决大部分问题
+- 本软件目前仅支持1920\*1080 分辨率，使用夜神模拟器可以解决大部分问题
+
 ## 主要功能
 
 - 自动打开《明日方舟》，支持官服和 Bilibili 服
