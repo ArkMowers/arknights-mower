@@ -85,8 +85,6 @@ class Session(object):
 
     def connect(self, device: str, throw_error: bool = False) -> None:
         """ connect device [ip:port] """
-        if len(device.split(':')) != 2 or not device.split(':')[-1].isdigit():
-            raise ValueError('wrong format of device address')
         resp = self.request(f'host:connect:{device}').response()
         logger.debug(f'adb connect {device}: {repr(resp)}')
         if throw_error and (b'unable' in resp or b'cannot' in resp):
@@ -94,8 +92,6 @@ class Session(object):
 
     def disconnect(self, device: str, throw_error: bool = False) -> None:
         """ disconnect device [ip:port] """
-        if len(device.split(':')) != 2 or not device.split(':')[-1].isdigit():
-            raise ValueError('wrong format of device address')
         resp = self.request(f'host:disconnect:{device}').response()
         logger.debug(f'adb disconnect {device}: {repr(resp)}')
         if throw_error and (b'unable' in resp or b'cannot' in resp):
