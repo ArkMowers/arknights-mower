@@ -9,6 +9,8 @@ from arknights_mower.utils.conf import load_conf, save_conf, load_plan, write_pl
 from arknights_mower.utils.log import logger
 from arknights_mower.data import agent_list
 from arknights_mower.__main__ import main
+from arknights_mower.__init__ import __version__
+from arknights_mower.utils.update import compere_version , update_version,download_version
 
 yaml = YAML()
 # confUrl = './conf.yml'
@@ -129,8 +131,9 @@ def menu():
                              expand_x=True)
 
     # --------高级设置页面
-    start_automatically = sg.Checkbox('启动mower时自动开始任务', default=conf['start_automatically'],
-                                      key='conf_start_automatically', enable_events=True)
+    current_version = sg.Text('当前版本：' + __version__, size=25)
+    btn_check_update = sg.Button('检测更新', key='check_update')
+    update_msg = sg.Text('', key='update_msg')
     run_mode_title = sg.Text('运行模式：', size=25)
     run_mode_1 = sg.Radio('换班模式', 'run_mode', default=conf['run_mode'] == 1,
                           key='radio_run_mode_1', enable_events=True)
@@ -173,11 +176,14 @@ def menu():
 
     workaholic_title = sg.Text('0心情工作的干员：', size=25)
     workaholic = sg.InputText(plan['conf']['workaholic'], size=60,
-                                   key='plan_conf_workaholic', enable_events=True)
+                              key='plan_conf_workaholic', enable_events=True)
 
     resting_priority_title = sg.Text('宿舍低优先级干员：', size=25)
     resting_priority = sg.InputText(plan['conf']['resting_priority'], size=60,
                                     key='plan_conf_resting_priority', enable_events=True)
+
+    start_automatically = sg.Checkbox('启动mower时自动开始任务', default=conf['start_automatically'],
+                                      key='conf_start_automatically', enable_events=True)
     # --------外部调用设置页面
     # mail
     mail_enable_1 = sg.Radio('启用', 'mail_enable', default=conf['mail_enable'] == 1,
@@ -198,15 +204,16 @@ def menu():
                             key='radio_maa_enable_0', enable_events=True)
     maa_rg_title = sg.Text('肉鸽：', size=10)
     maa_rg_enable_1 = sg.Radio('启用', 'maa_rg_enable', default=conf['maa_rg_enable'] == 1,
-                            key='radio_maa_rg_enable_1', enable_events=True)
+                               key='radio_maa_rg_enable_1', enable_events=True)
     maa_rg_enable_0 = sg.Radio('禁用', 'maa_rg_enable', default=conf['maa_rg_enable'] == 0,
-                            key='radio_maa_rg_enable_0', enable_events=True)
+                               key='radio_maa_rg_enable_0', enable_events=True)
     maa_path_title = sg.Text('MAA地址', size=25)
     maa_path = sg.InputText(conf['maa_path'], size=60, key='conf_maa_path', enable_events=True)
     maa_adb_path_title = sg.Text('adb地址', size=25)
     maa_adb_path = sg.InputText(conf['maa_adb_path'], size=60, key='conf_maa_adb_path', enable_events=True)
     maa_weekly_plan_title = sg.Text('周计划', size=25)
-    maa_layout = [[maa_enable_1, maa_enable_0],[maa_rg_title,maa_rg_enable_1,maa_rg_enable_0], [maa_path_title, maa_path], [maa_adb_path_title, maa_adb_path],
+    maa_layout = [[maa_enable_1, maa_enable_0], [maa_rg_title, maa_rg_enable_1, maa_rg_enable_0],
+                  [maa_path_title, maa_path], [maa_adb_path_title, maa_adb_path],
                   [maa_weekly_plan_title]]
     for i, v in enumerate(conf['maa_weekly_plan']):
         maa_layout.append([
@@ -230,19 +237,20 @@ def menu():
     plan_tab = sg.Tab('  排班表 ', [[left_area, central_area, right_area], [setting_area]], element_justification="center")
     setting_tab = sg.Tab('  高级设置 ',
                          [
-                          [run_mode_title, run_mode_1, run_mode_2], [ling_xi_title, ling_xi_1, ling_xi_2, ling_xi_3],
-                          [enable_party_title, enable_party_1, enable_party_0],
-                          [max_resting_count_title, max_resting_count, sg.Text('', size=16), run_order_delay_title,
-                           run_order_delay],
-                          [drone_room_title, drone_room, sg.Text('', size=7), drone_count_limit_title,
-                           drone_count_limit],
-                          [reload_room_title, reload_room],
-                          [rest_in_full_title, rest_in_full],
-                          [exhaust_require_title, exhaust_require],
-                          [workaholic_title,workaholic],
-                          [resting_priority_title, resting_priority],
-                          [start_automatically],
-                          ], pad=((10, 10), (10, 10)))
+                             [current_version, btn_check_update, update_msg],
+                             [run_mode_title, run_mode_1, run_mode_2], [ling_xi_title, ling_xi_1, ling_xi_2, ling_xi_3],
+                             [enable_party_title, enable_party_1, enable_party_0],
+                             [max_resting_count_title, max_resting_count, sg.Text('', size=16), run_order_delay_title,
+                              run_order_delay],
+                             [drone_room_title, drone_room, sg.Text('', size=7), drone_count_limit_title,
+                              drone_count_limit],
+                             [reload_room_title, reload_room],
+                             [rest_in_full_title, rest_in_full],
+                             [exhaust_require_title, exhaust_require],
+                             [workaholic_title, workaholic],
+                             [resting_priority_title, resting_priority],
+                             [start_automatically],
+                         ], pad=((10, 10), (10, 10)))
 
     other_tab = sg.Tab('  外部调用 ',
                        [[mail_frame], [maa_frame]], pad=((10, 10), (10, 10)))
@@ -312,6 +320,16 @@ def menu():
             input_agent = window[event].get().strip()
             window[event].update(value=input_agent,
                                  values=list(filter(lambda s: input_agent in s, ['Free'] + agent_list)))
+        elif event == 'check_update':
+            window['update_msg'].update('正在检测更新...', text_color='black')
+            window[event].update(disabled=True)
+            window.perform_long_operation(check_update, 'check_update_value')
+        elif event == 'check_update_value':
+            if value[event] :
+                b=sg.popup_yes_no("下载成功！是否立刻更新？")
+                if b == 'Yes':
+                    update_version()
+
         elif event == 'savePlan':  # 保存设施信息
             save_btn(btn)
         elif event == 'clearPlan':  # 清空当前设施信息
@@ -339,7 +357,6 @@ def start():
     main_thread = Process(target=main, args=(conf, plan, operators, child_conn), daemon=True)
     main_thread.start()
     window.perform_long_operation(lambda: recv(parent_conn), 'recv')
-
 
 
 def bind_scirpt():
@@ -442,6 +459,23 @@ def clear_btn(btn):
     init_btn(btn)
     write_plan(plan, conf['planFile'])
     build_plan(conf['planFile'])
+
+
+def check_update():
+    try:
+        newest_version = compere_version()
+        if newest_version:
+            window['update_msg'].update('检测到有新版本'+newest_version+',正在下载...',text_color='black')
+            download_version(newest_version)
+            window['update_msg'].update('下载完毕！',text_color='green')
+        else:
+            window['update_msg'].update('已是最新版！',text_color='green')
+    except Exception as e:
+        logger.error(e)
+        window['update_msg'].update('更新失败！',text_color='red')
+        return None
+    window['check_update'].update(disabled=False)
+    return newest_version
 
 
 # 接收推送
