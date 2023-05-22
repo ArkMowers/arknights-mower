@@ -10,8 +10,9 @@ class Operators(object):
     groups = None
     dorm = []
     max_resting_count = 4
+    plan = None
 
-    def __init__(self, config, max_resting_count):
+    def __init__(self, config, max_resting_count, plan):
         self.config = config
         self.operators = {}
         self.groups = {}
@@ -20,9 +21,25 @@ class Operators(object):
         self.dorm = []
         self.max_resting_count = max_resting_count
         self.workaholic_agent = []
+        self.plan = plan
 
     def __repr__(self):
         return f'Operators(operators={self.operators})'
+
+    def get_current_room(self, room, bypass=False):
+        room_data = {v.current_index: v for k, v in self.operators.items() if v.current_room == room}
+        res = [obj['agent'] for obj in self.plan[room]]
+        not_found = False
+        for idx, op in enumerate(res):
+            if idx in room_data:
+                res[idx] = room_data[idx].name
+            else:
+                res[idx] = ''
+                not_found = True
+        if not_found and not bypass:
+            return None
+        else:
+            return res
 
     def predict_fia(self, operators, fia_mood, hours=240):
         recover_hours = (24 - fia_mood) / 2
@@ -32,7 +49,7 @@ class Operators(object):
                 return False
         if recover_hours >= hours or 0 < recover_hours < 1:
             return True
-        operators.sort(key=lambda x: (x.mood-x.lower_limit)/(x.upper_limit - x.lower_limit), reverse=False)
+        operators.sort(key=lambda x: (x.mood - x.lower_limit) / (x.upper_limit - x.lower_limit), reverse=False)
         fia_mood = operators[0].mood
         operators[0].mood = 24
         return self.predict_fia(operators, fia_mood, hours - recover_hours)
@@ -203,6 +220,7 @@ class Dormitory(object):
 
     def __repr__(self):
         return f"Dormitory(position={self.position},name='{self.name}',time='{self.time}')"
+
 
 class Operator(object):
     time_stamp = None
