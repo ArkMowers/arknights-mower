@@ -63,7 +63,7 @@ const {
         </table>
         <n-h3>周计划</n-h3>
         <table>
-          <tr v-for="plan in maa_weekly_plan">
+          <tr v-for="plan in maa_weekly_plan" :key="plan.weekday">
             <td class="table-space">
               <n-h4>{{ plan.weekday }}</n-h4>
             </td>

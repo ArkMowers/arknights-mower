@@ -49,8 +49,14 @@ export const usePlanStore = defineStore('plan', () => {
       if (!full_plan[i]) {
         count = facility_operator_limit[i]
         full_plan[i] = { name: '', plans: [] }
-      } else if (full_plan[i].plans.length < facility_operator_limit[i]) {
-        count = facility_operator_limit[i] - full_plan[i].plans.length
+      } else {
+        let limit = facility_operator_limit[i]
+        if (full_plan[i].name == '发电站') {
+          limit = 1
+        }
+        if (full_plan[i].plans.length < limit) {
+          count = limit - full_plan[i].plans.length
+        }
       }
       for (let j = 0; j < count; ++j) {
         full_plan[i].plans.push({ agent: '', group: '', replacement: [] })
@@ -76,6 +82,42 @@ export const usePlanStore = defineStore('plan', () => {
     operators.value = option_list
   }
 
+  function build_plan() {
+    const result = {
+      default: 'plan1',
+      plan1: {},
+      conf: {
+        ling_xi: parseInt(ling_xi.value),
+        max_resting_count: parseInt(max_resting_count.value),
+        exhaust_require: exhaust_require.value.join(','),
+        rest_in_full: rest_in_full.value.join(','),
+        resting_priority: resting_priority.value.join(','),
+        workaholic: workaholic.value.join(',')
+      }
+    }
+
+    const plan1 = result.plan1
+
+    for (const i in facility_operator_limit) {
+      if (i.startsWith('room') && plan.value[i].name) {
+        plan1[i] = plan.value[i]
+      } else {
+        let empty = true
+        for (const j of plan.value[i].plans) {
+          if (j.agent) {
+            empty = false
+            break
+          }
+        }
+        if (!empty) {
+          plan1[i] = plan.value[i]
+        }
+      }
+    }
+
+    return result
+  }
+
   return {
     load_plan,
     load_operators,
@@ -88,6 +130,7 @@ export const usePlanStore = defineStore('plan', () => {
     plan,
     operators,
     facility_operator_limit,
-    left_side_facility
+    left_side_facility,
+    build_plan
   }
 })

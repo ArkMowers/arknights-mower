@@ -1,11 +1,11 @@
 <script setup>
 import { storeToRefs } from 'pinia'
 import { usePlanStore } from '@/stores/plan'
-import { ref, computed } from 'vue'
+import { ref, computed, nextTick, watch, inject } from 'vue'
 
 const plan_store = usePlanStore()
 const { operators, plan } = storeToRefs(plan_store)
-const { facility_operator_limit } = plan_store
+const { facility_operator_limit, build_plan } = plan_store
 
 const facility_types = [
   { label: '贸易站', value: '贸易站' },
@@ -29,16 +29,47 @@ const operator_limit = computed(() => {
 })
 
 function clear() {
-  const plans = []
-  for (let i = 0; i < operator_limit.value; ++i) {
-    plans.push({
-      agent: '',
-      group: '',
-      replacement: []
-    })
-  }
   plan.value[facility.value].name = ''
-  plan.value[facility.value].plans = plans
+  nextTick(() => {
+    const plans = []
+    for (let i = 0; i < operator_limit.value; ++i) {
+      plans.push({
+        agent: '',
+        group: '',
+        replacement: []
+      })
+    }
+    plan.value[facility.value].plans = plans
+  })
+}
+
+watch(
+  () => {
+    if (facility.value.startsWith('room')) {
+      return plan.value[facility.value].name
+    }
+    return ''
+  },
+  (new_name, old_name) => {
+    if (new_name == '发电站') {
+      const plans = plan.value[facility.value].plans
+      while (plans.length > operator_limit.value) {
+        plans.pop()
+      }
+    } else if (old_name == '发电站') {
+      const plans = plan.value[facility.value].plans
+      while (plans.length < operator_limit.value) {
+        plans.push({ agent: '', group: '', replacement: [] })
+      }
+    }
+  }
+)
+
+const axios = inject('axios')
+
+function save() {
+  const plan = build_plan()
+  axios.post(`${import.meta.env.VITE_HTTP_URL}/plan`, plan)
 }
 </script>
 
@@ -224,7 +255,7 @@ function clear() {
       </table>
     </n-space>
     <n-space justify="center" v-if="facility">
-      <n-button type="primary">保存</n-button>
+      <n-button type="primary" @click="save">保存</n-button>
       <n-button type="error" @click="clear">清空</n-button>
     </n-space>
   </div>
