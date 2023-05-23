@@ -3,7 +3,7 @@
 from arknights_mower.utils.conf import load_conf, save_conf, load_plan, write_plan
 from arknights_mower.__main__ import main
 
-from flask import Flask, send_from_directory
+from flask import Flask, send_from_directory, request
 from flask_cors import CORS
 from flask_sock import Sock
 
@@ -40,12 +40,16 @@ def load_config():
     return conf
 
 
-@app.route("/plan")
+@app.route("/plan", methods=["GET", "POST"])
 def load_plan_from_json():
-    global conf
-    global plan
-    plan = load_plan(conf["planFile"])
-    return plan
+    if request.method == "GET":
+        global conf
+        global plan
+        plan = load_plan(conf["planFile"])
+        return plan
+    else:
+        write_plan(request.json, conf["planFile"])
+        return f"New plan saved at {conf['planFile']}"
 
 
 @app.route("/operator")
