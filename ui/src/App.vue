@@ -75,7 +75,7 @@ onMounted(async () => {
   flex-grow: 1;
   display: flex;
   flex-direction: column;
-  overflow: scroll;
+  overflow: auto;
 }
 
 .n-card-header__main {
