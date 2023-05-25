@@ -66,6 +66,7 @@ def operator_list():
             "agent.json",
         ),
         "r",
+        encoding="utf8",
     ) as f:
         return json.load(f)
 
