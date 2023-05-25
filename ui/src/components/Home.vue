@@ -13,6 +13,8 @@ const { adb, package_type, free_blacklist, plan_file } = storeToRefs(config_stor
 const { log, running } = storeToRefs(mower_store)
 const { operators } = storeToRefs(plan_store)
 
+const { build_config } = config_store
+
 const axios = inject('axios')
 
 function scroll_log() {
@@ -32,7 +34,14 @@ onMounted(() => {
 function start() {
   running.value = true
   log.value = ''
-  axios.get(`${import.meta.env.VITE_HTTP_URL}/start`)
+  axios
+    .post(`${import.meta.env.VITE_HTTP_URL}/conf`, build_config())
+    .then(() => {
+      return axios.post(`${import.meta.env.VITE_HTTP_URL}/plan`, build_plan())
+    })
+    .then(() => {
+      axios.get(`${import.meta.env.VITE_HTTP_URL}/start`)
+    })
 }
 
 function stop() {

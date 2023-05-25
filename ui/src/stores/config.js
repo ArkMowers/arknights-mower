@@ -40,10 +40,34 @@ export const useConfigStore = defineStore('config', () => {
     pass_code.value = response.data.pass_code
     package_type.value = response.data.package_type == 1 ? 'official' : 'bilibili'
     plan_file.value = response.data.planFile
-    reload_room.value = response.data.reload_room
+    reload_room.value = response.data.reload_room == '' ? [] : response.data.reload_room.split(',')
     run_mode.value = response.data.run_mode == 2 ? 'orders_only' : 'full'
     run_order_delay.value = response.data.run_order_delay.toString()
     start_automatically.value = response.data.start_automatically
+  }
+
+  function build_config() {
+    return {
+      account: account.value,
+      adb: adb.value,
+      drone_count_limit: parseInt(drone_count_limit.value),
+      drone_room: drone_room.value,
+      enable_party: enable_party.value ? 1 : 0,
+      free_blacklist: free_blacklist.value.join(','),
+      maa_adb_path: maa_adb_path.value,
+      maa_enable: maa_enable.value ? 1 : 0,
+      maa_path: maa_path.value,
+      maa_rg_enable: maa_rg_enable.value ? 1 : 0,
+      maa_weekly_plan: maa_weekly_plan.value,
+      mail_enable: mail_enable.value ? 1 : 0,
+      package_type: package_type.value == 'official' ? 1 : 0,
+      pass_code: pass_code.value,
+      plan_file: plan_file.value,
+      reload_room: reload_room.value.join(','),
+      run_mode: run_mode.value == 'orders_only' ? 2 : 1,
+      run_order_delay: parseInt(run_order_delay.value),
+      start_automatically: start_automatically.value
+    }
   }
 
   return {
@@ -66,6 +90,7 @@ export const useConfigStore = defineStore('config', () => {
     reload_room,
     run_mode,
     run_order_delay,
-    start_automatically
+    start_automatically,
+    build_config
   }
 })

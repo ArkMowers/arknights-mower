@@ -68,8 +68,7 @@ watch(
 const axios = inject('axios')
 
 function save() {
-  const plan = build_plan()
-  axios.post(`${import.meta.env.VITE_HTTP_URL}/plan`, plan)
+  axios.post(`${import.meta.env.VITE_HTTP_URL}/plan`, build_plan())
 }
 </script>
 
