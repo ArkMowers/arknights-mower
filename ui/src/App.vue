@@ -2,20 +2,22 @@
   <!-- <n-config-provider :locale="zhCN" :date-locale="dateZhCN" class="provider" :theme="darkTheme"> -->
   <n-config-provider :locale="zhCN" :date-locale="dateZhCN" class="provider">
     <n-global-style />
-    <n-tabs type="segment" class="tabs">
-      <n-tab-pane name="home" tab="主页">
-        <home />
-      </n-tab-pane>
-      <n-tab-pane name="plan" tab="排班表">
-        <plan />
-      </n-tab-pane>
-      <n-tab-pane name="advanced" tab="高级设置">
-        <advanced />
-      </n-tab-pane>
-      <n-tab-pane name="external" tab="外部调用">
-        <external />
-      </n-tab-pane>
-    </n-tabs>
+    <n-dialog-provider>
+      <n-tabs type="segment" class="tabs">
+        <n-tab-pane name="home" tab="主页">
+          <home />
+        </n-tab-pane>
+        <n-tab-pane name="plan" tab="排班表">
+          <plan />
+        </n-tab-pane>
+        <n-tab-pane name="advanced" tab="高级设置">
+          <advanced />
+        </n-tab-pane>
+        <n-tab-pane name="external" tab="外部调用">
+          <external />
+        </n-tab-pane>
+      </n-tabs>
+    </n-dialog-provider>
   </n-config-provider>
 </template>
 

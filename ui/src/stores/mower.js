@@ -8,6 +8,8 @@ export const useMowerStore = defineStore('mower', () => {
   const ws = ref(null)
   const running = ref(false)
 
+  const first_load = ref(true)
+
   function listen_ws() {
     let backend_url
     if (import.meta.env.DEV) {
@@ -32,6 +34,7 @@ export const useMowerStore = defineStore('mower', () => {
     ws,
     running,
     listen_ws,
-    get_running
+    get_running,
+    first_load
   }
 })

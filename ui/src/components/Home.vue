@@ -4,16 +4,18 @@ import { useMowerStore } from '@/stores/mower'
 import { usePlanStore } from '@/stores/plan'
 import { storeToRefs } from 'pinia'
 import { onMounted, inject, nextTick, watch } from 'vue'
+import { useDialog } from 'naive-ui'
 
 const config_store = useConfigStore()
 const mower_store = useMowerStore()
 const plan_store = usePlanStore()
 
 const { adb, package_type, free_blacklist, plan_file } = storeToRefs(config_store)
-const { log, running } = storeToRefs(mower_store)
+const { log, running, first_load } = storeToRefs(mower_store)
 const { operators } = storeToRefs(plan_store)
 
 const { build_config } = config_store
+const { build_plan } = plan_store
 
 const axios = inject('axios')
 
@@ -27,8 +29,21 @@ watch(log, (new_log, old_log) => {
   scroll_log()
 })
 
+const dialog = useDialog()
+
 onMounted(() => {
   scroll_log()
+
+  if (first_load.value) {
+    dialog.warning({
+      title: '注意',
+      content:
+        'Mower的Web UI界面仍不完善，请在使用前备份配置文件（conf.yml）与排班表（plan.json）！',
+      negativeText: '我已备份',
+      maskClosable: false
+    })
+    first_load.value = false
+  }
 })
 
 function start() {
