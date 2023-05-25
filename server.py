@@ -33,11 +33,15 @@ def serve_index():
     return send_from_directory("dist", "index.html")
 
 
-@app.route("/conf")
+@app.route("/conf", methods=["GET", "POST"])
 def load_config():
-    global conf
-    conf = load_conf()
-    return conf
+    if request.method == "GET":
+        global conf
+        conf = load_conf()
+        return conf
+    else:
+        save_conf(request.json)
+        return f"New config saved!"
 
 
 @app.route("/plan", methods=["GET", "POST"])
