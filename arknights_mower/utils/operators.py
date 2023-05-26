@@ -71,6 +71,7 @@ class Operators(object):
         if agent.current_room.startswith('dorm') and not current_room.startswith('dorm') and agent.is_high():
             self.refresh_dorm_time(agent.current_room, agent.current_index, {'agent': ''})
             agent.time_stamp = None
+            agent.depletion_rate = 0
         if self.get_dorm_by_name(name)[0] is not None and not current_room.startswith('dorm') and agent.is_high():
             _dorm = self.get_dorm_by_name(name)[1]
             _dorm.name = ''
