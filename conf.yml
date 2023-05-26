@@ -1,0 +1,40 @@
+account: ''
+adb: 192.168.240.112:5555
+drone_count_limit: 50
+drone_room: room_2_2
+enable_party: 0
+free_blacklist: ''
+maa_adb_path: D:\Program Files\Nox\bin\adb.exe
+maa_enable: 0
+maa_path: D:\MAA-v4.13.0-win-x64
+maa_rg_enable: 0
+maa_weekly_plan:
+- medicine: 0
+  stage: ['']
+  weekday: 周一
+- medicine: 0
+  stage: ['']
+  weekday: 周二
+- medicine: 0
+  stage: ['']
+  weekday: 周三
+- medicine: 0
+  stage: ['']
+  weekday: 周四
+- medicine: 0
+  stage: ['']
+  weekday: 周五
+- medicine: 0
+  stage: ['']
+  weekday: 周六
+- medicine: 0
+  stage: ['']
+  weekday: 周日
+mail_enable: 0
+package_type: 1
+pass_code: ''
+plan_file: ./plan.json
+reload_room: ''
+run_mode: 1
+run_order_delay: 4
+start_automatically: false
