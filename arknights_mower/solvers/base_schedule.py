@@ -433,7 +433,8 @@ class BaseSchedulerSolver(BaseSolver):
             while True:
                 try:
                     self.enter_room(room)
-                    self.get_agent_from_room(room)
+                    _mood_data = self.get_agent_from_room(room)
+                    logger.info(f'房间 {room} 心情为：{_mood_data}')
                     break
                 except Exception as e:
                     if error_count > 3: raise e
@@ -1287,7 +1288,7 @@ class BaseSchedulerSolver(BaseSolver):
                 if name in agent:
                     select_name.append(name)
                     # self.get_agent_detail((y[1][0]))
-                    self.tap((y[1][0]))
+                    self.tap((y[1][0]), interval=0)
                     agent.remove(name)
                     # 如果是按照个数选择 Free
                     if max_agent_count != -1:
