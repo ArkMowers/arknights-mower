@@ -988,7 +988,7 @@ class BaseSchedulerSolver(BaseSolver):
                 if len(ori_results) == 3:
                     # 下滑选择最后一个 优先赠送线索
                     for swiptimes in range(1,3):
-                        self.swipe((self.recog.w * 0.8, self.recog.h * 0.8), (0, -self.recog.h * 0.15),duration=500,rebuild=False)
+                        self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, -self.recog.h * 0.45),duration=500,rebuild=False)
                     self.recog.update()
                 logger.info(f"放置线索{i}")
                 self.place_clue(last_ori)
@@ -1514,7 +1514,7 @@ class BaseSchedulerSolver(BaseSolver):
             self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
             error_count += 1
         length = len(self.current_plan[room])
-        if length > 3: self.swipe((self.recog.w * 0.8, self.recog.h * 0.8), (0, self.recog.h * 0.15),duration=500, interval=1,
+        if length > 3: self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, self.recog.h * 0.45),duration=500, interval=1,
                                   rebuild=True)
         name_p = [((1460, 155), (1700, 210)), ((1460, 370), (1700, 420)), ((1460, 585), (1700, 630)),
                   ((1460, 560), (1700, 610)), ((1460, 775), (1700, 820))]
@@ -1526,7 +1526,7 @@ class BaseSchedulerSolver(BaseSolver):
         swiped = False
         for i in range(0, length):
             if i >= 3 and not swiped:
-                self.swipe((self.recog.w * 0.8, self.recog.h * 0.8), (0, -self.recog.h * 0.15),duration=500, interval=1, rebuild=True)
+                self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, -self.recog.h * 0.45),duration=500, interval=1, rebuild=True)
                 swiped = True
             data = {}
             _name = self.read_screen(self.recog.img[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]],type="name")
@@ -1534,7 +1534,7 @@ class BaseSchedulerSolver(BaseSolver):
             while i >= 3 and _name != '' and (
                     next((e for e in result if e['agent'] == _name), None)) is not None:
                 logger.warning("检测到滑动可能失败")
-                self.swipe((self.recog.w * 0.8, self.recog.h * 0.8), (0, -self.recog.h * 0.15),duration=500, interval=1, rebuild=True)
+                self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, -self.recog.h * 0.45),duration=500, interval=1, rebuild=True)
                 _name = self.read_screen(
                     self.recog.img[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]], type="name")
                 error_count += 1
