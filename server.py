@@ -13,6 +13,7 @@ from threading import Thread
 import json
 import queue
 import time
+import sys
 
 
 app = Flask(__name__, static_folder="dist", static_url_path="")
@@ -58,17 +59,31 @@ def load_plan_from_json():
 
 @app.route("/operator")
 def operator_list():
-    with open(
-        os.path.join(
-            os.getcwd(),
-            "arknights_mower",
-            "data",
-            "agent.json",
-        ),
-        "r",
-        encoding="utf8",
-    ) as f:
-        return json.load(f)
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        with open(
+            os.path.join(
+                sys._MEIPASS,
+                "arknights_mower",
+                "__init__",
+                "data",
+                "agent.json",
+            ),
+            "r",
+            encoding="utf8",
+        ) as f:
+            return json.load(f)
+    else:
+        with open(
+            os.path.join(
+                os.getcwd(),
+                "arknights_mower",
+                "data",
+                "agent.json",
+            ),
+            "r",
+            encoding="utf8",
+        ) as f:
+            return json.load(f)
 
 
 def read_log(read):
