@@ -82,6 +82,19 @@ export const usePlanStore = defineStore('plan', () => {
     operators.value = option_list
   }
 
+  function remove_empty_agent(input) {
+    const result = {
+      name: input.name,
+      plans: []
+    }
+    for (const i of input.plans) {
+      if (i.agent) {
+        result.plans.push(i)
+      }
+    }
+    return result
+  }
+
   function build_plan() {
     const result = {
       default: 'plan1',
@@ -100,7 +113,7 @@ export const usePlanStore = defineStore('plan', () => {
 
     for (const i in facility_operator_limit) {
       if (i.startsWith('room') && plan.value[i].name) {
-        plan1[i] = plan.value[i]
+        plan1[i] = remove_empty_agent(plan.value[i])
       } else {
         let empty = true
         for (const j of plan.value[i].plans) {
@@ -110,7 +123,7 @@ export const usePlanStore = defineStore('plan', () => {
           }
         }
         if (!empty) {
-          plan1[i] = plan.value[i]
+          plan1[i] = remove_empty_agent(plan.value[i])
         }
       }
     }
