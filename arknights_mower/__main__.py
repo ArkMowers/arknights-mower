@@ -268,6 +268,7 @@ def __init_params__():
         "杜宾": {"ArrangeOrder": [2, "true"]},
         "焰尾": {"RestInFull": True},
         "重岳": {"ArrangeOrder": [2, "true"]},
+        "琴柳": {},
         "坚雷": {"ArrangeOrder": [2, "true"]},
         "年": {"RestingPriority": "low"},
         "伊内丝": {"ExhaustRequire": True, "ArrangeOrder": [2, "true"], "RestInFull": True},
