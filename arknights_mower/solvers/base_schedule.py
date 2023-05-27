@@ -593,7 +593,7 @@ class BaseSchedulerSolver(BaseSolver):
                                 self.enter_room(op.current_room)
                                 result = self.get_agent_from_room(op.current_room, [op.current_index])
                                 _time = datetime.now()
-                                if result[op.current_index]['time'] is not None:
+                                if result[op.current_index]['time'] is not None and result[op.current_index]['time']>datetime.now():
                                     _time = result[op.current_index]['time'] - timedelta(minutes=10)
                                 elif op.current_mood() != 0.0:
                                     _time = datetime.now() + timedelta(
