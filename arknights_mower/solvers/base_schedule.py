@@ -433,8 +433,8 @@ class BaseSchedulerSolver(BaseSolver):
             while True:
                 try:
                     self.enter_room(room)
-                    self.current_base[room] = self.get_agent_from_room(room)
-                    logger.info(f'房间 {room} 心情为：{self.current_base[room]}')
+                    _mood_data = self.get_agent_from_room(room)
+                    logger.info(f'房间 {room} 心情为：{_mood_data}')
                     break
                 except Exception as e:
                     if error_count > 3: raise e
@@ -444,39 +444,26 @@ class BaseSchedulerSolver(BaseSolver):
                     continue
             self.back()
         logger.debug(self.op_data.print())
-        for room in self.current_plan.keys():
-            for idx, item in enumerate(self.current_plan[room]):
-                _name = next((k for k, v in self.op_data.operators.items() if
-                              v.current_room == room and v.current_index == idx),
-                             None)
-                if room not in self.current_base.keys():
-                    self.current_base[room] = [''] * len(self.current_plan[room])
-                if _name is None or _name == '':
-                    self.current_base[room][idx] = {"agent": "", "mood": -1}
-                else:
-                    self.current_base[room][idx] = {"mood": self.op_data.operators[_name].current_mood(), "agent": _name}
-        current_base = copy.deepcopy(self.current_base)
         plan = self.current_plan
         fix_plan = {}
-        for key in current_base:
+        for key in plan:
             if key == 'train': continue
             need_fix = False
-            for idx, operator in enumerate(current_base[key]):
-                data = current_base[key][idx]
+            _current_room = self.op_data.get_current_room(key, True)
+            for idx, name in enumerate(_current_room):
                 # 如果是空房间
-                if data["agent"] == '':
+                if name == '':
                     if not need_fix:
                         fix_plan[key] = ['Current'] * len(plan[key])
                         need_fix = True
                     fix_plan[key][idx] = plan[key][idx]["agent"]
                     continue
                 # 随意人员则跳过
-                _name = data['agent']
                 if plan[key][idx]["agent"] == 'Free':
                     continue
-                if not (_name == plan[key][idx]['agent'] or (
-                        (_name in plan[key][idx]["replacement"]) and len(plan[key][idx]["replacement"]) > 0) or not
-                        self.op_data.operators[_name].need_to_refresh(h=2.5)):
+                if not (name == plan[key][idx]['agent'] or (
+                        (name in plan[key][idx]["replacement"]) and len(plan[key][idx]["replacement"]) > 0) or not
+                        self.op_data.operators[name].need_to_refresh(h=2.5)):
                     if not need_fix:
                         fix_plan[key] = ['Current'] * len(plan[key])
                         need_fix = True
@@ -706,7 +693,7 @@ class BaseSchedulerSolver(BaseSolver):
 
     def initialize_operators(self):
         plan = self.current_plan
-        self.op_data = Operators(self.agent_base_config, self.max_resting_count)
+        self.op_data = Operators(self.agent_base_config, self.max_resting_count,plan)
         for room in plan.keys():
             for idx, data in enumerate(plan[room]):
                 self.op_data.add(Operator(data["agent"], room, idx, data["group"], data["replacement"], 'high',
@@ -1001,7 +988,7 @@ class BaseSchedulerSolver(BaseSolver):
                 if len(ori_results) == 3:
                     # 下滑选择最后一个 优先赠送线索
                     for swiptimes in range(1,3):
-                        self.swipe((self.recog.w * 0.8, self.recog.h * 0.8), (0, -self.recog.h * 0.4),rebuild=False)
+                        self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, -self.recog.h * 0.45),duration=500,rebuild=False)
                     self.recog.update()
                 logger.info(f"放置线索{i}")
                 self.place_clue(last_ori)
@@ -1301,7 +1288,7 @@ class BaseSchedulerSolver(BaseSolver):
                 if name in agent:
                     select_name.append(name)
                     # self.get_agent_detail((y[1][0]))
-                    self.tap((y[1][0]))
+                    self.tap((y[1][0]), interval=0)
                     agent.remove(name)
                     # 如果是按照个数选择 Free
                     if max_agent_count != -1:
@@ -1527,7 +1514,7 @@ class BaseSchedulerSolver(BaseSolver):
             self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
             error_count += 1
         length = len(self.current_plan[room])
-        if length > 3: self.swipe((self.recog.w * 0.8, self.recog.h * 0.8), (0, self.recog.h * 0.4), interval=1,
+        if length > 3: self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, self.recog.h * 0.45),duration=500, interval=1,
                                   rebuild=True)
         name_p = [((1460, 155), (1700, 210)), ((1460, 370), (1700, 420)), ((1460, 585), (1700, 630)),
                   ((1460, 560), (1700, 610)), ((1460, 775), (1700, 820))]
@@ -1539,7 +1526,7 @@ class BaseSchedulerSolver(BaseSolver):
         swiped = False
         for i in range(0, length):
             if i >= 3 and not swiped:
-                self.swipe((self.recog.w * 0.8, self.recog.h * 0.8), (0, -self.recog.h * 0.4), interval=1, rebuild=True)
+                self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, -self.recog.h * 0.45),duration=500, interval=1, rebuild=True)
                 swiped = True
             data = {}
             _name = self.read_screen(self.recog.img[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]],type="name")
@@ -1547,7 +1534,7 @@ class BaseSchedulerSolver(BaseSolver):
             while i >= 3 and _name != '' and (
                     next((e for e in result if e['agent'] == _name), None)) is not None:
                 logger.warning("检测到滑动可能失败")
-                self.swipe((self.recog.w * 0.8, self.recog.h * 0.8), (0, -self.recog.h * 0.4), interval=1, rebuild=True)
+                self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, -self.recog.h * 0.45),duration=500, interval=1, rebuild=True)
                 _name = self.read_screen(
                     self.recog.img[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]], type="name")
                 error_count += 1
@@ -1593,11 +1580,17 @@ class BaseSchedulerSolver(BaseSolver):
                 logger.info(f'重设 {_operator} 至空闲')
         return result
 
+    def refresh_current_room(self,room):
+        _current_room = self.op_data.get_current_room(room)
+        if _current_room is None:
+            self.get_agent_from_room(room)
+            _current_room = self.op_data.get_current_room(room, True)
+        return _current_room
+
     def agent_arrange(self, plan: tp.BasePlan, metadata=None):
         logger.info('基建：排班')
-        in_and_out = []
-        fia_data = None
         rooms = list(plan.keys())
+        new_plan = {}
         # 优先替换工作站再替换宿舍
         rooms.sort(key=lambda x: x.startswith('dorm'), reverse=False)
         for room in rooms:
@@ -1613,28 +1606,18 @@ class BaseSchedulerSolver(BaseSolver):
                         self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
                         error_count += 1
                     error_count = 0
-                    update_base = False
                     if ('但书' in plan[room] or '龙舌兰' in plan[room]) and not \
-                            room.startswith('dormitory') and room not in in_and_out:
-                        in_and_out.append(room)
-                        update_base = True
+                            room.startswith('dormitory') :
+                        new_plan[room] = self.refresh_current_room(room)
                     if '菲亚梅塔' in plan[room] and len(plan[room]) == 2:
-                        fia_data = (room, plan[room][0])
-                        update_base = True
-                    if update_base or 'Current' in plan[room]:
-                        self.current_base[room] = self.get_agent_from_room(room)
-                        # 纠错 因为网络连接导致房间移位
-                        if 'Current' in plan[room]:
-                            # replace current
-                            for current_idx, _name in enumerate(plan[room]):
-                                if _name == 'Current':
-                                    current_name = self.current_base[room][current_idx]["agent"]
-                                    if current_name in agent_list:
-                                        plan[room][current_idx] = current_name
-                                    else:
-                                        # 如果空房间或者名字错误，则使用default干员
-                                        plan[room][current_idx] = \
-                                            self.current_plan[room][current_idx]["agent"]
+                        new_plan[room] = self.refresh_current_room(room)
+                        working_room = self.op_data.operators[plan[room][0]].room
+                        new_plan[working_room] = self.op_data.get_current_room(working_room,True)
+                    if 'Current' in plan[room]:
+                        self.refresh_current_room(room)
+                        for current_idx, _name in enumerate(plan[room]):
+                            if _name == 'Current':
+                                plan[room][current_idx] = self.op_data.get_current_room(room,True)[current_idx]
                     while self.find('arrange_order_options') is None:
                         if error_count > 3:
                             raise Exception('未成功进入干员选择界面')
@@ -1650,10 +1633,9 @@ class BaseSchedulerSolver(BaseSolver):
                     read_time_index = []
                     if metadata is not None:
                         read_time_index = self.op_data.get_refresh_index(room, plan[room])
-                    if fia_data is not None:
-                        # 移除时间以刷新心情
+                    if len(new_plan) > 1:
                         self.op_data.operators['菲亚梅塔'].time_stamp = None
-                        self.op_data.operators[fia_data[1]].time_stamp = None
+                        self.op_data.operators[plan[room][0]].time_stamp = None
                     current = self.get_agent_from_room(room, read_time_index)
                     for idx, name in enumerate(plan[room]):
                         if current[idx]['agent'] != name:
@@ -1681,29 +1663,19 @@ class BaseSchedulerSolver(BaseSolver):
                     else:
                         continue
             self.back(0.5)
-        if len(in_and_out) > 0:
-            replace_plan = {}
-            for room in in_and_out:
-                logger.info("开始插拔")
-                self.drone(room, True, True)
-                in_and_out_plan = [data["agent"] for data in self.current_base[room]]
-                # 防止由于意外导致的死循环
-                if '但书' in in_and_out_plan or '龙舌兰' in in_and_out_plan:
-                    in_and_out_plan = [data["agent"] for data in self.current_plan[room]]
-                replace_plan[room] = in_and_out_plan
-                self.back(interval=0.5)
-                self.back(interval=0.5)
-            self.tasks.append({'time': self.tasks[0]['time'], 'plan': replace_plan})
+        if len(new_plan) == 1:
+            logger.info("开始插拔")
+            self.drone(room, True, True)
+            # 防止由于意外导致的死循环
+            run_order_room = next(iter(new_plan))
+            if '但书' in new_plan[run_order_room] or '龙舌兰' in new_plan[run_order_room]:
+                new_plan[run_order_room] = [data["agent"] for data in self.current_plan[room]]
+            self.back(interval=0.5)
+            self.back(interval=0.5)
+            self.tasks.append({'time': self.tasks[0]['time'], 'plan': new_plan})
             self.skip(['planned','todo_task'])
-        if fia_data is not None:
-            replace_agent = fia_data[1]
-            fia_change_room = self.op_data.operators[replace_agent].room
-            fia_room_plan = [data["agent"] for data in self.current_base[fia_data[0]]]
-            fia_change_room_plan = ['Current'] * len(self.current_plan[fia_change_room])
-            fia_change_room_plan[self.op_data.operators[replace_agent].index] = replace_agent
-            self.tasks.append(
-                {'time': self.tasks[0]['time'],
-                 'plan': {fia_data[0]: fia_room_plan, fia_change_room: fia_change_room_plan}})
+        elif len(new_plan) >1:
+            self.tasks.append( {'time': self.tasks[0]['time'], 'plan': new_plan})
             # 急速换班
             self.skip()
         logger.info('返回基建主界面')

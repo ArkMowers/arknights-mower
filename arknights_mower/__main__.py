@@ -36,9 +36,13 @@ def main(c, p, o={}, child_conn=None):
     if plan['conf']['ling_xi'] == 1:
         agent_base_config['令']['UpperLimit'] = 12
         agent_base_config['夕']['LowerLimit'] = 12
+        agent_base_config['琴柳']['LowerLimit'] = 12
+        agent_base_config['重岳']['LowerLimit'] = 12
     elif plan['conf']['ling_xi'] == 2:
         agent_base_config['夕']['UpperLimit'] = 12
         agent_base_config['令']['LowerLimit'] = 12
+        agent_base_config['琴柳']['LowerLimit'] = 12
+        agent_base_config['重岳']['LowerLimit'] = 12
     for key in list(filter(None, plan['conf']['rest_in_full'].replace('，', ',').split(','))):
         if key in agent_base_config.keys():
             agent_base_config[key]['RestInFull'] = True
@@ -264,6 +268,7 @@ def __init_params__():
         "杜宾": {"ArrangeOrder": [2, "true"]},
         "焰尾": {"RestInFull": True},
         "重岳": {"ArrangeOrder": [2, "true"]},
+        "琴柳": {},
         "坚雷": {"ArrangeOrder": [2, "true"]},
         "年": {"RestingPriority": "low"},
         "伊内丝": {"ExhaustRequire": True, "ArrangeOrder": [2, "true"], "RestInFull": True},
