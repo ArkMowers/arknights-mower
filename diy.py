@@ -10,7 +10,8 @@ from arknights_mower.utils.device import Device
 from arknights_mower.utils.log import logger, init_fhlr
 from arknights_mower.utils import config
 # 下面不能删除
-from arknights_mower.utils.operators import Operators, Operator,Dormitory
+from arknights_mower.utils.operators import Operators, Operator, Dormitory
+from arknights_mower.utils.scheduler_task import SchedulerTask
 
 email_config= {
     # 发信账户
@@ -282,8 +283,8 @@ def load_state():
     with open(state_file_name, 'r') as f:
         state = json.load(f)
     operators = {k: eval(v) for k, v in state['operators'].items()}
-    for k,v in operators.items():
-        if not v.time_stamp=='None':
+    for k, v in operators.items():
+        if not v.time_stamp == 'None':
             v.time_stamp = datetime.strptime(v.time_stamp, '%Y-%m-%d %H:%M:%S.%f')
         else:
             v.time_stamp = None
@@ -296,16 +297,19 @@ def simulate():
     '''
     global ope_list,base_scheduler
     # 第一次执行任务
-    # tasks = [{"plan": {'room_1_1': ['能天使','但书','龙舌兰']}, "time": datetime.now()}]
-    tasks =[]
+    tasksStr = "SchedulerTask(time='2023-05-29 22:51:58.058617',task_plan={'room_3_2': ['Current', '但书', '龙舌兰']},task_type='room_3_2',meta_flag=False)||SchedulerTask(time='2023-05-29 23:24:36.984848',task_plan={'room_1_1': ['Current', '龙舌兰', '但书']},task_type='room_1_1',meta_flag=False)||SchedulerTask(time='2023-05-29 23:36:27.002696',task_plan={},task_type='菲亚梅塔',meta_flag=False)||SchedulerTask(time='2023-05-30 00:35:11.278038',task_plan={'room_3_1': ['水月', '海沫', '多萝西'], 'room_3_2': ['Current', 'Current', '空弦']},task_type='dorm0,dorm1,dorm2,dorm3',meta_flag=False)||SchedulerTask(time='2023-05-30 13:58:59.994020',task_plan={},task_type='impart',meta_flag=False)||SchedulerTask(time='2023-05-30 13:58:59.995020',task_plan={},task_type='maa_Mall',meta_flag=False)"
+    tasks = [eval(t) for t in tasksStr.split("||")]
+    for t in tasks:
+        t.time = datetime.strptime(t.time, '%Y-%m-%d %H:%M:%S.%f')
     reconnect_max_tries = 10
     reconnect_tries = 0
     base_scheduler = inialize(tasks)
     base_scheduler.initialize_operators()
     _loaded_operators = load_state()
     if _loaded_operators is not None:
-        for k,v in _loaded_operators.items():
-            if k in base_scheduler.op_data.operators and not base_scheduler.op_data.operators[k].room.startswith("dorm"):
+        for k, v in _loaded_operators.items():
+            if k in base_scheduler.op_data.operators and not base_scheduler.op_data.operators[k].room.startswith(
+                    "dorm"):
                 # 只复制心情数据
                 base_scheduler.op_data.operators[k].mood = v.mood
                 base_scheduler.op_data.operators[k].time_stamp = v.time_stamp
@@ -315,17 +319,17 @@ def simulate():
     while True:
         try:
             if len(base_scheduler.tasks) > 0:
-                (base_scheduler.tasks.sort(key=lambda x: x["time"], reverse=False))
-                sleep_time = (base_scheduler.tasks[0]["time"] - datetime.now()).total_seconds()
-                logger.info(base_scheduler.tasks)
-                base_scheduler.send_email(base_scheduler.tasks)
+                (base_scheduler.tasks.sort(key=lambda x: x.time, reverse=False))
+                sleep_time = (base_scheduler.tasks[0].time - datetime.now()).total_seconds()
+                logger.info('||'.join([str(t) for t in base_scheduler.tasks]))
+                base_scheduler.send_email()
                 # 如果任务间隔时间超过9分钟则启动MAA
                 if sleep_time > 540:
                     base_scheduler.maa_plan_solver()
                 elif sleep_time > 0:
                     time.sleep(sleep_time)
-            if len(base_scheduler.tasks) > 0 and 'type' in base_scheduler.tasks[0].keys() and base_scheduler.tasks[0]['type'].split('_')[0] == 'maa':
-                base_scheduler.maa_plan_solver((base_scheduler.tasks[0]['type'].split('_')[1]).split(','), one_time=True)
+            if len(base_scheduler.tasks) > 0 and base_scheduler.tasks[0].type.split('_')[0] == 'maa':
+                base_scheduler.maa_plan_solver((base_scheduler.tasks[0].type.split('_')[1]).split(','), one_time=True)
                 continue
             base_scheduler.run()
             reconnect_tries = 0
