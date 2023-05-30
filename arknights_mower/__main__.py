@@ -154,27 +154,27 @@ def simulate():
     while True:
         try:
             if len(base_scheduler.tasks) > 0:
-                (base_scheduler.tasks.sort(key=lambda x: x["time"], reverse=False))
-                sleep_time = (base_scheduler.tasks[0]["time"] - datetime.now()).total_seconds()
+                (base_scheduler.tasks.sort(key=lambda x: x.time, reverse=False))
+                sleep_time = (base_scheduler.tasks[0].time - datetime.now()).total_seconds()
                 logger.debug(base_scheduler.tasks)
-                remaining_time = (base_scheduler.tasks[0]["time"] - datetime.now()).total_seconds()
+                remaining_time = (base_scheduler.tasks[0].time - datetime.now()).total_seconds()
                 if sleep_time > 540 and conf['maa_enable'] == 1:
-                    subject = f"下次任务在{base_scheduler.tasks[0]['time'].strftime('%H:%M:%S')}"
-                    context = f"下一次任务:{base_scheduler.tasks[0]['plan']}"
+                    subject = f"下次任务在{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}"
+                    context = f"下一次任务:{base_scheduler.tasks[0].plan}"
                     logger.info(context)
                     logger.info(subject)
                     base_scheduler.send_email(context, subject)
                     base_scheduler.maa_plan_solver()
                 elif sleep_time > 0:
-                    subject = f"开始休息 {'%.2f' % (remaining_time / 60)} 分钟，到{base_scheduler.tasks[0]['time'].strftime('%H:%M:%S')}"
-                    context = f"下一次任务:{base_scheduler.tasks[0]['plan']}"
+                    subject = f"开始休息 {'%.2f' % (remaining_time / 60)} 分钟，到{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}"
+                    context = f"下一次任务:{base_scheduler.tasks[0].plan}"
                     logger.info(context)
                     logger.info(subject)
                     base_scheduler.send_email(context, subject)
                     time.sleep(sleep_time)
-            if len(base_scheduler.tasks) > 0 and 'type' in base_scheduler.tasks[0].keys() and base_scheduler.tasks[0]['type'].split('_')[0] == 'maa':
-                logger.info(f"开始执行 MAA {base_scheduler.tasks[0]['type'].split('_')[1]} 任务")
-                base_scheduler.maa_plan_solver((base_scheduler.tasks[0]['type'].split('_')[1]).split(','), one_time=True)
+            if len(base_scheduler.tasks) > 0 and base_scheduler.tasks[0].type.split('_')[0] == 'maa':
+                logger.info(f"开始执行 MAA {base_scheduler.tasks[0].type.split('_')[1]} 任务")
+                base_scheduler.maa_plan_solver((base_scheduler.tasks[0].type.split('_')[1]).split(','), one_time=True)
                 continue
             base_scheduler.run()
             reconnect_tries = 0
