@@ -142,7 +142,7 @@ class BaseSchedulerSolver(BaseSolver):
                                                                                    current_high,
                                                                                    current_low)
             if len(_plan.items()) > 0:
-                self.tasks.append(SchedulerTask(datetime.now(), plan=_plan))
+                self.tasks.append(SchedulerTask(datetime.now(), task_plan=_plan))
         else:
             # 如果不满足，则找到并且执行最近一个type 包含 超过数量的high free 和low free 的 任务并且 干员没有 exaust_require 词条
             task_index = -1
@@ -614,7 +614,7 @@ class BaseSchedulerSolver(BaseSolver):
                                 self.enter_room(op.current_room)
                                 result = self.get_agent_from_room(op.current_room, [op.current_index])
                                 _time = datetime.now()
-                                if result[op.current_index]['time'] is not None and result[op.current_index]['time']>datetime.now():
+                                if result[op.current_index]['time'] is not None and result[op.current_index]['time']>_time:
                                     _time = result[op.current_index]['time'] - timedelta(minutes=10)
                                 elif op.current_mood() != 0.0:
                                     _time = datetime.now() + timedelta(
@@ -1204,7 +1204,7 @@ class BaseSchedulerSolver(BaseSolver):
         logger.info('基建：无人机加速')
         all_in = 0
         if not not_customize:
-            all_in = len(self.check_in_and_out())
+            all_in = len(self.run_order_rooms)
         # 点击进入该房间
         self.enter_room(room)
         # 进入房间详情
