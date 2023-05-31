@@ -142,7 +142,7 @@ class BaseSchedulerSolver(BaseSolver):
                                                                                    current_high,
                                                                                    current_low)
             if len(_plan.items()) > 0:
-                self.tasks.append(SchedulerTask(datetime.now(), plan=_plan))
+                self.tasks.append(SchedulerTask(datetime.now(), task_plan=_plan))
         else:
             # 如果不满足，则找到并且执行最近一个type 包含 超过数量的high free 和low free 的 任务并且 干员没有 exaust_require 词条
             task_index = -1
@@ -255,13 +255,18 @@ class BaseSchedulerSolver(BaseSolver):
             # 排序
             candidate_lst.sort(key=lambda x: (x.mood - x.lower_limit) / (x.upper_limit - x.lower_limit), reverse=False)
             print(candidate_lst)
+            print(last_candidate)
             name = candidate_lst[0].name
             # 只有主要充能干员心情在20以上才会考虑额外干员
-            if plan_last and candidate_lst[0].current_mood() >= 20:
+            if (plan_last or candidate_lst[0].current_mood() >= 20) and not last_candidate.current_room.startswith("dorm"):
                 mood = last_candidate.current_mood()
+                is_lowest = 20 <= mood < candidate_lst[0].current_mood()
                 logger.debug(f'{last_candidate.name},mood:{mood}')
-                if self.op_data.predict_fia(copy.deepcopy(candidate_lst), mood):
-                    name = last_candidate.name
+                if is_lowest:
+                    if plan_last and self.op_data.predict_fia(copy.deepcopy(candidate_lst), mood):
+                        name = last_candidate.name
+                    elif not plan_last :
+                        name = last_candidate.name
             self.tasks.append(SchedulerTask(time=current_time, task_plan={fia_room: [name, '菲亚梅塔']}))
 
     def plan_metadata(self):
@@ -609,7 +614,7 @@ class BaseSchedulerSolver(BaseSolver):
                                 self.enter_room(op.current_room)
                                 result = self.get_agent_from_room(op.current_room, [op.current_index])
                                 _time = datetime.now()
-                                if result[op.current_index]['time'] is not None and result[op.current_index]['time']>datetime.now():
+                                if result[op.current_index]['time'] is not None and result[op.current_index]['time']>_time:
                                     _time = result[op.current_index]['time'] - timedelta(minutes=10)
                                 elif op.current_mood() != 0.0:
                                     _time = datetime.now() + timedelta(
@@ -658,7 +663,7 @@ class BaseSchedulerSolver(BaseSolver):
             else:
                 _high += 1
         # 排序
-        agents.sort(key=lambda x: self.op_data.operators[x].current_mood() - self.op_data.operators[x].lower_limit,
+        agents.sort(key=lambda y: self.op_data.operators[y].current_mood() - self.op_data.operators[y].lower_limit,
                     reverse=False)
         # 进行位置数量的初步判定
         # 对于252可能需要进行额外判定，由于 low_free 性质等同于 high_free
@@ -1199,7 +1204,7 @@ class BaseSchedulerSolver(BaseSolver):
         logger.info('基建：无人机加速')
         all_in = 0
         if not not_customize:
-            all_in = len(self.check_in_and_out())
+            all_in = len(self.run_order_rooms)
         # 点击进入该房间
         self.enter_room(room)
         # 进入房间详情
@@ -1518,7 +1523,7 @@ class BaseSchedulerSolver(BaseSolver):
             time.sleep(3)
             self.recog.update()
             clue_res = self.read_screen(self.recog.img, limit=10, cord=(645, 977, 755, 1018))
-            if clue_res != -1:
+            if clue_res != 11:
                 self.clue_count = clue_res
                 logger.info(f'当前拥有线索数量为{self.clue_count}')
         while self.find('room_detail') is None:
