@@ -11,7 +11,7 @@ const mower_store = useMowerStore()
 const plan_store = usePlanStore()
 
 const { adb, package_type, free_blacklist, plan_file } = storeToRefs(config_store)
-const { log, running, first_load } = storeToRefs(mower_store)
+const { log, running, first_load, log_lines } = storeToRefs(mower_store)
 const { operators } = storeToRefs(plan_store)
 
 const { build_config } = config_store
@@ -48,7 +48,7 @@ onMounted(() => {
 
 function start() {
   running.value = true
-  log.value = ''
+  log_lines.value = []
   axios
     .post(`${import.meta.env.VITE_HTTP_URL}/conf`, build_config())
     .then(() => {

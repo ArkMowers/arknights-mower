@@ -1,10 +1,15 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 
 import axios from 'axios'
 
 export const useMowerStore = defineStore('mower', () => {
-  const log = ref('')
+  const log_lines = ref([])
+
+  const log = computed(() => {
+    return log_lines.value.join('\n')
+  })
+
   const ws = ref(null)
   const running = ref(false)
 
@@ -20,7 +25,8 @@ export const useMowerStore = defineStore('mower', () => {
     const ws_url = backend_url.replace(/^http/, 'ws') + '/log'
     ws.value = new WebSocket(ws_url)
     ws.value.onmessage = (event) => {
-      log.value += event.data + '\n'
+      log_lines.value.push(event.data)
+      log_lines.value = log_lines.value.slice(-100)
     }
   }
 
@@ -31,6 +37,7 @@ export const useMowerStore = defineStore('mower', () => {
 
   return {
     log,
+    log_lines,
     ws,
     running,
     listen_ws,
