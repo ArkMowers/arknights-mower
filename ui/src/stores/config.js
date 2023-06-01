@@ -62,7 +62,7 @@ export const useConfigStore = defineStore('config', () => {
       mail_enable: mail_enable.value ? 1 : 0,
       package_type: package_type.value == 'official' ? 1 : 0,
       pass_code: pass_code.value,
-      plan_file: plan_file.value,
+      planFile: plan_file.value,
       reload_room: reload_room.value.join(','),
       run_mode: run_mode.value == 'orders_only' ? 2 : 1,
       run_order_delay: parseInt(run_order_delay.value),
