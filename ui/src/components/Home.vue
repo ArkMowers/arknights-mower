@@ -62,8 +62,8 @@ function stop() {
   <div class="home-container">
     <table>
       <tr>
-        <td>服务器：</td>
-        <td>
+        <td class="config-label">服务器：</td>
+        <td class="config-input">
           <n-radio-group v-model:value="package_type">
             <n-radio value="official">官服</n-radio>
             <n-radio value="bilibili">BiliBili服</n-radio>
@@ -119,5 +119,13 @@ function stop() {
   border: 1px solid rgb(224, 224, 230);
   border-radius: 3px;
   padding: 4px;
+}
+
+.config-label {
+  width: 108px;
+}
+
+.config-input {
+  width: 400px;
 }
 </style>
