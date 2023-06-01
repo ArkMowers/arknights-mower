@@ -1,11 +1,11 @@
 <script setup>
 import { storeToRefs } from 'pinia'
 import { usePlanStore } from '@/stores/plan'
-import { ref, computed, nextTick, watch, inject } from 'vue'
+import { ref, computed, nextTick, watch } from 'vue'
 
 const plan_store = usePlanStore()
 const { operators, plan } = storeToRefs(plan_store)
-const { facility_operator_limit, build_plan } = plan_store
+const { facility_operator_limit } = plan_store
 
 const facility_types = [
   { label: '贸易站', value: '贸易站' },
@@ -65,14 +65,38 @@ watch(
   }
 )
 
-const axios = inject('axios')
-
-function save() {
-  axios.post(`${import.meta.env.VITE_HTTP_URL}/plan`, build_plan())
-}
-
 const operators_with_free = computed(() => {
-  return [{ value: 'Free', label: 'Free' }].concat(operators.value)
+  return [
+    { value: '', label: '' },
+    { value: 'Free', label: 'Free' }
+  ].concat(operators.value)
+})
+
+const right_side_facility_name = computed(() => {
+  if (facility.value.startsWith('dormitory')) {
+    return '宿舍'
+  } else if (facility.value == 'central') {
+    return '控制中枢'
+  } else if (facility.value == 'contact') {
+    return '办公室'
+  } else if (facility.value == 'meeting') {
+    return '会客室'
+  } else if (facility.value == 'factory') {
+    return '加工站'
+  } else {
+    return '未知'
+  }
+})
+
+const facility_empty = computed(() => {
+  let empty = true
+  for (const i of plan.value[facility.value].plans) {
+    if (i.agent) {
+      empty = false
+      break
+    }
+  }
+  return empty
 })
 </script>
 
@@ -89,7 +113,11 @@ const operators_with_free = computed(() => {
               >控制中枢</n-button
             >
           </td>
-          <td></td>
+          <td>
+            <n-button :secondary="facility != 'meeting'" @click="facility = 'meeting'"
+              >会客室</n-button
+            >
+          </td>
         </tr>
         <tr>
           <td v-for="r in ['room_1_1', 'room_1_2', 'room_1_3']" :key="r">
@@ -121,8 +149,8 @@ const operators_with_free = computed(() => {
             >
           </td>
           <td>
-            <n-button :secondary="facility != 'meeting'" @click="facility = 'meeting'"
-              >会客室</n-button
+            <n-button :secondary="facility != 'factory'" @click="facility = 'factory'"
+              >加工站</n-button
             >
           </td>
         </tr>
@@ -156,8 +184,8 @@ const operators_with_free = computed(() => {
             >
           </td>
           <td>
-            <n-button :secondary="facility != 'factory'" @click="facility = 'factory'"
-              >加工室</n-button
+            <n-button :secondary="facility != 'contact'" @click="facility = 'contact'"
+              >办公室</n-button
             >
           </td>
         </tr>
@@ -191,9 +219,7 @@ const operators_with_free = computed(() => {
             >
           </td>
           <td>
-            <n-button :secondary="facility != 'contact'" @click="facility = 'contact'"
-              >办公室</n-button
-            >
+            <n-button disabled>训练室</n-button>
           </td>
         </tr>
         <tr>
@@ -212,7 +238,8 @@ const operators_with_free = computed(() => {
         </tr>
       </table>
     </n-space>
-    <n-space justify="center" v-if="facility.startsWith('room')">
+    <n-divider />
+    <n-space justify="center" v-if="facility">
       <table>
         <tr>
           <td>设施类别：</td>
@@ -221,7 +248,14 @@ const operators_with_free = computed(() => {
               v-model:value="plan[facility].name"
               :options="facility_types"
               class="type-select"
+              v-if="facility.startsWith('room')"
             />
+            <span v-else class="type-select">{{ right_side_facility_name }}</span>
+          </td>
+          <td>
+            <n-button ghost type="error" @click="clear" :disabled="facility_empty">
+              清空此设施内干员
+            </n-button>
           </td>
         </tr>
       </table>
@@ -257,10 +291,6 @@ const operators_with_free = computed(() => {
         </tr>
       </table>
     </n-space>
-    <n-space justify="center" v-if="facility">
-      <n-button type="primary" @click="save">保存</n-button>
-      <n-button type="error" @click="clear">清空</n-button>
-    </n-space>
   </div>
 </template>
 
@@ -275,6 +305,7 @@ const operators_with_free = computed(() => {
 
 .type-select {
   width: 100px;
+  margin-right: 80px;
 }
 
 .operator-select {
