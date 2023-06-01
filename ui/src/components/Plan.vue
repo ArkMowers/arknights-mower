@@ -70,6 +70,10 @@ const axios = inject('axios')
 function save() {
   axios.post(`${import.meta.env.VITE_HTTP_URL}/plan`, build_plan())
 }
+
+const operators_with_free = computed(() => {
+  return [{ value: 'Free', label: 'Free' }].concat(operators.value)
+})
 </script>
 
 <template>
@@ -230,7 +234,7 @@ function save() {
             <n-select
               filterable
               tag
-              :options="operators"
+              :options="operators_with_free"
               class="operator-select"
               v-model:value="plan[facility].plans[i - 1].agent"
             />
@@ -245,7 +249,7 @@ function save() {
               multiple
               filterable
               tag
-              :options="operators"
+              :options="operators_with_free"
               class="replacement-select"
               v-model:value="plan[facility].plans[i - 1].replacement"
             />

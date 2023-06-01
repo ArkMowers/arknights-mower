@@ -67,12 +67,7 @@ export const usePlanStore = defineStore('plan', () => {
 
   async function load_operators() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/operator`)
-    const option_list = [
-      {
-        value: 'Free',
-        label: 'Free'
-      }
-    ]
+    const option_list = []
     for (const i of response.data) {
       option_list.push({
         value: i,
