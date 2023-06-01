@@ -2,6 +2,7 @@
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
 import { storeToRefs } from 'pinia'
+import { computed } from 'vue'
 
 const config_store = useConfigStore()
 const plan_store = usePlanStore()
@@ -27,6 +28,10 @@ const {
 } = storeToRefs(plan_store)
 
 const { left_side_facility } = plan_store
+
+const facility_with_empty = computed(() => {
+  return [{ label: '（加速贸易站）', value: '' }].concat(left_side_facility)
+})
 </script>
 
 <template>
@@ -86,7 +91,7 @@ const { left_side_facility } = plan_store
         <tr>
           <td>无人机使用房间（room_X_X）：</td>
           <td class="table-space">
-            <n-select :options="left_side_facility" v-model:value="drone_room" />
+            <n-select :options="facility_with_empty" v-model:value="drone_room" />
           </td>
           <td>无人机使用阈值：</td>
           <td>
