@@ -49,14 +49,7 @@ onMounted(() => {
 function start() {
   running.value = true
   log_lines.value = []
-  axios
-    .post(`${import.meta.env.VITE_HTTP_URL}/conf`, build_config())
-    .then(() => {
-      return axios.post(`${import.meta.env.VITE_HTTP_URL}/plan`, build_plan())
-    })
-    .then(() => {
-      axios.get(`${import.meta.env.VITE_HTTP_URL}/start`)
-    })
+  axios.get(`${import.meta.env.VITE_HTTP_URL}/start`)
 }
 
 function stop() {

@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import axios from 'axios'
 
 export const usePlanStore = defineStore('plan', () => {
@@ -125,6 +125,14 @@ export const usePlanStore = defineStore('plan', () => {
 
     return result
   }
+
+  watch(
+    plan,
+    () => {
+      axios.post(`${import.meta.env.VITE_HTTP_URL}/plan`, build_plan())
+    },
+    { deep: true }
+  )
 
   return {
     load_plan,

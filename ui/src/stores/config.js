@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import axios from 'axios'
 
 export const useConfigStore = defineStore('config', () => {
@@ -69,6 +69,33 @@ export const useConfigStore = defineStore('config', () => {
       start_automatically: start_automatically.value
     }
   }
+
+  watch(
+    [
+      adb,
+      drone_count_limit,
+      drone_room,
+      enable_party,
+      free_blacklist,
+      maa_adb_path,
+      maa_enable,
+      maa_path,
+      maa_weekly_plan,
+      maa_rg_enable,
+      mail_enable,
+      account,
+      pass_code,
+      package_type,
+      plan_file,
+      reload_room,
+      run_mode,
+      run_order_delay,
+      start_automatically
+    ],
+    () => {
+      axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, build_config())
+    }
+  )
 
   return {
     adb,
