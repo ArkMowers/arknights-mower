@@ -86,7 +86,6 @@ export const useConfigStore = defineStore('config', () => {
       account,
       pass_code,
       package_type,
-      plan_file,
       reload_room,
       run_mode,
       run_order_delay,

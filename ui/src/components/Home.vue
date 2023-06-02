@@ -15,7 +15,7 @@ const { log, running, first_load, log_lines } = storeToRefs(mower_store)
 const { operators } = storeToRefs(plan_store)
 
 const { build_config } = config_store
-const { build_plan } = plan_store
+const { load_plan } = plan_store
 
 const axios = inject('axios')
 
@@ -56,6 +56,16 @@ function stop() {
   running.value = false
   axios.get(`${import.meta.env.VITE_HTTP_URL}/stop`)
 }
+
+async function open_plan_file() {
+  const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/dialog/file`)
+  const file_path = response.data
+  if (file_path) {
+    plan_file.value = file_path
+    await axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, build_config())
+    await load_plan()
+  }
+}
 </script>
 
 <template>
@@ -88,10 +98,10 @@ function stop() {
       <tr>
         <td>排班表：</td>
         <td>
-          <n-input v-model:value="plan_file"></n-input>
+          <n-input v-model:value="plan_file" disabled></n-input>
         </td>
         <td>
-          <n-button>...</n-button>
+          <n-button @click="open_plan_file">...</n-button>
         </td>
       </tr>
     </table>
