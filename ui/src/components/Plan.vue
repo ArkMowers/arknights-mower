@@ -109,14 +109,42 @@ const facility_empty = computed(() => {
           <td></td>
           <td></td>
           <td>
-            <n-button :secondary="facility != 'central'" class="w90" @click="facility = 'central'"
-              >控制中枢</n-button
+            <n-button
+              :secondary="facility != 'central'"
+              class="facility-5"
+              @click="facility = 'central'"
             >
+              <div>
+                <div class="facility-name">控制中枢</div>
+                <div class="avatars">
+                  <img
+                    v-for="i in plan.central.plans"
+                    :src="`avatar/${i.agent}.png`"
+                    width="45"
+                    height="45"
+                  />
+                </div>
+              </div>
+            </n-button>
           </td>
           <td>
-            <n-button :secondary="facility != 'meeting'" @click="facility = 'meeting'"
-              >会客室</n-button
+            <n-button
+              :secondary="facility != 'meeting'"
+              class="facility-2"
+              @click="facility = 'meeting'"
             >
+              <div>
+                <div class="facility-name">会客室</div>
+                <div class="avatars">
+                  <img
+                    v-for="i in plan.meeting.plans"
+                    :src="`avatar/${i.agent}.png`"
+                    width="45"
+                    height="45"
+                  />
+                </div>
+              </div>
+            </n-button>
           </td>
         </tr>
         <tr>
@@ -127,6 +155,7 @@ const facility_empty = computed(() => {
               :type="facility == r ? 'primary' : ''"
               v-if="!plan[r].name"
               @click="facility = r"
+              class="facility-3"
             >
               待建造
             </n-button>
@@ -135,23 +164,61 @@ const facility_empty = computed(() => {
               :ghost="facility == r"
               :type="button_type[plan[r].name]"
               v-else
+              class="facility-3"
               @click="facility = r"
             >
-              {{ plan[r].name }}
+              <div>
+                <div class="facility-name">
+                  {{ plan[r].name }}
+                </div>
+                <div class="avatars">
+                  <img
+                    v-for="i in plan[r].plans"
+                    :src="`avatar/${i.agent}.png`"
+                    width="45"
+                    height="45"
+                  />
+                </div>
+              </div>
             </n-button>
           </td>
           <td>
             <n-button
               :secondary="facility != 'dormitory_1'"
-              class="w90"
+              class="facility-5"
               @click="facility = 'dormitory_1'"
-              >宿舍</n-button
             >
+              <div>
+                <div class="facility-name">宿舍1</div>
+                <div class="avatars">
+                  <img
+                    v-for="i in plan.dormitory_1.plans"
+                    :src="`avatar/${i.agent}.png`"
+                    width="45"
+                    height="45"
+                  />
+                </div>
+              </div>
+            </n-button>
           </td>
           <td>
-            <n-button :secondary="facility != 'factory'" @click="facility = 'factory'"
-              >加工站</n-button
+            <n-button
+              :secondary="facility != 'factory'"
+              class="facility-2"
+              @click="facility = 'factory'"
             >
+              <div>
+                <div class="facility-name">加工站</div>
+                <div class="avatars">
+                  <img
+                    v-for="i in plan.factory.plans"
+                    :src="`avatar/${i.agent}.png`"
+                    width="45"
+                    height="45"
+                  />
+                </div>
+              </div>
+            </n-button>
           </td>
         </tr>
         <tr>
@@ -162,6 +229,7 @@ const facility_empty = computed(() => {
               :type="facility == r ? 'primary' : ''"
               v-if="!plan[r].name"
               @click="facility = r"
+              class="facility-3"
             >
               待建造
             </n-button>
@@ -170,23 +238,61 @@ const facility_empty = computed(() => {
               :ghost="facility == r"
               :type="button_type[plan[r].name]"
               v-else
+              class="facility-3"
               @click="facility = r"
             >
-              {{ plan[r].name }}
+              <div>
+                <div class="facility-name">
+                  {{ plan[r].name }}
+                </div>
+                <div class="avatars">
+                  <img
+                    v-for="i in plan[r].plans"
+                    :src="`avatar/${i.agent}.png`"
+                    width="45"
+                    height="45"
+                  />
+                </div>
+              </div>
             </n-button>
           </td>
           <td>
             <n-button
               :secondary="facility != 'dormitory_2'"
-              class="w90"
+              class="facility-5"
               @click="facility = 'dormitory_2'"
-              >宿舍</n-button
             >
+              <div>
+                <div class="facility-name">宿舍2</div>
+                <div class="avatars">
+                  <img
+                    v-for="i in plan.dormitory_2.plans"
+                    :src="`avatar/${i.agent}.png`"
+                    width="45"
+                    height="45"
+                  />
+                </div>
+              </div>
+            </n-button>
           </td>
           <td>
-            <n-button :secondary="facility != 'contact'" @click="facility = 'contact'"
-              >办公室</n-button
+            <n-button
+              :secondary="facility != 'contact'"
+              class="facility-2"
+              @click="facility = 'contact'"
             >
+              <div>
+                <div class="facility-name">办公室</div>
+                <div class="avatars">
+                  <img
+                    v-for="i in plan.contact.plans"
+                    :src="`avatar/${i.agent}.png`"
+                    width="45"
+                    height="45"
+                  />
+                </div>
+              </div>
+            </n-button>
           </td>
         </tr>
         <tr>
@@ -197,6 +303,7 @@ const facility_empty = computed(() => {
               :type="facility == r ? 'primary' : ''"
               v-if="!plan[r].name"
               @click="facility = r"
+              class="facility-3"
             >
               待建造
             </n-button>
@@ -205,21 +312,45 @@ const facility_empty = computed(() => {
               :ghost="facility == r"
               :type="button_type[plan[r].name]"
               v-else
+              class="facility-3"
               @click="facility = r"
             >
-              {{ plan[r].name }}
+              <div>
+                <div class="facility-name">
+                  {{ plan[r].name }}
+                </div>
+                <div class="avatars">
+                  <img
+                    v-for="i in plan[r].plans"
+                    :src="`avatar/${i.agent}.png`"
+                    width="45"
+                    height="45"
+                  />
+                </div>
+              </div>
             </n-button>
           </td>
           <td>
             <n-button
               :secondary="facility != 'dormitory_3'"
-              class="w90"
+              class="facility-5"
               @click="facility = 'dormitory_3'"
-              >宿舍</n-button
             >
+              <div>
+                <div class="facility-name">宿舍3</div>
+                <div class="avatars">
+                  <img
+                    v-for="i in plan.dormitory_3.plans"
+                    :src="`avatar/${i.agent}.png`"
+                    width="45"
+                    height="45"
+                  />
+                </div>
+              </div>
+            </n-button>
           </td>
           <td>
-            <n-button disabled>训练室</n-button>
+            <n-button disabled class="facility-2">训练室</n-button>
           </td>
         </tr>
         <tr>
@@ -229,16 +360,26 @@ const facility_empty = computed(() => {
           <td>
             <n-button
               :secondary="facility != 'dormitory_4'"
-              class="w90"
+              class="facility-5"
               @click="facility = 'dormitory_4'"
-              >宿舍</n-button
             >
+              <div>
+                <div class="facility-name">宿舍4</div>
+                <div class="avatars">
+                  <img
+                    v-for="i in plan.dormitory_4.plans"
+                    :src="`avatar/${i.agent}.png`"
+                    width="45"
+                    height="45"
+                  />
+                </div>
+              </div>
+            </n-button>
           </td>
           <td></td>
         </tr>
       </table>
     </n-space>
-    <n-divider />
     <n-space justify="center" v-if="facility">
       <table>
         <tr>
@@ -305,7 +446,7 @@ const facility_empty = computed(() => {
 
 .type-select {
   width: 100px;
-  margin-right: 80px;
+  margin-right: 20px;
 }
 
 .operator-select {
@@ -325,5 +466,39 @@ const facility_empty = computed(() => {
 
 .group {
   width: 120px;
+}
+
+.facility-2 {
+  width: 124px;
+  height: 76px;
+  margin: 2px 3px;
+}
+
+.facility-3 {
+  width: 175px;
+  height: 76px;
+  margin: 2px 3px;
+}
+
+.facility-5 {
+  width: 277px;
+  height: 76px;
+  margin: 2px 3px;
+}
+
+.avatars {
+  display: flex;
+  gap: 6px;
+}
+
+.facility-name {
+  margin-bottom: 4px;
+}
+
+.avatars > img {
+  box-sizing: border-box;
+  /* border: solid 1px grey; */
+  border-radius: 4px;
+  background: lightgrey;
 }
 </style>
