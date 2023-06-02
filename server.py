@@ -7,6 +7,8 @@ from flask import Flask, send_from_directory, request
 from flask_cors import CORS
 from flask_sock import Sock
 
+import webview
+
 import os
 import multiprocessing
 from threading import Thread
@@ -36,12 +38,13 @@ def serve_index():
 
 @app.route("/conf", methods=["GET", "POST"])
 def load_config():
+    global conf
     if request.method == "GET":
-        global conf
         conf = load_conf()
         return conf
     else:
-        save_conf(request.json)
+        conf = request.json
+        save_conf(conf)
         return f"New config saved!"
 
 
@@ -155,3 +158,13 @@ def log(ws):
     while True:
         data = queue.get()
         ws.send(data)
+
+
+@app.route("/dialog/file")
+def open_dialog():
+    window = webview.active_window()
+    file_path = window.create_file_dialog(dialog_type=webview.OPEN_DIALOG)
+    if file_path:
+        return file_path[0]
+    else:
+        return ""
