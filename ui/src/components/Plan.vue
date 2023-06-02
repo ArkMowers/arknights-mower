@@ -446,7 +446,7 @@ const facility_empty = computed(() => {
 
 .type-select {
   width: 100px;
-  margin-right: 20px;
+  margin-right: 8px;
 }
 
 .operator-select {
