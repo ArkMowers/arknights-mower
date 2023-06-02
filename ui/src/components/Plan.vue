@@ -4,7 +4,7 @@ import { usePlanStore } from '@/stores/plan'
 import { ref, computed, nextTick, watch } from 'vue'
 
 const plan_store = usePlanStore()
-const { operators, plan } = storeToRefs(plan_store)
+const { operators, plan, groups } = storeToRefs(plan_store)
 const { facility_operator_limit } = plan_store
 
 const facility_types = [
@@ -67,7 +67,7 @@ watch(
 
 const operators_with_free = computed(() => {
   return [
-    { value: '', label: '' },
+    { value: '', label: '（无）' },
     { value: 'Free', label: 'Free' }
   ].concat(operators.value)
 })
@@ -98,6 +98,16 @@ const facility_empty = computed(() => {
   }
   return empty
 })
+
+const color_map = computed(() => {
+  const count = groups.value.length
+  const result = {}
+  for (let i = 0; i < count; ++i) {
+    result[groups.value[i]] = `5px solid hsl(${(360 / count) * i}, 80%, 45%)`
+  }
+  result[''] = 'none'
+  return result
+})
 </script>
 
 <template>
@@ -122,6 +132,7 @@ const facility_empty = computed(() => {
                     :src="`avatar/${i.agent}.png`"
                     width="45"
                     height="45"
+                    :style="{ 'border-bottom': color_map[i.group] }"
                   />
                 </div>
               </div>
@@ -141,6 +152,7 @@ const facility_empty = computed(() => {
                     :src="`avatar/${i.agent}.png`"
                     width="45"
                     height="45"
+                    :style="{ 'border-bottom': color_map[i.group] }"
                   />
                 </div>
               </div>
@@ -177,6 +189,7 @@ const facility_empty = computed(() => {
                     :src="`avatar/${i.agent}.png`"
                     width="45"
                     height="45"
+                    :style="{ 'border-bottom': color_map[i.group] }"
                   />
                 </div>
               </div>
@@ -196,6 +209,7 @@ const facility_empty = computed(() => {
                     :src="`avatar/${i.agent}.png`"
                     width="45"
                     height="45"
+                    :style="{ 'border-bottom': color_map[i.group] }"
                   />
                 </div>
               </div>
@@ -215,6 +229,7 @@ const facility_empty = computed(() => {
                     :src="`avatar/${i.agent}.png`"
                     width="45"
                     height="45"
+                    :style="{ 'border-bottom': color_map[i.group] }"
                   />
                 </div>
               </div>
@@ -251,6 +266,7 @@ const facility_empty = computed(() => {
                     :src="`avatar/${i.agent}.png`"
                     width="45"
                     height="45"
+                    :style="{ 'border-bottom': color_map[i.group] }"
                   />
                 </div>
               </div>
@@ -270,6 +286,7 @@ const facility_empty = computed(() => {
                     :src="`avatar/${i.agent}.png`"
                     width="45"
                     height="45"
+                    :style="{ 'border-bottom': color_map[i.group] }"
                   />
                 </div>
               </div>
@@ -289,6 +306,7 @@ const facility_empty = computed(() => {
                     :src="`avatar/${i.agent}.png`"
                     width="45"
                     height="45"
+                    :style="{ 'border-bottom': color_map[i.group] }"
                   />
                 </div>
               </div>
@@ -325,6 +343,7 @@ const facility_empty = computed(() => {
                     :src="`avatar/${i.agent}.png`"
                     width="45"
                     height="45"
+                    :style="{ 'border-bottom': color_map[i.group] }"
                   />
                 </div>
               </div>
@@ -344,6 +363,7 @@ const facility_empty = computed(() => {
                     :src="`avatar/${i.agent}.png`"
                     width="45"
                     height="45"
+                    :style="{ 'border-bottom': color_map[i.group] }"
                   />
                 </div>
               </div>
@@ -371,6 +391,7 @@ const facility_empty = computed(() => {
                     :src="`avatar/${i.agent}.png`"
                     width="45"
                     height="45"
+                    :style="{ 'border-bottom': color_map[i.group] }"
                   />
                 </div>
               </div>
@@ -421,6 +442,7 @@ const facility_empty = computed(() => {
           <td class="select-label">替换：</td>
           <td>
             <n-select
+              :disabled="!plan[facility].plans[i - 1].agent"
               multiple
               filterable
               tag
@@ -496,9 +518,8 @@ const facility_empty = computed(() => {
 }
 
 .avatars > img {
-  box-sizing: border-box;
-  /* border: solid 1px grey; */
-  border-radius: 4px;
+  box-sizing: content-box;
+  border-radius: 2px;
   background: lightgrey;
 }
 </style>

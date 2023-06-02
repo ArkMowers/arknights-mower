@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import axios from 'axios'
 
 export const usePlanStore = defineStore('plan', () => {
@@ -134,6 +134,18 @@ export const usePlanStore = defineStore('plan', () => {
     { deep: true }
   )
 
+  const groups = computed(() => {
+    const result = []
+    for (const facility in plan.value) {
+      for (const p of plan.value[facility].plans) {
+        if (p.group) {
+          result.push(p.group)
+        }
+      }
+    }
+    return [...new Set(result)]
+  })
+
   return {
     load_plan,
     load_operators,
@@ -147,6 +159,7 @@ export const usePlanStore = defineStore('plan', () => {
     operators,
     facility_operator_limit,
     left_side_facility,
-    build_plan
+    build_plan,
+    groups
   }
 })
