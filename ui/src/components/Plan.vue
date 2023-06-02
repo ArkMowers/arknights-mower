@@ -458,7 +458,7 @@ const facility_empty = computed(() => {
 }
 
 .plan-container {
-  min-width: 850px;
+  min-width: 980px;
   display: flex;
   flex-direction: column;
   gap: 12px;
