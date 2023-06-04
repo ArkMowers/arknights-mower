@@ -191,6 +191,7 @@ function drop_facility(target, event) {
               v-else
               class="facility-3"
               @click="facility = r"
+              tag="div"
               draggable="true"
               @dragstart="drag_facility(r, $event)"
               @dragover.prevent
@@ -274,6 +275,7 @@ function drop_facility(target, event) {
               v-else
               class="facility-3"
               @click="facility = r"
+              tag="div"
               draggable="true"
               @dragstart="drag_facility(r, $event)"
               @dragover.prevent
@@ -357,6 +359,7 @@ function drop_facility(target, event) {
               v-else
               class="facility-3"
               @click="facility = r"
+              tag="div"
               draggable="true"
               @dragstart="drag_facility(r, $event)"
               @dragover.prevent
