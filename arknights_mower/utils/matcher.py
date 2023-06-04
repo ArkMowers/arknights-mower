@@ -63,6 +63,9 @@ class Matcher(object):
         else:
             rect, score = rect_score
 
+        if prescore != 0.0 and score[3] >= prescore:
+            logger.debug(f'match success: {score}')
+            return rect
         # use SVC to determine if the score falls within the legal range
         if judge and not SVC.predict([score])[0]:  # numpy.bool_
             logger.debug(f'match fail: {score}')

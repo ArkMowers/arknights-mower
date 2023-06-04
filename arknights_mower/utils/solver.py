@@ -186,6 +186,8 @@ class BaseSolver:
             try:
                 if self.scene() == Scene.LOGIN_START:
                     self.tap((self.recog.w // 2, self.recog.h - 10), 3)
+                elif self.scene() == Scene.LOGIN_NEW:
+                    self.tap(self.find('login_new',score=0.8))
                 elif self.scene() == Scene.LOGIN_QUICKLY:
                     self.tap_element('login_awake')
                 elif self.scene() == Scene.LOGIN_MAIN:
