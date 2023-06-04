@@ -1794,13 +1794,21 @@ class BaseSchedulerSolver(BaseSolver):
                 })
                 self.stages.append(stage)
         elif type == 'Recruit':
+            if self.maa_config['recruitment_time']:
+                recruitment_time = 460
+            else:
+                recruitment_time = 540
+            if self.maa_config['recruit_only_4']:
+                confirm = [4]
+            else:
+                confirm = [3, 4]
             self.MAA.append_task('Recruit', {
                 'select': [4],
-                'confirm': [3, 4],
+                'confirm': confirm,
                 'times': 4,
                 'refresh': True,
                 "recruitment_time": {
-                    "3": 460,
+                    "3": recruitment_time,
                     "4": 540
                 }
             })
@@ -1810,8 +1818,8 @@ class BaseSchedulerSolver(BaseSolver):
                 credit_fight = True
             self.MAA.append_task('Mall', {
                 'shopping': True,
-                'buy_first': ['招聘许可'],
-                'blacklist': ['家具', '碳', '加急许可'],
+                'buy_first': self.maa_config['buy_first'],
+                'blacklist': self.maa_config['blacklist'],
                 'credit_fight': credit_fight
             })
 
@@ -1861,8 +1869,15 @@ class BaseSchedulerSolver(BaseSolver):
                     logger.info(f"记录MAA 本次执行时间")
                     self.maa_config['last_execution'] = datetime.now()
                     logger.info(self.maa_config['last_execution'])
+            now_time = datetime.now()
+            min_time0 = datetime.strptime(self.maa_config['sleep_min'], "%H:%M")
+            max_time0 = datetime.strptime(self.maa_config['sleep_max'], "%H:%M")
+            min_time = min_time0.replace(now_time.year, now_time.month, now_time.day)
+            max_time = max_time0.replace(now_time.year, now_time.month, now_time.day)
+            if max_time < min_time:
+                max_time = max_time + timedelta(days=1)
             if self.maa_config['roguelike'] or self.maa_config['reclamation_algorithm'] or self.maa_config[
-                'stationary_security_service']:
+                'stationary_security_service'] and not min_time < now_time < max_time:
                 while (self.tasks[0].time - datetime.now()).total_seconds() > 30:
                     self.MAA = None
                     self.inialize_maa()
