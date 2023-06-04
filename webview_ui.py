@@ -17,8 +17,8 @@ if __name__ == "__main__":
     webview.create_window(
         "Mower Web UI in WebView (尚不完善，测试用途，谨慎使用)",
         "http://127.0.0.1:8000",
-        width=980,
-        height=730,
+        width=1200,
+        height=900,
     )
     webview.start(start_server, app)
 
