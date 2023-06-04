@@ -73,7 +73,7 @@ async function open_plan_file() {
     <table>
       <tr>
         <td class="config-label">服务器：</td>
-        <td class="config-input">
+        <td>
           <n-radio-group v-model:value="package_type">
             <n-radio value="official">官服</n-radio>
             <n-radio value="bilibili">BiliBili服</n-radio>
@@ -133,9 +133,5 @@ async function open_plan_file() {
 
 .config-label {
   width: 108px;
-}
-
-.config-input {
-  width: 400px;
 }
 </style>

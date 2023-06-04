@@ -1,6 +1,9 @@
 <script setup>
 import { useConfigStore } from '@/stores/config'
 import { storeToRefs } from 'pinia'
+import { inject } from 'vue'
+
+const axios = inject('axios')
 
 const store = useConfigStore()
 
@@ -14,6 +17,22 @@ const {
   maa_weekly_plan,
   maa_rg_enable
 } = storeToRefs(store)
+
+async function select_maa_dir() {
+  const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/dialog/folder`)
+  const folder_path = response.data
+  if (folder_path) {
+    maa_path.value = folder_path
+  }
+}
+
+async function select_maa_adb_path() {
+  const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/dialog/file`)
+  const file_path = response.data
+  if (file_path) {
+    maa_adb_path.value = file_path
+  }
+}
 </script>
 
 <template>
@@ -42,12 +61,20 @@ const {
         </n-checkbox>
       </template>
       <template #default>
-        <table>
+        <table class="maa-table">
           <tr>
-            <td class="table-space">MAA地址</td>
-            <td class="table-space"><n-input v-model:value="maa_path"></n-input></td>
+            <td class="table-space maa-table-label">MAA目录</td>
+            <td class="input-td"><n-input v-model:value="maa_path" disabled></n-input></td>
+            <td class="table-space">
+              <n-button @click="select_maa_dir">...</n-button>
+            </td>
+          </tr>
+          <tr>
             <td class="table-space">adb地址</td>
-            <td><n-input v-model:value="maa_adb_path"></n-input></td>
+            <td><n-input v-model:value="maa_adb_path" disabled></n-input></td>
+            <td>
+              <n-button @click="select_maa_adb_path">...</n-button>
+            </td>
           </tr>
           <tr>
             <td class="table-space">肉鸽：</td>
@@ -90,5 +117,13 @@ h4 {
 .card-title {
   font-weight: 500;
   font-size: 16px;
+}
+
+.maa-table {
+  width: 100%;
+}
+
+.maa-table-label {
+  width: 70px;
 }
 </style>
