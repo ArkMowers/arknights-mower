@@ -161,10 +161,20 @@ def log(ws):
 
 
 @app.route("/dialog/file")
-def open_dialog():
+def open_file_dialog():
     window = webview.active_window()
     file_path = window.create_file_dialog(dialog_type=webview.OPEN_DIALOG)
     if file_path:
         return file_path[0]
+    else:
+        return ""
+
+
+@app.route("/dialog/folder")
+def open_folder_dialog():
+    window = webview.active_window()
+    folder_path = window.create_file_dialog(dialog_type=webview.FOLDER_DIALOG)
+    if folder_path:
+        return folder_path[0]
     else:
         return ""
