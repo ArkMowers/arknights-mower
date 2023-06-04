@@ -108,6 +108,19 @@ const color_map = computed(() => {
   result[''] = 'none'
   return result
 })
+
+function drag_facility(room, event) {
+  event.dataTransfer.setData('text/plain', room)
+  event.dataTransfer.dropEffect = 'move'
+}
+
+function drop_facility(target, event) {
+  const source = event.dataTransfer.getData('text/plain')
+  const source_plan = plan.value[source]
+  plan.value[source] = plan.value[target]
+  plan.value[target] = source_plan
+  event.preventDefault()
+}
 </script>
 
 <template>
@@ -178,6 +191,11 @@ const color_map = computed(() => {
               v-else
               class="facility-3"
               @click="facility = r"
+              draggable="true"
+              @dragstart="drag_facility(r, $event)"
+              @dragover.prevent
+              @dragenter.prevent
+              @drop="drop_facility(r, $event)"
             >
               <div>
                 <div class="facility-name">
@@ -190,6 +208,7 @@ const color_map = computed(() => {
                     width="45"
                     height="45"
                     :style="{ 'border-bottom': color_map[i.group] }"
+                    draggable="false"
                   />
                 </div>
               </div>
@@ -255,6 +274,11 @@ const color_map = computed(() => {
               v-else
               class="facility-3"
               @click="facility = r"
+              draggable="true"
+              @dragstart="drag_facility(r, $event)"
+              @dragover.prevent
+              @dragenter.prevent
+              @drop="drop_facility(r, $event)"
             >
               <div>
                 <div class="facility-name">
@@ -267,6 +291,7 @@ const color_map = computed(() => {
                     width="45"
                     height="45"
                     :style="{ 'border-bottom': color_map[i.group] }"
+                    draggable="false"
                   />
                 </div>
               </div>
@@ -332,6 +357,11 @@ const color_map = computed(() => {
               v-else
               class="facility-3"
               @click="facility = r"
+              draggable="true"
+              @dragstart="drag_facility(r, $event)"
+              @dragover.prevent
+              @dragenter.prevent
+              @drop="drop_facility(r, $event)"
             >
               <div>
                 <div class="facility-name">
@@ -344,6 +374,7 @@ const color_map = computed(() => {
                     width="45"
                     height="45"
                     :style="{ 'border-bottom': color_map[i.group] }"
+                    draggable="false"
                   />
                 </div>
               </div>
