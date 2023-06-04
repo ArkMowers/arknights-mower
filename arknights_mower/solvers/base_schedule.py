@@ -1922,35 +1922,39 @@ class BaseSchedulerSolver(BaseSolver):
                 time.sleep(remaining_time)
             self.device.exit(self.package_name)
 
-    def send_email(self, context=None, subject=''):
+    def send_email(self, context=None, subject='', retry_time=3):
         if 'mail_enable' in self.email_config.keys() and self.email_config['mail_enable'] == 0:
             logger.info('邮件功能未开启')
             return
-        try:
-            msg = MIMEMultipart()
-            if context is None:
-                context = """
-                <html>
-                    <body>
-                    <table border="1">
-                    <tr><th>时间</th><th>类别</th><th>排班</th></tr>                    
-                """
-                for task in self.tasks:
-                    context += f"""<tr><td>{task.time.strftime('%Y-%m-%d %H:%M:%S')}</td>
-                                <td>{task.type}</td><td>{str(task.plan)}</td></tr>    
-                            """
-                context += "</table></body></html>"
-                msg.attach(MIMEText(context, 'html'))
-            else:
-                msg.attach(MIMEText(str(context), 'plain', 'utf-8'))
-            msg['Subject'] = self.email_config['subject'] + (str(subject) if subject else '')
-            msg['From'] = self.email_config['account']
-            s = smtplib.SMTP_SSL("smtp.qq.com", 465, timeout=10.0)
-            # 登录邮箱
-            s.login(self.email_config['account'], self.email_config['pass_code'])
-            # 开始发送
-            s.sendmail(self.email_config['account'], self.email_config['receipts'], msg.as_string())
-            logger.info("邮件发送成功")
-        except Exception as e:
-            logger.error("邮件发送失败")
-            logger.exception(e)
+        while retry_time > 0:
+            try:
+                msg = MIMEMultipart()
+                if context is None:
+                    context = """
+                    <html>
+                        <body>
+                        <table border="1">
+                        <tr><th>时间</th><th>类别</th><th>排班</th></tr>                    
+                    """
+                    for task in self.tasks:
+                        context += f"""<tr><td>{task.time.strftime('%Y-%m-%d %H:%M:%S')}</td>
+                                    <td>{task.type}</td><td>{str(task.plan)}</td></tr>    
+                                """
+                    context += "</table></body></html>"
+                    msg.attach(MIMEText(context, 'html'))
+                else:
+                    msg.attach(MIMEText(str(context), 'plain', 'utf-8'))
+                msg['Subject'] = self.email_config['subject'] + (str(subject) if subject else '')
+                msg['From'] = self.email_config['account']
+                s = smtplib.SMTP_SSL("smtp.qq.com", 465, timeout=10.0)
+                # 登录邮箱
+                s.login(self.email_config['account'], self.email_config['pass_code'])
+                # 开始发送
+                s.sendmail(self.email_config['account'], self.email_config['receipts'], msg.as_string())
+                logger.info("邮件发送成功")
+                break
+            except Exception as e:
+                logger.error("邮件发送失败")
+                logger.exception(e)
+                retry_time -= 1
+                time.sleep(3)
