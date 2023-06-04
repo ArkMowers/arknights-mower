@@ -260,12 +260,12 @@ class BaseSchedulerSolver(BaseSolver):
             # 只有主要充能干员心情在20以上才会考虑额外干员
             if (plan_last or candidate_lst[0].current_mood() >= 20) and not last_candidate.current_room.startswith("dorm"):
                 mood = last_candidate.current_mood()
-                is_lowest = 20 <= mood < candidate_lst[0].current_mood()
+                is_lowest = mood < candidate_lst[0].current_mood()
                 logger.debug(f'{last_candidate.name},mood:{mood}')
                 if is_lowest:
                     if plan_last and self.op_data.predict_fia(copy.deepcopy(candidate_lst), mood):
                         name = last_candidate.name
-                    elif not plan_last :
+                    elif not plan_last:
                         name = last_candidate.name
             self.tasks.append(SchedulerTask(time=current_time, task_plan={fia_room: [name, '菲亚梅塔']}))
 
@@ -1900,6 +1900,9 @@ class BaseSchedulerSolver(BaseSolver):
                 if len(self.tasks) > 0:
                     del self.tasks[0]
                 self.MAA = None
+                if self.find_next_task(datetime.now() + timedelta(seconds=900)) is None:
+                    # 未来10分钟没有任务就新建
+                    self.tasks.append(SchedulerTask())
                 return
             remaining_time = (self.tasks[0].time - datetime.now()).total_seconds()
             subject = f"开始休息 {'%.2f' % (remaining_time / 60)} 分钟，到{self.tasks[0].time.strftime('%H:%M:%S')}"
