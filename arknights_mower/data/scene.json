@@ -99,6 +99,10 @@
     "label": "CHECK_IN",
     "comment": "4周年签到"
     },
+    "114": {
+    "label": "LOGIN_NEW",
+    "comment": "新登陆界面"
+    },
     "201": {
         "label": "INFRA_MAIN",
         "comment": "基建全局视角"
