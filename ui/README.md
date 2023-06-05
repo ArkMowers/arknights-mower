@@ -12,7 +12,7 @@ Mower 的新界面。短期目标是 Mower 继续保持桌面应用的形态，�
 
 需要 Python 3.8 或 3.9。
 
-后端代码在 ArkMowers/arknights-mower 的 [`webui` 分支](https://github.com/ArkMowers/arknights-mower/tree/webui)。
+后端代码在 [ArkMowers/arknights-mower](https://github.com/ArkMowers/arknights-mower) 仓库中。
 
 安装依赖：
 
