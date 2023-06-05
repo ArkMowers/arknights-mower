@@ -5,6 +5,9 @@ on:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
 
+permissions:
+  content: write
+
 jobs:
   build-win-amd64:
     runs-on: windows-latest
@@ -14,6 +17,10 @@ jobs:
         id: get_version
         shell: bash
         run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\/v/}
+      - name: Install UPX
+        uses: crazy-max/ghaction-upx@v2
+        with:
+          install-only: true
       - name: Set up Python 3.8 amd64
         uses: actions/setup-python@v2
         with:
