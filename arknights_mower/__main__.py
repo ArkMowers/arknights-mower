@@ -116,6 +116,13 @@ def inialize(tasks, scheduler=None):
         maa_config['maa_adb'] = conf['adb']
         maa_config['weekly_plan'] = conf['maa_weekly_plan']
         maa_config['roguelike'] = conf['maa_rg_enable'] == 1
+        maa_config['sleep_min'] = conf['maa_rg_sleep_min']
+        maa_config['sleep_max'] = conf['maa_rg_sleep_max']
+        maa_config['maa_execution_gap'] = conf['maa_gap']
+        maa_config['buy_first'] = conf['maa_mall_buy']
+        maa_config['blacklist'] = conf['maa_mall_blacklist']
+        maa_config['recruitment_time'] = conf['maa_recruitment_time']
+        maa_config['recruit_only_4'] = conf['maa_recruit_only_4']
         base_scheduler.maa_config = maa_config
         base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
         base_scheduler.error = False

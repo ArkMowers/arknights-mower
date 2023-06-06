@@ -1794,13 +1794,21 @@ class BaseSchedulerSolver(BaseSolver):
                 })
                 self.stages.append(stage)
         elif type == 'Recruit':
+            if self.maa_config['recruitment_time']:
+                recruitment_time = 460
+            else:
+                recruitment_time = 540
+            if self.maa_config['recruit_only_4']:
+                confirm = [4]
+            else:
+                confirm = [3, 4]
             self.MAA.append_task('Recruit', {
                 'select': [4],
-                'confirm': [3, 4],
+                'confirm': confirm,
                 'times': 4,
                 'refresh': True,
                 "recruitment_time": {
-                    "3": 460,
+                    "3": recruitment_time,
                     "4": 540
                 }
             })
@@ -1810,8 +1818,8 @@ class BaseSchedulerSolver(BaseSolver):
                 credit_fight = True
             self.MAA.append_task('Mall', {
                 'shopping': True,
-                'buy_first': ['招聘许可'],
-                'blacklist': ['家具', '碳', '加急许可'],
+                'buy_first': self.maa_config['buy_first'].split(","),
+                'blacklist': self.maa_config['blacklist'].split(","),
                 'credit_fight': credit_fight
             })
 
@@ -1861,8 +1869,24 @@ class BaseSchedulerSolver(BaseSolver):
                     logger.info(f"记录MAA 本次执行时间")
                     self.maa_config['last_execution'] = datetime.now()
                     logger.info(self.maa_config['last_execution'])
+            now_time = datetime.now().time()
+            try:
+                min_time = datetime.strptime(self.maa_config['sleep_min'], "%H:%M").time()
+                max_time = datetime.strptime(self.maa_config['sleep_max'], "%H:%M").time()
+                if max_time < min_time:
+                    if now_time > min_time or now_time < max_time:
+                        rg_sleep = True
+                    else:
+                        rg_sleep = False
+                else:
+                    if min_time < now_time < max_time:
+                        rg_sleep = True
+                    else:
+                        rg_sleep = False
+            except ValueError:
+                rg_sleep = False
             if self.maa_config['roguelike'] or self.maa_config['reclamation_algorithm'] or self.maa_config[
-                'stationary_security_service']:
+                'stationary_security_service'] and not rg_sleep:
                 while (self.tasks[0].time - datetime.now()).total_seconds() > 30:
                     self.MAA = None
                     self.inialize_maa()
@@ -1876,7 +1900,7 @@ class BaseSchedulerSolver(BaseSolver):
                             'squad': '指挥分队',
                             'roles': '取长补短',
                             'theme': 'Mizuki',
-                            'core_char': '海沫'
+                            'core_char': ''
                         })
                     elif self.maa_config['reclamation_algorithm']:
                         self.back_to_maa_config['reclamation_algorithm']()
