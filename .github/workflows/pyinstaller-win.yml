@@ -6,7 +6,7 @@ on:
       - "v[0-9]+.[0-9]+.[0-9]+"
 
 permissions:
-  content: write
+  contents: write
 
 jobs:
   build-win-amd64:
