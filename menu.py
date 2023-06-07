@@ -159,7 +159,7 @@ def menu():
                                      key='int_drone_count_limit', enable_events=True)
     run_order_delay_title = sg.Text('跑单前置延时(分钟)：', size=25, key='run_order_delay_title')
     run_order_delay = sg.InputText(conf['run_order_delay'], size=5,
-                                   key='int_run_order_delay', enable_events=True)
+                                   key='float_run_order_delay', enable_events=True)
     drone_room_title = sg.Text('无人机使用房间（room_X_X）：', size=25, key='drone_room_title')
     reload_room_title = sg.Text('搓玉补货房间（逗号分隔房间名）：', size=25, key='reload_room_title')
     drone_room = sg.InputText(conf['drone_room'], size=15,
@@ -202,17 +202,34 @@ def menu():
                             key='radio_maa_enable_1', enable_events=True)
     maa_enable_0 = sg.Radio('禁用', 'maa_enable', default=conf['maa_enable'] == 0,
                             key='radio_maa_enable_0', enable_events=True)
+    maa_gap_title = sg.Text('MAA启动间隔(小时)：', size=15)
+    maa_gap = sg.InputText(conf['maa_gap'], size=5, key='float_maa_gap', enable_events=True)
+    maa_mall_buy_title = sg.Text('信用商店优先购买（逗号分隔）：', size=25, key='mall_buy_title')
+    maa_mall_buy = sg.InputText(conf['maa_mall_buy'], size=30,
+                               key='conf_maa_mall_buy', enable_events=True)
+    maa_recruitment_time = sg.Checkbox('公招三星设置7:40而非9:00', default=conf['maa_recruitment_time'],
+                                      key='conf_maa_recruitment_time', enable_events=True)
+    maa_recruit_only_4 = sg.Checkbox('仅公招四星', default=conf['maa_recruit_only_4'],
+                                       key='conf_maa_recruit_only_4', enable_events=True)
+    maa_mall_blacklist_title = sg.Text('信用商店黑名单（逗号分隔）：', size=25, key='mall_blacklist_title')
+    maa_mall_blacklist = sg.InputText(conf['maa_mall_blacklist'], size=30,
+                                key='conf_maa_mall_blacklist', enable_events=True)
     maa_rg_title = sg.Text('肉鸽：', size=10)
     maa_rg_enable_1 = sg.Radio('启用', 'maa_rg_enable', default=conf['maa_rg_enable'] == 1,
                                key='radio_maa_rg_enable_1', enable_events=True)
     maa_rg_enable_0 = sg.Radio('禁用', 'maa_rg_enable', default=conf['maa_rg_enable'] == 0,
                                key='radio_maa_rg_enable_0', enable_events=True)
+    maa_rg_sleep = sg.Text('肉鸽任务休眠时间(如8:30-23:30)', size=25)
+    maa_rg_sleep_min = sg.InputText(conf['maa_rg_sleep_min'], size=5, key='conf_maa_rg_sleep_min', enable_events=True)
+    maa_rg_sleep_max = sg.InputText(conf['maa_rg_sleep_max'], size=5, key='conf_maa_rg_sleep_max', enable_events=True)
     maa_path_title = sg.Text('MAA地址', size=25)
     maa_path = sg.InputText(conf['maa_path'], size=60, key='conf_maa_path', enable_events=True)
     maa_adb_path_title = sg.Text('adb地址', size=25)
     maa_adb_path = sg.InputText(conf['maa_adb_path'], size=60, key='conf_maa_adb_path', enable_events=True)
     maa_weekly_plan_title = sg.Text('周计划', size=25)
-    maa_layout = [[maa_enable_1, maa_enable_0], [maa_rg_title, maa_rg_enable_1, maa_rg_enable_0],
+    maa_layout = [[maa_enable_1, maa_enable_0, maa_gap_title, maa_gap, maa_recruitment_time, maa_recruit_only_4],
+                  [maa_mall_buy_title, maa_mall_buy, maa_mall_blacklist_title, maa_mall_blacklist],
+                  [maa_rg_title, maa_rg_enable_1, maa_rg_enable_0, maa_rg_sleep, maa_rg_sleep_min, maa_rg_sleep_max],
                   [maa_path_title, maa_path], [maa_adb_path_title, maa_adb_path],
                   [maa_weekly_plan_title]]
     for i, v in enumerate(conf['maa_weekly_plan']):
@@ -294,6 +311,12 @@ def menu():
             key = event[4:]
             try:
                 conf[key] = int(window[event].get().strip())
+            except ValueError:
+                println(f'[{window[key + "_title"].get()}]需为数字')
+        elif event.startswith('float_'):  # float开头，为数值型输入的配置
+            key = event[6:]
+            try:
+                conf[key] = float(window[event].get().strip())
             except ValueError:
                 println(f'[{window[key + "_title"].get()}]需为数字')
         elif event.startswith('radio_'):
