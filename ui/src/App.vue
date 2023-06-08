@@ -22,7 +22,7 @@
 </template>
 
 <script setup>
-import { onMounted } from 'vue'
+import { onMounted, inject } from 'vue'
 import { storeToRefs } from 'pinia'
 import home from '@/components/Home.vue'
 import plan from '@/components/Plan.vue'
@@ -36,13 +36,22 @@ import { useMowerStore } from '@/stores/mower'
 
 const config_store = useConfigStore()
 const { load_config } = config_store
+const { start_automatically } = storeToRefs(config_store)
 
 const plan_store = usePlanStore()
 const { load_plan, load_operators } = plan_store
 
 const mower_store = useMowerStore()
-const { ws } = storeToRefs(mower_store)
+const { ws, running, log_lines } = storeToRefs(mower_store)
 const { get_running, listen_ws } = mower_store
+
+const axios = inject('axios')
+
+function start() {
+  running.value = true
+  log_lines.value = []
+  axios.get(`${import.meta.env.VITE_HTTP_URL}/start`)
+}
 
 onMounted(async () => {
   await load_config()
@@ -52,6 +61,10 @@ onMounted(async () => {
 
   if (!ws.value) {
     listen_ws()
+  }
+
+  if (start_automatically.value) {
+    start()
   }
 })
 </script>
