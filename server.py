@@ -49,9 +49,8 @@ def load_config():
         conf = load_conf()
         return conf
     else:
-        conf = request.json
+        conf.update(request.json)
         save_conf(conf)
-        conf = load_conf()
         return f"New config saved!"
 
 
