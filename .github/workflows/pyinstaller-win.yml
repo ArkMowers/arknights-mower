@@ -42,13 +42,7 @@ jobs:
         shell: cmd
         run: |
           venv\Scripts\pyinstaller .\menu.spec
-      - name: Package into zip
-        uses: vimtor/action-zip@v1
-        with:
-          files: dist\mower.exe
-          recursive: false
-          dest: mower.zip
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
-          files: mower.zip
+          files: dist\mower.exe
