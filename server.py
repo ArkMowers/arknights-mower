@@ -16,6 +16,12 @@ import json
 import queue
 import time
 import sys
+import mimetypes
+
+
+mimetypes.add_type("text/html", ".html")
+mimetypes.add_type("text/css", ".css")
+mimetypes.add_type("application/javascript", ".js")
 
 
 app = Flask(__name__, static_folder="dist", static_url_path="")
