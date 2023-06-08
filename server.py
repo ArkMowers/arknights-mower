@@ -51,6 +51,7 @@ def load_config():
     else:
         conf = request.json
         save_conf(conf)
+        conf = load_conf()
         return f"New config saved!"
 
 
