@@ -49,7 +49,9 @@ async function select_maa_adb_path() {
             <td class="table-space">QQ邮箱</td>
             <td class="table-space"><n-input v-model:value="account"></n-input></td>
             <td class="table-space">授权码</td>
-            <td><n-input v-model:value="pass_code"></n-input></td>
+            <td>
+              <n-input v-model:value="pass_code" type="password" show-password-on="click"></n-input>
+            </td>
           </tr>
         </table>
       </template>
