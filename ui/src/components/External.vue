@@ -124,7 +124,20 @@ function create_tag(label) {
           </tr>
         </table>
         <n-h3>周计划</n-h3>
-        <p>可输入多个关卡。输入关卡后，请按回车键确认。</p>
+        <span>关卡填写说明：</span>
+        <ul>
+          <li><b>基本操作</b>：输入关卡名，按回车键确认。文本变为标签，代表输入成功。</li>
+          <li><b>上次作战</b>：输入空格后回车，生成（上次作战）标签。</li>
+          <li>
+            <b>多个关卡</b>
+            ：填入多个关卡时，按顺序依次刷取所有关卡。关卡无法刷取或刷取结束后，继续尝试下一关卡。例：
+            <ul>
+              <li>HE-7、（上次作战）：刷活动关HE-7，若活动未开放，则刷上一关。</li>
+              <li>AP-5、1-7：刷红票本AP-5，剩余体力刷1-7。</li>
+            </ul>
+          </li>
+          <li><b>不刷理智</b>：留空表示不刷理智。</li>
+        </ul>
         <table>
           <tr v-for="plan in maa_weekly_plan" :key="plan.weekday">
             <td class="table-space">
@@ -174,5 +187,9 @@ h4 {
 
 .maa-stage {
   min-width: 300px;
+}
+
+ul {
+  padding-left: 24px;
 }
 </style>
