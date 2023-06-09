@@ -1,7 +1,8 @@
 <script setup>
 import { useConfigStore } from '@/stores/config'
 import { storeToRefs } from 'pinia'
-import { inject } from 'vue'
+import { inject, h } from 'vue'
+import { NTag } from 'naive-ui'
 
 const axios = inject('axios')
 
@@ -31,6 +32,38 @@ async function select_maa_adb_path() {
   const file_path = response.data
   if (file_path) {
     maa_adb_path.value = file_path
+  }
+}
+
+function render_tag({ option, handleClose }) {
+  return h(
+    NTag,
+    {
+      type: option.type,
+      closable: true,
+      onMousedown: (e) => {
+        e.preventDefault()
+      },
+      onClose: (e) => {
+        e.stopPropagation()
+        handleClose()
+      }
+    },
+    { default: () => (option.label == '' ? '（上次作战）' : option.label) }
+  )
+}
+
+function create_tag(label) {
+  if (label == ' ') {
+    return {
+      label: '（上次作战）',
+      value: ''
+    }
+  } else {
+    return {
+      label,
+      value: label
+    }
   }
 }
 </script>
@@ -106,6 +139,8 @@ async function select_maa_adb_path() {
                 tag
                 :show="false"
                 :show-arrow="false"
+                :render-tag="render_tag"
+                :on-create="create_tag"
               />
             </td>
             <td>理智药：</td>
