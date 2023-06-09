@@ -145,7 +145,7 @@ function create_tag(label) {
             </td>
             <td>理智药：</td>
             <td>
-              <n-input-number v-model:value="plan.medicine"></n-input-number>
+              <n-input-number v-model:value="plan.medicine" :min="0"></n-input-number>
             </td>
           </tr>
         </table>
