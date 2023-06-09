@@ -22,9 +22,85 @@ class Operators(object):
         self.max_resting_count = max_resting_count
         self.workaholic_agent = []
         self.plan = plan
+        self.run_order_rooms = {}
 
     def __repr__(self):
         return f'Operators(operators={self.operators})'
+
+    def init_and_validate(self):
+        for room in self.plan.keys():
+            for idx, data in enumerate(self.plan[room]):
+                if data["agent"] not in agent_list and data['agent']!='Free':
+                    return f'干员名输入错误: 房间->{room}, 干员->{data["agent"]}'
+                if data["agent"] in ['龙舌兰', '但书']:
+                    return f'高效组不可用龙舌兰，但书 房间->{room}, 干员->{data["agent"]}'
+                if data["agent"] == '菲亚梅塔' and idx == 1:
+                    return f'菲亚梅塔不能安排在2号位置 房间->{room}, 干员->{data["agent"]}'
+                self.add(Operator(data["agent"], room, idx, data["group"], data["replacement"], 'high',
+                                  operator_type="high"))
+        for room in self.plan.keys():
+            for idx, data in enumerate(self.plan[room]):
+                # 菲亚梅塔替换组做特例判断
+                for _replacement in data["replacement"]:
+                    if _replacement not in agent_list and data['agent']!='Free':
+                        return f'干员名输入错误: 房间->{room}, 干员->{data["agent"]}'
+                    if data["agent"] != '菲亚梅塔':
+                        # 普通替换
+                        if _replacement in self.operators and self.operators[_replacement].is_high():
+                            return f'替换组不可用高效组干员: 房间->{room}, 干员->{data["agent"]}'
+                        self.add(Operator(_replacement, ""))
+                    else:
+                        if _replacement not in self.operators:
+                            return f'菲亚梅塔替换不在高效组列: 房间->{room}, 干员->{data["agent"]}'
+                        if _replacement in self.operators and not self.operators[_replacement].is_high():
+                            return f'菲亚梅塔替换只能高效组干员: 房间->{room}, 干员->{data["agent"]}'
+                        if _replacement in self.operators and self.operators[_replacement].group != '':
+                            return f'菲亚梅塔替换不可分组: 房间->{room}, 干员->{data["agent"]}'
+        dorm_names = [k for k in self.plan.keys() if k.startswith("dorm")]
+        dorm_names.sort(key=lambda d: d, reverse=False)
+        added = []
+        # 竖向遍历出效率高到低
+        for dorm in dorm_names:
+            free_found = False
+            for _idx, _dorm in enumerate(self.plan[dorm]):
+                if _dorm['agent'] == 'Free' and _idx <= 1:
+                    return f'宿舍必须安排2个宿管'
+                if _dorm['agent'] != 'Free' and free_found:
+                    return f'Free必须连续且安排在宿管后'
+                if _dorm['agent'] == 'Free' and not free_found and (dorm + str(_idx)) not in added and len(
+                        added) < self.max_resting_count:
+                    self.dorm.append(Dormitory((dorm, _idx)))
+                    added.append(dorm + str(_idx))
+                    free_found = True
+                    continue
+        # VIP休息位用完后横向遍历
+        for dorm in dorm_names:
+            for _idx, _dorm in enumerate(self.plan[dorm]):
+                if _dorm['agent'] == 'Free' and (dorm + str(_idx)) not in added:
+                    self.dorm.append(Dormitory((dorm, _idx)))
+                    added.append(dorm + str(_idx))
+        # low_free 的排序
+        self.dorm[self.max_resting_count:len(self.dorm)] = sorted(
+            self.dorm[self.max_resting_count:len(self.dorm)],
+            key=lambda k: (k.position[0], k.position[1]), reverse=True)
+        # 跑单
+        for x, y in self.plan.items():
+            if not x.startswith('room'): continue
+            if any(('但书' in obj['replacement'] or '龙舌兰' in obj['replacement']) for obj in y):
+                self.run_order_rooms[x] = {}
+        # 判定分组排班可能性
+        current_high = self.available_free(count=self.max_resting_count)
+        current_low = self.available_free('low', count=self.max_resting_count)
+        for key in self.groups:
+            high_count = 0
+            low_count = 0
+            for name in self.groups[key]:
+                if self.operators[name].resting_priority == 'high':
+                    high_count += 1
+                else:
+                    low_count += 1
+            if high_count > current_high or low_count > current_low:
+                return f'该 {key} 分组无法排班,可用VIPFree{current_high},剩余Free{current_low}->分组实用VIP{current_high},剩余Free{current_low}'
 
     def get_current_room(self, room, bypass=False):
         room_data = {v.current_index: v for k, v in self.operators.items() if v.current_room == room}

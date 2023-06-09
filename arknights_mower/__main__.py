@@ -148,7 +148,10 @@ def simulate():
     reconnect_tries = 0
     global base_scheduler
     base_scheduler = inialize(tasks)
-    base_scheduler.initialize_operators()
+    validation_msg = base_scheduler.initialize_operators()
+    if validation_msg is not None:
+        logger.error(validation_msg)
+        return
     if operators != {}:
         for k,v in operators.items():
             if k in base_scheduler.op_data.operators and not base_scheduler.op_data.operators[k].room.startswith("dorm"):

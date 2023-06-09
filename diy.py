@@ -304,7 +304,10 @@ def simulate():
     reconnect_max_tries = 10
     reconnect_tries = 0
     base_scheduler = inialize(tasks)
-    base_scheduler.initialize_operators()
+    validation_msg = base_scheduler.initialize_operators()
+    if validation_msg is not None:
+        logger.error(validation_msg)
+        return
     _loaded_operators = load_state()
     if _loaded_operators is not None:
         for k, v in _loaded_operators.items():

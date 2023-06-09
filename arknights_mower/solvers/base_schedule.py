@@ -67,7 +67,6 @@ class BaseSchedulerSolver(BaseSolver):
         self.error = False
         self.clue_count = 0
         self.tasks = []
-        self.run_order_rooms = {}
 
     def run(self) -> None:
         """
@@ -546,9 +545,9 @@ class BaseSchedulerSolver(BaseSolver):
         # 如果下个 普通任务 <10 分钟则跳过 plan
         if self.find_next_task(datetime.now() + timedelta(seconds=600)) is not None:
             return
-        if len(self.run_order_rooms) > 0:
+        if len(self.op_data.run_order_rooms) > 0:
             # 处理龙舌兰和但书的插拔
-            for k, v in self.run_order_rooms.items():
+            for k, v in self.op_data.run_order_rooms.items():
                 # 如果没有当前房间数据
                 if 'plan' not in v.keys():
                     v['plan'] = self.op_data.get_current_room(k)
@@ -715,39 +714,7 @@ class BaseSchedulerSolver(BaseSolver):
     def initialize_operators(self):
         plan = self.current_plan
         self.op_data = Operators(self.agent_base_config, self.max_resting_count, plan)
-        for room in plan.keys():
-            for idx, data in enumerate(plan[room]):
-                self.op_data.add(Operator(data["agent"], room, idx, data["group"], data["replacement"], 'high',
-                                          operator_type="high"))
-                # 菲亚梅塔替换组做特例判断
-                if "replacement" in data.keys() and data["agent"] != '菲亚梅塔':
-                    for _replacement in data["replacement"]:
-                        self.op_data.add(Operator(_replacement, ""))
-        dorm_names = [k for k in plan.keys() if k.startswith("dorm")]
-        dorm_names.sort(key=lambda x: x, reverse=False)
-        added = []
-        # 竖向遍历出效率高到低
-        for dorm in dorm_names:
-            for _idx, _dorm in enumerate(plan[dorm]):
-                if _dorm['agent'] == 'Free' and (dorm + str(_idx)) not in added and len(added) < self.max_resting_count:
-                    self.op_data.dorm.append(Dormitory((dorm, _idx)))
-                    added.append(dorm + str(_idx))
-                    break
-        # VIP休息位用完后横向遍历
-        for dorm in dorm_names:
-            for _idx, _dorm in enumerate(plan[dorm]):
-                if _dorm['agent'] == 'Free' and (dorm + str(_idx)) not in added:
-                    self.op_data.dorm.append(Dormitory((dorm, _idx)))
-                    added.append(dorm + str(_idx))
-        # low_free 的排序
-        self.op_data.dorm[self.max_resting_count:len(self.op_data.dorm)] = sorted(
-            self.op_data.dorm[self.max_resting_count:len(self.op_data.dorm)],
-            key=lambda k: (k.position[0], k.position[1]), reverse=True)
-        # 跑单
-        for x, y in self.current_plan.items():
-            if not x.startswith('room'): continue
-            if any(('但书' in obj['replacement'] or '龙舌兰' in obj['replacement']) for obj in y):
-                self.run_order_rooms[x] = {}
+        return self.op_data.init_and_validate()
 
     def check_fia(self):
         if '菲亚梅塔' in self.op_data.operators.keys() and self.op_data.operators['菲亚梅塔'].room.startswith('dormitory'):
@@ -1204,7 +1171,7 @@ class BaseSchedulerSolver(BaseSolver):
         logger.info('基建：无人机加速')
         all_in = 0
         if not not_customize:
-            all_in = len(self.run_order_rooms)
+            all_in = len(self.op_data.run_order_rooms)
         # 点击进入该房间
         self.enter_room(room)
         # 进入房间详情
@@ -1638,8 +1605,8 @@ class BaseSchedulerSolver(BaseSolver):
                             for current_idx, _name in enumerate(plan[room]):
                                 if _name == 'Current':
                                     plan[room][current_idx] = self.op_data.get_current_room(room, True)[current_idx]
-                        if room in self.run_order_rooms and len(new_plan) == 0:
-                            if 'plan' in self.run_order_rooms[room] and plan[room] != self.run_order_rooms[room][
+                        if room in self.op_data.run_order_rooms and len(new_plan) == 0:
+                            if 'plan' in self.op_data.run_order_rooms[room] and plan[room] != self.op_data.run_order_rooms[room][
                                 'plan']:
                                 run_order_task = self.find_next_task(
                                     compare_time=datetime.now() + timedelta(minutes=10),
@@ -1647,7 +1614,7 @@ class BaseSchedulerSolver(BaseSolver):
                                 if run_order_task is not None:
                                     logger.info("检测到插拔房间人员变动！")
                                     self.tasks.remove(run_order_task)
-                                    del self.run_order_rooms[room]['plan']
+                                    del self.op_data.run_order_rooms[room]['plan']
                     while self.find('arrange_order_options') is None:
                         if error_count > 3:
                             raise Exception('未成功进入干员选择界面')
