@@ -64,14 +64,14 @@ async function select_maa_adb_path() {
         <table class="maa-table">
           <tr>
             <td class="table-space maa-table-label">MAA目录</td>
-            <td class="input-td"><n-input v-model:value="maa_path" disabled></n-input></td>
+            <td class="input-td"><n-input v-model:value="maa_path"></n-input></td>
             <td class="table-space">
               <n-button @click="select_maa_dir">...</n-button>
             </td>
           </tr>
           <tr>
             <td class="table-space">adb地址</td>
-            <td><n-input v-model:value="maa_adb_path" disabled></n-input></td>
+            <td><n-input v-model:value="maa_adb_path"></n-input></td>
             <td>
               <n-button @click="select_maa_adb_path">...</n-button>
             </td>
