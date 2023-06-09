@@ -7,6 +7,7 @@ import os
 import multiprocessing
 
 from arknights_mower.utils.conf import load_conf, save_conf
+from arknights_mower.__init__ import __version__
 
 
 def start_server(app, port):
@@ -35,7 +36,7 @@ if __name__ == "__main__":
     height = conf["webview"]["height"]
 
     window = webview.create_window(
-        "Mower Web UI in WebView (尚不完善，测试用途，谨慎使用)",
+        f"Mower {__version__} (127.0.0.1:{port})",
         f"http://127.0.0.1:{port}",
         width=width,
         height=height,
@@ -44,7 +45,6 @@ if __name__ == "__main__":
     window.events.resized += on_resized
 
     webview.start(start_server, (app, port))
-
 
     conf = load_conf()
     conf["webview"]["width"] = width
