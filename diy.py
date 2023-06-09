@@ -42,6 +42,12 @@ maa_config = {
     # 是否启动保全派驻
     "stationary_security_service":False,
     "last_execution": None,
+    "blacklist":"家具, 碳, 加急许可",
+    "buy_first":"招聘许可",
+    "recruit_only_4": True,
+    "sleep_min":"",
+    "sleep_max":"",
+    "recruitment_time": False,
     "weekly_plan":[{"weekday":"周一","stage":['AP-5'],"medicine":0},
                    {"weekday":"周二","stage":['CE-6'],"medicine":0},
                    {"weekday":"周三","stage":['1-7'],"medicine":0},
