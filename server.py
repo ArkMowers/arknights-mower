@@ -45,6 +45,7 @@ def serve_index():
 @app.route("/conf", methods=["GET", "POST"])
 def load_config():
     global conf
+
     if request.method == "GET":
         conf = load_conf()
         return conf
@@ -56,13 +57,15 @@ def load_config():
 
 @app.route("/plan", methods=["GET", "POST"])
 def load_plan_from_json():
+    global plan
+
     if request.method == "GET":
         global conf
-        global plan
         plan = load_plan(conf["planFile"])
         return plan
     else:
-        write_plan(request.json, conf["planFile"])
+        plan = request.json
+        write_plan(plan, conf["planFile"])
         return f"New plan saved at {conf['planFile']}"
 
 
