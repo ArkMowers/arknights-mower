@@ -93,7 +93,8 @@ export const useConfigStore = defineStore('config', () => {
     ],
     () => {
       axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, build_config())
-    }
+    },
+    { deep: true }
   )
 
   return {

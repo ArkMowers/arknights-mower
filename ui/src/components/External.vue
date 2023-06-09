@@ -89,14 +89,22 @@ async function select_maa_adb_path() {
           </tr>
         </table>
         <n-h3>周计划</n-h3>
+        <p>可输入多个关卡。输入关卡后，请按回车键确认。</p>
         <table>
           <tr v-for="plan in maa_weekly_plan" :key="plan.weekday">
             <td class="table-space">
               <n-h4>{{ plan.weekday }}</n-h4>
             </td>
             <td>关卡：</td>
-            <td class="table-space">
-              <n-input v-model:value="plan.stage"></n-input>
+            <td class="table-space maa-stage">
+              <n-select
+                v-model:value="plan.stage"
+                multiple
+                filterable
+                tag
+                :show="false"
+                :show-arrow="false"
+              />
             </td>
             <td>理智药：</td>
             <td>
@@ -125,5 +133,9 @@ h4 {
 
 .maa-table-label {
   width: 70px;
+}
+
+.maa-stage {
+  min-width: 300px;
 }
 </style>
