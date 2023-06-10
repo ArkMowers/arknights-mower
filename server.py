@@ -7,13 +7,14 @@ from flask import Flask, send_from_directory, request
 from flask_cors import CORS
 from flask_sock import Sock
 
+from simple_websocket import ConnectionClosed
+
 import webview
 
 import os
 import multiprocessing
 from threading import Thread
 import json
-import queue
 import time
 import sys
 import mimetypes
@@ -33,8 +34,9 @@ conf = {}
 plan = {}
 mower_process = None
 read = None
-queue = queue.SimpleQueue()
 operators = {}
+log_lines = []
+ws_connections = []
 
 
 @app.route("/")
@@ -99,15 +101,20 @@ def operator_list():
 
 
 def read_log(read):
-    global queue
     global operators
     global mower_process
+    global log_lines
+    global ws_connections
 
     try:
         while True:
             msg = read.recv()
             if msg["type"] == "log":
-                queue.put(time.strftime("%m-%d %H:%M:%S ") + msg["data"])
+                new_line = time.strftime("%m-%d %H:%M:%S ") + msg["data"]
+                log_lines.append(new_line)
+                log_lines = log_lines[-100:]
+                for ws in ws_connections:
+                    ws.send(new_line)
             elif msg["type"] == "operators":
                 operators = msg["data"]
     except EOFError:
@@ -163,10 +170,17 @@ def stop():
 
 @sock.route("/log")
 def log(ws):
-    global queue
-    while True:
-        data = queue.get()
-        ws.send(data)
+    global ws_connections
+    global log_lines
+
+    ws.send("\n".join(log_lines))
+    ws_connections.append(ws)
+
+    try:
+        while True:
+            ws.receive()
+    except ConnectionClosed:
+        ws_connections.remove(ws)
 
 
 @app.route("/dialog/file")
