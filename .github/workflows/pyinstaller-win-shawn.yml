@@ -47,22 +47,26 @@ jobs:
           cp -r dist ../main/
 
       - name: Install dependencies
+        working-directory: ./main
         shell: cmd
         run: |
           python -m venv venv
           venv\Scripts\python -m pip install -r requirements.txt
           venv\Scripts\python -m pip install pyinstaller
       - name: Patch Paddle
+        working-directory: ./main
         shell: cmd
         run: |
           copy .\packaging\image.py .\venv\Lib\site-packages\paddle\dataset\image.py /y
           copy .\packaging\network.py .\venv\Lib\site-packages\paddleocr\ppocr\utils\network.py /y
           copy .\packaging\paddleocr.py .\venv\Lib\site-packages\paddleocr\paddleocr.py /y
       - name: Make package
+        working-directory: ./main
         shell: cmd
         run: |
           venv\Scripts\pyinstaller .\webview.spec
       - uses: actions/upload-artifact@v3
+        working-directory: ./main
         with:
           name: mower
           path: dist\mower.exe
