@@ -9,6 +9,22 @@ jobs:
   build-win-amd64:
     runs-on: windows-latest
     steps:
+      - name: download frontend
+        uses: actions/checkout@v3
+        with:
+          repository: ArkMowers/mower-ui
+        working-directory: ./mower-ui
+      - name: setup nodejs 16
+        uses: actions/setup-node@v3
+        with:
+          node-version: 16
+      - name: build frontend
+        working-directory: ./mower-ui
+        shell: bash
+        run: |
+          npm install
+          npm run build
+          cp -r dist ..
       - uses: actions/checkout@v2
       - name: Install UPX
         uses: crazy-max/ghaction-upx@v2
@@ -34,7 +50,7 @@ jobs:
       - name: Make package
         shell: cmd
         run: |
-          venv\Scripts\pyinstaller .\menu.spec
+          venv\Scripts\pyinstaller .\webview.spec
       - uses: actions/upload-artifact@v3
         with:
           name: mower
