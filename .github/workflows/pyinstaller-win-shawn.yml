@@ -51,8 +51,8 @@ jobs:
         shell: cmd
         run: |
           python -m venv venv
-          venv\Scripts\python -m pip install -r requirements.txt
-          venv\Scripts\python -m pip install pyinstaller
+          venv\Scripts\pip install -r requirements.txt
+          venv\Scripts\pip install pyinstaller Flask flask-sock flask-cors pywebview
       - name: Patch Paddle
         working-directory: ./main
         shell: cmd
