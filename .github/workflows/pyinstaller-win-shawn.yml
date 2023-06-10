@@ -66,7 +66,6 @@ jobs:
         run: |
           venv\Scripts\pyinstaller .\webview.spec
       - uses: actions/upload-artifact@v3
-        working-directory: ./main
         with:
           name: mower
-          path: dist\mower.exe
+          path: main\dist\mower.exe
