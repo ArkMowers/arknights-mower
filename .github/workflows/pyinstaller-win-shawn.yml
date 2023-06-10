@@ -13,28 +13,39 @@ jobs:
         uses: actions/checkout@v3
         with:
           repository: ArkMowers/mower-ui
-        working-directory: ./mower-ui
+          path: mower-ui
+
+      - name: download source
+        uses: actions/checkout@v3
+        with:
+          path: main
+
+
       - name: setup nodejs 16
         uses: actions/setup-node@v3
         with:
           node-version: 16
+
+      - name: Install UPX
+        uses: crazy-max/ghaction-upx@v2
+        with:
+          install-only: true
+
+      - name: Set up Python 3.8 amd64
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.8
+          architecture: x64
+
+
       - name: build frontend
         working-directory: ./mower-ui
         shell: bash
         run: |
           npm install
           npm run build
-          cp -r dist ..
-      - uses: actions/checkout@v2
-      - name: Install UPX
-        uses: crazy-max/ghaction-upx@v2
-        with:
-          install-only: true
-      - name: Set up Python 3.8 amd64
-        uses: actions/setup-python@v2
-        with:
-          python-version: 3.8
-          architecture: x64
+          cp -r dist ../main/
+
       - name: Install dependencies
         shell: cmd
         run: |
