@@ -36,6 +36,8 @@ class Operators(object):
                     return f'高效组不可用龙舌兰，但书 房间->{room}, 干员->{data["agent"]}'
                 if data["agent"] == '菲亚梅塔' and idx == 1:
                     return f'菲亚梅塔不能安排在2号位置 房间->{room}, 干员->{data["agent"]}'
+                if data["agent"] == 'Free' and not room.startswith('dorm'):
+                    return f'Free只能安排在宿舍 房间->{room}, 干员->{data["agent"]}'
                 self.add(Operator(data["agent"], room, idx, data["group"], data["replacement"], 'high',
                                   operator_type="high"))
         for room in self.plan.keys():
@@ -73,6 +75,8 @@ class Operators(object):
                     added.append(dorm + str(_idx))
                     free_found = True
                     continue
+            if not free_found:
+                return f'宿舍必须安排至少一个Free'
         # VIP休息位用完后横向遍历
         for dorm in dorm_names:
             for _idx, _dorm in enumerate(self.plan[dorm]):
@@ -100,7 +104,7 @@ class Operators(object):
                 else:
                     low_count += 1
             if high_count > current_high or low_count > current_low:
-                return f'该 {key} 分组无法排班,可用VIPFree{current_high},剩余Free{current_low}->分组实用VIP{current_high},剩余Free{current_low}'
+                return f'该 {key} 分组无法排班,可用VIPFree{current_high},剩余Free{current_low}->分组实用VIP{high_count},剩余Free{low_count}'
 
     def get_current_room(self, room, bypass=False):
         room_data = {v.current_index: v for k, v in self.operators.items() if v.current_room == room}
