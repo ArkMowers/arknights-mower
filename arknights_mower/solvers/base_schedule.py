@@ -1874,9 +1874,9 @@ class BaseSchedulerSolver(BaseSolver):
                         self.back_to_reclamation_algorithm()
                         self.MAA.append_task('ReclamationAlgorithm')
                     elif self.maa_config['stationary_security_service']:
-                        if self.maa_config['copilot_file_location']=="" or self.maa_config['copilot_loop_times']<=0 or self.maa_config['SSS_type'] not in [1,2]:
+                        if self.maa_config['copilot_file_location']=="" or self.maa_config['copilot_loop_times']<=0 or self.maa_config['sss_type'] not in [1,2]:
                             raise Exception("保全派驻配置无法找到")
-                        if self.to_sss(self.maa_config['SSS_type']) is not None:
+                        if self.to_sss(self.maa_config['sss_type']) is not None:
                             raise Exception("保全派驻导航失败")
                         self.MAA.append_task('SSSCopilot', {
                             'filename': self.maa_config['copilot_file_location'],

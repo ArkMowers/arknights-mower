@@ -41,7 +41,7 @@ maa_config = {
     "reclamation_algorithm":False,
     # 是否启动保全派驻
     "stationary_security_service": True,
-    "SSS_type": 2,
+    "sss_type": 2,
     "copilot_file_location": "F:\\MAA-v4.10.5-win-x64\\resource\\copilot\\SSS_雷神工业测试平台_浊蒂版.json",
     "copilot_loop_times":10,
     "last_execution": datetime.now(),
