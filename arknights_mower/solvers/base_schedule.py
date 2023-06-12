@@ -1854,6 +1854,7 @@ class BaseSchedulerSolver(BaseSolver):
                 rg_sleep = False
             if self.maa_config['roguelike'] or self.maa_config['reclamation_algorithm'] or self.maa_config[
                 'stationary_security_service'] and not rg_sleep:
+                logger.info(f'准备开始：肉鸽/保全/演算')
                 while (self.tasks[0].time - datetime.now()).total_seconds() > 30:
                     self.MAA = None
                     self.inialize_maa()
@@ -1870,14 +1871,19 @@ class BaseSchedulerSolver(BaseSolver):
                             'core_char': ''
                         })
                     elif self.maa_config['reclamation_algorithm']:
-                        self.back_to_maa_config['reclamation_algorithm']()
+                        self.back_to_reclamation_algorithm()
                         self.MAA.append_task('ReclamationAlgorithm')
-                    # elif self.maa_config['stationary_security_service'] :
-                    #     self.MAA.append_task('SSSCopilot', {
-                    #         'filename': "F:\\MAA-v4.10.5-win-x64\\resource\\copilot\\SSS_阿卡胡拉丛林.json",
-                    #         'formation': False,
-                    #         'loop_times':99
-                    #     })
+                    elif self.maa_config['stationary_security_service']:
+                        if self.maa_config['copilot_file_location']=="" or self.maa_config['copilot_loop_times']<=0 or self.maa_config['SSS_type'] not in [1,2]:
+                            raise Exception("保全派驻配置无法找到")
+                        if self.to_sss(self.maa_config['SSS_type']) is not None:
+                            raise Exception("保全派驻导航失败")
+                        self.MAA.append_task('SSSCopilot', {
+                            'filename': self.maa_config['copilot_file_location'],
+                            'formation': False,
+                            'loop_times':self.maa_config['copilot_loop_times']
+                        })
+                    logger.info('启动')
                     self.MAA.start()
                     while self.MAA.running():
                         if (self.tasks[0].time - datetime.now()).total_seconds() < 30:

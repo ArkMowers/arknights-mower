@@ -40,9 +40,12 @@ maa_config = {
     # 是否启动生息演算
     "reclamation_algorithm":False,
     # 是否启动保全派驻
-    "stationary_security_service":False,
-    "last_execution": None,
-    "blacklist":"家具, 碳, 加急许可",
+    "stationary_security_service": True,
+    "SSS_type": 2,
+    "copilot_file_location": "F:\\MAA-v4.10.5-win-x64\\resource\\copilot\\SSS_雷神工业测试平台_浊蒂版.json",
+    "copilot_loop_times":10,
+    "last_execution": datetime.now(),
+    "blacklist":"家具,碳,加急许可",
     "buy_first":"招聘许可",
     "recruit_only_4": True,
     "sleep_min":"",
@@ -301,10 +304,10 @@ def simulate():
     '''
     具体调用方法可见各个函数的参数说明
     '''
-    global ope_list,base_scheduler
+    global ope_list, base_scheduler
     # 第一次执行任务
-    tasksStr = "SchedulerTask(time='2023-05-29 22:51:58.058617',task_plan={'room_3_2': ['Current', '但书', '龙舌兰']},task_type='room_3_2',meta_flag=False)||SchedulerTask(time='2023-05-29 23:24:36.984848',task_plan={'room_1_1': ['Current', '龙舌兰', '但书']},task_type='room_1_1',meta_flag=False)||SchedulerTask(time='2023-05-29 23:36:27.002696',task_plan={},task_type='菲亚梅塔',meta_flag=False)||SchedulerTask(time='2023-05-30 00:35:11.278038',task_plan={'room_3_1': ['水月', '海沫', '多萝西'], 'room_3_2': ['Current', 'Current', '空弦']},task_type='dorm0,dorm1,dorm2,dorm3',meta_flag=False)||SchedulerTask(time='2023-05-30 13:58:59.994020',task_plan={},task_type='impart',meta_flag=False)||SchedulerTask(time='2023-05-30 13:58:59.995020',task_plan={},task_type='maa_Mall',meta_flag=False)"
-    tasks = [eval(t) for t in tasksStr.split("||")]
+    taskstr = "SchedulerTask(time='2023-06-11 21:39:15.108665',task_plan={'room_3_2': ['Current', '但书', '龙舌兰']},task_type='room_3_2',meta_flag=False)||SchedulerTask(time='2023-06-11 21:44:48.187074',task_plan={'room_2_1': ['砾', '槐琥', '斑点']},task_type='dorm0,dorm1,dorm2',meta_flag=False)||SchedulerTask(time='2023-06-11 22:17:53.720905',task_plan={'room_1_1': ['Current', '龙舌兰', '但书']},task_type='room_1_1',meta_flag=False)||SchedulerTask(time='2023-06-11 23:02:10.469026',task_plan={'meeting': ['Current', '见行者']},task_type='dorm3',meta_flag=False)||SchedulerTask(time='2023-06-11 23:22:15.236154',task_plan={},task_type='菲亚梅塔',meta_flag=False)||SchedulerTask(time='2023-06-12 11:25:55.925731',task_plan={},task_type='impart',meta_flag=False)||SchedulerTask(time='2023-06-12 11:25:55.926731',task_plan={},task_type='maa_Mall',meta_flag=False)"
+    tasks = [eval(t) for t in taskstr.split("||")]
     for t in tasks:
         t.time = datetime.strptime(t.time, '%Y-%m-%d %H:%M:%S.%f')
     reconnect_max_tries = 10
