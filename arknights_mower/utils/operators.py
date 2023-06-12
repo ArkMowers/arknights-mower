@@ -45,19 +45,19 @@ class Operators(object):
                 # 菲亚梅塔替换组做特例判断
                 for _replacement in data["replacement"]:
                     if _replacement not in agent_list and data['agent']!='Free':
-                        return f'干员名输入错误: 房间->{room}, 干员->{data["agent"]}'
+                        return f'干员名输入错误: 房间->{room}, 干员->{_replacement}'
                     if data["agent"] != '菲亚梅塔':
                         # 普通替换
                         if _replacement in self.operators and self.operators[_replacement].is_high():
-                            return f'替换组不可用高效组干员: 房间->{room}, 干员->{data["agent"]}'
+                            return f'替换组不可用高效组干员: 房间->{room}, 干员->{_replacement}'
                         self.add(Operator(_replacement, ""))
                     else:
                         if _replacement not in self.operators:
-                            return f'菲亚梅塔替换不在高效组列: 房间->{room}, 干员->{data["agent"]}'
+                            return f'菲亚梅塔替换不在高效组列: 房间->{room}, 干员->{_replacement}'
                         if _replacement in self.operators and not self.operators[_replacement].is_high():
-                            return f'菲亚梅塔替换只能高效组干员: 房间->{room}, 干员->{data["agent"]}'
+                            return f'菲亚梅塔替换只能高效组干员: 房间->{room}, 干员->{_replacement}'
                         if _replacement in self.operators and self.operators[_replacement].group != '':
-                            return f'菲亚梅塔替换不可分组: 房间->{room}, 干员->{data["agent"]}'
+                            return f'菲亚梅塔替换不可分组: 房间->{room}, 干员->{_replacement}'
         dorm_names = [k for k in self.plan.keys() if k.startswith("dorm")]
         dorm_names.sort(key=lambda d: d, reverse=False)
         added = []
