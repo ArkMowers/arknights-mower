@@ -3,10 +3,13 @@ import { useConfigStore } from '@/stores/config'
 import { storeToRefs } from 'pinia'
 import { inject, h } from 'vue'
 import { NTag } from 'naive-ui'
+import { ref } from 'vue';
 
 const axios = inject('axios')
 
 const store = useConfigStore()
+
+const maa_add_task = ref('禁用');
 
 const {
   mail_enable,
@@ -16,8 +19,18 @@ const {
   maa_path,
   maa_adb_path,
   maa_weekly_plan,
-  maa_rg_enable
+  maa_rg_enable,
+  sleep_min,
+  sleep_max,
+  sss_type,
+  copilot_file_location,
+  copilot_loop_times
 } = storeToRefs(store)
+
+const sss_option = ref([
+  { label: '约翰老妈新建地块', value: 1 },
+  { label: '雷神工业测试平台', value: 2 }
+]);
 
 async function select_maa_dir() {
   const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/dialog/folder`)
@@ -65,6 +78,10 @@ function create_tag(label) {
       value: label
     }
   }
+}
+
+function selectTab(tab) {
+  maa_add_task.value = tab;
 }
 </script>
 
@@ -123,6 +140,52 @@ function create_tag(label) {
             </td>
           </tr>
         </table>
+        <div style="border: 1px solid black;width:500px;padding: 10px;">
+          <div class="tab-buttons">
+            <button @click="selectTab('禁用')" :class="{ 'active': maa_add_task === '禁用' }">禁用</button>
+            <button @click="selectTab('肉鸽')" :class="{ 'active': maa_add_task === '肉鸽' }">肉鸽</button>
+            <button @click="selectTab('保全')" :class="{ 'active': maa_add_task === '保全' }">保全</button>
+            <button @click="selectTab('生息演算')" :class="{ 'active': maa_add_task === '生息演算' }">生息演算</button>
+          </div>
+
+          <div class="tab-content">
+            <div v-if="maa_add_task === '禁用'"></div>
+            <div v-if="maa_add_task === '肉鸽'">
+              <table>
+                <tr>
+                  <td class="table-space">休息时间开始</td>
+                  <td class="table-space"><n-input v-model:value="sleep_min" placeholder="8:00"></n-input></td>
+                  <td class="table-space">休息时间结束</td>
+                  <td class="table-space"><n-input v-model:value="sleep_max" placeholder="10:00"></n-input></td>
+                </tr>
+              </table>
+            </div>
+            <div v-if="maa_add_task === '保全'">
+              <table>
+                <tr>
+                  <td class="select-label">保全派驻关卡：</td>
+                  <td class="table-space">
+                    <n-select tag :options="sss_option" class="sss-select" v-model:value="sss_type" />
+                  </td>
+                  <td class="select-label">循环次数：</td>
+                  <td style="width: 50px;"><n-input v-model:value="copilot_loop_times" placeholder="10">10</n-input> </td>
+
+
+                </tr>
+                <tr>
+                  <td class="select-label">作业地址：</td>
+                  <td colspan="2" class="input-td"><n-input v-model:value="copilot_file_location"></n-input></td>
+                  <td class="table-space">
+                    <n-button @click="select_maa_dir">...</n-button>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <div v-if="maa_add_task === '生息演算'">
+              <p>生息演算未开放</p>
+            </div>
+          </div>
+        </div>
         <n-h3>周计划</n-h3>
         <span>关卡填写说明：</span>
         <ul>
@@ -145,16 +208,8 @@ function create_tag(label) {
             </td>
             <td>关卡：</td>
             <td class="table-space maa-stage">
-              <n-select
-                v-model:value="plan.stage"
-                multiple
-                filterable
-                tag
-                :show="false"
-                :show-arrow="false"
-                :render-tag="render_tag"
-                :on-create="create_tag"
-              />
+              <n-select v-model:value="plan.stage" multiple filterable tag :show="false" :show-arrow="false"
+                :render-tag="render_tag" :on-create="create_tag" />
             </td>
             <td>理智药：</td>
             <td>
@@ -170,6 +225,31 @@ function create_tag(label) {
 <style scoped>
 h4 {
   margin: 0;
+}
+
+.tab-buttons {
+  display: flex;
+}
+
+.sss-select {
+  width: 175px;
+}
+
+.tab-buttons button {
+  padding: 8px 16px;
+  background-color: #f0f0f0;
+  border: none;
+  border-radius: 4px;
+  margin-right: 8px;
+  cursor: pointer;
+}
+
+.tab-buttons button.active {
+  background-color: #ccc;
+}
+
+.tab-content {
+  margin-top: 16px;
 }
 
 .card-title {
