@@ -327,3 +327,21 @@ class BaseSolver:
         self.tap_element('index_terminal', 0.5)
         self.tap((self.recog.w*0.2, self.recog.h*0.8),interval=0.5)
 
+    def to_sss(self,sss_type):
+        self.recog.update()
+        # 导航去保全派驻
+        retry = 0
+        while self.find('start_sss') is None and retry<3:
+            self.back_to_index()
+            self.tap_element('index_terminal', 0.5)
+            self.tap((self.recog.w*0.7, self.recog.h*0.95),interval=0.2)
+            self.tap((self.recog.w * 0.85, self.recog.h * 0.5), interval=0.2)
+            if sss_type==1:
+                self.tap((self.recog.w * 0.2, self.recog.h * 0.3),interval=4)
+            else:
+                self.tap((self.recog.w * 0.4, self.recog.h * 0.6),interval=4)
+            retry+=1
+        if retry ==2:
+            return "error"
+
+
