@@ -1409,7 +1409,7 @@ class BaseSchedulerSolver(BaseSolver):
             # 只选择在列表里面的
             # 替换组小于20才休息，防止进入就满心情进行网络连接
             free_list = [v.name for k, v in self.op_data.operators.items() if
-                         v.name not in agents and v.operator_type != 'high']
+                         v.name not in agents and v.operator_type != 'high' and v.current_room == '']
             free_list.extend([_name for _name in agent_list if _name not in self.op_data.operators.keys()])
             free_list = list(set(free_list) - set(self.free_blacklist))
             while free_num:
