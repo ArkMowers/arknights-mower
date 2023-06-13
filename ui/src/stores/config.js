@@ -22,6 +22,24 @@ export const useConfigStore = defineStore('config', () => {
   const run_mode = ref(1)
   const run_order_delay = ref(10)
   const start_automatically = ref(false)
+  const maa_mall_buy = ref('')
+  const maa_mall_blacklist = ref('')
+  const shop_list = ref([])
+  const maa_gap = ref(false)
+  const maa_recruitment_time = ref(false)
+  const maa_recruit_only_4 = ref(false)
+
+  async function load_shop() {
+    const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/shop`)
+    const mall_list = []
+    for (const i of response.data) {
+      mall_list.push({
+        value: i,
+        label: i
+      })
+    }
+    shop_list.value = mall_list
+  }
 
   async function load_config() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/conf`)
@@ -45,6 +63,11 @@ export const useConfigStore = defineStore('config', () => {
     run_mode.value = response.data.run_mode == 2 ? 'orders_only' : 'full'
     run_order_delay.value = response.data.run_order_delay.toString()
     start_automatically.value = response.data.start_automatically
+    maa_mall_buy.value = response.data.maa_mall_buy == '' ? [] : response.data.maa_mall_buy.split(',')
+    maa_mall_blacklist.value = response.data.maa_mall_blacklist == '' ? [] : response.data.maa_mall_blacklist.split(',')
+    maa_gap.value = response.data.maa_gap
+    maa_recruitment_time.value = response.data.maa_recruitment_time
+    maa_recruit_only_4.value = response.data.maa_recruit_only_4
   }
 
   function build_config() {
@@ -67,7 +90,12 @@ export const useConfigStore = defineStore('config', () => {
       reload_room: reload_room.value.join(','),
       run_mode: run_mode.value == 'orders_only' ? 2 : 1,
       run_order_delay: parseInt(run_order_delay.value),
-      start_automatically: start_automatically.value
+      start_automatically: start_automatically.value,
+      maa_mall_buy: maa_mall_buy.value.join(','),
+      maa_mall_blacklist: maa_mall_blacklist.value.join(','),
+      maa_gap: maa_gap.value,
+      maa_recruitment_time: maa_recruitment_time.value,
+      maa_recruit_only_4: maa_recruit_only_4.value
     }
   }
 
@@ -90,7 +118,12 @@ export const useConfigStore = defineStore('config', () => {
       reload_room,
       run_mode,
       run_order_delay,
-      start_automatically
+      start_automatically,
+      maa_mall_buy,
+      maa_mall_blacklist,
+      maa_gap,
+      maa_recruitment_time,
+      maa_recruit_only_4
     ],
     () => {
       axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, build_config())
@@ -119,6 +152,13 @@ export const useConfigStore = defineStore('config', () => {
     run_mode,
     run_order_delay,
     start_automatically,
+    maa_mall_buy,
+    maa_mall_blacklist,
+    load_shop,
+    shop_list,
+    maa_gap,
+    maa_recruitment_time,
+    maa_recruit_only_4,
     build_config
   }
 })

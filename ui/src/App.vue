@@ -55,6 +55,7 @@ function start() {
 
 onMounted(async () => {
   await load_config()
+  await load_shop()
   await load_plan()
   await load_operators()
   await get_running()

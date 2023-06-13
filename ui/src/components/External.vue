@@ -24,9 +24,15 @@ const {
   sleep_max,
   sss_type,
   copilot_file_location,
-  copilot_loop_times
+  copilot_loop_times,
+  maa_mall_buy,
+  maa_mall_blacklist,
+  maa_gap,
+  maa_recruitment_time,
+  maa_recruit_only_4
 } = storeToRefs(store)
 
+const { shop_list } = store
 const sss_option = ref([
   { label: '约翰老妈新建地块', value: 1 },
   { label: '雷神工业测试平台', value: 2 }
@@ -129,6 +135,18 @@ function selectTab(tab) {
             </td>
           </tr>
           <tr>
+            <td>MAA启动间隔(小时)：</td>
+            <td>
+              <n-input-number v-model:value="maa_gap"></n-input-number>
+            </td>
+            <td colspan="4">
+              <n-checkbox v-model:checked="maa_recruitment_time">公招三星设置7:40而非9:00</n-checkbox>
+            </td>
+            <td colspan="4">
+              <n-checkbox v-model:checked="maa_recruit_only_4">仅公招四星</n-checkbox>
+            </td>
+          </tr>
+          <tr>
             <td class="table-space">肉鸽：</td>
             <td colspan="3">
               <n-radio-group v-model:value="maa_rg_enable">
@@ -137,6 +155,16 @@ function selectTab(tab) {
                   <n-radio :value="0">禁用</n-radio>
                 </n-space>
               </n-radio-group>
+            </td>
+          </tr>
+          <tr>
+            <td class="table-space maa-mall">信用商店  优先购买</td>
+            <td colspan="2">
+              <n-select multiple filterable tag :options="shop_list" v-model:value="maa_mall_buy" />
+            </td>
+            <td class="table-space maa-mall">信用商店  黑名单</td>
+            <td colspan="2">
+              <n-select multiple filterable tag :options="shop_list" v-model:value="maa_mall_blacklist" />
             </td>
           </tr>
         </table>
@@ -267,6 +295,12 @@ h4 {
 
 .maa-stage {
   min-width: 300px;
+}
+
+.maa-mall {
+  width: 70px;
+  word-wrap: break-word;
+  word-break: break-all;
 }
 
 ul {
