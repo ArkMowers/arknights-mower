@@ -10,6 +10,7 @@ export {}
 declare module '@vue/runtime-core' {
   export interface GlobalComponents {
     Advanced: typeof import('./src/components/Advanced.vue')['default']
+    Email: typeof import('./src/components/Email.vue')['default']
     External: typeof import('./src/components/External.vue')['default']
     Home: typeof import('./src/components/Home.vue')['default']
     NButton: typeof import('naive-ui')['NButton']
