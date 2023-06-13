@@ -282,7 +282,7 @@ class BaseSchedulerSolver(BaseSolver):
             v for k, v in self.op_data.operators.items() if
             v.is_high() and not v.room.startswith('dorm') and not v.current_room.startswith('dorm'))
         self.total_agent.sort(key=lambda x: x.current_mood() - x.lower_limit, reverse=False)
-        if next((a for a in self.total_agent if (a.name not in self.op_data.exhaust_agent) and a.current_mood() <= 3),
+        if next((a for a in self.total_agent if (a.name not in self.op_data.exhaust_agent) and not a.workaholic and a.current_mood() <= 3),
                 None) is not None:
             short_rest = True
         low_priority = []
