@@ -24,10 +24,10 @@
 <script setup>
 import { onMounted, inject } from 'vue'
 import { storeToRefs } from 'pinia'
-import home from '@/components/Home.vue'
-import plan from '@/components/Plan.vue'
-import advanced from '@/components/Advanced.vue'
-import external from '@/components/External.vue'
+import home from '@/pages/Home.vue'
+import plan from '@/pages/Plan.vue'
+import advanced from '@/pages/Advanced.vue'
+import external from '@/pages/External.vue'
 import { zhCN, dateZhCN, darkTheme } from 'naive-ui'
 
 import { useConfigStore } from '@/stores/config'
