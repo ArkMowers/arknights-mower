@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import ReconnectingWebSocket from 'reconnecting-websocket'
 
 import axios from 'axios'
 
@@ -23,7 +24,7 @@ export const useMowerStore = defineStore('mower', () => {
       backend_url = location.origin
     }
     const ws_url = backend_url.replace(/^http/, 'ws') + '/log'
-    ws.value = new WebSocket(ws_url)
+    ws.value = new ReconnectingWebSocket(ws_url)
     ws.value.onmessage = (event) => {
       log_lines.value.push(event.data)
       log_lines.value = log_lines.value.slice(-100)

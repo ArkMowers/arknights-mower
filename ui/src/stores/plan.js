@@ -127,7 +127,7 @@ export const usePlanStore = defineStore('plan', () => {
   }
 
   watch(
-    plan,
+    [plan, ling_xi, max_resting_count, exhaust_require, rest_in_full, resting_priority, workaholic],
     () => {
       axios.post(`${import.meta.env.VITE_HTTP_URL}/plan`, build_plan())
     },

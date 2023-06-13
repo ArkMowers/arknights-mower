@@ -84,7 +84,7 @@ async function open_plan_file() {
       <tr>
         <td>排班表：</td>
         <td>
-          <n-input v-model:value="plan_file" disabled></n-input>
+          <n-input v-model:value="plan_file"></n-input>
         </td>
         <td>
           <n-button @click="open_plan_file">...</n-button>

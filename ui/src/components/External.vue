@@ -1,11 +1,15 @@
 <script setup>
 import { useConfigStore } from '@/stores/config'
 import { storeToRefs } from 'pinia'
-import { inject } from 'vue'
+import { inject, h } from 'vue'
+import { NTag } from 'naive-ui'
+import { ref } from 'vue';
 
 const axios = inject('axios')
 
 const store = useConfigStore()
+
+const maa_add_task = ref('禁用');
 
 const {
   mail_enable,
@@ -16,6 +20,11 @@ const {
   maa_adb_path,
   maa_weekly_plan,
   maa_rg_enable,
+  sleep_min,
+  sleep_max,
+  sss_type,
+  copilot_file_location,
+  copilot_loop_times,
   maa_mall_buy,
   maa_mall_blacklist,
   maa_gap,
@@ -24,6 +33,10 @@ const {
 } = storeToRefs(store)
 
 const { shop_list } = store
+const sss_option = ref([
+  { label: '约翰老妈新建地块', value: 1 },
+  { label: '雷神工业测试平台', value: 2 }
+]);
 
 async function select_maa_dir() {
   const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/dialog/folder`)
@@ -39,6 +52,42 @@ async function select_maa_adb_path() {
   if (file_path) {
     maa_adb_path.value = file_path
   }
+}
+
+function render_tag({ option, handleClose }) {
+  return h(
+    NTag,
+    {
+      type: option.type,
+      closable: true,
+      onMousedown: (e) => {
+        e.preventDefault()
+      },
+      onClose: (e) => {
+        e.stopPropagation()
+        handleClose()
+      }
+    },
+    { default: () => (option.label == '' ? '（上次作战）' : option.label) }
+  )
+}
+
+function create_tag(label) {
+  if (label == ' ') {
+    return {
+      label: '（上次作战）',
+      value: ''
+    }
+  } else {
+    return {
+      label,
+      value: label
+    }
+  }
+}
+
+function selectTab(tab) {
+  maa_add_task.value = tab;
 }
 </script>
 
@@ -56,7 +105,9 @@ async function select_maa_adb_path() {
             <td class="table-space">QQ邮箱</td>
             <td class="table-space"><n-input v-model:value="account"></n-input></td>
             <td class="table-space">授权码</td>
-            <td><n-input v-model:value="pass_code"></n-input></td>
+            <td>
+              <n-input v-model:value="pass_code" type="password" show-password-on="click"></n-input>
+            </td>
           </tr>
         </table>
       </template>
@@ -71,14 +122,14 @@ async function select_maa_adb_path() {
         <table class="maa-table">
           <tr>
             <td class="table-space maa-table-label">MAA目录</td>
-            <td class="input-td"><n-input v-model:value="maa_path" disabled></n-input></td>
+            <td class="input-td"><n-input v-model:value="maa_path"></n-input></td>
             <td class="table-space">
               <n-button @click="select_maa_dir">...</n-button>
             </td>
           </tr>
           <tr>
             <td class="table-space">adb地址</td>
-            <td><n-input v-model:value="maa_adb_path" disabled></n-input></td>
+            <td><n-input v-model:value="maa_adb_path"></n-input></td>
             <td>
               <n-button @click="select_maa_adb_path">...</n-button>
             </td>
@@ -117,8 +168,67 @@ async function select_maa_adb_path() {
             </td>
           </tr>
         </table>
+        <div style="border: 1px solid black;width:500px;padding: 10px;">
+          <div class="tab-buttons">
+            <button @click="selectTab('禁用')" :class="{ 'active': maa_add_task === '禁用' }">禁用</button>
+            <button @click="selectTab('肉鸽')" :class="{ 'active': maa_add_task === '肉鸽' }">肉鸽</button>
+            <button @click="selectTab('保全')" :class="{ 'active': maa_add_task === '保全' }">保全</button>
+            <button @click="selectTab('生息演算')" :class="{ 'active': maa_add_task === '生息演算' }">生息演算</button>
+          </div>
+
+          <div class="tab-content">
+            <div v-if="maa_add_task === '禁用'"></div>
+            <div v-if="maa_add_task === '肉鸽'">
+              <table>
+                <tr>
+                  <td class="table-space">休息时间开始</td>
+                  <td class="table-space"><n-input v-model:value="sleep_min" placeholder="8:00"></n-input></td>
+                  <td class="table-space">休息时间结束</td>
+                  <td class="table-space"><n-input v-model:value="sleep_max" placeholder="10:00"></n-input></td>
+                </tr>
+              </table>
+            </div>
+            <div v-if="maa_add_task === '保全'">
+              <table>
+                <tr>
+                  <td class="select-label">保全派驻关卡：</td>
+                  <td class="table-space">
+                    <n-select tag :options="sss_option" class="sss-select" v-model:value="sss_type" />
+                  </td>
+                  <td class="select-label">循环次数：</td>
+                  <td style="width: 50px;"><n-input v-model:value="copilot_loop_times" placeholder="10">10</n-input> </td>
+
+
+                </tr>
+                <tr>
+                  <td class="select-label">作业地址：</td>
+                  <td colspan="2" class="input-td"><n-input v-model:value="copilot_file_location"></n-input></td>
+                  <td class="table-space">
+                    <n-button @click="select_maa_dir">...</n-button>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <div v-if="maa_add_task === '生息演算'">
+              <p>生息演算未开放</p>
+            </div>
+          </div>
+        </div>
         <n-h3>周计划</n-h3>
-        <p>可输入多个关卡。输入关卡后，请按回车键确认。</p>
+        <span>关卡填写说明：</span>
+        <ul>
+          <li><b>基本操作</b>：输入关卡名，按回车键确认。文本变为标签，代表输入成功。</li>
+          <li><b>上次作战</b>：输入空格后回车，生成（上次作战）标签。</li>
+          <li>
+            <b>多个关卡</b>
+            ：填入多个关卡时，按顺序依次刷取所有关卡。关卡无法刷取或刷取结束后，继续尝试下一关卡。例：
+            <ul>
+              <li>HE-7、（上次作战）：刷活动关HE-7，若活动未开放，则刷上一关。</li>
+              <li>AP-5、1-7：刷红票本AP-5，剩余体力刷1-7。</li>
+            </ul>
+          </li>
+          <li><b>不刷理智</b>：留空表示不刷理智。</li>
+        </ul>
         <table>
           <tr v-for="plan in maa_weekly_plan" :key="plan.weekday">
             <td class="table-space">
@@ -126,18 +236,12 @@ async function select_maa_adb_path() {
             </td>
             <td>关卡：</td>
             <td class="table-space maa-stage">
-              <n-select
-                v-model:value="plan.stage"
-                multiple
-                filterable
-                tag
-                :show="false"
-                :show-arrow="false"
-              />
+              <n-select v-model:value="plan.stage" multiple filterable tag :show="false" :show-arrow="false"
+                :render-tag="render_tag" :on-create="create_tag" />
             </td>
             <td>理智药：</td>
             <td>
-              <n-input-number v-model:value="plan.medicine"></n-input-number>
+              <n-input-number v-model:value="plan.medicine" :min="0"></n-input-number>
             </td>
           </tr>
         </table>
@@ -149,6 +253,31 @@ async function select_maa_adb_path() {
 <style scoped>
 h4 {
   margin: 0;
+}
+
+.tab-buttons {
+  display: flex;
+}
+
+.sss-select {
+  width: 175px;
+}
+
+.tab-buttons button {
+  padding: 8px 16px;
+  background-color: #f0f0f0;
+  border: none;
+  border-radius: 4px;
+  margin-right: 8px;
+  cursor: pointer;
+}
+
+.tab-buttons button.active {
+  background-color: #ccc;
+}
+
+.tab-content {
+  margin-top: 16px;
 }
 
 .card-title {
@@ -172,5 +301,9 @@ h4 {
   width: 70px;
   word-wrap: break-word;
   word-break: break-all;
+}
+
+ul {
+  padding-left: 24px;
 }
 </style>
