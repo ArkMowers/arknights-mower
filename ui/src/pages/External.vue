@@ -237,11 +237,11 @@ function selectTab(tab) {
         </ul>
         <table>
           <tr v-for="plan in maa_weekly_plan" :key="plan.weekday">
-            <td class="table-space">
+            <td class="maa-weekday">
               <n-h4>{{ plan.weekday }}</n-h4>
             </td>
-            <td>关卡：</td>
-            <td class="table-space maa-stage">
+            <td class="maa-stage-label">关卡</td>
+            <td class="maa-stage">
               <n-select
                 v-model:value="plan.stage"
                 multiple
@@ -253,8 +253,8 @@ function selectTab(tab) {
                 :on-create="create_tag"
               />
             </td>
-            <td>理智药：</td>
-            <td>
+            <td class="maa-medicine-label">理智药</td>
+            <td class="maa-medicine">
               <n-input-number v-model:value="plan.medicine" :min="0"></n-input-number>
             </td>
           </tr>
@@ -312,14 +312,27 @@ h4 {
   width: 70px;
 }
 
-.maa-stage {
-  min-width: 300px;
-}
-
 .maa-mall {
   width: 70px;
   word-wrap: break-word;
   word-break: break-all;
+}
+
+.maa-weekday {
+  width: 44px;
+}
+
+.maa-stage-label {
+  width: 36px;
+}
+
+.maa-stage {
+  width: 300px;
+}
+
+.maa-medicine-label {
+  width: 48px;
+  padding-left: 8px;
 }
 
 ul {
