@@ -1852,8 +1852,8 @@ class BaseSchedulerSolver(BaseSolver):
                         rg_sleep = False
             except ValueError:
                 rg_sleep = False
-            if self.maa_config['roguelike'] or self.maa_config['reclamation_algorithm'] or self.maa_config[
-                'stationary_security_service'] and not rg_sleep:
+            if (self.maa_config['roguelike'] or self.maa_config['reclamation_algorithm'] or self.maa_config[
+                'stationary_security_service'] ) and not rg_sleep:
                 logger.info(f'准备开始：肉鸽/保全/演算')
                 while (self.tasks[0].time - datetime.now()).total_seconds() > 30:
                     self.MAA = None
