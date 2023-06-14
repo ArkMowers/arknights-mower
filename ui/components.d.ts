@@ -13,6 +13,7 @@ declare module '@vue/runtime-core' {
     Email: typeof import('./src/components/Email.vue')['default']
     External: typeof import('./src/components/External.vue')['default']
     Home: typeof import('./src/components/Home.vue')['default']
+    MaaWeekly: typeof import('./src/components/MaaWeekly.vue')['default']
     NButton: typeof import('naive-ui')['NButton']
     NCard: typeof import('naive-ui')['NCard']
     NCheckbox: typeof import('naive-ui')['NCheckbox']
