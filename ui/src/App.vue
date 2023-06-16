@@ -35,7 +35,7 @@ import { usePlanStore } from '@/stores/plan'
 import { useMowerStore } from '@/stores/mower'
 
 const config_store = useConfigStore()
-const { load_config } = config_store
+const { load_config, load_shop } = config_store
 const { start_automatically } = storeToRefs(config_store)
 
 const plan_store = usePlanStore()
