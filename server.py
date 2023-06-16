@@ -100,6 +100,35 @@ def operator_list():
             return json.load(f)
 
 
+@app.route("/shop")
+def shop_list():
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        with open(
+            os.path.join(
+                sys._MEIPASS,
+                "arknights_mower",
+                "__init__",
+                "data",
+                "shop.json",
+            ),
+            "r",
+            encoding="utf8",
+        ) as f:
+            return json.load(f)
+    else:
+        with open(
+            os.path.join(
+                os.getcwd(),
+                "arknights_mower",
+                "data",
+                "shop.json",
+            ),
+            "r",
+            encoding="utf8",
+        ) as f:
+            return json.load(f)
+
+
 def read_log(read):
     global operators
     global mower_process
