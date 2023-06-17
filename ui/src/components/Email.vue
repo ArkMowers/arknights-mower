@@ -26,8 +26,7 @@ const { mail_enable, account, pass_code } = storeToRefs(store)
       <template v-if="mode == 'simple'">
         <p>在任务完成后发送提醒邮件。</p>
         <p>
-          在简单模式下，Mower使用您的QQ邮箱。
-          <n-button
+          在简单模式下，Mower使用您的QQ邮箱。<n-button
             text
             tag="a"
             href="https://service.mail.qq.com/detail/0/75"

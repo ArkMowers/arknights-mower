@@ -84,8 +84,9 @@ function create_tag(label) {
         <td>
           <n-input-number v-model:value="plan.medicine" :min="0" />
         </td>
-      </tr></table
-  ></n-card>
+      </tr>
+    </table>
+  </n-card>
 </template>
 
 <style scoped lang="scss">
