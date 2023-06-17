@@ -4,6 +4,7 @@ import atexit
 import json
 import os
 
+from arknights_mower.utils.scene import Scene
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
 from arknights_mower.strategy import Solver
 from arknights_mower.utils.device import Device
@@ -40,24 +41,24 @@ maa_config = {
     # 是否启动生息演算
     "reclamation_algorithm":False,
     # 是否启动保全派驻
-    "stationary_security_service": True,
+    "stationary_security_service": False,
     "sss_type": 2,
     "copilot_file_location": "F:\\MAA-v4.10.5-win-x64\\resource\\copilot\\SSS_雷神工业测试平台_浊蒂版.json",
     "copilot_loop_times":10,
     "last_execution": datetime.now(),
     "blacklist":"家具,碳,加急许可",
     "buy_first":"招聘许可",
-    "recruit_only_4": True,
+    "recruit_only_4": False,
     "sleep_min":"",
     "sleep_max":"",
     "recruitment_time": False,
-    "weekly_plan":[{"weekday":"周一","stage":['AP-5'],"medicine":0},
-                   {"weekday":"周二","stage":['CE-6'],"medicine":0},
-                   {"weekday":"周三","stage":['1-7'],"medicine":0},
-                   {"weekday":"周四","stage":['AP-5'],"medicine":0},
-                   {"weekday":"周五","stage":['1-7'],"medicine":0},
-                   {"weekday":"周六","stage":['AP-5'],"medicine":0},
-                   {"weekday":"周日","stage":['AP-5'],"medicine":0}]
+#     "weekly_plan":[{"weekday":"周一","stage":['AP-5'],"medicine":0},
+#                    {"weekday":"周二","stage":['CE-6'],"medicine":0},
+#                    {"weekday":"周三","stage":['1-7'],"medicine":0},
+#                    {"weekday":"周四","stage":['AP-5'],"medicine":0},
+#                    {"weekday":"周五","stage":['1-7'],"medicine":0},
+#                    {"weekday":"周六","stage":['AP-5'],"medicine":0},
+#                    {"weekday":"周日","stage":['AP-5'],"medicine":0}]
 }
 
 # Free (宿舍填充)干员安排黑名单
@@ -102,67 +103,67 @@ plan = {
     # 阶段 1
     "default": "plan_1",
     "plan_1": {
-        # 中枢
-        'central': [{'agent': '焰尾', 'group': '红松骑士', 'replacement': [ "阿米娅","凯尔希",]},
-                    {'agent': '琴柳', 'group': '夕', 'replacement': [ "阿米娅","凯尔希","玛恩纳"]},
-                    {'agent': '重岳', 'group': '', 'replacement': ["玛恩纳", "清道夫", "凯尔希", "阿米娅", '坚雷']},
-                    {'agent': '夕', 'group': '夕', 'replacement': ["阿米娅","凯尔希","玛恩纳", "清道夫", "阿米娅", '坚雷']},
-                    {'agent': '令', 'group': '', 'replacement': ["玛恩纳", "清道夫", "凯尔希", "阿米娅", '坚雷']},
-                    ],
-        'contact': [{'agent': '桑葚', 'group': '', 'replacement': ['艾雅法拉']}],
-        # 宿舍
-        'dormitory_1': [{'agent': '流明', 'group': '', 'replacement': []},
-                        {'agent': '闪灵', 'group': '', 'replacement': []},
-                        {'agent': 'Free', 'group': '', 'replacement': []},
-                        {'agent': 'Free', 'group': '', 'replacement': []},
-                        {'agent': 'Free', 'group': '', 'replacement': []}
-                        ],
-        'dormitory_2': [{'agent': '杜林', 'group': '', 'replacement': []},
-                        {'agent': '蜜莓', 'group': '', 'replacement': []},
-                        {'agent': '褐果', 'group': '', 'replacement': []},
-                        {'agent': 'Free', 'group': '', 'replacement': []},
-                        {'agent': 'Free', 'group': '', 'replacement': []}
-                        ],
-        'dormitory_3': [{'agent': '车尔尼', 'group': '', 'replacement': []},
-                        {'agent': '斥罪', 'group': '', 'replacement': []},
-                        {'agent': '爱丽丝', 'group': '', 'replacement': []},
-                        {'agent': '桃金娘', 'group': '', 'replacement': []},
-                        {'agent': 'Free', 'group': '', 'replacement': []}
-                        ],
-        'dormitory_4': [{'agent': '波登可', 'group': '', 'replacement': []},
-                        {'agent': '夜莺', 'group': '', 'replacement': []},
-                        {'agent': '菲亚梅塔', 'group': '', 'replacement': ['重岳', '令', '乌有']},
-                        {'agent': 'Free', 'group': '', 'replacement': []},
-                        {'agent': 'Free', 'group': '', 'replacement': []}],
-        'factory': [{'agent': '年', 'replacement': ['九色鹿', '芳汀'], 'group': '夕'}],
-        # 会客室
-        'meeting': [{'agent': '伊内丝', 'replacement': ['陈', '红', '远山'], 'group': ''},
-                    {'agent': '见行者', 'replacement': ['陈', '红', '星极'], 'group': ''}],
+#         # 中枢
+#         'central': [{'agent': '焰尾', 'group': '红松骑士', 'replacement': [ "阿米娅","凯尔希",]},
+#                     {'agent': '琴柳', 'group': '夕', 'replacement': [ "阿米娅","凯尔希","玛恩纳"]},
+#                     {'agent': '重岳', 'group': '', 'replacement': ["玛恩纳", "清道夫", "凯尔希", "阿米娅", '坚雷']},
+#                     {'agent': '夕', 'group': '夕', 'replacement': ["阿米娅","凯尔希","玛恩纳", "清道夫", "阿米娅", '坚雷']},
+#                     {'agent': '令', 'group': '', 'replacement': ["玛恩纳", "清道夫", "凯尔希", "阿米娅", '坚雷']},
+#                     ],
+#         'contact': [{'agent': '桑葚', 'group': '', 'replacement': ['艾雅法拉']}],
+#         # 宿舍
+#         'dormitory_1': [{'agent': '流明', 'group': '', 'replacement': []},
+#                         {'agent': '闪灵', 'group': '', 'replacement': []},
+#                         {'agent': 'Free', 'group': '', 'replacement': []},
+#                         {'agent': 'Free', 'group': '', 'replacement': []},
+#                         {'agent': 'Free', 'group': '', 'replacement': []}
+#                         ],
+#         'dormitory_2': [{'agent': '杜林', 'group': '', 'replacement': []},
+#                         {'agent': '蜜莓', 'group': '', 'replacement': []},
+#                         {'agent': '褐果', 'group': '', 'replacement': []},
+#                         {'agent': 'Free', 'group': '', 'replacement': []},
+#                         {'agent': 'Free', 'group': '', 'replacement': []}
+#                         ],
+#         'dormitory_3': [{'agent': '车尔尼', 'group': '', 'replacement': []},
+#                         {'agent': '斥罪', 'group': '', 'replacement': []},
+#                         {'agent': '爱丽丝', 'group': '', 'replacement': []},
+#                         {'agent': '桃金娘', 'group': '', 'replacement': []},
+#                         {'agent': 'Free', 'group': '', 'replacement': []}
+#                         ],
+#         'dormitory_4': [{'agent': '波登可', 'group': '', 'replacement': []},
+#                         {'agent': '夜莺', 'group': '', 'replacement': []},
+#                         {'agent': '菲亚梅塔', 'group': '', 'replacement': ['重岳', '令', '乌有']},
+#                         {'agent': 'Free', 'group': '', 'replacement': []},
+#                         {'agent': 'Free', 'group': '', 'replacement': []}],
+#         'factory': [{'agent': '年', 'replacement': ['九色鹿', '芳汀'], 'group': '夕'}],
+#         # 会客室
+#         'meeting': [{'agent': '伊内丝', 'replacement': ['陈', '红', '远山'], 'group': ''},
+#                     {'agent': '见行者', 'replacement': ['陈', '红', '星极'], 'group': ''}],
         'room_1_1': [{'agent': '乌有', 'group': '', 'replacement': ['伺夜']},
                      {'agent': '空弦', 'group': '图耶', 'replacement': ['龙舌兰', '鸿雪']},
                      {'agent': '伺夜', 'group': '图耶', 'replacement': ['但书','图耶']},
                      # {'agent': '伺夜', 'group': '图耶', 'replacement': ['但书','能天使']},
                      # {'agent': '空弦', '鸿雪': '图耶', 'replacement': ['龙舌兰', '雪雉']}
                      ],
-        'room_1_2': [{'agent': '槐琥', 'group': '槐琥', 'replacement': ['贝娜']},
-                     {'agent': '砾', 'group': '槐琥', 'Type': '', 'replacement': ['泡泡']},
-                     {'agent': '至简', 'group': '槐琥', 'replacement': ['火神']}],
-        'room_1_3': [{'agent': '承曦格雷伊', 'group': '异客', 'replacement': ['炎狱炎熔', '格雷伊']}],
-        'room_2_2': [{'agent': '温蒂', 'group': '异客', 'replacement': ['火神']},
-                     # {'agent': '异客', 'group': '异客', 'Type': '', 'replacement': ['贝娜']},
-                     {'agent': '异客', 'group': '异客', 'Type': '', 'replacement': ['贝娜']},
-                     {'agent': '森蚺', 'group': '异客', 'replacement': ['泡泡']}],
-        'room_3_1': [{'agent': '稀音', 'group': '稀音', 'replacement': ['贝娜']},
-                     {'agent': '帕拉斯', 'group': '稀音', 'Type': '', 'replacement': ['泡泡']},
-                     {'agent': '红云', 'group': '稀音', 'replacement': ['火神']}],
-        'room_2_3': [{'agent': '澄闪', 'group': '澄闪', 'replacement': ['炎狱炎熔', '格雷伊']}],
-        'room_2_1': [{'agent': '食铁兽', 'group': '食铁兽', 'replacement': ['泡泡']},
-                     {'agent': '断罪者', 'group': '食铁兽', 'replacement': ['火神']},
-                     {'agent': '截云', 'group': '夕', 'replacement': ['迷迭香']}],
-        'room_3_2': [{'agent': '灰毫', 'group': '红松骑士', 'replacement': ['贝娜']},
-                     {'agent': '远牙', 'group': '红松骑士', 'Type': '', 'replacement': ['泡泡']},
-                     {'agent': '野鬃', 'group': '红松骑士', 'replacement': ['火神']}],
-        'room_3_3': [{'agent': '雷蛇', 'group': '澄闪', 'replacement': ['炎狱炎熔', '格雷伊']}]
+#         'room_1_2': [{'agent': '槐琥', 'group': '槐琥', 'replacement': ['贝娜']},
+#                      {'agent': '砾', 'group': '槐琥', 'Type': '', 'replacement': ['泡泡']},
+#                      {'agent': '至简', 'group': '槐琥', 'replacement': ['火神']}],
+#         'room_1_3': [{'agent': '承曦格雷伊', 'group': '异客', 'replacement': ['炎狱炎熔', '格雷伊']}],
+#         'room_2_2': [{'agent': '温蒂', 'group': '异客', 'replacement': ['火神']},
+#                      # {'agent': '异客', 'group': '异客', 'Type': '', 'replacement': ['贝娜']},
+#                      {'agent': '异客', 'group': '异客', 'Type': '', 'replacement': ['贝娜']},
+#                      {'agent': '森蚺', 'group': '异客', 'replacement': ['泡泡']}],
+#         'room_3_1': [{'agent': '稀音', 'group': '稀音', 'replacement': ['贝娜']},
+#                      {'agent': '帕拉斯', 'group': '稀音', 'Type': '', 'replacement': ['泡泡']},
+#                      {'agent': '红云', 'group': '稀音', 'replacement': ['火神']}],
+#         'room_2_3': [{'agent': '澄闪', 'group': '澄闪', 'replacement': ['炎狱炎熔', '格雷伊']}],
+#         'room_2_1': [{'agent': '食铁兽', 'group': '食铁兽', 'replacement': ['泡泡']},
+#                      {'agent': '断罪者', 'group': '食铁兽', 'replacement': ['火神']},
+#                      {'agent': '截云', 'group': '夕', 'replacement': ['迷迭香']}],
+#         'room_3_2': [{'agent': '灰毫', 'group': '红松骑士', 'replacement': ['贝娜']},
+#                      {'agent': '远牙', 'group': '红松骑士', 'Type': '', 'replacement': ['泡泡']},
+#                      {'agent': '野鬃', 'group': '红松骑士', 'replacement': ['火神']}],
+#         'room_3_3': [{'agent': '雷蛇', 'group': '澄闪', 'replacement': ['炎狱炎熔', '格雷伊']}]
     }
 }
 
@@ -258,7 +259,7 @@ def inialize(tasks, scheduler=None):
         base_scheduler.max_resting_count = 4
         base_scheduler.tasks = tasks
         # 读取心情开关，有菲亚梅塔或者希望全自动换班得设置为 true
-        base_scheduler.read_mood = True
+        base_scheduler.read_mood = False    # True
         base_scheduler.last_room = ''
         base_scheduler.free_blacklist = free_blacklist
         base_scheduler.resting_treshhold = resting_treshhold
@@ -267,11 +268,14 @@ def inialize(tasks, scheduler=None):
         base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
         base_scheduler.maa_config = maa_config
         base_scheduler.error = False
-        base_scheduler.drone_count_limit = 92  # 无人机高于于该值时才使用
+        base_scheduler.drone_count_limit = 300  # 无人机高于于该值时才使用
+        base_scheduler.用于拉开订单时间差距的无人机数量 = 3
         base_scheduler.drone_room = drone_room
         base_scheduler.drone_execution_gap = drone_execution_gap
         base_scheduler.agent_base_config = agent_base_config
-        base_scheduler.run_order_delay = 10  # 跑单提前10分钟运行
+        base_scheduler.跑单提前运行时间 = 150  # 秒
+        base_scheduler.更换干员前缓冲时间 = 25  # 秒 需要严格大于一次跟服务器交换数据的时间
+        base_scheduler.截图缓冲时间 = 2  # 秒
         base_scheduler.reload_room = reload_room
         return base_scheduler
     else:
@@ -280,24 +284,24 @@ def inialize(tasks, scheduler=None):
         scheduler.handle_error(True)
         return scheduler
 
-def save_state():
-    with open(state_file_name, 'w') as f:
-        if base_scheduler is not None and base_scheduler.op_data is not None:
-            json.dump(vars(base_scheduler.op_data), f, default=str)
+# def save_state():
+#     with open(state_file_name, 'w') as f:
+#         if base_scheduler is not None and base_scheduler.op_data is not None:
+#             json.dump(vars(base_scheduler.op_data), f, default=str)
 
-def load_state():
-    if not os.path.exists(state_file_name):
-        return None
+# def load_state():
+#     if not os.path.exists(state_file_name):
+#         return None
 
-    with open(state_file_name, 'r') as f:
-        state = json.load(f)
-    operators = {k: eval(v) for k, v in state['operators'].items()}
-    for k, v in operators.items():
-        if not v.time_stamp == 'None':
-            v.time_stamp = datetime.strptime(v.time_stamp, '%Y-%m-%d %H:%M:%S.%f')
-        else:
-            v.time_stamp = None
-    return operators
+#     with open(state_file_name, 'r') as f:
+#         state = json.load(f)
+#     operators = {k: eval(v) for k, v in state['operators'].items()}
+#     for k, v in operators.items():
+#         if not v.time_stamp == 'None':
+#             v.time_stamp = datetime.strptime(v.time_stamp, '%Y-%m-%d %H:%M:%S.%f')
+#         else:
+#             v.time_stamp = None
+#     return operators
 
 
 def simulate():
@@ -306,40 +310,58 @@ def simulate():
     '''
     global ope_list, base_scheduler
     # 第一次执行任务
-    taskstr = "SchedulerTask(time='2023-06-11 21:39:15.108665',task_plan={'room_3_2': ['Current', '但书', '龙舌兰']},task_type='room_3_2',meta_flag=False)||SchedulerTask(time='2023-06-11 21:44:48.187074',task_plan={'room_2_1': ['砾', '槐琥', '斑点']},task_type='dorm0,dorm1,dorm2',meta_flag=False)||SchedulerTask(time='2023-06-11 22:17:53.720905',task_plan={'room_1_1': ['Current', '龙舌兰', '但书']},task_type='room_1_1',meta_flag=False)||SchedulerTask(time='2023-06-11 23:02:10.469026',task_plan={'meeting': ['Current', '见行者']},task_type='dorm3',meta_flag=False)||SchedulerTask(time='2023-06-11 23:22:15.236154',task_plan={},task_type='菲亚梅塔',meta_flag=False)||SchedulerTask(time='2023-06-12 11:25:55.925731',task_plan={},task_type='impart',meta_flag=False)||SchedulerTask(time='2023-06-12 11:25:55.926731',task_plan={},task_type='maa_Mall',meta_flag=False)"
-    tasks = [eval(t) for t in taskstr.split("||")]
+#     taskstr = "SchedulerTask(time='2023-06-11 21:39:15.108665',task_plan={'room_3_2': ['Current', '但书', '龙舌兰']},task_type='room_3_2',meta_flag=False)||SchedulerTask(time='2023-06-11 21:44:48.187074',task_plan={'room_2_1': ['砾', '槐琥', '斑点']},task_type='dorm0,dorm1,dorm2',meta_flag=False)||SchedulerTask(time='2023-06-11 22:17:53.720905',task_plan={'room_1_1': ['Current', '龙舌兰', '但书']},task_type='room_1_1',meta_flag=False)||SchedulerTask(time='2023-06-11 23:02:10.469026',task_plan={'meeting': ['Current', '见行者']},task_type='dorm3',meta_flag=False)||SchedulerTask(time='2023-06-11 23:22:15.236154',task_plan={},task_type='菲亚梅塔',meta_flag=False)||SchedulerTask(time='2023-06-12 11:25:55.925731',task_plan={},task_type='impart',meta_flag=False)||SchedulerTask(time='2023-06-12 11:25:55.926731',task_plan={},task_type='maa_Mall',meta_flag=False)"
+    tasks = []
     for t in tasks:
         t.time = datetime.strptime(t.time, '%Y-%m-%d %H:%M:%S.%f')
     reconnect_max_tries = 10
     reconnect_tries = 0
     base_scheduler = inialize(tasks)
     validation_msg = base_scheduler.initialize_operators()
-    if validation_msg is not None:
-        logger.error(validation_msg)
-        return
-    _loaded_operators = load_state()
-    if _loaded_operators is not None:
-        for k, v in _loaded_operators.items():
-            if k in base_scheduler.op_data.operators and not base_scheduler.op_data.operators[k].room.startswith(
-                    "dorm"):
-                # 只复制心情数据
-                base_scheduler.op_data.operators[k].mood = v.mood
-                base_scheduler.op_data.operators[k].time_stamp = v.time_stamp
-                base_scheduler.op_data.operators[k].depletion_rate = v.depletion_rate
-                base_scheduler.op_data.operators[k].current_room = v.current_room
-                base_scheduler.op_data.operators[k].current_index = v.current_index
+#     if validation_msg is not None:
+#         logger.error(validation_msg)
+#         return
+#     _loaded_operators = load_state()
+#     if _loaded_operators is not None:
+#         for k, v in _loaded_operators.items():
+#             if k in base_scheduler.op_data.operators and not base_scheduler.op_data.operators[k].room.startswith(
+#                     "dorm"):
+#                 # 只复制心情数据
+#                 base_scheduler.op_data.operators[k].mood = v.mood
+#                 base_scheduler.op_data.operators[k].time_stamp = v.time_stamp
+#                 base_scheduler.op_data.operators[k].depletion_rate = v.depletion_rate
+#                 base_scheduler.op_data.operators[k].current_room = v.current_room
+#                 base_scheduler.op_data.operators[k].current_index = v.current_index
     while True:
         try:
             if len(base_scheduler.tasks) > 0:
                 (base_scheduler.tasks.sort(key=lambda x: x.time, reverse=False))
+                # 如果还没到跑单时间，那么输出开始跑单时间
+                if (base_scheduler.tasks[0].time - datetime.now()).total_seconds() > 0:
+                    for i in range(len(tasks)):
+                        logger.warning(tasks[i].type + ' 开始跑单的时间为：' + tasks[i].time.strftime("%H:%M:%S"))
+                # 如果前两个跑单任务之间时间间隔小于150秒，则通过无人机加速拉开订单间的时间差距
+                if len(tasks) > 1 and  (tasks[1].time - tasks[0].time).total_seconds() < 150:
+                    logger.warning("无人机加速拉开订单间的时间差距")
+                    base_scheduler.drone(tasks[0].type, True, True)
+                    # 返回基建主界面
+                    base_scheduler.recog.update()
+                    while base_scheduler.get_infra_scene() != Scene.INFRA_MAIN:
+                        base_scheduler.back()
+                        base_scheduler.recog.update()
+                    simulate()  # 拉开订单间的时间差距后重新读取订单时间
                 sleep_time = (base_scheduler.tasks[0].time - datetime.now()).total_seconds()
-                logger.info('||'.join([str(t) for t in base_scheduler.tasks]))
+                # 如果任务间隔时间超过5分钟则关闭游戏
+                if sleep_time > 300:
+                    base_scheduler.device.exit(base_scheduler.package_name)
                 base_scheduler.send_email()
-                # 如果任务间隔时间超过9分钟则启动MAA
-                if sleep_time > 540:
-                    base_scheduler.maa_plan_solver()
-                elif sleep_time > 0:
+                if sleep_time > 0:
                     time.sleep(sleep_time)
+#                 # 如果任务间隔时间超过9分钟则启动MAA
+#                 if sleep_time > 540:
+#                     base_scheduler.maa_plan_solver()
+#                 elif sleep_time > 0:
+#                     time.sleep(sleep_time)
             if len(base_scheduler.tasks) > 0 and base_scheduler.tasks[0].type.split('_')[0] == 'maa':
                 base_scheduler.maa_plan_solver((base_scheduler.tasks[0].type.split('_')[1]).split(','), one_time=True)
                 continue
@@ -371,6 +393,6 @@ def simulate():
 
 
 # debuglog()
-atexit.register(save_state)
+# atexit.register(save_state)
 savelog()
 simulate()
