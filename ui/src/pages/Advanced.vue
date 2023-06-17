@@ -9,7 +9,6 @@ const plan_store = usePlanStore()
 
 const {
   run_mode,
-  enable_party,
   run_order_delay,
   drone_room,
   drone_count_limit,
@@ -59,19 +58,6 @@ const facility_with_empty = computed(() => {
                 <n-radio :value="'1'">感知信息</n-radio>
                 <n-radio :value="'2'">人间烟火</n-radio>
                 <n-radio :value="'3'">均衡模式</n-radio>
-              </n-space>
-            </n-radio-group>
-          </td>
-          <td></td>
-          <td></td>
-        </tr>
-        <tr>
-          <td>线索收集：</td>
-          <td colspan="3">
-            <n-radio-group v-model:value="enable_party">
-              <n-space>
-                <n-radio :value="true">启用</n-radio>
-                <n-radio :value="false">禁用</n-radio>
               </n-space>
             </n-radio-group>
           </td>

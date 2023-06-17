@@ -23,7 +23,6 @@ const {
   maa_recruit_only_4
 } = storeToRefs(store)
 
-const { shop_list } = store
 const sss_option = ref([
   { label: '约翰老妈新建地块', value: 1 },
   { label: '雷神工业测试平台', value: 2 }
@@ -46,6 +45,7 @@ function selectTab(tab) {
   <div class="home-container external-container">
     <email />
     <maa-basic />
+    <clue />
     <maa-weekly />
     <n-card v-if="true">
       <template #header>
@@ -61,22 +61,6 @@ function selectTab(tab) {
             </td>
             <td colspan="4">
               <n-checkbox v-model:checked="maa_recruit_only_4">仅公招四星</n-checkbox>
-            </td>
-          </tr>
-          <tr>
-            <td class="table-space maa-mall">信用商店 优先购买</td>
-            <td colspan="2">
-              <n-select multiple filterable tag :options="shop_list" v-model:value="maa_mall_buy" />
-            </td>
-            <td class="table-space maa-mall">信用商店 黑名单</td>
-            <td colspan="2">
-              <n-select
-                multiple
-                filterable
-                tag
-                :options="shop_list"
-                v-model:value="maa_mall_blacklist"
-              />
             </td>
           </tr>
           <tr>
