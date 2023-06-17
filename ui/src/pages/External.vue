@@ -10,7 +10,6 @@ const store = useConfigStore()
 const maa_add_task = ref('禁用')
 
 const {
-  maa_enable,
   maa_path,
   maa_rg_enable,
   sleep_min,
@@ -47,11 +46,10 @@ function selectTab(tab) {
   <div class="home-container external-container">
     <email />
     <maa-basic />
+    <maa-weekly />
     <n-card v-if="true">
       <template #header>
-        <n-checkbox v-model:checked="maa_enable">
-          <div class="card-title">MAA</div>
-        </n-checkbox>
+        <div class="card-title">MAA</div>
       </template>
       <template #default>
         <table class="maa-table">
@@ -158,7 +156,6 @@ function selectTab(tab) {
             </div>
           </div>
         </div>
-        <maa-weekly />
       </template>
     </n-card>
   </div>
@@ -166,7 +163,7 @@ function selectTab(tab) {
 
 <style scoped>
 .external-container {
-  width: 570px;
+  width: 600px;
   margin: 0 auto;
 }
 
