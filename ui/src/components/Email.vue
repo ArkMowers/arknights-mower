@@ -97,4 +97,9 @@ const { mail_enable, account, pass_code } = storeToRefs(store)
 p {
   margin: 0 0 10px 0;
 }
+
+.card-title {
+  font-weight: 500;
+  font-size: 16px;
+}
 </style>

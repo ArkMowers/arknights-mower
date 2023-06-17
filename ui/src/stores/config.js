@@ -63,8 +63,10 @@ export const useConfigStore = defineStore('config', () => {
     run_mode.value = response.data.run_mode == 2 ? 'orders_only' : 'full'
     run_order_delay.value = response.data.run_order_delay.toString()
     start_automatically.value = response.data.start_automatically
-    maa_mall_buy.value = response.data.maa_mall_buy == '' ? [] : response.data.maa_mall_buy.split(',')
-    maa_mall_blacklist.value = response.data.maa_mall_blacklist == '' ? [] : response.data.maa_mall_blacklist.split(',')
+    maa_mall_buy.value =
+      response.data.maa_mall_buy == '' ? [] : response.data.maa_mall_buy.split(',')
+    maa_mall_blacklist.value =
+      response.data.maa_mall_blacklist == '' ? [] : response.data.maa_mall_blacklist.split(',')
     maa_gap.value = response.data.maa_gap
     maa_recruitment_time.value = response.data.maa_recruitment_time
     maa_recruit_only_4.value = response.data.maa_recruit_only_4

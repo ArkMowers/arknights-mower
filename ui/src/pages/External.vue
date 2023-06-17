@@ -1,8 +1,7 @@
 <script setup>
 import { useConfigStore } from '@/stores/config'
 import { storeToRefs } from 'pinia'
-import { inject } from 'vue'
-import { ref } from 'vue'
+import { inject, ref } from 'vue'
 
 const axios = inject('axios')
 
@@ -13,7 +12,6 @@ const maa_add_task = ref('禁用')
 const {
   maa_enable,
   maa_path,
-  maa_adb_path,
   maa_rg_enable,
   sleep_min,
   sleep_max,
@@ -22,7 +20,6 @@ const {
   copilot_loop_times,
   maa_mall_buy,
   maa_mall_blacklist,
-  maa_gap,
   maa_recruitment_time,
   maa_recruit_only_4
 } = storeToRefs(store)
@@ -41,14 +38,6 @@ async function select_maa_dir() {
   }
 }
 
-async function select_maa_adb_path() {
-  const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/dialog/file`)
-  const file_path = response.data
-  if (file_path) {
-    maa_adb_path.value = file_path
-  }
-}
-
 function selectTab(tab) {
   maa_add_task.value = tab
 }
@@ -57,7 +46,8 @@ function selectTab(tab) {
 <template>
   <div class="home-container external-container">
     <email />
-    <n-card>
+    <maa-basic />
+    <n-card v-if="true">
       <template #header>
         <n-checkbox v-model:checked="maa_enable">
           <div class="card-title">MAA</div>
@@ -66,24 +56,6 @@ function selectTab(tab) {
       <template #default>
         <table class="maa-table">
           <tr>
-            <td class="table-space maa-table-label">MAA目录</td>
-            <td class="input-td"><n-input v-model:value="maa_path"></n-input></td>
-            <td class="table-space">
-              <n-button @click="select_maa_dir">...</n-button>
-            </td>
-          </tr>
-          <tr>
-            <td class="table-space">adb地址</td>
-            <td><n-input v-model:value="maa_adb_path"></n-input></td>
-            <td>
-              <n-button @click="select_maa_adb_path">...</n-button>
-            </td>
-          </tr>
-          <tr>
-            <td>MAA启动间隔(小时)：</td>
-            <td>
-              <n-input-number v-model:value="maa_gap"></n-input-number>
-            </td>
             <td colspan="4">
               <n-checkbox v-model:checked="maa_recruitment_time"
                 >公招三星设置7:40而非9:00</n-checkbox
@@ -194,7 +166,7 @@ function selectTab(tab) {
 
 <style scoped>
 .external-container {
-  max-width: 600px;
+  width: 570px;
   margin: 0 auto;
 }
 
@@ -221,11 +193,6 @@ function selectTab(tab) {
 
 .tab-content {
   margin-top: 16px;
-}
-
-.card-title {
-  font-weight: 500;
-  font-size: 16px;
 }
 
 .maa-table {
