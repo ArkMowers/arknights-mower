@@ -40,9 +40,17 @@ class Operators(object):
                     return f'Free只能安排在宿舍 房间->{room}, 干员->{data["agent"]}'
                 self.add(Operator(data["agent"], room, idx, data["group"], data["replacement"], 'high',
                                   operator_type="high"))
+        missing_replacements = []
         for room in self.plan.keys():
             for idx, data in enumerate(self.plan[room]):
                 # 菲亚梅塔替换组做特例判断
+                if "龙舌兰" in data["replacement"] and "但书" in data["replacement"]:
+                    return f'替换组不可同时安排龙舌兰和但书 房间->{room}, 干员->{data["agent"]}'
+                r_count = len(data["replacement"])
+                if "龙舌兰" in data["replacement"] or "但书" in data["replacement"]:
+                    r_count -= 1
+                if r_count <= 0 and data['agent'] != 'Free' and (not room.startswith("dorm")):
+                    missing_replacements.append(data["agent"])
                 for _replacement in data["replacement"]:
                     if _replacement not in agent_list and data['agent']!='Free':
                         return f'干员名输入错误: 房间->{room}, 干员->{_replacement}'
@@ -58,6 +66,14 @@ class Operators(object):
                             return f'菲亚梅塔替换只能高效组干员: 房间->{room}, 干员->{_replacement}'
                         if _replacement in self.operators and self.operators[_replacement].group != '':
                             return f'菲亚梅塔替换不可分组: 房间->{room}, 干员->{_replacement}'
+        # 判定替换缺失
+        if "菲亚梅塔" in missing_replacements:
+            return f'菲亚梅塔替换缺失'
+        for _agent in missing_replacements[:]:
+            if _agent in self.operators['菲亚梅塔'].replacement[:-1]:
+                missing_replacements.remove(_agent)
+        if len(missing_replacements):
+            return f'以下干员替换组缺失：{",".join(missing_replacements)}'
         dorm_names = [k for k in self.plan.keys() if k.startswith("dorm")]
         dorm_names.sort(key=lambda d: d, reverse=False)
         added = []
@@ -98,13 +114,19 @@ class Operators(object):
         for key in self.groups:
             high_count = 0
             low_count = 0
+            _replacement =[]
             for name in self.groups[key]:
+                _candidate = next((r for r in self.operators[name].replacement if r not in _replacement and r not in ['龙舌兰','但书']), None)
+                if _candidate is None:
+                    return f'{key} 分组无法排班,替换组数量不够'
+                else:
+                    _replacement.append(_candidate)
                 if self.operators[name].resting_priority == 'high':
                     high_count += 1
                 else:
                     low_count += 1
             if high_count > current_high or low_count > current_low:
-                return f'该 {key} 分组无法排班,可用VIPFree{current_high},剩余Free{current_low}->分组实用VIP{high_count},剩余Free{low_count}'
+                return f'{key} 分组无法排班,可用VIPFree{current_high},剩余Free{current_low}->分组实用VIP{high_count},剩余Free{low_count}'
 
     def get_current_room(self, room, bypass=False):
         room_data = {v.current_index: v for k, v in self.operators.items() if v.current_room == room}
