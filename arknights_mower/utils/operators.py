@@ -42,6 +42,8 @@ class Operators(object):
                                   operator_type="high"))
         missing_replacements = []
         for room in self.plan.keys():
+            if room.startswith("dorm") and len(self.plan[room]) != 5:
+                return f'宿舍 {room} 人数少于5人'
             for idx, data in enumerate(self.plan[room]):
                 # 菲亚梅塔替换组做特例判断
                 if "龙舌兰" in data["replacement"] and "但书" in data["replacement"]:
