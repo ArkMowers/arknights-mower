@@ -16,9 +16,7 @@ const {
   sleep_max,
   sss_type,
   copilot_file_location,
-  copilot_loop_times,
-  maa_recruitment_time,
-  maa_recruit_only_4
+  copilot_loop_times
 } = storeToRefs(store)
 
 const sss_option = ref([
@@ -44,6 +42,7 @@ function selectTab(tab) {
     <email />
     <maa-basic />
     <clue />
+    <maa-recruit />
     <maa-weekly />
     <n-card v-if="true">
       <template #header>
@@ -51,16 +50,6 @@ function selectTab(tab) {
       </template>
       <template #default>
         <table class="maa-table">
-          <tr>
-            <td colspan="4">
-              <n-checkbox v-model:checked="maa_recruitment_time"
-                >公招三星设置7:40而非9:00</n-checkbox
-              >
-            </td>
-            <td colspan="4">
-              <n-checkbox v-model:checked="maa_recruit_only_4">仅公招四星</n-checkbox>
-            </td>
-          </tr>
           <tr>
             <td class="table-space">肉鸽：</td>
             <td colspan="3">
