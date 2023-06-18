@@ -17,6 +17,7 @@ jobs:
         with:
           repository: ArkMowers/mower-ui
           path: mower-ui
+          ref: ${{github.ref_name}}
 
       - name: download source
         uses: actions/checkout@v3
