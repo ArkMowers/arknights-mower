@@ -46,19 +46,17 @@ function render_label(option) {
       </n-checkbox>
     </template>
     <p>开启线索收集后，将调用Maa进行信用商店购物。</p>
-    <n-h4>信用商店购物设置</n-h4>
-    <p>信用商店购物逻辑：</p>
+    <n-h4>信用商店购物逻辑</n-h4>
     <ol>
       <li>首先购买“优先购买”物品；</li>
-      <li>再购买“黑名单”以外的物品；</li>
-      <li>
-        信用溢出时：
-        <n-radio-group v-model:value="ignore_blacklist">
-          <n-radio value="false">停止购买</n-radio>
-          <n-radio value="true">无视黑名单继续购买，直至不再溢出</n-radio>
-        </n-radio-group>
-      </li>
+      <li>再购买“黑名单”以外的物品。</li>
     </ol>
+    <n-h4>信用溢出时的购物设置</n-h4>
+    <n-radio-group v-model:value="ignore_blacklist" class="ignore-blacklist">
+      <n-radio value="false">停止购买</n-radio>
+      <n-radio value="true">无视黑名单继续购买，直至不再溢出</n-radio>
+    </n-radio-group>
+    <n-h4>优先购买物品与黑名单物品</n-h4>
     <p>
       信用商店性价比可参考<n-button
         text
@@ -109,7 +107,7 @@ function render_label(option) {
 }
 
 p {
-  margin: 0 0 6px 0;
+  margin: 0 0 8px 0;
 }
 
 h4 {
@@ -129,5 +127,11 @@ td {
   &:nth-child(1) {
     width: 60px;
   }
+}
+
+.ignore-blacklist {
+  margin-bottom: 10px;
+  display: flex;
+  gap: 12px;
 }
 </style>

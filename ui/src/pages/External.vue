@@ -17,8 +17,6 @@ const {
   sss_type,
   copilot_file_location,
   copilot_loop_times,
-  maa_mall_buy,
-  maa_mall_blacklist,
   maa_recruitment_time,
   maa_recruit_only_4
 } = storeToRefs(store)
