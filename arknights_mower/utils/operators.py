@@ -30,7 +30,7 @@ class Operators(object):
     def init_and_validate(self):
         for room in self.plan.keys():
             for idx, data in enumerate(self.plan[room]):
-                if data["agent"] not in agent_list and data['agent']!='Free':
+                if data["agent"] not in agent_list and data['agent'] != 'Free':
                     return f'干员名输入错误: 房间->{room}, 干员->{data["agent"]}'
                 if data["agent"] in ['龙舌兰', '但书']:
                     return f'高效组不可用龙舌兰，但书 房间->{room}, 干员->{data["agent"]}'
@@ -56,7 +56,7 @@ class Operators(object):
                 if r_count <= 0 and data['agent'] != 'Free' and (not room.startswith("dorm")):
                     missing_replacements.append(data["agent"])
                 for _replacement in data["replacement"]:
-                    if _replacement not in agent_list and data['agent']!='Free':
+                    if _replacement not in agent_list and data['agent'] != 'Free':
                         return f'干员名输入错误: 房间->{room}, 干员->{_replacement}'
                     if data["agent"] != '菲亚梅塔':
                         # 普通替换
@@ -104,6 +104,8 @@ class Operators(object):
                 if _dorm['agent'] == 'Free' and (dorm + str(_idx)) not in added:
                     self.dorm.append(Dormitory((dorm, _idx)))
                     added.append(dorm + str(_idx))
+        if len(self.dorm) < self.max_resting_count:
+            return f'宿舍Free总数 {len(self.dorm)}小于最大分组数 {self.max_resting_count}'
         # low_free 的排序
         self.dorm[self.max_resting_count:len(self.dorm)] = sorted(
             self.dorm[self.max_resting_count:len(self.dorm)],
@@ -119,9 +121,11 @@ class Operators(object):
         for key in self.groups:
             high_count = 0
             low_count = 0
-            _replacement =[]
+            _replacement = []
             for name in self.groups[key]:
-                _candidate = next((r for r in self.operators[name].replacement if r not in _replacement and r not in ['龙舌兰','但书']), None)
+                _candidate = next(
+                    (r for r in self.operators[name].replacement if r not in _replacement and r not in ['龙舌兰', '但书']),
+                    None)
                 if _candidate is None:
                     return f'{key} 分组无法排班,替换组数量不够'
                 else:
@@ -131,7 +135,7 @@ class Operators(object):
                 else:
                     low_count += 1
             if high_count > current_high or low_count > current_low:
-                return f'{key} 分组无法排班,可用VIPFree{current_high},剩余Free{current_low}->分组实用VIP{high_count},剩余Free{low_count}'
+                return f'{key} 分组无法排班,宿舍可用高优先{current_high},低优先{current_low}->分组需要高优先{high_count},低优先{low_count}'
 
     def get_current_room(self, room, bypass=False):
         room_data = {v.current_index: v for k, v in self.operators.items() if v.current_room == room}
@@ -279,6 +283,8 @@ class Operators(object):
                     idx += 1
         else:
             idx = -1
+            if count - len(self.dorm) == 0:
+                return 0
             while idx < 0:
                 dorm = self.dorm[idx]
                 if dorm.name == '' or (dorm.name in self.operators.keys() and not self.operators[dorm.name].is_high()):
