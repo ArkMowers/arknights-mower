@@ -286,7 +286,7 @@ class Recognizer(object):
         :param thres: 是否在匹配前对图像进行二值化处理
         :param judge: 是否加入更加精确的判断
         :param strict: 是否启用严格模式，未找到时报错
-        :param strict: 是否启用分数限制，有些图片精确识别需要提高分数阈值
+        :param score: 是否启用分数限制，有些图片精确识别需要提高分数阈值
 
         :return ret: 若匹配成功，则返回元素在游戏界面中出现的位置，否则返回 None
         """
