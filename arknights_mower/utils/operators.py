@@ -48,6 +48,8 @@ class Operators(object):
                 # 菲亚梅塔替换组做特例判断
                 if "龙舌兰" in data["replacement"] and "但书" in data["replacement"]:
                     return f'替换组不可同时安排龙舌兰和但书 房间->{room}, 干员->{data["agent"]}'
+                if "菲亚梅塔" in data["replacement"]:
+                    return f'替换组不可安排菲亚梅塔 房间->{room}, 干员->{data["agent"]}'
                 r_count = len(data["replacement"])
                 if "龙舌兰" in data["replacement"] or "但书" in data["replacement"]:
                     r_count -= 1
@@ -71,9 +73,10 @@ class Operators(object):
         # 判定替换缺失
         if "菲亚梅塔" in missing_replacements:
             return f'菲亚梅塔替换缺失'
-        for _agent in missing_replacements[:]:
-            if _agent in self.operators['菲亚梅塔'].replacement[:-1]:
-                missing_replacements.remove(_agent)
+        if '菲亚梅塔' in self.operators:
+            for _agent in missing_replacements[:]:
+                if _agent in self.operators['菲亚梅塔'].replacement[:-1]:
+                    missing_replacements.remove(_agent)
         if len(missing_replacements):
             return f'以下干员替换组缺失：{",".join(missing_replacements)}'
         dorm_names = [k for k in self.plan.keys() if k.startswith("dorm")]
