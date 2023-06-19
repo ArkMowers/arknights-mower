@@ -709,6 +709,23 @@ class BaseSchedulerSolver(BaseSolver):
             success = False
         if not success:
             _high, _low = 0, 0
+        else:
+            # 如果组内心情人差距过大，则报错
+            low_mood = 24
+            high_mood = 0
+            for agent in agents:
+                x = self.op_data.operators[agent]
+                if x.resting_priority == 'high' and not x.workaholic:
+                    if x.current_mood() < low_mood:
+                        low_mood = x.current_mood() + 0
+                    if x.current_mood() > high_mood:
+                        high_mood = x.current_mood() + 0
+            logger.debug(f'低心情：{low_mood}')
+            logger.debug(f'高心情：{high_mood}')
+            if low_mood + 4 <= high_mood:
+                msg = f'同组干员最低与最高心情差值大于4，请注意！'
+                logger.warning(msg)
+                self.send_email(msg)
         return exist_replacement, plan, high_free - _high, low_free - _low
 
     def initialize_operators(self):
