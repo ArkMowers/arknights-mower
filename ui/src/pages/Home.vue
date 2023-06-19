@@ -38,7 +38,7 @@ watch(log, (new_log, old_log) => {
 })
 
 onMounted(() => {
-  scroll_log()
+  scroll_last_line()
 })
 
 function start() {
