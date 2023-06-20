@@ -133,6 +133,7 @@ def start():
     global plan
     global mower_process
     global operators
+    global log_lines
 
     if mower_process is not None:
         return "Mower is already running."
@@ -151,6 +152,8 @@ def start():
     mower_process.start()
 
     Thread(target=read_log, args=(read,)).start()
+
+    log_lines = []
 
     return "Mower started."
 
