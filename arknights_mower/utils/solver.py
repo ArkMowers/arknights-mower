@@ -185,7 +185,7 @@ class BaseSolver:
         while retry_times and not self.is_login():
             try:
                 if self.scene() == Scene.LOGIN_START:
-                    self.tap((self.recog.w // 2, self.recog.h // 2))
+                    self.tap((self.recog.w // 2, self.recog.h - 10), 3)
                 elif self.scene() == Scene.LOGIN_NEW:
                     self.tap(self.find('login_new',score=0.8))
                 elif self.scene() == Scene.LOGIN_QUICKLY:
