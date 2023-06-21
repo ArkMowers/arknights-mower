@@ -26,6 +26,7 @@ class BaseSolver:
         self.device = device if device is not None else Device()
         self.recog = recog if recog is not None else Recognizer(self.device)
         self.device.check_current_focus()
+        self.recog.update()
 
     def run(self)-> None:
         retry_times = config.MAX_RETRYTIME
