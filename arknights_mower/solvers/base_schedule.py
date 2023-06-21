@@ -257,7 +257,8 @@ class BaseSchedulerSolver(BaseSolver):
             print(last_candidate)
             name = candidate_lst[0].name
             # 只有主要充能干员心情在20以上才会考虑额外干员
-            if (plan_last or candidate_lst[0].current_mood() >= 20) and not last_candidate.current_room.startswith("dorm"):
+            if (plan_last or candidate_lst[0].current_mood() >= 20) and not last_candidate.current_room.startswith(
+                    "dorm"):
                 mood = last_candidate.current_mood()
                 is_lowest = mood < candidate_lst[0].current_mood()
                 logger.debug(f'{last_candidate.name},mood:{mood}')
@@ -282,7 +283,8 @@ class BaseSchedulerSolver(BaseSolver):
             v for k, v in self.op_data.operators.items() if
             v.is_high() and not v.room.startswith('dorm') and not v.current_room.startswith('dorm'))
         self.total_agent.sort(key=lambda x: x.current_mood() - x.lower_limit, reverse=False)
-        if next((a for a in self.total_agent if (a.name not in self.op_data.exhaust_agent) and not a.workaholic and a.current_mood() <= 3),
+        if next((a for a in self.total_agent if
+                 (a.name not in self.op_data.exhaust_agent) and not a.workaholic and a.current_mood() <= 3),
                 None) is not None:
             short_rest = True
         low_priority = []
@@ -613,11 +615,12 @@ class BaseSchedulerSolver(BaseSolver):
                                 self.enter_room(op.current_room)
                                 result = self.get_agent_from_room(op.current_room, [op.current_index])
                                 _time = datetime.now()
-                                if result[op.current_index]['time'] is not None and result[op.current_index]['time']>_time:
+                                if result[op.current_index]['time'] is not None and result[op.current_index][
+                                    'time'] > _time:
                                     _time = result[op.current_index]['time'] - timedelta(minutes=10)
                                 elif op.current_mood() != 0.0:
                                     _time = datetime.now() + timedelta(
-                                        hours=op.current_mood() / op.depletion_rate) - timedelta(minutes=10)
+                                        hours=(op.current_mood()-0.25) / op.depletion_rate) - timedelta(minutes=10)
                                 self.back()
                                 # plan 是空的是因为得动态生成
                                 exhaust_type = op.name
@@ -716,10 +719,11 @@ class BaseSchedulerSolver(BaseSolver):
             for agent in agents:
                 x = self.op_data.operators[agent]
                 if x.resting_priority == 'high' and not x.workaholic:
-                    if x.current_mood() < low_mood:
-                        low_mood = x.current_mood() + 0
-                    if x.current_mood() > high_mood:
-                        high_mood = x.current_mood() + 0
+                    mood = 24 - x.upper_limit + x.current_mood()
+                    if mood < low_mood:
+                        low_mood = mood + 0
+                    if mood > high_mood:
+                        high_mood = mood + 0
             logger.debug(f'低心情：{low_mood}')
             logger.debug(f'高心情：{high_mood}')
             if low_mood + 4 <= high_mood:
@@ -990,8 +994,9 @@ class BaseSchedulerSolver(BaseSolver):
                 last_ori = ori_results[len(ori_results) - 1]
                 if len(ori_results) == 3:
                     # 下滑选择最后一个 优先赠送线索
-                    for swiptimes in range(1,3):
-                        self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, -self.recog.h * 0.45),duration=500,rebuild=False)
+                    for swiptimes in range(1, 3):
+                        self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, -self.recog.h * 0.45), duration=500,
+                                   rebuild=False)
                     self.recog.update()
                 logger.info(f"放置线索{i}")
                 self.place_clue(last_ori)
@@ -1516,7 +1521,8 @@ class BaseSchedulerSolver(BaseSolver):
             self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
             error_count += 1
         length = len(self.current_plan[room])
-        if length > 3: self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, self.recog.h * 0.45),duration=500, interval=1,
+        if length > 3: self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, self.recog.h * 0.45), duration=500,
+                                  interval=1,
                                   rebuild=True)
         name_p = [((1460, 155), (1700, 210)), ((1460, 370), (1700, 420)), ((1460, 585), (1700, 630)),
                   ((1460, 560), (1700, 610)), ((1460, 775), (1700, 820))]
@@ -1528,7 +1534,8 @@ class BaseSchedulerSolver(BaseSolver):
         swiped = False
         for i in range(0, length):
             if i >= 3 and not swiped:
-                self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, -self.recog.h * 0.45),duration=500, interval=1, rebuild=True)
+                self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, -self.recog.h * 0.45), duration=500,
+                           interval=1, rebuild=True)
                 swiped = True
             data = {}
             _name = self.read_screen(self.recog.img[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]],
@@ -1537,7 +1544,8 @@ class BaseSchedulerSolver(BaseSolver):
             while i >= 3 and _name != '' and (
                     next((e for e in result if e['agent'] == _name), None)) is not None:
                 logger.warning("检测到滑动可能失败")
-                self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, -self.recog.h * 0.45),duration=500, interval=1, rebuild=True)
+                self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, -self.recog.h * 0.45), duration=500,
+                           interval=1, rebuild=True)
                 _name = self.read_screen(
                     self.recog.img[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]], type="name")
                 error_count += 1
@@ -1623,8 +1631,9 @@ class BaseSchedulerSolver(BaseSolver):
                                 if _name == 'Current':
                                     plan[room][current_idx] = self.op_data.get_current_room(room, True)[current_idx]
                         if room in self.op_data.run_order_rooms and len(new_plan) == 0:
-                            if 'plan' in self.op_data.run_order_rooms[room] and plan[room] != self.op_data.run_order_rooms[room][
-                                'plan']:
+                            if 'plan' in self.op_data.run_order_rooms[room] and plan[room] != \
+                                    self.op_data.run_order_rooms[room][
+                                        'plan']:
                                 run_order_task = self.find_next_task(
                                     compare_time=datetime.now() + timedelta(minutes=10),
                                     task_type=room, compare_type=">")
@@ -1870,7 +1879,7 @@ class BaseSchedulerSolver(BaseSolver):
             except ValueError:
                 rg_sleep = False
             if (self.maa_config['roguelike'] or self.maa_config['reclamation_algorithm'] or self.maa_config[
-                'stationary_security_service'] ) and not rg_sleep:
+                'stationary_security_service']) and not rg_sleep:
                 logger.info(f'准备开始：肉鸽/保全/演算')
                 while (self.tasks[0].time - datetime.now()).total_seconds() > 30:
                     self.MAA = None
@@ -1891,14 +1900,15 @@ class BaseSchedulerSolver(BaseSolver):
                         self.back_to_reclamation_algorithm()
                         self.MAA.append_task('ReclamationAlgorithm')
                     elif self.maa_config['stationary_security_service']:
-                        if self.maa_config['copilot_file_location']=="" or self.maa_config['copilot_loop_times']<=0 or self.maa_config['sss_type'] not in [1,2]:
+                        if self.maa_config['copilot_file_location'] == "" or self.maa_config[
+                            'copilot_loop_times'] <= 0 or self.maa_config['sss_type'] not in [1, 2]:
                             raise Exception("保全派驻配置无法找到")
                         if self.to_sss(self.maa_config['sss_type']) is not None:
                             raise Exception("保全派驻导航失败")
                         self.MAA.append_task('SSSCopilot', {
                             'filename': self.maa_config['copilot_file_location'],
                             'formation': False,
-                            'loop_times':self.maa_config['copilot_loop_times']
+                            'loop_times': self.maa_config['copilot_loop_times']
                         })
                     logger.info('启动')
                     self.MAA.start()
