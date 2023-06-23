@@ -72,4 +72,4 @@ jobs:
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
-          files: main\dist\mower.exe
+          files: main/dist/mower.exe
