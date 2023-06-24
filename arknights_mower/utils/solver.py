@@ -209,15 +209,15 @@ class BaseSolver:
                 elif self.scene() == Scene.LOGIN_ANNOUNCE:
                     self.tap_element('login_iknow')
                 elif self.scene() == Scene.LOGIN_LOADING:
-                    self.sleep(3)
+                    self.waiting_solver(Scene.LOGIN_LOADING)
                 elif self.scene() == Scene.LOADING:
-                    self.sleep(3)
+                    self.waiting_solver(Scene.LOADING)
                 elif self.scene() == Scene.CONNECTING:
-                    self.sleep(3)
+                    self.waiting_solver(Scene.CONNECTING)
                 elif self.scene() == Scene.CONFIRM:
                     self.tap(detector.confirm(self.recog.img))
                 elif self.scene() == Scene.LOGIN_MAIN_NOENTRY:
-                    self.sleep(3)
+                    self.waiting_solver(Scene.LOGIN_MAIN_NOENTRY)
                 elif self.scene() == Scene.LOGIN_CADPA_DETAIL:
                     self.back(2)
                 elif self.scene() == Scene.LOGIN_BILIBILI:
@@ -277,9 +277,9 @@ class BaseSolver:
                 elif self.scene() == Scene.CONFIRM:
                     self.tap(detector.confirm(self.recog.img))
                 elif self.scene() == Scene.LOADING:
-                    self.sleep(3)
+                    self.waiting_solver(Scene.LOADING)
                 elif self.scene() == Scene.CONNECTING:
-                    self.sleep(3)
+                    self.waiting_solver(Scene.CONNECTING)
                 elif self.scene() == Scene.SKIP:
                     self.tap_element('skip')
                 elif self.scene() == Scene.OPERATOR_ONGOING:
@@ -341,4 +341,16 @@ class BaseSolver:
         else:
             self.tap((self.recog.w * 0.4, self.recog.h * 0.6),interval=0.2)
 
-
+    def waiting_solver(self, scenes, wait_count=20, sleep_time=3):
+        """需要等待的页面解决方法。触发超时重启会返回False
+        """
+        while wait_count > 0:
+            self.sleep(sleep_time)
+            if self.scene() != scenes and self.get_infra_scene() != scenes:
+                return True
+            wait_count -= 1
+        logger.warning("同一等待界面等待超时，重启方舟。")
+        self.device.exit(self.package_name)
+        time.sleep(3)
+        self.device.check_current_focus()
+        return False

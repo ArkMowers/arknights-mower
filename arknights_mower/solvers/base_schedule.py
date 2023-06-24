@@ -102,9 +102,9 @@ class BaseSchedulerSolver(BaseSolver):
         elif self.scene() == Scene.INFRA_DETAILS:
             self.back()
         elif self.scene() == Scene.LOADING:
-            self.sleep(3)
+            self.waiting_solver(Scene.LOADING)
         elif self.scene() == Scene.CONNECTING:
-            self.sleep(3)
+            self.waiting_solver(Scene.CONNECTING)
         elif self.get_navigation():
             self.tap_element('nav_infrastructure')
         elif self.scene() == Scene.INFRA_ARRANGE_ORDER:
@@ -895,8 +895,9 @@ class BaseSchedulerSolver(BaseSolver):
         (x0, y0), (x1, y1) = self.find('clue_func', strict=True)
 
         self.tap(((x0 + x1) // 2, (y0 + y1 * 3) // 4), interval=3, rebuild=True)
-        while self.get_infra_scene() == Scene.CONNECTING:
-            self.sleep(2)
+        if self.get_infra_scene() == Scene.CONNECTING:
+            if not self.waiting_solver(Scene.CONNECTING, sleep_time=2):
+                return
         self.recog_bar()
         self.recog_view(only_y2=False)
         for i in range(1, 8):
@@ -914,8 +915,9 @@ class BaseSchedulerSolver(BaseSolver):
                 break
             else:
                 continue
-        while self.get_infra_scene() == Scene.CONNECTING:
-            self.sleep(2)
+        if self.get_infra_scene() == Scene.CONNECTING:
+            if not self.waiting_solver(Scene.CONNECTING, sleep_time=2):
+                return
         self.tap((self.recog.w * 0.95, self.recog.h * 0.05), interval=3)
         self.back()
         self.back()
@@ -1033,8 +1035,9 @@ class BaseSchedulerSolver(BaseSolver):
                 raise Exception('未成功放置线索')
             self.tap(((last_ori[0][0] + last_ori[2][0]) / 2, (last_ori[0][1] + last_ori[2][1]) / 2), interval=1)
             self.recog.update()
-            while self.get_infra_scene() == Scene.CONNECTING:
-                self.sleep(2)
+            if self.get_infra_scene() == Scene.CONNECTING:
+                if not self.waiting_solver(Scene.CONNECTING, sleep_time=2):
+                    return
             error_count += 1
 
     def switch_camp(self, id: int) -> tuple[int, int]:
@@ -1234,8 +1237,9 @@ class BaseSchedulerSolver(BaseSolver):
                 self.tap(accelerate)
                 self.tap_element('all_in')
                 self.tap((self.recog.w * 0.75, self.recog.h * 0.8))
-                while self.get_infra_scene() == Scene.CONNECTING:
-                    self.sleep(3)
+                if self.get_infra_scene() == Scene.CONNECTING:
+                    if not self.waiting_solver(Scene.CONNECTING, sleep_time=2):
+                        return
                 self.recog.update()
                 self.recog.save_screencap('run_order')
                 if self.drone_room is not None:
@@ -1668,8 +1672,9 @@ class BaseSchedulerSolver(BaseSolver):
                     # 如果完成则移除该任务
                     del plan[room]
                     # back to 基地主界面
-                    while self.scene() == Scene.CONNECTING:
-                        self.sleep(3)
+                    if self.scene() == Scene.CONNECTING:
+                        if not self.waiting_solver(Scene.CONNECTING, sleep_time=3):
+                            return
                 except Exception as e:
                     logger.exception(e)
                     choose_error += 1
@@ -1722,8 +1727,9 @@ class BaseSchedulerSolver(BaseSolver):
                 # 补货
                 self.tap((self.recog.w * 0.75, self.recog.h * 0.3), interval=0.5)
                 self.tap((self.recog.w * 0.75, self.recog.h * 0.9), interval=0.5)
-                while self.get_infra_scene() == Scene.CONNECTING:
-                    self.sleep(2)
+                if self.get_infra_scene() == Scene.CONNECTING:
+                    if not self.waiting_solver(Scene.CONNECTING, sleep_time=2):
+                        return
                 self.back()
                 self.back()
             except Exception as e:
