@@ -1840,7 +1840,7 @@ class BaseSchedulerSolver(BaseSolver):
                         self.MAA.stop()
                         hard_stop = True
                     else:
-                        time.sleep(0)
+                        time.sleep(5)
                 self.send_email('MAA停止')
                 if hard_stop:
                     logger.info(f"由于maa任务并未完成，等待3分钟重启软件")
