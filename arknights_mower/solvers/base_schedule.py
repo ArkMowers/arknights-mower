@@ -1812,14 +1812,11 @@ class BaseSchedulerSolver(BaseSolver):
                 }
             })
         elif type == 'Mall':
-            credit_fight = False
-            if len(self.stages) > 0 and self.stages[- 1] != '':
-                credit_fight = True
             self.MAA.append_task('Mall', {
                 'shopping': True,
                 'buy_first': self.maa_config['buy_first'].split(","),
                 'blacklist': self.maa_config['blacklist'].split(","),
-                'credit_fight': credit_fight
+                'credit_fight': '' not in self.stages
             })
 
     def maa_plan_solver(self, tasks='All', one_time=False):
@@ -1858,7 +1855,7 @@ class BaseSchedulerSolver(BaseSolver):
                         self.MAA.stop()
                         hard_stop = True
                     else:
-                        time.sleep(0)
+                        time.sleep(5)
                 self.send_email('MAA停止')
                 if hard_stop:
                     logger.info(f"由于maa任务并未完成，等待3分钟重启软件")
