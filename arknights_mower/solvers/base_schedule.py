@@ -482,7 +482,7 @@ class BaseSchedulerSolver(BaseSolver):
                 if plan[key][idx]["agent"] == 'Free':
                     continue
                 if not (name == plan[key][idx]['agent'] or (
-                        (name in plan[key][idx]["replacement"]) and len(plan[key][idx]["replacement"]) > 0) or not
+                        (name in plan[key][idx]["replacement"] and name not in ['但书','龙舌兰']) and len(plan[key][idx]["replacement"]) > 0) or not
                         self.op_data.operators[name].need_to_refresh(h=2.5)):
                     if not need_fix:
                         fix_plan[key] = ['Current'] * len(plan[key])
