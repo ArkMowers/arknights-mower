@@ -794,7 +794,9 @@ class BaseSchedulerSolver(BaseSolver):
                 if 'mood' in type:
                     # filter 掉不符合规范的结果
                     if ('/' + str(limit)) in res[1][0]:
-                        line_conf.append(res[1])
+                        new_string = res[1][0].replace('/' + str(limit), '')
+                        if len(new_string)>0:
+                            line_conf.append(res[1])
                 else:
                     line_conf.append(res[1])
             logger.debug(line_conf)
