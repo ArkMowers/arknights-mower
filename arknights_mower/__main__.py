@@ -166,7 +166,7 @@ def simulate():
             if len(base_scheduler.tasks) > 0:
                 (base_scheduler.tasks.sort(key=lambda x: x.time, reverse=False))
                 sleep_time = (base_scheduler.tasks[0].time - datetime.now()).total_seconds()
-                logger.debug(base_scheduler.tasks)
+                logger.info('||'.join([str(t) for t in base_scheduler.tasks]))
                 remaining_time = (base_scheduler.tasks[0].time - datetime.now()).total_seconds()
                 if sleep_time > 540 and conf['maa_enable'] == 1:
                     subject = f"下次任务在{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}"
