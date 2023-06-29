@@ -615,7 +615,7 @@ class BaseSchedulerSolver(BaseSolver):
                                 _time = datetime.now()
                                 if result[op.current_index]['time'] is not None and result[op.current_index]['time']>_time:
                                     _time = result[op.current_index]['time'] - timedelta(minutes=10)
-                                elif op.current_mood() != 0.0:
+                                elif op.current_mood() >0.25 and op.depletion_rate!=0:
                                     _time = datetime.now() + timedelta(
                                         hours=op.current_mood() / op.depletion_rate) - timedelta(minutes=10)
                                 self.back()
