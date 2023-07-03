@@ -627,7 +627,7 @@ const renderLabel = (option) => {
 }
 
 .operator-select {
-  width: 150px;
+  width: 220px;
 }
 
 .replacement-select {
