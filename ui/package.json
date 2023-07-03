@@ -28,6 +28,7 @@
     "typescript": "^5.0.4",
     "unplugin-auto-import": "^0.15.3",
     "unplugin-vue-components": "^0.24.1",
-    "vite": "^4.1.4"
+    "vite": "^4.1.4",
+    "pinyin-match":"^1.2.4"
   }
 }

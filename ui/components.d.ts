@@ -9,11 +9,8 @@ export {}
 
 declare module '@vue/runtime-core' {
   export interface GlobalComponents {
-    Advanced: typeof import('./src/components/Advanced.vue')['default']
     Clue: typeof import('./src/components/Clue.vue')['default']
     Email: typeof import('./src/components/Email.vue')['default']
-    External: typeof import('./src/components/External.vue')['default']
-    Home: typeof import('./src/components/Home.vue')['default']
     MaaBasic: typeof import('./src/components/MaaBasic.vue')['default']
     MaaRecruit: typeof import('./src/components/MaaRecruit.vue')['default']
     MaaWeekly: typeof import('./src/components/MaaWeekly.vue')['default']
@@ -24,7 +21,6 @@ declare module '@vue/runtime-core' {
     NDialogProvider: typeof import('naive-ui')['NDialogProvider']
     NDivider: typeof import('naive-ui')['NDivider']
     NGlobalStyle: typeof import('naive-ui')['NGlobalStyle']
-    NH3: typeof import('naive-ui')['NH3']
     NH4: typeof import('naive-ui')['NH4']
     NIcon: typeof import('naive-ui')['NIcon']
     NInput: typeof import('naive-ui')['NInput']
@@ -38,7 +34,5 @@ declare module '@vue/runtime-core' {
     NTable: typeof import('naive-ui')['NTable']
     NTabPane: typeof import('naive-ui')['NTabPane']
     NTabs: typeof import('naive-ui')['NTabs']
-    Plan: typeof import('./src/components/Plan.vue')['default']
-    Recruit: typeof import('./src/components/Recruit.vue')['default']
   }
 }
