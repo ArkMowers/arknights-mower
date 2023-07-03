@@ -67,6 +67,7 @@ class BaseSchedulerSolver(BaseSolver):
         self.error = False
         self.clue_count = 0
         self.tasks = []
+        self.maa_config = {}
 
     def run(self) -> None:
         """
@@ -777,10 +778,7 @@ class BaseSchedulerSolver(BaseSolver):
         global ocr
         if ocr is None:
             # mac 平台不支持 mkldnn 加速，关闭以修复 mac 运行时错误
-            if sys.platform == 'darwin':
-                ocr = PaddleOCR(enable_mkldnn=False, use_angle_cls=False)
-            else:
-                ocr = PaddleOCR(enable_mkldnn=True, use_angle_cls=False)
+            ocr = PaddleOCR(enable_mkldnn=(sys.platform != 'darwin'), use_angle_cls=False)
 
     def read_screen(self, img, type="mood", limit=24, cord=None):
         if cord is not None:
@@ -1024,10 +1022,13 @@ class BaseSchedulerSolver(BaseSolver):
         else:
             self.back(interval=2)
         logger.info('返回基建主界面')
-        if self.party_time is not None:
+
+        # 如果启用 MAA，则在线索交流结束后购物
+        if self.maa_config['maa_enable'] and self.party_time is not None:
             if self.find_next_task(compare_time=self.party_time, task_type="maa_Mall", compare_type="=") is None:
                 self.tasks.append(SchedulerTask(time=self.party_time - timedelta(milliseconds=1), task_type='impart'))
-                self.tasks.append(SchedulerTask(time=self.party_time, task_type='maa_Mall'))
+                self.tasks.append(SchedulerTask(time=self.party_time, task_type="maa_Mall"))
+
         self.back(interval=2)
 
     def place_clue(self, last_ori):
@@ -1756,7 +1757,7 @@ class BaseSchedulerSolver(BaseSolver):
         logger.debug(m)
         logger.debug(arg)
 
-    def inialize_maa(self):
+    def initialize_maa(self):
         # 若需要获取详细执行信息，请传入 callback 参数
         # 例如 asst = Asst(callback=my_callback)
         Asst.load(path=self.maa_config['maa_path'])
@@ -1830,7 +1831,7 @@ class BaseSchedulerSolver(BaseSolver):
                 self.send_email('启动MAA')
                 self.back_to_index()
                 # 任务及参数请参考 docs/集成文档.md
-                self.inialize_maa()
+                self.initialize_maa()
                 if tasks == 'All':
                     tasks = ['StartUp', 'Fight', 'Recruit', 'Visit', 'Mall', 'Award']
                 for maa_task in tasks:
@@ -1888,7 +1889,7 @@ class BaseSchedulerSolver(BaseSolver):
                 logger.info(f'准备开始：肉鸽/保全/演算')
                 while (self.tasks[0].time - datetime.now()).total_seconds() > 30:
                     self.MAA = None
-                    self.inialize_maa()
+                    self.initialize_maa()
                     if self.maa_config['roguelike']:
                         self.MAA.append_task('Roguelike', {
                             'mode': 0,

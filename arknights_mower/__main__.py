@@ -25,7 +25,7 @@ def main(c, p, o={}, child_conn=None):
     operators = o
     config.LOGFILE_PATH = './log'
     config.SCREENSHOT_PATH = './screenshot'
-    config.SCREENSHOT_MAXNUM = 50
+    config.SCREENSHOT_MAXNUM = 5
     config.ADB_DEVICE = [conf['adb']]
     config.ADB_CONNECT = [conf['adb']]
     config.ADB_CONNECT = [conf['adb']]
@@ -68,7 +68,7 @@ def main(c, p, o={}, child_conn=None):
     simulate()
 
 
-def inialize(tasks, scheduler=None):
+def initialize(tasks, scheduler=None):
     from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
     from arknights_mower.strategy import Solver
     from arknights_mower.utils.device import Device
@@ -111,6 +111,7 @@ def inialize(tasks, scheduler=None):
             'receipts': [conf['account']],
             'notify': False
         }
+        maa_config['maa_enable'] = conf['maa_enable']
         maa_config['maa_path'] = conf['maa_path']
         maa_config['maa_adb_path'] = conf['maa_adb_path']
         maa_config['maa_adb'] = conf['adb']
@@ -147,7 +148,7 @@ def simulate():
     reconnect_max_tries = 10
     reconnect_tries = 0
     global base_scheduler
-    base_scheduler = inialize(tasks)
+    base_scheduler = initialize(tasks)
     validation_msg = base_scheduler.initialize_operators()
     if validation_msg is not None:
         logger.error(validation_msg)
@@ -195,7 +196,7 @@ def simulate():
                 connected = False
                 while not connected:
                     try:
-                        base_scheduler = inialize([], base_scheduler)
+                        base_scheduler = initialize([], base_scheduler)
                         break
                     except Exception as ce:
                         logger.error(ce)
