@@ -2,8 +2,8 @@
 import { storeToRefs } from 'pinia'
 import { usePlanStore } from '@/stores/plan'
 import { ref, computed, nextTick, watch } from 'vue'
-import pinyinMatch from "pinyin-match";
-import {NAvatar,NTag,NText} from "naive-ui";
+import pinyinMatch from 'pinyin-match'
+import { NAvatar, NTag, NText } from 'naive-ui'
 const plan_store = usePlanStore()
 const { operators, plan, groups } = storeToRefs(plan_store)
 const { facility_operator_limit } = plan_store
@@ -122,76 +122,73 @@ function drop_facility(target, event) {
   plan.value[target] = source_plan
   event.preventDefault()
 }
-const renderMultipleSelectTag= ({option,handleClose}) => {
-    return h(
-        NTag,
-        {
+const renderMultipleSelectTag = ({ option, handleClose }) => {
+  return h(
+    NTag,
+    {
+      style: {
+        padding: '0 6px 0 4px'
+      },
+      round: true,
+      closable: true,
+      onClose: (e) => {
+        e.stopPropagation()
+        handleClose()
+      }
+    },
+    {
+      default: () =>
+        h(
+          'div',
+          {
             style: {
-                padding: '0 6px 0 4px'
-            },
-            round: true,
-            closable: true,
-            onClose: (e) => {
-                e.stopPropagation()
-                handleClose()
+              display: 'flex',
+              alignItems: 'center'
             }
-        },
-        {
-            default: () =>
-                h(
-                    'div',
-                    {
-                        style: {
-                            display: 'flex',
-                            alignItems: 'center'
-                        }
-                    },
-                    [
-                        h(NAvatar, {
-                            src: 'avatar/'+option.value+'.png',
-                            round: true,
-                            size: 22,
-                            style: {
-                                marginRight: '4px'
-                            }
-                        }),
-                        option.label
-                    ]
-                )
-        }
-    )
+          },
+          [
+            h(NAvatar, {
+              src: 'avatar/' + option.value + '.png',
+              round: true,
+              size: 22,
+              style: {
+                marginRight: '4px'
+              }
+            }),
+            option.label
+          ]
+        )
+    }
+  )
 }
 const renderLabel = (option) => {
-    return h(
+  return h(
+    'div',
+    {
+      style: {
+        display: 'flex',
+        alignItems: 'center'
+      }
+    },
+    [
+      h(NAvatar, {
+        src: 'avatar/' + option.value + '.png',
+        round: true,
+        size: 'small'
+      }),
+      h(
         'div',
         {
-            style: {
-                display: 'flex',
-                alignItems: 'center'
-            }
+          style: {
+            marginLeft: '12px',
+            padding: '4px 0'
+          }
         },
-        [
-            h(NAvatar, {
-                src: 'avatar/'+option.value+'.png',
-                round: true,
-                size: 'small'
-            }),
-            h(
-                'div',
-                {
-                    style: {
-                        marginLeft: '12px',
-                        padding: '4px 0'
-                    }
-                },
-                [
-                    h('div', null, [option.label])
-                ]
-            )
-        ]
-    )
+        [h('div', null, [option.label])]
+      )
+    ]
+  )
 }
-
 </script>
 
 <template>
@@ -587,7 +584,7 @@ const renderLabel = (option) => {
               :options="operators_with_free"
               class="operator-select"
               v-model:value="plan[facility].plans[i - 1].agent"
-              :filter="(p,o)=>pinyinMatch.match(o.label,p)"
+              :filter="(p, o) => pinyinMatch.match(o.label, p)"
               :render-label="renderLabel"
             />
           </td>
@@ -604,7 +601,7 @@ const renderLabel = (option) => {
               :options="operators_with_free"
               class="replacement-select"
               v-model:value="plan[facility].plans[i - 1].replacement"
-              :filter="(p,o)=>pinyinMatch.match(o.label,p)"
+              :filter="(p, o) => pinyinMatch.match(o.label, p)"
               :render-label="renderLabel"
               :render-tag="renderMultipleSelectTag"
             />
