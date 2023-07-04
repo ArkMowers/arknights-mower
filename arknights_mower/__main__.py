@@ -6,6 +6,7 @@ from arknights_mower.utils.log import logger
 import json
 
 from arknights_mower.utils.pipe import Pipe
+from arknights_mower.utils.simulator import restart_simulator
 
 conf = {}
 plan = {}
@@ -200,13 +201,14 @@ def simulate():
                         break
                     except Exception as ce:
                         logger.error(ce)
-                        base_scheduler.restart_simulator(None,simulator_type="")
+                        restart_simulator(None,simulator_type="")
                         continue
                 continue
             else:
                 raise Exception(e)
         except Exception as E:
             logger.exception(f"程序出错--->{E}")
+            restart_simulator(None, simulator_type="")
 
 
 def save_state(op_data,file='state.json'):

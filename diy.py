@@ -357,13 +357,14 @@ def simulate():
                         break
                     except Exception as ce:
                         logger.error(ce)
-                        base_scheduler.restart_simulator({"index":"2"})
+                        restart_simulator({"index":"2"})
                         continue
                 continue
             else:
                 raise Exception(e)
         except Exception as E:
             logger.exception(f"程序出错--->{E}")
+            restart_simulator({"index": "2"})
     # cli.credit()  # 信用
     # ope_lists = cli.ope(eliminate=True, plan=ope_lists)  # 行动，返回未完成的作战计划
     # cli.shop(shop_priority)  # 商店
