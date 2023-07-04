@@ -1,5 +1,6 @@
 from __future__ import annotations
 import copy
+import subprocess
 import time
 import sys
 from enum import Enum
@@ -68,6 +69,8 @@ class BaseSchedulerSolver(BaseSolver):
         self.clue_count = 0
         self.tasks = []
         self.maa_config = {}
+
+
 
     def run(self) -> None:
         """
@@ -485,7 +488,8 @@ class BaseSchedulerSolver(BaseSolver):
                 if plan[key][idx]["agent"] == 'Free':
                     continue
                 if not (name == plan[key][idx]['agent'] or (
-                        (name in plan[key][idx]["replacement"] and name not in ['但书','龙舌兰']) and len(plan[key][idx]["replacement"]) > 0) or not
+                        (name in plan[key][idx]["replacement"] and name not in ['但书', '龙舌兰']) and len(
+                    plan[key][idx]["replacement"]) > 0) or not
                         self.op_data.operators[name].need_to_refresh(h=2.5)):
                     if not need_fix:
                         fix_plan[key] = ['Current'] * len(plan[key])
@@ -619,9 +623,9 @@ class BaseSchedulerSolver(BaseSolver):
                                 if result[op.current_index]['time'] is not None and result[op.current_index][
                                     'time'] > _time:
                                     _time = result[op.current_index]['time'] - timedelta(minutes=10)
-                                elif op.current_mood() >0.25 and op.depletion_rate!=0:
+                                elif op.current_mood() > 0.25 and op.depletion_rate != 0:
                                     _time = datetime.now() + timedelta(
-                                        hours=(op.current_mood()-0.25) / op.depletion_rate) - timedelta(minutes=10)
+                                        hours=(op.current_mood() - 0.25) / op.depletion_rate) - timedelta(minutes=10)
                                 self.back()
                                 # plan 是空的是因为得动态生成
                                 exhaust_type = op.name
@@ -797,7 +801,7 @@ class BaseSchedulerSolver(BaseSolver):
                     # filter 掉不符合规范的结果
                     if ('/' + str(limit)) in res[1][0]:
                         new_string = res[1][0].replace('/' + str(limit), '')
-                        if len(new_string)>0:
+                        if len(new_string) > 0:
                             line_conf.append(res[1])
                 else:
                     line_conf.append(res[1])
@@ -1748,6 +1752,33 @@ class BaseSchedulerSolver(BaseSolver):
                         raise e
         if not error:
             self.reload_time = datetime.now()
+
+    def restart_simulator(self, data, simulator_type="夜神"):
+        if simulator_type == "夜神":
+            cmd = "Nox.exe"
+            # 多开需要传入 {"index":"4"} 4为夜神多开器的最左边的编号
+            if "index" in data.keys():
+                cmd += f' -clone:Nox_{data["index"]}'
+            cmd += " -quit"
+            try:
+                process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                           universal_newlines=True)
+                process.communicate(timeout=2)
+            except subprocess.TimeoutExpired:
+                process.kill()
+            logger.info(f'开始关闭{simulator_type}模拟器，等待2秒钟')
+            time.sleep(2)
+            cmd = cmd.replace(' -quit','')
+            try:
+                process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                           universal_newlines=True)
+                process.communicate(timeout=2)
+            except subprocess.TimeoutExpired:
+                process.kill()
+            logger.info(f'开始启动{simulator_type}模拟器，等待25秒钟')
+            time.sleep(25)
+        else:
+            logger.warning(f"尚未支持{simulator_type}重启")
 
     @Asst.CallBackType
     def log_maa(msg, details, arg):

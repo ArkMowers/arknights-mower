@@ -356,7 +356,7 @@ def simulate():
                         break
                     except Exception as ce:
                         logger.error(ce)
-                        time.sleep(5)
+                        base_scheduler.restart_simulator({"index":"2"})
                         continue
                 continue
             else:
