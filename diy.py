@@ -26,6 +26,7 @@ email_config= {
     'subject': '任务数据'
 }
 maa_config = {
+    "maa_enable":True,
     # 请设置为存放 dll 文件及资源的路径
     "maa_path":'F:\\MAA-v4.10.5-win-x64',
     # 请设置为存放 dll 文件及资源的路径
