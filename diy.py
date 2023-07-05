@@ -9,6 +9,7 @@ from arknights_mower.strategy import Solver
 from arknights_mower.utils.device import Device
 from arknights_mower.utils.log import logger, init_fhlr
 from arknights_mower.utils import config
+from arknights_mower.utils.simulator import restart_simulator
 # 下面不能删除
 from arknights_mower.utils.operators import Operators, Operator, Dormitory
 from arknights_mower.utils.scheduler_task import SchedulerTask
