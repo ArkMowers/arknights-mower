@@ -36,7 +36,7 @@ if __name__ == "__main__":
     height = conf["webview"]["height"]
 
     window = webview.create_window(
-        f"Mower {__version__} (127.0.0.1:{port})",
+        f"Mower {__version__} (http://127.0.0.1:{port})",
         f"http://127.0.0.1:{port}",
         width=width,
         height=height,
