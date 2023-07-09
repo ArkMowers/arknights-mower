@@ -460,7 +460,7 @@ const renderLabel = (option) => {
   </div>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 .w90 {
   width: 90px;
 }
@@ -532,83 +532,82 @@ const renderLabel = (option) => {
   gap: 16px;
   margin: 0 auto;
 }
+
 .left_box {
   display: flex;
   flex-direction: column;
   gap: 16px;
-}
 
-.left_box .left_contain {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 16px;
-}
+  .left_contain {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
 
-.left_box .left_contain > div {
-  cursor: pointer;
-}
+    & > div {
+      cursor: pointer;
+    }
 
-.left_box .left_contain .info {
-  background-color: rgba(32, 128, 240, 0.16);
-  padding: 5px 15px 15px 15px;
-  border-radius: 3px;
-  border: 1px solid transparent;
-  transition: all 0.3s;
-}
+    .info {
+      background-color: rgba(32, 128, 240, 0.16);
+      padding: 5px 15px 15px 15px;
+      border-radius: 3px;
+      border: 1px solid transparent;
+      transition: all 0.3s;
 
-.left_box .left_contain .info:hover {
-  background-color: rgba(32, 128, 240, 0.22);
-}
+      &:hover {
+        background-color: rgba(32, 128, 240, 0.22);
+      }
+      .true {
+        background-color: #fff;
+        border: 1px solid rgb(32, 128, 240);
+      }
+      .facility-name {
+        color: #2080f0;
+      }
+    }
 
-.left_box .left_contain .info.true {
-  background-color: #fff;
-  border: 1px solid rgb(32, 128, 240);
-}
+    .warning {
+      background-color: rgba(240, 160, 32, 0.16);
+      padding: 5px 15px 15px 15px;
+      border-radius: 3px;
+      border: 1px solid transparent;
+      transition: all 0.3s;
 
-.left_box .left_contain .info .facility-name {
-  color: #2080f0;
-}
+      &:hover {
+        background-color: rgba(240, 160, 32, 0.22);
+      }
 
-.left_box .left_contain .warning {
-  background-color: rgba(240, 160, 32, 0.16);
-  padding: 5px 15px 15px 15px;
-  border-radius: 3px;
-  border: 1px solid transparent;
-  transition: all 0.3s;
-}
+      .true {
+        background-color: #fff;
+        border: 1px solid rgb(240, 160, 32);
+      }
 
-.left_box .left_contain .warning:hover {
-  background-color: rgba(240, 160, 32, 0.22);
-}
+      .facility-name {
+        color: #f0a020;
+      }
+    }
 
-.left_box .left_contain .warning.true {
-  background-color: #fff;
-  border: 1px solid rgb(240, 160, 32);
-}
+    .primary {
+      background-color: rgba(24, 160, 88, 0.16);
+      padding: 5px 15px 15px 15px;
+      border-radius: 3px;
+      border: 1px solid transparent;
+      transition: all 0.3s;
 
-.left_box .left_contain .warning .facility-name {
-  color: #f0a020;
-}
+      &:hover {
+        background-color: rgba(24, 160, 88, 0.22);
+      }
 
-.left_box .left_contain .primary {
-  background-color: rgba(24, 160, 88, 0.16);
-  padding: 5px 15px 15px 15px;
-  border-radius: 3px;
-  border: 1px solid transparent;
-  transition: all 0.3s;
-}
+      .true {
+        background-color: #fff;
+        border: 1px solid rgb(24, 160, 88);
+      }
 
-.left_box .left_contain .primary:hover {
-  background-color: rgba(24, 160, 88, 0.22);
-}
-
-.left_box .left_contain .primary.true {
-  background-color: #fff;
-  border: 1px solid rgb(24, 160, 88);
-}
-
-.left_box .left_contain .primary .facility-name {
-  color: #18a058;
+      .facility-name {
+        color: #18a058;
+      }
+    }
+  }
 }
 
 .mid_box {
@@ -628,13 +627,15 @@ const renderLabel = (option) => {
   border-radius: 3px;
 }
 
-.waiting:hover {
-  opacity: 1;
-  border: 1px dashed rgb(54, 173, 106);
-  color: rgb(54, 173, 106);
-}
+.waiting {
+  &:hover {
+    opacity: 1;
+    border: 1px dashed rgb(54, 173, 106);
+    color: rgb(54, 173, 106);
+  }
 
-.waiting div {
-  text-align: center;
+  div {
+    text-align: center;
+  }
 }
 </style>
