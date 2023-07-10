@@ -22,15 +22,44 @@ function render_tag({ option, handleClose }) {
         handleClose()
       }
     },
-    { default: () => (option.label == '' ? '（上次作战）' : option.label) }
+    {
+      default: () => {
+        if (option.label == '') {
+          return '上次作战'
+        } else if (option.label == 'Annihilation') {
+          return '当期剿灭'
+        } else if (option.label.endsWith('-HARD')) {
+          return option.label.slice(0, -5) + '磨难'
+        } else if (option.label.endsWith('-NORMAL')) {
+          return option.label.slice(0, -7) + '标准'
+        } else {
+          return option.label
+        }
+      }
+    }
   )
 }
 
 function create_tag(label) {
   if (label == ' ') {
     return {
-      label: '（上次作战）',
+      label: '上次作战',
       value: ''
+    }
+  } else if (label == '当期剿灭') {
+    return {
+      label: '当期剿灭',
+      value: 'Annihilation'
+    }
+  } else if (label.endsWith('磨难')) {
+    return {
+      label: label,
+      value: label.slice(0, -2) + '-HARD'
+    }
+  } else if (label.endsWith('标准')) {
+    return {
+      label: label,
+      value: label.slice(0, -2) + '-NORMAL'
     }
   } else {
     return {
@@ -50,14 +79,31 @@ function create_tag(label) {
     </template>
     <span>关卡填写说明：</span>
     <ul>
-      <li><b>基本操作</b>：输入关卡名，按回车键确认。文本变为标签，代表输入成功。</li>
-      <li><b>上次作战</b>：输入空格后回车，生成（上次作战）标签。</li>
+      <li><b>添加关卡</b>：输入关卡名，按回车键确认。文本变为标签，代表输入成功。</li>
+      <li><b>上次作战</b>：输入空格后回车，生成 <n-tag closable>上次作战</n-tag> 标签。</li>
+      <li><b>主线关卡难度</b>：在关卡末尾添加“标准”或“磨难”以指定难度。例：</li>
+      <ul>
+        <li><n-tag closable>12-17标准</n-tag> 表示12-17标准难度。</li>
+        <li><n-tag closable>12-17磨难</n-tag> 表示12-17磨难难度。</li>
+      </ul>
+      <li><b>当期剿灭</b>：输入“当期剿灭”后回车，生成 <n-tag closable>当期剿灭</n-tag> 标签。</li>
       <li>
-        <b>多个关卡</b>
-        ：填入多个关卡时，按顺序依次刷取所有关卡。关卡无法刷取或刷取结束后，继续尝试下一关卡。例：
+        <b>信用作战</b>：若当日计划不包含 <n-tag closable>上次作战</n-tag>，则自动进行信用作战。
+      </li>
+      <li>
+        <b>多个关卡</b
+        >：填入多个关卡时，按顺序依次刷取所有关卡。关卡无法刷取或刷取结束后，继续尝试下一关卡。例：
         <ul>
-          <li>HE-7、（上次作战）：刷活动关HE-7，若活动未开放，则刷上一关。</li>
-          <li>AP-5、1-7：刷红票本AP-5，剩余体力刷1-7。</li>
+          <li>
+            <n-tag closable class="tag-mr">HE-7</n-tag>
+            <n-tag closable>上次作战</n-tag>
+            ：刷活动关HE-7，若活动未开放，则刷上一关。
+          </li>
+          <li>
+            <n-tag closable class="tag-mr">AP-5</n-tag>
+            <n-tag closable>1-7</n-tag>
+            ：刷红票本AP-5，剩余体力刷1-7。
+          </li>
         </ul>
       </li>
       <li><b>不刷理智</b>：留空表示不刷理智。</li>
@@ -127,5 +173,9 @@ table {
       width: 90px;
     }
   }
+}
+
+.tag-mr {
+  margin-right: 4px;
 }
 </style>
