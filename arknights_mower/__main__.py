@@ -149,14 +149,26 @@ def simulate():
     reconnect_max_tries = 10
     reconnect_tries = 0
     global base_scheduler
-    base_scheduler = initialize(tasks)
+    success = False
+    while not success:
+        try:
+            base_scheduler = initialize(tasks)
+            success = True
+        except Exception as E:
+            reconnect_tries += 1
+            if reconnect_tries < 3:
+                restart_simulator(conf['simulator'])
+                continue
+            else:
+                raise E
     validation_msg = base_scheduler.initialize_operators()
     if validation_msg is not None:
         logger.error(validation_msg)
         return
     if operators != {}:
-        for k,v in operators.items():
-            if k in base_scheduler.op_data.operators and not base_scheduler.op_data.operators[k].room.startswith("dorm"):
+        for k, v in operators.items():
+            if k in base_scheduler.op_data.operators and not base_scheduler.op_data.operators[k].room.startswith(
+                    "dorm"):
                 # 只复制心情数据
                 base_scheduler.op_data.operators[k].mood = v.mood
                 base_scheduler.op_data.operators[k].time_stamp = v.time_stamp
@@ -201,32 +213,31 @@ def simulate():
                         break
                     except Exception as ce:
                         logger.error(ce)
-                        restart_simulator(None,simulator_type="")
+                        restart_simulator(conf['simulator'])
                         continue
                 continue
             else:
                 raise Exception(e)
         except Exception as E:
             logger.exception(f"程序出错--->{E}")
-            restart_simulator(None, simulator_type="")
+            restart_simulator(conf['simulator'])
 
 
-def save_state(op_data,file='state.json'):
+def save_state(op_data, file='state.json'):
     if not os.path.exists('tmp'):
         os.makedirs('tmp')
     with open('tmp/' + file, 'w') as f:
-        if op_data is not None :
+        if op_data is not None:
             json.dump(vars(op_data), f, default=str)
 
 
 def load_state(file='state.json'):
-
     if not os.path.exists('tmp/' + file):
         return None
     with open('tmp/' + file, 'r') as f:
         state = json.load(f)
     operators = {k: eval(v) for k, v in state['operators'].items()}
-    for k,v in operators.items():
+    for k, v in operators.items():
         if not v.time_stamp == 'None':
             v.time_stamp = datetime.strptime(v.time_stamp, '%Y-%m-%d %H:%M:%S.%f')
         else:

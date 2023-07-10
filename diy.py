@@ -62,6 +62,13 @@ maa_config = {
                    {"weekday":"周日","stage":['AP-5'],"medicine":0}]
 }
 
+# 模拟器相关设置
+simulator= {
+    "name":"夜神",
+    # 多开编号，在模拟器助手最左侧的数字
+    "index":2
+}
+
 # Free (宿舍填充)干员安排黑名单
 free_blacklist= []
 
@@ -314,7 +321,18 @@ def simulate():
         t.time = datetime.strptime(t.time, '%Y-%m-%d %H:%M:%S.%f')
     reconnect_max_tries = 10
     reconnect_tries = 0
-    base_scheduler = inialize(tasks)
+    success = False
+    while not success:
+        try:
+            base_scheduler = inialize(tasks)
+            success = True
+        except Exception as E:
+            reconnect_tries+=1
+            if reconnect_tries <3:
+                restart_simulator(simulator)
+                continue
+            else:
+                raise E
     validation_msg = base_scheduler.initialize_operators()
     if validation_msg is not None:
         logger.error(validation_msg)
@@ -358,14 +376,14 @@ def simulate():
                         break
                     except Exception as ce:
                         logger.error(ce)
-                        restart_simulator({"index":"2"})
+                        restart_simulator(simulator)
                         continue
                 continue
             else:
                 raise Exception(e)
         except Exception as E:
             logger.exception(f"程序出错--->{E}")
-            restart_simulator({"index": "2"})
+            restart_simulator(simulator)
     # cli.credit()  # 信用
     # ope_lists = cli.ope(eliminate=True, plan=ope_lists)  # 行动，返回未完成的作战计划
     # cli.shop(shop_priority)  # 商店

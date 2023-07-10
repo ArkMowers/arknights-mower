@@ -5,6 +5,9 @@ drone_room: ''
 enable_party: 1
 exhaust_require: ''
 workaholic: ''
+simulator:
+  name: ''
+  index: -1
 free_blacklist: ''
 ling_xi: 1
 maa_adb_path: D:\Program Files\Nox\bin\adb.exe

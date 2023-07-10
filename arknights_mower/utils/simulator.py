@@ -3,11 +3,13 @@ from arknights_mower.utils.log import logger
 import time
 
 
-def restart_simulator(data, simulator_type="夜神"):
+def restart_simulator(data):
+    index = data["index"]
+    simulator_type = data["name"]
     if simulator_type == "夜神":
         cmd = "Nox.exe"
         # 多开需要传入 {"index":"4"} 4为夜神多开器的最左边的编号
-        if "index" in data.keys():
+        if index>=0:
             cmd += f' -clone:Nox_{data["index"]}'
         cmd += " -quit"
         try:
@@ -28,4 +30,4 @@ def restart_simulator(data, simulator_type="夜神"):
         logger.info(f'开始启动{simulator_type}模拟器，等待25秒钟')
         time.sleep(25)
     else:
-        logger.warning(f"尚未支持{simulator_type}重启")
+        logger.warning(f"尚未支持{simulator_type}重启/自动启动")
