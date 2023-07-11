@@ -37,13 +37,9 @@ def main(c, p, o={}, child_conn=None):
     if plan['conf']['ling_xi'] == 1:
         agent_base_config['令']['UpperLimit'] = 12
         agent_base_config['夕']['LowerLimit'] = 12
-        agent_base_config['琴柳']['LowerLimit'] = 12
-        agent_base_config['重岳']['LowerLimit'] = 12
     elif plan['conf']['ling_xi'] == 2:
         agent_base_config['夕']['UpperLimit'] = 12
         agent_base_config['令']['LowerLimit'] = 12
-        agent_base_config['琴柳']['LowerLimit'] = 12
-        agent_base_config['重岳']['LowerLimit'] = 12
     for key in list(filter(None, plan['conf']['rest_in_full'].replace('，', ',').split(','))):
         if key in agent_base_config.keys():
             agent_base_config[key]['RestInFull'] = True
@@ -175,6 +171,14 @@ def simulate():
                 base_scheduler.op_data.operators[k].depletion_rate = v.depletion_rate
                 base_scheduler.op_data.operators[k].current_room = v.current_room
                 base_scheduler.op_data.operators[k].current_index = v.current_index
+    if plan['conf']['ling_xi'] in [1, 2]:
+        # 夕，令，同组的则设置lowerlimit
+        for name in ["夕","令"]:
+            if name in base_scheduler.op_data.operators and base_scheduler.op_data.operators[name].group !="":
+                for group_name in base_scheduler.op_data.groups[base_scheduler.op_data.operators[name].group]:
+                    if group_name not in ["夕","令"]:
+                        base_scheduler.op_data.operators[group_name].lower_limit = 12
+                        logger.info(f"自动设置{group_name}心情下限为12")
     while True:
         try:
             if len(base_scheduler.tasks) > 0:
