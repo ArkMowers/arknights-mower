@@ -28,7 +28,7 @@ export const useConfigStore = defineStore('config', () => {
   const maa_gap = ref(false)
   const maa_recruitment_time = ref(false)
   const maa_recruit_only_4 = ref(false)
-
+  const simulator = ref({name:'',index:-1})
   async function load_shop() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/shop`)
     const mall_list = []
@@ -70,6 +70,7 @@ export const useConfigStore = defineStore('config', () => {
     maa_gap.value = response.data.maa_gap
     maa_recruitment_time.value = response.data.maa_recruitment_time
     maa_recruit_only_4.value = response.data.maa_recruit_only_4
+    simulator.value = response.data.simulator? {name:'',index:-1}:response.data.simulator
   }
 
   function build_config() {
@@ -97,7 +98,8 @@ export const useConfigStore = defineStore('config', () => {
       maa_mall_blacklist: maa_mall_blacklist.value.join(','),
       maa_gap: maa_gap.value,
       maa_recruitment_time: maa_recruitment_time.value,
-      maa_recruit_only_4: maa_recruit_only_4.value
+      maa_recruit_only_4: maa_recruit_only_4.value,
+      simulator : simulator.value
     }
   }
 
@@ -125,7 +127,8 @@ export const useConfigStore = defineStore('config', () => {
       maa_mall_blacklist,
       maa_gap,
       maa_recruitment_time,
-      maa_recruit_only_4
+      maa_recruit_only_4,
+      simulator
     ],
     () => {
       axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, build_config())
@@ -161,6 +164,7 @@ export const useConfigStore = defineStore('config', () => {
     maa_gap,
     maa_recruitment_time,
     maa_recruit_only_4,
-    build_config
+    build_config,
+    simulator
   }
 })
