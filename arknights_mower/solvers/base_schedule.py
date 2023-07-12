@@ -986,11 +986,16 @@ class BaseSchedulerSolver(BaseSolver):
             get_all_clue = True
             for i in range(1, 8):
                 # 切换阵营
+                if i in self.op_data.clues:
+                    continue
                 self.tap(self.switch_camp(i))
                 if self.find('clue_notfound') is not None:
                     logger.info(f'无线索 {i}')
                     get_all_clue = False
                     break
+                else:
+                    if i not in self.op_data.clues:
+                        self.op_data.clues.append(i)
                 if self.find('clue_unselect') is not None:
                     logger.debug('检验到线索已放置')
                     continue
@@ -1018,11 +1023,14 @@ class BaseSchedulerSolver(BaseSolver):
                 self.error = True
             else:
                 logger.info("为期一天的impart开始")
+            # 不管开启成功失败，都重置
+            self.op_data.clues = []
         elif clue_unlock is None:
             # 记录趴体时间
             self.back(interval=2)
             self.party_time = self.double_read_time((1765, 422, 1920, 515))
             logger.info(f"impart结束时间为： {self.party_time}")
+            self.op_data.clues = []
         else:
             self.back(interval=2)
         logger.info('返回基建主界面')
@@ -1482,13 +1490,11 @@ class BaseSchedulerSolver(BaseSolver):
             self.tap((self.recog.w * arrange_order_res[ArrangeOrder.SKILL][0],
                       self.recog.h * arrange_order_res[ArrangeOrder.SKILL][1]), interval=0.5, rebuild=False)
             not_match = False
-            if len(exists)>0:
-                exists.extend(selected)
-                selected = exists
+            exists.extend(selected)
             for idx, item in enumerate(agents):
-                if agents[idx] != selected[idx] or not_match:
+                if agents[idx] != exists[idx] or not_match:
                     not_match = True
-                    p_idx = selected.index(agents[idx])
+                    p_idx = exists.index(agents[idx])
                     self.tap((self.recog.w * position[p_idx][0], self.recog.h * position[p_idx][1]), interval=0,
                              rebuild=False)
                     self.tap((self.recog.w * position[p_idx][0], self.recog.h * position[p_idx][1]), interval=0,
