@@ -1338,12 +1338,13 @@ class BaseSchedulerSolver(BaseSolver):
         # 确认
         self.tap((self.recog.w * 0.8, self.recog.h * 0.8), interval=0.5)
 
-    def choose_agent(self, agents: list[str], room: str) -> None:
+    def choose_agent(self, agents: list[str], room: str ,fast_mode = True) -> None:
         """
         :param order: ArrangeOrder, 选择干员时右上角的排序功能
         """
         first_name = ''
         max_swipe = 50
+        position = [(0.35, 0.35), (0.35, 0.75), (0.45, 0.35), (0.45, 0.75), (0.55, 0.35)]
         for idx, n in enumerate(agents):
             if n == '':
                 agents[idx] = 'Free'
@@ -1354,6 +1355,20 @@ class BaseSchedulerSolver(BaseSolver):
                 elif not self.op_data.operators[n].is_high():
                     agents[idx] = 'Free'
         agent = copy.deepcopy(agents)
+        exists = []
+        if fast_mode:
+            current_room = self.op_data.get_current_room(room, True)
+            differences = []
+            for i in range(len(current_room)):
+                if current_room[i] != agents[i]:
+                    differences.append(i)
+                else:
+                    exists.append(current_room[i])
+            for pos in differences:
+                if current_room[pos]!='':
+                    self.tap((self.recog.w * position[pos][0], self.recog.h * position[pos][1]), interval=0,
+                             rebuild=False)
+            agent = [agents[i] for i in differences]
         logger.info(f'安排干员 ：{agent}')
         # 若不是空房间，则清空工作中的干员
         is_dorm = room.startswith("dorm")
@@ -1387,7 +1402,8 @@ class BaseSchedulerSolver(BaseSolver):
                 if is_dorm:
                     self.switch_arrange_order(3, "true")
                     pre_order = [3, 'true']
-                self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
+                if not fast_mode:
+                    self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
                 changed, ret = self.scan_agant(agent)
                 if changed:
                     selected.extend(changed)
@@ -1465,8 +1481,10 @@ class BaseSchedulerSolver(BaseSolver):
             self.swipe_left(right_swipe, w, h)
             self.tap((self.recog.w * arrange_order_res[ArrangeOrder.SKILL][0],
                       self.recog.h * arrange_order_res[ArrangeOrder.SKILL][1]), interval=0.5, rebuild=False)
-            position = [(0.35, 0.35), (0.35, 0.75), (0.45, 0.35), (0.45, 0.75), (0.55, 0.35)]
             not_match = False
+            if len(exists)>0:
+                exists.extend(selected)
+                selected = exists
             for idx, item in enumerate(agents):
                 if agents[idx] != selected[idx] or not_match:
                     not_match = True
@@ -1652,29 +1670,33 @@ class BaseSchedulerSolver(BaseSolver):
                                     logger.info("检测到插拔房间人员变动！")
                                     self.tasks.remove(run_order_task)
                                     del self.op_data.run_order_rooms[room]['plan']
-                    while self.find('arrange_order_options') is None:
-                        if error_count > 3:
-                            raise Exception('未成功进入干员选择界面')
-                        self.tap((self.recog.w * 0.82, self.recog.h * 0.2), interval=1)
-                        error_count += 1
-                    self.choose_agent(plan[room], room)
-                    self.recog.update()
-                    self.tap_element('confirm_blue', detected=True, judge=False, interval=3)
-                    if self.get_infra_scene() == Scene.INFRA_ARRANGE_CONFIRM:
-                        x0 = self.recog.w // 3 * 2  # double confirm
-                        y0 = self.recog.h - 10
-                        self.tap((x0, y0), rebuild=True)
-                    read_time_index = []
-                    if get_time:
-                        read_time_index = self.op_data.get_refresh_index(room, plan[room])
-                    if len(new_plan) > 1:
-                        self.op_data.operators['菲亚梅塔'].time_stamp = None
-                        self.op_data.operators[plan[room][0]].time_stamp = None
-                    current = self.get_agent_from_room(room, read_time_index)
-                    for idx, name in enumerate(plan[room]):
-                        if current[idx]['agent'] != name:
-                            logger.error(f'检测到的干员{current[idx]["agent"]},需要安排的干员{name}')
-                            raise Exception('检测到安排干员未成功')
+                    differences = [x for x in plan[room] if x not in self.op_data.get_current_room(room, True)]
+                    if len(differences)!=0:
+                        while self.find('arrange_order_options') is None:
+                            if error_count > 3:
+                                raise Exception('未成功进入干员选择界面')
+                            self.tap((self.recog.w * 0.82, self.recog.h * 0.2), interval=1)
+                            error_count += 1
+                        self.choose_agent(plan[room], room,choose_error<=0)
+                        self.recog.update()
+                        self.tap_element('confirm_blue', detected=True, judge=False, interval=3)
+                        if self.get_infra_scene() == Scene.INFRA_ARRANGE_CONFIRM:
+                            _x0 = self.recog.w // 3 * 2  # double confirm
+                            _y0 = self.recog.h - 10
+                            self.tap((_x0, _y0), rebuild=True)
+                        read_time_index = []
+                        if get_time:
+                            read_time_index = self.op_data.get_refresh_index(room, plan[room])
+                        if len(new_plan) > 1:
+                            self.op_data.operators['菲亚梅塔'].time_stamp = None
+                            self.op_data.operators[plan[room][0]].time_stamp = None
+                        current = self.get_agent_from_room(room, read_time_index)
+                        for idx, name in enumerate(plan[room]):
+                            if current[idx]['agent'] != name:
+                                logger.error(f'检测到的干员{current[idx]["agent"]},需要安排的干员{name}')
+                                raise Exception('检测到安排干员未成功')
+                    else:
+                        logger.info(f"任务与当前房间相同，跳过安排{room}人员")
                     finished = True
                     # 如果完成则移除该任务
                     del plan[room]
