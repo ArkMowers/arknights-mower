@@ -1986,6 +1986,9 @@ class BaseSchedulerSolver(BaseSolver):
             logger.info(subject)
             self.send_email(context, subject)
             if remaining_time > 0:
+                if remaining_time > 300 and self.exit_game_when_idle:
+                    self.device.exit(self.package_name)
+                    logger.info("关闭游戏，降低功耗")
                 time.sleep(remaining_time)
             self.MAA = None
         except Exception as e:

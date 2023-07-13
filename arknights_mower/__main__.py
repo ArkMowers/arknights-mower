@@ -130,6 +130,7 @@ def initialize(tasks, scheduler=None):
         base_scheduler.drone_execution_gap = 4
         base_scheduler.run_order_delay = conf['run_order_delay']
         base_scheduler.agent_base_config = agent_base_config
+        base_scheduler.exit_game_when_idle = conf['exit_game_when_idle']
         return base_scheduler
     else:
         scheduler.device = cli.device
@@ -199,6 +200,9 @@ def simulate():
                     context = f"下一次任务:{base_scheduler.tasks[0].plan}"
                     logger.info(context)
                     logger.info(subject)
+                    if sleep_time > 300 and conf['exit_game_when_idle']:
+                        base_scheduler.device.exit(base_scheduler.package_name)
+                        logger.info("关闭游戏，降低功耗")
                     base_scheduler.send_email(context, subject)
                     time.sleep(sleep_time)
             if len(base_scheduler.tasks) > 0 and base_scheduler.tasks[0].type.split('_')[0] == 'maa':

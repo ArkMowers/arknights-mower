@@ -63,3 +63,4 @@ tap_to_launch_game:
   enable: false
   x: 0
   y: 0
+exit_game_when_idle: true
