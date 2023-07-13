@@ -23,6 +23,7 @@ class Operators(object):
         self.workaholic_agent = []
         self.plan = plan
         self.run_order_rooms = {}
+        self.clues =[]
 
     def __repr__(self):
         return f'Operators(operators={self.operators})'
@@ -195,6 +196,8 @@ class Operators(object):
             for dorm in self.dorm:
                 if dorm.position[0] == current_room and dorm.position[1] == current_index and dorm.time is None:
                     return current_index
+        if agent.name == "菲亚梅塔" and (self.operators["菲亚梅塔"].time_stamp is None or self.operators["菲亚梅塔"].time_stamp< datetime.now()):
+            return current_index
 
     def refresh_dorm_time(self, room, index, agent):
         for idx, dorm in enumerate(self.dorm):

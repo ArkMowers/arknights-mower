@@ -577,15 +577,17 @@ class BaseSchedulerSolver(BaseSolver):
             fia_plan, fia_room = self.check_fia()
             if fia_room is not None and fia_plan is not None:
                 if self.find_next_task(task_type='菲亚梅塔') is None:
-                    fia_idx = self.op_data.operators['菲亚梅塔'].current_index if self.op_data.operators[
-                                                                                  '菲亚梅塔'].current_index != -1 else \
-                        self.op_data.operators['菲亚梅塔'].index
+                    fia_data = self.op_data.operators['菲亚梅塔']
+                    fia_idx = fia_data.current_index if fia_data.current_index != -1 else fia_data.index
                     result = [{}] * (fia_idx + 1)
                     result[fia_idx]['time'] = datetime.now()
-                    if self.op_data.operators["菲亚梅塔"].mood != 24:
-                        self.enter_room(fia_room)
-                        result = self.get_agent_from_room(fia_room, [fia_idx])
-                        self.back()
+                    if fia_data.mood != 24:
+                        if fia_data.time_stamp is not None and fia_data.time_stamp> datetime.now():
+                            result[fia_idx]['time'] = fia_data.time_stamp
+                        else:
+                            self.enter_room(fia_room)
+                            result = self.get_agent_from_room(fia_room, [fia_idx])
+                            self.back()
                     logger.info('下一次进行菲亚梅塔充能：' + result[fia_idx]['time'].strftime("%H:%M:%S"))
                     self.tasks.append(SchedulerTask(time=result[fia_idx]['time'], task_type="菲亚梅塔"))
             try:
