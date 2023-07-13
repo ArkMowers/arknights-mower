@@ -80,7 +80,9 @@ class Device(object):
 
     def launch(self) -> None:
         """ launch the application """
-        tap, x, y = config.TAP_TO_LAUNCH
+        tap = config.TAP_TO_LAUNCH["enable"]
+        x = config.TAP_TO_LAUNCH["x"]
+        y = config.TAP_TO_LAUNCH["y"]
 
         if tap:
             self.run(f'input tap {x} {y}')
