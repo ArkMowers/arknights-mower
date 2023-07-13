@@ -34,5 +34,6 @@ declare module '@vue/runtime-core' {
     NTable: typeof import('naive-ui')['NTable']
     NTabPane: typeof import('naive-ui')['NTabPane']
     NTabs: typeof import('naive-ui')['NTabs']
+    PlanEditor: typeof import('./src/components/PlanEditor.vue')['default']
   }
 }

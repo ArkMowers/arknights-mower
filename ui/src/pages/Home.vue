@@ -1,27 +1,12 @@
 <script setup>
-import { useConfigStore } from '@/stores/config'
 import { useMowerStore } from '@/stores/mower'
-import { usePlanStore } from '@/stores/plan'
 import { storeToRefs } from 'pinia'
 import { onMounted, inject, nextTick, watch } from 'vue'
 
-const config_store = useConfigStore()
 const mower_store = useMowerStore()
-const plan_store = usePlanStore()
 
-const { adb, package_type, free_blacklist, plan_file, simulator } = storeToRefs(config_store)
 const { log, running, log_lines } = storeToRefs(mower_store)
-const { operators } = storeToRefs(plan_store)
-
-const { build_config } = config_store
-const { load_plan } = plan_store
-
 const axios = inject('axios')
-
-const simulator_types = [
-  { label: '', value: '' },
-  { label: '夜神', value: '夜神' }
-]
 
 function scroll_last_line() {
   nextTick(() => {
@@ -56,66 +41,10 @@ function stop() {
   running.value = false
   axios.get(`${import.meta.env.VITE_HTTP_URL}/stop`)
 }
-
-async function open_plan_file() {
-  const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/dialog/file`)
-  const file_path = response.data
-  if (file_path) {
-    plan_file.value = file_path
-    await axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, build_config())
-    await load_plan()
-  }
-}
 </script>
 
 <template>
   <div class="home-container">
-    <table>
-      <tr>
-        <td class="config-label">服务器：</td>
-        <td>
-          <n-radio-group v-model:value="package_type">
-            <n-radio value="official">官服</n-radio>
-            <n-radio value="bilibili">BiliBili服</n-radio>
-          </n-radio-group>
-        </td>
-        <td></td>
-        <td></td>
-        <td></td>
-        <td></td>
-        <td></td>
-      </tr>
-      <tr>
-        <td>adb连接地址：</td>
-        <td style="width:150px;">
-          <n-input v-model:value="adb"></n-input>
-        </td>
-        <td style="width:75px;">模拟器：</td>
-        <td style="width:150px;">
-          <n-select v-model:value="simulator.name" :options="simulator_types" class="type-select" />
-        </td>
-        <td style="width:75px;">多开编号：</td>
-        <td style="width: 150px;">
-          <n-input-number v-model:value="simulator.index"></n-input-number>
-        </td>
-      </tr>
-      <tr>
-        <td>宿舍黑名单：</td>
-        <td>
-          <n-select multiple filterable tag :options="operators" v-model:value="free_blacklist" />
-        </td>
-        <td></td>
-      </tr>
-      <tr>
-        <td>排班表：</td>
-        <td>
-          <n-input v-model:value="plan_file"></n-input>
-        </td>
-        <td>
-          <n-button @click="open_plan_file">...</n-button>
-        </td>
-      </tr>
-    </table>
     <n-log class="log" :log="log" />
     <div>
       <n-button type="error" @click="stop" v-if="running">立即停止</n-button>
@@ -124,11 +53,16 @@ async function open_plan_file() {
     <n-button class="down-button" type="primary" @click="scroll_last_line">
       <template #icon>
         <n-icon>
-          <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 16 16">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            xmlns:xlink="http://www.w3.org/1999/xlink"
+            viewBox="0 0 16 16"
+          >
             <g fill="none">
               <path
                 d="M11.74 7.7a.75.75 0 1 1 1.02 1.1l-4.25 4a.75.75 0 0 1-1.02 0l-4.25-4a.75.75 0 1 1 1.02-1.1L8 11.226L11.74 7.7zm0-4a.75.75 0 1 1 1.02 1.1l-4.25 4a.75.75 0 0 1-1.02 0l-4.25-4a.75.75 0 1 1 1.02-1.1L8 7.227L11.74 3.7z"
-                fill="currentColor"></path>
+                fill="currentColor"
+              ></path>
             </g>
           </svg>
         </n-icon>

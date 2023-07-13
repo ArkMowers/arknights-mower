@@ -13,7 +13,11 @@ const {
   drone_room,
   drone_count_limit,
   reload_room,
-  start_automatically
+  start_automatically,
+  free_blacklist,
+  adb,
+  package_type,
+  simulator
 } = storeToRefs(config_store)
 
 const {
@@ -31,12 +35,48 @@ const { left_side_facility } = plan_store
 const facility_with_empty = computed(() => {
   return [{ label: '（加速贸易站）', value: '' }].concat(left_side_facility)
 })
+
+const simulator_types = [
+  { label: '夜神', value: '夜神' },
+  { label: '其它', value: '其它' }
+]
 </script>
 
 <template>
   <div class="home-container">
     <n-space justify="center">
       <table>
+        <tr>
+          <td class="config-label">服务器：</td>
+          <td>
+            <n-radio-group v-model:value="package_type">
+              <n-radio value="official">官服</n-radio>
+              <n-radio value="bilibili">BiliBili服</n-radio>
+            </n-radio-group>
+          </td>
+        </tr>
+        <tr>
+          <td>adb连接地址：</td>
+          <td style="width: 150px">
+            <n-input v-model:value="adb"></n-input>
+          </td>
+        </tr>
+        <tr>
+          <td style="width: 75px">模拟器：</td>
+          <td style="width: 150px">
+            <n-select
+              v-model:value="simulator.name"
+              :options="simulator_types"
+              class="type-select"
+            />
+          </td>
+        </tr>
+        <tr>
+          <td style="width: 75px">多开编号：</td>
+          <td style="width: 150px">
+            <n-input-number v-model:value="simulator.index"></n-input-number>
+          </td>
+        </tr>
         <tr>
           <td>运行模式：</td>
           <td colspan="3">
@@ -47,28 +87,15 @@ const facility_with_empty = computed(() => {
               </n-space>
             </n-radio-group>
           </td>
-          <td></td>
+        </tr>
+        <tr>
+          <td>宿舍黑名单：</td>
+          <td>
+            <n-select multiple filterable tag :options="operators" v-model:value="free_blacklist" />
+          </td>
           <td></td>
         </tr>
         <tr>
-          <td>令夕模式（令夕上班时起作用）：</td>
-          <td colspan="3">
-            <n-radio-group v-model:value="ling_xi">
-              <n-space>
-                <n-radio :value="'1'">感知信息</n-radio>
-                <n-radio :value="'2'">人间烟火</n-radio>
-                <n-radio :value="'3'">均衡模式</n-radio>
-              </n-space>
-            </n-radio-group>
-          </td>
-          <td></td>
-          <td></td>
-        </tr>
-        <tr>
-          <td>最大组人数：</td>
-          <td class="table-space">
-            <n-input v-model:value="max_resting_count"></n-input>
-          </td>
           <td>跑单前置延时（分钟）：</td>
           <td>
             <n-input v-model:value="run_order_delay"></n-input>
@@ -79,6 +106,8 @@ const facility_with_empty = computed(() => {
           <td class="table-space">
             <n-select :options="facility_with_empty" v-model:value="drone_room" />
           </td>
+        </tr>
+        <tr>
           <td>无人机使用阈值：</td>
           <td>
             <n-input v-model:value="drone_count_limit"></n-input>
@@ -93,50 +122,6 @@ const facility_with_empty = computed(() => {
               tag
               :options="left_side_facility"
               v-model:value="reload_room"
-            />
-          </td>
-          <td></td>
-          <td></td>
-        </tr>
-        <tr>
-          <td>需要回满心情的干员：</td>
-          <td colspan="3">
-            <n-select multiple filterable tag :options="operators" v-model:value="rest_in_full" />
-          </td>
-          <td></td>
-          <td></td>
-        </tr>
-        <tr>
-          <td>需要用尽心情的干员：</td>
-          <td colspan="3">
-            <n-select
-              multiple
-              filterable
-              tag
-              :options="operators"
-              v-model:value="exhaust_require"
-            />
-          </td>
-          <td></td>
-          <td></td>
-        </tr>
-        <tr>
-          <td>0心情工作的干员：</td>
-          <td colspan="3">
-            <n-select multiple filterable tag :options="operators" v-model:value="workaholic" />
-          </td>
-          <td></td>
-          <td></td>
-        </tr>
-        <tr>
-          <td>宿舍低优先级干员：</td>
-          <td colspan="3">
-            <n-select
-              multiple
-              filterable
-              tag
-              :options="operators"
-              v-model:value="resting_priority"
             />
           </td>
           <td></td>
