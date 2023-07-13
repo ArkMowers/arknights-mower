@@ -138,7 +138,7 @@ class Operators(object):
             if high_count > current_high or low_count > current_low:
                 return f'{key} 分组无法排班,宿舍可用高优先{current_high},低优先{current_low}->分组需要高优先{high_count},低优先{low_count}'
 
-    def get_current_room(self, room, bypass=False):
+    def get_current_room(self, room, bypass=False, current_index = None):
         room_data = {v.current_index: v for k, v in self.operators.items() if v.current_room == room}
         res = [obj['agent'] for obj in self.plan[room]]
         not_found = False
@@ -147,6 +147,8 @@ class Operators(object):
                 res[idx] = room_data[idx].name
             else:
                 res[idx] = ''
+                if current_index is not None and idx not in current_index:
+                    continue
                 not_found = True
         if not_found and not bypass:
             return None

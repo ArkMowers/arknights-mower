@@ -1371,6 +1371,8 @@ class BaseSchedulerSolver(BaseSolver):
         exists = []
         if fast_mode:
             current_room = self.op_data.get_current_room(room, True)
+            # 如果空位置进房间会被向前挤
+            current_room = sorted(current_room, key=lambda x: x == "")
             differences = []
             for i in range(len(current_room)):
                 if i >= len(agents) or current_room[i] != agents[i]:
@@ -1631,8 +1633,8 @@ class BaseSchedulerSolver(BaseSolver):
                 logger.info(f'重设 {_operator} 至空闲')
         return result
 
-    def refresh_current_room(self, room):
-        _current_room = self.op_data.get_current_room(room)
+    def refresh_current_room(self, room, current_index = None):
+        _current_room = self.op_data.get_current_room(room,current_index=current_index)
         if _current_room is None:
             self.get_agent_from_room(room)
             _current_room = self.op_data.get_current_room(room, True)
@@ -1666,7 +1668,7 @@ class BaseSchedulerSolver(BaseSolver):
                             working_room = self.op_data.operators[plan[room][0]].room
                             new_plan[working_room] = self.op_data.get_current_room(working_room, True)
                         if 'Current' in plan[room]:
-                            self.refresh_current_room(room)
+                            self.refresh_current_room(room,[index for index, value in enumerate(plan[room]) if value == "Current"])
                             for current_idx, _name in enumerate(plan[room]):
                                 if _name == 'Current':
                                     plan[room][current_idx] = self.op_data.get_current_room(room, True)[current_idx]
