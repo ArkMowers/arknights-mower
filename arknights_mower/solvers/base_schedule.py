@@ -1368,7 +1368,7 @@ class BaseSchedulerSolver(BaseSolver):
             current_room = self.op_data.get_current_room(room, True)
             differences = []
             for i in range(len(current_room)):
-                if current_room[i] != agents[i]:
+                if i >= len(agents) or current_room[i] != agents[i]:
                     differences.append(i)
                 else:
                     exists.append(current_room[i])
