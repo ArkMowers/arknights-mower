@@ -59,3 +59,7 @@ webview:
   port: 58000
   width: 1100
   height: 780
+tap_to_launch_game:
+  enable: false
+  x: 0
+  y: 0

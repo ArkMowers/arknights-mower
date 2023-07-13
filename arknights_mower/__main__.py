@@ -32,6 +32,7 @@ def main(c, p, o={}, child_conn=None):
     config.ADB_CONNECT = [conf['adb']]
     config.APPNAME = 'com.hypergryph.arknights' if conf[
                                                        'package_type'] == 1 else 'com.hypergryph.arknights.bilibili'  # 服务器
+    config.TAP_TO_LAUNCH = conf['tap_to_launch_game']
     init_fhlr(child_conn)
     Pipe.conn = child_conn
     if plan['conf']['ling_xi'] == 1:
