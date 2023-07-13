@@ -69,8 +69,7 @@ class BaseSchedulerSolver(BaseSolver):
         self.clue_count = 0
         self.tasks = []
         self.maa_config = {}
-
-
+        self.free_clue = None
 
     def run(self) -> None:
         """
@@ -85,6 +84,8 @@ class BaseSchedulerSolver(BaseSolver):
             self.task = None
         if self.party_time is not None and self.party_time < datetime.now():
             self.party_time = None
+        if self.free_clue is not None and self.free_clue != get_server_weekday():
+            self.free_clue = None
         self.todo_task = False
         self.collect_notification = False
         self.planned = False
@@ -582,7 +583,7 @@ class BaseSchedulerSolver(BaseSolver):
                     result = [{}] * (fia_idx + 1)
                     result[fia_idx]['time'] = datetime.now()
                     if fia_data.mood != 24:
-                        if fia_data.time_stamp is not None and fia_data.time_stamp> datetime.now():
+                        if fia_data.time_stamp is not None and fia_data.time_stamp > datetime.now():
                             result[fia_idx]['time'] = fia_data.time_stamp
                         else:
                             self.enter_room(fia_room)
@@ -960,15 +961,17 @@ class BaseSchedulerSolver(BaseSolver):
         self.tap((self.recog.w - 10, self.recog.h - 10), interval=3, rebuild=False)
         self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3, rebuild=False)
 
-        logger.info('领取会客室线索')
-        self.tap(((x0 + x1) // 2, (y0 * 5 - y1) // 4), interval=3)
-        obtain = self.find('clue_obtain')
-        if obtain is not None and self.get_color(self.get_pos(obtain, 0.25, 0.5))[0] < 20:
-            self.tap(obtain, interval=2)
-            if self.find('clue_full') is not None:
+        if self.free_clue is None:
+            logger.info('领取会客室线索')
+            self.tap(((x0 + x1) // 2, (y0 * 5 - y1) // 4), interval=3)
+            obtain = self.find('clue_obtain')
+            if obtain is not None and self.get_color(self.get_pos(obtain, 0.25, 0.5))[0] < 20:
+                self.tap(obtain, interval=2)
+                if self.find('clue_full') is not None:
+                    self.back()
+            else:
                 self.back()
-        else:
-            self.back()
+            self.free_clue = get_server_weekday()
         logger.info('放置线索')
         clue_unlock = self.find('clue_unlock')
         if clue_unlock is not None:
@@ -1348,7 +1351,7 @@ class BaseSchedulerSolver(BaseSolver):
         # 确认
         self.tap((self.recog.w * 0.8, self.recog.h * 0.8), interval=0.5)
 
-    def choose_agent(self, agents: list[str], room: str ,fast_mode = True) -> None:
+    def choose_agent(self, agents: list[str], room: str, fast_mode=True) -> None:
         """
         :param order: ArrangeOrder, 选择干员时右上角的排序功能
         """
@@ -1375,7 +1378,7 @@ class BaseSchedulerSolver(BaseSolver):
                 else:
                     exists.append(current_room[i])
             for pos in differences:
-                if current_room[pos]!='':
+                if current_room[pos] != '':
                     self.tap((self.recog.w * position[pos][0], self.recog.h * position[pos][1]), interval=0,
                              rebuild=False)
             agent = [agents[i] for i in differences]
@@ -1679,13 +1682,13 @@ class BaseSchedulerSolver(BaseSolver):
                                     self.tasks.remove(run_order_task)
                                     del self.op_data.run_order_rooms[room]['plan']
                     differences = [x for x in plan[room] if x not in self.op_data.get_current_room(room, True)]
-                    if len(differences)!=0:
+                    if len(differences) != 0:
                         while self.find('arrange_order_options') is None:
                             if error_count > 3:
                                 raise Exception('未成功进入干员选择界面')
                             self.tap((self.recog.w * 0.82, self.recog.h * 0.2), interval=1)
                             error_count += 1
-                        self.choose_agent(plan[room], room,choose_error<=0)
+                        self.choose_agent(plan[room], room, choose_error <= 0)
                         self.recog.update()
                         self.tap_element('confirm_blue', detected=True, judge=False, interval=3)
                         if self.get_infra_scene() == Scene.INFRA_ARRANGE_CONFIRM:
