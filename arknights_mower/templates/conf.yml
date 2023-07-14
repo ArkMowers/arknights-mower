@@ -49,8 +49,8 @@ run_mode: 1
 run_order_delay: 10
 start_automatically: false
 maa_gap: 4
-maa_mall_blacklist: 碳,家具,加急许可
-maa_mall_buy: 招聘许可,龙门币
+maa_mall_blacklist: 加急许可,碳,碳素,家具零件
+maa_mall_buy: 招聘许可,龙门币,技巧概要·卷2
 maa_recruit_only_4: false
 maa_recruitment_time: false
 maa_rg_sleep_max: 8:30
