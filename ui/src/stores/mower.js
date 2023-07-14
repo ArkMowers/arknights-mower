@@ -27,7 +27,7 @@ export const useMowerStore = defineStore('mower', () => {
     ws.value = new ReconnectingWebSocket(ws_url)
     ws.value.onmessage = (event) => {
       log_lines.value.push(event.data)
-      log_lines.value = log_lines.value.slice(-100)
+      log_lines.value = log_lines.value.slice(-500)
     }
   }
 
