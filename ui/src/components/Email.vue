@@ -16,7 +16,7 @@ const { mail_enable, account, pass_code } = storeToRefs(store)
       <n-checkbox v-model:checked="mail_enable" class="email-title">
         <div class="card-title">邮件提醒</div>
         <div class="expand"></div>
-        <n-radio-group class="email-mode" v-model:value="mode">
+        <n-radio-group class="email-mode" v-model:value="mode" disabled>
           <n-radio-button value="simple" label="简单模式" />
           <n-radio-button value="advanced" label="高级模式" />
         </n-radio-group>
@@ -49,14 +49,14 @@ const { mail_enable, account, pass_code } = storeToRefs(store)
           </tr>
         </table>
         <div class="email-test">
-          <n-button>发送测试邮件</n-button>
+          <n-button disabled>发送测试邮件</n-button>
           <div></div>
         </div>
         <n-divider />
         <table class="email-table">
           <tr>
             <td class="email-label">邮件主题</td>
-            <td><n-input></n-input></td>
+            <td><n-input disabled></n-input></td>
           </tr>
         </table>
         <div>邮件主题可用于区分多开的Mower。</div>

@@ -18,18 +18,11 @@ const {
   adb,
   package_type,
   simulator,
-  theme
+  theme,
+  resting_threshold
 } = storeToRefs(config_store)
 
-const {
-  ling_xi,
-  max_resting_count,
-  resting_priority,
-  exhaust_require,
-  rest_in_full,
-  operators,
-  workaholic
-} = storeToRefs(plan_store)
+const { operators } = storeToRefs(plan_store)
 
 const { left_side_facility } = plan_store
 
@@ -57,19 +50,19 @@ const simulator_types = [
       </tr>
       <tr>
         <td>adb连接地址：</td>
-        <td style="width: 150px">
+        <td>
           <n-input v-model:value="adb"></n-input>
         </td>
       </tr>
       <tr>
-        <td style="width: 75px">模拟器：</td>
-        <td style="width: 150px">
+        <td>模拟器：</td>
+        <td>
           <n-select v-model:value="simulator.name" :options="simulator_types" class="type-select" />
         </td>
       </tr>
-      <tr>
-        <td style="width: 75px">多开编号：</td>
-        <td style="width: 150px">
+      <tr v-if="simulator.name == '夜神'">
+        <td>多开编号：</td>
+        <td>
           <n-input-number v-model:value="simulator.index"></n-input-number>
         </td>
       </tr>
@@ -97,8 +90,8 @@ const simulator_types = [
         </td>
       </tr>
       <tr>
-        <td>无人机使用房间（room_X_X）：</td>
-        <td class="table-space">
+        <td>无人机使用房间：</td>
+        <td>
           <n-select :options="facility_with_empty" v-model:value="drone_room" />
         </td>
       </tr>
@@ -121,11 +114,6 @@ const simulator_types = [
         </td>
       </tr>
       <tr>
-        <td colspan="2">
-          <n-checkbox v-model:checked="start_automatically">启动mower时自动开始任务</n-checkbox>
-        </td>
-      </tr>
-      <tr>
         <td>显示主题：</td>
         <td>
           <n-radio-group v-model:value="theme">
@@ -134,10 +122,30 @@ const simulator_types = [
           </n-radio-group>
         </td>
       </tr>
+      <tr>
+        <td>心情阈值：</td>
+        <td>
+          <div class="threshold">
+            <n-slider v-model:value="resting_threshold" :step="0.05" :min="0.5" :max="0.8" />
+            <n-input-number v-model:value="resting_threshold" />
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td colspan="2">
+          <n-checkbox v-model:checked="start_automatically">启动后自动开始任务</n-checkbox>
+        </td>
+      </tr>
     </table>
-    <email />
     <maa-basic />
+    <email />
   </div>
 </template>
 
-<style scoped lang="scss"></style>
+<style scoped lang="scss">
+.threshold {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+</style>

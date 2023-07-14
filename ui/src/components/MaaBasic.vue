@@ -49,14 +49,14 @@ async function select_maa_dir() {
       </tr>
     </table>
     <div class="misc-container">
-      <n-button>测试设置</n-button>
-      <div>测试中……</div>
+      <n-button disabled>测试设置</n-button>
+      <div></div>
     </div>
     <n-divider />
     <div class="misc-container">
       <div>启动间隔</div>
       <n-input-number class="hour-input" v-model:value="maa_gap" />
-      <div>（小时）</div>
+      <div>小时（可填小数）</div>
     </div>
   </n-card>
 </template>
