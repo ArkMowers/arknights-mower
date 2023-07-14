@@ -99,7 +99,7 @@ def initialize(tasks, scheduler=None):
         base_scheduler.last_room = ''
         base_scheduler.free_blacklist = list(filter(None, conf['free_blacklist'].replace('，', ',').split(',')))
         logger.info('宿舍黑名单：' + str(base_scheduler.free_blacklist))
-        base_scheduler.resting_treshhold = 0.5
+        base_scheduler.resting_threshold = conf['resting_threshold']
         base_scheduler.MAA = None
         base_scheduler.email_config = {
             'mail_enable': conf['mail_enable'],

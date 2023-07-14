@@ -59,8 +59,10 @@ webview:
   port: 58000
   width: 1100
   height: 780
+  theme: light
 tap_to_launch_game:
   enable: false
   x: 0
   y: 0
 exit_game_when_idle: true
+resting_threshold: 0.5

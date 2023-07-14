@@ -615,7 +615,7 @@ class BaseSchedulerSolver(BaseSolver):
                         continue
                     # 忽略掉心情值没低于上限的的
                     if op.current_mood() > int(
-                            (op.upper_limit - op.lower_limit) * self.resting_treshhold + op.lower_limit):
+                            (op.upper_limit - op.lower_limit) * self.resting_threshold + op.lower_limit):
                         continue
                     if op.name in self.op_data.exhaust_agent:
                         if op.current_mood() <= 2:
