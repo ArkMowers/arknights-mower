@@ -2,6 +2,7 @@
 
 from arknights_mower.utils.conf import load_conf, save_conf, load_plan, write_plan
 from arknights_mower.__main__ import main
+from arknights_mower.utils.asst import Asst
 
 from flask import Flask, send_from_directory, request
 from flask_cors import CORS
@@ -13,6 +14,7 @@ import webview
 
 import os
 import multiprocessing
+import subprocess
 from threading import Thread
 import json
 import time
@@ -233,3 +235,20 @@ def open_folder_dialog():
         return folder_path[0]
     else:
         return ""
+
+
+@app.route("/check-maa")
+def get_maa_adb_version():
+    try:
+        Asst.load(conf["maa_path"])
+        asst = Asst()
+        version = asst.get_version()
+        maa_msg = f"Maa {version} 加载成功"
+    except Exception as e:
+        maa_msg = "Maa加载失败：" + str(e)
+    try:
+        adb = subprocess.run([conf["maa_adb_path"], "--version"], capture_output=True)
+        adb_msg = "adb " + adb.stdout.decode("utf-8").split("\n")[1][8:] + " 加载成功"
+    except Exception as e:
+        adb_msg = "adb加载失败：" + str(e)
+    return maa_msg + "；" + adb_msg
