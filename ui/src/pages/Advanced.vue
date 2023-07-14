@@ -39,13 +39,15 @@ const simulator_types = [
 <template>
   <div class="home-container external-container">
     <n-card title="Mower设置">
-      <table>
+      <table class="mower-basic">
         <tr>
           <td class="config-label">服务器：</td>
           <td>
             <n-radio-group v-model:value="package_type">
-              <n-radio value="official">官服</n-radio>
-              <n-radio value="bilibili">BiliBili服</n-radio>
+              <n-space>
+                <n-radio value="official">官服</n-radio>
+                <n-radio value="bilibili">BiliBili服</n-radio>
+              </n-space>
             </n-radio-group>
           </td>
         </tr>
@@ -82,8 +84,10 @@ const simulator_types = [
           <td>显示主题：</td>
           <td>
             <n-radio-group v-model:value="theme">
-              <n-radio value="light">亮色</n-radio>
-              <n-radio value="dark">暗色</n-radio>
+              <n-space>
+                <n-radio value="light">亮色</n-radio>
+                <n-radio value="dark">暗色</n-radio>
+              </n-space>
             </n-radio-group>
           </td>
         </tr>
@@ -95,7 +99,7 @@ const simulator_types = [
       </table>
     </n-card>
     <n-card title="基建设置">
-      <table>
+      <table class="riic-conf">
         <tr>
           <td>宿舍黑名单：</td>
           <td>
@@ -153,5 +157,21 @@ const simulator_types = [
   display: flex;
   align-items: center;
   gap: 14px;
+}
+
+.mower-basic {
+  width: 100%;
+
+  td:nth-child(1) {
+    width: 100px;
+  }
+}
+
+.riic-conf {
+  width: 100%;
+
+  td:nth-child(1) {
+    width: 170px;
+  }
 }
 </style>
