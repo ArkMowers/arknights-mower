@@ -213,13 +213,17 @@ const launch_options = [
 }
 
 .coord {
-  td:nth-child(1),
-  td:nth-child(3) {
-    width: 20px;
-  }
+  td {
+    width: 120px;
 
-  td:nth-child(2) {
-    padding-right: 14px;
+    &:nth-child(1),
+    &:nth-child(3) {
+      width: 30px;
+    }
+
+    &:nth-child(2) {
+      padding-right: 30px;
+    }
   }
 }
 </style>
