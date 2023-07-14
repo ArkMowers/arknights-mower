@@ -1,5 +1,5 @@
 <script setup>
-import { inject } from 'vue'
+import { inject, ref } from 'vue'
 const axios = inject('axios')
 
 import { useConfigStore } from '@/stores/config'
@@ -22,6 +22,13 @@ async function select_maa_dir() {
   if (folder_path) {
     maa_path.value = folder_path
   }
+}
+
+const maa_msg = ref('')
+
+async function test_maa() {
+  const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/check-maa`)
+  maa_msg.value = response.data
 }
 </script>
 
@@ -49,8 +56,8 @@ async function select_maa_dir() {
       </tr>
     </table>
     <div class="misc-container">
-      <n-button disabled>测试设置</n-button>
-      <div></div>
+      <n-button @click="test_maa">测试设置</n-button>
+      <div>{{ maa_msg }}</div>
     </div>
     <n-divider />
     <div class="misc-container">
