@@ -115,6 +115,11 @@ td {
   gap: 8px;
 }
 
+.external-container {
+  width: 600px;
+  margin: 0 auto;
+}
+
 .n-checkbox {
   align-items: center;
 }

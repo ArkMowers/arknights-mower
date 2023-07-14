@@ -39,8 +39,6 @@ function selectTab(tab) {
 
 <template>
   <div class="home-container external-container">
-    <email />
-    <maa-basic />
     <clue />
     <maa-recruit />
     <maa-weekly />

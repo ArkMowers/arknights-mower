@@ -65,7 +65,7 @@ function render_label(option) {
         target="_blank"
         type="primary"
         >明日方舟一图流</n-button
-      >。
+      >。注意跑单时赤金与作战记录均大幅升值。
     </p>
     <table>
       <tr>
