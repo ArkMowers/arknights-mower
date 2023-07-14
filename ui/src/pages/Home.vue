@@ -84,9 +84,6 @@ function stop() {
 .log {
   flex-grow: 1;
   overflow: hidden;
-  border: 1px solid rgb(224, 224, 230);
-  border-radius: 3px;
-  padding: 4px;
 }
 
 .config-label {
