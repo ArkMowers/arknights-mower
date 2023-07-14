@@ -19,7 +19,9 @@ const {
   package_type,
   simulator,
   theme,
-  resting_threshold
+  resting_threshold,
+  tap_to_launch_game,
+  exit_game_when_idle
 } = storeToRefs(config_store)
 
 const { operators } = storeToRefs(plan_store)
@@ -33,6 +35,11 @@ const facility_with_empty = computed(() => {
 const simulator_types = [
   { label: '夜神', value: '夜神' },
   { label: '其它', value: '' }
+]
+
+const launch_options = [
+  { label: '使用adb命令启动', value: 'adb' },
+  { label: '点击屏幕启动', value: 'tap' }
 ]
 </script>
 
@@ -70,6 +77,36 @@ const simulator_types = [
           </td>
         </tr>
         <tr>
+          <td>启动游戏：</td>
+          <td>
+            <n-select v-model:value="tap_to_launch_game.enable" :options="launch_options" />
+          </td>
+        </tr>
+        <tr v-if="tap_to_launch_game.enable == 'tap'">
+          <td>点击坐标：</td>
+          <td>
+            <table class="coord">
+              <tr>
+                <td>X:</td>
+                <td>
+                  <n-input-number v-model:value="tap_to_launch_game.x"></n-input-number>
+                </td>
+                <td>Y:</td>
+                <td>
+                  <n-input-number v-model:value="tap_to_launch_game.y"></n-input-number>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="2">
+            <n-checkbox v-model:checked="exit_game_when_idle"
+              >任务结束后退出游戏以降低功耗</n-checkbox
+            >
+          </td>
+        </tr>
+        <tr>
           <td>运行模式：</td>
           <td>
             <n-radio-group v-model:value="run_mode">
@@ -81,6 +118,11 @@ const simulator_types = [
           </td>
         </tr>
         <tr>
+          <td colspan="2">
+            <n-checkbox v-model:checked="start_automatically">启动后自动开始任务</n-checkbox>
+          </td>
+        </tr>
+        <tr>
           <td>显示主题：</td>
           <td>
             <n-radio-group v-model:value="theme">
@@ -89,11 +131,6 @@ const simulator_types = [
                 <n-radio value="dark">暗色</n-radio>
               </n-space>
             </n-radio-group>
-          </td>
-        </tr>
-        <tr>
-          <td colspan="2">
-            <n-checkbox v-model:checked="start_automatically">启动后自动开始任务</n-checkbox>
           </td>
         </tr>
       </table>
@@ -172,6 +209,17 @@ const simulator_types = [
 
   td:nth-child(1) {
     width: 170px;
+  }
+}
+
+.coord {
+  td:nth-child(1),
+  td:nth-child(3) {
+    width: 20px;
+  }
+
+  td:nth-child(2) {
+    padding-right: 14px;
   }
 }
 </style>

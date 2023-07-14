@@ -31,6 +31,8 @@ export const useConfigStore = defineStore('config', () => {
   const simulator = ref({ name: '', index: -1 })
   const resting_threshold = ref(0.5)
   const theme = ref('light')
+  const tap_to_launch_game = ref(false)
+  const exit_game_when_idle = ref(true)
 
   async function load_shop() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/shop`)
@@ -76,6 +78,9 @@ export const useConfigStore = defineStore('config', () => {
     simulator.value = response.data.simulator
     resting_threshold.value = response.data.resting_threshold
     theme.value = response.data.theme
+    tap_to_launch_game.value = response.data.tap_to_launch_game
+    tap_to_launch_game.value.enable = tap_to_launch_game.value.enable ? 'tap' : 'adb'
+    exit_game_when_idle.value = response.data.exit_game_when_idle
   }
 
   function build_config() {
@@ -106,7 +111,13 @@ export const useConfigStore = defineStore('config', () => {
       maa_recruit_only_4: maa_recruit_only_4.value,
       simulator: simulator.value,
       theme: theme.value,
-      resting_threshold: resting_threshold.value
+      resting_threshold: resting_threshold.value,
+      tap_to_launch_game: {
+        enable: tap_to_launch_game.value.enable == 'tap',
+        x: tap_to_launch_game.value.x,
+        y: tap_to_launch_game.value.y
+      },
+      exit_game_when_idle: exit_game_when_idle.value
     }
   }
 
@@ -137,7 +148,9 @@ export const useConfigStore = defineStore('config', () => {
       maa_recruit_only_4,
       simulator,
       resting_threshold,
-      theme
+      theme,
+      tap_to_launch_game,
+      exit_game_when_idle
     ],
     () => {
       axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, build_config())
@@ -176,6 +189,8 @@ export const useConfigStore = defineStore('config', () => {
     build_config,
     simulator,
     resting_threshold,
-    theme
+    theme,
+    tap_to_launch_game,
+    exit_game_when_idle
   }
 })
