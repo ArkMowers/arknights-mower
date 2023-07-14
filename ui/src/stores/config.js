@@ -73,7 +73,7 @@ export const useConfigStore = defineStore('config', () => {
     maa_gap.value = response.data.maa_gap
     maa_recruitment_time.value = response.data.maa_recruitment_time
     maa_recruit_only_4.value = response.data.maa_recruit_only_4
-    simulator.value = response.data.simulator ? { name: '', index: -1 } : response.data.simulator
+    simulator.value = response.data.simulator
     resting_threshold.value = response.data.resting_threshold
     theme.value = response.data.theme
   }

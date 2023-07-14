@@ -32,7 +32,7 @@ const facility_with_empty = computed(() => {
 
 const simulator_types = [
   { label: '夜神', value: '夜神' },
-  { label: '其它', value: '其它' }
+  { label: '其它', value: '' }
 ]
 </script>
 
@@ -58,11 +58,7 @@ const simulator_types = [
         <tr>
           <td>模拟器：</td>
           <td>
-            <n-select
-              v-model:value="simulator.name"
-              :options="simulator_types"
-              class="type-select"
-            />
+            <n-select v-model:value="simulator.name" :options="simulator_types" />
           </td>
         </tr>
         <tr v-if="simulator.name == '夜神'">
