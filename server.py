@@ -141,7 +141,7 @@ def read_log(read):
             if msg["type"] == "log":
                 new_line = time.strftime("%m-%d %H:%M:%S ") + msg["data"]
                 log_lines.append(new_line)
-                log_lines = log_lines[-100:]
+                log_lines = log_lines[-500:]
                 for ws in ws_connections:
                     ws.send(new_line)
             elif msg["type"] == "operators":
