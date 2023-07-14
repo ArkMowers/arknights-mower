@@ -40,7 +40,7 @@ function selectTab(tab) {
 <template>
   <div class="home-container external-container">
     <clue />
-    <maa-recruit v-if="false" />
+    <maa-recruit />
     <maa-weekly />
     <n-card v-if="true">
       <template #header>
