@@ -1,6 +1,10 @@
 <template>
-  <!-- <n-config-provider :locale="zhCN" :date-locale="dateZhCN" class="provider" :theme="darkTheme"> -->
-  <n-config-provider :locale="zhCN" :date-locale="dateZhCN" class="provider">
+  <n-config-provider
+    :locale="zhCN"
+    :date-locale="dateZhCN"
+    class="provider"
+    :theme="theme == 'dark' ? darkTheme : undefined"
+  >
     <n-global-style />
     <n-dialog-provider>
       <n-tabs type="segment" class="tabs">
@@ -36,7 +40,7 @@ import { useMowerStore } from '@/stores/mower'
 
 const config_store = useConfigStore()
 const { load_config, load_shop } = config_store
-const { start_automatically } = storeToRefs(config_store)
+const { start_automatically, theme } = storeToRefs(config_store)
 
 const plan_store = usePlanStore()
 const { load_plan, load_operators } = plan_store

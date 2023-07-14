@@ -12,7 +12,7 @@ const plan_store = usePlanStore()
 const { operators, plan, groups } = storeToRefs(plan_store)
 const { facility_operator_limit } = plan_store
 
-const { adb, package_type, free_blacklist, plan_file, simulator } = storeToRefs(config_store)
+const { adb, package_type, free_blacklist, plan_file, theme } = storeToRefs(config_store)
 
 async function open_plan_file() {
   const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/dialog/file`)
@@ -205,6 +205,10 @@ const renderLabel = (option) => {
     ]
   )
 }
+
+const avatar_bg = computed(() => {
+  return theme.value == 'light' ? 'lightgrey' : 'grey'
+})
 </script>
 
 <template>
@@ -540,7 +544,7 @@ const renderLabel = (option) => {
 .avatars > img {
   box-sizing: content-box;
   border-radius: 2px;
-  background: lightgrey;
+  background: v-bind(avatar_bg);
 }
 
 .outer {

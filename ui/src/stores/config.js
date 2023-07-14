@@ -30,6 +30,7 @@ export const useConfigStore = defineStore('config', () => {
   const maa_recruit_only_4 = ref(false)
   const simulator = ref({ name: '', index: -1 })
   const resting_threshold = ref(0.5)
+  const theme = ref('light')
 
   async function load_shop() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/shop`)
@@ -73,6 +74,8 @@ export const useConfigStore = defineStore('config', () => {
     maa_recruitment_time.value = response.data.maa_recruitment_time
     maa_recruit_only_4.value = response.data.maa_recruit_only_4
     simulator.value = response.data.simulator ? { name: '', index: -1 } : response.data.simulator
+    resting_threshold.value = response.data.resting_threshold
+    theme.value = response.data.theme
   }
 
   function build_config() {
@@ -101,7 +104,8 @@ export const useConfigStore = defineStore('config', () => {
       maa_gap: maa_gap.value,
       maa_recruitment_time: maa_recruitment_time.value,
       maa_recruit_only_4: maa_recruit_only_4.value,
-      simulator: simulator.value
+      simulator: simulator.value,
+      theme: theme.value
     }
   }
 
@@ -131,7 +135,8 @@ export const useConfigStore = defineStore('config', () => {
       maa_recruitment_time,
       maa_recruit_only_4,
       simulator,
-      resting_threshold
+      resting_threshold,
+      theme
     ],
     () => {
       axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, build_config())
@@ -169,6 +174,7 @@ export const useConfigStore = defineStore('config', () => {
     maa_recruit_only_4,
     build_config,
     simulator,
-    resting_threshold
+    resting_threshold,
+    theme
   }
 })
