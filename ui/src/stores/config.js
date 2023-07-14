@@ -105,7 +105,8 @@ export const useConfigStore = defineStore('config', () => {
       maa_recruitment_time: maa_recruitment_time.value,
       maa_recruit_only_4: maa_recruit_only_4.value,
       simulator: simulator.value,
-      theme: theme.value
+      theme: theme.value,
+      resting_threshold: resting_threshold.value
     }
   }
 
