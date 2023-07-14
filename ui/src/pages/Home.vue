@@ -104,3 +104,9 @@ function stop() {
   opacity: 1;
 }
 </style>
+
+<style>
+.n-log pre {
+  word-break: break-all;
+}
+</style>

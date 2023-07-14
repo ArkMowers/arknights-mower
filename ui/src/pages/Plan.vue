@@ -43,6 +43,9 @@ async function open_plan_file() {
   </div>
   <plan-editor />
   <div class="home-container external-container no-grow">
+    <n-divider />
+  </div>
+  <div class="home-container external-container no-grow">
     <table>
       <tr>
         <td>令夕模式（令夕上班时起作用）：</td>
