@@ -252,3 +252,13 @@ def get_maa_adb_version():
     except Exception as e:
         adb_msg = "adb加载失败：" + str(e)
     return maa_msg + "；" + adb_msg
+
+
+@app.route("/maa-conn-preset")
+def get_maa_conn_presets():
+    try:
+        with open(os.path.join(conf["maa_path"], "resource", "config.json"), "r") as f:
+            presets = [i["configName"] for i in json.load(f)["connection"]]
+    except:
+        presets = []
+    return presets
