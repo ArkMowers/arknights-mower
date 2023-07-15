@@ -965,7 +965,7 @@ class BaseSchedulerSolver(BaseSolver):
         logger.info('接收线索')
         self.tap(((x0 + x1) // 2, (y0 * 3 + y1) // 4), interval=3, rebuild=False)
         self.tap((self.recog.w - 10, self.recog.h - 10), interval=3, rebuild=False)
-        self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3, rebuild=False)
+        self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3)
 
         if self.free_clue is None:
             logger.info('领取会客室线索')
