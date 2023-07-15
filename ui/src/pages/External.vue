@@ -12,8 +12,8 @@ const maa_add_task = ref('禁用')
 const {
   maa_path,
   maa_rg_enable,
-  sleep_min,
-  sleep_max,
+  maa_rg_sleep_min,
+  maa_rg_sleep_max,
   sss_type,
   copilot_file_location,
   copilot_loop_times
@@ -61,13 +61,13 @@ const maa_long_task = ref(false)
         <tr>
           <td>开始</td>
           <td>
-            <n-time-picker default-formatted-value="00:12:13" />
+            <n-time-picker format="H:mm" v-model:formatted-value="maa_rg_sleep_min" />
           </td>
         </tr>
         <tr>
           <td>结束</td>
           <td>
-            <n-time-picker default-formatted-value="00:12:13" />
+            <n-time-picker format="H:mm" v-model:formatted-value="maa_rg_sleep_max" />
           </td>
         </tr>
       </table>
