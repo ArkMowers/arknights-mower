@@ -6,7 +6,7 @@ import { useConfigStore } from '@/stores/config'
 const store = useConfigStore()
 
 import { storeToRefs } from 'pinia'
-const { maa_path, maa_adb_path, maa_gap, maa_conn_preset } = storeToRefs(store)
+const { maa_path, maa_adb_path, maa_gap, maa_conn_preset, maa_touch_option } = storeToRefs(store)
 
 async function select_maa_adb_path() {
   const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/dialog/file`)
@@ -39,6 +39,10 @@ async function get_maa_conn_presets() {
     return { label: x, value: x }
   })
 }
+
+const maa_touch_options = ['maatouch', 'minitouch', 'adb'].map((x) => {
+  return { label: x, value: x }
+})
 </script>
 
 <template>
@@ -82,7 +86,7 @@ async function get_maa_conn_presets() {
       <tr>
         <td>触控模式</td>
         <td colspan="2">
-          <n-select />
+          <n-select v-model:value="maa_touch_option" :options="maa_touch_options" />
         </td>
       </tr>
     </table>
