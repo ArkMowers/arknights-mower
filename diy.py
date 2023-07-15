@@ -75,7 +75,7 @@ free_blacklist= []
 # 干员宿舍回复阈值
     # 高效组心情低于 UpperLimit  * 阈值 (向下取整)的时候才会会安排休息
     # UpperLimit：默认24，特殊技能干员如夕，令可能会有所不同(设置在 agent-base.json 文件可以自行更改)
-resting_treshhold = 0.5
+resting_threshold = 0.5
 
 # 跑单如果all in 贸易站则 不需要修改设置
 # 如果需要无人机加速其他房间则可以修改成房间名字如 'room_1_1'
@@ -270,7 +270,7 @@ def inialize(tasks, scheduler=None):
         base_scheduler.read_mood = True
         base_scheduler.last_room = ''
         base_scheduler.free_blacklist = free_blacklist
-        base_scheduler.resting_treshhold = resting_treshhold
+        base_scheduler.resting_threshold = resting_threshold
         base_scheduler.MAA = None
         base_scheduler.email_config = email_config
         base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]

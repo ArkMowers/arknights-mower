@@ -618,7 +618,7 @@ class BaseSchedulerSolver(BaseSolver):
                         continue
                     # 忽略掉心情值没低于上限的的
                     if op.current_mood() > int(
-                            (op.upper_limit - op.lower_limit) * self.resting_treshhold + op.lower_limit):
+                            (op.upper_limit - op.lower_limit) * self.resting_threshold + op.lower_limit):
                         continue
                     if op.name in self.op_data.exhaust_agent:
                         if op.current_mood() <= 2:
@@ -1997,6 +1997,9 @@ class BaseSchedulerSolver(BaseSolver):
             logger.info(subject)
             self.send_email(context, subject)
             if remaining_time > 0:
+                if remaining_time > 300 and self.exit_game_when_idle:
+                    self.device.exit(self.package_name)
+                    logger.info("关闭游戏，降低功耗")
                 time.sleep(remaining_time)
             self.MAA = None
         except Exception as e:
