@@ -122,6 +122,7 @@ def initialize(tasks, scheduler=None):
         maa_config['blacklist'] = conf['maa_mall_blacklist']
         maa_config['recruitment_time'] = conf['maa_recruitment_time']
         maa_config['recruit_only_4'] = conf['maa_recruit_only_4']
+        maa_config['conn_preset'] = conf['maa_conn_preset']
         base_scheduler.maa_config = maa_config
         base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
         base_scheduler.error = False

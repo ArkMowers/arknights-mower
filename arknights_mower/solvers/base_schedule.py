@@ -1819,7 +1819,7 @@ class BaseSchedulerSolver(BaseSolver):
         # self.MAA.set_instance_option(2, 'maatouch')
         # 请自行配置 adb 环境变量，或修改为 adb 可执行程序的路径
         # logger.info(self.device.client.device_id)
-        if self.MAA.connect(self.maa_config['maa_adb_path'], self.device.client.device_id):
+        if self.MAA.connect(self.maa_config['maa_adb_path'], self.device.client.device_id, self.maa_config["conn_preset"]):
             logger.info("MAA 连接成功")
         else:
             logger.info("MAA 连接失败")
