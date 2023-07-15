@@ -3,10 +3,13 @@ import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 
 const store = useConfigStore()
-const { enable_party, shop_list, maa_mall_buy, maa_mall_blacklist } = storeToRefs(store)
-
-import { ref } from 'vue'
-const ignore_blacklist = ref('true')
+const {
+  enable_party,
+  shop_list,
+  maa_mall_buy,
+  maa_mall_blacklist,
+  maa_mall_ignore_blacklist_when_full
+} = storeToRefs(store)
 
 import { h } from 'vue'
 import { NTag, NAvatar } from 'naive-ui'
@@ -52,9 +55,9 @@ function render_label(option) {
       <li>再购买“黑名单”以外的物品。</li>
     </ol>
     <n-h4>信用溢出时的购物设置</n-h4>
-    <n-radio-group v-model:value="ignore_blacklist" class="ignore-blacklist">
-      <n-radio value="false">停止购买</n-radio>
-      <n-radio value="true">无视黑名单继续购买，直至不再溢出</n-radio>
+    <n-radio-group v-model:value="maa_mall_ignore_blacklist_when_full" class="ignore-blacklist">
+      <n-radio :value="false">停止购买</n-radio>
+      <n-radio :value="true">无视黑名单继续购买，直至不再溢出</n-radio>
     </n-radio-group>
     <n-h4>优先购买物品与黑名单物品</n-h4>
     <p>
