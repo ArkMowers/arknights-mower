@@ -70,6 +70,7 @@ class BaseSchedulerSolver(BaseSolver):
         self.tasks = []
         self.maa_config = {}
         self.free_clue = None
+        self.credit_fight = None
 
     def run(self) -> None:
         """
@@ -86,6 +87,8 @@ class BaseSchedulerSolver(BaseSolver):
             self.party_time = None
         if self.free_clue is not None and self.free_clue != get_server_weekday():
             self.free_clue = None
+        if self.credit_fight is not None and self.credit_fight != get_server_weekday():
+            self.credit_fight = None
         self.todo_task = False
         self.collect_notification = False
         self.planned = False
@@ -1864,7 +1867,7 @@ class BaseSchedulerSolver(BaseSolver):
                 'shopping': True,
                 'buy_first': self.maa_config['buy_first'].split(","),
                 'blacklist': self.maa_config['blacklist'].split(","),
-                'credit_fight': '' not in self.stages
+                'credit_fight': '' not in self.stages and self.credit_fight is None
             })
 
     def maa_plan_solver(self, tasks='All', one_time=False):
@@ -1913,6 +1916,9 @@ class BaseSchedulerSolver(BaseSolver):
                     logger.info(f"记录MAA 本次执行时间")
                     self.maa_config['last_execution'] = datetime.now()
                     logger.info(self.maa_config['last_execution'])
+                    if "Mall" in tasks and self.credit_fight is None:
+                        self.credit_fight = get_server_weekday()
+                        logger.info("记录首次信用作战")
             now_time = datetime.now().time()
             try:
                 min_time = datetime.strptime(self.maa_config['sleep_min'], "%H:%M").time()
