@@ -173,6 +173,9 @@ def init_config() -> None:
         OPE_PLAN = [x.split(',') for x in OPE_PLAN]
         OPE_PLAN = [[x[0], int(x[1])] for x in OPE_PLAN]
 
+    global TAP_TO_LAUNCH
+    TAP_TO_LAUNCH = {}
+
 
 def update_ope_plan(plan: list[tp.OpePlan]) -> None:
     """ update operation plan """

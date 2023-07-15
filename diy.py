@@ -248,6 +248,8 @@ def savelog():
     config.MAX_RETRYTIME = 10
     config.PASSWORD = '你的密码'
     config.APPNAME = 'com.hypergryph.arknights'  # 官服
+    config.TAP_TO_LAUNCH["enable"] = False
+    config.TAP_TO_LAUNCH["x"], config.TAP_TO_LAUNCH["y"] = 0,0
     #  com.hypergryph.arknights.bilibili   # Bilibili 服
     init_fhlr()
 
