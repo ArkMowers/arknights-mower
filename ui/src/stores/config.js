@@ -49,7 +49,7 @@ export const useConfigStore = defineStore('config', () => {
   async function load_config() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/conf`)
     adb.value = response.data.adb
-    drone_count_limit.value = response.data.drone_count_limit.toString()
+    drone_count_limit.value = response.data.drone_count_limit
     drone_room.value = response.data.drone_room
     enable_party.value = response.data.enable_party != 0
     free_blacklist.value =
@@ -66,7 +66,7 @@ export const useConfigStore = defineStore('config', () => {
     plan_file.value = response.data.planFile
     reload_room.value = response.data.reload_room == '' ? [] : response.data.reload_room.split(',')
     run_mode.value = response.data.run_mode == 2 ? 'orders_only' : 'full'
-    run_order_delay.value = response.data.run_order_delay.toString()
+    run_order_delay.value = response.data.run_order_delay
     start_automatically.value = response.data.start_automatically
     maa_mall_buy.value =
       response.data.maa_mall_buy == '' ? [] : response.data.maa_mall_buy.split(',')
@@ -87,7 +87,7 @@ export const useConfigStore = defineStore('config', () => {
     return {
       account: account.value,
       adb: adb.value,
-      drone_count_limit: parseInt(drone_count_limit.value),
+      drone_count_limit: drone_count_limit.value,
       drone_room: drone_room.value,
       enable_party: enable_party.value ? 1 : 0,
       free_blacklist: free_blacklist.value.join(','),
@@ -102,7 +102,7 @@ export const useConfigStore = defineStore('config', () => {
       planFile: plan_file.value,
       reload_room: reload_room.value.join(','),
       run_mode: run_mode.value == 'orders_only' ? 2 : 1,
-      run_order_delay: parseInt(run_order_delay.value),
+      run_order_delay: run_order_delay.value,
       start_automatically: start_automatically.value,
       maa_mall_buy: maa_mall_buy.value.join(','),
       maa_mall_blacklist: maa_mall_blacklist.value.join(','),
