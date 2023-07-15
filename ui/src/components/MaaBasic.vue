@@ -6,7 +6,7 @@ import { useConfigStore } from '@/stores/config'
 const store = useConfigStore()
 
 import { storeToRefs } from 'pinia'
-const { maa_path, maa_adb_path, maa_gap } = storeToRefs(store)
+const { maa_path, maa_adb_path, maa_gap, maa_conn_preset } = storeToRefs(store)
 
 async function select_maa_adb_path() {
   const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/dialog/file`)
@@ -29,6 +29,15 @@ const maa_msg = ref('')
 async function test_maa() {
   const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/check-maa`)
   maa_msg.value = response.data
+}
+
+const maa_conn_presets = ref([])
+
+async function get_maa_conn_presets() {
+  const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/maa-conn-preset`)
+  maa_conn_presets.value = response.data.map((x) => {
+    return { label: x, value: x }
+  })
 }
 </script>
 
@@ -59,6 +68,24 @@ async function test_maa() {
       <n-button @click="test_maa">测试设置</n-button>
       <div>{{ maa_msg }}</div>
     </div>
+    <n-divider />
+    <table class="maa-conn">
+      <tr>
+        <td>连接配置</td>
+        <td>
+          <n-select :options="maa_conn_presets" v-model:value="maa_conn_preset" />
+        </td>
+        <td>
+          <n-button @click="get_maa_conn_presets">刷新</n-button>
+        </td>
+      </tr>
+      <tr>
+        <td>触控模式</td>
+        <td colspan="2">
+          <n-select />
+        </td>
+      </tr>
+    </table>
     <n-divider />
     <div class="misc-container">
       <div>启动间隔</div>
@@ -100,5 +127,18 @@ p {
 
 .hour-input {
   width: 120px;
+}
+
+.maa-conn {
+  width: 100%;
+
+  td {
+    &:nth-child(1) {
+      width: 62px;
+    }
+    &:nth-child(3) {
+      width: 56px;
+    }
+  }
 }
 </style>

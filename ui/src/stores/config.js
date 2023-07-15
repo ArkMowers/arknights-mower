@@ -33,6 +33,7 @@ export const useConfigStore = defineStore('config', () => {
   const theme = ref('light')
   const tap_to_launch_game = ref(false)
   const exit_game_when_idle = ref(true)
+  const maa_conn_preset = ref('General')
 
   async function load_shop() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/shop`)
@@ -81,6 +82,7 @@ export const useConfigStore = defineStore('config', () => {
     tap_to_launch_game.value = response.data.tap_to_launch_game
     tap_to_launch_game.value.enable = tap_to_launch_game.value.enable ? 'tap' : 'adb'
     exit_game_when_idle.value = response.data.exit_game_when_idle
+    maa_conn_preset.value = response.data.maa_conn_preset
   }
 
   function build_config() {
@@ -117,7 +119,8 @@ export const useConfigStore = defineStore('config', () => {
         x: tap_to_launch_game.value.x,
         y: tap_to_launch_game.value.y
       },
-      exit_game_when_idle: exit_game_when_idle.value
+      exit_game_when_idle: exit_game_when_idle.value,
+      maa_conn_preset: maa_conn_preset.value
     }
   }
 
@@ -150,7 +153,8 @@ export const useConfigStore = defineStore('config', () => {
       resting_threshold,
       theme,
       tap_to_launch_game,
-      exit_game_when_idle
+      exit_game_when_idle,
+      maa_conn_preset
     ],
     () => {
       axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, build_config())
@@ -191,6 +195,7 @@ export const useConfigStore = defineStore('config', () => {
     resting_threshold,
     theme,
     tap_to_launch_game,
-    exit_game_when_idle
+    exit_game_when_idle,
+    maa_conn_preset
   }
 })
