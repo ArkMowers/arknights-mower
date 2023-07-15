@@ -1384,7 +1384,7 @@ class BaseSchedulerSolver(BaseSolver):
             current_room = sorted(current_room, key=lambda x: x == "")
             differences = []
             for i in range(len(current_room)):
-                if i >= len(agents) or current_room[i] != agents[i]:
+                if current_room[i] not in agents:
                     differences.append(i)
                 else:
                     exists.append(current_room[i])
@@ -1392,7 +1392,7 @@ class BaseSchedulerSolver(BaseSolver):
                 if current_room[pos] != '':
                     self.tap((self.recog.w * position[pos][0], self.recog.h * position[pos][1]), interval=0,
                              rebuild=False)
-            agent = [agents[i] for i in differences]
+            agent = [x for x in agents if x not in exists]
         logger.info(f'安排干员 ：{agent}')
         # 若不是空房间，则清空工作中的干员
         is_dorm = room.startswith("dorm")
@@ -1692,8 +1692,13 @@ class BaseSchedulerSolver(BaseSolver):
                                     logger.info("检测到插拔房间人员变动！")
                                     self.tasks.remove(run_order_task)
                                     del self.op_data.run_order_rooms[room]['plan']
-                    differences = [x for x in plan[room] if x not in self.op_data.get_current_room(room, True)]
-                    if len(differences) != 0:
+                    current_room = self.op_data.get_current_room(room, True)
+                    same = len(plan[room]) == len(current_room)
+                    if same:
+                        for item1, item2 in zip(plan[room], current_room):
+                            if item1 != item2:
+                                same = False
+                    if not same:
                         while self.find('arrange_order_options') is None:
                             if error_count > 3:
                                 raise Exception('未成功进入干员选择界面')
