@@ -2,7 +2,23 @@
 import { useConfigStore } from '@/stores/config'
 const store = useConfigStore()
 import { storeToRefs } from 'pinia'
-const { maa_enable } = storeToRefs(store)
+const { maa_enable, maa_recruit_only_4, maa_recruitment_time } = storeToRefs(store)
+import { ref, computed } from 'vue'
+
+const recruit_3 = computed({
+  get() {
+    if (maa_recruit_only_4.value) {
+      return 'skip'
+    }
+    return maa_recruitment_time.value ? '740' : '900'
+  },
+  set(v) {
+    maa_recruit_only_4.value = v == 'skip'
+    maa_recruitment_time.value = v == '740'
+  }
+})
+
+const recruit_4 = ref('900')
 </script>
 
 <template>
@@ -12,102 +28,38 @@ const { maa_enable } = storeToRefs(store)
         <div class="card-title">Maa公招</div>
       </n-checkbox>
     </template>
-    <n-h4>加急许可</n-h4>
-    <p>不使用加急许可。</p>
-    <n-h4>三星招募策略</n-h4>
-    <p>招聘许可数量大于招募阈值时，招募三星干员。</p>
-    <table class="recruit-3">
-      <tr>
-        <td>招募阈值</td>
-        <td>
-          <n-input-number />
-        </td>
-      </tr>
-      <tr>
-        <td>招募时限</td>
-        <td>
-          <n-radio-group class="radio-group">
-            <n-radio value="false">7:40</n-radio>
-            <n-radio value="true">9:00</n-radio>
-          </n-radio-group>
-        </td>
-      </tr>
-    </table>
     <n-table :single-line="false" size="small" class="big-table">
       <thead>
         <tr>
           <th>可保底</th>
           <th>招募选项</th>
-          <th>邮件提醒</th>
         </tr>
       </thead>
       <tbody>
         <tr>
+          <td>三星</td>
+          <td>
+            <n-radio-group v-model:value="recruit_3" name="recruit_3">
+              <n-space justify="start">
+                <n-radio value="skip">不招</n-radio>
+                <n-radio value="740">7:40</n-radio>
+                <n-radio value="900">9:00</n-radio>
+              </n-space>
+            </n-radio-group>
+          </td>
+        </tr>
+        <tr>
           <td>四星</td>
           <td>
-            <n-radio-group class="radio-group">
-              <n-radio value="keep">保留</n-radio>
-              <n-radio value="740">7:40</n-radio>
-              <n-radio value="900">9:00</n-radio>
+            <n-radio-group name="recruit_4" v-model:value="recruit_4">
+              <n-space justify="start">
+                <n-radio value="900">9:00</n-radio>
+              </n-space>
             </n-radio-group>
-          </td>
-          <td>
-            <n-checkbox />
-          </td>
-        </tr>
-        <tr>
-          <td>五星</td>
-          <td>
-            <n-radio-group class="radio-group">
-              <n-radio value="keep">保留</n-radio>
-              <n-radio value="900">9:00</n-radio>
-            </n-radio-group>
-          </td>
-          <td>
-            <n-checkbox />
-          </td>
-        </tr>
-        <tr>
-          <td>六星</td>
-          <td>
-            <n-radio-group class="radio-group">
-              <n-radio value="keep">保留</n-radio>
-              <n-radio value="900">9:00</n-radio>
-            </n-radio-group>
-          </td>
-          <td>
-            <n-checkbox />
-          </td>
-        </tr>
-        <tr>
-          <td>一星</td>
-          <td>
-            <n-radio-group class="radio-group">
-              <n-radio value="keep">保留</n-radio>
-              <n-radio value="100">1:00</n-radio>
-              <n-radio value="350">3:50</n-radio>
-            </n-radio-group>
-          </td>
-          <td>
-            <n-checkbox />
-          </td>
-        </tr>
-        <tr>
-          <td>冲突</td>
-          <td>
-            <n-radio-group class="radio-group">
-              <n-radio value="keep">保留</n-radio>
-              <n-radio value="low" disabled>一星</n-radio>
-              <n-radio value="high">高星</n-radio>
-            </n-radio-group>
-          </td>
-          <td>
-            <n-checkbox />
           </td>
         </tr>
       </tbody>
     </n-table>
-    <p class="final">“冲突”表示支援机械词条与保底出现四星及更高稀有度干员的词条组合同时出现。</p>
   </n-card>
 </template>
 
@@ -135,23 +87,24 @@ h4 {
   }
 }
 
-.radio-group {
-  display: inline-flex;
-  gap: 10px;
-  width: 200px;
-}
-
 .big-table {
   margin-top: 10px;
-  width: 400px;
+  width: 320px;
 
-  th,
-  td {
+  th {
     text-align: center;
   }
 
   td {
     height: 24px;
+
+    &:nth-child(1) {
+      width: 50px;
+      text-align: center;
+    }
+    &:nth-child(2) {
+      padding-left: 18px;
+    }
   }
 }
 
