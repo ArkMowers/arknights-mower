@@ -16,6 +16,9 @@ const {
   workaholic
 } = storeToRefs(plan_store)
 
+import { inject } from 'vue'
+const axios = inject('axios')
+
 async function open_plan_file() {
   const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/dialog/file`)
   const file_path = response.data
