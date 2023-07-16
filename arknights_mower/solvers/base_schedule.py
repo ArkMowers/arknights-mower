@@ -1956,7 +1956,7 @@ class BaseSchedulerSolver(BaseSolver):
                             'stop_when_investment_full': False,
                             'squad': '指挥分队',
                             'roles': '取长补短',
-                            'theme': 'Mizuki',
+                            'theme': self.maa_config['rogue_theme'],
                             'core_char': ''
                         })
                     elif self.maa_config['reclamation_algorithm']:

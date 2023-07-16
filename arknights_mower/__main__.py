@@ -115,6 +115,7 @@ def initialize(tasks, scheduler=None):
         maa_config['maa_adb'] = conf['adb']
         maa_config['weekly_plan'] = conf['maa_weekly_plan']
         maa_config['roguelike'] = conf['maa_rg_enable'] == 1
+        maa_config['rogue_theme'] = conf['maa_rg_theme']
         maa_config['sleep_min'] = conf['maa_rg_sleep_min']
         maa_config['sleep_max'] = conf['maa_rg_sleep_max']
         maa_config['maa_execution_gap'] = conf['maa_gap']
