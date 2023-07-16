@@ -16,7 +16,8 @@ const {
   maa_rg_sleep_max,
   sss_type,
   copilot_file_location,
-  copilot_loop_times
+  copilot_loop_times,
+  maa_rg_theme
 } = storeToRefs(store)
 
 const sss_option = ref([
@@ -35,6 +36,12 @@ async function select_maa_dir() {
 function selectTab(tab) {
   maa_add_task.value = tab
 }
+
+const rogue_themes = [
+  { label: '傀影与猩红孤钻', value: 'Phantom' },
+  { label: '水月与深蓝之树', value: 'Mizuki' },
+  { label: '探索者的银凇止境', value: 'Sami' }
+]
 </script>
 
 <template>
@@ -77,11 +84,9 @@ function selectTab(tab) {
               <tr>
                 <td>主题：</td>
                 <td>
-                  <n-radio-group>
+                  <n-radio-group v-model:value="maa_rg_theme">
                     <n-space>
-                      <n-radio value="phantom">傀影与猩红孤钻</n-radio>
-                      <n-radio value="mizuki">水月与深蓝之树</n-radio>
-                      <n-radio value="sami">探索者的银凇止境</n-radio>
+                      <n-radio v-for="t in rogue_themes" :value="t.value">{{ t.label }}</n-radio>
                     </n-space>
                   </n-radio-group>
                 </td>

@@ -39,6 +39,7 @@ export const useConfigStore = defineStore('config', () => {
   const maa_rg_sleep_min = ref('00:00')
   const maa_rg_sleep_max = ref('00:00')
   const maa_credit_fight = ref(true)
+  const maa_rg_theme = ref('Mizuki')
 
   async function load_shop() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/shop`)
@@ -93,6 +94,7 @@ export const useConfigStore = defineStore('config', () => {
     maa_rg_sleep_max.value = response.data.maa_rg_sleep_max
     maa_rg_sleep_min.value = response.data.maa_rg_sleep_min
     maa_credit_fight.value = response.data.maa_credit_fight
+    maa_rg_theme.value = response.data.maa_rg_theme
   }
 
   function build_config() {
@@ -135,7 +137,8 @@ export const useConfigStore = defineStore('config', () => {
       maa_mall_ignore_blacklist_when_full: maa_mall_ignore_blacklist_when_full.value,
       maa_rg_sleep_max: maa_rg_sleep_max.value,
       maa_rg_sleep_min: maa_rg_sleep_min.value,
-      maa_credit_fight: maa_credit_fight.value
+      maa_credit_fight: maa_credit_fight.value,
+      maa_rg_theme: maa_rg_theme.value
     }
   }
 
@@ -174,7 +177,8 @@ export const useConfigStore = defineStore('config', () => {
       maa_mall_ignore_blacklist_when_full,
       maa_rg_sleep_min,
       maa_rg_sleep_max,
-      maa_credit_fight
+      maa_credit_fight,
+      maa_rg_theme
     ],
     () => {
       axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, build_config())
@@ -221,6 +225,7 @@ export const useConfigStore = defineStore('config', () => {
     maa_mall_ignore_blacklist_when_full,
     maa_rg_sleep_min,
     maa_rg_sleep_max,
-    maa_credit_fight
+    maa_credit_fight,
+    maa_rg_theme
   }
 })
