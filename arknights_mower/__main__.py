@@ -125,6 +125,7 @@ def initialize(tasks, scheduler=None):
         maa_config['conn_preset'] = conf['maa_conn_preset']
         maa_config['touch_option'] = conf['maa_touch_option']
         maa_config['mall_ignore_when_full'] = conf['maa_mall_ignore_blacklist_when_full']
+        maa_config['credit_fight'] = conf['maa_credit_fight']
         base_scheduler.maa_config = maa_config
         base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
         base_scheduler.error = False

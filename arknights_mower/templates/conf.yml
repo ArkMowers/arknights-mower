@@ -69,3 +69,4 @@ resting_threshold: 0.5
 theme: light
 maa_conn_preset: General
 maa_touch_option: maatouch
+maa_credit_fight: true
