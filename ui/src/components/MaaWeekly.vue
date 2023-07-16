@@ -88,7 +88,7 @@ function create_tag(label) {
       </ul>
       <li><b>当期剿灭</b>：输入“当期剿灭”后回车，生成 <n-tag closable>当期剿灭</n-tag> 标签。</li>
       <li>
-        <b>信用作战</b>：若当日计划不包含 <n-tag closable>上次作战</n-tag>，则自动进行信用作战。
+        <b>信用作战</b>：若信用作战选项已开启，且当日计划不包含 <n-tag closable>上次作战</n-tag>，则自动进行信用作战。
       </li>
       <li>
         <b>多个关卡</b

@@ -35,8 +35,6 @@ async function select_maa_dir() {
 function selectTab(tab) {
   maa_add_task.value = tab
 }
-
-const maa_long_task = ref(false)
 </script>
 
 <template>
@@ -46,28 +44,29 @@ const maa_long_task = ref(false)
     <maa-weekly />
     <n-card>
       <template #header>
-        <n-checkbox v-model:checked="maa_long_task">
+        <n-checkbox v-model:checked="maa_rg_enable">
           <div class="card-title">Maa大型任务</div>
         </n-checkbox>
       </template>
       <p>调用Maa进行作战。仅可从以下任务中选择一项。</p>
-      <n-h4>休息时间</n-h4>
-      <p>若结束时间早于开始时间，则表示休息至次日。例如：</p>
+      <n-h4>开启时间</n-h4>
+      <p>只在开启时间内执行Maa大型任务。开始与结束时间设置为相同值时全天开启。</p>
+      <p>若结束时间早于开始时间，则表示开启至次日。例如：</p>
       <ul>
-        <li>23:00开始、8:00结束，表示从晚上23:00休息至次日早上8:00；</li>
-        <li>10:00开始、14:00结束，表示从上午10:00休息至当日下午14:00。</li>
+        <li>23:00开始、8:00结束：表示从23:00至次日8:00执行大型任务；</li>
+        <li>10:00开始、14:00结束：表示从10:00至当日14:00执行大型任务。</li>
       </ul>
       <table class="time-table">
         <tr>
           <td>开始</td>
           <td>
-            <n-time-picker format="H:mm" v-model:formatted-value="maa_rg_sleep_min" />
+            <n-time-picker format="H:mm" v-model:formatted-value="maa_rg_sleep_max" />
           </td>
         </tr>
         <tr>
           <td>结束</td>
           <td>
-            <n-time-picker format="H:mm" v-model:formatted-value="maa_rg_sleep_max" />
+            <n-time-picker format="H:mm" v-model:formatted-value="maa_rg_sleep_min" />
           </td>
         </tr>
       </table>

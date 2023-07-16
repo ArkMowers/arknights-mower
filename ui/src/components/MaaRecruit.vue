@@ -1,9 +1,14 @@
-<script setup></script>
+<script setup>
+import { useConfigStore } from '@/stores/config'
+const store = useConfigStore()
+import { storeToRefs } from 'pinia'
+const { maa_enable } = storeToRefs(store)
+</script>
 
 <template>
   <n-card>
     <template #header>
-      <n-checkbox>
+      <n-checkbox v-model:checked="maa_enable">
         <div class="card-title">Maa公招</div>
       </n-checkbox>
     </template>

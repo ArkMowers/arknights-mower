@@ -8,7 +8,9 @@ const {
   shop_list,
   maa_mall_buy,
   maa_mall_blacklist,
-  maa_mall_ignore_blacklist_when_full
+  maa_mall_ignore_blacklist_when_full,
+  maa_enable,
+  maa_credit_fight
 } = storeToRefs(store)
 
 import { h } from 'vue'
@@ -42,24 +44,18 @@ function render_label(option) {
 </script>
 
 <template>
-  <n-card>
+  <n-card title="线索收集与信用">
     <template #header>
       <n-checkbox v-model:checked="enable_party">
         <div class="card-title">线索收集</div>
       </n-checkbox>
     </template>
-    <p>开启线索收集后，将调用Maa进行信用商店购物。</p>
-    <n-h4>信用商店购物逻辑</n-h4>
-    <ol>
-      <li>首先购买“优先购买”物品；</li>
-      <li>再购买“黑名单”以外的物品。</li>
-    </ol>
-    <n-h4>信用溢出时的购物设置</n-h4>
-    <n-radio-group v-model:value="maa_mall_ignore_blacklist_when_full" class="ignore-blacklist">
-      <n-radio :value="false">停止购买</n-radio>
-      <n-radio :value="true">无视黑名单继续购买，直至不再溢出</n-radio>
-    </n-radio-group>
-    <n-h4>优先购买物品与黑名单物品</n-h4>
+    <n-h4>信用设置</n-h4>
+    <n-space vertical>
+      <n-checkbox v-model:checked="maa_enable">调用Maa进行信用商店购物</n-checkbox>
+      <n-checkbox v-model:checked="maa_credit_fight">调用Maa进行信用作战</n-checkbox>
+    </n-space>
+    <n-h4>优先购买与黑名单</n-h4>
     <p>
       信用商店性价比可参考<n-button
         text
@@ -72,7 +68,18 @@ function render_label(option) {
     </p>
     <table>
       <tr>
-        <td>优先购买</td>
+        <td>信用溢出：</td>
+        <td>
+          <n-radio-group v-model:value="maa_mall_ignore_blacklist_when_full">
+            <n-space>
+              <n-radio :value="false">停止购买</n-radio>
+              <n-radio :value="true">无视黑名单继续购买，直至不再溢出</n-radio>
+            </n-space>
+          </n-radio-group>
+        </td>
+      </tr>
+      <tr>
+        <td>优先购买：</td>
         <td>
           <n-select
             multiple
@@ -86,7 +93,7 @@ function render_label(option) {
         </td>
       </tr>
       <tr>
-        <td>黑名单</td>
+        <td>黑名单：</td>
         <td>
           <n-select
             multiple
@@ -110,7 +117,7 @@ function render_label(option) {
 }
 
 p {
-  margin: 0 0 8px 0;
+  margin: 2px 0;
 }
 
 h4 {
@@ -128,7 +135,7 @@ table {
 
 td {
   &:nth-child(1) {
-    width: 60px;
+    width: 80px;
   }
 }
 
