@@ -2,8 +2,10 @@
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
+
 const config_store = useConfigStore()
-const { adb, package_type, free_blacklist, plan_file, simulator } = storeToRefs(config_store)
+const { plan_file } = storeToRefs(config_store)
+const { build_config } = config_store
 
 const plan_store = usePlanStore()
 const {
@@ -15,6 +17,7 @@ const {
   operators,
   workaholic
 } = storeToRefs(plan_store)
+const { load_plan } = plan_store
 
 import { inject } from 'vue'
 const axios = inject('axios')
