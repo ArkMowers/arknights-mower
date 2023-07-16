@@ -11,13 +11,13 @@
         <n-tab-pane name="home" tab="运行日志">
           <home />
         </n-tab-pane>
-        <n-tab-pane name="basic" tab="设置">
+        <n-tab-pane name="basic" tab="基础设置">
           <advanced />
         </n-tab-pane>
         <n-tab-pane name="plan" tab="排班编辑">
           <plan />
         </n-tab-pane>
-        <n-tab-pane name="external" tab="外部调用">
+        <n-tab-pane name="external" tab="任务设置">
           <external />
         </n-tab-pane>
       </n-tabs>
