@@ -54,8 +54,8 @@ maa_mall_buy: 招聘许可,龙门币,技巧概要·卷2
 maa_mall_ignore_blacklist_when_full: false
 maa_recruit_only_4: false
 maa_recruitment_time: false
-maa_rg_sleep_max: 8:30
-maa_rg_sleep_min: 9:30
+maa_rg_sleep_max: 0:00
+maa_rg_sleep_min: 0:00
 webview:
   port: 58000
   width: 1100
