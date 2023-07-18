@@ -65,6 +65,16 @@ def main(c, p, o={}, child_conn=None):
     logger.debug(agent_base_config)
     simulate()
 
+#newbing说用这个来定义休息时间省事
+def format_time(seconds):
+    # 计算小时和分钟
+    rest_hours = int(seconds / 3600)
+    rest_minutes = int((seconds % 3600) / 60)
+    # 根据小时是否为零来决定是否显示
+    if rest_hours == 0: 
+        return f"{rest_minutes} 分钟"
+    else:
+        return f"{rest_hours} 小时 {rest_minutes} 分钟"
 
 def initialize(tasks, scheduler=None):
     from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
@@ -138,7 +148,7 @@ def initialize(tasks, scheduler=None):
         base_scheduler.exit_game_when_idle = conf['exit_game_when_idle']
         
         
-        #关闭游戏计数器
+        #关闭游戏次数计数器
         base_scheduler.task_count = 0
         
         return base_scheduler
@@ -206,7 +216,7 @@ def simulate():
                     base_scheduler.send_email(context, subject)
                     base_scheduler.maa_plan_solver()
                 elif sleep_time > 0:
-                    subject = f"开始休息 {int(remaining_time / 3600)} 小时 {int((remaining_time % 3600) / 60)} 分 {round((remaining_time % 3600) % 60, 1)} 秒，到{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}开始工作"
+                    subject = f"休息 {format_time(remaining_time)}，到{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}开始工作"
                     context = f"下一次任务:{base_scheduler.tasks[0].plan}"
                     logger.info(context)
                     logger.info(subject)
