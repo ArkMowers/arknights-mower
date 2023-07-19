@@ -257,7 +257,11 @@ def get_maa_adb_version():
 @app.route("/maa-conn-preset")
 def get_maa_conn_presets():
     try:
-        with open(os.path.join(conf["maa_path"], "resource", "config.json"), "r") as f:
+        with open(
+            os.path.join(conf["maa_path"], "resource", "config.json"),
+            "r",
+            encoding="utf-8",
+        ) as f:
             presets = [i["configName"] for i in json.load(f)["connection"]]
     except:
         presets = []
