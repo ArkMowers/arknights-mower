@@ -25,6 +25,9 @@ from ..utils.datetime import get_server_weekday, the_same_time
 from paddleocr import PaddleOCR
 import cv2
 
+#借用__main__.py里的时间计算器
+from arknights_mower.__main__ import format_time
+
 ## Maa
 from arknights_mower.utils.asst import Asst, Message
 import json
@@ -1992,7 +1995,7 @@ class BaseSchedulerSolver(BaseSolver):
                     self.tasks.append(SchedulerTask())
                 return
             remaining_time = (self.tasks[0].time - datetime.now()).total_seconds()
-            subject = f"开始休息 {'%.2f' % (remaining_time / 60)} 分钟，到{self.tasks[0].time.strftime('%H:%M:%S')}"
+            subject = f"休息 {format_time(remaining_time)}，到{self.tasks[0].time.strftime('%H:%M:%S')}开始工作"
             context = f"下一次任务:{self.tasks[0].plan if len(self.tasks[0].plan) != 0 else '空任务' if self.tasks[0].type == '' else self.tasks[0].type}"
             logger.info(context)
             logger.info(subject)
@@ -2000,7 +2003,8 @@ class BaseSchedulerSolver(BaseSolver):
             if remaining_time > 0:
                 if remaining_time > 300 and self.exit_game_when_idle:
                     self.device.exit(self.package_name)
-                    logger.info("关闭游戏，降低功耗")
+                    self.task_count += 1
+                    logger.info(f"第{self.task_count}次任务结束，关闭游戏，降低功耗")
                 time.sleep(remaining_time)
             self.MAA = None
         except Exception as e:
@@ -2008,7 +2012,7 @@ class BaseSchedulerSolver(BaseSolver):
             self.MAA = None
             remaining_time = (self.tasks[0].time - datetime.now()).total_seconds()
             if remaining_time > 0:
-                logger.info(f"开始休息 {'%.2f' % (remaining_time / 60)} 分钟，到{self.tasks[0].time.strftime('%H:%M:%S')}")
+                logger.info(f"休息 {format_time(remaining_time)}，到{self.tasks[0].time.strftime('%H:%M:%S')}开始工作")
                 time.sleep(remaining_time)
             self.device.exit(self.package_name)
 
