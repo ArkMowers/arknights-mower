@@ -74,7 +74,7 @@ MAA设置 = {
     "MAA_adb地址": ['127.0.0.1:16384'],  # 请设置为模拟器的 adb 地址
 
     # 以下配置，第一个设置为true的首先生效
-    "集成战略": False,  # 是否启动集成战略
+    "集成战略": True,  # 是否启动集成战略
     "生息演算": False,  # 是否启动生息演算
     "保全派驻": False,  # 是否启动保全派驻
     "上一次作战": None,
@@ -975,52 +975,49 @@ class BaseSchedulerSolver(BaseSolver):
                 'credit_fight': credit_fight
             })
 
-    def maa_plan_solver(self, 任务列表='All', one_time=False):
+    # def maa_plan_solver(self, 任务列表='All', one_time=False):
+    def maa_plan_solver(self, 任务列表=['Fight'], one_time=False):
         try:
-            if not one_time and self.MAA设置['上一次作战'] is not None and datetime.now() - timedelta(
-                    seconds=self.MAA设置['maa_execution_gap'] * 3600) < self.MAA设置['上一次作战']:
-                logger.info("间隔未超过设定时间，不启动maa")
-            else:
-                self.send_email('启动MAA')
-                self.back_to_index()
-                # 任务及参数请参考 docs/集成文档.md
-                self.MAA初始化()
-                if 任务列表 == 'All':
-                    任务列表 = ['StartUp', 'Fight', 'Recruit', 'Visit', 'Mall', 'Award']
-                for maa_task in 任务列表:
-                    self.append_maa_task(maa_task)
-                # asst.append_task('Copilot', {
-                #     'stage_name': '千层蛋糕',
-                #     'filename': './GA-EX8-raid.json',
-                #     'formation': False
+            self.send_email('启动MAA')
+            self.back_to_index()
+            # 任务及参数请参考 docs/集成文档.md
+            self.MAA初始化()
+            if 任务列表 == 'All':
+                任务列表 = ['StartUp', 'Fight', 'Recruit', 'Visit', 'Mall', 'Award']
+            for maa_task in 任务列表:
+                self.append_maa_task(maa_task)
+            # asst.append_task('Copilot', {
+            #     'stage_name': '千层蛋糕',
+            #     'filename': './GA-EX8-raid.json',
+            #     'formation': False
 
-                # })
-                self.MAA.start()
-                stop_time = None
-                if one_time:
-                    stop_time = datetime.now() + timedelta(minutes=5)
-                logger.info(f"MAA 启动")
-                hard_stop = False
-                while self.MAA.running():
-                    # 单次任务默认5分钟
-                    if one_time and stop_time < datetime.now():
-                        self.MAA.stop()
-                        hard_stop = True
-                    # 5分钟之前就停止
-                    elif not one_time and (self.任务列表[0].time - datetime.now()).total_seconds() < 300:
-                        self.MAA.stop()
-                        hard_stop = True
-                    else:
-                        time.sleep(0)
-                self.send_email('MAA停止')
-                if hard_stop:
-                    logger.info(f"由于maa任务并未完成，等待3分钟重启软件")
-                    time.sleep(180)
-                    self.device.exit(self.服务器)
-                elif not one_time:
-                    logger.info(f"记录MAA 本次执行时间")
-                    self.MAA设置['上一次作战'] = datetime.now()
-                    logger.info(self.MAA设置['上一次作战'])
+            # })
+            self.MAA.start()
+            stop_time = None
+            if one_time:
+                stop_time = datetime.now() + timedelta(minutes=5)
+            logger.info(f"MAA 启动")
+            hard_stop = False
+            while self.MAA.running():
+                # 单次任务默认5分钟
+                if one_time and stop_time < datetime.now():
+                    self.MAA.stop()
+                    hard_stop = True
+                # 5分钟之前就停止
+                elif not one_time and (self.任务列表[0].time - datetime.now()).total_seconds() < 300:
+                    self.MAA.stop()
+                    hard_stop = True
+                else:
+                    time.sleep(0)
+            self.send_email('MAA停止')
+            if hard_stop:
+                logger.info(f"由于maa任务并未完成，等待3分钟重启软件")
+                time.sleep(180)
+                self.device.exit(self.服务器)
+            elif not one_time:
+                logger.info(f"记录MAA 本次执行时间")
+                self.MAA设置['上一次作战'] = datetime.now()
+                logger.info(self.MAA设置['上一次作战'])
             if self.MAA设置['集成战略'] or self.MAA设置['生息演算'] or self.MAA设置['保全派驻']:
                 while (self.任务列表[0].time - datetime.now()).total_seconds() > 30:
                     self.MAA = None
@@ -1034,8 +1031,8 @@ class BaseSchedulerSolver(BaseSolver):
                             'stop_when_investment_full': False,
                             'squad': '指挥分队',
                             'roles': '取长补短',
-                            'theme': 'Mizuki',
-                            'core_char': '海沫'
+                            'theme': 'Sami',
+                            'core_char': ''
                         })
                     elif self.MAA设置['生息演算']:
                         self.back_to_MAA设置['生息演算']()
@@ -1183,16 +1180,18 @@ def 运行():
                     for i in range(len(任务列表)):
                         logger.warning(任务列表[i].type + ' 开始跑单的时间为：' + 任务列表[i].time.strftime("%H:%M:%S"))
 
-                # 如果任务间隔时间超过5分钟则关闭游戏
-                if sleep_time > 300:
-                    base_scheduler.device.exit(base_scheduler.服务器)
+                # # 如果任务间隔时间超过5分钟则关闭游戏
+                # if sleep_time > 300:
+                #     base_scheduler.device.exit(base_scheduler.服务器)
 
                 # logger.info('||'.join([str(t) for t in base_scheduler.任务列表]))
 
-                # # 如果任务间隔时间超过9分钟则启动MAA
-                # if sleep_time > 540:
-                #     base_scheduler.maa_plan_solver()
-                # # elif sleep_time > 0:
+                # 如果任务间隔时间超过9分钟则启动MAA
+                if sleep_time > 540:
+                    base_scheduler.maa_plan_solver()
+                elif sleep_time > 0:
+                # if sleep_time > 0:
+                    time.sleep(sleep_time)
 
                 # # 任务开始前铃声提醒
                 # if sleep_time > 150:
@@ -1204,8 +1203,6 @@ def 运行():
                 # elif sleep_time > 0:
                 #     time.sleep(sleep_time)
 
-                if sleep_time > 0:
-                    time.sleep(sleep_time)
             if len(base_scheduler.任务列表) > 0 and base_scheduler.任务列表[0].type.split('_')[0] == 'maa':
                 base_scheduler.maa_plan_solver((base_scheduler.任务列表[0].type.split('_')[1]).split(','),
                                                one_time=True)
