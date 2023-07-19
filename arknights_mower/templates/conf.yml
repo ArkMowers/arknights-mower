@@ -51,10 +51,11 @@ start_automatically: false
 maa_gap: 4
 maa_mall_blacklist: 加急许可,碳,碳素,家具零件
 maa_mall_buy: 招聘许可,龙门币,技巧概要·卷2
+maa_mall_ignore_blacklist_when_full: false
 maa_recruit_only_4: false
 maa_recruitment_time: false
-maa_rg_sleep_max: 8:30
-maa_rg_sleep_min: 9:30
+maa_rg_sleep_max: 0:00
+maa_rg_sleep_min: 0:00
 webview:
   port: 58000
   width: 1100
@@ -66,3 +67,7 @@ tap_to_launch_game:
 exit_game_when_idle: true
 resting_threshold: 0.5
 theme: light
+maa_conn_preset: General
+maa_touch_option: maatouch
+maa_credit_fight: true
+maa_rg_theme: Mizuki

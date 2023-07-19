@@ -70,6 +70,7 @@ class BaseSchedulerSolver(BaseSolver):
         self.tasks = []
         self.maa_config = {}
         self.free_clue = None
+        self.credit_fight = None
 
     def run(self) -> None:
         """
@@ -86,6 +87,8 @@ class BaseSchedulerSolver(BaseSolver):
             self.party_time = None
         if self.free_clue is not None and self.free_clue != get_server_weekday():
             self.free_clue = None
+        if self.credit_fight is not None and self.credit_fight != get_server_weekday():
+            self.credit_fight = None
         self.todo_task = False
         self.collect_notification = False
         self.planned = False
@@ -965,7 +968,7 @@ class BaseSchedulerSolver(BaseSolver):
         logger.info('接收线索')
         self.tap(((x0 + x1) // 2, (y0 * 3 + y1) // 4), interval=3, rebuild=False)
         self.tap((self.recog.w - 10, self.recog.h - 10), interval=3, rebuild=False)
-        self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3, rebuild=False)
+        self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3)
 
         if self.free_clue is None:
             logger.info('领取会客室线索')
@@ -1381,7 +1384,7 @@ class BaseSchedulerSolver(BaseSolver):
             current_room = sorted(current_room, key=lambda x: x == "")
             differences = []
             for i in range(len(current_room)):
-                if i >= len(agents) or current_room[i] != agents[i]:
+                if current_room[i] not in agents:
                     differences.append(i)
                 else:
                     exists.append(current_room[i])
@@ -1389,7 +1392,7 @@ class BaseSchedulerSolver(BaseSolver):
                 if current_room[pos] != '':
                     self.tap((self.recog.w * position[pos][0], self.recog.h * position[pos][1]), interval=0,
                              rebuild=False)
-            agent = [agents[i] for i in differences]
+            agent = [x for x in agents if x not in exists]
         logger.info(f'安排干员 ：{agent}')
         # 若不是空房间，则清空工作中的干员
         is_dorm = room.startswith("dorm")
@@ -1689,8 +1692,13 @@ class BaseSchedulerSolver(BaseSolver):
                                     logger.info("检测到插拔房间人员变动！")
                                     self.tasks.remove(run_order_task)
                                     del self.op_data.run_order_rooms[room]['plan']
-                    differences = [x for x in plan[room] if x not in self.op_data.get_current_room(room, True)]
-                    if len(differences) != 0:
+                    current_room = self.op_data.get_current_room(room, True)
+                    same = len(plan[room]) == len(current_room)
+                    if same:
+                        for item1, item2 in zip(plan[room], current_room):
+                            if item1 != item2:
+                                same = False
+                    if not same:
                         while self.find('arrange_order_options') is None:
                             if error_count > 3:
                                 raise Exception('未成功进入干员选择界面')
@@ -1808,10 +1816,10 @@ class BaseSchedulerSolver(BaseSolver):
         Asst.load(path=self.maa_config['maa_path'])
         self.MAA = Asst(callback=self.log_maa)
         self.stages = []
-        # self.MAA.set_instance_option(2, 'maatouch')
+        self.MAA.set_instance_option(2, self.maa_config['touch_option'])
         # 请自行配置 adb 环境变量，或修改为 adb 可执行程序的路径
         # logger.info(self.device.client.device_id)
-        if self.MAA.connect(self.maa_config['maa_adb_path'], self.device.client.device_id):
+        if self.MAA.connect(self.maa_config['maa_adb_path'], self.device.client.device_id, self.maa_config["conn_preset"]):
             logger.info("MAA 连接成功")
         else:
             logger.info("MAA 连接失败")
@@ -1864,7 +1872,8 @@ class BaseSchedulerSolver(BaseSolver):
                 'shopping': True,
                 'buy_first': self.maa_config['buy_first'].split(","),
                 'blacklist': self.maa_config['blacklist'].split(","),
-                'credit_fight': '' not in self.stages
+                'credit_fight': self.maa_config['credit_fight'] and '' not in self.stages and self.credit_fight is None,
+                "force_shopping_if_credit_full": self.maa_config['mall_ignore_when_full']
             })
 
     def maa_plan_solver(self, tasks='All', one_time=False):
@@ -1913,6 +1922,9 @@ class BaseSchedulerSolver(BaseSolver):
                     logger.info(f"记录MAA 本次执行时间")
                     self.maa_config['last_execution'] = datetime.now()
                     logger.info(self.maa_config['last_execution'])
+                    if "Mall" in tasks and self.credit_fight is None:
+                        self.credit_fight = get_server_weekday()
+                        logger.info("记录首次信用作战")
             now_time = datetime.now().time()
             try:
                 min_time = datetime.strptime(self.maa_config['sleep_min'], "%H:%M").time()
@@ -1944,7 +1956,7 @@ class BaseSchedulerSolver(BaseSolver):
                             'stop_when_investment_full': False,
                             'squad': '指挥分队',
                             'roles': '取长补短',
-                            'theme': 'Sami',
+                            'theme': self.maa_config['rogue_theme'],
                             'core_char': ''
                         })
                     elif self.maa_config['reclamation_algorithm']:
