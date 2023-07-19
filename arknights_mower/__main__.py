@@ -223,7 +223,7 @@ def simulate():
                     if sleep_time > 300 and conf['exit_game_when_idle']:
                         base_scheduler.device.exit(base_scheduler.package_name)
                         base_scheduler.task_count += 1
-                        logger.info(f"这是第{base_scheduler.task_count}次关闭游戏，降低功耗")
+                        logger.info(f"第{base_scheduler.task_count}次任务结束，关闭游戏，降低功耗")
                     base_scheduler.send_email(context, subject)
                     time.sleep(sleep_time)
             if len(base_scheduler.tasks) > 0 and base_scheduler.tasks[0].type.split('_')[0] == 'maa':
