@@ -131,7 +131,7 @@ def shop_list():
             return json.load(f)
 
 
-def read_log(read):
+def read_log(conn):
     global operators
     global mower_process
     global log_lines
@@ -139,7 +139,7 @@ def read_log(read):
 
     try:
         while True:
-            msg = read.recv()
+            msg = conn.recv()
             if msg["type"] == "log":
                 new_line = time.strftime("%m-%d %H:%M:%S ") + msg["data"]
                 log_lines.append(new_line)
@@ -148,8 +148,11 @@ def read_log(read):
                     ws.send(new_line)
             elif msg["type"] == "operators":
                 operators = msg["data"]
+            elif msg["type"] == "update_conf":
+                global conf
+                conn.send(conf)
     except EOFError:
-        read.close()
+        conn.close()
 
 
 @app.route("/running")

@@ -5,6 +5,8 @@ from datetime import datetime
 from arknights_mower.utils.log import logger
 import json
 
+from copy import deepcopy
+
 from arknights_mower.utils.pipe import Pipe
 from arknights_mower.utils.simulator import restart_simulator
 
@@ -76,6 +78,57 @@ def format_time(seconds):
     else:
         return f"{rest_hours} 小时 {rest_minutes} 分钟"
 
+
+def hide_password(conf):
+    hpconf = deepcopy(conf)
+    hpconf["pass_code"] = "*" * len(conf["pass_code"])
+    return hpconf
+
+
+def update_conf():
+    logger.info("运行中更新设置")
+
+    if not Pipe or not Pipe.conn:
+        logger.error("管道关闭")
+        logger.info(maa_config)
+        return
+
+    logger.info("通过管道发送更新设置请求")
+    Pipe.conn.send({"type": "update_conf"})
+    logger.info("开始通过管道读取设置")
+    conf = Pipe.conn.recv()
+    logger.info(f"接收设置：{hide_password(conf)}")
+
+    return conf
+
+
+def set_maa_options(base_scheduler):
+    conf = update_conf()
+
+    global maa_config
+    maa_config['maa_enable'] = conf['maa_enable']
+    maa_config['maa_path'] = conf['maa_path']
+    maa_config['maa_adb_path'] = conf['maa_adb_path']
+    maa_config['maa_adb'] = conf['adb']
+    maa_config['weekly_plan'] = conf['maa_weekly_plan']
+    maa_config['roguelike'] = conf['maa_rg_enable'] == 1
+    maa_config['rogue_theme'] = conf['maa_rg_theme']
+    maa_config['sleep_min'] = conf['maa_rg_sleep_min']
+    maa_config['sleep_max'] = conf['maa_rg_sleep_max']
+    maa_config['maa_execution_gap'] = conf['maa_gap']
+    maa_config['buy_first'] = conf['maa_mall_buy']
+    maa_config['blacklist'] = conf['maa_mall_blacklist']
+    maa_config['recruitment_time'] = conf['maa_recruitment_time']
+    maa_config['recruit_only_4'] = conf['maa_recruit_only_4']
+    maa_config['conn_preset'] = conf['maa_conn_preset']
+    maa_config['touch_option'] = conf['maa_touch_option']
+    maa_config['mall_ignore_when_full'] = conf['maa_mall_ignore_blacklist_when_full']
+    maa_config['credit_fight'] = conf['maa_credit_fight']
+    base_scheduler.maa_config = maa_config
+
+    logger.info(f"更新Maa设置：{base_scheduler.maa_config}")
+
+
 def initialize(tasks, scheduler=None):
     from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
     from arknights_mower.strategy import Solver
@@ -119,25 +172,9 @@ def initialize(tasks, scheduler=None):
             'receipts': [conf['account']],
             'notify': False
         }
-        maa_config['maa_enable'] = conf['maa_enable']
-        maa_config['maa_path'] = conf['maa_path']
-        maa_config['maa_adb_path'] = conf['maa_adb_path']
-        maa_config['maa_adb'] = conf['adb']
-        maa_config['weekly_plan'] = conf['maa_weekly_plan']
-        maa_config['roguelike'] = conf['maa_rg_enable'] == 1
-        maa_config['rogue_theme'] = conf['maa_rg_theme']
-        maa_config['sleep_min'] = conf['maa_rg_sleep_min']
-        maa_config['sleep_max'] = conf['maa_rg_sleep_max']
-        maa_config['maa_execution_gap'] = conf['maa_gap']
-        maa_config['buy_first'] = conf['maa_mall_buy']
-        maa_config['blacklist'] = conf['maa_mall_blacklist']
-        maa_config['recruitment_time'] = conf['maa_recruitment_time']
-        maa_config['recruit_only_4'] = conf['maa_recruit_only_4']
-        maa_config['conn_preset'] = conf['maa_conn_preset']
-        maa_config['touch_option'] = conf['maa_touch_option']
-        maa_config['mall_ignore_when_full'] = conf['maa_mall_ignore_blacklist_when_full']
-        maa_config['credit_fight'] = conf['maa_credit_fight']
-        base_scheduler.maa_config = maa_config
+
+        set_maa_options(base_scheduler)
+
         base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
         base_scheduler.error = False
         base_scheduler.drone_room = None if conf['drone_room'] == '' else conf['drone_room']
@@ -208,7 +245,10 @@ def simulate():
                 sleep_time = (base_scheduler.tasks[0].time - datetime.now()).total_seconds()
                 logger.info('||'.join([str(t) for t in base_scheduler.tasks]))
                 remaining_time = (base_scheduler.tasks[0].time - datetime.now()).total_seconds()
-                if sleep_time > 540 and conf['maa_enable'] == 1:
+
+                set_maa_options(base_scheduler)
+
+                if sleep_time > 540 and base_scheduler.maa_config['maa_enable'] == 1:
                     subject = f"下次任务在{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}"
                     context = f"下一次任务:{base_scheduler.tasks[0].plan}"
                     logger.info(context)
