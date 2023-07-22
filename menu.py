@@ -184,6 +184,11 @@ def menu():
 
     start_automatically = sg.Checkbox('启动mower时自动开始任务', default=conf['start_automatically'],
                                       key='conf_start_automatically', enable_events=True)
+    
+    exit_game_when_idle = sg.Checkbox('距下次任务闲置超过5分钟时退出游戏', default=conf['exit_game_when_idle'],
+                                      key='conf_exit_game_when_idle', enable_events=True)
+    
+
     # --------外部调用设置页面
     # mail
     mail_enable_1 = sg.Radio('启用', 'mail_enable', default=conf['mail_enable'] == 1,
@@ -266,7 +271,7 @@ def menu():
                              [exhaust_require_title, exhaust_require],
                              [workaholic_title, workaholic],
                              [resting_priority_title, resting_priority],
-                             [start_automatically],
+                             [start_automatically, exit_game_when_idle],
                          ], pad=((10, 10), (10, 10)))
 
     other_tab = sg.Tab('  外部调用 ',
