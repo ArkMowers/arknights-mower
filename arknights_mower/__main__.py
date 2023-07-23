@@ -86,18 +86,18 @@ def hide_password(conf):
 
 
 def update_conf():
-    logger.info("运行中更新设置")
+    logger.debug("运行中更新设置")
 
     if not Pipe or not Pipe.conn:
         logger.error("管道关闭")
         logger.info(maa_config)
         return
 
-    logger.info("通过管道发送更新设置请求")
+    logger.debug("通过管道发送更新设置请求")
     Pipe.conn.send({"type": "update_conf"})
-    logger.info("开始通过管道读取设置")
+    logger.debug("开始通过管道读取设置")
     conf = Pipe.conn.recv()
-    logger.info(f"接收设置：{hide_password(conf)}")
+    logger.debug(f"接收设置：{hide_password(conf)}")
 
     return conf
 
@@ -126,7 +126,7 @@ def set_maa_options(base_scheduler):
     maa_config['credit_fight'] = conf['maa_credit_fight']
     base_scheduler.maa_config = maa_config
 
-    logger.info(f"更新Maa设置：{base_scheduler.maa_config}")
+    logger.debug(f"更新Maa设置：{base_scheduler.maa_config}")
 
 
 def initialize(tasks, scheduler=None):
