@@ -1880,7 +1880,8 @@ class BaseSchedulerSolver(BaseSolver):
             })            
         elif type == 'Depot':
             self.MAA.append_task('Depot', {
-		        "enable": 'true'          
+		        "enable": 'true' 
+                #开关         
 	       })
     def maa_plan_solver(self, tasks='All', one_time=False):
         try:
