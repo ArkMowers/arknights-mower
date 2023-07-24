@@ -1877,8 +1877,11 @@ class BaseSchedulerSolver(BaseSolver):
                 'blacklist': self.maa_config['blacklist'].split(","),
                 'credit_fight': self.maa_config['credit_fight'] and '' not in self.stages and self.credit_fight is None,
                 "force_shopping_if_credit_full": self.maa_config['mall_ignore_when_full']
-            })
-
+            })            
+        elif type == 'Depot':
+            self.MAA.append_task('Depot', {
+		        "enable": 'true'          
+	       })
     def maa_plan_solver(self, tasks='All', one_time=False):
         try:
             if not one_time and self.maa_config['last_execution'] is not None and datetime.now() - timedelta(
@@ -1890,7 +1893,8 @@ class BaseSchedulerSolver(BaseSolver):
                 # 任务及参数请参考 docs/集成文档.md
                 self.initialize_maa()
                 if tasks == 'All':
-                    tasks = ['StartUp', 'Fight', 'Recruit', 'Visit', 'Mall', 'Award']
+                    tasks = ['StartUp', 'Fight','Depot', 'Recruit', 'Visit', 'Mall', 'Award']
+                    #Depot 夹在了战斗和公招的前面 ，也可以放后面
                 for maa_task in tasks:
                     self.append_maa_task(maa_task)
                 # asst.append_task('Copilot', {
@@ -1952,15 +1956,15 @@ class BaseSchedulerSolver(BaseSolver):
                     self.initialize_maa()
                     if self.maa_config['roguelike']:
                         self.MAA.append_task('Roguelike', {
-                            'mode': 0,
+                            'theme': self.maa_config['rogue_theme'],
+                            'mode': 1,
                             'starts_count': 9999999,
                             'investment_enabled': True,
                             'investments_count': 9999999,
-                            'stop_when_investment_full': False,
-                            'squad': '指挥分队',
+                            'stop_when_investment_full': True,
+                            'squad': '后勤分队',
                             'roles': '取长补短',
-                            'theme': self.maa_config['rogue_theme'],
-                            'core_char': ''
+                            'core_char': '百炼嘉维尔'
                         })
                     elif self.maa_config['reclamation_algorithm']:
                         self.back_to_reclamation_algorithm()
