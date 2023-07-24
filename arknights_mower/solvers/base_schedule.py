@@ -1957,15 +1957,15 @@ class BaseSchedulerSolver(BaseSolver):
                     self.initialize_maa()
                     if self.maa_config['roguelike']:
                         self.MAA.append_task('Roguelike', {
-                            'theme': self.maa_config['rogue_theme'],
-                            'mode': 1,
+                            'mode': 0,
                             'starts_count': 9999999,
                             'investment_enabled': True,
                             'investments_count': 9999999,
-                            'stop_when_investment_full': True,
-                            'squad': '后勤分队',
+                            'stop_when_investment_full': False,
+                            'squad': '指挥分队',
                             'roles': '取长补短',
-                            'core_char': '百炼嘉维尔'
+                            'theme': self.maa_config['rogue_theme'],
+                            'core_char': ''
                         })
                     elif self.maa_config['reclamation_algorithm']:
                         self.back_to_reclamation_algorithm()
