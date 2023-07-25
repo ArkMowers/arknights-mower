@@ -1877,12 +1877,8 @@ class BaseSchedulerSolver(BaseSolver):
                 'blacklist': self.maa_config['blacklist'].split(","),
                 'credit_fight': self.maa_config['credit_fight'] and '' not in self.stages and self.credit_fight is None,
                 "force_shopping_if_credit_full": self.maa_config['mall_ignore_when_full']
-            })            
-        elif type == 'Depot':
-            self.MAA.append_task('Depot', {
-		        "enable": 'true' 
-                #开关         
-	       })
+            })
+
     def maa_plan_solver(self, tasks='All', one_time=False):
         try:
             if not one_time and self.maa_config['last_execution'] is not None and datetime.now() - timedelta(
@@ -1894,8 +1890,7 @@ class BaseSchedulerSolver(BaseSolver):
                 # 任务及参数请参考 docs/集成文档.md
                 self.initialize_maa()
                 if tasks == 'All':
-                    tasks = ['StartUp', 'Fight','Depot', 'Recruit', 'Visit', 'Mall', 'Award']
-                    #Depot 夹在了战斗和公招的前面 ，也可以放后面
+                    tasks = ['StartUp', 'Fight', 'Recruit', 'Visit', 'Mall', 'Award']
                 for maa_task in tasks:
                     self.append_maa_task(maa_task)
                 # asst.append_task('Copilot', {
