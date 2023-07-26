@@ -24,11 +24,11 @@ import smtplib
 import sys
 import time
 import warnings
-# import winsound   # Windows 铃声
 
 
 def warn(*args, **kwargs):
     pass
+
 
 warnings.warn = warn
 
@@ -37,6 +37,8 @@ from arknights_mower.strategy import Solver
 
 官方服务器 = 'com.hypergryph.arknights'
 Bilibili服务器 = 'com.hypergryph.arknights.bilibili'
+开 = True
+关 = False
 
 ################################################################################################
 # # # # # # # # # # # # # # # # # # # # # # 用户设置区 # # # # # # # # # # # # # # # # # # # # # #
@@ -45,49 +47,49 @@ Bilibili服务器 = 'com.hypergryph.arknights.bilibili'
 服务器 = 官方服务器  # 服务器选择(官方服务器/Bilibili服务器)
 
 跑单提前运行时间 = 300  # 秒
-更换干员前缓冲时间 = 25  # 秒 需要严格大于一次跟服务器交换数据的时间
+更换干员前缓冲时间 = 25  # 秒 需要严格大于一次跟服务器交换数据的时间 建议大于等于15秒
 
 日志存储目录 = './log'
 截图存储目录 = './screenshot'
 每种截图的最大保存数量 = 10
+跑单前铃声提醒开关 = 开   # 跑单前铃声提醒开关，仅在 Windows 平台有效
 
-排班 = {
-    'room_1_1': [{'agent': '图耶', 'group': '', 'replacement': ['推进之王', '能天使', '海蒂', '雪雉']},
-                 {'agent': '鸿雪', 'group': '', 'replacement': ['龙舌兰', '摩根', '能天使', '海蒂', '雪雉']},
-                 {'agent': '泰拉大陆调查团', 'group': '', 'replacement': ['但书', '能天使', '海蒂', '雪雉']}
-                 ],
-    'room_2_1': [{'agent': '巫恋', 'group': '', 'replacement': ['孑']},
-                 {'agent': '黑键', 'group': '', 'replacement': ['龙舌兰', '银灰']},
-                 {'agent': '绮良', 'group': '', 'replacement': ['但书', '崖心']}],
+# 设置贸易站的房间以及跑单干员的具体位置
+跑单设置 = {
+    'room_1_1': ['', '龙舌兰', '但书'],
+    'room_2_1': ['', '龙舌兰', '但书'],
 }
 
 邮件设置 = {
-    '发信邮箱': "xxxxxxxxxx@qq.com",
-    '授权码': 'xxxxxxxxxx',  # 在QQ邮箱“账户设置-账户-开启SMTP服务”中，按照指示开启服务获得授权码
+    '发信邮箱': "qqqqqqqqqqqqq@qq.com",
+    '授权码': 'qqqqqqqqqqqqqqqqq',  # 在QQ邮箱“账户设置-账户-开启SMTP服务”中，按照指示开启服务获得授权码
     '收件人邮箱': ['langchuang@foxmail.com'],  # 收件人邮箱
-    '邮件提醒开关': True,  # 是否启用邮件提醒
+    '邮件提醒开关': 开,  # 邮件提醒开关
 }
 
 MAA设置 = {
-    "MAA路径": 'K:\\MAA\\MAA-v4.10.5-win-x64',  # 请设置为存放 dll 文件及资源的路径
-    "MAA_adb路径": "K:\\MuMuPlayer-12.0\\shell\\adb.exe",  # 请设置为模拟器的 adb 路径
-    "MAA_adb地址": ['127.0.0.1:16384'],  # 请设置为模拟器的 adb 地址
+    "MAA路径": 'K:\\MAA',  # 请设置为存放 dll 文件及资源的路径
+    "MAA_adb路径": "C:\\Program Files\\BlueStacks_bgp64\\.\\HD-Adb.exe",  # 请设置为模拟器的 adb 应用程序路径
+    "MAA_adb地址": ['127.0.0.1:5555'],  # 请设置为模拟器的 adb 地址
 
-    # 以下配置，第一个设置为true的首先生效
-    "集成战略": True,  # 是否启动集成战略
-    "生息演算": False,  # 是否启动生息演算
-    "保全派驻": False,  # 是否启动保全派驻
-    "上一次作战": None,
-    "周计划": [{"日子": "周一", "关卡": ['(上次作战)'], "应急理智药": 0},
-               {"日子": "周二", "关卡": ['(上次作战)'], "应急理智药": 0},
-               {"日子": "周三", "关卡": ['(上次作战)'], "应急理智药": 0},
-               {"日子": "周四", "关卡": ['(上次作战)'], "应急理智药": 0},
-               {"日子": "周五", "关卡": ['(上次作战)'], "应急理智药": 0},
-               {"日子": "周六", "关卡": ['(上次作战)'], "应急理智药": 0},
-               {"日子": "周日", "关卡": ['(上次作战)'], "应急理智药": 0}]
+    # 以下配置，第一个设置为开的首先生效
+    "集成战略": 关,  # 集成战略开关
+    "生息演算": 关,  # 生息演算开关
+    "保全派驻": 关,  # 保全派驻开关
+    "周计划": [{"日子": "周一", "关卡": ['集成战略'], "应急理智药": 0},
+               {"日子": "周二", "关卡": ['集成战略'], "应急理智药": 0},
+               {"日子": "周三", "关卡": ['集成战略'], "应急理智药": 0},
+               {"日子": "周四", "关卡": ['集成战略'], "应急理智药": 0},
+               {"日子": "周五", "关卡": ['集成战略'], "应急理智药": 0},
+               {"日子": "周六", "关卡": ['集成战略'], "应急理智药": 0},
+               {"日子": "周日", "关卡": ['集成战略'], "应急理智药": 0}]
 }
 
 ################################################################################################
+if sys.platform == 'win32' and 跑单前铃声提醒开关:
+    import winsound  # Windows 铃声
+
+
 class ArrangeOrder(Enum):
     STATUS = 1
     SKILL = 2
@@ -121,31 +123,32 @@ class BaseSchedulerSolver(BaseSolver):
 
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
         super().__init__(device, recog)
+        self.plan = None
         self.planned = None
         self.todo_task = None
         self.邮件设置 = None
-        self.op_data = None
+        self.干员信息 = None
         self.跑单提前运行时间 = 300
         self.digit_reader = DigitReader()
-        self.error = False
+        self.error = 关
         self.任务列表 = []
         self.run_order_rooms = {}
 
     def run(self) -> None:
-        self.error = False
+        self.error = 关
         if len(self.任务列表) == 0:
             self.recog.update()
             self.sleep()
-        self.handle_error(True)
+        self.handle_error(开)
         if len(self.任务列表) > 0:
             # 找到时间最近的一次单个任务
             self.任务 = self.任务列表[0]
         else:
             self.任务 = None
-        self.todo_task = False
-        self.collect_notification = False
-        self.planned = False
-        if self.op_data is None or self.op_data.operators is None:
+        self.todo_task = 关
+        self.collect_notification = 关
+        self.planned = 关
+        if self.干员信息 is None or self.干员信息.operators is None:
             self.initialize_operators()
         return super().run()
 
@@ -177,21 +180,24 @@ class BaseSchedulerSolver(BaseSolver):
     def find_next_task(self, compare_time=None, task_type='', compare_type='<'):
         if compare_type == '=':
             return next((e for e in self.任务列表 if the_same_time(e.time, compare_time) and (
-                True if task_type == '' else task_type in e.type)), None)
+                开 if task_type == '' else task_type in e.type)), None)
         elif compare_type == '>':
-            return next((e for e in self.任务列表 if (True if compare_time is None else e.time > compare_time) and (
-                True if task_type == '' else task_type in e.type)), None)
+            return next((e for e in self.任务列表 if (开 if compare_time is None else e.time > compare_time) and (
+                开 if task_type == '' else task_type in e.type)), None)
         else:
-            return next((e for e in self.任务列表 if (True if compare_time is None else e.time < compare_time) and (
-                True if task_type == '' else task_type in e.type)), None)
+            return next((e for e in self.任务列表 if (开 if compare_time is None else e.time < compare_time) and (
+                开 if task_type == '' else task_type in e.type)), None)
 
-    def handle_error(self, force=False):
-        if self.scene() == Scene.UNKNOWN:
+    def handle_error(self, force=关):
+        while self.scene() == Scene.UNKNOWN:
             self.recog.update()
-            # logger.info('返回基建主界面')
-            # while self.get_infra_scene() != Scene.INFRA_MAIN:
-            #     self.back()
-            #     self.recog.update()
+            logger.info('返回基建主界面')
+            unknown_count = 0
+            while self.get_infra_scene() != Scene.INFRA_MAIN and unknown_count < 5:
+                self.back()
+                self.recog.update()
+                self.sleep()
+                unknown_count += 1
             self.device.exit(self.服务器)
         if self.error or force:
             # 如果没有任何时间小于当前时间的任务才生成空任务
@@ -205,7 +211,7 @@ class BaseSchedulerSolver(BaseSolver):
         elif self.find_next_task(datetime.now() + timedelta(hours=2.5)) is None:
             logger.debug("2.5小时内没有其他任务，生成一个空任务")
             self.任务列表.append(SchedulerTask(time=datetime.now() + timedelta(hours=2.5)))
-        return True
+        return 开
 
     def infra_main(self):
         """ 位于基建首页 """
@@ -215,9 +221,9 @@ class BaseSchedulerSolver(BaseSolver):
         if self.任务 is not None:
             try:
                 if len(self.任务.plan.keys()) > 0:
-                    get_time = False
+                    get_time = 关
                     if "Shift_Change" == self.任务.type:
-                        get_time = True
+                        get_time = 开
                     self.agent_arrange(self.任务.plan, get_time)
                     if get_time:
                         self.plan_metadata()
@@ -230,18 +236,18 @@ class BaseSchedulerSolver(BaseSolver):
             except Exception as e:
                 logger.exception(e)
                 self.skip()
-                self.error = True
+                self.error = 开
             self.任务 = None
         elif not self.planned:
             try:
                 self.plan_solver()
             except Exception as e:
                 # 重新扫描
-                self.error = True
+                self.error = 开
                 logger.exception({e})
-            self.planned = True
+            self.planned = 开
         elif not self.todo_task:
-            self.todo_task = True
+            self.todo_task = 开
         elif not self.collect_notification:
             notification = detector.infra_notification(self.recog.img)
             if notification is None:
@@ -249,12 +255,12 @@ class BaseSchedulerSolver(BaseSolver):
                 notification = detector.infra_notification(self.recog.img)
             if notification is not None:
                 self.tap(notification)
-            self.collect_notification = True
+            self.collect_notification = 开
         else:
             return self.handle_error()
 
     def plan_solver(self):
-        plan = self.排班
+        plan = self.plan
         # 如果下个 普通任务 <10 分钟则跳过 plan
         if self.find_next_task(datetime.now() + timedelta(seconds=600)) is not None:
             return
@@ -263,7 +269,7 @@ class BaseSchedulerSolver(BaseSolver):
             for k, v in self.run_order_rooms.items():
                 # 如果没有当前房间数据
                 if 'plan' not in v.keys():
-                    v['plan'] = self.op_data.get_current_room(k)
+                    v['plan'] = self.干员信息.get_current_room(k)
                 if self.find_next_task(task_type=k) is not None: continue;
                 in_out_plan = {k: ['Current'] * len(plan[k])}
                 for idx, x in enumerate(plan[k]):
@@ -272,19 +278,19 @@ class BaseSchedulerSolver(BaseSolver):
                 self.任务列表.append(
                     SchedulerTask(time=self.读取接单时间(k), task_plan=in_out_plan, task_type=k))
         # 准备数据
-        logger.debug(self.op_data.print())
+        logger.debug(self.干员信息.print())
 
     def initialize_operators(self):
-        plan = self.排班
-        # self.op_data = Operators(self.agent_base_config, self.max_resting_count, plan)
-        self.op_data = Operators({}, 4, plan)
+        plan = self.plan
+        # self.干员信息 = Operators(self.agent_base_config, self.max_resting_count, plan)
+        self.干员信息 = Operators({}, 4, plan)
         for room in plan.keys():
             for idx, data in enumerate(plan[room]):
-                self.op_data.add(Operator(data["agent"], room, idx, data["group"], data["replacement"], 'high',
-                                          operator_type="high"))
+                self.干员信息.add(Operator(data["agent"], room, idx, data["group"], data["replacement"], 'high',
+                                           operator_type="high"))
         added = []
         # 跑单
-        for x, y in self.排班.items():
+        for x, y in self.plan.items():
             if not x.startswith('room'): continue
             if any(('但书' in obj['replacement'] or '龙舌兰' in obj['replacement']) for obj in y):
                 self.run_order_rooms[x] = {}
@@ -302,7 +308,7 @@ class BaseSchedulerSolver(BaseSolver):
             error_count += 1
         execute_time = self.double_read_time((int(self.recog.w * 650 / 2496), int(self.recog.h * 660 / 1404),
                                               int(self.recog.w * 815 / 2496), int(self.recog.h * 710 / 1404)),
-                                             use_digit_reader=True)
+                                             use_digit_reader=开)
         logger.warning(room + ' 接单时间为：' + execute_time.strftime("%H:%M:%S"))
         execute_time = execute_time - timedelta(seconds=(self.跑单提前运行时间))
         self.recog.update()
@@ -312,7 +318,7 @@ class BaseSchedulerSolver(BaseSolver):
             self.recog.update()
         return execute_time
 
-    def double_read_time(self, cord, upperLimit=None, use_digit_reader=False):
+    def double_read_time(self, cord, upperLimit=None, use_digit_reader=关):
         if upperLimit is not None and upperLimit < 36000:
             upperLimit = 36000
         self.recog.update()
@@ -327,9 +333,9 @@ class BaseSchedulerSolver(BaseSolver):
         if ocr is None:
             # mac 平台不支持 mkldnn 加速，关闭以修复 mac 运行时错误
             if sys.platform == 'darwin':
-                ocr = PaddleOCR(enable_mkldnn=False, use_angle_cls=False, show_log=False)
+                ocr = PaddleOCR(enable_mkldnn=关, use_angle_cls=关, show_log=关)
             else:
-                ocr = PaddleOCR(enable_mkldnn=True, use_angle_cls=False, show_log=False)
+                ocr = PaddleOCR(enable_mkldnn=开, use_angle_cls=关, show_log=关)
 
     def read_screen(self, img, type="mood", limit=24, cord=None):
         if cord is not None:
@@ -340,7 +346,7 @@ class BaseSchedulerSolver(BaseSolver):
                 img = cv2.vconcat([img, img])
         try:
             self.initialize_paddle()
-            rets = ocr.ocr(img, cls=True)
+            rets = ocr.ocr(img, cls=开)
             line_conf = []
             for idx in range(len(rets[0])):
                 res = rets[0][idx]
@@ -378,7 +384,7 @@ class BaseSchedulerSolver(BaseSolver):
             logger.exception(e)
             return limit + 1
 
-    def read_time(self, cord, upperlimit, error_count=0, use_digit_reader=False):
+    def read_time(self, cord, upperlimit, error_count=0, use_digit_reader=关):
         # 刷新图片
         self.recog.update()
         if use_digit_reader:
@@ -404,31 +410,31 @@ class BaseSchedulerSolver(BaseSolver):
 
     def todo_list(self) -> None:
         """ 处理基建 Todo 列表 """
-        tapped = False
+        tapped = 关
         trust = self.find('infra_collect_trust')
         if trust is not None:
             logger.info('干员信赖')
             self.tap(trust)
-            tapped = True
+            tapped = 开
         bill = self.find('infra_collect_bill')
         if bill is not None:
             logger.info('订单交付')
             self.tap(bill)
-            tapped = True
+            tapped = 开
         factory = self.find('infra_collect_factory')
         if factory is not None:
             logger.info('可收获')
             self.tap(factory)
-            tapped = True
+            tapped = 开
         if not tapped:
             self.tap((self.recog.w * 0.05, self.recog.h * 0.95))
-            self.todo_task = True
+            self.todo_task = 开
 
     def enter_room(self, room: str) -> tp.Rectangle:
         """ 获取房间的位置并进入 """
 
         # 获取基建各个房间的位置
-        base_room = segment.base(self.recog.img, self.find('control_central', strict=True))
+        base_room = segment.base(self.recog.img, self.find('control_central', strict=开))
         # 将画面外的部分删去
         _room = base_room[room]
 
@@ -443,7 +449,7 @@ class BaseSchedulerSolver(BaseSolver):
         while self.find('control_central') is not None:
             self.tap(_room[0], interval=1)
 
-    def drone(self, room: str, not_customize=False, not_return=False):
+    def drone(self, room: str, not_customize=关, not_return=关):
         logger.info('无人机加速')
         all_in = 0
         if not not_customize:
@@ -478,7 +484,7 @@ class BaseSchedulerSolver(BaseSolver):
                     error_count += 1
                 加速后接单时间 = self.double_read_time((int(self.recog.w * 650 / 2496), int(self.recog.h * 660 / 1404),
                                                         int(self.recog.w * 815 / 2496), int(self.recog.h * 710 / 1404)),
-                                                       use_digit_reader=True)
+                                                       use_digit_reader=开)
                 self.任务列表[0].time = 加速后接单时间 - timedelta(seconds=(self.跑单提前运行时间))
                 logger.info(room + ' 加速后接单时间为：' + 加速后接单时间.strftime("%H:%M:%S"))
                 if not_customize:
@@ -492,7 +498,7 @@ class BaseSchedulerSolver(BaseSolver):
         if not_return: return
         self.recog.update()
         logger.info('返回基建主界面')
-        self.back(interval=2, rebuild=False)
+        self.back(interval=2, rebuild=关)
         self.back(interval=2)
 
     def get_arrange_order(self) -> ArrangeOrder:
@@ -506,21 +512,21 @@ class BaseSchedulerSolver(BaseSolver):
 
     def switch_arrange_order(self, index: int, asc="false") -> None:
         self.tap((self.recog.w * arrange_order_res[ArrangeOrder(index)][0],
-                  self.recog.h * arrange_order_res[ArrangeOrder(index)][1]), interval=0, rebuild=False)
+                  self.recog.h * arrange_order_res[ArrangeOrder(index)][1]), interval=0, rebuild=关)
         # 点个不需要的
         if index < 4:
             self.tap((self.recog.w * arrange_order_res[ArrangeOrder(index + 1)][0],
-                      self.recog.h * arrange_order_res[ArrangeOrder(index)][1]), interval=0, rebuild=False)
+                      self.recog.h * arrange_order_res[ArrangeOrder(index)][1]), interval=0, rebuild=关)
         else:
             self.tap((self.recog.w * arrange_order_res[ArrangeOrder(index - 1)][0],
-                      self.recog.h * arrange_order_res[ArrangeOrder(index)][1]), interval=0, rebuild=False)
+                      self.recog.h * arrange_order_res[ArrangeOrder(index)][1]), interval=0, rebuild=关)
         # 切回来
         self.tap((self.recog.w * arrange_order_res[ArrangeOrder(index)][0],
-                  self.recog.h * arrange_order_res[ArrangeOrder(index)][1]), interval=0.2, rebuild=True)
+                  self.recog.h * arrange_order_res[ArrangeOrder(index)][1]), interval=0.2, rebuild=开)
         # 倒序
         if asc != "false":
             self.tap((self.recog.w * arrange_order_res[ArrangeOrder(index)][0],
-                      self.recog.h * arrange_order_res[ArrangeOrder(index)][1]), interval=0.2, rebuild=True)
+                      self.recog.h * arrange_order_res[ArrangeOrder(index)][1]), interval=0.2, rebuild=开)
 
     def scan_agant(self, agent: list[str], error_count=0, max_agent_count=-1):
         try:
@@ -574,14 +580,15 @@ class BaseSchedulerSolver(BaseSolver):
         logger.warning(room + ' 进驻时间为：' + (self.任务列表[0].time + timedelta(
             seconds=(self.跑单提前运行时间 - self.更换干员前缓冲时间))).strftime("%H:%M:%S"))
         h, w = self.recog.h, self.recog.w
-        first_time = True
-        index_change = False
-        pre_order = [2, False]
+        first_time = 开
+        index_change = 关
+        pre_order = [2, 关]
         right_swipe = 0
         retry_count = 0
         # 如果重复进入宿舍则需要排序
         selected = []
         logger.info(f'上次进入房间为：{self.last_room},本次房间为：{room}')
+        self.switch_arrange_order(2, "asc")
         while len(agent) > 0:
             if retry_count > 3: raise Exception(f"到达最大尝试次数 3次")
             if right_swipe > max_swipe:
@@ -591,40 +598,28 @@ class BaseSchedulerSolver(BaseSolver):
                 right_swipe = 0
                 max_swipe = 50
                 retry_count += 1
-                self.detail_filter(False)
+                self.detail_filter(关)
             if first_time:
                 self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
                 changed, ret = self.scan_agant(agent)
                 if changed:
                     selected.extend(changed)
                     if len(agent) == 0: break
-                    index_change = True
-
-            # 如果选中了人，则可能需要重新排序
-            # if index_change or first_time:
-            # 第一次则调整
-            # is_custom, arrange_type = self.get_order(agent[0])
-            # 如果重新排序则滑到最左边
-            # if pre_order[0] != arrange_type[0] or pre_order[1] != arrange_type[1]:
-            #     self.switch_arrange_order(arrange_type[0], arrange_type[1])
-            #     # 滑倒最左边
-            #     self.sleep(interval=0.5, rebuild=True)
-            #     right_swipe = self.swipe_left(right_swipe, w, h)
-            #     pre_order = arrange_type
-            first_time = False
+                    index_change = 开
+            first_time = 关
 
             changed, ret = self.scan_agant(agent)
             if changed:
                 selected.extend(changed)
                 # 如果找到了
-                index_change = True
+                index_change = 开
             else:
                 # 如果没找到 而且右移次数大于5
                 if ret[0][0] == first_name and right_swipe > 5:
                     max_swipe = right_swipe
                 else:
                     first_name = ret[0][0]
-                index_change = False
+                index_change = 关
                 st = ret[-2][1][2]  # 起点
                 ed = ret[0][1][1]  # 终点
                 self.swipe_noinertia(st, (ed[0] - st[0], 0))
@@ -636,17 +631,17 @@ class BaseSchedulerSolver(BaseSolver):
             # 左移
             self.swipe_left(right_swipe, w, h)
             self.tap((self.recog.w * arrange_order_res[ArrangeOrder.SKILL][0],
-                      self.recog.h * arrange_order_res[ArrangeOrder.SKILL][1]), interval=0.5, rebuild=False)
+                      self.recog.h * arrange_order_res[ArrangeOrder.SKILL][1]), interval=0.5, rebuild=关)
             position = [(0.35, 0.35), (0.35, 0.75), (0.45, 0.35), (0.45, 0.75), (0.55, 0.35)]
-            not_match = False
+            not_match = 关
             for idx, item in enumerate(agents):
                 if agents[idx] != selected[idx] or not_match:
-                    not_match = True
+                    not_match = 开
                     p_idx = selected.index(agents[idx])
                     self.tap((self.recog.w * position[p_idx][0], self.recog.h * position[p_idx][1]), interval=0,
-                             rebuild=False)
+                             rebuild=关)
                     self.tap((self.recog.w * position[p_idx][0], self.recog.h * position[p_idx][1]), interval=0,
-                             rebuild=False)
+                             rebuild=关)
         self.last_room = room
         logger.info(f"设置上次房间为{self.last_room}")
 
@@ -654,37 +649,6 @@ class BaseSchedulerSolver(BaseSolver):
         for _ in range(right_swipe):
             self.swipe_only((w // 2, h // 2), (w // 2, 0), interval=0.5)
         return 0
-
-    def read_accurate_mood(self, img, cord):
-        try:
-            img = img[cord[1]:cord[3], cord[0]:cord[2]]
-            # Convert the image to grayscale
-            gray_image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-            blurred_image = cv2.GaussianBlur(gray_image, (5, 5), 0)
-
-            # Threshold the image to isolate the progress bar region
-            contours, hierarchy = cv2.findContours(blurred_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-            # Calculate the bounding box of the progress bar
-            x, y, w, h = cv2.boundingRect(contours[0])
-
-            # Crop the progress bar region
-            progress_bar = img[y:y + h, x:x + w]
-
-            # Convert the progress bar to grayscale
-            gray_pb = cv2.cvtColor(progress_bar, cv2.COLOR_BGR2GRAY)
-
-            # Threshold the progress bar to isolate the gray fill
-            ret, thresh_pb = cv2.threshold(gray_pb, 137, 255, cv2.THRESH_BINARY)
-
-            # Calculate the ratio of colored pixels to the total number of pixels in the progress bar region
-            total_pixels = w * h
-            colored_pixels = cv2.countNonZero(thresh_pb)
-            return colored_pixels / total_pixels * 24
-
-        except Exception:
-            return 24
 
     @push_operators
     def get_agent_from_room(self, room, read_time_index=None):
@@ -696,23 +660,19 @@ class BaseSchedulerSolver(BaseSolver):
                 raise Exception('未成功进入房间')
             self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
             error_count += 1
-        length = len(self.排班[room])
+        length = len(self.plan[room])
         if length > 3: self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, self.recog.h * 0.45), duration=500,
                                   interval=1,
-                                  rebuild=True)
+                                  rebuild=开)
         name_p = [((1460, 155), (1700, 210)), ((1460, 370), (1700, 420)), ((1460, 585), (1700, 630)),
                   ((1460, 560), (1700, 610)), ((1460, 775), (1700, 820))]
-        time_p = [((1650, 270, 1780, 305)), ((1650, 480, 1780, 515)), ((1650, 690, 1780, 725)),
-                  ((1650, 665, 1780, 700)), ((1650, 875, 1780, 910))]
-        mood_p = [((1470, 219, 1780, 221)), ((1470, 428, 1780, 430)), ((1470, 637, 1780, 639)),
-                  ((1470, 615, 1780, 617)), ((1470, 823, 1780, 825))]
         result = []
-        swiped = False
+        swiped = 关
         for i in range(0, length):
             if i >= 3 and not swiped:
                 self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, -self.recog.h * 0.45), duration=500,
-                           interval=1, rebuild=True)
-                swiped = True
+                           interval=1, rebuild=开)
+                swiped = 开
             data = {}
             _name = self.read_screen(self.recog.img[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]],
                                      type="name")
@@ -721,65 +681,51 @@ class BaseSchedulerSolver(BaseSolver):
                     next((e for e in result if e['agent'] == _name), None)) is not None:
                 logger.warning("检测到滑动可能失败")
                 self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, -self.recog.h * 0.45), duration=500,
-                           interval=1, rebuild=True)
+                           interval=1, rebuild=开)
                 _name = self.read_screen(
                     self.recog.img[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]], type="name")
                 error_count += 1
                 if error_count > 1:
                     raise Exception("超过出错上限")
-            _mood = 24
             # 如果房间不为空
             if _name != '':
-                if _name not in self.op_data.operators.keys() and _name in agent_list:
-                    self.op_data.add(Operator(_name, ""))
-                update_time = False
-                if self.op_data.operators[_name].need_to_refresh(r=room):
-                    _mood = self.read_accurate_mood(self.recog.img, cord=mood_p[i])
-                    update_time = True
-                else:
-                    _mood = self.op_data.operators[_name].current_mood()
-                high_no_time = self.op_data.update_detail(_name, _mood, room, i, update_time)
-                data['depletion_rate'] = self.op_data.operators[_name].depletion_rate
-                if high_no_time is not None:
-                    logger.debug(f"检测到高效组休息时间数据不存在:{room},{high_no_time}")
-                    read_time_index.append(high_no_time)
-            else:
-                _mood = -1
+                if _name not in self.干员信息.operators.keys() and _name in agent_list:
+                    self.干员信息.add(Operator(_name, ""))
+                update_time = 关
+                if self.干员信息.operators[_name].need_to_refresh(r=room):
+                    update_time = 开
+                high_no_time = self.干员信息.update_detail(_name, 24, room, i, update_time)
+                data['depletion_rate'] = self.干员信息.operators[_name].depletion_rate
             data['agent'] = _name
-            data['mood'] = _mood
+            # data['mood'] = _mood
             if i in read_time_index:
-                if _mood == 24:
-                    data['time'] = datetime.now()
-                else:
-                    upperLimit = 21600
-                    logger.debug(f"开始记录时间:{room},{i}")
-                    data['time'] = self.double_read_time(time_p[i], upperLimit=upperLimit)
-                self.op_data.refresh_dorm_time(room, i, data)
+                data['time'] = datetime.now()
+                self.干员信息.refresh_dorm_time(room, i, data)
                 logger.debug(f"停止记录时间:{str(data)}")
             result.append(data)
-        for _operator in self.op_data.operators.keys():
-            if self.op_data.operators[_operator].current_room == room and _operator not in [res['agent'] for res in
-                                                                                            result]:
-                self.op_data.operators[_operator].current_room = ''
-                self.op_data.operators[_operator].current_index = -1
+        for _operator in self.干员信息.operators.keys():
+            if self.干员信息.operators[_operator].current_room == room and _operator not in [res['agent'] for res in
+                                                                                             result]:
+                self.干员信息.operators[_operator].current_room = ''
+                self.干员信息.operators[_operator].current_index = -1
                 logger.info(f'重设 {_operator} 至空闲')
         return result
 
     def refresh_current_room(self, room):
-        _current_room = self.op_data.get_current_room(room)
+        _current_room = self.干员信息.get_current_room(room)
         if _current_room is None:
             self.get_agent_from_room(room)
-            _current_room = self.op_data.get_current_room(room, True)
+            _current_room = self.干员信息.get_current_room(room, 开)
         return _current_room
 
-    def agent_arrange(self, plan: tp.BasePlan, get_time=False):
-        logger.info('排班')
+    def agent_arrange(self, plan: tp.BasePlan, get_time=关):
+        logger.info('准备跑单')
         rooms = list(plan.keys())
         new_plan = {}
         # 优先替换工作站再替换宿舍
-        rooms.sort(key=lambda x: x.startswith('dorm'), reverse=False)
+        rooms.sort(key=lambda x: x.startswith('dorm'), reverse=关)
         for room in rooms:
-            finished = False
+            finished = 关
             choose_error = 0
             while not finished:
                 try:
@@ -799,7 +745,7 @@ class BaseSchedulerSolver(BaseSolver):
                             self.refresh_current_room(room)
                             for current_idx, _name in enumerate(plan[room]):
                                 if _name == 'Current':
-                                    plan[room][current_idx] = self.op_data.get_current_room(room, True)[current_idx]
+                                    plan[room][current_idx] = self.干员信息.get_current_room(room, 开)[current_idx]
                         if room in self.run_order_rooms and len(new_plan) == 0:
                             if 'plan' in self.run_order_rooms[room] and plan[room] != self.run_order_rooms[room][
                                 'plan']:
@@ -824,23 +770,23 @@ class BaseSchedulerSolver(BaseSolver):
                             logger.info('龙舌兰、但书进驻前的等待时间为：' + str(龙舌兰_但书进驻前的等待时间) + ' 秒')
                             self.sleep(龙舌兰_但书进驻前的等待时间)
                             # self.sleep()  # 调试
-                    self.tap_element('confirm_blue', detected=True, judge=False, interval=3)
+                    self.tap_element('confirm_blue', detected=开, judge=关, interval=3)
                     self.recog.update()
                     if self.get_infra_scene() == Scene.INFRA_ARRANGE_CONFIRM:
                         x0 = self.recog.w // 3 * 2  # double confirm
                         y0 = self.recog.h - 10
-                        self.tap((x0, y0), rebuild=True)
+                        self.tap((x0, y0), rebuild=开)
                     read_time_index = []
                     if get_time:
-                        read_time_index = self.op_data.get_refresh_index(room, plan[room])
+                        read_time_index = self.干员信息.get_refresh_index(room, plan[room])
                     if len(new_plan) > 1:
-                        self.op_data.operators[plan[room][0]].time_stamp = None
+                        self.干员信息.operators[plan[room][0]].time_stamp = None
                     current = self.get_agent_from_room(room, read_time_index)
                     for idx, name in enumerate(plan[room]):
                         if current[idx]['agent'] != name:
                             logger.error(f'检测到的干员{current[idx]["agent"]},需要安排的干员{name}')
                             raise Exception('检测到安排干员未成功')
-                    finished = True
+                    finished = 开
                     # 如果完成则移除该任务
                     del plan[room]
                     # back to 基地主界面
@@ -854,7 +800,7 @@ class BaseSchedulerSolver(BaseSolver):
                         修正后的接单时间 = self.double_read_time(
                             (int(self.recog.w * 650 / 2496), int(self.recog.h * 660 / 1404),
                              int(self.recog.w * 815 / 2496), int(self.recog.h * 710 / 1404)),
-                            use_digit_reader=True)
+                            use_digit_reader=开)
                         logger.warning(room + ' 修正后的接单时间为：' + 修正后的接单时间.strftime("%H:%M:%S"))
                         截图等待时间 = (修正后的接单时间 - datetime.now()).total_seconds()
                         if (截图等待时间 > 0) and (截图等待时间 < 1000):
@@ -883,7 +829,7 @@ class BaseSchedulerSolver(BaseSolver):
             # 防止由于意外导致的死循环
             run_order_room = next(iter(new_plan))
             if '但书' in new_plan[run_order_room] or '龙舌兰' in new_plan[run_order_room]:
-                new_plan[run_order_room] = [data["agent"] for data in self.排班[room]]
+                new_plan[run_order_room] = [data["agent"] for data in self.plan[room]]
             # 返回基建主界面
             self.recog.update()
             while self.get_infra_scene() != Scene.INFRA_MAIN:
@@ -901,11 +847,11 @@ class BaseSchedulerSolver(BaseSolver):
         if task_names == 'All':
             task_names = ['planned', 'collect_notification', 'todo_task']
         if 'planned' in task_names:
-            self.planned = True
+            self.planned = 开
         if 'todo_task':
-            self.todo_task = True
+            self.todo_task = 开
         if 'collect_notification':
-            self.collect_notification = True
+            self.collect_notification = 开
 
     @Asst.CallBackType
     def log_maa(msg, details, arg):
@@ -945,38 +891,38 @@ class BaseSchedulerSolver(BaseSolver):
                     '应急理智药': _plan["应急理智药"],
                     'stone': 0,
                     'times': 999,
-                    'report_to_penguin': True,
+                    'report_to_penguin': 开,
                     'client_type': '',
                     'penguin_id': '',
-                    'DrGrandet': False,
+                    'DrGrandet': 关,
                     'server': 'CN',
                     'expiring_medicine': 9999
                 })
                 self.关卡列表.append(stage)
-        elif type == 'Recruit':
-            self.MAA.append_task('Recruit', {
-                'select': [4],
-                'confirm': [3, 4],
-                'times': 4,
-                'refresh': True,
-                "recruitment_time": {
-                    "3": 460,
-                    "4": 540
-                }
-            })
-        elif type == 'Mall':
-            credit_fight = False
-            if len(self.关卡列表) > 0 and self.关卡列表[- 1] != '':
-                credit_fight = True
-            self.MAA.append_task('Mall', {
-                'shopping': True,
-                'buy_first': ['招聘许可'],
-                'blacklist': ['家具', '碳', '加急许可'],
-                'credit_fight': credit_fight
-            })
+        # elif type == 'Recruit':
+        #     self.MAA.append_task('Recruit', {
+        #         'select': [4],
+        #         'confirm': [3, 4],
+        #         'times': 4,
+        #         'refresh': 开,
+        #         "recruitment_time": {
+        #             "3": 460,
+        #             "4": 540
+        #         }
+        #     })
+        # elif type == 'Mall':
+        #     credit_fight = 关
+        #     if len(self.关卡列表) > 0 and self.关卡列表[- 1] != '':
+        #         credit_fight = 开
+        #     self.MAA.append_task('Mall', {
+        #         'shopping': 开,
+        #         'buy_first': ['招聘许可'],
+        #         'blacklist': ['家具', '碳', '加急许可'],
+        #         'credit_fight': credit_fight
+        #     })
 
-    # def maa_plan_solver(self, 任务列表='All', one_time=False):
-    def maa_plan_solver(self, 任务列表=['Fight'], one_time=False):
+    # def maa_plan_solver(self, 任务列表='All', one_time=关):
+    def maa_plan_solver(self, 任务列表=['Fight'], one_time=关):
         try:
             self.send_email('启动MAA')
             self.back_to_index()
@@ -989,7 +935,7 @@ class BaseSchedulerSolver(BaseSolver):
             # asst.append_task('Copilot', {
             #     'stage_name': '千层蛋糕',
             #     'filename': './GA-EX8-raid.json',
-            #     'formation': False
+            #     'formation': 关
 
             # })
             self.MAA.start()
@@ -997,16 +943,16 @@ class BaseSchedulerSolver(BaseSolver):
             if one_time:
                 stop_time = datetime.now() + timedelta(minutes=5)
             logger.info(f"MAA 启动")
-            hard_stop = False
+            hard_stop = 关
             while self.MAA.running():
                 # 单次任务默认5分钟
                 if one_time and stop_time < datetime.now():
                     self.MAA.stop()
-                    hard_stop = True
+                    hard_stop = 开
                 # 5分钟之前就停止
                 elif not one_time and (self.任务列表[0].time - datetime.now()).total_seconds() < 300:
                     self.MAA.stop()
-                    hard_stop = True
+                    hard_stop = 开
                 else:
                     time.sleep(0)
             self.send_email('MAA停止')
@@ -1024,12 +970,12 @@ class BaseSchedulerSolver(BaseSolver):
                     self.MAA初始化()
                     if self.MAA设置['集成战略']:
                         self.MAA.append_task('Roguelike', {
-                            'mode': 0,
+                            'mode': 1,
                             'starts_count': 9999999,
-                            'investment_enabled': True,
+                            'investment_enabled': 开,
                             'investments_count': 9999999,
-                            'stop_when_investment_full': False,
-                            'squad': '指挥分队',
+                            'stop_when_investment_full': 关,
+                            'squad': '后勤分队',
                             'roles': '取长补短',
                             'theme': 'Sami',
                             'core_char': ''
@@ -1040,7 +986,7 @@ class BaseSchedulerSolver(BaseSolver):
                     # elif self.MAA设置['保全派驻'] :
                     #     self.MAA.append_task('SSSCopilot', {
                     #         'filename': "F:\\MAA-v4.10.5-win-x64\\resource\\copilot\\SSS_阿卡胡拉丛林.json",
-                    #         'formation': False,
+                    #         'formation': 关,
                     #         'loop_times':99
                     #     })
                     self.MAA.start()
@@ -1102,7 +1048,8 @@ class BaseSchedulerSolver(BaseSolver):
                     msg.attach(MIMEText(context, 'html'))
                 else:
                     msg.attach(MIMEText(str(context), 'plain', 'utf-8'))
-                msg['Subject'] = '下一次进行跑单的房间为：' + 任务.type + '，时间为：' + 任务.time.strftime(
+                msg['Subject'] = '下一次进行跑单的房间为：' + self.任务列表[0].type + '，时间为：' + self.任务列表[
+                    0].time.strftime(
                     '%Y-%m-%d %H:%M:%S')
                 msg['From'] = self.邮件设置['发信邮箱']
                 s = smtplib.SMTP_SSL("smtp.qq.com", 465, timeout=10.0)
@@ -1130,22 +1077,26 @@ def 初始化(任务列表, scheduler=None):
         base_scheduler = BaseSchedulerSolver(cli.device, cli.recog)
         base_scheduler.服务器 = 服务器
         base_scheduler.operators = {}
+        base_scheduler.plan = {}
         base_scheduler.current_base = {}
-        base_scheduler.排班 = 排班
+        for 建筑 in 跑单设置:
+            base_scheduler.plan[建筑] = []
+            for 干员 in 跑单设置[建筑]:
+                base_scheduler.plan[建筑].append({'agent': '', 'group': '', 'replacement': [干员]})
         base_scheduler.任务列表 = 任务列表
         base_scheduler.last_room = ''
         base_scheduler.MAA = None
         base_scheduler.邮件设置 = 邮件设置
         base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
         base_scheduler.MAA设置 = MAA设置
-        base_scheduler.error = False
+        base_scheduler.error = 关
         base_scheduler.跑单提前运行时间 = 跑单提前运行时间
         base_scheduler.更换干员前缓冲时间 = 更换干员前缓冲时间
         return base_scheduler
     else:
         scheduler.device = cli.device
         scheduler.recog = cli.recog
-        scheduler.handle_error(True)
+        scheduler.handle_error(开)
         return scheduler
 
 
@@ -1160,15 +1111,15 @@ def 运行():
     base_scheduler = 初始化(任务列表)
     base_scheduler.device.launch(f"{服务器}/{config.APP_ACTIVITY_NAME}")
     base_scheduler.initialize_operators()
-    while True:
+    while 开:
         try:
             if len(base_scheduler.任务列表) > 0:
-                base_scheduler.任务列表.sort(key=lambda x: x.time, reverse=False)
+                base_scheduler.任务列表.sort(key=lambda x: x.time, reverse=关)
                 if len(任务列表) > 1 and (
                         任务列表[0].time - datetime.now()).total_seconds() > base_scheduler.跑单提前运行时间 > (
                         任务列表[1].time - 任务列表[0].time).total_seconds():
                     logger.warning("无人机加速拉开订单间的时间差距")
-                    base_scheduler.drone(任务列表[0].type, True, True)
+                    base_scheduler.drone(任务列表[0].type, 开, 开)
                     # 返回基建主界面
                 base_scheduler.recog.update()
                 while base_scheduler.get_infra_scene() != Scene.INFRA_MAIN:
@@ -1180,32 +1131,27 @@ def 运行():
                     for i in range(len(任务列表)):
                         logger.warning(任务列表[i].type + ' 开始跑单的时间为：' + 任务列表[i].time.strftime("%H:%M:%S"))
 
-                # # 如果任务间隔时间超过5分钟则关闭游戏
-                # if sleep_time > 300:
-                #     base_scheduler.device.exit(base_scheduler.服务器)
-
-                # logger.info('||'.join([str(t) for t in base_scheduler.任务列表]))
-
-                # 如果任务间隔时间超过9分钟则启动MAA
-                if sleep_time > 540:
+                # 如果有高强度重复任务,任务间隔时间超过10分钟则启动MAA
+                if (MAA设置['集成战略'] or MAA设置['生息演算']) and (sleep_time > 600):
                     base_scheduler.maa_plan_solver()
-                elif sleep_time > 0:
-                # if sleep_time > 0:
-                    time.sleep(sleep_time)
 
-                # # 任务开始前铃声提醒
-                # if sleep_time > 150:
-                #     time.sleep(sleep_time - 150)
-                #     winsound.PlaySound("SystemAsterisk", winsound.SND_ALIAS)
-                #     winsound.PlaySound("SystemAsterisk", winsound.SND_ALIAS)
-                #     time.sleep(150)
-                #     winsound.PlaySound("SystemAsterisk", winsound.SND_ALIAS)
-                # elif sleep_time > 0:
-                #     time.sleep(sleep_time)
+                elif sleep_time > 0:
+                    # 如果任务间隔时间超过5分钟则关闭游戏
+                    if sleep_time > 300:
+                        base_scheduler.device.exit(base_scheduler.服务器)
+                    # 任务开始前铃声提醒
+                    if sys.platform == 'win32' and 跑单前铃声提醒开关 and sleep_time > 150:
+                        time.sleep(sleep_time - 150)
+                        winsound.PlaySound("SystemAsterisk", winsound.SND_ALIAS)
+                        winsound.PlaySound("SystemAsterisk", winsound.SND_ALIAS)
+                        time.sleep(150)
+                        winsound.PlaySound("SystemAsterisk", winsound.SND_ALIAS)
+                    else:
+                        time.sleep(sleep_time)
 
             if len(base_scheduler.任务列表) > 0 and base_scheduler.任务列表[0].type.split('_')[0] == 'maa':
                 base_scheduler.maa_plan_solver((base_scheduler.任务列表[0].type.split('_')[1]).split(','),
-                                               one_time=True)
+                                               one_time=开)
                 continue
             base_scheduler.run()
             reconnect_tries = 0
@@ -1213,7 +1159,7 @@ def 运行():
             reconnect_tries += 1
             if reconnect_tries < reconnect_max_tries:
                 logger.warning(f'连接端口断开...正在重连...')
-                connected = False
+                connected = 关
                 while not connected:
                     try:
                         base_scheduler = 初始化([], base_scheduler)
