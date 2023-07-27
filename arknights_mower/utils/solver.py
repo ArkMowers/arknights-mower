@@ -253,6 +253,10 @@ class BaseSolver:
                 return False
             retry_times -= 1
 
+    def back_to_infrastructure(self):
+        self.back_to_index()
+        self.tap_element('index_infrastructure')
+
     def back_to_index(self):
         """
         返回主页
@@ -354,3 +358,17 @@ class BaseSolver:
         time.sleep(3)
         self.device.check_current_focus()
         return False
+
+    def wait_for_scene(self, scene, method, wait_count=10, sleep_time=1):
+        """等待某个页面载入
+        """
+        while wait_count > 0:
+            self.sleep(sleep_time)
+            if method == "get_infra_scene":
+                if self.get_infra_scene() == scene:
+                    return True
+            elif method == "scene":
+                if self.scene() == scene:
+                    return True
+            wait_count -= 1
+        raise Exception("等待超时")

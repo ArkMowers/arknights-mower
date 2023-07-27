@@ -184,7 +184,10 @@ class Operators(object):
         # 如果移出宿舍，则清除对应宿舍数据 且重新记录高效组心情
         if agent.current_room.startswith('dorm') and not current_room.startswith('dorm') and agent.is_high():
             self.refresh_dorm_time(agent.current_room, agent.current_index, {'agent': ''})
-            agent.time_stamp = None
+            if update_time:
+                self.time_stamp = datetime.now()
+            else:
+                self.time_stamp = None
             agent.depletion_rate = 0
         if self.get_dorm_by_name(name)[0] is not None and not current_room.startswith('dorm') and agent.is_high():
             _dorm = self.get_dorm_by_name(name)[1]
