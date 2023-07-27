@@ -74,6 +74,7 @@ class BaseSchedulerSolver(BaseSolver):
         self.maa_config = {}
         self.free_clue = None
         self.credit_fight = None
+        self.exit_game_when_idle = False
 
     def run(self) -> None:
         """
@@ -142,6 +143,8 @@ class BaseSchedulerSolver(BaseSolver):
         current_high = self.op_data.available_free(count=self.max_resting_count)
         # 剩余低效位置
         current_low = self.op_data.available_free('low', count=self.max_resting_count)
+        logger.debug(f"剩余高效:{current_high},低效：{current_low}")
+        logger.debug(f"需求高效:{_high_free},低效：{_low_free}")
         if current_high >= _high_free and current_low >= _low_free:
             # 检查是否目前宿舍满足 low free 和high free 的数量需求，如果满足，则直接安排
             _plan = {}
@@ -678,6 +681,7 @@ class BaseSchedulerSolver(BaseSolver):
                 _low += 1
             else:
                 _high += 1
+        logger.debug(f"需求高效:{_high},低效：{_low}")
         # 排序
         agents.sort(key=lambda y: self.op_data.operators[y].current_mood() - self.op_data.operators[y].lower_limit,
                     reverse=False)
@@ -1207,22 +1211,32 @@ class BaseSchedulerSolver(BaseSolver):
 
     def enter_room(self, room: str) -> tp.Rectangle:
         """ 获取房间的位置并进入 """
+        success = False
+        retry = 3
+        while not success:
+            try:
+                # 获取基建各个房间的位置
+                base_room = segment.base(self.recog.img, self.find('control_central', strict=True))
+                # 将画面外的部分删去
+                _room = base_room[room]
 
-        # 获取基建各个房间的位置
-        base_room = segment.base(self.recog.img, self.find('control_central', strict=True))
-        # 将画面外的部分删去
-        _room = base_room[room]
+                for i in range(4):
+                    _room[i, 0] = max(_room[i, 0], 0)
+                    _room[i, 0] = min(_room[i, 0], self.recog.w)
+                    _room[i, 1] = max(_room[i, 1], 0)
+                    _room[i, 1] = min(_room[i, 1], self.recog.h)
 
-        for i in range(4):
-            _room[i, 0] = max(_room[i, 0], 0)
-            _room[i, 0] = min(_room[i, 0], self.recog.w)
-            _room[i, 1] = max(_room[i, 1], 0)
-            _room[i, 1] = min(_room[i, 1], self.recog.h)
-
-        # 点击进入
-        self.tap(_room[0], interval=3)
-        while self.find('control_central') is not None:
-            self.tap(_room[0], interval=3)
+                # 点击进入
+                self.tap(_room[0], interval=3)
+                while self.find('control_central') is not None:
+                    self.tap(_room[0], interval=3)
+                success = True
+            except Exception as e:
+                retry -= 1
+                self.back_to_infrastructure()
+                self.wait_for_scene(Scene.INFRA_MAIN,"get_infra_scene")
+                if retry == 0:
+                    raise e
 
     def drone(self, room: str, not_customize=False, not_return=False):
         logger.info('基建：无人机加速')
@@ -1611,13 +1625,14 @@ class BaseSchedulerSolver(BaseSolver):
                 if _name not in self.op_data.operators.keys() and _name in agent_list:
                     self.op_data.add(Operator(_name, ""))
                 update_time = False
-                if self.op_data.operators[_name].need_to_refresh(r=room):
+                agent =self.op_data.operators[_name]
+                if self.op_data.operators[_name].need_to_refresh(r=room) or (agent.current_room.startswith('dorm') and not room.startswith('dorm') and agent.is_high()):
                     _mood = self.read_accurate_mood(self.recog.img, cord=mood_p[i])
                     update_time = True
                 else:
                     _mood = self.op_data.operators[_name].current_mood()
                 high_no_time = self.op_data.update_detail(_name, _mood, room, i, update_time)
-                data['depletion_rate'] = self.op_data.operators[_name].depletion_rate
+                data['depletion_rate'] = agent.depletion_rate
                 if high_no_time is not None:
                     logger.debug(f"检测到高效组休息时间数据不存在:{room},{high_no_time}")
                     read_time_index.append(high_no_time)

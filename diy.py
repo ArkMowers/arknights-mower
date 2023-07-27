@@ -48,6 +48,7 @@ maa_config = {
     "copilot_loop_times":10,
     "last_execution": datetime.now(),
     "blacklist":"家具,碳,加急许可",
+    "rogue_theme":"Sami",
     "buy_first":"招聘许可",
     "recruit_only_4": True,
     "sleep_min":"",
@@ -376,13 +377,15 @@ def simulate():
                     try:
                         base_scheduler = inialize([], base_scheduler)
                         break
-                    except Exception as ce:
+                    except RuntimeError as ce:
                         logger.error(ce)
                         restart_simulator(simulator)
                         continue
                 continue
             else:
                 raise Exception(e)
+        except RuntimeError as re:
+            restart_simulator(simulator)
         except Exception as E:
             logger.exception(f"程序出错--->{E}")
             restart_simulator(simulator)
