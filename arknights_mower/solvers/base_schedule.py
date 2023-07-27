@@ -788,8 +788,6 @@ class BaseSchedulerSolver(BaseSolver):
         return execute_time
 
     def double_read_time(self, cord, upperLimit=None, use_digit_reader=False):
-        if upperLimit is not None and upperLimit < 36000:
-            upperLimit = 36000
         self.recog.update()
         time_in_seconds = self.read_time(cord, upperLimit, use_digit_reader)
         if time_in_seconds is None:
@@ -1644,9 +1642,7 @@ class BaseSchedulerSolver(BaseSolver):
                 if _mood == 24:
                     data['time'] = datetime.now()
                 else:
-                    upperLimit = 21600
-                    if _name in ['菲亚梅塔'] or _name in self.op_data.exhaust_agent:
-                        upperLimit = 43200
+                    upperLimit = 43200
                     logger.debug(f"开始记录时间:{room},{i}")
                     data['time'] = self.double_read_time(time_p[i], upperLimit=upperLimit)
                 self.op_data.refresh_dorm_time(room, i, data)
