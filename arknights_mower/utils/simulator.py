@@ -13,7 +13,7 @@ def restart_simulator(data):
             cmd += f' -clone:Nox_{data["index"]}'
         cmd += " -quit"
         try:
-            process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            process = subprocess.Popen(cmd, shell=True, cwd= data["simulator_folder"], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                        universal_newlines=True)
             process.communicate(timeout=2)
         except subprocess.TimeoutExpired:
@@ -22,7 +22,7 @@ def restart_simulator(data):
         time.sleep(2)
         cmd = cmd.replace(' -quit', '')
         try:
-            process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            process = subprocess.Popen(cmd, shell=True, cwd= data["simulator_folder"], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                        universal_newlines=True)
             process.communicate(timeout=2)
         except subprocess.TimeoutExpired:

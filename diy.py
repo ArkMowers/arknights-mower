@@ -67,7 +67,9 @@ maa_config = {
 simulator= {
     "name":"夜神",
     # 多开编号，在模拟器助手最左侧的数字
-    "index":2
+    "index":2,
+    # 用于执行模拟器命令
+    "simulator_folder":"D:\\Program Files\\Nox\\bin"
 }
 
 # Free (宿舍填充)干员安排黑名单
