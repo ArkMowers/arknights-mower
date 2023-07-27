@@ -331,8 +331,8 @@ class BaseSchedulerSolver(BaseSolver):
                     _idx, __dorm = self.op_data.get_dorm_by_name(x)
                     if x in self.op_data.operators.keys() and self.op_data.operators[x].rest_in_full:
                         if __dorm is not None and __dorm.time is not None:
-                            if __dorm.time > _time and self.op_data.operators[x].resting_priority == 'high':
-                                _time = __dorm.time
+                            if __dorm.time > __time and self.op_data.operators[x].resting_priority == 'high':
+                                __time = __dorm.time
                     if _idx is not None:
                         __type.append('dorm' + str(_idx))
                     planned_index.append(_idx)
