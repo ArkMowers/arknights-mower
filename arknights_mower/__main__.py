@@ -281,16 +281,18 @@ def simulate():
                     try:
                         base_scheduler = initialize([], base_scheduler)
                         break
-                    except Exception as ce:
+                    except RuntimeError as ce:
                         logger.error(ce)
                         restart_simulator(conf['simulator'])
                         continue
                 continue
             else:
                 raise Exception(e)
+        except RuntimeError as re:
+            logger.exception(f"程序出错-尝试重启模拟器->{E}")
+            restart_simulator(conf['simulator'])
         except Exception as E:
             logger.exception(f"程序出错--->{E}")
-            restart_simulator(conf['simulator'])
 
 
 def save_state(op_data, file='state.json'):

@@ -390,7 +390,7 @@ def simulate():
             restart_simulator(simulator)
         except Exception as E:
             logger.exception(f"程序出错--->{E}")
-            restart_simulator(simulator)
+
     # cli.credit()  # 信用
     # ope_lists = cli.ope(eliminate=True, plan=ope_lists)  # 行动，返回未完成的作战计划
     # cli.shop(shop_priority)  # 商店
