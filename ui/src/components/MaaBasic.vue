@@ -8,17 +8,17 @@ const store = useConfigStore()
 import { storeToRefs } from 'pinia'
 const { maa_path, maa_adb_path, maa_gap, maa_conn_preset, maa_touch_option } = storeToRefs(store)
 
+import { file_dialog, folder_dialog } from '@/utils/dialog'
+
 async function select_maa_adb_path() {
-  const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/dialog/file`)
-  const file_path = response.data
+  const file_path = await file_dialog()
   if (file_path) {
     maa_adb_path.value = file_path
   }
 }
 
 async function select_maa_dir() {
-  const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/dialog/folder`)
-  const folder_path = response.data
+  const folder_path = await folder_dialog()
   if (folder_path) {
     maa_path.value = folder_path
   }

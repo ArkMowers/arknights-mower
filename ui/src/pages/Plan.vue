@@ -22,9 +22,10 @@ const { load_plan } = plan_store
 import { inject } from 'vue'
 const axios = inject('axios')
 
+import { file_dialog } from '@/utils/dialog'
+
 async function open_plan_file() {
-  const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/dialog/file`)
-  const file_path = response.data
+  const file_path = await file_dialog
   if (file_path) {
     plan_file.value = file_path
     await axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, build_config())
