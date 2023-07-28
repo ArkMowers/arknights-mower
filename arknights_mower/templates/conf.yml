@@ -8,6 +8,7 @@ workaholic: ''
 simulator:
   name: ''
   index: -1
+  simulator_folder: ''
 free_blacklist: ''
 ling_xi: 1
 maa_adb_path: D:\Program Files\Nox\bin\adb.exe
