@@ -34,6 +34,7 @@ const facility_with_empty = computed(() => {
 
 const simulator_types = [
   { label: '夜神', value: '夜神' },
+  { label: 'MuMu模拟器12', value: 'MuMu12' },
   { label: '其它', value: '' }
 ]
 
@@ -41,6 +42,15 @@ const launch_options = [
   { label: '使用adb命令启动', value: 'adb' },
   { label: '点击屏幕启动', value: 'tap' }
 ]
+
+import { folder_dialog } from '@/utils/dialog'
+
+async function select_simulator_folder() {
+  const folder_path = await folder_dialog()
+  if (folder_path) {
+    simulator.value.simulator_folder = folder_path
+  }
+}
 </script>
 
 <template>
@@ -49,7 +59,7 @@ const launch_options = [
       <table class="mower-basic">
         <tr>
           <td class="config-label">服务器：</td>
-          <td>
+          <td colspan="2">
             <n-radio-group v-model:value="package_type">
               <n-space>
                 <n-radio value="official">官服</n-radio>
@@ -60,31 +70,40 @@ const launch_options = [
         </tr>
         <tr>
           <td>adb连接地址：</td>
-          <td>
+          <td colspan="2">
             <n-input v-model:value="adb"></n-input>
           </td>
         </tr>
         <tr>
           <td>模拟器：</td>
-          <td>
+          <td colspan="2">
             <n-select v-model:value="simulator.name" :options="simulator_types" />
           </td>
         </tr>
-        <tr v-if="simulator.name == '夜神'">
+        <tr v-if="simulator.name">
           <td>多开编号：</td>
-          <td>
+          <td colspan="2">
             <n-input-number v-model:value="simulator.index"></n-input-number>
+          </td>
+        </tr>
+        <tr v-if="simulator.name">
+          <td>模拟器文件夹：</td>
+          <td>
+            <n-input v-model:value="simulator.simulator_folder"></n-input>
+          </td>
+          <td>
+            <n-button @click="select_simulator_folder">...</n-button>
           </td>
         </tr>
         <tr>
           <td>启动游戏：</td>
-          <td>
+          <td colspan="2">
             <n-select v-model:value="tap_to_launch_game.enable" :options="launch_options" />
           </td>
         </tr>
         <tr v-if="tap_to_launch_game.enable == 'tap'">
           <td>点击坐标：</td>
-          <td>
+          <td colspan="2">
             <table class="coord">
               <tr>
                 <td>X:</td>
@@ -100,7 +119,7 @@ const launch_options = [
           </td>
         </tr>
         <tr>
-          <td colspan="2">
+          <td colspan="3">
             <n-checkbox v-model:checked="exit_game_when_idle"
               >任务结束后退出游戏以降低功耗</n-checkbox
             >
@@ -108,7 +127,7 @@ const launch_options = [
         </tr>
         <tr>
           <td>运行模式：</td>
-          <td>
+          <td colspan="2">
             <n-radio-group v-model:value="run_mode">
               <n-space>
                 <n-radio value="full">换班+跑单</n-radio>
@@ -118,13 +137,13 @@ const launch_options = [
           </td>
         </tr>
         <tr>
-          <td colspan="2">
+          <td colspan="3">
             <n-checkbox v-model:checked="start_automatically">启动后自动开始任务</n-checkbox>
           </td>
         </tr>
         <tr>
           <td>显示主题：</td>
-          <td>
+          <td colspan="2">
             <n-radio-group v-model:value="theme">
               <n-space>
                 <n-radio value="light">亮色</n-radio>
@@ -202,6 +221,11 @@ const launch_options = [
 
   td:nth-child(1) {
     width: 100px;
+  }
+
+  td:nth-child(3) {
+    padding-left: 6px;
+    width: 40px;
   }
 }
 
