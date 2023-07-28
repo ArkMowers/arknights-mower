@@ -2,6 +2,7 @@ import os
 import json
 from pathlib import Path
 from ruamel import yaml
+from flatten_dict import flatten, unflatten
 from .. import __rootdir__
 
 
@@ -26,7 +27,10 @@ def load_conf(path="./conf.yml"):
             conf = yaml.load(c, Loader=yaml.Loader)
             if conf is None:
                 conf = {}
-            temp_conf.update(conf)
+            flat_temp = flatten(temp_conf)
+            flat_conf = flatten(conf)
+            flat_temp.update(flat_conf)
+            temp_conf = unflatten(flat_temp)
             return temp_conf
 
 
