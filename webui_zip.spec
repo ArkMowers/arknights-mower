@@ -25,6 +25,7 @@ a = Analysis(
         ('venv/Lib/site-packages/paddle/fluid/libpaddle.lib', '.'),
         ('venv/Lib/site-packages/paddle/fluid/libpaddle.pyd', '.'),
         ('venv/Lib/site-packages/shapely/DLLs/geos_c.dll', '.'),
+        ('logo.png', '.'),
 	    ('dist', 'dist')],
     hiddenimports=['imghdr','imgaug','scipy.io','lmdb'],
     hookspath=[],
