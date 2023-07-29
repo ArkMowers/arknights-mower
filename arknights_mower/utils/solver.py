@@ -332,18 +332,39 @@ class BaseSolver:
         self.tap_element('index_terminal', 0.5)
         self.tap((self.recog.w*0.2, self.recog.h*0.8),interval=0.5)
 
-    def to_sss(self,sss_type):
+    def to_sss(self, sss_type, ec_type=2):
         self.recog.update()
         # 导航去保全派驻
         retry = 0
         self.back_to_index()
         self.tap_element('index_terminal', 0.5)
-        self.tap((self.recog.w*0.7, self.recog.h*0.95),interval=0.2)
+        self.tap((self.recog.w * 0.7, self.recog.h * 0.95), interval=0.2)
         self.tap((self.recog.w * 0.85, self.recog.h * 0.5), interval=0.2)
-        if sss_type==1:
-            self.tap((self.recog.w * 0.2, self.recog.h * 0.3),interval=0.2)
+        if sss_type == 1:
+            self.tap((self.recog.w * 0.2, self.recog.h * 0.3), interval=5)
         else:
-            self.tap((self.recog.w * 0.4, self.recog.h * 0.6),interval=0.2)
+            self.tap((self.recog.w * 0.4, self.recog.h * 0.6), interval=5)
+        loop_count = 0
+        ec_chosen_step = -99
+        choose_team = False
+        while self.find('end_sss', score=0.8) is None and loop_count < 8:
+            if loop_count == ec_chosen_step+2 or self.find('sss_team_up') is not None:
+                choose_team = True
+                logger.info("选择小队")
+            elif self.find('choose_ss_ec') is not None and not choose_team:
+                if ec_type == 0:
+                    self.tap((self.recog.w * 0.3, self.recog.h * 0.5), interval=0.2)
+                elif ec_type == 1:
+                    self.tap((self.recog.w * 0.5, self.recog.h * 0.5), interval=0.2)
+                else:
+                    self.tap((self.recog.w * 0.7, self.recog.h * 0.5), interval=0.2)
+                ec_chosen_step = loop_count
+                logger.info(f"选定导能单元:{ec_type+1}")
+            self.tap((self.recog.w * 0.95, self.recog.h * 0.95), interval=(0.2 if not choose_team else 10))
+            self.recog.update()
+            loop_count += 1
+        if loop_count == 8:
+            return "保全派驻导航失败"
 
     def waiting_solver(self, scenes, wait_count=20, sleep_time=3):
         """需要等待的页面解决方法。触发超时重启会返回False
