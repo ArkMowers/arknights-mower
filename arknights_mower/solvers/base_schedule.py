@@ -105,23 +105,23 @@ class BaseSchedulerSolver(BaseSolver):
 
     def transition(self) -> None:
         self.recog.update()
-        if self.scene() == Scene.INDEX:
+        if self.get_infra_scene() == Scene.INDEX:
             self.tap_element('index_infrastructure')
-        elif self.scene() == Scene.INFRA_MAIN:
+        elif self.get_infra_scene() == Scene.INFRA_MAIN:
             return self.infra_main()
-        elif self.scene() == Scene.INFRA_TODOLIST:
+        elif self.get_infra_scene() == Scene.INFRA_TODOLIST:
             return self.todo_list()
-        elif self.scene() == Scene.INFRA_DETAILS:
+        elif self.get_infra_scene() == Scene.INFRA_DETAILS:
             self.back()
-        elif self.scene() == Scene.LOADING:
+        elif self.get_infra_scene() == Scene.LOADING:
             self.waiting_solver(Scene.LOADING)
-        elif self.scene() == Scene.CONNECTING:
+        elif self.get_infra_scene() == Scene.CONNECTING:
             self.waiting_solver(Scene.CONNECTING)
         elif self.get_navigation():
             self.tap_element('nav_infrastructure')
-        elif self.scene() == Scene.INFRA_ARRANGE_ORDER:
+        elif self.get_infra_scene() == Scene.INFRA_ARRANGE_ORDER:
             self.tap_element('arrange_blue_yes')
-        elif self.scene() != Scene.UNKNOWN:
+        elif self.get_infra_scene() == Scene.UNKNOWN or self.scene() != Scene.UNKNOWN:
             self.back_to_index()
             self.last_room = ''
             logger.info("重设上次房间为空")
@@ -963,6 +963,7 @@ class BaseSchedulerSolver(BaseSolver):
         # 关闭掉房间总览
         error_count = 0
         while self.find('clue_func') is None:
+            self.find('clue_summary') and self.back()
             if error_count > 5:
                 raise Exception('未成功进入线索详情界面')
             self.tap((self.recog.w * 0.1, self.recog.h * 0.9), interval=3)
@@ -1672,6 +1673,7 @@ class BaseSchedulerSolver(BaseSolver):
         for room in rooms:
             finished = False
             choose_error = 0
+            checked = False
             while not finished:
                 try:
                     error_count = 0
@@ -1682,7 +1684,7 @@ class BaseSchedulerSolver(BaseSolver):
                         self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
                         error_count += 1
                     error_count = 0
-                    if choose_error == 0:
+                    if not checked:
                         if ('但书' in plan[room] or '龙舌兰' in plan[room]) and not \
                                 room.startswith('dormitory'):
                             new_plan[room] = self.refresh_current_room(room)
@@ -1706,6 +1708,7 @@ class BaseSchedulerSolver(BaseSolver):
                                     logger.info("检测到插拔房间人员变动！")
                                     self.tasks.remove(run_order_task)
                                     del self.op_data.run_order_rooms[room]['plan']
+                    checked = True
                     current_room = self.op_data.get_current_room(room, True)
                     same = len(plan[room]) == len(current_room)
                     if same:
@@ -1742,7 +1745,7 @@ class BaseSchedulerSolver(BaseSolver):
                     # 如果完成则移除该任务
                     del plan[room]
                     # back to 基地主界面
-                    if self.scene() == Scene.CONNECTING:
+                    if self.get_infra_scene() == Scene.CONNECTING:
                         if not self.waiting_solver(Scene.CONNECTING, sleep_time=3):
                             return
                 except Exception as e:
@@ -1958,6 +1961,7 @@ class BaseSchedulerSolver(BaseSolver):
             if (self.maa_config['roguelike'] or self.maa_config['reclamation_algorithm'] or self.maa_config[
                 'stationary_security_service']) and not rg_sleep:
                 logger.info(f'准备开始：肉鸽/保全/演算')
+                self.send_email('启动 肉鸽/保全/演算')
                 while (self.tasks[0].time - datetime.now()).total_seconds() > 30:
                     self.MAA = None
                     self.initialize_maa()
