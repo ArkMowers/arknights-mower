@@ -10,8 +10,9 @@ class Operators(object):
     groups = None
     dorm = []
     max_resting_count = 4
+    plan = None
 
-    def __init__(self, config, max_resting_count):
+    def __init__(self, config, max_resting_count, plan):
         self.config = config
         self.operators = {}
         self.groups = {}
@@ -20,9 +21,139 @@ class Operators(object):
         self.dorm = []
         self.max_resting_count = max_resting_count
         self.workaholic_agent = []
+        self.plan = plan
+        self.run_order_rooms = {}
+        self.clues =[]
 
     def __repr__(self):
         return f'Operators(operators={self.operators})'
+
+    def init_and_validate(self):
+        for room in self.plan.keys():
+            for idx, data in enumerate(self.plan[room]):
+                if data["agent"] not in agent_list and data['agent'] != 'Free':
+                    return f'干员名输入错误: 房间->{room}, 干员->{data["agent"]}'
+                if data["agent"] in ['龙舌兰', '但书']:
+                    return f'高效组不可用龙舌兰，但书 房间->{room}, 干员->{data["agent"]}'
+                if data["agent"] == '菲亚梅塔' and idx == 1:
+                    return f'菲亚梅塔不能安排在2号位置 房间->{room}, 干员->{data["agent"]}'
+                if data["agent"] == 'Free' and not room.startswith('dorm'):
+                    return f'Free只能安排在宿舍 房间->{room}, 干员->{data["agent"]}'
+                self.add(Operator(data["agent"], room, idx, data["group"], data["replacement"], 'high',
+                                  operator_type="high"))
+        missing_replacements = []
+        for room in self.plan.keys():
+            if room.startswith("dorm") and len(self.plan[room]) != 5:
+                return f'宿舍 {room} 人数少于5人'
+            for idx, data in enumerate(self.plan[room]):
+                # 菲亚梅塔替换组做特例判断
+                if "龙舌兰" in data["replacement"] and "但书" in data["replacement"]:
+                    return f'替换组不可同时安排龙舌兰和但书 房间->{room}, 干员->{data["agent"]}'
+                if "菲亚梅塔" in data["replacement"]:
+                    return f'替换组不可安排菲亚梅塔 房间->{room}, 干员->{data["agent"]}'
+                r_count = len(data["replacement"])
+                if "龙舌兰" in data["replacement"] or "但书" in data["replacement"]:
+                    r_count -= 1
+                if r_count <= 0 and data['agent'] != 'Free' and (not room.startswith("dorm")):
+                    missing_replacements.append(data["agent"])
+                for _replacement in data["replacement"]:
+                    if _replacement not in agent_list and data['agent'] != 'Free':
+                        return f'干员名输入错误: 房间->{room}, 干员->{_replacement}'
+                    if data["agent"] != '菲亚梅塔':
+                        # 普通替换
+                        if _replacement in self.operators and self.operators[_replacement].is_high():
+                            return f'替换组不可用高效组干员: 房间->{room}, 干员->{_replacement}'
+                        self.add(Operator(_replacement, ""))
+                    else:
+                        if _replacement not in self.operators:
+                            return f'菲亚梅塔替换不在高效组列: 房间->{room}, 干员->{_replacement}'
+                        if _replacement in self.operators and not self.operators[_replacement].is_high():
+                            return f'菲亚梅塔替换只能高效组干员: 房间->{room}, 干员->{_replacement}'
+                        if _replacement in self.operators and self.operators[_replacement].group != '':
+                            return f'菲亚梅塔替换不可分组: 房间->{room}, 干员->{_replacement}'
+        # 判定替换缺失
+        if "菲亚梅塔" in missing_replacements:
+            return f'菲亚梅塔替换缺失'
+        if '菲亚梅塔' in self.operators:
+            for _agent in missing_replacements[:]:
+                if _agent in self.operators['菲亚梅塔'].replacement[:-1]:
+                    missing_replacements.remove(_agent)
+        if len(missing_replacements):
+            return f'以下干员替换组缺失：{",".join(missing_replacements)}'
+        dorm_names = [k for k in self.plan.keys() if k.startswith("dorm")]
+        dorm_names.sort(key=lambda d: d, reverse=False)
+        added = []
+        # 竖向遍历出效率高到低
+        for dorm in dorm_names:
+            free_found = False
+            for _idx, _dorm in enumerate(self.plan[dorm]):
+                if _dorm['agent'] == 'Free' and _idx <= 1:
+                    return f'宿舍必须安排2个宿管'
+                if _dorm['agent'] != 'Free' and free_found:
+                    return f'Free必须连续且安排在宿管后'
+                if _dorm['agent'] == 'Free' and not free_found and (dorm + str(_idx)) not in added and len(
+                        added) < self.max_resting_count:
+                    self.dorm.append(Dormitory((dorm, _idx)))
+                    added.append(dorm + str(_idx))
+                    free_found = True
+                    continue
+            if not free_found:
+                return f'宿舍必须安排至少一个Free'
+        # VIP休息位用完后横向遍历
+        for dorm in dorm_names:
+            for _idx, _dorm in enumerate(self.plan[dorm]):
+                if _dorm['agent'] == 'Free' and (dorm + str(_idx)) not in added:
+                    self.dorm.append(Dormitory((dorm, _idx)))
+                    added.append(dorm + str(_idx))
+        if len(self.dorm) < self.max_resting_count:
+            return f'宿舍Free总数 {len(self.dorm)}小于最大分组数 {self.max_resting_count}'
+        # low_free 的排序
+        self.dorm[self.max_resting_count:len(self.dorm)] = sorted(
+            self.dorm[self.max_resting_count:len(self.dorm)],
+            key=lambda k: (k.position[0], k.position[1]), reverse=True)
+        # 跑单
+        for x, y in self.plan.items():
+            if not x.startswith('room'): continue
+            if any(('但书' in obj['replacement'] or '龙舌兰' in obj['replacement']) for obj in y):
+                self.run_order_rooms[x] = {}
+        # 判定分组排班可能性
+        current_high = self.available_free(count=self.max_resting_count)
+        current_low = self.available_free('low', count=self.max_resting_count)
+        for key in self.groups:
+            high_count = 0
+            low_count = 0
+            _replacement = []
+            for name in self.groups[key]:
+                _candidate = next(
+                    (r for r in self.operators[name].replacement if r not in _replacement and r not in ['龙舌兰', '但书']),
+                    None)
+                if _candidate is None:
+                    return f'{key} 分组无法排班,替换组数量不够'
+                else:
+                    _replacement.append(_candidate)
+                if self.operators[name].resting_priority == 'high':
+                    high_count += 1
+                else:
+                    low_count += 1
+            if high_count > current_high or low_count > current_low:
+                return f'{key} 分组无法排班,宿舍可用高优先{current_high},低优先{current_low}->分组需要高优先{high_count},低优先{low_count}'
+
+    def get_current_room(self, room, bypass=False, current_index = None):
+        room_data = {v.current_index: v for k, v in self.operators.items() if v.current_room == room}
+        res = [obj['agent'] for obj in self.plan[room]]
+        not_found = False
+        for idx, op in enumerate(res):
+            if idx in room_data:
+                res[idx] = room_data[idx].name
+            else:
+                res[idx] = ''
+                if current_index is not None and idx not in current_index:
+                    continue
+                not_found = True
+        if not_found and not bypass:
+            return None
+        else:
+            return res
 
     def predict_fia(self, operators, fia_mood, hours=240):
         recover_hours = (24 - fia_mood) / 2
@@ -32,7 +163,7 @@ class Operators(object):
                 return False
         if recover_hours >= hours or 0 < recover_hours < 1:
             return True
-        operators.sort(key=lambda x: (x.mood-x.lower_limit)/(x.upper_limit - x.lower_limit), reverse=False)
+        operators.sort(key=lambda x: (x.mood - x.lower_limit) / (x.upper_limit - x.lower_limit), reverse=False)
         fia_mood = operators[0].mood
         operators[0].mood = 24
         return self.predict_fia(operators, fia_mood, hours - recover_hours)
@@ -54,6 +185,7 @@ class Operators(object):
         if agent.current_room.startswith('dorm') and not current_room.startswith('dorm') and agent.is_high():
             self.refresh_dorm_time(agent.current_room, agent.current_index, {'agent': ''})
             agent.time_stamp = None
+            agent.depletion_rate = 0
         if self.get_dorm_by_name(name)[0] is not None and not current_room.startswith('dorm') and agent.is_high():
             _dorm = self.get_dorm_by_name(name)[1]
             _dorm.name = ''
@@ -66,6 +198,8 @@ class Operators(object):
             for dorm in self.dorm:
                 if dorm.position[0] == current_room and dorm.position[1] == current_index and dorm.time is None:
                     return current_index
+        if agent.name == "菲亚梅塔" and (self.operators["菲亚梅塔"].time_stamp is None or self.operators["菲亚梅塔"].time_stamp< datetime.now()):
+            return current_index
 
     def refresh_dorm_time(self, room, index, agent):
         for idx, dorm in enumerate(self.dorm):
@@ -154,6 +288,8 @@ class Operators(object):
                     idx += 1
         else:
             idx = -1
+            if count - len(self.dorm) == 0:
+                return 0
             while idx < 0:
                 dorm = self.dorm[idx]
                 if dorm.name == '' or (dorm.name in self.operators.keys() and not self.operators[dorm.name].is_high()):
@@ -203,6 +339,7 @@ class Dormitory(object):
 
     def __repr__(self):
         return f"Dormitory(position={self.position},name='{self.name}',time='{self.time}')"
+
 
 class Operator(object):
     time_stamp = None

@@ -69,6 +69,8 @@ class Recognizer(object):
             self.scene = Scene.INDEX
         elif self.find('nav_index') is not None:
             self.scene = Scene.NAVIGATION_BAR
+        elif self.find('login_new',score= 0.8) is not None:
+            self.scene = Scene.LOGIN_NEW
         elif self.find('close_mine') is not None:
             self.scene = Scene.CLOSE_MINE
         elif self.find('check_in') is not None:
@@ -169,6 +171,8 @@ class Recognizer(object):
                 self.scene = Scene.LOGIN_ANNOUNCE
             else:
                 self.scene = Scene.LOGIN_MAIN_NOENTRY
+        elif self.find('login_new') is not None:
+            self.scene = Scene.LOGIN_NEW
         elif self.find('register') is not None:
             self.scene = Scene.LOGIN_REGISTER
         elif self.find('login_loading') is not None:
@@ -282,7 +286,7 @@ class Recognizer(object):
         :param thres: 是否在匹配前对图像进行二值化处理
         :param judge: 是否加入更加精确的判断
         :param strict: 是否启用严格模式，未找到时报错
-        :param strict: 是否启用分数限制，有些图片精确识别需要提高分数阈值
+        :param score: 是否启用分数限制，有些图片精确识别需要提高分数阈值
 
         :return ret: 若匹配成功，则返回元素在游戏界面中出现的位置，否则返回 None
         """

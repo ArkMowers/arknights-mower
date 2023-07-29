@@ -9,8 +9,10 @@ from arknights_mower.strategy import Solver
 from arknights_mower.utils.device import Device
 from arknights_mower.utils.log import logger, init_fhlr
 from arknights_mower.utils import config
+from arknights_mower.utils.simulator import restart_simulator
 # 下面不能删除
-from arknights_mower.utils.operators import Operators, Operator,Dormitory
+from arknights_mower.utils.operators import Operators, Operator, Dormitory
+from arknights_mower.utils.scheduler_task import SchedulerTask
 
 email_config= {
     # 发信账户
@@ -25,6 +27,7 @@ email_config= {
     'subject': '任务数据'
 }
 maa_config = {
+    "maa_enable":True,
     # 请设置为存放 dll 文件及资源的路径
     "maa_path":'F:\\MAA-v4.10.5-win-x64',
     # 请设置为存放 dll 文件及资源的路径
@@ -39,8 +42,17 @@ maa_config = {
     # 是否启动生息演算
     "reclamation_algorithm":False,
     # 是否启动保全派驻
-    "stationary_security_service":False,
-    "last_execution": None,
+    "stationary_security_service": True,
+    "sss_type": 2,
+    "copilot_file_location": "F:\\MAA-v4.10.5-win-x64\\resource\\copilot\\SSS_雷神工业测试平台_浊蒂版.json",
+    "copilot_loop_times":10,
+    "last_execution": datetime.now(),
+    "blacklist":"家具,碳,加急许可",
+    "buy_first":"招聘许可",
+    "recruit_only_4": True,
+    "sleep_min":"",
+    "sleep_max":"",
+    "recruitment_time": False,
     "weekly_plan":[{"weekday":"周一","stage":['AP-5'],"medicine":0},
                    {"weekday":"周二","stage":['CE-6'],"medicine":0},
                    {"weekday":"周三","stage":['1-7'],"medicine":0},
@@ -50,13 +62,20 @@ maa_config = {
                    {"weekday":"周日","stage":['AP-5'],"medicine":0}]
 }
 
+# 模拟器相关设置
+simulator= {
+    "name":"夜神",
+    # 多开编号，在模拟器助手最左侧的数字
+    "index":2
+}
+
 # Free (宿舍填充)干员安排黑名单
 free_blacklist= []
 
 # 干员宿舍回复阈值
     # 高效组心情低于 UpperLimit  * 阈值 (向下取整)的时候才会会安排休息
     # UpperLimit：默认24，特殊技能干员如夕，令可能会有所不同(设置在 agent-base.json 文件可以自行更改)
-resting_treshhold = 0.5
+resting_threshold = 0.5
 
 # 跑单如果all in 贸易站则 不需要修改设置
 # 如果需要无人机加速其他房间则可以修改成房间名字如 'room_1_1'
@@ -229,6 +248,8 @@ def savelog():
     config.MAX_RETRYTIME = 10
     config.PASSWORD = '你的密码'
     config.APPNAME = 'com.hypergryph.arknights'  # 官服
+    config.TAP_TO_LAUNCH["enable"] = False
+    config.TAP_TO_LAUNCH["x"], config.TAP_TO_LAUNCH["y"] = 0,0
     #  com.hypergryph.arknights.bilibili   # Bilibili 服
     init_fhlr()
 
@@ -251,7 +272,7 @@ def inialize(tasks, scheduler=None):
         base_scheduler.read_mood = True
         base_scheduler.last_room = ''
         base_scheduler.free_blacklist = free_blacklist
-        base_scheduler.resting_treshhold = resting_treshhold
+        base_scheduler.resting_threshold = resting_threshold
         base_scheduler.MAA = None
         base_scheduler.email_config = email_config
         base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
@@ -282,8 +303,8 @@ def load_state():
     with open(state_file_name, 'r') as f:
         state = json.load(f)
     operators = {k: eval(v) for k, v in state['operators'].items()}
-    for k,v in operators.items():
-        if not v.time_stamp=='None':
+    for k, v in operators.items():
+        if not v.time_stamp == 'None':
             v.time_stamp = datetime.strptime(v.time_stamp, '%Y-%m-%d %H:%M:%S.%f')
         else:
             v.time_stamp = None
@@ -294,18 +315,35 @@ def simulate():
     '''
     具体调用方法可见各个函数的参数说明
     '''
-    global ope_list,base_scheduler
+    global ope_list, base_scheduler
     # 第一次执行任务
-    # tasks = [{"plan": {'room_1_1': ['能天使','但书','龙舌兰']}, "time": datetime.now()}]
-    tasks =[]
+    taskstr = "SchedulerTask(time='2023-06-11 21:39:15.108665',task_plan={'room_3_2': ['Current', '但书', '龙舌兰']},task_type='room_3_2',meta_flag=False)||SchedulerTask(time='2023-06-11 21:44:48.187074',task_plan={'room_2_1': ['砾', '槐琥', '斑点']},task_type='dorm0,dorm1,dorm2',meta_flag=False)||SchedulerTask(time='2023-06-11 22:17:53.720905',task_plan={'room_1_1': ['Current', '龙舌兰', '但书']},task_type='room_1_1',meta_flag=False)||SchedulerTask(time='2023-06-11 23:02:10.469026',task_plan={'meeting': ['Current', '见行者']},task_type='dorm3',meta_flag=False)||SchedulerTask(time='2023-06-11 23:22:15.236154',task_plan={},task_type='菲亚梅塔',meta_flag=False)||SchedulerTask(time='2023-06-12 11:25:55.925731',task_plan={},task_type='impart',meta_flag=False)||SchedulerTask(time='2023-06-12 11:25:55.926731',task_plan={},task_type='maa_Mall',meta_flag=False)"
+    tasks = [eval(t) for t in taskstr.split("||")]
+    for t in tasks:
+        t.time = datetime.strptime(t.time, '%Y-%m-%d %H:%M:%S.%f')
     reconnect_max_tries = 10
     reconnect_tries = 0
-    base_scheduler = inialize(tasks)
-    base_scheduler.initialize_operators()
+    success = False
+    while not success:
+        try:
+            base_scheduler = inialize(tasks)
+            success = True
+        except Exception as E:
+            reconnect_tries+=1
+            if reconnect_tries <3:
+                restart_simulator(simulator)
+                continue
+            else:
+                raise E
+    validation_msg = base_scheduler.initialize_operators()
+    if validation_msg is not None:
+        logger.error(validation_msg)
+        return
     _loaded_operators = load_state()
     if _loaded_operators is not None:
-        for k,v in _loaded_operators.items():
-            if k in base_scheduler.op_data.operators and not base_scheduler.op_data.operators[k].room.startswith("dorm"):
+        for k, v in _loaded_operators.items():
+            if k in base_scheduler.op_data.operators and not base_scheduler.op_data.operators[k].room.startswith(
+                    "dorm"):
                 # 只复制心情数据
                 base_scheduler.op_data.operators[k].mood = v.mood
                 base_scheduler.op_data.operators[k].time_stamp = v.time_stamp
@@ -315,17 +353,17 @@ def simulate():
     while True:
         try:
             if len(base_scheduler.tasks) > 0:
-                (base_scheduler.tasks.sort(key=lambda x: x["time"], reverse=False))
-                sleep_time = (base_scheduler.tasks[0]["time"] - datetime.now()).total_seconds()
-                logger.info(base_scheduler.tasks)
-                base_scheduler.send_email(base_scheduler.tasks)
+                (base_scheduler.tasks.sort(key=lambda x: x.time, reverse=False))
+                sleep_time = (base_scheduler.tasks[0].time - datetime.now()).total_seconds()
+                logger.info('||'.join([str(t) for t in base_scheduler.tasks]))
+                base_scheduler.send_email()
                 # 如果任务间隔时间超过9分钟则启动MAA
                 if sleep_time > 540:
                     base_scheduler.maa_plan_solver()
                 elif sleep_time > 0:
                     time.sleep(sleep_time)
-            if len(base_scheduler.tasks) > 0 and 'type' in base_scheduler.tasks[0].keys() and base_scheduler.tasks[0]['type'].split('_')[0] == 'maa':
-                base_scheduler.maa_plan_solver((base_scheduler.tasks[0]['type'].split('_')[1]).split(','), one_time=True)
+            if len(base_scheduler.tasks) > 0 and base_scheduler.tasks[0].type.split('_')[0] == 'maa':
+                base_scheduler.maa_plan_solver((base_scheduler.tasks[0].type.split('_')[1]).split(','), one_time=True)
                 continue
             base_scheduler.run()
             reconnect_tries = 0
@@ -340,13 +378,14 @@ def simulate():
                         break
                     except Exception as ce:
                         logger.error(ce)
-                        time.sleep(5)
+                        restart_simulator(simulator)
                         continue
                 continue
             else:
                 raise Exception(e)
         except Exception as E:
             logger.exception(f"程序出错--->{E}")
+            restart_simulator(simulator)
     # cli.credit()  # 信用
     # ope_lists = cli.ope(eliminate=True, plan=ope_lists)  # 行动，返回未完成的作战计划
     # cli.shop(shop_priority)  # 商店

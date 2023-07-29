@@ -6,6 +6,7 @@ from arknights_mower.utils.log import logger
 import json
 
 from arknights_mower.utils.pipe import Pipe
+from arknights_mower.utils.simulator import restart_simulator
 
 conf = {}
 plan = {}
@@ -25,12 +26,13 @@ def main(c, p, o={}, child_conn=None):
     operators = o
     config.LOGFILE_PATH = './log'
     config.SCREENSHOT_PATH = './screenshot'
-    config.SCREENSHOT_MAXNUM = 50
+    config.SCREENSHOT_MAXNUM = 5
     config.ADB_DEVICE = [conf['adb']]
     config.ADB_CONNECT = [conf['adb']]
     config.ADB_CONNECT = [conf['adb']]
     config.APPNAME = 'com.hypergryph.arknights' if conf[
                                                        'package_type'] == 1 else 'com.hypergryph.arknights.bilibili'  # 服务器
+    config.TAP_TO_LAUNCH = conf['tap_to_launch_game']
     init_fhlr(child_conn)
     Pipe.conn = child_conn
     if plan['conf']['ling_xi'] == 1:
@@ -64,7 +66,7 @@ def main(c, p, o={}, child_conn=None):
     simulate()
 
 
-def inialize(tasks, scheduler=None):
+def initialize(tasks, scheduler=None):
     from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
     from arknights_mower.strategy import Solver
     from arknights_mower.utils.device import Device
@@ -97,7 +99,7 @@ def inialize(tasks, scheduler=None):
         base_scheduler.last_room = ''
         base_scheduler.free_blacklist = list(filter(None, conf['free_blacklist'].replace('，', ',').split(',')))
         logger.info('宿舍黑名单：' + str(base_scheduler.free_blacklist))
-        base_scheduler.resting_treshhold = 0.5
+        base_scheduler.resting_threshold = conf['resting_threshold']
         base_scheduler.MAA = None
         base_scheduler.email_config = {
             'mail_enable': conf['mail_enable'],
@@ -107,11 +109,24 @@ def inialize(tasks, scheduler=None):
             'receipts': [conf['account']],
             'notify': False
         }
+        maa_config['maa_enable'] = conf['maa_enable']
         maa_config['maa_path'] = conf['maa_path']
         maa_config['maa_adb_path'] = conf['maa_adb_path']
         maa_config['maa_adb'] = conf['adb']
         maa_config['weekly_plan'] = conf['maa_weekly_plan']
         maa_config['roguelike'] = conf['maa_rg_enable'] == 1
+        maa_config['rogue_theme'] = conf['maa_rg_theme']
+        maa_config['sleep_min'] = conf['maa_rg_sleep_min']
+        maa_config['sleep_max'] = conf['maa_rg_sleep_max']
+        maa_config['maa_execution_gap'] = conf['maa_gap']
+        maa_config['buy_first'] = conf['maa_mall_buy']
+        maa_config['blacklist'] = conf['maa_mall_blacklist']
+        maa_config['recruitment_time'] = conf['maa_recruitment_time']
+        maa_config['recruit_only_4'] = conf['maa_recruit_only_4']
+        maa_config['conn_preset'] = conf['maa_conn_preset']
+        maa_config['touch_option'] = conf['maa_touch_option']
+        maa_config['mall_ignore_when_full'] = conf['maa_mall_ignore_blacklist_when_full']
+        maa_config['credit_fight'] = conf['maa_credit_fight']
         base_scheduler.maa_config = maa_config
         base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
         base_scheduler.error = False
@@ -120,6 +135,7 @@ def inialize(tasks, scheduler=None):
         base_scheduler.drone_execution_gap = 4
         base_scheduler.run_order_delay = conf['run_order_delay']
         base_scheduler.agent_base_config = agent_base_config
+        base_scheduler.exit_game_when_idle = conf['exit_game_when_idle']
         return base_scheduler
     else:
         scheduler.device = cli.device
@@ -136,41 +152,67 @@ def simulate():
     reconnect_max_tries = 10
     reconnect_tries = 0
     global base_scheduler
-    base_scheduler = inialize(tasks)
-    base_scheduler.initialize_operators()
+    success = False
+    while not success:
+        try:
+            base_scheduler = initialize(tasks)
+            success = True
+        except Exception as E:
+            reconnect_tries += 1
+            if reconnect_tries < 3:
+                restart_simulator(conf['simulator'])
+                continue
+            else:
+                raise E
+    validation_msg = base_scheduler.initialize_operators()
+    if validation_msg is not None:
+        logger.error(validation_msg)
+        return
     if operators != {}:
-        for k,v in operators.items():
-            if k in base_scheduler.op_data.operators and not base_scheduler.op_data.operators[k].room.startswith("dorm"):
+        for k, v in operators.items():
+            if k in base_scheduler.op_data.operators and not base_scheduler.op_data.operators[k].room.startswith(
+                    "dorm"):
                 # 只复制心情数据
                 base_scheduler.op_data.operators[k].mood = v.mood
                 base_scheduler.op_data.operators[k].time_stamp = v.time_stamp
                 base_scheduler.op_data.operators[k].depletion_rate = v.depletion_rate
                 base_scheduler.op_data.operators[k].current_room = v.current_room
                 base_scheduler.op_data.operators[k].current_index = v.current_index
+    if plan['conf']['ling_xi'] in [1, 2]:
+        # 夕，令，同组的则设置lowerlimit
+        for name in ["夕","令"]:
+            if name in base_scheduler.op_data.operators and base_scheduler.op_data.operators[name].group !="":
+                for group_name in base_scheduler.op_data.groups[base_scheduler.op_data.operators[name].group]:
+                    if group_name not in ["夕","令"]:
+                        base_scheduler.op_data.operators[group_name].lower_limit = 12
+                        logger.info(f"自动设置{group_name}心情下限为12")
     while True:
         try:
             if len(base_scheduler.tasks) > 0:
-                (base_scheduler.tasks.sort(key=lambda x: x["time"], reverse=False))
-                sleep_time = (base_scheduler.tasks[0]["time"] - datetime.now()).total_seconds()
-                logger.debug(base_scheduler.tasks)
-                remaining_time = (base_scheduler.tasks[0]["time"] - datetime.now()).total_seconds()
+                (base_scheduler.tasks.sort(key=lambda x: x.time, reverse=False))
+                sleep_time = (base_scheduler.tasks[0].time - datetime.now()).total_seconds()
+                logger.info('||'.join([str(t) for t in base_scheduler.tasks]))
+                remaining_time = (base_scheduler.tasks[0].time - datetime.now()).total_seconds()
                 if sleep_time > 540 and conf['maa_enable'] == 1:
-                    subject = f"下次任务在{base_scheduler.tasks[0]['time'].strftime('%H:%M:%S')}"
-                    context = f"下一次任务:{base_scheduler.tasks[0]['plan']}"
+                    subject = f"下次任务在{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}"
+                    context = f"下一次任务:{base_scheduler.tasks[0].plan}"
                     logger.info(context)
                     logger.info(subject)
                     base_scheduler.send_email(context, subject)
                     base_scheduler.maa_plan_solver()
                 elif sleep_time > 0:
-                    subject = f"开始休息 {'%.2f' % (remaining_time / 60)} 分钟，到{base_scheduler.tasks[0]['time'].strftime('%H:%M:%S')}"
-                    context = f"下一次任务:{base_scheduler.tasks[0]['plan']}"
+                    subject = f"开始休息 {'%.2f' % (remaining_time / 60)} 分钟，到{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}"
+                    context = f"下一次任务:{base_scheduler.tasks[0].plan}"
                     logger.info(context)
                     logger.info(subject)
+                    if sleep_time > 300 and conf['exit_game_when_idle']:
+                        base_scheduler.device.exit(base_scheduler.package_name)
+                        logger.info("关闭游戏，降低功耗")
                     base_scheduler.send_email(context, subject)
                     time.sleep(sleep_time)
-            if len(base_scheduler.tasks) > 0 and 'type' in base_scheduler.tasks[0].keys() and base_scheduler.tasks[0]['type'].split('_')[0] == 'maa':
-                logger.info(f"开始执行 MAA {base_scheduler.tasks[0]['type'].split('_')[1]} 任务")
-                base_scheduler.maa_plan_solver((base_scheduler.tasks[0]['type'].split('_')[1]).split(','), one_time=True)
+            if len(base_scheduler.tasks) > 0 and base_scheduler.tasks[0].type.split('_')[0] == 'maa':
+                logger.info(f"开始执行 MAA {base_scheduler.tasks[0].type.split('_')[1]} 任务")
+                base_scheduler.maa_plan_solver((base_scheduler.tasks[0].type.split('_')[1]).split(','), one_time=True)
                 continue
             base_scheduler.run()
             reconnect_tries = 0
@@ -181,35 +223,35 @@ def simulate():
                 connected = False
                 while not connected:
                     try:
-                        base_scheduler = inialize([], base_scheduler)
+                        base_scheduler = initialize([], base_scheduler)
                         break
                     except Exception as ce:
                         logger.error(ce)
-                        time.sleep(5)
+                        restart_simulator(conf['simulator'])
                         continue
                 continue
             else:
                 raise Exception(e)
         except Exception as E:
             logger.exception(f"程序出错--->{E}")
+            restart_simulator(conf['simulator'])
 
 
-def save_state(op_data,file='state.json'):
+def save_state(op_data, file='state.json'):
     if not os.path.exists('tmp'):
         os.makedirs('tmp')
     with open('tmp/' + file, 'w') as f:
-        if op_data is not None :
+        if op_data is not None:
             json.dump(vars(op_data), f, default=str)
 
 
 def load_state(file='state.json'):
-
     if not os.path.exists('tmp/' + file):
         return None
     with open('tmp/' + file, 'r') as f:
         state = json.load(f)
     operators = {k: eval(v) for k, v in state['operators'].items()}
-    for k,v in operators.items():
+    for k, v in operators.items():
         if not v.time_stamp == 'None':
             v.time_stamp = datetime.strptime(v.time_stamp, '%Y-%m-%d %H:%M:%S.%f')
         else:
@@ -264,6 +306,7 @@ def __init_params__():
         "杜宾": {"ArrangeOrder": [2, "true"]},
         "焰尾": {"RestInFull": True},
         "重岳": {"ArrangeOrder": [2, "true"]},
+        "琴柳": {},
         "坚雷": {"ArrangeOrder": [2, "true"]},
         "年": {"RestingPriority": "low"},
         "伊内丝": {"ExhaustRequire": True, "ArrangeOrder": [2, "true"], "RestInFull": True},

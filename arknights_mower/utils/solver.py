@@ -26,6 +26,7 @@ class BaseSolver:
         self.device = device if device is not None else Device()
         self.recog = recog if recog is not None else Recognizer(self.device)
         self.device.check_current_focus()
+        self.recog.update()
 
     def run(self)-> None:
         retry_times = config.MAX_RETRYTIME
@@ -186,6 +187,8 @@ class BaseSolver:
             try:
                 if self.scene() == Scene.LOGIN_START:
                     self.tap((self.recog.w // 2, self.recog.h - 10), 3)
+                elif self.scene() == Scene.LOGIN_NEW:
+                    self.tap(self.find('login_new',score=0.8))
                 elif self.scene() == Scene.LOGIN_QUICKLY:
                     self.tap_element('login_awake')
                 elif self.scene() == Scene.LOGIN_MAIN:
@@ -206,15 +209,15 @@ class BaseSolver:
                 elif self.scene() == Scene.LOGIN_ANNOUNCE:
                     self.tap_element('login_iknow')
                 elif self.scene() == Scene.LOGIN_LOADING:
-                    self.sleep(3)
+                    self.waiting_solver(Scene.LOGIN_LOADING)
                 elif self.scene() == Scene.LOADING:
-                    self.sleep(3)
+                    self.waiting_solver(Scene.LOADING)
                 elif self.scene() == Scene.CONNECTING:
-                    self.sleep(3)
+                    self.waiting_solver(Scene.CONNECTING)
                 elif self.scene() == Scene.CONFIRM:
                     self.tap(detector.confirm(self.recog.img))
                 elif self.scene() == Scene.LOGIN_MAIN_NOENTRY:
-                    self.sleep(3)
+                    self.waiting_solver(Scene.LOGIN_MAIN_NOENTRY)
                 elif self.scene() == Scene.LOGIN_CADPA_DETAIL:
                     self.back(2)
                 elif self.scene() == Scene.LOGIN_BILIBILI:
@@ -274,9 +277,9 @@ class BaseSolver:
                 elif self.scene() == Scene.CONFIRM:
                     self.tap(detector.confirm(self.recog.img))
                 elif self.scene() == Scene.LOADING:
-                    self.sleep(3)
+                    self.waiting_solver(Scene.LOADING)
                 elif self.scene() == Scene.CONNECTING:
-                    self.sleep(3)
+                    self.waiting_solver(Scene.CONNECTING)
                 elif self.scene() == Scene.SKIP:
                     self.tap_element('skip')
                 elif self.scene() == Scene.OPERATOR_ONGOING:
@@ -325,3 +328,29 @@ class BaseSolver:
         self.tap_element('index_terminal', 0.5)
         self.tap((self.recog.w*0.2, self.recog.h*0.8),interval=0.5)
 
+    def to_sss(self,sss_type):
+        self.recog.update()
+        # 导航去保全派驻
+        retry = 0
+        self.back_to_index()
+        self.tap_element('index_terminal', 0.5)
+        self.tap((self.recog.w*0.7, self.recog.h*0.95),interval=0.2)
+        self.tap((self.recog.w * 0.85, self.recog.h * 0.5), interval=0.2)
+        if sss_type==1:
+            self.tap((self.recog.w * 0.2, self.recog.h * 0.3),interval=0.2)
+        else:
+            self.tap((self.recog.w * 0.4, self.recog.h * 0.6),interval=0.2)
+
+    def waiting_solver(self, scenes, wait_count=20, sleep_time=3):
+        """需要等待的页面解决方法。触发超时重启会返回False
+        """
+        while wait_count > 0:
+            self.sleep(sleep_time)
+            if self.scene() != scenes and self.get_infra_scene() != scenes:
+                return True
+            wait_count -= 1
+        logger.warning("同一等待界面等待超时，重启方舟。")
+        self.device.exit(self.package_name)
+        time.sleep(3)
+        self.device.check_current_focus()
+        return False

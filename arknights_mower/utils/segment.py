@@ -350,8 +350,8 @@ def agent(img, draw=False):
 
         # 去除左侧干员详情
         x0 = left + 1
-        while not (img[ height - 1, x0 - 1, 0 ] > img[ height - 1, x0, 0 ] + 10 and abs(
-                int(img[ height - 1, x0, 0 ]) - int(img[ height - 1, x0 + 1, 0 ])) < 5):
+        while not (img[ height - 10, x0 - 1, 0 ] > img[ height - 10, x0, 0 ] + 10 and abs(
+                int(img[ height - 10, x0, 0 ]) - int(img[ height - 10, x0 + 1, 0 ])) < 5):
             x0 += 1
 
         # ocr 初步识别干员名称
@@ -463,8 +463,8 @@ def free_agent(img, draw=False):
 
         # 去除左侧干员详情
         x0 = left + 1
-        while not (img[ height - 1, x0 - 1, 0 ] > img[ height - 1, x0, 0 ] + 10 and abs(
-                int(img[ height - 1, x0, 0 ]) - int(img[ height - 1, x0 + 1, 0 ])) < 5):
+        while not (img[ height - 10, x0 - 1, 0 ] > img[ height - 10, x0, 0 ] + 10 and abs(
+                int(img[ height - 10, x0, 0 ]) - int(img[ height - 10, x0 + 1, 0 ])) < 5):
             x0 += 1
 
         # 获取分割结果

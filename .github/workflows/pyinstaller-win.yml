@@ -3,45 +3,73 @@ name: Windows Binary Package
 on:
   push:
     tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write
 
 jobs:
   build-win-amd64:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v2
-      - name: Get the version
-        id: get_version
-        shell: bash
-        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\/v/}
-      - name: Set up Python 3.9 amd64
+      - name: download frontend
+        uses: actions/checkout@v3
+        with:
+          repository: ArkMowers/mower-ui
+          path: mower-ui
+          ref: ${{github.ref_name}}
+
+      - name: download source
+        uses: actions/checkout@v3
+        with:
+          path: main
+
+
+      - name: setup nodejs 16
+        uses: actions/setup-node@v3
+        with:
+          node-version: 16
+
+      - name: Install UPX
+        uses: crazy-max/ghaction-upx@v2
+        with:
+          install-only: true
+
+      - name: Set up Python 3.8 amd64
         uses: actions/setup-python@v2
         with:
-          python-version: 3.9
+          python-version: 3.8
           architecture: x64
+
+
+      - name: build frontend
+        working-directory: ./mower-ui
+        shell: bash
+        run: |
+          npm install
+          npm run build
+          cp -r dist ../main/
+
       - name: Install dependencies
+        working-directory: ./main
         shell: cmd
         run: |
-          python -m pip install --upgrade pip
-          python -m venv venv64
-          venv64\Scripts\python -m pip install --upgrade pip wheel setuptools
-          venv64\Scripts\python -m pip install -r requirements.txt
-          venv64\Scripts\python -m pip install pyinstaller==5.4.1
+          python -m venv venv
+          venv\Scripts\pip install -r requirements.txt
+          venv\Scripts\pip install pyinstaller Flask flask-sock flask-cors pywebview
+      - name: Patch Paddle
+        working-directory: ./main
+        shell: cmd
+        run: |
+          copy .\packaging\image.py .\venv\Lib\site-packages\paddle\dataset\image.py /y
+          copy .\packaging\network.py .\venv\Lib\site-packages\paddleocr\ppocr\utils\network.py /y
+          copy .\packaging\paddleocr.py .\venv\Lib\site-packages\paddleocr\paddleocr.py /y
       - name: Make package
+        working-directory: ./main
         shell: cmd
         run: |
-          venv64\Scripts\pyinstaller .\main.spec
-          md public
-          move dist\main.exe public\arknights_mower.exe
-      - name: Package into zip
-        uses: vimtor/action-zip@v1
-        with:
-          files: public/
-          recursive: false
-          dest: arknights-mower_cp39_win_amd64_${{ steps.get_version.outputs.VERSION }}.zip
+          venv\Scripts\pyinstaller .\webview.spec
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
-          draft: true
-          body_path: doc/CHANGELOG.md
-          files: arknights-mower_cp39_win_amd64_${{ steps.get_version.outputs.VERSION }}.zip
+          files: main/dist/mower.exe
