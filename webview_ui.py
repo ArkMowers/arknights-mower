@@ -72,6 +72,7 @@ if __name__ == "__main__":
             MenuItem(
                 text="显示/隐藏窗口",
                 action=toggle_window,
+                default=True,
             ),
             MenuItem(
                 text="退出",
