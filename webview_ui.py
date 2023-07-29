@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import webview
-from server import app
+from server import app, mower_process
 
 import os
 import multiprocessing
@@ -93,6 +93,13 @@ if __name__ == "__main__":
     window.events.closing += on_closing
 
     webview.start()
+
+    global mower_process
+    if mower_process:
+        mower_process.terminate()
+        mower_process = None
+
+    icon.stop()
 
     conf = load_conf()
     conf["webview"]["width"] = width
