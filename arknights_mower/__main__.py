@@ -254,6 +254,8 @@ def simulate():
                     context = f"下一次任务:{base_scheduler.tasks[0].plan}"
                     logger.info(context)
                     logger.info(subject)
+                    body = task_template.render(tasks=base_scheduler.tasks)
+                    base_scheduler.send_email(body, subject, 'html')
                     base_scheduler.maa_plan_solver()
                 elif sleep_time > 0:
                     subject = f"休息 {format_time(remaining_time)}，到{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}开始工作"
