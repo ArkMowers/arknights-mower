@@ -2014,7 +2014,8 @@ class BaseSchedulerSolver(BaseSolver):
             context = f"下一次任务:{self.tasks[0].plan if len(self.tasks[0].plan) != 0 else '空任务' if self.tasks[0].type == '' else self.tasks[0].type}"
             logger.info(context)
             logger.info(subject)
-            self.send_email(context, subject)
+            body = task_template.render(tasks=base_scheduler.tasks)
+            self.send_email(body, subject, 'html')
             if remaining_time > 0:
                 if remaining_time > 300 and self.exit_game_when_idle:
                     self.device.exit(self.package_name)
@@ -2031,30 +2032,18 @@ class BaseSchedulerSolver(BaseSolver):
                 time.sleep(remaining_time)
             self.device.exit(self.package_name)
 
-    def send_email(self, context=None, subject='', retry_time=3):
+    def send_email(self, body='', subject='', subtype='plain', retry_times=3):
         if 'mail_enable' in self.email_config.keys() and self.email_config['mail_enable'] == 0:
             logger.info('邮件功能未开启')
             return
-        while retry_time > 0:
+
+        msg = MIMEMultipart()
+        msg.attach(MIMEText(body, subtype))
+        msg['Subject'] = self.email_config['subject'] + subject
+        msg['From'] = self.email_config['account']
+
+        while retry_times > 0:
             try:
-                msg = MIMEMultipart()
-                if context is None:
-                    context = """
-                    <html>
-                        <body>
-                        <table border="1">
-                        <tr><th>时间</th><th>类别</th><th>排班</th></tr>                    
-                    """
-                    for task in self.tasks:
-                        context += f"""<tr><td>{task.time.strftime('%Y-%m-%d %H:%M:%S')}</td>
-                                    <td>{task.type}</td><td>{str(task.plan)}</td></tr>    
-                                """
-                    context += "</table></body></html>"
-                    msg.attach(MIMEText(context, 'html'))
-                else:
-                    msg.attach(MIMEText(str(context), 'plain', 'utf-8'))
-                msg['Subject'] = self.email_config['subject'] + (str(subject) if subject else '')
-                msg['From'] = self.email_config['account']
                 s = smtplib.SMTP_SSL("smtp.qq.com", 465, timeout=10.0)
                 # 登录邮箱
                 s.login(self.email_config['account'], self.email_config['pass_code'])
