@@ -2016,8 +2016,6 @@ class BaseSchedulerSolver(BaseSolver):
             context = f"下一次任务:{self.tasks[0].plan if len(self.tasks[0].plan) != 0 else '空任务' if self.tasks[0].type == '' else self.tasks[0].type}"
             logger.info(context)
             logger.info(subject)
-            body = task_template.render(tasks=self.tasks)
-            self.send_email(body, subject, 'html')
             if remaining_time > 0:
                 if remaining_time > 300 and self.exit_game_when_idle:
                     self.device.exit(self.package_name)
