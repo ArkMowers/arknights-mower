@@ -32,6 +32,8 @@ from arknights_mower.__main__ import format_time
 from arknights_mower.utils.asst import Asst, Message
 import json
 
+from arknights_mower.utils.email import task_template
+
 ocr = None
 
 
