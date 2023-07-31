@@ -80,18 +80,7 @@ const rogue_themes = [
       <n-card content-style="padding: 0">
         <n-tabs type="segment">
           <n-tab-pane name="rogue" tab="集成战略">
-            <table class="tab-content">
-              <tr>
-                <td>主题：</td>
-                <td>
-                  <n-radio-group v-model:value="maa_rg_theme">
-                    <n-space>
-                      <n-radio v-for="t in rogue_themes" :value="t.value">{{ t.label }}</n-radio>
-                    </n-space>
-                  </n-radio-group>
-                </td>
-              </tr>
-            </table>
+            <maa-rogue />
           </n-tab-pane>
           <n-tab-pane name="sss" tab="保全派驻" disabled></n-tab-pane>
           <n-tab-pane name="ra" tab="生息演算" disabled></n-tab-pane>
@@ -107,39 +96,8 @@ const rogue_themes = [
   margin: 0 auto;
 }
 
-.tab-buttons {
-  display: flex;
-}
-
 .sss-select {
   width: 175px;
-}
-
-.tab-buttons button {
-  padding: 8px 16px;
-  background-color: #f0f0f0;
-  border: none;
-  border-radius: 4px;
-  margin-right: 8px;
-  cursor: pointer;
-}
-
-.tab-buttons button.active {
-  background-color: #ccc;
-}
-
-.maa-table {
-  width: 100%;
-}
-
-.maa-table-label {
-  width: 70px;
-}
-
-.maa-mall {
-  width: 70px;
-  word-wrap: break-word;
-  word-break: break-all;
 }
 
 .card-title {
@@ -167,10 +125,6 @@ ul {
   td:nth-child(1) {
     width: 40px;
   }
-}
-
-.tab-content {
-  margin: 0 24px 12px 24px;
 }
 </style>
 
