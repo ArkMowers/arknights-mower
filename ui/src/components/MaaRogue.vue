@@ -4,7 +4,7 @@ import { storeToRefs } from 'pinia'
 
 const store = useConfigStore()
 
-const { maa_rg_theme } = storeToRefs(store)
+const { maa_rg_theme, rogue } = storeToRefs(store)
 
 const rogue_themes = [
   { label: '傀影与猩红孤钻', value: 'Phantom' },
@@ -86,55 +86,59 @@ const roles = [
     <tr>
       <td>分队：</td>
       <td>
-        <n-select :options="squad[maa_rg_theme]" />
+        <n-select v-model:value="rogue.squad" :options="squad[maa_rg_theme]" />
       </td>
     </tr>
     <tr>
       <td>职业：</td>
       <td>
-        <n-select :options="roles" />
+        <n-select v-model:value="rogue.roles" :options="roles" />
       </td>
     </tr>
     <tr>
       <td>干员：</td>
       <td>
-        <n-input />
+        <n-input v-model:value="rogue.core_char" />
       </td>
     </tr>
     <tr>
       <td colspan="2">
-        <n-checkbox>开局干员使用助战</n-checkbox>
+        <n-checkbox v-model:checked="rogue.use_support">开局干员使用助战</n-checkbox>
       </td>
     </tr>
-    <tr>
+    <tr v-if="rogue.use_support">
       <td colspan="2">
-        <n-checkbox>开局干员使用非好友助战</n-checkbox>
+        <n-checkbox v-model:checked="rogue.use_nonfriend_support"
+          >开局干员使用非好友助战</n-checkbox
+        >
       </td>
     </tr>
     <tr>
       <td>策略：</td>
       <td>
-        <n-radio-group>
+        <n-radio-group v-model:value="rogue.mode">
           <n-space>
-            <n-radio>刷等级</n-radio>
-            <n-radio>刷源石锭</n-radio>
+            <n-radio :value="0">刷等级</n-radio>
+            <n-radio :value="1">刷源石锭</n-radio>
           </n-space>
         </n-radio-group>
       </td>
     </tr>
     <tr>
       <td colspan="2">
-        <n-checkbox>投资源石锭</n-checkbox>
+        <n-checkbox v-model:checked="rogue.investment_enabled">投资源石锭</n-checkbox>
+      </td>
+    </tr>
+    <tr v-if="rogue.investment_enabled">
+      <td colspan="2">
+        <n-checkbox v-model:checked="rogue.stop_when_investment_full"
+          >储备源石锭达到上限时停止</n-checkbox
+        >
       </td>
     </tr>
     <tr>
       <td colspan="2">
-        <n-checkbox>储备源石锭达到上限时停止</n-checkbox>
-      </td>
-    </tr>
-    <tr>
-      <td colspan="2">
-        <n-checkbox>刷新商店（指路鳞）</n-checkbox>
+        <n-checkbox v-model:checked="rogue.refresh_trader_with_dice">刷新商店（指路鳞）</n-checkbox>
       </td>
     </tr>
   </table>
