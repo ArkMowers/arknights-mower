@@ -1969,15 +1969,18 @@ class BaseSchedulerSolver(BaseSolver):
                     self.initialize_maa()
                     if self.maa_config['roguelike']:
                         self.MAA.append_task('Roguelike', {
-                            'mode': 0,
-                            'starts_count': 9999999,
-                            'investment_enabled': True,
-                            'investments_count': 9999999,
-                            'stop_when_investment_full': False,
-                            'squad': '指挥分队',
-                            'roles': '取长补短',
                             'theme': self.maa_config['rogue_theme'],
-                            'core_char': ''
+                            'squad': self.maa_config['rogue']['squad'],
+                            'roles': self.maa_config['rogue']['roles'],
+                            'core_char': self.maa_config['rogue']['core_char'],
+                            'use_support': self.maa_config['rogue']['use_support'],
+                            'use_nonfriend_support': self.maa_config['rogue']['use_nonfriend_support'],
+                            'mode': self.maa_config['rogue']['mode'],
+                            'investment_enabled': self.maa_config['rogue']['investment_enabled'],
+                            'stop_when_investment_full': self.maa_config['rogue']['stop_when_investment_full'],
+                            'refresh_trader_with_dice': self.maa_config['rogue']['refresh_trader_with_dice'],
+                            'starts_count': 9999999,
+                            'investments_count': 9999999,
                         })
                     elif self.maa_config['reclamation_algorithm']:
                         self.back_to_reclamation_algorithm()

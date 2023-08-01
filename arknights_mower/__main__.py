@@ -125,6 +125,7 @@ def set_maa_options(base_scheduler):
     maa_config['touch_option'] = conf['maa_touch_option']
     maa_config['mall_ignore_when_full'] = conf['maa_mall_ignore_blacklist_when_full']
     maa_config['credit_fight'] = conf['maa_credit_fight']
+    maa_config['rogue'] = conf['rogue']
     base_scheduler.maa_config = maa_config
 
     logger.debug(f"更新Maa设置：{base_scheduler.maa_config}")
