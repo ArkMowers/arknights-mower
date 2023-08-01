@@ -72,3 +72,13 @@ maa_conn_preset: General
 maa_touch_option: maatouch
 maa_credit_fight: true
 maa_rg_theme: Mizuki
+rogue:
+  squad: ''
+  roles: ''
+  core_char: ''
+  use_support: false
+  use_nonfriend_support: false
+  mode: 1
+  investment_enabled: true
+  stop_when_investment_full: true
+  refresh_trader_with_dice: false
