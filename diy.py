@@ -7,6 +7,7 @@ import os
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
 from arknights_mower.strategy import Solver
 from arknights_mower.utils.device import Device
+from arknights_mower.utils.email import task_template
 from arknights_mower.utils.log import logger, init_fhlr
 from arknights_mower.utils import config
 from arknights_mower.utils.simulator import restart_simulator
@@ -359,7 +360,7 @@ def simulate():
                 (base_scheduler.tasks.sort(key=lambda x: x.time, reverse=False))
                 sleep_time = (base_scheduler.tasks[0].time - datetime.now()).total_seconds()
                 logger.info('||'.join([str(t) for t in base_scheduler.tasks]))
-                base_scheduler.send_email()
+                base_scheduler.send_email(task_template.render(tasks=base_scheduler.tasks), email_config['subject'], 'html')
                 # 如果任务间隔时间超过9分钟则启动MAA
                 if sleep_time > 540:
                     base_scheduler.maa_plan_solver()
