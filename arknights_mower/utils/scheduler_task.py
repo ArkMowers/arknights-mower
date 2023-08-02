@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-
+import copy
 from arknights_mower.utils.datetime import the_same_time
 
 
@@ -17,6 +17,11 @@ class SchedulerTask:
         self.plan = task_plan
         self.type = task_type
         self.meta_flag = meta_flag
+
+    def time_offset(self, h):
+        after_offset = copy.deepcopy(self)
+        after_offset.time += timedelta(hours=h)
+        return after_offset
 
     def __str__(self):
         return f"SchedulerTask(time='{self.time}',task_plan={self.plan},task_type='{self.type}',meta_flag={self.meta_flag})"

@@ -92,6 +92,9 @@ reload_room = []
 # 基地数据json文件保存名
 state_file_name = 'state.json'
 
+# 邮件时差调整
+timezone_offset = 0
+
 # 全自动基建排班计划：
 # 这里定义了一套全自动基建的排班计划 plan_1
 # agent 为常驻高效组的干员名
@@ -360,7 +363,7 @@ def simulate():
                 (base_scheduler.tasks.sort(key=lambda x: x.time, reverse=False))
                 sleep_time = (base_scheduler.tasks[0].time - datetime.now()).total_seconds()
                 logger.info('||'.join([str(t) for t in base_scheduler.tasks]))
-                base_scheduler.send_email(task_template.render(tasks=base_scheduler.tasks), email_config['subject'], 'html')
+                base_scheduler.send_email(task_template.render(tasks=[obj.time_offset(timezone_offset) for obj in base_scheduler.tasks]), '', 'html')
                 # 如果任务间隔时间超过9分钟则启动MAA
                 if sleep_time > 540:
                     base_scheduler.maa_plan_solver()
