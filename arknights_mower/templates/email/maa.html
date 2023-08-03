@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>Maa刷图掉落</title>
+    <style>
+      table,
+      th,
+      td {
+        border: 1px solid black;
+        border-collapse: collapse;
+      }
+    </style>
+  </head>
+  <body>
+    <table>
+      <tr>
+        <th>#</th>
+        <th>掉落物品</th>
+      </tr>
+      {% for drop in stage_drop.details %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>
+          {% for item in drop %}{{ item.itemName }}x{{ item.quantity }}{% if not
+          loop.last %}，{% endif %}{% endfor %}
+        </td>
+      </tr>
+      {% endfor %}
+      <tr>
+        <td>合计</td>
+        <td>
+          {% for item in stage_drop.summary %}{{ item.itemName }}x{{
+          item.quantity }}{% if not loop.last %}，{% endif %}{% endfor %}
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

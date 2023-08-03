@@ -25,3 +25,4 @@ env = Environment(
 )
 
 task_template = env.get_template("task.html")
+maa_template = env.get_template("maa.html")

@@ -32,7 +32,7 @@ from arknights_mower.__main__ import format_time
 from arknights_mower.utils.asst import Asst, Message
 import json
 
-from arknights_mower.utils.email import task_template
+from arknights_mower.utils.email import task_template, maa_template
 
 ocr = None
 
@@ -50,6 +50,8 @@ arrange_order_res = {
     ArrangeOrder.FEELING: (1880 / 2496, 96 / 1404),
     ArrangeOrder.TRUST: (2050 / 2496, 96 / 1404),
 }
+
+stage_drop = {}
 
 
 class BaseSchedulerSolver(BaseSolver):
@@ -1828,6 +1830,10 @@ class BaseSchedulerSolver(BaseSolver):
         logger.debug(d)
         logger.debug(m)
         logger.debug(arg)
+        if "what" in d and d["what"] == "StageDrops":
+            global stage_drop
+            stage_drop["details"].append(d["details"]["drops"])
+            stage_drop["summary"] = d["details"]["stats"]
 
     def initialize_maa(self):
         # 若需要获取详细执行信息，请传入 callback 参数
@@ -1919,6 +1925,9 @@ class BaseSchedulerSolver(BaseSolver):
                 stop_time = None
                 if one_time:
                     stop_time = datetime.now() + timedelta(minutes=5)
+                else:
+                    global stage_drop
+                    stage_drop = {"details": [], "summary": {}}
                 logger.info(f"MAA 启动")
                 hard_stop = False
                 while self.MAA.running():
@@ -1932,9 +1941,10 @@ class BaseSchedulerSolver(BaseSolver):
                         hard_stop = True
                     else:
                         time.sleep(5)
-                self.send_email('MAA停止')
                 if hard_stop:
-                    logger.info(f"由于maa任务并未完成，等待3分钟重启软件")
+                    hard_stop_msg = "Maa任务未完成，等待3分钟关闭游戏"
+                    logger.info(hard_stop_msg)
+                    self.send_email(hard_stop_msg)
                     time.sleep(180)
                     self.device.exit(self.package_name)
                 elif not one_time:
@@ -1944,6 +1954,10 @@ class BaseSchedulerSolver(BaseSolver):
                     if "Mall" in tasks and self.credit_fight is None:
                         self.credit_fight = get_server_weekday()
                         logger.info("记录首次信用作战")
+                    logger.debug(stage_drop)
+                    self.send_email(maa_template.render(stage_drop=stage_drop), "Maa停止", "html")
+                else:
+                    self.send_email("Maa单次任务停止")
             now_time = datetime.now().time()
             try:
                 min_time = datetime.strptime(self.maa_config['sleep_min'], "%H:%M").time()
