@@ -2071,5 +2071,5 @@ class BaseSchedulerSolver(BaseSolver):
             except Exception as e:
                 logger.error("邮件发送失败")
                 logger.exception(e)
-                retry_time -= 1
+                retry_times -= 1
                 time.sleep(3)
