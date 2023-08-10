@@ -64,8 +64,8 @@ jobs:
         working-directory: ./main
         shell: cmd
         run: |
-          venv\Scripts\pyinstaller .\webview.spec
+          venv\Scripts\pyinstaller .\webui_zip.spec
       - uses: actions/upload-artifact@v3
         with:
           name: mower
-          path: main\dist\mower.exe
+          path: main/dist/mower
