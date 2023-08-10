@@ -23,3 +23,4 @@ Flask-Cors==4.0.0
 flask-sock==0.6.0
 pywebview==4.2.2
 pystray==0.19.4
+ruamel.yaml==0.17.22
