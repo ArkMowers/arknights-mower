@@ -4,7 +4,7 @@ import os
 from collections import defaultdict
 
 from arknights_mower.utils.log import logger
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 # 记录干员进出站以及心情数据，将记录信息存入agent_action表里
@@ -85,23 +85,25 @@ def get_work_rest_ratios():
 # 整理心情曲线
 def get_mood_ratios():
     database_path = os.path.join('tmp', 'data.db')
-    # 连接到数据库
-    conn = sqlite3.connect(database_path)
-    cursor = conn.cursor()
 
-    # 查询数据（筛掉宿管和替班组的数据）
-    cursor.execute("""
-                    SELECT a.* FROM agent_action a 
-                   where DATE(a.current_time) >= DATE('now', '-7 day','localtime')
-                   and a.name in (select distinct b.name 
-                            from agent_action b where DATE(a.current_time) >= DATE('now', '-7 day','localtime')
-                            and b.is_high = 1 and b.current_room not like 'dormitory%')
-                   order by a.agent_group desc, a.current_time 
-                   """)
-    data = cursor.fetchall()
-
-    # 关闭数据库连接
-    conn.close()
+    try:
+        # 连接到数据库
+        conn = sqlite3.connect(database_path)
+        cursor = conn.cursor()
+        # 查询数据（筛掉宿管和替班组的数据）
+        cursor.execute("""
+                        SELECT a.* FROM agent_action a 
+                       where DATE(a.current_time) >= DATE('now', '-7 day','localtime')
+                       and a.name in (select distinct b.name 
+                                from agent_action b where DATE(a.current_time) >= DATE('now', '-7 day','localtime')
+                                and b.is_high = 1 and b.current_room not like 'dormitory%')
+                       order by a.agent_group desc, a.current_time 
+                       """)
+        data = cursor.fetchall()
+        # 关闭数据库连接
+        conn.close()
+    except sqlite3.Error as e:
+        data = []
 
     grouped_data = {}
     for row in data:
@@ -115,8 +117,7 @@ def get_mood_ratios():
 
         timestamp_datetime = datetime.strptime(row[6], '%Y-%m-%d %H:%M:%S.%f')  # Assuming 'current_time' is at index 6
         # 创建 Luxon 格式的字符串
-        current_time = f"{timestamp_datetime.year:04d}-{timestamp_datetime.month:02d}-{timestamp_datetime.day:02d}T{timestamp_datetime.hour:02d}:{timestamp_datetime.minute:02d}:{timestamp_datetime.second:02d}.{timestamp_datetime.microsecond:06d}Z"
-
+        current_time = f"{timestamp_datetime.year:04d}-{timestamp_datetime.month:02d}-{timestamp_datetime.day:02d}T{timestamp_datetime.hour:02d}:{timestamp_datetime.minute:02d}:{timestamp_datetime.second:02d}.{timestamp_datetime.microsecond:06d}+08:00"
 
         mood_label = row[0]  # Assuming 'name' is at index 0
         mood_value = row[5]  # Assuming 'mood' is at index 5
