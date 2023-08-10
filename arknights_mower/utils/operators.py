@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from ..data import agent_list
+from ..solvers.record import save_action_to_sqlite_decorator
 
 
 class Operators(object):
@@ -174,6 +175,7 @@ class Operators(object):
             if agent.room.startswith("dorm"):
                 agent.time_stamp = None
 
+    @save_action_to_sqlite_decorator
     def update_detail(self, name, mood, current_room, current_index, update_time=False):
         agent = self.operators[name]
         if update_time:
