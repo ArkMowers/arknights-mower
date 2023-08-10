@@ -20,6 +20,9 @@
         <n-tab-pane name="external" tab="任务设置">
           <external />
         </n-tab-pane>
+        <n-tab-pane name="record" tab="报表">
+          <record />
+        </n-tab-pane>
       </n-tabs>
     </n-dialog-provider>
   </n-config-provider>
@@ -32,6 +35,7 @@ import home from '@/pages/Home.vue'
 import plan from '@/pages/Plan.vue'
 import advanced from '@/pages/Advanced.vue'
 import external from '@/pages/External.vue'
+import record from '@/pages/record.vue'
 import { zhCN, dateZhCN, darkTheme } from 'naive-ui'
 
 import { useConfigStore } from '@/stores/config'
