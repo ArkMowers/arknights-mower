@@ -36,13 +36,13 @@ def save_action_to_sqlite_decorator(func):
                            'current_room TEXT,'
                            'is_high INTEGER,'
                            'agent_group TEXT,'
-                           'mood INTEGER,'
+                           'mood REAL,'
                            'current_time TEXT'
                            ')')
 
             # Insert data
             cursor.execute('INSERT INTO agent_action VALUES (?, ?, ?, ?, ?, ?, ?)',
-                           (name, agent_current_room, current_room, int(agent_is_high), agent.group, int(mood),
+                           (name, agent_current_room, current_room, int(agent_is_high), agent.group, mood,
                             str(current_time)))
 
             connection.commit()
@@ -71,15 +71,44 @@ def get_work_rest_ratios():
 
     # 查询数据
     cursor.execute("SELECT a.* FROM agent_action a "
-                   "where DATE(a.current_time) >= DATE('now', '-1 day','localtime')"
-                   "and is_high = 1 order by a.current_time ")
+                   "where DATE(a.current_time) >= DATE('now', '-1 month','localtime')"
+                   "and a.name in (select distinct b.name "
+                   "   from agent_action b where DATE(a.current_time) >= DATE('now', '-7 day','localtime')"
+                   "   and b.is_high = 1 and b.current_room not like 'dormitory%')"
+                   "order by a.current_time ")
     data = cursor.fetchall()
 
     # 关闭数据库连接
     conn.close()
-
-    # print(data)
-    return data
+    processed_data = []
+    grouped_data = {}
+    for row in data:
+        name = row[0]
+        current_room = row[2]
+        current_time = row[6]  # Assuming index 6 is the current_time column
+        agent = grouped_data.get(name, {
+            'agent_data': [{'current_time': current_time,
+                            'current_room': current_room}],
+            'difference': []
+        })
+        difference = {'time_diff': calculate_time_difference(agent['agent_data'][-1]['current_time'], current_time),
+                      'current_room': agent['agent_data'][-1]['current_room']}
+        agent['agent_data'].append({'current_time': current_time,
+                                    'current_room': current_room})
+        agent['difference'].append(difference)
+        grouped_data[name] = agent
+    for name in grouped_data:
+        work_time = 0
+        rest_time = 0
+        for difference in grouped_data[name]['difference']:
+            if difference['current_room'].startswith('dormitory'):
+                rest_time += difference['time_diff']
+            else:
+                work_time += difference['time_diff']
+        processed_data.append({'name':name,
+                               'rest_time':rest_time,
+                               'work_time':work_time})
+    return processed_data
 
 
 # 整理心情曲线
@@ -96,8 +125,9 @@ def get_mood_ratios():
                        where DATE(a.current_time) >= DATE('now', '-7 day','localtime')
                        and a.name in (select distinct b.name 
                                 from agent_action b where DATE(a.current_time) >= DATE('now', '-7 day','localtime')
-                                and b.is_high = 1 and b.current_room not like 'dormitory%')
-                       order by a.agent_group desc, a.current_time 
+                                and b.is_high = 1 and b.current_room not like 'dormitory%'
+                                union select '菲亚梅塔')
+                       order by  a.agent_group desc,a.current_time 
                        """)
         data = cursor.fetchall()
         # 关闭数据库连接
@@ -147,11 +177,19 @@ def get_mood_ratios():
             'groupName': group_name,
             'moodData': mood_data
         })
-
     return formatted_data
 
 
+def calculate_time_difference(start_time, end_time):
+    time_format = '%Y-%m-%d %H:%M:%S.%f'
+    start_datetime = datetime.strptime(start_time, time_format)
+    end_datetime = datetime.strptime(end_time, time_format)
+    time_difference = end_datetime - start_datetime
+    return time_difference.total_seconds()
+
+
 def __main__():
-    get_mood_ratios()
+    get_work_rest_ratios()
+
 
 # __main__()
