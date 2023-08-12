@@ -415,6 +415,7 @@ class BaseSchedulerSolver(BaseSolver):
                 elif self.task.type.split(',')[0] in agent_list:
                     self.overtake_room()
                 elif self.task.type == 'impart':
+                    self.party_time = None
                     self.skip(['planned', 'collect_notification'])
                 del self.tasks[0]
             except Exception as e:
