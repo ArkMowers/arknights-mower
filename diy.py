@@ -57,10 +57,11 @@ maa_config = {
     'mall_ignore_when_full': True,
     "touch_option": "maatouch",
     "conn_preset": "General",
-    "rouge": {
+    "rogue": {
         "squad": "指挥分队",
         "roles": "取长补短",
         "use_support": False,
+        "core_char":"",
         "use_nonfriend_support": False,
         "mode": 0,
         "investment_enabled": True,

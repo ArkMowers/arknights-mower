@@ -102,6 +102,7 @@ class BaseSchedulerSolver(BaseSolver):
         self.planned = False
         if self.op_data is None or self.op_data.operators is None:
             self.initialize_operators()
+        self.op_data.correct_dorm()
         for name in self.op_data.workaholic_agent:
             if name not in self.free_blacklist:
                 self.free_blacklist.append(name)
@@ -414,6 +415,7 @@ class BaseSchedulerSolver(BaseSolver):
                 elif self.task.type.split(',')[0] in agent_list:
                     self.overtake_room()
                 elif self.task.type == 'impart':
+                    self.party_time = None
                     self.skip(['planned', 'collect_notification'])
                 del self.tasks[0]
             except Exception as e:
