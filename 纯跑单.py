@@ -1,22 +1,25 @@
 from __future__ import annotations
-from datetime import datetime, timedelta
-from arknights_mower.utils import config
-from arknights_mower.utils.device import Device
-from arknights_mower.utils.log import logger, init_fhlr
 from arknights_mower.data import agent_list
 from arknights_mower.utils import character_recognize, detector, segment
-from arknights_mower.utils.digit_reader import DigitReader
-from arknights_mower.utils.operators import Operators, Operator
-from arknights_mower.utils.scheduler_task import SchedulerTask
+from arknights_mower.utils import config
 from arknights_mower.utils import typealias as tp
+from arknights_mower.utils.asst import Asst, Message
+from arknights_mower.utils.datetime import get_server_weekday, the_same_time
+from arknights_mower.utils.device.adb_client import ADBClient
+from arknights_mower.utils.device.minitouch import MiniTouch
+from arknights_mower.utils.device.scrcpy import Scrcpy
+from arknights_mower.utils.digit_reader import DigitReader
+from arknights_mower.utils.log import logger, save_screenshot, init_fhlr
+from arknights_mower.utils.operators import Operators, Operator
 from arknights_mower.utils.pipe import push_operators
 from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
+from arknights_mower.utils.scheduler_task import SchedulerTask
 from arknights_mower.utils.solver import BaseSolver
-from arknights_mower.utils.datetime import get_server_weekday, the_same_time
-from arknights_mower.utils.asst import Asst, Message
+from datetime import datetime, timedelta
 from enum import Enum
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from typing import Optional
 import copy
 import cv2
 import json
@@ -44,17 +47,18 @@ Bilibili服务器 = 'com.hypergryph.arknights.bilibili'
 # # # # # # # # # # # # # # # # # # # # # # 用户设置区 # # # # # # # # # # # # # # # # # # # # # #
 ################################################################################################
 
-服务器 = 官方服务器  # 服务器选择(官方服务器/Bilibili服务器)
+服务器 = 官方服务器  # 服务器选择 (官方服务器/Bilibili服务器)
 
 跑单提前运行时间 = 300  # 秒
-更换干员前缓冲时间 = 25  # 秒 需要严格大于一次跟服务器交换数据的时间 建议大于等于15秒
+更换干员前缓冲时间 = 30  # 秒 需要严格大于一次跟服务器交换数据的时间 建议大于等于15秒
 
 日志存储目录 = './log'
 截图存储目录 = './screenshot'
 每种截图的最大保存数量 = 10
-跑单前铃声提醒开关 = 开   # 跑单前铃声提醒开关，仅在 Windows 平台有效
+跑单前铃声提醒开关 = 开  # 跑单前铃声提醒开关，仅在 Windows 平台有效
 
 # 设置贸易站的房间以及跑单干员的具体位置
+# ※请注意手动换班后记得重新运行程序※
 跑单设置 = {
     'room_1_1': ['', '龙舌兰', '但书'],
     'room_2_1': ['', '龙舌兰', '但书'],
@@ -86,24 +90,164 @@ MAA设置 = {
 }
 
 ################################################################################################
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+################################################################################################
 if sys.platform == 'win32' and 跑单前铃声提醒开关:
     import winsound  # Windows 铃声
 
 
-class ArrangeOrder(Enum):
-    STATUS = 1
-    SKILL = 2
-    FEELING = 3
-    TRUST = 4
+class 设备控制(object):
+    """ Android 设备控制 """
+
+    class Control(object):
+        """ Android 设备控制 """
+
+        def __init__(self, device: 设备控制, client: ADBClient = None, touch_device: str = None) -> None:
+            self.device = device
+            self.minitouch = None
+            self.scrcpy = None
+
+            if config.ADB_CONTROL_CLIENT == 'minitouch':
+                self.minitouch = MiniTouch(client, touch_device)
+            elif config.ADB_CONTROL_CLIENT == 'scrcpy':
+                self.scrcpy = Scrcpy(client)
+            else:
+                # MiniTouch does not support Android 10+
+                if int(client.android_version().split('.')[0]) < 10:
+                    self.minitouch = MiniTouch(client, touch_device)
+                else:
+                    self.scrcpy = Scrcpy(client)
+
+        def tap(self, point: tuple[int, int]) -> None:
+            if self.minitouch:
+                self.minitouch.tap([point], self.device.display_frames())
+            elif self.scrcpy:
+                self.scrcpy.tap(point[0], point[1])
+            else:
+                raise NotImplementedError
+
+        def swipe(self, start: tuple[int, int], end: tuple[int, int], duration: int) -> None:
+            if self.minitouch:
+                self.minitouch.swipe(
+                    [start, end], self.device.display_frames(), duration=duration)
+            elif self.scrcpy:
+                self.scrcpy.swipe(
+                    start[0], start[1], end[0], end[1], duration / 1000)
+            else:
+                raise NotImplementedError
+
+        def swipe_ext(self, points: list[tuple[int, int]], durations: list[int], up_wait: int) -> None:
+            if self.minitouch:
+                self.minitouch.swipe(
+                    points, self.device.display_frames(), duration=durations, up_wait=up_wait)
+            elif self.scrcpy:
+                total = len(durations)
+                for idx, (S, E, D) in enumerate(zip(points[:-1], points[1:], durations)):
+                    self.scrcpy.swipe(S[0], S[1], E[0], E[1], D / 1000,
+                                      up_wait / 1000 if idx == total - 1 else 0,
+                                      fall=idx == 0, lift=idx == total - 1)
+            else:
+                raise NotImplementedError
+
+    def __init__(self, device_id: str = None, connect: str = None, touch_device: str = None) -> None:
+        self.device_id = device_id
+        self.connect = connect
+        self.touch_device = touch_device
+        self.client = None
+        self.control = None
+        self.start()
+
+    def start(self) -> None:
+        self.client = ADBClient(self.device_id, self.connect)
+        self.control = 设备控制.Control(self, self.client)
+
+    def run(self, cmd: str) -> Optional[bytes]:
+        return self.client.run(cmd)
+
+    def launch(self, app: str) -> None:
+        """ launch the application """
+        self.run(f'am start -n {app}')
+
+    def exit(self, app: str) -> None:
+        """ exit the application """
+        self.run(f'am force-stop {app}')
+
+    def send_keyevent(self, keycode: int) -> None:
+        """ send a key event """
+        logger.debug(f'keyevent: {keycode}')
+        command = f'input keyevent {keycode}'
+        self.run(command)
+
+    def send_text(self, text: str) -> None:
+        """ send a text """
+        logger.debug(f'text: {repr(text)}')
+        text = text.replace('"', '\\"')
+        command = f'input text "{text}"'
+        self.run(command)
+
+    def screencap(self, save: bool = False) -> bytes:
+        """ get a screencap """
+        command = 'screencap -p 2>/dev/null'
+        screencap = self.run(command)
+        if save:
+            save_screenshot(screencap)
+        return screencap
+
+    def current_focus(self) -> str:
+        """ detect current focus app """
+        command = 'dumpsys window | grep mCurrentFocus'
+        line = self.run(command).decode('utf8')
+        return line.strip()[:-1].split(' ')[-1]
+
+    def display_frames(self) -> tuple[int, int, int]:
+        """ get display frames if in compatibility mode"""
+        if not config.MNT_COMPATIBILITY_MODE:
+            return None
+
+        command = 'dumpsys window | grep DisplayFrames'
+        line = self.run(command).decode('utf8')
+        """ eg. DisplayFrames w=1920 h=1080 r=3 """
+        res = line.strip().replace('=', ' ').split(' ')
+        return int(res[2]), int(res[4]), int(res[6])
+
+    def tap(self, point: tuple[int, int]) -> None:
+        """ tap """
+        logger.debug(f'tap: {point}')
+        self.control.tap(point)
+
+    def swipe(self, start: tuple[int, int], end: tuple[int, int], duration: int = 100) -> None:
+        """ swipe """
+        logger.debug(f'swipe: {start} -> {end}, duration={duration}')
+        self.control.swipe(start, end, duration)
+
+    def swipe_ext(self, points: list[tuple[int, int]], durations: list[int], up_wait: int = 500) -> None:
+        """ swipe_ext """
+        logger.debug(
+            f'swipe_ext: points={points}, durations={durations}, up_wait={up_wait}')
+        self.control.swipe_ext(points, durations, up_wait)
+
+    def check_current_focus(self):
+        """ check if the application is in the foreground """
+        if self.current_focus() != f"{config.APPNAME}/{config.APP_ACTIVITY_NAME}":
+            self.launch(f"{config.APPNAME}/{config.APP_ACTIVITY_NAME}")
+            # wait for app to finish launching
+            time.sleep(10)
+
+
+class 干员排序方式(Enum):
+    工作状态 = 1
+    技能 = 2
+    心情 = 3
+    信赖值 = 4
 
 
 ocr = None
 
-arrange_order_res = {
-    ArrangeOrder.STATUS: (1560 / 2496, 96 / 1404),
-    ArrangeOrder.SKILL: (1720 / 2496, 96 / 1404),
-    ArrangeOrder.FEELING: (1880 / 2496, 96 / 1404),
-    ArrangeOrder.TRUST: (2050 / 2496, 96 / 1404),
+干员排序方式位置 = {
+    干员排序方式.工作状态: (1560 / 2496, 96 / 1404),
+    干员排序方式.技能: (1720 / 2496, 96 / 1404),
+    干员排序方式.心情: (1880 / 2496, 96 / 1404),
+    干员排序方式.信赖值: (2050 / 2496, 96 / 1404),
 }
 
 
@@ -114,14 +258,14 @@ def 调试输出():
 def 日志设置():
     config.LOGFILE_PATH = 日志存储目录
     config.SCREENSHOT_PATH = 截图存储目录
-    config.SCREENSHOT_MAXNUM = 每种截图的最大保存数量
+    config.SCREENSHOT_MAXNUM = 每种截图的最大保存数量 - 1
     config.MAX_RETRYTIME = 10
 
 
-class BaseSchedulerSolver(BaseSolver):
+class 基建求解器(BaseSolver):
     服务器 = ''
 
-    def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
+    def __init__(self, device: 设备控制 = None, recog: Recognizer = None) -> None:
         super().__init__(device, recog)
         self.plan = None
         self.planned = None
@@ -449,7 +593,7 @@ class BaseSchedulerSolver(BaseSolver):
         while self.find('control_central') is not None:
             self.tap(_room[0], interval=1)
 
-    def drone(self, room: str, not_customize=关, not_return=关):
+    def 无人机加速(self, room: str, not_customize=关, not_return=关):
         logger.info('无人机加速')
         all_in = 0
         if not not_customize:
@@ -501,32 +645,32 @@ class BaseSchedulerSolver(BaseSolver):
         self.back(interval=2, rebuild=关)
         self.back(interval=2)
 
-    def get_arrange_order(self) -> ArrangeOrder:
+    def get_arrange_order(self) -> 干员排序方式:
         best_score, best_order = 0, None
-        for order in ArrangeOrder:
-            score = self.recog.score(arrange_order_res[order][0])
+        for order in 干员排序方式:
+            score = self.recog.score(干员排序方式位置[order][0])
             if score is not None and score[0] > best_score:
                 best_score, best_order = score[0], order
         logger.debug((best_score, best_order))
         return best_order
 
     def switch_arrange_order(self, index: int, asc="false") -> None:
-        self.tap((self.recog.w * arrange_order_res[ArrangeOrder(index)][0],
-                  self.recog.h * arrange_order_res[ArrangeOrder(index)][1]), interval=0, rebuild=关)
+        self.tap((self.recog.w * 干员排序方式位置[干员排序方式(index)][0],
+                  self.recog.h * 干员排序方式位置[干员排序方式(index)][1]), interval=0, rebuild=关)
         # 点个不需要的
         if index < 4:
-            self.tap((self.recog.w * arrange_order_res[ArrangeOrder(index + 1)][0],
-                      self.recog.h * arrange_order_res[ArrangeOrder(index)][1]), interval=0, rebuild=关)
+            self.tap((self.recog.w * 干员排序方式位置[干员排序方式(index + 1)][0],
+                      self.recog.h * 干员排序方式位置[干员排序方式(index)][1]), interval=0, rebuild=关)
         else:
-            self.tap((self.recog.w * arrange_order_res[ArrangeOrder(index - 1)][0],
-                      self.recog.h * arrange_order_res[ArrangeOrder(index)][1]), interval=0, rebuild=关)
+            self.tap((self.recog.w * 干员排序方式位置[干员排序方式(index - 1)][0],
+                      self.recog.h * 干员排序方式位置[干员排序方式(index)][1]), interval=0, rebuild=关)
         # 切回来
-        self.tap((self.recog.w * arrange_order_res[ArrangeOrder(index)][0],
-                  self.recog.h * arrange_order_res[ArrangeOrder(index)][1]), interval=0.2, rebuild=开)
+        self.tap((self.recog.w * 干员排序方式位置[干员排序方式(index)][0],
+                  self.recog.h * 干员排序方式位置[干员排序方式(index)][1]), interval=0.2, rebuild=开)
         # 倒序
         if asc != "false":
-            self.tap((self.recog.w * arrange_order_res[ArrangeOrder(index)][0],
-                      self.recog.h * arrange_order_res[ArrangeOrder(index)][1]), interval=0.2, rebuild=开)
+            self.tap((self.recog.w * 干员排序方式位置[干员排序方式(index)][0],
+                      self.recog.h * 干员排序方式位置[干员排序方式(index)][1]), interval=0.2, rebuild=开)
 
     def scan_agant(self, agent: list[str], error_count=0, max_agent_count=-1):
         try:
@@ -568,7 +712,7 @@ class BaseSchedulerSolver(BaseSolver):
 
     def choose_agent(self, agents: list[str], room: str) -> None:
         """
-        :param order: ArrangeOrder, 选择干员时右上角的排序功能
+        :param order: 干员排序方式, 选择干员时右上角的排序功能
         """
         first_name = ''
         max_swipe = 50
@@ -630,8 +774,8 @@ class BaseSchedulerSolver(BaseSolver):
         if len(agents) != 1:
             # 左移
             self.swipe_left(right_swipe, w, h)
-            self.tap((self.recog.w * arrange_order_res[ArrangeOrder.SKILL][0],
-                      self.recog.h * arrange_order_res[ArrangeOrder.SKILL][1]), interval=0.5, rebuild=关)
+            self.tap((self.recog.w * 干员排序方式位置[干员排序方式.技能][0],
+                      self.recog.h * 干员排序方式位置[干员排序方式.技能][1]), interval=0.5, rebuild=关)
             position = [(0.35, 0.35), (0.35, 0.75), (0.45, 0.35), (0.45, 0.75), (0.55, 0.35)]
             not_match = 关
             for idx, item in enumerate(agents):
@@ -643,7 +787,7 @@ class BaseSchedulerSolver(BaseSolver):
                     self.tap((self.recog.w * position[p_idx][0], self.recog.h * position[p_idx][1]), interval=0,
                              rebuild=关)
         self.last_room = room
-        logger.info(f"设置上次房间为{self.last_room}")
+        logger.info(f"设置上次房间为：{self.last_room}")
 
     def swipe_left(self, right_swipe, w, h):
         for _ in range(right_swipe):
@@ -1069,30 +1213,30 @@ def 初始化(任务列表, scheduler=None):
     config.ADB_DEVICE = MAA设置['MAA_adb地址']
     config.ADB_CONNECT = MAA设置['MAA_adb地址']
     config.APPNAME = 服务器
-
+    config.TAP_TO_LAUNCH = [{"enable": "false", "x": "0", "y": "0"}]
     init_fhlr()
-    device = Device()
+    device = 设备控制()
     cli = Solver(device)
     if scheduler is None:
-        base_scheduler = BaseSchedulerSolver(cli.device, cli.recog)
-        base_scheduler.服务器 = 服务器
-        base_scheduler.operators = {}
-        base_scheduler.plan = {}
-        base_scheduler.current_base = {}
+        基建状态 = 基建求解器(cli.device, cli.recog)
+        基建状态.服务器 = 服务器
+        基建状态.operators = {}
+        基建状态.plan = {}
+        基建状态.current_base = {}
         for 建筑 in 跑单设置:
-            base_scheduler.plan[建筑] = []
+            基建状态.plan[建筑] = []
             for 干员 in 跑单设置[建筑]:
-                base_scheduler.plan[建筑].append({'agent': '', 'group': '', 'replacement': [干员]})
-        base_scheduler.任务列表 = 任务列表
-        base_scheduler.last_room = ''
-        base_scheduler.MAA = None
-        base_scheduler.邮件设置 = 邮件设置
-        base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
-        base_scheduler.MAA设置 = MAA设置
-        base_scheduler.error = 关
-        base_scheduler.跑单提前运行时间 = 跑单提前运行时间
-        base_scheduler.更换干员前缓冲时间 = 更换干员前缓冲时间
-        return base_scheduler
+                基建状态.plan[建筑].append({'agent': '', 'group': '', 'replacement': [干员]})
+        基建状态.任务列表 = 任务列表
+        基建状态.last_room = ''
+        基建状态.MAA = None
+        基建状态.邮件设置 = 邮件设置
+        基建状态.ADB_CONNECT = config.ADB_CONNECT[0]
+        基建状态.MAA设置 = MAA设置
+        基建状态.error = 关
+        基建状态.跑单提前运行时间 = 跑单提前运行时间
+        基建状态.更换干员前缓冲时间 = 更换干员前缓冲时间
+        return 基建状态
     else:
         scheduler.device = cli.device
         scheduler.recog = cli.recog
@@ -1101,44 +1245,45 @@ def 初始化(任务列表, scheduler=None):
 
 
 def 运行():
-    global ope_list, base_scheduler
+    global ope_list, 基建状态
     # 第一次执行任务
     任务列表 = []
     for t in 任务列表:
         t.time = datetime.strptime(str(t.time), '%Y-%m-%d %H:%M:%S.%f')
     reconnect_max_tries = 10
     reconnect_tries = 0
-    base_scheduler = 初始化(任务列表)
-    base_scheduler.device.launch(f"{服务器}/{config.APP_ACTIVITY_NAME}")
-    base_scheduler.initialize_operators()
+    基建状态 = 初始化(任务列表)
+    基建状态.device.launch(f"{服务器}/{config.APP_ACTIVITY_NAME}")
+    基建状态.initialize_operators()
     while 开:
         try:
-            if len(base_scheduler.任务列表) > 0:
-                base_scheduler.任务列表.sort(key=lambda x: x.time, reverse=关)
+            if len(基建状态.任务列表) > 0:
+                基建状态.任务列表.sort(key=lambda x: x.time, reverse=关)
                 if len(任务列表) > 1 and (
-                        任务列表[0].time - datetime.now()).total_seconds() > base_scheduler.跑单提前运行时间 > (
+                        任务列表[0].time - datetime.now()).total_seconds() > 基建状态.跑单提前运行时间 > (
                         任务列表[1].time - 任务列表[0].time).total_seconds():
                     logger.warning("无人机加速拉开订单间的时间差距")
-                    base_scheduler.drone(任务列表[0].type, 开, 开)
+                    基建状态.无人机加速(任务列表[0].type, 开, 开)
                     # 返回基建主界面
-                base_scheduler.recog.update()
-                while base_scheduler.get_infra_scene() != Scene.INFRA_MAIN:
-                    base_scheduler.back()
-                    base_scheduler.recog.update()
-                sleep_time = (base_scheduler.任务列表[0].time - datetime.now()).total_seconds()
-                if (base_scheduler.任务列表[0].time - datetime.now()).total_seconds() > 0:
-                    base_scheduler.send_email()
+                基建状态.recog.update()
+                while 基建状态.get_infra_scene() != Scene.INFRA_MAIN:
+                    基建状态.back()
+                    基建状态.recog.update()
+                sleep_time = (基建状态.任务列表[0].time - datetime.now()).total_seconds()
+                if (基建状态.任务列表[0].time - datetime.now()).total_seconds() > 0:
+                    基建状态.send_email()
+                    logger.warning("※请注意手动换班后记得重新运行程序※")
                     for i in range(len(任务列表)):
                         logger.warning(任务列表[i].type + ' 开始跑单的时间为：' + 任务列表[i].time.strftime("%H:%M:%S"))
 
                 # 如果有高强度重复任务,任务间隔时间超过10分钟则启动MAA
                 if (MAA设置['集成战略'] or MAA设置['生息演算']) and (sleep_time > 600):
-                    base_scheduler.maa_plan_solver()
+                    基建状态.maa_plan_solver()
 
                 elif sleep_time > 0:
                     # 如果任务间隔时间超过5分钟则关闭游戏
                     if sleep_time > 300:
-                        base_scheduler.device.exit(base_scheduler.服务器)
+                        基建状态.device.exit(基建状态.服务器)
                     # 任务开始前铃声提醒
                     if sys.platform == 'win32' and 跑单前铃声提醒开关 and sleep_time > 150:
                         time.sleep(sleep_time - 150)
@@ -1149,11 +1294,11 @@ def 运行():
                     else:
                         time.sleep(sleep_time)
 
-            if len(base_scheduler.任务列表) > 0 and base_scheduler.任务列表[0].type.split('_')[0] == 'maa':
-                base_scheduler.maa_plan_solver((base_scheduler.任务列表[0].type.split('_')[1]).split(','),
-                                               one_time=开)
+            if len(基建状态.任务列表) > 0 and 基建状态.任务列表[0].type.split('_')[0] == 'maa':
+                基建状态.maa_plan_solver((基建状态.任务列表[0].type.split('_')[1]).split(','),
+                                         one_time=开)
                 continue
-            base_scheduler.run()
+            基建状态.run()
             reconnect_tries = 0
         except ConnectionError as e:
             reconnect_tries += 1
@@ -1162,7 +1307,7 @@ def 运行():
                 connected = 关
                 while not connected:
                     try:
-                        base_scheduler = 初始化([], base_scheduler)
+                        基建状态 = 初始化([], 基建状态)
                         break
                     except Exception as ce:
                         logger.error(ce)
@@ -1177,3 +1322,4 @@ def 运行():
 
 日志设置()
 运行()
+
