@@ -65,8 +65,8 @@ def get_work_rest_ratios():
     # TODO 整理数据计算工休比
     database_path = os.path.join('tmp', 'data.db')
     # 连接到数据库
-    # conn = sqlite3.connect(database_path)
-    conn = sqlite3.connect('../../tmp/data.db')
+    conn = sqlite3.connect(database_path)
+    # conn = sqlite3.connect('../../tmp/data.db')
     cursor = conn.cursor()
 
     # 查询数据
@@ -74,13 +74,14 @@ def get_work_rest_ratios():
                    "where DATE(a.current_time) >= DATE('now', '-1 month','localtime')"
                    "and a.name in (select distinct b.name "
                    "   from agent_action b where DATE(a.current_time) >= DATE('now', '-7 day','localtime')"
-                   "   and b.is_high = 1 and b.current_room not like 'dormitory%')"
+                   "   and b.is_high = 1 and b.current_room not like 'dormitory%'"
+                   " union select '菲亚梅塔')"
                    "order by a.current_time ")
     data = cursor.fetchall()
 
     # 关闭数据库连接
     conn.close()
-    processed_data = []
+    processed_data = {}
     grouped_data = {}
     for row in data:
         name = row[0]
@@ -105,9 +106,10 @@ def get_work_rest_ratios():
                 rest_time += difference['time_diff']
             else:
                 work_time += difference['time_diff']
-        processed_data.append({'name':name,
-                               'rest_time':rest_time,
-                               'work_time':work_time})
+        processed_data[name] = {'labels':['休息时间','工作时间'],
+                                'datasets':[{
+                                    'data':[rest_time,work_time]
+                                }]}
     return processed_data
 
 
@@ -135,7 +137,9 @@ def get_mood_ratios():
     except sqlite3.Error as e:
         data = []
 
+    work_rest_data_ratios = get_work_rest_ratios()
     grouped_data = {}
+    grouped_work_rest_data = {}
     for row in data:
         group_name = row[4]  # Assuming 'agent_group' is at index 4
         if not group_name:
@@ -144,6 +148,11 @@ def get_mood_ratios():
             'labels': [],
             'datasets': []
         })
+        work_rest_data = grouped_work_rest_data.get(group_name,
+            work_rest_data_ratios[row[0]]
+        )
+        grouped_work_rest_data[group_name]=work_rest_data
+
 
         timestamp_datetime = datetime.strptime(row[6], '%Y-%m-%d %H:%M:%S.%f')  # Assuming 'current_time' is at index 6
         # 创建 Luxon 格式的字符串
@@ -169,13 +178,14 @@ def get_mood_ratios():
             })
 
         grouped_data[group_name] = mood_data
-
+    print(grouped_work_rest_data)
     # 将数据格式整理为数组
     formatted_data = []
     for group_name, mood_data in grouped_data.items():
         formatted_data.append({
             'groupName': group_name,
-            'moodData': mood_data
+            'moodData': mood_data,
+            'workRestData':grouped_work_rest_data[group_name]
         })
     return formatted_data
 
@@ -190,6 +200,5 @@ def calculate_time_difference(start_time, end_time):
 
 def __main__():
     get_work_rest_ratios()
-
 
 # __main__()
