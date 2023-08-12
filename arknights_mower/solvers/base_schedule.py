@@ -32,7 +32,7 @@ from arknights_mower.__main__ import format_time
 from arknights_mower.utils.asst import Asst, Message
 import json
 
-from arknights_mower.utils.email import task_template
+from arknights_mower.utils.email import task_template, maa_template
 
 ocr = None
 
@@ -50,6 +50,8 @@ arrange_order_res = {
     ArrangeOrder.FEELING: (1880 / 2496, 96 / 1404),
     ArrangeOrder.TRUST: (2050 / 2496, 96 / 1404),
 }
+
+stage_drop = {}
 
 
 class BaseSchedulerSolver(BaseSolver):
@@ -100,6 +102,7 @@ class BaseSchedulerSolver(BaseSolver):
         self.planned = False
         if self.op_data is None or self.op_data.operators is None:
             self.initialize_operators()
+        self.op_data.correct_dorm()
         for name in self.op_data.workaholic_agent:
             if name not in self.free_blacklist:
                 self.free_blacklist.append(name)
@@ -412,12 +415,16 @@ class BaseSchedulerSolver(BaseSolver):
                 elif self.task.type.split(',')[0] in agent_list:
                     self.overtake_room()
                 elif self.task.type == 'impart':
+                    self.party_time = None
                     self.skip(['planned', 'collect_notification'])
                 del self.tasks[0]
             except Exception as e:
                 logger.exception(e)
-                self.skip()
-                self.error = True
+                if type(e) is ConnectionAbortedError:
+                    raise e
+                else:
+                    self.skip()
+                    self.error = True
             self.task = None
         elif not self.planned:
             try:
@@ -429,9 +436,11 @@ class BaseSchedulerSolver(BaseSolver):
                         return True
                 self.plan_solver()
             except Exception as e:
-                # 重新扫描
-                self.error = True
-                logger.exception({e})
+                logger.exception(e)
+                if type(e) is ConnectionAbortedError:
+                    raise e
+                else:
+                    self.error = True
             self.planned = True
         elif not self.todo_task:
             if self.party_time is None and self.enable_party:
@@ -1236,7 +1245,7 @@ class BaseSchedulerSolver(BaseSolver):
                 retry -= 1
                 self.back_to_infrastructure()
                 self.wait_for_scene(Scene.INFRA_MAIN,"get_infra_scene")
-                if retry == 0:
+                if retry <= 0:
                     raise e
 
     def drone(self, room: str, not_customize=False, not_return=False):
@@ -1430,7 +1439,7 @@ class BaseSchedulerSolver(BaseSolver):
         if self.last_room.startswith('dorm') and is_dorm:
             self.detail_filter(False)
         while len(agent) > 0:
-            if retry_count > 3: raise Exception(f"到达最大尝试次数 3次")
+            if retry_count > 1: raise Exception(f"到达最大尝试次数 1次")
             if right_swipe > max_swipe:
                 # 到底了则返回再来一次
                 for _ in range(right_swipe):
@@ -1828,6 +1837,10 @@ class BaseSchedulerSolver(BaseSolver):
         logger.debug(d)
         logger.debug(m)
         logger.debug(arg)
+        if "what" in d and d["what"] == "StageDrops":
+            global stage_drop
+            stage_drop["details"].append(d["details"]["drops"])
+            stage_drop["summary"] = d["details"]["stats"]
 
     def initialize_maa(self):
         # 若需要获取详细执行信息，请传入 callback 参数
@@ -1891,7 +1904,7 @@ class BaseSchedulerSolver(BaseSolver):
                 'shopping': True,
                 'buy_first': self.maa_config['buy_first'].split(","),
                 'blacklist': self.maa_config['blacklist'].split(","),
-                'credit_fight': self.maa_config['credit_fight'] and '' not in self.stages and self.credit_fight is None,
+                'credit_fight': self.maa_config['credit_fight'] and '' not in self.stages and self.credit_fight is None and len(self.stages)>0,
                 "force_shopping_if_credit_full": self.maa_config['mall_ignore_when_full']
             })
 
@@ -1919,6 +1932,9 @@ class BaseSchedulerSolver(BaseSolver):
                 stop_time = None
                 if one_time:
                     stop_time = datetime.now() + timedelta(minutes=5)
+                else:
+                    global stage_drop
+                    stage_drop = {"details": [], "summary": {}}
                 logger.info(f"MAA 启动")
                 hard_stop = False
                 while self.MAA.running():
@@ -1932,9 +1948,10 @@ class BaseSchedulerSolver(BaseSolver):
                         hard_stop = True
                     else:
                         time.sleep(5)
-                self.send_email('MAA停止')
                 if hard_stop:
-                    logger.info(f"由于maa任务并未完成，等待3分钟重启软件")
+                    hard_stop_msg = "Maa任务未完成，等待3分钟关闭游戏"
+                    logger.info(hard_stop_msg)
+                    self.send_email(hard_stop_msg)
                     time.sleep(180)
                     self.device.exit(self.package_name)
                 elif not one_time:
@@ -1944,6 +1961,10 @@ class BaseSchedulerSolver(BaseSolver):
                     if "Mall" in tasks and self.credit_fight is None:
                         self.credit_fight = get_server_weekday()
                         logger.info("记录首次信用作战")
+                    logger.debug(stage_drop)
+                    self.send_email(maa_template.render(stage_drop=stage_drop), "Maa停止", "html")
+                else:
+                    self.send_email("Maa单次任务停止")
             now_time = datetime.now().time()
             try:
                 min_time = datetime.strptime(self.maa_config['sleep_min'], "%H:%M").time()
@@ -2057,5 +2078,5 @@ class BaseSchedulerSolver(BaseSolver):
             except Exception as e:
                 logger.error("邮件发送失败")
                 logger.exception(e)
-                retry_time -= 1
+                retry_times -= 1
                 time.sleep(3)

@@ -52,16 +52,38 @@ maa_config = {
     "rogue_theme":"Sami",
     "buy_first":"招聘许可",
     "recruit_only_4": True,
+    "credit_fight": False,
+    "recruitment_time": None,
+    'mall_ignore_when_full': True,
+    "touch_option": "maatouch",
+    "conn_preset": "General",
+    "rogue": {
+        "squad": "指挥分队",
+        "roles": "取长补短",
+        "use_support": False,
+        "core_char":"",
+        "use_nonfriend_support": False,
+        "mode": 0,
+        "investment_enabled": True,
+        "stop_when_investment_full": False,
+        "refresh_trader_with_dice": True
+    },
     "sleep_min":"",
     "sleep_max":"",
-    "recruitment_time": False,
-    "weekly_plan":[{"weekday":"周一","stage":['AP-5'],"medicine":0},
-                   {"weekday":"周二","stage":['CE-6'],"medicine":0},
-                   {"weekday":"周三","stage":['1-7'],"medicine":0},
-                   {"weekday":"周四","stage":['AP-5'],"medicine":0},
-                   {"weekday":"周五","stage":['1-7'],"medicine":0},
-                   {"weekday":"周六","stage":['AP-5'],"medicine":0},
-                   {"weekday":"周日","stage":['AP-5'],"medicine":0}]
+    # "weekly_plan": [{"weekday": "周一", "stage": ['AP-5'], "medicine": 0},
+    #                 {"weekday": "周二", "stage": ['PR-D-1'], "medicine": 0},
+    #                 {"weekday": "周三", "stage": ['PR-C-2'], "medicine": 0},
+    #                 {"weekday": "周四", "stage": ['AP-5'], "medicine": 0},
+    #                 {"weekday": "周五", "stage": ['PR-A-2'], "medicine": 0},
+    #                 {"weekday": "周六", "stage": ['AP-5'], "medicine": 0},
+    #                 {"weekday": "周日", "stage": ['AP-5'], "medicine": 0}],
+    "weekly_plan": [{"weekday": "周一", "stage": [''], "medicine": 0},
+                    {"weekday": "周二", "stage": [''], "medicine": 0},
+                    {"weekday": "周三", "stage": [''], "medicine": 0},
+                    {"weekday": "周四", "stage": [''], "medicine": 0},
+                    {"weekday": "周五", "stage": [''], "medicine": 0},
+                    {"weekday": "周六", "stage": [''], "medicine": 0},
+                    {"weekday": "周日", "stage": [''], "medicine": 0}]
 }
 
 # 模拟器相关设置
@@ -258,6 +280,7 @@ def savelog():
     config.TAP_TO_LAUNCH["enable"] = False
     config.TAP_TO_LAUNCH["x"], config.TAP_TO_LAUNCH["y"] = 0,0
     #  com.hypergryph.arknights.bilibili   # Bilibili 服
+    config.ADB_BINARY = ['F:\\MAA-v4.20.0-win-x64\\adb\\platform-tools\\adb.exe']
     init_fhlr()
 
 
@@ -374,7 +397,7 @@ def simulate():
                 continue
             base_scheduler.run()
             reconnect_tries = 0
-        except ConnectionError as e:
+        except ConnectionError or ConnectionAbortedError as e:
             reconnect_tries += 1
             if reconnect_tries < reconnect_max_tries:
                 logger.warning(f'连接端口断开....正在重连....')

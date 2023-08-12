@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+from arknights_mower.solvers import record
 from arknights_mower.utils.conf import load_conf, save_conf, load_plan, write_plan
 from arknights_mower.__main__ import main
 from arknights_mower.utils.asst import Asst
@@ -269,3 +269,9 @@ def get_maa_conn_presets():
     except:
         presets = []
     return presets
+
+
+@app.route("/record/getMoodRatios")
+def get_mood_ratios():
+    return record.get_mood_ratios()
+
