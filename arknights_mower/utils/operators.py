@@ -24,7 +24,7 @@ class Operators(object):
         self.workaholic_agent = []
         self.plan = plan
         self.run_order_rooms = {}
-        self.clues =[]
+        self.clues = []
 
     def __repr__(self):
         return f'Operators(operators={self.operators})'
@@ -139,7 +139,7 @@ class Operators(object):
             if high_count > current_high or low_count > current_low:
                 return f'{key} 分组无法排班,宿舍可用高优先{current_high},低优先{current_low}->分组需要高优先{high_count},低优先{low_count}'
 
-    def get_current_room(self, room, bypass=False, current_index = None):
+    def get_current_room(self, room, bypass=False, current_index=None):
         room_data = {v.current_index: v for k, v in self.operators.items() if v.current_room == room}
         res = [obj['agent'] for obj in self.plan[room]]
         not_found = False
@@ -203,7 +203,8 @@ class Operators(object):
             for dorm in self.dorm:
                 if dorm.position[0] == current_room and dorm.position[1] == current_index and dorm.time is None:
                     return current_index
-        if agent.name == "菲亚梅塔" and (self.operators["菲亚梅塔"].time_stamp is None or self.operators["菲亚梅塔"].time_stamp< datetime.now()):
+        if agent.name == "菲亚梅塔" and (
+                self.operators["菲亚梅塔"].time_stamp is None or self.operators["菲亚梅塔"].time_stamp < datetime.now()):
             return current_index
 
     def refresh_dorm_time(self, room, index, agent):
@@ -228,6 +229,14 @@ class Operators(object):
                     dorm.name = ''
                     dorm.time = None
                 break
+
+    def correct_dorm(self):
+        for idx, dorm in enumerate(self.dorm):
+            if dorm.name != "" and dorm.name in self.operators.keys():
+                op = self.operators[dorm.name]
+                if not (dorm.position[0] == op.current_room and dorm.position[1] == op.current_index):
+                    self.dorm[idx].name = ""
+                    self.dorm[idx].time = None
 
     def get_refresh_index(self, room, plan):
         ret = []

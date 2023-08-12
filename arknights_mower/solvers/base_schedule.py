@@ -102,6 +102,7 @@ class BaseSchedulerSolver(BaseSolver):
         self.planned = False
         if self.op_data is None or self.op_data.operators is None:
             self.initialize_operators()
+        self.op_data.correct_dorm()
         for name in self.op_data.workaholic_agent:
             if name not in self.free_blacklist:
                 self.free_blacklist.append(name)
