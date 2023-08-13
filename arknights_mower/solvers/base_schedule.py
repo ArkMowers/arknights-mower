@@ -161,6 +161,9 @@ class BaseSchedulerSolver(BaseSolver):
                                                                                    current_low)
             if len(_plan.items()) > 0:
                 self.tasks.append(SchedulerTask(datetime.now(), task_plan=_plan))
+            else:
+                msg = f'无法完成 {self.task.type} 的排班，请检查替换组是否被占用'
+                self.send_email(msg)
         else:
             # 如果不满足，则找到并且执行最近一个type 包含 超过数量的high free 和low free 的 任务并且 干员没有 exaust_require 词条
             task_index = -1
@@ -1797,9 +1800,9 @@ class BaseSchedulerSolver(BaseSolver):
             task_names = ['planned', 'collect_notification', 'todo_task']
         if 'planned' in task_names:
             self.planned = True
-        if 'todo_task':
+        if 'todo_task' in task_names:
             self.todo_task = True
-        if 'collect_notification':
+        if 'collect_notification' in task_names:
             self.collect_notification = True
 
     def reload(self):
