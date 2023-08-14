@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>公共招募</title>
+    <style>
+      table,
+      th,
+      td {
+        border: 1px solid black;
+        border-collapse: collapse;
+      }
+    </style>
+  </head>
+  <body>
+    <table>
+      <td>Tags</td><td>预计干员名单</td>
+      {% for res_str in recruit_results %}
+      <tr>
+        <td>{{res_str.tags}}</td>
+        <td>
+        {% for operator in res_str.opers %}
+          {{operator.name}}
+        {% endfor %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  </body>
+</html>
