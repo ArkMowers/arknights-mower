@@ -14,6 +14,7 @@ from ..data import agent_list
 from ..utils import character_recognize, detector, segment
 from ..utils.digit_reader import DigitReader
 from ..utils.operators import Operators, Operator, Dormitory
+from ..utils.recruit import filter_result
 from ..utils.scheduler_task import SchedulerTask
 from ..utils import typealias as tp
 from ..utils.device import Device
@@ -25,14 +26,14 @@ from ..utils.datetime import get_server_weekday, the_same_time
 from paddleocr import PaddleOCR
 import cv2
 
-#借用__main__.py里的时间计算器
+# 借用__main__.py里的时间计算器
 from arknights_mower.__main__ import format_time
 
 ## Maa
 from arknights_mower.utils.asst import Asst, Message
 import json
 
-from arknights_mower.utils.email import task_template, maa_template
+from arknights_mower.utils.email import task_template, maa_template, recruit_template
 
 ocr = None
 
@@ -52,6 +53,12 @@ arrange_order_res = {
 }
 
 stage_drop = {}
+
+# 2023 8.11 公招选择tag
+recruit_tags_delected = {}
+recruit_tags_selected = {}
+recruit_results = {}
+recruit_special_tags = {}
 
 
 class BaseSchedulerSolver(BaseSolver):
@@ -1247,7 +1254,7 @@ class BaseSchedulerSolver(BaseSolver):
             except Exception as e:
                 retry -= 1
                 self.back_to_infrastructure()
-                self.wait_for_scene(Scene.INFRA_MAIN,"get_infra_scene")
+                self.wait_for_scene(Scene.INFRA_MAIN, "get_infra_scene")
                 if retry <= 0:
                     raise e
 
@@ -1638,8 +1645,9 @@ class BaseSchedulerSolver(BaseSolver):
                 if _name not in self.op_data.operators.keys() and _name in agent_list:
                     self.op_data.add(Operator(_name, ""))
                 update_time = False
-                agent =self.op_data.operators[_name]
-                if self.op_data.operators[_name].need_to_refresh(r=room) or (agent.current_room.startswith('dorm') and not room.startswith('dorm') and agent.is_high()):
+                agent = self.op_data.operators[_name]
+                if self.op_data.operators[_name].need_to_refresh(r=room) or (
+                        agent.current_room.startswith('dorm') and not room.startswith('dorm') and agent.is_high()):
                     _mood = self.read_accurate_mood(self.recog.img, cord=mood_p[i])
                     update_time = True
                 else:
@@ -1671,8 +1679,8 @@ class BaseSchedulerSolver(BaseSolver):
                 logger.info(f'重设 {_operator} 至空闲')
         return result
 
-    def refresh_current_room(self, room, current_index = None):
-        _current_room = self.op_data.get_current_room(room,current_index=current_index)
+    def refresh_current_room(self, room, current_index=None):
+        _current_room = self.op_data.get_current_room(room, current_index=current_index)
         if _current_room is None:
             self.get_agent_from_room(room)
             _current_room = self.op_data.get_current_room(room, True)
@@ -1707,7 +1715,8 @@ class BaseSchedulerSolver(BaseSolver):
                             working_room = self.op_data.operators[plan[room][0]].room
                             new_plan[working_room] = self.op_data.get_current_room(working_room, True)
                         if 'Current' in plan[room]:
-                            self.refresh_current_room(room,[index for index, value in enumerate(plan[room]) if value == "Current"])
+                            self.refresh_current_room(room, [index for index, value in enumerate(plan[room]) if
+                                                             value == "Current"])
                             for current_idx, _name in enumerate(plan[room]):
                                 if _name == 'Current':
                                     plan[room][current_idx] = self.op_data.get_current_room(room, True)[current_idx]
@@ -1845,6 +1854,23 @@ class BaseSchedulerSolver(BaseSolver):
             stage_drop["details"].append(d["details"]["drops"])
             stage_drop["summary"] = d["details"]["stats"]
 
+        elif "what" in d and d["what"] == "RecruitTagsSelected":
+            global recruit_tags_selected
+            recruit_tags_selected["tags"].append(d["details"]["tags"])
+
+        elif "what" in d and d["what"] == "RecruitResult":
+            global recruit_results
+            temp_dict = {
+                "tags": d["details"]["tags"],
+                "level": d["details"]["level"],
+                "result": d["details"]["result"],
+            }
+            recruit_results["results"].append(temp_dict)
+
+        elif "what" in d and d["what"] == "RecruitSpecialTag":
+            global recruit_special_tags
+            recruit_special_tags["tags"].append(d["details"]["tags"])
+
     def initialize_maa(self):
         # 若需要获取详细执行信息，请传入 callback 参数
         # 例如 asst = Asst(callback=my_callback)
@@ -1854,7 +1880,8 @@ class BaseSchedulerSolver(BaseSolver):
         self.MAA.set_instance_option(2, self.maa_config['touch_option'])
         # 请自行配置 adb 环境变量，或修改为 adb 可执行程序的路径
         # logger.info(self.device.client.device_id)
-        if self.MAA.connect(self.maa_config['maa_adb_path'], self.device.client.device_id, self.maa_config["conn_preset"]):
+        if self.MAA.connect(self.maa_config['maa_adb_path'], self.device.client.device_id,
+                            self.maa_config["conn_preset"]):
             logger.info("MAA 连接成功")
         else:
             logger.info("MAA 连接失败")
@@ -1907,7 +1934,9 @@ class BaseSchedulerSolver(BaseSolver):
                 'shopping': True,
                 'buy_first': self.maa_config['buy_first'].split(","),
                 'blacklist': self.maa_config['blacklist'].split(","),
-                'credit_fight': self.maa_config['credit_fight'] and '' not in self.stages and self.credit_fight is None and len(self.stages)>0,
+                'credit_fight': self.maa_config[
+                                    'credit_fight'] and '' not in self.stages and self.credit_fight is None and len(
+                    self.stages) > 0,
                 "force_shopping_if_credit_full": self.maa_config['mall_ignore_when_full']
             })
 
@@ -1938,6 +1967,15 @@ class BaseSchedulerSolver(BaseSolver):
                 else:
                     global stage_drop
                     stage_drop = {"details": [], "summary": {}}
+
+                    global recruit_tags_selected
+                    recruit_tags_selected = {"tags": []}
+
+                    global recruit_results
+                    recruit_results = {"results": []}
+
+                    global recruit_special_tags
+                    recruit_special_tags = {"tags": []}
                 logger.info(f"MAA 启动")
                 hard_stop = False
                 while self.MAA.running():
@@ -1966,6 +2004,20 @@ class BaseSchedulerSolver(BaseSolver):
                         logger.info("记录首次信用作战")
                     logger.debug(stage_drop)
                     self.send_email(maa_template.render(stage_drop=stage_drop), "Maa停止", "html")
+
+                    '''仅发送由maa选择的结果以及稀有tag'''
+                    if recruit_results:
+                        result = []
+                        # 稀有tag发送
+                        if recruit_special_tags['tags']:
+                            result = filter_result(recruit_special_tags['tags'], recruit_results["results"], 0)
+                            self.send_email(recruit_template.render(recruit_results=result), "出现稀有tag辣", "html")
+
+                        # 发送选择的tag
+                        if recruit_tags_selected['tags']:
+                            result = filter_result(recruit_tags_selected['tags'], recruit_results["results"], 1)
+                            self.send_email(recruit_template.render(recruit_results=result), "公招结果", "html")
+
                 else:
                     self.send_email("Maa单次任务停止")
             now_time = datetime.now().time()
