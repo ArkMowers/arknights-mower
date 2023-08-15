@@ -17,25 +17,53 @@ maa_rg_enable: 0
 maa_path: D:\MAA-v4.13.0-win-x64
 maa_weekly_plan:
   - medicine: 0
-    stage: ['']
+    stage: []
+    medicine_event: 0
+    stage_event: [修改之后点 使用活动配置]
+    medicine_default: 0
+    stage_default: [修改之后点 使用默认配置]
     weekday: 周一
   - medicine: 0
-    stage: ['']
+    stage: []
+    medicine_event: 0
+    stage_event: []
+    medicine_default: 0
+    stage_default: []
     weekday: 周二
   - medicine: 0
-    stage: ['']
+    stage: []
+    medicine_event: 0
+    stage_event: []
+    medicine_default: 0
+    stage_default: []
     weekday: 周三
   - medicine: 0
-    stage: ['']
+    stage: []
+    medicine_event: 0
+    stage_event: []
+    medicine_default: 0
+    stage_default: []
     weekday: 周四
   - medicine: 0
-    stage: ['']
+    stage: []
+    medicine_event: 0
+    stage_event: []
+    medicine_default: 0
+    stage_default: []
     weekday: 周五
   - medicine: 0
-    stage: ['']
+    stage: []
+    medicine_event: 0
+    stage_event: []
+    medicine_default: 0
+    stage_default: []
     weekday: 周六
   - medicine: 0
-    stage: ['']
+    stage: []
+    medicine_event: 0
+    stage_event: []
+    medicine_default: 0
+    stage_default: []
     weekday: 周日
 mail_enable: 0
 account: ''
