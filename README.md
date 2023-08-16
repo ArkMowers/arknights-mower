@@ -33,6 +33,9 @@
 - 支持邮件提醒
 - 自动使用菲亚梅塔恢复指定房间心情最低干员的心情并重回岗位（工作位置不变以避免重新暖机） [[参考使用场景](https://www.bilibili.com/video/BV1mZ4y1z7wx)]
 
+## 软件界面
+![246289794-97f7f9c6-6f7d-4504-bc45-48660282249b](https://github.com/ArkMowers/arknights-mower/assets/33809511/a6dd6f47-39df-41c4-b384-38c9efeefd6a)
+
 ## 安装
 
 在 [Releases](https://github.com/ArkMowers/arknights-mower/releases) 下载 Windows 可执行文件版本。
