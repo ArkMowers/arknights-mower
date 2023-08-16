@@ -1,7 +1,22 @@
 from __future__ import annotations
+
+import copy
+import json
+import smtplib
+import sys
+import time
+import warnings
+from datetime import datetime, timedelta
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from enum import Enum
+from typing import Optional
+
+import cv2
+
 from arknights_mower.data import agent_list
-from arknights_mower.utils import character_recognize, detector, segment
-from arknights_mower.utils import config
+from arknights_mower.utils import (character_recognize, config, detector,
+                                   segment)
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.asst import Asst, Message
 from arknights_mower.utils.datetime import get_server_weekday, the_same_time
@@ -9,24 +24,12 @@ from arknights_mower.utils.device.adb_client import ADBClient
 from arknights_mower.utils.device.minitouch import MiniTouch
 from arknights_mower.utils.device.scrcpy import Scrcpy
 from arknights_mower.utils.digit_reader import DigitReader
-from arknights_mower.utils.log import logger, save_screenshot, init_fhlr
-from arknights_mower.utils.operators import Operators, Operator
+from arknights_mower.utils.log import init_fhlr, logger, save_screenshot
+from arknights_mower.utils.operators import Operator, Operators
 from arknights_mower.utils.pipe import push_operators
 from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
 from arknights_mower.utils.scheduler_task import SchedulerTask
 from arknights_mower.utils.solver import BaseSolver
-from datetime import datetime, timedelta
-from enum import Enum
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from typing import Optional
-import copy
-import cv2
-import json
-import smtplib
-import sys
-import time
-import warnings
 
 
 def warn(*args, **kwargs):
@@ -35,8 +38,9 @@ def warn(*args, **kwargs):
 
 warnings.warn = warn
 
-from paddleocr import PaddleOCR
-from arknights_mower.strategy import Solver
+from paddleocr import PaddleOCR  # NOQA: E402
+
+from arknights_mower.strategy import Solver  # NOQA: E402
 
 官方服务器 = 'com.hypergryph.arknights'
 Bilibili服务器 = 'com.hypergryph.arknights.bilibili'
@@ -56,44 +60,45 @@ Bilibili服务器 = 'com.hypergryph.arknights.bilibili'
 截图存储目录 = './screenshot'
 每种截图的最大保存数量 = 10
 跑单前铃声提醒开关 = 开  # 跑单前铃声提醒开关，仅在 Windows 平台有效
+任务结束后退出游戏 = 开
 
 # 设置贸易站的房间以及跑单干员的具体位置
 # ※请注意手动换班后记得重新运行程序※
 跑单设置 = {
     'room_1_1': ['', '龙舌兰', '但书'],
-    'room_2_1': ['', '龙舌兰', '但书'],
+    'room_1_2': ['', '龙舌兰', '但书'],
 }
 
 邮件设置 = {
     '发信邮箱': "qqqqqqqqqqqqq@qq.com",
-    '授权码': 'qqqqqqqqqqqqqqqqq',  # 在QQ邮箱“账户设置-账户-开启SMTP服务”中，按照指示开启服务获得授权码
-    '收件人邮箱': ['langchuang@foxmail.com'],  # 收件人邮箱
+    '授权码': 'xxxxxxxxxxxxxxxx',  # 在QQ邮箱“账户设置-账户-开启SMTP服务”中，按照指示开启服务获得授权码
+    '收件人邮箱': ['name@example.com'],  # 收件人邮箱
     '邮件提醒开关': 开,  # 邮件提醒开关
 }
 
 MAA设置 = {
-    "MAA路径": 'K:\\MAA',  # 请设置为存放 dll 文件及资源的路径
-    "MAA_adb路径": "C:\\Program Files\\BlueStacks_bgp64\\.\\HD-Adb.exe",  # 请设置为模拟器的 adb 应用程序路径
-    "MAA_adb地址": ['127.0.0.1:5555'],  # 请设置为模拟器的 adb 地址
+    'MAA路径': 'C:/Programs Files/MAA',  # 请设置为存放 dll 文件及资源的路径
+    'MAA_adb路径': 'C:/Program Files/Netease/MuMuPlayer-12.0/shell/adb.exe',  # 请设置为模拟器的 adb 应用程序路径
+    'MAA_adb地址': ['127.0.0.1:7555'],  # 请设置为模拟器的 adb 地址
 
     # 以下配置，第一个设置为开的首先生效
-    "集成战略": 关,  # 集成战略开关
-    "生息演算": 关,  # 生息演算开关
-    "保全派驻": 关,  # 保全派驻开关
-    "周计划": [{"日子": "周一", "关卡": ['集成战略'], "应急理智药": 0},
-               {"日子": "周二", "关卡": ['集成战略'], "应急理智药": 0},
-               {"日子": "周三", "关卡": ['集成战略'], "应急理智药": 0},
-               {"日子": "周四", "关卡": ['集成战略'], "应急理智药": 0},
-               {"日子": "周五", "关卡": ['集成战略'], "应急理智药": 0},
-               {"日子": "周六", "关卡": ['集成战略'], "应急理智药": 0},
-               {"日子": "周日", "关卡": ['集成战略'], "应急理智药": 0}]
+    '集成战略': 关,  # 集成战略开关
+    '生息演算': 关,  # 生息演算开关
+    '保全派驻': 关,  # 保全派驻开关
+    '周计划': [
+        {'日子': '周一', '关卡': ['集成战略'], '应急理智药': 0},
+        {'日子': '周二', '关卡': ['集成战略'], '应急理智药': 0},
+        {'日子': '周三', '关卡': ['集成战略'], '应急理智药': 0},
+        {'日子': '周四', '关卡': ['集成战略'], '应急理智药': 0},
+        {'日子': '周五', '关卡': ['集成战略'], '应急理智药': 0},
+        {'日子': '周六', '关卡': ['集成战略'], '应急理智药': 0},
+        {'日子': '周日', '关卡': ['集成战略'], '应急理智药': 0}
+    ]
 }
 
 ################################################################################################
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 ################################################################################################
-if sys.platform == 'win32' and 跑单前铃声提醒开关:
-    import winsound  # Windows 铃声
 
 
 class 设备控制(object):
@@ -279,6 +284,7 @@ class 基建求解器(BaseSolver):
         self.run_order_rooms = {}
 
     def run(self) -> None:
+        self.back_to_index()
         self.error = 关
         if len(self.任务列表) == 0:
             self.recog.update()
@@ -414,7 +420,8 @@ class 基建求解器(BaseSolver):
                 # 如果没有当前房间数据
                 if 'plan' not in v.keys():
                     v['plan'] = self.干员信息.get_current_room(k)
-                if self.find_next_task(task_type=k) is not None: continue;
+                if self.find_next_task(task_type=k) is not None:
+                    continue
                 in_out_plan = {k: ['Current'] * len(plan[k])}
                 for idx, x in enumerate(plan[k]):
                     if '但书' in x['replacement'] or '龙舌兰' in x['replacement']:
@@ -431,11 +438,12 @@ class 基建求解器(BaseSolver):
         for room in plan.keys():
             for idx, data in enumerate(plan[room]):
                 self.干员信息.add(Operator(data["agent"], room, idx, data["group"], data["replacement"], 'high',
-                                           operator_type="high"))
+                                       operator_type="high"))
         added = []
         # 跑单
         for x, y in self.plan.items():
-            if not x.startswith('room'): continue
+            if not x.startswith('room'):
+                continue
             if any(('但书' in obj['replacement'] or '龙舌兰' in obj['replacement']) for obj in y):
                 self.run_order_rooms[x] = {}
 
@@ -627,8 +635,8 @@ class 基建求解器(BaseSolver):
                     self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=1)
                     error_count += 1
                 加速后接单时间 = self.double_read_time((int(self.recog.w * 650 / 2496), int(self.recog.h * 660 / 1404),
-                                                        int(self.recog.w * 815 / 2496), int(self.recog.h * 710 / 1404)),
-                                                       use_digit_reader=开)
+                                                 int(self.recog.w * 815 / 2496), int(self.recog.h * 710 / 1404)),
+                                                use_digit_reader=开)
                 self.任务列表[0].time = 加速后接单时间 - timedelta(seconds=(self.跑单提前运行时间))
                 logger.info(room + ' 加速后接单时间为：' + 加速后接单时间.strftime("%H:%M:%S"))
                 if not_customize:
@@ -639,7 +647,8 @@ class 基建求解器(BaseSolver):
                         raise Exception('未成功进入订单界面')
                     self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=1)
                     error_count += 1
-        if not_return: return
+        if not_return:
+            return
         self.recog.update()
         logger.info('返回基建主界面')
         self.back(interval=2, rebuild=关)
@@ -734,7 +743,8 @@ class 基建求解器(BaseSolver):
         logger.info(f'上次进入房间为：{self.last_room},本次房间为：{room}')
         self.switch_arrange_order(2, "asc")
         while len(agent) > 0:
-            if retry_count > 3: raise Exception(f"到达最大尝试次数 3次")
+            if retry_count > 3:
+                raise Exception(f"到达最大尝试次数 3次")
             if right_swipe > max_swipe:
                 # 到底了则返回再来一次
                 for _ in range(right_swipe):
@@ -748,7 +758,8 @@ class 基建求解器(BaseSolver):
                 changed, ret = self.scan_agant(agent)
                 if changed:
                     selected.extend(changed)
-                    if len(agent) == 0: break
+                    if len(agent) == 0:
+                        break
                     index_change = 开
             first_time = 关
 
@@ -768,7 +779,8 @@ class 基建求解器(BaseSolver):
                 ed = ret[0][1][1]  # 终点
                 self.swipe_noinertia(st, (ed[0] - st[0], 0))
                 right_swipe += 1
-            if len(agent) == 0: break;
+            if len(agent) == 0:
+                break
 
         # 排序
         if len(agents) != 1:
@@ -805,9 +817,10 @@ class 基建求解器(BaseSolver):
             self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
             error_count += 1
         length = len(self.plan[room])
-        if length > 3: self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, self.recog.h * 0.45), duration=500,
-                                  interval=1,
-                                  rebuild=开)
+        if length > 3:
+            self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, self.recog.h * 0.45), duration=500,
+                       interval=1,
+                       rebuild=开)
         name_p = [((1460, 155), (1700, 210)), ((1460, 370), (1700, 420)), ((1460, 585), (1700, 630)),
                   ((1460, 560), (1700, 610)), ((1460, 775), (1700, 820))]
         result = []
@@ -849,7 +862,7 @@ class 基建求解器(BaseSolver):
             result.append(data)
         for _operator in self.干员信息.operators.keys():
             if self.干员信息.operators[_operator].current_room == room and _operator not in [res['agent'] for res in
-                                                                                             result]:
+                                                                                         result]:
                 self.干员信息.operators[_operator].current_room = ''
                 self.干员信息.operators[_operator].current_index = -1
                 logger.info(f'重设 {_operator} 至空闲')
@@ -892,7 +905,7 @@ class 基建求解器(BaseSolver):
                                     plan[room][current_idx] = self.干员信息.get_current_room(room, 开)[current_idx]
                         if room in self.run_order_rooms and len(new_plan) == 0:
                             if 'plan' in self.run_order_rooms[room] and plan[room] != self.run_order_rooms[room][
-                                'plan']:
+                                    'plan']:
                                 run_order_task = self.find_next_task(
                                     compare_time=datetime.now() + timedelta(minutes=10),
                                     task_type=room, compare_type=">")
@@ -909,7 +922,7 @@ class 基建求解器(BaseSolver):
                     self.recog.update()
                     if len(new_plan) == 1:
                         龙舌兰_但书进驻前的等待时间 = (self.任务列表[
-                                                           0].time - datetime.now()).total_seconds() + self.跑单提前运行时间 - self.更换干员前缓冲时间
+                            0].time - datetime.now()).total_seconds() + self.跑单提前运行时间 - self.更换干员前缓冲时间
                         if 龙舌兰_但书进驻前的等待时间 > 0:
                             logger.info('龙舌兰、但书进驻前的等待时间为：' + str(龙舌兰_但书进驻前的等待时间) + ' 秒')
                             self.sleep(龙舌兰_但书进驻前的等待时间)
@@ -1275,28 +1288,22 @@ def 运行():
                     logger.warning("※请注意手动换班后记得重新运行程序※")
                     for i in range(len(任务列表)):
                         logger.warning(任务列表[i].type + ' 开始跑单的时间为：' + 任务列表[i].time.strftime("%H:%M:%S"))
+                    logger.warning(f'休息{sleep_time // 60}分{sleep_time % 60:.0f}秒')
 
                 # 如果有高强度重复任务,任务间隔时间超过10分钟则启动MAA
                 if (MAA设置['集成战略'] or MAA设置['生息演算']) and (sleep_time > 600):
                     基建状态.maa_plan_solver()
 
                 elif sleep_time > 0:
-                    # 如果任务间隔时间超过5分钟则关闭游戏
-                    if sleep_time > 300:
-                        基建状态.device.exit(基建状态.服务器)
-                    # 任务开始前铃声提醒
-                    if sys.platform == 'win32' and 跑单前铃声提醒开关 and sleep_time > 150:
-                        time.sleep(sleep_time - 150)
-                        winsound.PlaySound("SystemAsterisk", winsound.SND_ALIAS)
-                        winsound.PlaySound("SystemAsterisk", winsound.SND_ALIAS)
-                        time.sleep(150)
-                        winsound.PlaySound("SystemAsterisk", winsound.SND_ALIAS)
-                    else:
-                        time.sleep(sleep_time)
+                    if 任务结束后退出游戏:
+                        # 如果任务间隔时间超过5分钟则关闭游戏
+                        if sleep_time > 300:
+                            基建状态.device.exit(基建状态.服务器)
+                    time.sleep(sleep_time)
 
             if len(基建状态.任务列表) > 0 and 基建状态.任务列表[0].type.split('_')[0] == 'maa':
                 基建状态.maa_plan_solver((基建状态.任务列表[0].type.split('_')[1]).split(','),
-                                         one_time=开)
+                                     one_time=开)
                 continue
             基建状态.run()
             reconnect_tries = 0
@@ -1322,4 +1329,3 @@ def 运行():
 
 日志设置()
 运行()
-
