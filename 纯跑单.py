@@ -1287,7 +1287,7 @@ def 运行():
                     logger.warning("※请注意手动换班后记得重新运行程序※")
                     for i in range(len(任务列表)):
                         logger.warning(任务列表[i].type + ' 开始跑单的时间为：' + 任务列表[i].time.strftime("%H:%M:%S"))
-                    logger.warning(f'休息{sleep_time // 60}分{sleep_time % 60:.0f}秒')
+                    logger.warning(f'休息{int(sleep_time / 60)}分{sleep_time % 60:.0f}秒')
 
                 # 如果有高强度重复任务,任务间隔时间超过10分钟则启动MAA
                 if (MAA设置['集成战略'] or MAA设置['生息演算']) and (sleep_time > 600):
