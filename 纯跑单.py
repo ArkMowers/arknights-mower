@@ -59,7 +59,6 @@ Bilibili服务器 = 'com.hypergryph.arknights.bilibili'
 日志存储目录 = './log'
 截图存储目录 = './screenshot'
 每种截图的最大保存数量 = 10
-跑单前铃声提醒开关 = 开  # 跑单前铃声提醒开关，仅在 Windows 平台有效
 任务结束后退出游戏 = 开
 
 # 设置贸易站的房间以及跑单干员的具体位置
