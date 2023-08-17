@@ -283,7 +283,6 @@ class 基建求解器(BaseSolver):
         self.run_order_rooms = {}
 
     def run(self) -> None:
-        self.back_to_index()
         self.error = 关
         if len(self.任务列表) == 0:
             self.recog.update()
@@ -1299,6 +1298,8 @@ def 运行():
                         if sleep_time > 300:
                             基建状态.device.exit(基建状态.服务器)
                     time.sleep(sleep_time)
+                    if sleep_time > 300:
+                        基建状态.back_to_index()
 
             if len(基建状态.任务列表) > 0 and 基建状态.任务列表[0].type.split('_')[0] == 'maa':
                 基建状态.maa_plan_solver((基建状态.任务列表[0].type.split('_')[1]).split(','),
