@@ -560,7 +560,6 @@ class BaseSchedulerSolver(BaseSolver):
                     fix_plan[moved_room][moved_index] = self.current_plan[moved_room][moved_index]["agent"]
         if len(fix_plan.keys()) > 0:
             # 不能在房间里安排同一个人 如果有重复则换成Free
-            # 还要修复确保同一组在同时上班
             remove_keys = []
             logger.debug(f"Fix_plan {str(fix_plan)}")
             for key in fix_plan:
@@ -573,6 +572,21 @@ class BaseSchedulerSolver(BaseSolver):
             if len(remove_keys) > 0:
                 for item in remove_keys:
                     del fix_plan[item]
+            # 还要确保同一组在同时上班
+            for g in self.op_data.groups:
+                g_agents = self.op_data.groups[g]
+                is_any_working = next((x for x in g_agents if self.op_data.operators[x].current_room!="" and not self.op_data.operators[x].current_room.startswith('dorm')), None)
+                if is_any_working is not None:
+                    # 确保所有人同时在上班
+                    is_any_resting = next((x for x in g_agents if self.op_data.operators[x].current_room == "" or self.op_data.operators[x].current_room.startswith('dorm')), None)
+                    if is_any_resting is not None:
+                        # 生成纠错任务
+                        for x in g_agents:
+                            if self.op_data.operators[x].current_room == "" or self.op_data.operators[x].current_room.startswith('dorm'):
+                                room = self.op_data.operators[x].room
+                                if room not in fix_plan:
+                                    fix_plan[room] = ['Current']*len(plan[room])
+                                fix_plan[room][self.op_data.operators[x].index] = x
             if len(fix_plan.keys()) > 0:
                 self.tasks.append(SchedulerTask(task_plan=fix_plan))
                 logger.info(f'纠错任务为-->{fix_plan}')

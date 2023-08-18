@@ -406,7 +406,7 @@ def simulate():
                     try:
                         base_scheduler = inialize([], base_scheduler)
                         break
-                    except RuntimeError as ce:
+                    except RuntimeError or ConnectionError or ConnectionAbortedError as ce:
                         logger.error(ce)
                         restart_simulator(simulator)
                         continue
