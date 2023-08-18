@@ -174,4 +174,7 @@ dmypy.json
 ###JetBrains Product###
 .idea/*
 
+### 命令行运行产生的/tmp/data.db
+/tmp/
+
 # End of https://www.toptal.com/developers/gitignore/api/visualstudiocode
