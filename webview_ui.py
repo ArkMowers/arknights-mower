@@ -88,6 +88,7 @@ if __name__ == "__main__":
         f"http://127.0.0.1:{port}",
         width=width,
         height=height,
+        text_select=True,
     )
 
     window.events.resized += on_resized
