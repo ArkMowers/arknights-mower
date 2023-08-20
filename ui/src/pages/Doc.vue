@@ -8,7 +8,7 @@ const doc_url = 'https://arkmowers.github.io/arknights-mower/'
       {{ doc_url }}
     </n-button>
   </div>
-  <iframe :src="doc_url"></iframe>
+  <iframe :src="doc_url" sandbox="allow-popups allow-scripts"></iframe>
 </template>
 
 <style scoped>
