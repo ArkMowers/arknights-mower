@@ -456,7 +456,7 @@ const avatar_bg = computed(() => {
               :render-label="renderLabel"
             />
           </td>
-          <td class="select-label">组：</td>
+          <td class="select-label">组<help-text> <div>可以将有联动基建技能的干员或者心情掉率相等的干员编入同组</div></help-text></td>
           <td class="table-space group">
             <n-input v-model:value="plan[facility].plans[i - 1].group"></n-input>
           </td>
