@@ -11,6 +11,7 @@ declare module '@vue/runtime-core' {
   export interface GlobalComponents {
     Clue: typeof import('./src/components/Clue.vue')['default']
     Email: typeof import('./src/components/Email.vue')['default']
+    HelpText: typeof import('./src/components/HelpText.vue')['default']
     MaaBasic: typeof import('./src/components/MaaBasic.vue')['default']
     MaaRecruit: typeof import('./src/components/MaaRecruit.vue')['default']
     MaaRogue: typeof import('./src/components/MaaRogue.vue')['default']
@@ -37,6 +38,7 @@ declare module '@vue/runtime-core' {
     NTabPane: typeof import('naive-ui')['NTabPane']
     NTabs: typeof import('naive-ui')['NTabs']
     NTimePicker: typeof import('naive-ui')['NTimePicker']
+    NTooltip: typeof import('naive-ui')['NTooltip']
     PlanEditor: typeof import('./src/components/PlanEditor.vue')['default']
   }
 }

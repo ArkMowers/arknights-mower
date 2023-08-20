@@ -69,7 +69,13 @@ async function select_simulator_folder() {
           </td>
         </tr>
         <tr>
-          <td>adb连接地址：</td>
+          <td>
+            adb连接地址
+            <help-text>
+              <div>不同模拟器adb地址不同。如不填，系统会自动去寻找adb device中的第一个。</div>
+              <div>夜神：<code>127.0.0.1:62001</code></div>
+            </help-text>
+          </td>
           <td colspan="2">
             <n-input v-model:value="adb"></n-input>
           </td>
@@ -220,7 +226,7 @@ async function select_simulator_folder() {
   width: 100%;
 
   td:nth-child(1) {
-    width: 100px;
+    width: 120px;
   }
 
   td:nth-child(3) {
