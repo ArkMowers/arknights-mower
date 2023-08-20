@@ -8,6 +8,9 @@
     <n-global-style />
     <n-dialog-provider>
       <n-tabs type="segment" class="tabs">
+        <n-tab-pane name="doc" tab="文档">
+          <doc />
+        </n-tab-pane>
         <n-tab-pane name="home" tab="运行日志">
           <home />
         </n-tab-pane>
@@ -31,6 +34,7 @@
 <script setup>
 import { onMounted, inject } from 'vue'
 import { storeToRefs } from 'pinia'
+import doc from '@/pages/Doc.vue'
 import home from '@/pages/Home.vue'
 import plan from '@/pages/Plan.vue'
 import advanced from '@/pages/Advanced.vue'
