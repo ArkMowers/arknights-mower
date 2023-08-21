@@ -21,7 +21,8 @@ const {
   theme,
   resting_threshold,
   tap_to_launch_game,
-  exit_game_when_idle
+  exit_game_when_idle,
+  screenshot
 } = storeToRefs(config_store)
 
 const { operators } = storeToRefs(plan_store)
@@ -158,6 +159,12 @@ async function select_simulator_folder() {
           </td>
         </tr>
         <tr>
+          <td>截图数量：</td>
+          <td colspan="2">
+            <n-input-number v-model:value="screenshot" />
+          </td>
+        </tr>
+        <tr>
           <td>显示主题：</td>
           <td colspan="2">
             <n-radio-group v-model:value="theme">
@@ -269,7 +276,7 @@ async function select_simulator_folder() {
 
   td {
     &:nth-child(1) {
-      width: 120px;
+      width: 130px;
     }
     &:nth-child(3) {
       padding-left: 12px;
