@@ -87,18 +87,23 @@ async function select_simulator_folder() {
           </td>
         </tr>
         <tr v-if="simulator.name">
-          <td>多开编号            <help-text>
-              <div>除夜神单开选择-1以外，其他的按照改模拟器多开器中的序号。</div>              
-            </help-text></td>
+          <td>
+            多开编号
+            <help-text>
+              <div>除夜神单开选择-1以外，其他的按照改模拟器多开器中的序号。</div>
+            </help-text>
+          </td>
           <td colspan="2">
             <n-input-number v-model:value="simulator.index"></n-input-number>
           </td>
         </tr>
         <tr v-if="simulator.name">
-          <td>模拟器文件夹<help-text>
+          <td>
+            模拟器文件夹<help-text>
               <div>夜神：写到bin文件夹</div>
               <div>MuMu12: 写到shell文件夹</div>
-            </help-text></td>
+            </help-text>
+          </td>
           <td>
             <n-input v-model:value="simulator.simulator_folder"></n-input>
           </td>
@@ -168,17 +173,21 @@ async function select_simulator_folder() {
     <n-card title="基建设置">
       <table class="riic-conf">
         <tr>
-          <td>宿舍黑名单<help-text>
-              <div>不希望进行填充宿舍的干员</div>                            
-            </help-text></td>
+          <td>
+            宿舍黑名单<help-text>
+              <div>不希望进行填充宿舍的干员</div>
+            </help-text>
+          </td>
           <td colspan="2">
             <n-select multiple filterable tag :options="operators" v-model:value="free_blacklist" />
           </td>
         </tr>
         <tr>
-          <td>跑单前置延时<help-text>
-              <div>推荐范围5-10</div>                            
-            </help-text></td>
+          <td>
+            跑单前置延时<help-text>
+              <div>推荐范围5-10</div>
+            </help-text>
+          </td>
           <td>
             <n-input-number v-model:value="run_order_delay" />
           </td>
@@ -191,10 +200,12 @@ async function select_simulator_folder() {
           </td>
         </tr>
         <tr>
-          <td>无人机使用阈值<help-text>
-              <div>如加速贸易，推荐大于 贸易站数 x 10 + 92</div>                            
-              <div>如加速制造，推荐大于 贸易站数 x 10</div>    
-            </help-text></td>
+          <td>
+            无人机使用阈值<help-text>
+              <div>如加速贸易，推荐大于 贸易站数 x 10 + 92</div>
+              <div>如加速制造，推荐大于 贸易站数 x 10</div>
+            </help-text>
+          </td>
           <td colspan="2">
             <n-input-number v-model:value="drone_count_limit" />
           </td>
@@ -212,11 +223,13 @@ async function select_simulator_folder() {
           </td>
         </tr>
         <tr>
-          <td>心情阈值：<help-text>
-              <div>2电站推荐大于0.5</div>                                          
-              <div>3电站推荐大于0.75</div>                                          
-              <div>即将大更新推荐设置成0.8</div>                                          
-            </help-text></td>
+          <td>
+            心情阈值：<help-text>
+              <div>2电站推荐大于0.5</div>
+              <div>3电站推荐大于0.75</div>
+              <div>即将大更新推荐设置成0.8</div>
+            </help-text>
+          </td>
           <td colspan="2">
             <div class="threshold">
               <n-slider v-model:value="resting_threshold" :step="0.05" :min="0.5" :max="0.8" />

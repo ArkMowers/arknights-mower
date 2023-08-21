@@ -55,10 +55,13 @@ async function open_plan_file() {
   <div class="home-container external-container no-grow">
     <table>
       <tr>
-        <td>令夕模式（令夕上班时起作用）<help-text> <div>启动Mower前需要手动对齐心情</div>
-          <div>感知：夕心情-令心情=12</div>
-          <div>烟火：令心情-夕心情=12</div>
-          <div>均衡：夕令心情一样</div> </help-text>
+        <td>
+          令夕模式（令夕上班时起作用）<help-text>
+            <div>启动Mower前需要手动对齐心情</div>
+            <div>感知：夕心情-令心情=12</div>
+            <div>烟火：令心情-夕心情=12</div>
+            <div>均衡：夕令心情一样</div>
+          </help-text>
         </td>
         <td colspan="3">
           <n-radio-group v-model:value="ling_xi">
@@ -71,31 +74,41 @@ async function open_plan_file() {
         </td>
       </tr>
       <tr>
-        <td>最大组人数<help-text> <div>请查阅文档</div></help-text></td>
+        <td>
+          最大组人数<help-text> <div>请查阅文档</div></help-text>
+        </td>
         <td>
           <n-input v-model:value="max_resting_count"></n-input>
         </td>
       </tr>
       <tr>
-        <td>需要回满心情的干员<help-text> <div>请查阅文档</div>          </help-text></td>
+        <td>
+          需要回满心情的干员<help-text> <div>请查阅文档</div> </help-text>
+        </td>
         <td colspan="3">
           <n-select multiple filterable tag :options="operators" v-model:value="rest_in_full" />
         </td>
       </tr>
       <tr>
-        <td>需要用尽心情的干员<help-text> <div>仅推荐写入具有暖机技能的干员</div></help-text></td>
+        <td>
+          需要用尽心情的干员<help-text> <div>仅推荐写入具有暖机技能的干员</div></help-text>
+        </td>
         <td colspan="3">
           <n-select multiple filterable tag :options="operators" v-model:value="exhaust_require" />
         </td>
       </tr>
       <tr>
-        <td>0心情工作的干员<help-text> <div>心情涣散状态任能触发技能的干员</div></help-text></td>
+        <td>
+          0心情工作的干员<help-text> <div>心情涣散状态任能触发技能的干员</div></help-text>
+        </td>
         <td colspan="3">
           <n-select multiple filterable tag :options="operators" v-model:value="workaholic" />
         </td>
       </tr>
       <tr>
-        <td>宿舍低优先级干员<help-text> <div>请查阅文档</div></help-text></td>
+        <td>
+          宿舍低优先级干员<help-text> <div>请查阅文档</div></help-text>
+        </td>
         <td colspan="3">
           <n-select multiple filterable tag :options="operators" v-model:value="resting_priority" />
         </td>
