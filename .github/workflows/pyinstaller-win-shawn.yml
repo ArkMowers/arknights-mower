@@ -46,6 +46,7 @@ jobs:
         run: |
           python -m venv venv
           venv\Scripts\pip install -r requirements.txt
+          venv\Scripts\pip install pyinstaller
       - name: Patch Paddle
         working-directory: ./main
         shell: cmd
