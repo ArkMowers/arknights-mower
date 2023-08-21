@@ -29,7 +29,7 @@ def main(c, p, o={}, child_conn=None):
     operators = o
     config.LOGFILE_PATH = './log'
     config.SCREENSHOT_PATH = './screenshot'
-    config.SCREENSHOT_MAXNUM = 5
+    config.SCREENSHOT_MAXNUM = conf['screenshot']
     config.ADB_DEVICE = [conf['adb']]
     config.ADB_CONNECT = [conf['adb']]
     config.ADB_CONNECT = [conf['adb']]
