@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - dev_shawn
+  pull_request:
+    types:
+      - opened
+      - synchronize
+  workflow_dispatch:  # 添加 workflow_dispatch 事件触发器
 
 jobs:
   build-win-amd64:
