@@ -8,23 +8,23 @@
     <n-global-style />
     <n-dialog-provider>
       <n-tabs type="segment" class="tabs">
-        <n-tab-pane name="doc" tab="文档">
-          <doc />
-        </n-tab-pane>
-        <n-tab-pane name="home" tab="运行日志">
+        <n-tab-pane name="home" tab="日志">
           <home />
         </n-tab-pane>
-        <n-tab-pane name="basic" tab="基础设置">
+        <n-tab-pane name="basic" tab="设置">
           <advanced />
         </n-tab-pane>
-        <n-tab-pane name="plan" tab="排班编辑">
+        <n-tab-pane name="plan" tab="排班">
           <plan />
         </n-tab-pane>
-        <n-tab-pane name="external" tab="任务设置">
+        <n-tab-pane name="external" tab="任务">
           <external />
         </n-tab-pane>
         <n-tab-pane name="record" tab="报表">
           <record />
+        </n-tab-pane>
+        <n-tab-pane name="doc" tab="文档">
+          <doc />
         </n-tab-pane>
       </n-tabs>
     </n-dialog-provider>
