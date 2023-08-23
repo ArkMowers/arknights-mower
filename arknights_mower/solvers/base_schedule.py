@@ -598,18 +598,30 @@ class BaseSchedulerSolver(BaseSolver):
         if self.find_next_task(datetime.now() + timedelta(seconds=600)) is not None:
             return
         if len(self.op_data.run_order_rooms) > 0:
-            # 处理龙舌兰和但书的插拔
-            for k, v in self.op_data.run_order_rooms.items():
-                # 如果没有当前房间数据
-                if 'plan' not in v.keys():
-                    v['plan'] = self.op_data.get_current_room(k)
-                if self.find_next_task(task_type=k) is not None: continue;
-                in_out_plan = {k: ['Current'] * len(plan[k])}
-                for idx, x in enumerate(plan[k]):
-                    if '但书' in x['replacement'] or '龙舌兰' in x['replacement']:
-                        in_out_plan[k][idx] = x['replacement'][0]
-                self.tasks.append(
-                    SchedulerTask(time=self.get_run_roder_time(k), task_plan=in_out_plan, task_type=k))
+            # 判定宿舍是否满员
+            valid = True
+            for key in plan.keys():
+                if 'dormitory' in key:
+                    dorm = self.op_data.get_current_room(key)
+                    if dorm is not None and len(dorm) == 5:
+                        continue
+                    else:
+                        valid = False
+                        logger.debug("宿舍未满员,跳过读取插拔时间")
+                        break
+            if valid:
+                # 处理龙舌兰和但书的插拔
+                for k, v in self.op_data.run_order_rooms.items():
+                    # 如果没有当前房间数据
+                    if 'plan' not in v.keys():
+                        v['plan'] = self.op_data.get_current_room(k)
+                    if self.find_next_task(task_type=k) is not None: continue;
+                    in_out_plan = {k: ['Current'] * len(plan[k])}
+                    for idx, x in enumerate(plan[k]):
+                        if '但书' in x['replacement'] or '龙舌兰' in x['replacement']:
+                            in_out_plan[k][idx] = x['replacement'][0]
+                    self.tasks.append(
+                        SchedulerTask(time=self.get_run_roder_time(k), task_plan=in_out_plan, task_type=k))
         # 准备数据
         logger.debug(self.op_data.print())
         if self.read_mood:
@@ -2079,7 +2091,8 @@ class BaseSchedulerSolver(BaseSolver):
                         if self.maa_config['copilot_file_location'] == "" or self.maa_config[
                             'copilot_loop_times'] <= 0 or self.maa_config['sss_type'] not in [1, 2]:
                             raise Exception("保全派驻配置无法找到")
-                        if self.to_sss(self.maa_config['sss_type']) is not None:
+                        ec_type = self.maa_config['ec_type'] if 'ec_type' in self.maa_config else 2
+                        if self.to_sss(self.maa_config['sss_type'],ec_type) is not None:
                             raise Exception("保全派驻导航失败")
                         self.MAA.append_task('SSSCopilot', {
                             'filename': self.maa_config['copilot_file_location'],
