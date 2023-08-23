@@ -17,7 +17,8 @@ def save_action_to_sqlite_decorator(func):
 
         # 调用原函数
         result = func(self, name, mood, current_room, current_index, update_time)
-
+        if not update_time:
+            return
         # 保存到数据库
         current_time = datetime.now()
         database_path = os.path.join('tmp', 'data.db')
