@@ -1363,10 +1363,13 @@ def 跑单任务查询(icon: pystray.Icon):
 def 退出程序(icon, item):
     icon.stop()  # 对象停止方法
     pid = os.getpid()  # 获取当前进程ID
-    窗口.destroy()  # 关闭窗口
+    try:
+        窗口.destroy()  # 关闭窗口
+    except Exception:
+        pass
     try:  # 杀掉后台进程
         os.system('taskkill -f -pid %s' % pid)
-    except:
+    except Exception:
         pass
 
 
