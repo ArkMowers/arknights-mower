@@ -730,7 +730,7 @@ class BaseSchedulerSolver(BaseSolver):
                 _high += 1
         logger.debug(f"需求高效:{_high},低效：{_low}")
         # 排序
-        agents.sort(key=lambda y: self.op_data.operators[y].current_mood() - self.op_data.operators[y].lower_limit,
+        agents.sort(key=lambda y: (self.op_data.operators[y].current_room == "factory",self.op_data.operators[y].current_mood() - self.op_data.operators[y].lower_limit),
                     reverse=False)
         # 进行位置数量的初步判定
         # 对于252可能需要进行额外判定，由于 low_free 性质等同于 high_free
