@@ -240,7 +240,9 @@ def agent_name(__img, height, draw: bool = False):
             if (res is not None) and res in agent_list:
                 name = res
             else:
-                raise Exception("识别错误")
+                raise Exception(f"识别错误: {res}")
     except Exception as e:
+        logger.warning(e)
+        logger.warning(ocr[0][1])
         saveimg(__img, 'failure_agent')
     return name
