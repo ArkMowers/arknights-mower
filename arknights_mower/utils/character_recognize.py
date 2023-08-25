@@ -242,7 +242,8 @@ def agent_name(__img, height, draw: bool = False):
             else:
                 raise Exception(f"识别错误: {res}")
     except Exception as e:
-        logger.warning(e)
-        logger.warning(ocr[0][1])
-        saveimg(__img, 'failure_agent')
+        if len(ocr)>0:
+            logger.warning(e)
+            logger.warning(ocr[0][1])
+            saveimg(__img, 'failure_agent')
     return name
