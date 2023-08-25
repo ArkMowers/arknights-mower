@@ -79,9 +79,9 @@ Bilibili服务器 = 'com.hypergryph.arknights.bilibili'
 # 悬浮字幕窗口设置
 # 双击字幕可关闭字幕 在托盘可重新打开
 悬浮字幕开关 = True
-窗口宽度 = 窗口.winfo_screenwidth() / 3
-窗口高度 = 窗口.winfo_screenheight() / 7
-字幕字号 = str(int(窗口.winfo_screenheight() / 30))  # '50'
+窗口宽度 = 窗口.winfo_screenwidth() / 2
+窗口高度 = 窗口.winfo_screenheight() / 4
+字幕字号 = int(窗口.winfo_screenheight() / 18)  # '50'
 字幕字体 = '楷体'
 字幕颜色 = '#9966FF'  # 16进制颜色代码
 
@@ -1378,6 +1378,18 @@ def 关闭窗口(icon: pystray.Icon):
     窗口.withdraw()
 
 
+def 缩放字幕(event):
+    global 字幕字号
+    if event.delta > 0:
+        字幕字号 += 1
+    else:
+        字幕字号 -= 1
+    if 字幕字号 < 1:
+        字幕字号 = 1
+    elif 字幕字号 > 90:
+        字幕字号 = 90
+
+
 def 跑单任务查询(icon: pystray.Icon):
     icon.notify(任务提示, "Mower跑单任务列表")
 
@@ -1419,7 +1431,7 @@ def 更新字幕():
             字幕 += '\n跑单即将开始！'
     label.config(text=字幕, font=(字幕字体 + ' ' + 字幕字号), bg=字幕颜色,
                  fg=字幕颜色[:6] + str(int(字幕颜色[5] == '0')))
-    窗口.after(5000, 更新字幕)
+    窗口.after(100, 更新字幕)
 
 
 托盘菜单 = (MenuItem(任务提示, 跑单任务查询, default=True, visible=False),
@@ -1431,7 +1443,7 @@ def 更新字幕():
 if 悬浮字幕开关:
     窗口.geometry("%dx%d+%d+%d" % (窗口宽度, 窗口高度,
                                    (窗口.winfo_screenwidth() - 窗口宽度) / 2,
-                                   (窗口.winfo_screenheight() - 窗口高度) / 2))
+                                   窗口.winfo_screenheight() * 3 / 4 - 窗口高度/ 2))
     窗口.overrideredirect(True)
     窗口.title("窗口")
     窗口.attributes("-topmost", 1)
@@ -1443,6 +1455,7 @@ if 悬浮字幕开关:
     label.bind("<Button-1>", 选中窗口)
     label.bind("<B1-Motion>", 拖动窗口)
     label.bind("<Double-Button-1>", 关闭窗口)
+    label.bind("<MouseWheel>", 缩放字幕)
 
 if __name__ == "__main__":
     日志设置()
@@ -1450,5 +1463,5 @@ if __name__ == "__main__":
     Mower = 线程()
     Mower.start()
     if 悬浮字幕开关:
-        窗口.after(5000, 更新字幕)
+        窗口.after(100, 更新字幕)
         窗口.mainloop()
