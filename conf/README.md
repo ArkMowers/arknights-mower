@@ -8,3 +8,4 @@ sort: 1
     - [邮件提醒](./3.externalCall.html#邮件提醒)
     - [MAA](./3.externalCall.html#maa)
 - [排班表验证指南](./4.planValidation.html)
+- [内置设定](./5.buildinSettings.html)
