@@ -276,10 +276,10 @@ def simulate():
                 continue
             base_scheduler.run()
             reconnect_tries = 0
-        except ConnectionError or ConnectionAbortedError as e:
+        except ConnectionError or ConnectionAbortedError or AttributeError as e:
             reconnect_tries += 1
             if reconnect_tries < reconnect_max_tries:
-                logger.warning(f'连接端口断开....正在重连....')
+                logger.warning(f'出现错误.尝试重启Mower')
                 connected = False
                 while not connected:
                     try:
@@ -291,7 +291,7 @@ def simulate():
                         continue
                 continue
             else:
-                raise Exception(e)
+                raise e
         except RuntimeError as re:
             logger.exception(f"程序出错-尝试重启模拟器->{re}")
             restart_simulator(conf['simulator'])

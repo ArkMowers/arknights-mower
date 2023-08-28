@@ -430,7 +430,7 @@ class BaseSchedulerSolver(BaseSolver):
                 del self.tasks[0]
             except Exception as e:
                 logger.exception(e)
-                if type(e) is ConnectionAbortedError:
+                if type(e) is ConnectionAbortedError or type(e) is AttributeError or type(e) is ConnectionError:
                     raise e
                 else:
                     self.skip()
@@ -447,7 +447,7 @@ class BaseSchedulerSolver(BaseSolver):
                 self.plan_solver()
             except Exception as e:
                 logger.exception(e)
-                if type(e) is ConnectionAbortedError:
+                if type(e) is ConnectionAbortedError or type(e) is AttributeError or type(e) is ConnectionError:
                     raise e
                 else:
                     self.error = True
