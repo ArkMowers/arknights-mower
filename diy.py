@@ -44,7 +44,10 @@ maa_config = {
     "reclamation_algorithm":False,
     # 是否启动保全派驻
     "stationary_security_service": True,
+    # 保全派驻类别 1-2
     "sss_type": 2,
+    # 导能单元类别 1-3
+    "ec_type":1,
     "copilot_file_location": "F:\\MAA-v4.10.5-win-x64\\resource\\copilot\\SSS_雷神工业测试平台_浊蒂版.json",
     "copilot_loop_times":10,
     "last_execution": datetime.now(),
@@ -406,7 +409,7 @@ def simulate():
                     try:
                         base_scheduler = inialize([], base_scheduler)
                         break
-                    except RuntimeError as ce:
+                    except RuntimeError or ConnectionError or ConnectionAbortedError as ce:
                         logger.error(ce)
                         restart_simulator(simulator)
                         continue

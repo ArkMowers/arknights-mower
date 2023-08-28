@@ -17,7 +17,8 @@ def save_action_to_sqlite_decorator(func):
 
         # 调用原函数
         result = func(self, name, mood, current_room, current_index, update_time)
-
+        if not update_time:
+            return
         # 保存到数据库
         current_time = datetime.now()
         database_path = os.path.join('tmp', 'data.db')
@@ -64,23 +65,32 @@ def save_action_to_sqlite_decorator(func):
 def get_work_rest_ratios():
     # TODO 整理数据计算工休比
     database_path = os.path.join('tmp', 'data.db')
+
+    try:
     # 连接到数据库
-    conn = sqlite3.connect(database_path)
-    # conn = sqlite3.connect('../../tmp/data.db')
-    cursor = conn.cursor()
-
-    # 查询数据
-    cursor.execute("SELECT a.* FROM agent_action a "
-                   "where DATE(a.current_time) >= DATE('now', '-1 month','localtime')"
-                   "and a.name in (select distinct b.name "
-                   "   from agent_action b where DATE(a.current_time) >= DATE('now', '-7 day','localtime')"
-                   "   and b.is_high = 1 and b.current_room not like 'dormitory%'"
-                   " union select '菲亚梅塔')"
-                   "order by a.current_time ")
-    data = cursor.fetchall()
-
-    # 关闭数据库连接
-    conn.close()
+        conn = sqlite3.connect(database_path)
+        # conn = sqlite3.connect('../../tmp/data.db')
+        cursor = conn.cursor()
+        # 查询数据
+        cursor.execute("""
+                        SELECT a.*
+                        FROM agent_action a
+                        JOIN (
+                            SELECT DISTINCT b.name
+                            FROM agent_action b
+                            WHERE DATE(b.current_time) >= DATE('now', '-7 day', 'localtime')
+                            AND b.is_high = 1 AND b.current_room NOT LIKE 'dormitory%'
+                            UNION
+                            SELECT '菲亚梅塔' AS name
+                        ) AS subquery ON a.name = subquery.name
+                        WHERE DATE(a.current_time) >= DATE('now', '-1 month', 'localtime')
+                        ORDER BY a.current_time;
+                       """)
+        data = cursor.fetchall()
+        # 关闭数据库连接
+        conn.close()
+    except sqlite3.Error as e:
+        data = []
     processed_data = {}
     grouped_data = {}
     for row in data:
@@ -110,6 +120,7 @@ def get_work_rest_ratios():
                                 'datasets':[{
                                     'data':[rest_time,work_time]
                                 }]}
+
     return processed_data
 
 
@@ -123,14 +134,20 @@ def get_mood_ratios():
         cursor = conn.cursor()
         # 查询数据（筛掉宿管和替班组的数据）
         cursor.execute("""
-                        SELECT a.* FROM agent_action a 
-                       where DATE(a.current_time) >= DATE('now', '-7 day','localtime')
-                       and a.name in (select distinct b.name 
-                                from agent_action b where DATE(a.current_time) >= DATE('now', '-7 day','localtime')
-                                and b.is_high = 1 and b.current_room not like 'dormitory%'
-                                union select '菲亚梅塔')
-                       order by  a.agent_group desc,a.current_time 
-                       """)
+                       SELECT a.*
+                        FROM agent_action a
+                        JOIN (
+                            SELECT DISTINCT b.name
+                            FROM agent_action b
+                            WHERE DATE(b.current_time) >= DATE('now', '-7 day', 'localtime')
+                            AND b.is_high = 1 AND b.current_room NOT LIKE 'dormitory%'
+                            UNION
+                            SELECT '菲亚梅塔' AS name
+                        ) AS subquery ON a.name = subquery.name
+                        WHERE DATE(a.current_time) >= DATE('now', '-7 day', 'localtime')
+                        ORDER BY a.agent_group DESC, a.current_time;
+
+        """)
         data = cursor.fetchall()
         # 关闭数据库连接
         conn.close()
@@ -201,4 +218,4 @@ def calculate_time_difference(start_time, end_time):
 def __main__():
     get_work_rest_ratios()
 
-# __main__()
+__main__()

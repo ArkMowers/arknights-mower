@@ -29,7 +29,7 @@ def main(c, p, o={}, child_conn=None):
     operators = o
     config.LOGFILE_PATH = './log'
     config.SCREENSHOT_PATH = './screenshot'
-    config.SCREENSHOT_MAXNUM = 5
+    config.SCREENSHOT_MAXNUM = conf['screenshot']
     config.ADB_DEVICE = [conf['adb']]
     config.ADB_CONNECT = [conf['adb']]
     config.ADB_CONNECT = [conf['adb']]
@@ -285,7 +285,7 @@ def simulate():
                     try:
                         base_scheduler = initialize([], base_scheduler)
                         break
-                    except RuntimeError as ce:
+                    except RuntimeError or ConnectionError or ConnectionAbortedError as ce:
                         logger.error(ce)
                         restart_simulator(conf['simulator'])
                         continue
@@ -293,7 +293,7 @@ def simulate():
             else:
                 raise Exception(e)
         except RuntimeError as re:
-            logger.exception(f"程序出错-尝试重启模拟器->{E}")
+            logger.exception(f"程序出错-尝试重启模拟器->{re}")
             restart_simulator(conf['simulator'])
         except Exception as E:
             logger.exception(f"程序出错--->{E}")

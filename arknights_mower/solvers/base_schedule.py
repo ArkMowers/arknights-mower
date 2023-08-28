@@ -560,7 +560,6 @@ class BaseSchedulerSolver(BaseSolver):
                     fix_plan[moved_room][moved_index] = self.current_plan[moved_room][moved_index]["agent"]
         if len(fix_plan.keys()) > 0:
             # 不能在房间里安排同一个人 如果有重复则换成Free
-            # 还要修复确保同一组在同时上班
             remove_keys = []
             logger.debug(f"Fix_plan {str(fix_plan)}")
             for key in fix_plan:
@@ -573,6 +572,21 @@ class BaseSchedulerSolver(BaseSolver):
             if len(remove_keys) > 0:
                 for item in remove_keys:
                     del fix_plan[item]
+            # 还要确保同一组在同时上班
+            for g in self.op_data.groups:
+                g_agents = self.op_data.groups[g]
+                is_any_working = next((x for x in g_agents if self.op_data.operators[x].current_room!="" and not self.op_data.operators[x].current_room.startswith('dorm')), None)
+                if is_any_working is not None:
+                    # 确保所有人同时在上班
+                    is_any_resting = next((x for x in g_agents if self.op_data.operators[x].current_room == "" or self.op_data.operators[x].current_room.startswith('dorm')), None)
+                    if is_any_resting is not None:
+                        # 生成纠错任务
+                        for x in g_agents:
+                            if self.op_data.operators[x].current_room == "" or self.op_data.operators[x].current_room.startswith('dorm'):
+                                room = self.op_data.operators[x].room
+                                if room not in fix_plan:
+                                    fix_plan[room] = ['Current']*len(plan[room])
+                                fix_plan[room][self.op_data.operators[x].index] = x
             if len(fix_plan.keys()) > 0:
                 self.tasks.append(SchedulerTask(task_plan=fix_plan))
                 logger.info(f'纠错任务为-->{fix_plan}')
@@ -584,18 +598,30 @@ class BaseSchedulerSolver(BaseSolver):
         if self.find_next_task(datetime.now() + timedelta(seconds=600)) is not None:
             return
         if len(self.op_data.run_order_rooms) > 0:
-            # 处理龙舌兰和但书的插拔
-            for k, v in self.op_data.run_order_rooms.items():
-                # 如果没有当前房间数据
-                if 'plan' not in v.keys():
-                    v['plan'] = self.op_data.get_current_room(k)
-                if self.find_next_task(task_type=k) is not None: continue;
-                in_out_plan = {k: ['Current'] * len(plan[k])}
-                for idx, x in enumerate(plan[k]):
-                    if '但书' in x['replacement'] or '龙舌兰' in x['replacement']:
-                        in_out_plan[k][idx] = x['replacement'][0]
-                self.tasks.append(
-                    SchedulerTask(time=self.get_run_roder_time(k), task_plan=in_out_plan, task_type=k))
+            # 判定宿舍是否满员
+            valid = True
+            for key in plan.keys():
+                if 'dormitory' in key:
+                    dorm = self.op_data.get_current_room(key)
+                    if dorm is not None and len(dorm) == 5:
+                        continue
+                    else:
+                        valid = False
+                        logger.debug("宿舍未满员,跳过读取插拔时间")
+                        break
+            if valid:
+                # 处理龙舌兰和但书的插拔
+                for k, v in self.op_data.run_order_rooms.items():
+                    # 如果没有当前房间数据
+                    if 'plan' not in v.keys():
+                        v['plan'] = self.op_data.get_current_room(k)
+                    if self.find_next_task(task_type=k) is not None: continue;
+                    in_out_plan = {k: ['Current'] * len(plan[k])}
+                    for idx, x in enumerate(plan[k]):
+                        if '但书' in x['replacement'] or '龙舌兰' in x['replacement']:
+                            in_out_plan[k][idx] = x['replacement'][0]
+                    self.tasks.append(
+                        SchedulerTask(time=self.get_run_roder_time(k), task_plan=in_out_plan, task_type=k))
         # 准备数据
         logger.debug(self.op_data.print())
         if self.read_mood:
@@ -704,7 +730,7 @@ class BaseSchedulerSolver(BaseSolver):
                 _high += 1
         logger.debug(f"需求高效:{_high},低效：{_low}")
         # 排序
-        agents.sort(key=lambda y: self.op_data.operators[y].current_mood() - self.op_data.operators[y].lower_limit,
+        agents.sort(key=lambda y: (self.op_data.operators[y].current_room == "factory",self.op_data.operators[y].current_mood() - self.op_data.operators[y].lower_limit),
                     reverse=False)
         # 进行位置数量的初步判定
         # 对于252可能需要进行额外判定，由于 low_free 性质等同于 high_free
@@ -2065,7 +2091,8 @@ class BaseSchedulerSolver(BaseSolver):
                         if self.maa_config['copilot_file_location'] == "" or self.maa_config[
                             'copilot_loop_times'] <= 0 or self.maa_config['sss_type'] not in [1, 2]:
                             raise Exception("保全派驻配置无法找到")
-                        if self.to_sss(self.maa_config['sss_type']) is not None:
+                        ec_type = self.maa_config['ec_type'] if 'ec_type' in self.maa_config else 2
+                        if self.to_sss(self.maa_config['sss_type'],ec_type) is not None:
                             raise Exception("保全派驻导航失败")
                         self.MAA.append_task('SSSCopilot', {
                             'filename': self.maa_config['copilot_file_location'],

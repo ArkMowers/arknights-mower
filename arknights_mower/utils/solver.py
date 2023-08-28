@@ -334,7 +334,7 @@ class BaseSolver:
         self.tap_element('index_terminal', 0.5)
         self.tap((self.recog.w*0.2, self.recog.h*0.8),interval=0.5)
 
-    def to_sss(self, sss_type, ec_type=2):
+    def to_sss(self, sss_type, ec_type=3):
         self.recog.update()
         # 导航去保全派驻
         retry = 0
@@ -354,9 +354,9 @@ class BaseSolver:
                 choose_team = True
                 logger.info("选择小队")
             elif self.find('choose_ss_ec') is not None and not choose_team:
-                if ec_type == 0:
+                if ec_type == 1:
                     self.tap((self.recog.w * 0.3, self.recog.h * 0.5), interval=0.2)
-                elif ec_type == 1:
+                elif ec_type == 2:
                     self.tap((self.recog.w * 0.5, self.recog.h * 0.5), interval=0.2)
                 else:
                     self.tap((self.recog.w * 0.7, self.recog.h * 0.5), interval=0.2)

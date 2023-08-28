@@ -40,6 +40,8 @@ class Operators(object):
                     return f'菲亚梅塔不能安排在2号位置 房间->{room}, 干员->{data["agent"]}'
                 if data["agent"] == 'Free' and not room.startswith('dorm'):
                     return f'Free只能安排在宿舍 房间->{room}, 干员->{data["agent"]}'
+                if data["agent"] in self.operators and data["agent"] != "Free":
+                    return f'高效组干员不可重复 房间->{room},{self.operators[data["agent"]].room}, 干员->{data["agent"]}'
                 self.add(Operator(data["agent"], room, idx, data["group"], data["replacement"], 'high',
                                   operator_type="high"))
         missing_replacements = []
