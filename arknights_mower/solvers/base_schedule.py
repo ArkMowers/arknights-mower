@@ -10,6 +10,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
+from ..command import recruit
 from ..data import agent_list
 from ..utils import character_recognize, detector, segment
 from ..utils.digit_reader import DigitReader
@@ -575,17 +576,22 @@ class BaseSchedulerSolver(BaseSolver):
             # 还要确保同一组在同时上班
             for g in self.op_data.groups:
                 g_agents = self.op_data.groups[g]
-                is_any_working = next((x for x in g_agents if self.op_data.operators[x].current_room!="" and not self.op_data.operators[x].current_room.startswith('dorm')), None)
+                is_any_working = next((x for x in g_agents if
+                                       self.op_data.operators[x].current_room != "" and not self.op_data.operators[
+                                           x].current_room.startswith('dorm')), None)
                 if is_any_working is not None:
                     # 确保所有人同时在上班
-                    is_any_resting = next((x for x in g_agents if self.op_data.operators[x].current_room == "" or self.op_data.operators[x].current_room.startswith('dorm')), None)
+                    is_any_resting = next((x for x in g_agents if
+                                           self.op_data.operators[x].current_room == "" or self.op_data.operators[
+                                               x].current_room.startswith('dorm')), None)
                     if is_any_resting is not None:
                         # 生成纠错任务
                         for x in g_agents:
-                            if self.op_data.operators[x].current_room == "" or self.op_data.operators[x].current_room.startswith('dorm'):
+                            if self.op_data.operators[x].current_room == "" or self.op_data.operators[
+                                x].current_room.startswith('dorm'):
                                 room = self.op_data.operators[x].room
                                 if room not in fix_plan:
-                                    fix_plan[room] = ['Current']*len(plan[room])
+                                    fix_plan[room] = ['Current'] * len(plan[room])
                                 fix_plan[room][self.op_data.operators[x].index] = x
             if len(fix_plan.keys()) > 0:
                 self.tasks.append(SchedulerTask(task_plan=fix_plan))
@@ -730,7 +736,8 @@ class BaseSchedulerSolver(BaseSolver):
                 _high += 1
         logger.debug(f"需求高效:{_high},低效：{_low}")
         # 排序
-        agents.sort(key=lambda y: (self.op_data.operators[y].current_room == "factory",self.op_data.operators[y].current_mood() - self.op_data.operators[y].lower_limit),
+        agents.sort(key=lambda y: (self.op_data.operators[y].current_room == "factory",
+                                   self.op_data.operators[y].current_mood() - self.op_data.operators[y].lower_limit),
                     reverse=False)
         # 进行位置数量的初步判定
         # 对于252可能需要进行额外判定，由于 low_free 性质等同于 high_free
@@ -1972,12 +1979,16 @@ class BaseSchedulerSolver(BaseSolver):
                     seconds=self.maa_config['maa_execution_gap'] * 3600) < self.maa_config['last_execution']:
                 logger.info("间隔未超过设定时间，不启动maa")
             else:
+                """公招测试用"""
+                recruit([])
+
                 self.send_email('启动MAA')
                 self.back_to_index()
                 # 任务及参数请参考 docs/集成文档.md
                 self.initialize_maa()
                 if tasks == 'All':
-                    tasks = ['StartUp', 'Fight', 'Recruit', 'Visit', 'Mall', 'Award']
+                    tasks = ['StartUp', 'Fight', 'Visit', 'Mall', 'Award']
+                    # tasks = ['StartUp', 'Fight', 'Recruit', 'Visit', 'Mall', 'Award']
                 for maa_task in tasks:
                     self.append_maa_task(maa_task)
                 # asst.append_task('Copilot', {
@@ -2092,7 +2103,7 @@ class BaseSchedulerSolver(BaseSolver):
                             'copilot_loop_times'] <= 0 or self.maa_config['sss_type'] not in [1, 2]:
                             raise Exception("保全派驻配置无法找到")
                         ec_type = self.maa_config['ec_type'] if 'ec_type' in self.maa_config else 2
-                        if self.to_sss(self.maa_config['sss_type'],ec_type) is not None:
+                        if self.to_sss(self.maa_config['sss_type'], ec_type) is not None:
                             raise Exception("保全派驻导航失败")
                         self.MAA.append_task('SSSCopilot', {
                             'filename': self.maa_config['copilot_file_location'],
@@ -2138,27 +2149,28 @@ class BaseSchedulerSolver(BaseSolver):
                 time.sleep(remaining_time)
             self.device.exit(self.package_name)
 
-    def send_email(self, body='', subject='', subtype='plain', retry_times=3):
-        if 'mail_enable' in self.email_config.keys() and self.email_config['mail_enable'] == 0:
-            logger.info('邮件功能未开启')
-            return
-
-        msg = MIMEMultipart()
-        msg.attach(MIMEText(body, subtype))
-        msg['Subject'] = self.email_config['subject'] + subject
-        msg['From'] = self.email_config['account']
-
-        while retry_times > 0:
-            try:
-                s = smtplib.SMTP_SSL("smtp.qq.com", 465, timeout=10.0)
-                # 登录邮箱
-                s.login(self.email_config['account'], self.email_config['pass_code'])
-                # 开始发送
-                s.sendmail(self.email_config['account'], self.email_config['receipts'], msg.as_string())
-                logger.info("邮件发送成功")
-                break
-            except Exception as e:
-                logger.error("邮件发送失败")
-                logger.exception(e)
-                retry_times -= 1
-                time.sleep(3)
+    # 移动到BaseSolver类中，使RecruitSolver可以调用发送
+    # def send_email(self, body='', subject='', subtype='plain', retry_times=3):
+    #     if 'mail_enable' in self.email_config.keys() and self.email_config['mail_enable'] == 0:
+    #         logger.info('邮件功能未开启')
+    #         return
+    #
+    #     msg = MIMEMultipart()
+    #     msg.attach(MIMEText(body, subtype))
+    #     msg['Subject'] = self.email_config['subject'] + subject
+    #     msg['From'] = self.email_config['account']
+    #
+    #     while retry_times > 0:
+    #         try:
+    #             s = smtplib.SMTP_SSL("smtp.qq.com", 465, timeout=10.0)
+    #             # 登录邮箱
+    #             s.login(self.email_config['account'], self.email_config['pass_code'])
+    #             # 开始发送
+    #             s.sendmail(self.email_config['account'], self.email_config['receipts'], msg.as_string())
+    #             logger.info("邮件发送成功")
+    #             break
+    #         except Exception as e:
+    #             logger.error("邮件发送失败")
+    #             logger.exception(e)
+    #             retry_times -= 1
+    #             time.sleep(3)

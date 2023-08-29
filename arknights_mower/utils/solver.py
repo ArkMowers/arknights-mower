@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
 import time
 import traceback
 from abc import abstractmethod
@@ -395,3 +399,29 @@ class BaseSolver:
                     return True
             wait_count -= 1
         raise Exception("等待超时")
+    # 邮件发送 EightyDollars
+    def send_email(self, body='', subject='', subtype='plain', retry_times=3):
+        if 'mail_enable' in self.email_config.keys() and self.email_config['mail_enable'] == 0:
+            logger.info('邮件功能未开启')
+            return
+
+        msg = MIMEMultipart()
+        msg.attach(MIMEText(body, subtype))
+        msg['Subject'] = self.email_config['subject'] + subject
+        msg['From'] = self.email_config['account']
+
+        while retry_times > 0:
+            try:
+                s = smtplib.SMTP_SSL("smtp.qq.com", 465, timeout=10.0)
+                # 登录邮箱
+                s.login(self.email_config['account'], self.email_config['pass_code'])
+                # 开始发送
+                s.sendmail(self.email_config['account'], self.email_config['receipts'], msg.as_string())
+                logger.info("邮件发送成功")
+                break
+            except Exception as e:
+                logger.error("邮件发送失败")
+                logger.exception(e)
+                retry_times -= 1
+                time.sleep(3)
+

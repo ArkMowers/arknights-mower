@@ -15,12 +15,12 @@
   </head>
   <body>
     <table>
-      <td>Tags</td><td>预计干员名单</td>
+      <td>标签选择</td><td>预计干员名单</td>
       {% for res_str in recruit_results %}
       <tr>
-        <td>{{res_str.tags}}</td>
+        <td>{{res_str.choose}}</td>
         <td>
-        {% for operator in res_str.opers %}
+        {% for operator in res_str.result %}
           {{operator.name}}
         {% endfor %}
         </td>
