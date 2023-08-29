@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width" />
-    <title>公共招募</title>
+    <title>{{ title_text }}</title>
     <style>
       table,
       th,
@@ -16,16 +16,21 @@
   <body>
     <table>
       <td>标签选择</td><td>预计干员名单</td>
-      {% for res_str in recruit_results %}
-      <tr>
-        <td>{{res_str.choose}}</td>
-        <td>
-        {% for operator in res_str.result %}
-          {{operator.name}}
-        {% endfor %}
-        </td>
-      </tr>
+      {% for choose in recruit_results %}
+          <tr>
+          <td>
+            {% for tags in choose %}
+                {{tags}}
+            {% endfor %}
+          </td>
+            <td>
+            {% for agent in recruit_results[choose].agent %}
+                {{ agent.name }}
+            {% endfor %}
+            </td>
+          </tr>
       {% endfor %}
+
     </table>
   </body>
 </html>

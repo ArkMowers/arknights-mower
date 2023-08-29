@@ -133,11 +133,9 @@ class RecruitSolver(BaseSolver):
             # 刷新标签
             if need_choose is False:
                 '''稀有tag或支援，不需要选'''
-                self.send_email(recruit_template.render(recruit_results=best), "出稀有标签辣", "html")
+                self.send_email(recruit_template.render(recruit_results=best,title_text="稀有tag通知"), "出稀有标签辣", "html")
                 continue
             # best为空说明是三星，刷新标签
-            logger.info("输出查看结果")
-            logger.info(best)
             if not best:
                 # refresh
                 if self.tap_element('recruit_refresh', detected=True):
@@ -148,7 +146,7 @@ class RecruitSolver(BaseSolver):
 
         # 如果没有招募券则只刷新标签不选人
         if not self.has_ticket:
-            logger.debug('无招募券 结束公招')
+            logger.info('无招募券 结束公招')
             self.back()
             return
 
@@ -157,7 +155,7 @@ class RecruitSolver(BaseSolver):
             choose = best['choose']
             # tap selected tags
 
-        logger.info(f'选择：{choose}')
+        logger.info(f'选择标签：{choose}')
 
         for x in ocr:
             color = self.recog.img[up + x[2][0][1] - 5, left + x[2][0][0] - 5]
@@ -181,10 +179,11 @@ class RecruitSolver(BaseSolver):
         self.tap((avail_level[1][0], budget[0][1]), interval=3)
 
         if best:
-            logger.info(best['result'])
-            #self.send_email(recruit_template.render(recruit_results=[best]), "公招选择结果", "html")
+            logger_result = best['result']
+            logger.info(f'公招预测结果：{logger_result}')
+            self.send_email(recruit_template.render(recruit_results=[best]), "公招选择结果", "html")
         else:
-            logger.info("三星干员")
+            logger.info('公招预测结果：{随机三星干员}')
 
     def recruit_result(self) -> bool:
         """ 识别公招招募到的干员 """
@@ -381,6 +380,14 @@ class RecruitSolver(BaseSolver):
     '''
 
     def merge_agent_list(self, tags: [str], list_1: list[dict], list_2={}, list_3={}):
+        """
+        交叉筛选干员
+
+        tags:组合出的标签
+        list_x:每个单独标签对应的干员池
+
+        return : 筛选出来的干员池，平均等级，是否稀有标签，是否支援机械
+        """
         List1_name_dict = {}
         merge_list = []
         isRarity = False
@@ -430,6 +437,8 @@ class RecruitSolver(BaseSolver):
             isRarity = True
         elif level == 1:
             isRobot = True
+        logger.debug(f"merge_list{merge_list}")
+
         return merge_list, level, isRarity, isRobot
 
     def recruit_cal(self, tags: list[str], auto_robot=False, need_Robot=True) -> (dict, bool):
@@ -455,7 +464,7 @@ class RecruitSolver(BaseSolver):
 
         for item in combinations(tags, 2):
             merge_temp, level, isRarity, isRobot = self.merge_agent_list(item, recruit_agent_list[item[0]]['agent'],
-                                                                         recruit_agent_list[item[1]]['agent'])
+                                                                    recruit_agent_list[item[1]]['agent'])
             if len(merge_temp) > 0:
                 if has_rarity is False and isRarity:
                     has_rarity = isRarity
@@ -469,8 +478,8 @@ class RecruitSolver(BaseSolver):
                 }
         for item in combinations(tags, 3):
             merge_temp, level, isRarity, isRobot = self.merge_agent_list(item, recruit_agent_list[item[0]]['agent'],
-                                                                         recruit_agent_list[item[1]]['agent'],
-                                                                         recruit_agent_list[item[2]]['agent'])
+                                                                    recruit_agent_list[item[1]]['agent'],
+                                                                    recruit_agent_list[item[2]]['agent'])
             if len(merge_temp) > 0:
                 if has_rarity is False and isRarity:
                     has_rarity = isRarity
@@ -484,16 +493,18 @@ class RecruitSolver(BaseSolver):
                     "agent": merge_temp
                 }
 
-        # 有稀有tag（五星及以上）或者支援机械筛选一下结果
 
-        logger.info("公招可能性")
-        logger.info(self.recruit_str(possible_list))
+        logger.debug(f"公招可能性:{self.recruit_str(possible_list)}")
 
         for key in list(possible_list.keys()):
             # 五星六星选择优先级大于支援机械
-            if has_rarity and possible_list[key]['isRarity'] is False:
-                del possible_list[key]
-                continue
+            if has_rarity:
+                if possible_list[key]['isRarity'] is False:
+                    del possible_list[key]
+                    continue
+                elif possible_list[key]['level'] < 6 and "高级资深干员" in tags:
+                    del possible_list[key]
+                    continue
             # 不要支援机械
             elif need_Robot is False and possible_list[key]['isRobot'] is True:
                 del possible_list[key]
@@ -513,36 +524,16 @@ class RecruitSolver(BaseSolver):
         # 有支援机械 不需要自动点支援机械 并且需要支援机械的情况下，邮件提醒
         notice_robot = (has_robot and auto_robot == False and need_Robot)
         need_choose = True
-
         if notice_robot or has_rarity:
             need_choose = False
-            best = []
-            logger_str = ""
-            for key in possible_list:
-                if possible_list[key]['level'] >= 5:
-                    if "高级资深干员" in tags and possible_list[key]['level'] < 6:
-                        continue
-                    temp_dict = {
-                        "choose": key,
-                        "level": possible_list[key]['level'],
-                        "result": possible_list[key]['agent']
-                    }
-                    best.append(temp_dict)
-                    break
-            logger.info("稀有tag")
-            logger.info(best)
+            logger.info(f"稀有tag:{self.recruit_str(possible_list)}")
             return possible_list, need_choose
 
         best = {}
         # 4星=需要选择tag返回选择的tag，3星不选
         for key in possible_list:
             if possible_list[key]['level'] >= 4:
-                best = {
-                    "choose": key,
-                    "level": possible_list[key]['level'],
-                    "result": possible_list[key]['agent']
-                }
-
+                best[key] = possible_list[key]
                 break
 
         return best, need_choose
