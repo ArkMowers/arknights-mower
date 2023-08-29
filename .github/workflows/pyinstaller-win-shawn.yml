@@ -65,7 +65,7 @@ jobs:
           venv\Scripts\pyinstaller .\webui_zip.spec
 
       - name: calculate hash
-        working-directory: ./main
+        working-directory: ./main/dist/mower
         shell: cmd
         run: |
           venv\Scripts\python.exe ..\updater\publish.py
