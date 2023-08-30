@@ -1110,7 +1110,7 @@ class BaseSchedulerSolver(BaseSolver):
 
         # 如果启用 MAA，则在线索交流结束后购物
         if self.maa_config['maa_enable'] and self.party_time is not None:
-            if self.find_next_task(compare_time=self.party_time, task_type="maa_Mall", compare_type="=") is None:
+            if self.find_next_task(task_type="maa_Mall") is None:
                 self.tasks.append(SchedulerTask(time=self.party_time - timedelta(milliseconds=1), task_type='impart'))
                 self.tasks.append(SchedulerTask(time=self.party_time, task_type="maa_Mall"))
 
