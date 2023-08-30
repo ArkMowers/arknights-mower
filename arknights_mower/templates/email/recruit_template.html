@@ -15,7 +15,7 @@
   </head>
   <body>
     <table>
-        {%  if recruit_results|length > 1 %}
+        {%  if recruit_results|length > 0 %}
           <td>标签选择</td><td>预计干员名单</td>
             {% for result in recruit_results %}
                 {% for choose in result %}
@@ -35,7 +35,7 @@
             {% endfor %}
         {% endif %}
 
-        {%  if recruit_get_agent|length > 1 %}
+        {%  if recruit_get_agent|length > 0 %}
             <td>上次公招结果:</td>
             <td>
                 {% for result in recruit_get_agent %}

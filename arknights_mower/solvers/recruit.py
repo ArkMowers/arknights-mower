@@ -47,8 +47,9 @@ class RecruitSolver(BaseSolver):
 
         self.result_agent = []
         self.agent_choose = []
+        self.recruit_config = {}
 
-    def run(self, priority: list[str] = None, email_config={}) -> None:
+    def run(self, priority: list[str] = None, email_config={}, maa_config={}) -> None:
         """
         :param priority: list[str], 优先考虑的公招干员，默认为高稀有度优先
         """
@@ -58,10 +59,22 @@ class RecruitSolver(BaseSolver):
         self.can_refresh = True  # 默认可以刷新
         self.email_config = email_config
 
-        logger.info('Start: 公招')
-        # logger.info(f'目标干员：{priority if priority else "无，高稀有度优先"}')
-        super().run()
+        # 调整公招参数
+        self.add_recruit_param(maa_config)
 
+        logger.info('Start: 公招')
+        # 清空
+        self.result_agent.clear()
+        self.agent_choose.clear()
+        # logger.info(f'目标干员：{priority if priority else "无，高稀有度优先"}')
+        try:
+
+            super().run()
+        except Exception as e:
+            logger.error(e)
+
+        logger.debug(self.result_agent)
+        logger.debug(self.agent_choose)
         if self.result_agent:
             logger.info(f"上次公招结果汇总{self.result_agent}")
 
@@ -72,6 +85,23 @@ class RecruitSolver(BaseSolver):
             self.send_email(recruit_template.render(recruit_results=self.agent_choose,
                                                     recruit_get_agent=self.result_agent,
                                                     title_text="公招汇总"), "公招汇总通知", "html")
+
+    def add_recruit_param(self, maa_config):
+        if not maa_config:
+            raise Exception("招募设置为空")
+
+        if maa_config['recruitment_time']:
+            recruitment_time = 460
+        else:
+            recruitment_time = 540
+
+        self.recruit_config = {
+            "recruit_only_4": maa_config['recruit_only_4'],
+            "recruitment_time": {
+                "3": recruitment_time,
+                "4": 540
+            }
+        }
 
     def transition(self) -> bool:
         if self.scene() == Scene.INDEX:
@@ -148,7 +178,9 @@ class RecruitSolver(BaseSolver):
             if need_choose is False:
                 '''稀有tag或支援，不需要选'''
                 self.send_email(recruit_rarity.render(recruit_results=best, title_text="稀有tag通知"), "出稀有标签辣", "html")
-                continue
+                logger.debug('稀有tag,发送邮件')
+                self.back()
+                return
             # best为空说明是三星，刷新标签
             if not best:
                 # refresh
@@ -165,13 +197,18 @@ class RecruitSolver(BaseSolver):
             self.back()
             return
 
+        # best为空说明这次大概率三星
+        if self.recruit_config["recruit_only_4"] and not best:
+            logger.info('不招三星 结束公招')
+            self.back()
+            return
+
         choose = []
         if len(best) > 0:
             choose = (next(iter(best)))
             # tap selected tags
 
         logger.info(f'选择标签：{choose}')
-
         for x in ocr:
             color = self.recog.img[up + x[2][0][1] - 5, left + x[2][0][0] - 5]
             if (color[2] < 100) != (x[1] not in choose):
@@ -180,18 +217,28 @@ class RecruitSolver(BaseSolver):
                 self.device.tap((left + x[2][0][0] - 5, up + x[2][0][1] - 5))
 
         # 9h为True 3h50min为False
-        recruit_time_choose = True
+        recruit_time_choose = self.recruit_config["recruitment_time"]["3"]
         if len(best) > 0:
             if best[choose]['level'] == 1:
-                recruit_time_choose = False
+                recruit_time_choose = 230
+            else:
+                recruit_time_choose = self.recruit_config["recruitment_time"][str(best[choose]['level'])]
 
-        if recruit_time_choose:
+        if recruit_time_choose == 540:
             # 09:00
+            logger.debug("时间9h")
             self.tap_element('one_hour', 0.2, 0.8, 0)
-        else:
+        elif recruit_time_choose == 230:
             # 03:50
+            logger.debug("时间3h50min")
             [self.tap_element('one_hour', 0.2, 0.2, 0) for _ in range(2)]
             [self.tap_element('one_hour', 0.5, 0.2, 0) for _ in range(5)]
+        elif recruit_time_choose == 460:
+            # 07:40
+            logger.debug("时间7h40min")
+            [self.tap_element('one_hour', 0.2, 0.8, 0) for _ in range(2)]
+            [self.tap_element('one_hour', 0.5, 0.8, 0) for _ in range(2)]
+
         # start recruit
         self.tap((avail_level[1][0], budget[0][1]), interval=3)
         if len(best) > 0:

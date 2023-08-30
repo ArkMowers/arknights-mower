@@ -1979,8 +1979,9 @@ class BaseSchedulerSolver(BaseSolver):
                     seconds=self.maa_config['maa_execution_gap'] * 3600) < self.maa_config['last_execution']:
                 logger.info("间隔未超过设定时间，不启动maa")
             else:
-                """公招测试用"""
-                recruit([],self.email_config)
+                """测试公招用"""
+                if 'Recruit' in tasks or tasks == 'All':
+                    recruit([], self.email_config, self.maa_config)
 
                 self.send_email('启动MAA')
                 self.back_to_index()
@@ -1990,6 +1991,8 @@ class BaseSchedulerSolver(BaseSolver):
                     tasks = ['StartUp', 'Fight', 'Visit', 'Mall', 'Award']
                     # tasks = ['StartUp', 'Fight', 'Recruit', 'Visit', 'Mall', 'Award']
                 for maa_task in tasks:
+                    if maa_task == 'Recruit':
+                        continue
                     self.append_maa_task(maa_task)
                 # asst.append_task('Copilot', {
                 #     'stage_name': '千层蛋糕',
