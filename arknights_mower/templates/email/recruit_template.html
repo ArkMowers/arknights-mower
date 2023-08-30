@@ -15,21 +15,34 @@
   </head>
   <body>
     <table>
-      <td>标签选择</td><td>预计干员名单</td>
-      {% for choose in recruit_results %}
-          <tr>
-          <td>
-            {% for tags in choose %}
-                {{tags}}
+        {%  if recruit_results|length > 1 %}
+          <td>标签选择</td><td>预计干员名单</td>
+            {% for result in recruit_results %}
+                {% for choose in result %}
+                  <tr>
+                  <td>
+                    {% for tags in choose %}
+                        {{tags}}
+                    {% endfor %}
+                  </td>
+                  <td>
+                    {% for agent in result[choose].agent %}
+                        {{ agent.name }}
+                    {% endfor %}
+                  </td>
+                  </tr>
+                {% endfor %}
             {% endfor %}
-          </td>
+        {% endif %}
+
+        {%  if recruit_get_agent|length > 1 %}
+            <td>上次公招结果:</td>
             <td>
-            {% for agent in recruit_results[choose].agent %}
-                {{ agent.name }}
-            {% endfor %}
+                {% for result in recruit_get_agent %}
+                    {{ result}}
+                {% endfor %}
             </td>
-          </tr>
-      {% endfor %}
+        {% endif %}
 
     </table>
   </body>

@@ -32,9 +32,9 @@ class BaseSolver:
         self.device.check_current_focus()
         self.recog.update()
 
-    def run(self)-> None:
+    def run(self) -> None:
         retry_times = config.MAX_RETRYTIME
-        result =None
+        result = None
         while retry_times > 0:
             try:
                 result = self.transition()
@@ -69,14 +69,14 @@ class BaseSolver:
             raise RecognizeError('poly is empty')
         elif len(poly) == 4:
             # tp.Rectangle
-            x = (poly[0][0] * (1-x_rate) + poly[1][0] * (1-x_rate) +
+            x = (poly[0][0] * (1 - x_rate) + poly[1][0] * (1 - x_rate) +
                  poly[2][0] * x_rate + poly[3][0] * x_rate) / 2
-            y = (poly[0][1] * (1-y_rate) + poly[3][1] * (1-y_rate) +
+            y = (poly[0][1] * (1 - y_rate) + poly[3][1] * (1 - y_rate) +
                  poly[1][1] * y_rate + poly[2][1] * y_rate) / 2
         elif len(poly) == 2 and isinstance(poly[0], (list, tuple)):
             # tp.Scope
-            x = poly[0][0] * (1-x_rate) + poly[1][0] * x_rate
-            y = poly[0][1] * (1-y_rate) + poly[1][1] * y_rate
+            x = poly[0][0] * (1 - x_rate) + poly[1][0] * x_rate
+            y = poly[0][1] * (1 - y_rate) + poly[1][1] * y_rate
         else:
             # tp.Coordinate
             x, y = poly
@@ -97,17 +97,20 @@ class BaseSolver:
         self.device.send_text(str(text))
         self.device.tap((0, 0))
 
-    def find(self, res: str, draw: bool = False, scope: tp.Scope = None, thres: int = None, judge: bool = True, strict: bool = False, score = 0.0) -> tp.Scope:
-        return self.recog.find(res, draw, scope, thres, judge, strict,score)
+    def find(self, res: str, draw: bool = False, scope: tp.Scope = None, thres: int = None, judge: bool = True,
+             strict: bool = False, score=0.0) -> tp.Scope:
+        return self.recog.find(res, draw, scope, thres, judge, strict, score)
 
-    def tap(self, poly: tp.Location, x_rate: float = 0.5, y_rate: float = 0.5, interval: float = 1, rebuild: bool = True) -> None:
+    def tap(self, poly: tp.Location, x_rate: float = 0.5, y_rate: float = 0.5, interval: float = 1,
+            rebuild: bool = True) -> None:
         """ tap """
         pos = self.get_pos(poly, x_rate, y_rate)
         self.device.tap(pos)
         if interval > 0:
             self.sleep(interval, rebuild)
 
-    def tap_element(self, element_name: str, x_rate: float = 0.5, y_rate: float = 0.5, interval: float = 1, rebuild: bool = True,
+    def tap_element(self, element_name: str, x_rate: float = 0.5, y_rate: float = 0.5, interval: float = 1,
+                    rebuild: bool = True,
                     draw: bool = False, scope: tp.Scope = None, judge: bool = True, detected: bool = False) -> bool:
         """ tap element """
         if element_name == 'nav_button':
@@ -119,14 +122,16 @@ class BaseSolver:
         self.tap(element, x_rate, y_rate, interval, rebuild)
         return True
 
-    def swipe(self, start: tp.Coordinate, movement: tp.Coordinate, duration: int = 100, interval: float = 1, rebuild: bool = True) -> None:
+    def swipe(self, start: tp.Coordinate, movement: tp.Coordinate, duration: int = 100, interval: float = 1,
+              rebuild: bool = True) -> None:
         """ swipe """
         end = (start[0] + movement[0], start[1] + movement[1])
         self.device.swipe(start, end, duration=duration)
         if interval > 0:
             self.sleep(interval, rebuild)
 
-    def swipe_only(self, start: tp.Coordinate, movement: tp.Coordinate, duration: int = 100, interval: float = 1) -> None:
+    def swipe_only(self, start: tp.Coordinate, movement: tp.Coordinate, duration: int = 100,
+                   interval: float = 1) -> None:
         """ swipe only, no rebuild and recapture """
         end = (start[0] + movement[0], start[1] + movement[1])
         self.device.swipe(start, end, duration=duration)
@@ -148,20 +153,21 @@ class BaseSolver:
     #     if interval > 0:
     #         self.sleep(interval, rebuild)
 
-    def swipe_noinertia(self, start: tp.Coordinate, movement: tp.Coordinate, duration: int = 100, interval: float = 1, rebuild: bool = False) -> None:
+    def swipe_noinertia(self, start: tp.Coordinate, movement: tp.Coordinate, duration: int = 100, interval: float = 1,
+                        rebuild: bool = False) -> None:
         """ swipe with no inertia (movement should be vertical) """
         points = [start]
         if movement[0] == 0:
             dis = abs(movement[1])
-            points.append((start[0]+100, start[1]))
-            points.append((start[0]+100, start[1]+movement[1]))
-            points.append((start[0], start[1]+movement[1]))
+            points.append((start[0] + 100, start[1]))
+            points.append((start[0] + 100, start[1] + movement[1]))
+            points.append((start[0], start[1] + movement[1]))
         else:
             dis = abs(movement[0])
-            points.append((start[0], start[1]+100))
-            points.append((start[0]+movement[0], start[1]+100))
-            points.append((start[0]+movement[0], start[1]))
-        self.device.swipe_ext(points, durations=[200, dis*duration//100, 200])
+            points.append((start[0], start[1] + 100))
+            points.append((start[0] + movement[0], start[1] + 100))
+            points.append((start[0] + movement[0], start[1]))
+        self.device.swipe_ext(points, durations=[200, dis * duration // 100, 200])
         if interval > 0:
             self.sleep(interval, rebuild)
 
@@ -192,9 +198,9 @@ class BaseSolver:
                 if self.scene() == Scene.LOGIN_START:
                     self.tap((self.recog.w // 2, self.recog.h - 10), 3)
                 elif self.scene() == Scene.LOGIN_NEW:
-                    self.tap(self.find('login_new',score=0.8))
+                    self.tap(self.find('login_new', score=0.8))
                 elif self.scene() == Scene.LOGIN_NEW_B:
-                    self.tap(self.find('login_bilibili_new',score=0.8))
+                    self.tap(self.find('login_bilibili_new', score=0.8))
                 elif self.scene() == Scene.LOGIN_QUICKLY:
                     self.tap_element('login_awake')
                 elif self.scene() == Scene.LOGIN_MAIN:
@@ -336,7 +342,7 @@ class BaseSolver:
             self.back_to_index()
         logger.info('导航至生息演算')
         self.tap_element('index_terminal', 0.5)
-        self.tap((self.recog.w*0.2, self.recog.h*0.8),interval=0.5)
+        self.tap((self.recog.w * 0.2, self.recog.h * 0.8), interval=0.5)
 
     def to_sss(self, sss_type, ec_type=3):
         self.recog.update()
@@ -354,7 +360,7 @@ class BaseSolver:
         ec_chosen_step = -99
         choose_team = False
         while self.find('end_sss', score=0.8) is None and loop_count < 8:
-            if loop_count == ec_chosen_step+2 or self.find('sss_team_up') is not None:
+            if loop_count == ec_chosen_step + 2 or self.find('sss_team_up') is not None:
                 choose_team = True
                 logger.info("选择小队")
             elif self.find('choose_ss_ec') is not None and not choose_team:
@@ -365,7 +371,7 @@ class BaseSolver:
                 else:
                     self.tap((self.recog.w * 0.7, self.recog.h * 0.5), interval=0.2)
                 ec_chosen_step = loop_count
-                logger.info(f"选定导能单元:{ec_type+1}")
+                logger.info(f"选定导能单元:{ec_type + 1}")
             self.tap((self.recog.w * 0.95, self.recog.h * 0.95), interval=(0.2 if not choose_team else 10))
             self.recog.update()
             loop_count += 1
@@ -399,6 +405,7 @@ class BaseSolver:
                     return True
             wait_count -= 1
         raise Exception("等待超时")
+
     # 邮件发送 EightyDollars
     def send_email(self, body='', subject='', subtype='plain', retry_times=3):
         if 'mail_enable' in self.email_config.keys() and self.email_config['mail_enable'] == 0:
@@ -424,4 +431,3 @@ class BaseSolver:
                 logger.exception(e)
                 retry_times -= 1
                 time.sleep(3)
-

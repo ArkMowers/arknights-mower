@@ -10,7 +10,7 @@ from ..data import recruit_agent, recruit_tag, recruit_agent_list
 from ..ocr import ocr_rectify, ocrhandle
 from ..utils import segment
 from ..utils.device import Device
-from ..utils.email import recruit_template
+from ..utils.email import recruit_template, recruit_rarity
 from ..utils.log import logger
 from ..utils.recognize import RecognizeError, Recognizer, Scene
 from ..utils.solver import BaseSolver
@@ -45,6 +45,9 @@ class RecruitSolver(BaseSolver):
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
         super().__init__(device, recog)
 
+        self.result_agent = []
+        self.agent_choose = []
+
     def run(self, priority: list[str] = None, email_config={}) -> None:
         """
         :param priority: list[str], 优先考虑的公招干员，默认为高稀有度优先
@@ -58,6 +61,17 @@ class RecruitSolver(BaseSolver):
         logger.info('Start: 公招')
         # logger.info(f'目标干员：{priority if priority else "无，高稀有度优先"}')
         super().run()
+
+        if self.result_agent:
+            logger.info(f"上次公招结果汇总{self.result_agent}")
+
+        if self.agent_choose:
+            logger.info(f'公招标签：{self.agent_choose}')
+
+        if self.agent_choose or self.result_agent:
+            self.send_email(recruit_template.render(recruit_results=self.agent_choose,
+                                                    recruit_get_agent=self.result_agent,
+                                                    title_text="公招汇总"), "公共选择通知", "html")
 
     def transition(self) -> bool:
         if self.scene() == Scene.INDEX:
@@ -133,7 +147,7 @@ class RecruitSolver(BaseSolver):
             # 刷新标签
             if need_choose is False:
                 '''稀有tag或支援，不需要选'''
-                self.send_email(recruit_template.render(recruit_results=best,title_text="稀有tag通知"), "出稀有标签辣", "html")
+                self.send_email(recruit_rarity.render(recruit_results=best, title_text="稀有tag通知"), "出稀有标签辣", "html")
                 continue
             # best为空说明是三星，刷新标签
             if not best:
@@ -141,6 +155,7 @@ class RecruitSolver(BaseSolver):
                 if self.tap_element('recruit_refresh', detected=True):
                     self.tap_element('double_confirm', 0.8,
                                      interval=3, judge=False)
+                    logger.info("刷新标签")
                     continue
             break
 
@@ -151,8 +166,8 @@ class RecruitSolver(BaseSolver):
             return
 
         choose = []
-        if best:
-            choose = best['choose']
+        if len(best) > 0:
+            choose = (next(iter(best)))
             # tap selected tags
 
         logger.info(f'选择标签：{choose}')
@@ -160,12 +175,14 @@ class RecruitSolver(BaseSolver):
         for x in ocr:
             color = self.recog.img[up + x[2][0][1] - 5, left + x[2][0][0] - 5]
             if (color[2] < 100) != (x[1] not in choose):
+                # 存在choose为空但是进行标签选择的情况
+                logger.info(f"tap{x}")
                 self.device.tap((left + x[2][0][0] - 5, up + x[2][0][1] - 5))
 
         # 9h为True 3h50min为False
         recruit_time_choose = True
-        if best:
-            if best['level'] == 1:
+        if len(best) > 0:
+            if best[choose]['level'] == 1:
                 recruit_time_choose = False
 
         if recruit_time_choose:
@@ -177,16 +194,16 @@ class RecruitSolver(BaseSolver):
             [self.tap_element('one_hour', 0.5, 0.2, 0) for _ in range(5)]
         # start recruit
         self.tap((avail_level[1][0], budget[0][1]), interval=3)
-
-        if best:
-            logger_result = best['result']
+        if len(best) > 0:
+            logger_result = best[choose]['agent']
+            self.agent_choose.append(best)
             logger.info(f'公招预测结果：{logger_result}')
-            self.send_email(recruit_template.render(recruit_results=[best]), "公招选择结果", "html")
         else:
             logger.info('公招预测结果：{随机三星干员}')
 
     def recruit_result(self) -> bool:
         """ 识别公招招募到的干员 """
+        """ 卡在首次获得 挖个坑"""
         agent = None
         ocr = ocrhandle.predict(self.recog.img)
         for x in ocr:
@@ -206,6 +223,11 @@ class RecruitSolver(BaseSolver):
                     logger.info(f'获得干员：{agent}')
                 else:
                     logger.critical(f'获得干员：{agent}')
+
+        if agent is not None:
+            # 汇总开包结果
+            self.result_agent.append(agent)
+
         self.tap((self.recog.w // 2, self.recog.h // 2))
 
     '''
@@ -464,7 +486,7 @@ class RecruitSolver(BaseSolver):
 
         for item in combinations(tags, 2):
             merge_temp, level, isRarity, isRobot = self.merge_agent_list(item, recruit_agent_list[item[0]]['agent'],
-                                                                    recruit_agent_list[item[1]]['agent'])
+                                                                         recruit_agent_list[item[1]]['agent'])
             if len(merge_temp) > 0:
                 if has_rarity is False and isRarity:
                     has_rarity = isRarity
@@ -478,8 +500,8 @@ class RecruitSolver(BaseSolver):
                 }
         for item in combinations(tags, 3):
             merge_temp, level, isRarity, isRobot = self.merge_agent_list(item, recruit_agent_list[item[0]]['agent'],
-                                                                    recruit_agent_list[item[1]]['agent'],
-                                                                    recruit_agent_list[item[2]]['agent'])
+                                                                         recruit_agent_list[item[1]]['agent'],
+                                                                         recruit_agent_list[item[2]]['agent'])
             if len(merge_temp) > 0:
                 if has_rarity is False and isRarity:
                     has_rarity = isRarity
@@ -492,7 +514,6 @@ class RecruitSolver(BaseSolver):
                     "level": level,
                     "agent": merge_temp
                 }
-
 
         logger.debug(f"公招可能性:{self.recruit_str(possible_list)}")
 
