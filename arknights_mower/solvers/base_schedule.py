@@ -1980,7 +1980,7 @@ class BaseSchedulerSolver(BaseSolver):
                 logger.info("间隔未超过设定时间，不启动maa")
             else:
                 """公招测试用"""
-                recruit([])
+                recruit([],self.email_config)
 
                 self.send_email('启动MAA')
                 self.back_to_index()
