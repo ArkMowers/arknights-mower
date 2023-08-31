@@ -10,6 +10,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
+from ..command import recruit
 from ..data import agent_list
 from ..utils import character_recognize, detector, segment
 from ..utils.digit_reader import DigitReader
@@ -1978,13 +1979,20 @@ class BaseSchedulerSolver(BaseSolver):
                     seconds=self.maa_config['maa_execution_gap'] * 3600) < self.maa_config['last_execution']:
                 logger.info("间隔未超过设定时间，不启动maa")
             else:
+                """测试公招用"""
+                if 'Recruit' in tasks or tasks == 'All':
+                    recruit([], self.email_config, self.maa_config)
+
                 self.send_email('启动MAA')
                 self.back_to_index()
                 # 任务及参数请参考 docs/集成文档.md
                 self.initialize_maa()
                 if tasks == 'All':
-                    tasks = ['StartUp', 'Fight', 'Recruit', 'Visit', 'Mall', 'Award']
+                    tasks = ['StartUp', 'Fight', 'Visit', 'Mall', 'Award']
+                    # tasks = ['StartUp', 'Fight', 'Recruit', 'Visit', 'Mall', 'Award']
                 for maa_task in tasks:
+                    if maa_task == 'Recruit':
+                        continue
                     self.append_maa_task(maa_task)
                 # asst.append_task('Copilot', {
                 #     'stage_name': '千层蛋糕',
@@ -2035,7 +2043,9 @@ class BaseSchedulerSolver(BaseSolver):
                         self.credit_fight = get_server_weekday()
                         logger.info("记录首次信用作战")
                     logger.debug(stage_drop)
-                    self.send_email(maa_template.render(stage_drop=stage_drop), "Maa停止", "html")
+                    # 有掉落东西再发
+                    if stage_drop["details"]:
+                        self.send_email(maa_template.render(stage_drop=stage_drop), "Maa停止", "html")
 
                     '''仅发送由maa选择的结果以及稀有tag'''
                     if recruit_results:
@@ -2144,27 +2154,28 @@ class BaseSchedulerSolver(BaseSolver):
                 time.sleep(remaining_time)
             self.device.exit(self.package_name)
 
-    def send_email(self, body='', subject='', subtype='plain', retry_times=3):
-        if 'mail_enable' in self.email_config.keys() and self.email_config['mail_enable'] == 0:
-            logger.info('邮件功能未开启')
-            return
-
-        msg = MIMEMultipart()
-        msg.attach(MIMEText(body, subtype))
-        msg['Subject'] = self.email_config['subject'] + subject
-        msg['From'] = self.email_config['account']
-
-        while retry_times > 0:
-            try:
-                s = smtplib.SMTP_SSL("smtp.qq.com", 465, timeout=10.0)
-                # 登录邮箱
-                s.login(self.email_config['account'], self.email_config['pass_code'])
-                # 开始发送
-                s.sendmail(self.email_config['account'], self.email_config['receipts'], msg.as_string())
-                logger.info("邮件发送成功")
-                break
-            except Exception as e:
-                logger.error("邮件发送失败")
-                logger.exception(e)
-                retry_times -= 1
-                time.sleep(3)
+    # 移动到BaseSolver类中，使RecruitSolver可以调用发送
+    # def send_email(self, body='', subject='', subtype='plain', retry_times=3):
+    #     if 'mail_enable' in self.email_config.keys() and self.email_config['mail_enable'] == 0:
+    #         logger.info('邮件功能未开启')
+    #         return
+    #
+    #     msg = MIMEMultipart()
+    #     msg.attach(MIMEText(body, subtype))
+    #     msg['Subject'] = self.email_config['subject'] + subject
+    #     msg['From'] = self.email_config['account']
+    #
+    #     while retry_times > 0:
+    #         try:
+    #             s = smtplib.SMTP_SSL("smtp.qq.com", 465, timeout=10.0)
+    #             # 登录邮箱
+    #             s.login(self.email_config['account'], self.email_config['pass_code'])
+    #             # 开始发送
+    #             s.sendmail(self.email_config['account'], self.email_config['receipts'], msg.as_string())
+    #             logger.info("邮件发送成功")
+    #             break
+    #         except Exception as e:
+    #             logger.error("邮件发送失败")
+    #             logger.exception(e)
+    #             retry_times -= 1
+    #             time.sleep(3)
