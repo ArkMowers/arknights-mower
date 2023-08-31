@@ -199,7 +199,7 @@ class BaseSchedulerSolver(BaseSolver):
                 # 修改执行时间
                 self.tasks[task_index].time = datetime.now()
                 # 执行完提前换班任务再次执行本任务
-                self.tasks.append(SchedulerTask(task_plan=copy.deepcopy(self.task.plan)))
+                self.tasks.append(SchedulerTask(task_plan=copy.deepcopy(self.task.plan),type=self.task.type))
             else:
                 # 任务全清
                 rooms = []
@@ -230,7 +230,7 @@ class BaseSchedulerSolver(BaseSolver):
                 if len(plan.keys()) > 0:
                     self.tasks.append(SchedulerTask(task_plan=plan))
                     # 执行完提前换班任务再次执行本任务
-                    self.tasks.append(SchedulerTask(task_plan=copy.deepcopy(self.task.plan)))
+                    self.tasks.append(SchedulerTask(task_plan=copy.deepcopy(self.task.plan),type=self.task.type))
             self.skip()
             return
 
@@ -431,7 +431,7 @@ class BaseSchedulerSolver(BaseSolver):
                 del self.tasks[0]
             except Exception as e:
                 logger.exception(e)
-                if type(e) is ConnectionAbortedError:
+                if type(e) is ConnectionAbortedError or type(e) is AttributeError or type(e) is ConnectionError:
                     raise e
                 else:
                     self.skip()
@@ -448,7 +448,7 @@ class BaseSchedulerSolver(BaseSolver):
                 self.plan_solver()
             except Exception as e:
                 logger.exception(e)
-                if type(e) is ConnectionAbortedError:
+                if type(e) is ConnectionAbortedError or type(e) is AttributeError or type(e) is ConnectionError:
                     raise e
                 else:
                     self.error = True
@@ -615,19 +615,19 @@ class BaseSchedulerSolver(BaseSolver):
                         valid = False
                         logger.debug("宿舍未满员,跳过读取插拔时间")
                         break
-            if valid:
-                # 处理龙舌兰和但书的插拔
-                for k, v in self.op_data.run_order_rooms.items():
-                    # 如果没有当前房间数据
-                    if 'plan' not in v.keys():
-                        v['plan'] = self.op_data.get_current_room(k)
-                    if self.find_next_task(task_type=k) is not None: continue;
-                    in_out_plan = {k: ['Current'] * len(plan[k])}
-                    for idx, x in enumerate(plan[k]):
-                        if '但书' in x['replacement'] or '龙舌兰' in x['replacement']:
-                            in_out_plan[k][idx] = x['replacement'][0]
-                    self.tasks.append(
-                        SchedulerTask(time=self.get_run_roder_time(k), task_plan=in_out_plan, task_type=k))
+            # 处理龙舌兰和但书的插拔
+            for k, v in self.op_data.run_order_rooms.items():
+                # 如果没有当前房间数据
+                if 'plan' not in v.keys():
+                    v['plan'] = self.op_data.get_current_room(k)
+                if self.find_next_task(task_type=k) is not None: continue;
+                if not valid: continue;
+                in_out_plan = {k: ['Current'] * len(plan[k])}
+                for idx, x in enumerate(plan[k]):
+                    if '但书' in x['replacement'] or '龙舌兰' in x['replacement']:
+                        in_out_plan[k][idx] = x['replacement'][0]
+                self.tasks.append(
+                    SchedulerTask(time=self.get_run_roder_time(k), task_plan=in_out_plan, task_type=k))
         # 准备数据
         logger.debug(self.op_data.print())
         if self.read_mood:
@@ -1111,7 +1111,7 @@ class BaseSchedulerSolver(BaseSolver):
 
         # 如果启用 MAA，则在线索交流结束后购物
         if self.maa_config['maa_enable'] and self.party_time is not None:
-            if self.find_next_task(compare_time=self.party_time, task_type="maa_Mall", compare_type="=") is None:
+            if self.find_next_task(task_type="maa_Mall") is None:
                 self.tasks.append(SchedulerTask(time=self.party_time - timedelta(milliseconds=1), task_type='impart'))
                 self.tasks.append(SchedulerTask(time=self.party_time, task_type="maa_Mall"))
 

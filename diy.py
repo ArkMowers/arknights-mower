@@ -368,6 +368,9 @@ def simulate():
                 continue
             else:
                 raise E
+    if base_scheduler.recog.h!=1080 or base_scheduler.recog.w!=1920:
+        logger.error("模拟器分辨率不为1920x1080")
+        return
     validation_msg = base_scheduler.initialize_operators()
     if validation_msg is not None:
         logger.error(validation_msg)
@@ -400,7 +403,7 @@ def simulate():
                 continue
             base_scheduler.run()
             reconnect_tries = 0
-        except ConnectionError or ConnectionAbortedError as e:
+        except ConnectionError or ConnectionAbortedError or AttributeError as e:
             reconnect_tries += 1
             if reconnect_tries < reconnect_max_tries:
                 logger.warning(f'连接端口断开....正在重连....')
