@@ -83,3 +83,4 @@ rogue:
   stop_when_investment_full: true
   refresh_trader_with_dice: false
 screenshot: 200
+mail_subject: "[Mower通知]"

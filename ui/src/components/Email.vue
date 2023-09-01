@@ -3,11 +3,19 @@ import { useConfigStore } from '@/stores/config'
 import { storeToRefs } from 'pinia'
 const store = useConfigStore()
 
-import { ref } from 'vue'
+import { ref, inject } from 'vue'
+
+const axios = inject('axios')
 
 const mode = ref('simple')
+const test_result = ref('')
 
-const { mail_enable, account, pass_code } = storeToRefs(store)
+const { mail_enable, account, pass_code, mail_subject } = storeToRefs(store)
+
+async function test_email() {
+  const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/test-email`)
+  test_result.value = response.data
+}
 </script>
 
 <template>
@@ -49,14 +57,14 @@ const { mail_enable, account, pass_code } = storeToRefs(store)
           </tr>
         </table>
         <div class="email-test">
-          <n-button disabled>发送测试邮件</n-button>
-          <div></div>
+          <n-button @click="test_email">发送测试邮件</n-button>
+          <div>{{ test_result }}</div>
         </div>
         <n-divider />
         <table class="email-table">
           <tr>
-            <td class="email-label">邮件主题</td>
-            <td><n-input disabled></n-input></td>
+            <td class="email-label">标题前缀</td>
+            <td><n-input v-model:value="mail_subject" /></td>
           </tr>
         </table>
         <div>邮件主题可用于区分多开的Mower。</div>

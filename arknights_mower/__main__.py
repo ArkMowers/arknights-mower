@@ -168,7 +168,7 @@ def initialize(tasks, scheduler=None):
         base_scheduler.MAA = None
         base_scheduler.email_config = {
             'mail_enable': conf['mail_enable'],
-            'subject': '[Mower通知]',
+            'subject': conf['mail_subject'],
             'account': conf['account'],
             'pass_code': conf['pass_code'],
             'receipts': [conf['account']],

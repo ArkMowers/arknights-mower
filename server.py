@@ -21,6 +21,10 @@ import time
 import sys
 import mimetypes
 
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
 
 mimetypes.add_type("text/html", ".html")
 mimetypes.add_type("text/css", ".css")
@@ -275,3 +279,17 @@ def get_maa_conn_presets():
 def get_mood_ratios():
     return record.get_mood_ratios()
 
+
+@app.route("/test-email")
+def test_email():
+    msg = MIMEMultipart()
+    msg.attach(MIMEText("arknights-mower测试邮件", "plain"))
+    msg["Subject"] = conf["mail_subject"] + "测试邮件"
+    msg["From"] = conf["account"]
+    try:
+        s = smtplib.SMTP_SSL("smtp.qq.com", 465, timeout=10.0)
+        s.login(conf["account"], conf["pass_code"])
+        s.sendmail(conf["account"], conf["account"], msg.as_string())
+    except Exception as e:
+        return "邮件发送失败！\n" + str(e)
+    return "邮件发送成功！"
