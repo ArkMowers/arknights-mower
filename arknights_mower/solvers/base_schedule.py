@@ -199,7 +199,7 @@ class BaseSchedulerSolver(BaseSolver):
                 # 修改执行时间
                 self.tasks[task_index].time = datetime.now()
                 # 执行完提前换班任务再次执行本任务
-                self.tasks.append(SchedulerTask(task_plan=copy.deepcopy(self.task.plan),type=self.task.type))
+                self.tasks.append(SchedulerTask(task_plan=copy.deepcopy(self.task.plan),task_type=self.task.type))
             else:
                 # 任务全清
                 rooms = []
@@ -230,7 +230,7 @@ class BaseSchedulerSolver(BaseSolver):
                 if len(plan.keys()) > 0:
                     self.tasks.append(SchedulerTask(task_plan=plan))
                     # 执行完提前换班任务再次执行本任务
-                    self.tasks.append(SchedulerTask(task_plan=copy.deepcopy(self.task.plan),type=self.task.type))
+                    self.tasks.append(SchedulerTask(task_plan=copy.deepcopy(self.task.plan),task_type=self.task.type))
             self.skip()
             return
 
