@@ -41,9 +41,11 @@ class RecruitSolver(BaseSolver):
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
         super().__init__(device, recog)
 
-        self.result_agent = []
-        self.agent_choose = []
+        self.result_agent = {}
+        self.agent_choose = {}
         self.recruit_config = {}
+
+        self.recruit_pos = -1
 
     def run(self, priority: list[str] = None, email_config={}, maa_config={}) -> None:
         """
@@ -61,21 +63,24 @@ class RecruitSolver(BaseSolver):
         logger.info('Start: 公招')
         # 清空
         self.result_agent.clear()
-        self.agent_choose.clear()
+
+        self.result_agent = {}
+        self.agent_choose = {}
+
         # logger.info(f'目标干员：{priority if priority else "无，高稀有度优先"}')
         try:
             super().run()
         except Exception as e:
             logger.error(e)
 
-        logger.debug(self.result_agent)
         logger.debug(self.agent_choose)
+        logger.debug(self.result_agent)
+
         if self.result_agent:
             logger.info(f"上次公招结果汇总{self.result_agent}")
 
         if self.agent_choose:
             logger.info(f'公招标签：{self.agent_choose}')
-
         if self.agent_choose or self.result_agent:
             self.send_email(recruit_template.render(recruit_results=self.agent_choose,
                                                     recruit_get_agent=self.result_agent,
@@ -105,15 +110,23 @@ class RecruitSolver(BaseSolver):
             segments = segment.recruit(self.recog.img)
             tapped = False
             for idx, seg in enumerate(segments):
+                # 在主界面重置为-1
+                self.recruit_pos = -1
                 if self.recruiting & (1 << idx) != 0:
                     continue
                 if self.tap_element('recruit_finish', scope=seg, detected=True):
+                    # 完成公招点击聘用候选人
+                    self.recruit_pos = idx
                     tapped = True
                     break
                 if not self.has_ticket and not self.can_refresh:
                     continue
+                # 存在职业需求，说明正在进行招募
                 required = self.find('job_requirements', scope=seg)
                 if required is None:
+                    # 不在进行招募的位置 （1、空位 2、人力办公室等级不够没升的位置）
+                    # 下一次循环进入对应位置，先存入值
+                    self.recruit_pos = idx
                     self.tap(seg)
                     tapped = True
                     self.recruiting |= (1 << idx)
@@ -164,7 +177,7 @@ class RecruitSolver(BaseSolver):
 
             # recruitment tags
             tags = [x[1] for x in ocr]
-            logger.info(f'公招标签：{tags}')
+            logger.info(f'第{self.recruit_pos + 1}个位置上的公招标签：{tags}')
 
             # 计算招募标签组合结果
             best, need_choose = self.recruit_cal(tags, self.priority)
@@ -203,12 +216,12 @@ class RecruitSolver(BaseSolver):
             choose = (next(iter(best)))
             # tap selected tags
 
-        logger.info(f'选择标签：{choose}')
+        logger.info(f'选择标签：{list(choose)}')
         for x in ocr:
             color = self.recog.img[up + x[2][0][1] - 5, left + x[2][0][0] - 5]
             if (color[2] < 100) != (x[1] not in choose):
                 # 存在choose为空但是进行标签选择的情况
-                logger.info(f"tap{x}")
+                logger.debug(f"tap{x}")
                 self.device.tap((left + x[2][0][0] - 5, up + x[2][0][1] - 5))
 
         # 9h为True 3h50min为False
@@ -238,10 +251,19 @@ class RecruitSolver(BaseSolver):
         self.tap((avail_level[1][0], budget[0][1]), interval=3)
         if len(best) > 0:
             logger_result = best[choose]['agent']
-            self.agent_choose.append(best)
-            logger.info(f'公招预测结果：{logger_result}')
+            self.agent_choose[str(self.recruit_pos + 1)] = best
+
+            logger.info(f'第{self.recruit_pos + 1}个位置上的公招预测结果：{logger_result}')
         else:
-            logger.info('公招预测结果：{随机三星干员}')
+            self.agent_choose[str(self.recruit_pos + 1)] = {
+                ('',): {
+                    'isRarity': False,
+                    'isRobot': False,
+                    'level': 3,
+                    'agent': [{'name': '随机三星干员', 'level': 3}]}
+            }
+
+            logger.info(f'第{self.recruit_pos + 1}个位置上的公招预测结果：{"随机三星干员"}')
 
     def recruit_result(self) -> bool:
         """ 识别公招招募到的干员 """
@@ -268,180 +290,9 @@ class RecruitSolver(BaseSolver):
 
         if agent is not None:
             # 汇总开包结果
-            self.result_agent.append(agent)
+            self.result_agent[str(self.recruit_pos + 1)] = agent
 
         self.tap((self.recog.w // 2, self.recog.h // 2))
-
-    '''
-    def tags_choose(self, tags: list[str], priority: list[str]) -> tuple[list[str], RecruitPoss]:
-        """ 公招标签选择核心逻辑 """
-        if priority is None:
-            priority = []
-        if len(priority) and isinstance(priority[0], str):
-            priority = [[x] for x in priority]
-        possibility: dict[int, RecruitPoss] = {}
-        agent_level_dict = {}
-
-        # 挨个干员判断可能性
-        for x in recruit_agent.values():
-            agent_name = x['name']
-            agent_level = x['stars']
-            agent_tags = x['tags']
-            agent_level_dict[agent_name] = agent_level
-
-            # 高级资深干员需要有特定的 tag
-            if agent_level == 6 and '高级资深干员' not in tags:
-                continue
-
-            # 统计 9 小时公招的可能性
-            valid_9 = None
-            if 3 <= agent_level <= 6:
-                valid_9 = 0
-                if agent_level == 6 and '高级资深干员' in tags:
-                    valid_9 |= (1 << tags.index('高级资深干员'))
-                if agent_level == 5 and '资深干员' in tags:
-                    valid_9 |= (1 << tags.index('资深干员'))
-                for tag in agent_tags:
-                    if tag in tags:
-                        valid_9 |= (1 << tags.index(tag))
-
-            # 统计 3 小时公招的可能性
-            valid_3 = None
-            if 1 <= agent_level <= 4:
-                valid_3 = 0
-                for tag in agent_tags:
-                    if tag in tags:
-                        valid_3 |= (1 << tags.index(tag))
-
-            # 枚举所有可能的标签组合子集
-            for o in range(1 << 5):
-                if valid_9 is not None and o & valid_9 == o:
-                    if o not in possibility.keys():
-                        possibility[o] = RecruitPoss(o)
-                    possibility[o].ls.append(agent_name)
-                    possibility[o].max = max(possibility[o].max, agent_level)
-                    possibility[o].min = min(possibility[o].min, agent_level)
-                    possibility[o].lv2a3 |= 2 <= agent_level <= 3
-                _o = o + (1 << 5)
-                if valid_3 is not None and o & valid_3 == o:
-                    if _o not in possibility.keys():
-                        possibility[_o] = RecruitPoss(_o)
-                    possibility[_o].ls.append(agent_name)
-                    possibility[_o].max = max(possibility[_o].max, agent_level)
-                    possibility[_o].min = min(possibility[_o].min, agent_level)
-                    possibility[_o].lv2a3 |= 2 <= agent_level <= 3
-
-        # 检查是否存在无法从公开招募中获得的干员
-        for considering in priority:
-            for x in considering:
-                if agent_level_dict.get(x) is None:
-                    logger.error(f'该干员并不能在公开招募中获得：{x}')
-                    raise RuntimeError
-
-        best = RecruitPoss(0)
-
-        # 按照优先级判断，必定选中同一星级干员
-        # 附加限制：min_level == agent_level
-        if best.poss == 0:
-            logger.debug('choose: priority, min_level == agent_level')
-            for considering in priority:
-                for o in possibility.keys():
-                    possibility[o].poss = 0
-                    for x in considering:
-                        if x in possibility[o].ls:
-                            agent_level = agent_level_dict[x]
-                            if agent_level != 1 and agent_level == possibility[o].min:
-                                possibility[o].poss += 1
-                            elif agent_level == 1 and agent_level == possibility[o].min == possibility[o].max:
-                                # 必定选中一星干员的特殊逻辑
-                                possibility[o].poss += 1
-                    possibility[o].poss /= len(possibility[o].ls)
-                    if best < possibility[o]:
-                        best = possibility[o]
-                if best.poss > 0:
-                    break
-
-        # 按照优先级判断，若目标干员 1 星且该组合不存在 2/3 星的可能，则选择
-        # 附加限制：min_level == agent_level == 1 and not lv2a3
-        if best.poss == 0:
-            logger.debug(
-                'choose: priority, min_level == agent_level == 1 and not lv2a3')
-            for considering in priority:
-                for o in possibility.keys():
-                    possibility[o].poss = 0
-                    for x in considering:
-                        if x in possibility[o].ls:
-                            agent_level = agent_level_dict[x]
-                            if agent_level == possibility[o].min == 1 and not possibility[o].lv2a3:
-                                # 特殊判断：选中一星和四星干员的 Tag 组合
-                                possibility[o].poss += 1
-                    possibility[o].poss /= len(possibility[o].ls)
-                    if best < possibility[o]:
-                        best = possibility[o]
-                if best.poss > 0:
-                    break
-
-        # 按照优先级判断，必定选中星级 >= 4 的干员
-        # 附加限制：min_level >= 4
-        if best.poss == 0:
-            logger.debug('choose: priority, min_level >= 4')
-            for considering in priority:
-                for o in possibility.keys():
-                    possibility[o].poss = 0
-                    if possibility[o].min >= 4:
-                        for x in considering:
-                            if x in possibility[o].ls:
-                                possibility[o].poss += 1
-                    possibility[o].poss /= len(possibility[o].ls)
-                    if best < possibility[o]:
-                        best = possibility[o]
-                if best.poss > 0:
-                    break
-
-        # 按照等级下限判断，必定选中星级 >= 4 的干员
-        # 附加限制：min_level >= 4
-        if best.poss == 0:
-            logger.debug('choose: min_level >= 4')
-            for o in possibility.keys():
-                possibility[o].poss = 0
-                if possibility[o].min >= 4:
-                    possibility[o].poss = possibility[o].min
-                if best < possibility[o]:
-                    best = possibility[o]
-
-        # 按照优先级判断，检查其概率
-        if best.poss == 0:
-            logger.debug('choose: priority')
-            for considering in priority:
-                for o in possibility.keys():
-                    possibility[o].poss = 0
-                    for x in considering:
-                        if x in possibility[o].ls:
-                            possibility[o].poss += 1
-                    possibility[o].poss /= len(possibility[o].ls)
-                    if best < possibility[o]:
-                        best = possibility[o]
-                if best.poss > 0:
-                    break
-
-        # 按照等级下限判断，默认高稀有度优先
-        if best.poss == 0:
-            logger.debug('choose: min_level')
-            for o in possibility.keys():
-                possibility[o].poss = possibility[o].min
-                if best < possibility[o]:
-                    best = possibility[o]
-
-        logger.debug(f'poss: {possibility}')
-        logger.debug(f'best: {best}')
-
-        # 返回选择的标签列表
-        choose = []
-        for i in range(len(tags)):
-            if best.choose & (1 << i):
-                choose.append(tags[i])
-        return choose, best
-    '''
 
     def merge_agent_list(self, tags: [str], list_1: list[dict], list_2={}, list_3={}):
         """
