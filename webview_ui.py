@@ -13,6 +13,12 @@ from threading import Thread
 from PIL import Image
 from pystray import Icon, Menu, MenuItem
 
+import socket
+import tkinter
+from tkinter import messagebox
+from time import sleep
+import sys
+
 
 quit_app = False
 display = True
@@ -46,15 +52,32 @@ def destroy_window():
     window.destroy()
 
 
+def is_port_in_use(port):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(("localhost", port)) == 0
+
+
 if __name__ == "__main__":
     multiprocessing.freeze_support()
 
     conf = load_conf()
 
     port = conf["webview"]["port"]
+    token = conf["webview"]["token"]
+    host = "0.0.0.0" if token else "127.0.0.1"
+
+    if is_port_in_use(port):
+        root = tkinter.Tk()
+        root.withdraw()
+        messagebox.showerror(
+            "arknights-mower",
+            f"端口{port}已被占用，无法启动！",
+        )
+        sys.exit()
+
     Thread(
         target=app.run,
-        kwargs={"host": "127.0.0.1", "port": port},
+        kwargs={"host": host, "port": port},
         daemon=True,
     ).start()
 
@@ -84,7 +107,7 @@ if __name__ == "__main__":
 
     global window
     window = webview.create_window(
-        f"Mower {__version__} (http://127.0.0.1:{port})",
+        f"Mower {__version__} (http://{host}:{port})",
         f"http://127.0.0.1:{port}",
         width=width,
         height=height,
@@ -94,6 +117,8 @@ if __name__ == "__main__":
     window.events.resized += on_resized
     window.events.closing += on_closing
 
+    while not is_port_in_use(port):
+        sleep(0.1)
     webview.start()
 
     global mower_process
