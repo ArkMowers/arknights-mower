@@ -66,6 +66,9 @@ function start() {
 }
 
 onMounted(async () => {
+  const params = new URLSearchParams(document.location.search)
+  const token = params.get('token')
+  axios.defaults.headers.common['token'] = token
   await load_config()
   await load_shop()
   await load_plan()

@@ -75,6 +75,7 @@ if __name__ == "__main__":
         )
         sys.exit()
 
+    app.token = token
     Thread(
         target=app.run,
         kwargs={"host": host, "port": port},
@@ -108,7 +109,7 @@ if __name__ == "__main__":
     global window
     window = webview.create_window(
         f"Mower {__version__} (http://{host}:{port})",
-        f"http://127.0.0.1:{port}",
+        f"http://127.0.0.1:{port}?token={token}",
         width=width,
         height=height,
         text_select=True,

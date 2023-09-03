@@ -4,7 +4,7 @@ from arknights_mower.utils.conf import load_conf, save_conf, load_plan, write_pl
 from arknights_mower.__main__ import main
 from arknights_mower.utils.asst import Asst
 
-from flask import Flask, send_from_directory, request
+from flask import Flask, send_from_directory, request, abort
 from flask_cors import CORS
 from flask_sock import Sock
 
@@ -24,6 +24,8 @@ import mimetypes
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+
+from functools import wraps
 
 
 mimetypes.add_type("text/html", ".html")
@@ -45,12 +47,23 @@ log_lines = []
 ws_connections = []
 
 
+def require_token(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if request.headers.get("token", "") != app.token:
+            abort(403)
+        return f(*args, **kwargs)
+
+    return decorated_function
+
+
 @app.route("/")
 def serve_index():
     return send_from_directory("dist", "index.html")
 
 
 @app.route("/conf", methods=["GET", "POST"])
+@require_token
 def load_config():
     global conf
 
@@ -64,6 +77,7 @@ def load_config():
 
 
 @app.route("/plan", methods=["GET", "POST"])
+@require_token
 def load_plan_from_json():
     global plan
 
@@ -166,6 +180,7 @@ def running():
 
 
 @app.route("/start")
+@require_token
 def start():
     global conf
     global plan
@@ -197,6 +212,7 @@ def start():
 
 
 @app.route("/stop")
+@require_token
 def stop():
     global mower_process
 
@@ -225,6 +241,7 @@ def log(ws):
 
 
 @app.route("/dialog/file")
+@require_token
 def open_file_dialog():
     window = webview.active_window()
     file_path = window.create_file_dialog(dialog_type=webview.OPEN_DIALOG)
@@ -235,6 +252,7 @@ def open_file_dialog():
 
 
 @app.route("/dialog/folder")
+@require_token
 def open_folder_dialog():
     window = webview.active_window()
     folder_path = window.create_file_dialog(dialog_type=webview.FOLDER_DIALOG)
@@ -245,6 +263,7 @@ def open_folder_dialog():
 
 
 @app.route("/check-maa")
+@require_token
 def get_maa_adb_version():
     try:
         Asst.load(conf["maa_path"])
@@ -262,6 +281,7 @@ def get_maa_adb_version():
 
 
 @app.route("/maa-conn-preset")
+@require_token
 def get_maa_conn_presets():
     try:
         with open(
@@ -281,6 +301,7 @@ def get_mood_ratios():
 
 
 @app.route("/test-email")
+@require_token
 def test_email():
     msg = MIMEMultipart()
     msg.attach(MIMEText("arknights-mower测试邮件", "plain"))
