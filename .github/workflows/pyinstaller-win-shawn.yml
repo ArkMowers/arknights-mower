@@ -62,6 +62,7 @@ jobs:
         working-directory: ./main
         shell: cmd
         run: |
+          set PYTHONHASHSEED=114514
           venv\Scripts\pyinstaller .\webui_zip.spec
 
       - name: calculate hash
