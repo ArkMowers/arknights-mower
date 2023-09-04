@@ -615,19 +615,17 @@ class BaseSchedulerSolver(BaseSolver):
                         valid = False
                         logger.debug("宿舍未满员,跳过读取插拔时间")
                         break
-            # 处理龙舌兰和但书的插拔
-            for k, v in self.op_data.run_order_rooms.items():
-                # 如果没有当前房间数据
-                if 'plan' not in v.keys():
-                    v['plan'] = self.op_data.get_current_room(k)
-                if self.find_next_task(task_type=k) is not None: continue;
-                if not valid: continue;
-                in_out_plan = {k: ['Current'] * len(plan[k])}
-                for idx, x in enumerate(plan[k]):
-                    if '但书' in x['replacement'] or '龙舌兰' in x['replacement']:
-                        in_out_plan[k][idx] = x['replacement'][0]
-                self.tasks.append(
-                    SchedulerTask(time=self.get_run_roder_time(k), task_plan=in_out_plan, task_type=k))
+            if valid:
+                # 处理龙舌兰和但书的插拔
+                for k, v in self.op_data.run_order_rooms.items():
+                    if self.find_next_task(task_type=k) is not None: continue;
+                    if not valid: continue;
+                    in_out_plan = {k: ['Current'] * len(plan[k])}
+                    for idx, x in enumerate(plan[k]):
+                        if '但书' in x['replacement'] or '龙舌兰' in x['replacement']:
+                            in_out_plan[k][idx] = x['replacement'][0]
+                    self.tasks.append(
+                        SchedulerTask(time=self.get_run_roder_time(k), task_plan=in_out_plan, task_type=k))
         # 准备数据
         logger.debug(self.op_data.print())
         if self.read_mood:
@@ -1754,16 +1752,13 @@ class BaseSchedulerSolver(BaseSolver):
                                 if _name == 'Current':
                                     plan[room][current_idx] = self.op_data.get_current_room(room, True)[current_idx]
                         if room in self.op_data.run_order_rooms and len(new_plan) == 0:
-                            if 'plan' in self.op_data.run_order_rooms[room] and plan[room] != \
-                                    self.op_data.run_order_rooms[room][
-                                        'plan']:
+                            if plan[room] != self.op_data.get_current_room(room):
                                 run_order_task = self.find_next_task(
                                     compare_time=datetime.now() + timedelta(minutes=10),
                                     task_type=room, compare_type=">")
+                                logger.info("检测到插拔房间人员变动！")
                                 if run_order_task is not None:
-                                    logger.info("检测到插拔房间人员变动！")
                                     self.tasks.remove(run_order_task)
-                                    del self.op_data.run_order_rooms[room]['plan']
                     checked = True
                     current_room = self.op_data.get_current_room(room, True)
                     same = len(plan[room]) == len(current_room)
