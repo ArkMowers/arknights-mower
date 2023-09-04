@@ -79,7 +79,8 @@ onMounted(async () => {
   const params = new URLSearchParams(document.location.search)
   const token = params.get('token')
   axios.defaults.headers.common['token'] = token
-  await Promise.all([load_config(), load_shop(), load_plan(), load_operators(), get_running()])
+  await Promise.all([load_config(), load_shop(), load_operators(), get_running()])
+  await load_plan()
 
   if (!ws.value) {
     listen_ws()
