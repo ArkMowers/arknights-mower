@@ -91,11 +91,6 @@ const rogue_themes = [
 </template>
 
 <style scoped lang="scss">
-.external-container {
-  width: 600px;
-  margin: 0 auto;
-}
-
 .sss-select {
   width: 175px;
 }
