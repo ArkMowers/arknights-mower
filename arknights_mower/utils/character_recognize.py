@@ -164,6 +164,8 @@ def agent(img, draw=False):
             try:
                 if found_ocr is not None:
                     x = found_ocr
+                    if x[1][0] == "休" and x[1][2] == "斯":
+                        x[1] = "休谟斯"
                     if x[1] in agent_list and x[1] not in ['砾', '陈']:  # ocr 经常会把这两个搞错
                         ret_agent.append(x[1])
                         ret_succ.append(poly)
