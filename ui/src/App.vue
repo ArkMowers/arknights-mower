@@ -65,15 +65,21 @@ function start() {
   axios.get(`${import.meta.env.VITE_HTTP_URL}/start`)
 }
 
+function set_window_height() {
+  const vh = window.innerHeight * 0.01
+  document.documentElement.style.setProperty('--vh', `${vh}px`)
+}
+
 onMounted(async () => {
+  set_window_height()
+  window.addEventListener('resize', () => {
+    set_window_height()
+  })
+
   const params = new URLSearchParams(document.location.search)
   const token = params.get('token')
   axios.defaults.headers.common['token'] = token
-  await load_config()
-  await load_shop()
-  await load_plan()
-  await load_operators()
-  await get_running()
+  await Promise.all([load_config(), load_shop(), load_plan(), load_operators(), get_running()])
 
   if (!ws.value) {
     listen_ws()
@@ -97,7 +103,7 @@ onMounted(async () => {
 
 <style>
 #app {
-  height: 100vh;
+  height: calc(var(--vh, 1vh) * 100);
 }
 
 .n-tab-pane {
