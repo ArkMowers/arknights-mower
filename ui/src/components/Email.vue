@@ -67,7 +67,7 @@ async function test_email() {
             <td><n-input v-model:value="mail_subject" /></td>
           </tr>
         </table>
-        <div>邮件主题可用于区分多开的Mower。</div>
+        <div>标题前缀可用于区分多个Mower。</div>
       </template>
     </template>
   </n-card>
