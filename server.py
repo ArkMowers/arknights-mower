@@ -269,15 +269,14 @@ def get_maa_adb_version():
         Asst.load(conf["maa_path"])
         asst = Asst()
         version = asst.get_version()
-        maa_msg = f"Maa {version} 加载成功"
+        asst.set_instance_option(2, conf["maa_touch_option"])
+        if asst.connect(conf["maa_adb_path"], conf["adb"]):
+            maa_msg = f"Maa {version} 加载成功"
+        else:
+            maa_msg = "连接失败，请检查Maa日志！"
     except Exception as e:
         maa_msg = "Maa加载失败：" + str(e)
-    try:
-        adb = subprocess.run([conf["maa_adb_path"], "--version"], capture_output=True)
-        adb_msg = "adb " + adb.stdout.decode("utf-8").split("\n")[1][8:] + " 加载成功"
-    except Exception as e:
-        adb_msg = "adb加载失败：" + str(e)
-    return maa_msg + "；" + adb_msg
+    return maa_msg
 
 
 @app.route("/maa-conn-preset")

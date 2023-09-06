@@ -27,6 +27,7 @@ async function select_maa_dir() {
 const maa_msg = ref('')
 
 async function test_maa() {
+  maa_msg.value = '正在测试……'
   const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/check-maa`)
   maa_msg.value = response.data
 }
@@ -47,7 +48,7 @@ const maa_touch_options = ['maatouch', 'minitouch', 'adb'].map((x) => {
 
 <template>
   <n-card title="Maa设置">
-    <p>需要Maa的功能：清理智、线索收集（信用商店购物）、公开招募、集成战略、保全派驻、生息演算。</p>
+    <p>清理智、线索收集（信用商店购物）、集成战略、保全派驻、生息演算</p>
     <table class="maa-basic">
       <tr>
         <td>Maa目录</td>
@@ -68,11 +69,6 @@ const maa_touch_options = ['maatouch', 'minitouch', 'adb'].map((x) => {
         </td>
       </tr>
     </table>
-    <div class="misc-container">
-      <n-button @click="test_maa">测试设置</n-button>
-      <div>{{ maa_msg }}</div>
-    </div>
-    <n-divider />
     <table class="maa-conn">
       <tr>
         <td>连接配置</td>
@@ -90,6 +86,10 @@ const maa_touch_options = ['maatouch', 'minitouch', 'adb'].map((x) => {
         </td>
       </tr>
     </table>
+    <div class="misc-container">
+      <n-button @click="test_maa">测试设置</n-button>
+      <div>{{ maa_msg }}</div>
+    </div>
     <n-divider />
     <div class="misc-container">
       <div>启动间隔</div>
