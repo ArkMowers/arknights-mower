@@ -41,7 +41,7 @@ function render_tag({ option, handleClose }) {
 }
 
 function create_tag(label) {
-  if (label == ' ') {
+  if (label == ' ' || label == '上次作战') {
     return {
       label: '上次作战',
       value: ''
@@ -80,7 +80,9 @@ function create_tag(label) {
     <span>关卡填写说明：</span>
     <ul>
       <li><b>添加关卡</b>：输入关卡名，按回车键确认。文本变为标签，代表输入成功。</li>
-      <li><b>上次作战</b>：输入空格后回车，生成 <n-tag closable>上次作战</n-tag> 标签。</li>
+      <li>
+        <b>上次作战</b>：输入空格或“上次作战”后回车，生成 <n-tag closable>上次作战</n-tag> 标签。
+      </li>
       <li><b>主线关卡难度</b>：在关卡末尾添加“标准”或“磨难”以指定难度。例：</li>
       <ul>
         <li><n-tag closable>12-17标准</n-tag> 表示12-17标准难度。</li>
