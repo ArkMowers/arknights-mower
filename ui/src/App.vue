@@ -4,12 +4,13 @@
     :date-locale="dateZhCN"
     class="provider"
     :theme="theme == 'dark' ? darkTheme : undefined"
+    :hljs="hljs"
   >
     <n-global-style />
     <n-dialog-provider>
       <n-tabs type="segment" class="tabs">
         <n-tab-pane name="home" tab="日志">
-          <home />
+          <home v-if="loaded" />
         </n-tab-pane>
         <n-tab-pane name="basic" tab="设置">
           <advanced />
@@ -42,6 +43,8 @@ import external from '@/pages/External.vue'
 import record from '@/pages/record.vue'
 import { zhCN, dateZhCN, darkTheme } from 'naive-ui'
 
+import hljs from 'highlight.js/lib/core'
+
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
 import { useMowerStore } from '@/stores/mower'
@@ -51,6 +54,7 @@ const { load_config, load_shop } = config_store
 const { start_automatically, theme } = storeToRefs(config_store)
 
 const plan_store = usePlanStore()
+const { operators } = storeToRefs(plan_store)
 const { load_plan, load_operators } = plan_store
 
 const mower_store = useMowerStore()
@@ -70,6 +74,8 @@ function set_window_height() {
   document.documentElement.style.setProperty('--vh', `${vh}px`)
 }
 
+const loaded = ref(false)
+
 onMounted(async () => {
   set_window_height()
   window.addEventListener('resize', () => {
@@ -80,6 +86,37 @@ onMounted(async () => {
   const token = params.get('token')
   axios.defaults.headers.common['token'] = token
   await Promise.all([load_config(), load_shop(), load_operators(), get_running()])
+
+  const r = RegExp(operators.value.map((x) => "'" + x.value).join('|'))
+  loaded.value = true
+
+  hljs.registerLanguage('mower', () => ({
+    contains: [
+      {
+        begin: r,
+        end: /'/,
+        className: 'operator',
+        relevance: 0
+      },
+      {
+        begin: /宿舍黑名单|重设上次房间为空/,
+        relevance: 10
+      },
+      {
+        begin: /[0-9]+(-[0-9]+)+/,
+        className: 'date'
+      },
+      {
+        begin: /[0-9]+:[0-9]+:[0-9]+/,
+        className: 'time'
+      },
+      {
+        begin: /room_[0-9]_[0-9]|dormitory_[0-9]|central|contact|factory|meeting/,
+        className: 'room'
+      }
+    ]
+  }))
+
   await load_plan()
 
   if (!ws.value) {

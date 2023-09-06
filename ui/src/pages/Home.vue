@@ -45,7 +45,7 @@ function stop() {
 
 <template>
   <div class="home-container">
-    <n-log class="log" :log="log" />
+    <n-log class="log" :log="log" language="mower" />
     <div>
       <n-button type="error" @click="stop" v-if="running">立即停止</n-button>
       <n-button type="primary" @click="start" v-else>开始执行</n-button>
@@ -105,5 +105,21 @@ function stop() {
 <style>
 .n-log pre {
   word-break: break-all;
+}
+
+.hljs-date {
+  color: #f0a020 !important;
+}
+
+.hljs-time {
+  color: #2080f0 !important;
+}
+
+.hljs-room {
+  color: #18a058 !important;
+}
+
+.hljs-operator {
+  color: #d03050 !important;
 }
 </style>
