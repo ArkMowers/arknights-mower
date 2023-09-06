@@ -18,7 +18,6 @@ a = Analysis(
         ('arknights_mower/solvers', 'arknights_mower/__init__/solvers'),
         ('venv/Lib/site-packages/onnxruntime/capi/onnxruntime_providers_shared.dll', 'onnxruntime/capi/'),
         ('venv/Lib/site-packages/paddleocr', 'paddleocr'),
-        ('venv/Lib/site-packages/paddle/libs/mkldnn.dll', '.'),
         ('venv/Lib/site-packages/paddle/libs/mklml.dll', '.'),
         ('venv/Lib/site-packages/shapely/DLLs/geos.dll', '.'),
         ('venv/Lib/site-packages/paddle/fluid/proto/framework_pb2.py', '.'),
