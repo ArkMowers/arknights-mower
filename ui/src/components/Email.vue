@@ -13,6 +13,7 @@ const test_result = ref('')
 const { mail_enable, account, pass_code, mail_subject } = storeToRefs(store)
 
 async function test_email() {
+  test_result.value = '正在发送……'
   const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/test-email`)
   test_result.value = response.data
 }
