@@ -850,8 +850,7 @@ class BaseSchedulerSolver(BaseSolver):
     def initialize_paddle(self):
         global ocr
         if ocr is None:
-            # mac 平台不支持 mkldnn 加速，关闭以修复 mac 运行时错误
-            ocr = PaddleOCR(enable_mkldnn=(sys.platform != 'darwin'), use_angle_cls=False)
+            ocr = PaddleOCR(enable_mkldnn=False, use_angle_cls=False)
 
     def read_screen(self, img, type="mood", limit=24, cord=None):
         if cord is not None:
