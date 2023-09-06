@@ -50,7 +50,7 @@ ws_connections = []
 def require_token(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if request.headers.get("token", "") != app.token:
+        if hasattr(app, "token") and request.headers.get("token", "") != app.token:
             abort(403)
         return f(*args, **kwargs)
 
