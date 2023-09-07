@@ -31,9 +31,10 @@ jobs:
           install-only: true
 
       - name: Set up Python 3.8 amd64
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: 3.8
+          cache: pip
           architecture: x64
 
       - name: build frontend
