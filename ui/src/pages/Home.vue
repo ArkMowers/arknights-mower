@@ -109,14 +109,17 @@ function stop() {
 
 .hljs-date {
   color: #f0a020 !important;
+  font-weight: bold;
 }
 
 .hljs-time {
   color: #2080f0 !important;
+  font-weight: bold;
 }
 
 .hljs-room {
   color: #18a058 !important;
+  font-weight: bold;
 }
 
 .hljs-operator {
