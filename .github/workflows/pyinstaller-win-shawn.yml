@@ -64,6 +64,7 @@ jobs:
         shell: cmd
         run: |
           set PYTHONHASHSEED=114514
+          set SOURCE_DATE_EPOCH=1694076231
           venv\Scripts\pyinstaller .\webui_zip.spec
 
       - name: calculate hash
