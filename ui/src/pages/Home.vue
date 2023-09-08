@@ -5,7 +5,7 @@ import { onMounted, inject, nextTick, watch } from 'vue'
 
 const mower_store = useMowerStore()
 
-const { log, running, log_lines } = storeToRefs(mower_store)
+const { log, running, log_lines, task_list } = storeToRefs(mower_store)
 const axios = inject('axios')
 
 function scroll_last_line() {
@@ -45,6 +45,25 @@ function stop() {
 
 <template>
   <div class="home-container">
+    <n-table class="task-table" size="small" :single-line="false">
+      <thead>
+        <tr>
+          <th>时间</th>
+          <th>任务</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template v-for="task in task_list">
+          <tr>
+            <td :rowspan="task.task.length">{{ task.time }}</td>
+            <td>{{ task.task[0] }}</td>
+          </tr>
+          <tr v-for="i in task.task.length - 1">
+            <td>{{ task.task[i] }}</td>
+          </tr>
+        </template>
+      </tbody>
+    </n-table>
     <n-log class="log" :log="log" language="mower" />
     <div>
       <n-button type="error" @click="stop" v-if="running">立即停止</n-button>
@@ -71,7 +90,7 @@ function stop() {
   </div>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 .home-container {
   padding: 0 12px 12px;
   flex-grow: 1;
@@ -99,6 +118,18 @@ function stop() {
 
 .down-button:hover {
   opacity: 1;
+}
+
+.task-table {
+  max-width: 600px;
+
+  th {
+    padding: 2px 16px;
+  }
+
+  td {
+    padding: 0 16px;
+  }
 }
 </style>
 
