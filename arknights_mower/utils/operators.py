@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from ..data import agent_list
 from ..solvers.record import save_action_to_sqlite_decorator
-
+from ..utils.log import logger
 
 class Operators(object):
     config = None
@@ -111,17 +111,17 @@ class Operators(object):
         if len(self.dorm) < self.max_resting_count:
             return f'宿舍Free总数 {len(self.dorm)}小于最大分组数 {self.max_resting_count}'
         # low_free 的排序
-        self.dorm[self.max_resting_count:len(self.dorm)] = sorted(
-            self.dorm[self.max_resting_count:len(self.dorm)],
-            key=lambda k: (k.position[0], k.position[1]), reverse=True)
+        # self.dorm[self.max_resting_count:len(self.dorm)] = sorted(
+        #     self.dorm[self.max_resting_count:len(self.dorm)],
+        #     key=lambda k: (k.position[0], k.position[1]), reverse=True)
         # 跑单
         for x, y in self.plan.items():
             if not x.startswith('room'): continue
             if any(('但书' in obj['replacement'] or '龙舌兰' in obj['replacement']) for obj in y):
                 self.run_order_rooms[x] = {}
         # 判定分组排班可能性
-        current_high = self.available_free(count=self.max_resting_count)
-        current_low = self.available_free('low', count=self.max_resting_count)
+        current_high = self.available_free()
+        current_low = self.available_free('low')
         for key in self.groups:
             high_count = 0
             low_count = 0
@@ -291,29 +291,34 @@ class Operators(object):
         if operator.workaholic and operator.name not in self.workaholic_agent:
             self.workaholic_agent.append(operator.name)
 
-    def available_free(self, free_type='high', count=4):
+    def available_free(self, free_type='high'):
         ret = 0
         if free_type == 'high':
             idx = 0
             for dorm in self.dorm:
                 if dorm.name == '' or (dorm.name in self.operators.keys() and not self.operators[dorm.name].is_high()):
                     ret += 1
-                if idx == count - 1:
+                elif dorm.time is not None and dorm.time < datetime.now():
+                    logger.info("检测到房间休息完毕，释放Free位")
+                    dorm.name = ''
+                    ret += 1
+                if idx == self.max_resting_count - 1:
                     break
                 else:
                     idx += 1
         else:
-            idx = -1
-            if count - len(self.dorm) == 0:
-                return 0
-            while idx < 0:
-                dorm = self.dorm[idx]
+            idx = self.max_resting_count
+            for i in range(idx, len(self.dorm)):
+                dorm = self.dorm[i]
+                # 释放满休息位
+                # TODO 高效组且低优先可以相互替换
                 if dorm.name == '' or (dorm.name in self.operators.keys() and not self.operators[dorm.name].is_high()):
+                    dorm.name = ''
                     ret += 1
-                if idx == count - len(self.dorm):
-                    break
-                else:
-                    idx -= 1
+                elif dorm.time is not None and dorm.time < datetime.now():
+                    logger.info("检测到房间休息完毕，释放Free位")
+                    dorm.name = ''
+                    ret += 1
         return ret
 
     def assign_dorm(self, name):
@@ -323,13 +328,10 @@ class Operators(object):
                          obj.name not in self.operators.keys() or not self.operators[obj.name].is_high())
         else:
             _room = None
-            idx = -1
-            while idx < 0:
-                if self.dorm[idx].name == '':
-                    _room = self.dorm[idx]
+            for i in range(self.max_resting_count, len(self.dorm)):
+                if self.dorm[i].name == '':
+                    _room = self.dorm[i]
                     break
-                else:
-                    idx -= 1
         _room.name = name
         return _room
 

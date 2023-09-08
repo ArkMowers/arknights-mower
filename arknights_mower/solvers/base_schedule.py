@@ -153,9 +153,9 @@ class BaseSchedulerSolver(BaseSolver):
                 _low_free += 1
         self.agent_get_mood(force=True)
         # 剩余高效组位置
-        current_high = self.op_data.available_free(count=self.max_resting_count)
+        current_high = self.op_data.available_free()
         # 剩余低效位置
-        current_low = self.op_data.available_free('low', count=self.max_resting_count)
+        current_low = self.op_data.available_free('low')
         logger.debug(f"剩余高效:{current_high},低效：{current_low}")
         logger.debug(f"需求高效:{_high_free},低效：{_low_free}")
         if current_high >= _high_free and current_low >= _low_free:
@@ -657,9 +657,9 @@ class BaseSchedulerSolver(BaseSolver):
                 # 自动生成任务
                 self.plan_metadata()
                 # 剩余高效组位置
-                high_free = self.op_data.available_free(count=self.max_resting_count)
+                high_free = self.op_data.available_free()
                 # 剩余低效位置
-                low_free = self.op_data.available_free('low', count=self.max_resting_count)
+                low_free = self.op_data.available_free('low')
                 _replacement = []
                 _plan = {}
                 for op in self.total_agent:
@@ -1755,8 +1755,8 @@ class BaseSchedulerSolver(BaseSolver):
                                 run_order_task = self.find_next_task(
                                     compare_time=datetime.now() + timedelta(minutes=10),
                                     task_type=room, compare_type=">")
-                                logger.info("检测到插拔房间人员变动！")
                                 if run_order_task is not None:
+                                    logger.info("检测到插拔房间人员变动！")
                                     self.tasks.remove(run_order_task)
                     checked = True
                     current_room = self.op_data.get_current_room(room, True)
@@ -2140,7 +2140,7 @@ class BaseSchedulerSolver(BaseSolver):
                 time.sleep(remaining_time)
             self.MAA = None
         except Exception as e:
-            logger.error(e)
+            logger.exception(e)
             self.MAA = None
             remaining_time = (self.tasks[0].time - datetime.now()).total_seconds()
             if remaining_time > 0:
