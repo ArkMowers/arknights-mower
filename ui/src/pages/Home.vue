@@ -128,6 +128,7 @@ function stop() {
   }
 
   td {
+    height: 24px;
     padding: 0 16px;
   }
 }
