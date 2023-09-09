@@ -232,15 +232,20 @@ async function select_simulator_folder() {
         <tr>
           <td>
             心情阈值：<help-text>
-              <div>2电站推荐大于0.5</div>
-              <div>3电站推荐大于0.75</div>
+              <div>2电站推荐不低于0.75</div>
+              <div>3电站推荐不低于0.5</div>
               <div>即将大更新推荐设置成0.8</div>
             </help-text>
           </td>
           <td colspan="2">
             <div class="threshold">
               <n-slider v-model:value="resting_threshold" :step="0.05" :min="0.5" :max="0.8" />
-              <n-input-number v-model:value="resting_threshold" />
+              <n-input-number
+                v-model:value="resting_threshold"
+                :step="0.05"
+                :min="0.5"
+                :max="0.8"
+              />
             </div>
           </td>
         </tr>
