@@ -863,7 +863,7 @@ class BaseSchedulerSolver(BaseSolver):
                 img = cv2.vconcat([img, img])
         try:
             self.initialize_paddle()
-            rets = ocr.ocr(img, cls=True)
+            rets = ocr.ocr(img, cls=False)
             line_conf = []
             for idx in range(len(rets[0])):
                 res = rets[0][idx]
