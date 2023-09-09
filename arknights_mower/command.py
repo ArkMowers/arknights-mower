@@ -26,7 +26,7 @@ def base(args: list[str] = [], device: Device = None):
         -f 是否使用菲亚梅塔恢复特定房间干员心情，恢复后恢复原位且工作位置不变，F、N 含义同上
     """
     from .data import base_room_list, agent_list
-    
+
     arrange = None
     clue_collect = False
     drone_room = None
@@ -54,10 +54,10 @@ def base(args: list[str] = [], device: Device = None):
                         any_room.append(p)
                         agents.append([])
                     elif p in agent_list or 'free' == p.lower():
-                        agents[-1].append(p)                
+                        agents[-1].append(p)
     except Exception:
         raise ParamError
-    
+
     if arrange is None and any_room is not None and len(agents) > 0:
         arrange = dict(zip(any_room, agents))
 
@@ -84,17 +84,20 @@ def shop(args: list[str] = [], device: Device = None):
         ShopSolver(device).run(args)
 
 
-def recruit(args: list[str] = [], email_config={}, maa_config={},device: Device = None):
+def recruit(args: list[str] = [], email_config={}, maa_config={}, device: Device = None):
     """
     recruit [agents ...]
         自动进行公共招募
         agents 优先考虑的公招干员，若不指定则使用配置文件中的优先级，默认为高稀有度优先
     """
+    choose = {}
+    result = {}
     if len(args) == 0:
-        RecruitSolver(device).run(config.RECRUIT_PRIORITY,email_config,maa_config)
+        choose, result = RecruitSolver(device).run(config.RECRUIT_PRIORITY, email_config, maa_config)
     else:
-        RecruitSolver(device).run(args,email_config)
+        choose, result = RecruitSolver(device).run(args, email_config)
 
+    return choose, result
 
 def mission(args: list[str] = [], device: Device = None):
     """

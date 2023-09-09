@@ -10,6 +10,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
+from .skland import SKLand
 from ..command import recruit
 from ..data import agent_list
 from ..utils import character_recognize, detector, segment
@@ -199,7 +200,7 @@ class BaseSchedulerSolver(BaseSolver):
                 # 修改执行时间
                 self.tasks[task_index].time = datetime.now()
                 # 执行完提前换班任务再次执行本任务
-                self.tasks.append(SchedulerTask(task_plan=copy.deepcopy(self.task.plan),task_type=self.task.type))
+                self.tasks.append(SchedulerTask(task_plan=copy.deepcopy(self.task.plan), task_type=self.task.type))
             else:
                 # 任务全清
                 rooms = []
@@ -230,7 +231,7 @@ class BaseSchedulerSolver(BaseSolver):
                 if len(plan.keys()) > 0:
                     self.tasks.append(SchedulerTask(task_plan=plan))
                     # 执行完提前换班任务再次执行本任务
-                    self.tasks.append(SchedulerTask(task_plan=copy.deepcopy(self.task.plan),task_type=self.task.type))
+                    self.tasks.append(SchedulerTask(task_plan=copy.deepcopy(self.task.plan), task_type=self.task.type))
             self.skip()
             return
 
@@ -814,7 +815,8 @@ class BaseSchedulerSolver(BaseSolver):
         return self.op_data.init_and_validate()
 
     def check_fia(self):
-        if '菲亚梅塔' in self.op_data.operators.keys() and self.op_data.operators['菲亚梅塔'].room.startswith('dormitory'):
+        if '菲亚梅塔' in self.op_data.operators.keys() and self.op_data.operators['菲亚梅塔'].room.startswith(
+                'dormitory'):
             return self.op_data.operators['菲亚梅塔'].replacement, self.op_data.operators['菲亚梅塔'].room
         return None, None
 
@@ -1973,6 +1975,10 @@ class BaseSchedulerSolver(BaseSolver):
                     seconds=self.maa_config['maa_execution_gap'] * 3600) < self.maa_config['last_execution']:
                 logger.info("间隔未超过设定时间，不启动maa")
             else:
+                """森空岛签到"""
+                skland = SKLand()
+                skland.attendance()
+
                 """测试公招用"""
                 if 'Recruit' in tasks or tasks == 'All':
                     recruit([], self.email_config, self.maa_config)

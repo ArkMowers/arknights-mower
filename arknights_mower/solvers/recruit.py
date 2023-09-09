@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from itertools import combinations
+from typing import Tuple, Dict, Any
 
 from ..data import recruit_agent, recruit_tag, recruit_agent_list
 from ..ocr import ocr_rectify, ocrhandle
@@ -47,7 +48,7 @@ class RecruitSolver(BaseSolver):
 
         self.recruit_pos = -1
 
-    def run(self, priority: list[str] = None, email_config={}, maa_config={}) -> None:
+    def run(self, priority: list[str] = None, email_config={}, maa_config={}):
         """
         :param priority: list[str], 优先考虑的公招干员，默认为高稀有度优先
         """
@@ -85,6 +86,8 @@ class RecruitSolver(BaseSolver):
             self.send_email(recruit_template.render(recruit_results=self.agent_choose,
                                                     recruit_get_agent=self.result_agent,
                                                     title_text="公招汇总"), "公招汇总通知", "html")
+
+        return self.agent_choose, self.result_agent
 
     def add_recruit_param(self, maa_config):
         if not maa_config:
@@ -185,7 +188,8 @@ class RecruitSolver(BaseSolver):
             # 刷新标签
             if need_choose is False:
                 '''稀有tag或支援，不需要选'''
-                self.send_email(recruit_rarity.render(recruit_results=best, title_text="稀有tag通知"), "出稀有标签辣", "html")
+                self.send_email(recruit_rarity.render(recruit_results=best, title_text="稀有tag通知"), "出稀有标签辣",
+                                "html")
                 logger.debug('稀有tag,发送邮件')
                 self.back()
                 return
