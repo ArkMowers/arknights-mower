@@ -48,13 +48,11 @@ class SKLand:
         response = requests.post(headers=self.request_header, url=self.url.get("token_by_phone_password"), data=data)
 
         response_json = self.respone_to_json(response)
-
         if response_json.get("status") == 0:
             return response_json.get("data").get("token")
         return ""
 
     def check_cred(self, account):
-
         if account['cred'] == "":
             return False
         headers = self.request_header
@@ -120,7 +118,6 @@ class SKLand:
             response = requests.post(headers=headers, url=self.url.get("attendance"), data=data)
 
             response_json = self.respone_to_json(response)
-            print(response_json)
             award = []
             if response_json["code"] == 0:
 
@@ -129,9 +126,8 @@ class SKLand:
                     award.append(temp_str)
             elif response_json["code"] == 10001 and response_json["message"] == "请勿重复签到！":
                 logger.info(f"{account['name']} 请勿重复签到！")
-                self.get_award[account['name']] = "请勿重复签到！"
-
-            print(self.get_award)
+                award.append("请勿重复签到！")
+            self.get_award[account['name']] = award
             self.record_attendance(account['name'], self.get_award[account['name']])
 
         return self.get_award
@@ -151,7 +147,8 @@ class SKLand:
                     if line[0] == name:
                         return True
         except:
-            return True
+            with open(self.record_path, 'a+') as f:
+                return False
 
         return False
 
