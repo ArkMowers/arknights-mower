@@ -1914,9 +1914,9 @@ class BaseSchedulerSolver(BaseSolver):
         from asst.updater import Updater
 
 
-        logger.info("开始更新Maa……")
-        Updater(self.maa_config['maa_path'], Version.Stable).update()
-        logger.info("Maa更新完成")
+        # logger.info("开始更新Maa……")
+        # Updater(self.maa_config['maa_path'], Version.Stable).update()
+        # logger.info("Maa更新完成")
         Asst.load(path=self.maa_config['maa_path'])
         
         self.MAA = Asst(callback=self.log_maa)
