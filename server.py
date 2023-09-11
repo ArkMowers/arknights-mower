@@ -2,7 +2,6 @@
 from arknights_mower.solvers import record
 from arknights_mower.utils.conf import load_conf, save_conf, load_plan, write_plan
 from arknights_mower.__main__ import main
-from arknights_mower.utils.asst import Asst
 
 from flask import Flask, send_from_directory, request, abort
 from flask_cors import CORS
@@ -26,6 +25,9 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 from functools import wraps
+
+import importlib.util
+import pathlib
 
 
 mimetypes.add_type("text/html", ".html")
@@ -266,6 +268,11 @@ def open_folder_dialog():
 @require_token
 def get_maa_adb_version():
     try:
+        asst_path = os.path.dirname(pathlib.Path(conf["maa_path"]) / "Python" / "asst")
+        if asst_path not in sys.path:
+            sys.path.append(asst_path)
+        from asst.asst import Asst
+
         Asst.load(conf["maa_path"])
         asst = Asst()
         version = asst.get_version()
