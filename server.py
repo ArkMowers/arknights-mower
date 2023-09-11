@@ -202,7 +202,7 @@ def start():
             operators,
             write,
         ),
-        daemon=True,
+        daemon=False,
     )
     mower_process.start()
 
