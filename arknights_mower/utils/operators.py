@@ -91,7 +91,8 @@ class Operators(object):
             free_found = False
             for _idx, _dorm in enumerate(self.plan[dorm]):
                 if _dorm['agent'] == 'Free' and _idx <= 1:
-                    return f'宿舍必须安排2个宿管'
+                    if "波登可" not in self.plan[dorm]:
+                        return f'宿舍必须安排2个宿管'
                 if _dorm['agent'] != 'Free' and free_found:
                     return f'Free必须连续且安排在宿管后'
                 if _dorm['agent'] == 'Free' and not free_found and (dorm + str(_idx)) not in added and len(
