@@ -30,6 +30,8 @@ from ..utils.datetime import get_server_weekday, the_same_time
 from paddleocr import PaddleOCR
 import cv2
 
+from ctypes import CFUNCTYPE, c_int, c_char_p, c_void_p
+
 # 借用__main__.py里的时间计算器
 from arknights_mower.__main__ import format_time
 
@@ -1871,6 +1873,36 @@ class BaseSchedulerSolver(BaseSolver):
         if not error:
             self.reload_time = datetime.now()
 
+    @CFUNCTYPE(None, c_int, c_char_p, c_void_p)
+    def log_maa(msg, details, arg):
+        m = Message(msg)
+        d = json.loads(details.decode('utf-8'))
+        logger.debug(d)
+        logger.debug(m)
+        logger.debug(arg)
+        if "what" in d and d["what"] == "StageDrops":
+            global stage_drop
+            stage_drop["details"].append(d["details"]["drops"])
+            stage_drop["summary"] = d["details"]["stats"]
+
+        elif "what" in d and d["what"] == "RecruitTagsSelected":
+            global recruit_tags_selected
+            recruit_tags_selected["tags"].append(d["details"]["tags"])
+
+        elif "what" in d and d["what"] == "RecruitResult":
+            global recruit_results
+            temp_dict = {
+                "tags": d["details"]["tags"],
+                "level": d["details"]["level"],
+                "result": d["details"]["result"],
+            }
+            recruit_results["results"].append(temp_dict)
+
+        elif "what" in d and d["what"] == "RecruitSpecialTag":
+            global recruit_special_tags
+            recruit_special_tags["tags"].append(d["details"]["tags"])
+
+
 
     def initialize_maa(self):
         asst_path = os.path.dirname(pathlib.Path(self.maa_config['maa_path']) / "Python" / "asst")
@@ -1885,45 +1917,11 @@ class BaseSchedulerSolver(BaseSolver):
         logger.info("开始更新Maa……")
         Updater(self.maa_config['maa_path'], Version.Stable).update()
         logger.info("Maa更新完成")
-        # 若需要获取详细执行信息，请传入 callback 参数
-        # 例如 asst = Asst(callback=my_callback)
         Asst.load(path=self.maa_config['maa_path'])
-
-        @Asst.CallBackType
-        def log_maa(msg, details, arg):
-            m = Message(msg)
-            d = json.loads(details.decode('utf-8'))
-            logger.debug(d)
-            logger.debug(m)
-            logger.debug(arg)
-            if "what" in d and d["what"] == "StageDrops":
-                global stage_drop
-                stage_drop["details"].append(d["details"]["drops"])
-                stage_drop["summary"] = d["details"]["stats"]
-
-            elif "what" in d and d["what"] == "RecruitTagsSelected":
-                global recruit_tags_selected
-                recruit_tags_selected["tags"].append(d["details"]["tags"])
-
-            elif "what" in d and d["what"] == "RecruitResult":
-                global recruit_results
-                temp_dict = {
-                    "tags": d["details"]["tags"],
-                    "level": d["details"]["level"],
-                    "result": d["details"]["result"],
-                }
-                recruit_results["results"].append(temp_dict)
-
-            elif "what" in d and d["what"] == "RecruitSpecialTag":
-                global recruit_special_tags
-                recruit_special_tags["tags"].append(d["details"]["tags"])
-
-        # self.MAA = Asst(callback=log_maa)
-        self.MAA = Asst()
+        
+        self.MAA = Asst(callback=self.log_maa)
         self.stages = []
         self.MAA.set_instance_option(InstanceOptionType.touch_type, self.maa_config['touch_option'])
-        # 请自行配置 adb 环境变量，或修改为 adb 可执行程序的路径
-        # logger.info(self.device.client.device_id)
         if self.MAA.connect(self.maa_config['maa_adb_path'], self.device.client.device_id,
                             self.maa_config["conn_preset"]):
             logger.info("MAA 连接成功")
