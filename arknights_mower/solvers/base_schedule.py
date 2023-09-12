@@ -854,7 +854,7 @@ class BaseSchedulerSolver(BaseSolver):
     def initialize_paddle(self):
         global ocr
         if ocr is None:
-            ocr = PaddleOCR(enable_mkldnn=False, use_angle_cls=False)
+            ocr = PaddleOCR(enable_mkldnn=False, use_angle_cls=False, cls=False, show_log=False)
 
     def read_screen(self, img, type="mood", limit=24, cord=None):
         if cord is not None:
