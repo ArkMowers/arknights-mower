@@ -29,7 +29,7 @@ def to_list(str_data):
 
 class PlanConfig(object):
 
-    def __init__(self, rest_in_full, exhaust_require, resting_priority, ling_xi=0, workaholic="", max_resting_count=4,free_blacklist="",read_mood =True):
+    def __init__(self, rest_in_full, exhaust_require, resting_priority, ling_xi=0, workaholic="", max_resting_count=4,free_blacklist="",read_mood =True,skip_validation=False):
         self.rest_in_full = to_list(rest_in_full)
         self.exhaust_require = to_list(exhaust_require)
         self.workaholic = to_list(workaholic)
@@ -41,6 +41,7 @@ class PlanConfig(object):
         # 1 为感知信息模式
         # 2 为人间烟火模式
         self.ling_xi = ling_xi
+        self.skip_validation = skip_validation
 
     def get_config(self, agent_name, config_type):
         if config_type == 0:

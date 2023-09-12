@@ -51,7 +51,7 @@ class Operators(object):
         if refresh:
             error = self.init_and_validate(True)
             if error:
-                logger.log(error)
+                return error
 
     def merge_plan(self, idx):
         default_plan = copy.deepcopy(self.global_plan["default_plan"].plan)
@@ -62,11 +62,11 @@ class Operators(object):
                 default_plan[key] = value
         return default_plan, copy.deepcopy(self.global_plan["backup_plans"][idx].config)
 
-    def init_and_validate(self, update = False):
+    def init_and_validate(self, update=False):
         self.groups = {}
         self.exhaust_agent = []
         self.exhaust_group = []
-        self.workaholic_agent =[]
+        self.workaholic_agent = []
         self.shadow_copy = copy.deepcopy(self.operators)
         self.operators = {}
         for room in self.plan.keys():
@@ -161,8 +161,8 @@ class Operators(object):
             if any(('但书' in obj.replacement or '龙舌兰' in obj.replacement) for obj in y):
                 self.run_order_rooms[x] = {}
         # 判定分组排班可能性
-        current_high = self.available_free()
-        current_low = self.available_free('low')
+        current_high = self.config.max_resting_count
+        current_low = len(self.dorm) - self.config.max_resting_count
         for key in self.groups:
             high_count = 0
             low_count = 0
@@ -188,7 +188,6 @@ class Operators(object):
                 self.config.free_blacklist.append(name)
         logger.info('宿舍黑名单：' + str(self.config.free_blacklist))
 
-
     def set_mood_limit(self, name, upper_limit=24, lower_limit=0):
         if name in self.operators:
             self.operators[name].upper_limit = upper_limit
@@ -209,13 +208,14 @@ class Operators(object):
         # 设置同组心情阈值
         finished = []
         for name in ["夕", "令"]:
-            if name in self.operators and self.operators[name].group != "" and self.operators[name].group not in finished:
+            if name in self.operators and self.operators[name].group != "" and self.operators[
+                name].group not in finished:
                 for group_name in self.groups[self.operators[name].group]:
                     if group_name not in ["夕", "令"]:
                         if self.config.ling_xi in [1, 2]:
-                            self.set_mood_limit(group_name,lower_limit=12)
+                            self.set_mood_limit(group_name, lower_limit=12)
                         elif self.config.ling_xi == 0:
-                            self.set_mood_limit(group_name,lower_limit=0)
+                            self.set_mood_limit(group_name, lower_limit=0)
                 finished.append(self.operators[name].group)
 
     def evaluate_expression(self, expression):
@@ -348,11 +348,11 @@ class Operators(object):
     def add(self, operator):
         if operator.name not in agent_list:
             return
-        if self.config.get_config(operator.name,3):
+        if self.config.get_config(operator.name, 3):
             operator.resting_priority = "low"
-        operator.exhaust_require = self.config.get_config(operator.name,1)
-        operator.rest_in_full = self.config.get_config( operator.name,0)
-        operator.workaholic = self.config.get_config(operator.name,2)
+        operator.exhaust_require = self.config.get_config(operator.name, 1)
+        operator.rest_in_full = self.config.get_config(operator.name, 0)
+        operator.workaholic = self.config.get_config(operator.name, 2)
         if operator.name in agent_arrange_order:
             operator.arrange_order = agent_arrange_order[operator.name]
         # 复制基建数据
@@ -482,12 +482,10 @@ class Operator(object):
 
     def need_to_refresh(self, h=2, r=""):
         # 是否需要读取心情
-        if self.operator_type == 'high':
-            if self.time_stamp is None or (
-                    self.time_stamp is not None and self.time_stamp + timedelta(hours=h) < datetime.now()) or (
-                    r.startswith("dorm") and not self.room.startswith("dorm")):
-                return True
-        return False
+        if self.time_stamp is None or (
+                self.time_stamp is not None and self.time_stamp + timedelta(hours=h) < datetime.now()) or (
+                r.startswith("dorm") and not self.room.startswith("dorm")):
+            return True
 
     def not_valid(self):
         if self.workaholic:

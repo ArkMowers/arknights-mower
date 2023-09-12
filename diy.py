@@ -10,6 +10,7 @@ from arknights_mower.utils.device import Device
 from arknights_mower.utils.email import task_template
 from arknights_mower.utils.log import logger, init_fhlr
 from arknights_mower.utils import config
+from arknights_mower.utils.logic_expression import LogicExpression
 from arknights_mower.utils.simulator import restart_simulator
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
 
@@ -189,19 +190,31 @@ plan_config = {"room_1_1": [Room("绮良", "", []),
                "contact": [Room("桑葚", "乌有", ["絮雨"])],
                "factory": [Room("年", "乌有", ["九色鹿"])],
                }
+backup_plan1_config = {"central": [Room("阿米娅", "", ["诗怀雅"]),
+                                   Room("清道夫", "", ["诗怀雅"]),
+                                   Room("杜宾", "", ["泡泡"]),
+                                   Room("玛恩纳", "", ["火神"]),
+                                   Room("森蚺", "", ["诗怀雅"])],
+                       "room_2_2": [Room("温蒂", "", ["泡泡"]),
+                                    Room("掠风", "", ["贝娜"]),
+                                    Room("清流", "", ["火神"])],
+                       "room_1_3": [Room("炎狱炎熔", "自动化", ["承曦格雷伊"])],
+                       "room_2_3": [Room("澄闪", "", ["承曦格雷伊", ])],
+                       "room_3_3": [Room("雷蛇", "", ["承曦格雷伊"])],
+                       }
 
-agent_base_config0 = PlanConfig("稀音,黑键,焰尾,伊内丝", "稀音,柏喙,伊内丝", "伺夜,帕拉斯,雷蛇,澄闪,红云,乌有,年,远牙,阿米娅,桑葚,截云", ling_xi=2)
+agent_base_config0 = PlanConfig("稀音,黑键,焰尾,伊内丝", "稀音,柏喙,伊内丝", "伺夜,帕拉斯,雷蛇,澄闪,红云,乌有,年,远牙,阿米娅,桑葚,截云,掠风", ling_xi=2)
 
 plan = {
-    # 主要排班表
+    # 阶段 1
     "default_plan": Plan(plan_config, agent_base_config),
     # "backup_plans": [Plan(backup_plan1_config, agent_base_config0,
-    #                       trigger=LogicExpression("op_data.operators['桑葚'].current_room.startswith('dorm')", "and",
+    #                       trigger=LogicExpression("op_data.operators['令'].current_room.startswith('dorm')", "and",
     #                                               LogicExpression(
     #                                                   "op_data.operators['温蒂'].current_mood() - op_data.operators['承曦格雷伊'].current_mood()",
     #                                                   ">", "4")),
     #                       task={'dormitory_2': ['Current', 'Current', 'Current', 'Current', '承曦格雷伊']})]
-    "backup_plans": []
+    "backup_plans":[]
 }
 
 def debuglog():
@@ -293,7 +306,7 @@ def simulate():
     '''
     global ope_list, base_scheduler
     # 第一次执行任务
-    taskstr = "SchedulerTask(time='2023-09-05 01:54:50.807178',task_plan={'room_3_2': ['Current', '但书', '龙舌兰']},task_type='room_3_2',meta_flag=False)||SchedulerTask(time='2023-09-05 02:40:13.430802',task_plan={'meeting': ['Current', '见行者'], 'room_2_1': ['Current', '斑点', 'Current'], 'room_3_1': ['Current', '淬羽赫默', '多萝西']},task_type='dorm0,dorm1,dorm2,dorm3',meta_flag=False)||SchedulerTask(time='2023-09-05 03:04:24.004438',task_plan={'room_1_1': ['Current', '龙舌兰', '但书']},task_type='room_1_1',meta_flag=False)||SchedulerTask(time='2023-09-05 06:47:49.672414',task_plan={},task_type='菲亚梅塔',meta_flag=False)||SchedulerTask(time='2023-09-05 12:40:56.424713',task_plan={},task_type='impart',meta_flag=False)||SchedulerTask(time='2023-09-05 12:40:56.425713',task_plan={},task_type='maa_Mall',meta_flag=False)"
+    taskstr = "SchedulerTask(time='2023-09-12 12:37:53.550170',task_plan={},task_type='',meta_flag=False)||SchedulerTask(time='2023-09-12 13:13:14.252110',task_plan={'room_3_2': ['乌有', 'Current', 'Current'], 'central': ['Current', '琴柳', '重岳', '夕', '令'], 'room_1_2': ['Current', 'Current', '截云'], 'contact': ['桑葚'], 'factory': ['年']},task_type='dorm4,dorm0,dorm1,dorm2,dorm3,dorm5,dorm6,dorm7',meta_flag=False)||SchedulerTask(time='2023-09-12 13:19:48.234760',task_plan={'room_3_2': ['Current', '但书', '龙舌兰']},task_type='room_3_2',meta_flag=False)||SchedulerTask(time='2023-09-12 13:24:32.601666',task_plan={'room_1_1': ['Current', '龙舌兰', '但书']},task_type='room_1_1',meta_flag=False)||SchedulerTask(time='2023-09-12 17:17:18.617372',task_plan={},task_type='菲亚梅塔',meta_flag=False)||SchedulerTask(time='2023-09-12 23:57:29.394976',task_plan={},task_type='impart',meta_flag=False)||SchedulerTask(time='2023-09-12 23:57:29.395976',task_plan={},task_type='maa_Mall',meta_flag=False)"
     tasks = [eval(t) for t in taskstr.split("||")]
     for t in tasks:
         t.time = datetime.strptime(t.time, '%Y-%m-%d %H:%M:%S.%f')
@@ -329,6 +342,14 @@ def simulate():
                 base_scheduler.op_data.operators[k].depletion_rate = v.depletion_rate
                 base_scheduler.op_data.operators[k].current_room = v.current_room
                 base_scheduler.op_data.operators[k].current_index = v.current_index
+
+    if len(base_scheduler.op_data.backup_plans)>0 :
+        for idx, backplan in enumerate(base_scheduler.op_data.backup_plans):
+            validation_msg = base_scheduler.op_data.swap_plan(idx,True)
+            if validation_msg is not None:
+                logger.error(f"替换排班验证错误：{validation_msg}")
+                return
+            base_scheduler.op_data.swap_plan(-1,True)
     while True:
         try:
             if len(base_scheduler.tasks) > 0:

@@ -14,7 +14,7 @@ from email.mime.multipart import MIMEMultipart
 
 from .skland import SKLand
 from ..command import recruit
-from ..data import agent_list
+from ..data import agent_list, base_room_list
 from ..utils import character_recognize, detector, segment
 from ..utils.digit_reader import DigitReader
 from ..utils.operators import Operators, Operator, Dormitory
@@ -482,22 +482,27 @@ class BaseSchedulerSolver(BaseSolver):
             logger.info('有未完成的任务，跳过纠错')
             self.skip()
             return
+        # 暂时规定纠错只适用于主班表
+        if self.op_data.config.skip_validation:
+            self.skip()
+            return
         logger.info('基建：记录心情')
         need_read = set(v.room for k, v in self.op_data.operators.items() if v.need_to_refresh())
         for room in need_read:
             error_count = 0
-            while True:
-                try:
-                    self.enter_room(room)
-                    _mood_data = self.get_agent_from_room(room)
-                    logger.info(f'房间 {room} 心情为：{_mood_data}')
-                    break
-                except Exception as e:
-                    if error_count > 3: raise e
-                    logger.exception(e)
-                    error_count += 1
-                    self.back()
-                    continue
+            if room in base_room_list:
+                while True:
+                    try:
+                        self.enter_room(room)
+                        _mood_data = self.get_agent_from_room(room)
+                        logger.info(f'房间 {room} 心情为：{_mood_data}')
+                        break
+                    except Exception as e:
+                        if error_count > 3: raise e
+                        logger.exception(e)
+                        error_count += 1
+                        self.back()
+                        continue
             self.back()
         logger.debug(self.op_data.print())
         plan = self.op_data.plan
@@ -532,9 +537,7 @@ class BaseSchedulerSolver(BaseSolver):
             logger.debug(f"高效组心情没有记录{str(miss_list)}")
             for key in miss_list:
                 _agent = miss_list[key]
-                if _agent.group != '' and _agent.is_resting():
-                    # 如果还有其他小组成员在休息且没满心情则忽略
-                    if next((k for k, v in self.op_data.operators.items() if
+                if _agent.group != '' and next((k for k, v in self.op_data.operators.items() if
                              v.group == _agent.group and not v.not_valid() and v.is_resting()), None) is not None:
                         continue
                 elif _agent.group != '':
@@ -727,7 +730,7 @@ class BaseSchedulerSolver(BaseSolver):
                 for idx, bp in enumerate(self.op_data.backup_plans):
                     func = str(bp.trigger)
                     logger.debug(func)
-                    if self.op_data.evaluate_expression(func) and self.op_data.plan_name !=idx:
+                    if self.op_data.evaluate_expression(func) and self.op_data.plan_name != idx:
                         logger.info(f"满足第{idx + 1}个备用排班表使用条件，启动超级变换形态")
                         self.op_data.swap_plan(idx, refresh=True)
                         task = self.op_data.backup_plans[idx].task
@@ -736,7 +739,7 @@ class BaseSchedulerSolver(BaseSolver):
                             self.tasks.append(SchedulerTask(task_plan=task))
                         break
                 # 不满足条件且为其他排班表，则切换回来
-                if index ==-1 and self.op_data.plan_name!="default_plan":
+                if index == -1 and self.op_data.plan_name != "default_plan":
                     self.op_data.swap_plan(index, refresh=True)
         except Exception as e:
             logger.exception(e)
@@ -771,7 +774,7 @@ class BaseSchedulerSolver(BaseSolver):
                 _rep = next((obj for obj in x.replacement if (not (
                         self.op_data.operators[obj].current_room != '' and not self.op_data.operators[
                     obj].is_resting())) and obj not in ['但书',
-                                                                                '龙舌兰'] and obj not in exist_replacement and obj not in __replacement and
+                                                        '龙舌兰'] and obj not in exist_replacement and obj not in __replacement and
                              self.op_data.operators[obj].current_room != x.room),
                             None)
                 if _rep is not None:
@@ -1459,6 +1462,8 @@ class BaseSchedulerSolver(BaseSolver):
                 agents[idx] = 'Free'
             # 如果是宿舍且干员不为高效组，则改为Free 加速换班时间
             elif room.startswith('dorm'):
+                if self.op_data.plan_name != "default_plan":
+                    continue
                 if n not in self.op_data.operators.keys():
                     agents[idx] = 'Free'
                 elif not self.op_data.operators[n].is_high():
@@ -1918,8 +1923,6 @@ class BaseSchedulerSolver(BaseSolver):
             global recruit_special_tags
             recruit_special_tags["tags"].append(d["details"]["tags"])
 
-
-
     def initialize_maa(self):
         asst_path = os.path.dirname(pathlib.Path(self.maa_config['maa_path']) / "Python" / "asst")
         if asst_path not in sys.path:
@@ -1929,12 +1932,11 @@ class BaseSchedulerSolver(BaseSolver):
         from asst.utils import Message, Version, InstanceOptionType
         from asst.updater import Updater
 
-
         # logger.info("开始更新Maa……")
         # Updater(self.maa_config['maa_path'], Version.Stable).update()
         # logger.info("Maa更新完成")
         Asst.load(path=self.maa_config['maa_path'])
-        
+
         self.MAA = Asst(callback=self.log_maa)
         self.stages = []
         self.MAA.set_instance_option(InstanceOptionType.touch_type, self.maa_config['touch_option'])
