@@ -81,7 +81,6 @@ mower0_a = Analysis(
             "onnxruntime/capi/",
         ),
         ("venv/Lib/site-packages/paddleocr", "paddleocr"),
-        ("venv/Lib/site-packages/paddle/libs/mkldnn.dll", "."),
         ("venv/Lib/site-packages/paddle/libs/mklml.dll", "."),
         ("venv/Lib/site-packages/shapely/DLLs/geos.dll", "."),
         ("venv/Lib/site-packages/paddle/fluid/proto/framework_pb2.py", "."),
