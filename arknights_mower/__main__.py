@@ -10,6 +10,7 @@ from copy import deepcopy
 from arknights_mower.utils.pipe import Pipe
 from arknights_mower.utils.simulator import restart_simulator
 from arknights_mower.utils.email import task_template
+from arknights_mower.utils.plan import Plan, PlanConfig, Room
 
 conf = {}
 plan = {}
@@ -38,32 +39,6 @@ def main(c, p, o={}, child_conn=None):
     config.TAP_TO_LAUNCH = conf['tap_to_launch_game']
     init_fhlr(child_conn)
     Pipe.conn = child_conn
-    if plan['conf']['ling_xi'] == 1:
-        agent_base_config['令']['UpperLimit'] = 12
-        agent_base_config['夕']['LowerLimit'] = 12
-    elif plan['conf']['ling_xi'] == 2:
-        agent_base_config['夕']['UpperLimit'] = 12
-        agent_base_config['令']['LowerLimit'] = 12
-    for key in list(filter(None, plan['conf']['rest_in_full'].replace('，', ',').split(','))):
-        if key in agent_base_config.keys():
-            agent_base_config[key]['RestInFull'] = True
-        else:
-            agent_base_config[key] = {'RestInFull': True}
-    for key in list(filter(None, plan['conf']['exhaust_require'].replace('，', ',').split(','))):
-        if key in agent_base_config.keys():
-            agent_base_config[key]['ExhaustRequire'] = True
-        else:
-            agent_base_config[key] = {'ExhaustRequire': True}
-    for key in list(filter(None, plan['conf']['workaholic'].replace('，', ',').split(','))):
-        if key in agent_base_config.keys():
-            agent_base_config[key]['Workaholic'] = True
-        else:
-            agent_base_config[key] = {'Workaholic': True}
-    for key in list(filter(None, plan['conf']['resting_priority'].replace('，', ',').split(','))):
-        if key in agent_base_config.keys():
-            agent_base_config[key]['RestingPriority'] = 'low'
-        else:
-            agent_base_config[key] = {'RestingPriority': 'low'}
     logger.info('开始运行Mower')
     logger.debug(agent_base_config)
     simulate()
@@ -142,16 +117,17 @@ def initialize(tasks, scheduler=None):
         base_scheduler = BaseSchedulerSolver(cli.device, cli.recog)
         base_scheduler.operators = {}
         plan1 = {}
+        plan_config = PlanConfig(plan['conf']['rest_in_full'],plan['conf']['exhaust_require'], plan['conf']['resting_priority'], ling_xi= plan['conf']['ling_xi'],
+                            workaholic=plan['conf']['workaholic'],max_resting_count= plan['conf']['max_resting_count'], free_blacklist=conf['free_blacklist'])
         for key in plan[plan['default']]:
-            plan1[key] = plan[plan['default']][key]['plans']
-        plan[plan['default']] = plan1
+            plan1[key] = [Room(obj["agent"],obj["group"],obj["replacement"]) for obj in plan[plan['default']][key]['plans']]
+        # 默认任务
+        plan["default_plan"] = Plan(plan1,plan_config)
+        # 备用自定义任务
+        plan["backup_plans"] = []
         logger.debug(plan)
         base_scheduler.package_name = config.APPNAME  # 服务器
         base_scheduler.global_plan = plan
-        base_scheduler.current_plan = plan1
-        base_scheduler.current_base = {}
-        base_scheduler.resting = []
-        base_scheduler.max_resting_count = plan['conf']['max_resting_count']
         base_scheduler.drone_count_limit = conf['drone_count_limit']
         base_scheduler.tasks = tasks
         base_scheduler.enable_party = conf['enable_party'] == 1  # 是否使用线索
@@ -159,11 +135,8 @@ def initialize(tasks, scheduler=None):
         base_scheduler.read_mood = conf['run_mode'] == 1
         # 干员宿舍回复阈值
         # 高效组心情低于 UpperLimit  * 阈值 (向下取整)的时候才会会安排休息
-
-        base_scheduler.scan_time = {}
         base_scheduler.last_room = ''
-        base_scheduler.free_blacklist = list(filter(None, conf['free_blacklist'].replace('，', ',').split(',')))
-        logger.info('宿舍黑名单：' + str(base_scheduler.free_blacklist))
+        logger.info('宿舍黑名单：' + str(plan_config.free_blacklist))
         base_scheduler.resting_threshold = conf['resting_threshold']
         base_scheduler.MAA = None
         base_scheduler.email_config = {

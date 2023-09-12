@@ -27,6 +27,9 @@ shop_items = json.loads(
 ocr_error = json.loads(
     Path(f'{__rootdir__}/data/ocr.json').read_text('utf-8'))
 
+agent_arrange_order = json.loads(
+    Path(f'{__rootdir__}/data/arrange_order.json').read_text('utf-8'))
+
 # chapter name in English
 chapter_list = json.loads(
     Path(f'{__rootdir__}/data/chapter.json').read_text('utf-8'))
