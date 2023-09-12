@@ -1976,9 +1976,7 @@ class BaseSchedulerSolver(BaseSolver):
                 'shopping': True,
                 'buy_first': self.maa_config['buy_first'].split(","),
                 'blacklist': self.maa_config['blacklist'].split(","),
-                'credit_fight': self.maa_config[
-                                    'credit_fight'] and '' not in self.stages and self.credit_fight is None and len(
-                    self.stages) > 0,
+                'credit_fight': self.maa_config['credit_fight'] and '' not in self.stages and self.credit_fight is None,
                 "force_shopping_if_credit_full": self.maa_config['mall_ignore_when_full']
             })
 
