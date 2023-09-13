@@ -19,7 +19,7 @@ from ..utils import character_recognize, detector, segment
 from ..utils.digit_reader import DigitReader
 from ..utils.operators import Operators, Operator, Dormitory
 from ..utils.recruit import filter_result
-from ..utils.scheduler_task import SchedulerTask
+from ..utils.scheduler_task import SchedulerTask, scheduling, find_next_task, TaskTypes
 from ..utils import typealias as tp
 from ..utils.device import Device
 from ..utils.log import logger
@@ -96,6 +96,7 @@ class BaseSchedulerSolver(BaseSolver):
         """
         self.error = False
         self.handle_error(True)
+        scheduling(self.tasks)
         if len(self.tasks) > 0:
             # 找到时间最近的一次单个任务
             self.task = self.tasks[0]
@@ -141,7 +142,7 @@ class BaseSchedulerSolver(BaseSolver):
             raise RecognizeError('Unknown scene')
 
     def overtake_room(self):
-        candidates = self.task.type.split(',')
+        candidates = self.task.meta_data.split(',')
         # 在candidate 中，计算出需要的high free 和 Low free 数量
         _high_free = 0
         _low_free = 0
@@ -169,16 +170,16 @@ class BaseSchedulerSolver(BaseSolver):
             if len(_plan.items()) > 0:
                 self.tasks.append(SchedulerTask(datetime.now(), task_plan=_plan))
             else:
-                msg = f'无法完成 {self.task.type} 的排班，请检查替换组是否被占用'
+                msg = f'无法完成 {self.task.meta_data} 的排班，请检查替换组是否被占用'
                 self.send_email(msg)
         else:
             # 如果不满足，则找到并且执行最近一个type 包含 超过数量的high free 和low free 的 任务并且 干员没有 exaust_require 词条
             task_index = -1
             current_high, current_low = 0, 0
             for idx, task in enumerate(self.tasks):
-                if 'dorm' in task.type:
+                if 'dorm' in task.meta_data:
                     # 检查数量
-                    ids = [int(w[4:]) for w in task.type.split(',')]
+                    ids = [int(w[4:]) for w in task.meta_data.split(',')]
                     is_exhaust_require = False
                     for _id in ids:
                         if not is_exhaust_require:
@@ -198,15 +199,15 @@ class BaseSchedulerSolver(BaseSolver):
                 # 修改执行时间
                 self.tasks[task_index].time = datetime.now()
                 # 执行完提前换班任务再次执行本任务
-                self.tasks.append(SchedulerTask(task_plan=copy.deepcopy(self.task.plan), task_type=self.task.type))
+                self.tasks.append(SchedulerTask(task_plan=copy.deepcopy(self.task.plan),meta_data=self.task.meta_data, task_type=self.task.type))
             else:
                 # 任务全清
                 rooms = []
                 remove_idx = []
                 for idx, task in enumerate(self.tasks):
-                    if 'dorm' in task.type:
+                    if 'dorm' in task.meta_data:
                         # 检查数量
-                        ids = [int(w[4:]) for w in task.type.split(',')]
+                        ids = [int(w[4:]) for w in task.meta_data.split(',')]
                         is_exhaust_require = False
                         _rooms = []
                         for _id in ids:
@@ -229,34 +230,23 @@ class BaseSchedulerSolver(BaseSolver):
                 if len(plan.keys()) > 0:
                     self.tasks.append(SchedulerTask(task_plan=plan))
                     # 执行完提前换班任务再次执行本任务
-                    self.tasks.append(SchedulerTask(task_plan=copy.deepcopy(self.task.plan), task_type=self.task.type))
+                    self.tasks.append(SchedulerTask(task_plan=copy.deepcopy(self.task.plan),meta_data=self.task.meta_data, task_type=self.task.type))
             self.skip()
             return
-
-    def find_next_task(self, compare_time=None, task_type='', compare_type='<'):
-        if compare_type == '=':
-            return next((e for e in self.tasks if the_same_time(e.time, compare_time) and (
-                True if task_type == '' else task_type in e.type)), None)
-        elif compare_type == '>':
-            return next((e for e in self.tasks if (True if compare_time is None else e.time > compare_time) and (
-                True if task_type == '' else task_type in e.type)), None)
-        else:
-            return next((e for e in self.tasks if (True if compare_time is None else e.time < compare_time) and (
-                True if task_type == '' else task_type in e.type)), None)
 
     def handle_error(self, force=False):
         if self.scene() == Scene.UNKNOWN:
             self.device.exit(self.package_name)
         if self.error or force:
             # 如果没有任何时间小于当前时间的任务才生成空任务
-            if self.find_next_task(datetime.now()) is None:
+            if find_next_task(self.tasks,datetime.now()) is None:
                 logger.debug("由于出现错误情况，生成一次空任务来执行纠错")
                 self.tasks.append(SchedulerTask())
             # 如果没有任何时间小于当前时间的任务-10分钟 则清空任务
-            if self.find_next_task(datetime.now() - timedelta(seconds=900)) is not None:
+            if find_next_task(self.tasks,datetime.now() - timedelta(seconds=900)) is not None:
                 logger.info("检测到执行超过15分钟的任务，清空全部任务")
                 self.tasks = []
-        elif self.find_next_task(datetime.now() + timedelta(hours=2.5)) is None:
+        elif find_next_task(self.tasks,datetime.now() + timedelta(hours=2.5)) is None:
             logger.debug("2.5小时内没有其他任务，生成一个空任务")
             self.tasks.append(SchedulerTask(time=datetime.now() + timedelta(hours=2.5)))
         return True
@@ -300,8 +290,8 @@ class BaseSchedulerSolver(BaseSolver):
     def plan_metadata(self):
         planned_index = []
         for t in self.tasks:
-            if 'dorm' in t.type:
-                planned_index.extend([int(w[4:]) for w in t.type.split(',')])
+            if 'dorm' in t.meta_data:
+                planned_index.extend([int(w[4:]) for w in t.meta_data.split(',')])
         _time = datetime.max
         _plan = {}
         _type = []
@@ -356,7 +346,7 @@ class BaseSchedulerSolver(BaseSolver):
                     __plan[__room][self.op_data.operators[x].index] = x
                 if __time < datetime.now(): __time = datetime.now()
                 if __time != datetime.max:
-                    self.tasks.append(SchedulerTask(time=__time, task_plan=__plan, task_type=','.join(__type)))
+                    self.tasks.append(SchedulerTask(time=__time, task_plan=__plan, meta_data=','.join(__type)))
                 else:
                     self.op_data.reset_dorm_time()
                     self.error = True
@@ -398,7 +388,7 @@ class BaseSchedulerSolver(BaseSolver):
                 self.tasks.append(
                     SchedulerTask(time=_time if not short_rest else (datetime.now() + timedelta(hours=0.5)),
                                   task_plan=_plan,
-                                  task_type=','.join(_type)))
+                                  meta_data=','.join(_type)))
             else:
                 logger.debug("检测到时间数据不存在")
                 self.op_data.reset_dorm_time()
@@ -413,17 +403,17 @@ class BaseSchedulerSolver(BaseSolver):
             try:
                 if len(self.task.plan.keys()) > 0:
                     get_time = False
-                    if "Shift_Change" == self.task.type:
+                    if TaskTypes.SHIFT_ON == self.task.type:
                         get_time = True
                     self.agent_arrange(self.task.plan, get_time)
                     if get_time:
                         self.plan_metadata()
                 # 如果任务名称包含干员名,则为动态生成的
-                elif self.task.type == '菲亚梅塔':
+                elif self.task.type == TaskTypes.FIAMMETTA:
                     self.plan_fia()
-                elif self.task.type.split(',')[0] in agent_list:
+                elif self.task.meta_data.split(',')[0] in agent_list:
                     self.overtake_room()
-                elif self.task.type == 'impart':
+                elif self.task.type == TaskTypes.CLUE_PARTY:
                     self.party_time = None
                     self.skip(['planned', 'collect_notification'])
                 del self.tasks[0]
@@ -477,16 +467,7 @@ class BaseSchedulerSolver(BaseSolver):
             return self.handle_error()
 
     def agent_get_mood(self, skip_dorm=False, force=False):
-        # 如果5分钟之内有任务则跳过心情读取
-        if not force and self.find_next_task(datetime.now() + timedelta(seconds=300)) is not None:
-            logger.info('有未完成的任务，跳过纠错')
-            self.skip()
-            return
         # 暂时规定纠错只适用于主班表
-        if self.op_data.config.skip_validation:
-            self.skip()
-            return
-        logger.info('基建：记录心情')
         need_read = set(v.room for k, v in self.op_data.operators.items() if v.need_to_refresh())
         for room in need_read:
             error_count = 0
@@ -504,7 +485,6 @@ class BaseSchedulerSolver(BaseSolver):
                         self.back()
                         continue
             self.back()
-        logger.debug(self.op_data.print())
         plan = self.op_data.plan
         fix_plan = {}
         for key in plan:
@@ -538,8 +518,9 @@ class BaseSchedulerSolver(BaseSolver):
             for key in miss_list:
                 _agent = miss_list[key]
                 if _agent.group != '' and next((k for k, v in self.op_data.operators.items() if
-                             v.group == _agent.group and not v.not_valid() and v.is_resting()), None) is not None:
-                        continue
+                                                v.group == _agent.group and not v.not_valid() and v.is_resting()),
+                                               None) is not None:
+                    continue
                 elif _agent.group != '':
                     # 把所有小组成员都移到工作站
                     agents = self.op_data.groups[_agent.group]
@@ -594,14 +575,24 @@ class BaseSchedulerSolver(BaseSolver):
                                     fix_plan[room] = ['Current'] * len(plan[room])
                                 fix_plan[room][self.op_data.operators[x].index] = x
             if len(fix_plan.keys()) > 0:
-                self.tasks.append(SchedulerTask(task_plan=fix_plan))
-                logger.info(f'纠错任务为-->{fix_plan}')
-                return "self_correction"
+                # 如果5分钟之内有任务则跳过心情读取
+                next_task = find_next_task(self.tasks)
+                second = 0 if next_task is None else (
+                        next_task.time - datetime.now()).total_seconds()
+                # 如果下个任务的操作时间超过下个任务，则跳过
+                if not force and next_task is not None and len(fix_plan.keys()) * 45 > second:
+                    logger.info('有未完成的任务，跳过纠错')
+                    self.skip()
+                    return
+                else:
+                    self.tasks.append(SchedulerTask(task_plan=fix_plan, task_type=TaskTypes.SELF_CORRECTION))
+                    logger.info(f'纠错任务为-->{fix_plan}')
+                    return "self_correction"
 
     def plan_solver(self):
         plan = self.op_data.plan
         # 如果下个 普通任务 <10 分钟则跳过 plan
-        if self.find_next_task(datetime.now() + timedelta(seconds=600)) is not None:
+        if find_next_task(self.tasks,datetime.now() + timedelta(seconds=600)) is not None:
             return
         if len(self.op_data.run_order_rooms) > 0:
             # 判定宿舍是否满员
@@ -618,14 +609,17 @@ class BaseSchedulerSolver(BaseSolver):
             if valid:
                 # 处理龙舌兰和但书的插拔
                 for k, v in self.op_data.run_order_rooms.items():
-                    if self.find_next_task(task_type=k) is not None: continue;
+                    if find_next_task(self.tasks,meta_data=k) is not None: continue;
                     if not valid: continue;
                     in_out_plan = {k: ['Current'] * len(plan[k])}
                     for idx, x in enumerate(plan[k]):
                         if '但书' in x.replacement or '龙舌兰' in x.replacement:
                             in_out_plan[k][idx] = x.replacement[0]
                     self.tasks.append(
-                        SchedulerTask(time=self.get_run_roder_time(k), task_plan=in_out_plan, task_type=k))
+                        SchedulerTask(time=self.get_run_roder_time(k), task_plan=in_out_plan,
+                                      task_type=TaskTypes.RUN_ORDER,meta_data=k))
+                if scheduling(self.tasks) is not None:
+                    logger.warning("订单间隔太短")
         # 准备数据
         logger.debug(self.op_data.print())
         if self.read_mood:
@@ -637,7 +631,7 @@ class BaseSchedulerSolver(BaseSolver):
             logger.debug(f'当前基地数据--> {self.total_agent}')
             fia_plan, fia_room = self.check_fia()
             if fia_room is not None and fia_plan is not None:
-                if self.find_next_task(task_type='菲亚梅塔') is None:
+                if find_next_task(self.tasks,task_type=TaskTypes.FIAMMETTA) is None:
                     fia_data = self.op_data.operators['菲亚梅塔']
                     fia_idx = fia_data.current_index if fia_data.current_index != -1 else fia_data.index
                     result = [{}] * (fia_idx + 1)
@@ -650,7 +644,7 @@ class BaseSchedulerSolver(BaseSolver):
                             result = self.get_agent_from_room(fia_room, [fia_idx])
                             self.back()
                     logger.info('下一次进行菲亚梅塔充能：' + result[fia_idx]['time'].strftime("%H:%M:%S"))
-                    self.tasks.append(SchedulerTask(time=result[fia_idx]['time'], task_type="菲亚梅塔"))
+                    self.tasks.append(SchedulerTask(time=result[fia_idx]['time'],task_type=TaskTypes.FIAMMETTA))
             try:
                 # 重新排序
                 self.total_agent.sort(key=lambda x: x.current_mood() - x.lower_limit, reverse=False)
@@ -679,7 +673,7 @@ class BaseSchedulerSolver(BaseSolver):
                         continue
                     if op.name in self.op_data.exhaust_agent:
                         if op.current_mood() <= 2:
-                            if self.find_next_task(task_type=op.name) is None:
+                            if find_next_task(self.tasks,meta_data=op.name) is None:
                                 self.enter_room(op.current_room)
                                 result = self.get_agent_from_room(op.current_room, [op.current_index])
                                 _time = datetime.now()
@@ -694,7 +688,7 @@ class BaseSchedulerSolver(BaseSolver):
                                 exhaust_type = op.name
                                 if op.group != '':
                                     exhaust_type = ','.join(self.op_data.groups[op.group])
-                                self.tasks.append(SchedulerTask(time=_time, task_type=exhaust_type))
+                                self.tasks.append(SchedulerTask(time=_time, meta_data=exhaust_type))
                                 # 如果是生成的过去时间，则停止 plan 其他
                                 if _time < datetime.now():
                                     break
@@ -714,12 +708,12 @@ class BaseSchedulerSolver(BaseSolver):
                                                                                          high_free,
                                                                                          low_free)
                 if len(_plan.keys()) > 0:
-                    self.tasks.append(SchedulerTask(task_plan=_plan, task_type='Shift_Change', meta_flag=True))
+                    self.tasks.append(SchedulerTask(task_plan=_plan, task_type=TaskTypes.SHIFT_OFF))
             except Exception as e:
                 logger.exception(e)
                 # 如果下个 普通任务 >5 分钟则补全宿舍
             logger.debug('tasks:' + str(self.tasks))
-            if self.find_next_task(compare_time=datetime.now() + timedelta(seconds=300)) is None:
+            if find_next_task(self.tasks,compare_time=datetime.now() + timedelta(seconds=300)) is None:
                 if self.agent_get_mood() is None:
                     self.backup_plan_solver()
 
@@ -1130,9 +1124,10 @@ class BaseSchedulerSolver(BaseSolver):
 
         # 如果启用 MAA，则在线索交流结束后购物
         if self.maa_config['maa_enable'] and self.party_time is not None:
-            if self.find_next_task(task_type="maa_Mall") is None:
-                self.tasks.append(SchedulerTask(time=self.party_time - timedelta(milliseconds=1), task_type='impart'))
-                self.tasks.append(SchedulerTask(time=self.party_time, task_type="maa_Mall"))
+            if find_next_task(self.tasks,task_type=TaskTypes.MAA_MALL) is None:
+                self.tasks.append(
+                    SchedulerTask(time=self.party_time - timedelta(milliseconds=1), task_type=TaskTypes.CLUE_PARTY))
+                self.tasks.append(SchedulerTask(time=self.party_time, task_type=TaskTypes.MAA_MALL))
 
         self.back(interval=2)
 
@@ -1777,9 +1772,9 @@ class BaseSchedulerSolver(BaseSolver):
                                     plan[room][current_idx] = self.op_data.get_current_room(room, True)[current_idx]
                         if room in self.op_data.run_order_rooms and len(new_plan) == 0:
                             if plan[room] != self.op_data.get_current_room(room):
-                                run_order_task = self.find_next_task(
+                                run_order_task = find_next_task(self.tasks,
                                     compare_time=datetime.now() + timedelta(minutes=10),
-                                    task_type=room, compare_type=">")
+                                    meta_data=room, compare_type=">")
                                 if run_order_task is not None:
                                     logger.info("检测到插拔房间人员变动！")
                                     self.tasks.remove(run_order_task)
@@ -2158,7 +2153,7 @@ class BaseSchedulerSolver(BaseSolver):
                 if len(self.tasks) > 0:
                     del self.tasks[0]
                 self.MAA = None
-                if self.find_next_task(datetime.now() + timedelta(seconds=900)) is None:
+                if find_next_task(self.tasks,datetime.now() + timedelta(seconds=900)) is None:
                     # 未来10分钟没有任务就新建
                     self.tasks.append(SchedulerTask())
                 return

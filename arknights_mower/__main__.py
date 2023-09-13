@@ -208,14 +208,6 @@ def simulate():
                 base_scheduler.op_data.operators[k].depletion_rate = v.depletion_rate
                 base_scheduler.op_data.operators[k].current_room = v.current_room
                 base_scheduler.op_data.operators[k].current_index = v.current_index
-    if plan['conf']['ling_xi'] in [1, 2]:
-        # 夕，令，同组的则设置lowerlimit
-        for name in ["夕","令"]:
-            if name in base_scheduler.op_data.operators and base_scheduler.op_data.operators[name].group !="":
-                for group_name in base_scheduler.op_data.groups[base_scheduler.op_data.operators[name].group]:
-                    if group_name not in ["夕","令"]:
-                        base_scheduler.op_data.operators[group_name].lower_limit = 12
-                        logger.info(f"自动设置{group_name}心情下限为12")
     while True:
         try:
             if len(base_scheduler.tasks) > 0:
@@ -246,9 +238,9 @@ def simulate():
                     body = task_template.render(tasks=base_scheduler.tasks)
                     base_scheduler.send_email(body, subject, 'html')
                     time.sleep(sleep_time)
-            if len(base_scheduler.tasks) > 0 and base_scheduler.tasks[0].type.split('_')[0] == 'maa':
-                logger.info(f"开始执行 MAA {base_scheduler.tasks[0].type.split('_')[1]} 任务")
-                base_scheduler.maa_plan_solver((base_scheduler.tasks[0].type.split('_')[1]).split(','), one_time=True)
+            if len(base_scheduler.tasks) > 0 and base_scheduler.tasks[0].type.value.split('_')[0] == 'maa':
+                logger.info(f"开始执行 MAA {base_scheduler.tasks[0].type.value.split('_')[1]} 任务")
+                base_scheduler.maa_plan_solver((base_scheduler.tasks[0].type.value.split[1]).split(','), one_time=True)
                 continue
             base_scheduler.run()
             reconnect_tries = 0

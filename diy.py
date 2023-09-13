@@ -16,7 +16,7 @@ from arknights_mower.utils.plan import Plan, PlanConfig, Room
 
 # 下面不能删除
 from arknights_mower.utils.operators import Operators, Operator, Dormitory
-from arknights_mower.utils.scheduler_task import SchedulerTask
+from arknights_mower.utils.scheduler_task import SchedulerTask,TaskTypes
 
 email_config= {
     # 发信账户
@@ -306,7 +306,7 @@ def simulate():
     '''
     global ope_list, base_scheduler
     # 第一次执行任务
-    taskstr = "SchedulerTask(time='2023-09-12 12:37:53.550170',task_plan={},task_type='',meta_flag=False)||SchedulerTask(time='2023-09-12 13:13:14.252110',task_plan={'room_3_2': ['乌有', 'Current', 'Current'], 'central': ['Current', '琴柳', '重岳', '夕', '令'], 'room_1_2': ['Current', 'Current', '截云'], 'contact': ['桑葚'], 'factory': ['年']},task_type='dorm4,dorm0,dorm1,dorm2,dorm3,dorm5,dorm6,dorm7',meta_flag=False)||SchedulerTask(time='2023-09-12 13:19:48.234760',task_plan={'room_3_2': ['Current', '但书', '龙舌兰']},task_type='room_3_2',meta_flag=False)||SchedulerTask(time='2023-09-12 13:24:32.601666',task_plan={'room_1_1': ['Current', '龙舌兰', '但书']},task_type='room_1_1',meta_flag=False)||SchedulerTask(time='2023-09-12 17:17:18.617372',task_plan={},task_type='菲亚梅塔',meta_flag=False)||SchedulerTask(time='2023-09-12 23:57:29.394976',task_plan={},task_type='impart',meta_flag=False)||SchedulerTask(time='2023-09-12 23:57:29.395976',task_plan={},task_type='maa_Mall',meta_flag=False)"
+    taskstr = "SchedulerTask(time='2023-09-12 21:35:43.278494',task_plan={},task_type=TaskTypes.MAA_MALL,meta_data='')"
     tasks = [eval(t) for t in taskstr.split("||")]
     for t in tasks:
         t.time = datetime.strptime(t.time, '%Y-%m-%d %H:%M:%S.%f')
@@ -364,8 +364,8 @@ def simulate():
                     base_scheduler.maa_plan_solver()
                 elif sleep_time > 0:
                     time.sleep(sleep_time)
-            if len(base_scheduler.tasks) > 0 and base_scheduler.tasks[0].type.split('_')[0] == 'maa':
-                base_scheduler.maa_plan_solver((base_scheduler.tasks[0].type.split('_')[1]).split(','), one_time=True)
+            if len(base_scheduler.tasks) > 0 and base_scheduler.tasks[0].type.value.split('_')[0] == 'maa':
+                base_scheduler.maa_plan_solver((base_scheduler.tasks[0].type.value.split('_')[1]).split(','), one_time=True)
                 continue
             base_scheduler.run()
             reconnect_tries = 0

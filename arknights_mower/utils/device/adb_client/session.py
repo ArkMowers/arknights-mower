@@ -32,7 +32,7 @@ class Session(object):
         """ make a service request to ADB server, consult ADB sources for available services """
         cmdbytes = cmd.encode()
         data = b'%04X%b' % (len(cmdbytes), cmdbytes)
-        while self.timeout <= 60:
+        while self.timeout <= 10:
             try:
                 self.sock.send(data).check_okay()
                 return self
