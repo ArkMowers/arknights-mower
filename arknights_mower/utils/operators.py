@@ -77,6 +77,8 @@ class Operators(object):
                     return f'高效组不可用龙舌兰，但书 房间->{room}, 干员->{data.agent}'
                 if data.agent == '菲亚梅塔' and idx == 1:
                     return f'菲亚梅塔不能安排在2号位置 房间->{room}, 干员->{data.agent}'
+                if data.agent == '菲亚梅塔' and not room.startswith('dorm'):
+                    return f'菲亚梅塔必须安排在宿舍'
                 if data.agent == 'Free' and not room.startswith('dorm'):
                     return f'Free只能安排在宿舍 房间->{room}, 干员->{data.agent}'
                 if data.agent in self.operators and data.agent != "Free":
@@ -96,7 +98,7 @@ class Operators(object):
                 r_count = len(data.replacement)
                 if "龙舌兰" in data.replacement or "但书" in data.replacement:
                     r_count -= 1
-                if r_count <= 0 and data.agent != 'Free' and (not room.startswith("dorm")):
+                if r_count <= 0 and ((data.agent != 'Free' and (not room.startswith("dorm"))) or data.agent == "菲亚梅塔"):
                     missing_replacements.append(data.agent)
                 for _replacement in data.replacement:
                     if _replacement not in agent_list and data.agent != 'Free':
