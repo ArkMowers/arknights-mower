@@ -48,6 +48,7 @@ warnings.warn = warn
 from paddleocr import PaddleOCR
 from arknights_mower.strategy import Solver
 
+源码日志 = '否'
 ocr = None
 任务提示 = str()
 下个任务开始时间 = datetime.now()
@@ -70,7 +71,7 @@ if 用户配置['悬浮字幕开关'] == '开':   悬浮字幕开关 = True
 窗口 = Tk()
 窗口宽度 = 窗口.winfo_screenwidth()
 窗口高度 = 窗口.winfo_screenheight()
-字幕字号 = int(窗口.winfo_screenheight() / 22)
+字幕字号 = 窗口.winfo_screenheight() // 22
 if 用户配置['字幕字号'] != '默认':
     字幕字号 = int(用户配置['字幕字号'])
 字幕颜色 = 用户配置['字幕颜色']
@@ -233,8 +234,8 @@ def 日志设置():
     config.SCREENSHOT_PATH = 用户配置['截图存储目录']
     config.SCREENSHOT_MAXNUM = 用户配置['每种截图的最大保存数量'] - 1
     config.MAX_RETRYTIME = 10
-    日志全局格式 = '%(blue)s%(asctime)s - %(log_color)s%(funcName)s -  %(log_color)s%(message)s'
-    if 用户配置['源码日志'] == '是':
+    日志全局格式 = '%(blue)s%(asctime)s - %(log_color)s%(funcName)s - %(log_color)s%(message)s'
+    if 源码日志 == '是':
         日志全局格式 = '%(blue)s%(asctime)s %(white)s- %(relativepath)s:%(lineno)d - %(log_color)s%(funcName)s - %(message)s'
     for 日志格式 in logger.handlers:
         日志格式.setFormatter(colorlog.ColoredFormatter(日志全局格式, '%m-%d %H:%M:%S'))
@@ -347,7 +348,7 @@ class 项目经理(BaseSolver):
             if self.find('index_infrastructure') is not None:
                 self.tap_element('index_infrastructure')
             elif self.find('12cadpa') is not None:
-                self.device.tap((960, 540))
+                self.device.tap((self.recog.w // 2, self.recog.h // 2))
             else:
                 self.back()
             self.recog.update()
@@ -411,10 +412,11 @@ class 项目经理(BaseSolver):
             logger.info('返回基建主界面')
             unknown_count = 0
             while self.get_infra_scene() != 201 and unknown_count < 5:
+                logger.warning(f'未知界面{unknown_count}')
                 if self.find('index_infrastructure') is not None:
                     self.tap_element('index_infrastructure')
                 elif self.find('12cadpa') is not None:
-                    self.device.tap((960, 540))
+                    self.device.tap((self.recog.w // 2, self.recog.h // 2))
                 else:
                     self.back()
                 self.recog.update()
@@ -520,10 +522,10 @@ class 项目经理(BaseSolver):
         while self.find('bill_accelerate') is None:
             if error_count > 5:
                 raise Exception('未成功进入订单界面')
-            self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=1)
+            self.tap((self.recog.w // 20, self.recog.h * 19 // 20), interval=1)
             error_count += 1
-        execute_time = self.double_read_time((int(self.recog.w * 650 / 2496), int(self.recog.h * 660 / 1404),
-                                              int(self.recog.w * 815 / 2496), int(self.recog.h * 710 / 1404)),
+        execute_time = self.double_read_time((self.recog.w * 650 // 2496, self.recog.h * 660 // 1404,
+                                              self.recog.w * 815 // 2496, self.recog.h * 710 // 1404),
                                              use_digit_reader=True)
         logger.info(f'贸易站 B{room[5]}0{room[7]} 接单时间为 {execute_time.strftime("%H:%M:%S")}')
         execute_time = execute_time - timedelta(seconds=(self.跑单提前运行时间))
@@ -597,7 +599,7 @@ class 项目经理(BaseSolver):
         # 刷新图片
         self.recog.update()
         if use_digit_reader:
-            time_str = self.digit_reader.get_time(self.recog.gray)
+            time_str = self.digit_reader.get_time(self.recog.gray, self.recog.h, self.recog.w)
         else:
             time_str = self.read_screen(self.recog.img, type='time', cord=cord)
         try:
@@ -632,11 +634,11 @@ class 项目经理(BaseSolver):
             tapped = True
         factory = self.find('infra_collect_factory')
         if factory is not None:
-            logger.info('产物收取')
+            logger.info('可收获')
             self.tap(factory)
             tapped = True
         if not tapped:
-            self.tap((self.recog.w * 0.05, self.recog.h * 0.95))
+            self.tap((self.recog.w // 20, self.recog.h * 19 // 20))
             self.todo_task = True
 
     def 进入房间(self, room: str) -> tp.Rectangle:
@@ -657,7 +659,12 @@ class 项目经理(BaseSolver):
         self.tap(_room[0], interval=1)
         while self.find('control_central') is not None:
             self.tap(_room[0], interval=1)
-        logger.info(f'进入房间 B{room[5]}0{room[7]}')
+        if room.startswith('room'):
+            logger.info(f'进入房间 B{room[5]}0{room[7]}')
+        elif room == 'dormitory_4':
+            logger.info('进入房间 B401')
+        else:
+            logger.info(f'进入房间 B{room[10]}04')
 
     def 无人机加速(self, room: str, not_customize=False, not_return=False):
         # 点击进入该房间
@@ -666,13 +673,13 @@ class 项目经理(BaseSolver):
             time.sleep(1)
             self.recog.update()
         # 进入房间详情
-        self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3)
+        self.tap((self.recog.w // 20, self.recog.h * 19 // 20), interval=3)
         # 关闭掉房间总览
         error_count = 0
         while self.find('factory_accelerate') is None and self.find('bill_accelerate') is None:
             if error_count > 5:
                 raise Exception('未成功进入无人机界面')
-            self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3)
+            self.tap((self.recog.w // 20, self.recog.h * 19 //20), interval=3)
             error_count += 1
         accelerate = self.find('bill_accelerate')
         if accelerate:
@@ -682,32 +689,32 @@ class 项目经理(BaseSolver):
                 while self.get_infra_scene() == 9:
                     time.sleep(1)
                     self.recog.update()
-                self.device.tap((1320, 502))
+                self.device.tap((self.recog.w * 1320 // 1920, self.recog.h * 502 // 1080))
                 time.sleep(1)
                 while self.get_infra_scene() == 9:
                     time.sleep(1)
                     self.recog.update()
-                self.tap((self.recog.w * 0.75, self.recog.h * 0.8))
+                self.tap((self.recog.w * 3 // 4, self.recog.h * 4 // 5))
                 while self.get_infra_scene() == 9:
                     time.sleep(1)
                     self.recog.update()
                 while self.find('bill_accelerate') is None:
                     if error_count > 5:
                         raise Exception('未成功进入订单界面')
-                    self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=1)
+                    self.tap((self.recog.w // 20, self.recog.h * 19 // 20), interval=1)
                     error_count += 1
-                加速后接单时间 = self.double_read_time((int(self.recog.w * 650 / 2496), int(self.recog.h * 660 / 1404),
-                                                        int(self.recog.w * 815 / 2496), int(self.recog.h * 710 / 1404)),
+                加速后接单时间 = self.double_read_time((self.recog.w * 650 // 2496, self.recog.h * 660 // 1404,
+                                                        self.recog.w * 815 // 2496, self.recog.h * 710 // 1404),
                                                        use_digit_reader=True)
                 self.任务列表[0].time = 加速后接单时间 - timedelta(seconds=(self.跑单提前运行时间))
                 logger.info(f'房间 B{room[5]}0{room[7]} 无人机加速后接单时间为 {加速后接单时间.strftime("%H:%M:%S")}')
                 if not_customize:
-                    无人机数量 = self.digit_reader.get_drone(self.recog.gray)
+                    无人机数量 = self.digit_reader.get_drone(self.recog.gray, self.recog.h, self.recog.w)
                     logger.info(f'当前无人机数量为 {无人机数量}')
                 while self.find('bill_accelerate') is None:
                     if error_count > 5:
                         raise Exception('未成功进入订单界面')
-                    self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=1)
+                    self.tap((self.recog.w // 20, self.recog.h * 19 // 20), interval=1)
                     error_count += 1
         if not_return: return
         self.recog.update()
@@ -771,13 +778,13 @@ class 项目经理(BaseSolver):
 
     def detail_filter(self, turn_on, type="not_in_dorm"):
         logger.info(f'开始 {("打开" if turn_on else "关闭")} {type} 筛选')
-        self.tap((self.recog.w * 0.95, self.recog.h * 0.05), interval=1)
+        self.tap((self.recog.w * 19 // 20, self.recog.h // 20), interval=1)
         if type == "not_in_dorm":
             not_in_dorm = self.find('arrange_non_check_in', score=0.9)
             if turn_on ^ (not_in_dorm is None):
-                self.tap((self.recog.w * 0.3, self.recog.h * 0.5), interval=0.5)
+                self.tap((self.recog.w * 3 // 10, self.recog.h // 2), interval=0.5)
         # 确认
-        self.tap((self.recog.w * 0.8, self.recog.h * 0.8), interval=0.5)
+        self.tap((self.recog.w * 4 // 5, self.recog.h * 4 // 5), interval=0.5)
 
     def 换上干员(self, agents: list[str], room: str) -> None:
         """
@@ -881,19 +888,27 @@ class 项目经理(BaseSolver):
         while self.find('room_detail') is None:
             if error_count > 3:
                 raise Exception('未成功进入房间')
-            self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
+            self.tap((self.recog.w // 20, self.recog.h * 2 // 5), interval=0.5)
             error_count += 1
         length = len(self.plan[room])
-        if length > 3: self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, self.recog.h * 0.45), duration=500,
+        if length > 3: self.swipe((self.recog.w * 4 // 5, self.recog.h // 2), (0, self.recog.h * 9 // 20), duration=500,
                                   interval=1,
                                   rebuild=True)
-        name_p = [((1460, 155), (1700, 210)), ((1460, 370), (1700, 420)), ((1460, 585), (1700, 630)),
-                  ((1460, 560), (1700, 610)), ((1460, 775), (1700, 820))]
+        name_p = [((self.recog.w * 1460 // 1920, self.recog.h * 155 // 1080),
+                   (self.recog.w * 1700 // 1920, self.recog.h * 210 // 1080)),
+                  ((self.recog.w * 1460 // 1920, self.recog.h * 370 // 1080),
+                   (self.recog.w * 1700 // 1920, self.recog.h * 420 // 1080)),
+                  ((self.recog.w * 1460 // 1920, self.recog.h * 585 // 1080),
+                   (self.recog.w * 1700 // 1920, self.recog.h * 630 // 1080)),
+                  ((self.recog.w * 1460 // 1920, self.recog.h * 560 // 1080),
+                   (self.recog.w * 1700 // 1920, self.recog.h * 610 // 1080)),
+                  ((self.recog.w * 1460 // 1920, self.recog.h * 775 // 1080),
+                   (self.recog.w * 1700 // 1920, self.recog.h * 820 // 1080))]
         result = []
         swiped = False
         for i in range(0, length):
             if i >= 3 and not swiped:
-                self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, -self.recog.h * 0.45), duration=500,
+                self.swipe((self.recog.w * 4 // 5, self.recog.h // 2), (0, -self.recog.h * 9 // 20), duration=500,
                            interval=1, rebuild=True)
                 swiped = True
             data = {}
@@ -903,7 +918,7 @@ class 项目经理(BaseSolver):
             while i >= 3 and _name != '' and (
                     next((e for e in result if e['agent'] == _name), None)) is not None:
                 logger.warning("检测到滑动可能失败")
-                self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, -self.recog.h * 0.45), duration=500,
+                self.swipe((self.recog.w * 4 // 5, self.recog.h // 2), (0, -self.recog.h * 9 // 20), duration=500,
                            interval=1, rebuild=True)
                 _name = self.read_screen(
                     self.recog.img[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]], type="name")
@@ -962,7 +977,7 @@ class 项目经理(BaseSolver):
                     while self.find('room_detail') is None:
                         if error_count > 3:
                             raise Exception('未成功进入房间')
-                        self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
+                        self.tap((self.recog.w // 20, self.recog.h * 2 // 5), interval=0.5)
                         error_count += 1
                     error_count = 0
                     if choose_error == 0:
@@ -986,7 +1001,7 @@ class 项目经理(BaseSolver):
                     while self.find('arrange_order_options') is None:
                         if error_count > 3:
                             raise Exception('未成功进入干员选择界面')
-                        self.tap((self.recog.w * 0.82, self.recog.h * 0.2), interval=1)
+                        self.tap((self.recog.w * 41 // 50, self.recog.h // 5), interval=1)
                         error_count += 1
                     self.换上干员(plan[room], room)
                     self.recog.update()
@@ -999,7 +1014,7 @@ class 项目经理(BaseSolver):
                     self.tap_element('confirm_blue', detected=True, judge=False, interval=3)
                     self.recog.update()
                     if self.get_infra_scene() == 206:
-                        x0 = self.recog.w // 3 * 2  # double confirm
+                        x0 = self.recog.w * 2 // 3  # double confirm
                         y0 = self.recog.h - 10
                         self.tap((x0, y0), rebuild=True)
                     read_time_index = []
@@ -1021,8 +1036,8 @@ class 项目经理(BaseSolver):
                             self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=1)
                             error_count += 1
                         修正后的接单时间 = self.double_read_time(
-                            (int(self.recog.w * 650 / 2496), int(self.recog.h * 660 / 1404),
-                             int(self.recog.w * 815 / 2496), int(self.recog.h * 710 / 1404)),
+                            (self.recog.w * 650 // 2496, self.recog.h * 660 // 1404,
+                             self.recog.w * 815 // 2496, self.recog.h * 710 //1404),
                             use_digit_reader=True)
                         截图等待时间 = round((修正后的接单时间 - datetime.now()).total_seconds(), 1)
                         if (截图等待时间 > 0) and (截图等待时间 < 1000):
@@ -1291,15 +1306,14 @@ def 初始化(任务列表, scheduler=None):
     config.APPNAME = 服务器
     config.TAP_TO_LAUNCH = [{"enable": "false", "x": "0", "y": "0"}]
     init_fhlr()
-    日志设置()
     device = 设备控制()
     cli = Solver(device)
     if scheduler is None:
         当前项目 = 项目经理(cli.device, cli.recog)
         logger.info(f'当前模拟器分辨率为 {当前项目.recog.w} × {当前项目.recog.h}')
-        if 当前项目.recog.w != 1920 or 当前项目.recog.h != 1080:
-            logger.error('请将模拟器分辨率设置为 1920 × 1080 再重新运行 Mower0!')
-            托盘图标.notify('请将模拟器分辨率设置为 1920 × 1080 \n再重新运行 Mower0!', "分辨率检验")
+        if 当前项目.recog.w * 9 != 当前项目.recog.h * 16:
+            logger.error('请将模拟器分辨率设置为 16:9 再重新运行 Mower0!')
+            托盘图标.notify('请将模拟器分辨率设置为 16:9 \n再重新运行 Mower0!', "分辨率检验")
             退出程序()
         当前项目.服务器 = 服务器
         当前项目.operators = {}
@@ -1320,6 +1334,7 @@ def 初始化(任务列表, scheduler=None):
                 当前项目.plan[龙舌兰和但书休息宿舍] = []
                 for 干员 in 用户配置['宿舍设置'][宿舍]:
                     if 干员 == '当前休息干员':  干员 = 'Current'
+                    if 干员 == '自动填充干员':  干员 = 'Free'
                     当前项目.plan[龙舌兰和但书休息宿舍].append({'agent': 干员, 'group': '', 'replacement': ''})
         当前项目.任务列表 = 任务列表
         当前项目.last_room = ''
@@ -1350,6 +1365,7 @@ class 线程(threading.Thread):
     def Mower0(self):
         global ope_list, 当前项目, 任务提示, 下个任务开始时间, 已签到日期
         # 第一次执行任务
+        日志设置()
         任务列表 = []
         for t in 任务列表:
             t.time = datetime.strptime(str(t.time), '%m-%d %H:%M:%S.%f')
@@ -1379,7 +1395,7 @@ class 线程(threading.Thread):
                         for i in range(len(任务列表)):
                             logger.warning(
                                 f'房间 B{任务列表[i].type[5]}0{任务列表[i].type[7]} 开始跑单的时间为 {任务列表[i].time.strftime("%H:%M:%S")}')
-                        无人机数量 = 当前项目.digit_reader.get_drone(当前项目.recog.gray)
+                        无人机数量 = 当前项目.digit_reader.get_drone(当前项目.recog.gray, 当前项目.recog.h, 当前项目.recog.w)
                         if 无人机数量 > 168:
                             logger.warning(f'现在有 {无人机数量} 个无人机，请尽快使用，避免溢出！')
                             任务提示 += f'现在有 {无人机数量} 个无人机，请尽快使用！\n'
