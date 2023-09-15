@@ -468,22 +468,21 @@ class BaseSchedulerSolver(BaseSolver):
 
     def agent_get_mood(self, skip_dorm=False, force=False):
         # 暂时规定纠错只适用于主班表
-        need_read = set(v.room for k, v in self.op_data.operators.items() if v.need_to_refresh())
+        need_read = set(v.room for k, v in self.op_data.operators.items() if v.need_to_refresh() and v.room in base_room_list)
         for room in need_read:
             error_count = 0
-            if room in base_room_list:
-                while True:
-                    try:
-                        self.enter_room(room)
-                        _mood_data = self.get_agent_from_room(room)
-                        logger.info(f'房间 {room} 心情为：{_mood_data}')
-                        break
-                    except Exception as e:
-                        if error_count > 3: raise e
-                        logger.exception(e)
-                        error_count += 1
-                        self.back()
-                        continue
+            while True:
+                try:
+                    self.enter_room(room)
+                    _mood_data = self.get_agent_from_room(room)
+                    logger.info(f'房间 {room} 心情为：{_mood_data}')
+                    break
+                except Exception as e:
+                    if error_count > 3: raise e
+                    logger.exception(e)
+                    error_count += 1
+                    self.back()
+                    continue
             self.back()
         plan = self.op_data.plan
         fix_plan = {}
