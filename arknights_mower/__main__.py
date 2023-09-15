@@ -208,6 +208,7 @@ def simulate():
                 base_scheduler.op_data.operators[k].depletion_rate = v.depletion_rate
                 base_scheduler.op_data.operators[k].current_room = v.current_room
                 base_scheduler.op_data.operators[k].current_index = v.current_index
+    timezone_offset = 0
     while True:
         try:
             if len(base_scheduler.tasks) > 0:
@@ -223,7 +224,7 @@ def simulate():
                     context = f"下一次任务:{base_scheduler.tasks[0].plan}"
                     logger.info(context)
                     logger.info(subject)
-                    body = task_template.render(tasks=base_scheduler.tasks)
+                    body = task_template.render(tasks=[obj.format(timezone_offset) for obj in base_scheduler.tasks])
                     base_scheduler.send_email(body, subject, 'html')
                     base_scheduler.maa_plan_solver()
                 elif sleep_time > 0:
@@ -235,7 +236,7 @@ def simulate():
                         base_scheduler.device.exit(base_scheduler.package_name)
                         base_scheduler.task_count += 1
                         logger.info(f"第{base_scheduler.task_count}次任务结束，关闭游戏，降低功耗")
-                    body = task_template.render(tasks=base_scheduler.tasks)
+                    body = task_template.render(tasks=[obj.format(timezone_offset) for obj in base_scheduler.tasks])
                     base_scheduler.send_email(body, subject, 'html')
                     time.sleep(sleep_time)
             if len(base_scheduler.tasks) > 0 and base_scheduler.tasks[0].type.value.split('_')[0] == 'maa':

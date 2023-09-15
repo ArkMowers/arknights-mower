@@ -14,7 +14,7 @@ class TaskTypes(Enum):
     SELF_CORRECTION = ("self_correction", "纠错", 2)
     CLUE_PARTY = ("Impart", "趴体", 2)
     MAA_MALL = ("maa_Mall", "MAA信用购物", 2)
-    NOT_SPECIFIC = ("", "三无", 2)
+    NOT_SPECIFIC = ("", "空任务", 2)
 
     def __new__(cls, value, display_value, priority):
         obj = object.__new__(cls)
@@ -79,13 +79,7 @@ class SchedulerTask:
             self.type = task_type
         self.meta_data = meta_data
 
-    def time_offset(self, h):
-        after_offset = copy.deepcopy(self)
-        after_offset.time += timedelta(hours=h)
-        after_offset.type = after_offset.type.display_value
-        return after_offset
-
-    def format(self, time_offset):
+    def format(self, time_offset=0):
         res = copy.deepcopy(self)
         res.time += timedelta(hours=time_offset)
         res.type = res.type.display_value

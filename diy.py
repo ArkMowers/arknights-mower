@@ -357,7 +357,7 @@ def simulate():
                 sleep_time = (base_scheduler.tasks[0].time - datetime.now()).total_seconds()
                 logger.info('||'.join([str(t) for t in base_scheduler.tasks]))
                 base_scheduler.send_email(
-                    task_template.render(tasks=[obj.time_offset(timezone_offset) for obj in base_scheduler.tasks]), '',
+                    task_template.render(tasks=[obj.format(timezone_offset) for obj in base_scheduler.tasks]), '',
                     'html')
                 # 如果任务间隔时间超过9分钟则启动MAA
                 if sleep_time > 540:
