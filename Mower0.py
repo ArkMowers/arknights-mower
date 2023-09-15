@@ -7,6 +7,7 @@ import inspect
 import json
 import os
 import pystray
+import pathlib
 import requests
 import smtplib
 import sys
@@ -25,7 +26,6 @@ from pystray import MenuItem, Menu
 from arknights_mower.data import agent_list
 from arknights_mower.utils import (character_recognize, config, detector, segment)
 from arknights_mower.utils import typealias as tp
-from arknights_mower.utils.asst import Asst, Message
 from arknights_mower.utils.datetime import the_same_time
 from arknights_mower.utils.device.adb_client import ADBClient
 from arknights_mower.utils.device.minitouch import MiniTouch
@@ -37,6 +37,7 @@ from arknights_mower.utils.pipe import push_operators
 from arknights_mower.utils.scheduler_task import SchedulerTask
 from arknights_mower.utils.solver import BaseSolver
 from arknights_mower.utils.recognize import Recognizer, RecognizeError
+from ctypes import CFUNCTYPE, c_int, c_char_p, c_void_p
 
 
 def warn(*args, **kwargs):
@@ -1091,7 +1092,8 @@ class 项目经理(BaseSolver):
         if 'collect_notification':
             self.collect_notification = True
 
-    @Asst.CallBackType
+
+    @CFUNCTYPE(None, c_int, c_char_p, c_void_p)
     def log_maa(msg, details, arg):
         m = Message(msg)
         d = json.loads(details.decode('utf-8'))
@@ -1099,20 +1101,22 @@ class 项目经理(BaseSolver):
         logger.debug(m)
         logger.debug(arg)
 
+
     def MAA初始化(self):
-        # 若需要获取详细执行信息，请传入 callback 参数
-        # 例如 asst = Asst(callback=my_callback)
+        asst_path = os.path.dirname(pathlib.Path(self.MAA设置['MAA路径']) / "Python" / "asst")
+        if asst_path not in sys.path:
+            sys.path.append(asst_path)
+        from asst.asst import Asst
+
         Asst.load(path=self.MAA设置['MAA路径'])
         self.MAA = Asst(callback=self.log_maa)
         self.关卡列表 = []
-        # self.MAA.set_instance_option(2, 'maatouch')
-        # 请自行配置 adb 环境变量，或修改为 adb 可执行程序的路径
-        # logger.info(self.device.client.device_id)
         if self.MAA.connect(self.MAA设置['MAA_adb路径'], self.device.client.device_id):
             logger.info("MAA 连接成功")
         else:
             logger.info("MAA 连接失败")
             raise Exception("MAA 连接失败")
+
 
     def append_maa_task(self, type):
         if type in ['StartUp', 'Visit', 'Award']:
