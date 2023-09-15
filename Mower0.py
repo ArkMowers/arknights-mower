@@ -1106,7 +1106,10 @@ class 项目经理(BaseSolver):
         asst_path = os.path.dirname(pathlib.Path(self.MAA设置['MAA路径']) / "Python" / "asst")
         if asst_path not in sys.path:
             sys.path.append(asst_path)
+
         from asst.asst import Asst
+        global Message
+        from asst.utils import Message
 
         Asst.load(path=self.MAA设置['MAA路径'])
         self.MAA = Asst(callback=self.log_maa)
