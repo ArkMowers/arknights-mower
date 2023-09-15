@@ -22,7 +22,7 @@ class DigitReader:
                 loadimg(f'{__rootdir__}/resources/drone_count/{i}.png', True)
             )
 
-    def get_drone(self, img_grey, h, w):
+    def get_drone(self, img_grey, h=1080, w=1920):
         drone_part = img_grey[h * 32 // 1080:h * 76 // 1080, w * 1144 // 1920:w * 1225 // 1920]
         drone_part = cv.resize(drone_part, (81, 44), interpolation=cv.INTER_AREA)
         result = {}
