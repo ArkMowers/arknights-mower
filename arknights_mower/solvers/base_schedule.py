@@ -1372,77 +1372,111 @@ class BaseSchedulerSolver(BaseSolver):
         self.back(interval=2, rebuild=False)
         self.back(interval=2)
         
-        # # 用于制造站切换产物，请注意在调用该函数前有足够的无人机，并补足相应制造站产物，目前仅支持中级作战记录与赤金之间的切换
-        # def 制造站切换产物(self, room: str, 目标产物: str, not_customize=False, not_return=False):
-        # # 点击进入该房间
-        # self.进入房间(room)
-        # while self.get_infra_scene() == 9:
-        #     time.sleep(1)
-        #     self.recog.update()
-        # # 进入房间详情
-        # self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3)
-        # # 关闭掉房间总览
-        # error_count = 0
-        # while self.find('factory_accelerate') is None:
-        #     if error_count > 5:
-        #         raise Exception('未成功进入制造详情界面')
-        #     self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3)
-        #     error_count += 1
-        # accelerate = self.find('factory_accelerate')
-        # 无人机数量 = 当前项目.digit_reader.get_drone(当前项目.recog.gray, 当前项目.recog.h, 当前项目.recog.w)
-        # if accelerate:
-        #     self.tap_element('factory_accelerate')
-        #     self.recog.update()
-        #     剩余制造加速总时间 = self.digit_reader.识别制造加速总剩余时间(self.recog.gray, self.recog.h, self.recog.w)
-        #     # logger.info(f'制造站 B{room[5]}0{room[7]} 剩余制造总时间为 {剩余制造加速总时间}')
-        #     时 = int(剩余制造加速总时间[0:3])
-        #     if 时 > 118: 当前产物 = '经验'
-        #     else:   当前产物 = '赤金'
-        #     if 当前产物 == 目标产物:    self.返回基建主界面()
-        #     else:
-        #         logger.info(f'制造站 B{room[5]}0{room[7]} 当前产物为{当前产物}，切换产物为{目标产物}')
-        #         需要无人机数 = 0
-        #         while 需要无人机数 < 10:
-        #             总分钟数 = int(剩余制造加速总时间[4:6]) + 60 * 时
-        #             if 当前产物 == '赤金':
-        #                 需要无人机数 = (总分钟数 % 72) // 3 + 1
-        #             elif 当前产物 == '经验':
-        #                 需要无人机数 = (总分钟数 % 180) // 3 + 1
-        #             else:
-        #                 logger.warning('目前不支持该产物切换策略，尚待完善')
-        #                 self.返回基建主界面()
-        #             if 需要无人机数 > 无人机数量 - 10:
-        #                 logger.warning(f'''
-        #                 切换产物需要无人机{需要无人机数}个，当前仅有{无人机数量}个，
-        #                 无法切换产物，建议该任务至少在{(需要无人机数 - 无人机数量 + 10) * 3.5 // 3}分钟后再执行
-        #                 ''')
-        #                 self.返回基建主界面()
-        #             else:
-        #                 logger.warning(f'需要加无人机{需要无人机数}个')
-        #                 for 次数 in range(需要无人机数):
-        #                     self.tap((self.recog.w * 1320 // 1920, self.recog.h * 502 // 1080), interval=0.05)
-        #                 self.recog.update()
-        #                 剩余制造加速总时间 = self.digit_reader.识别制造加速总剩余时间(
-        #                     self.recog.gray, self.recog.h, self.recog.w)
-        #                 # logger.info(f'制造站 B{room[5]}0{room[7]} 剩余制造总时间为 {剩余制造加速总时间}')
-        #             总分钟数 = int(剩余制造加速总时间[4:6]) + 60 * 时
-        #             if 当前产物 == '赤金':
-        #                 需要无人机数 = (总分钟数 % 72) // 3 + 1
-        #             elif 当前产物 == '经验':
-        #                 需要无人机数 = (总分钟数 % 180) // 3 + 1
-        #             else:
-        #                 logger.warning('目前不支持该产物切换策略，尚待完善')
-        #                 self.返回基建主界面()
-        #         self.tap((self.recog.w * 3 // 4, self.recog.h * 4 // 5), interval=3)    # 确认加速
-        #         self.tap((self.recog.w * 9 // 10, self.recog.h // 2), interval=1)     # 点击当前产品
-        #         if 目标产物 == '经验':
-        #             self.tap((self.recog.w // 2, self.recog.h // 2), interval=1)    # 点击中级作战记录
-        #         elif 目标产物 == '赤金':
-        #             self.tap((self.recog.w // 10, self.recog.h // 3), interval=1)   # 进入贵金属分类
-        #             self.tap((self.recog.w // 2, self.recog.h // 4), interval=1)    # 点击赤金
-        #         self.tap((self.recog.w * 3 // 4, self.recog.h * 2 // 7), interval=1)    # 点击最多
-        #         self.tap((self.recog.w * 3 // 4, self.recog.h * 5 // 6), interval=1)    # 确认数量
-        #         self.tap((self.recog.w * 3 // 4, self.recog.h * 7 // 10), interval=1)   # 确认更改
+
+    # 用于制造站切换产物，请注意在调用该函数前有足够的无人机，并补足相应制造站产物，目前仅支持中级作战记录与赤金之间的切换
+    # def 制造站切换产物(self, room: str, 目标产物: str, not_customize=False, not_return=False):
+    #     # 点击进入该房间
+    #     self.enter_room(room)
+    #     while self.get_infra_scene() == 9:
+    #         time.sleep(1)
+    #         self.recog.update()
+    #     # 进入房间详情
+    #     self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3)
+    #     # 关闭掉房间总览
+    #     error_count = 0
+    #     while self.find('factory_accelerate') is None:
+    #         if error_count > 5:
+    #             raise Exception('未成功进入制造详情界面')
+    #         self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3)
+    #         error_count += 1
+    #     accelerate = self.find('factory_accelerate')
+    #     无人机数量 = self.digit_reader.get_drone(self.recog.gray, self.recog.h, self.recog.w)
+    #     if accelerate:
+    #         self.tap_element('factory_accelerate')
+    #         self.recog.update()
+    #         剩余制造加速总时间 = self.digit_reader.识别制造加速总剩余时间(self.recog.gray, self.recog.h, self.recog.w)
+    #         # logger.info(f'制造站 B{room[5]}0{room[7]} 剩余制造总时间为 {剩余制造加速总时间}')
+    #         时 = int(剩余制造加速总时间[0:3])
+    #         if 时 > 118: 当前产物 = '经验'
+    #         else:   当前产物 = '赤金'
+    #         if 当前产物 == 目标产物:
+    #             logger.info('返回基建主界面')
+    #             while self.get_infra_scene() != 201:
+    #                 if self.find('index_infrastructure') is not None:
+    #                     self.tap_element('index_infrastructure')
+    #                 elif self.find('12cadpa') is not None:
+    #                     self.device.tap((self.recog.w // 2, self.recog.h // 2))
+    #                 else:
+    #                     self.back()
+    #                 self.recog.update()
+    #         else:
+    #             logger.info(f'制造站 B{room[5]}0{room[7]} 当前产物为{当前产物}，切换产物为{目标产物}')
+    #             需要无人机数 = 0
+    #             while 需要无人机数 < 10:
+    #                 总分钟数 = int(剩余制造加速总时间[4:6]) + 60 * 时
+    #                 if 当前产物 == '赤金':
+    #                     需要无人机数 = (总分钟数 % 72) // 3 + 1
+    #                 elif 当前产物 == '经验':
+    #                     需要无人机数 = (总分钟数 % 180) // 3 + 1
+    #                 else:
+    #                     logger.warning('目前不支持该产物切换策略，尚待完善')
+    #                     logger.info('返回基建主界面')
+    #                     while self.get_infra_scene() != 201:
+    #                         if self.find('index_infrastructure') is not None:
+    #                             self.tap_element('index_infrastructure')
+    #                         elif self.find('12cadpa') is not None:
+    #                             self.device.tap((self.recog.w // 2, self.recog.h // 2))
+    #                         else:
+    #                             self.back()
+    #                         self.recog.update()
+    #                 if 需要无人机数 > 无人机数量 - 10:
+    #                     logger.warning(f'''
+    #                     切换产物需要无人机{需要无人机数}个，当前仅有{无人机数量}个，
+    #                     无法切换产物，建议该任务至少在{(需要无人机数 - 无人机数量 + 10) * 3.5 // 3}分钟后再执行
+    #                     ''')
+    #                     logger.info('返回基建主界面')
+    #                     while self.get_infra_scene() != 201:
+    #                         if self.find('index_infrastructure') is not None:
+    #                             self.tap_element('index_infrastructure')
+    #                         elif self.find('12cadpa') is not None:
+    #                             self.device.tap((self.recog.w // 2, self.recog.h // 2))
+    #                         else:
+    #                             self.back()
+    #                         self.recog.update()
+    #                 else:
+    #                     logger.warning(f'需要加无人机{需要无人机数}个')
+    #                     for 次数 in range(需要无人机数):
+    #                         self.tap((self.recog.w * 1320 // 1920, self.recog.h * 502 // 1080), interval=0.05)
+    #                     self.recog.update()
+    #                     剩余制造加速总时间 = self.digit_reader.识别制造加速总剩余时间(
+    #                         self.recog.gray, self.recog.h, self.recog.w)
+    #                     # logger.info(f'制造站 B{room[5]}0{room[7]} 剩余制造总时间为 {剩余制造加速总时间}')
+    #                 总分钟数 = int(剩余制造加速总时间[4:6]) + 60 * 时
+    #                 if 当前产物 == '赤金':
+    #                     需要无人机数 = (总分钟数 % 72) // 3 + 1
+    #                 elif 当前产物 == '经验':
+    #                     需要无人机数 = (总分钟数 % 180) // 3 + 1
+    #                 else:
+    #                     logger.warning('目前不支持该产物切换策略，尚待完善')
+    #                     logger.info('返回基建主界面')
+    #                     while self.get_infra_scene() != 201:
+    #                         if self.find('index_infrastructure') is not None:
+    #                             self.tap_element('index_infrastructure')
+    #                         elif self.find('12cadpa') is not None:
+    #                             self.device.tap((self.recog.w // 2, self.recog.h // 2))
+    #                         else:
+    #                             self.back()
+    #                         self.recog.update()
+    #             self.tap((self.recog.w * 3 // 4, self.recog.h * 4 // 5), interval=3)    # 确认加速
+    #             self.tap((self.recog.w * 9 // 10, self.recog.h // 2), interval=1)     # 点击当前产品
+    #             if 目标产物 == '经验':
+    #                 self.tap((self.recog.w // 2, self.recog.h // 2), interval=1)    # 点击中级作战记录
+    #             elif 目标产物 == '赤金':
+    #                 self.tap((self.recog.w // 10, self.recog.h // 3), interval=1)   # 进入贵金属分类
+    #                 self.tap((self.recog.w // 2, self.recog.h // 4), interval=1)    # 点击赤金
+    #             self.tap((self.recog.w * 3 // 4, self.recog.h * 2 // 7), interval=1)    # 点击最多
+    #             self.tap((self.recog.w * 3 // 4, self.recog.h * 5 // 6), interval=1)    # 确认数量
+    #             self.tap((self.recog.w * 3 // 4, self.recog.h * 7 // 10), interval=1)   # 确认更改
                 
     def get_arrange_order(self) -> ArrangeOrder:
         best_score, best_order = 0, None
