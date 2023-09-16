@@ -89,6 +89,7 @@ class BaseSchedulerSolver(BaseSolver):
         self.free_clue = None
         self.credit_fight = None
         self.exit_game_when_idle = False
+        self.refresh_connecting = False
 
     def run(self) -> None:
         """
@@ -199,7 +200,8 @@ class BaseSchedulerSolver(BaseSolver):
                 # 修改执行时间
                 self.tasks[task_index].time = datetime.now()
                 # 执行完提前换班任务再次执行本任务
-                self.tasks.append(SchedulerTask(task_plan=copy.deepcopy(self.task.plan),meta_data=self.task.meta_data, task_type=self.task.type))
+                self.tasks.append(SchedulerTask(task_plan=copy.deepcopy(self.task.plan), meta_data=self.task.meta_data,
+                                                task_type=self.task.type))
             else:
                 # 任务全清
                 rooms = []
@@ -230,7 +232,9 @@ class BaseSchedulerSolver(BaseSolver):
                 if len(plan.keys()) > 0:
                     self.tasks.append(SchedulerTask(task_plan=plan))
                     # 执行完提前换班任务再次执行本任务
-                    self.tasks.append(SchedulerTask(task_plan=copy.deepcopy(self.task.plan),meta_data=self.task.meta_data, task_type=self.task.type))
+                    self.tasks.append(
+                        SchedulerTask(task_plan=copy.deepcopy(self.task.plan), meta_data=self.task.meta_data,
+                                      task_type=self.task.type))
             self.skip()
             return
 
@@ -239,14 +243,14 @@ class BaseSchedulerSolver(BaseSolver):
             self.device.exit(self.package_name)
         if self.error or force:
             # 如果没有任何时间小于当前时间的任务才生成空任务
-            if find_next_task(self.tasks,datetime.now()) is None:
+            if find_next_task(self.tasks, datetime.now()) is None:
                 logger.debug("由于出现错误情况，生成一次空任务来执行纠错")
                 self.tasks.append(SchedulerTask())
             # 如果没有任何时间小于当前时间的任务-10分钟 则清空任务
-            if find_next_task(self.tasks,datetime.now() - timedelta(seconds=900)) is not None:
+            if find_next_task(self.tasks, datetime.now() - timedelta(seconds=900)) is not None:
                 logger.info("检测到执行超过15分钟的任务，清空全部任务")
                 self.tasks = []
-        elif find_next_task(self.tasks,datetime.now() + timedelta(hours=2.5)) is None:
+        elif find_next_task(self.tasks, datetime.now() + timedelta(hours=2.5)) is None:
             logger.debug("2.5小时内没有其他任务，生成一个空任务")
             self.tasks.append(SchedulerTask(time=datetime.now() + timedelta(hours=2.5)))
         return True
@@ -405,6 +409,12 @@ class BaseSchedulerSolver(BaseSolver):
                     get_time = False
                     if TaskTypes.SHIFT_ON == self.task.type:
                         get_time = True
+                    if TaskTypes.RUN_ORDER == self.task.type and not self.refresh_connecting:
+                        logger.info("退回主界面以确保跑单前的登录状态")
+                        self.back_to_index()
+                        self.refresh_connecting = True
+                        return
+                    self.refresh_connecting = False
                     self.agent_arrange(self.task.plan, get_time)
                     if get_time:
                         self.plan_metadata()
@@ -429,7 +439,7 @@ class BaseSchedulerSolver(BaseSolver):
             try:
                 # 如果有任何type 则会最后修正
                 if self.read_mood:
-                    mood_result = self.agent_get_mood(True)
+                    mood_result = self.agent_get_mood()
                     if mood_result is not None:
                         self.skip(['planned', 'todo_task', 'collect_notification'])
                         return True
@@ -468,7 +478,8 @@ class BaseSchedulerSolver(BaseSolver):
 
     def agent_get_mood(self, skip_dorm=False, force=False):
         # 暂时规定纠错只适用于主班表
-        need_read = set(v.room for k, v in self.op_data.operators.items() if v.need_to_refresh() and v.room in base_room_list)
+        need_read = set(
+            v.room for k, v in self.op_data.operators.items() if v.need_to_refresh() and v.room in base_room_list)
         for room in need_read:
             error_count = 0
             while True:
@@ -590,9 +601,6 @@ class BaseSchedulerSolver(BaseSolver):
 
     def plan_solver(self):
         plan = self.op_data.plan
-        # 如果下个 普通任务 <10 分钟则跳过 plan
-        if find_next_task(self.tasks,datetime.now() + timedelta(seconds=600)) is not None:
-            return
         if len(self.op_data.run_order_rooms) > 0:
             # 判定宿舍是否满员
             valid = True
@@ -608,7 +616,7 @@ class BaseSchedulerSolver(BaseSolver):
             if valid:
                 # 处理龙舌兰和但书的插拔
                 for k, v in self.op_data.run_order_rooms.items():
-                    if find_next_task(self.tasks,meta_data=k) is not None: continue;
+                    if find_next_task(self.tasks, meta_data=k) is not None: continue;
                     if not valid: continue;
                     in_out_plan = {k: ['Current'] * len(plan[k])}
                     for idx, x in enumerate(plan[k]):
@@ -616,9 +624,10 @@ class BaseSchedulerSolver(BaseSolver):
                             in_out_plan[k][idx] = x.replacement[0]
                     self.tasks.append(
                         SchedulerTask(time=self.get_run_roder_time(k), task_plan=in_out_plan,
-                                      task_type=TaskTypes.RUN_ORDER,meta_data=k))
-                if scheduling(self.tasks) is not None:
-                    logger.warning("订单间隔太短")
+                                      task_type=TaskTypes.RUN_ORDER, meta_data=k))
+                adj_task = scheduling(self.tasks)
+                if adj_task is not None:
+                    self.drone(adj_task.meta_data, adjust_time=True)
         # 准备数据
         logger.debug(self.op_data.print())
         if self.read_mood:
@@ -630,7 +639,7 @@ class BaseSchedulerSolver(BaseSolver):
             logger.debug(f'当前基地数据--> {self.total_agent}')
             fia_plan, fia_room = self.check_fia()
             if fia_room is not None and fia_plan is not None:
-                if find_next_task(self.tasks,task_type=TaskTypes.FIAMMETTA) is None:
+                if find_next_task(self.tasks, task_type=TaskTypes.FIAMMETTA) is None:
                     fia_data = self.op_data.operators['菲亚梅塔']
                     fia_idx = fia_data.current_index if fia_data.current_index != -1 else fia_data.index
                     result = [{}] * (fia_idx + 1)
@@ -643,7 +652,7 @@ class BaseSchedulerSolver(BaseSolver):
                             result = self.get_agent_from_room(fia_room, [fia_idx])
                             self.back()
                     logger.info('下一次进行菲亚梅塔充能：' + result[fia_idx]['time'].strftime("%H:%M:%S"))
-                    self.tasks.append(SchedulerTask(time=result[fia_idx]['time'],task_type=TaskTypes.FIAMMETTA))
+                    self.tasks.append(SchedulerTask(time=result[fia_idx]['time'], task_type=TaskTypes.FIAMMETTA))
             try:
                 # 重新排序
                 self.total_agent.sort(key=lambda x: x.current_mood() - x.lower_limit, reverse=False)
@@ -668,11 +677,11 @@ class BaseSchedulerSolver(BaseSolver):
                         continue
                     # 忽略掉心情值没低于上限的的
                     if op.current_mood() > int(
-                            (op.upper_limit - op.lower_limit) * self.resting_threshold + op.lower_limit):
+                            (op.upper_limit - op.lower_limit) * self.op_data.config.resting_threshold + op.lower_limit):
                         continue
                     if op.name in self.op_data.exhaust_agent:
                         if op.current_mood() <= 2:
-                            if find_next_task(self.tasks,meta_data=op.name) is None:
+                            if find_next_task(self.tasks, meta_data=op.name) is None:
                                 self.enter_room(op.current_room)
                                 result = self.get_agent_from_room(op.current_room, [op.current_index])
                                 _time = datetime.now()
@@ -707,6 +716,9 @@ class BaseSchedulerSolver(BaseSolver):
                                                                                          high_free,
                                                                                          low_free)
                 if len(_plan.keys()) > 0:
+                    if find_next_task(self.tasks, datetime.now() + timedelta(seconds=900),
+                                      task_type=TaskTypes.RUN_ORDER) is not None:
+                        raise Exception("15分钟内有跑单任务，跳过下班任务")
                     self.tasks.append(SchedulerTask(task_plan=_plan, task_type=TaskTypes.SHIFT_OFF))
             except Exception as e:
                 logger.exception(e)
@@ -722,14 +734,16 @@ class BaseSchedulerSolver(BaseSolver):
                 for idx, bp in enumerate(self.op_data.backup_plans):
                     func = str(bp.trigger)
                     logger.debug(func)
-                    if self.op_data.evaluate_expression(func) and self.op_data.plan_name != idx:
+                    valid = self.op_data.evaluate_expression(func)
+                    if valid and self.op_data.plan_name != idx:
                         logger.info(f"满足第{idx + 1}个备用排班表使用条件，启动超级变换形态")
                         self.op_data.swap_plan(idx, refresh=True)
                         task = self.op_data.backup_plans[idx].task
-                        index = idx
                         if task:
                             self.tasks.append(SchedulerTask(task_plan=task))
+                        index = idx
                         break
+                    if valid: index = idx
                 # 不满足条件且为其他排班表，则切换回来
                 if index == -1 and self.op_data.plan_name != "default_plan":
                     self.op_data.swap_plan(index, refresh=True)
@@ -1122,7 +1136,7 @@ class BaseSchedulerSolver(BaseSolver):
 
         # 如果启用 MAA，则在线索交流结束后购物
         if self.maa_config['maa_enable'] and self.party_time is not None:
-            if find_next_task(self.tasks,task_type=TaskTypes.MAA_MALL) is None:
+            if find_next_task(self.tasks, task_type=TaskTypes.MAA_MALL) is None:
                 self.tasks.append(
                     SchedulerTask(time=self.party_time - timedelta(milliseconds=1), task_type=TaskTypes.CLUE_PARTY))
                 self.tasks.append(SchedulerTask(time=self.party_time, task_type=TaskTypes.MAA_MALL))
@@ -1303,13 +1317,45 @@ class BaseSchedulerSolver(BaseSolver):
                 if retry <= 0:
                     raise e
 
-    def drone(self, room: str, not_customize=False, not_return=False):
-        logger.info('基建：无人机加速')
+    def adjust_order_time(self, accelerate, room):
+        error_count = 0
+        while scheduling(self.tasks) is not None:
+            self.tap(accelerate)
+            if self.get_infra_scene() == Scene.CONNECTING:
+                if not self.waiting_solver(Scene.CONNECTING, sleep_time=2):
+                    return
+            self.device.tap((self.recog.w * 1320 // 1920, self.recog.h * 502 // 1080))
+            if self.get_infra_scene() == Scene.CONNECTING:
+                if not self.waiting_solver(Scene.CONNECTING, sleep_time=2):
+                    return
+            self.tap((self.recog.w * 3 // 4, self.recog.h * 4 // 5))
+            if self.get_infra_scene() == Scene.CONNECTING:
+                if not self.waiting_solver(Scene.CONNECTING, sleep_time=2):
+                    return
+            while self.find('bill_accelerate') is None:
+                if error_count > 5:
+                    raise Exception('未成功进入订单界面')
+                self.tap((self.recog.w // 20, self.recog.h * 19 // 20), interval=1)
+                error_count += 1
+            _time = self.double_read_time((self.recog.w * 650 // 2496, self.recog.h * 660 // 1404,
+                                           self.recog.w * 815 // 2496, self.recog.h * 710 // 1404),
+                                          use_digit_reader=True)
+            task_time = _time - timedelta(minutes=(self.run_order_delay))
+            task = find_next_task(self.tasks, task_type=TaskTypes.RUN_ORDER, meta_data=room)
+            if task is not None:
+                task.time = task_time
+                logger.info(f'房间 {room} 无人机加速后接单时间为 {task_time.strftime("%H:%M:%S")}')
+            else:
+                break
+
+    def drone(self, room: str, not_customize=False, not_return=False, adjust_time=False, skip_enter=False):
+        logger.info('基建：无人机加速' if not adjust_time else "开始调整订单时间")
         all_in = 0
         if not not_customize:
             all_in = len(self.op_data.run_order_rooms)
         # 点击进入该房间
-        self.enter_room(room)
+        if not skip_enter:
+            self.enter_room(room)
         # 进入房间详情
 
         self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3)
@@ -1343,7 +1389,7 @@ class BaseSchedulerSolver(BaseSolver):
             self.tap(accelerate, y_rate=1)
         else:
             accelerate = self.find('bill_accelerate')
-            while accelerate:
+            while accelerate and not adjust_time:
                 logger.info('贸易站加速')
                 self.tap(accelerate)
                 self.tap_element('all_in')
@@ -1367,11 +1413,13 @@ class BaseSchedulerSolver(BaseSolver):
                 # 0.95, 1.05 are offset compensations
                 self.swipe_noinertia(st, (ed[0] * 0.95 - st[0] * 1.05, 0), rebuild=True)
                 accelerate = self.find('bill_accelerate')
+            if adjust_time:
+                self.adjust_order_time(accelerate, room)
         if not_return: return
         logger.info('返回基建主界面')
         self.back(interval=2, rebuild=False)
         self.back(interval=2)
-        
+
         # # 用于制造站切换产物，请注意在调用该函数前有足够的无人机，并补足相应制造站产物，目前仅支持中级作战记录与赤金之间的切换
         # def 制造站切换产物(self, room: str, 目标产物: str, not_customize=False, not_return=False):
         # # 点击进入该房间
@@ -1443,7 +1491,7 @@ class BaseSchedulerSolver(BaseSolver):
         #         self.tap((self.recog.w * 3 // 4, self.recog.h * 2 // 7), interval=1)    # 点击最多
         #         self.tap((self.recog.w * 3 // 4, self.recog.h * 5 // 6), interval=1)    # 确认数量
         #         self.tap((self.recog.w * 3 // 4, self.recog.h * 7 // 10), interval=1)   # 确认更改
-                
+
     def get_arrange_order(self) -> ArrangeOrder:
         best_score, best_order = 0, None
         for order in ArrangeOrder:
@@ -1806,6 +1854,19 @@ class BaseSchedulerSolver(BaseSolver):
             _current_room = self.op_data.get_current_room(room, True)
         return _current_room
 
+    def get_order_remaining_time(self):
+        error_count = 0
+        while self.find('factory_accelerate') is None and self.find('bill_accelerate') is None:
+            if error_count > 5:
+                raise Exception('未成功进入无人机界面')
+            self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=0.5)
+            error_count += 1
+        # 订单剩余时间
+        execute_time = self.double_read_time((int(self.recog.w * 650 / 2496), int(self.recog.h * 660 / 1404),
+                                              int(self.recog.w * 815 / 2496), int(self.recog.h * 710 / 1404)),
+                                             use_digit_reader=True)
+        return round((execute_time - datetime.now()).total_seconds(), 1)
+
     def agent_arrange(self, plan: tp.BasePlan, get_time=False):
         logger.info('基建：排班')
         rooms = list(plan.keys())
@@ -1842,9 +1903,8 @@ class BaseSchedulerSolver(BaseSolver):
                                     plan[room][current_idx] = self.op_data.get_current_room(room, True)[current_idx]
                         if room in self.op_data.run_order_rooms and len(new_plan) == 0:
                             if plan[room] != self.op_data.get_current_room(room):
-                                run_order_task = find_next_task(self.tasks,
-                                    compare_time=datetime.now() + timedelta(minutes=10),
-                                    meta_data=room, compare_type=">")
+                                run_order_task = find_next_task(self.tasks, task_type=TaskTypes.RUN_ORDER,
+                                                                meta_data=room)
                                 if run_order_task is not None:
                                     logger.info("检测到插拔房间人员变动！")
                                     self.tasks.remove(run_order_task)
@@ -1856,6 +1916,23 @@ class BaseSchedulerSolver(BaseSolver):
                             if item1 != item2:
                                 same = False
                     if not same:
+                        if len(new_plan) == 1 and self.op_data.config.run_order_buffer_time > 0:
+                            remaining_time = self.get_order_remaining_time()
+                            if 0 < remaining_time < self.run_order_delay * 60:
+                                self.task.time = datetime.now() + timedelta(seconds=remaining_time) - timedelta(
+                                    minutes=self.run_order_delay)
+                                logger.info(f"订单倒计时 {remaining_time}秒")
+                                self.back()
+                                while self.find('room_detail') is None:
+                                    if error_count > 3:
+                                        raise Exception('未成功进入房间')
+                                    self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
+                                    error_count += 1
+                            else:
+                                logger.info(f"检测到漏单")
+                                self.send_email("检测到漏单！")
+                                self.back_to_index()
+                                return
                         while self.find('arrange_order_options') is None:
                             if error_count > 3:
                                 raise Exception('未成功进入干员选择界面')
@@ -1863,6 +1940,14 @@ class BaseSchedulerSolver(BaseSolver):
                             error_count += 1
                         self.choose_agent(plan[room], room, choose_error <= 0)
                         self.recog.update()
+                        if room in self.op_data.run_order_rooms and len(
+                                new_plan) == 1 and self.op_data.config.run_order_buffer_time > 0:
+                            wait_confirm = round(((self.task.time - datetime.now()).total_seconds() +
+                                                  self.run_order_delay * 60 - self.op_data.config.run_order_buffer_time),
+                                                 1)
+                            if wait_confirm > 0:
+                                logger.info(f'龙舌兰、但书进驻前等待 {str(wait_confirm)} 秒')
+                                time.sleep(wait_confirm)
                         self.tap_element('confirm_blue', detected=True, judge=False, interval=3)
                         if self.get_infra_scene() == Scene.INFRA_ARRANGE_CONFIRM:
                             _x0 = self.recog.w // 3 * 2  # double confirm
@@ -1903,14 +1988,46 @@ class BaseSchedulerSolver(BaseSolver):
                         raise e
                     else:
                         continue
-            self.back(0.5)
+            if len(new_plan) != 1:
+                self.back(0.5)
+            else:
+                if self.op_data.config.run_order_buffer_time <= 0:
+                    self.back(0.5)
         if len(new_plan) == 1:
-            logger.info("开始插拔")
-            self.drone(room, True, True)
+            if self.op_data.config.run_order_buffer_time <= 0:
+                logger.info("开始插拔")
+                self.drone(room, not_customize=True)
+            else:
+                # 葛朗台跑单模式
+                while self.find('factory_accelerate') is None and self.find('bill_accelerate') is None:
+                    if error_count > 5:
+                        raise Exception('未成功进入无人机界面')
+                    self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=0.5)
+                    error_count += 1
+                # 订单剩余时间
+                execute_time = self.double_read_time((int(self.recog.w * 650 / 2496), int(self.recog.h * 660 / 1404),
+                                                      int(self.recog.w * 815 / 2496), int(self.recog.h * 710 / 1404)),
+                                                     use_digit_reader=True)
+                wait_time = round((execute_time - datetime.now()).total_seconds(), 1)
+                if 0 < wait_time < self.op_data.config.run_order_buffer_time:
+                    logger.info(f"停止{wait_time}秒等待订单完成")
+                    self.sleep(wait_time)
+                    # 等待服务器交互
+                    if self.get_infra_scene() == Scene.CONNECTING:
+                        if not self.waiting_solver(Scene.CONNECTING, sleep_time=1):
+                            return
+                if self.drone_room is not None:
+                    drone_count = self.digit_reader.get_drone(self.recog.gray)
+                    logger.info(f'当前无人机数量为：{drone_count}')
+                    # 200 为识别错误
+                    if drone_count >= self.drone_count_limit and drone_count != 201:
+                        self.drone(room, not_customize=True, skip_enter=True)
+                self.recog.update()
+                self.recog.save_screencap('run_order')
             # 防止由于意外导致的死循环
             run_order_room = next(iter(new_plan))
             if '但书' in new_plan[run_order_room] or '龙舌兰' in new_plan[run_order_room]:
-                new_plan[run_order_room] = [data["agent"] for data in self.op_data.plan[room]]
+                new_plan[run_order_room] = [data.agent for data in self.op_data.plan[room]]
             self.back(interval=0.5)
             self.back(interval=0.5)
             self.tasks.append(SchedulerTask(time=self.tasks[0].time, task_plan=new_plan))
@@ -2223,7 +2340,7 @@ class BaseSchedulerSolver(BaseSolver):
                 if len(self.tasks) > 0:
                     del self.tasks[0]
                 self.MAA = None
-                if find_next_task(self.tasks,datetime.now() + timedelta(seconds=900)) is None:
+                if find_next_task(self.tasks, datetime.now() + timedelta(seconds=900)) is None:
                     # 未来10分钟没有任务就新建
                     self.tasks.append(SchedulerTask())
                 return

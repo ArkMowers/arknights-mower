@@ -118,7 +118,7 @@ def initialize(tasks, scheduler=None):
         base_scheduler.operators = {}
         plan1 = {}
         plan_config = PlanConfig(plan['conf']['rest_in_full'],plan['conf']['exhaust_require'], plan['conf']['resting_priority'], ling_xi= plan['conf']['ling_xi'],
-                            workaholic=plan['conf']['workaholic'],max_resting_count= plan['conf']['max_resting_count'], free_blacklist=conf['free_blacklist'])
+                            workaholic=plan['conf']['workaholic'],max_resting_count= plan['conf']['max_resting_count'], free_blacklist=conf['free_blacklist'],resting_threshold=conf['resting_threshold'])
         for key in plan[plan['default']]:
             plan1[key] = [Room(obj["agent"],obj["group"],obj["replacement"]) for obj in plan[plan['default']][key]['plans']]
         # 默认任务
@@ -137,7 +137,6 @@ def initialize(tasks, scheduler=None):
         # 高效组心情低于 UpperLimit  * 阈值 (向下取整)的时候才会会安排休息
         base_scheduler.last_room = ''
         logger.info('宿舍黑名单：' + str(plan_config.free_blacklist))
-        base_scheduler.resting_threshold = conf['resting_threshold']
         base_scheduler.MAA = None
         base_scheduler.email_config = {
             'mail_enable': conf['mail_enable'],
