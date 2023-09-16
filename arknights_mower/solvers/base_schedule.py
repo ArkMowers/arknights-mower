@@ -2016,20 +2016,21 @@ class BaseSchedulerSolver(BaseSolver):
                     if self.get_infra_scene() == Scene.CONNECTING:
                         if not self.waiting_solver(Scene.CONNECTING, sleep_time=1):
                             return
-                if self.drone_room is not None:
+                if self.drone_room is None:
                     drone_count = self.digit_reader.get_drone(self.recog.gray)
                     logger.info(f'当前无人机数量为：{drone_count}')
                     # 200 为识别错误
                     if drone_count >= self.drone_count_limit and drone_count != 201:
                         self.drone(room, not_customize=True, skip_enter=True)
-                self.recog.update()
-                self.recog.save_screencap('run_order')
+                else:
+                    self.recog.update()
+                    self.recog.save_screencap('run_order')
+                    self.back(interval=0.5)
+                    self.back(interval=0.5)
             # 防止由于意外导致的死循环
             run_order_room = next(iter(new_plan))
             if '但书' in new_plan[run_order_room] or '龙舌兰' in new_plan[run_order_room]:
                 new_plan[run_order_room] = [data.agent for data in self.op_data.plan[room]]
-            self.back(interval=0.5)
-            self.back(interval=0.5)
             self.tasks.append(SchedulerTask(time=self.tasks[0].time, task_plan=new_plan))
             self.skip(['planned', 'todo_task'])
         elif len(new_plan) > 1:
