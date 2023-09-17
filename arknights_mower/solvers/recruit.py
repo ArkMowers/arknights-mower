@@ -48,7 +48,7 @@ class RecruitSolver(BaseSolver):
 
         self.recruit_pos = -1
 
-    def run(self, priority: list[str] = None, email_config={}, maa_config={}):
+    def run(self, priority: list[str] = None, email_config={}, recruit_config={}):
         """
         :param priority: list[str], 优先考虑的公招干员，默认为高稀有度优先
         """
@@ -59,7 +59,7 @@ class RecruitSolver(BaseSolver):
         self.email_config = email_config
 
         # 调整公招参数
-        self.add_recruit_param(maa_config)
+        self.add_recruit_param(recruit_config)
 
         logger.info('Start: 公招')
         # 清空
@@ -89,21 +89,22 @@ class RecruitSolver(BaseSolver):
 
         return self.agent_choose, self.result_agent
 
-    def add_recruit_param(self, maa_config):
-        if not maa_config:
+    def add_recruit_param(self, recruit_config):
+        if not recruit_config:
             raise Exception("招募设置为空")
 
-        if maa_config['recruitment_time']:
+        if recruit_config['recruitment_time']:
             recruitment_time = 460
         else:
             recruitment_time = 540
 
         self.recruit_config = {
-            "recruit_only_4": maa_config['recruit_only_4'],
+            "recruit_only_4": recruit_config['recruit_only_4'],
             "recruitment_time": {
                 "3": recruitment_time,
                 "4": 540
-            }
+            },
+            "recruit_robot": recruit_config['recruit_robot']
         }
 
     def transition(self) -> bool:
@@ -183,7 +184,7 @@ class RecruitSolver(BaseSolver):
             logger.info(f'第{self.recruit_pos + 1}个位置上的公招标签：{tags}')
 
             # 计算招募标签组合结果
-            best, need_choose = self.recruit_cal(tags, self.priority)
+            best, need_choose = self.recruit_cal(tags)
 
             # 刷新标签
             if need_choose is False:
@@ -360,10 +361,11 @@ class RecruitSolver(BaseSolver):
 
         return merge_list, level, isRarity, isRobot
 
-    def recruit_cal(self, tags: list[str], auto_robot=False, need_Robot=True) -> (dict, bool):
+    def recruit_cal(self, tags: list[str]) -> (dict, bool):
         possible_list = {}
         has_rarity = False
         has_robot = False
+        recruit_robot =self.recruit_config["recruit_robot"]
 
         for item in combinations(tags, 1):
             # 防止出现类似情况 ['重', '装', '干', '员']
@@ -414,47 +416,65 @@ class RecruitSolver(BaseSolver):
 
         logger.debug(f"公招可能性:{self.recruit_str(possible_list)}")
 
+        rarity_list = {
+            "level": -1,
+            "possible": {}
+        }
+        normal_list = {
+            "level": -1,
+            "possible": {}
+        }
+        robot_list = {}
         for key in list(possible_list.keys()):
             # 五星六星选择优先级大于支援机械
-            if has_rarity:
-                if possible_list[key]['isRarity'] is False:
-                    del possible_list[key]
+            if possible_list[key]["isRarity"]:
+                if possible_list[key]["level"] > rarity_list["level"]:
+                    rarity_list["level"] = possible_list[key]["level"]
+                rarity_list["possible"][key] = possible_list[key]
+            elif possible_list[key]["isRobot"]:
+                robot_list[key] = possible_list[key]
+            else:
+                if possible_list[key]["level"] > normal_list["level"]:
+                    normal_list["level"] = possible_list[key]["level"]
+                normal_list["possible"][key] = possible_list[key]
+
+        # 筛选稀有tag
+        if rarity_list["possible"]:
+            for key in list(rarity_list["possible"].keys()):
+                if rarity_list["possible"][key]["level"] < rarity_list["level"]:
+                    del rarity_list["possible"][key]
                     continue
-                elif possible_list[key]['level'] < 6 and "高级资深干员" in tags:
-                    del possible_list[key]
-                    continue
-            # 不要支援机械
-            elif need_Robot is False and possible_list[key]['isRobot'] is True:
-                del possible_list[key]
+                for i in range(len(rarity_list["possible"][key]["agent"]) - 1, -1, -1):
+                    if rarity_list["possible"][key]["agent"][i]['level'] != rarity_list["possible"][key]["level"]:
+                        rarity_list["possible"][key]["agent"].remove(rarity_list["possible"][key]["agent"][i])
+            logger.debug(f"rarity_list:{rarity_list}")
+            return rarity_list, False
+
+        if robot_list and self.recruit_config["recruit_robot"]:
+            logger.debug(f"robot_list:{robot_list.popitem()}")
+            return robot_list, False
+
+        # 筛选非稀有tag
+
+        logger.debug(normal_list["level"])
+        if normal_list["level"] < 4:
+            return {}, True
+
+        for key in list(normal_list["possible"].keys()):
+            if normal_list["possible"][key]["level"] < normal_list["level"]:
+                del normal_list["possible"][key]
                 continue
-            # 支援机械手动选择
-            elif has_robot and need_Robot is True and possible_list[key]['isRobot'] is False:
-                del possible_list[key]
-                continue
-
-            '''只保留大概率能出的tag'''
-            for i in range(len(possible_list[key]["agent"]) - 1, -1, -1):
-                if possible_list[key]["agent"][i]['level'] != possible_list[key]["level"]:
-                    possible_list[key]["agent"].remove(possible_list[key]["agent"][i])
-
-        # 六星 五星 支援机械手动选择返回全部结果
-
-        # 有支援机械 不需要自动点支援机械 并且需要支援机械的情况下，邮件提醒
-        notice_robot = (has_robot and auto_robot == False and need_Robot)
-        need_choose = True
-        if notice_robot or has_rarity:
-            need_choose = False
-            logger.info(f"稀有tag:{self.recruit_str(possible_list)}")
-            return possible_list, need_choose
+            for i in range(len(normal_list["possible"][key]["agent"]) - 1, -1, -1):
+                if normal_list["possible"][key]["agent"][i]['level'] != normal_list["possible"][key]["level"]:
+                    normal_list["possible"][key]["agent"].remove(normal_list["possible"][key]["agent"][i])
 
         best = {}
         # 4星=需要选择tag返回选择的tag，3星不选
-        for key in possible_list:
-            if possible_list[key]['level'] >= 4:
-                best[key] = possible_list[key]
-                break
-
-        return best, need_choose
+        for key in normal_list["possible"]:
+            best[key] = normal_list["possible"][key]
+            break
+        logger.debug(f"normal_list:{normal_list}")
+        return best, True
 
     def recruit_str(self, recruit_result: dict):
         if not recruit_result:
