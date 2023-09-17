@@ -107,7 +107,7 @@ onMounted(async () => {
         className: 'date'
       },
       {
-        begin: /[0-9]+:[0-9]+:[0-9]+/,
+        begin: /[0-9]+:[0-9]+:[0-9]+(\.[0-9]+)?/,
         className: 'time'
       },
       {
