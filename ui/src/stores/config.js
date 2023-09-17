@@ -43,6 +43,12 @@ export const useConfigStore = defineStore('config', () => {
   const rogue = ref({})
   const screenshot = ref(0)
   const mail_subject = ref('')
+  const skland_enable= ref(false)
+  const skland_info= ref([])
+  const recruit_enable= ref(true)
+  const recruit_only_4 = ref(false)
+  const recruitment_time = ref(false)
+  const recruit_robot= ref(true)
 
   async function load_shop() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/shop`)
@@ -101,6 +107,12 @@ export const useConfigStore = defineStore('config', () => {
     rogue.value = response.data.rogue
     screenshot.value = response.data.screenshot
     mail_subject.value = response.data.mail_subject
+    skland_enable.value = response.data.skland_enable != 0
+    skland_info.value = response.data.skland_info
+    recruit_enable.value = response.data.recruit_enable
+    recruit_only_4.value = response.data.recruit_only_4
+    recruitment_time.value = response.data.recruitment_time
+    recruit_robot.value = response.data.recruit_robot
   }
 
   function build_config() {
@@ -147,7 +159,13 @@ export const useConfigStore = defineStore('config', () => {
       maa_rg_theme: maa_rg_theme.value,
       rogue: rogue.value,
       screenshot: screenshot.value,
-      mail_subject: mail_subject.value
+      mail_subject: mail_subject.value,
+      skland_enable: skland_enable.value ,
+      skland_info: skland_info.value,
+      recruit_enable: recruit_enable.value,
+      recruit_only_4: recruit_only_4.value,
+      recruitment_time: recruitment_time.value,
+      recruit_robot: recruit_robot.value,
     }
   }
 
@@ -190,7 +208,13 @@ export const useConfigStore = defineStore('config', () => {
       maa_rg_theme,
       rogue,
       screenshot,
-      mail_subject
+      mail_subject,
+      recruit_enable,
+      recruit_only_4,
+      recruitment_time,
+      recruit_robot,
+      skland_enable,
+      skland_info
     ],
     () => {
       axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, build_config())
@@ -241,6 +265,12 @@ export const useConfigStore = defineStore('config', () => {
     maa_rg_theme,
     rogue,
     screenshot,
-    mail_subject
+    mail_subject,
+    recruit_enable,
+    recruit_only_4,
+    recruitment_time,
+    recruit_robot,
+    skland_enable,
+    skland_info
   }
 })
