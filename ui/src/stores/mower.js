@@ -38,8 +38,9 @@ export const useMowerStore = defineStore('mower', () => {
       }
       const scheduler_task = task_line.split('||')
       const date_time_re = /time='[0-9]+-[0-9]+-[0-9]+ ([0-9]+:[0-9]+:[0-9]+)/
-      const plan_re = /task_plan={(.*)}/
-      const type_re = /task_type=TaskTypes\.(.*),/
+      const plan_re = /task_plan={(.*?)}/
+      const meta_re = /meta_data='(.*?)'/
+      const type_re = /task_type=TaskTypes\.(.*?),/
       let task_text
       task_list.value = scheduler_task.map((x) => {
         const plan_text = plan_re.exec(x)[1].replace(/'/g, '"')
@@ -48,7 +49,12 @@ export const useMowerStore = defineStore('mower', () => {
             (x) => `${x[0]}: ${x[1].join(', ')}`
           )
         } else {
-          task_text = [type_re.exec(x)[1]]
+          const meta_text = meta_re.exec(x)[1]
+          if (meta_text) {
+            task_text = [meta_re.exec(x)[1]]
+          } else {
+            task_text = [type_re.exec(x)[1]]
+          }
         }
         return {
           time: date_time_re.exec(x)[1],
