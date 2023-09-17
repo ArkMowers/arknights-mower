@@ -439,7 +439,7 @@ class BaseSchedulerSolver(BaseSolver):
             try:
                 # 如果有任何type 则会最后修正
                 if self.read_mood:
-                    mood_result = self.agent_get_mood()
+                    mood_result = self.agent_get_mood(skip_dorm=True)
                     if mood_result is not None:
                         self.skip(['planned', 'todo_task', 'collect_notification'])
                         return True
@@ -611,7 +611,7 @@ class BaseSchedulerSolver(BaseSolver):
                         continue
                     else:
                         valid = False
-                        logger.debug("宿舍未满员,跳过读取插拔时间")
+                        logger.info("宿舍未满员,跳过读取插拔时间")
                         break
             if valid:
                 # 处理龙舌兰和但书的插拔
@@ -655,6 +655,9 @@ class BaseSchedulerSolver(BaseSolver):
                     self.tasks.append(SchedulerTask(time=result[fia_idx]['time'], task_type=TaskTypes.FIAMMETTA))
             try:
                 # 重新排序
+                if find_next_task(self.tasks, task_type=TaskTypes.SHIFT_OFF) is not None:
+                    logger.info("有未完成的下班任务")
+                    return
                 self.total_agent.sort(key=lambda x: x.current_mood() - x.lower_limit, reverse=False)
                 # 自动生成任务
                 self.plan_metadata()
@@ -716,14 +719,17 @@ class BaseSchedulerSolver(BaseSolver):
                                                                                          high_free,
                                                                                          low_free)
                 if len(_plan.keys()) > 0:
-                    if find_next_task(self.tasks, datetime.now() + timedelta(seconds=900),
-                                      task_type=TaskTypes.RUN_ORDER) is not None:
-                        raise Exception("15分钟内有跑单任务，跳过下班任务")
+                    if find_next_task(self.tasks, datetime.now() + timedelta(seconds=300),
+                                      task_type=TaskTypes.RUN_ORDER) is not None: return
                     self.tasks.append(SchedulerTask(task_plan=_plan, task_type=TaskTypes.SHIFT_OFF))
             except Exception as e:
                 logger.exception(e)
                 # 如果下个 普通任务 >5 分钟则补全宿舍
-            logger.debug('tasks:' + str(self.tasks))
+                logger.debug('tasks:' + str(self.tasks))
+            if find_next_task(self.tasks, datetime.now() + timedelta(seconds=300),
+                          task_type=TaskTypes.RUN_ORDER) is not None:
+                logger.info("5分钟内有跑单任务")
+                return
             if self.agent_get_mood() is None:
                 self.backup_plan_solver()
 
