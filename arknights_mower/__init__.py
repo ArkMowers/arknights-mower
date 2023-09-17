@@ -15,4 +15,4 @@ else:
 __cli__ = not (__pyinstall__ and not sys.argv[1:])
 
 __system__ = platform.system().lower()
-__version__ = 'v3.4.2'
+__version__ = 'dev_shawn'
