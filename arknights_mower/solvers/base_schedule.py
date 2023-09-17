@@ -529,7 +529,7 @@ class BaseSchedulerSolver(BaseSolver):
                 _agent = miss_list[key]
                 if _agent.group != '' and next((k for k, v in self.op_data.operators.items() if
                                                 v.group == _agent.group and not v.not_valid() and v.is_resting()),
-                                               None) is not None:
+                                               None) is not None and _agent.mood == 24:
                     continue
                 elif _agent.group != '':
                     # 把所有小组成员都移到工作站
@@ -726,9 +726,8 @@ class BaseSchedulerSolver(BaseSolver):
                 logger.exception(e)
                 # 如果下个 普通任务 >5 分钟则补全宿舍
                 logger.debug('tasks:' + str(self.tasks))
-            if find_next_task(self.tasks, datetime.now() + timedelta(seconds=300),
-                          task_type=TaskTypes.RUN_ORDER) is not None:
-                logger.info("5分钟内有跑单任务")
+            if find_next_task(self.tasks, datetime.now() + timedelta(seconds=300)) is not None:
+                logger.info("5分钟内有其他任务,跳过宿舍纠错")
                 return
             if self.agent_get_mood() is None:
                 self.backup_plan_solver()
@@ -1909,10 +1908,11 @@ class BaseSchedulerSolver(BaseSolver):
                                     plan[room][current_idx] = self.op_data.get_current_room(room, True)[current_idx]
                         if room in self.op_data.run_order_rooms and len(new_plan) == 0:
                             if plan[room] != self.op_data.get_current_room(room):
-                                run_order_task = find_next_task(self.tasks, task_type=TaskTypes.RUN_ORDER,
+                                logger.info("检测到插拔房间人员变动！")
+                                run_order_task = find_next_task(self.tasks, datetime.now()+ timedelta(minutes=10), task_type=TaskTypes.RUN_ORDER,
                                                                 meta_data=room)
                                 if run_order_task is not None:
-                                    logger.info("检测到插拔房间人员变动！")
+                                    logger.debug("移除超过10分钟的跑单任务以刷新时间")
                                     self.tasks.remove(run_order_task)
                     checked = True
                     current_room = self.op_data.get_current_room(room, True)
@@ -2015,7 +2015,8 @@ class BaseSchedulerSolver(BaseSolver):
                                                       int(self.recog.w * 815 / 2496), int(self.recog.h * 710 / 1404)),
                                                      use_digit_reader=True)
                 wait_time = round((execute_time - datetime.now()).total_seconds(), 1)
-                if 0 < wait_time < self.op_data.config.run_order_buffer_time:
+                logger.debug(f"停止{wait_time}秒等待订单完成")
+                if 0 < wait_time < self.run_order_delay*60:
                     logger.info(f"停止{wait_time}秒等待订单完成")
                     self.sleep(wait_time)
                     # 等待服务器交互
