@@ -39,7 +39,7 @@ export const useMowerStore = defineStore('mower', () => {
       const scheduler_task = task_line.split('||')
       const date_time_re = /time='[0-9]+-[0-9]+-[0-9]+ ([0-9]+:[0-9]+:[0-9]+)/
       const plan_re = /task_plan={(.*)}/
-      const type_re = /task_type='(.*)'/
+      const type_re = /task_type=TaskTypes\.(.*),/
       let task_text
       task_list.value = scheduler_task.map((x) => {
         const plan_text = plan_re.exec(x)[1].replace(/'/g, '"')
