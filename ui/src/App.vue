@@ -32,7 +32,7 @@ const menuOptions = ref([
           { label: () => h(RouterLink, { to: { path: "/advancedleft/maahugmission" } }, { default: () => "肉鸽/保全/生稀盐酸" }), key: "go-to-maahugmission" }
         ]
       },
-      { label: () => h(RouterLink, { to: { path: "/advancedleft/sk-land" } }, { default: () => "森空岛签到" }), key: "go-to-skland" },
+      //{ label: () => h(RouterLink, { to: { path: "/advancedleft/sk-land" } }, { default: () => "森空岛签到" }), key: "go-to-skland" },
       { label: () => h(RouterLink, { to: { path: "/advancedleft/recruit" } }, { default: () => "公开招募" }), key: "go-to-recruit" }
     ]
   },
