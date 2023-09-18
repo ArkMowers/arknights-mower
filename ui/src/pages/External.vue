@@ -47,7 +47,7 @@ const rogue_themes = [
 <template>
   <div class="home-container external-container">
     <clue />
-    <maa-recruit />
+    <Recruit />
     <maa-weekly />
     <n-card>
       <template #header>
