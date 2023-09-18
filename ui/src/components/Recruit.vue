@@ -19,13 +19,14 @@ const recruit_3 = computed({
 })
 
 const recruit_4 = ref('900')
+
 </script>
 
 <template>
   <n-card>
     <template #header>
       <n-checkbox v-model:checked="recruit_enable">
-        <div class="card-title">公共招募</div>
+        <div class="card-title">公开招募</div>
       </n-checkbox>
     </template>
     <n-table :single-line="false" size="small" class="big-table">
