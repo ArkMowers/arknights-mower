@@ -83,48 +83,51 @@ const recruit_4 = ref('900')
 </template>
 
 <style scoped lang="scss">
-h4 {
-  margin: 0;
-}
-
-ul {
-  padding-left: 24px;
-}
-
 .card-title {
   font-weight: 500;
   font-size: 18px;
-  margin-right: 8px;
 }
 
-table {
-  width: 100%;
+p {
+  margin: 0 0 8px 0;
+}
+
+h4 {
+  margin: 12px 0 10px 0;
+}
+
+.recruit-3 td {
+  &:nth-child(1) {
+    width: 64px;
+  }
+
+  &:nth-child(2) {
+    width: 200px;
+  }
+}
+
+.big-table {
+  margin-top: 10px;
+  width: 400px;
+
+  th {
+    text-align: center;
+  }
 
   td {
+    height: 24px;
+
     &:nth-child(1) {
-      width: 40px;
+      width: 70px;
+      text-align: center;
     }
-
     &:nth-child(2) {
-      width: 32px;
-    }
-
-    &:nth-child(3) {
-      padding-right: 8px;
-    }
-
-    &:nth-child(4) {
-      width: 50px;
-    }
-
-    &:nth-child(5) {
-      width: 90px;
+      padding-left: 18px;
     }
   }
 }
 
-.tag-mr {
-  margin-right: 4px;
+.final {
+  margin: 16px 0 0;
 }
 </style>
-
