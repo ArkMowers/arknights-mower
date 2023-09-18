@@ -130,7 +130,7 @@ class SKLand:
                 self.get_cred(account)
 
             self.get_binding_player(account)
-            logger.info(account)
+            logger.debug(account)
             data = {
                 "uid": account["uid"],
                 "gameId": 1
