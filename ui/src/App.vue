@@ -21,19 +21,21 @@ const menuOptions = ref([
     children: [
       { label: () => h(RouterLink, { to: { path: "/advancedleft/mower-setting" } }, { default: () => "Mower-设置" }), key: "go-to-mowersetting" },
       { label: () => h(RouterLink, { to: { path: "/advancedleft/basement-setting" } }, { default: () => "Mower-基建设置" }), key: "go-to-basementsetting" },
-      { label: () => h(RouterLink, { to: { path: "/advancedleft/clue" } }, { default: () => "排班编辑" }), key: "go-to-clue" },
-      { label: () => h(RouterLink, { to: { path: "/advancedleft/email" } }, { default: () => "邮件设置" }), key: "go-to-email" },
+      
+      { label: () => h(RouterLink, { to: { path: "/advancedleft/email" } }, { default: () => "Mower-邮件设置" }), key: "go-to-email" },
+      { label: () => h(RouterLink, { to: { path: "/advancedleft/recruit" } }, { default: () => "公开招募" }), key: "go-to-recruit" },
       {
         label: () => "maa设置",
         key: "maa-settings",
         children: [
           { label: () => h(RouterLink, { to: { path: "/advancedleft/maa-basic" } }, { default: () => "基础设置" }), key: "go-to-maabasic" },
           { label: () => h(RouterLink, { to: { path: "/advancedleft/maa-weekly" } }, { default: () => "清理智" }), key: "go-to-maaweekly" },
-          { label: () => h(RouterLink, { to: { path: "/advancedleft/maahugmission" } }, { default: () => "肉鸽/保全/生稀盐酸" }), key: "go-to-maahugmission" }
+          { label: () => h(RouterLink, { to: { path: "/advancedleft/clue" } }, { default: () => "线索交流" }), key: "go-to-clue" },
+          { label: () => h(RouterLink, { to: { path: "/advancedleft/maahugmission" } }, { default: () => "肉鸽等" }), key: "go-to-maahugmission" }
         ]
       },
       //{ label: () => h(RouterLink, { to: { path: "/advancedleft/sk-land" } }, { default: () => "森空岛签到" }), key: "go-to-skland" },
-      { label: () => h(RouterLink, { to: { path: "/advancedleft/recruit" } }, { default: () => "公开招募" }), key: "go-to-recruit" }
+      
     ]
   },
   {
