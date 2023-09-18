@@ -253,7 +253,7 @@ async function select_simulator_folder() {
     </n-card>
     <maa-basic />
     <email />
-    <SKLand/>
+    <SKLand />
   </div>
 </template>
 
