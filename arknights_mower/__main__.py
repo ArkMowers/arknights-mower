@@ -105,6 +105,25 @@ def set_maa_options(base_scheduler):
 
     logger.debug(f"更新Maa设置：{base_scheduler.maa_config}")
 
+def set_recruit_options(base_scheduler):
+    conf = update_conf()
+    global recruit_config
+    recruit_config['recruit_enable'] = conf['recruit_enable']
+    recruit_config['recruit_only_4'] = conf['recruit_only_4']
+    recruit_config['recruit_robot'] = conf['recruit_robot']
+    recruit_config['recruitment_time'] = conf['recruitment_time']
+    base_scheduler.recruit_config = recruit_config
+
+    logger.debug(f"更新公招设置：{base_scheduler.recruit_config}")
+
+def set_skland_options(base_scheduler):
+    conf = update_conf()
+    global skland_config
+    skland_config['skland_enable'] = conf['skland_enable']
+    skland_config['skland_info'] = conf['skland_info']
+    base_scheduler.skland_config = skland_config
+
+    logger.debug(f"更新森空岛设置：{base_scheduler.skland_config}")
 
 def initialize(tasks, scheduler=None):
     from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
@@ -148,6 +167,8 @@ def initialize(tasks, scheduler=None):
         }
 
         set_maa_options(base_scheduler)
+        set_recruit_options(base_scheduler)
+        set_skland_options(base_scheduler)
 
         base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
         base_scheduler.error = False
@@ -217,6 +238,8 @@ def simulate():
                 remaining_time = (base_scheduler.tasks[0].time - datetime.now()).total_seconds()
 
                 set_maa_options(base_scheduler)
+                set_recruit_options(base_scheduler)
+                set_skland_options(base_scheduler)
 
                 if sleep_time > 540 and base_scheduler.maa_config['maa_enable'] == 1:
                     subject = f"下次任务在{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}"
@@ -292,6 +315,8 @@ def load_state(file='state.json'):
 
 agent_base_config = {}
 maa_config = {}
+recruit_config = {}
+skland_config = {}
 
 
 def __init_params__():

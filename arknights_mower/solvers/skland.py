@@ -7,24 +7,27 @@ from arknights_mower.utils.log import logger
 
 
 class SKLand:
-    def __init__(self):
-        self.account = [
-            {
-                "name": "风味手扒鸡#5916",
-                "phone": "",
-                "password": "",
-                "uid": "",
-                "cred": ""
-            }
-        ]
-
+    def __init__(self, skland_info):
+        self.account = []
+        for item in skland_info:
+            if item["isCheck"] is False:
+                continue
+            if item['account'] != "" and item['password'] != "":
+                self.account.append({
+                    "name": "",
+                    "phone": item['account'],
+                    "password": item['password'],
+                    "uid": "",
+                    "cred": ""
+                })
         self.url = {
             "get_cred": "https://zonai.skland.com/api/v1/user/auth/generate_cred_by_code",
             "token_by_phone_password": "https://as.hypergryph.com/user/auth/v1/token_by_phone_password",
             "check_cred_url": "https://zonai.skland.com/api/v1/user/check",
             "OAuth2": "https://as.hypergryph.com/user/oauth2/v2/grant",
             "get_cred_url": "https://zonai.skland.com/api/v1/user/auth/generate_cred_by_code",
-            "attendance": "https://zonai.skland.com/api/v1/game/attendance"
+            "attendance": "https://zonai.skland.com/api/v1/game/attendance",
+            "get_binding_player": "https://zonai.skland.com/api/v1/game/player/binding"
         }
 
         self.request_header = {
@@ -62,14 +65,32 @@ class SKLand:
 
         if response_json.get("code") == 0:
             logger.debug("验证cred未过期")
-            return True
+
         logger.debug("验证cred过期")
-        return False
+
+    def get_binding_player(self, account):
+        if account['cred'] == "":
+            logger.error("获取绑定信息失败")
+            raise "获取绑定信息失败"
+        headers = self.request_header
+        headers["cred"] = account['cred']
+
+        response = requests.get(headers=headers, url=self.url.get("get_binding_player"))
+        response_json = self.respone_to_json(response)
+
+        if response_json.get("code") == 0:
+            logger.info("获取玩家信息成功")
+            player_info = response_json.get('data').get('list')[0].get('bindingList')[0]
+            account['name'] = player_info.get('nickName')
+            account['uid'] = player_info.get('uid')
+
+        logger.debug("获取玩家信息失败")
 
     def get_OAuth2_token(self, account):
         token = self.sign_by_phone(account)
         if token == "":
-            raise "登陆失败"
+            logger.error("token获取失败")
+            raise "token获取失败"
 
         data = {
             "token": token,
@@ -97,18 +118,19 @@ class SKLand:
         response_json = self.respone_to_json(response)
 
         if response_json.get("code") == 0:
-            return response_json.get("data").get("cred")
-
-        return ""
+            account['cred'] = response_json.get("data").get("cred")
 
     def attendance(self):
         for account in self.account:
-            if self.get_record(account['name']):
-                logger.info(f"{account['name']} 今日已经签到过了")
+            if self.get_record(account['phone']):
+                logger.info(f"{account['phone']} 今日已经签到过了")
                 continue
 
             if self.check_cred(account) is False:
-                account['cred'] = self.get_cred(account)
+                self.get_cred(account)
+
+            self.get_binding_player(account)
+            logger.info(account)
             data = {
                 "uid": account["uid"],
                 "gameId": 1
@@ -127,28 +149,30 @@ class SKLand:
             elif response_json["code"] == 10001 and response_json["message"] == "请勿重复签到！":
                 logger.info(f"{account['name']} 请勿重复签到！")
                 award.append("请勿重复签到！")
-            self.get_award[account['name']] = award
-            self.record_attendance(account['name'], self.get_award[account['name']])
-
+            self.get_award[account['phone']] = award
+            self.record_attendance(account['phone'], self.get_award[account['phone']])
+        if self.get_award:
+            logger.info(self.get_award)
         return self.get_award
 
-    def record_attendance(self, name, data):
+    def record_attendance(self, account, data):
 
-        data_row = [name, data, datetime.date.today()]
+        data_row = [account, data, datetime.date.today()]
         with open(self.record_path, 'a+') as f:
             csv_write = csv.writer(f)
             csv_write.writerow(data_row)
 
-    def get_record(self, name):
+    def get_record(self, account):
+
         try:
             with open(self.record_path, 'r+') as f:
                 csv_reader = csv.reader(f)
                 for line in csv_reader:
-                    if line[0] == name:
-                        return True
+                    if line:
+                        if line[0] == account and line[2] == str(datetime.date.today()):
+                            return True
         except:
             with open(self.record_path, 'a+') as f:
                 return False
 
         return False
-

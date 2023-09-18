@@ -90,6 +90,8 @@ class BaseSchedulerSolver(BaseSolver):
         self.credit_fight = None
         self.exit_game_when_idle = False
         self.refresh_connecting = False
+        self.recruit_config = {}
+        self.skland_config = {}
 
     def run(self) -> None:
         """
@@ -2195,12 +2197,13 @@ class BaseSchedulerSolver(BaseSolver):
                 logger.info("间隔未超过设定时间，不启动maa")
             else:
                 """森空岛签到"""
-                # skland = SKLand()
-                # skland.attendance()
+                if self.skland_config['skland_enable']:
+                    skland = SKLand(self.skland_config['skland_info'])
+                    skland.attendance()
 
                 """测试公招用"""
-                if 'Recruit' in tasks or tasks == 'All':
-                    recruit([], self.email_config, self.maa_config)
+                if self.recruit_config['recruit_enable']:
+                    recruit([], self.email_config, self.recruit_config)
 
                 self.send_email('启动MAA')
                 self.back_to_index()
