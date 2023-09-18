@@ -84,7 +84,7 @@ def shop(args: list[str] = [], device: Device = None):
         ShopSolver(device).run(args)
 
 
-def recruit(args: list[str] = [], email_config={}, maa_config={}, device: Device = None):
+def recruit(args: list[str] = [], email_config={}, recruit_config={}, device: Device = None):
     """
     recruit [agents ...]
         自动进行公共招募
@@ -93,9 +93,9 @@ def recruit(args: list[str] = [], email_config={}, maa_config={}, device: Device
     choose = {}
     result = {}
     if len(args) == 0:
-        choose, result = RecruitSolver(device).run(config.RECRUIT_PRIORITY, email_config, maa_config)
+        choose, result = RecruitSolver(device).run(config.RECRUIT_PRIORITY, email_config, recruit_config)
     else:
-        choose, result = RecruitSolver(device).run(args, email_config)
+        choose, result = RecruitSolver(device).run(args, email_config,recruit_config)
 
     return choose, result
 

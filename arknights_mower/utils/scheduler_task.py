@@ -83,6 +83,8 @@ class SchedulerTask:
         res = copy.deepcopy(self)
         res.time += timedelta(hours=time_offset)
         res.type = res.type.display_value
+        if res.type == "空任务" and res.meta_data:
+            res.type = res.meta_data
         return res
 
     def __str__(self):
