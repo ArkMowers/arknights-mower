@@ -8,6 +8,7 @@ workaholic: ''
 simulator:
   name: ''
   index: -1
+  simulator_folder: ''
 free_blacklist: ''
 ling_xi: 1
 maa_adb_path: D:\Program Files\Nox\bin\adb.exe
@@ -60,6 +61,7 @@ webview:
   port: 58000
   width: 1100
   height: 780
+  token: ''
 tap_to_launch_game:
   enable: false
   x: 0
@@ -71,3 +73,15 @@ maa_conn_preset: General
 maa_touch_option: maatouch
 maa_credit_fight: true
 maa_rg_theme: Mizuki
+rogue:
+  squad: ''
+  roles: ''
+  core_char: ''
+  use_support: false
+  use_nonfriend_support: false
+  mode: 1
+  investment_enabled: true
+  stop_when_investment_full: true
+  refresh_trader_with_dice: false
+screenshot: 200
+mail_subject: "[Mower通知]"

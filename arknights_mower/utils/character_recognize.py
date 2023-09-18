@@ -164,6 +164,8 @@ def agent(img, draw=False):
             try:
                 if found_ocr is not None:
                     x = found_ocr
+                    if len(x[1]) == 3 and x[1][0] == "休" and x[1][2] == "斯":
+                        x[1] = "休谟斯"
                     if x[1] in agent_list and x[1] not in ['砾', '陈']:  # ocr 经常会把这两个搞错
                         ret_agent.append(x[1])
                         ret_succ.append(poly)
@@ -240,7 +242,10 @@ def agent_name(__img, height, draw: bool = False):
             if (res is not None) and res in agent_list:
                 name = res
             else:
-                raise Exception("识别错误")
+                raise Exception(f"识别错误: {res}")
     except Exception as e:
-        saveimg(__img, 'failure_agent')
+        if len(ocr)>0:
+            logger.warning(e)
+            logger.warning(ocr[0][1])
+            saveimg(__img, 'failure_agent')
     return name

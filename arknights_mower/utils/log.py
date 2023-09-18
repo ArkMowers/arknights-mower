@@ -102,7 +102,9 @@ def save_screenshot(img: bytes, subdir: str = '') -> None:
     folder = Path(config.SCREENSHOT_PATH).joinpath(subdir)
     folder.mkdir(exist_ok=True, parents=True)
     if subdir != '-1' and len(list(folder.iterdir())) > config.SCREENSHOT_MAXNUM:
-        for x in list(folder.iterdir())[: -config.SCREENSHOT_MAXNUM]:
+        screenshots = list(folder.iterdir())
+        screenshots = sorted(screenshots, key=lambda x: x.name)
+        for x in screenshots[: -config.SCREENSHOT_MAXNUM]:
             logger.debug(f'remove screenshot: {x.name}')
             x.unlink()
     filename = time.strftime('%Y%m%d%H%M%S.png', time.localtime())

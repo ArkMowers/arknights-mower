@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-
+from arknights_mower.solvers import record
 from arknights_mower.utils.conf import load_conf, save_conf, load_plan, write_plan
 from arknights_mower.__main__ import main
 from arknights_mower.utils.asst import Asst
 
-from flask import Flask, send_from_directory, request
+from flask import Flask, send_from_directory, request, abort
 from flask_cors import CORS
 from flask_sock import Sock
 
@@ -20,6 +20,12 @@ import json
 import time
 import sys
 import mimetypes
+
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+from functools import wraps
 
 
 mimetypes.add_type("text/html", ".html")
@@ -41,12 +47,23 @@ log_lines = []
 ws_connections = []
 
 
+def require_token(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if hasattr(app, "token") and request.headers.get("token", "") != app.token:
+            abort(403)
+        return f(*args, **kwargs)
+
+    return decorated_function
+
+
 @app.route("/")
 def serve_index():
     return send_from_directory("dist", "index.html")
 
 
 @app.route("/conf", methods=["GET", "POST"])
+@require_token
 def load_config():
     global conf
 
@@ -60,6 +77,7 @@ def load_config():
 
 
 @app.route("/plan", methods=["GET", "POST"])
+@require_token
 def load_plan_from_json():
     global plan
 
@@ -131,7 +149,7 @@ def shop_list():
             return json.load(f)
 
 
-def read_log(read):
+def read_log(conn):
     global operators
     global mower_process
     global log_lines
@@ -139,7 +157,7 @@ def read_log(read):
 
     try:
         while True:
-            msg = read.recv()
+            msg = conn.recv()
             if msg["type"] == "log":
                 new_line = time.strftime("%m-%d %H:%M:%S ") + msg["data"]
                 log_lines.append(new_line)
@@ -148,8 +166,11 @@ def read_log(read):
                     ws.send(new_line)
             elif msg["type"] == "operators":
                 operators = msg["data"]
+            elif msg["type"] == "update_conf":
+                global conf
+                conn.send(conf)
     except EOFError:
-        read.close()
+        conn.close()
 
 
 @app.route("/running")
@@ -159,6 +180,7 @@ def running():
 
 
 @app.route("/start")
+@require_token
 def start():
     global conf
     global plan
@@ -190,6 +212,7 @@ def start():
 
 
 @app.route("/stop")
+@require_token
 def stop():
     global mower_process
 
@@ -218,6 +241,7 @@ def log(ws):
 
 
 @app.route("/dialog/file")
+@require_token
 def open_file_dialog():
     window = webview.active_window()
     file_path = window.create_file_dialog(dialog_type=webview.OPEN_DIALOG)
@@ -228,6 +252,7 @@ def open_file_dialog():
 
 
 @app.route("/dialog/folder")
+@require_token
 def open_folder_dialog():
     window = webview.active_window()
     folder_path = window.create_file_dialog(dialog_type=webview.FOLDER_DIALOG)
@@ -238,23 +263,24 @@ def open_folder_dialog():
 
 
 @app.route("/check-maa")
+@require_token
 def get_maa_adb_version():
     try:
         Asst.load(conf["maa_path"])
         asst = Asst()
         version = asst.get_version()
-        maa_msg = f"Maa {version} 加载成功"
+        asst.set_instance_option(2, conf["maa_touch_option"])
+        if asst.connect(conf["maa_adb_path"], conf["adb"]):
+            maa_msg = f"Maa {version} 加载成功"
+        else:
+            maa_msg = "连接失败，请检查Maa日志！"
     except Exception as e:
         maa_msg = "Maa加载失败：" + str(e)
-    try:
-        adb = subprocess.run([conf["maa_adb_path"], "--version"], capture_output=True)
-        adb_msg = "adb " + adb.stdout.decode("utf-8").split("\n")[1][8:] + " 加载成功"
-    except Exception as e:
-        adb_msg = "adb加载失败：" + str(e)
-    return maa_msg + "；" + adb_msg
+    return maa_msg
 
 
 @app.route("/maa-conn-preset")
+@require_token
 def get_maa_conn_presets():
     try:
         with open(
@@ -266,3 +292,24 @@ def get_maa_conn_presets():
     except:
         presets = []
     return presets
+
+
+@app.route("/record/getMoodRatios")
+def get_mood_ratios():
+    return record.get_mood_ratios()
+
+
+@app.route("/test-email")
+@require_token
+def test_email():
+    msg = MIMEMultipart()
+    msg.attach(MIMEText("arknights-mower测试邮件", "plain"))
+    msg["Subject"] = conf["mail_subject"] + "测试邮件"
+    msg["From"] = conf["account"]
+    try:
+        s = smtplib.SMTP_SSL("smtp.qq.com", 465, timeout=10.0)
+        s.login(conf["account"], conf["pass_code"])
+        s.sendmail(conf["account"], conf["account"], msg.as_string())
+    except Exception as e:
+        return "邮件发送失败！\n" + str(e)
+    return "邮件发送成功！"

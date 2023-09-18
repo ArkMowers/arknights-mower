@@ -10,10 +10,12 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
+from ..command import recruit
 from ..data import agent_list
 from ..utils import character_recognize, detector, segment
 from ..utils.digit_reader import DigitReader
 from ..utils.operators import Operators, Operator, Dormitory
+from ..utils.recruit import filter_result
 from ..utils.scheduler_task import SchedulerTask
 from ..utils import typealias as tp
 from ..utils.device import Device
@@ -25,9 +27,14 @@ from ..utils.datetime import get_server_weekday, the_same_time
 from paddleocr import PaddleOCR
 import cv2
 
+# 借用__main__.py里的时间计算器
+from arknights_mower.__main__ import format_time
+
 ## Maa
 from arknights_mower.utils.asst import Asst, Message
 import json
+
+from arknights_mower.utils.email import task_template, maa_template, recruit_template
 
 ocr = None
 
@@ -45,6 +52,14 @@ arrange_order_res = {
     ArrangeOrder.FEELING: (1880 / 2496, 96 / 1404),
     ArrangeOrder.TRUST: (2050 / 2496, 96 / 1404),
 }
+
+stage_drop = {}
+
+# 2023 8.11 公招选择tag
+recruit_tags_delected = {}
+recruit_tags_selected = {}
+recruit_results = {}
+recruit_special_tags = {}
 
 
 class BaseSchedulerSolver(BaseSolver):
@@ -71,6 +86,7 @@ class BaseSchedulerSolver(BaseSolver):
         self.maa_config = {}
         self.free_clue = None
         self.credit_fight = None
+        self.exit_game_when_idle = False
 
     def run(self) -> None:
         """
@@ -94,6 +110,7 @@ class BaseSchedulerSolver(BaseSolver):
         self.planned = False
         if self.op_data is None or self.op_data.operators is None:
             self.initialize_operators()
+        self.op_data.correct_dorm()
         for name in self.op_data.workaholic_agent:
             if name not in self.free_blacklist:
                 self.free_blacklist.append(name)
@@ -101,23 +118,23 @@ class BaseSchedulerSolver(BaseSolver):
 
     def transition(self) -> None:
         self.recog.update()
-        if self.scene() == Scene.INDEX:
+        if self.get_infra_scene() == Scene.INDEX:
             self.tap_element('index_infrastructure')
-        elif self.scene() == Scene.INFRA_MAIN:
+        elif self.get_infra_scene() == Scene.INFRA_MAIN:
             return self.infra_main()
-        elif self.scene() == Scene.INFRA_TODOLIST:
+        elif self.get_infra_scene() == Scene.INFRA_TODOLIST:
             return self.todo_list()
-        elif self.scene() == Scene.INFRA_DETAILS:
+        elif self.get_infra_scene() == Scene.INFRA_DETAILS:
             self.back()
-        elif self.scene() == Scene.LOADING:
+        elif self.get_infra_scene() == Scene.LOADING:
             self.waiting_solver(Scene.LOADING)
-        elif self.scene() == Scene.CONNECTING:
+        elif self.get_infra_scene() == Scene.CONNECTING:
             self.waiting_solver(Scene.CONNECTING)
         elif self.get_navigation():
             self.tap_element('nav_infrastructure')
-        elif self.scene() == Scene.INFRA_ARRANGE_ORDER:
+        elif self.get_infra_scene() == Scene.INFRA_ARRANGE_ORDER:
             self.tap_element('arrange_blue_yes')
-        elif self.scene() != Scene.UNKNOWN:
+        elif self.get_infra_scene() == Scene.UNKNOWN or self.scene() != Scene.UNKNOWN:
             self.back_to_index()
             self.last_room = ''
             logger.info("重设上次房间为空")
@@ -136,9 +153,11 @@ class BaseSchedulerSolver(BaseSolver):
                 _low_free += 1
         self.agent_get_mood(force=True)
         # 剩余高效组位置
-        current_high = self.op_data.available_free(count=self.max_resting_count)
+        current_high = self.op_data.available_free()
         # 剩余低效位置
-        current_low = self.op_data.available_free('low', count=self.max_resting_count)
+        current_low = self.op_data.available_free('low')
+        logger.debug(f"剩余高效:{current_high},低效：{current_low}")
+        logger.debug(f"需求高效:{_high_free},低效：{_low_free}")
         if current_high >= _high_free and current_low >= _low_free:
             # 检查是否目前宿舍满足 low free 和high free 的数量需求，如果满足，则直接安排
             _plan = {}
@@ -150,6 +169,9 @@ class BaseSchedulerSolver(BaseSolver):
                                                                                    current_low)
             if len(_plan.items()) > 0:
                 self.tasks.append(SchedulerTask(datetime.now(), task_plan=_plan))
+            else:
+                msg = f'无法完成 {self.task.type} 的排班，请检查替换组是否被占用'
+                self.send_email(msg)
         else:
             # 如果不满足，则找到并且执行最近一个type 包含 超过数量的high free 和low free 的 任务并且 干员没有 exaust_require 词条
             task_index = -1
@@ -177,7 +199,7 @@ class BaseSchedulerSolver(BaseSolver):
                 # 修改执行时间
                 self.tasks[task_index].time = datetime.now()
                 # 执行完提前换班任务再次执行本任务
-                self.tasks.append(SchedulerTask(task_plan=copy.deepcopy(self.task.plan)))
+                self.tasks.append(SchedulerTask(task_plan=copy.deepcopy(self.task.plan),task_type=self.task.type))
             else:
                 # 任务全清
                 rooms = []
@@ -208,7 +230,7 @@ class BaseSchedulerSolver(BaseSolver):
                 if len(plan.keys()) > 0:
                     self.tasks.append(SchedulerTask(task_plan=plan))
                     # 执行完提前换班任务再次执行本任务
-                    self.tasks.append(SchedulerTask(task_plan=copy.deepcopy(self.task.plan)))
+                    self.tasks.append(SchedulerTask(task_plan=copy.deepcopy(self.task.plan),task_type=self.task.type))
             self.skip()
             return
 
@@ -325,8 +347,8 @@ class BaseSchedulerSolver(BaseSolver):
                     _idx, __dorm = self.op_data.get_dorm_by_name(x)
                     if x in self.op_data.operators.keys() and self.op_data.operators[x].rest_in_full:
                         if __dorm is not None and __dorm.time is not None:
-                            if __dorm.time > _time and self.op_data.operators[x].resting_priority == 'high':
-                                _time = __dorm.time
+                            if __dorm.time > __time and self.op_data.operators[x].resting_priority == 'high':
+                                __time = __dorm.time
                     if _idx is not None:
                         __type.append('dorm' + str(_idx))
                     planned_index.append(_idx)
@@ -404,12 +426,16 @@ class BaseSchedulerSolver(BaseSolver):
                 elif self.task.type.split(',')[0] in agent_list:
                     self.overtake_room()
                 elif self.task.type == 'impart':
+                    self.party_time = None
                     self.skip(['planned', 'collect_notification'])
                 del self.tasks[0]
             except Exception as e:
                 logger.exception(e)
-                self.skip()
-                self.error = True
+                if type(e) is ConnectionAbortedError or type(e) is AttributeError or type(e) is ConnectionError:
+                    raise e
+                else:
+                    self.skip()
+                    self.error = True
             self.task = None
         elif not self.planned:
             try:
@@ -421,9 +447,11 @@ class BaseSchedulerSolver(BaseSolver):
                         return True
                 self.plan_solver()
             except Exception as e:
-                # 重新扫描
-                self.error = True
-                logger.exception({e})
+                logger.exception(e)
+                if type(e) is ConnectionAbortedError or type(e) is AttributeError or type(e) is ConnectionError:
+                    raise e
+                else:
+                    self.error = True
             self.planned = True
         elif not self.todo_task:
             if self.party_time is None and self.enable_party:
@@ -533,7 +561,6 @@ class BaseSchedulerSolver(BaseSolver):
                     fix_plan[moved_room][moved_index] = self.current_plan[moved_room][moved_index]["agent"]
         if len(fix_plan.keys()) > 0:
             # 不能在房间里安排同一个人 如果有重复则换成Free
-            # 还要修复确保同一组在同时上班
             remove_keys = []
             logger.debug(f"Fix_plan {str(fix_plan)}")
             for key in fix_plan:
@@ -546,6 +573,26 @@ class BaseSchedulerSolver(BaseSolver):
             if len(remove_keys) > 0:
                 for item in remove_keys:
                     del fix_plan[item]
+            # 还要确保同一组在同时上班
+            for g in self.op_data.groups:
+                g_agents = self.op_data.groups[g]
+                is_any_working = next((x for x in g_agents if
+                                       self.op_data.operators[x].current_room != "" and not self.op_data.operators[
+                                           x].current_room.startswith('dorm')), None)
+                if is_any_working is not None:
+                    # 确保所有人同时在上班
+                    is_any_resting = next((x for x in g_agents if
+                                           self.op_data.operators[x].current_room == "" or self.op_data.operators[
+                                               x].current_room.startswith('dorm')), None)
+                    if is_any_resting is not None:
+                        # 生成纠错任务
+                        for x in g_agents:
+                            if self.op_data.operators[x].current_room == "" or self.op_data.operators[
+                                x].current_room.startswith('dorm'):
+                                room = self.op_data.operators[x].room
+                                if room not in fix_plan:
+                                    fix_plan[room] = ['Current'] * len(plan[room])
+                                fix_plan[room][self.op_data.operators[x].index] = x
             if len(fix_plan.keys()) > 0:
                 self.tasks.append(SchedulerTask(task_plan=fix_plan))
                 logger.info(f'纠错任务为-->{fix_plan}')
@@ -557,18 +604,28 @@ class BaseSchedulerSolver(BaseSolver):
         if self.find_next_task(datetime.now() + timedelta(seconds=600)) is not None:
             return
         if len(self.op_data.run_order_rooms) > 0:
-            # 处理龙舌兰和但书的插拔
-            for k, v in self.op_data.run_order_rooms.items():
-                # 如果没有当前房间数据
-                if 'plan' not in v.keys():
-                    v['plan'] = self.op_data.get_current_room(k)
-                if self.find_next_task(task_type=k) is not None: continue;
-                in_out_plan = {k: ['Current'] * len(plan[k])}
-                for idx, x in enumerate(plan[k]):
-                    if '但书' in x['replacement'] or '龙舌兰' in x['replacement']:
-                        in_out_plan[k][idx] = x['replacement'][0]
-                self.tasks.append(
-                    SchedulerTask(time=self.get_run_roder_time(k), task_plan=in_out_plan, task_type=k))
+            # 判定宿舍是否满员
+            valid = True
+            for key in plan.keys():
+                if 'dormitory' in key:
+                    dorm = self.op_data.get_current_room(key)
+                    if dorm is not None and len(dorm) == 5:
+                        continue
+                    else:
+                        valid = False
+                        logger.debug("宿舍未满员,跳过读取插拔时间")
+                        break
+            if valid:
+                # 处理龙舌兰和但书的插拔
+                for k, v in self.op_data.run_order_rooms.items():
+                    if self.find_next_task(task_type=k) is not None: continue;
+                    if not valid: continue;
+                    in_out_plan = {k: ['Current'] * len(plan[k])}
+                    for idx, x in enumerate(plan[k]):
+                        if '但书' in x['replacement'] or '龙舌兰' in x['replacement']:
+                            in_out_plan[k][idx] = x['replacement'][0]
+                    self.tasks.append(
+                        SchedulerTask(time=self.get_run_roder_time(k), task_plan=in_out_plan, task_type=k))
         # 准备数据
         logger.debug(self.op_data.print())
         if self.read_mood:
@@ -600,9 +657,9 @@ class BaseSchedulerSolver(BaseSolver):
                 # 自动生成任务
                 self.plan_metadata()
                 # 剩余高效组位置
-                high_free = self.op_data.available_free(count=self.max_resting_count)
+                high_free = self.op_data.available_free()
                 # 剩余低效位置
-                low_free = self.op_data.available_free('low', count=self.max_resting_count)
+                low_free = self.op_data.available_free('low')
                 _replacement = []
                 _plan = {}
                 for op in self.total_agent:
@@ -675,8 +732,10 @@ class BaseSchedulerSolver(BaseSolver):
                 _low += 1
             else:
                 _high += 1
+        logger.debug(f"需求高效:{_high},低效：{_low}")
         # 排序
-        agents.sort(key=lambda y: self.op_data.operators[y].current_mood() - self.op_data.operators[y].lower_limit,
+        agents.sort(key=lambda y: (self.op_data.operators[y].current_room == "factory",
+                                   self.op_data.operators[y].current_mood() - self.op_data.operators[y].lower_limit),
                     reverse=False)
         # 进行位置数量的初步判定
         # 对于252可能需要进行额外判定，由于 low_free 性质等同于 high_free
@@ -781,8 +840,6 @@ class BaseSchedulerSolver(BaseSolver):
         return execute_time
 
     def double_read_time(self, cord, upperLimit=None, use_digit_reader=False):
-        if upperLimit is not None and upperLimit < 36000:
-            upperLimit = 36000
         self.recog.update()
         time_in_seconds = self.read_time(cord, upperLimit, use_digit_reader)
         if time_in_seconds is None:
@@ -793,8 +850,7 @@ class BaseSchedulerSolver(BaseSolver):
     def initialize_paddle(self):
         global ocr
         if ocr is None:
-            # mac 平台不支持 mkldnn 加速，关闭以修复 mac 运行时错误
-            ocr = PaddleOCR(enable_mkldnn=(sys.platform != 'darwin'), use_angle_cls=False)
+            ocr = PaddleOCR(enable_mkldnn=False, use_angle_cls=False)
 
     def read_screen(self, img, type="mood", limit=24, cord=None):
         if cord is not None:
@@ -958,6 +1014,7 @@ class BaseSchedulerSolver(BaseSolver):
         # 关闭掉房间总览
         error_count = 0
         while self.find('clue_func') is None:
+            self.find('clue_summary') and self.back()
             if error_count > 5:
                 raise Exception('未成功进入线索详情界面')
             self.tap((self.recog.w * 0.1, self.recog.h * 0.9), interval=3)
@@ -1051,7 +1108,7 @@ class BaseSchedulerSolver(BaseSolver):
 
         # 如果启用 MAA，则在线索交流结束后购物
         if self.maa_config['maa_enable'] and self.party_time is not None:
-            if self.find_next_task(compare_time=self.party_time, task_type="maa_Mall", compare_type="=") is None:
+            if self.find_next_task(task_type="maa_Mall") is None:
                 self.tasks.append(SchedulerTask(time=self.party_time - timedelta(milliseconds=1), task_type='impart'))
                 self.tasks.append(SchedulerTask(time=self.party_time, task_type="maa_Mall"))
 
@@ -1204,22 +1261,32 @@ class BaseSchedulerSolver(BaseSolver):
 
     def enter_room(self, room: str) -> tp.Rectangle:
         """ 获取房间的位置并进入 """
+        success = False
+        retry = 3
+        while not success:
+            try:
+                # 获取基建各个房间的位置
+                base_room = segment.base(self.recog.img, self.find('control_central', strict=True))
+                # 将画面外的部分删去
+                _room = base_room[room]
 
-        # 获取基建各个房间的位置
-        base_room = segment.base(self.recog.img, self.find('control_central', strict=True))
-        # 将画面外的部分删去
-        _room = base_room[room]
+                for i in range(4):
+                    _room[i, 0] = max(_room[i, 0], 0)
+                    _room[i, 0] = min(_room[i, 0], self.recog.w)
+                    _room[i, 1] = max(_room[i, 1], 0)
+                    _room[i, 1] = min(_room[i, 1], self.recog.h)
 
-        for i in range(4):
-            _room[i, 0] = max(_room[i, 0], 0)
-            _room[i, 0] = min(_room[i, 0], self.recog.w)
-            _room[i, 1] = max(_room[i, 1], 0)
-            _room[i, 1] = min(_room[i, 1], self.recog.h)
-
-        # 点击进入
-        self.tap(_room[0], interval=3)
-        while self.find('control_central') is not None:
-            self.tap(_room[0], interval=3)
+                # 点击进入
+                self.tap(_room[0], interval=3)
+                while self.find('control_central') is not None:
+                    self.tap(_room[0], interval=3)
+                success = True
+            except Exception as e:
+                retry -= 1
+                self.back_to_infrastructure()
+                self.wait_for_scene(Scene.INFRA_MAIN, "get_infra_scene")
+                if retry <= 0:
+                    raise e
 
     def drone(self, room: str, not_customize=False, not_return=False):
         logger.info('基建：无人机加速')
@@ -1412,7 +1479,7 @@ class BaseSchedulerSolver(BaseSolver):
         if self.last_room.startswith('dorm') and is_dorm:
             self.detail_filter(False)
         while len(agent) > 0:
-            if retry_count > 3: raise Exception(f"到达最大尝试次数 3次")
+            if retry_count > 1: raise Exception(f"到达最大尝试次数 1次")
             if right_swipe > max_swipe:
                 # 到底了则返回再来一次
                 for _ in range(right_swipe):
@@ -1608,13 +1675,15 @@ class BaseSchedulerSolver(BaseSolver):
                 if _name not in self.op_data.operators.keys() and _name in agent_list:
                     self.op_data.add(Operator(_name, ""))
                 update_time = False
-                if self.op_data.operators[_name].need_to_refresh(r=room):
+                agent = self.op_data.operators[_name]
+                if self.op_data.operators[_name].need_to_refresh(r=room) or (
+                        agent.current_room.startswith('dorm') and not room.startswith('dorm') and agent.is_high()):
                     _mood = self.read_accurate_mood(self.recog.img, cord=mood_p[i])
                     update_time = True
                 else:
                     _mood = self.op_data.operators[_name].current_mood()
                 high_no_time = self.op_data.update_detail(_name, _mood, room, i, update_time)
-                data['depletion_rate'] = self.op_data.operators[_name].depletion_rate
+                data['depletion_rate'] = agent.depletion_rate
                 if high_no_time is not None:
                     logger.debug(f"检测到高效组休息时间数据不存在:{room},{high_no_time}")
                     read_time_index.append(high_no_time)
@@ -1626,9 +1695,7 @@ class BaseSchedulerSolver(BaseSolver):
                 if _mood == 24:
                     data['time'] = datetime.now()
                 else:
-                    upperLimit = 21600
-                    if _name in ['菲亚梅塔'] or _name in self.op_data.exhaust_agent:
-                        upperLimit = 43200
+                    upperLimit = 43200
                     logger.debug(f"开始记录时间:{room},{i}")
                     data['time'] = self.double_read_time(time_p[i], upperLimit=upperLimit)
                 self.op_data.refresh_dorm_time(room, i, data)
@@ -1642,8 +1709,8 @@ class BaseSchedulerSolver(BaseSolver):
                 logger.info(f'重设 {_operator} 至空闲')
         return result
 
-    def refresh_current_room(self, room, current_index = None):
-        _current_room = self.op_data.get_current_room(room,current_index=current_index)
+    def refresh_current_room(self, room, current_index=None):
+        _current_room = self.op_data.get_current_room(room, current_index=current_index)
         if _current_room is None:
             self.get_agent_from_room(room)
             _current_room = self.op_data.get_current_room(room, True)
@@ -1658,6 +1725,7 @@ class BaseSchedulerSolver(BaseSolver):
         for room in rooms:
             finished = False
             choose_error = 0
+            checked = False
             while not finished:
                 try:
                     error_count = 0
@@ -1668,7 +1736,7 @@ class BaseSchedulerSolver(BaseSolver):
                         self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
                         error_count += 1
                     error_count = 0
-                    if choose_error == 0:
+                    if not checked:
                         if ('但书' in plan[room] or '龙舌兰' in plan[room]) and not \
                                 room.startswith('dormitory'):
                             new_plan[room] = self.refresh_current_room(room)
@@ -1677,21 +1745,20 @@ class BaseSchedulerSolver(BaseSolver):
                             working_room = self.op_data.operators[plan[room][0]].room
                             new_plan[working_room] = self.op_data.get_current_room(working_room, True)
                         if 'Current' in plan[room]:
-                            self.refresh_current_room(room,[index for index, value in enumerate(plan[room]) if value == "Current"])
+                            self.refresh_current_room(room, [index for index, value in enumerate(plan[room]) if
+                                                             value == "Current"])
                             for current_idx, _name in enumerate(plan[room]):
                                 if _name == 'Current':
                                     plan[room][current_idx] = self.op_data.get_current_room(room, True)[current_idx]
                         if room in self.op_data.run_order_rooms and len(new_plan) == 0:
-                            if 'plan' in self.op_data.run_order_rooms[room] and plan[room] != \
-                                    self.op_data.run_order_rooms[room][
-                                        'plan']:
+                            if plan[room] != self.op_data.get_current_room(room):
                                 run_order_task = self.find_next_task(
                                     compare_time=datetime.now() + timedelta(minutes=10),
                                     task_type=room, compare_type=">")
                                 if run_order_task is not None:
                                     logger.info("检测到插拔房间人员变动！")
                                     self.tasks.remove(run_order_task)
-                                    del self.op_data.run_order_rooms[room]['plan']
+                    checked = True
                     current_room = self.op_data.get_current_room(room, True)
                     same = len(plan[room]) == len(current_room)
                     if same:
@@ -1728,7 +1795,7 @@ class BaseSchedulerSolver(BaseSolver):
                     # 如果完成则移除该任务
                     del plan[room]
                     # back to 基地主界面
-                    if self.scene() == Scene.CONNECTING:
+                    if self.get_infra_scene() == Scene.CONNECTING:
                         if not self.waiting_solver(Scene.CONNECTING, sleep_time=3):
                             return
                 except Exception as e:
@@ -1769,9 +1836,9 @@ class BaseSchedulerSolver(BaseSolver):
             task_names = ['planned', 'collect_notification', 'todo_task']
         if 'planned' in task_names:
             self.planned = True
-        if 'todo_task':
+        if 'todo_task' in task_names:
             self.todo_task = True
-        if 'collect_notification':
+        if 'collect_notification' in task_names:
             self.collect_notification = True
 
     def reload(self):
@@ -1809,6 +1876,27 @@ class BaseSchedulerSolver(BaseSolver):
         logger.debug(d)
         logger.debug(m)
         logger.debug(arg)
+        if "what" in d and d["what"] == "StageDrops":
+            global stage_drop
+            stage_drop["details"].append(d["details"]["drops"])
+            stage_drop["summary"] = d["details"]["stats"]
+
+        elif "what" in d and d["what"] == "RecruitTagsSelected":
+            global recruit_tags_selected
+            recruit_tags_selected["tags"].append(d["details"]["tags"])
+
+        elif "what" in d and d["what"] == "RecruitResult":
+            global recruit_results
+            temp_dict = {
+                "tags": d["details"]["tags"],
+                "level": d["details"]["level"],
+                "result": d["details"]["result"],
+            }
+            recruit_results["results"].append(temp_dict)
+
+        elif "what" in d and d["what"] == "RecruitSpecialTag":
+            global recruit_special_tags
+            recruit_special_tags["tags"].append(d["details"]["tags"])
 
     def initialize_maa(self):
         # 若需要获取详细执行信息，请传入 callback 参数
@@ -1819,7 +1907,8 @@ class BaseSchedulerSolver(BaseSolver):
         self.MAA.set_instance_option(2, self.maa_config['touch_option'])
         # 请自行配置 adb 环境变量，或修改为 adb 可执行程序的路径
         # logger.info(self.device.client.device_id)
-        if self.MAA.connect(self.maa_config['maa_adb_path'], self.device.client.device_id, self.maa_config["conn_preset"]):
+        if self.MAA.connect(self.maa_config['maa_adb_path'], self.device.client.device_id,
+                            self.maa_config["conn_preset"]):
             logger.info("MAA 连接成功")
         else:
             logger.info("MAA 连接失败")
@@ -1872,7 +1961,9 @@ class BaseSchedulerSolver(BaseSolver):
                 'shopping': True,
                 'buy_first': self.maa_config['buy_first'].split(","),
                 'blacklist': self.maa_config['blacklist'].split(","),
-                'credit_fight': self.maa_config['credit_fight'] and '' not in self.stages and self.credit_fight is None,
+                'credit_fight': self.maa_config[
+                                    'credit_fight'] and '' not in self.stages and self.credit_fight is None and len(
+                    self.stages) > 0,
                 "force_shopping_if_credit_full": self.maa_config['mall_ignore_when_full']
             })
 
@@ -1882,13 +1973,20 @@ class BaseSchedulerSolver(BaseSolver):
                     seconds=self.maa_config['maa_execution_gap'] * 3600) < self.maa_config['last_execution']:
                 logger.info("间隔未超过设定时间，不启动maa")
             else:
+                """测试公招用"""
+                if 'Recruit' in tasks or tasks == 'All':
+                    recruit([], self.email_config, self.maa_config)
+
                 self.send_email('启动MAA')
                 self.back_to_index()
                 # 任务及参数请参考 docs/集成文档.md
                 self.initialize_maa()
                 if tasks == 'All':
-                    tasks = ['StartUp', 'Fight', 'Recruit', 'Visit', 'Mall', 'Award']
+                    tasks = ['StartUp', 'Fight', 'Visit', 'Mall', 'Award']
+                    # tasks = ['StartUp', 'Fight', 'Recruit', 'Visit', 'Mall', 'Award']
                 for maa_task in tasks:
+                    if maa_task == 'Recruit':
+                        continue
                     self.append_maa_task(maa_task)
                 # asst.append_task('Copilot', {
                 #     'stage_name': '千层蛋糕',
@@ -1900,6 +1998,18 @@ class BaseSchedulerSolver(BaseSolver):
                 stop_time = None
                 if one_time:
                     stop_time = datetime.now() + timedelta(minutes=5)
+                else:
+                    global stage_drop
+                    stage_drop = {"details": [], "summary": {}}
+
+                    global recruit_tags_selected
+                    recruit_tags_selected = {"tags": []}
+
+                    global recruit_results
+                    recruit_results = {"results": []}
+
+                    global recruit_special_tags
+                    recruit_special_tags = {"tags": []}
                 logger.info(f"MAA 启动")
                 hard_stop = False
                 while self.MAA.running():
@@ -1913,9 +2023,10 @@ class BaseSchedulerSolver(BaseSolver):
                         hard_stop = True
                     else:
                         time.sleep(5)
-                self.send_email('MAA停止')
                 if hard_stop:
-                    logger.info(f"由于maa任务并未完成，等待3分钟重启软件")
+                    hard_stop_msg = "Maa任务未完成，等待3分钟关闭游戏"
+                    logger.info(hard_stop_msg)
+                    self.send_email(hard_stop_msg)
                     time.sleep(180)
                     self.device.exit(self.package_name)
                 elif not one_time:
@@ -1925,6 +2036,26 @@ class BaseSchedulerSolver(BaseSolver):
                     if "Mall" in tasks and self.credit_fight is None:
                         self.credit_fight = get_server_weekday()
                         logger.info("记录首次信用作战")
+                    logger.debug(stage_drop)
+                    # 有掉落东西再发
+                    if stage_drop["details"]:
+                        self.send_email(maa_template.render(stage_drop=stage_drop), "Maa停止", "html")
+
+                    '''仅发送由maa选择的结果以及稀有tag'''
+                    if recruit_results:
+                        result = []
+                        # 稀有tag发送
+                        if recruit_special_tags['tags']:
+                            result = filter_result(recruit_special_tags['tags'], recruit_results["results"], 0)
+                            self.send_email(recruit_template.render(recruit_results=result), "出现稀有tag辣", "html")
+
+                        # 发送选择的tag
+                        if recruit_tags_selected['tags']:
+                            result = filter_result(recruit_tags_selected['tags'], recruit_results["results"], 1)
+                            self.send_email(recruit_template.render(recruit_results=result), "公招结果", "html")
+
+                else:
+                    self.send_email("Maa单次任务停止")
             now_time = datetime.now().time()
             try:
                 min_time = datetime.strptime(self.maa_config['sleep_min'], "%H:%M").time()
@@ -1944,20 +2075,24 @@ class BaseSchedulerSolver(BaseSolver):
             if (self.maa_config['roguelike'] or self.maa_config['reclamation_algorithm'] or self.maa_config[
                 'stationary_security_service']) and not rg_sleep:
                 logger.info(f'准备开始：肉鸽/保全/演算')
+                self.send_email('启动 肉鸽/保全/演算')
                 while (self.tasks[0].time - datetime.now()).total_seconds() > 30:
                     self.MAA = None
                     self.initialize_maa()
                     if self.maa_config['roguelike']:
                         self.MAA.append_task('Roguelike', {
-                            'mode': 0,
-                            'starts_count': 9999999,
-                            'investment_enabled': True,
-                            'investments_count': 9999999,
-                            'stop_when_investment_full': False,
-                            'squad': '指挥分队',
-                            'roles': '取长补短',
                             'theme': self.maa_config['rogue_theme'],
-                            'core_char': ''
+                            'squad': self.maa_config['rogue']['squad'],
+                            'roles': self.maa_config['rogue']['roles'],
+                            'core_char': self.maa_config['rogue']['core_char'],
+                            'use_support': self.maa_config['rogue']['use_support'],
+                            'use_nonfriend_support': self.maa_config['rogue']['use_nonfriend_support'],
+                            'mode': self.maa_config['rogue']['mode'],
+                            'investment_enabled': self.maa_config['rogue']['investment_enabled'],
+                            'stop_when_investment_full': self.maa_config['rogue']['stop_when_investment_full'],
+                            'refresh_trader_with_dice': self.maa_config['rogue']['refresh_trader_with_dice'],
+                            'starts_count': 9999999,
+                            'investments_count': 9999999,
                         })
                     elif self.maa_config['reclamation_algorithm']:
                         self.back_to_reclamation_algorithm()
@@ -1966,7 +2101,8 @@ class BaseSchedulerSolver(BaseSolver):
                         if self.maa_config['copilot_file_location'] == "" or self.maa_config[
                             'copilot_loop_times'] <= 0 or self.maa_config['sss_type'] not in [1, 2]:
                             raise Exception("保全派驻配置无法找到")
-                        if self.to_sss(self.maa_config['sss_type']) is not None:
+                        ec_type = self.maa_config['ec_type'] if 'ec_type' in self.maa_config else 2
+                        if self.to_sss(self.maa_config['sss_type'], ec_type) is not None:
                             raise Exception("保全派驻导航失败")
                         self.MAA.append_task('SSSCopilot', {
                             'filename': self.maa_config['copilot_file_location'],
@@ -1992,59 +2128,48 @@ class BaseSchedulerSolver(BaseSolver):
                     self.tasks.append(SchedulerTask())
                 return
             remaining_time = (self.tasks[0].time - datetime.now()).total_seconds()
-            subject = f"开始休息 {'%.2f' % (remaining_time / 60)} 分钟，到{self.tasks[0].time.strftime('%H:%M:%S')}"
+            subject = f"休息 {format_time(remaining_time)}，到{self.tasks[0].time.strftime('%H:%M:%S')}开始工作"
             context = f"下一次任务:{self.tasks[0].plan if len(self.tasks[0].plan) != 0 else '空任务' if self.tasks[0].type == '' else self.tasks[0].type}"
             logger.info(context)
             logger.info(subject)
-            self.send_email(context, subject)
             if remaining_time > 0:
                 if remaining_time > 300 and self.exit_game_when_idle:
                     self.device.exit(self.package_name)
-                    logger.info("关闭游戏，降低功耗")
+                    self.task_count += 1
+                    logger.info(f"第{self.task_count}次任务结束，关闭游戏，降低功耗")
                 time.sleep(remaining_time)
             self.MAA = None
         except Exception as e:
-            logger.error(e)
+            logger.exception(e)
             self.MAA = None
             remaining_time = (self.tasks[0].time - datetime.now()).total_seconds()
             if remaining_time > 0:
-                logger.info(f"开始休息 {'%.2f' % (remaining_time / 60)} 分钟，到{self.tasks[0].time.strftime('%H:%M:%S')}")
+                logger.info(f"休息 {format_time(remaining_time)}，到{self.tasks[0].time.strftime('%H:%M:%S')}开始工作")
                 time.sleep(remaining_time)
             self.device.exit(self.package_name)
 
-    def send_email(self, context=None, subject='', retry_time=3):
-        if 'mail_enable' in self.email_config.keys() and self.email_config['mail_enable'] == 0:
-            logger.info('邮件功能未开启')
-            return
-        while retry_time > 0:
-            try:
-                msg = MIMEMultipart()
-                if context is None:
-                    context = """
-                    <html>
-                        <body>
-                        <table border="1">
-                        <tr><th>时间</th><th>类别</th><th>排班</th></tr>                    
-                    """
-                    for task in self.tasks:
-                        context += f"""<tr><td>{task.time.strftime('%Y-%m-%d %H:%M:%S')}</td>
-                                    <td>{task.type}</td><td>{str(task.plan)}</td></tr>    
-                                """
-                    context += "</table></body></html>"
-                    msg.attach(MIMEText(context, 'html'))
-                else:
-                    msg.attach(MIMEText(str(context), 'plain', 'utf-8'))
-                msg['Subject'] = self.email_config['subject'] + (str(subject) if subject else '')
-                msg['From'] = self.email_config['account']
-                s = smtplib.SMTP_SSL("smtp.qq.com", 465, timeout=10.0)
-                # 登录邮箱
-                s.login(self.email_config['account'], self.email_config['pass_code'])
-                # 开始发送
-                s.sendmail(self.email_config['account'], self.email_config['receipts'], msg.as_string())
-                logger.info("邮件发送成功")
-                break
-            except Exception as e:
-                logger.error("邮件发送失败")
-                logger.exception(e)
-                retry_time -= 1
-                time.sleep(3)
+    # 移动到BaseSolver类中，使RecruitSolver可以调用发送
+    # def send_email(self, body='', subject='', subtype='plain', retry_times=3):
+    #     if 'mail_enable' in self.email_config.keys() and self.email_config['mail_enable'] == 0:
+    #         logger.info('邮件功能未开启')
+    #         return
+    #
+    #     msg = MIMEMultipart()
+    #     msg.attach(MIMEText(body, subtype))
+    #     msg['Subject'] = self.email_config['subject'] + subject
+    #     msg['From'] = self.email_config['account']
+    #
+    #     while retry_times > 0:
+    #         try:
+    #             s = smtplib.SMTP_SSL("smtp.qq.com", 465, timeout=10.0)
+    #             # 登录邮箱
+    #             s.login(self.email_config['account'], self.email_config['pass_code'])
+    #             # 开始发送
+    #             s.sendmail(self.email_config['account'], self.email_config['receipts'], msg.as_string())
+    #             logger.info("邮件发送成功")
+    #             break
+    #         except Exception as e:
+    #             logger.error("邮件发送失败")
+    #             logger.exception(e)
+    #             retry_times -= 1
+    #             time.sleep(3)

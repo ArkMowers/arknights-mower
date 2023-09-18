@@ -71,6 +71,8 @@ class Recognizer(object):
             self.scene = Scene.NAVIGATION_BAR
         elif self.find('login_new',score= 0.8) is not None:
             self.scene = Scene.LOGIN_NEW
+        elif self.find('login_bilibili_new',score= 0.8) is not None:
+            self.scene = Scene.LOGIN_NEW_B
         elif self.find('close_mine') is not None:
             self.scene = Scene.CLOSE_MINE
         elif self.find('check_in') is not None:
@@ -171,8 +173,6 @@ class Recognizer(object):
                 self.scene = Scene.LOGIN_ANNOUNCE
             else:
                 self.scene = Scene.LOGIN_MAIN_NOENTRY
-        elif self.find('login_new') is not None:
-            self.scene = Scene.LOGIN_NEW
         elif self.find('register') is not None:
             self.scene = Scene.LOGIN_REGISTER
         elif self.find('login_loading') is not None:

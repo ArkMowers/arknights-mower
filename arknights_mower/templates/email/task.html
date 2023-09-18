@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>arknights-mower任务列表</title>
+    <style>
+      table,
+      th,
+      td {
+        border: 1px solid black;
+        border-collapse: collapse;
+      }
+    </style>
+  </head>
+  <body>
+    <table>
+      <tr>
+        <th>时间</th>
+        <th>任务</th>
+      </tr>
+      {% for task in tasks %}
+      <tr>
+        <td>{{ task.time.strftime('%H:%M:%S') }}</td>
+        {% if task.plan %}
+        <td>{{ task.plan }}</td>
+        {% elif task.type %}
+        <td>{{ task.type }}</td>
+        {% else %}
+        <td>空任务</td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </table>
+  </body>
+</html>

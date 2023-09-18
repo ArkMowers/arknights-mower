@@ -5,8 +5,11 @@ from datetime import datetime
 from arknights_mower.utils.log import logger
 import json
 
+from copy import deepcopy
+
 from arknights_mower.utils.pipe import Pipe
 from arknights_mower.utils.simulator import restart_simulator
+from arknights_mower.utils.email import task_template
 
 conf = {}
 plan = {}
@@ -26,7 +29,7 @@ def main(c, p, o={}, child_conn=None):
     operators = o
     config.LOGFILE_PATH = './log'
     config.SCREENSHOT_PATH = './screenshot'
-    config.SCREENSHOT_MAXNUM = 5
+    config.SCREENSHOT_MAXNUM = conf['screenshot']
     config.ADB_DEVICE = [conf['adb']]
     config.ADB_CONNECT = [conf['adb']]
     config.ADB_CONNECT = [conf['adb']]
@@ -64,6 +67,68 @@ def main(c, p, o={}, child_conn=None):
     logger.info('开始运行Mower')
     logger.debug(agent_base_config)
     simulate()
+
+#newbing说用这个来定义休息时间省事
+def format_time(seconds):
+    # 计算小时和分钟
+    rest_hours = int(seconds / 3600)
+    rest_minutes = int((seconds % 3600) / 60)
+    # 根据小时是否为零来决定是否显示
+    if rest_hours == 0: 
+        return f"{rest_minutes} 分钟"
+    else:
+        return f"{rest_hours} 小时 {rest_minutes} 分钟"
+
+
+def hide_password(conf):
+    hpconf = deepcopy(conf)
+    hpconf["pass_code"] = "*" * len(conf["pass_code"])
+    return hpconf
+
+
+def update_conf():
+    logger.debug("运行中更新设置")
+
+    if not Pipe or not Pipe.conn:
+        logger.error("管道关闭")
+        logger.info(maa_config)
+        return
+
+    logger.debug("通过管道发送更新设置请求")
+    Pipe.conn.send({"type": "update_conf"})
+    logger.debug("开始通过管道读取设置")
+    conf = Pipe.conn.recv()
+    logger.debug(f"接收设置：{hide_password(conf)}")
+
+    return conf
+
+
+def set_maa_options(base_scheduler):
+    conf = update_conf()
+
+    global maa_config
+    maa_config['maa_enable'] = conf['maa_enable']
+    maa_config['maa_path'] = conf['maa_path']
+    maa_config['maa_adb_path'] = conf['maa_adb_path']
+    maa_config['maa_adb'] = conf['adb']
+    maa_config['weekly_plan'] = conf['maa_weekly_plan']
+    maa_config['roguelike'] = conf['maa_rg_enable'] == 1
+    maa_config['rogue_theme'] = conf['maa_rg_theme']
+    maa_config['sleep_min'] = conf['maa_rg_sleep_min']
+    maa_config['sleep_max'] = conf['maa_rg_sleep_max']
+    maa_config['maa_execution_gap'] = conf['maa_gap']
+    maa_config['buy_first'] = conf['maa_mall_buy']
+    maa_config['blacklist'] = conf['maa_mall_blacklist']
+    maa_config['recruitment_time'] = conf['maa_recruitment_time']
+    maa_config['recruit_only_4'] = conf['maa_recruit_only_4']
+    maa_config['conn_preset'] = conf['maa_conn_preset']
+    maa_config['touch_option'] = conf['maa_touch_option']
+    maa_config['mall_ignore_when_full'] = conf['maa_mall_ignore_blacklist_when_full']
+    maa_config['credit_fight'] = conf['maa_credit_fight']
+    maa_config['rogue'] = conf['rogue']
+    base_scheduler.maa_config = maa_config
+
+    logger.debug(f"更新Maa设置：{base_scheduler.maa_config}")
 
 
 def initialize(tasks, scheduler=None):
@@ -103,31 +168,15 @@ def initialize(tasks, scheduler=None):
         base_scheduler.MAA = None
         base_scheduler.email_config = {
             'mail_enable': conf['mail_enable'],
-            'subject': '[Mower通知]',
+            'subject': conf['mail_subject'],
             'account': conf['account'],
             'pass_code': conf['pass_code'],
             'receipts': [conf['account']],
             'notify': False
         }
-        maa_config['maa_enable'] = conf['maa_enable']
-        maa_config['maa_path'] = conf['maa_path']
-        maa_config['maa_adb_path'] = conf['maa_adb_path']
-        maa_config['maa_adb'] = conf['adb']
-        maa_config['weekly_plan'] = conf['maa_weekly_plan']
-        maa_config['roguelike'] = conf['maa_rg_enable'] == 1
-        maa_config['rogue_theme'] = conf['maa_rg_theme']
-        maa_config['sleep_min'] = conf['maa_rg_sleep_min']
-        maa_config['sleep_max'] = conf['maa_rg_sleep_max']
-        maa_config['maa_execution_gap'] = conf['maa_gap']
-        maa_config['buy_first'] = conf['maa_mall_buy']
-        maa_config['blacklist'] = conf['maa_mall_blacklist']
-        maa_config['recruitment_time'] = conf['maa_recruitment_time']
-        maa_config['recruit_only_4'] = conf['maa_recruit_only_4']
-        maa_config['conn_preset'] = conf['maa_conn_preset']
-        maa_config['touch_option'] = conf['maa_touch_option']
-        maa_config['mall_ignore_when_full'] = conf['maa_mall_ignore_blacklist_when_full']
-        maa_config['credit_fight'] = conf['maa_credit_fight']
-        base_scheduler.maa_config = maa_config
+
+        set_maa_options(base_scheduler)
+
         base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
         base_scheduler.error = False
         base_scheduler.drone_room = None if conf['drone_room'] == '' else conf['drone_room']
@@ -136,6 +185,11 @@ def initialize(tasks, scheduler=None):
         base_scheduler.run_order_delay = conf['run_order_delay']
         base_scheduler.agent_base_config = agent_base_config
         base_scheduler.exit_game_when_idle = conf['exit_game_when_idle']
+        
+        
+        #关闭游戏次数计数器
+        base_scheduler.task_count = 0
+        
         return base_scheduler
     else:
         scheduler.device = cli.device
@@ -164,6 +218,9 @@ def simulate():
                 continue
             else:
                 raise E
+    if base_scheduler.recog.h!=1080 or base_scheduler.recog.w!=1920:
+        logger.error("模拟器分辨率不为1920x1080")
+        return
     validation_msg = base_scheduler.initialize_operators()
     if validation_msg is not None:
         logger.error(validation_msg)
@@ -193,22 +250,28 @@ def simulate():
                 sleep_time = (base_scheduler.tasks[0].time - datetime.now()).total_seconds()
                 logger.info('||'.join([str(t) for t in base_scheduler.tasks]))
                 remaining_time = (base_scheduler.tasks[0].time - datetime.now()).total_seconds()
-                if sleep_time > 540 and conf['maa_enable'] == 1:
+
+                set_maa_options(base_scheduler)
+
+                if sleep_time > 540 and base_scheduler.maa_config['maa_enable'] == 1:
                     subject = f"下次任务在{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}"
                     context = f"下一次任务:{base_scheduler.tasks[0].plan}"
                     logger.info(context)
                     logger.info(subject)
-                    base_scheduler.send_email(context, subject)
+                    body = task_template.render(tasks=base_scheduler.tasks)
+                    base_scheduler.send_email(body, subject, 'html')
                     base_scheduler.maa_plan_solver()
                 elif sleep_time > 0:
-                    subject = f"开始休息 {'%.2f' % (remaining_time / 60)} 分钟，到{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}"
+                    subject = f"休息 {format_time(remaining_time)}，到{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}开始工作"
                     context = f"下一次任务:{base_scheduler.tasks[0].plan}"
                     logger.info(context)
                     logger.info(subject)
                     if sleep_time > 300 and conf['exit_game_when_idle']:
                         base_scheduler.device.exit(base_scheduler.package_name)
-                        logger.info("关闭游戏，降低功耗")
-                    base_scheduler.send_email(context, subject)
+                        base_scheduler.task_count += 1
+                        logger.info(f"第{base_scheduler.task_count}次任务结束，关闭游戏，降低功耗")
+                    body = task_template.render(tasks=base_scheduler.tasks)
+                    base_scheduler.send_email(body, subject, 'html')
                     time.sleep(sleep_time)
             if len(base_scheduler.tasks) > 0 and base_scheduler.tasks[0].type.split('_')[0] == 'maa':
                 logger.info(f"开始执行 MAA {base_scheduler.tasks[0].type.split('_')[1]} 任务")
@@ -216,25 +279,27 @@ def simulate():
                 continue
             base_scheduler.run()
             reconnect_tries = 0
-        except ConnectionError as e:
+        except ConnectionError or ConnectionAbortedError or AttributeError as e:
             reconnect_tries += 1
             if reconnect_tries < reconnect_max_tries:
-                logger.warning(f'连接端口断开....正在重连....')
+                logger.warning(f'出现错误.尝试重启Mower')
                 connected = False
                 while not connected:
                     try:
                         base_scheduler = initialize([], base_scheduler)
                         break
-                    except Exception as ce:
+                    except RuntimeError or ConnectionError or ConnectionAbortedError as ce:
                         logger.error(ce)
                         restart_simulator(conf['simulator'])
                         continue
                 continue
             else:
-                raise Exception(e)
+                raise e
+        except RuntimeError as re:
+            logger.exception(f"程序出错-尝试重启模拟器->{re}")
+            restart_simulator(conf['simulator'])
         except Exception as E:
             logger.exception(f"程序出错--->{E}")
-            restart_simulator(conf['simulator'])
 
 
 def save_state(op_data, file='state.json'):

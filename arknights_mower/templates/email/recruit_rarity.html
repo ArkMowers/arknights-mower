@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>{{ title_text }}</title>
+    <style>
+      table,
+      th,
+      td {
+        border: 1px solid black;
+        border-collapse: collapse;
+      }
+    </style>
+  </head>
+  <body>
+    <table>
+      <td>标签选择</td><td>预计干员名单</td>
+      {% for choose in recruit_results %}
+          <tr>
+              <td>
+                {% for tags in choose %}
+                    {{tags}}
+                {% endfor %}
+              </td>
+              <td>
+                {% for agent in recruit_results[choose].agent %}
+                    {{ agent.name }}
+                {% endfor %}
+              </td>
+          </tr>
+      {% endfor %}
+
+    </table>
+  </body>
+</html>

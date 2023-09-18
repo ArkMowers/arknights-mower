@@ -84,16 +84,16 @@ def shop(args: list[str] = [], device: Device = None):
         ShopSolver(device).run(args)
 
 
-def recruit(args: list[str] = [], device: Device = None):
+def recruit(args: list[str] = [], email_config={}, maa_config={},device: Device = None):
     """
     recruit [agents ...]
         自动进行公共招募
         agents 优先考虑的公招干员，若不指定则使用配置文件中的优先级，默认为高稀有度优先
     """
     if len(args) == 0:
-        RecruitSolver(device).run(config.RECRUIT_PRIORITY)
+        RecruitSolver(device).run(config.RECRUIT_PRIORITY,email_config,maa_config)
     else:
-        RecruitSolver(device).run(args)
+        RecruitSolver(device).run(args,email_config)
 
 
 def mission(args: list[str] = [], device: Device = None):

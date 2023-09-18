@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>{{ title_text }}</title>
+    <style>
+      table,
+      th,
+      td {
+        border: 1px solid black;
+        border-collapse: collapse;
+      }
+    </style>
+  </head>
+  <body>
+  <table style="text-align: center">
+  {% if recruit_results|length > 0 %}
+
+    <th>位置</th><th>标签</th><th>预计干员</th>
+    {% for pos,value in recruit_results.items() %}
+        <tr>
+        <td>{{ pos }}</td>
+         {% for key,value in value.items() %}
+             <td>
+                 {% for tag in key %}
+                     {% if tag != "" %}
+                         {{ tag }}
+                     {% else %}
+                         {{ "未选择" }}
+                     {% endif %}
+                 {% endfor %}
+             <td>
+                 {% for agent in value.agent %}
+                     {{ agent.name }}
+                 {% endfor %}
+             </td>
+         {% endfor %}
+        </tr>
+    {% endfor %}
+  {% endif %}
+
+  {% if recruit_get_agent|length > 0 %}
+      <th colspan="3">上次公招干员</th>
+          {% for pos,value in recruit_get_agent.items() %}
+              <tr>
+                  <td>{{ pos }}</td>
+                  <td colspan="2">{{ value }}</td>
+              </tr>
+          {% endfor %}
+
+
+
+  {% endif %}
+
+  </table>
+  </body>
+</html>
+
+

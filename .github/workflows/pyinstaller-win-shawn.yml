@@ -9,17 +9,16 @@ jobs:
   build-win-amd64:
     runs-on: windows-latest
     steps:
-      - name: download frontend
-        uses: actions/checkout@v3
-        with:
-          repository: ArkMowers/mower-ui
-          path: mower-ui
-
       - name: download source
         uses: actions/checkout@v3
         with:
           path: main
 
+      - name: download updater
+        uses: actions/checkout@v3
+        with:
+          repository: ArkMowers/updater
+          path: updater
 
       - name: setup nodejs 16
         uses: actions/setup-node@v3
@@ -32,19 +31,19 @@ jobs:
           install-only: true
 
       - name: Set up Python 3.8 amd64
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: 3.8
+          cache: pip
           architecture: x64
 
-
       - name: build frontend
-        working-directory: ./mower-ui
+        working-directory: ./main/ui
         shell: bash
         run: |
-          npm install
+          npm ci
           npm run build
-          cp -r dist ../main/
+          cp -r dist ../
 
       - name: Install dependencies
         working-directory: ./main
@@ -52,7 +51,7 @@ jobs:
         run: |
           python -m venv venv
           venv\Scripts\pip install -r requirements.txt
-          venv\Scripts\pip install pyinstaller Flask flask-sock flask-cors pywebview
+          venv\Scripts\pip install pyinstaller xxhash backports.zoneinfo[tzdata]
       - name: Patch Paddle
         working-directory: ./main
         shell: cmd
@@ -64,8 +63,17 @@ jobs:
         working-directory: ./main
         shell: cmd
         run: |
-          venv\Scripts\pyinstaller .\webview.spec
+          set PYTHONHASHSEED=114514
+          set SOURCE_DATE_EPOCH=1694076231
+          venv\Scripts\pyinstaller .\webui_zip.spec
+
+      - name: calculate hash
+        working-directory: ./main/dist/mower
+        shell: cmd
+        run: |
+          ..\..\venv\Scripts\python.exe ..\..\..\updater\publish.py
+
       - uses: actions/upload-artifact@v3
         with:
           name: mower
-          path: main\dist\mower.exe
+          path: main/dist/mower

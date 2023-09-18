@@ -7,6 +7,7 @@ import os
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
 from arknights_mower.strategy import Solver
 from arknights_mower.utils.device import Device
+from arknights_mower.utils.email import task_template
 from arknights_mower.utils.log import logger, init_fhlr
 from arknights_mower.utils import config
 from arknights_mower.utils.simulator import restart_simulator
@@ -43,30 +44,58 @@ maa_config = {
     "reclamation_algorithm":False,
     # 是否启动保全派驻
     "stationary_security_service": True,
+    # 保全派驻类别 1-2
     "sss_type": 2,
+    # 导能单元类别 1-3
+    "ec_type":1,
     "copilot_file_location": "F:\\MAA-v4.10.5-win-x64\\resource\\copilot\\SSS_雷神工业测试平台_浊蒂版.json",
     "copilot_loop_times":10,
     "last_execution": datetime.now(),
     "blacklist":"家具,碳,加急许可",
+    "rogue_theme":"Sami",
     "buy_first":"招聘许可",
     "recruit_only_4": True,
+    "credit_fight": False,
+    "recruitment_time": None,
+    'mall_ignore_when_full': True,
+    "touch_option": "maatouch",
+    "conn_preset": "General",
+    "rogue": {
+        "squad": "指挥分队",
+        "roles": "取长补短",
+        "use_support": False,
+        "core_char":"",
+        "use_nonfriend_support": False,
+        "mode": 0,
+        "investment_enabled": True,
+        "stop_when_investment_full": False,
+        "refresh_trader_with_dice": True
+    },
     "sleep_min":"",
     "sleep_max":"",
-    "recruitment_time": False,
-    "weekly_plan":[{"weekday":"周一","stage":['AP-5'],"medicine":0},
-                   {"weekday":"周二","stage":['CE-6'],"medicine":0},
-                   {"weekday":"周三","stage":['1-7'],"medicine":0},
-                   {"weekday":"周四","stage":['AP-5'],"medicine":0},
-                   {"weekday":"周五","stage":['1-7'],"medicine":0},
-                   {"weekday":"周六","stage":['AP-5'],"medicine":0},
-                   {"weekday":"周日","stage":['AP-5'],"medicine":0}]
+    # "weekly_plan": [{"weekday": "周一", "stage": ['AP-5'], "medicine": 0},
+    #                 {"weekday": "周二", "stage": ['PR-D-1'], "medicine": 0},
+    #                 {"weekday": "周三", "stage": ['PR-C-2'], "medicine": 0},
+    #                 {"weekday": "周四", "stage": ['AP-5'], "medicine": 0},
+    #                 {"weekday": "周五", "stage": ['PR-A-2'], "medicine": 0},
+    #                 {"weekday": "周六", "stage": ['AP-5'], "medicine": 0},
+    #                 {"weekday": "周日", "stage": ['AP-5'], "medicine": 0}],
+    "weekly_plan": [{"weekday": "周一", "stage": [''], "medicine": 0},
+                    {"weekday": "周二", "stage": [''], "medicine": 0},
+                    {"weekday": "周三", "stage": [''], "medicine": 0},
+                    {"weekday": "周四", "stage": [''], "medicine": 0},
+                    {"weekday": "周五", "stage": [''], "medicine": 0},
+                    {"weekday": "周六", "stage": [''], "medicine": 0},
+                    {"weekday": "周日", "stage": [''], "medicine": 0}]
 }
 
 # 模拟器相关设置
 simulator= {
     "name":"夜神",
     # 多开编号，在模拟器助手最左侧的数字
-    "index":2
+    "index":2,
+    # 用于执行模拟器命令
+    "simulator_folder":"D:\\Program Files\\Nox\\bin"
 }
 
 # Free (宿舍填充)干员安排黑名单
@@ -87,6 +116,9 @@ reload_room = []
 
 # 基地数据json文件保存名
 state_file_name = 'state.json'
+
+# 邮件时差调整
+timezone_offset = 0
 
 # 全自动基建排班计划：
 # 这里定义了一套全自动基建的排班计划 plan_1
@@ -251,6 +283,7 @@ def savelog():
     config.TAP_TO_LAUNCH["enable"] = False
     config.TAP_TO_LAUNCH["x"], config.TAP_TO_LAUNCH["y"] = 0,0
     #  com.hypergryph.arknights.bilibili   # Bilibili 服
+    config.ADB_BINARY = ['F:\\MAA-v4.20.0-win-x64\\adb\\platform-tools\\adb.exe']
     init_fhlr()
 
 
@@ -335,6 +368,9 @@ def simulate():
                 continue
             else:
                 raise E
+    if base_scheduler.recog.h!=1080 or base_scheduler.recog.w!=1920:
+        logger.error("模拟器分辨率不为1920x1080")
+        return
     validation_msg = base_scheduler.initialize_operators()
     if validation_msg is not None:
         logger.error(validation_msg)
@@ -356,7 +392,7 @@ def simulate():
                 (base_scheduler.tasks.sort(key=lambda x: x.time, reverse=False))
                 sleep_time = (base_scheduler.tasks[0].time - datetime.now()).total_seconds()
                 logger.info('||'.join([str(t) for t in base_scheduler.tasks]))
-                base_scheduler.send_email()
+                base_scheduler.send_email(task_template.render(tasks=[obj.time_offset(timezone_offset) for obj in base_scheduler.tasks]), '', 'html')
                 # 如果任务间隔时间超过9分钟则启动MAA
                 if sleep_time > 540:
                     base_scheduler.maa_plan_solver()
@@ -367,7 +403,7 @@ def simulate():
                 continue
             base_scheduler.run()
             reconnect_tries = 0
-        except ConnectionError as e:
+        except ConnectionError or ConnectionAbortedError or AttributeError as e:
             reconnect_tries += 1
             if reconnect_tries < reconnect_max_tries:
                 logger.warning(f'连接端口断开....正在重连....')
@@ -376,16 +412,18 @@ def simulate():
                     try:
                         base_scheduler = inialize([], base_scheduler)
                         break
-                    except Exception as ce:
+                    except RuntimeError or ConnectionError or ConnectionAbortedError as ce:
                         logger.error(ce)
                         restart_simulator(simulator)
                         continue
                 continue
             else:
                 raise Exception(e)
+        except RuntimeError as re:
+            restart_simulator(simulator)
         except Exception as E:
             logger.exception(f"程序出错--->{E}")
-            restart_simulator(simulator)
+
     # cli.credit()  # 信用
     # ope_lists = cli.ope(eliminate=True, plan=ope_lists)  # 行动，返回未完成的作战计划
     # cli.shop(shop_priority)  # 商店
