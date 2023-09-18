@@ -19,13 +19,14 @@ const recruit_3 = computed({
 })
 
 const recruit_4 = ref('900')
+
 </script>
 
 <template>
   <n-card>
     <template #header>
       <n-checkbox v-model:checked="recruit_enable">
-        <div class="card-title">公共招募</div>
+        <div class="card-title">公开招募</div>
       </n-checkbox>
     </template>
     <n-table :single-line="false" size="small" class="big-table">
@@ -63,9 +64,16 @@ const recruit_4 = ref('900')
         <td>
           <n-radio-group name="recruit_robot" v-model:value="recruit_robot">
             <n-space justify="start">
-              <n-radio :value="true">招募</n-radio>
-              <n-radio :value="false">不招</n-radio>
+              <n-radio :value="true">邮件通知</n-radio>
+              <help-text>
+                <div>碰到标签中包含支援机械时会发送邮件进行通知，不会自动选择</div>
+              </help-text>
+              <n-radio :value="false">忽略标签</n-radio>
+              <help-text>
+                <div>忽略支援机械标签，刷新标签或者选择其他的干员</div>
+              </help-text>
             </n-space>
+
           </n-radio-group>
         </td>
       </tr>
@@ -100,7 +108,7 @@ h4 {
 
 .big-table {
   margin-top: 10px;
-  width: 360px;
+  width: 400px;
 
   th {
     text-align: center;

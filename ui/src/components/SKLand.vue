@@ -29,7 +29,8 @@ function add_account(){
       <template #default="{ value }">
         <div style="display: flex; align-items: center; width: 100%">
           <n-checkbox v-model:checked="value.isCheck" style="margin-right: 12px" />
-          <n-input v-model:value="value.account" type="text" placeholder="账号"/>
+          <n-input style="margin-right: 10px;" v-model:value="value.account" type="text" placeholder="账号"/>
+
           <n-input v-model:value="value.password" type="password" show-password-on="click" placeholder="密码"/>
         </div>
       </template>
@@ -45,5 +46,8 @@ function add_account(){
   font-weight: 500;
   font-size: 18px;
 }
+
+
+
 </style>
 
