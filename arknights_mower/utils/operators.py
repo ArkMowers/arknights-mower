@@ -407,6 +407,8 @@ class Operators(object):
                     ret += 1
                 elif dorm.time is not None and dorm.time < datetime.now():
                     logger.info("检测到房间休息完毕，释放Free位")
+                    if dorm.name in agent_list:
+                        self.operators[dorm.name].mood = 24
                     dorm.name = ''
                     ret += 1
         return ret
