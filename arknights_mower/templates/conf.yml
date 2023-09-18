@@ -85,3 +85,9 @@ rogue:
   refresh_trader_with_dice: false
 screenshot: 200
 mail_subject: "[Mower通知]"
+skland_enable: false
+skland_info: []
+recruit_enable: true
+recruit_only_4: false
+recruit_robot: true
+recruitment_time: false

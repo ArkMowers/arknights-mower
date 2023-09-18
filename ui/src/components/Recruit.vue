@@ -64,9 +64,16 @@ const recruit_4 = ref('900')
         <td>
           <n-radio-group name="recruit_robot" v-model:value="recruit_robot">
             <n-space justify="start">
-              <n-radio :value="true">招募</n-radio>
-              <n-radio :value="false">不招</n-radio>
+              <n-radio :value="true">邮件通知</n-radio>
+              <help-text>
+                <div>碰到标签中包含支援机械时会发送邮件进行通知，不会自动选择</div>
+              </help-text>
+              <n-radio :value="false">忽略标签</n-radio>
+              <help-text>
+                <div>忽略支援机械标签，刷新标签或者选择其他的干员</div>
+              </help-text>
             </n-space>
+
           </n-radio-group>
         </td>
       </tr>
@@ -76,51 +83,48 @@ const recruit_4 = ref('900')
 </template>
 
 <style scoped lang="scss">
+h4 {
+  margin: 0;
+}
+
+ul {
+  padding-left: 24px;
+}
+
 .card-title {
   font-weight: 500;
   font-size: 18px;
+  margin-right: 8px;
 }
 
-p {
-  margin: 0 0 8px 0;
-}
-
-h4 {
-  margin: 12px 0 10px 0;
-}
-
-.recruit-3 td {
-  &:nth-child(1) {
-    width: 64px;
-  }
-
-  &:nth-child(2) {
-    width: 200px;
-  }
-}
-
-.big-table {
-  margin-top: 10px;
-  width: 360px;
-
-  th {
-    text-align: center;
-  }
+table {
+  width: 100%;
 
   td {
-    height: 24px;
-
     &:nth-child(1) {
-      width: 70px;
-      text-align: center;
+      width: 40px;
     }
+
     &:nth-child(2) {
-      padding-left: 18px;
+      width: 32px;
+    }
+
+    &:nth-child(3) {
+      padding-right: 8px;
+    }
+
+    &:nth-child(4) {
+      width: 50px;
+    }
+
+    &:nth-child(5) {
+      width: 90px;
     }
   }
 }
 
-.final {
-  margin: 16px 0 0;
+.tag-mr {
+  margin-right: 4px;
 }
 </style>
+
