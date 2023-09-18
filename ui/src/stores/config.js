@@ -43,12 +43,12 @@ export const useConfigStore = defineStore('config', () => {
   const rogue = ref({})
   const screenshot = ref(0)
   const mail_subject = ref('')
-  const skland_enable= ref(false)
-  const skland_info= ref([])
-  const recruit_enable= ref(true)
+  const skland_enable = ref(false)
+  const skland_info = ref([])
+  const recruit_enable = ref(true)
   const recruit_only_4 = ref(false)
   const recruitment_time = ref(false)
-  const recruit_robot= ref(true)
+  const recruit_robot = ref(true)
 
   async function load_shop() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/shop`)
@@ -160,12 +160,12 @@ export const useConfigStore = defineStore('config', () => {
       rogue: rogue.value,
       screenshot: screenshot.value,
       mail_subject: mail_subject.value,
-      skland_enable: skland_enable.value ,
+      skland_enable: skland_enable.value,
       skland_info: skland_info.value,
       recruit_enable: recruit_enable.value,
       recruit_only_4: recruit_only_4.value,
       recruitment_time: recruitment_time.value,
-      recruit_robot: recruit_robot.value,
+      recruit_robot: recruit_robot.value
     }
   }
 
