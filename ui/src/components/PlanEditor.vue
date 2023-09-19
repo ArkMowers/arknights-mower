@@ -4,7 +4,7 @@ import { useConfigStore } from '@/stores/config'
 import { useMowerStore } from '@/stores/mower'
 import { usePlanStore } from '@/stores/plan'
 import { ref, computed, nextTick, watch } from 'vue'
-import pinyinMatch from 'pinyin-match'
+import pinyinMatch from 'pinyin-match/es/traditional'
 import { NAvatar, NTag, NText } from 'naive-ui'
 const config_store = useConfigStore()
 const mower_store = useMowerStore()
