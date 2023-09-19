@@ -3,7 +3,7 @@ name: dev_shawn分支自动打包
 on:
   push:
     branches:
-      - dev_shawn
+      - dev_fuyn1
   workflow_dispatch:
 
 jobs:
