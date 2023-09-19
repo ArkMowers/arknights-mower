@@ -9,12 +9,15 @@ export {}
 
 declare module '@vue/runtime-core' {
   export interface GlobalComponents {
+    Basementsetting: typeof import('./src/components/Basementsetting.vue')['default']
     Clue: typeof import('./src/components/Clue.vue')['default']
     Email: typeof import('./src/components/Email.vue')['default']
     HelpText: typeof import('./src/components/HelpText.vue')['default']
     MaaBasic: typeof import('./src/components/MaaBasic.vue')['default']
+    Maahugmission: typeof import('./src/components/Maahugmission.vue')['default']
     MaaRogue: typeof import('./src/components/MaaRogue.vue')['default']
     MaaWeekly: typeof import('./src/components/MaaWeekly.vue')['default']
+    Mowersetting: typeof import('./src/components/Mowersetting.vue')['default']
     NButton: typeof import('naive-ui')['NButton']
     NCard: typeof import('naive-ui')['NCard']
     NCheckbox: typeof import('naive-ui')['NCheckbox']
@@ -27,6 +30,7 @@ declare module '@vue/runtime-core' {
     NInput: typeof import('naive-ui')['NInput']
     NInputNumber: typeof import('naive-ui')['NInputNumber']
     NLog: typeof import('naive-ui')['NLog']
+    NMenu: typeof import('naive-ui')['NMenu']
     NRadio: typeof import('naive-ui')['NRadio']
     NRadioButton: typeof import('naive-ui')['NRadioButton']
     NRadioGroup: typeof import('naive-ui')['NRadioGroup']
@@ -40,6 +44,8 @@ declare module '@vue/runtime-core' {
     NTooltip: typeof import('naive-ui')['NTooltip']
     PlanEditor: typeof import('./src/components/PlanEditor.vue')['default']
     Recruit: typeof import('./src/components/Recruit.vue')['default']
+    RouterLink: typeof import('vue-router')['RouterLink']
+    RouterView: typeof import('vue-router')['RouterView']
     SKLand: typeof import('./src/components/SKLand.vue')['default']
   }
 }

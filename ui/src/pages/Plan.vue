@@ -36,6 +36,7 @@ async function open_plan_file() {
 
 <template>
   <div class="home-container external-container no-grow">
+  <div class="home-container external-container no-grow">
     <table>
       <tr>
         <td>排班表：</td>
@@ -114,10 +115,14 @@ async function open_plan_file() {
         </td>
       </tr>
     </table>
-  </div>
+  </div></div>
 </template>
 
 <style scoped lang="scss">
+.vertical-container {
+  display: flex;
+  flex-direction: column; /* 设置为纵向排列 */
+}
 .no-grow {
   flex-grow: 0;
   width: 900px;
