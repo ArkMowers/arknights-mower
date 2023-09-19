@@ -7,9 +7,27 @@
     :hljs="hljs"
   >
     <n-global-style />
-    <n-menu :options="menuOptions" class="menu" />
     <n-dialog-provider>
-      <router-view class="router-view" />
+      <n-layout has-sider>
+        <n-layout-sider
+          show-trigger="bar"
+          bordered
+          :collapsed-width="0"
+          :show-collapsed-content="false"
+          :collapsed="collapse"
+          :on-update:collapsed="
+            () => {
+              collapse = !collapse
+            }
+          "
+          width="240"
+        >
+          <n-menu default-expand-all :options="menuOptions" class="menu" />
+        </n-layout-sider>
+        <n-layout-content class="main">
+          <router-view />
+        </n-layout-content>
+      </n-layout>
     </n-dialog-provider>
   </n-config-provider>
 </template>
@@ -150,6 +168,8 @@ const { get_running, listen_ws } = mower_store
 
 const axios = inject('axios')
 
+const collapse = ref(true)
+
 function start() {
   running.value = true
   log_lines.value = []
@@ -168,6 +188,10 @@ onMounted(async () => {
   window.addEventListener('resize', () => {
     set_window_height()
   })
+
+  if (window.innerWidth > 570) {
+    collapse.value = false
+  }
 
   const params = new URLSearchParams(document.location.search)
   const token = params.get('token')
@@ -232,8 +256,7 @@ onMounted(async () => {
 }
 
 .home-container {
-  padding: 0 12px 12px;
-  flex-grow: 1;
+  height: 100%;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -259,9 +282,8 @@ onMounted(async () => {
   min-width: 200px;
   overflow-y: auto;
 }
-.router-view {
-  flex: 1;
-  flex-basis: 80%;
-  overflow-y: auto;
+
+.main .n-layout-scroll-container {
+  padding: 12px 12px 12px 24px;
 }
 </style>
