@@ -3,7 +3,7 @@ name: dev_shawn分支自动打包
 on:
   push:
     branches:
-      - dev_fuyn1
+      - dev_shawn
   workflow_dispatch:
 jobs:
   build-win-amd64:
