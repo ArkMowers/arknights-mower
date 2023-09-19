@@ -230,21 +230,20 @@ const avatar_bg = computed(() => {
               @dragover.prevent
               @dragenter.prevent
               @drop="drop_facility(r, $event)"
+              class="draggable"
             >
-              <div>
-                <div class="facility-name">
-                  {{ plan[r].name }}
-                </div>
-                <div class="avatars">
-                  <img
-                    v-for="i in plan[r].plans"
-                    :src="`avatar/${i.agent}.png`"
-                    width="45"
-                    height="45"
-                    :style="{ 'border-bottom': color_map[i.group] }"
-                    draggable="false"
-                  />
-                </div>
+              <div class="facility-name">
+                {{ plan[r].name }}
+              </div>
+              <div class="avatars">
+                <img
+                  v-for="i in plan[r].plans"
+                  :src="`avatar/${i.agent}.png`"
+                  width="45"
+                  height="45"
+                  :style="{ 'border-bottom': color_map[i.group] }"
+                  draggable="false"
+                />
               </div>
             </div>
             <div v-show="!plan[r].name" class="waiting">
@@ -543,6 +542,7 @@ const avatar_bg = computed(() => {
 .facility-name {
   margin-bottom: 4px;
   text-align: center;
+  line-height: 1;
 }
 
 .avatars > img {
@@ -553,19 +553,20 @@ const avatar_bg = computed(() => {
 
 .outer {
   display: flex;
-  gap: 16px;
   margin: 0 auto;
 }
 
 .left_box {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 4px;
+  padding-top: 82px;
+  padding-right: 2px;
 
   .left_contain {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
-    gap: 16px;
+    gap: 4px;
 
     & > div {
       cursor: pointer;
@@ -573,7 +574,8 @@ const avatar_bg = computed(() => {
 
     .info {
       background-color: rgba(32, 128, 240, 0.16);
-      padding: 5px 15px 15px 15px;
+      height: 74px;
+      width: 175px;
       border-radius: 3px;
       border: 1px solid transparent;
       transition: all 0.3s;
@@ -581,8 +583,8 @@ const avatar_bg = computed(() => {
       &:hover {
         background-color: rgba(32, 128, 240, 0.22);
       }
-      .true {
-        background-color: #fff;
+      &.true {
+        background-color: var(--n-color);
         border: 1px solid rgb(32, 128, 240);
       }
       .facility-name {
@@ -592,7 +594,8 @@ const avatar_bg = computed(() => {
 
     .warning {
       background-color: rgba(240, 160, 32, 0.16);
-      padding: 5px 15px 15px 15px;
+      height: 74px;
+      width: 175px;
       border-radius: 3px;
       border: 1px solid transparent;
       transition: all 0.3s;
@@ -601,8 +604,8 @@ const avatar_bg = computed(() => {
         background-color: rgba(240, 160, 32, 0.22);
       }
 
-      .true {
-        background-color: #fff;
+      &.true {
+        background-color: var(--n-color);
         border: 1px solid rgb(240, 160, 32);
       }
 
@@ -613,7 +616,8 @@ const avatar_bg = computed(() => {
 
     .primary {
       background-color: rgba(24, 160, 88, 0.16);
-      padding: 5px 15px 15px 15px;
+      height: 74px;
+      width: 175px;
       border-radius: 3px;
       border: 1px solid transparent;
       transition: all 0.3s;
@@ -622,8 +626,8 @@ const avatar_bg = computed(() => {
         background-color: rgba(24, 160, 88, 0.22);
       }
 
-      .true {
-        background-color: #fff;
+      &.true {
+        background-color: var(--n-color);
         border: 1px solid rgb(24, 160, 88);
       }
 
@@ -661,5 +665,14 @@ const avatar_bg = computed(() => {
   div {
     text-align: center;
   }
+}
+
+.draggable {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 </style>
