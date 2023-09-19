@@ -26,9 +26,3 @@
     <slot />
   </n-tooltip>
 </template>
-
-<style scoped>
-.help {
-  line-height: 34px;
-}
-</style>

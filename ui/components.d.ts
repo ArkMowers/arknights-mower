@@ -13,7 +13,6 @@ declare module '@vue/runtime-core' {
     Email: typeof import('./src/components/Email.vue')['default']
     HelpText: typeof import('./src/components/HelpText.vue')['default']
     MaaBasic: typeof import('./src/components/MaaBasic.vue')['default']
-    MaaRecruit: typeof import('./src/components/MaaRecruit.vue')['default']
     MaaRogue: typeof import('./src/components/MaaRogue.vue')['default']
     MaaWeekly: typeof import('./src/components/MaaWeekly.vue')['default']
     NButton: typeof import('naive-ui')['NButton']
@@ -22,6 +21,7 @@ declare module '@vue/runtime-core' {
     NConfigProvider: typeof import('naive-ui')['NConfigProvider']
     NDialogProvider: typeof import('naive-ui')['NDialogProvider']
     NDivider: typeof import('naive-ui')['NDivider']
+    NDynamicInput: typeof import('naive-ui')['NDynamicInput']
     NGlobalStyle: typeof import('naive-ui')['NGlobalStyle']
     NH4: typeof import('naive-ui')['NH4']
     NIcon: typeof import('naive-ui')['NIcon']
@@ -40,5 +40,7 @@ declare module '@vue/runtime-core' {
     NTimePicker: typeof import('naive-ui')['NTimePicker']
     NTooltip: typeof import('naive-ui')['NTooltip']
     PlanEditor: typeof import('./src/components/PlanEditor.vue')['default']
+    Recruit: typeof import('./src/components/Recruit.vue')['default']
+    SKLand: typeof import('./src/components/SKLand.vue')['default']
   }
 }
