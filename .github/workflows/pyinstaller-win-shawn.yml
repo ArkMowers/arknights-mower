@@ -26,7 +26,7 @@ jobs:
         with:
           node-version: 16
           cache: 'npm'
-          cache-dependency-path: ui/package-lock.json
+          cache-dependency-path: '**/package-lock.json'
 
       - name: Install UPX
         uses: crazy-max/ghaction-upx@v2
