@@ -9,7 +9,6 @@ export {}
 
 declare module '@vue/runtime-core' {
   export interface GlobalComponents {
-    Basementsetting: typeof import('./src/components/Basementsetting.vue')['default']
     BasementSettings: typeof import('./src/components/BasementSettings.vue')['default']
     Clue: typeof import('./src/components/Clue.vue')['default']
     Email: typeof import('./src/components/Email.vue')['default']
@@ -18,7 +17,6 @@ declare module '@vue/runtime-core' {
     Maahugmission: typeof import('./src/components/Maahugmission.vue')['default']
     MaaRogue: typeof import('./src/components/MaaRogue.vue')['default']
     MaaWeekly: typeof import('./src/components/MaaWeekly.vue')['default']
-    Mowersetting: typeof import('./src/components/Mowersetting.vue')['default']
     MowerSettings: typeof import('./src/components/MowerSettings.vue')['default']
     NButton: typeof import('naive-ui')['NButton']
     NCard: typeof import('naive-ui')['NCard']
@@ -26,6 +24,7 @@ declare module '@vue/runtime-core' {
     NConfigProvider: typeof import('naive-ui')['NConfigProvider']
     NDialogProvider: typeof import('naive-ui')['NDialogProvider']
     NDivider: typeof import('naive-ui')['NDivider']
+    NDynamicInput: typeof import('naive-ui')['NDynamicInput']
     NGlobalStyle: typeof import('naive-ui')['NGlobalStyle']
     NH4: typeof import('naive-ui')['NH4']
     NIcon: typeof import('naive-ui')['NIcon']
