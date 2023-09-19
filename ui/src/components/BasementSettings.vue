@@ -16,11 +16,7 @@ const {
   resting_threshold
 } = storeToRefs(config_store)
 
-
-const {
-  ling_xi
-} = storeToRefs(plan_store)
-
+const { ling_xi } = storeToRefs(plan_store)
 
 const { operators } = storeToRefs(plan_store)
 
@@ -29,13 +25,10 @@ const { left_side_facility } = plan_store
 const facility_with_empty = computed(() => {
   return [{ label: '（加速贸易站）', value: '' }].concat(left_side_facility)
 })
-
-
-
 </script>
 
 <template>
-  <div class="home-container ">
+  <div class="home-container">
     <n-card title="基建设置">
       <table class="riic-conf">
         <tr>
@@ -99,12 +92,7 @@ const facility_with_empty = computed(() => {
           <td colspan="2">
             <div class="threshold">
               <n-slider v-model:value="resting_threshold" :step="0.05" :min="0.5" :max="0.8" />
-              <n-input-number
-                v-model:value="resting_threshold"
-                :step="0.05"
-                :min="0.5"
-                :max="1"
-              />
+              <n-input-number v-model:value="resting_threshold" :step="0.05" :min="0.5" :max="1" />
             </div>
           </td>
         </tr>
@@ -119,8 +107,6 @@ const facility_with_empty = computed(() => {
   align-items: center;
   gap: 14px;
 }
-
-
 
 .riic-conf {
   width: 100%;

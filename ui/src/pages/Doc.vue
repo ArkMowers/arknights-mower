@@ -3,7 +3,6 @@ const doc_url = 'https://arkmowers.github.io/arknights-mower/'
 </script>
 
 <template>
-
   <iframe :src="doc_url" sandbox="allow-popups allow-scripts"></iframe>
 </template>
 

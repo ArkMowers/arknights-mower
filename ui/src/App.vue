@@ -1,6 +1,11 @@
 <template>
-  <n-config-provider :locale="zhCN" :date-locale="dateZhCN" class="provider"
-    :theme="theme == 'dark' ? darkTheme : undefined" :hljs="hljs">
+  <n-config-provider
+    :locale="zhCN"
+    :date-locale="dateZhCN"
+    class="provider"
+    :theme="theme == 'dark' ? darkTheme : undefined"
+    :hljs="hljs"
+  >
     <n-global-style />
     <n-menu :options="menuOptions" class="menu" />
     <n-dialog-provider>
@@ -9,46 +14,116 @@
   </n-config-provider>
 </template>
 
-
 <script setup>
 import { RouterLink } from 'vue-router'
 const menuOptions = ref([
-  { label: () => h(RouterLink, { to: { path: "/" } }, { default: () => "运行日志" }), key: "go-to-log" },
-  { label: () => h(RouterLink, { to: { path: "/plan" } }, { default: () => "排班编辑" }), key: "go-to-plan" },
   {
-    label: () => "设置",
-    key: "go-to-settings",
+    label: () => h(RouterLink, { to: { path: '/' } }, { default: () => '运行日志' }),
+    key: 'go-to-log'
+  },
+  {
+    label: () => h(RouterLink, { to: { path: '/plan' } }, { default: () => '排班编辑' }),
+    key: 'go-to-plan'
+  },
+  {
+    label: () => '设置',
+    key: 'go-to-settings',
     children: [
-      { label: () => h(RouterLink, { to: { path: "/advancedleft/mower-setting" } }, { default: () => "Mower-设置" }), key: "go-to-mowersetting" },
-      { label: () => h(RouterLink, { to: { path: "/advancedleft/basement-setting" } }, { default: () => "Mower-基建设置" }), key: "go-to-basementsetting" },
-      
-      { label: () => h(RouterLink, { to: { path: "/advancedleft/email" } }, { default: () => "Mower-邮件设置" }), key: "go-to-email" },
-      { label: () => h(RouterLink, { to: { path: "/advancedleft/recruit" } }, { default: () => "公开招募" }), key: "go-to-recruit" },
       {
-        label: () => "maa设置",
-        key: "maa-settings",
-        children: [
-          { label: () => h(RouterLink, { to: { path: "/advancedleft/maa-basic" } }, { default: () => "基础设置" }), key: "go-to-maabasic" },
-          { label: () => h(RouterLink, { to: { path: "/advancedleft/maa-weekly" } }, { default: () => "清理智" }), key: "go-to-maaweekly" },
-          { label: () => h(RouterLink, { to: { path: "/advancedleft/clue" } }, { default: () => "线索交流" }), key: "go-to-clue" },
-          { label: () => h(RouterLink, { to: { path: "/advancedleft/maahugmission" } }, { default: () => "肉鸽等" }), key: "go-to-maahugmission" }
-        ]
+        label: () =>
+          h(
+            RouterLink,
+            { to: { path: '/advancedleft/mower-setting' } },
+            { default: () => 'Mower-设置' }
+          ),
+        key: 'go-to-mowersetting'
       },
+      {
+        label: () =>
+          h(
+            RouterLink,
+            { to: { path: '/advancedleft/basement-setting' } },
+            { default: () => 'Mower-基建设置' }
+          ),
+        key: 'go-to-basementsetting'
+      },
+
+      {
+        label: () =>
+          h(
+            RouterLink,
+            { to: { path: '/advancedleft/email' } },
+            { default: () => 'Mower-邮件设置' }
+          ),
+        key: 'go-to-email'
+      },
+      {
+        label: () =>
+          h(RouterLink, { to: { path: '/advancedleft/recruit' } }, { default: () => '公开招募' }),
+        key: 'go-to-recruit'
+      },
+      {
+        label: () => 'maa设置',
+        key: 'maa-settings',
+        children: [
+          {
+            label: () =>
+              h(
+                RouterLink,
+                { to: { path: '/advancedleft/maa-basic' } },
+                { default: () => '基础设置' }
+              ),
+            key: 'go-to-maabasic'
+          },
+          {
+            label: () =>
+              h(
+                RouterLink,
+                { to: { path: '/advancedleft/maa-weekly' } },
+                { default: () => '清理智' }
+              ),
+            key: 'go-to-maaweekly'
+          },
+          {
+            label: () =>
+              h(RouterLink, { to: { path: '/advancedleft/clue' } }, { default: () => '线索交流' }),
+            key: 'go-to-clue'
+          },
+          {
+            label: () =>
+              h(
+                RouterLink,
+                { to: { path: '/advancedleft/maahugmission' } },
+                { default: () => '肉鸽等' }
+              ),
+            key: 'go-to-maahugmission'
+          }
+        ]
+      }
       //{ label: () => h(RouterLink, { to: { path: "/advancedleft/sk-land" } }, { default: () => "森空岛签到" }), key: "go-to-skland" },
-      
     ]
   },
   {
-    label: () => "基建报表",
-    key: "building-report",
+    label: () => '基建报表',
+    key: 'building-report',
     children: [
-      { label: () => h(RouterLink, { to: { path: "/record-line" } }, { default: () => "基建报表-折线" }), key: "go-to-record-line" },
-      { label: () => h(RouterLink, { to: { path: "/record-pine" } }, { default: () => "基建报表-饼图" }), key: "go-to-record-pine" }
+      {
+        label: () =>
+          h(RouterLink, { to: { path: '/record-line' } }, { default: () => '基建报表-折线' }),
+        key: 'go-to-record-line'
+      },
+      {
+        label: () =>
+          h(RouterLink, { to: { path: '/record-pie' } }, { default: () => '基建报表-饼图' }),
+        key: 'go-to-record-pie'
+      }
     ]
   },
-  { label: () => h(RouterLink, { to: { path: "/doc" } }, { default: () => "帮助文档" }), key: "go-to-doc" }
+  {
+    label: () => h(RouterLink, { to: { path: '/doc' } }, { default: () => '帮助文档' }),
+    key: 'go-to-doc'
+  }
 ])
-
 
 import { onMounted, inject } from 'vue'
 import { storeToRefs } from 'pinia'
@@ -109,7 +184,7 @@ onMounted(async () => {
         end: /'/,
         className: 'operator',
         relevance: 0
-      },  
+      },
       {
         begin: /宿舍黑名单|重设上次房间为空/,
         relevance: 10
@@ -182,11 +257,11 @@ onMounted(async () => {
   flex: 1;
   flex-basis: 20%;
   min-width: 200px;
-  overflow-y: auto
+  overflow-y: auto;
 }
 .router-view {
   flex: 1;
   flex-basis: 80%;
-  overflow-y: auto
+  overflow-y: auto;
 }
 </style>

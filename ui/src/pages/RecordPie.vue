@@ -1,6 +1,5 @@
 <template>
   <div>
-
     <h1 class="page-title">干员基建报表</h1>
     <div class="report-container">
       <div v-for="(groupData, index) in reportData" :key="index" class="report-card">
@@ -56,7 +55,6 @@ onMounted(async () => {
 
 // Chart.js options
 
-
 const pieOptions = ref({
   plugins: {
     datalabels: {
@@ -75,7 +73,6 @@ const pieOptions = ref({
 
 // 添加状态变量来切换报表
 const currentReport = ref('mood') // 默认显示干员心情报表
-
 </script>
 
 <style scoped>

@@ -1,12 +1,9 @@
 <script setup>
-
 import { useConfigStore } from '@/stores/config'
 
 import { storeToRefs } from 'pinia'
 
-
 const config_store = useConfigStore()
-
 
 const {
   run_mode,
@@ -22,7 +19,6 @@ const {
   exit_game_when_idle,
   screenshot
 } = storeToRefs(config_store)
-
 
 const simulator_types = [
   { label: '夜神', value: '夜神' },
@@ -46,7 +42,7 @@ async function select_simulator_folder() {
 </script>
 
 <template>
-  <div class="home-container ">
+  <div class="home-container">
     <n-card title="Mower设置">
       <table class="mower-basic">
         <tr>
@@ -128,7 +124,9 @@ async function select_simulator_folder() {
         </tr>
         <tr>
           <td colspan="3">
-            <n-checkbox v-model:checked="exit_game_when_idle">任务结束后退出游戏以降低功耗</n-checkbox>
+            <n-checkbox v-model:checked="exit_game_when_idle"
+              >任务结束后退出游戏以降低功耗</n-checkbox
+            >
           </td>
         </tr>
         <tr>
@@ -182,7 +180,6 @@ async function select_simulator_folder() {
     width: 40px;
   }
 }
-
 
 .coord {
   td {

@@ -1,7 +1,6 @@
 <template>
   <div>
-
-      <h1 class="page-title">干员基建报表</h1>
+    <h1 class="page-title">干员基建报表</h1>
 
     <div class="report-container">
       <div v-for="(groupData, index) in reportData" :key="index" class="report-card">
@@ -83,8 +82,6 @@ const chartOptions = ref({
     }
   }
 })
-
-
 </script>
 
 <style scoped>
@@ -138,4 +135,5 @@ h2 {
 .report-switch button.active {
   background-color: #007bff;
   color: white;
-}</style>
+}
+</style>
