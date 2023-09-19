@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - dev_shawn
-  workflow_dispatch:
+
 jobs:
   build-win-amd64:
     runs-on: windows-latest
