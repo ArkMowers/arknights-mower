@@ -9,18 +9,10 @@ export {}
 
 declare module '@vue/runtime-core' {
   export interface GlobalComponents {
-    App: typeof import('./src/components/router/packages/playground/src/App.vue')['default']
-    AppLink: typeof import('./src/components/router/packages/playground/src/AppLink.vue')['default']
     Basementsetting: typeof import('./src/components/Basementsetting.vue')['default']
     Clue: typeof import('./src/components/Clue.vue')['default']
-    ComponentWithData: typeof import('./src/components/router/packages/playground/src/views/ComponentWithData.vue')['default']
-    Dynamic: typeof import('./src/components/router/packages/playground/src/views/Dynamic.vue')['default']
     Email: typeof import('./src/components/Email.vue')['default']
-    Generic: typeof import('./src/components/router/packages/playground/src/views/Generic.vue')['default']
-    GuardedWithLeave: typeof import('./src/components/router/packages/playground/src/views/GuardedWithLeave.vue')['default']
     HelpText: typeof import('./src/components/HelpText.vue')['default']
-    Home: typeof import('./src/components/router/packages/playground/src/views/Home.vue')['default']
-    LongView: typeof import('./src/components/router/packages/playground/src/views/LongView.vue')['default']
     MaaBasic: typeof import('./src/components/MaaBasic.vue')['default']
     Maahugmission: typeof import('./src/components/Maahugmission.vue')['default']
     MaaRogue: typeof import('./src/components/MaaRogue.vue')['default']
@@ -33,8 +25,6 @@ declare module '@vue/runtime-core' {
     NDialogProvider: typeof import('naive-ui')['NDialogProvider']
     NDivider: typeof import('naive-ui')['NDivider']
     NDynamicInput: typeof import('naive-ui')['NDynamicInput']
-    Nested: typeof import('./src/components/router/packages/playground/src/views/Nested.vue')['default']
-    NestedWithId: typeof import('./src/components/router/packages/playground/src/views/NestedWithId.vue')['default']
     NGlobalStyle: typeof import('naive-ui')['NGlobalStyle']
     NH4: typeof import('naive-ui')['NH4']
     NIcon: typeof import('naive-ui')['NIcon']
@@ -42,7 +32,6 @@ declare module '@vue/runtime-core' {
     NInputNumber: typeof import('naive-ui')['NInputNumber']
     NLog: typeof import('naive-ui')['NLog']
     NMenu: typeof import('naive-ui')['NMenu']
-    NotFound: typeof import('./src/components/router/packages/playground/src/views/NotFound.vue')['default']
     NRadio: typeof import('naive-ui')['NRadio']
     NRadioButton: typeof import('naive-ui')['NRadioButton']
     NRadioGroup: typeof import('naive-ui')['NRadioGroup']
@@ -56,10 +45,8 @@ declare module '@vue/runtime-core' {
     NTooltip: typeof import('naive-ui')['NTooltip']
     PlanEditor: typeof import('./src/components/PlanEditor.vue')['default']
     Recruit: typeof import('./src/components/Recruit.vue')['default']
-    RepeatedParams: typeof import('./src/components/router/packages/playground/src/views/RepeatedParams.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     SKLand: typeof import('./src/components/SKLand.vue')['default']
-    User: typeof import('./src/components/router/packages/playground/src/views/User.vue')['default']
   }
 }
