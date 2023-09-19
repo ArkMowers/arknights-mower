@@ -64,6 +64,11 @@ def serve_index():
     return send_from_directory("dist", "index.html")
 
 
+@app.errorhandler(404)
+def not_found(e):
+    return send_from_directory("dist", "index.html")
+
+
 @app.route("/conf", methods=["GET", "POST"])
 @require_token
 def load_config():
