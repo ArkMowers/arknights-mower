@@ -189,7 +189,7 @@ class RecruitSolver(BaseSolver):
             # 刷新标签
             if need_choose is False:
                 '''稀有tag或支援，不需要选'''
-                self.send_email(recruit_rarity.render(recruit_results=best, title_text="稀有tag通知"), "出稀有标签辣",
+                self.send_email(recruit_rarity.render(recruit_results=best['possible'], title_text="稀有tag通知"), "出稀有标签辣",
                                 "html")
                 logger.debug('稀有tag,发送邮件')
                 self.back()
