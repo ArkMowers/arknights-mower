@@ -1,8 +1,8 @@
-import { fileURLToPath, URL } from 'node:url'
+// vite.config.js
 
+import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-
 import AutoImport from 'unplugin-auto-import/vite'
 import Components from 'unplugin-vue-components/vite'
 import { NaiveUiResolver } from 'unplugin-vue-components/resolvers'
@@ -27,5 +27,10 @@ export default defineConfig({
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
     }
-  }
+  },
+  build: {
+    rollupOptions: {
+      external: ['vue-router'], // 将 'vue-router' 添加到外部模块的列表中
+    },
+  },
 })
