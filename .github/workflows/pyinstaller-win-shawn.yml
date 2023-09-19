@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - dev_shawn
+  workflow_dispatch:
 
 jobs:
   build-win-amd64:
@@ -24,6 +25,8 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: 16
+          cache: 'npm'
+          cache-dependency-path: ui/package-lock.json
 
       - name: Install UPX
         uses: crazy-max/ghaction-upx@v2
