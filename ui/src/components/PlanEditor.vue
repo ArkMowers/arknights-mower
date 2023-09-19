@@ -584,7 +584,7 @@ const avatar_bg = computed(() => {
         background-color: rgba(32, 128, 240, 0.22);
       }
       &.true {
-        background-color: #fff;
+        background-color: var(--n-color);
         border: 1px solid rgb(32, 128, 240);
       }
       .facility-name {
@@ -605,7 +605,7 @@ const avatar_bg = computed(() => {
       }
 
       &.true {
-        background-color: #fff;
+        background-color: var(--n-color);
         border: 1px solid rgb(240, 160, 32);
       }
 
@@ -627,7 +627,7 @@ const avatar_bg = computed(() => {
       }
 
       &.true {
-        background-color: #fff;
+        background-color: var(--n-color);
         border: 1px solid rgb(24, 160, 88);
       }
 
