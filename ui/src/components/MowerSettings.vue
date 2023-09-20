@@ -42,7 +42,7 @@ async function select_simulator_folder() {
 </script>
 
 <template>
-  <div class="home-container">
+
     <n-card title="Mower设置">
       <table class="mower-basic">
         <tr>
@@ -164,7 +164,7 @@ async function select_simulator_folder() {
         </tr>
       </table>
     </n-card>
-  </div>
+
 </template>
 
 <style scoped lang="scss">

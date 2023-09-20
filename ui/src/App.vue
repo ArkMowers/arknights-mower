@@ -1,14 +1,9 @@
 <template>
-  <n-config-provider
-    :locale="zhCN"
-    :date-locale="dateZhCN"
-    class="provider"
-    :theme="theme == 'dark' ? darkTheme : undefined"
-    :hljs="hljs"
-  >
+  <n-config-provider :locale="zhCN" :date-locale="dateZhCN" class="provider"
+    :theme="theme == 'dark' ? darkTheme : undefined" :hljs="hljs">
     <n-global-style />
     <n-dialog-provider>
-      <n-layout has-sider>
+      <n-layout has-sider v-if="!mobilemode">
         <n-layout-sider
           bordered
           collapse-mode="width"
@@ -31,6 +26,9 @@
           <router-view />
         </n-layout-content>
       </n-layout>
+      <n-layout v-else><router-view />
+        <n-menu :options="menuOptions" mode="horizontal"  :collapsed="true" />
+      </n-layout>
     </n-dialog-provider>
   </n-config-provider>
 </template>
@@ -52,13 +50,14 @@ import {
   Flash
 } from '@vicons/ionicons5'
 import { DiceD20 } from '@vicons/fa'
-const collapsed = ref(true)
+const collapsed = ref(false);
+const mobilemode = ref(true);
 function renderIcon(icon) {
   return () => h(NIcon, null, { default: () => h(icon) })
 }
 
 import { RouterLink } from 'vue-router'
-const menuOptions = ref([
+const menuOptions = computed(() => [
   {
     label: () => h(RouterLink, { to: { path: '/' } }, { default: () => '运行日志' }),
     icon: renderIcon(BookOutline),
@@ -73,6 +72,7 @@ const menuOptions = ref([
     label: () => '设置',
     key: 'go-to-settings',
     icon: renderIcon(Settings),
+    show: !mobilemode.value,
     children: [
       {
         label: () => 'Mower设置',
@@ -168,6 +168,13 @@ const menuOptions = ref([
     ]
   },
   {
+        label: () =>
+          h(RouterLink, { to: { path: '/advancedleft' } }, { default: () => '全部设置' }),
+        icon: renderIcon(Settings),
+        show: mobilemode.value,
+        key: 'go-to-allsetting'
+      },
+  {
     label: () => '基建报表',
     key: 'building-report',
     icon: renderIcon(StatsChart),
@@ -238,7 +245,7 @@ onMounted(async () => {
   })
 
   if (window.innerWidth > 570) {
-    collapsed.value = false
+    mobilemode.value = false
   }
 
   const params = new URLSearchParams(document.location.search)
