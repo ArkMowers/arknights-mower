@@ -26,3 +26,9 @@
     <slot />
   </n-tooltip>
 </template>
+
+<style scoped>
+.help {
+  z-index: 100;
+}
+</style>
