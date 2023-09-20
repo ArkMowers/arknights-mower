@@ -1,28 +1,13 @@
 <template>
-  <n-config-provider
-    :locale="zhCN"
-    :date-locale="dateZhCN"
-    class="provider"
-    :theme="theme == 'dark' ? darkTheme : undefined"
-    :hljs="hljs"
-  >
+  <n-config-provider :locale="zhCN" :date-locale="dateZhCN" class="provider"
+    :theme="theme == 'dark' ? darkTheme : undefined" :hljs="hljs">
     <n-global-style />
     <n-dialog-provider>
       <n-layout has-sider>
-        <n-layout-sider
-          show-trigger="bar"
-          bordered
-          :collapsed-width="0"
-          :show-collapsed-content="false"
-          :collapsed="collapse"
-          :on-update:collapsed="
-            () => {
-              collapse = !collapse
-            }
-          "
-          width="240"
-        >
-          <n-menu default-expand-all :options="menuOptions" class="menu" />
+        <n-layout-sider bordered collapse-mode="width" :collapsed-width="50" :width="240" :collapsed="collapsed"
+          show-trigger @collapse="collapsed = true" @expand="collapsed = false">
+          <n-menu v-model:value="activeKey" :indent="24" :collapsed="collapsed" :collapsed-width="64"
+            :collapsed-icon-size="22" :options="menuOptions" />
         </n-layout-sider>
         <n-layout-content class="main">
           <router-view />
@@ -33,55 +18,93 @@
 </template>
 
 <script setup>
+import { NIcon } from "naive-ui"
+import {
+  BookOutline,
+  Home,
+  BarChart,
+  PieChart,
+  StatsChart,
+  Settings,
+  HelpCircle,
+  Hammer,
+  MailOpen,
+  People,
+  Bag,
+  Flash,
+  
+} from "@vicons/ionicons5"
+import { DiceD20 }from "@vicons/fa"
+const collapsed = ref(false)
+function renderIcon(icon) {
+  return () => h(NIcon, null, { default: () => h(icon) });
+}
+
+
 import { RouterLink } from 'vue-router'
 const menuOptions = ref([
   {
     label: () => h(RouterLink, { to: { path: '/' } }, { default: () => '运行日志' }),
+    icon: renderIcon(BookOutline),
     key: 'go-to-log'
   },
   {
     label: () => h(RouterLink, { to: { path: '/plan' } }, { default: () => '排班编辑' }),
+    icon: renderIcon(Home),
     key: 'go-to-plan'
   },
   {
     label: () => '设置',
     key: 'go-to-settings',
+    icon: renderIcon(Settings),
     children: [
       {
-        label: () =>
-          h(
-            RouterLink,
-            { to: { path: '/advancedleft/mower-setting' } },
-            { default: () => 'Mower-设置' }
-          ),
-        key: 'go-to-mowersetting'
-      },
-      {
-        label: () =>
-          h(
-            RouterLink,
-            { to: { path: '/advancedleft/basement-setting' } },
-            { default: () => 'Mower-基建设置' }
-          ),
-        key: 'go-to-basementsetting'
+        label: () => 'Mower设置',
+        key: 'go-to-mowersetting',
+        children: [
+          {
+            label: () =>
+              h(
+                RouterLink,
+                { to: { path: '/advancedleft/mower-setting' } },
+                { default: () => '基本设置' }
+              ),
+            key: 'go-to-mowersetting',
+            icon: renderIcon(Settings),
+          },
+          {
+            label: () =>
+              h(
+                RouterLink,
+                { to: { path: '/advancedleft/basement-setting' } },
+                { default: () => '基建设置' }
+                
+              ),
+            key: 'go-to-basementsetting',
+            icon: renderIcon(Hammer),
+          },
+
+          {
+            label: () =>
+              h(
+                RouterLink,
+                { to: { path: '/advancedleft/email' } },
+                { default: () => '邮件设置' }
+              ),
+            key: 'go-to-email',
+            icon: renderIcon(MailOpen)
+          },
+          {
+            label: () =>
+              h(RouterLink, { to: { path: '/advancedleft/recruit' } }, { default: () => '公开招募' }),
+            key: 'go-to-recruit',
+            icon: renderIcon(People)
+          },]
       },
 
+
       {
-        label: () =>
-          h(
-            RouterLink,
-            { to: { path: '/advancedleft/email' } },
-            { default: () => 'Mower-邮件设置' }
-          ),
-        key: 'go-to-email'
-      },
-      {
-        label: () =>
-          h(RouterLink, { to: { path: '/advancedleft/recruit' } }, { default: () => '公开招募' }),
-        key: 'go-to-recruit'
-      },
-      {
-        label: () => 'maa设置',
+        label: () => 'MAA设置',
         key: 'maa-settings',
         children: [
           {
@@ -89,8 +112,9 @@ const menuOptions = ref([
               h(
                 RouterLink,
                 { to: { path: '/advancedleft/maa-basic' } },
-                { default: () => '基础设置' }
+                { default: () => '连接设置' }
               ),
+            icon: renderIcon(Settings),
             key: 'go-to-maabasic'
           },
           {
@@ -100,12 +124,14 @@ const menuOptions = ref([
                 { to: { path: '/advancedleft/maa-weekly' } },
                 { default: () => '清理智' }
               ),
-            key: 'go-to-maaweekly'
+            key: 'go-to-maaweekly',
+            icon: renderIcon(Flash),
           },
           {
             label: () =>
-              h(RouterLink, { to: { path: '/advancedleft/clue' } }, { default: () => '线索交流' }),
-            key: 'go-to-clue'
+              h(RouterLink, { to: { path: '/advancedleft/clue' } }, { default: () => '线索/信用商店' }),
+            key: 'go-to-clue',
+            icon: renderIcon(Bag),
           },
           {
             label: () =>
@@ -114,7 +140,8 @@ const menuOptions = ref([
                 { to: { path: '/advancedleft/maahugmission' } },
                 { default: () => '肉鸽等' }
               ),
-            key: 'go-to-maahugmission'
+            key: 'go-to-maahugmission',
+            icon: renderIcon(DiceD20)
           }
         ]
       }
@@ -124,21 +151,25 @@ const menuOptions = ref([
   {
     label: () => '基建报表',
     key: 'building-report',
+    icon: renderIcon(StatsChart),
     children: [
       {
         label: () =>
           h(RouterLink, { to: { path: '/record-line' } }, { default: () => '基建报表-折线' }),
+        icon: renderIcon(BarChart),
         key: 'go-to-record-line'
       },
       {
         label: () =>
           h(RouterLink, { to: { path: '/record-pie' } }, { default: () => '基建报表-饼图' }),
+        icon: renderIcon(PieChart),
         key: 'go-to-record-pie'
       }
     ]
   },
   {
     label: () => h(RouterLink, { to: { path: '/doc' } }, { default: () => '帮助文档' }),
+    icon: renderIcon(HelpCircle),
     key: 'go-to-doc'
   }
 ])
@@ -261,21 +292,26 @@ onMounted(async () => {
   flex-direction: column;
   gap: 8px;
 }
+
 .external-container {
   width: 600px;
   margin: 0 auto;
 }
+
 .n-checkbox {
   align-items: center;
 }
+
 .no-grow {
   flex-grow: 0;
   width: 900px;
 }
+
 .provider {
   height: 100%;
   display: flex;
 }
+
 .n-menu {
   flex: 1;
   flex-basis: 20%;
