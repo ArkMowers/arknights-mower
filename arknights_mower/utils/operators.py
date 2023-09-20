@@ -48,6 +48,7 @@ class Operators(object):
             self.plan, self.config = self.merge_plan(idx)
             self.plan_name = idx
             logger.info("切换成自定义模式")
+        logger.info(("" if self.config.run_order_buffer_time > 0 else "不") + "启动葛朗台跑单")
         if refresh:
             error = self.init_and_validate(True)
             if error:

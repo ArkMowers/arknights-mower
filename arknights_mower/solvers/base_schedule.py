@@ -412,7 +412,7 @@ class BaseSchedulerSolver(BaseSolver):
                     get_time = False
                     if TaskTypes.SHIFT_ON == self.task.type:
                         get_time = True
-                    if TaskTypes.RUN_ORDER == self.task.type and not self.refresh_connecting:
+                    if TaskTypes.RUN_ORDER == self.task.type and not self.refresh_connecting and self.op_data.config.run_order_buffer_time > 0:
                         logger.info("退回主界面以确保跑单前的登录状态")
                         self.back_to_index()
                         self.refresh_connecting = True
@@ -441,12 +441,15 @@ class BaseSchedulerSolver(BaseSolver):
         elif not self.planned:
             try:
                 # 如果有任何type 则会最后修正
-                if self.read_mood:
-                    mood_result = self.agent_get_mood(skip_dorm=True)
-                    if mood_result is not None:
-                        self.skip(['planned', 'todo_task', 'collect_notification'])
-                        return True
-                self.plan_solver()
+                if find_next_task(self.tasks, datetime.now() + timedelta(seconds=300)) is not None:
+                    self.skip(['planned', 'todo_task', 'collect_notification'])
+                else:
+                    if self.read_mood:
+                        mood_result = self.agent_get_mood(skip_dorm=True)
+                        if mood_result is not None:
+                            self.skip(['planned', 'todo_task', 'collect_notification'])
+                            return True
+                    self.plan_solver()
             except Exception as e:
                 logger.exception(e)
                 if type(e) is ConnectionAbortedError or type(e) is AttributeError or type(e) is ConnectionError:
@@ -1944,14 +1947,16 @@ class BaseSchedulerSolver(BaseSolver):
                             for current_idx, _name in enumerate(plan[room]):
                                 if _name == 'Current':
                                     plan[room][current_idx] = self.op_data.get_current_room(room, True)[current_idx]
-                        if room in self.op_data.run_order_rooms and len(new_plan) == 0:
-                            if plan[room] != self.op_data.get_current_room(room):
-                                logger.info("检测到插拔房间人员变动！")
-                                run_order_task = find_next_task(self.tasks, datetime.now()+ timedelta(minutes=10), task_type=TaskTypes.RUN_ORDER,
-                                                                meta_data=room)
-                                if run_order_task is not None:
-                                    logger.debug("移除超过10分钟的跑单任务以刷新时间")
-                                    self.tasks.remove(run_order_task)
+                            if room in self.op_data.run_order_rooms and len(
+                                    new_plan) == 0 and self.task.type != TaskTypes.RUN_ORDER:
+                                if plan[room] != self.op_data.get_current_room(room):
+                                    logger.debug("检测到插拔房间人员变动！")
+                                    run_order_task = find_next_task(self.tasks, datetime.now() + timedelta(minutes=10),
+                                                                    task_type=TaskTypes.RUN_ORDER,
+                                                                    meta_data=room, compare_type=">")
+                                    if run_order_task is not None:
+                                        logger.info("移除超过10分钟的跑单任务以刷新时间")
+                                        self.tasks.remove(run_order_task)
                     checked = True
                     current_room = self.op_data.get_current_room(room, True)
                     same = len(plan[room]) == len(current_room)
@@ -1960,20 +1965,22 @@ class BaseSchedulerSolver(BaseSolver):
                             if item1 != item2:
                                 same = False
                     if not same:
-                        if len(new_plan) == 1 and self.op_data.config.run_order_buffer_time > 0:
+                        if len(new_plan) == 1 :
                             remaining_time = self.get_order_remaining_time()
                             if 0 < remaining_time < self.run_order_delay * 60:
-                                self.task.time = datetime.now() + timedelta(seconds=remaining_time) - timedelta(
-                                    minutes=self.run_order_delay)
-                                logger.info(f"订单倒计时 {remaining_time}秒")
-                                self.back()
-                                while self.find('room_detail') is None:
-                                    if error_count > 3:
-                                        raise Exception('未成功进入房间')
-                                    self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
-                                    error_count += 1
+                                if self.op_data.config.run_order_buffer_time > 0:
+                                    self.task.time = datetime.now() + timedelta(seconds=remaining_time) - timedelta(
+                                        minutes=self.run_order_delay)
+                                    logger.info(f"订单倒计时 {remaining_time}秒")
+                                    self.back()
+                                    while self.find('room_detail') is None:
+                                        if error_count > 3:
+                                            raise Exception('未成功进入房间')
+                                        self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
+                                        error_count += 1
                             else:
                                 logger.info(f"检测到漏单")
+                                self.recog.save_screencap("run_order_failure")
                                 self.send_email("检测到漏单！")
                                 self.back_to_index()
                                 return
@@ -2021,6 +2028,7 @@ class BaseSchedulerSolver(BaseSolver):
                     logger.exception(e)
                     choose_error += 1
                     self.recog.update()
+                    self.recog.save_screencap('choose_agent_failure')
                     back_count = 0
                     while self.get_infra_scene() != Scene.INFRA_MAIN:
                         self.back()
@@ -2054,29 +2062,31 @@ class BaseSchedulerSolver(BaseSolver):
                                                      use_digit_reader=True)
                 wait_time = round((execute_time - datetime.now()).total_seconds(), 1)
                 logger.debug(f"停止{wait_time}秒等待订单完成")
-                if 0 < wait_time < self.run_order_delay*60:
+                if 0 < wait_time < self.run_order_delay * 60:
                     logger.info(f"停止{wait_time}秒等待订单完成")
                     self.sleep(wait_time)
                     # 等待服务器交互
                     if self.get_infra_scene() == Scene.CONNECTING:
                         if not self.waiting_solver(Scene.CONNECTING, sleep_time=1):
                             return
+                self.recog.update()
+                self.recog.save_screencap('run_order')
                 if self.drone_room is None:
                     drone_count = self.digit_reader.get_drone(self.recog.gray)
                     logger.info(f'当前无人机数量为：{drone_count}')
                     # 200 为识别错误
                     if drone_count >= self.drone_count_limit and drone_count != 201:
+                        # 接受当前订单
+                        self.tap((self.recog.w * 0.25, self.recog.h * 0.5), interval=0.5)
                         self.drone(room, not_customize=True, skip_enter=True)
                 else:
-                    self.recog.update()
-                    self.recog.save_screencap('run_order')
                     self.back(interval=0.5)
                     self.back(interval=0.5)
             # 防止由于意外导致的死循环
             run_order_room = next(iter(new_plan))
             if '但书' in new_plan[run_order_room] or '龙舌兰' in new_plan[run_order_room]:
                 new_plan[run_order_room] = [data.agent for data in self.op_data.plan[room]]
-            self.tasks.append(SchedulerTask(time=self.tasks[0].time, task_plan=new_plan))
+            self.tasks.append(SchedulerTask(time=self.tasks[0].time, task_plan=new_plan, task_type=TaskTypes.RUN_ORDER))
             self.skip(['planned', 'todo_task'])
         elif len(new_plan) > 1:
             self.tasks.append(SchedulerTask(time=self.tasks[0].time, task_plan=new_plan))
