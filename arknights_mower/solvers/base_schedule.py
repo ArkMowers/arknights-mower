@@ -5,6 +5,7 @@ import time
 import os
 import sys
 import pathlib
+import urllib.request
 from enum import Enum
 from datetime import datetime, timedelta
 import numpy as np
@@ -2151,7 +2152,8 @@ class BaseSchedulerSolver(BaseSolver):
             recruit_special_tags["tags"].append(d["details"]["tags"])
 
     def initialize_maa(self):
-        asst_path = os.path.dirname(pathlib.Path(self.maa_config['maa_path']) / "Python" / "asst")
+        path = pathlib.Path(self.maa_config['maa_path'])
+        asst_path = os.path.dirname(path / 'Python' / 'asst')
         if asst_path not in sys.path:
             sys.path.append(asst_path)
         global Message
@@ -2159,10 +2161,19 @@ class BaseSchedulerSolver(BaseSolver):
         from asst.utils import Message, Version, InstanceOptionType
         from asst.updater import Updater
 
-        # logger.info("开始更新Maa……")
-        # Updater(self.maa_config['maa_path'], Version.Stable).update()
-        # logger.info("Maa更新完成")
-        Asst.load(path=self.maa_config['maa_path'])
+        try:
+            logger.debug(f'开始更新Maa活动关卡导航……')
+            ota_tasks_url = 'https://ota.maa.plus/MaaAssistantArknights/api/resource/tasks.json'
+            ota_tasks_path = path / 'cache' / 'resource' / 'tasks.json'
+            ota_tasks_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(ota_tasks_path, 'w', encoding='utf-8') as f:
+                with urllib.request.urlopen(ota_tasks_url) as u:
+                    f.write(u.read().decode('utf-8'))
+            logger.info(f'Maa活动关卡导航更新成功！')
+        except Exception as e:
+            logger.error(f'Maa活动关卡导航更新失败：{str(e)}')
+
+        Asst.load(path=path, incremental_path=path / 'cache')
 
         self.MAA = Asst(callback=self.log_maa)
         self.stages = []
