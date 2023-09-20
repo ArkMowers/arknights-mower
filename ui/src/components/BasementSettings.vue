@@ -53,11 +53,13 @@ const facility_with_empty = computed(() => {
           <td>分钟（可填小数）</td>
         </tr>
         <tr>
-          <td>无人机使用房间：<help-text>
+          <td>
+            无人机使用房间：<help-text>
               <div>加速制造站就选对应的制造站</div>
               <div>加速龙门币贸易站，选择 (加速贸易站)</div>
               <div>卖玉的贸易站,不会被加速,放心选 (加速贸易站)</div>
-            </help-text></td>
+            </help-text>
+          </td>
           <td colspan="2">
             <n-select :options="facility_with_empty" v-model:value="drone_room" />
           </td>
