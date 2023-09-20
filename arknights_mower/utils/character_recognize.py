@@ -47,7 +47,7 @@ def agent_sift_init():
         img = Image.fromarray(img)
 
         font = ImageFont.truetype(
-            f'{__rootdir__}/fonts/SourceHanSansSC-Bold.otf', size=30, encoding='utf-8'
+            f'{__rootdir__}/fonts/SourceHanSansCN-Medium.otf', size=30, encoding='utf-8'
         )
         chars = sorted(list(set(''.join([x for x in agent_list]))))
         assert len(chars) <= (lnum - 2) * (lnum - 2)
