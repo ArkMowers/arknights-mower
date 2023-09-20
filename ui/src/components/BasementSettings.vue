@@ -28,7 +28,7 @@ const facility_with_empty = computed(() => {
 </script>
 
 <template>
-  <div class="home-container">
+
     <n-card title="基建设置">
       <table class="riic-conf">
         <tr>
@@ -104,7 +104,7 @@ const facility_with_empty = computed(() => {
         </tr>
       </table>
     </n-card>
-  </div>
+
 </template>
 
 <style scoped lang="scss">

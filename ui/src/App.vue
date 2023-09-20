@@ -1,14 +1,9 @@
 <template>
-  <n-config-provider
-    :locale="zhCN"
-    :date-locale="dateZhCN"
-    class="provider"
-    :theme="theme == 'dark' ? darkTheme : undefined"
-    :hljs="hljs"
-  >
+  <n-config-provider :locale="zhCN" :date-locale="dateZhCN" class="provider"
+    :theme="theme == 'dark' ? darkTheme : undefined" :hljs="hljs">
     <n-global-style />
     <n-dialog-provider>
-      <n-layout has-sider>
+      <n-layout has-sider v-if="!mobilemode">
         <n-layout-sider
           bordered
           collapse-mode="width"
@@ -31,6 +26,9 @@
           <router-view />
         </n-layout-content>
       </n-layout>
+      <n-layout v-else><router-view />
+        <n-menu :options="menuOptions" mode="horizontal"  :collapsed="true" />
+      </n-layout>
     </n-dialog-provider>
   </n-config-provider>
 </template>
@@ -52,13 +50,14 @@ import {
   Flash
 } from '@vicons/ionicons5'
 import { DiceD20 } from '@vicons/fa'
-const collapsed = ref(true)
+const collapsed = ref(false);
+const mobilemode = ref(true);
 function renderIcon(icon) {
   return () => h(NIcon, null, { default: () => h(icon) })
 }
 
 import { RouterLink } from 'vue-router'
-const menuOptions = ref([
+const menuOptions = computed(() => [
   {
     label: () => h(RouterLink, { to: { path: '/' } }, { default: () => '运行日志' }),
     icon: renderIcon(BookOutline),
@@ -73,6 +72,7 @@ const menuOptions = ref([
     label: () => '设置',
     key: 'go-to-settings',
     icon: renderIcon(Settings),
+    show: !mobilemode.value,
     children: [
       {
         label: () => 'Mower设置',
@@ -82,7 +82,7 @@ const menuOptions = ref([
             label: () =>
               h(
                 RouterLink,
-                { to: { path: '/advancedleft/mower-setting' } },
+                { to: { path: '/setting/mower-setting' } },
                 { default: () => '基本设置' }
               ),
             key: 'go-to-mowersetting',
@@ -92,7 +92,7 @@ const menuOptions = ref([
             label: () =>
               h(
                 RouterLink,
-                { to: { path: '/advancedleft/basement-setting' } },
+                { to: { path: '/setting/basement-setting' } },
                 { default: () => '基建设置' }
               ),
             key: 'go-to-basementsetting',
@@ -101,7 +101,7 @@ const menuOptions = ref([
 
           {
             label: () =>
-              h(RouterLink, { to: { path: '/advancedleft/email' } }, { default: () => '邮件设置' }),
+              h(RouterLink, { to: { path: '/setting/email' } }, { default: () => '邮件设置' }),
             key: 'go-to-email',
             icon: renderIcon(MailOpen)
           },
@@ -109,7 +109,7 @@ const menuOptions = ref([
             label: () =>
               h(
                 RouterLink,
-                { to: { path: '/advancedleft/recruit' } },
+                { to: { path: '/setting/recruit' } },
                 { default: () => '公开招募' }
               ),
             key: 'go-to-recruit',
@@ -126,7 +126,7 @@ const menuOptions = ref([
             label: () =>
               h(
                 RouterLink,
-                { to: { path: '/advancedleft/maa-basic' } },
+                { to: { path: '/setting/maa-basic' } },
                 { default: () => '连接设置' }
               ),
             icon: renderIcon(Settings),
@@ -136,7 +136,7 @@ const menuOptions = ref([
             label: () =>
               h(
                 RouterLink,
-                { to: { path: '/advancedleft/maa-weekly' } },
+                { to: { path: '/setting/maa-weekly' } },
                 { default: () => '清理智' }
               ),
             key: 'go-to-maaweekly',
@@ -146,7 +146,7 @@ const menuOptions = ref([
             label: () =>
               h(
                 RouterLink,
-                { to: { path: '/advancedleft/clue' } },
+                { to: { path: '/setting/clue' } },
                 { default: () => '线索/信用商店' }
               ),
             key: 'go-to-clue',
@@ -156,7 +156,7 @@ const menuOptions = ref([
             label: () =>
               h(
                 RouterLink,
-                { to: { path: '/advancedleft/maahugmission' } },
+                { to: { path: '/setting/maahugmission' } },
                 { default: () => '肉鸽等' }
               ),
             key: 'go-to-maahugmission',
@@ -164,9 +164,16 @@ const menuOptions = ref([
           }
         ]
       }
-      //{ label: () => h(RouterLink, { to: { path: "/advancedleft/sk-land" } }, { default: () => "森空岛签到" }), key: "go-to-skland" },
+      //{ label: () => h(RouterLink, { to: { path: "/setting/sk-land" } }, { default: () => "森空岛签到" }), key: "go-to-skland" },
     ]
   },
+  {
+        label: () =>
+          h(RouterLink, { to: { path: '/setting/allsetting' } }, { default: () => '全部设置' }),
+        icon: renderIcon(Settings),
+        show: mobilemode.value,
+        key: 'go-to-allsetting'
+      },
   {
     label: () => '基建报表',
     key: 'building-report',
@@ -238,7 +245,7 @@ onMounted(async () => {
   })
 
   if (window.innerWidth > 570) {
-    collapsed.value = false
+    mobilemode.value = false
   }
 
   const params = new URLSearchParams(document.location.search)
