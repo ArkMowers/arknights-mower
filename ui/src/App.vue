@@ -1,13 +1,31 @@
 <template>
-  <n-config-provider :locale="zhCN" :date-locale="dateZhCN" class="provider"
-    :theme="theme == 'dark' ? darkTheme : undefined" :hljs="hljs">
+  <n-config-provider
+    :locale="zhCN"
+    :date-locale="dateZhCN"
+    class="provider"
+    :theme="theme == 'dark' ? darkTheme : undefined"
+    :hljs="hljs"
+  >
     <n-global-style />
     <n-dialog-provider>
       <n-layout has-sider>
-        <n-layout-sider bordered collapse-mode="width" :collapsed-width="50" :width="240" :collapsed="collapsed"
-          show-trigger @collapse="collapsed = true" @expand="collapsed = false">
-          <n-menu v-model:value="activeKey" :indent="24" :collapsed="collapsed" :collapsed-width="64"
-            :collapsed-icon-size="22" :options="menuOptions" />
+        <n-layout-sider
+          bordered
+          collapse-mode="width"
+          :collapsed-width="50"
+          :width="240"
+          :collapsed="collapsed"
+          show-trigger
+          @collapse="collapsed = true"
+          @expand="collapsed = false"
+        >
+          <n-menu
+            :indent="24"
+            :collapsed="collapsed"
+            :collapsed-width="64"
+            :collapsed-icon-size="22"
+            :options="menuOptions"
+          />
         </n-layout-sider>
         <n-layout-content class="main">
           <router-view />
@@ -18,7 +36,7 @@
 </template>
 
 <script setup>
-import { NIcon } from "naive-ui"
+import { NIcon } from 'naive-ui'
 import {
   BookOutline,
   Home,
@@ -31,15 +49,13 @@ import {
   MailOpen,
   People,
   Bag,
-  Flash,
-  
-} from "@vicons/ionicons5"
-import { DiceD20 }from "@vicons/fa"
-const collapsed = ref(false)
+  Flash
+} from '@vicons/ionicons5'
+import { DiceD20 } from '@vicons/fa'
+const collapsed = ref(true)
 function renderIcon(icon) {
-  return () => h(NIcon, null, { default: () => h(icon) });
+  return () => h(NIcon, null, { default: () => h(icon) })
 }
-
 
 import { RouterLink } from 'vue-router'
 const menuOptions = ref([
@@ -70,7 +86,7 @@ const menuOptions = ref([
                 { default: () => '基本设置' }
               ),
             key: 'go-to-mowersetting',
-            icon: renderIcon(Settings),
+            icon: renderIcon(Settings)
           },
           {
             label: () =>
@@ -78,30 +94,29 @@ const menuOptions = ref([
                 RouterLink,
                 { to: { path: '/advancedleft/basement-setting' } },
                 { default: () => '基建设置' }
-                
               ),
             key: 'go-to-basementsetting',
-            icon: renderIcon(Hammer),
+            icon: renderIcon(Hammer)
           },
 
           {
             label: () =>
-              h(
-                RouterLink,
-                { to: { path: '/advancedleft/email' } },
-                { default: () => '邮件设置' }
-              ),
+              h(RouterLink, { to: { path: '/advancedleft/email' } }, { default: () => '邮件设置' }),
             key: 'go-to-email',
             icon: renderIcon(MailOpen)
           },
           {
             label: () =>
-              h(RouterLink, { to: { path: '/advancedleft/recruit' } }, { default: () => '公开招募' }),
+              h(
+                RouterLink,
+                { to: { path: '/advancedleft/recruit' } },
+                { default: () => '公开招募' }
+              ),
             key: 'go-to-recruit',
             icon: renderIcon(People)
-          },]
+          }
+        ]
       },
-
 
       {
         label: () => 'MAA设置',
@@ -125,13 +140,17 @@ const menuOptions = ref([
                 { default: () => '清理智' }
               ),
             key: 'go-to-maaweekly',
-            icon: renderIcon(Flash),
+            icon: renderIcon(Flash)
           },
           {
             label: () =>
-              h(RouterLink, { to: { path: '/advancedleft/clue' } }, { default: () => '线索/信用商店' }),
+              h(
+                RouterLink,
+                { to: { path: '/advancedleft/clue' } },
+                { default: () => '线索/信用商店' }
+              ),
             key: 'go-to-clue',
-            icon: renderIcon(Bag),
+            icon: renderIcon(Bag)
           },
           {
             label: () =>
@@ -199,8 +218,6 @@ const { get_running, listen_ws } = mower_store
 
 const axios = inject('axios')
 
-const collapse = ref(true)
-
 function start() {
   running.value = true
   log_lines.value = []
@@ -221,7 +238,7 @@ onMounted(async () => {
   })
 
   if (window.innerWidth > 570) {
-    collapse.value = false
+    collapsed.value = false
   }
 
   const params = new URLSearchParams(document.location.search)
