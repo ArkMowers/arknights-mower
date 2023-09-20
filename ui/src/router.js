@@ -15,11 +15,15 @@ const routes = [
     name: 'plan'
   },
   {
-    path: '/advancedleft',
-    component: () => import('@/pages/AdvancedLeft.vue'),
-    meta: { title: 'Advanced Left Page' },
-    name: 'advancedleft',
+    path: '/setting',
+    meta: { title: '设置' },
     children: [
+      {
+        path: 'allsetting',
+        component: () => import('@/pages/allsetting.vue'),
+        meta: { title: '全部设置' },
+        name: 'allsetting'
+      },
       {
         path: 'mower-setting',
         component: () => import('@/components/MowerSettings.vue'),

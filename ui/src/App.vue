@@ -82,7 +82,7 @@ const menuOptions = computed(() => [
             label: () =>
               h(
                 RouterLink,
-                { to: { path: '/advancedleft/mower-setting' } },
+                { to: { path: '/setting/mower-setting' } },
                 { default: () => '基本设置' }
               ),
             key: 'go-to-mowersetting',
@@ -92,7 +92,7 @@ const menuOptions = computed(() => [
             label: () =>
               h(
                 RouterLink,
-                { to: { path: '/advancedleft/basement-setting' } },
+                { to: { path: '/setting/basement-setting' } },
                 { default: () => '基建设置' }
               ),
             key: 'go-to-basementsetting',
@@ -101,7 +101,7 @@ const menuOptions = computed(() => [
 
           {
             label: () =>
-              h(RouterLink, { to: { path: '/advancedleft/email' } }, { default: () => '邮件设置' }),
+              h(RouterLink, { to: { path: '/setting/email' } }, { default: () => '邮件设置' }),
             key: 'go-to-email',
             icon: renderIcon(MailOpen)
           },
@@ -109,7 +109,7 @@ const menuOptions = computed(() => [
             label: () =>
               h(
                 RouterLink,
-                { to: { path: '/advancedleft/recruit' } },
+                { to: { path: '/setting/recruit' } },
                 { default: () => '公开招募' }
               ),
             key: 'go-to-recruit',
@@ -126,7 +126,7 @@ const menuOptions = computed(() => [
             label: () =>
               h(
                 RouterLink,
-                { to: { path: '/advancedleft/maa-basic' } },
+                { to: { path: '/setting/maa-basic' } },
                 { default: () => '连接设置' }
               ),
             icon: renderIcon(Settings),
@@ -136,7 +136,7 @@ const menuOptions = computed(() => [
             label: () =>
               h(
                 RouterLink,
-                { to: { path: '/advancedleft/maa-weekly' } },
+                { to: { path: '/setting/maa-weekly' } },
                 { default: () => '清理智' }
               ),
             key: 'go-to-maaweekly',
@@ -146,7 +146,7 @@ const menuOptions = computed(() => [
             label: () =>
               h(
                 RouterLink,
-                { to: { path: '/advancedleft/clue' } },
+                { to: { path: '/setting/clue' } },
                 { default: () => '线索/信用商店' }
               ),
             key: 'go-to-clue',
@@ -156,7 +156,7 @@ const menuOptions = computed(() => [
             label: () =>
               h(
                 RouterLink,
-                { to: { path: '/advancedleft/maahugmission' } },
+                { to: { path: '/setting/maahugmission' } },
                 { default: () => '肉鸽等' }
               ),
             key: 'go-to-maahugmission',
@@ -164,12 +164,12 @@ const menuOptions = computed(() => [
           }
         ]
       }
-      //{ label: () => h(RouterLink, { to: { path: "/advancedleft/sk-land" } }, { default: () => "森空岛签到" }), key: "go-to-skland" },
+      //{ label: () => h(RouterLink, { to: { path: "/setting/sk-land" } }, { default: () => "森空岛签到" }), key: "go-to-skland" },
     ]
   },
   {
         label: () =>
-          h(RouterLink, { to: { path: '/advancedleft' } }, { default: () => '全部设置' }),
+          h(RouterLink, { to: { path: '/setting/allsetting' } }, { default: () => '全部设置' }),
         icon: renderIcon(Settings),
         show: mobilemode.value,
         key: 'go-to-allsetting'
