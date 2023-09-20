@@ -20,14 +20,21 @@
 <script setup>
 import { NIcon } from "naive-ui"
 import {
-  BookOutline, //给log用的图标
+  BookOutline,
   Home,
   BarChart,
   PieChart,
   StatsChart,
   Settings,
   HelpCircle,
+  Hammer,
+  MailOpen,
+  People,
+  Bag,
+  Flash,
+  
 } from "@vicons/ionicons5"
+import { DiceD20 }from "@vicons/fa"
 const collapsed = ref(false)
 function renderIcon(icon) {
   return () => h(NIcon, null, { default: () => h(icon) });
@@ -52,7 +59,7 @@ const menuOptions = ref([
     icon: renderIcon(Settings),
     children: [
       {
-        label: () => 'Mower-设置',
+        label: () => 'Mower设置',
         key: 'go-to-mowersetting',
         children: [
           {
@@ -60,18 +67,21 @@ const menuOptions = ref([
               h(
                 RouterLink,
                 { to: { path: '/advancedleft/mower-setting' } },
-                { default: () => 'Mower-设置' }
+                { default: () => '基本设置' }
               ),
-            key: 'go-to-mowersetting'
+            key: 'go-to-mowersetting',
+            icon: renderIcon(Settings),
           },
           {
             label: () =>
               h(
                 RouterLink,
                 { to: { path: '/advancedleft/basement-setting' } },
-                { default: () => 'Mower-基建设置' }
+                { default: () => '基建设置' }
+                
               ),
-            key: 'go-to-basementsetting'
+            key: 'go-to-basementsetting',
+            icon: renderIcon(Hammer),
           },
 
           {
@@ -79,20 +89,22 @@ const menuOptions = ref([
               h(
                 RouterLink,
                 { to: { path: '/advancedleft/email' } },
-                { default: () => 'Mower-邮件设置' }
+                { default: () => '邮件设置' }
               ),
-            key: 'go-to-email'
+            key: 'go-to-email',
+            icon: renderIcon(MailOpen)
           },
           {
             label: () =>
               h(RouterLink, { to: { path: '/advancedleft/recruit' } }, { default: () => '公开招募' }),
-            key: 'go-to-recruit'
+            key: 'go-to-recruit',
+            icon: renderIcon(People)
           },]
       },
 
 
       {
-        label: () => 'maa设置',
+        label: () => 'MAA设置',
         key: 'maa-settings',
         children: [
           {
@@ -100,8 +112,9 @@ const menuOptions = ref([
               h(
                 RouterLink,
                 { to: { path: '/advancedleft/maa-basic' } },
-                { default: () => '基础设置' }
+                { default: () => '连接设置' }
               ),
+            icon: renderIcon(Settings),
             key: 'go-to-maabasic'
           },
           {
@@ -111,12 +124,14 @@ const menuOptions = ref([
                 { to: { path: '/advancedleft/maa-weekly' } },
                 { default: () => '清理智' }
               ),
-            key: 'go-to-maaweekly'
+            key: 'go-to-maaweekly',
+            icon: renderIcon(Flash),
           },
           {
             label: () =>
-              h(RouterLink, { to: { path: '/advancedleft/clue' } }, { default: () => '线索交流' }),
-            key: 'go-to-clue'
+              h(RouterLink, { to: { path: '/advancedleft/clue' } }, { default: () => '线索/信用商店' }),
+            key: 'go-to-clue',
+            icon: renderIcon(Bag),
           },
           {
             label: () =>
@@ -125,7 +140,8 @@ const menuOptions = ref([
                 { to: { path: '/advancedleft/maahugmission' } },
                 { default: () => '肉鸽等' }
               ),
-            key: 'go-to-maahugmission'
+            key: 'go-to-maahugmission',
+            icon: renderIcon(DiceD20)
           }
         ]
       }
