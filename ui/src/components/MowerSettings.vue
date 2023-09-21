@@ -62,6 +62,7 @@ async function select_simulator_folder() {
             <help-text>
               <div>不同模拟器adb地址不同。如不填，系统会自动去寻找adb device中的第一个。</div>
               <div>夜神：<code>127.0.0.1:62001</code></div>
+              <div>明日方舟mumu12专版：<code>127.0.0.1:16384</code></div>
             </help-text>
           </td>
           <td colspan="2">

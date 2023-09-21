@@ -67,6 +67,18 @@ const routes = [
         name: 'maa-weekly'
       },
       {
+        path: 'maa-xinyi',
+        component: () => import('@/components/MaaWeeklynew1.vue'),
+        meta: { title: '新一' },
+        name: 'xinyi'
+      },
+      {
+        path: 'maa-xiner',
+        component: () => import('@/components/MaaWeeklynew2.vue'),
+        meta: { title: '新二' },
+        name: 'xiner'
+      },
+      {
         path: 'sk-land',
         component: () => import('@/components/SKLand.vue'),
         meta: { title: 'SK Land Page' },
