@@ -7,6 +7,8 @@ import { ref, inject } from 'vue'
 
 const axios = inject('axios')
 
+const mobile = inject('mobile')
+
 const mode = ref('simple')
 const test_result = ref('')
 
@@ -33,42 +35,45 @@ async function test_email() {
     </template>
     <template #default>
       <template v-if="mode == 'simple'">
-        <p>在任务完成后发送提醒邮件。</p>
-        <p>
-          在简单模式下，Mower使用您的QQ邮箱。<n-button
-            text
-            tag="a"
-            href="https://service.mail.qq.com/detail/0/75"
-            target="_blank"
-            type="primary"
-          >
-            什么是授权码？
-          </n-button>
-        </p>
-        <table class="email-table">
-          <tr>
-            <td class="email-label">QQ邮箱</td>
-            <td><n-input v-model:value="account"></n-input></td>
-          </tr>
-          <tr>
-            <td class="email-label">授权码</td>
-            <td>
-              <n-input v-model:value="pass_code" type="password" show-password-on="click"></n-input>
-            </td>
-          </tr>
-        </table>
-        <div class="email-test">
+        <n-form
+          :label-placement="mobile ? 'top' : 'left'"
+          :show-feedback="false"
+          label-width="96"
+          label-align="left"
+        >
+          <n-form-item label="QQ邮箱">
+            <n-input v-model:value="account" />
+          </n-form-item>
+          <n-form-item label="授权码">
+            <template #label>
+              <span>授权码</span>
+              <help-text>
+                <n-button
+                  text
+                  tag="a"
+                  href="https://service.mail.qq.com/detail/0/75"
+                  target="_blank"
+                  type="primary"
+                >
+                  https://service.mail.qq.com/detail/0/75
+                </n-button>
+              </help-text>
+            </template>
+            <n-input v-model:value="pass_code" type="password" show-password-on="click"></n-input>
+          </n-form-item>
+          <n-form-item>
+            <template #label>
+              <span>标题前缀</span>
+              <help-text>可用于区分来自多个Mower的邮件</help-text>
+            </template>
+            <n-input v-model:value="mail_subject" />
+          </n-form-item>
+        </n-form>
+        <n-divider />
+        <div class="email-test mt-16">
           <n-button @click="test_email">发送测试邮件</n-button>
           <div>{{ test_result }}</div>
         </div>
-        <n-divider />
-        <table class="email-table">
-          <tr>
-            <td class="email-label">标题前缀</td>
-            <td><n-input v-model:value="mail_subject" /></td>
-          </tr>
-        </table>
-        <div>标题前缀可用于区分多个Mower。</div>
       </template>
     </template>
   </n-card>
@@ -109,5 +114,9 @@ p {
 .card-title {
   font-weight: 500;
   font-size: 18px;
+}
+
+.mt-16 {
+  margin-top: 16px;
 }
 </style>
