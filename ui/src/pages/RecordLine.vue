@@ -1,11 +1,9 @@
 <template>
   <div>
     <h1 class="page-title">干员基建报表</h1>
-
     <div class="report-container">
       <div v-for="(groupData, index) in reportData" :key="index" class="report-card">
         <h2>{{ groupData.groupName }}</h2>
-
         <Line :data="groupData.moodData" :options="chartOptions" />
       </div>
     </div>

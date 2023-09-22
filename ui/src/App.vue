@@ -1,39 +1,70 @@
-<template>
+<template #app >
   <n-config-provider :locale="zhCN" :date-locale="dateZhCN" class="provider"
     :theme="theme == 'dark' ? darkTheme : undefined" :hljs="hljs">
     <n-global-style />
     <n-dialog-provider>
       <n-layout has-sider v-if="!mobilemode">
-        <n-layout-sider
-          bordered
-          collapse-mode="width"
-          :collapsed-width="50"
-          :width="240"
-          :collapsed="collapsed"
-          show-trigger
-          @collapse="collapsed = true"
-          @expand="collapsed = false"
-        >
-          <n-menu
-            :indent="24"
-            :collapsed="collapsed"
-            :collapsed-width="64"
-            :collapsed-icon-size="22"
-            :options="menuOptions"
-          />
+        <n-layout-sider bordered collapse-mode="width" :collapsed-width="50" :width="240" :collapsed="collapsed"
+          show-trigger @collapse="collapsed = true" @expand="collapsed = false">
+          <n-menu :indent="24" :collapsed="collapsed" :collapsed-width="64" :collapsed-icon-size="22"
+            :options="menuOptions" />
         </n-layout-sider>
         <n-layout-content class="main">
           <router-view />
         </n-layout-content>
       </n-layout>
-      <n-layout v-else><router-view />
-        <n-menu :options="menuOptions" mode="horizontal"  :collapsed="true" />
+
+      <n-layout v-if="mobilemode">
+        <n-layout-header bordered position="absolute" style="height: 90vh ;overflow: auto;">
+          <router-view />
+        </n-layout-header>
+        <n-layout-footer bordered position="absolute" style="height: 10vh; max-height: 64px;">
+          <n-tabs type="line" justify-content="space-evenly">
+            <n-tab name="主页" @click="$router.push('/')">
+              <div style="display: flex; flex-direction: column; align-items: center;">
+                <n-icon size="24" style="margin-bottom: 4px;" :component="BookOutline" />
+                运行日志
+              </div>
+            </n-tab>
+            <n-tab name="排班表" @click="$router.push('/plan')">
+              <div style="display: flex; flex-direction: column; align-items: center;">
+                <n-icon size="24" style="margin-bottom: 4px;" :component="Home" />
+                排班表
+              </div>
+            </n-tab>
+            <n-tab name="心情" @click="showModal = true">
+              <div style="display: flex; flex-direction: column; align-items: center;">
+                <n-icon size="24" style="margin-bottom: 4px;" :component="StatsChart" />
+                基建报表
+              </div>
+              <n-modal v-model:show="showModal">
+                <n-card style="width: 400px" title="心情报表：" :bordered="false" size="huge" role="dialog" aria-modal="true">
+                  <n-button @click="showModal = false; $router.push('/record-pie')">心情报表：饼图</n-button>
+                  <n-button @click="showModal = false; $router.push('/record-line')">心情报表：折线图</n-button>
+                </n-card>
+              </n-modal>
+            </n-tab>
+            <n-tab name="设置" @click="$router.push('/setting/allsetting')">
+              <div style="display: flex; flex-direction: column; align-items: center;">
+                <n-icon size="24" style="margin-bottom: 4px;" :component="Settings" />
+                设置
+              </div>
+            </n-tab>
+            <n-tab name="帮助" @click="$router.push('/doc')">
+              <div style="display: flex; flex-direction: column; align-items: center;">
+                <n-icon size="24" style="margin-bottom: 4px;" :component="HelpCircle" />
+                帮助
+              </div>
+            </n-tab>
+          </n-tabs>
+        </n-layout-footer>
       </n-layout>
     </n-dialog-provider>
   </n-config-provider>
 </template>
 
 <script setup>
+const showModal = ref(false)
 import { NIcon } from 'naive-ui'
 import {
   BookOutline,
@@ -168,12 +199,12 @@ const menuOptions = computed(() => [
     ]
   },
   {
-        label: () =>
-          h(RouterLink, { to: { path: '/setting/allsetting' } }, { default: () => '全部设置' }),
-        icon: renderIcon(Settings),
-        show: mobilemode.value,
-        key: 'go-to-allsetting'
-      },
+    label: () =>
+      h(RouterLink, { to: { path: '/setting/allsetting' } }, { default: () => '全部设置' }),
+    icon: renderIcon(Settings),
+    show: mobilemode.value,
+    key: 'go-to-allsetting'
+  },
   {
     label: () => '基建报表',
     key: 'building-report',
