@@ -384,13 +384,15 @@ class Operators(object):
 
     def available_free(self, free_type='high'):
         ret = 0
+        freeName = []
         if free_type == 'high':
             idx = 0
             for dorm in self.dorm:
                 if dorm.name == '' or (dorm.name in self.operators.keys() and not self.operators[dorm.name].is_high()):
                     ret += 1
                 elif dorm.time is not None and dorm.time < datetime.now():
-                    logger.info("检测到房间休息完毕，释放Free位")
+                    logger.info(f"检测到房间休息完毕，释放{dorm.name}宿舍位")
+                    freeName.append(dorm.name)
                     dorm.name = ''
                     ret += 1
                 if idx == self.config.max_resting_count - 1:
@@ -407,11 +409,16 @@ class Operators(object):
                     dorm.name = ''
                     ret += 1
                 elif dorm.time is not None and dorm.time < datetime.now():
-                    logger.info("检测到房间休息完毕，释放Free位")
-                    if dorm.name in agent_list:
-                        self.operators[dorm.name].mood = 24
+                    logger.info(f"检测到房间休息完毕，释放{dorm.name}宿舍位")
+                    freeName.append(dorm.name)
                     dorm.name = ''
                     ret += 1
+        if len(freeName) > 0:
+            for name in freeName:
+                if name in agent_list:
+                    self.operators[name].mood = 24
+                    self.operators[name].depletion_rate = 0
+                    self.operators[name].time_stamp = datetime.now()
         return ret
 
     def assign_dorm(self, name):
