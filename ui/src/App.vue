@@ -177,17 +177,6 @@ const menuOptions = computed(() => [
             label: () =>
               h(
                 RouterLink,
-                { to: { path: '/setting/maa-xinyi' } },
-                { default: () => '清理智-xinyi' }
-              ),
-            key: 'go-to-maaweekly-xinyi',
-            icon: renderIcon(Flash)
-          },
-          //{ label: () => h(RouterLink, { to: { path: '/setting/maa-xiner' } }, { default: () => '清理智-xiner' }), key: 'go-to-maaweekly-xiner', icon: renderIcon(Flash) },
-          {
-            label: () =>
-              h(
-                RouterLink,
                 { to: { path: '/setting/clue' } },
                 { default: () => '线索/信用商店' }
               ),
