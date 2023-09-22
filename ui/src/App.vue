@@ -194,4 +194,8 @@ td {
     margin-top: 0;
   }
 }
+
+.dialog-btn {
+  margin-left: 4px;
+}
 </style>

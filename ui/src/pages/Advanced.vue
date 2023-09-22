@@ -3,7 +3,6 @@ import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
 import { storeToRefs } from 'pinia'
 import { computed, inject } from 'vue'
-import katex from 'katex'
 
 import pinyinMatch from 'pinyin-match/es/traditional'
 
@@ -87,7 +86,7 @@ function render_label(option) {
         </n-form-item>
         <n-form-item>
           <template #label>
-            <span>adb连接地址</span>
+            <span>ADB连接地址</span>
             <help-text>
               <div>不同模拟器adb地址不同。如不填，系统会自动去寻找adb device中的第一个。</div>
               <div>夜神：<code>127.0.0.1:62001</code></div>
@@ -309,9 +308,5 @@ function render_label(option) {
 .coord-label {
   width: 40px;
   padding-left: 8px;
-}
-
-.dialog-btn {
-  margin-left: 4px;
 }
 </style>
