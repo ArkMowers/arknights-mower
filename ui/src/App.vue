@@ -4,17 +4,30 @@
     <n-global-style />
     <n-dialog-provider>
       <n-layout has-sider v-if="!mobilemode">
-        <n-layout-sider bordered collapse-mode="width" :collapsed-width="50" :width="240" :collapsed="collapsed"
-          show-trigger @collapse="collapsed = true" @expand="collapsed = false">
-          <n-menu :indent="24" :collapsed="collapsed" :collapsed-width="64" :collapsed-icon-size="22"
-            :options="menuOptions" />
+        <n-layout-sider
+          bordered
+          collapse-mode="width"
+          :collapsed-width="50"
+          :width="240"
+          :collapsed="collapsed"
+          show-trigger
+          @collapse="collapsed = true"
+          @expand="collapsed = false"
+        >
+          <n-menu
+            :indent="24"
+            :collapsed="collapsed"
+            :collapsed-width="64"
+            :collapsed-icon-size="22"
+            :options="menuOptions"
+          />
         </n-layout-sider>
         <n-layout-content class="main">
           <router-view />
         </n-layout-content>
       </n-layout>
       <n-layout v-else><router-view />
-        <n-menu :options="menuOptions" mode="horizontal" :collapsed="true" />
+        <n-menu :options="menuOptions" mode="horizontal"  :collapsed="true" />
       </n-layout>
     </n-dialog-provider>
   </n-config-provider>
@@ -133,17 +146,6 @@ const menuOptions = computed(() => [
             label: () =>
               h(
                 RouterLink,
-                { to: { path: '/setting/maa-xinyi' } },
-                { default: () => '清理智-xinyi' }
-              ),
-            key: 'go-to-maaweekly-xinyi',
-            icon: renderIcon(Flash)
-          },
-          //{ label: () => h(RouterLink, { to: { path: '/setting/maa-xiner' } }, { default: () => '清理智-xiner' }), key: 'go-to-maaweekly-xiner', icon: renderIcon(Flash) },
-          {
-            label: () =>
-              h(
-                RouterLink,
                 { to: { path: '/setting/clue' } },
                 { default: () => '线索/信用商店' }
               ),
@@ -166,12 +168,12 @@ const menuOptions = computed(() => [
     ]
   },
   {
-    label: () =>
-      h(RouterLink, { to: { path: '/setting/allsetting' } }, { default: () => '全部设置' }),
-    icon: renderIcon(Settings),
-    show: mobilemode.value,
-    key: 'go-to-allsetting'
-  },
+        label: () =>
+          h(RouterLink, { to: { path: '/setting/allsetting' } }, { default: () => '全部设置' }),
+        icon: renderIcon(Settings),
+        show: mobilemode.value,
+        key: 'go-to-allsetting'
+      },
   {
     label: () => '基建报表',
     key: 'building-report',

@@ -12,7 +12,6 @@ export const useConfigStore = defineStore('config', () => {
   const maa_enable = ref(false)
   const maa_path = ref('')
   const maa_weekly_plan = ref([])
-  const maa_weekly_plan1 = ref([])
   const maa_rg_enable = ref(0)
   const mail_enable = ref(false)
   const account = ref('')
@@ -76,7 +75,6 @@ export const useConfigStore = defineStore('config', () => {
     maa_path.value = response.data.maa_path
     maa_rg_enable.value = response.data.maa_rg_enable == 1
     maa_weekly_plan.value = response.data.maa_weekly_plan
-    maa_weekly_plan1.value = response.data.maa_weekly_plan1
     mail_enable.value = response.data.mail_enable != 0
     account.value = response.data.account
     pass_code.value = response.data.pass_code
@@ -130,7 +128,6 @@ export const useConfigStore = defineStore('config', () => {
       maa_path: maa_path.value,
       maa_rg_enable: maa_rg_enable.value ? 1 : 0,
       maa_weekly_plan: maa_weekly_plan.value,
-      maa_weekly_plan1: maa_weekly_plan1.value,
       mail_enable: mail_enable.value ? 1 : 0,
       package_type: package_type.value == 'official' ? 1 : 0,
       pass_code: pass_code.value,
@@ -183,7 +180,6 @@ export const useConfigStore = defineStore('config', () => {
       maa_enable,
       maa_path,
       maa_weekly_plan,
-      maa_weekly_plan1,
       maa_rg_enable,
       mail_enable,
       account,
@@ -238,7 +234,6 @@ export const useConfigStore = defineStore('config', () => {
     maa_path,
     maa_rg_enable,
     maa_weekly_plan,
-    maa_weekly_plan1,
     mail_enable,
     account,
     pass_code,
