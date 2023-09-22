@@ -92,11 +92,12 @@ function stop() {
 
 <style scoped lang="scss">
 .home-container {
+  padding: 0 12px 12px;
+  flex-grow: 1;
   display: flex;
   flex-direction: column;
   gap: 8px;
   overflow: hidden;
-  height: 100%;
 }
 
 .log {
