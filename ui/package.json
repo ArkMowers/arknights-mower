@@ -24,11 +24,9 @@
     "vue": "^3.2.47",
     "vue-axios": "^3.5.2",
     "vue-chartjs": "^5.0.0",
-    "vue-router": "^4.2.4",
-    "vuetify": "^3.3.17"
+    "vue-router": "^4.2.4"
   },
   "devDependencies": {
-    "@mdi/font": "^7.2.96",
     "@rushstack/eslint-patch": "^1.2.0",
     "@vicons/fa": "^0.12.0",
     "@vicons/ionicons5": "^0.12.0",
