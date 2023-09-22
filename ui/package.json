@@ -16,6 +16,7 @@
     "chartjs-adapter-moment": "^1.0.1",
     "chartjs-plugin-datalabels": "^2.2.0",
     "highlight.js": "^11.8.0",
+    "katex": "^0.16.8",
     "luxon": "^3.4.0",
     "moment": "^2.29.4",
     "pinia": "^2.0.32",
@@ -27,6 +28,7 @@
   "devDependencies": {
     "@rushstack/eslint-patch": "^1.2.0",
     "@vitejs/plugin-vue": "^4.0.0",
+    "@vitejs/plugin-vue-jsx": "^3.0.2",
     "@vue/eslint-config-prettier": "^7.1.0",
     "eslint": "^8.34.0",
     "eslint-plugin-vue": "^9.9.0",

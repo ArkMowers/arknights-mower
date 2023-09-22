@@ -1,8 +1,11 @@
-<script setup>
+<script setup lang="jsx">
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
 import { storeToRefs } from 'pinia'
 import { computed, inject } from 'vue'
+import katex from 'katex'
+
+import pinyinMatch from 'pinyin-match/es/traditional'
 
 const config_store = useConfigStore()
 const plan_store = usePlanStore()
@@ -54,6 +57,15 @@ async function select_simulator_folder() {
 }
 
 const mobile = inject('mobile')
+
+function render_label(option) {
+  return (
+    <div style="display: flex; gap: 6px; align-items: center">
+      <n-avatar src={`avatar/${option.value}.png`} size="small" round />
+      <div>{option.value}</div>
+    </div>
+  )
+}
 </script>
 
 <template>
@@ -149,78 +161,94 @@ const mobile = inject('mobile')
       </n-form>
     </n-card>
     <n-card title="基建设置">
-      <table class="riic-conf">
-        <tr>
-          <td>
-            宿舍黑名单<help-text>
+      <n-form
+        :label-placement="mobile ? 'top' : 'left'"
+        :show-feedback="false"
+        label-width="140"
+        label-align="left"
+      >
+        <n-form-item>
+          <template #label>
+            <span>宿舍黑名单</span>
+            <help-text>
               <div>不希望进行填充宿舍的干员</div>
             </help-text>
-          </td>
-          <td colspan="2">
-            <n-select multiple filterable tag :options="operators" v-model:value="free_blacklist" />
-          </td>
-        </tr>
-        <tr>
-          <td>
-            跑单前置延时<help-text>
+          </template>
+          <n-transfer
+            v-if="mobile"
+            virtual-scroll
+            source-filterable
+            target-filterable
+            :options="operators"
+            v-model:value="free_blacklist"
+            :render-source-label="(o) => render_label(o.option)"
+            :render-target-label="(o) => render_label(o.option)"
+            :filter="(p, o) => (p ? pinyinMatch.match(o.label, p) : true)"
+          />
+          <n-select
+            v-else
+            multiple
+            filterable
+            tag
+            :options="operators"
+            :render-label="render_label"
+            v-model:value="free_blacklist"
+          />
+        </n-form-item>
+        <n-form-item>
+          <template #label>
+            <span>跑单前置延时</span>
+            <help-text>
               <div>推荐范围5-10</div>
+              <div>可填小数</div>
             </help-text>
-          </td>
-          <td>
-            <n-input-number v-model:value="run_order_delay" />
-          </td>
-          <td>分钟（可填小数）</td>
-        </tr>
-        <tr>
-          <td>无人机使用房间：</td>
-          <td colspan="2">
-            <n-select :options="facility_with_empty" v-model:value="drone_room" />
-          </td>
-        </tr>
-        <tr>
-          <td>
-            无人机使用阈值<help-text>
+          </template>
+          <n-input-number v-model:value="run_order_delay" />
+        </n-form-item>
+        <n-form-item>
+          <template #label>
+            <span>无人机使用房间</span>
+            <help-text>
+              <div>加速贸易站请选“（加速贸易站）”</div>
+              <div>暂不支持加速指定站</div>
+            </help-text>
+          </template>
+          <n-select :options="facility_with_empty" v-model:value="drone_room" />
+        </n-form-item>
+        <n-form-item>
+          <template #label>
+            <span>无人机使用阈值</span>
+            <help-text>
               <div>如加速贸易，推荐大于 贸易站数 x 10 + 92</div>
               <div>如加速制造，推荐大于 贸易站数 x 10</div>
             </help-text>
-          </td>
-          <td colspan="2">
-            <n-input-number v-model:value="drone_count_limit" />
-          </td>
-        </tr>
-        <tr>
-          <td>搓玉补货房间：</td>
-          <td colspan="2">
-            <n-select
-              multiple
-              filterable
-              tag
-              :options="left_side_facility"
-              v-model:value="reload_room"
-            />
-          </td>
-        </tr>
-        <tr>
-          <td>
-            心情阈值：<help-text>
+          </template>
+          <n-input-number v-model:value="drone_count_limit" />
+        </n-form-item>
+        <n-form-item label="搓玉补货房间：">
+          <n-select
+            multiple
+            filterable
+            tag
+            :options="left_side_facility"
+            v-model:value="reload_room"
+          />
+        </n-form-item>
+        <n-form-item>
+          <template #label>
+            <span>心情阈值：</span>
+            <help-text>
               <div>2电站推荐不低于0.75</div>
               <div>3电站推荐不低于0.5</div>
               <div>即将大更新推荐设置成0.8</div>
             </help-text>
-          </td>
-          <td colspan="2">
-            <div class="threshold">
-              <n-slider v-model:value="resting_threshold" :step="0.05" :min="0.5" :max="0.8" />
-              <n-input-number
-                v-model:value="resting_threshold"
-                :step="0.05"
-                :min="0.5"
-                :max="0.8"
-              />
-            </div>
-          </td>
-        </tr>
-      </table>
+          </template>
+          <div class="threshold">
+            <n-slider v-model:value="resting_threshold" :step="0.05" :min="0.5" :max="0.8" />
+            <n-input-number v-model:value="resting_threshold" :step="0.05" :min="0.5" :max="0.8" />
+          </div>
+        </n-form-item>
+      </n-form>
     </n-card>
     <maa-basic />
     <email />
@@ -233,6 +261,7 @@ const mobile = inject('mobile')
   display: flex;
   align-items: center;
   gap: 14px;
+  width: 100%;
 }
 
 .mower-basic {

@@ -1,7 +1,7 @@
 <script setup>
 import { inject } from 'vue'
 
-const mobile_mode = inject('mobile_mode')
+const mobile = inject('mobile')
 </script>
 
 <template>
