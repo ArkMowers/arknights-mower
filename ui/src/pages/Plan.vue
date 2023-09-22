@@ -58,7 +58,7 @@ async function open_plan_file() {
         <tr>
           <td>
             令夕模式（令夕上班时起作用）<help-text>
-              <div>启动Mower前需要手动对齐心情</div>
+              <div>启动Mower前需要手动搓心情差</div>
               <div>感知：夕心情-令心情=12</div>
               <div>烟火：令心情-夕心情=12</div>
               <div>均衡：夕令心情一样</div>
@@ -106,7 +106,7 @@ async function open_plan_file() {
         </tr>
         <tr>
           <td>
-            0心情工作的干员<help-text> <div>心情涣散状态任能触发技能的干员</div></help-text>
+            0心情工作的干员<help-text> <div>心情涣散状态任能触发技能的干员</div><div>比如医疗小车</div></help-text>
           </td>
           <td colspan="3">
             <n-select multiple filterable tag :options="operators" v-model:value="workaholic" />
