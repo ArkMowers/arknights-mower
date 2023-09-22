@@ -1,36 +1,63 @@
 <template>
-  <n-config-provider :locale="zhCN" :date-locale="dateZhCN" class="provider"
-    :theme="theme == 'dark' ? darkTheme : undefined" :hljs="hljs">
-    <n-global-style />
-    <n-dialog-provider>
-      <n-layout has-sider v-if="!mobilemode">
-        <n-layout-sider
-          bordered
-          collapse-mode="width"
-          :collapsed-width="50"
-          :width="240"
-          :collapsed="collapsed"
-          show-trigger
-          @collapse="collapsed = true"
-          @expand="collapsed = false"
-        >
-          <n-menu
-            :indent="24"
+  <v-app>
+    <n-config-provider
+      :locale="zhCN"
+      :date-locale="dateZhCN"
+      class="provider"
+      :theme="theme == 'dark' ? darkTheme : undefined"
+      :hljs="hljs"
+    >
+      <n-global-style />
+      <n-dialog-provider>
+        <n-layout has-sider v-if="!mobilemode">
+          <n-layout-sider
+            bordered
+            collapse-mode="width"
+            :collapsed-width="50"
+            :width="240"
             :collapsed="collapsed"
-            :collapsed-width="64"
-            :collapsed-icon-size="22"
-            :options="menuOptions"
-          />
-        </n-layout-sider>
-        <n-layout-content class="main">
+            show-trigger
+            @collapse="collapsed = true"
+            @expand="collapsed = false"
+          >
+            <n-menu
+              :indent="24"
+              :collapsed="collapsed"
+              :collapsed-width="64"
+              :collapsed-icon-size="22"
+              :options="menuOptions"
+            />
+          </n-layout-sider>
+          <n-layout-content class="main">
+            <router-view />
+          </n-layout-content>
+        </n-layout>
+        <n-layout v-else>
           <router-view />
-        </n-layout-content>
-      </n-layout>
-      <n-layout v-else><router-view />
-        <n-menu :options="menuOptions" mode="horizontal"  :collapsed="true" />
-      </n-layout>
-    </n-dialog-provider>
-  </n-config-provider>
+          <!-- <n-menu :options="menuOptions" mode="horizontal"  :collapsed="true" /> -->
+          <v-bottom-navigation>
+            <v-btn value="recent">
+              <v-icon>mdi-history</v-icon>
+
+              Recent
+            </v-btn>
+
+            <v-btn value="favorites">
+              <v-icon>mdi-heart</v-icon>
+
+              Favorites
+            </v-btn>
+
+            <v-btn value="nearby">
+              <v-icon>mdi-map-marker</v-icon>
+
+              Nearby
+            </v-btn>
+          </v-bottom-navigation>
+        </n-layout>
+      </n-dialog-provider>
+    </n-config-provider>
+  </v-app>
 </template>
 
 <script setup>
@@ -50,8 +77,8 @@ import {
   Flash
 } from '@vicons/ionicons5'
 import { DiceD20 } from '@vicons/fa'
-const collapsed = ref(false);
-const mobilemode = ref(true);
+const collapsed = ref(false)
+const mobilemode = ref(true)
 function renderIcon(icon) {
   return () => h(NIcon, null, { default: () => h(icon) })
 }
@@ -107,11 +134,7 @@ const menuOptions = computed(() => [
           },
           {
             label: () =>
-              h(
-                RouterLink,
-                { to: { path: '/setting/recruit' } },
-                { default: () => '公开招募' }
-              ),
+              h(RouterLink, { to: { path: '/setting/recruit' } }, { default: () => '公开招募' }),
             key: 'go-to-recruit',
             icon: renderIcon(People)
           }
@@ -124,31 +147,19 @@ const menuOptions = computed(() => [
         children: [
           {
             label: () =>
-              h(
-                RouterLink,
-                { to: { path: '/setting/maa-basic' } },
-                { default: () => '连接设置' }
-              ),
+              h(RouterLink, { to: { path: '/setting/maa-basic' } }, { default: () => '连接设置' }),
             icon: renderIcon(Settings),
             key: 'go-to-maabasic'
           },
           {
             label: () =>
-              h(
-                RouterLink,
-                { to: { path: '/setting/maa-weekly' } },
-                { default: () => '清理智' }
-              ),
+              h(RouterLink, { to: { path: '/setting/maa-weekly' } }, { default: () => '清理智' }),
             key: 'go-to-maaweekly',
             icon: renderIcon(Flash)
           },
           {
             label: () =>
-              h(
-                RouterLink,
-                { to: { path: '/setting/clue' } },
-                { default: () => '线索/信用商店' }
-              ),
+              h(RouterLink, { to: { path: '/setting/clue' } }, { default: () => '线索/信用商店' }),
             key: 'go-to-clue',
             icon: renderIcon(Bag)
           },
@@ -168,12 +179,12 @@ const menuOptions = computed(() => [
     ]
   },
   {
-        label: () =>
-          h(RouterLink, { to: { path: '/setting/allsetting' } }, { default: () => '全部设置' }),
-        icon: renderIcon(Settings),
-        show: mobilemode.value,
-        key: 'go-to-allsetting'
-      },
+    label: () =>
+      h(RouterLink, { to: { path: '/setting/allsetting' } }, { default: () => '全部设置' }),
+    icon: renderIcon(Settings),
+    show: mobilemode.value,
+    key: 'go-to-allsetting'
+  },
   {
     label: () => '基建报表',
     key: 'building-report',
