@@ -8,26 +8,86 @@
   >
     <n-global-style />
     <n-dialog-provider>
-      <n-tabs type="segment" class="tabs">
-        <n-tab-pane name="home" tab="日志">
-          <home v-if="loaded" />
-        </n-tab-pane>
-        <n-tab-pane name="basic" tab="设置">
-          <advanced />
-        </n-tab-pane>
-        <n-tab-pane name="plan" tab="排班">
-          <plan />
-        </n-tab-pane>
-        <n-tab-pane name="external" tab="任务">
-          <external />
-        </n-tab-pane>
-        <n-tab-pane name="record" tab="报表">
-          <record />
-        </n-tab-pane>
-        <n-tab-pane name="doc" tab="文档">
-          <doc />
-        </n-tab-pane>
-      </n-tabs>
+      <n-layout has-sider v-if="!mobile">
+        <n-layout-sider
+          bordered
+          collapse-mode="width"
+          :collapsed-width="50"
+          :width="240"
+          :collapsed="collapsed"
+          show-trigger
+          @collapse="collapsed = true"
+          @expand="collapsed = false"
+        >
+          <n-menu
+            :indent="24"
+            :collapsed="collapsed"
+            :collapsed-width="64"
+            :collapsed-icon-size="22"
+            :options="menuOptions"
+          />
+        </n-layout-sider>
+        <n-layout-content>
+          <router-view />
+        </n-layout-content>
+      </n-layout>
+
+      <n-layout v-if="mobile">
+        <n-layout-header style="height: 95vh; overflow: auto; position: relative">
+          <router-view />
+        </n-layout-header>
+        <n-layout-footer style="height: 8vh" position="absolute">
+          <n-tabs type="line" justify-content="space-evenly">
+            <n-tab name="主页" @click="$router.push('/')">
+              <div style="display: flex; flex-direction: column; align-items: center">
+                <n-icon size="24" style="margin-bottom: 4px" :component="BookOutline" />
+                运行日志
+              </div>
+            </n-tab>
+            <n-tab name="排班表" @click="$router.push('/plan')">
+              <div style="display: flex; flex-direction: column; align-items: center">
+                <n-icon size="24" style="margin-bottom: 4px" :component="Home" />
+                排班表
+              </div>
+            </n-tab>
+            <n-tab name="心情" @click="showModal = true">
+              <div style="display: flex; flex-direction: column; align-items: center">
+                <n-icon size="24" style="margin-bottom: 4px" :component="StatsChart" />
+                基建报表
+              </div>
+              <n-modal v-model:show="showModal">
+                <n-card
+                  style="width: 300px"
+                  title="基建报表"
+                  :bordered="false"
+                  size="huge"
+                  role="dialog"
+                  aria-modal="true"
+                >
+                  <n-button @click=";(showModal = false), $router.push('/record-pie')">
+                    工作休息比例报表
+                  </n-button>
+                  <n-button @click=";(showModal = false), $router.push('/record-line')">
+                    干员心情折线表
+                  </n-button>
+                </n-card>
+              </n-modal>
+            </n-tab>
+            <n-tab name="设置" @click="$router.push('/setting/allsetting')">
+              <div style="display: flex; flex-direction: column; align-items: center">
+                <n-icon size="24" style="margin-bottom: 4px" :component="Settings" />
+                设置
+              </div>
+            </n-tab>
+            <n-tab name="帮助" @click="$router.push('/doc')">
+              <div style="display: flex; flex-direction: column; align-items: center">
+                <n-icon size="24" style="margin-bottom: 4px" :component="HelpCircle" />
+                帮助
+              </div>
+            </n-tab>
+          </n-tabs>
+        </n-layout-footer>
+      </n-layout>
     </n-dialog-provider>
   </n-config-provider>
 </template>
@@ -35,12 +95,106 @@
 <script setup>
 import { onMounted, inject, provide } from 'vue'
 import { storeToRefs } from 'pinia'
-import doc from '@/pages/Doc.vue'
-import home from '@/pages/Home.vue'
-import plan from '@/pages/Plan.vue'
-import advanced from '@/pages/Advanced.vue'
-import external from '@/pages/External.vue'
-import record from '@/pages/record.vue'
+
+const showModal = ref(false)
+import { NIcon } from 'naive-ui'
+import {
+  BookOutline,
+  Home,
+  BarChart,
+  PieChart,
+  StatsChart,
+  Settings,
+  HelpCircle,
+  Hammer,
+  MailOpen,
+  People,
+  Bag,
+  Flash
+} from '@vicons/ionicons5'
+import { DiceD20 } from '@vicons/fa'
+const collapsed = ref(false)
+function renderIcon(icon) {
+  return () => h(NIcon, null, { default: () => h(icon) })
+}
+
+import { RouterLink } from 'vue-router'
+const menuOptions = computed(() => [
+  {
+    label: () => h(RouterLink, { to: { path: '/' } }, { default: () => '运行日志' }),
+    icon: renderIcon(BookOutline),
+    key: 'go-to-log'
+  },
+  {
+    label: () => h(RouterLink, { to: { path: '/plan' } }, { default: () => '排班编辑' }),
+    icon: renderIcon(Home),
+    key: 'go-to-plan'
+  },
+
+  {
+    label: () => 'Mower设置',
+    icon: renderIcon(Settings),
+    key: 'go-to-mowersetting',
+    children: [
+      {
+        label: () =>
+          h(RouterLink, { to: { path: '/setting/Advanced' } }, { default: () => '基本设置' }),
+        key: 'Advanced',
+        icon: renderIcon(Settings)
+      },
+      {
+        label: () =>
+          h(RouterLink, { to: { path: '/setting/External' } }, { default: () => '基建设置' }),
+        key: 'External',
+        icon: renderIcon(Hammer)
+      },
+      {
+        label: () =>
+          h(
+            RouterLink,
+            { to: { path: '/setting/MaaWeeklynew1' } },
+            { default: () => '清理智-xiner' }
+          ),
+        key: 'MaaWeeklynew1',
+        icon: renderIcon(Flash)
+      }
+    ]
+  },
+
+  //{ label: () => h(RouterLink, { to: { path: "/setting/sk-land" } }, { default: () => "森空岛签到" }), key: "go-to-skland" },
+
+  {
+    label: () =>
+      h(RouterLink, { to: { path: '/setting/allsetting' } }, { default: () => '全部设置' }),
+    icon: renderIcon(Settings),
+    show: mobile.value,
+    key: 'go-to-allsetting'
+  },
+  {
+    label: () => '基建报表',
+    key: 'building-report',
+    icon: renderIcon(StatsChart),
+    children: [
+      {
+        label: () =>
+          h(RouterLink, { to: { path: '/record-line' } }, { default: () => '基建报表-折线' }),
+        icon: renderIcon(BarChart),
+        key: 'go-to-record-line'
+      },
+      {
+        label: () =>
+          h(RouterLink, { to: { path: '/record-pie' } }, { default: () => '基建报表-饼图' }),
+        icon: renderIcon(PieChart),
+        key: 'go-to-record-pie'
+      }
+    ]
+  },
+  {
+    label: () => h(RouterLink, { to: { path: '/doc' } }, { default: () => '帮助文档' }),
+    icon: renderIcon(HelpCircle),
+    key: 'go-to-doc'
+  }
+])
 import { zhCN, dateZhCN, darkTheme } from 'naive-ui'
 
 import hljs from 'highlight.js/lib/core'
@@ -197,5 +351,20 @@ td {
 
 .dialog-btn {
   margin-left: 4px;
+}
+
+.report-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* 让内容在水平方向上居中 */
+  justify-content: center;
+  /* 让内容在垂直方向上居中 */
+
+  width: 300px;
+  height: 200px;
+  padding: 20px 20px 80px 20px;
+  border: 1px solid #ccc;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 </style>
