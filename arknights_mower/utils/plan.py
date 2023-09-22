@@ -28,7 +28,9 @@ def to_list(str_data):
 
 
 class PlanConfig(object):
-
+    # run_order_buffer_time: 
+    #   >  0 时是葛朗台跑单
+    #   <= 0 时是无人机跑单
     def __init__(self, rest_in_full, exhaust_require, resting_priority, ling_xi=0, workaholic="", max_resting_count=4,free_blacklist="",read_mood =True,skip_validation=False, run_order_buffer_time = 15,resting_threshold = 0.5):
         self.rest_in_full = to_list(rest_in_full)
         self.exhaust_require = to_list(exhaust_require)
