@@ -2,7 +2,7 @@
   <MowerSettings />
   <BasementSettings />
   <Email />
-  <Recruit/>
+  <Recruit />
 
   <MaaBasic />
   <MaaWeekly />
