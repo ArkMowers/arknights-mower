@@ -144,7 +144,7 @@ onMounted(async () => {
 }
 </style>
 
-<style>
+<style lang="scss">
 #app {
   height: calc(var(--vh, 1vh) * 100);
 }
@@ -185,5 +185,13 @@ td {
 
 .n-checkbox {
   align-items: center;
+}
+
+.n-form-item {
+  margin-top: 12px;
+
+  &:first-child {
+    margin-top: 0;
+  }
 }
 </style>

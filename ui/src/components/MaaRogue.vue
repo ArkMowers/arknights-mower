@@ -119,9 +119,3 @@ const roles = [
     </n-form-item>
   </n-form>
 </template>
-
-<style scoped lang="scss">
-.rogue > .n-form-item {
-  margin: 12px 0 0;
-}
-</style>

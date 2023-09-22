@@ -51,7 +51,7 @@ export const useMowerStore = defineStore('mower', () => {
         } else {
           const meta_text = meta_re.exec(x)[1]
           if (meta_text) {
-            task_text = [meta_re.exec(x)[1]]
+            task_text = [meta_text]
           } else {
             task_text = [type_re.exec(x)[1]]
           }
