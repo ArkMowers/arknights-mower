@@ -77,24 +77,20 @@ const rogue_themes = [
           </td>
         </tr>
       </table>
-      <n-card content-style="padding: 0">
-        <n-tabs type="segment">
-          <n-tab-pane name="rogue" tab="集成战略">
-            <maa-rogue />
-          </n-tab-pane>
-          <n-tab-pane name="sss" tab="保全派驻" disabled></n-tab-pane>
-          <n-tab-pane name="ra" tab="生息演算" disabled></n-tab-pane>
-        </n-tabs>
-      </n-card>
+      <n-tabs type="line">
+        <n-tab-pane name="rogue" tab="集成战略">
+          <maa-rogue />
+        </n-tab-pane>
+        <n-tab-pane name="sss" tab="保全派驻">
+          <maa-sss />
+        </n-tab-pane>
+        <n-tab-pane name="ra" tab="生息演算" disabled></n-tab-pane>
+      </n-tabs>
     </n-card>
   </div>
 </template>
 
 <style scoped lang="scss">
-.sss-select {
-  width: 175px;
-}
-
 .card-title {
   font-weight: 500;
   font-size: 18px;

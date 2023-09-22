@@ -110,7 +110,7 @@ h4 {
 
 .big-table {
   margin-top: 10px;
-  width: 400px;
+  max-width: 360px;
 
   th {
     text-align: center;

@@ -33,7 +33,7 @@
 </template>
 
 <script setup>
-import { onMounted, inject } from 'vue'
+import { onMounted, inject, provide } from 'vue'
 import { storeToRefs } from 'pinia'
 import doc from '@/pages/Doc.vue'
 import home from '@/pages/Home.vue'
@@ -76,10 +76,15 @@ function set_window_height() {
 
 const loaded = ref(false)
 
+const mobile = ref(true)
+provide('mobile', mobile)
+
 onMounted(async () => {
   set_window_height()
+  mobile.value = window.innerWidth < 500
   window.addEventListener('resize', () => {
     set_window_height()
+    mobile.value = window.innerWidth < 500
   })
 
   const params = new URLSearchParams(document.location.search)
@@ -174,7 +179,7 @@ td {
 }
 
 .external-container {
-  width: 600px;
+  max-width: 600px;
   margin: 0 auto;
 }
 

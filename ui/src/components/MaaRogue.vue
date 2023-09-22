@@ -1,6 +1,9 @@
 <script setup>
 import { useConfigStore } from '@/stores/config'
 import { storeToRefs } from 'pinia'
+import { inject } from 'vue'
+
+const mobile = inject('mobile')
 
 const store = useConfigStore()
 
@@ -72,80 +75,53 @@ const roles = [
 </script>
 
 <template>
-  <table class="tab-content">
-    <tr>
-      <td>主题：</td>
-      <td>
-        <n-radio-group v-model:value="maa_rg_theme">
-          <n-space>
-            <n-radio v-for="t in rogue_themes" :value="t.value">{{ t.label }}</n-radio>
-          </n-space>
-        </n-radio-group>
-      </td>
-    </tr>
-    <tr>
-      <td>分队：</td>
-      <td>
-        <n-select v-model:value="rogue.squad" :options="squad[maa_rg_theme]" />
-      </td>
-    </tr>
-    <tr>
-      <td>职业：</td>
-      <td>
-        <n-select v-model:value="rogue.roles" :options="roles" />
-      </td>
-    </tr>
-    <tr>
-      <td>干员：</td>
-      <td>
-        <n-input v-model:value="rogue.core_char" />
-      </td>
-    </tr>
-    <tr>
-      <td colspan="2">
-        <n-checkbox v-model:checked="rogue.use_support">开局干员使用助战</n-checkbox>
-      </td>
-    </tr>
-    <tr v-if="rogue.use_support">
-      <td colspan="2">
-        <n-checkbox v-model:checked="rogue.use_nonfriend_support"
-          >开局干员使用非好友助战</n-checkbox
-        >
-      </td>
-    </tr>
-    <tr>
-      <td>策略：</td>
-      <td>
-        <n-radio-group v-model:value="rogue.mode">
-          <n-space>
-            <n-radio :value="0">刷等级</n-radio>
-            <n-radio :value="1">刷源石锭</n-radio>
-          </n-space>
-        </n-radio-group>
-      </td>
-    </tr>
-    <tr>
-      <td colspan="2">
-        <n-checkbox v-model:checked="rogue.investment_enabled">投资源石锭</n-checkbox>
-      </td>
-    </tr>
-    <tr v-if="rogue.investment_enabled">
-      <td colspan="2">
-        <n-checkbox v-model:checked="rogue.stop_when_investment_full"
-          >储备源石锭达到上限时停止</n-checkbox
-        >
-      </td>
-    </tr>
-    <tr>
-      <td colspan="2">
-        <n-checkbox v-model:checked="rogue.refresh_trader_with_dice">刷新商店（指路鳞）</n-checkbox>
-      </td>
-    </tr>
-  </table>
+  <n-form :label-placement="mobile ? 'top' : 'left'" :show-feedback="false" class="rogue">
+    <n-form-item label="主题：">
+      <n-radio-group v-model:value="maa_rg_theme">
+        <n-space>
+          <n-radio v-for="t in rogue_themes" :value="t.value">{{ t.label }}</n-radio>
+        </n-space>
+      </n-radio-group>
+    </n-form-item>
+    <n-form-item label="分队：">
+      <n-select v-model:value="rogue.squad" :options="squad[maa_rg_theme]" />
+    </n-form-item>
+    <n-form-item label="职业：">
+      <n-select v-model:value="rogue.roles" :options="roles" />
+    </n-form-item>
+    <n-form-item label="干员：">
+      <n-input v-model:value="rogue.core_char" />
+    </n-form-item>
+    <n-form-item :show-label="false">
+      <n-checkbox v-model:checked="rogue.use_support">开局干员使用助战</n-checkbox>
+    </n-form-item>
+    <n-form-item v-if="rogue.use_support" :show-label="false">
+      <n-checkbox v-model:checked="rogue.use_nonfriend_support">开局干员使用非好友助战</n-checkbox>
+    </n-form-item>
+    <n-form-item label="策略：">
+      <n-radio-group v-model:value="rogue.mode">
+        <n-space>
+          <n-radio :value="0">刷等级</n-radio>
+          <n-radio :value="1">刷源石锭</n-radio>
+        </n-space>
+      </n-radio-group>
+    </n-form-item>
+    <n-form-item :show-label="false">
+      <n-checkbox v-model:checked="rogue.investment_enabled">投资源石锭</n-checkbox>
+    </n-form-item>
+    <n-form-item v-if="rogue.investment_enabled" :show-label="false">
+      <n-checkbox v-model:checked="rogue.stop_when_investment_full">
+        储备源石锭达到上限时停止
+      </n-checkbox>
+    </n-form-item>
+    <n-form-item :show-label="false">
+      <n-checkbox v-model:checked="rogue.refresh_trader_with_dice">刷新商店（指路鳞）</n-checkbox>
+    </n-form-item>
+  </n-form>
 </template>
 
 <style scoped lang="scss">
-.tab-content {
-  margin: 0 24px 12px 24px;
+.rogue > .n-form-item {
+  margin: 12px 0 0;
 }
 </style>
