@@ -1965,7 +1965,7 @@ class BaseSchedulerSolver(BaseSolver):
                             if item1 != item2:
                                 same = False
                     if not same:
-                        if len(new_plan) == 1 :
+                        if len(new_plan) == 1 and self.op_data.config.run_order_buffer_time > 0:
                             remaining_time = self.get_order_remaining_time()
                             if 0 < remaining_time < self.run_order_delay * 60:
                                 if self.op_data.config.run_order_buffer_time > 0:
