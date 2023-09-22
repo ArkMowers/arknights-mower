@@ -2,7 +2,7 @@
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
 import { storeToRefs } from 'pinia'
-import { computed, inject } from 'vue'
+import { computed, inject, h } from 'vue'
 
 import pinyinMatch from 'pinyin-match/es/traditional'
 
