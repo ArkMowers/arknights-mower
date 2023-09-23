@@ -371,7 +371,7 @@ class BaseSolver:
                 else:
                     self.tap((self.recog.w * 0.7, self.recog.h * 0.5), interval=0.2)
                 ec_chosen_step = loop_count
-                logger.info(f"选定导能单元:{ec_type + 1}")
+                logger.info(f"选定导能单元:{ec_type}")
             self.tap((self.recog.w * 0.95, self.recog.h * 0.95), interval=(0.2 if not choose_team else 10))
             self.recog.update()
             loop_count += 1

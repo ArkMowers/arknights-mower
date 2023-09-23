@@ -13,6 +13,7 @@ ling_xi: 1
 maa_adb_path: D:\Program Files\Nox\bin\adb.exe
 maa_enable: 0
 maa_rg_enable: 0
+maa_long_task_type: rogue
 maa_path: D:\MAA-v4.13.0-win-x64
 maa_weekly_plan:
   - medicine: 0
@@ -203,3 +204,8 @@ recruit_enable: true
 recruit_only_4: false
 recruit_robot: true
 recruitment_time: false
+sss:
+  type: 1
+  ec: 1
+  loop: 1
+  copilot: ''

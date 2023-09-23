@@ -87,7 +87,7 @@ def set_maa_options(base_scheduler):
     maa_config['maa_adb_path'] = conf['maa_adb_path']
     maa_config['maa_adb'] = conf['adb']
     maa_config['weekly_plan'] = conf['maa_weekly_plan']
-    maa_config['roguelike'] = conf['maa_rg_enable'] == 1
+    maa_config['roguelike'] = conf['maa_rg_enable'] == 1 and conf['maa_long_task_type'] == 'rogue'
     maa_config['rogue_theme'] = conf['maa_rg_theme']
     maa_config['sleep_min'] = conf['maa_rg_sleep_min']
     maa_config['sleep_max'] = conf['maa_rg_sleep_max']
@@ -101,6 +101,11 @@ def set_maa_options(base_scheduler):
     maa_config['mall_ignore_when_full'] = conf['maa_mall_ignore_blacklist_when_full']
     maa_config['credit_fight'] = conf['maa_credit_fight']
     maa_config['rogue'] = conf['rogue']
+    maa_config['stationary_security_service'] = conf['maa_rg_enable'] == 1 and conf['maa_long_task_type'] == 'sss'
+    maa_config["sss_type"] = conf["sss"]["type"]
+    maa_config["ec_type"] = conf["sss"]["ec"]
+    maa_config["copilot_file_location"] = conf["sss"]["copilot"]
+    maa_config["copilot_loop_times"] = conf["sss"]["loop"]
     base_scheduler.maa_config = maa_config
 
     logger.debug(f"更新Maa设置：{base_scheduler.maa_config}")

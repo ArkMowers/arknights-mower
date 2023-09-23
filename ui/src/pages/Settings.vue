@@ -30,7 +30,6 @@ const {
   tap_to_launch_game,
   exit_game_when_idle,
   screenshot,
-  maa_path,
   maa_rg_enable,
   maa_rg_sleep_min,
   maa_rg_sleep_max
@@ -127,9 +126,9 @@ function render_label(option) {
         </n-form-item>
         <n-form-item v-if="tap_to_launch_game.enable == 'tap'" label="点击坐标：">
           <span class="coord-label">X:</span>
-          <n-input-number v-model:value="tap_to_launch_game.x"></n-input-number>
+          <n-input-number v-model:value="tap_to_launch_game.x" />
           <span class="coord-label">Y:</span>
-          <n-input-number v-model:value="tap_to_launch_game.y"></n-input-number>
+          <n-input-number v-model:value="tap_to_launch_game.y" />
         </n-form-item>
         <n-form-item :show-label="false">
           <n-checkbox v-model:checked="exit_game_when_idle">
@@ -261,44 +260,7 @@ function render_label(option) {
     <Recruit />
     <maa-weekly />
     <!-- <maa-weekly-new /> -->
-    <n-card>
-      <template #header>
-        <n-checkbox v-model:checked="maa_rg_enable">
-          <div class="card-title">Maa大型任务</div>
-        </n-checkbox>
-      </template>
-      <p>调用Maa进行作战。仅可从以下任务中选择一项。</p>
-      <n-h4>开启时间</n-h4>
-      <p>只在开启时间内执行Maa大型任务。开始与结束时间设置为相同值时全天开启。</p>
-      <p>若结束时间早于开始时间，则表示开启至次日。例如：</p>
-      <ul>
-        <li>23:00开始、8:00结束：表示从23:00至次日8:00执行大型任务；</li>
-        <li>10:00开始、14:00结束：表示从10:00至当日14:00执行大型任务。</li>
-      </ul>
-      <table class="time-table">
-        <tr>
-          <td>开始</td>
-          <td>
-            <n-time-picker format="H:mm" v-model:formatted-value="maa_rg_sleep_max" />
-          </td>
-        </tr>
-        <tr>
-          <td>结束</td>
-          <td>
-            <n-time-picker format="H:mm" v-model:formatted-value="maa_rg_sleep_min" />
-          </td>
-        </tr>
-      </table>
-      <n-tabs type="line">
-        <n-tab-pane name="rogue" tab="集成战略">
-          <maa-rogue />
-        </n-tab-pane>
-        <n-tab-pane name="sss" tab="保全派驻">
-          <maa-sss />
-        </n-tab-pane>
-        <n-tab-pane name="ra" tab="生息演算" disabled></n-tab-pane>
-      </n-tabs>
-    </n-card>
+    <maa-long-tasks />
   </div>
 </template>
 
@@ -355,11 +317,6 @@ function render_label(option) {
 .coord-label {
   width: 40px;
   padding-left: 8px;
-}
-
-.card-title {
-  font-weight: 500;
-  font-size: 18px;
 }
 
 p {

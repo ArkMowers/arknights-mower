@@ -79,7 +79,7 @@ const roles = [
     <n-form-item label="主题：">
       <n-radio-group v-model:value="maa_rg_theme">
         <n-space>
-          <n-radio v-for="t in rogue_themes" :value="t.value">{{ t.label }}</n-radio>
+          <n-radio v-for="t in rogue_themes" :value="t.value" :key="t.value">{{ t.label }}</n-radio>
         </n-space>
       </n-radio-group>
     </n-form-item>

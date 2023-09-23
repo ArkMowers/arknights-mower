@@ -14,6 +14,7 @@ export const useConfigStore = defineStore('config', () => {
   const maa_weekly_plan = ref([])
   const maa_weekly_plan1 = ref([])
   const maa_rg_enable = ref(0)
+  const maa_long_task_type = ref('rogue')
   const mail_enable = ref(false)
   const account = ref('')
   const pass_code = ref('')
@@ -42,6 +43,7 @@ export const useConfigStore = defineStore('config', () => {
   const maa_credit_fight = ref(true)
   const maa_rg_theme = ref('Mizuki')
   const rogue = ref({})
+  const sss = ref({})
   const screenshot = ref(0)
   const mail_subject = ref('')
   const skland_enable = ref(false)
@@ -75,6 +77,7 @@ export const useConfigStore = defineStore('config', () => {
     maa_enable.value = response.data.maa_enable != 0
     maa_path.value = response.data.maa_path
     maa_rg_enable.value = response.data.maa_rg_enable == 1
+    maa_long_task_type.value = response.data.maa_long_task_type
     maa_weekly_plan.value = response.data.maa_weekly_plan
     maa_weekly_plan1.value = response.data.maa_weekly_plan1
     mail_enable.value = response.data.mail_enable != 0
@@ -107,6 +110,7 @@ export const useConfigStore = defineStore('config', () => {
     maa_credit_fight.value = response.data.maa_credit_fight
     maa_rg_theme.value = response.data.maa_rg_theme
     rogue.value = response.data.rogue
+    sss.value = response.data.sss
     screenshot.value = response.data.screenshot
     mail_subject.value = response.data.mail_subject
     skland_enable.value = response.data.skland_enable != 0
@@ -129,6 +133,7 @@ export const useConfigStore = defineStore('config', () => {
       maa_enable: maa_enable.value ? 1 : 0,
       maa_path: maa_path.value,
       maa_rg_enable: maa_rg_enable.value ? 1 : 0,
+      maa_long_task_type: maa_long_task_type.value,
       maa_weekly_plan: maa_weekly_plan.value,
       maa_weekly_plan1: maa_weekly_plan1.value,
       mail_enable: mail_enable.value ? 1 : 0,
@@ -161,6 +166,7 @@ export const useConfigStore = defineStore('config', () => {
       maa_credit_fight: maa_credit_fight.value,
       maa_rg_theme: maa_rg_theme.value,
       rogue: rogue.value,
+      sss: sss.value,
       screenshot: screenshot.value,
       mail_subject: mail_subject.value,
       skland_enable: skland_enable.value,
@@ -185,6 +191,7 @@ export const useConfigStore = defineStore('config', () => {
       maa_weekly_plan,
       maa_weekly_plan1,
       maa_rg_enable,
+      maa_long_task_type,
       mail_enable,
       account,
       pass_code,
@@ -211,6 +218,7 @@ export const useConfigStore = defineStore('config', () => {
       maa_credit_fight,
       maa_rg_theme,
       rogue,
+      sss,
       screenshot,
       mail_subject,
       recruit_enable,
@@ -237,6 +245,7 @@ export const useConfigStore = defineStore('config', () => {
     maa_enable,
     maa_path,
     maa_rg_enable,
+    maa_long_task_type,
     maa_weekly_plan,
     maa_weekly_plan1,
     mail_enable,
@@ -269,6 +278,7 @@ export const useConfigStore = defineStore('config', () => {
     maa_credit_fight,
     maa_rg_theme,
     rogue,
+    sss,
     screenshot,
     mail_subject,
     recruit_enable,
