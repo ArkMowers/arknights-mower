@@ -1,7 +1,7 @@
 <script setup>
 import { useMowerStore } from '@/stores/mower'
 import { storeToRefs } from 'pinia'
-import { onMounted, inject, nextTick } from 'vue'
+import { onMounted, inject, nextTick, watch } from 'vue'
 
 const mower_store = useMowerStore()
 
@@ -13,6 +13,19 @@ function scroll_last_line() {
     document.querySelector('pre:last-child')?.scrollIntoView()
   })
 }
+
+function scroll_log() {
+  const container = document.querySelector('.n-scrollbar-container')
+  const content = document.querySelector('.n-scrollbar-content')
+  if (container.scrollTop + container.clientHeight < content.clientHeight) {
+    return
+  }
+  scroll_last_line()
+}
+
+watch(log, () => {
+  scroll_log()
+})
 
 onMounted(() => {
   scroll_last_line()
