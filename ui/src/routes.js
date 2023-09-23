@@ -1,63 +1,48 @@
 export const routes = [
-  { path: '/', redirect: '/home', meta: { title: 'Redirect to Home' }, name: 'root' },
   {
-    path: '/home',
-    component: () => import('@/pages/Home.vue'),
-    meta: { title: 'Home Page' },
-    name: 'home'
-  },
-  {
-    path: '/plan',
-    component: () => import('@/pages/Plan.vue'),
-    meta: { title: 'Plan Page' },
-    name: 'plan'
-  },
-  {
-    path: '/setting',
-    meta: { title: '设置' },
+    path: '/',
     children: [
       {
-        path: 'allsetting',
-        component: () => import('@/pages/allsetting.vue'),
-        meta: { title: '全部设置' },
-        name: 'allsetting'
+        path: '',
+        component: () => import('@/pages/Log.vue'),
+        meta: { title: '日志' },
+        name: 'log'
       },
       {
-        path: 'Advanced',
-        component: () => import('@/pages/Advanced.vue'),
+        path: 'plan-editor',
+        component: () => import('@/pages/Plan.vue'),
+        meta: { title: '排班' },
+        name: 'plan'
+      },
+      {
+        path: 'settings',
+        component: () => import('@/pages/Settings.vue'),
         meta: { title: '设置' },
-        name: 'Advanced'
+        name: 'settings'
       },
       {
-        path: 'External',
-        component: () => import('@/pages/External.vue'),
-        meta: { title: '任务设置' },
-        name: 'External'
+        path: 'doc',
+        component: () => import('@/pages/Doc.vue'),
+        meta: { title: '文档' },
+        name: 'doc'
       },
       {
-        path: 'MaaWeeklynew1',
-        component: () => import('@/components/MaaWeeklynew1.vue'),
-        meta: { title: '任务设置' },
-        name: 'MaaWeeklynew1'
+        path: 'record',
+        children: [
+          {
+            path: 'line',
+            component: () => import('@/pages/RecordLine.vue'),
+            meta: { title: '心情曲线' },
+            name: 'record_line'
+          },
+          {
+            path: 'pie',
+            component: () => import('@/pages/RecordPie.vue'),
+            meta: { title: '心情饼图' },
+            name: 'record_pie'
+          }
+        ]
       }
     ]
-  },
-  {
-    path: '/doc',
-    component: () => import('@/pages/Doc.vue'),
-    meta: { title: 'Documentation Page' },
-    name: 'doc'
-  },
-  {
-    path: '/record-line',
-    component: () => import('@/pages/recordline.vue'),
-    meta: { title: 'Record Page-line' },
-    name: 'record-line'
-  },
-  {
-    path: '/record-pie',
-    component: () => import('@/pages/RecordPie.vue'),
-    meta: { title: 'Record Page-pie' },
-    name: 'record-pie'
   }
 ]

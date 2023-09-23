@@ -484,10 +484,6 @@ const avatar_bg = computed(() => {
 </template>
 
 <style scoped lang="scss">
-.w90 {
-  width: 90px;
-}
-
 .select-label {
   width: 44px;
 }
@@ -506,6 +502,7 @@ const avatar_bg = computed(() => {
 }
 
 .plan-container {
+  width: 980px;
   min-width: 980px;
   display: flex;
   flex-direction: column;

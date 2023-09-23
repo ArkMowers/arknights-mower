@@ -16,7 +16,7 @@ function add_account() {
 <template>
   <n-card>
     <template #header>
-      <n-checkbox v-model:checked="skland_enable">
+      <n-checkbox v-model:checked="skland_enable" disabled>
         <div class="card-title">森空岛签到</div>
       </n-checkbox>
     </template>

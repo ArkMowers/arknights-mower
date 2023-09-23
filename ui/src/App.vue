@@ -8,52 +8,43 @@
   >
     <n-global-style />
     <n-dialog-provider>
-      <n-layout has-sider v-if="!mobile">
+      <n-layout :has-sider="!mobile" class="outer-layout">
         <n-layout-sider
+          v-if="!mobile"
           bordered
           collapse-mode="width"
           :collapsed-width="50"
           :width="240"
-          :collapsed="collapsed"
           show-trigger
-          @collapse="collapsed = true"
-          @expand="collapsed = false"
         >
           <n-menu
             :indent="24"
-            :collapsed="collapsed"
             :collapsed-width="64"
             :collapsed-icon-size="22"
             :options="menuOptions"
           />
         </n-layout-sider>
-        <n-layout-content>
-          <router-view />
+        <n-layout-content class="layout-content-container">
+          <router-view v-if="loaded" />
         </n-layout-content>
-      </n-layout>
-
-      <n-layout v-if="mobile">
-        <n-layout-header style="height: 95vh; overflow: auto; position: relative">
-          <router-view />
-        </n-layout-header>
-        <n-layout-footer style="height: 8vh" position="absolute">
+        <n-layout-footer v-if="mobile">
           <n-tabs type="line" justify-content="space-evenly">
             <n-tab name="主页" @click="$router.push('/')">
               <div style="display: flex; flex-direction: column; align-items: center">
                 <n-icon size="24" style="margin-bottom: 4px" :component="BookOutline" />
-                运行日志
+                日志
               </div>
             </n-tab>
-            <n-tab name="排班表" @click="$router.push('/plan')">
+            <n-tab name="排班" @click="$router.push('/plan-editor')">
               <div style="display: flex; flex-direction: column; align-items: center">
                 <n-icon size="24" style="margin-bottom: 4px" :component="Home" />
-                排班表
+                排班
               </div>
             </n-tab>
-            <n-tab name="心情" @click="showModal = true">
+            <n-tab name="报表" @click="showModal = true">
               <div style="display: flex; flex-direction: column; align-items: center">
                 <n-icon size="24" style="margin-bottom: 4px" :component="StatsChart" />
-                基建报表
+                报表
               </div>
               <n-modal v-model:show="showModal">
                 <n-card
@@ -64,16 +55,16 @@
                   role="dialog"
                   aria-modal="true"
                 >
-                  <n-button @click=";(showModal = false), $router.push('/record-pie')">
-                    工作休息比例报表
+                  <n-button @click=";(showModal = false), $router.push('/record/line')">
+                    心情曲线
                   </n-button>
-                  <n-button @click=";(showModal = false), $router.push('/record-line')">
-                    干员心情折线表
+                  <n-button @click=";(showModal = false), $router.push('/record/pie')">
+                    心情饼图
                   </n-button>
                 </n-card>
               </n-modal>
             </n-tab>
-            <n-tab name="设置" @click="$router.push('/setting/allsetting')">
+            <n-tab name="设置" @click="$router.push('/settings')">
               <div style="display: flex; flex-direction: column; align-items: center">
                 <n-icon size="24" style="margin-bottom: 4px" :component="Settings" />
                 设置
@@ -105,15 +96,9 @@ import {
   PieChart,
   StatsChart,
   Settings,
-  HelpCircle,
-  Hammer,
-  MailOpen,
-  People,
-  Bag,
-  Flash
+  HelpCircle
 } from '@vicons/ionicons5'
-import { DiceD20 } from '@vicons/fa'
-const collapsed = ref(false)
+
 function renderIcon(icon) {
   return () => h(NIcon, null, { default: () => h(icon) })
 }
@@ -126,48 +111,13 @@ const menuOptions = computed(() => [
     key: 'go-to-log'
   },
   {
-    label: () => h(RouterLink, { to: { path: '/plan' } }, { default: () => '排班编辑' }),
+    label: () => h(RouterLink, { to: { path: '/plan-editor' } }, { default: () => '排班编辑' }),
     icon: renderIcon(Home),
     key: 'go-to-plan'
   },
-
   {
-    label: () => 'Mower设置',
+    label: () => h(RouterLink, { to: { path: '/settings' } }, { default: () => '全部设置' }),
     icon: renderIcon(Settings),
-    key: 'go-to-mowersetting',
-    children: [
-      {
-        label: () =>
-          h(RouterLink, { to: { path: '/setting/Advanced' } }, { default: () => '基本设置' }),
-        key: 'Advanced',
-        icon: renderIcon(Settings)
-      },
-      {
-        label: () =>
-          h(RouterLink, { to: { path: '/setting/External' } }, { default: () => '基建设置' }),
-        key: 'External',
-        icon: renderIcon(Hammer)
-      },
-      {
-        label: () =>
-          h(
-            RouterLink,
-            { to: { path: '/setting/MaaWeeklynew1' } },
-            { default: () => '清理智-xiner' }
-          ),
-        key: 'MaaWeeklynew1',
-        icon: renderIcon(Flash)
-      }
-    ]
-  },
-
-  //{ label: () => h(RouterLink, { to: { path: "/setting/sk-land" } }, { default: () => "森空岛签到" }), key: "go-to-skland" },
-
-  {
-    label: () =>
-      h(RouterLink, { to: { path: '/setting/allsetting' } }, { default: () => '全部设置' }),
-    icon: renderIcon(Settings),
-    show: mobile.value,
     key: 'go-to-allsetting'
   },
   {
@@ -177,13 +127,13 @@ const menuOptions = computed(() => [
     children: [
       {
         label: () =>
-          h(RouterLink, { to: { path: '/record-line' } }, { default: () => '基建报表-折线' }),
+          h(RouterLink, { to: { path: '/record/line' } }, { default: () => '基建报表-折线' }),
         icon: renderIcon(BarChart),
         key: 'go-to-record-line'
       },
       {
         label: () =>
-          h(RouterLink, { to: { path: '/record-pie' } }, { default: () => '基建报表-饼图' }),
+          h(RouterLink, { to: { path: '/record/pie' } }, { default: () => '基建报表-饼图' }),
         icon: renderIcon(PieChart),
         key: 'go-to-record-pie'
       }
@@ -223,9 +173,10 @@ function start() {
   axios.get(`${import.meta.env.VITE_HTTP_URL}/start`)
 }
 
-function set_window_height() {
+function actions_on_resize() {
   const vh = window.innerHeight * 0.01
   document.documentElement.style.setProperty('--vh', `${vh}px`)
+  mobile.value = window.innerWidth < 800
 }
 
 const loaded = ref(false)
@@ -234,11 +185,9 @@ const mobile = ref(true)
 provide('mobile', mobile)
 
 onMounted(async () => {
-  set_window_height()
-  mobile.value = window.innerWidth < 500
+  actions_on_resize()
   window.addEventListener('resize', () => {
-    set_window_height()
-    mobile.value = window.innerWidth < 500
+    actions_on_resize()
   })
 
   const params = new URLSearchParams(document.location.search)
@@ -246,8 +195,11 @@ onMounted(async () => {
   axios.defaults.headers.common['token'] = token
   await Promise.all([load_config(), load_shop(), load_operators(), get_running()])
 
-  const r = RegExp(operators.value.map((x) => "'" + x.value).join('|'))
+  await load_plan()
+
   loaded.value = true
+
+  const r = RegExp(operators.value.map((x) => "'" + x.value).join('|'))
 
   hljs.registerLanguage('mower', () => ({
     contains: [
@@ -276,8 +228,6 @@ onMounted(async () => {
     ]
   }))
 
-  await load_plan()
-
   if (!ws.value) {
     listen_ws()
   }
@@ -296,11 +246,16 @@ onMounted(async () => {
 .provider {
   height: 100%;
 }
+
+.layout-container {
+  height: 100%;
+}
 </style>
 
 <style lang="scss">
 #app {
   height: calc(var(--vh, 1vh) * 100);
+  width: 100%;
 }
 
 .n-tab-pane {
@@ -322,14 +277,6 @@ td {
 
 .table-space {
   padding-right: 20px;
-}
-
-.home-container {
-  padding: 0 12px 12px;
-  flex-grow: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
 }
 
 .external-container {
@@ -366,5 +313,41 @@ td {
   padding: 20px 20px 80px 20px;
   border: 1px solid #ccc;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.n-checkbox .n-checkbox__label {
+  flex-grow: 1;
+  display: flex;
+  align-items: center;
+  padding-right: 0;
+}
+
+.outer-layout {
+  height: 100%;
+}
+
+.outer-layout > .n-layout-scroll-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.layout-content-container > .n-layout-scroll-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.home-container {
+  padding: 12px;
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 </style>
