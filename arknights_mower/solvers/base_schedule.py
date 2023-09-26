@@ -1929,10 +1929,11 @@ class BaseSchedulerSolver(BaseSolver):
             finished = False
             choose_error = 0
             checked = False
+            skip_enter = False
             while not finished:
                 try:
                     error_count = 0
-                    self.enter_room(room)
+                    if not skip_enter: self.enter_room(room)
                     while self.find('room_detail') is None:
                         if error_count > 3:
                             raise Exception('未成功进入房间')
@@ -2025,6 +2026,7 @@ class BaseSchedulerSolver(BaseSolver):
                     else:
                         logger.info(f"任务与当前房间相同，跳过安排{room}人员")
                     finished = True
+                    skip_enter = False
                     # 如果完成则移除该任务
                     del plan[room]
                     # back to 基地主界面
@@ -2036,6 +2038,9 @@ class BaseSchedulerSolver(BaseSolver):
                     choose_error += 1
                     self.recog.update()
                     self.recog.save_screencap('choose_agent_failure')
+                    if "检测到安排干员未成功" in str(e):
+                        skip_enter = True
+                        continue
                     back_count = 0
                     while self.get_infra_scene() != Scene.INFRA_MAIN:
                         self.back()
