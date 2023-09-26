@@ -91,6 +91,10 @@ function stop() {
 </template>
 
 <style scoped lang="scss">
+.home-container {
+  width: calc(100% - 24px);
+}
+
 .log {
   flex-grow: 1;
   overflow: hidden;
