@@ -150,11 +150,18 @@ class BaseSchedulerSolver(BaseSolver):
         # 在candidate 中，计算出需要的high free 和 Low free 数量
         _high_free = 0
         _low_free = 0
+        remove_name = []
         for x in candidates:
-            if self.op_data.operators[x].resting_priority == 'high':
-                _high_free += 1
+            if self.op_data.operators[x].is_resting() or self.op_data.operators[x].current_mood() == 24:
+                remove_name.append(x)
             else:
-                _low_free += 1
+                if self.op_data.operators[x].resting_priority == 'high':
+                    _high_free += 1
+                else:
+                    _low_free += 1
+        candidates = [x for x in candidates if x not in remove_name]
+        if len(candidates) == 0:
+            return
         self.agent_get_mood(force=True)
         # 剩余高效组位置
         current_high = self.op_data.available_free()
@@ -1148,8 +1155,7 @@ class BaseSchedulerSolver(BaseSolver):
         # 如果启用 MAA，则在线索交流结束后购物
         if self.maa_config['maa_enable'] and self.party_time is not None:
             if find_next_task(self.tasks, task_type=TaskTypes.MAA_MALL) is None:
-                self.tasks.append(
-                    SchedulerTask(time=self.party_time - timedelta(milliseconds=1), task_type=TaskTypes.CLUE_PARTY))
+                self.tasks.append(SchedulerTask(time=self.party_time - timedelta(milliseconds=1), task_type=TaskTypes.CLUE_PARTY))
                 self.tasks.append(SchedulerTask(time=self.party_time, task_type=TaskTypes.MAA_MALL))
 
         self.back(interval=2)
@@ -1951,11 +1957,11 @@ class BaseSchedulerSolver(BaseSolver):
                                     new_plan) == 0 and self.task.type != TaskTypes.RUN_ORDER:
                                 if plan[room] != self.op_data.get_current_room(room):
                                     logger.debug("检测到插拔房间人员变动！")
-                                    run_order_task = find_next_task(self.tasks, datetime.now() + timedelta(minutes=10),
+                                    run_order_task = find_next_task(self.tasks, datetime.now() + timedelta(minutes=5),
                                                                     task_type=TaskTypes.RUN_ORDER,
                                                                     meta_data=room, compare_type=">")
                                     if run_order_task is not None:
-                                        logger.info("移除超过10分钟的跑单任务以刷新时间")
+                                        logger.info("移除超过5分钟的跑单任务以刷新时间")
                                         self.tasks.remove(run_order_task)
                     checked = True
                     current_room = self.op_data.get_current_room(room, True)
@@ -1965,7 +1971,8 @@ class BaseSchedulerSolver(BaseSolver):
                             if item1 != item2:
                                 same = False
                     if not same:
-                        if len(new_plan) == 1 and self.op_data.config.run_order_buffer_time > 0:
+                        # choose_error <= 0 选人如果失败则马上重新选过
+                        if len(new_plan) == 1 and self.op_data.config.run_order_buffer_time > 0 and choose_error <= 0:
                             remaining_time = self.get_order_remaining_time()
                             if 0 < remaining_time < self.run_order_delay * 60:
                                 if self.op_data.config.run_order_buffer_time > 0:

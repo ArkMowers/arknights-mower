@@ -24,41 +24,76 @@ class TaskTypes(Enum):
         return obj
 
 
-def find_next_task(tasks, compare_time=None, task_type='', compare_type='<',meta_data =''):
+def find_next_task(tasks, compare_time=None, task_type='', compare_type='<', meta_data=''):
     if compare_type == '=':
         return next((e for e in tasks if the_same_time(e.time, compare_time) and (
-            True if task_type == '' else task_type == e.type) and (True if meta_data == '' else meta_data in e.meta_data)), None)
+            True if task_type == '' else task_type == e.type) and (
+                         True if meta_data == '' else meta_data in e.meta_data)), None)
     elif compare_type == '>':
         return next((e for e in tasks if (True if compare_time is None else e.time > compare_time) and (
-            True if task_type == '' else task_type == e.type) and (True if meta_data == '' else meta_data in e.meta_data)), None)
+            True if task_type == '' else task_type == e.type) and (
+                         True if meta_data == '' else meta_data in e.meta_data)), None)
     else:
         return next((e for e in tasks if (True if compare_time is None else e.time < compare_time) and (
-            True if task_type == '' else task_type == e.type) and (True if meta_data == '' else meta_data in e.meta_data)), None)
+            True if task_type == '' else task_type == e.type) and (
+                         True if meta_data == '' else meta_data in e.meta_data)), None)
 
 
-def scheduling(tasks, run_order_delay=5, execution_time=45):
+def scheduling(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
     # execution_time per room
+    if time_now is None:
+        time_now = datetime.now()
     if len(tasks) > 0:
-        tasks.sort(key=lambda x: x.time, reverse=False)
+        tasks.sort(key=lambda x: x.time)
 
-        # 固定两单时间间隔
-        min_time_difference_between_priority1 = timedelta(minutes=run_order_delay)
+        # 任务间隔最小时间（5分钟）
+        min_time_interval = timedelta(minutes=run_order_delay)
 
-        # 队列时间逻辑
-        for i in range(1, len(tasks)):
-            time_difference = tasks[i].time - tasks[i - 1].time
-            if tasks[i].type.priority == 1 and tasks[i - 1].type.priority == 1:
-                if time_difference < min_time_difference_between_priority1:
-                    # 如果跑单时间过于接近，则返回
-                    logger.info("检测到跑单任务过于接近，准备修正跑单时间")
-                    return tasks[i - 1]
-            elif tasks[i].type.priority == 1:
-                # 如果跑单前 时间超过预计执行之间，则延后执行
-                sec_difference = len(tasks[i - 1].plan) * execution_time
-                if time_difference < timedelta(seconds=sec_difference):
-                    tasks[i - 1].time = tasks[i].time + timedelta(seconds=1)
-                    logger.info("检测到换班任务与跑单过于接近，延后换班任务")
-        tasks.sort(key=lambda x: x.time, reverse=False)
+        # 初始化变量以跟踪上一个优先级0任务和计划执行时间总和
+        last_priority_0_task = None
+        total_execution_time = 0
+
+        # 遍历任务列表
+        for i, task in enumerate(tasks):
+            current_time = time_now
+            # 判定任务堆积，如果第一个任务已经超时，则认为任务堆积
+            if task.type.priority == 1 and current_time > task.time:
+                total_execution_time += (current_time - task.time).total_seconds() / 60
+
+            if task.type.priority == 1:
+                if last_priority_0_task is not None:
+                    time_difference = task.time - last_priority_0_task.time
+                    if time_difference < min_time_interval and time_now < last_priority_0_task.time:
+                        logger.info("检测到跑单任务过于接近，准备修正跑单时间")
+                        return last_priority_0_task
+                # 更新上一个优先级0任务和总执行时间
+                last_priority_0_task = task
+                total_execution_time = 0
+            else:
+                # 找到下一个优先级0任务的位置
+                next_priority_0_index = -1
+                for j in range(i + 1, len(tasks)):
+                    if tasks[j].type.priority == 1:
+                        next_priority_0_index = j
+                        break
+                # 如果其他任务的总执行时间超过了下一个优先级0任务的执行时间，调整它们的时间
+                if next_priority_0_index > -1:
+                    for j in range(i, next_priority_0_index):
+                        # 假设每个任务执行时间为 45秒
+                        if timedelta(minutes=total_execution_time + len(task.plan) * execution_time) + time_now < tasks[
+                            j].time:
+                            total_execution_time = 0
+                        else:
+                            total_execution_time += len(task.plan) * execution_time
+                    if timedelta(minutes=total_execution_time) + time_now > tasks[next_priority_0_index].time:
+                        logger.info("检测到任务可能影响到下次跑单修改任务至跑单之后")
+                        logger.debug(str(tasks))
+                        next_priority_0_time = tasks[next_priority_0_index].time
+                        for j in range(i, next_priority_0_index):
+                            tasks[j].time = next_priority_0_time + timedelta(seconds=1)
+                            next_priority_0_time = tasks[j].time
+                        break
+        tasks.sort(key=lambda x: x.time)
 
 
 class SchedulerTask:
@@ -67,15 +102,15 @@ class SchedulerTask:
     plan = {}
     meta_data = ''
 
-    def __init__(self, time=None, task_plan={}, task_type='', meta_data = ""):
+    def __init__(self, time=None, task_plan={}, task_type='', meta_data=""):
         if time is None:
             self.time = datetime.now()
         else:
             self.time = time
         self.plan = task_plan
-        if task_type =="":
+        if task_type == "":
             self.type = TaskTypes.NOT_SPECIFIC
-        else :
+        else:
             self.type = task_type
         self.meta_data = meta_data
 
