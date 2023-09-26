@@ -41,7 +41,7 @@ async function select_copilot_path() {
       </n-radio-group>
     </n-form-item>
     <n-form-item label="导能单元">
-      <n-radio-group v-model:value="sss.type">
+      <n-radio-group v-model:value="sss.ec">
         <n-space>
           <n-radio :value="i" v-for="i in 3" :key="i">{{ i }}</n-radio>
         </n-space>
