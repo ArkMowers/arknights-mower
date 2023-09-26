@@ -20,7 +20,7 @@ export const usePlanStore = defineStore('plan', () => {
   for (let i = 1; i <= 3; ++i) {
     for (let j = 1; j <= 3; ++j) {
       const facility_name = `room_${i}_${j}`
-      const display_name = `B${i}0${i}`
+      const display_name = `B${i}0${j}`
       facility_operator_limit[facility_name] = 3
       left_side_facility.push({ label: display_name, value: facility_name })
     }
