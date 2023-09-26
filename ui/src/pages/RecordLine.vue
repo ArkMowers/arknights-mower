@@ -1,7 +1,7 @@
 <template>
   <div>
     <h1 class="page-title">干员心情折线表</h1>
-    <n-grid :x-gap="12" :y-gap="8" :collapsed="false" cols="1 700:2 1000:3 1300:4">
+    <n-grid :x-gap="12" :y-gap="8" :collapsed="false" cols="1 s:1 m:2 l:3 xl:4 2xl:5" responsive="screen">
       <n-gi v-for="(groupData, index) in reportData" :key="index" class="report-card">
         <h2>{{ groupData.groupName }}</h2>
         <Line :data="groupData.moodData" :options="chartOptions" />
