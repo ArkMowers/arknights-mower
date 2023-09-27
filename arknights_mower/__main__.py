@@ -94,8 +94,6 @@ def set_maa_options(base_scheduler):
     maa_config['maa_execution_gap'] = conf['maa_gap']
     maa_config['buy_first'] = conf['maa_mall_buy']
     maa_config['blacklist'] = conf['maa_mall_blacklist']
-    maa_config['recruitment_time'] = conf['maa_recruitment_time']
-    maa_config['recruit_only_4'] = conf['maa_recruit_only_4']
     maa_config['conn_preset'] = conf['maa_conn_preset']
     maa_config['touch_option'] = conf['maa_touch_option']
     maa_config['mall_ignore_when_full'] = conf['maa_mall_ignore_blacklist_when_full']
