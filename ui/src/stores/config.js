@@ -6,6 +6,7 @@ export const useConfigStore = defineStore('config', () => {
   const adb = ref('')
   const drone_count_limit = ref(0)
   const drone_room = ref('')
+  const drone_interval = ref(4)
   const enable_party = ref(true)
   const free_blacklist = ref([])
   const maa_adb_path = ref('')
@@ -70,6 +71,7 @@ export const useConfigStore = defineStore('config', () => {
     adb.value = response.data.adb
     drone_count_limit.value = response.data.drone_count_limit
     drone_room.value = response.data.drone_room
+    drone_interval.value = response.data.drone_interval
     enable_party.value = response.data.enable_party != 0
     free_blacklist.value =
       response.data.free_blacklist == '' ? [] : response.data.free_blacklist.split(',')
@@ -127,6 +129,7 @@ export const useConfigStore = defineStore('config', () => {
       adb: adb.value,
       drone_count_limit: drone_count_limit.value,
       drone_room: drone_room.value,
+      drone_interval: drone_interval.value,
       enable_party: enable_party.value ? 1 : 0,
       free_blacklist: free_blacklist.value.join(','),
       maa_adb_path: maa_adb_path.value,
@@ -183,6 +186,7 @@ export const useConfigStore = defineStore('config', () => {
       adb,
       drone_count_limit,
       drone_room,
+      drone_interval,
       enable_party,
       free_blacklist,
       maa_adb_path,
@@ -239,6 +243,7 @@ export const useConfigStore = defineStore('config', () => {
     load_config,
     drone_count_limit,
     drone_room,
+    drone_interval,
     enable_party,
     free_blacklist,
     maa_adb_path,
