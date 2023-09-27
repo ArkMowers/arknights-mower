@@ -17,10 +17,10 @@ def get_update_time():
             pattern = r"(\d+)月(\d+)日(\d+):(\d+)"
             result = re.findall(pattern, h1.text)[0]
             result = list(map(int, result))
+            now = datetime.now()
             update_time = datetime(now.year, result[0], result[1], result[2], result[3])
             logger.debug(f"闪断更新时间：{update_time}")
 
-            now = datetime.now()
             if now > update_time:
                 logger.info("闪断更新时间已过")
             else:

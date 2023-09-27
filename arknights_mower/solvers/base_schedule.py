@@ -28,6 +28,7 @@ from ..utils.pipe import push_operators
 from ..utils.recognize import RecognizeError, Recognizer, Scene
 from ..utils.solver import BaseSolver
 from ..utils.datetime import get_server_weekday, the_same_time
+from arknights_mower.utils.news import get_update_time
 from paddleocr import PaddleOCR
 import cv2
 
@@ -465,6 +466,7 @@ class BaseSchedulerSolver(BaseSolver):
                     self.error = True
             self.planned = True
         elif not self.todo_task:
+            get_update_time()
             if self.party_time is None and self.enable_party:
                 self.clue()
             if self.clue_count > self.clue_count_limit and self.enable_party:
