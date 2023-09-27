@@ -28,22 +28,22 @@
           <router-view v-if="loaded" />
         </n-layout-content>
         <n-layout-footer v-if="mobile">
-          <n-tabs type="line" justify-content="space-evenly">
+          <n-tabs type="line" justify-content="space-evenly" size="small">
             <n-tab name="主页" @click="$router.push('/')">
               <div style="display: flex; flex-direction: column; align-items: center">
-                <n-icon size="24" style="margin-bottom: 4px" :component="BookOutline" />
+                <n-icon size="20" style="margin-bottom: -1px" :component="BookOutline" />
                 日志
               </div>
             </n-tab>
             <n-tab name="排班" @click="$router.push('/plan-editor')">
               <div style="display: flex; flex-direction: column; align-items: center">
-                <n-icon size="24" style="margin-bottom: 4px" :component="Home" />
+                <n-icon size="20" style="margin-bottom: -1px" :component="Home" />
                 排班
               </div>
             </n-tab>
             <n-tab name="报表" @click="showModal = true">
               <div style="display: flex; flex-direction: column; align-items: center">
-                <n-icon size="24" style="margin-bottom: 4px" :component="StatsChart" />
+                <n-icon size="20" style="margin-bottom: -1px" :component="StatsChart" />
                 报表
               </div>
               <n-modal v-model:show="showModal">
@@ -66,13 +66,13 @@
             </n-tab>
             <n-tab name="设置" @click="$router.push('/settings')">
               <div style="display: flex; flex-direction: column; align-items: center">
-                <n-icon size="24" style="margin-bottom: 4px" :component="Settings" />
+                <n-icon size="20" style="margin-bottom: -1px" :component="Settings" />
                 设置
               </div>
             </n-tab>
             <n-tab name="帮助" @click="$router.push('/doc')">
               <div style="display: flex; flex-direction: column; align-items: center">
-                <n-icon size="24" style="margin-bottom: 4px" :component="HelpCircle" />
+                <n-icon size="20" style="margin-bottom: -1px" :component="HelpCircle" />
                 帮助
               </div>
             </n-tab>
