@@ -122,7 +122,6 @@ if __name__ == "__main__":
         sleep(0.1)
     webview.start()
 
-    global mower_process
     if mower_process:
         mower_process.terminate()
         mower_process = None
