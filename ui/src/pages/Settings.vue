@@ -2,7 +2,7 @@
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
 import { storeToRefs } from 'pinia'
-import { computed, inject, ref } from 'vue'
+import { computed, inject } from 'vue'
 
 import pinyinMatch from 'pinyin-match/es/traditional'
 
@@ -12,13 +12,13 @@ const config_store = useConfigStore()
 const plan_store = usePlanStore()
 
 const mobile = inject('mobile')
-const axios = inject('axios')
 
 const {
   run_mode,
   run_order_delay,
   drone_room,
   drone_count_limit,
+  drone_interval,
   reload_room,
   start_automatically,
   free_blacklist,
@@ -29,10 +29,7 @@ const {
   resting_threshold,
   tap_to_launch_game,
   exit_game_when_idle,
-  screenshot,
-  maa_rg_enable,
-  maa_rg_sleep_min,
-  maa_rg_sleep_max
+  screenshot
 } = storeToRefs(config_store)
 
 const { operators } = storeToRefs(plan_store)
@@ -227,6 +224,16 @@ function render_label(option) {
             </help-text>
           </template>
           <n-input-number v-model:value="drone_count_limit" />
+        </n-form-item>
+        <n-form-item>
+          <template #label>
+            <span>无人机加速间隔</span>
+            <help-text>
+              <div>单位：小时</div>
+              <div>可填小数</div>
+            </help-text>
+          </template>
+          <n-input-number v-model:value="drone_interval" />
         </n-form-item>
         <n-form-item label="搓玉补货房间：">
           <n-select

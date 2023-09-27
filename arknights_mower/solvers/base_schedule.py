@@ -2232,25 +2232,6 @@ class BaseSchedulerSolver(BaseSolver):
                     'expiring_medicine': 9999
                 })
                 self.stages.append(stage)
-        elif type == 'Recruit':
-            if self.maa_config['recruitment_time']:
-                recruitment_time = 460
-            else:
-                recruitment_time = 540
-            if self.maa_config['recruit_only_4']:
-                confirm = [4]
-            else:
-                confirm = [3, 4]
-            self.MAA.append_task('Recruit', {
-                'select': [4],
-                'confirm': confirm,
-                'times': 4,
-                'refresh': True,
-                "recruitment_time": {
-                    "3": recruitment_time,
-                    "4": 540
-                }
-            })
         elif type == 'Mall':
             self.MAA.append_task('Mall', {
                 'shopping': True,

@@ -6,4 +6,13 @@ const router = createRouter({
   routes
 })
 
+router.beforeEach((to, from) => {
+  if (from.query.token && !to.query.token) {
+    return {
+      path: to.path,
+      query: from.query
+    }
+  }
+})
+
 export default router

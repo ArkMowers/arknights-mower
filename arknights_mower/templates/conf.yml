@@ -1,6 +1,7 @@
 adb: 127.0.0.1:62001
 drone_count_limit: 92
 drone_room: ''
+drone_interval: 4
 enable_party: 1
 exhaust_require: ''
 workaholic: ''
@@ -166,8 +167,6 @@ maa_gap: 4
 maa_mall_blacklist: 加急许可,碳,碳素,家具零件
 maa_mall_buy: 招聘许可,龙门币,技巧概要·卷2
 maa_mall_ignore_blacklist_when_full: false
-maa_recruit_only_4: false
-maa_recruitment_time: false
 maa_rg_sleep_max: 0:00
 maa_rg_sleep_min: 0:00
 webview:
@@ -209,3 +208,6 @@ sss:
   ec: 1
   loop: 1
   copilot: ''
+run_order_grandet_mode:
+  enable: true
+  buffer_time: 15

@@ -94,8 +94,6 @@ def set_maa_options(base_scheduler):
     maa_config['maa_execution_gap'] = conf['maa_gap']
     maa_config['buy_first'] = conf['maa_mall_buy']
     maa_config['blacklist'] = conf['maa_mall_blacklist']
-    maa_config['recruitment_time'] = conf['maa_recruitment_time']
-    maa_config['recruit_only_4'] = conf['maa_recruit_only_4']
     maa_config['conn_preset'] = conf['maa_conn_preset']
     maa_config['touch_option'] = conf['maa_touch_option']
     maa_config['mall_ignore_when_full'] = conf['maa_mall_ignore_blacklist_when_full']
@@ -179,7 +177,7 @@ def initialize(tasks, scheduler=None):
         base_scheduler.error = False
         base_scheduler.drone_room = None if conf['drone_room'] == '' else conf['drone_room']
         base_scheduler.reload_room = list(filter(None, conf['reload_room'].replace('，', ',').split(',')))
-        base_scheduler.drone_execution_gap = 4
+        base_scheduler.drone_execution_gap = conf['drone_interval']
         base_scheduler.run_order_delay = conf['run_order_delay']
         base_scheduler.agent_base_config = agent_base_config
         base_scheduler.exit_game_when_idle = conf['exit_game_when_idle']
