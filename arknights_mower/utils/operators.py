@@ -220,6 +220,20 @@ class Operators(object):
                         elif self.config.ling_xi == 0:
                             self.set_mood_limit(group_name, lower_limit=0)
                 finished.append(self.operators[name].group)
+ 
+        # 设置铅踝心情阈值
+        # 三种情况：
+        # 1. 铅踝不是主力：不管
+        # 2. 铅踝是红云组主力，设置心情上限 12、下限 8，效率 37%
+        # 3. 铅踝是普通主力：设置心情下限 20，效率 30%
+        TOTTER = "铅踝"
+        VERMEIL = "红云"
+        if TOTTER in self.operators and self.operators[TOTTER].operator_type == "high":
+            if VERMEIL in self.operators and self.operators[VERMEIL].operator_type == "high" and self.operators[VERMEIL].room == self.operators[TOTTER].room:
+                self.set_mood_limit(TOTTER, upper_limit=12, lower_limit=8)
+            else:
+                self.set_mood_limit(TOTTER, upper_limit=24, lower_limit=20)
+
 
     def evaluate_expression(self, expression):
         try:
