@@ -140,7 +140,7 @@ def initialize(tasks, scheduler=None):
         base_scheduler.operators = {}
         plan1 = {}
         plan_config = PlanConfig(plan['conf']['rest_in_full'],plan['conf']['exhaust_require'], plan['conf']['resting_priority'], ling_xi= plan['conf']['ling_xi'],
-                            workaholic=plan['conf']['workaholic'],max_resting_count= plan['conf']['max_resting_count'], free_blacklist=conf['free_blacklist'],resting_threshold=conf['resting_threshold'], run_order_buffer_time=plan['run_order_grandet_mode']['buffer_time'] if plan['run_order_grandet_mode']['enable'] else -1)
+                            workaholic=plan['conf']['workaholic'],max_resting_count= plan['conf']['max_resting_count'], free_blacklist=conf['free_blacklist'],resting_threshold=conf['resting_threshold'], run_order_buffer_time=conf['run_order_grandet_mode']['buffer_time'] if conf['run_order_grandet_mode']['enable'] else -1)
         for key in plan[plan['default']]:
             plan1[key] = [Room(obj["agent"],obj["group"],obj["replacement"]) for obj in plan[plan['default']][key]['plans']]
         # 默认任务
