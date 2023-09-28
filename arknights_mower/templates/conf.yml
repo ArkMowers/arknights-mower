@@ -210,4 +210,4 @@ sss:
   copilot: ''
 run_order_grandet_mode:
   enable: true
-  buffer_time: 15
+  buffer_time: 30
