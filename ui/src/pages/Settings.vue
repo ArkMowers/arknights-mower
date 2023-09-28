@@ -29,7 +29,8 @@ const {
   resting_threshold,
   tap_to_launch_game,
   exit_game_when_idle,
-  screenshot
+  screenshot,
+  run_order_grandet_mode
 } = storeToRefs(config_store)
 
 const { operators } = storeToRefs(plan_store)
@@ -201,9 +202,23 @@ function render_label(option) {
             <help-text>
               <div>推荐范围5-10</div>
               <div>可填小数</div>
+              <div>单位：分钟</div>
             </help-text>
           </template>
           <n-input-number v-model:value="run_order_delay" />
+        </n-form-item>
+        <n-form-item :show-label="false">
+          <n-checkbox v-model:checked="run_order_grandet_mode.enable">葛朗台跑单</n-checkbox>
+        </n-form-item>
+        <n-form-item v-if="run_order_grandet_mode.enable">
+          <template #label>
+            <span>葛朗台缓冲时间</span>
+            <help-text>
+              <div>推荐范围：15-30</div>
+              <div>单位：秒</div>
+            </help-text>
+          </template>
+          <n-input-number v-model:value="run_order_grandet_mode.buffer_time" />
         </n-form-item>
         <n-form-item>
           <template #label>
