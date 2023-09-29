@@ -107,6 +107,11 @@ class BaseSchedulerSolver(BaseSolver):
             self.task = self.tasks[0]
         else:
             self.task = None
+        if self.task is not None and datetime.now() < self.task.time:
+            reschedule_time = (self.task.time - datetime.now()).total_seconds()
+            if reschedule_time > 0:
+                logger.debug(f"出现任务调度情况休息{reschedule_time}秒等待下一个任务开始")
+                self.sleep(reschedule_time)
         if self.party_time is not None and self.party_time < datetime.now():
             self.party_time = None
         if self.free_clue is not None and self.free_clue != get_server_weekday():

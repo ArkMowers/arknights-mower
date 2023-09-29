@@ -79,19 +79,26 @@ def scheduling(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
                 # 如果其他任务的总执行时间超过了下一个优先级0任务的执行时间，调整它们的时间
                 if next_priority_0_index > -1:
                     for j in range(i, next_priority_0_index):
-                        # 假设每个任务执行时间为 45秒
-                        if timedelta(minutes=total_execution_time + len(task.plan) * execution_time) + time_now < tasks[
-                            j].time:
+                        # 菲亚充能/派对内置3分钟，线索购物内置1分钟
+                        task_time = 0 if len(tasks[j].plan) > 0 and tasks[j].type not in [TaskTypes.FIAMMETTA,
+                                                                                          TaskTypes.CLUE_PARTY] else (
+                            3 if tasks[j].type in [TaskTypes.FIAMMETTA, TaskTypes.CLUE_PARTY] else 1)
+                        # 其他任务按照 每个房间*预设执行时间算 默认 45秒
+                        estimate_time = len(tasks[j].plan) * execution_time if task_time == 0 else task_time
+                        if timedelta(minutes=total_execution_time + estimate_time) + time_now < \
+                                tasks[
+                                    j].time:
                             total_execution_time = 0
                         else:
-                            total_execution_time += len(task.plan) * execution_time
+                            total_execution_time += estimate_time
                     if timedelta(minutes=total_execution_time) + time_now > tasks[next_priority_0_index].time:
                         logger.info("检测到任务可能影响到下次跑单修改任务至跑单之后")
-                        logger.debug(str(tasks))
+                        logger.debug('||'.join([str(t) for t in tasks]))
                         next_priority_0_time = tasks[next_priority_0_index].time
                         for j in range(i, next_priority_0_index):
                             tasks[j].time = next_priority_0_time + timedelta(seconds=1)
                             next_priority_0_time = tasks[j].time
+                        logger.debug('||'.join([str(t) for t in tasks]))
                         break
         tasks.sort(key=lambda x: x.time)
 
