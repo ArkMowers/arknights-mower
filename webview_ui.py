@@ -18,6 +18,7 @@ import tkinter
 from tkinter import messagebox
 from time import sleep
 import sys
+import pathlib
 
 
 quit_app = False
@@ -88,7 +89,15 @@ if __name__ == "__main__":
     width = conf["webview"]["width"]
     height = conf["webview"]["height"]
 
-    tray_img = Image.open(os.path.join(os.getcwd(), "logo.png"))
+    logo_path = (
+        pathlib.Path(
+            sys._MEIPASS
+            if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")
+            else os.getcwd()
+        )
+        / "logo.png"
+    )
+    tray_img = Image.open(logo_path)
     icon = Icon(
         "arknights-mower",
         icon=tray_img,
