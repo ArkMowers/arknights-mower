@@ -35,6 +35,12 @@
                 日志
               </div>
             </n-tab>
+            <n-tab name="设置" @click="$router.push('/settings')">
+              <div style="display: flex; flex-direction: column; align-items: center">
+                <n-icon size="20" style="margin-bottom: -1px" :component="Settings" />
+                设置
+              </div>
+            </n-tab>
             <n-tab name="排班" @click="$router.push('/plan-editor')">
               <div style="display: flex; flex-direction: column; align-items: center">
                 <n-icon size="20" style="margin-bottom: -1px" :component="Home" />
@@ -64,12 +70,6 @@
                 </n-card>
               </n-modal>
             </n-tab>
-            <n-tab name="设置" @click="$router.push('/settings')">
-              <div style="display: flex; flex-direction: column; align-items: center">
-                <n-icon size="20" style="margin-bottom: -1px" :component="Settings" />
-                设置
-              </div>
-            </n-tab>
             <n-tab name="帮助" @click="$router.push('/doc')">
               <div style="display: flex; flex-direction: column; align-items: center">
                 <n-icon size="20" style="margin-bottom: -1px" :component="HelpCircle" />
@@ -84,7 +84,7 @@
 </template>
 
 <script setup>
-import { onMounted, inject, provide } from 'vue'
+import { onMounted, inject, provide, h, computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 
 const showModal = ref(false)
@@ -111,14 +111,14 @@ const menuOptions = computed(() => [
     key: 'go-to-log'
   },
   {
-    label: () => h(RouterLink, { to: { path: '/plan-editor' } }, { default: () => '排班编辑' }),
-    icon: renderIcon(Home),
-    key: 'go-to-plan'
-  },
-  {
     label: () => h(RouterLink, { to: { path: '/settings' } }, { default: () => '全部设置' }),
     icon: renderIcon(Settings),
     key: 'go-to-allsetting'
+  },
+  {
+    label: () => h(RouterLink, { to: { path: '/plan-editor' } }, { default: () => '排班编辑' }),
+    icon: renderIcon(Home),
+    key: 'go-to-plan'
   },
   {
     label: () => '基建报表',
