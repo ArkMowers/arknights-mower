@@ -292,7 +292,7 @@ function render_label(option) {
       <div class="watterfall-items"><Recruit /></div>
       <div class="watterfall-items"><maa-weekly /></div>
       <!-- <maa-weekly-new /> -->
-      <div class="watterfall-items"><maa-long-tasks /></div>
+      <div class="watterfall-item-last"><maa-long-tasks /></div>
     </div>
   </div>
 </template>
@@ -376,27 +376,38 @@ ul {
 </style>
 
 <style>
+/*瀑布双栏 */
 .waterfall {
   column-gap: 10px;
   column-rule: 2px dotted rgb(79, 185, 227);
+  column-width: 600px;/*我测试他可以小于600*/
 }
+/*瀑布双栏内元素 防止左列最后一个div被挤过去一部分 */
 .watterfall-items {
   margin: 0 0 10px 0;
   break-inside: avoid;
   page-break-inside: avoid;
 }
+/*瀑布双栏内元素 最后一个div 单独调整底部大小 */
+.watterfall-item-last {
+  margin: 0 0 0 0;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/*瀑布双栏内显示 当屏幕宽度大于或等于1400像素时应用.waterfall的样式*/
 @media (max-width: 1399px) {
   .waterfall {
     column-count: 1;
   }
 }
-
-/* 当屏幕宽度大于或等于1000像素时应用.waterfall的样式 */
+/*瀑布双栏内显示 当屏幕宽度大于或等于1400像素时应用.waterfall的样式*/
 @media (min-width: 1400px) {
   .waterfall {
     column-count: 2;
   }
 }
+/*瀑布双栏 */
 
 .n-divider:not(.n-divider--vertical) {
   margin: 14px 0 8px;
