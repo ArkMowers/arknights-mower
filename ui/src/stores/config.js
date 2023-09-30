@@ -12,6 +12,7 @@ export const useConfigStore = defineStore('config', () => {
   const maa_adb_path = ref('')
   const maa_enable = ref(false)
   const maa_path = ref('')
+  const maa_expiring_medicine = ref(true)
   const maa_weekly_plan = ref([])
   const maa_weekly_plan1 = ref([])
   const maa_rg_enable = ref(0)
@@ -81,6 +82,7 @@ export const useConfigStore = defineStore('config', () => {
     maa_path.value = response.data.maa_path
     maa_rg_enable.value = response.data.maa_rg_enable == 1
     maa_long_task_type.value = response.data.maa_long_task_type
+    maa_expiring_medicine.value = response.data.maa_expiring_medicine
     maa_weekly_plan.value = response.data.maa_weekly_plan
     maa_weekly_plan1.value = response.data.maa_weekly_plan1
     mail_enable.value = response.data.mail_enable != 0
@@ -139,6 +141,7 @@ export const useConfigStore = defineStore('config', () => {
       maa_path: maa_path.value,
       maa_rg_enable: maa_rg_enable.value ? 1 : 0,
       maa_long_task_type: maa_long_task_type.value,
+      maa_expiring_medicine: maa_expiring_medicine.value,
       maa_weekly_plan: maa_weekly_plan.value,
       maa_weekly_plan1: maa_weekly_plan1.value,
       mail_enable: mail_enable.value ? 1 : 0,
@@ -195,6 +198,7 @@ export const useConfigStore = defineStore('config', () => {
       maa_adb_path,
       maa_enable,
       maa_path,
+      maa_expiring_medicine,
       maa_weekly_plan,
       maa_weekly_plan1,
       maa_rg_enable,
@@ -255,6 +259,7 @@ export const useConfigStore = defineStore('config', () => {
     maa_path,
     maa_rg_enable,
     maa_long_task_type,
+    maa_expiring_medicine,
     maa_weekly_plan,
     maa_weekly_plan1,
     mail_enable,

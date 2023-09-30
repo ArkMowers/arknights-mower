@@ -77,6 +77,7 @@ maa_config = {
     },
     "sleep_min": "",
     "sleep_max": "",
+    "expiring_medicine": True,
     "weekly_plan": [{"weekday": "周一", "stage": ['PR-A-2'], "medicine": 0},
                     {"weekday": "周二", "stage": ['Annihilation', 'PR-B-2'], "medicine": 0},
                     {"weekday": "周三", "stage": ['Annihilation', 'PR-D-2'], "medicine": 0},

@@ -16,6 +16,7 @@ maa_enable: 0
 maa_rg_enable: 0
 maa_long_task_type: rogue
 maa_path: D:\MAA-v4.13.0-win-x64
+maa_expiring_medicine: true
 maa_weekly_plan:
   - medicine: 0
     stage: ['']

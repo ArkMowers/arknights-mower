@@ -86,6 +86,7 @@ def set_maa_options(base_scheduler):
     maa_config['maa_path'] = conf['maa_path']
     maa_config['maa_adb_path'] = conf['maa_adb_path']
     maa_config['maa_adb'] = conf['adb']
+    maa_config['expiring_medicine'] = conf['maa_expiring_medicine']
     maa_config['weekly_plan'] = conf['maa_weekly_plan']
     maa_config['roguelike'] = conf['maa_rg_enable'] == 1 and conf['maa_long_task_type'] == 'rogue'
     maa_config['rogue_theme'] = conf['maa_rg_theme']

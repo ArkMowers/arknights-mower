@@ -2237,7 +2237,7 @@ class BaseSchedulerSolver(BaseSolver):
                     'penguin_id': '',
                     'DrGrandet': False,
                     'server': 'CN',
-                    'expiring_medicine': 9999
+                    'expiring_medicine': 999 if self.maa_config['expiring_medicine'] else 0,
                 })
                 self.stages.append(stage)
         elif type == 'Mall':

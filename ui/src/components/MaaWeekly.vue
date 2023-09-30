@@ -3,10 +3,12 @@ import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 
 const store = useConfigStore()
-const { maa_weekly_plan, maa_enable } = storeToRefs(store)
+const { maa_weekly_plan, maa_enable, maa_expiring_medicine } = storeToRefs(store)
 
 import { NTag } from 'naive-ui'
-import { h } from 'vue'
+import { h, inject } from 'vue'
+
+const mobile = inject('mobile')
 
 function render_tag({ option, handleClose }) {
   return h(
@@ -77,7 +79,6 @@ function create_tag(label) {
         <div class="card-title">Maa周计划</div>
         <help-text>
           <p>理智药的数量表示“每次调用Maa时吃多少”，不是“每天吃多少”。</p>
-          <p>48 小时内过期的理智药会自动使用。</p>
           <p>“每天”从凌晨四点开始，与游戏内一致。</p>
           <span>关卡填写说明：</span>
           <ul>
@@ -119,12 +120,36 @@ function create_tag(label) {
         </help-text>
       </n-checkbox>
     </template>
+    <n-form
+      :label-placement="mobile ? 'top' : 'left'"
+      :show-feedback="false"
+      label-width="72"
+      label-align="left"
+    >
+      <n-form-item :show-label="false">
+        <n-checkbox v-model:checked="maa_expiring_medicine">
+          自动使用48小时内过期的理智药
+        </n-checkbox>
+      </n-form-item>
+    </n-form>
+    <n-button
+      text
+      tag="a"
+      href="https://m.prts.wiki/w/%E5%85%B3%E5%8D%A1%E4%B8%80%E8%A7%88/%E8%B5%84%E6%BA%90%E6%94%B6%E9%9B%86"
+      target="_blank"
+      type="primary"
+      class="prts-wiki-link"
+    >
+      PRTS.wiki：关卡一览/资源收集
+    </n-button>
     <table>
+      <tr>
+        <th></th>
+        <th>关卡</th>
+        <th>每次吃药</th>
+      </tr>
       <tr v-for="plan in maa_weekly_plan" :key="plan.weekday">
-        <td>
-          <n-h4>{{ plan.weekday }}</n-h4>
-        </td>
-        <td>关卡</td>
+        <td>{{ plan.weekday }}</td>
         <td>
           <n-select
             v-model:value="plan.stage"
@@ -137,7 +162,6 @@ function create_tag(label) {
             :on-create="create_tag"
           />
         </td>
-        <td>理智药</td>
         <td>
           <n-input-number v-model:value="plan.medicine" :min="0" />
         </td>
@@ -167,27 +191,20 @@ table {
   td {
     &:nth-child(1) {
       width: 40px;
-    }
-
-    &:nth-child(2) {
-      width: 32px;
+      text-align: left;
     }
 
     &:nth-child(3) {
-      padding-right: 8px;
-    }
-
-    &:nth-child(4) {
-      width: 50px;
-    }
-
-    &:nth-child(5) {
-      width: 90px;
+      width: 80px;
     }
   }
 }
 
 .tag-mr {
   margin-right: 4px;
+}
+
+.prts-wiki-link {
+  margin: 8px 0;
 }
 </style>
