@@ -703,7 +703,7 @@ class BaseSchedulerSolver(BaseSolver):
                             (op.upper_limit - op.lower_limit) * self.op_data.config.resting_threshold + op.lower_limit):
                         continue
                     if op.name in self.op_data.exhaust_agent:
-                        if op.current_mood() <= 2:
+                        if op.current_mood() <= op.lower_limit + 2:
                             if find_next_task(self.tasks, meta_data=op.name) is None:
                                 self.enter_room(op.current_room)
                                 result = self.get_agent_from_room(op.current_room, [op.current_index])
