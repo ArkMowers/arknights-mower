@@ -36,6 +36,9 @@ export const useMowerStore = defineStore('mower', () => {
           break
         }
       }
+      if (!task_line.startsWith('SchedulerTask')) {
+        return
+      }
       const scheduler_task = task_line.split('||')
       const date_time_re = /time='[0-9]+-[0-9]+-[0-9]+ ([0-9]+:[0-9]+:[0-9]+)/
       const plan_re = /task_plan={(.*?)}/
