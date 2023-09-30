@@ -127,12 +127,21 @@ def sift_recog(query, resolution, draw=False,bigfont = False):
 
 def paddle_recog(__img):
     if len(res := arknights_mower.utils.paddleocr.ocr(__img)[1]) > 0:
-        logger.debug(f"PaddleOCR识别结果：{res}")
-        if op_name := next((r[0] for r in res if r[0] in agent_list), None):
-            return op_name
+        logger.debug(res)
+        for r in res:
+            if r[0] in agent_list:
+                op_name = r[0]
+                return op_name
+            if r[0] in ocr_error:
+                op_name = ocr_error[r[0]]
+                logger.debug(f"{r[0]} =====> {op_name}")
+                return op_name
         recog_text = res[0][0]
         best = None
         best_score = 0
+        # “森蚺”可能识别成“森”，“孑”可能识别成“子”（子月）
+        # 以单字猜测双字干员不可靠
+        # 以“白面鹃”或“白面”匹配“白面鸮”没问题
         for x in agent_sorted:
             score = -abs(len(x) - len(recog_text))
             for c in set(x):
@@ -140,8 +149,8 @@ def paddle_recog(__img):
             if score > best_score:
                 best = x
                 best_score = score
-        if best_score > 0:
-            logger.debug(f"通过{recog_text}猜测干员：{best}")
+        if best_score > len(best):
+            logger.debug(f"{recog_text} --?--> {best}")
             return best
     return None
 
