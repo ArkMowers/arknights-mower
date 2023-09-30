@@ -161,7 +161,7 @@ function create_tag(label) {
             :key="index"
             :class="{ today: currentDay === index }"
           >
-            {{ day }}{{ currentDay === index +1 ? ' (今天)' : '' }}
+            {{ day }}{{ currentDay === index + 1 ? ' (今天)' : '' }}
           </th>
         </tr>
       </thead>

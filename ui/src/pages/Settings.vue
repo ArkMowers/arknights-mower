@@ -70,9 +70,10 @@ function render_label(option) {
 </script>
 
 <template>
-  <div class="home-container ">
-    <div class="waterfall ">
-      <div style="break-inside: avoid; page-break-inside: avoid ;">        <n-card title="Mower设置">
+  <div class="home-container">
+    <div class="waterfall">
+      <div style="break-inside: avoid; page-break-inside: avoid">
+        <n-card title="Mower设置">
           <n-form
             :label-placement="mobile ? 'top' : 'left'"
             :show-feedback="false"
@@ -163,7 +164,7 @@ function render_label(option) {
           </n-form>
         </n-card>
       </div>
-      <div style="break-inside: avoid; page-break-inside: avoid;">
+      <div style="break-inside: avoid; page-break-inside: avoid">
         <n-card title="基建设置">
           <n-form
             :label-placement="mobile ? 'top' : 'left'"
@@ -284,14 +285,14 @@ function render_label(option) {
           </n-form>
         </n-card>
       </div>
-      <div style="break-inside: avoid; page-break-inside: avoid;"><maa-basic /></div>
-      <div style="break-inside: avoid; page-break-inside: avoid;"><email /></div>
+      <div style="break-inside: avoid; page-break-inside: avoid"><maa-basic /></div>
+      <div style="break-inside: avoid; page-break-inside: avoid"><email /></div>
       <!-- <SKLand /> -->
-      <div style="break-inside: avoid; page-break-inside: avoid;"><clue /></div>
-      <div style="break-inside: avoid; page-break-inside: avoid;"><Recruit /></div>
-      <div style="break-inside: avoid; page-break-inside: avoid;"><maa-weekly /></div>
+      <div style="break-inside: avoid; page-break-inside: avoid"><clue /></div>
+      <div style="break-inside: avoid; page-break-inside: avoid"><Recruit /></div>
+      <div style="break-inside: avoid; page-break-inside: avoid"><maa-weekly /></div>
       <!-- <maa-weekly-new /> -->
-      <div style="break-inside: avoid; page-break-inside: avoid;"><maa-long-tasks /></div>
+      <div style="break-inside: avoid; page-break-inside: avoid"><maa-long-tasks /></div>
     </div>
   </div>
 </template>
@@ -375,7 +376,7 @@ ul {
 </style>
 
 <style>
-.waterfall{
+.waterfall {
   column-gap: 10px;
   column-rule: 2px dotted rgb(79, 185, 227);
 }
@@ -390,7 +391,7 @@ ul {
   .waterfall {
     column-count: 2;
   }
-}  
+}
 
 .n-divider:not(.n-divider--vertical) {
   margin: 14px 0 8px;
