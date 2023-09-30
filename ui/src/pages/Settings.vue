@@ -72,7 +72,7 @@ function render_label(option) {
 <template>
   <div class="home-container">
     <div class="waterfall">
-      <div style="break-inside: avoid; page-break-inside: avoid">
+      <div class="watterfall-items">
         <n-card title="Mower设置">
           <n-form
             :label-placement="mobile ? 'top' : 'left'"
@@ -164,7 +164,7 @@ function render_label(option) {
           </n-form>
         </n-card>
       </div>
-      <div style="break-inside: avoid; page-break-inside: avoid">
+      <div class="watterfall-items">
         <n-card title="基建设置">
           <n-form
             :label-placement="mobile ? 'top' : 'left'"
@@ -285,14 +285,14 @@ function render_label(option) {
           </n-form>
         </n-card>
       </div>
-      <div style="break-inside: avoid; page-break-inside: avoid"><maa-basic /></div>
-      <div style="break-inside: avoid; page-break-inside: avoid"><email /></div>
+      <div class="watterfall-items"><maa-basic /></div>
+      <div class="watterfall-items"><email /></div>
       <!-- <SKLand /> -->
-      <div style="break-inside: avoid; page-break-inside: avoid"><clue /></div>
-      <div style="break-inside: avoid; page-break-inside: avoid"><Recruit /></div>
-      <div style="break-inside: avoid; page-break-inside: avoid"><maa-weekly /></div>
+      <div class="watterfall-items"><clue /></div>
+      <div class="watterfall-items"><Recruit /></div>
+      <div class="watterfall-items"><maa-weekly /></div>
       <!-- <maa-weekly-new /> -->
-      <div style="break-inside: avoid; page-break-inside: avoid"><maa-long-tasks /></div>
+      <div class="watterfall-items"><maa-long-tasks /></div>
     </div>
   </div>
 </template>
@@ -379,6 +379,11 @@ ul {
 .waterfall {
   column-gap: 10px;
   column-rule: 2px dotted rgb(79, 185, 227);
+}
+.watterfall-items {
+  margin: 0 0 10px 0;
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 @media (max-width: 1399px) {
   .waterfall {
