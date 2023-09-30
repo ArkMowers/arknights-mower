@@ -125,6 +125,36 @@ def sift_recog(query, resolution, draw=False,bigfont = False):
     return best
 
 
+def paddle_recog(__img):
+    if len(res := arknights_mower.utils.paddleocr.ocr(__img)[1]) > 0:
+        logger.debug(res)
+        for r in res:
+            if r[0] in agent_list:
+                op_name = r[0]
+                return op_name
+            if r[0] in ocr_error:
+                op_name = ocr_error[r[0]]
+                logger.debug(f"{r[0]} =====> {op_name}")
+                return op_name
+        recog_text = res[0][0]
+        best = None
+        best_score = 0
+        # “森蚺”可能识别成“森”，“孑”可能识别成“子”（子月）
+        # 以单字猜测双字干员不可靠
+        # 以“白面鹃”或“白面”匹配“白面鸮”没问题
+        for x in agent_sorted:
+            score = -abs(len(x) - len(recog_text))
+            for c in set(x):
+                score += 2 if c in recog_text else 0
+            if score > best_score:
+                best = x
+                best_score = score
+        if best_score > len(best):
+            logger.debug(f"{recog_text} --?--> {best}")
+            return best
+    return None
+
+
 def agent(img, draw=False):
     """
     识别干员总览界面的干员名称
@@ -172,12 +202,10 @@ def agent(img, draw=False):
                         ret_agent.append(x[1])
                         ret_succ.append(poly)
                         continue
-                    if len(res := arknights_mower.utils.paddleocr.ocr(__img)[1]) > 0:
-                        logger.debug(f"PaddleOCR识别结果：{res}")
-                        if op_name := next((r[0] for r in res if r[0] in agent_list), None):
-                            ret_agent.append(op_name)
-                            ret_succ.append(poly)
-                            continue
+                    if op_name := paddle_recog(__img):
+                        ret_agent.append(op_name)
+                        ret_succ.append(poly)
+                        continue
                     res = sift_recog(__img, resolution, draw)
                     if (res is not None) and res in agent_list:
                         ret_agent.append(res)
@@ -191,12 +219,10 @@ def agent(img, draw=False):
                 else:
                     if 80 <= np.min(__img):
                         continue
-                    if len(res := arknights_mower.utils.paddleocr.ocr(__img)[1]) > 0:
-                        logger.debug(f"PaddleOCR识别结果：{res}")
-                        if op_name := next((r[0] for r in res if r[0] in agent_list), None):
-                            ret_agent.append(op_name)
-                            ret_succ.append(poly)
-                            continue
+                    if op_name := paddle_recog(__img):
+                        ret_agent.append(op_name)
+                        ret_succ.append(poly)
+                        continue
                     res = sift_recog(__img, resolution, draw)
                     if res is not None:
                         ret_agent.append(res)

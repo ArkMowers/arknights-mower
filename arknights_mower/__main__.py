@@ -11,6 +11,7 @@ from arknights_mower.utils.pipe import Pipe
 from arknights_mower.utils.simulator import restart_simulator
 from arknights_mower.utils.email import task_template
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
+import arknights_mower.utils.paddleocr
 
 conf = {}
 plan = {}
@@ -41,6 +42,7 @@ def main(c, p, o={}, child_conn=None):
     Pipe.conn = child_conn
     logger.info('开始运行Mower')
     logger.debug(agent_base_config)
+    arknights_mower.utils.paddleocr.initialize_ocr()
     simulate()
 
 #newbing说用这个来定义休息时间省事

@@ -13,6 +13,7 @@ from arknights_mower.utils import config
 from arknights_mower.utils.logic_expression import LogicExpression
 from arknights_mower.utils.simulator import restart_simulator
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
+import arknights_mower.utils.paddleocr
 
 # 下面不能删除
 from arknights_mower.utils.operators import Operators, Operator, Dormitory
@@ -401,4 +402,5 @@ def simulate():
 # debuglog()
 atexit.register(save_state)
 savelog()
+arknights_mower.utils.paddleocr.initialize_ocr()
 simulate()
