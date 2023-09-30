@@ -380,7 +380,7 @@ ul {
 .waterfall {
   column-gap: 10px;
   column-rule: 2px dotted rgb(79, 185, 227);
-  column-width: 600px;
+  column-width: 600px;/*我测试他可以小于600*/
 }
 /*瀑布双栏内元素 防止左列最后一个div被挤过去一部分 */
 .watterfall-items {
@@ -395,18 +395,19 @@ ul {
   page-break-inside: avoid;
 }
 
-/*瀑布双栏内显示 当屏幕宽度大于或等于1000像素时应用.waterfall的样式*/
+/*瀑布双栏内显示 当屏幕宽度大于或等于1400像素时应用.waterfall的样式*/
 @media (max-width: 1399px) {
   .waterfall {
     column-count: 1;
   }
 }
-/*瀑布双栏内显示 当屏幕宽度大于或等于1000像素时应用.waterfall的样式*/
+/*瀑布双栏内显示 当屏幕宽度大于或等于1400像素时应用.waterfall的样式*/
 @media (min-width: 1400px) {
   .waterfall {
     column-count: 2;
   }
 }
+/*瀑布双栏 */
 
 .n-divider:not(.n-divider--vertical) {
   margin: 14px 0 8px;
