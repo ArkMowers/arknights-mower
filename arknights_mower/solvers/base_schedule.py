@@ -29,7 +29,7 @@ from ..utils.recognize import RecognizeError, Recognizer, Scene
 from ..utils.solver import BaseSolver
 from ..utils.datetime import get_server_weekday, the_same_time
 from arknights_mower.utils.news import get_update_time
-from paddleocr import PaddleOCR
+import arknights_mower.utils.paddleocr
 import cv2
 
 from ctypes import CFUNCTYPE, c_int, c_char_p, c_void_p
@@ -40,8 +40,6 @@ from arknights_mower.__main__ import format_time
 import json
 
 from arknights_mower.utils.email import task_template, maa_template, recruit_template
-
-ocr = None
 
 
 class ArrangeOrder(Enum):
@@ -900,14 +898,6 @@ class BaseSchedulerSolver(BaseSolver):
         execute_time = datetime.now() + timedelta(seconds=(time_in_seconds))
         return execute_time
 
-    def initialize_paddle(self):
-        det_model_dir = os.path.join(os.getcwd(), "tmp", "paddle", "det", "ch")
-        rec_model_dir = os.path.join(os.getcwd(), "tmp", "paddle", "rec", "ch")
-        cls_model_dir = os.path.join(os.getcwd(), "tmp", "paddle", "cls")
-        global ocr
-        if ocr is None:
-            ocr = PaddleOCR(enable_mkldnn=False, use_angle_cls=False, cls=False, show_log=False, det_model_dir=det_model_dir, rec_model_dir=rec_model_dir, cls_model_dir=cls_model_dir)
-
     def read_screen(self, img, type="mood", limit=24, cord=None):
         if cord is not None:
             img = img[cord[1]:cord[3], cord[0]:cord[2]]
@@ -916,8 +906,7 @@ class BaseSchedulerSolver(BaseSolver):
             for x in range(0, 4):
                 img = cv2.vconcat([img, img])
         try:
-            self.initialize_paddle()
-            rets = ocr.ocr(img, cls=False)
+            rets = arknights_mower.utils.paddleocr.ocr.ocr(img, cls=False)
             line_conf = []
             for idx in range(len(rets[0])):
                 res = rets[0][idx]
