@@ -71,8 +71,6 @@ const pieOptions = ref({
   }
 })
 
-// 添加状态变量来切换报表
-const currentReport = ref('mood') // 默认显示干员心情报表
 </script>
 
 <style scoped>

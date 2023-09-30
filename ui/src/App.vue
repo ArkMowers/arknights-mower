@@ -14,7 +14,7 @@
           bordered
           collapse-mode="width"
           :collapsed-width="50"
-          :width="240"
+          :width="210"
           show-trigger
         >
           <n-menu

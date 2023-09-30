@@ -161,7 +161,7 @@ function create_tag(label) {
             :key="index"
             :class="{ today: currentDay === index }"
           >
-            {{ day }}{{ currentDay === index ? ' (今天)' : '' }}
+            {{ day }}{{ currentDay === index +1 ? ' (今天)' : '' }}
           </th>
         </tr>
       </thead>
@@ -215,15 +215,15 @@ function create_tag(label) {
 
 <style scoped lang="scss">
 .class0 {
-  background-color: rgba(128, 128, 128, 1);
+  background-color: hsl(33, 30%, 91%);
 }
 
 .class1 {
-  background-color: rgba(0, 128, 0, 0.5);
+  background-color: hsl(198, 20%, 21%);
 }
 
 .class2 {
-  background-color: rgba(72, 32, 96, 0);
+  background-color: hsl(356, 50%, 40%);
 }
 
 .card-title {

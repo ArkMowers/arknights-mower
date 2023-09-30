@@ -95,5 +95,5 @@ h2 {
   margin-bottom: 20px;
 }
 
-/* Style for the switch buttons */
+
 </style>
