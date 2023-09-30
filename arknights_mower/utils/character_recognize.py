@@ -134,9 +134,9 @@ def paddle_recog(__img):
         best = None
         best_score = 0
         for x in agent_sorted:
-            score = 0
+            score = -abs(len(x) - len(recog_text))
             for c in set(x):
-                score += 1 if c in recog_text else -1
+                score += 2 if c in recog_text else 0
             if score > best_score:
                 best = x
                 best_score = score
