@@ -173,10 +173,11 @@ def agent(img, draw=False):
                         ret_succ.append(poly)
                         continue
                     if len(res := arknights_mower.utils.paddleocr.ocr(__img)[1]) > 0:
-                        logger.debug(f"PaddleOCR识别结果：{res[0]}")
-                        ret_agent.append(res[0][0])
-                        ret_succ.append(poly)
-                        continue
+                        logger.debug(f"PaddleOCR识别结果：{res}")
+                        if op_name := next((r[0] for r in res if r[0] in agent_list), None):
+                            ret_agent.append(op_name)
+                            ret_succ.append(poly)
+                            continue
                     res = sift_recog(__img, resolution, draw)
                     if (res is not None) and res in agent_list:
                         ret_agent.append(res)
@@ -191,10 +192,11 @@ def agent(img, draw=False):
                     if 80 <= np.min(__img):
                         continue
                     if len(res := arknights_mower.utils.paddleocr.ocr(__img)[1]) > 0:
-                        logger.debug(f"PaddleOCR识别结果：{res[0]}")
-                        ret_agent.append(res[0][0])
-                        ret_succ.append(poly)
-                        continue
+                        logger.debug(f"PaddleOCR识别结果：{res}")
+                        if op_name := next((r[0] for r in res if r[0] in agent_list), None):
+                            ret_agent.append(op_name)
+                            ret_succ.append(poly)
+                            continue
                     res = sift_recog(__img, resolution, draw)
                     if res is not None:
                         ret_agent.append(res)
