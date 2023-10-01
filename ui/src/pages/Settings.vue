@@ -383,7 +383,34 @@ ul {
 </style>
 
 <style>
-.grid-left {
+
+/*小于1400的内容！*/
+@media (max-width: 1399px) {
+  .grid-two {
+    margin: 0 0 -10px 0;
+  }
+  .grid-left {
+    display: grid;
+    row-gap: 10px;
+    grid-template-columns: 100%;
+    max-width: 600px;
+  }
+  .grid-right {
+    display: grid;
+    row-gap: 10px;
+    grid-template-columns: 100%;
+    max-width: 600px;
+  }
+
+}
+/*双栏 大于1400的内容 */
+@media (min-width: 1400px) {
+  .grid-two {
+    display: grid;
+    grid-template-columns: minmax(0px, 1fr) minmax(0px, 1fr);
+    align-items: flex-start;
+  }
+  .grid-left {
     display: grid;
     gap: 5px;
     grid-template-columns: 100%;
@@ -396,21 +423,6 @@ ul {
     max-width: 600px;
   }
 
-/*小于1400的内容！*/
-@media (max-width: 1399px) {
-  .grid-two {
-    gap: 0px;
-  }
-  
-}
-/*双栏 大于1400的内容 */
-@media (min-width: 1400px) {
-  .grid-two {
-    display: grid;
-    gap: 16px;
-    grid-template-columns: minmax(0px, 1fr) minmax(0px, 1fr);
-    align-items: flex-start;
-  }
 }
 
 
