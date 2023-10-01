@@ -127,7 +127,7 @@ class BaseSchedulerSolver(BaseSolver):
     def transition(self) -> None:
         self.recog.update()
         if self.get_infra_scene() == Scene.INDEX:
-            self.tap_element('index_infrastructure')
+            self.tap_themed_element('index_infrastructure')
         elif self.get_infra_scene() == Scene.INFRA_MAIN:
             return self.infra_main()
         elif self.get_infra_scene() == Scene.INFRA_TODOLIST:

@@ -122,6 +122,19 @@ class BaseSolver:
         self.tap(element, x_rate, y_rate, interval, rebuild)
         return True
 
+
+    def tap_themed_element(self, name):
+        themes = ["dark", "sami"]
+        themed_names = [name] + ["_".join([name, t]) for t in themes]
+        for i in themed_names:
+            try:
+                if self.tap_element(i):
+                    return True
+            except:
+                continue
+        return False
+
+
     def swipe(self, start: tp.Coordinate, movement: tp.Coordinate, duration: int = 100, interval: float = 1,
               rebuild: bool = True) -> None:
         """ swipe """
@@ -267,7 +280,7 @@ class BaseSolver:
 
     def back_to_infrastructure(self):
         self.back_to_index()
-        self.tap_element('index_infrastructure')
+        self.tap_themed_element('index_infrastructure')
 
     def back_to_index(self):
         """
