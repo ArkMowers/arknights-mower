@@ -1953,16 +1953,16 @@ class BaseSchedulerSolver(BaseSolver):
                             for current_idx, _name in enumerate(plan[room]):
                                 if _name == 'Current':
                                     plan[room][current_idx] = self.op_data.get_current_room(room, True)[current_idx]
-                            if room in self.op_data.run_order_rooms and len(
-                                    new_plan) == 0 and self.task.type != TaskTypes.RUN_ORDER:
-                                if plan[room] != self.op_data.get_current_room(room):
-                                    logger.debug("检测到插拔房间人员变动！")
-                                    run_order_task = find_next_task(self.tasks, datetime.now() + timedelta(minutes=5),
-                                                                    task_type=TaskTypes.RUN_ORDER,
-                                                                    meta_data=room, compare_type=">")
-                                    if run_order_task is not None:
-                                        logger.info("移除超过5分钟的跑单任务以刷新时间")
-                                        self.tasks.remove(run_order_task)
+                        if room in self.op_data.run_order_rooms and len(
+                                new_plan) == 0 and self.task.type != TaskTypes.RUN_ORDER:
+                            if plan[room] != self.op_data.get_current_room(room):
+                                logger.debug("检测到插拔房间人员变动！")
+                                run_order_task = find_next_task(self.tasks, datetime.now() + timedelta(minutes=5),
+                                                                task_type=TaskTypes.RUN_ORDER,
+                                                                meta_data=room, compare_type=">")
+                                if run_order_task is not None:
+                                    logger.info("移除超过5分钟的跑单任务以刷新时间")
+                                    self.tasks.remove(run_order_task)
                     checked = True
                     current_room = self.op_data.get_current_room(room, True)
                     same = len(plan[room]) == len(current_room)
