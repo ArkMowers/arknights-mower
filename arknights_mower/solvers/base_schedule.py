@@ -1918,6 +1918,139 @@ class BaseSchedulerSolver(BaseSolver):
                                              use_digit_reader=True)
         return round((execute_time - datetime.now()).total_seconds(), 1)
 
+    def agent_arrange_room(self, new_plan, room, plan, skip_enter=False, get_time=False):
+        finished = False
+        choose_error = 0
+        checked = False
+        while not finished:
+            try:
+                error_count = 0
+                if not skip_enter: self.enter_room(room)
+                while self.find('room_detail') is None:
+                    if error_count > 3:
+                        raise Exception('未成功进入房间')
+                    self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
+                    error_count += 1
+                error_count = 0
+                if not checked:
+                    if ('但书' in plan[room] or '龙舌兰' in plan[room]) and not \
+                            room.startswith('dormitory'):
+                        new_plan[room] = self.refresh_current_room(room)
+                    if '菲亚梅塔' in plan[room] and len(plan[room]) == 2:
+                        new_plan[room] = self.refresh_current_room(room)
+                        working_room = self.op_data.operators[plan[room][0]].room
+                        new_plan[working_room] = self.op_data.get_current_room(working_room, True)
+                    if 'Current' in plan[room]:
+                        self.refresh_current_room(room, [index for index, value in enumerate(plan[room]) if
+                                                         value == "Current"])
+                        for current_idx, _name in enumerate(plan[room]):
+                            if _name == 'Current':
+                                plan[room][current_idx] = self.op_data.get_current_room(room, True)[current_idx]
+                    if room in self.op_data.run_order_rooms and len(
+                            new_plan) == 0 and self.task.type != TaskTypes.RUN_ORDER:
+                        if plan[room] != self.op_data.get_current_room(room):
+                            logger.debug("检测到插拔房间人员变动！")
+                            run_order_task = find_next_task(self.tasks, datetime.now() + timedelta(minutes=5),
+                                                            task_type=TaskTypes.RUN_ORDER,
+                                                            meta_data=room, compare_type=">")
+                            if run_order_task is not None:
+                                logger.info("移除超过5分钟的跑单任务以刷新时间")
+                                self.tasks.remove(run_order_task)
+                checked = True
+                current_room = self.op_data.get_current_room(room, True)
+                same = len(plan[room]) == len(current_room)
+                if same:
+                    for item1, item2 in zip(plan[room], current_room):
+                        if item1 != item2:
+                            same = False
+                if not same:
+                    # choose_error <= 0 选人如果失败则马上重新选过
+                    if len(new_plan) == 1 and self.op_data.config.run_order_buffer_time > 0 and choose_error <= 0:
+                        remaining_time = self.get_order_remaining_time()
+                        if 0 < remaining_time < self.run_order_delay * 60:
+                            if self.op_data.config.run_order_buffer_time > 0:
+                                self.task.time = datetime.now() + timedelta(seconds=remaining_time) - timedelta(
+                                    minutes=self.run_order_delay)
+                                logger.info(f"订单倒计时 {remaining_time}秒")
+                                self.back()
+                                while self.find('room_detail') is None:
+                                    if error_count > 3:
+                                        raise Exception('未成功进入房间')
+                                    self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
+                                    error_count += 1
+                        else:
+                            logger.info(f"检测到漏单")
+                            self.recog.save_screencap("run_order_failure")
+                            self.send_email("检测到漏单！")
+                            self.back_to_index()
+                            return
+                    while self.find('arrange_order_options') is None:
+                        if error_count > 3:
+                            raise Exception('未成功进入干员选择界面')
+                        self.tap((self.recog.w * 0.82, self.recog.h * 0.2), interval=1)
+                        error_count += 1
+                    self.choose_agent(plan[room], room, choose_error <= 0)
+                    self.recog.update()
+                    if room in self.op_data.run_order_rooms and len(
+                            new_plan) == 1 and self.op_data.config.run_order_buffer_time > 0:
+                        wait_confirm = round(((self.task.time - datetime.now()).total_seconds() +
+                                              self.run_order_delay * 60 - self.op_data.config.run_order_buffer_time),
+                                             1)
+                        if wait_confirm > 0:
+                            logger.info(f'龙舌兰、但书进驻前等待 {str(wait_confirm)} 秒')
+                            time.sleep(wait_confirm)
+                    self.tap_element('confirm_blue', detected=True, judge=False, interval=3)
+                    if self.get_infra_scene() == Scene.INFRA_ARRANGE_CONFIRM:
+                        _x0 = self.recog.w // 3 * 2  # double confirm
+                        _y0 = self.recog.h - 10
+                        self.tap((_x0, _y0), rebuild=True)
+                    read_time_index = []
+                    if get_time:
+                        read_time_index = self.op_data.get_refresh_index(room, plan[room])
+                    if len(new_plan) > 1:
+                        self.op_data.operators['菲亚梅塔'].time_stamp = None
+                        self.op_data.operators[plan[room][0]].time_stamp = None
+                    current = self.get_agent_from_room(room, read_time_index)
+                    for idx, name in enumerate(plan[room]):
+                        if current[idx]['agent'] != name:
+                            logger.error(f'检测到的干员{current[idx]["agent"]},需要安排的干员{name}')
+                            raise Exception('检测到安排干员未成功')
+                else:
+                    logger.info(f"任务与当前房间相同，跳过安排{room}人员")
+                finished = True
+                skip_enter = False
+                # 如果完成则移除该任务
+                del plan[room]
+                # back to 基地主界面
+                if self.get_infra_scene() == Scene.CONNECTING:
+                    if not self.waiting_solver(Scene.CONNECTING, sleep_time=3):
+                        return
+            except Exception as e:
+                logger.exception(e)
+                choose_error += 1
+                self.recog.update()
+                self.recog.save_screencap('choose_agent_failure')
+                if "检测到安排干员未成功" in str(e):
+                    skip_enter = True
+                    continue
+                back_count = 0
+                while self.get_infra_scene() != Scene.INFRA_MAIN:
+                    self.back_to_infrastructure()
+                    self.recog.update()
+                    back_count += 1
+                    if back_count > 3:
+                        raise e
+                if choose_error > 3:
+                    raise e
+                else:
+                    continue
+        if len(new_plan) != 1:
+            self.back(0.5)
+        else:
+            if self.op_data.config.run_order_buffer_time <= 0:
+                self.back(0.5)
+        return new_plan
+
     def agent_arrange(self, plan: tp.BasePlan, get_time=False):
         logger.info('基建：排班')
         rooms = list(plan.keys())
@@ -1925,143 +2058,14 @@ class BaseSchedulerSolver(BaseSolver):
         # 优先替换工作站再替换宿舍
         rooms.sort(key=lambda x: x.startswith('dorm'), reverse=False)
         for room in rooms:
-            finished = False
-            choose_error = 0
-            checked = False
-            skip_enter = False
-            while not finished:
-                try:
-                    error_count = 0
-                    if not skip_enter: self.enter_room(room)
-                    while self.find('room_detail') is None:
-                        if error_count > 3:
-                            raise Exception('未成功进入房间')
-                        self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
-                        error_count += 1
-                    error_count = 0
-                    if not checked:
-                        if ('但书' in plan[room] or '龙舌兰' in plan[room]) and not \
-                                room.startswith('dormitory'):
-                            new_plan[room] = self.refresh_current_room(room)
-                        if '菲亚梅塔' in plan[room] and len(plan[room]) == 2:
-                            new_plan[room] = self.refresh_current_room(room)
-                            working_room = self.op_data.operators[plan[room][0]].room
-                            new_plan[working_room] = self.op_data.get_current_room(working_room, True)
-                        if 'Current' in plan[room]:
-                            self.refresh_current_room(room, [index for index, value in enumerate(plan[room]) if
-                                                             value == "Current"])
-                            for current_idx, _name in enumerate(plan[room]):
-                                if _name == 'Current':
-                                    plan[room][current_idx] = self.op_data.get_current_room(room, True)[current_idx]
-                        if room in self.op_data.run_order_rooms and len(
-                                new_plan) == 0 and self.task.type != TaskTypes.RUN_ORDER:
-                            if plan[room] != self.op_data.get_current_room(room):
-                                logger.debug("检测到插拔房间人员变动！")
-                                run_order_task = find_next_task(self.tasks, datetime.now() + timedelta(minutes=5),
-                                                                task_type=TaskTypes.RUN_ORDER,
-                                                                meta_data=room, compare_type=">")
-                                if run_order_task is not None:
-                                    logger.info("移除超过5分钟的跑单任务以刷新时间")
-                                    self.tasks.remove(run_order_task)
-                    checked = True
-                    current_room = self.op_data.get_current_room(room, True)
-                    same = len(plan[room]) == len(current_room)
-                    if same:
-                        for item1, item2 in zip(plan[room], current_room):
-                            if item1 != item2:
-                                same = False
-                    if not same:
-                        # choose_error <= 0 选人如果失败则马上重新选过
-                        if len(new_plan) == 1 and self.op_data.config.run_order_buffer_time > 0 and choose_error <= 0:
-                            remaining_time = self.get_order_remaining_time()
-                            if 0 < remaining_time < self.run_order_delay * 60:
-                                if self.op_data.config.run_order_buffer_time > 0:
-                                    self.task.time = datetime.now() + timedelta(seconds=remaining_time) - timedelta(
-                                        minutes=self.run_order_delay)
-                                    logger.info(f"订单倒计时 {remaining_time}秒")
-                                    self.back()
-                                    while self.find('room_detail') is None:
-                                        if error_count > 3:
-                                            raise Exception('未成功进入房间')
-                                        self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
-                                        error_count += 1
-                            else:
-                                logger.info(f"检测到漏单")
-                                self.recog.save_screencap("run_order_failure")
-                                self.send_email("检测到漏单！")
-                                self.back_to_index()
-                                return
-                        while self.find('arrange_order_options') is None:
-                            if error_count > 3:
-                                raise Exception('未成功进入干员选择界面')
-                            self.tap((self.recog.w * 0.82, self.recog.h * 0.2), interval=1)
-                            error_count += 1
-                        self.choose_agent(plan[room], room, choose_error <= 0)
-                        self.recog.update()
-                        if room in self.op_data.run_order_rooms and len(
-                                new_plan) == 1 and self.op_data.config.run_order_buffer_time > 0:
-                            wait_confirm = round(((self.task.time - datetime.now()).total_seconds() +
-                                                  self.run_order_delay * 60 - self.op_data.config.run_order_buffer_time),
-                                                 1)
-                            if wait_confirm > 0:
-                                logger.info(f'龙舌兰、但书进驻前等待 {str(wait_confirm)} 秒')
-                                time.sleep(wait_confirm)
-                        self.tap_element('confirm_blue', detected=True, judge=False, interval=3)
-                        if self.get_infra_scene() == Scene.INFRA_ARRANGE_CONFIRM:
-                            _x0 = self.recog.w // 3 * 2  # double confirm
-                            _y0 = self.recog.h - 10
-                            self.tap((_x0, _y0), rebuild=True)
-                        read_time_index = []
-                        if get_time:
-                            read_time_index = self.op_data.get_refresh_index(room, plan[room])
-                        if len(new_plan) > 1:
-                            self.op_data.operators['菲亚梅塔'].time_stamp = None
-                            self.op_data.operators[plan[room][0]].time_stamp = None
-                        current = self.get_agent_from_room(room, read_time_index)
-                        for idx, name in enumerate(plan[room]):
-                            if current[idx]['agent'] != name:
-                                logger.error(f'检测到的干员{current[idx]["agent"]},需要安排的干员{name}')
-                                raise Exception('检测到安排干员未成功')
-                    else:
-                        logger.info(f"任务与当前房间相同，跳过安排{room}人员")
-                    finished = True
-                    skip_enter = False
-                    # 如果完成则移除该任务
-                    del plan[room]
-                    # back to 基地主界面
-                    if self.get_infra_scene() == Scene.CONNECTING:
-                        if not self.waiting_solver(Scene.CONNECTING, sleep_time=3):
-                            return
-                except Exception as e:
-                    logger.exception(e)
-                    choose_error += 1
-                    self.recog.update()
-                    self.recog.save_screencap('choose_agent_failure')
-                    if "检测到安排干员未成功" in str(e):
-                        skip_enter = True
-                        continue
-                    back_count = 0
-                    while self.get_infra_scene() != Scene.INFRA_MAIN:
-                        self.back()
-                        self.recog.update()
-                        back_count += 1
-                        if back_count > 3:
-                            raise e
-                    if choose_error > 3:
-                        raise e
-                    else:
-                        continue
-            if len(new_plan) != 1:
-                self.back(0.5)
-            else:
-                if self.op_data.config.run_order_buffer_time <= 0:
-                    self.back(0.5)
+            new_plan = self.agent_arrange_room(new_plan, room, plan, get_time=get_time)
         if len(new_plan) == 1:
             if self.op_data.config.run_order_buffer_time <= 0:
                 logger.info("开始插拔")
                 self.drone(room, not_customize=True)
             else:
                 # 葛朗台跑单模式
+                error_count = 0
                 while self.find('factory_accelerate') is None and self.find('bill_accelerate') is None:
                     if error_count > 5:
                         raise Exception('未成功进入无人机界面')
@@ -2082,14 +2086,17 @@ class BaseSchedulerSolver(BaseSolver):
                             return
                 self.recog.update()
                 self.recog.save_screencap('run_order')
+                # 接受当前订单
+                while self.find("order_ready", scope=((450, 675), (600, 750))) is not None:
+                    self.tap((self.recog.w * 0.25, self.recog.h * 0.25), interval=0.5)
                 if self.drone_room is None:
                     drone_count = self.digit_reader.get_drone(self.recog.gray)
                     logger.info(f'当前无人机数量为：{drone_count}')
                     # 200 为识别错误
                     if drone_count >= self.drone_count_limit and drone_count != 201:
-                        # 接受当前订单
-                        self.tap((self.recog.w * 0.25, self.recog.h * 0.5), interval=0.5)
                         self.drone(room, not_customize=True, skip_enter=True)
+                if self.op_data.config.run_order_buffer_time > 0:
+                    self.back(interval=0.5)
                 else:
                     self.back(interval=0.5)
                     self.back(interval=0.5)
@@ -2097,8 +2104,12 @@ class BaseSchedulerSolver(BaseSolver):
             run_order_room = next(iter(new_plan))
             if '但书' in new_plan[run_order_room] or '龙舌兰' in new_plan[run_order_room]:
                 new_plan[run_order_room] = [data.agent for data in self.op_data.plan[room]]
-            self.tasks.append(SchedulerTask(time=self.tasks[0].time, task_plan=new_plan, task_type=TaskTypes.RUN_ORDER))
-            self.skip(['planned', 'todo_task'])
+            if self.op_data.config.run_order_buffer_time > 0:
+                self.agent_arrange_room({}, run_order_room, new_plan, skip_enter=True)
+            else:
+                self.tasks.append(
+                    SchedulerTask(time=self.tasks[0].time, task_plan=new_plan, task_type=TaskTypes.RUN_ORDER))
+                self.skip()
         elif len(new_plan) > 1:
             self.tasks.append(SchedulerTask(time=self.tasks[0].time, task_plan=new_plan))
             # 急速换班
