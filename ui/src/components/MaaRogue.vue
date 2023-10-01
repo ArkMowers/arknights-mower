@@ -77,11 +77,7 @@ const roles = [
 <template>
   <n-form :label-placement="mobile ? 'top' : 'left'" :show-feedback="false" class="rogue">
     <n-form-item label="主题：">
-      <n-radio-group v-model:value="maa_rg_theme">
-        <n-space>
-          <n-radio v-for="t in rogue_themes" :value="t.value" :key="t.value">{{ t.label }}</n-radio>
-        </n-space>
-      </n-radio-group>
+      <n-select v-model:value="maa_rg_theme" :options="rogue_themes" />
     </n-form-item>
     <n-form-item label="分队：">
       <n-select v-model:value="rogue.squad" :options="squad[maa_rg_theme]" />

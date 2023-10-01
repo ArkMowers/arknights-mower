@@ -1,41 +1,41 @@
 <script setup>
-import { ref } from 'vue'
+import { inject } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 const config_store = useConfigStore()
 const { maa_rg_enable, maa_long_task_type, maa_rg_sleep_min, maa_rg_sleep_max } =
   storeToRefs(config_store)
+
+const mobile = inject('mobile')
 </script>
 
 <template>
   <n-card>
     <template #header>
       <n-checkbox v-model:checked="maa_rg_enable">
-        <div class="card-title">Maa大型任务</div>
+        <div class="card-title">
+          Maa大型任务
+          <help-text>
+            <div>开始与结束时间设置为相同值时全天开启。</div>
+            <div>若结束时间早于开始时间，则表示开启至次日。例如：</div>
+            <ul>
+              <li>23:00开始、8:00结束：表示从23:00至次日8:00执行大型任务；</li>
+              <li>10:00开始、14:00结束：表示从10:00至当日14:00执行大型任务。</li>
+            </ul>
+          </help-text>
+        </div>
       </n-checkbox>
     </template>
-    <p>调用Maa进行作战。仅可从以下任务中选择一项。</p>
-    <n-h4>开启时间</n-h4>
-    <p>只在开启时间内执行Maa大型任务。开始与结束时间设置为相同值时全天开启。</p>
-    <p>若结束时间早于开始时间，则表示开启至次日。例如：</p>
-    <ul>
-      <li>23:00开始、8:00结束：表示从23:00至次日8:00执行大型任务；</li>
-      <li>10:00开始、14:00结束：表示从10:00至当日14:00执行大型任务。</li>
-    </ul>
-    <table class="time-table">
-      <tr>
-        <td>开始</td>
-        <td>
+    <n-form :label-placement="mobile ? 'top' : 'left'" :show-feedback="false">
+      <n-grid cols="2">
+        <n-form-item-gi label="开始时间：">
           <n-time-picker format="H:mm" v-model:formatted-value="maa_rg_sleep_max" />
-        </td>
-      </tr>
-      <tr>
-        <td>结束</td>
-        <td>
+        </n-form-item-gi>
+        <n-form-item-gi label="停止时间：">
           <n-time-picker format="H:mm" v-model:formatted-value="maa_rg_sleep_min" />
-        </td>
-      </tr>
-    </table>
+        </n-form-item-gi>
+      </n-grid>
+    </n-form>
     <n-tabs
       type="line"
       :value="maa_long_task_type"
