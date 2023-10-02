@@ -2094,9 +2094,10 @@ class BaseSchedulerSolver(BaseSolver):
                     logger.info(f'当前无人机数量为：{drone_count}')
                     # 200 为识别错误
                     if drone_count >= self.drone_count_limit and drone_count != 201:
-                        self.drone(room, not_customize=True, skip_enter=True)
+                        self.drone(room, not_return=True, not_customize=True, skip_enter=True)
                 if self.op_data.config.run_order_buffer_time > 0:
-                    self.back(interval=0.5)
+                    while self.find('bill_accelerate') is not None:
+                        self.back(interval=0.5)
                 else:
                     self.back(interval=0.5)
                     self.back(interval=0.5)
