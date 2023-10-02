@@ -1,8 +1,14 @@
 <script setup>
-import { storeToRefs } from 'pinia'
+import { inject, ref } from 'vue'
+const axios = inject('axios')
+
 import { useConfigStore } from '@/stores/config'
 const store = useConfigStore()
+
+import { storeToRefs } from 'pinia'
 const { skland_enable, skland_info } = storeToRefs(store)
+
+
 
 function add_account() {
   return {
@@ -11,12 +17,21 @@ function add_account() {
     password: ''
   }
 }
+
+const maa_msg = ref('')
+
+async function test_maa() {
+  maa_msg.value = '正在测试……'
+  const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/check-skland`)
+  maa_msg.value = response.data
+}
+
 </script>
 
 <template>
   <n-card>
     <template #header>
-      <n-checkbox v-model:checked="skland_enable" disabled>
+      <n-checkbox v-model:checked="skland_enable">
         <div class="card-title">森空岛签到</div>
       </n-checkbox>
     </template>
@@ -42,6 +57,10 @@ function add_account() {
         </div>
       </template>
     </n-dynamic-input>
+    <div class="misc-container">
+      <n-button @click="test_maa">测试设置</n-button>
+      <div>{{ maa_msg }}</div>
+    </div>
   </n-card>
 </template>
 
@@ -49,5 +68,12 @@ function add_account() {
 .card-title {
   font-weight: 500;
   font-size: 18px;
+}
+
+.misc-container {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 </style>

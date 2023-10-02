@@ -289,9 +289,11 @@ function render_label(option) {
           </n-card>
         </div>
         <div><maa-basic /></div>
+        <div><SKLand /></div>
         <div><email /></div>
+
       </div>
-      <!-- <SKLand /> -->
+
       <div class="grid-right">
         <div><clue /></div>
 

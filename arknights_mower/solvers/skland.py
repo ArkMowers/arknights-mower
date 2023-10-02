@@ -31,7 +31,14 @@ class SKLand:
         }
 
         self.request_header = {
-            "user-agent": "Skland/1.0.1 (com.hypergryph.skland; build:100001014; Android 25; ) Okhttp/4.11.0",
+            "user-agent": "Skland/1.0.1 (com.hypergryph.skland; build:100001014; Android 33; ) Okhttp/4.11.0",
+            "cred": '',
+            "vName": "1.0.1",
+            "vCode": "100001014",
+            'Accept-Encoding': 'gzip',
+            'Connection': 'close',
+            "dId": "de9759a5afaa634f",
+            "platform": "1"
         }
 
         self.get_award = {}
@@ -176,3 +183,20 @@ class SKLand:
                 return False
 
         return False
+
+    def test_connect(self):
+        res = []
+        for item in self.account:
+            data = {"phone": item['phone'], "password": item['password']}
+            response = requests.post(headers=self.request_header, url=self.url.get("token_by_phone_password"),
+                                     data=data)
+
+            response_json = self.respone_to_json(response)
+            temp_res = {
+                "account": item['phone'],
+                'msg': response_json['msg']
+            }
+            res.append(temp_res)
+
+        logger.info(res)
+

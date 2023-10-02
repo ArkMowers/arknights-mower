@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+import requests
+
 from arknights_mower.solvers import record
 from arknights_mower.utils.conf import load_conf, save_conf, load_plan, write_plan
 from arknights_mower.__main__ import main
@@ -27,16 +29,13 @@ from functools import wraps
 
 import pathlib
 
-
 mimetypes.add_type("text/html", ".html")
 mimetypes.add_type("text/css", ".css")
 mimetypes.add_type("application/javascript", ".js")
 
-
 app = Flask(__name__, static_folder="dist", static_url_path="")
 sock = Sock(app)
 CORS(app)
-
 
 conf = {}
 plan = {}
@@ -100,27 +99,27 @@ def load_plan_from_json():
 def operator_list():
     if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
         with open(
-            os.path.join(
-                sys._MEIPASS,
-                "arknights_mower",
-                "__init__",
-                "data",
-                "agent.json",
-            ),
-            "r",
-            encoding="utf8",
+                os.path.join(
+                    sys._MEIPASS,
+                    "arknights_mower",
+                    "__init__",
+                    "data",
+                    "agent.json",
+                ),
+                "r",
+                encoding="utf8",
         ) as f:
             return json.load(f)
     else:
         with open(
-            os.path.join(
-                os.getcwd(),
-                "arknights_mower",
-                "data",
-                "agent.json",
-            ),
-            "r",
-            encoding="utf8",
+                os.path.join(
+                    os.getcwd(),
+                    "arknights_mower",
+                    "data",
+                    "agent.json",
+                ),
+                "r",
+                encoding="utf8",
         ) as f:
             return json.load(f)
 
@@ -129,27 +128,27 @@ def operator_list():
 def shop_list():
     if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
         with open(
-            os.path.join(
-                sys._MEIPASS,
-                "arknights_mower",
-                "__init__",
-                "data",
-                "shop.json",
-            ),
-            "r",
-            encoding="utf8",
+                os.path.join(
+                    sys._MEIPASS,
+                    "arknights_mower",
+                    "__init__",
+                    "data",
+                    "shop.json",
+                ),
+                "r",
+                encoding="utf8",
         ) as f:
             return json.load(f)
     else:
         with open(
-            os.path.join(
-                os.getcwd(),
-                "arknights_mower",
-                "data",
-                "shop.json",
-            ),
-            "r",
-            encoding="utf8",
+                os.path.join(
+                    os.getcwd(),
+                    "arknights_mower",
+                    "data",
+                    "shop.json",
+                ),
+                "r",
+                encoding="utf8",
         ) as f:
             return json.load(f)
 
@@ -294,9 +293,9 @@ def get_maa_adb_version():
 def get_maa_conn_presets():
     try:
         with open(
-            os.path.join(conf["maa_path"], "resource", "config.json"),
-            "r",
-            encoding="utf-8",
+                os.path.join(conf["maa_path"], "resource", "config.json"),
+                "r",
+                encoding="utf-8",
         ) as f:
             presets = [i["configName"] for i in json.load(f)["connection"]]
     except:
@@ -323,3 +322,34 @@ def test_email():
     except Exception as e:
         return "邮件发送失败！\n" + str(e)
     return "邮件发送成功！"
+
+
+@app.route("/check-skland")
+@require_token
+def test_skland():
+    skland_info=[]
+    skland_info = conf['skland_info']
+
+    request_header = {
+        "user-agent": "Skland/1.0.1 (com.hypergryph.skland; build:100001014; Android 33; ) Okhttp/4.11.0",
+        "cred": '',
+        "vName": "1.0.1",
+        "vCode": "100001014",
+        'Accept-Encoding': 'gzip',
+        'Connection': 'close',
+        "dId": "de9759a5afaa634f",
+        "platform": "1"
+    }
+    res = []
+    for item in skland_info:
+        data = {"phone": item['account'], "password": item['password']}
+        response = requests.post(headers=request_header, url="https://as.hypergryph.com/user/auth/v1/token_by_phone_password",
+                                 data=data)
+        response_json = json.loads(response.text)
+        temp_res = {
+            "account": item['account'],
+            'msg': response_json['msg']
+        }
+        res.append(temp_res)
+
+    return res
