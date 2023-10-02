@@ -2035,8 +2035,7 @@ class BaseSchedulerSolver(BaseSolver):
                     continue
                 back_count = 0
                 while self.get_infra_scene() != Scene.INFRA_MAIN:
-                    self.back_to_infrastructure()
-                    self.recog.update()
+                    self.back(interval=0.5)
                     back_count += 1
                     if back_count > 3:
                         raise e
