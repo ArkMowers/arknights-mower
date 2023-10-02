@@ -291,7 +291,6 @@ function render_label(option) {
         <div><maa-basic /></div>
         <div><SKLand /></div>
         <div><email /></div>
-
       </div>
 
       <div class="grid-right">
@@ -385,7 +384,6 @@ ul {
 </style>
 
 <style>
-
 /*小于1400的内容！*/
 @media (max-width: 1399px) {
   .grid-two {
@@ -403,7 +401,6 @@ ul {
     grid-template-columns: 100%;
     max-width: 600px;
   }
-
 }
 /*双栏 大于1400的内容 */
 @media (min-width: 1400px) {
@@ -424,9 +421,7 @@ ul {
     grid-template-columns: 100%;
     max-width: 600px;
   }
-
 }
-
 
 .n-divider:not(.n-divider--vertical) {
   margin: 14px 0 8px;

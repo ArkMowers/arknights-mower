@@ -25,6 +25,7 @@ declare module '@vue/runtime-core' {
     NConfigProvider: typeof import('naive-ui')['NConfigProvider']
     NDialogProvider: typeof import('naive-ui')['NDialogProvider']
     NDivider: typeof import('naive-ui')['NDivider']
+    NDynamicInput: typeof import('naive-ui')['NDynamicInput']
     NForm: typeof import('naive-ui')['NForm']
     NFormItem: typeof import('naive-ui')['NFormItem']
     NFormItemGi: typeof import('naive-ui')['NFormItemGi']

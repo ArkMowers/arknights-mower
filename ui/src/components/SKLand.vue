@@ -8,8 +8,6 @@ const store = useConfigStore()
 import { storeToRefs } from 'pinia'
 const { skland_enable, skland_info } = storeToRefs(store)
 
-
-
 function add_account() {
   return {
     isCheck: true,
@@ -25,7 +23,6 @@ async function test_maa() {
   const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/check-skland`)
   maa_msg.value = response.data
 }
-
 </script>
 
 <template>
