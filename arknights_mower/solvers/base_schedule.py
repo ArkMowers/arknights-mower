@@ -483,6 +483,7 @@ class BaseSchedulerSolver(BaseSolver):
             if self.reload_room is not None and (
                     self.reload_time is None or self.reload_time < datetime.now() - timedelta(hours=24)):
                 self.reload()
+                logger.info(f"记录本次补货时间为:{datetime.now()}")
             self.todo_task = True
         elif not self.collect_notification:
             notification = detector.infra_notification(self.recog.img)
@@ -1983,8 +1984,7 @@ class BaseSchedulerSolver(BaseSolver):
                             logger.info(f"检测到漏单")
                             self.recog.save_screencap("run_order_failure")
                             self.send_email("检测到漏单！")
-                            self.back_to_index()
-                            return
+                            raise Exception("检测到漏单！")
                     while self.find('arrange_order_options') is None:
                         if error_count > 3:
                             raise Exception('未成功进入干员选择界面')
@@ -2040,6 +2040,8 @@ class BaseSchedulerSolver(BaseSolver):
                     back_count += 1
                     if back_count > 3:
                         raise e
+                if "检测到漏单！" in str(e):
+                    return {}
                 if choose_error > 3:
                     raise e
                 else:
@@ -2131,6 +2133,7 @@ class BaseSchedulerSolver(BaseSolver):
         error = False
         for room in self.reload_room:
             try:
+                logger.info(f"开始搓玉补货:{room}")
                 self.enter_room(room)
                 self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=0.5)
                 # 补货
