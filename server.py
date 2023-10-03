@@ -133,8 +133,7 @@ def read_log(conn):
 
 @app.route("/depot/readdepot")
 def read_depot():
-    depot_in = "tmp\itemlist.csv"
-    return depot.read_and_compare_depots(depot_in)
+    return depot.read_and_compare_depots()
 
 
 @app.route("/running")

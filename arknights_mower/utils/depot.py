@@ -6,29 +6,31 @@ from .log import logger
 import os
 from arknights_mower.data import key_mapping
 
+depot_file = os.path.join("tmp", "itemlist.csv")
 current_datetime = datetime.datetime.now()
-def process_itemlist(d, path):
-    
+
+
+def process_itemlist(d):
     itemlist = {"时间": current_datetime, "data": {key: 0 for key in key_mapping.keys()}}
 
     if d.get("what") == "DepotInfo" and d["details"].get("done") is True:
         itemlist["data"] = json.loads(d["details"]["lolicon"]["data"])
 
         # Check if file exists, if not, create the file
-        if not os.path.exists(path):
-            with open(path, "w", newline="", encoding="utf-8") as csvfile:
+        if not os.path.exists(depot_file):
+            with open(depot_file, "w", newline="", encoding="utf-8") as csvfile:
                 fieldnames = itemlist.keys()
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
                 writer.writeheader()
 
         # Append data to the CSV file
-        with open(path, "a", newline="", encoding="utf-8") as csvfile:
+        with open(depot_file, "a", newline="", encoding="utf-8") as csvfile:
             fieldnames = itemlist.keys()
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writerow(itemlist)
 
 
-def read_and_compare_depots(path):
+def read_and_compare_depots():
     def format_data(depot_data):
         deopt_time = depot_data[0]
         depot_dict = ast.literal_eval(depot_data[1])
@@ -76,13 +78,13 @@ def read_and_compare_depots(path):
                 difference[key] = [0, value]  # 缺失项的值设置为0
         return difference
 
-    if not os.path.exists(path):
-        with open(path, "w", newline="", encoding="utf-8") as csvfile:
+    if not os.path.exists(depot_file):
+        with open(depot_file, "w", newline="", encoding="utf-8") as csvfile:
             fieldnames = ["时间", "data"]
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerow({"时间": current_datetime, "data": '{"空":0}'})
-    with open(path, "r", encoding="utf-8") as csvfile:
+    with open(depot_file, "r", encoding="utf-8") as csvfile:
         csvreader = csv.reader(csvfile)
         all_rows = list(csvreader)
         if len(all_rows) < 3:
@@ -103,4 +105,10 @@ def read_and_compare_depots(path):
     result_str = ", ".join(result)
     result_str = "{" + result_str + "}"
     logger.info(f"明日方舟工具箱代码：{result_str}")
-    return [renamed_depot_old, renamed_depot_new, difference, result_str,depot_new_time]
+    return [
+        renamed_depot_old,
+        renamed_depot_new,
+        difference,
+        result_str,
+        depot_new_time,
+    ]
