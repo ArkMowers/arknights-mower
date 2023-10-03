@@ -2433,8 +2433,9 @@ class BaseSchedulerSolver(BaseSolver):
         except Exception as e:
             logger.exception(e)
             self.MAA = None
+            self.device.exit(self.package_name)
+            self.send_email(str(e), "Maa调用出错！")
             remaining_time = (self.tasks[0].time - datetime.now()).total_seconds()
             if remaining_time > 0:
                 logger.info(f"休息 {format_time(remaining_time)}，到{self.tasks[0].time.strftime('%H:%M:%S')}开始工作")
                 time.sleep(remaining_time)
-            self.device.exit(self.package_name)
