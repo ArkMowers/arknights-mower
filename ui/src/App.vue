@@ -96,7 +96,8 @@ import {
   PieChart,
   StatsChart,
   Settings,
-  HelpCircle
+  HelpCircle,
+  Storefront
 } from '@vicons/ionicons5'
 
 function renderIcon(icon) {
@@ -136,12 +137,12 @@ const menuOptions = computed(() => [
           h(RouterLink, { to: { path: '/record/pie' } }, { default: () => '基建报表-饼图' }),
         icon: renderIcon(PieChart),
         key: 'go-to-record-pie'
-      }
-      /*{
+      },
+      {
         label: () => h(RouterLink, { to: { path: '/record/depot' } }, { default: () => '仓库' }),
-        icon: renderIcon(PieChart),
+        icon: renderIcon(Storefront),
         key: 'go-to-record-depot'
-      }*/
+      }
     ]
   },
   {

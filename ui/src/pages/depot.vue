@@ -1,8 +1,9 @@
 <template>
   <div>
-    <n-button @click="copyToClipboard">点击复制 明日方舟工具箱代码</n-button>
+    <n-button @click="copyToClipboard">明日方舟工具箱代码 {{ reportData[4] }}</n-button>
   </div>
-  <div>仓库新增{{ reportData[2] }}</div>
+  <h2>注：仅限MAA仓库扫描</h2>
+  <div>仓库变化{{ reportData[2] }}</div>
   <div class="card-container">
     <n-grid x-gap="10px" y-gap="10px" cols="2 s:4 m:5 l:6 xl:8 2xl:10" responsive="screen">
       <n-gi v-for="(key, item, index) in reportData[1]" content-indented="true">

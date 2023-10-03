@@ -2184,9 +2184,9 @@ class BaseSchedulerSolver(BaseSolver):
             global recruit_special_tags
             recruit_special_tags["tags"].append(d["details"]["tags"])
         elif d.get("what") == "DepotInfo" and d["details"].get("done") is True:
-            itemlist_filename = "tmp\itemlist.csv"
-            logger.debug(f"开始扫描仓库（MAA）")
-            process_itemlist(d, itemlist_filename)
+            depot_in = "tmp\itemlist.csv"
+            logger.info(f"开始扫描仓库（MAA）")
+            process_itemlist(d, depot_in)
 
     def initialize_maa(self):
         path = pathlib.Path(self.maa_config['maa_path'])
