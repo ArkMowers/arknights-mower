@@ -54,6 +54,9 @@ scene_list = json.loads(
 recruit_agent = json.loads(
     Path(f'{__rootdir__}/data/recruit.json').read_text('utf-8'))
 
+key_mapping = json.loads(
+    Path(f"{__rootdir__}/data/key_mapping.json").read_text("utf-8"))
+
 recruit_tag = ['资深干员', '高级资深干员']
 for x in recruit_agent.values():
     recruit_tag += x['tags']

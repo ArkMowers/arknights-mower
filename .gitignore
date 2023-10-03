@@ -178,7 +178,7 @@ dmypy.json
 /tmp/
 
 # End of https://www.toptal.com/developers/gitignore/api/visualstudiocode
-*.json
+/*.json
 dist
 MAA
-*.yml
+/*.yml

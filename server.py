@@ -5,6 +5,7 @@ from arknights_mower.solvers import record
 from arknights_mower.utils.conf import load_conf, save_conf, load_plan, write_plan
 from arknights_mower.utils import depot
 from arknights_mower.__main__ import main
+from arknights_mower.data import agent_list, shop_items
 
 from flask import Flask, send_from_directory, request, abort
 from flask_cors import CORS
@@ -98,60 +99,12 @@ def load_plan_from_json():
 
 @app.route("/operator")
 def operator_list():
-    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        with open(
-            os.path.join(
-                sys._MEIPASS,
-                "arknights_mower",
-                "__init__",
-                "data",
-                "agent.json",
-            ),
-            "r",
-            encoding="utf8",
-        ) as f:
-            return json.load(f)
-    else:
-        with open(
-            os.path.join(
-                os.getcwd(),
-                "arknights_mower",
-                "data",
-                "agent.json",
-            ),
-            "r",
-            encoding="utf8",
-        ) as f:
-            return json.load(f)
+    return agent_list
 
 
 @app.route("/shop")
 def shop_list():
-    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        with open(
-            os.path.join(
-                sys._MEIPASS,
-                "arknights_mower",
-                "__init__",
-                "data",
-                "shop.json",
-            ),
-            "r",
-            encoding="utf8",
-        ) as f:
-            return json.load(f)
-    else:
-        with open(
-            os.path.join(
-                os.getcwd(),
-                "arknights_mower",
-                "data",
-                "shop.json",
-            ),
-            "r",
-            encoding="utf8",
-        ) as f:
-            return json.load(f)
+        return shop_items
 
 
 def read_log(conn):
