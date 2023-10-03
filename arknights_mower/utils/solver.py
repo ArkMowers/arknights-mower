@@ -424,6 +424,9 @@ class BaseSolver:
         if 'mail_enable' in self.email_config.keys() and self.email_config['mail_enable'] == 0:
             logger.info('邮件功能未开启')
             return
+        
+        if subtype == 'plain' and subject == '':
+            subject = body
 
         msg = MIMEMultipart()
         msg.attach(MIMEText(body, subtype))
