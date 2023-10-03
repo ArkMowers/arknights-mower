@@ -270,7 +270,6 @@ def inialize(tasks, scheduler=None):
         base_scheduler.drone_count_limit = 102  # 无人机高于于该值时才使用
         base_scheduler.drone_room = drone_room
         base_scheduler.drone_execution_gap = drone_execution_gap
-        base_scheduler.agent_base_config = agent_base_config
         base_scheduler.run_order_delay = 5  # 跑单提前10分钟运行
         base_scheduler.reload_room = reload_room
         return base_scheduler

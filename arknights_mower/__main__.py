@@ -20,7 +20,6 @@ operators = {}
 
 # 执行自动排班
 def main(c, p, o={}, child_conn=None):
-    __init_params__()
     from arknights_mower.utils.log import init_fhlr
     from arknights_mower.utils import config
     global plan
@@ -41,7 +40,6 @@ def main(c, p, o={}, child_conn=None):
     init_fhlr(child_conn)
     Pipe.conn = child_conn
     logger.info('开始运行Mower')
-    logger.debug(agent_base_config)
     arknights_mower.utils.paddleocr.initialize_ocr()
     simulate()
 
@@ -182,7 +180,6 @@ def initialize(tasks, scheduler=None):
         base_scheduler.reload_room = list(filter(None, conf['reload_room'].replace('，', ',').split(',')))
         base_scheduler.drone_execution_gap = conf['drone_interval']
         base_scheduler.run_order_delay = conf['run_order_delay']
-        base_scheduler.agent_base_config = agent_base_config
         base_scheduler.exit_game_when_idle = conf['exit_game_when_idle']
         
         
@@ -319,68 +316,6 @@ def load_state(file='state.json'):
     return operators
 
 
-agent_base_config = {}
 maa_config = {}
 recruit_config = {}
 skland_config = {}
-
-
-def __init_params__():
-    global agent_base_config
-    global maa_config
-    agent_base_config = {
-        "Default": {"UpperLimit": 24, "LowerLimit": 0, "ExhaustRequire": False, "ArrangeOrder": [2, "false"],
-                    "RestInFull": False},
-        "令": {"ArrangeOrder": [2, "true"]},
-        "夕": {"ArrangeOrder": [2, "true"]},
-        "稀音": {"ExhaustRequire": True, "ArrangeOrder": [2, "true"], "RestInFull": True},
-        "巫恋": {"ArrangeOrder": [2, "true"]},
-        "柏喙": {"ExhaustRequire": True, "ArrangeOrder": [2, "true"]},
-        "龙舌兰": {"ArrangeOrder": [2, "true"]},
-        "空弦": {"ArrangeOrder": [2, "true"]},
-        "伺夜": {"ArrangeOrder": [2, "true"]},
-        "绮良": {"ArrangeOrder": [2, "true"]},
-        "但书": {"ArrangeOrder": [2, "true"]},
-        "泡泡": {"ArrangeOrder": [2, "true"]},
-        "火神": {"ArrangeOrder": [2, "true"]},
-        "黑键": {"ArrangeOrder": [2, "true"]},
-        "波登可": {"ArrangeOrder": [2, "false"]},
-        "夜莺": {"ArrangeOrder": [2, "false"]},
-        "菲亚梅塔": {"ArrangeOrder": [2, "false"]},
-        "流明": {"ArrangeOrder": [2, "false"]},
-        "蜜莓": {"ArrangeOrder": [2, "false"]},
-        "闪灵": {"ArrangeOrder": [2, "false"]},
-        "杜林": {"ArrangeOrder": [2, "false"]},
-        "褐果": {"ArrangeOrder": [2, "false"]},
-        "车尔尼": {"ArrangeOrder": [2, "false"]},
-        "安比尔": {"ArrangeOrder": [2, "false"]},
-        "爱丽丝": {"ArrangeOrder": [2, "false"]},
-        "桃金娘": {"ArrangeOrder": [2, "false"]},
-        "红云": {"ArrangeOrder": [2, "true"]},
-        "承曦格雷伊": {"ArrangeOrder": [2, "true"]},
-        "乌有": {"ArrangeOrder": [2, "true"]},
-        "图耶": {"ArrangeOrder": [2, "true"]},
-        "鸿雪": {"ArrangeOrder": [2, "true"]},
-        "孑": {"ArrangeOrder": [2, "true"]},
-        "清道夫": {"ArrangeOrder": [2, "true"]},
-        "临光": {"ArrangeOrder": [2, "true"]},
-        "杜宾": {"ArrangeOrder": [2, "true"]},
-        "焰尾": {"RestInFull": True},
-        "重岳": {"ArrangeOrder": [2, "true"]},
-        "琴柳": {},
-        "坚雷": {"ArrangeOrder": [2, "true"]},
-        "年": {"RestingPriority": "low"},
-        "伊内丝": {"ExhaustRequire": True, "ArrangeOrder": [2, "true"], "RestInFull": True},
-    }
-    maa_config = {
-        # maa 运行的时间间隔，以小时计
-        "maa_execution_gap": 4,
-        # 以下配置，第一个设置为true的首先生效
-        # 是否启动肉鸽
-        "roguelike": False,
-        # 是否启动生息演算
-        "reclamation_algorithm": False,
-        # 是否启动保全派驻
-        "stationary_security_service": False,
-        "last_execution": None
-    }
