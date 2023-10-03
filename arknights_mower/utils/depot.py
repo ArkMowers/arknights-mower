@@ -19,9 +19,10 @@ def process_itemlist(d):
         # Check if file exists, if not, create the file
         if not os.path.exists(depot_file):
             with open(depot_file, "w", newline="", encoding="utf-8") as csvfile:
-                fieldnames = itemlist.keys()
+                fieldnames = ["时间", "data"]
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
                 writer.writeheader()
+                writer.writerow({"时间": current_datetime, "data": '{"空":0}'})
 
         # Append data to the CSV file
         with open(depot_file, "a", newline="", encoding="utf-8") as csvfile:
