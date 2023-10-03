@@ -137,6 +137,11 @@ const menuOptions = computed(() => [
         icon: renderIcon(PieChart),
         key: 'go-to-record-pie'
       }
+      /*{
+        label: () => h(RouterLink, { to: { path: '/record/depot' } }, { default: () => '仓库' }),
+        icon: renderIcon(PieChart),
+        key: 'go-to-record-depot'
+      }*/
     ]
   },
   {

@@ -36,6 +36,12 @@ export const routes = [
             name: 'record_line'
           },
           {
+            path: 'depot',
+            component: () => import('@/pages/depot.vue'),
+            meta: { title: '仓库数据' },
+            name: 'depot'
+          },
+          {
             path: 'pie',
             component: () => import('@/pages/RecordPie.vue'),
             meta: { title: '心情饼图' },
