@@ -9,17 +9,14 @@ import { NTag } from 'naive-ui'
 import { h, ref } from 'vue'
 
 const currentDay = ref(new Date().getDay())
-
-const updatePlan = (plan1, day) => {
-  plan1[day] = plan1[day] === 1 ? 2 : 1
-}
 const daysOfWeek = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 
-function updateStage() {
-  maa_weekly_plan.value.slice(0, daysOfWeek.length).forEach((plan, i) => {
-    plan.stage = maa_weekly_plan1.value
-      .filter((plan) => plan[daysOfWeek[i]] === 2)
-      .map((plan) => plan.stage)
+const togglePlanAndStage = (plan, day) => {
+  plan[day] = plan[day] === 1 ? 2 : 1
+  maa_weekly_plan.value.slice(0, daysOfWeek.length).forEach((p, i) => {
+    p.stage = maa_weekly_plan1.value
+      .filter((item) => item[daysOfWeek[i]] === 2)
+      .map((item) => item.stage)
       .flat()
   })
 }
@@ -33,10 +30,14 @@ const showstage = (stage) => {
     'AP-5': '红票',
     'SK-6': '碳条',
     'CA-5': '技能书',
-    'PR-A-2': '重装医疗',
-    'PR-B-2': '狙击术士',
-    'PR-C-2': '先锋辅助',
-    'PR-D-2': '近卫特种'
+    'PR-A-2': '重装医疗2',
+    'PR-B-2': '狙击术士2',
+    'PR-C-2': '先锋辅助2',
+    'PR-D-2': '近卫特种2',
+    'PR-A-1': '重装医疗1',
+    'PR-B-1': '狙击术士1',
+    'PR-C-1': '先锋辅助1',
+    'PR-D-1': '近卫特种1'
   }
 
   if (stage in valueMapping) {
@@ -151,79 +152,114 @@ function create_tag(label) {
         <li><b>不刷理智</b>：留空表示不刷理智。</li>
       </ul>
     </help-text>
-
-    <n-table size="small" :single-line="false" style="text-align: center">
-      <thead>
-        <tr>
-          <th>关卡</th>
-          <th
-            v-for="(day, index) in daysOfWeek"
-            :key="index"
-            :class="{ today: currentDay === index }"
-          >
-            {{ day }}{{ currentDay === index + 1 ? ' (今天)' : '' }}
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        <td>药</td>
-        <td v-for="(day, index) in daysOfWeek" :key="index">
-          <n-input-number
-            v-model:value="maa_weekly_plan[index].medicine"
-            :min="0"
-            :max="6"
-            :show-button="false"
-          />
-        </td>
-        <tr v-for="(plan1, index) in maa_weekly_plan1" :key="plan1.weekday1">
-          <td>
-            <n-select
-              v-if="index < 3"
-              v-model:value="plan1.stage"
-              multiple
-              filterable
-              tag
-              :show="false"
-              :show-arrow="false"
-              :render-tag="render_tag"
-              :on-create="create_tag"
-            />
-            <span v-else>{{ showstage(plan1.stage) }}</span>
-          </td>
-          <td
-            v-for="day in daysOfWeek"
-            :class="{
-              class2: plan1[day] === 2,
-              class1: plan1[day] === 1,
-              class0: plan1[day] === 0
-            }"
-          >
-            <template v-if="plan1[day] !== 0">
-              <n-checkbox
-                @click="updateStage"
-                v-model="plan1[day]"
-                :checked="plan1[day] === 2"
-                @change="updatePlan(plan1, day)"
+    <div class="tasktable">
+      <table size="small" :single-column="true" :single-line="true">
+        <thead>
+          <tr>
+            <th>关卡</th>
+            <th
+              v-for="(day, index) in daysOfWeek"
+              :key="index"
+              :class="{ today: currentDay === index }"
+            >
+              {{ day }}{{ currentDay === index + 1 ? ' (今天)' : '' }}
+            </th>
+          </tr>
+          <tr>
+            <th>药</th>
+            <th v-for="(day, index) in daysOfWeek" :key="index">
+              <n-input-number
+                v-model:value="maa_weekly_plan[index].medicine"
+                :min="0"
+                :max="6"
+                :show-button="false"
               />
-            </template>
-          </td>
-        </tr>
-      </tbody>
-    </n-table>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="(plan, index) in maa_weekly_plan1" :key="plan.weekday1">
+            <td>
+              <n-select
+                v-if="index < 3"
+                v-model:value="plan.stage"
+                multiple
+                filterable
+                tag
+                :show="false"
+                :show-arrow="false"
+                :render-tag="render_tag"
+                :on-create="create_tag"
+              />
+              <span v-else>{{ showstage(plan.stage) }}</span>
+            </td>
+            <td
+              v-for="day in daysOfWeek"
+              :class="{ class2: plan[day] === 2, class1: plan[day] === 1 }"
+            >
+              <template v-if="plan[day] !== 0">
+                <n-button
+                  :v-model="plan[day]"
+                  @click="() => togglePlanAndStage(plan, day)"
+                  quaternary
+                >
+                  <span v-if="plan[day] === 2">打</span>
+                  <span v-if="plan[day] === 1"></span>
+                </n-button>
+              </template>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </n-card>
 </template>
 
 <style scoped lang="scss">
-.class0 {
-  background-color: hsl(33, 30%, 91%);
-}
+@media screen and (max-width: 1399px) {
+  .tasktable {
+    height: 300px;
+    overflow-y: auto;
+  }
 
+  .tasktable table {
+    border-collapse: collapse;
+  }
+  .tasktable td {
+    width: 12.5%;
+  }
+  .tasktable thead {
+    position: sticky;
+    top: 0;
+    background-color: hsl(196, 26%, 60%);
+    z-index: 1;
+  }
+}
+@media screen and (min-width: 1400px) {
+  .tasktable {
+    height: auto;
+  }
+
+  .tasktable table {
+    border-collapse: collapse;
+  }
+  .tasktable td {
+    width: 12.5%;
+  }
+  .tasktable thead {
+    background-color: hsl(196, 26%, 60%);
+  }
+}
 .class1 {
-  background-color: hsl(198, 20%, 21%);
+  background-color: hsl(33, 30%, 91%);
+  text-align: center; /* 文本水平居中 */
+  vertical-align: middle; /* 文本垂直居中 */
 }
 
 .class2 {
-  background-color: hsl(356, 50%, 40%);
+  background-color: hsl(200, 90%, 65%);
+  text-align: center; /* 文本水平居中 */
+  vertical-align: middle; /* 文本垂直居中 */
 }
 
 .card-title {

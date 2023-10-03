@@ -28,6 +28,7 @@ from ..utils.pipe import push_operators
 from ..utils.recognize import RecognizeError, Recognizer, Scene
 from ..utils.solver import BaseSolver
 from ..utils.datetime import get_server_weekday, the_same_time
+from ..utils.depot import process_itemlist
 from arknights_mower.utils.news import get_update_time
 import arknights_mower.utils.paddleocr
 import cv2
@@ -2182,6 +2183,10 @@ class BaseSchedulerSolver(BaseSolver):
         elif "what" in d and d["what"] == "RecruitSpecialTag":
             global recruit_special_tags
             recruit_special_tags["tags"].append(d["details"]["tags"])
+        elif d.get("what") == "DepotInfo" and d["details"].get("done") is True:
+            itemlist_filename = "tmp\itemlist.csv"
+            logger.debug(f"开始扫描仓库（MAA）")
+            process_itemlist(d, itemlist_filename)
 
     def initialize_maa(self):
         path = pathlib.Path(self.maa_config['maa_path'])
@@ -2218,7 +2223,7 @@ class BaseSchedulerSolver(BaseSolver):
             raise Exception("MAA 连接失败")
 
     def append_maa_task(self, type):
-        if type in ['StartUp', 'Visit', 'Award']:
+        if type in ['StartUp', 'Visit', 'Award','Depot']:
             self.MAA.append_task(type)
         elif type == 'Fight':
             _plan = self.maa_config['weekly_plan'][get_server_weekday()]
@@ -2269,7 +2274,7 @@ class BaseSchedulerSolver(BaseSolver):
                 # 任务及参数请参考 docs/集成文档.md
                 self.initialize_maa()
                 if tasks == 'All':
-                    tasks = ['StartUp', 'Fight', 'Visit', 'Mall', 'Award']
+                    tasks = ['StartUp', 'Fight', 'Visit', 'Mall', 'Award','Depot']
                     # tasks = ['StartUp', 'Fight', 'Recruit', 'Visit', 'Mall', 'Award']
                 for maa_task in tasks:
                     if maa_task == 'Recruit':

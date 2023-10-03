@@ -3,6 +3,7 @@ import requests
 
 from arknights_mower.solvers import record
 from arknights_mower.utils.conf import load_conf, save_conf, load_plan, write_plan
+from arknights_mower.utils import depot
 from arknights_mower.__main__ import main
 
 from flask import Flask, send_from_directory, request, abort
@@ -175,6 +176,11 @@ def read_log(conn):
                 conn.send(conf)
     except EOFError:
         conn.close()
+
+
+@app.route("/depot/readdepot")
+def read_depot():
+    return depot.read_and_compare_depots()
 
 
 @app.route("/running")
