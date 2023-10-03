@@ -11,6 +11,7 @@ from arknights_mower.utils.pipe import Pipe
 from arknights_mower.utils.simulator import restart_simulator
 from arknights_mower.utils.email import task_template
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
+from arknights_mower.utils.logic_expression import LogicExpression
 import arknights_mower.utils.paddleocr
 
 conf = {}
@@ -105,6 +106,7 @@ def set_maa_options(base_scheduler):
     maa_config["ec_type"] = conf["sss"]["ec"]
     maa_config["copilot_file_location"] = conf["sss"]["copilot"]
     maa_config["copilot_loop_times"] = conf["sss"]["loop"]
+    maa_config['reclamation_algorithm'] = conf['maa_rg_enable'] == 1 and conf['maa_long_task_type'] == 'ra'
     base_scheduler.maa_config = maa_config
 
     logger.debug(f"更新Maa设置：{base_scheduler.maa_config}")
@@ -129,6 +131,14 @@ def set_skland_options(base_scheduler):
 
     logger.debug(f"更新森空岛设置：{base_scheduler.skland_config}")
 
+
+def get_logic_exp(trigger):
+    for k in ["left", "operator", "right"]:
+        if not isinstance(trigger[k], str):
+            trigger[k] = get_logic_exp(trigger[k])
+    return LogicExpression(trigger["left"], trigger["operator"], trigger["right"])
+
+
 def initialize(tasks, scheduler=None):
     from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
     from arknights_mower.strategy import Solver
@@ -148,6 +158,33 @@ def initialize(tasks, scheduler=None):
         plan["default_plan"] = Plan(plan1,plan_config)
         # 备用自定义任务
         plan["backup_plans"] = []
+
+        for i in plan["backup_plans"]:
+            backup_plan = {}
+            for key in i["plan"]:
+                backup_plan[key] = [
+                    Room(obj["agent"], obj["group"], obj["replacement"])
+                    for obj in i["plan"][key]
+                ]
+            backup_config = PlanConfig(
+                i["conf"]["rest_in_full"],
+                i["conf"]["exhaust_require"],
+                i["conf"]["resting_priority"],
+                ling_xi=i["conf"]["ling_xi"],
+                workaholic=i["conf"]["workaholic"],
+                max_resting_count=i["conf"]["max_resting_count"],
+                free_blacklist=i["conf"]["free_blacklist"],
+                resting_threshold=conf["resting_threshold"],
+                run_order_buffer_time=conf["run_order_grandet_mode"]["buffer_time"]
+                if conf["run_order_grandet_mode"]["enable"]
+                else -1,
+            )
+            backup_trigger = get_logic_exp(i["trigger"]) if "trigger" in i else None
+            backup_task = i["task"] if "task" in i else None
+            plan["backup_plans"].append(
+                Plan(backup_plan, backup_config, trigger=backup_trigger, task=backup_task)
+            )
+
         logger.debug(plan)
         base_scheduler.package_name = config.APPNAME  # 服务器
         base_scheduler.global_plan = plan
