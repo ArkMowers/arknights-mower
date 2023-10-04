@@ -61,12 +61,21 @@
                   role="dialog"
                   aria-modal="true"
                 >
-                  <n-button @click=";(showModal = false), $router.push('/record/line')">
-                    心情曲线
-                  </n-button>
-                  <n-button @click=";(showModal = false), $router.push('/record/pie')">
-                    心情饼图
-                  </n-button>
+                  <div>
+                    <n-button @click=";(showModal = false), $router.push('/record/line')">
+                      心情曲线
+                    </n-button>
+                  </div>
+                  <div>
+                    <n-button @click=";(showModal = false), $router.push('/record/pie')">
+                      心情饼图
+                    </n-button>
+                  </div>
+                  <div>
+                    <n-button @click=";(showModal = false), $router.push('/record/depot')">
+                      仓库
+                    </n-button>
+                  </div>
                 </n-card>
               </n-modal>
             </n-tab>
