@@ -7,29 +7,25 @@ import os
 from arknights_mower.data import key_mapping
 
 depot_file = os.path.join("tmp", "itemlist.csv")
-current_datetime = datetime.datetime.now()
-
 
 def process_itemlist(d):
-    itemlist = {"时间": current_datetime, "data": {key: 0 for key in key_mapping.keys()}}
+    itemlist = {"时间": datetime.datetime.now(), "data": {key: 0 for key in key_mapping.keys()}}
 
-    if d.get("what") == "DepotInfo" and d["details"].get("done") is True:
-        itemlist["data"] = json.loads(d["details"]["lolicon"]["data"])
+    itemlist["data"] = json.loads(d["details"]["lolicon"]["data"])
 
-        # Check if file exists, if not, create the file
-        if not os.path.exists(depot_file):
-            with open(depot_file, "w", newline="", encoding="utf-8") as csvfile:
-                fieldnames = ["时间", "data"]
-                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-                writer.writeheader()
-                writer.writerow({"时间": current_datetime, "data": '{"空":0}'})
+    # Check if file exists, if not, create the file
+    if not os.path.exists(depot_file):
+        with open(depot_file, "w", newline="", encoding="utf-8") as csvfile:
+            fieldnames = ["时间", "data"]
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerow({"时间": datetime.datetime.now(), "data": '{"空":0}'})
 
         # Append data to the CSV file
-        with open(depot_file, "a", newline="", encoding="utf-8") as csvfile:
-            fieldnames = itemlist.keys()
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-            writer.writerow(itemlist)
-
+    with open(depot_file, "a", newline="", encoding="utf-8") as csvfile:
+        fieldnames = itemlist.keys()
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writerow(itemlist)
 
 def read_and_compare_depots():
     def format_data(depot_data):
@@ -84,7 +80,7 @@ def read_and_compare_depots():
             fieldnames = ["时间", "data"]
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
-            writer.writerow({"时间": current_datetime, "data": '{"空":0}'})
+            writer.writerow({"时间": datetime.datetime.now(), "data": '{"空":0}'})
     with open(depot_file, "r", encoding="utf-8") as csvfile:
         csvreader = csv.reader(csvfile)
         all_rows = list(csvreader)
