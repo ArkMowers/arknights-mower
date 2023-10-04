@@ -12,6 +12,8 @@ export const usePlanStore = defineStore('plan', () => {
 
   const plan = ref({})
 
+  const backup_plans = ref([])
+
   const operators = ref([])
 
   const left_side_facility = []
@@ -43,6 +45,7 @@ export const usePlanStore = defineStore('plan', () => {
         : response.data.conf.resting_priority.split(',')
     workaholic.value =
       response.data.conf.workaholic == '' ? [] : response.data.conf.workaholic.split(',')
+    backup_plans.value = response.data.backup_plans
 
     const full_plan = response.data.plan1
     for (const i in facility_operator_limit) {
@@ -102,7 +105,8 @@ export const usePlanStore = defineStore('plan', () => {
         rest_in_full: rest_in_full.value.join(','),
         resting_priority: resting_priority.value.join(','),
         workaholic: workaholic.value.join(',')
-      }
+      },
+      backup_plans: backup_plans.value
     }
 
     const plan1 = result.plan1
@@ -128,7 +132,16 @@ export const usePlanStore = defineStore('plan', () => {
   }
 
   watch(
-    [plan, ling_xi, max_resting_count, exhaust_require, rest_in_full, resting_priority, workaholic],
+    [
+      plan,
+      ling_xi,
+      max_resting_count,
+      exhaust_require,
+      rest_in_full,
+      resting_priority,
+      workaholic,
+      backup_plans
+    ],
     () => {
       axios.post(`${import.meta.env.VITE_HTTP_URL}/plan`, build_plan())
     },
