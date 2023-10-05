@@ -484,7 +484,7 @@ class BaseSchedulerSolver(BaseSolver):
                 logger.info(f"记录本次无人机使用时间为:{datetime.now()}")
                 self.drone_time = datetime.now()
             if self.reload_room is not None and (
-                    self.reload_time is None or self.reload_time < datetime.now() - timedelta(hours=24)):
+                    self.reload_time is None or self.reload_time < datetime.now() - timedelta(hours=self.maa_config['maa_execution_gap'])):
                 self.reload()
                 logger.info(f"记录本次补货时间为:{datetime.now()}")
             self.todo_task = True
