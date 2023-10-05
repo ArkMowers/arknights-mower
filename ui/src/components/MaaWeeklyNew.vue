@@ -10,7 +10,7 @@ import { h, ref } from 'vue'
 
 const currentDay = ref(new Date().getDay())
 const daysOfWeek = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
-
+const dayOfWeek = ['一', '二', '三', '四', '五', '六', '日']
 const togglePlanAndStage = (plan, day) => {
   plan[day] = plan[day] === 1 ? 2 : 1
   maa_weekly_plan.value.slice(0, daysOfWeek.length).forEach((p, i) => {
@@ -158,7 +158,7 @@ function create_tag(label) {
           <tr>
             <th>关卡</th>
             <th
-              v-for="(day, index) in daysOfWeek"
+              v-for="(day, index) in dayOfWeek"
               :key="index"
               :class="{ today: currentDay === index }"
             >
