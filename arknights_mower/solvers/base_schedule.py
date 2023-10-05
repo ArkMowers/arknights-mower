@@ -365,7 +365,8 @@ class BaseSchedulerSolver(BaseSolver):
                     __plan[__room][self.op_data.operators[x].index] = x
                 if __time < datetime.now(): __time = datetime.now()
                 if __time != datetime.max:
-                    self.tasks.append(SchedulerTask(time=__time, task_plan=__plan, meta_data=','.join(__type)))
+                    self.tasks.append(SchedulerTask(time=__time, task_type=TaskTypes.SHIFT_ON, task_plan=__plan,
+                                                    meta_data=','.join(__type)))
                 else:
                     self.op_data.reset_dorm_time()
                     self.error = True
@@ -406,7 +407,7 @@ class BaseSchedulerSolver(BaseSolver):
                 if _time < datetime.now(): _time = datetime.now()
                 self.tasks.append(
                     SchedulerTask(time=_time if not short_rest else (datetime.now() + timedelta(hours=0.5)),
-                                  task_plan=_plan,
+                                  task_plan=_plan, task_type=TaskTypes.SHIFT_ON,
                                   meta_data=','.join(_type)))
             else:
                 logger.debug("检测到时间数据不存在")
@@ -441,6 +442,8 @@ class BaseSchedulerSolver(BaseSolver):
                 elif self.task.type == TaskTypes.CLUE_PARTY:
                     self.party_time = None
                     self.skip(['planned', 'collect_notification'])
+                if self.tasks[0].type in [TaskTypes.SHIFT_ON, TaskTypes.SHIFT_OFF]:
+                    self.backup_plan_solver()
                 del self.tasks[0]
             except Exception as e:
                 logger.exception(e)
@@ -745,15 +748,15 @@ class BaseSchedulerSolver(BaseSolver):
             except Exception as e:
                 logger.exception(e)
                 # 如果下个 普通任务 >5 分钟则补全宿舍
-                logger.debug('tasks:' + str(self.tasks))
+            logger.debug('tasks:' + str(self.tasks))
             if find_next_task(self.tasks, datetime.now() + timedelta(seconds=300)) is not None:
                 logger.info("5分钟内有其他任务,跳过宿舍纠错")
                 return
-            if self.agent_get_mood() is None:
-                self.backup_plan_solver()
+            self.agent_get_mood()
 
     def backup_plan_solver(self):
         try:
+            changed = False
             index = -1
             if self.op_data.backup_plans:
                 for idx, bp in enumerate(self.op_data.backup_plans):
@@ -767,11 +770,15 @@ class BaseSchedulerSolver(BaseSolver):
                         if task:
                             self.tasks.append(SchedulerTask(task_plan=task))
                         index = idx
+                        changed = True
                         break
                     if valid: index = idx
                 # 不满足条件且为其他排班表，则切换回来
                 if index == -1 and self.op_data.plan_name != "default_plan":
                     self.op_data.swap_plan(index, refresh=True)
+                    changed = True
+            if changed:
+                self.agent_get_mood()
         except Exception as e:
             logger.exception(e)
 
