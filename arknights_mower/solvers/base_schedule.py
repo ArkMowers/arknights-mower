@@ -31,6 +31,7 @@ from ..utils.datetime import get_server_weekday, the_same_time
 from ..utils.depot import process_itemlist
 from arknights_mower.utils.news import get_update_time
 import arknights_mower.utils.paddleocr
+from arknights_mower.utils.simulator import restart_simulator
 import cv2
 
 from ctypes import CFUNCTYPE, c_int, c_char_p, c_void_p
@@ -90,6 +91,8 @@ class BaseSchedulerSolver(BaseSolver):
         self.free_clue = None
         self.credit_fight = None
         self.exit_game_when_idle = False
+        self.simulator = None
+        self.close_simulator_when_idle = False
         self.refresh_connecting = False
         self.recruit_config = {}
         self.skland_config = {}
@@ -2433,12 +2436,17 @@ class BaseSchedulerSolver(BaseSolver):
             context = f"下一次任务:{self.tasks[0].plan if len(self.tasks[0].plan) != 0 else '空任务' if self.tasks[0].type == '' else self.tasks[0].type}"
             logger.info(context)
             logger.info(subject)
+            self.task_count += 1
+            logger.info(f"第{self.task_count}次任务结束")
             if remaining_time > 0:
-                if remaining_time > 300 and self.exit_game_when_idle:
-                    self.device.exit(self.package_name)
-                    self.task_count += 1
-                    logger.info(f"第{self.task_count}次任务结束，关闭游戏，降低功耗")
+                if remaining_time > 300:
+                    if self.close_simulator_when_idle:
+                        restart_simulator(self.simulator, start=False)
+                    elif self.exit_game_when_idle:
+                        self.device.exit(self.package_name)
                 time.sleep(remaining_time)
+                if self.close_simulator_when_idle:
+                    restart_simulator(self.simulator, stop=False)
             self.MAA = None
         except Exception as e:
             logger.exception(e)

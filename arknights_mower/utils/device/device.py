@@ -91,6 +91,7 @@ class Device(object):
 
     def exit(self, app: str) -> None:
         """ exit the application """
+        logger.info("退出游戏")
         self.run(f'am force-stop {app}')
 
     def send_keyevent(self, keycode: int) -> None:

@@ -29,6 +29,7 @@ const {
   resting_threshold,
   tap_to_launch_game,
   exit_game_when_idle,
+  close_simulator_when_idle,
   screenshot,
   run_order_grandet_mode
 } = storeToRefs(config_store)
@@ -133,8 +134,18 @@ function render_label(option) {
                 <n-input-number v-model:value="tap_to_launch_game.y" />
               </n-form-item>
               <n-form-item :show-label="false">
-                <n-checkbox v-model:checked="exit_game_when_idle">
-                  任务结束后退出游戏以降低功耗
+                <n-checkbox
+                  v-model:checked="exit_game_when_idle"
+                  :disabled="close_simulator_when_idle"
+                >
+                  任务结束后退出游戏
+                  <help-text>降低功耗</help-text>
+                </n-checkbox>
+              </n-form-item>
+              <n-form-item :show-label="false">
+                <n-checkbox v-model:checked="close_simulator_when_idle">
+                  任务结束后关闭模拟器
+                  <help-text>减少空闲时的资源占用、避免模拟器长时间运行出现问题</help-text>
                 </n-checkbox>
               </n-form-item>
               <n-form-item>

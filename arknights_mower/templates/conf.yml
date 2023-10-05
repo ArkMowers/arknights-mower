@@ -212,6 +212,7 @@ tap_to_launch_game:
   x: 0
   y: 0
 exit_game_when_idle: true
+close_simulator_when_idle: false
 resting_threshold: 0.5
 theme: light
 maa_conn_preset: General

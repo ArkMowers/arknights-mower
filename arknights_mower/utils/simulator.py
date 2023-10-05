@@ -10,7 +10,7 @@ class Simulator_Type(Enum):
     Waydroid = "Waydroid"
 
 
-def restart_simulator(data):
+def restart_simulator(data, stop=True, start=True):
     index = data["index"]
     simulator_type = data["name"]
     cmd = ""
@@ -31,25 +31,26 @@ def restart_simulator(data):
             cmd += "shutdown_player"
         elif simulator_type == Simulator_Type.Waydroid.value:
             cmd = "waydroid session stop"
-        exec_cmd(cmd, data["simulator_folder"])
-        logger.info(f"开始关闭{simulator_type}模拟器，等待2秒钟")
-        time.sleep(2)
+        if stop:
+            exec_cmd(cmd, data["simulator_folder"])
+            logger.info(f"开始关闭{simulator_type}模拟器，等待2秒钟")
+            time.sleep(2)
         if simulator_type == Simulator_Type.Nox.value:
             cmd = cmd.replace(" -quit", "")
         elif simulator_type == Simulator_Type.MuMu12.value:
             cmd = cmd.replace(" shutdown_player", " launch_player")
         elif simulator_type == Simulator_Type.Waydroid.value:
             cmd = "waydroid show-full-ui"
-        exec_cmd(cmd, data["simulator_folder"])
-        logger.info(f"开始启动{simulator_type}模拟器，等待25秒钟")
-        time.sleep(25)
+        if start:
+            exec_cmd(cmd, data["simulator_folder"])
+            logger.info(f"开始启动{simulator_type}模拟器，等待25秒钟")
+            time.sleep(25)
     else:
         logger.warning(f"尚未支持{simulator_type}重启/自动启动")
 
 
 def exec_cmd(cmd, folder_path):
     try:
-        print(cmd)
         process = subprocess.Popen(
             cmd,
             shell=True,

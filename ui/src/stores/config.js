@@ -37,6 +37,7 @@ export const useConfigStore = defineStore('config', () => {
   const theme = ref('light')
   const tap_to_launch_game = ref(false)
   const exit_game_when_idle = ref(true)
+  const close_simulator_when_idle = ref(false)
   const maa_conn_preset = ref('General')
   const maa_touch_option = ref('maatouch')
   const maa_mall_ignore_blacklist_when_full = ref(false)
@@ -107,6 +108,7 @@ export const useConfigStore = defineStore('config', () => {
     tap_to_launch_game.value = response.data.tap_to_launch_game
     tap_to_launch_game.value.enable = tap_to_launch_game.value.enable ? 'tap' : 'adb'
     exit_game_when_idle.value = response.data.exit_game_when_idle
+    close_simulator_when_idle.value = response.data.close_simulator_when_idle
     maa_conn_preset.value = response.data.maa_conn_preset
     maa_touch_option.value = response.data.maa_touch_option
     maa_mall_ignore_blacklist_when_full.value = response.data.maa_mall_ignore_blacklist_when_full
@@ -166,6 +168,7 @@ export const useConfigStore = defineStore('config', () => {
         y: tap_to_launch_game.value.y
       },
       exit_game_when_idle: exit_game_when_idle.value,
+      close_simulator_when_idle: close_simulator_when_idle.value,
       maa_conn_preset: maa_conn_preset.value,
       maa_touch_option: maa_touch_option.value,
       maa_mall_ignore_blacklist_when_full: maa_mall_ignore_blacklist_when_full.value,
@@ -221,6 +224,7 @@ export const useConfigStore = defineStore('config', () => {
       theme,
       tap_to_launch_game,
       exit_game_when_idle,
+      close_simulator_when_idle,
       maa_conn_preset,
       maa_touch_option,
       maa_mall_ignore_blacklist_when_full,
@@ -284,6 +288,7 @@ export const useConfigStore = defineStore('config', () => {
     theme,
     tap_to_launch_game,
     exit_game_when_idle,
+    close_simulator_when_idle,
     maa_conn_preset,
     maa_touch_option,
     maa_mall_ignore_blacklist_when_full,
