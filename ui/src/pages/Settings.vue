@@ -44,6 +44,7 @@ const facility_with_empty = computed(() => {
 const simulator_types = [
   { label: '夜神', value: '夜神' },
   { label: 'MuMu模拟器12', value: 'MuMu12' },
+  { label: 'Waydroid', value: 'Waydroid' },
   { label: '其它', value: '' }
 ]
 
