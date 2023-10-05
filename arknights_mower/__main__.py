@@ -345,9 +345,9 @@ def simulate():
                     logger.info(f"第{base_scheduler.task_count}次任务结束")
                     if sleep_time > 300:
                         if conf["close_simulator_when_idle"]:
-                            base_scheduler.device.exit(base_scheduler.package_name)
-                        elif conf["exit_game_when_idle"]:
                             restart_simulator(conf["simulator"], start=False)
+                        elif conf["exit_game_when_idle"]:
+                            base_scheduler.device.exit(base_scheduler.package_name)
                     body = task_template.render(
                         tasks=[
                             obj.format(timezone_offset) for obj in base_scheduler.tasks
