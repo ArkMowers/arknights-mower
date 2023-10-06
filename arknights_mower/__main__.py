@@ -252,6 +252,8 @@ def initialize(tasks, scheduler=None):
         base_scheduler.drone_execution_gap = conf["drone_interval"]
         base_scheduler.run_order_delay = conf["run_order_delay"]
         base_scheduler.exit_game_when_idle = conf["exit_game_when_idle"]
+        base_scheduler.simulator = conf["simulator"]
+        base_scheduler.close_simulator_when_idle = conf["close_simulator_when_idle"]
 
         # 关闭游戏次数计数器
         base_scheduler.task_count = 0
@@ -339,10 +341,13 @@ def simulate():
                     context = f"下一次任务:{base_scheduler.tasks[0].plan}"
                     logger.info(context)
                     logger.info(subject)
-                    if sleep_time > 300 and conf["exit_game_when_idle"]:
-                        base_scheduler.device.exit(base_scheduler.package_name)
-                        base_scheduler.task_count += 1
-                        logger.info(f"第{base_scheduler.task_count}次任务结束，关闭游戏，降低功耗")
+                    base_scheduler.task_count += 1
+                    logger.info(f"第{base_scheduler.task_count}次任务结束")
+                    if sleep_time > 300:
+                        if conf["close_simulator_when_idle"]:
+                            restart_simulator(conf["simulator"], start=False)
+                        elif conf["exit_game_when_idle"]:
+                            base_scheduler.device.exit(base_scheduler.package_name)
                     body = task_template.render(
                         tasks=[
                             obj.format(timezone_offset) for obj in base_scheduler.tasks
@@ -350,6 +355,8 @@ def simulate():
                     )
                     base_scheduler.send_email(body, subject, "html")
                     time.sleep(sleep_time)
+                    if conf["exit_game_when_idle"]:
+                        restart_simulator(conf["simulator"], stop=False)
             if (
                 len(base_scheduler.tasks) > 0
                 and base_scheduler.tasks[0].type.value.split("_")[0] == "maa"

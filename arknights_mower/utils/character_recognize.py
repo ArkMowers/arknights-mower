@@ -125,6 +125,28 @@ def sift_recog(query, resolution, draw=False,bigfont = False):
     return best
 
 
+def paddle_guess_agent(guess):
+    best = None
+    best_score = 0
+    # “森蚺”可能识别成“森”，“孑”可能识别成“子”（子月）
+    # 以单字猜测双字干员不可靠
+    # 以“白面鹃”或“白面”匹配“白面鸮”没问题
+    # 注意避免“白面”匹配到“白雪”
+    # “屯艾雅法拉”应匹配“纯烬艾雅法拉”，而非“艾雅法拉”
+    for x in agent_sorted:
+        score = -abs(len(x) - len(guess))
+        for c in set(x):
+            score += 3 if c in guess else 0
+        if score >= best_score:
+            best = x
+            best_score = score
+    if best_score > len(best):
+        logger.debug(f"{guess} --?--> {best}")
+        return best
+    else:
+        return None
+
+
 def paddle_recog(__img):
     if len(res := arknights_mower.utils.paddleocr.ocr(__img)[1]) > 0:
         logger.debug(res)
@@ -137,23 +159,7 @@ def paddle_recog(__img):
                 logger.debug(f"{r[0]} =====> {op_name}")
                 return op_name
         recog_text = res[0][0]
-        best = None
-        best_score = 0
-        # “森蚺”可能识别成“森”，“孑”可能识别成“子”（子月）
-        # 以单字猜测双字干员不可靠
-        # 以“白面鹃”或“白面”匹配“白面鸮”没问题
-        # 注意避免“白面”匹配到“白雪”
-        # “屯艾雅法拉”应匹配“纯烬艾雅法拉”，而非“艾雅法拉”
-        for x in agent_sorted:
-            score = -abs(len(x) - len(recog_text))
-            for c in set(x):
-                score += 3 if c in recog_text else 0
-            if score >= best_score:
-                best = x
-                best_score = score
-        if best_score >= len(best):
-            logger.debug(f"{recog_text} --?--> {best}")
-            return best
+        return paddle_guess_agent(recog_text)
     return None
 
 
