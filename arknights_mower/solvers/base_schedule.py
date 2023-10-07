@@ -2043,6 +2043,10 @@ class BaseSchedulerSolver(BaseSolver):
                 choose_error += 1
                 self.recog.update()
                 self.recog.save_screencap('choose_agent_failure')
+                if "检测到漏单！" in str(e):
+                    return {}
+                if choose_error > 3:
+                    raise e
                 if "检测到安排干员未成功" in str(e):
                     skip_enter = True
                     continue
@@ -2052,12 +2056,7 @@ class BaseSchedulerSolver(BaseSolver):
                     back_count += 1
                     if back_count > 3:
                         raise e
-                if "检测到漏单！" in str(e):
-                    return {}
-                if choose_error > 3:
-                    raise e
-                else:
-                    continue
+                continue
         if len(new_plan) != 1:
             self.back(0.5)
         else:
