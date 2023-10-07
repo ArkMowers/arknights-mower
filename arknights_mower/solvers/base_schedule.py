@@ -389,6 +389,7 @@ class BaseSchedulerSolver(BaseSolver):
                     if x in low_priority:
                         continue
                     __room = self.op_data.operators[x].room
+                    if __room not in base_room_list: continue
                     if __room not in _plan.keys():
                         _plan[__room] = ['Current'] * len(self.op_data.plan[__room])
                     _plan[__room][self.op_data.operators[x].index] = x
@@ -445,7 +446,7 @@ class BaseSchedulerSolver(BaseSolver):
                 elif self.task.type == TaskTypes.CLUE_PARTY:
                     self.party_time = None
                     self.skip(['planned', 'collect_notification'])
-                if self.tasks[0].type in [TaskTypes.SHIFT_ON, TaskTypes.SHIFT_OFF]:
+                if self.tasks[0].type in [TaskTypes.SHIFT_ON]:
                     self.backup_plan_solver()
                 del self.tasks[0]
             except Exception as e:
@@ -719,7 +720,7 @@ class BaseSchedulerSolver(BaseSolver):
                                     _time = result[op.current_index]['time'] - timedelta(minutes=10)
                                 elif op.current_mood() > 0.25 and op.depletion_rate != 0:
                                     _time = datetime.now() + timedelta(
-                                        hours=(op.current_mood() - 0.25) / op.depletion_rate) - timedelta(minutes=10)
+                                        hours=(op.current_mood() - op.lower_limit- 0.25) / op.depletion_rate) - timedelta(minutes=10)
                                 self.back()
                                 # plan 是空的是因为得动态生成
                                 exhaust_type = op.name
@@ -755,7 +756,8 @@ class BaseSchedulerSolver(BaseSolver):
             if find_next_task(self.tasks, datetime.now() + timedelta(seconds=300)) is not None:
                 logger.info("5分钟内有其他任务,跳过宿舍纠错")
                 return
-            self.agent_get_mood()
+            if self.agent_get_mood() is not None:
+                self.backup_plan_solver()
 
     def backup_plan_solver(self):
         try:
@@ -2145,7 +2147,9 @@ class BaseSchedulerSolver(BaseSolver):
             try:
                 logger.info(f"开始搓玉补货:{room}")
                 self.enter_room(room)
-                self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=0.5)
+                self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=0.25)
+                self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=0.25)
+                self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=0.25)
                 # 补货
                 self.tap((self.recog.w * 0.75, self.recog.h * 0.3), interval=0.5)
                 self.tap((self.recog.w * 0.75, self.recog.h * 0.9), interval=0.5)

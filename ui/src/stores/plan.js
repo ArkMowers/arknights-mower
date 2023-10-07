@@ -45,7 +45,7 @@ export const usePlanStore = defineStore('plan', () => {
         : response.data.conf.resting_priority.split(',')
     workaholic.value =
       response.data.conf.workaholic == '' ? [] : response.data.conf.workaholic.split(',')
-    backup_plans.value = response.data.backup_plans
+    backup_plans.value = response.data.backup_plans ?? []
 
     const full_plan = response.data.plan1
     for (const i in facility_operator_limit) {
