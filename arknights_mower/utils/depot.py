@@ -5,8 +5,9 @@ import ast
 from .log import logger
 import os
 from arknights_mower.data import key_mapping
+from .path import get_path
 
-depot_file = os.path.join("tmp", "itemlist.csv")
+depot_file = get_path('@app/tmp/itemlist.csv')
 
 def process_itemlist(d):
     itemlist = {"时间": datetime.datetime.now(), "data": {key: 0 for key in key_mapping.keys()}}
