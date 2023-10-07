@@ -4,7 +4,7 @@ from pathlib import Path
 from ruamel import yaml
 from flatten_dict import flatten, unflatten
 from .. import __rootdir__
-
+from .path import app_dir, get_path
 
 def __get_temp_conf():
     with Path(f'{__rootdir__}/templates/conf.yml').open('r', encoding='utf8') as f:
@@ -12,18 +12,21 @@ def __get_temp_conf():
 
 
 def save_conf(conf, path="./conf.yml"):
-    with Path(path).open('w', encoding='utf8') as f:
+    path = app_dir / path
+    with path.open('w', encoding='utf8') as f:
         yaml.dump(conf, f, allow_unicode=True)
 
 
 def load_conf(path="./conf.yml"):
     temp_conf = __get_temp_conf()
-    if not os.path.isfile(path):
+    path = app_dir / path
+    if not path.is_file():
+        path.parent.mkdir(exist_ok=True)
         open(path, 'w')  # 创建空配置文件
         save_conf(temp_conf, path)
         return temp_conf
     else:
-        with Path(path).open('r', encoding='utf8') as c:
+        with path.open('r', encoding='utf8') as c:
             conf = yaml.load(c, Loader=yaml.Loader)
             if conf is None:
                 conf = {}
@@ -41,7 +44,9 @@ def __get_temp_plan():
 
 def load_plan(path="./plan.json"):
     temp_plan = __get_temp_plan()
-    if not os.path.isfile(path):
+    path = app_dir / path
+    if not path.is_file():
+        path.parent.mkdir(exist_ok=True)
         with open(path, 'w') as f:
             json.dump(temp_plan, f)  # 创建空json文件
         return temp_plan
@@ -58,5 +63,6 @@ def load_plan(path="./plan.json"):
 
 
 def write_plan(plan, path="./plan.json"):
-    with open(path, 'w', encoding='utf8') as c:
+    path = app_dir / path
+    with path.open('w', encoding='utf8') as c:
         json.dump(plan, c, ensure_ascii=False)

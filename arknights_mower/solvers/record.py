@@ -3,6 +3,7 @@ import sqlite3
 import os
 from collections import defaultdict
 
+from arknights_mower.utils.path import get_path
 from arknights_mower.utils.log import logger
 from datetime import datetime, timezone
 
@@ -21,11 +22,11 @@ def save_action_to_sqlite_decorator(func):
             return
         # 保存到数据库
         current_time = datetime.now()
-        database_path = os.path.join('tmp', 'data.db')
+        database_path = get_path('@app/tmp/data.db')
 
         try:
             # Create 'tmp' directory if it doesn't exist
-            os.makedirs('tmp', exist_ok=True)
+            get_path('@app/tmp').mkdir(exist_ok=True)
 
             connection = sqlite3.connect(database_path)
             cursor = connection.cursor()
@@ -64,7 +65,7 @@ def save_action_to_sqlite_decorator(func):
 
 def get_work_rest_ratios():
     # TODO 整理数据计算工休比
-    database_path = os.path.join('tmp', 'data.db')
+    database_path = get_path('@app/tmp/data.db')
 
     try:
     # 连接到数据库
@@ -126,7 +127,7 @@ def get_work_rest_ratios():
 
 # 整理心情曲线
 def get_mood_ratios():
-    database_path = os.path.join('tmp', 'data.db')
+    database_path = get_path('@app/tmp/data.db')
 
     try:
         # 连接到数据库
