@@ -11,7 +11,7 @@
     <n-grid x-gap="10px" y-gap="10px" cols="1" responsive="screen">
       <n-gi v-for="(data, title) in cangkuwupin">
         <h2>{{ title }}</h2>
-        <n-grid x-gap="10px" y-gap="10px" cols="2 m:6 l:6 xl:9" responsive="screen">
+        <n-grid x-gap="10px" y-gap="10px" cols="2 m:6 l:6 " responsive="screen">
           <n-gi v-for="(key, item) in data" content-indented="true">
             <n-thing>
               <template #avatar>
@@ -43,6 +43,7 @@
 <style>
 .card-container {
   display: flex;
+  margin: 0px, 250px, 0px, 50px;
   flex-wrap: wrap;
 }
 </style>
@@ -133,24 +134,24 @@ const tireCategories = [
   ['模组数据块', '数据增补仪', '数据增补条'],
   ['技巧概要·卷3', '技巧概要·卷2', '技巧概要·卷1'],
   [
-    '先锋双芯片',
-    '先锋芯片组',
-    '先锋芯片',
-    '近卫双芯片',
-    '近卫芯片组',
-    '近卫芯片',
     '重装双芯片',
     '重装芯片组',
     '重装芯片',
-    '术师双芯片',
-    '术师芯片组',
-    '术师芯片',
     '狙击双芯片',
     '狙击芯片组',
     '狙击芯片',
     '医疗双芯片',
     '医疗芯片组',
     '医疗芯片',
+    '术师双芯片',
+    '术师芯片组',
+    '术师芯片',
+    '先锋双芯片',
+    '先锋芯片组',
+    '先锋芯片',
+    '近卫双芯片',
+    '近卫芯片组',
+    '近卫芯片',
     '辅助双芯片',
     '辅助芯片组',
     '辅助芯片',
