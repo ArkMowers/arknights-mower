@@ -182,3 +182,11 @@ dmypy.json
 dist
 MAA
 /*.yml
+
+# venv
+/bin/
+/pyvenv.cfg
+/lib64
+
+#testspace
+/testspace

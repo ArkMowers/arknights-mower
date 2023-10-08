@@ -10,6 +10,8 @@ from copy import deepcopy
 from arknights_mower.utils.pipe import Pipe
 from arknights_mower.utils.simulator import restart_simulator
 from arknights_mower.utils.email import task_template
+from arknights_mower.utils import path
+from arknights_mower.utils.path import get_path
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.logic_expression import LogicExpression
 import arknights_mower.utils.paddleocr
@@ -23,15 +25,15 @@ operators = {}
 def main(c, p, o={}, child_conn=None):
     from arknights_mower.utils.log import init_fhlr
     from arknights_mower.utils import config
-
+    
     global plan
     global conf
     global operators
     conf = c
     plan = p
     operators = o
-    config.LOGFILE_PATH = "./log"
-    config.SCREENSHOT_PATH = "./screenshot"
+    config.LOGFILE_PATH = str(get_path('@app/log'))
+    config.SCREENSHOT_PATH = str(get_path('@app/screenshot'))
     config.SCREENSHOT_MAXNUM = conf["screenshot"]
     config.ADB_DEVICE = [conf["adb"]]
     config.ADB_CONNECT = [conf["adb"]]
@@ -270,6 +272,7 @@ def simulate():
     """
     具体调用方法可见各个函数的参数说明
     """
+    logger.info(f"正在使用全局配置空间: {path.global_space}")
     tasks = []
     reconnect_max_tries = 10
     reconnect_tries = 0
@@ -282,6 +285,7 @@ def simulate():
         except Exception as E:
             reconnect_tries += 1
             if reconnect_tries < 3:
+                logger.exception(E)
                 restart_simulator(conf["simulator"])
                 continue
             else:
@@ -396,17 +400,20 @@ def simulate():
 
 
 def save_state(op_data, file="state.json"):
-    if not os.path.exists("tmp"):
-        os.makedirs("tmp")
-    with open("tmp/" + file, "w") as f:
+    tmp_dir = get_path('@app/tmp')
+    if not tmp_dir.exists():
+        tmp_dir.mkdir()
+    state_file = tmp_dir / file
+    with open(state_file, "w") as f:
         if op_data is not None:
             json.dump(vars(op_data), f, default=str)
 
 
 def load_state(file="state.json"):
-    if not os.path.exists("tmp/" + file):
+    state_file = get_path('@app/tmp') / file
+    if not state_file.exists():
         return None
-    with open("tmp/" + file, "r") as f:
+    with open(state_file, 'r') as f:
         state = json.load(f)
     operators = {k: eval(v) for k, v in state["operators"].items()}
     for k, v in operators.items():
