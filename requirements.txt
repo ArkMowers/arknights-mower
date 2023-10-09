@@ -21,7 +21,7 @@ flatten-dict==0.4.2
 Flask==2.3.2
 Flask-Cors==4.0.0
 flask-sock==0.6.0
-pywebview==4.2.2
+pywebview==4.3.3
 pystray==0.19.4
 ruamel.yaml==0.17.22
 platformdirs==3.11.0

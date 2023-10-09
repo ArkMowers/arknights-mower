@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
 import webview
-from server import app, mower_process
+import server
+from server import app
 
 import os
 import multiprocessing
@@ -23,6 +24,7 @@ import pathlib
 
 quit_app = False
 display = True
+window = None
 
 
 def on_resized(w, h):
@@ -41,9 +43,10 @@ def toggle_window():
 
 
 def on_closing():
-    if not quit_app:
-        Thread(target=toggle_window).start()
-        return False
+    if quit_app:
+        return True
+    Thread(target=toggle_window).start()
+    return False
 
 
 def destroy_window():
@@ -115,7 +118,6 @@ if __name__ == "__main__":
     )
     icon.run_detached()
 
-    global window
     window = webview.create_window(
         f"Mower {__version__} (http://{host}:{port})",
         f"http://127.0.0.1:{port}?token={token}",
@@ -131,9 +133,11 @@ if __name__ == "__main__":
         sleep(0.1)
     webview.start()
 
-    if mower_process:
-        mower_process.terminate()
-        mower_process = None
+    window = None
+
+    if server.mower_process:
+        server.mower_process.terminate()
+        server.mower_process = None
 
     icon.stop()
 
