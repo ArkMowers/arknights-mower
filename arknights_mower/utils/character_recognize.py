@@ -16,7 +16,7 @@ from .log import logger
 from .recognize import RecognizeError
 from ..ocr import ocrhandle
 
-import arknights_mower.utils.paddleocr
+from arknights_mower.utils import rapidocr
 
 
 def poly_center(poly):
@@ -148,7 +148,7 @@ def paddle_guess_agent(guess):
 
 
 def paddle_recog(__img):
-    if len(res := arknights_mower.utils.paddleocr.ocr(__img)[1]) > 0:
+    if len(res := rapidocr.engine(__img, use_det=False, use_cls=False, use_rec=True)[0]) > 0:
         logger.debug(res)
         for r in res:
             if r[0] in agent_list:

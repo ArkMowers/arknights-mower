@@ -30,7 +30,7 @@ from ..utils.solver import BaseSolver
 from ..utils.datetime import get_server_weekday, the_same_time
 from ..utils.depot import process_itemlist
 from arknights_mower.utils.news import get_update_time
-import arknights_mower.utils.paddleocr
+from arknights_mower.utils import rapidocr
 from arknights_mower.utils.simulator import restart_simulator
 import cv2
 
@@ -718,7 +718,7 @@ class BaseSchedulerSolver(BaseSolver):
                                 if result[op.current_index]['time'] is not None and result[op.current_index][
                                     'time'] > _time:
                                     _time = result[op.current_index]['time'] - timedelta(minutes=10)
-                                elif op.current_mood() > 0.25 and op.depletion_rate != 0:
+                                elif op.current_mood() > 0.25 + op.lower_limit and op.depletion_rate != 0:
                                     _time = datetime.now() + timedelta(
                                         hours=(op.current_mood() - op.lower_limit- 0.25) / op.depletion_rate) - timedelta(minutes=10)
                                 self.back()
@@ -915,47 +915,35 @@ class BaseSchedulerSolver(BaseSolver):
     def read_screen(self, img, type="mood", limit=24, cord=None):
         if cord is not None:
             img = img[cord[1]:cord[3], cord[0]:cord[2]]
-        if 'mood' in type or type == "time":
-            # 心情图片太小，复制8次提高准确率
-            for x in range(0, 4):
-                img = cv2.vconcat([img, img])
         try:
-            rets = arknights_mower.utils.paddleocr.ocr.ocr(img, cls=False)
-            line_conf = []
-            for idx in range(len(rets[0])):
-                res = rets[0][idx]
-                if 'mood' in type:
-                    # filter 掉不符合规范的结果
-                    if ('/' + str(limit)) in res[1][0]:
-                        new_string = res[1][0].replace('/' + str(limit), '')
-                        if len(new_string) > 0:
-                            line_conf.append(res[1])
+            ret = rapidocr.engine(img, use_det=False, use_cls=False, use_rec=True)[0]
+            logger.debug(ret)
+            if not ret:
+                raise Exception("识别失败")
+            ret = ret[0][0]
+            if "赤金完成" in ret:
+                raise Exception("读取到赤金收取提示")
+            if 'mood' in type:
+                if (f"/{limit}") in ret:
+                    ret = ret.replace(f"/{limit}", '')
+                if len(ret) > 0:
+                    if '.' in ret:
+                        ret = ret.replace(".", "")
+                    return int(ret[0:ret.index('/')])
                 else:
-                    line_conf.append(res[1])
-            logger.debug(line_conf)
-            if len(line_conf) == 0:
-                if 'mood' in type:
                     return -1
-                elif 'name' in type:
-                    logger.debug("使用老版识别")
-                    return character_recognize.agent_name(img, self.recog.h)
-                else:
-                    return ""
-            x = [i[0] for i in line_conf]
-            __str = max(set(x), key=x.count)
-            if "mood" in type:
-                if '.' in __str:
-                    __str = __str.replace(".", "")
-                number = int(__str[0:__str.index('/')])
-                return number
             elif 'time' in type:
-                if '.' in __str:
-                    __str = __str.replace(".", ":")
-            elif 'name' in type and __str not in agent_list:
-                logger.debug("使用老版识别")
-                __str = character_recognize.agent_name(img, self.recog.h)
-            logger.debug(__str)
-            return __str
+                if '.' in ret:
+                    ret = ret.replace(".", ":")
+                return ret
+            elif 'name' in type:
+                if ret in agent_list:
+                    return ret
+                if name := character_recognize.paddle_recog(img):
+                    return name
+                return character_recognize.agent_name(img, self.recog.h)
+            else:
+                return ret
         except Exception as e:
             logger.exception(e)
             return limit + 1

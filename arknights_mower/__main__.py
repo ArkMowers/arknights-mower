@@ -14,7 +14,7 @@ from arknights_mower.utils import path
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.logic_expression import LogicExpression
-import arknights_mower.utils.paddleocr
+from arknights_mower.utils import rapidocr
 
 conf = {}
 plan = {}
@@ -47,7 +47,7 @@ def main(c, p, o={}, child_conn=None):
     init_fhlr(child_conn)
     Pipe.conn = child_conn
     logger.info("开始运行Mower")
-    arknights_mower.utils.paddleocr.initialize_ocr()
+    rapidocr.initialize_ocr()
     simulate()
 
 

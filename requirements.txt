@@ -25,3 +25,4 @@ pywebview==4.3.3
 pystray==0.19.4
 ruamel.yaml==0.17.22
 platformdirs==3.11.0
+rapidocr-onnxruntime==1.3.7
