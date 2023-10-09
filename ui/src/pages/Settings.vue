@@ -412,6 +412,7 @@ ul {
     row-gap: 10px;
     grid-template-columns: 100%;
     max-width: 600px;
+    margin-top: 10px;
   }
 }
 /*双栏 大于1400的内容 */
