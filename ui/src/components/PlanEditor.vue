@@ -1,28 +1,17 @@
 <script setup>
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
-import { useMowerStore } from '@/stores/mower'
 import { usePlanStore } from '@/stores/plan'
-import { ref, computed, nextTick, watch } from 'vue'
+import { ref, computed, nextTick, watch, h } from 'vue'
 import pinyinMatch from 'pinyin-match/es/traditional'
-import { NAvatar, NTag, NText } from 'naive-ui'
+import { NAvatar, NTag } from 'naive-ui'
 const config_store = useConfigStore()
-const mower_store = useMowerStore()
 const plan_store = usePlanStore()
 const { operators, plan, groups } = storeToRefs(plan_store)
 const { facility_operator_limit } = plan_store
+const { theme } = storeToRefs(config_store)
 
-const { adb, package_type, free_blacklist, plan_file, theme } = storeToRefs(config_store)
-
-async function open_plan_file() {
-  const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/dialog/file`)
-  const file_path = response.data
-  if (file_path) {
-    plan_file.value = file_path
-    await axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, build_config())
-    await load_plan()
-  }
-}
+const outer = ref(null)
 
 const facility_types = [
   { label: '贸易站', value: '贸易站' },
@@ -209,11 +198,15 @@ const renderLabel = (option) => {
 const avatar_bg = computed(() => {
   return theme.value == 'light' ? 'lightgrey' : 'grey'
 })
+
+defineExpose({
+  outer
+})
 </script>
 
 <template>
   <div class="plan-container">
-    <div class="outer">
+    <div class="outer" ref="outer">
       <!-- 左 -->
       <div class="left_box">
         <div class="left_contain" v-for="row in 3">
