@@ -19,5 +19,6 @@ class TestPaddleGuessAgent(unittest.TestCase):
 
     def long_match(self):
         self.assertEqual(paddle_guess_agent("罗比塔"), "罗比菈塔")
-        self.assertEqual(paddle_guess_agent("屯艾雅法拉"), "纯烬艾雅法拉")
+        self.assertEqual(paddle_guess_agent("屯艾雅法拉"), None)
+        self.assertEqual(paddle_guess_agent("炎熔饸"), None)
         self.assertEqual(paddle_guess_agent("屯炽艾雅法拉"), "纯烬艾雅法拉")

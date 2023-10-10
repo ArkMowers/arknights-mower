@@ -128,19 +128,23 @@ def sift_recog(query, resolution, draw=False,bigfont = False):
 def paddle_guess_agent(guess):
     best = None
     best_score = 0
+    count = 0
     # “森蚺”可能识别成“森”，“孑”可能识别成“子”（子月）
     # 以单字猜测双字干员不可靠
     # 以“白面鹃”或“白面”匹配“白面鸮”没问题
     # 注意避免“白面”匹配到“白雪”
-    # “屯艾雅法拉”应匹配“纯烬艾雅法拉”，而非“艾雅法拉”
+    # “屯艾雅法拉”既能匹配“纯烬艾雅法拉”，又能匹配“艾雅法拉”，应交给 SIFT
     for x in agent_sorted:
         score = -abs(len(x) - len(guess))
         for c in set(x):
             score += 3 if c in guess else 0
-        if score >= best_score:
+        if score > best_score:
+            count = 1
             best = x
             best_score = score
-    if best_score > len(best):
+        elif score == best_score:
+            count += 1
+    if best_score > len(best) and count == 1:
         logger.debug(f"{guess} --?--> {best}")
         return best
     else:
