@@ -924,6 +924,10 @@ class BaseSchedulerSolver(BaseSolver):
             if not ret:
                 raise Exception("识别失败")
             ret = ret[0][0]
+            if not ret:
+                if 'name' in type:
+                    return ''
+                raise Exception("读取失败")
             if "赤金完成" in ret:
                 raise Exception("读取到赤金收取提示")
             if 'mood' in type:
