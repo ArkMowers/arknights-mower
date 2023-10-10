@@ -1,49 +1,59 @@
 <template>
-  <div class="card-container">
-    <n-grid x-gap="10px" y-gap="10px" cols="1" responsive="screen">
-      <n-gi><n-button @click="copyToClipboard"> 明日方舟工具箱代码</n-button></n-gi>
-      <n-gi>这次扫描在{{ time }},下次扫描在{{ maa_gap }}小时之后。</n-gi>
-      <n-gi>注：目前仅限MAA仓库扫描</n-gi>
-      <n-gi><n-button @click="showModal = true"> 仓库变化 </n-button></n-gi>
-    </n-grid>
-  </div>
-  <div class="card-container">
-    <n-grid x-gap="10px" y-gap="10px" cols="1" responsive="screen">
-      <n-gi v-for="(data, title) in cangkuwupin">
-        <h2>{{ title }}</h2>
-        <n-grid x-gap="10px" y-gap="10px" cols="2 m:6 l:6 " responsive="screen">
-          <n-gi v-for="(key, item) in data" content-indented="true">
-            <n-thing>
-              <template #avatar>
-                <n-avatar color="000" size="large" :src="'/depot/' + item + '.png'" />
-              </template>
-              <template #header>{{ item }}</template>
-              <template #description>拥有：{{ key }}</template>
-            </n-thing>
+  <div>
+    <n-card>
+      <template #header>
+        <n-checkbox v-model:checked="maa_depot_enable">
+          <div class="card-title">MAA仓库扫描 {{ maa_depot_enable ? '开启' : '关闭' }}</div>
+        </n-checkbox>
+      </template>
+
+      <div class="card-container">
+        <n-grid x-gap="10px" y-gap="10px" cols="1" responsive="screen">
+          <n-gi><n-button @click="copyToClipboard"> 明日方舟工具箱代码</n-button></n-gi>
+          <n-gi>这次扫描在{{ time }},下次扫描在{{ maa_gap }}小时之后。</n-gi>
+          <n-gi>注：目前仅限MAA仓库扫描</n-gi>
+          <n-gi><n-button @click="showModal = true"> 仓库变化 </n-button></n-gi>
+        </n-grid>
+      </div>
+      <div class="card-container">
+        <n-grid x-gap="10px" y-gap="10px" cols="1" responsive="screen">
+          <n-gi v-for="(data, title) in cangkuwupin">
+            <h2>{{ title }}</h2>
+            <n-grid x-gap="10px" y-gap="10px" cols="2 m:6 l:6 " responsive="screen">
+              <n-gi v-for="(key, item) in data" content-indented="true">
+                <n-thing>
+                  <template #avatar>
+                    <n-avatar color="000" size="large" :src="'/depot/' + item + '.png'" />
+                  </template>
+                  <template #header>{{ item }}</template>
+                  <template #description>拥有：{{ key }}</template>
+                </n-thing>
+              </n-gi>
+            </n-grid>
           </n-gi>
         </n-grid>
-      </n-gi>
-    </n-grid>
-  </div>
+      </div>
 
-  <n-modal v-model:show="showModal">
-    <n-card
-      style="width: 600px"
-      title="仓库变化："
-      :bordered="false"
-      size="huge"
-      role="dialog"
-      aria-modal="true"
-    >
-      {{ reportData[2] }}
+      <n-modal v-model:show="showModal">
+        <n-card
+          style="width: 600px"
+          title="仓库变化："
+          :bordered="false"
+          size="huge"
+          role="dialog"
+          aria-modal="true"
+        >
+          {{ reportData[2] }}
+        </n-card>
+      </n-modal>
     </n-card>
-  </n-modal>
+  </div>
 </template>
 
 <style>
 .card-container {
   display: flex;
-  margin: 0px, 250px, 0px, 50px;
+  margin: 10px, 0px, 0px, 50px;
   flex-wrap: wrap;
 }
 </style>
@@ -54,7 +64,7 @@ import { useConfigStore } from '@/stores/config'
 const store = useConfigStore()
 
 import { storeToRefs } from 'pinia'
-const { maa_gap } = storeToRefs(store)
+const { maa_gap, maa_depot_enable } = storeToRefs(store)
 
 //模态框
 const showModal = ref(false)
