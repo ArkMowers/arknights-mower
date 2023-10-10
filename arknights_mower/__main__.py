@@ -109,6 +109,7 @@ def set_maa_options(base_scheduler):
     maa_config["touch_option"] = conf["maa_touch_option"]
     maa_config["mall_ignore_when_full"] = conf["maa_mall_ignore_blacklist_when_full"]
     maa_config["credit_fight"] = conf["maa_credit_fight"]
+    maa_config["maa_depot_enable"] = conf["maa_depot_enable"]
     maa_config["rogue"] = conf["rogue"]
     maa_config["stationary_security_service"] = (
         conf["maa_rg_enable"] == 1 and conf["maa_long_task_type"] == "sss"
