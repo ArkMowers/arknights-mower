@@ -1149,7 +1149,7 @@ class BaseSchedulerSolver(BaseSolver):
         elif clue_unlock is None:
             # 记录趴体时间
             self.back(interval=2)
-            self.party_time = self.double_read_time((1765, 422, 1920, 515))
+            self.party_time = self.double_read_time((1768, 438, 1902, 480))
             logger.info(f"impart结束时间为： {self.party_time}")
             self.op_data.clues = []
         else:
