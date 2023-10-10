@@ -929,7 +929,7 @@ class BaseSchedulerSolver(BaseSolver):
                 if len(ret) > 0:
                     if '.' in ret:
                         ret = ret.replace(".", "")
-                    return int(ret[0:ret.index('/')])
+                    return int(ret)
                 else:
                     return -1
             elif 'time' in type:
