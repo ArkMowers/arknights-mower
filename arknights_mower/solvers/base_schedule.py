@@ -2283,7 +2283,7 @@ class BaseSchedulerSolver(BaseSolver):
                 # 任务及参数请参考 docs/集成文档.md
                 self.initialize_maa()
                 if tasks == 'All':
-                    tasks = ['StartUp','Depot','Fight', 'Visit', 'Mall', 'Award']
+                    tasks = ['StartUp','Fight', 'Visit', 'Mall', 'Award','Depot']
                     # tasks = ['StartUp', 'Fight', 'Recruit', 'Visit', 'Mall', 'Award']
                 for maa_task in tasks:
                     if maa_task == 'Recruit':
