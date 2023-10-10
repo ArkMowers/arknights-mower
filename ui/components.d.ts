@@ -62,6 +62,7 @@ declare module '@vue/runtime-core' {
     Recruit: typeof import('./src/components/Recruit.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    ServerJang: typeof import('./src/components/ServerJang.vue')['default']
     SKLand: typeof import('./src/components/SKLand.vue')['default']
   }
 }

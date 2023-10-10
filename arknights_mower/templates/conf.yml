@@ -245,3 +245,5 @@ sss:
 run_order_grandet_mode:
   enable: true
   buffer_time: 30
+server_push_enable: false
+sendKey: ''

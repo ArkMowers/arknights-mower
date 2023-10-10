@@ -303,6 +303,7 @@ function render_label(option) {
         <div><maa-basic /></div>
         <div><SKLand /></div>
         <div><email /></div>
+        <div><ServerJang /></div>
       </div>
 
       <div class="grid-right">

@@ -190,7 +190,7 @@ class BaseSchedulerSolver(BaseSolver):
                 self.tasks.append(SchedulerTask(datetime.now(), task_plan=_plan))
             else:
                 msg = f'无法完成 {self.task.meta_data} 的排班，请检查替换组是否被占用'
-                self.send_email(msg)
+                self.send_message(msg)
         else:
             # 如果不满足，则找到并且执行最近一个type 包含 超过数量的high free 和low free 的 任务并且 干员没有 exaust_require 词条
             task_index = -1
@@ -870,7 +870,7 @@ class BaseSchedulerSolver(BaseSolver):
                 if not low_agent.rest_in_full:
                     msg = f'同组干员{low_name}与{high_name}心情差值大于4，请注意！'
                     logger.warning(msg)
-                    self.send_email(msg)
+                    self.send_message(msg)
         return exist_replacement, plan, high_free - _high, low_free - _low
 
     def initialize_operators(self):
@@ -1995,7 +1995,7 @@ class BaseSchedulerSolver(BaseSolver):
                         else:
                             logger.info(f"检测到漏单")
                             self.recog.save_screencap("run_order_failure")
-                            self.send_email("检测到漏单！")
+                            self.send_message("检测到漏单！")
                             raise Exception("检测到漏单！")
                     while self.find('arrange_order_options') is None:
                         if error_count > 3:
@@ -2282,9 +2282,9 @@ class BaseSchedulerSolver(BaseSolver):
 
                 """测试公招用"""
                 if self.recruit_config['recruit_enable']:
-                    recruit([], self.email_config, self.recruit_config)
+                    recruit([], self.send_message_config, self.recruit_config)
 
-                self.send_email('启动MAA')
+                self.send_message('启动MAA')
                 self.back_to_index()
                 # 任务及参数请参考 docs/集成文档.md
                 self.initialize_maa()
@@ -2333,7 +2333,7 @@ class BaseSchedulerSolver(BaseSolver):
                 if hard_stop:
                     hard_stop_msg = "Maa任务未完成，等待3分钟关闭游戏"
                     logger.info(hard_stop_msg)
-                    self.send_email(hard_stop_msg)
+                    self.send_message(hard_stop_msg)
                     time.sleep(180)
                     self.device.exit(self.package_name)
                 elif not one_time:
@@ -2346,7 +2346,7 @@ class BaseSchedulerSolver(BaseSolver):
                     logger.debug(stage_drop)
                     # 有掉落东西再发
                     if stage_drop["details"]:
-                        self.send_email(maa_template.render(stage_drop=stage_drop), "Maa停止", "html")
+                        self.send_message(maa_template.render(stage_drop=stage_drop), "Maa停止", "html")
 
                     '''仅发送由maa选择的结果以及稀有tag'''
                     if recruit_results:
@@ -2354,15 +2354,15 @@ class BaseSchedulerSolver(BaseSolver):
                         # 稀有tag发送
                         if recruit_special_tags['tags']:
                             result = filter_result(recruit_special_tags['tags'], recruit_results["results"], 0)
-                            self.send_email(recruit_template.render(recruit_results=result), "出现稀有tag辣", "html")
+                            self.send_message(recruit_template.render(recruit_results=result), "出现稀有tag辣", "html")
 
                         # 发送选择的tag
                         if recruit_tags_selected['tags']:
                             result = filter_result(recruit_tags_selected['tags'], recruit_results["results"], 1)
-                            self.send_email(recruit_template.render(recruit_results=result), "公招结果", "html")
+                            self.send_message(recruit_template.render(recruit_results=result), "公招结果", "html")
 
                 else:
-                    self.send_email("Maa单次任务停止")
+                    self.send_message("Maa单次任务停止")
             now_time = datetime.now().time()
             try:
                 min_time = datetime.strptime(self.maa_config['sleep_min'], "%H:%M").time()
@@ -2382,7 +2382,7 @@ class BaseSchedulerSolver(BaseSolver):
             if (self.maa_config['roguelike'] or self.maa_config['reclamation_algorithm'] or self.maa_config[
                 'stationary_security_service']) and not rg_sleep:
                 logger.info(f'准备开始：肉鸽/保全/演算')
-                self.send_email('启动 肉鸽/保全/演算')
+                self.send_message('启动 肉鸽/保全/演算')
                 while (self.tasks[0].time - datetime.now()).total_seconds() > 30:
                     self.MAA = None
                     self.initialize_maa()
@@ -2455,7 +2455,7 @@ class BaseSchedulerSolver(BaseSolver):
             logger.exception(e)
             self.MAA = None
             self.device.exit(self.package_name)
-            self.send_email(str(e), "Maa调用出错！")
+            self.send_message(str(e), "Maa调用出错！")
             remaining_time = (self.tasks[0].time - datetime.now()).total_seconds()
             if remaining_time > 0:
                 logger.info(f"休息 {format_time(remaining_time)}，到{self.tasks[0].time.strftime('%H:%M:%S')}开始工作")

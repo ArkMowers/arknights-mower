@@ -48,7 +48,7 @@ class RecruitSolver(BaseSolver):
 
         self.recruit_pos = -1
 
-    def run(self, priority: list[str] = None, email_config={}, recruit_config={}):
+    def run(self, priority: list[str] = None, send_message_config={}, recruit_config={}):
         """
         :param priority: list[str], 优先考虑的公招干员，默认为高稀有度优先
         """
@@ -56,7 +56,7 @@ class RecruitSolver(BaseSolver):
         self.recruiting = 0
         self.has_ticket = True  # 默认含有招募票
         self.can_refresh = True  # 默认可以刷新
-        self.email_config = email_config
+        self.send_message_config = send_message_config
 
         # 调整公招参数
         self.add_recruit_param(recruit_config)
@@ -83,7 +83,7 @@ class RecruitSolver(BaseSolver):
         if self.agent_choose:
             logger.info(f'公招标签：{self.agent_choose}')
         if self.agent_choose or self.result_agent:
-            self.send_email(recruit_template.render(recruit_results=self.agent_choose,
+            self.send_message(recruit_template.render(recruit_results=self.agent_choose,
                                                     recruit_get_agent=self.result_agent,
                                                     title_text="公招汇总"), "公招汇总通知", "html")
 
@@ -189,7 +189,7 @@ class RecruitSolver(BaseSolver):
             # 刷新标签
             if need_choose is False:
                 '''稀有tag或支援，不需要选'''
-                self.send_email(recruit_rarity.render(recruit_results=best['possible'], title_text="稀有tag通知"), "出稀有标签辣",
+                self.send_message(recruit_rarity.render(recruit_results=best['possible'], title_text="稀有tag通知"), "出稀有标签辣",
                                 "html")
                 logger.debug('稀有tag,发送邮件')
                 self.back()
