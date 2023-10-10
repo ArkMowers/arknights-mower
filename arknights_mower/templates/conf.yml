@@ -218,6 +218,7 @@ theme: light
 maa_conn_preset: General
 maa_touch_option: maatouch
 maa_credit_fight: true
+maa_depot_enable: false
 maa_rg_theme: Mizuki
 rogue:
   squad: ''

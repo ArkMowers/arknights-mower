@@ -10,6 +10,7 @@ export {}
 declare module '@vue/runtime-core' {
   export interface GlobalComponents {
     Clue: typeof import('./src/components/Clue.vue')['default']
+    Depotpage: typeof import('./src/components/Depotpage.vue')['default']
     Email: typeof import('./src/components/Email.vue')['default']
     HelpText: typeof import('./src/components/HelpText.vue')['default']
     MaaBasic: typeof import('./src/components/MaaBasic.vue')['default']
@@ -30,7 +31,6 @@ declare module '@vue/runtime-core' {
     NForm: typeof import('naive-ui')['NForm']
     NFormItem: typeof import('naive-ui')['NFormItem']
     NFormItemGi: typeof import('naive-ui')['NFormItemGi']
-    NGi: typeof import('naive-ui')['NGi']
     NGlobalStyle: typeof import('naive-ui')['NGlobalStyle']
     NGrid: typeof import('naive-ui')['NGrid']
     NIcon: typeof import('naive-ui')['NIcon']
@@ -54,7 +54,6 @@ declare module '@vue/runtime-core' {
     NTable: typeof import('naive-ui')['NTable']
     NTabPane: typeof import('naive-ui')['NTabPane']
     NTabs: typeof import('naive-ui')['NTabs']
-    NThing: typeof import('naive-ui')['NThing']
     NTimePicker: typeof import('naive-ui')['NTimePicker']
     NTooltip: typeof import('naive-ui')['NTooltip']
     NTransfer: typeof import('naive-ui')['NTransfer']

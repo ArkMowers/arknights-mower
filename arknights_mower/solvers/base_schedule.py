@@ -90,6 +90,7 @@ class BaseSchedulerSolver(BaseSolver):
         self.maa_config = {}
         self.free_clue = None
         self.credit_fight = None
+        self.maa_depot_enable = False
         self.exit_game_when_idle = False
         self.simulator = None
         self.close_simulator_when_idle = False
@@ -120,6 +121,8 @@ class BaseSchedulerSolver(BaseSolver):
             self.free_clue = None
         if self.credit_fight is not None and self.credit_fight != get_server_weekday():
             self.credit_fight = None
+        # if self.credit_fight is not None and self.credit_fight != get_server_weekday():
+        #     self.credit_fight = None
         self.todo_task = False
         self.collect_notification = False
         self.planned = False
@@ -2226,7 +2229,7 @@ class BaseSchedulerSolver(BaseSolver):
             raise Exception("MAA 连接失败")
 
     def append_maa_task(self, type):
-        if type in ['StartUp', 'Visit', 'Award','Depot']:
+        if type in ['StartUp', 'Visit', 'Award']:
             self.MAA.append_task(type)
         elif type == 'Fight':
             _plan = self.maa_config['weekly_plan'][get_server_weekday()]
@@ -2256,7 +2259,10 @@ class BaseSchedulerSolver(BaseSolver):
                 'credit_fight': self.maa_config['credit_fight'] and '' not in self.stages and self.credit_fight is None,
                 "force_shopping_if_credit_full": self.maa_config['mall_ignore_when_full']
             })
-
+        elif type == 'Depot':
+            self.MAA.append_task('Depot',{
+                "enable": self.maa_config['maa_depot_enable']
+                })
     def maa_plan_solver(self, tasks='All', one_time=False):
         try:
             if not one_time and 'last_execution' in self.maa_config and self.maa_config['last_execution'] is not None and datetime.now() - timedelta(
@@ -2277,7 +2283,7 @@ class BaseSchedulerSolver(BaseSolver):
                 # 任务及参数请参考 docs/集成文档.md
                 self.initialize_maa()
                 if tasks == 'All':
-                    tasks = ['StartUp', 'Fight', 'Visit', 'Mall', 'Award','Depot']
+                    tasks = ['StartUp','Depot','Fight', 'Visit', 'Mall', 'Award']
                     # tasks = ['StartUp', 'Fight', 'Recruit', 'Visit', 'Mall', 'Award']
                 for maa_task in tasks:
                     if maa_task == 'Recruit':
