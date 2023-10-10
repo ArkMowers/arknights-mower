@@ -54,7 +54,7 @@ jobs:
         run: |
           python -m venv venv
           venv\Scripts\pip install -r requirements.txt
-          venv\Scripts\pip install pyinstaller xxhash backports.zoneinfo[tzdata]
+          venv\Scripts\pip install -U pyinstaller xxhash backports.zoneinfo[tzdata]
       - name: Patch Paddle
         working-directory: ./main
         shell: cmd
