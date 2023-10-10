@@ -921,13 +921,9 @@ class BaseSchedulerSolver(BaseSolver):
         try:
             ret = rapidocr.engine(img, use_det=False, use_cls=False, use_rec=True)[0]
             logger.debug(ret)
-            if not ret:
+            if not ret or not ret[0][0]:
                 raise Exception("识别失败")
             ret = ret[0][0]
-            if not ret:
-                if 'name' in type:
-                    return ''
-                raise Exception("读取失败")
             if "赤金完成" in ret:
                 raise Exception("读取到赤金收取提示")
             if 'mood' in type:
@@ -946,7 +942,7 @@ class BaseSchedulerSolver(BaseSolver):
             elif 'name' in type:
                 if ret in agent_list:
                     return ret
-                if name := character_recognize.paddle_recog(img):
+                if name := character_recognize.paddle_guess_agent(ret):
                     return name
                 return character_recognize.agent_name(img, self.recog.h)
             else:

@@ -144,7 +144,7 @@ def paddle_guess_agent(guess):
             best_score = score
         elif score == best_score:
             count += 1
-    if best_score > len(best) and count == 1:
+    if best and best_score > len(best) and count == 1:
         logger.debug(f"{guess} --?--> {best}")
         return best
     else:
