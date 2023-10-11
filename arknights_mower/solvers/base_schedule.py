@@ -1090,6 +1090,8 @@ class BaseSchedulerSolver(BaseSolver):
             self.free_clue = get_server_weekday()
         logger.info('放置线索')
         clue_unlock = self.find('clue_unlock')
+        logger.debug(clue_unlock)
+        logger.info(f'impart{"未" if clue_unlock else "已"}开启')
         if clue_unlock is not None:
             # 当前线索交流未开启
             self.tap_element('clue', interval=3)
@@ -1135,9 +1137,10 @@ class BaseSchedulerSolver(BaseSolver):
                 # 返回线索主界面
             self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3, rebuild=False)
         # 线索交流开启
+        PARTY_TIME_COORDNIATE = (1768, 438, 1902, 480)
         if clue_unlock is not None and get_all_clue:
             self.tap(clue_unlock)
-            self.party_time = self.double_read_time((1765, 422, 1920, 515))
+            self.party_time = self.double_read_time(PARTY_TIME_COORDNIATE)
             if self.party_time < datetime.now():
                 logger.info(f"检测到impart开启失败!")
                 self.party_time = None
@@ -1149,7 +1152,7 @@ class BaseSchedulerSolver(BaseSolver):
         elif clue_unlock is None:
             # 记录趴体时间
             self.back(interval=2)
-            self.party_time = self.double_read_time((1768, 438, 1902, 480))
+            self.party_time = self.double_read_time(PARTY_TIME_COORDNIATE)
             logger.info(f"impart结束时间为： {self.party_time}")
             self.op_data.clues = []
         else:
