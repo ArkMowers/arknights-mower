@@ -926,6 +926,8 @@ class BaseSchedulerSolver(BaseSolver):
             ret = ret[0][0]
             if "赤金完成" in ret:
                 raise Exception("读取到赤金收取提示")
+            elif "心情" in ret:
+                raise Exception("识别区域错误")
             if 'mood' in type:
                 if (f"/{limit}") in ret:
                     ret = ret.replace(f"/{limit}", '')
@@ -938,7 +940,7 @@ class BaseSchedulerSolver(BaseSolver):
             elif 'time' in type:
                 if '.' in ret:
                     ret = ret.replace(".", ":")
-                return ret
+                return ret.strip()
             elif 'name' in type:
                 if ret in agent_list:
                     return ret
@@ -1839,10 +1841,10 @@ class BaseSchedulerSolver(BaseSolver):
         if length > 3: self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, self.recog.h * 0.45), duration=500,
                                   interval=1,
                                   rebuild=True)
-        name_p = [((1460, 155), (1700, 210)), ((1460, 370), (1700, 420)), ((1460, 585), (1700, 630)),
-                  ((1460, 560), (1700, 610)), ((1460, 775), (1700, 820))]
+        name_p = [((1460, 155), (1800, 215)), ((1460, 365), (1800, 425)), ((1460, 576), (1800, 633)),
+                  ((1460, 555), (1800, 613)), ((1460, 765), (1800, 823))]
         time_p = [((1650, 270, 1780, 305)), ((1650, 480, 1780, 515)), ((1650, 690, 1780, 725)),
-                  ((1650, 665, 1780, 700)), ((1650, 875, 1780, 910))]
+                  ((1650, 668, 1780, 703)), ((1650, 877, 1780, 912))]
         mood_p = [((1470, 219, 1780, 221)), ((1470, 428, 1780, 430)), ((1470, 637, 1780, 639)),
                   ((1470, 615, 1780, 617)), ((1470, 823, 1780, 825))]
         result = []
