@@ -19,17 +19,27 @@ import arknights_mower.utils.paddleocr
 from arknights_mower.utils.operators import Operators, Operator, Dormitory
 from arknights_mower.utils.scheduler_task import SchedulerTask,TaskTypes
 
-email_config= {
-    # 发信账户
-    'account':"xxx@qq.com",
-    # 在QQ邮箱“帐户设置-账户-开启SMTP服务”中，按照指示开启服务获得授权码
-    'pass_code':'xxx',
-    # 收件人邮箱
-    'receipts':['任何邮箱'],
-    # 是否启用邮件提醒
-    'mail_enable':False,
-    # 邮件主题
-    'subject': '任务数据'
+send_message_config= {
+    # QQ邮箱通知配置
+    "email_config":{
+        # 发信账户
+        'account':"xxx@qq.com",
+        # 在QQ邮箱“帐户设置-账户-开启SMTP服务”中，按照指示开启服务获得授权码
+        'pass_code':'xxx',
+        # 收件人邮箱
+        'receipts':['任何邮箱'],
+        # 是否启用邮件提醒
+        'mail_enable':False,
+        # 邮件主题
+        'subject': '任务数据'
+    },
+    # Server酱通知配置
+    "serverJang_push_config":{
+        # 是否启用Server酱提示
+        "server_push_enable": False,
+        # Key值
+        "sendKey":'xxx'
+    }
 }
 maa_config = {
     "maa_enable": True,
@@ -263,7 +273,7 @@ def inialize(tasks, scheduler=None):
         base_scheduler.free_blacklist = free_blacklist
         base_scheduler.resting_threshold = resting_threshold
         base_scheduler.MAA = None
-        base_scheduler.email_config = email_config
+        base_scheduler.send_message_config = send_message_config
         base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
         base_scheduler.maa_config = maa_config
         base_scheduler.error = False
@@ -357,7 +367,7 @@ def simulate():
                 (base_scheduler.tasks.sort(key=lambda x: x.time, reverse=False))
                 sleep_time = (base_scheduler.tasks[0].time - datetime.now()).total_seconds()
                 logger.info('||'.join([str(t) for t in base_scheduler.tasks]))
-                base_scheduler.send_email(
+                base_scheduler.send_message(
                     task_template.render(tasks=[obj.format(timezone_offset) for obj in base_scheduler.tasks]), '',
                     'html')
                 # 如果任务间隔时间超过9分钟则启动MAA

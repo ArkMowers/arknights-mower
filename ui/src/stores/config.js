@@ -57,6 +57,8 @@ export const useConfigStore = defineStore('config', () => {
   const recruitment_time = ref(false)
   const recruit_robot = ref(true)
   const run_order_grandet_mode = ref({})
+  const server_push_enable = ref(false) // Server酱通知开关
+  const sendKey = ref('') // Server酱Key值
 
   async function load_shop() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/shop`)
@@ -129,6 +131,9 @@ export const useConfigStore = defineStore('config', () => {
     recruitment_time.value = response.data.recruitment_time
     recruit_robot.value = response.data.recruit_robot
     run_order_grandet_mode.value = response.data.run_order_grandet_mode
+    // 新增：加载Server酱的配置
+    server_push_enable.value = response.data.server_push_enable != 0
+    sendKey.value = response.data.sendKey
   }
 
   function build_config() {
@@ -189,7 +194,10 @@ export const useConfigStore = defineStore('config', () => {
       recruit_only_4: recruit_only_4.value,
       recruitment_time: recruitment_time.value,
       recruit_robot: recruit_robot.value,
-      run_order_grandet_mode: run_order_grandet_mode.value
+      run_order_grandet_mode: run_order_grandet_mode.value,
+      // 新增：Server酱的配置
+      server_push_enable: server_push_enable.value ? 1 : 0,
+      sendKey: sendKey.value
     }
   }
 
@@ -246,7 +254,9 @@ export const useConfigStore = defineStore('config', () => {
       recruit_robot,
       skland_enable,
       skland_info,
-      run_order_grandet_mode
+      run_order_grandet_mode,
+      server_push_enable,
+      sendKey
     ],
     () => {
       axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, build_config())
@@ -311,6 +321,8 @@ export const useConfigStore = defineStore('config', () => {
     recruit_robot,
     skland_enable,
     skland_info,
-    run_order_grandet_mode
+    run_order_grandet_mode,
+    server_push_enable,
+    sendKey
   }
 })

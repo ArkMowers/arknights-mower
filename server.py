@@ -282,6 +282,22 @@ def test_email():
         return "邮件发送失败！\n" + str(e)
     return "邮件发送成功！"
 
+@app.route("/test-serverJang-push")
+@require_token
+def test_serverJang_push():
+    try:
+        response = requests.get(f"https://sctapi.ftqq.com/{conf['sendKey']}.send", params={
+            "title": "arknights-mower推送测试",
+            "desp": "arknights-mower推送测试"
+        })
+
+        if response.status_code == 200 and response.json().get("code") == 0:
+            return "发送成功"
+        else:
+            return "发送失败 : " + response.json().get("message", "")
+    except Exception as e:
+        return "发送失败 : " + str(e)
+
 
 @app.route("/check-skland")
 @require_token

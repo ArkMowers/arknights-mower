@@ -1226,7 +1226,7 @@ class 项目经理(BaseSolver):
 
     def maa_plan_solver(self, 任务列表=['Fight'], one_time=False):
         try:
-            self.send_email('启动MAA')
+            self.send_message('启动MAA')
             self.back_to_index()
             # 任务及参数请参考 docs/集成文档.md
             self.MAA初始化()
@@ -1257,7 +1257,7 @@ class 项目经理(BaseSolver):
                     hard_stop = True
                 else:
                     time.sleep(0)
-            self.send_email('MAA 停止')
+            self.send_message('MAA 停止')
             if hard_stop:
                 logger.info(f"由于 MAA 任务并未完成，等待3分钟重启软件")
                 time.sleep(180)
@@ -1315,7 +1315,7 @@ class 项目经理(BaseSolver):
             context = f"下一次任务:{self.任务列表[0].plan if len(self.任务列表[0].plan) != 0 else '空任务' if self.任务列表[0].type == '' else self.任务列表[0].type}"
             logger.info(context)
             logger.info(subject)
-            self.send_email(context, subject)
+            self.send_message(context, subject)
             if remaining_time > 0:
                 time.sleep(remaining_time)
             self.MAA = None
@@ -1329,7 +1329,7 @@ class 项目经理(BaseSolver):
                 time.sleep(remaining_time)
             self.device.exit(self.服务器)
 
-    def send_email(self, context=None, subject='', retry_time=3):
+    def send_message(self, context=None, subject='', retry_time=3):
         global 任务
         if not self.邮件设置['邮件提醒开关'] == '开':
             logger.info('邮件功能未开启')
@@ -1459,7 +1459,7 @@ class 线程(threading.Thread):
                     当前项目.返回基建主界面()
                     任务间隔 = (当前项目.任务列表[0].time - datetime.now()).total_seconds()
                     if 任务间隔 > 0:
-                        当前项目.send_email()
+                        当前项目.send_message()
                         任务提示 = str()
                         for i in range(len(任务列表)):
                             logger.warning(

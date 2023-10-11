@@ -196,6 +196,7 @@ def menu():
     pass_code = sg.Input(conf['pass_code'], size=60, key='conf_pass_code', enable_events=True, password_char='*')
     mail_frame = sg.Frame('邮件提醒',
                           [[mail_enable_1, mail_enable_0], [account_title, account], [pass_code_title, pass_code]])
+      
     # maa
 
     maa_enable_1 = sg.Radio('启用', 'maa_enable', default=conf['maa_enable'] == 1,

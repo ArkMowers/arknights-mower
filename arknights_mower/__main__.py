@@ -231,15 +231,20 @@ def initialize(tasks, scheduler=None):
         base_scheduler.last_room = ""
         logger.info("宿舍黑名单：" + str(plan_config.free_blacklist))
         base_scheduler.MAA = None
-        base_scheduler.email_config = {
-            "mail_enable": conf["mail_enable"],
-            "subject": conf["mail_subject"],
-            "account": conf["account"],
-            "pass_code": conf["pass_code"],
-            "receipts": [conf["account"]],
-            "notify": False,
+        base_scheduler.send_message_config = {
+            "email_config":{
+                "mail_enable": conf["mail_enable"],
+                "subject": conf["mail_subject"],
+                "account": conf["account"],
+                "pass_code": conf["pass_code"],
+                "receipts": [conf["account"]],
+                "notify": False,
+            },
+            "serverJang_push_config":{
+                "server_push_enable": conf["server_push_enable"],
+                "sendKey": conf["sendKey"],
+            }
         }
-
         set_maa_options(base_scheduler)
         set_recruit_options(base_scheduler)
         set_skland_options(base_scheduler)
@@ -339,7 +344,7 @@ def simulate():
                             obj.format(timezone_offset) for obj in base_scheduler.tasks
                         ]
                     )
-                    base_scheduler.send_email(body, subject, "html")
+                    base_scheduler.send_message(body, subject, "html")
                     base_scheduler.maa_plan_solver()
                 elif sleep_time > 0:
                     subject = f"休息 {format_time(remaining_time)}，到{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}开始工作"
@@ -358,7 +363,7 @@ def simulate():
                             obj.format(timezone_offset) for obj in base_scheduler.tasks
                         ]
                     )
-                    base_scheduler.send_email(body, subject, "html")
+                    base_scheduler.send_message(body, subject, "html")
                     time.sleep(sleep_time)
                     if conf["exit_game_when_idle"]:
                         restart_simulator(conf["simulator"], stop=False)

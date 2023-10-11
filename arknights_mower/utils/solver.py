@@ -6,6 +6,9 @@ from email.mime.multipart import MIMEMultipart
 
 import time
 import traceback
+import requests
+
+from bs4 import BeautifulSoup
 from abc import abstractmethod
 
 from ..utils import typealias as tp
@@ -419,31 +422,149 @@ class BaseSolver:
             wait_count -= 1
         raise Exception("等待超时")
 
-    # 邮件发送 EightyDollars
-    def send_email(self, body='', subject='', subtype='plain', retry_times=3):
-        if 'mail_enable' in self.email_config.keys() and self.email_config['mail_enable'] == 0:
-            logger.info('邮件功能未开启')
-            return
-        
-        if subtype == 'plain' and subject == '':
-            subject = body
+    # 将html表单转化为通用markdown格式（为了避免修改之前email内容，采用基于之前数据格式进行加工的方案）
+    def html_to_markdown(self, html_content):
+        soup = BeautifulSoup(html_content, 'html.parser')
 
-        msg = MIMEMultipart()
-        msg.attach(MIMEText(body, subtype))
-        msg['Subject'] = self.email_config['subject'] + subject
-        msg['From'] = self.email_config['account']
+        markdown_output = ""
 
-        while retry_times > 0:
+        # 提取标题
+        title = soup.find('title')
+        if title:
+            markdown_output += f"## {title.get_text()}\n\n"
+
+        # 提取表格
+        for table in soup.find_all('table'):
+            rows = table.find_all('tr')
+            header_processed = False  # 标记是否已经处理过列头
+            for row in rows:
+                columns = row.find_all(['td', 'th'])
+                line_data = []
+                for col in columns:
+                    colspan = int(col.get('colspan', 1))
+                    content = col.get_text().strip() + ' ' * (colspan - 1)
+                    line_data.append(content)
+                markdown_output += "| " + " | ".join(line_data) + " |\n"
+
+                # 仅为首个列头添加分隔线
+                if any(cell.name == 'th' for cell in columns) and not header_processed:
+                    line_separators = []
+                    for col in columns:
+                        colspan = int(col.get('colspan', 1))
+                        line_separators.extend(['---'] * colspan)
+                    markdown_output += "| " + " | ".join(line_separators) + " |\n"
+                    header_processed = True
+
+        return markdown_output.strip()
+
+    # 指数退避策略逐渐增加等待时间
+    def exponential_backoff(self, initial_delay=1, max_retries=3, factor=2):
+        """ Implement exponential backoff for retries. """
+        delay = initial_delay
+        retries = 0
+        while retries < max_retries:
+            yield delay
+            delay *= factor
+            retries += 1
+
+    # QQ邮件异常处理   
+    def handle_email_error(self, email_config, msg):
+        for delay in self.exponential_backoff():
             try:
                 s = smtplib.SMTP_SSL("smtp.qq.com", 465, timeout=10.0)
-                # 登录邮箱
-                s.login(self.email_config['account'], self.email_config['pass_code'])
-                # 开始发送
-                s.sendmail(self.email_config['account'], self.email_config['receipts'], msg.as_string())
+                s.login(email_config['account'], email_config['pass_code'])
+                s.sendmail(email_config['account'], email_config.get('receipts', []), msg.as_string())
                 logger.info("邮件发送成功")
                 break
             except Exception as e:
                 logger.error("邮件发送失败")
                 logger.exception(e)
-                retry_times -= 1
-                time.sleep(3)
+                time.sleep(delay)
+
+    # Server酱异常处理
+    def handle_serverJang_error(self, url, data):
+        for delay in self.exponential_backoff():
+            try:
+                response = requests.post(url, data=data)
+                json_data = response.json()
+                if json_data.get('code') == 0:
+                    logger.info('Server酱通知发送成功')
+                    break
+                else:
+                    logger.error(f"Server酱通知发送失败，错误信息：{json_data.get('message')}")
+                    time.sleep(delay)
+            except Exception as e:
+                logger.error("Server酱通知发送失败")
+                logger.exception(e)
+                time.sleep(delay)
+
+    # 消息发送 原Email发送 EightyDollars
+    def send_message(self, body='', subject='', subtype='plain', retry_times=3):
+        send_message_config = getattr(self, 'send_message_config', None)
+        if not send_message_config:
+            logger.error("send_message_config 未在配置中定义!")
+            return
+
+        failed_methods = []
+
+        if subtype == 'plain' and subject == '':
+            subject = body
+        
+        # markdown格式的消息体
+        mkBody = body
+        # 如果body是HTML内容，转换为Markdown格式
+        if subtype == 'html':
+            mkBody = self.html_to_markdown(body)
+
+
+        # 获取QQ邮件配置
+        email_config = send_message_config.get('email_config')
+        # 获取Server酱配置
+        serverJang_push_config = send_message_config.get('serverJang_push_config')
+
+        # 邮件通知部分
+        if email_config and email_config.get('mail_enable', 0):
+            msg = MIMEMultipart()
+            msg.attach(MIMEText(body, subtype))
+            msg['Subject'] = email_config.get('subject', '') + subject
+            msg['From'] = email_config.get('account', '')
+
+            try:
+                self.handle_email_error(email_config, msg)  # 第一次尝试
+            except Exception as e:
+                failed_methods.append(('email', email_config, msg))
+
+        # Server酱通知部分
+        if serverJang_push_config and serverJang_push_config.get('server_push_enable', False):
+            send_key = serverJang_push_config.get('sendKey')
+            if not send_key:
+                logger.error('Server酱的sendKey未配置')
+                return
+
+            url = f'https://sctapi.ftqq.com/{send_key}.send'
+            data = {
+                'title': '[Mower通知]' + subject,
+                'desp': mkBody
+            }
+
+            try:
+                self.handle_serverJang_error(url, data)  # 第一次尝试
+            except Exception as e:
+                failed_methods.append(('serverJang', url, data))
+
+        # 处理失败的方法
+        for method, *args in failed_methods:
+            if method == 'email':
+                for _ in range(retry_times):
+                    try:
+                        self.handle_email_error(*args)
+                        break
+                    except:
+                        time.sleep(1)
+            elif method == 'serverJang':
+                for _ in range(retry_times):
+                    try:
+                        self.handle_serverJang_error(*args)
+                        break
+                    except:
+                        time.sleep(1)
