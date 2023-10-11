@@ -31,7 +31,10 @@ def process_itemlist(d):
 def read_and_compare_depots():
     def format_data(depot_data):
         deopt_time = depot_data[0]
-        depot_dict = ast.literal_eval(depot_data[1])
+
+        if not depot_data[1]:  # 如果depot_dict为空
+            depot_dict = {"扫描错误请更改连接方式为Maatouch": "向管理员寻求帮助"}
+        else: depot_dict = ast.literal_eval(depot_data[1])
         return deopt_time, depot_dict
 
     def rename_depot(original_dict):
@@ -85,16 +88,12 @@ def read_and_compare_depots():
     with open(depot_file, "r", encoding="utf-8") as csvfile:
         csvreader = csv.reader(csvfile)
         all_rows = list(csvreader)
-        if len(all_rows) < 3:
-            depot_old_time, depot_old = format_data(all_rows[1])
-            depot_new_time, depot_new = format_data(all_rows[1])
-        else:
-            depot_old_time, depot_old = format_data(all_rows[-2])
-            depot_new_time, depot_new = format_data(all_rows[-1])
+        depot_old_time, depot_old = format_data(all_rows[-2])
+        depot_new_time, depot_new = format_data(all_rows[-1])
 
     renamed_depot_old = rename_depot(depot_old)
     renamed_depot_new = rename_depot(depot_new)
-    logger.debug(f"上次读取时间为：{depot_old_time}，有{renamed_depot_old}")
+    logger.info(f"上次读取时间为：{depot_old_time}，有{renamed_depot_old}")
     logger.info(f"这次读取时间为：{depot_new_time}，有{renamed_depot_new}")
 
     difference = find_difference(renamed_depot_old, renamed_depot_new)
