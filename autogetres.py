@@ -17,16 +17,18 @@ items_data = item_table["items"]
 for i in items_data:
     iconId = items_data[i]["iconId"]
     name = items_data[i]["name"]
-
+    classifyType = items_data[i]["classifyType"]
     source_file = f"./ArknightsGameResource/item/{iconId}.png"
     destination_file = f"./ui/public/depot/{name}.png"
-
-    if os.path.exists(source_file):
-        shutil.copy(source_file, destination_file)
-        key_map[i] = name
-        print(f"Successfully copied: {source_file} to {destination_file}")
+    if classifyType != "NONE":
+        if os.path.exists(source_file):
+            shutil.copy(source_file, destination_file)
+            key_map[i] = name
+            print(f"Successfully copied: {source_file} to {destination_file}")
+        else:
+            print(f"Source file not found: {source_file}")
     else:
-        print(f"Source file not found: {source_file}")
+        print(f"{name} is {classifyType}")
 
 with open('./arknights_mower/data/key_mapping.json', 'w', encoding="utf8") as json_file:
     json.dump(key_map, json_file, ensure_ascii=False)
