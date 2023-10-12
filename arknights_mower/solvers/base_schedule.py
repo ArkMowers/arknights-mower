@@ -759,7 +759,7 @@ class BaseSchedulerSolver(BaseSolver):
             if find_next_task(self.tasks, datetime.now() + timedelta(seconds=300)) is not None:
                 logger.info("5分钟内有其他任务,跳过宿舍纠错")
                 return
-            if self.agent_get_mood() is not None:
+            if self.agent_get_mood() is None:
                 self.backup_plan_solver()
 
     def backup_plan_solver(self):
@@ -1820,6 +1820,11 @@ class BaseSchedulerSolver(BaseSolver):
         except Exception:
             return 24
 
+    def reset_room_time(self, room):
+        for _operator in self.op_data.operators.keys():
+            if self.op_data.operators[_operator].room == room:
+                self.op_data.operators[_operator].time_stamp = None
+
     @push_operators
     def get_agent_from_room(self, room, read_time_index=None):
         if read_time_index is None:
@@ -1834,6 +1839,7 @@ class BaseSchedulerSolver(BaseSolver):
                 logger.info(f'当前拥有线索数量为{self.clue_count}')
         while self.find('room_detail') is None:
             if error_count > 3:
+                self.reset_room_time(room)
                 raise Exception('未成功进入房间')
             self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
             error_count += 1
@@ -1960,11 +1966,11 @@ class BaseSchedulerSolver(BaseSolver):
                             new_plan) == 0 and self.task.type != TaskTypes.RUN_ORDER:
                         if plan[room] != self.op_data.get_current_room(room):
                             logger.debug("检测到插拔房间人员变动！")
-                            run_order_task = find_next_task(self.tasks, datetime.now() + timedelta(minutes=5),
+                            run_order_task = find_next_task(self.tasks, datetime.now() + timedelta(minutes=15),
                                                             task_type=TaskTypes.RUN_ORDER,
                                                             meta_data=room, compare_type=">")
                             if run_order_task is not None:
-                                logger.info("移除超过5分钟的跑单任务以刷新时间")
+                                logger.info("移除超过15分钟的跑单任务以刷新时间")
                                 self.tasks.remove(run_order_task)
                 checked = True
                 current_room = self.op_data.get_current_room(room, True)
@@ -1992,6 +1998,7 @@ class BaseSchedulerSolver(BaseSolver):
                             logger.info(f"检测到漏单")
                             self.recog.save_screencap("run_order_failure")
                             self.send_message("检测到漏单！")
+                            self.reset_room_time(room)
                             raise Exception("检测到漏单！")
                     while self.find('arrange_order_options') is None:
                         if error_count > 3:
