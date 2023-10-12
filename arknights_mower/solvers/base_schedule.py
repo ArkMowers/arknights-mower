@@ -919,11 +919,11 @@ class BaseSchedulerSolver(BaseSolver):
         if cord is not None:
             img = img[cord[1]:cord[3], cord[0]:cord[2]]
         try:
-            ret = rapidocr.engine(img, use_det=True, use_cls=False, use_rec=True)[0]
+            ret = rapidocr.engine(img, use_det=False, use_cls=False, use_rec=True)[0]
             logger.debug(ret)
-            if not ret or not ret[0]:
+            if not ret or not ret[0][0]:
                 raise Exception("识别失败")
-            ret = ret[0][1]
+            ret = ret[0][0]
             if "赤金完成" in ret:
                 raise Exception("读取到赤金收取提示")
             elif "心情" in ret:
