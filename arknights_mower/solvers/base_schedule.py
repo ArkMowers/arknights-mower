@@ -15,7 +15,7 @@ from email.mime.multipart import MIMEMultipart
 
 from .skland import SKLand
 from ..command import recruit
-from ..data import agent_list, base_room_list
+from ..data import agent_list, base_room_list, ocr_error
 from ..utils import character_recognize, detector, segment
 from ..utils.digit_reader import DigitReader
 from ..utils.operators import Operators, Operator, Dormitory
@@ -944,6 +944,10 @@ class BaseSchedulerSolver(BaseSolver):
             elif 'name' in type:
                 if ret in agent_list:
                     return ret
+                if ret in ocr_error:
+                    name = ocr_error[ret]
+                    logger.debug(f"{ret} =====> {name}")
+                    return name
                 if name := character_recognize.paddle_guess_agent(ret):
                     return name
                 return character_recognize.agent_name(img, self.recog.h)
