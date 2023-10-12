@@ -63,7 +63,10 @@ async function save() {
   const blob = await screenshot()
   const form_data = new FormData()
   form_data.append('img', blob)
-  const resp = await axios.post(`${import.meta.env.VITE_HTTP_URL}/dialog/save-img`, form_data)
+  const resp = await axios.post(
+    `${import.meta.env.VITE_HTTP_URL}/dialog/save-img`,
+    form_data
+  )
   message.info(resp.data)
 }
 
@@ -71,7 +74,10 @@ async function copy() {
   const blob = await screenshot()
   const form_data = new FormData()
   form_data.append('img', blob)
-  const resp = await axios.post(`${import.meta.env.VITE_HTTP_URL}/copy-img`, form_data)
+  const resp = await axios.post(
+    `${import.meta.env.VITE_HTTP_URL}/copy-img`,
+    form_data
+  )
   message.info(resp.data)
 }
 </script>
@@ -88,7 +94,7 @@ async function copy() {
           <n-button @click="open_plan_file">...</n-button>
         </td>
         <td>
-          <div v-if="generating_image">正在生成图片……</div>
+          <n-button v-if="generating_image" disabled>正在生成</n-button>
           <template v-else>
             <n-button @click="copy">复制图片</n-button>
             <n-button @click="save">保存图片</n-button>
