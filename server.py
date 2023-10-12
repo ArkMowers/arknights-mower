@@ -16,7 +16,6 @@ from simple_websocket import ConnectionClosed
 import webview
 
 import os
-import io
 import multiprocessing
 from threading import Thread
 import json
@@ -34,8 +33,6 @@ import pathlib
 
 import tkinter
 from tkinter import messagebox
-from crossclip.clipboard import Clipboard
-from PIL import Image
 
 
 mimetypes.add_type("text/html", ".html")
@@ -232,7 +229,7 @@ def open_folder_dialog():
         return ""
 
 
-@app.route("/dialog/save-img", methods=["POST"])
+@app.route("/dialog/save/img", methods=["POST"])
 @require_token
 def save_file_dialog():
     img = request.files["img"]
@@ -259,17 +256,6 @@ def save_file_dialog():
             return f"保存已取消"
     img.save(img_path)
     return f"图片已导出至{img_path}"
-
-
-@app.route("/copy-img", methods=["POST"])
-@require_token
-def copy_img_to_clipboard():
-    img = request.files["img"]
-    if not img:
-        return "图片未上传"
-    cb = Clipboard()
-    cb.set_image(Image.open(io.BytesIO(img.read())))
-    return "已复制到剪切板"
 
 
 @app.route("/check-maa")
