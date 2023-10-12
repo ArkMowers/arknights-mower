@@ -152,17 +152,17 @@ def paddle_guess_agent(guess):
 
 
 def paddle_recog(__img):
-    if len(res := rapidocr.engine(__img, use_det=True, use_cls=False, use_rec=True)[0]) > 0:
+    if len(res := rapidocr.engine(__img, use_det=False, use_cls=False, use_rec=True)[0]) > 0:
         logger.debug(res)
         for r in res:
-            if r[1] in agent_list:
-                op_name = r[1]
+            if r[0] in agent_list:
+                op_name = r[0]
                 return op_name
-            if r[1] in ocr_error:
+            if r[0] in ocr_error:
                 op_name = ocr_error[r[0]]
                 logger.debug(f"{r[0]} =====> {op_name}")
                 return op_name
-        recog_text = res[0][1]
+        recog_text = res[0][0]
         return paddle_guess_agent(recog_text)
     return None
 
