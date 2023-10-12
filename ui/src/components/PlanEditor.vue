@@ -205,8 +205,8 @@ defineExpose({
 </script>
 
 <template>
-  <div class="plan-container">
-    <div class="outer" ref="outer">
+  <div class="plan-container" ref="outer">
+    <div class="outer">
       <!-- 左 -->
       <div class="left_box">
         <div class="left_contain" v-for="row in 3">

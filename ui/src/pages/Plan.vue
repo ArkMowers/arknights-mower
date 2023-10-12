@@ -19,7 +19,7 @@ const {
 } = storeToRefs(plan_store)
 const { load_plan } = plan_store
 
-import { inject } from 'vue'
+import { inject, ref } from 'vue'
 const axios = inject('axios')
 
 import { file_dialog } from '@/utils/dialog'
@@ -31,6 +31,35 @@ async function open_plan_file() {
     await axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, build_config())
     await load_plan()
   }
+}
+
+import { toBlob } from 'html-to-image'
+import { useMessage } from 'naive-ui'
+
+const plan_editor = ref(null)
+
+const generating_image = ref(false)
+
+const message = useMessage()
+const loading = ref(null)
+
+async function save() {
+  generating_image.value = true
+  loading.value = message.loading('正在生成图片……', { duration: 0 })
+  if (
+    /webkit/i.test(navigator.userAgent) &&
+    /gecko/i.test(navigator.userAgent) &&
+    /safari/i.test(navigator.userAgent)
+  ) {
+    await toBlob(plan_editor.value.outer)
+  }
+  const blob = await toBlob(plan_editor.value.outer, { pixelRatio: 3, backgroundColor: 'white' })
+  loading.value.destroy()
+  generating_image.value = false
+  const form_data = new FormData()
+  form_data.append('img', blob)
+  const resp = await axios.post(`${import.meta.env.VITE_HTTP_URL}/dialog/save/img`, form_data)
+  message.info(resp.data)
 }
 </script>
 
@@ -45,10 +74,14 @@ async function open_plan_file() {
         <td>
           <n-button @click="open_plan_file">...</n-button>
         </td>
+        <td>
+          <n-button v-if="generating_image" disabled>正在生成</n-button>
+          <n-button @click="save" v-else>导出图片</n-button>
+        </td>
       </tr>
     </table>
   </div>
-  <plan-editor />
+  <plan-editor ref="plan_editor" />
   <div class="home-container external-container no-grow">
     <n-divider />
   </div>

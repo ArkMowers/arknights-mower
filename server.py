@@ -31,6 +31,10 @@ from functools import wraps
 
 import pathlib
 
+import tkinter
+from tkinter import messagebox
+
+
 mimetypes.add_type("text/html", ".html")
 mimetypes.add_type("text/css", ".css")
 mimetypes.add_type("application/javascript", ".js")
@@ -104,7 +108,7 @@ def operator_list():
 
 @app.route("/shop")
 def shop_list():
-        return shop_items
+    return shop_items
 
 
 def read_log(conn):
@@ -225,6 +229,35 @@ def open_folder_dialog():
         return ""
 
 
+@app.route("/dialog/save/img", methods=["POST"])
+@require_token
+def save_file_dialog():
+    img = request.files["img"]
+    if not img:
+        return "图片未上传"
+    window = webview.active_window()
+    folder_path = window.create_file_dialog(
+        dialog_type=webview.SAVE_DIALOG,
+        save_filename="plan.png",
+        file_types=("PNG图片 (*.png)",),
+    )
+    if not folder_path:
+        return "保存已取消"
+    img_path = folder_path[0]
+    if os.path.exists(img_path):
+        root = tkinter.Tk()
+        root.withdraw()
+        replace = messagebox.askyesno(
+            "arknights-mower",
+            f"同名文件{img_path}已存在，是否覆盖？",
+        )
+        root.destroy()
+        if not replace:
+            return f"保存已取消"
+    img.save(img_path)
+    return f"图片已导出至{img_path}"
+
+
 @app.route("/check-maa")
 @require_token
 def get_maa_adb_version():
@@ -282,14 +315,15 @@ def test_email():
         return "邮件发送失败！\n" + str(e)
     return "邮件发送成功！"
 
+
 @app.route("/test-serverJang-push")
 @require_token
 def test_serverJang_push():
     try:
-        response = requests.get(f"https://sctapi.ftqq.com/{conf['sendKey']}.send", params={
-            "title": "arknights-mower推送测试",
-            "desp": "arknights-mower推送测试"
-        })
+        response = requests.get(
+            f"https://sctapi.ftqq.com/{conf['sendKey']}.send",
+            params={"title": "arknights-mower推送测试", "desp": "arknights-mower推送测试"},
+        )
 
         if response.status_code == 200 and response.json().get("code") == 0:
             return "发送成功"
