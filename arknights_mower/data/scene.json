@@ -96,16 +96,16 @@
         "comment": "产业合作洽谈会"
     },
     "113": {
-    "label": "CHECK_IN",
-    "comment": "4周年签到"
+        "label": "CHECK_IN",
+        "comment": "4周年签到"
     },
     "114": {
-    "label": "LOGIN_NEW",
-    "comment": "新登陆界面"
+        "label": "LOGIN_NEW",
+        "comment": "新登陆界面"
     },
     "115": {
-    "label": "LOGIN_NEW_B",
-    "comment": "新登陆界面B服"
+        "label": "LOGIN_NEW_B",
+        "comment": "新登陆界面B服"
     },
     "201": {
         "label": "INFRA_MAIN",
