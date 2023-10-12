@@ -43,7 +43,7 @@ const generating_image = ref(false)
 const message = useMessage()
 const loading = ref(null)
 
-async function save() {
+async function screenshot() {
   generating_image.value = true
   loading.value = message.loading('正在生成图片……', { duration: 0 })
   if (
@@ -56,9 +56,28 @@ async function save() {
   const blob = await toBlob(plan_editor.value.outer, { pixelRatio: 3, backgroundColor: 'white' })
   loading.value.destroy()
   generating_image.value = false
+  return blob
+}
+
+async function save() {
+  const blob = await screenshot()
   const form_data = new FormData()
   form_data.append('img', blob)
-  const resp = await axios.post(`${import.meta.env.VITE_HTTP_URL}/dialog/save/img`, form_data)
+  const resp = await axios.post(
+    `${import.meta.env.VITE_HTTP_URL}/dialog/save-img`,
+    form_data
+  )
+  message.info(resp.data)
+}
+
+async function copy() {
+  const blob = await screenshot()
+  const form_data = new FormData()
+  form_data.append('img', blob)
+  const resp = await axios.post(
+    `${import.meta.env.VITE_HTTP_URL}/copy-img`,
+    form_data
+  )
   message.info(resp.data)
 }
 </script>
@@ -76,7 +95,10 @@ async function save() {
         </td>
         <td>
           <n-button v-if="generating_image" disabled>正在生成</n-button>
-          <n-button @click="save" v-else>导出图片</n-button>
+          <template v-else>
+            <n-button @click="copy">复制图片</n-button>
+            <n-button @click="save">保存图片</n-button>
+          </template>
         </td>
       </tr>
     </table>
