@@ -158,12 +158,11 @@ def paddle_recog(__img):
             if r[0] in agent_list:
                 op_name = r[0]
                 return op_name
+        for r in res:
             if r[0] in ocr_error:
                 op_name = ocr_error[r[0]]
                 logger.debug(f"{r[0]} =====> {op_name}")
                 return op_name
-        recog_text = res[0][0]
-        return paddle_guess_agent(recog_text)
     return None
 
 

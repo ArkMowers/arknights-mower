@@ -948,8 +948,6 @@ class BaseSchedulerSolver(BaseSolver):
                     name = ocr_error[ret]
                     logger.debug(f"{ret} =====> {name}")
                     return name
-                if name := character_recognize.paddle_guess_agent(ret):
-                    return name
                 return character_recognize.agent_name(img, self.recog.h)
             else:
                 return ret
