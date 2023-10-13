@@ -1,16 +1,23 @@
 from __future__ import annotations
 
+import os
+import pathlib
 from itertools import combinations
 from typing import Tuple, Dict, Any
+
+import cv2
 
 from ..data import recruit_agent, recruit_tag, recruit_agent_list
 from ..ocr import ocr_rectify, ocrhandle
 from ..utils import segment
+from .. import __rootdir__
 from ..utils.device import Device
 from ..utils.email import recruit_template, recruit_rarity
+from ..utils.image import cropimg, bytes2img
 from ..utils.log import logger
 from ..utils.recognize import RecognizeError, Recognizer, Scene
 from ..utils.solver import BaseSolver
+
 
 class RecruitSolver(BaseSolver):
     """
@@ -62,8 +69,8 @@ class RecruitSolver(BaseSolver):
             logger.info(f'公招标签：{self.agent_choose}')
         if self.agent_choose or self.result_agent:
             self.send_message(recruit_template.render(recruit_results=self.agent_choose,
-                                                    recruit_get_agent=self.result_agent,
-                                                    title_text="公招汇总"), "公招汇总通知", "html")
+                                                      recruit_get_agent=self.result_agent,
+                                                      title_text="公招汇总"), "公招汇总通知", "html")
 
         return self.agent_choose, self.result_agent
 
@@ -167,8 +174,9 @@ class RecruitSolver(BaseSolver):
             # 刷新标签
             if need_choose is False:
                 '''稀有tag或支援，不需要选'''
-                self.send_message(recruit_rarity.render(recruit_results=best['possible'], title_text="稀有tag通知"), "出稀有标签辣",
-                                "html")
+                self.send_message(recruit_rarity.render(recruit_results=best['possible'], title_text="稀有tag通知"),
+                                  "出稀有标签辣",
+                                  "html")
                 logger.debug('稀有tag,发送邮件')
                 self.back()
                 return
@@ -248,34 +256,70 @@ class RecruitSolver(BaseSolver):
 
             logger.info(f'第{self.recruit_pos + 1}个位置上的公招预测结果：{"随机三星干员"}')
 
-    def recruit_result(self) -> bool:
-        """ 识别公招招募到的干员 """
-        """ 卡在首次获得 挖个坑"""
+    def recruit_result(self):
         agent = None
-        ocr = ocrhandle.predict(self.recog.img)
-        for x in ocr:
-            if x[1][-3:] == '的信物':
-                agent = x[1][:-3]
-                agent_ocr = x
-                break
-        if agent is None:
-            logger.warning('未能识别到干员名称')
-        else:
-            if agent not in recruit_agent.keys():
-                agent_with_suf = [x + '的信物' for x in recruit_agent.keys()]
-                agent = ocr_rectify(
-                    self.recog.img, agent_ocr, agent_with_suf, '干员名称')[:-3]
-            if agent in recruit_agent.keys():
-                if 2 <= recruit_agent[agent]['stars'] <= 4:
-                    logger.info(f'获得干员：{agent}')
-                else:
-                    logger.critical(f'获得干员：{agent}')
+        logger.info(f"{__rootdir__}/resources/agent_name")
+        gray_img = cropimg(self.recog.gray, ((800, 600), (1500, 1000)))
+
+        img_binary = cv2.threshold(gray_img, 220, 255, cv2.THRESH_BINARY)[1]
+        max = 0
+        get_path = ""
+        t_height_ = None
+        t_width_ = None
+
+        for tem_path in pathlib.Path(f"{__rootdir__}/resources/agent_name").glob("*.png"):
+
+            template_ = cv2.imread(tem_path.__str__())
+            template_ = cv2.cvtColor(template_, cv2.COLOR_BGR2GRAY)
+            res = cv2.matchTemplate(img_binary, template_, cv2.TM_CCORR_NORMED)
+            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+            if max < max_val:
+                get_path = tem_path
+                max = max_val
+
+        if max > 0.7:
+            agent_id = os.path.basename(get_path)
+            agent_id = agent_id.replace(".png", "")
+            agent = recruit_agent[agent_id]['name']
+
+            # 暂时不会选6星，所以不会有阿
+            if agent == "阿":
+                agent = "阿消"
 
         if agent is not None:
             # 汇总开包结果
             self.result_agent[str(self.recruit_pos + 1)] = agent
 
         self.tap((self.recog.w // 2, self.recog.h // 2))
+
+    # def recruit_result(self) -> bool:
+    #     """ 识别公招招募到的干员 """
+    #     """ 卡在首次获得 挖个坑"""
+    #     agent = None
+    #     ocr = ocrhandle.predict(self.recog.img)
+    #     for x in ocr:
+    #         if x[1][-3:] == '的信物':
+    #             agent = x[1][:-3]
+    #             agent_ocr = x
+    #             break
+    #     if agent is None:
+    #         logger.warning('未能识别到干员名称')
+    #     else:
+    #         if agent not in recruit_agent.keys():
+    #             agent_with_suf = [x + '的信物' for x in recruit_agent.keys()]
+    #             agent = ocr_rectify(
+    #                 self.recog.img, agent_ocr, agent_with_suf, '干员名称')[:-3]
+    #         if agent in recruit_agent.keys():
+    #             if 2 <= recruit_agent[agent]['stars'] <= 4:
+    #                 logger.info(f'获得干员：{agent}')
+    #             else:
+    #                 logger.critical(f'获得干员：{agent}')
+    #
+    #     if agent is not None:
+    #         # 汇总开包结果
+    #         self.result_agent[str(self.recruit_pos + 1)] = agent
+    #
+    #     self.tap((self.recog.w // 2, self.recog.h // 2))
 
     def merge_agent_list(self, tags: [str], list_1: list[dict], list_2={}, list_3={}):
         """
@@ -343,7 +387,7 @@ class RecruitSolver(BaseSolver):
         possible_list = {}
         has_rarity = False
         has_robot = False
-        recruit_robot =self.recruit_config["recruit_robot"]
+        recruit_robot = self.recruit_config["recruit_robot"]
 
         for item in combinations(tags, 1):
             # 防止出现类似情况 ['重', '装', '干', '员']
