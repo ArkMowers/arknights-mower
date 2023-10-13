@@ -963,7 +963,7 @@ class BaseSchedulerSolver(BaseSolver):
         if use_digit_reader:
             time_str = self.digit_reader.get_time(self.recog.gray)
         else:
-            time_str = self.read_screen(self.recog.gray, type='time', cord=cord)
+            time_str = self.read_screen(self.recog.img, type='time', cord=cord)
         try:
             h, m, s = str(time_str).split(':')
             if int(m) > 60 or int(s) > 60:
@@ -1837,7 +1837,7 @@ class BaseSchedulerSolver(BaseSolver):
         if room == 'meeting':
             time.sleep(3)
             self.recog.update()
-            clue_res = self.read_screen(self.recog.gray, limit=10, cord=(645, 977, 755, 1018))
+            clue_res = self.read_screen(self.recog.img, limit=10, cord=(645, 977, 755, 1018))
             if clue_res != 11:
                 self.clue_count = clue_res
                 logger.info(f'当前拥有线索数量为{self.clue_count}')
@@ -1865,7 +1865,7 @@ class BaseSchedulerSolver(BaseSolver):
                            interval=1, rebuild=True)
                 swiped = True
             data = {}
-            _name = self.read_screen(self.recog.gray[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]],
+            _name = self.read_screen(self.recog.img[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]],
                                      type="name")
             error_count = 0
             while i >= 3 and _name != '' and (
@@ -1874,7 +1874,7 @@ class BaseSchedulerSolver(BaseSolver):
                 self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, -self.recog.h * 0.45), duration=500,
                            interval=1, rebuild=True)
                 _name = self.read_screen(
-                    self.recog.gray[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]], type="name")
+                    self.recog.img[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]], type="name")
                 error_count += 1
                 if error_count > 1:
                     raise Exception("超过出错上限")
