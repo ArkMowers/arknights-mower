@@ -918,10 +918,6 @@ class BaseSchedulerSolver(BaseSolver):
     def read_screen(self, img, type="mood", limit=24, cord=None):
         if cord is not None:
             img = img[cord[1]:cord[3], cord[0]:cord[2]]
-        if 'name' in type:
-            binary = cv2.threshold(img, 1, 255, cv2.THRESH_BINARY)[1]
-            x, y, w, h = cv2.boundingRect(binary)
-            img = img[x:x + w, y:y + h]
         try:
             ret = rapidocr.engine(img, use_det=False, use_cls=False, use_rec=True)[0]
             logger.debug(ret)
