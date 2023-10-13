@@ -55,13 +55,6 @@ jobs:
           python -m venv venv
           venv\Scripts\pip install -r requirements.txt
           venv\Scripts\pip install -U pyinstaller xxhash backports.zoneinfo[tzdata]
-      - name: Patch Paddle
-        working-directory: ./main
-        shell: cmd
-        run: |
-          copy .\packaging\image.py .\venv\Lib\site-packages\paddle\dataset\image.py /y
-          copy .\packaging\network.py .\venv\Lib\site-packages\paddleocr\ppocr\utils\network.py /y
-          copy .\packaging\paddleocr.py .\venv\Lib\site-packages\paddleocr\paddleocr.py /y
       - name: Make package
         working-directory: ./main
         shell: cmd
