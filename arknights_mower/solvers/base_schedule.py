@@ -60,11 +60,6 @@ arrange_order_res = {
 
 stage_drop = {}
 
-# 2023 8.11 公招选择tag
-recruit_tags_delected = {}
-recruit_tags_selected = {}
-recruit_results = {}
-recruit_special_tags = {}
 
 
 class BaseSchedulerSolver(BaseSolver):
@@ -97,6 +92,8 @@ class BaseSchedulerSolver(BaseSolver):
         self.refresh_connecting = False
         self.recruit_config = {}
         self.skland_config = {}
+        self.sk_time = None
+        self.recruit_time = None
 
     def run(self) -> None:
         """
@@ -2319,14 +2316,6 @@ class BaseSchedulerSolver(BaseSolver):
                     global stage_drop
                     stage_drop = {"details": [], "summary": {}}
 
-                    global recruit_tags_selected
-                    recruit_tags_selected = {"tags": []}
-
-                    global recruit_results
-                    recruit_results = {"results": []}
-
-                    global recruit_special_tags
-                    recruit_special_tags = {"tags": []}
                 logger.info(f"MAA 启动")
                 hard_stop = False
                 while self.MAA.running():
@@ -2358,18 +2347,6 @@ class BaseSchedulerSolver(BaseSolver):
                     if stage_drop["details"]:
                         self.send_message(maa_template.render(stage_drop=stage_drop), "Maa停止", "html")
 
-                    '''仅发送由maa选择的结果以及稀有tag'''
-                    if recruit_results:
-                        result = []
-                        # 稀有tag发送
-                        if recruit_special_tags['tags']:
-                            result = filter_result(recruit_special_tags['tags'], recruit_results["results"], 0)
-                            self.send_message(recruit_template.render(recruit_results=result), "出现稀有tag辣", "html")
-
-                        # 发送选择的tag
-                        if recruit_tags_selected['tags']:
-                            result = filter_result(recruit_tags_selected['tags'], recruit_results["results"], 1)
-                            self.send_message(recruit_template.render(recruit_results=result), "公招结果", "html")
 
                 else:
                     self.send_message("Maa单次任务停止")
@@ -2470,3 +2447,8 @@ class BaseSchedulerSolver(BaseSolver):
             if remaining_time > 0:
                 logger.info(f"休息 {format_time(remaining_time)}，到{self.tasks[0].time.strftime('%H:%M:%S')}开始工作")
                 time.sleep(remaining_time)
+
+    def skland_plan_solover(self):
+        skland = SKLand(self.skland_config['skland_info'])
+        skland.attendance()
+        del self.tasks[0]

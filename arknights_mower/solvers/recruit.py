@@ -12,28 +12,6 @@ from ..utils.log import logger
 from ..utils.recognize import RecognizeError, Recognizer, Scene
 from ..utils.solver import BaseSolver
 
-
-# class RecruitPoss(object):
-#     """ 记录公招标签组合的可能性数据 """
-#
-#     def __init__(self, choose: int, max: int = 0, min: int = 7) -> None:
-#         self.choose = choose  # 标签选择（按位），第 6 个标志位表示是否选满招募时限，0 为选满，1 为选 03:50
-#         self.max = max  # 等级上限
-#         self.min = min  # 等级下限
-#         self.poss = 0  # 可能性
-#         self.lv2a3 = False  # 是否包含等级为 2 和 3 的干员
-#         self.ls = []  # 可能的干员列表
-#
-#     def __lt__(self, another: RecruitPoss) -> bool:
-#         return (self.poss) < (another.poss)
-#
-#     def __str__(self) -> str:
-#         return "%s,%s,%s,%s,%s" % (self.choose, self.max, self.min, self.poss, self.ls)
-#
-#     def __repr__(self) -> str:
-#         return "%s,%s,%s,%s,%s" % (self.choose, self.max, self.min, self.poss, self.ls)
-
-
 class RecruitSolver(BaseSolver):
     """
     自动进行公招
