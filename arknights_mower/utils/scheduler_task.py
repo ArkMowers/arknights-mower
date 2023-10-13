@@ -15,6 +15,8 @@ class TaskTypes(Enum):
     CLUE_PARTY = ("Impart", "趴体", 2)
     MAA_MALL = ("maa_Mall", "MAA信用购物", 2)
     NOT_SPECIFIC = ("", "空任务", 2)
+    RECRUIT = ("recruit", "公招", 2)
+    SKLAND = ("skland", "森空岛签到", 2)
 
     def __new__(cls, value, display_value, priority):
         obj = object.__new__(cls)
