@@ -6,4 +6,4 @@ def initialize_ocr():
     if not engine:
         from rapidocr_onnxruntime import RapidOCR
 
-        engine = RapidOCR()
+        engine = RapidOCR(text_score=0.3)
