@@ -1,16 +1,23 @@
 from __future__ import annotations
 
+import os
+import pathlib
 from itertools import combinations
 from typing import Tuple, Dict, Any
 
+import cv2
+
 from ..data import recruit_agent, recruit_tag, recruit_agent_list
 from ..ocr import ocr_rectify, ocrhandle
-from ..utils import segment
+from ..utils import segment, rapidocr
+from .. import __rootdir__
 from ..utils.device import Device
 from ..utils.email import recruit_template, recruit_rarity
+from ..utils.image import cropimg, bytes2img
 from ..utils.log import logger
 from ..utils.recognize import RecognizeError, Recognizer, Scene
 from ..utils.solver import BaseSolver
+
 
 class RecruitSolver(BaseSolver):
     """
@@ -35,6 +42,9 @@ class RecruitSolver(BaseSolver):
         self.has_ticket = True  # 默认含有招募票
         self.can_refresh = True  # 默认可以刷新
         self.send_message_config = send_message_config
+        self.ticket_number = -1
+        self.enough_lmb = True
+        self.ticket_store = 0
 
         # 调整公招参数
         self.add_recruit_param(recruit_config)
@@ -46,7 +56,7 @@ class RecruitSolver(BaseSolver):
         self.result_agent = {}
         self.agent_choose = {}
 
-        # logger.info(f'目标干员：{priority if priority else "无，高稀有度优先"}')
+        # logger.info(f'目标干员：{priority if priority else "无，高稀有度优先"}')\
         try:
             super().run()
         except Exception as e:
@@ -62,8 +72,9 @@ class RecruitSolver(BaseSolver):
             logger.info(f'公招标签：{self.agent_choose}')
         if self.agent_choose or self.result_agent:
             self.send_message(recruit_template.render(recruit_results=self.agent_choose,
-                                                    recruit_get_agent=self.result_agent,
-                                                    title_text="公招汇总"), "公招汇总通知", "html")
+                                                      recruit_get_agent=self.result_agent,
+                                                      ticket_number=self.ticket_number.__str__(),
+                                                      title_text="公招汇总"), "公招汇总通知", "html")
 
         return self.agent_choose, self.result_agent
 
@@ -90,6 +101,25 @@ class RecruitSolver(BaseSolver):
             self.tap_themed_element('index_recruit')
         elif self.scene() == Scene.RECRUIT_MAIN:
             segments = segment.recruit(self.recog.img)
+
+            recruit_main_img = self.recog.img[20:80, 1290:1400]
+
+            if self.ticket_number == -1:
+                res = rapidocr.engine(recruit_main_img, use_det=False, use_cls=False, use_rec=True)[0][0][0]
+                try:
+                    self.ticket_number = int(res)
+                    logger.info(f"招募券数量:{self.ticket_number}")
+                except:
+                    logger.error("招募券数量读取失败")
+
+            if self.ticket_number == 0:
+                self.has_ticket = False
+
+            # if self.ticket_number <= self.ticket_store:
+            #     # 券数量少于预期值，仅招募四星或者停止招募，只刷新标签
+            #     # 后续添加界面后激活
+            #     self.recruit_config['recruit_only_4'] = True
+
             tapped = False
             for idx, seg in enumerate(segments):
                 # 在主界面重置为-1
@@ -101,7 +131,7 @@ class RecruitSolver(BaseSolver):
                     self.recruit_pos = idx
                     tapped = True
                     break
-                if not self.has_ticket and not self.can_refresh:
+                if not (self.has_ticket or self.enough_lmb) and not self.can_refresh:
                     continue
                 # 存在职业需求，说明正在进行招募
                 required = self.find('job_requirements', scope=seg)
@@ -140,6 +170,8 @@ class RecruitSolver(BaseSolver):
             self.has_ticket = False
         if self.find('recruit_no_refresh') is not None:
             self.can_refresh = False
+        if self.find('recruit_no_lmb') is not None:
+            self.enough_lmb = False
 
         needs = self.find('career_needs', judge=False)
         avail_level = self.find('available_level', judge=False)
@@ -167,8 +199,9 @@ class RecruitSolver(BaseSolver):
             # 刷新标签
             if need_choose is False:
                 '''稀有tag或支援，不需要选'''
-                self.send_message(recruit_rarity.render(recruit_results=best['possible'], title_text="稀有tag通知"), "出稀有标签辣",
-                                "html")
+                self.send_message(recruit_rarity.render(recruit_results=best['possible'], title_text="稀有tag通知"),
+                                  "出稀有标签辣",
+                                  "html")
                 logger.debug('稀有tag,发送邮件')
                 self.back()
                 return
@@ -182,6 +215,10 @@ class RecruitSolver(BaseSolver):
                     continue
             break
 
+        if not self.enough_lmb:
+            logger.info('龙门币不足 结束公招')
+            self.back()
+            return
         # 如果没有招募券则只刷新标签不选人
         if not self.has_ticket:
             logger.info('无招募券 结束公招')
@@ -232,6 +269,11 @@ class RecruitSolver(BaseSolver):
 
         # start recruit
         self.tap((avail_level[1][0], budget[0][1]), interval=3)
+
+        # 有券才能点下去
+        if self.ticket_number > 1:
+            self.ticket_number = self.ticket_number - 1
+
         if len(best) > 0:
             logger_result = best[choose]['agent']
             self.agent_choose[str(self.recruit_pos + 1)] = best
@@ -248,28 +290,34 @@ class RecruitSolver(BaseSolver):
 
             logger.info(f'第{self.recruit_pos + 1}个位置上的公招预测结果：{"随机三星干员"}')
 
-    def recruit_result(self) -> bool:
-        """ 识别公招招募到的干员 """
-        """ 卡在首次获得 挖个坑"""
+    def recruit_result(self):
         agent = None
-        ocr = ocrhandle.predict(self.recog.img)
-        for x in ocr:
-            if x[1][-3:] == '的信物':
-                agent = x[1][:-3]
-                agent_ocr = x
-                break
-        if agent is None:
-            logger.warning('未能识别到干员名称')
-        else:
-            if agent not in recruit_agent.keys():
-                agent_with_suf = [x + '的信物' for x in recruit_agent.keys()]
-                agent = ocr_rectify(
-                    self.recog.img, agent_ocr, agent_with_suf, '干员名称')[:-3]
-            if agent in recruit_agent.keys():
-                if 2 <= recruit_agent[agent]['stars'] <= 4:
-                    logger.info(f'获得干员：{agent}')
-                else:
-                    logger.critical(f'获得干员：{agent}')
+        gray_img = cropimg(self.recog.gray, ((800, 600), (1500, 1000)))
+
+        img_binary = cv2.threshold(gray_img, 220, 255, cv2.THRESH_BINARY)[1]
+        max = 0
+        get_path = ""
+        t_height_ = None
+        t_width_ = None
+
+        for tem_path in pathlib.Path(f"{__rootdir__}/resources/agent_name").glob("*.png"):
+
+            template_ = cv2.imread(tem_path.__str__())
+            template_ = cv2.cvtColor(template_, cv2.COLOR_BGR2GRAY)
+            res = cv2.matchTemplate(img_binary, template_, cv2.TM_CCORR_NORMED)
+            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+            if max < max_val:
+                get_path = tem_path
+                max = max_val
+
+        if max > 0.7:
+            agent_id = os.path.basename(get_path)
+            agent_id = agent_id.replace(".png", "")
+            agent = recruit_agent[agent_id]['name']
+
+            # 暂时不会选6星，所以不会有阿
+            if agent == "阿":
+                agent = "阿消"
 
         if agent is not None:
             # 汇总开包结果
@@ -343,7 +391,7 @@ class RecruitSolver(BaseSolver):
         possible_list = {}
         has_rarity = False
         has_robot = False
-        recruit_robot =self.recruit_config["recruit_robot"]
+        recruit_robot = self.recruit_config["recruit_robot"]
 
         for item in combinations(tags, 1):
             # 防止出现类似情况 ['重', '装', '干', '员']
