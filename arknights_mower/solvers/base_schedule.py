@@ -446,9 +446,9 @@ class BaseSchedulerSolver(BaseSolver):
                 elif self.task.type == TaskTypes.CLUE_PARTY:
                     self.party_time = None
                     self.skip(['planned', 'collect_notification'])
+                del self.tasks[0]
                 if self.tasks[0].type in [TaskTypes.SHIFT_ON]:
                     self.backup_plan_solver()
-                del self.tasks[0]
             except Exception as e:
                 logger.exception(e)
                 if type(e) is ConnectionAbortedError or type(e) is AttributeError or type(e) is ConnectionError:
