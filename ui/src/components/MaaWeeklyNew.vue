@@ -152,6 +152,7 @@ function create_tag(label) {
         <li><b>不刷理智</b>：留空表示不刷理智。</li>
       </ul>
     </help-text>
+    觉得不好看/有建议的 at群管理 带上建议或者自行提交代码
     <div class="tasktable">
       <table size="small" :single-column="true" :single-line="true">
         <thead>
