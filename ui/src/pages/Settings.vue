@@ -312,7 +312,7 @@ function render_label(option) {
 
         <div><Recruit /></div>
         <div><maa-weekly /></div>
-        <!--div><maa-weekly-new /></div-->
+        <div><maa-weekly-new /></div>
         <div><maa-long-tasks /></div>
       </div>
     </div>
