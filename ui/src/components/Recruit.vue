@@ -2,21 +2,10 @@
 import { useConfigStore } from '@/stores/config'
 const store = useConfigStore()
 import { storeToRefs } from 'pinia'
-const { recruit_enable, recruit_only_4, recruitment_time, recruit_robot } = storeToRefs(store)
-import { ref, computed } from 'vue'
+const { recruit_enable, recruitment_permit, recruitment_time, recruit_robot } = storeToRefs(store)
+import { ref, inject } from 'vue'
 
-const recruit_3 = computed({
-  get() {
-    if (recruit_only_4.value) {
-      return 'skip'
-    }
-    return recruitment_time.value ? '740' : '900'
-  },
-  set(v) {
-    recruit_only_4.value = v == 'skip'
-    recruitment_time.value = v == '740'
-  }
-})
+const mobile = inject('mobile')
 
 const recruit_4 = ref('900')
 </script>
@@ -28,6 +17,19 @@ const recruit_4 = ref('900')
         <div class="card-title">公开招募</div>
       </n-checkbox>
     </template>
+    <n-form :label-placement="mobile ? 'top' : 'left'" :show-feedback="false">
+      <n-form-item>
+        <template #label>
+          <span>三星招募阈值</span>
+          <help-text>
+            <div>公招券数量大于此阈值时招募三星</div>
+            <div>公招券的数量会维持在阈值附近</div>
+            <div>如果不想招三星，就填一个很大的数</div>
+          </help-text>
+        </template>
+        <n-input-number v-model:value="recruitment_permit" />
+      </n-form-item>
+    </n-form>
     <n-table :single-line="false" size="small" class="big-table">
       <thead>
         <tr>
@@ -39,11 +41,10 @@ const recruit_4 = ref('900')
         <tr>
           <td>三星</td>
           <td>
-            <n-radio-group v-model:value="recruit_3" name="recruit_3">
+            <n-radio-group v-model:value="recruitment_time" name="recruitment_time">
               <n-space justify="start">
-                <n-radio value="skip">不招</n-radio>
-                <n-radio value="740">7:40</n-radio>
-                <n-radio value="900">9:00</n-radio>
+                <n-radio :value="true">7:40</n-radio>
+                <n-radio :value="false">9:00</n-radio>
               </n-space>
             </n-radio-group>
           </td>
@@ -54,6 +55,36 @@ const recruit_4 = ref('900')
             <n-radio-group name="recruit_4" v-model:value="recruit_4">
               <n-space justify="start">
                 <n-radio value="900">9:00</n-radio>
+              </n-space>
+            </n-radio-group>
+          </td>
+        </tr>
+        <tr>
+          <td>五星</td>
+          <td>
+            <n-radio-group name="recruit_4" v-model:value="recruit_4">
+              <n-space justify="start">
+                <n-radio value="900">
+                  邮件通知
+                  <help-text>
+                    <div>发送邮件通知，不自动选择</div>
+                  </help-text>
+                </n-radio>
+              </n-space>
+            </n-radio-group>
+          </td>
+        </tr>
+        <tr>
+          <td>六星</td>
+          <td>
+            <n-radio-group name="recruit_4" v-model:value="recruit_4">
+              <n-space justify="start">
+                <n-radio value="900">
+                  邮件通知
+                  <help-text>
+                    <div>发送邮件通知，不自动选择</div>
+                  </help-text>
+                </n-radio>
               </n-space>
             </n-radio-group>
           </td>

@@ -42,9 +42,8 @@ class RecruitSolver(BaseSolver):
         self.has_ticket = True  # 默认含有招募票
         self.can_refresh = True  # 默认可以刷新
         self.send_message_config = send_message_config
-        self.ticket_number = -1
+        self.permit_count = -1
         self.enough_lmb = True
-        self.ticket_store = 0
 
         # 调整公招参数
         self.add_recruit_param(recruit_config)
@@ -73,7 +72,7 @@ class RecruitSolver(BaseSolver):
         if self.agent_choose or self.result_agent:
             self.send_message(recruit_template.render(recruit_results=self.agent_choose,
                                                       recruit_get_agent=self.result_agent,
-                                                      ticket_number=self.ticket_number.__str__(),
+                                                      permit_count=self.permit_count.__str__(),
                                                       title_text="公招汇总"), "公招汇总通知", "html")
 
         return self.agent_choose, self.result_agent
@@ -88,12 +87,12 @@ class RecruitSolver(BaseSolver):
             recruitment_time = 540
 
         self.recruit_config = {
-            "recruit_only_4": recruit_config['recruit_only_4'],
             "recruitment_time": {
                 "3": recruitment_time,
                 "4": 540
             },
-            "recruit_robot": recruit_config['recruit_robot']
+            "recruit_robot": recruit_config['recruit_robot'],
+            "permit_target": recruit_config['permit_target']
         }
 
     def transition(self) -> bool:
@@ -104,21 +103,16 @@ class RecruitSolver(BaseSolver):
 
             recruit_main_img = self.recog.img[20:80, 1290:1400]
 
-            if self.ticket_number == -1:
-                res = rapidocr.engine(recruit_main_img, use_det=False, use_cls=False, use_rec=True)[0][0][0]
+            if self.permit_count == -1:
                 try:
-                    self.ticket_number = int(res)
-                    logger.info(f"招募券数量:{self.ticket_number}")
+                    res = rapidocr.engine(recruit_main_img, use_det=False, use_cls=False, use_rec=True)[0][0][0]
+                    self.permit_count = int(res)
+                    logger.info(f"招募券数量:{self.permit_count}")
                 except:
                     logger.error("招募券数量读取失败")
 
-            if self.ticket_number == 0:
+            if self.permit_count == 0:
                 self.has_ticket = False
-
-            # if self.ticket_number <= self.ticket_store:
-            #     # 券数量少于预期值，仅招募四星或者停止招募，只刷新标签
-            #     # 后续添加界面后激活
-            #     self.recruit_config['recruit_only_4'] = True
 
             tapped = False
             for idx, seg in enumerate(segments):
@@ -226,7 +220,8 @@ class RecruitSolver(BaseSolver):
             return
 
         # best为空说明这次大概率三星
-        if self.recruit_config["recruit_only_4"] and not best:
+        # 券数量少于预期值，仅招募四星或者停止招募，只刷新标签
+        if self.permit_count <= self.recruit_config["permit_target"] and not best:
             logger.info('不招三星 结束公招')
             self.back()
             return
@@ -271,8 +266,8 @@ class RecruitSolver(BaseSolver):
         self.tap((avail_level[1][0], budget[0][1]), interval=3)
 
         # 有券才能点下去
-        if self.ticket_number > 1:
-            self.ticket_number = self.ticket_number - 1
+        if self.permit_count > 1:
+            self.permit_count -= 1
 
         if len(best) > 0:
             logger_result = best[choose]['agent']

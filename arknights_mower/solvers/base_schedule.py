@@ -447,7 +447,7 @@ class BaseSchedulerSolver(BaseSolver):
                     self.party_time = None
                     self.skip(['planned', 'collect_notification'])
                 del self.tasks[0]
-                if self.tasks[0].type in [TaskTypes.SHIFT_ON]:
+                if self.tasks and self.tasks[0].type in [TaskTypes.SHIFT_ON]:
                     self.backup_plan_solver()
             except Exception as e:
                 logger.exception(e)

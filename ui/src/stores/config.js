@@ -30,8 +30,6 @@ export const useConfigStore = defineStore('config', () => {
   const maa_mall_blacklist = ref('')
   const shop_list = ref([])
   const maa_gap = ref(false)
-  const maa_recruitment_time = ref(false)
-  const maa_recruit_only_4 = ref(false)
   const simulator = ref({ name: '', index: -1 })
   const resting_threshold = ref(0.5)
   const theme = ref('light')
@@ -53,8 +51,8 @@ export const useConfigStore = defineStore('config', () => {
   const skland_enable = ref(false)
   const skland_info = ref([])
   const recruit_enable = ref(true)
-  const recruit_only_4 = ref(false)
   const recruitment_time = ref(false)
+  const recruitment_permit = ref(30)
   const recruit_robot = ref(true)
   const run_order_grandet_mode = ref({})
   const server_push_enable = ref(false) // Server酱通知开关
@@ -103,8 +101,6 @@ export const useConfigStore = defineStore('config', () => {
     maa_mall_blacklist.value =
       response.data.maa_mall_blacklist == '' ? [] : response.data.maa_mall_blacklist.split(',')
     maa_gap.value = response.data.maa_gap
-    maa_recruitment_time.value = response.data.maa_recruitment_time
-    maa_recruit_only_4.value = response.data.maa_recruit_only_4
     simulator.value = response.data.simulator
     resting_threshold.value = response.data.resting_threshold
     theme.value = response.data.theme
@@ -127,8 +123,8 @@ export const useConfigStore = defineStore('config', () => {
     skland_enable.value = response.data.skland_enable != 0
     skland_info.value = response.data.skland_info
     recruit_enable.value = response.data.recruit_enable
-    recruit_only_4.value = response.data.recruit_only_4
     recruitment_time.value = response.data.recruitment_time
+    recruitment_permit.value = response.data.recruitment_permit
     recruit_robot.value = response.data.recruit_robot
     run_order_grandet_mode.value = response.data.run_order_grandet_mode
     // 新增：加载Server酱的配置
@@ -164,8 +160,6 @@ export const useConfigStore = defineStore('config', () => {
       maa_mall_buy: maa_mall_buy.value.join(','),
       maa_mall_blacklist: maa_mall_blacklist.value.join(','),
       maa_gap: maa_gap.value,
-      maa_recruitment_time: maa_recruitment_time.value,
-      maa_recruit_only_4: maa_recruit_only_4.value,
       simulator: simulator.value,
       theme: theme.value,
       resting_threshold: resting_threshold.value,
@@ -191,8 +185,8 @@ export const useConfigStore = defineStore('config', () => {
       skland_enable: skland_enable.value,
       skland_info: skland_info.value,
       recruit_enable: recruit_enable.value,
-      recruit_only_4: recruit_only_4.value,
       recruitment_time: recruitment_time.value,
+      recruitment_permit: recruitment_permit.value,
       recruit_robot: recruit_robot.value,
       run_order_grandet_mode: run_order_grandet_mode.value,
       // 新增：Server酱的配置
@@ -228,8 +222,6 @@ export const useConfigStore = defineStore('config', () => {
       maa_mall_buy,
       maa_mall_blacklist,
       maa_gap,
-      maa_recruitment_time,
-      maa_recruit_only_4,
       simulator,
       resting_threshold,
       theme,
@@ -249,8 +241,8 @@ export const useConfigStore = defineStore('config', () => {
       screenshot,
       mail_subject,
       recruit_enable,
-      recruit_only_4,
       recruitment_time,
+      recruitment_permit,
       recruit_robot,
       skland_enable,
       skland_info,
@@ -294,8 +286,6 @@ export const useConfigStore = defineStore('config', () => {
     load_shop,
     shop_list,
     maa_gap,
-    maa_recruitment_time,
-    maa_recruit_only_4,
     build_config,
     simulator,
     resting_threshold,
@@ -316,8 +306,8 @@ export const useConfigStore = defineStore('config', () => {
     screenshot,
     mail_subject,
     recruit_enable,
-    recruit_only_4,
     recruitment_time,
+    recruitment_permit,
     recruit_robot,
     skland_enable,
     skland_info,

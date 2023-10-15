@@ -69,7 +69,7 @@ maa_config = {
     "blacklist": "家具,碳,加急许可",
     "rogue_theme": "Sami",
     "buy_first": "招聘许可",
-    "recruit_only_4": True,
+    "recruitment_permit": 30,
     "credit_fight": True,
     "recruitment_time": None,
     'mall_ignore_when_full': True,

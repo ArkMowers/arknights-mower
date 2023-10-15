@@ -235,9 +235,9 @@ mail_subject: "[Mower通知]"
 skland_enable: false
 skland_info: []
 recruit_enable: true
-recruit_only_4: false
 recruit_robot: true
 recruitment_time: false
+recruitment_permit: 30
 sss:
   type: 1
   ec: 1

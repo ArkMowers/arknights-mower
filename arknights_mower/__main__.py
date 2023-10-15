@@ -66,6 +66,7 @@ def format_time(seconds):
 def hide_password(conf):
     hpconf = deepcopy(conf)
     hpconf["pass_code"] = "*" * len(conf["pass_code"])
+    hpconf["sendKey"] = "*" * len(conf["sendKey"])
     return hpconf
 
 
@@ -130,7 +131,7 @@ def set_recruit_options(base_scheduler):
     conf = update_conf()
     global recruit_config
     recruit_config["recruit_enable"] = conf["recruit_enable"]
-    recruit_config["recruit_only_4"] = conf["recruit_only_4"]
+    recruit_config["permit_target"] = conf["recruitment_permit"]
     recruit_config["recruit_robot"] = conf["recruit_robot"]
     recruit_config["recruitment_time"] = conf["recruitment_time"]
     base_scheduler.recruit_config = recruit_config
