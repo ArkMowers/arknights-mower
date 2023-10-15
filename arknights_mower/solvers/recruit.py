@@ -33,6 +33,15 @@ class RecruitSolver(BaseSolver):
 
         self.recruit_pos = -1
 
+        self.priority = None
+        self.recruiting = 0
+        self.has_ticket = True  # 默认含有招募票
+        self.can_refresh = True  # 默认可以刷新
+        self.send_message_config = None
+        self.permit_count = None
+        self.can_refresh = None
+        self.enough_lmb = True
+
     def run(self, priority: list[str] = None, send_message_config={}, recruit_config={}):
         """
         :param priority: list[str], 优先考虑的公招干员，默认为高稀有度优先
@@ -40,10 +49,8 @@ class RecruitSolver(BaseSolver):
         self.priority = priority
         self.recruiting = 0
         self.has_ticket = True  # 默认含有招募票
-        self.can_refresh = True  # 默认可以刷新
         self.send_message_config = send_message_config
-        self.permit_count = -1
-        self.enough_lmb = True
+        self.permit_count = None
 
         # 调整公招参数
         self.add_recruit_param(recruit_config)
@@ -101,17 +108,40 @@ class RecruitSolver(BaseSolver):
         elif self.scene() == Scene.RECRUIT_MAIN:
             segments = segment.recruit(self.recog.img)
 
-            recruit_main_img = self.recog.img[20:80, 1290:1400]
+            if self.can_refresh is None:
+                refresh_img = self.recog.img[100:150, 1390:1440]
 
-            if self.permit_count == -1:
+                refresh_gray = cv2.cvtColor(refresh_img, cv2.COLOR_BGR2GRAY)
+                refresh_binary = cv2.threshold(refresh_gray, 220, 255, cv2.THRESH_BINARY)[1]
+                refresh_res = rapidocr.engine(refresh_binary, use_det=False, use_cls=False, use_rec=True)[0][0][0]
+                if refresh_res == '0' or refresh_res == 'o' or refresh_res == 'O':
+                    refresh_res = 0
+                    self.can_refresh = False
+                else:
+                    self.can_refresh = True
+
+                logger.info(f"刷新次数:{refresh_res}")
+
+            if self.permit_count is None:
+                recruit_ticket_img = self.recog.img[20:80, 1290:1380]
+                recruit_ticket_binary = cv2.threshold(refresh_gray, 220, 255, cv2.THRESH_BINARY)[1]
                 try:
-                    res = rapidocr.engine(recruit_main_img, use_det=False, use_cls=False, use_rec=True)[0][0][0]
-                    self.permit_count = int(res)
-                    logger.info(f"招募券数量:{self.permit_count}")
+                    res = rapidocr.engine(recruit_ticket_binary, use_det=False, use_cls=False, use_rec=True)[0][0][0]
+                    if res == '0' or res == 'o' or res == 'O':
+                        res = 0
+                    if str(res).isdigit():
+                        self.permit_count = int(res)
+                        logger.info(f"招募券数量:{res}")
+                    else:
+                        raise RuntimeError
                 except:
                     logger.error("招募券数量读取失败")
 
-            if self.permit_count == 0:
+            if self.can_refresh is False and self.permit_count <= 0:
+                logger.info("无招募券和刷新次数，结束公招")
+                return True
+
+            if self.permit_count <= 0:
                 self.has_ticket = False
 
             tapped = False
@@ -292,8 +322,6 @@ class RecruitSolver(BaseSolver):
         img_binary = cv2.threshold(gray_img, 220, 255, cv2.THRESH_BINARY)[1]
         max = 0
         get_path = ""
-        t_height_ = None
-        t_width_ = None
 
         for tem_path in pathlib.Path(f"{__rootdir__}/resources/agent_name").glob("*.png"):
 
