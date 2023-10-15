@@ -3,7 +3,7 @@ import { ref, inject } from 'vue'
 import { useConfigStore } from '@/stores/config'
 import { storeToRefs } from 'pinia'
 
-const store = useConfigStore();
+const store = useConfigStore()
 const axios = inject('axios')
 const mobile = inject('mobile')
 
@@ -13,11 +13,9 @@ const { server_push_enable, sendKey } = storeToRefs(store)
 
 async function test_push() {
   testPushResult.value = '正在发送……'
-  const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/test-serverJang-push`);
+  const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/test-serverJang-push`)
   testPushResult.value = response.data
 }
-
-
 </script>
 
 <template>
@@ -37,8 +35,13 @@ async function test_push() {
     </template>
 
     <template #default>
-      <n-form v-if="server_push_enable" :label-placement="mobile ? 'top' : 'left'" :show-feedback="false" label-width="96"
-        label-align="left">
+      <n-form
+        v-if="server_push_enable"
+        :label-placement="mobile ? 'top' : 'left'"
+        :show-feedback="false"
+        label-width="96"
+        label-align="left"
+      >
         <n-form-item label="SENDKEY">
           <n-input v-model:value="sendKey" show-password-on="click" type="password" />
         </n-form-item>

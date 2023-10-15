@@ -33,7 +33,7 @@ def restart_simulator(data, stop=True, start=True):
             cmd = "waydroid session stop"
         if stop:
             exec_cmd(cmd, data["simulator_folder"])
-            logger.info(f"开始关闭{simulator_type}模拟器，等待2秒钟")
+            logger.info(f"关闭{simulator_type}模拟器")
             time.sleep(2)
         if simulator_type == Simulator_Type.Nox.value:
             cmd = cmd.replace(" -quit", "")

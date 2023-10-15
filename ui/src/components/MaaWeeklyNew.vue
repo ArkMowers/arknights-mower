@@ -26,7 +26,7 @@ const showstage = (stage) => {
     '1-7': '1-7',
     Annihilation: '剿灭',
     'LS-6': '经验书',
-    'CE-6': '龙门',
+    'CE-6': '龙门币',
     'AP-5': '红票',
     'SK-6': '碳条',
     'CA-5': '技能书',
@@ -162,7 +162,7 @@ function create_tag(label) {
               :key="index"
               :class="{ today: currentDay === index }"
             >
-              {{ day }}{{ currentDay === index + 1 ? ' (今天)' : '' }}
+              {{ day }}{{ currentDay === (index + 1) % 7 ? ' (今天)' : '' }}
             </th>
           </tr>
           <tr>
