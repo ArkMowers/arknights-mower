@@ -60,8 +60,16 @@ ehlr.setFormatter(color_formatter)
 ehlr.setLevel('WARNING')
 ehlr.addFilter(PackagePathFilter())
 
+
+dhlr = logging.StreamHandler(stream=sys.stdout)
+dhlr.setFormatter(color_formatter)
+dhlr.setLevel('DEBUG')
+dhlr.addFilter(PackagePathFilter())
+
+
 logger = logging.getLogger(__name__)
 logger.setLevel('DEBUG')
+logger.addHandler(dhlr)
 logger.addHandler(chlr)
 logger.addHandler(ehlr)
 
