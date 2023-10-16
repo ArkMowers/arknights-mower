@@ -124,9 +124,9 @@ class RecruitSolver(BaseSolver):
 
             if self.permit_count is None:
                 recruit_ticket_img = self.recog.img[20:80, 1290:1380]
-                recruit_ticket_binary = cv2.threshold(refresh_gray, 220, 255, cv2.THRESH_BINARY)[1]
+                recruit_ticket_gray = cv2.cvtColor(recruit_ticket_img, cv2.COLOR_BGR2GRAY)
                 try:
-                    res = rapidocr.engine(recruit_ticket_binary, use_det=False, use_cls=False, use_rec=True)[0][0][0]
+                    res = rapidocr.engine(recruit_ticket_gray, use_det=False, use_cls=False, use_rec=True)[0][0][0]
                     if res == '0' or res == 'o' or res == 'O':
                         res = 0
                     if str(res).isdigit():
