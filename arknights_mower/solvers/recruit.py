@@ -4,7 +4,7 @@ import os
 import pathlib
 from itertools import combinations
 from typing import Tuple, Dict, Any
-
+import re
 import cv2
 
 from ..data import recruit_agent, recruit_tag, recruit_agent_list
@@ -127,14 +127,15 @@ class RecruitSolver(BaseSolver):
                 recruit_ticket_gray = cv2.cvtColor(recruit_ticket_img, cv2.COLOR_BGR2GRAY)
                 try:
                     res = rapidocr.engine(recruit_ticket_gray, use_det=False, use_cls=False, use_rec=True)[0][0][0]
+                    res = re.sub("\D", "", res)
                     if res == '0' or res == 'o' or res == 'O':
                         res = 0
                     if str(res).isdigit():
                         self.permit_count = int(res)
                         logger.info(f"招募券数量:{res}")
-                    else:
-                        raise RuntimeError
                 except:
+                    # 设置为1 先保证后续流程能正常进行
+                    self.permit_count = 1
                     logger.error("招募券数量读取失败")
 
             if self.can_refresh is False and self.permit_count <= 0:
