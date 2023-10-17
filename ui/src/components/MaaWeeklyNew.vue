@@ -26,7 +26,7 @@ const showstage = (stage) => {
     '1-7': '1-7',
     Annihilation: '剿灭',
     'LS-6': '经验书',
-    'CE-6': '龙门',
+    'CE-6': '龙门币',
     'AP-5': '红票',
     'SK-6': '碳条',
     'CA-5': '技能书',
@@ -152,6 +152,7 @@ function create_tag(label) {
         <li><b>不刷理智</b>：留空表示不刷理智。</li>
       </ul>
     </help-text>
+    觉得不好看/有建议的 at群管理 带上建议或者自行提交代码
     <div class="tasktable">
       <table size="small" :single-column="true" :single-line="true">
         <thead>
@@ -162,7 +163,7 @@ function create_tag(label) {
               :key="index"
               :class="{ today: currentDay === index }"
             >
-              {{ day }}{{ currentDay === index + 1 ? ' (今天)' : '' }}
+              {{ day }}{{ currentDay === (index + 1) % 7 ? ' (今天)' : '' }}
             </th>
           </tr>
           <tr>

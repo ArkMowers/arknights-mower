@@ -287,15 +287,15 @@ class Operators(object):
                 agent.depletion_rate = (agent.mood - mood) * 3600 / (
                     (datetime.now() - agent.time_stamp).total_seconds())
             agent.time_stamp = datetime.now()
-        # 如果移出宿舍，则清除对应宿舍数据 且重新记录高效组心情
-        if agent.current_room.startswith('dorm') and not current_room.startswith('dorm') and agent.is_high():
+        # 如果移出宿舍，则清除对应宿舍数据 且重新记录高效组心情（如果有备用班，则跳过高效组判定）
+        if agent.current_room.startswith('dorm') and not current_room.startswith('dorm') and (agent.is_high() or self.backup_plans):
             self.refresh_dorm_time(agent.current_room, agent.current_index, {'agent': ''})
             if update_time:
                 self.time_stamp = datetime.now()
             else:
                 self.time_stamp = None
             agent.depletion_rate = 0
-        if self.get_dorm_by_name(name)[0] is not None and not current_room.startswith('dorm') and agent.is_high():
+        if self.get_dorm_by_name(name)[0] is not None and not current_room.startswith('dorm') and (agent.is_high() or self.backup_plans):
             _dorm = self.get_dorm_by_name(name)[1]
             _dorm.name = ''
             _dorm.time = None
@@ -303,7 +303,7 @@ class Operators(object):
         agent.current_index = current_index
         agent.mood = mood
         # 如果是高效组且没有记录时间，则返还index
-        if agent.current_room.startswith('dorm') and agent.is_high():
+        if agent.current_room.startswith('dorm') and (agent.is_high() or self.backup_plans):
             for dorm in self.dorm:
                 if dorm.position[0] == current_room and dorm.position[1] == current_index and dorm.time is None:
                     return current_index
