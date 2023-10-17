@@ -123,7 +123,7 @@ class RecruitSolver(BaseSolver):
                 logger.info(f"刷新次数:{refresh_res}")
 
             if self.permit_count is None:
-                recruit_ticket_img = self.recog.img[20:80, 1290:1380]
+                recruit_ticket_img = self.recog.img[20:80, 1200:1390]
                 recruit_ticket_gray = cv2.cvtColor(recruit_ticket_img, cv2.COLOR_BGR2GRAY)
                 try:
                     res = rapidocr.engine(recruit_ticket_gray, use_det=False, use_cls=False, use_rec=True)[0][0][0]
@@ -481,7 +481,7 @@ class RecruitSolver(BaseSolver):
                     rarity_list["level"] = possible_list[key]["level"]
                 rarity_list["possible"][key] = possible_list[key]
             elif possible_list[key]["isRobot"]:
-                robot_list[key] = possible_list[key]
+                rarity_list["possible"][key] = possible_list[key] = possible_list[key]
             else:
                 if possible_list[key]["level"] > normal_list["level"]:
                     normal_list["level"] = possible_list[key]["level"]
