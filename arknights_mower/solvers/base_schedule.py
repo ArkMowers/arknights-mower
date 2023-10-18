@@ -478,7 +478,7 @@ class BaseSchedulerSolver(BaseSolver):
             self.planned = True
         elif not self.todo_task:
             get_update_time()
-            if self.party_time is None and self.enable_party:
+            if (self.party_time is None or self.free_clue is None) and self.enable_party:
                 self.clue()
             if self.clue_count > self.clue_count_limit and self.enable_party:
                 self.share_clue()
@@ -1080,7 +1080,7 @@ class BaseSchedulerSolver(BaseSolver):
         self.tap((self.recog.w - 10, self.recog.h - 10), interval=3, rebuild=False)
         self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3)
 
-        if self.free_clue is None:
+        if self.free_clue is None and self.clue_count < 10 and self.clue_count != -1:
             logger.info('领取会客室线索')
             self.tap(((x0 + x1) // 2, (y0 * 5 - y1) // 4), interval=3)
             obtain = self.find('clue_obtain')
