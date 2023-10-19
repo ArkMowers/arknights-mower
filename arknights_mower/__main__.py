@@ -379,6 +379,7 @@ def simulate():
                     [base_scheduler.tasks[0].type.value.split("_")[1]], one_time=True
                 )
                 continue
+
             base_scheduler.run()
             reconnect_tries = 0
         except ConnectionError or ConnectionAbortedError or AttributeError as e:
