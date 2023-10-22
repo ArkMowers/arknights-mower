@@ -957,11 +957,11 @@ class BaseSchedulerSolver(BaseSolver):
     def read_time(self, cord, upperlimit, error_count=0, use_digit_reader=False):
         # 刷新图片
         self.recog.update()
-        if use_digit_reader:
-            time_str = self.digit_reader.get_time(self.recog.gray)
-        else:
-            time_str = self.read_screen(self.recog.img, type='time', cord=cord)
         try:
+            if use_digit_reader:
+                time_str = self.digit_reader.get_time(self.recog.gray)
+            else:
+                time_str = self.read_screen(self.recog.img, type='time', cord=cord)
             h, m, s = str(time_str).split(':')
             if int(m) > 60 or int(s) > 60:
                 raise Exception(f"读取错误")
