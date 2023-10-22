@@ -287,21 +287,16 @@ const aaabbbccc = [
     周五: 0,
     周六: 1,
     周日: 1
-  },]
+  }
+]
 function clear() {
   maa_weekly_plan1.value = aaabbbccc
 }
-
-
 </script>
 
 <template>
   <n-card>
-
-
-
     <n-checkbox v-model:checked="maa_enable" class="card-title"> Maa周计划-新 </n-checkbox>
-
 
     有打本问题，理智问题，先看问号
     <help-text>
@@ -327,10 +322,8 @@ function clear() {
           <b>信用作战</b>：若信用作战选项已开启，且当日计划不包含
           <n-tag closable>上次作战</n-tag>，则自动进行信用作战。
         </li>
-
       </ul>
     </help-text>
-
 
     <n-button @click="clear"> 清除当前配置以匹配最新表格</n-button>
     <div class="tasktable">
@@ -338,27 +331,52 @@ function clear() {
         <thead>
           <tr>
             <th>关卡</th>
-            <th v-for="(day, index) in dayOfWeek" :key="index" :class="{ today: currentDay === index }">
+            <th
+              v-for="(day, index) in dayOfWeek"
+              :key="index"
+              :class="{ today: currentDay === index }"
+            >
               {{ day }}{{ currentDay === (index + 1) % 7 ? ' (今天)' : '' }}
             </th>
           </tr>
           <tr>
             <th>药</th>
             <th v-for="(day, index) in daysOfWeek" :key="index">
-              <n-input-number v-model:value="maa_weekly_plan[index].medicine" :min="0" :max="6" :show-button="false" />
+              <n-input-number
+                v-model:value="maa_weekly_plan[index].medicine"
+                :min="0"
+                :max="999"
+                :show-button="false"
+              />
             </th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="(plan, index) in maa_weekly_plan1" :key="plan.weekday1">
             <td>
-              <n-select v-if="index < 3" v-model:value="plan.stage" multiple filterable tag :show="false"
-                :show-arrow="false" :render-tag="render_tag" :on-create="create_tag" />
+              <n-select
+                v-if="index < 3"
+                v-model:value="plan.stage"
+                multiple
+                filterable
+                tag
+                :show="false"
+                :show-arrow="false"
+                :render-tag="render_tag"
+                :on-create="create_tag"
+              />
               <span v-else>{{ showstage(plan.stage) }}</span>
             </td>
-            <td v-for="day in daysOfWeek" :class="{ class2: plan[day] === 2, class1: plan[day] === 1 }">
+            <td
+              v-for="day in daysOfWeek"
+              :class="{ class2: plan[day] === 2, class1: plan[day] === 1 }"
+            >
               <template v-if="plan[day] !== 0">
-                <n-button :v-model="plan[day]" @click="() => togglePlanAndStage(plan, day)" quaternary>
+                <n-button
+                  :v-model="plan[day]"
+                  @click="() => togglePlanAndStage(plan, day)"
+                  quaternary
+                >
                   <span v-if="plan[day] === 2">打</span>
                   <span v-if="plan[day] === 1"></span>
                 </n-button>
