@@ -107,103 +107,258 @@ function create_tag(label) {
     }
   }
 }
+const aaabbbccc = [
+  {
+    stage: '点x删除',
+    周一: 1,
+    周二: 1,
+    周三: 1,
+    周四: 1,
+    周五: 1,
+    周六: 1,
+    周日: 1
+  },
+  {
+    stage: '把鼠标放到问号上查看帮助',
+    周一: 1,
+    周二: 1,
+    周三: 1,
+    周四: 1,
+    周五: 1,
+    周六: 1,
+    周日: 1
+  },
+  {
+    stage: '自定义关卡3',
+    周一: 1,
+    周二: 1,
+    周三: 1,
+    周四: 1,
+    周五: 1,
+    周六: 1,
+    周日: 1
+  },
+  {
+    stage: 'Annihilation',
+    周一: 1,
+    周二: 1,
+    周三: 1,
+    周四: 1,
+    周五: 1,
+    周六: 1,
+    周日: 1
+  },
+  {
+    stage: '1-7',
+    周一: 1,
+    周二: 1,
+    周三: 1,
+    周四: 1,
+    周五: 1,
+    周六: 1,
+    周日: 1
+  },
+  {
+    stage: 'LS-6',
+    周一: 1,
+    周二: 1,
+    周三: 1,
+    周四: 1,
+    周五: 1,
+    周六: 1,
+    周日: 1
+  },
+  {
+    stage: 'CE-6',
+    周一: 0,
+    周二: 1,
+    周三: 0,
+    周四: 1,
+    周五: 0,
+    周六: 1,
+    周日: 1
+  },
+  {
+    stage: 'AP-5',
+    周一: 1,
+    周二: 0,
+    周三: 0,
+    周四: 1,
+    周五: 0,
+    周六: 1,
+    周日: 1
+  },
+  {
+    stage: 'SK-6',
+    周一: 1,
+    周二: 0,
+    周三: 1,
+    周四: 0,
+    周五: 1,
+    周六: 1,
+    周日: 0
+  },
+  {
+    stage: 'CA-5',
+    周一: 0,
+    周二: 1,
+    周三: 1,
+    周四: 0,
+    周五: 1,
+    周六: 0,
+    周日: 1
+  },
+  {
+    stage: 'PR-A-2',
+    周一: 1,
+    周二: 0,
+    周三: 0,
+    周四: 1,
+    周五: 1,
+    周六: 0,
+    周日: 1
+  },
+  {
+    stage: 'PR-A-1',
+    周一: 1,
+    周二: 0,
+    周三: 0,
+    周四: 1,
+    周五: 1,
+    周六: 0,
+    周日: 1
+  },
+  {
+    stage: 'PR-B-2',
+    周一: 1,
+    周二: 1,
+    周三: 0,
+    周四: 0,
+    周五: 1,
+    周六: 1,
+    周日: 0
+  },
+  {
+    stage: 'PR-B-1',
+    周一: 1,
+    周二: 1,
+    周三: 0,
+    周四: 0,
+    周五: 1,
+    周六: 1,
+    周日: 0
+  },
+  {
+    stage: 'PR-C-2',
+    周一: 0,
+    周二: 0,
+    周三: 1,
+    周四: 1,
+    周五: 0,
+    周六: 1,
+    周日: 1
+  },
+  {
+    stage: 'PR-C-1',
+    周一: 0,
+    周二: 0,
+    周三: 1,
+    周四: 1,
+    周五: 0,
+    周六: 1,
+    周日: 1
+  },
+  {
+    stage: 'PR-D-2',
+    周一: 0,
+    周二: 1,
+    周三: 1,
+    周四: 0,
+    周五: 0,
+    周六: 1,
+    周日: 1
+  },
+  {
+    stage: 'PR-D-1',
+    周一: 0,
+    周二: 1,
+    周三: 1,
+    周四: 0,
+    周五: 0,
+    周六: 1,
+    周日: 1
+  },]
+function clear() {
+  maa_weekly_plan1.value = aaabbbccc
+}
+
+
 </script>
 
 <template>
   <n-card>
-    <n-checkbox v-model:checked="maa_enable" class="card-title"> Maa周计划 </n-checkbox>
 
+
+
+    <n-checkbox v-model:checked="maa_enable" class="card-title"> Maa周计划-新 </n-checkbox>
+
+
+    有打本问题，理智问题，先看问号
     <help-text>
-      <p>理智药的数量表示“每次调用Maa时吃多少”，不是“每天吃多少”。</p>
+      <p>先看上一个周计划问号</p>
+      <p>如何不打本： <b>把所有的"打"都点了</b>或者点一次<b>清除当前配置以匹配最新表格</b></p>
       <p>48 小时内过期的理智药会自动使用。</p>
-      <p>“每天”从凌晨四点开始，与游戏内一致。</p>
-      <span>关卡填写说明：</span>
+      <p>建议每次更新后 点一次<b>清除当前配置以匹配最新表格</b></p>
+      <p>如果觉得这个表有什么要改进的 at群管理</p>
+      <p>前三行的空行用来写 一些自定义关卡</p>
+
       <ul>
-        <li><b>添加关卡</b>：输入关卡名，按回车键确认。文本变为标签，代表输入成功。</li>
         <li>
-          <b>上次作战</b>：输入空格或“上次作战”后回车，生成 <n-tag closable>上次作战</n-tag> 标签。
+          在第一行填入<n-tag closable class="tag-mr">HE-7</n-tag>
+
+          第二行填入<n-tag closable>上次作战</n-tag>
+
+          则会刷活动关HE-7，若活动未开放，则刷上一关。
         </li>
-        <li><b>主线关卡难度</b>：在关卡末尾添加“标准”或“磨难”以指定难度。例：</li>
-        <ul>
-          <li><n-tag closable>12-17标准</n-tag> 表示12-17标准难度。</li>
-          <li><n-tag closable>12-17磨难</n-tag> 表示12-17磨难难度。</li>
-        </ul>
+        <li><n-tag closable>12-17标准</n-tag> 表示12-17标准难度。</li>
+        <li><n-tag closable>12-17磨难</n-tag> 表示12-17磨难难度。</li>
         <li><b>当期剿灭</b>：输入“当期剿灭”后回车，生成 <n-tag closable>当期剿灭</n-tag> 标签。</li>
         <li>
           <b>信用作战</b>：若信用作战选项已开启，且当日计划不包含
           <n-tag closable>上次作战</n-tag>，则自动进行信用作战。
         </li>
-        <li>
-          <b>多个关卡</b
-          >：填入多个关卡时，按顺序依次刷取所有关卡。关卡无法刷取或刷取结束后，继续尝试下一关卡。例：
-          <ul>
-            <li>
-              <n-tag closable class="tag-mr">HE-7</n-tag>
-              <n-tag closable>上次作战</n-tag>
-              ：刷活动关HE-7，若活动未开放，则刷上一关。
-            </li>
-            <li>
-              <n-tag closable class="tag-mr">AP-5</n-tag>
-              <n-tag closable>1-7</n-tag>
-              ：刷红票本AP-5，剩余体力刷1-7。
-            </li>
-          </ul>
-        </li>
-        <li><b>不刷理智</b>：留空表示不刷理智。</li>
+
       </ul>
     </help-text>
-    觉得不好看/有建议的 at群管理 带上建议或者自行提交代码
+
+
+    <n-button @click="clear"> 清除当前配置以匹配最新表格</n-button>
     <div class="tasktable">
       <table size="small" :single-column="true" :single-line="true">
         <thead>
           <tr>
             <th>关卡</th>
-            <th
-              v-for="(day, index) in dayOfWeek"
-              :key="index"
-              :class="{ today: currentDay === index }"
-            >
+            <th v-for="(day, index) in dayOfWeek" :key="index" :class="{ today: currentDay === index }">
               {{ day }}{{ currentDay === (index + 1) % 7 ? ' (今天)' : '' }}
             </th>
           </tr>
           <tr>
             <th>药</th>
             <th v-for="(day, index) in daysOfWeek" :key="index">
-              <n-input-number
-                v-model:value="maa_weekly_plan[index].medicine"
-                :min="0"
-                :max="6"
-                :show-button="false"
-              />
+              <n-input-number v-model:value="maa_weekly_plan[index].medicine" :min="0" :max="6" :show-button="false" />
             </th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="(plan, index) in maa_weekly_plan1" :key="plan.weekday1">
             <td>
-              <n-select
-                v-if="index < 3"
-                v-model:value="plan.stage"
-                multiple
-                filterable
-                tag
-                :show="false"
-                :show-arrow="false"
-                :render-tag="render_tag"
-                :on-create="create_tag"
-              />
+              <n-select v-if="index < 3" v-model:value="plan.stage" multiple filterable tag :show="false"
+                :show-arrow="false" :render-tag="render_tag" :on-create="create_tag" />
               <span v-else>{{ showstage(plan.stage) }}</span>
             </td>
-            <td
-              v-for="day in daysOfWeek"
-              :class="{ class2: plan[day] === 2, class1: plan[day] === 1 }"
-            >
+            <td v-for="day in daysOfWeek" :class="{ class2: plan[day] === 2, class1: plan[day] === 1 }">
               <template v-if="plan[day] !== 0">
-                <n-button
-                  :v-model="plan[day]"
-                  @click="() => togglePlanAndStage(plan, day)"
-                  quaternary
-                >
+                <n-button :v-model="plan[day]" @click="() => togglePlanAndStage(plan, day)" quaternary>
                   <span v-if="plan[day] === 2">打</span>
                   <span v-if="plan[day] === 1"></span>
                 </n-button>
@@ -226,9 +381,11 @@ function create_tag(label) {
   .tasktable table {
     border-collapse: collapse;
   }
+
   .tasktable td {
     width: 12.5%;
   }
+
   .tasktable thead {
     position: sticky;
     top: 0;
@@ -236,6 +393,7 @@ function create_tag(label) {
     z-index: 1;
   }
 }
+
 @media screen and (min-width: 1400px) {
   .tasktable {
     height: auto;
@@ -244,23 +402,30 @@ function create_tag(label) {
   .tasktable table {
     border-collapse: collapse;
   }
+
   .tasktable td {
     width: 12.5%;
   }
+
   .tasktable thead {
     background-color: hsl(196, 26%, 60%);
   }
 }
+
 .class1 {
   background-color: hsl(33, 30%, 91%);
-  text-align: center; /* 文本水平居中 */
-  vertical-align: middle; /* 文本垂直居中 */
+  text-align: center;
+  /* 文本水平居中 */
+  vertical-align: middle;
+  /* 文本垂直居中 */
 }
 
 .class2 {
   background-color: hsl(200, 90%, 65%);
-  text-align: center; /* 文本水平居中 */
-  vertical-align: middle; /* 文本垂直居中 */
+  text-align: center;
+  /* 文本水平居中 */
+  vertical-align: middle;
+  /* 文本垂直居中 */
 }
 
 .card-title {
