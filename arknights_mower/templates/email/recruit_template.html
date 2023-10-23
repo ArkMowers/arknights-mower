@@ -24,13 +24,21 @@
       {% for pos,value in recruit_results.items() %}
       <tr>
         <td>{{ pos }}</td>
-        {% for key,value in value.items() %}
+
         <td>
-          {% for tag in key %} {% if tag != "" %} {{ tag }} {% else %} {{
-          "未选择" }} {% endif %} {% endfor %}
+            {% if value.tags|length > 0 %}
+                {% for tag in value.tags %}{{ tag }}{% endfor %}
+            {% else %}
+                 未选择
+            {% endif %}
+
         </td>
-        <td>{% for agent in value.agent %} {{ agent.name }} {% endfor %}</td>
-        {% endfor %}
+        <td>
+            {% for agent in value.result %}
+            {{ agent.name }}
+            {% endfor %}
+        </td>
+
       </tr>
       {% endfor %} {% endif %} {% if recruit_get_agent|length > 0 %}
       <tr>
@@ -44,8 +52,11 @@
       {% endfor %} {% endif %}
 
       <tr>
-        <th colspan="2">剩余招募券数量</th>
-        <th>{{permit_count}}</th>
+          {% if permit_count is defined%}
+              <th colspan="2">剩余招募券数量</th>
+              <th>{{permit_count}}</th>
+          {% endif %}
+
       </tr>
 
     </table>
