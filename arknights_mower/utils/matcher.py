@@ -128,7 +128,6 @@ class Matcher(object):
                     query, qry_kp, self.origin, ori_kp, good, None)
                 plt.imshow(result, 'gray')
                 plt.show()
-
             # if the number of good matches no more than 4
             if len(good) <= 4:
                 logger.debug(

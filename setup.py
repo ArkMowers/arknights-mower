@@ -4,7 +4,6 @@ from pathlib import Path
 
 LONG_DESC = Path('README.md').read_text('utf8')
 VERSION = arknights_mower.__version__
-
 setuptools.setup(
     name='arknights_mower',
     version=VERSION,

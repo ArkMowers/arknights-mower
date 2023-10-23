@@ -19,7 +19,6 @@ from .scene import Scene, SceneComment
 class RecognizeError(Exception):
     pass
 
-
 class Recognizer(object):
 
     def __init__(self, device: Device, screencap: bytes = None) -> None:
@@ -296,6 +295,7 @@ class Recognizer(object):
         if thres is not None:
             # 对图像二值化处理
             res_img = thres2(loadimg(res, True), thres)
+
             gray_img = cropimg(self.gray, scope)
             matcher = Matcher(thres2(gray_img, thres))
             ret = matcher.match(res_img, draw=draw, judge=judge,prescore=score)
