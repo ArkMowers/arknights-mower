@@ -66,26 +66,16 @@ recruit_tag = list(set(recruit_tag))
 按tag分类组合干员
 '''
 
-recruit_agent_list = {}
-rarity_tags = []
-
-for key in recruit_tag:
-    recruit_agent_list[key] = {
-        "min_level": 7,
-        "agent": []
-    }
-    for opeartors in recruit_agent:
-        if key in recruit_agent[opeartors]['tags']:
-            if recruit_agent[opeartors]['stars'] < recruit_agent_list[key]["min_level"]:
-                recruit_agent_list[key]["min_level"] = recruit_agent[opeartors]['stars']
-
-            recruit_agent_list[key]["agent"].append(
+agent_with_tags = {}
+for item in recruit_tag:
+    agent_with_tags[item] = []
+    for agent in recruit_agent:
+        if {item} < set(recruit_agent[agent]['tags']):
+            agent_with_tags[item].append(
                 {
-                    "name": recruit_agent[opeartors]['name'],
-                    "level": recruit_agent[opeartors]['stars'],
-                })
-# 保底5星的tag
-rarity_tags = []
-for key in recruit_agent_list:
-    if recruit_agent_list[key]['min_level'] >= 5:
-        rarity_tags.append(key)
+                    'id': agent,
+                    'name': recruit_agent[agent]['name'],
+                    'star': recruit_agent[agent]['stars']
+                }
+            )
+
