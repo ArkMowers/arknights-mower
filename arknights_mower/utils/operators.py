@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from ..data import agent_list, agent_arrange_order
+from ..data import agent_list, agent_arrange_order, base_room_list
 from ..solvers.record import save_action_to_sqlite_decorator
 from ..utils.log import logger
 import copy
@@ -18,6 +18,8 @@ class Operators(object):
     plan_name = ""
     shadow_copy = {}
 
+    current_room_changed_callback = None
+
     def __init__(self, plan):
         self.operators = {}
         self.groups = {}
@@ -32,6 +34,7 @@ class Operators(object):
         self.swap_plan()
         self.run_order_rooms = {}
         self.clues = []
+        self.current_room_changed_callback = None
 
     def __repr__(self):
         return f'Operators(operators={self.operators})'
@@ -178,6 +181,7 @@ class Operators(object):
                     return f'{key} 分组无法排班,替换组数量不够'
                 else:
                     _replacement.append(_candidate)
+                if self.operators[name].workaholic: continue
                 if self.operators[name].resting_priority == 'high':
                     high_count += 1
                 else:
@@ -370,6 +374,7 @@ class Operators(object):
         operator.exhaust_require = self.config.get_config(operator.name, 1)
         operator.rest_in_full = self.config.get_config(operator.name, 0)
         operator.workaholic = self.config.get_config(operator.name, 2)
+        operator.refresh_order_room = self.config.get_config(operator.name, 5)
         if operator.name in agent_arrange_order:
             operator.arrange_order = agent_arrange_order[operator.name]
         # 复制基建数据
@@ -482,7 +487,10 @@ class Operator(object):
     def __init__(self, name, room, index=-1, group='', replacement=[], resting_priority='low', current_room='',
                  exhaust_require=False,
                  mood=24, upper_limit=24, rest_in_full=False, current_index=-1, lower_limit=0, operator_type="low",
-                 depletion_rate=0, time_stamp=None):
+                 depletion_rate=0, time_stamp=None, refresh_order_room=None):
+        if refresh_order_room is not None:
+            self.refresh_order_room = refresh_order_room
+        self.refresh_order_room = [False, []]
         self.name = name
         self.room = room
         self.operator_type = operator_type
@@ -490,6 +498,7 @@ class Operator(object):
         self.group = group
         self.replacement = replacement
         self.resting_priority = resting_priority
+        self._current_room = None
         self.current_room = current_room
         self.exhaust_require = exhaust_require
         self.upper_limit = upper_limit
@@ -500,11 +509,25 @@ class Operator(object):
         self.depletion_rate = depletion_rate
         self.time_stamp = time_stamp
 
+    @property
+    def current_room(self):
+        return self._current_room
+
+    @current_room.setter
+    def current_room(self, value):
+        if self._current_room != value:
+            self._current_room = value
+            if Operators.current_room_changed_callback and self.refresh_order_room[0]:
+                Operators.current_room_changed_callback(self)
+
     def is_high(self):
         return self.operator_type == 'high'
 
     def is_resting(self):
         return self.current_room.startswith("dorm")
+
+    def is_working(self):
+        return self.current_room in base_room_list and not self.is_resting()
 
     def need_to_refresh(self, h=2, r=""):
         # 是否需要读取心情
@@ -535,4 +558,4 @@ class Operator(object):
             return self.mood
 
     def __repr__(self):
-        return f"Operator(name='{self.name}', room='{self.room}', index={self.index}, group='{self.group}', replacement={self.replacement}, resting_priority='{self.resting_priority}', current_room='{self.current_room}',exhaust_require={self.exhaust_require},mood={self.mood}, upper_limit={self.upper_limit}, rest_in_full={self.rest_in_full}, current_index={self.current_index}, lower_limit={self.lower_limit}, operator_type='{self.operator_type}',depletion_rate={self.depletion_rate},time_stamp='{self.time_stamp}')"
+        return f"Operator(name='{self.name}', room='{self.room}', index={self.index}, group='{self.group}', replacement={self.replacement}, resting_priority='{self.resting_priority}', current_room='{self.current_room}',exhaust_require={self.exhaust_require},mood={self.mood}, upper_limit={self.upper_limit}, rest_in_full={self.rest_in_full}, current_index={self.current_index}, lower_limit={self.lower_limit}, operator_type='{self.operator_type}',depletion_rate={self.depletion_rate},time_stamp='{self.time_stamp}',refresh_order_room = {self.refresh_order_room})"

@@ -875,6 +875,7 @@ class BaseSchedulerSolver(BaseSolver):
 
     def initialize_operators(self):
         self.op_data = Operators(self.global_plan)
+        Operators.current_room_changed_callback = self.current_room_changed
         return self.op_data.init_and_validate()
 
     def check_fia(self):
@@ -1935,6 +1936,21 @@ class BaseSchedulerSolver(BaseSolver):
                                              use_digit_reader=True)
         return round((execute_time - datetime.now()).total_seconds(), 1)
 
+    def current_room_changed(self, instance):
+        logger.info(f"{instance.name} 房间变动")
+        ref_rooms = instance.refresh_order_room[1] if instance.refresh_order_room[1] else list(self.op_data.run_order_rooms.keys())
+        for ref_room in ref_rooms:
+            self.refresh_run_order_time(ref_room)
+
+    def refresh_run_order_time(self,room):
+        logger.debug("检测到插拔房间人员变动！")
+        run_order_task = find_next_task(self.tasks, datetime.now() + timedelta(minutes=15),
+                                        task_type=TaskTypes.RUN_ORDER,
+                                        meta_data=room, compare_type=">")
+        if run_order_task is not None:
+            logger.info("移除超过5分钟的跑单任务以刷新时间")
+            self.tasks.remove(run_order_task)
+
     def agent_arrange_room(self, new_plan, room, plan, skip_enter=False, get_time=False):
         finished = False
         choose_error = 0
@@ -1966,13 +1982,7 @@ class BaseSchedulerSolver(BaseSolver):
                     if room in self.op_data.run_order_rooms and len(
                             new_plan) == 0 and self.task.type != TaskTypes.RUN_ORDER:
                         if plan[room] != self.op_data.get_current_room(room):
-                            logger.debug("检测到插拔房间人员变动！")
-                            run_order_task = find_next_task(self.tasks, datetime.now() + timedelta(minutes=15),
-                                                            task_type=TaskTypes.RUN_ORDER,
-                                                            meta_data=room, compare_type=">")
-                            if run_order_task is not None:
-                                logger.info("移除超过15分钟的跑单任务以刷新时间")
-                                self.tasks.remove(run_order_task)
+                            self.refresh_run_order_time(room)
                 checked = True
                 current_room = self.op_data.get_current_room(room, True)
                 same = len(plan[room]) == len(current_room)
