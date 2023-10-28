@@ -125,7 +125,9 @@ class RecruitSolver(BaseSolver):
                 logger.info(f"刷新次数:{refresh_res}")
 
             if self.permit_count is None:
-                recruit_ticket_img = self.recog.img[20:80, 1230:1380]
+                p0, p1 = self.find("recruit_ticket")
+                p2, p3 = self.find("stone")
+                recruit_ticket_img = self.recog.img[p0[1]:p1[1], p1[0]:p2[0]]
                 recruit_ticket_gray = cv2.cvtColor(recruit_ticket_img, cv2.COLOR_BGR2GRAY)
                 try:
                     res = rapidocr.engine(recruit_ticket_gray, use_det=False, use_cls=False, use_rec=True)[0][0][0]
