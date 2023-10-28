@@ -2,9 +2,7 @@
   <div>
     <n-card>
       <template #header>
-        <n-checkbox v-model:checked="maa_depot_enable">
-          <div class="card-title">MAA仓库扫描 {{ maa_depot_enable ? '开启' : '关闭' }}</div>
-        </n-checkbox>
+        <Depotpage />
       </template>
 
       <div class="card-container">
@@ -64,7 +62,7 @@ import { useConfigStore } from '@/stores/config'
 const store = useConfigStore()
 
 import { storeToRefs } from 'pinia'
-const { maa_gap, maa_depot_enable } = storeToRefs(store)
+const { maa_gap } = storeToRefs(store)
 
 //模态框
 const showModal = ref(false)
