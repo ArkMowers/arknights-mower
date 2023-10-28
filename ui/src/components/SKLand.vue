@@ -32,31 +32,32 @@ async function test_maa() {
         <div class="card-title">森空岛签到</div>
       </n-checkbox>
     </template>
+    <div v-if="skland_enable">
+      <n-dynamic-input v-model:value="skland_info" :on-create="add_account">
+        <template #create-button-default> 添加森空岛账号 </template>
+        <template #default="{ value }">
+          <div style="display: flex; align-items: center; width: 100%">
+            <n-checkbox v-model:checked="value.isCheck" style="margin-right: 12px" />
+            <n-input
+              style="margin-right: 10px"
+              v-model:value="value.account"
+              type="text"
+              placeholder="账号"
+            />
 
-    <n-dynamic-input v-model:value="skland_info" :on-create="add_account">
-      <template #create-button-default> 添加森空岛账号 </template>
-      <template #default="{ value }">
-        <div style="display: flex; align-items: center; width: 100%">
-          <n-checkbox v-model:checked="value.isCheck" style="margin-right: 12px" />
-          <n-input
-            style="margin-right: 10px"
-            v-model:value="value.account"
-            type="text"
-            placeholder="账号"
-          />
-
-          <n-input
-            v-model:value="value.password"
-            type="password"
-            show-password-on="click"
-            placeholder="密码"
-          />
-        </div>
-      </template>
-    </n-dynamic-input>
-    <div class="misc-container">
-      <n-button @click="test_maa">测试设置</n-button>
-      <div>{{ maa_msg }}</div>
+            <n-input
+              v-model:value="value.password"
+              type="password"
+              show-password-on="click"
+              placeholder="密码"
+            />
+          </div>
+        </template>
+      </n-dynamic-input>
+      <div class="misc-container">
+        <n-button @click="test_maa">测试设置</n-button>
+        <div>{{ maa_msg }}</div>
+      </div>
     </div>
   </n-card>
 </template>

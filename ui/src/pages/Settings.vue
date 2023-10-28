@@ -441,4 +441,13 @@ ul {
 .n-divider:not(.n-divider--vertical) {
   margin: 14px 0 8px;
 }
+
+/* .results {
+  display: grid;
+  grid-template-rows: masonry;
+  grid-template-columns: repeat(2, 600px);
+  gap: 10px 10px ;
+  justify-content: center;
+} */
+/* 实验性瀑布流（firefox nightly） */
 </style>

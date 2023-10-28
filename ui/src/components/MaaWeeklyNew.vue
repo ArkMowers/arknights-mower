@@ -311,9 +311,9 @@ function clear() {
         <li>
           在第一行填入<n-tag closable class="tag-mr">HE-7</n-tag>
 
-          第二行填入<n-tag closable>上次作战</n-tag>
+          第二行填入<n-tag closable>1-7</n-tag>
 
-          则会刷活动关HE-7，若活动未开放，则刷上一关。
+          则会刷活动关HE-7，若活动未开放，则刷1-7。
         </li>
         <li><n-tag closable>12-17标准</n-tag> 表示12-17标准难度。</li>
         <li><n-tag closable>12-17磨难</n-tag> 表示12-17磨难难度。</li>

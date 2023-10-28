@@ -31,7 +31,9 @@ class PlanConfig(object):
     # run_order_buffer_time: 
     #   >  0 时是葛朗台跑单
     #   <= 0 时是无人机跑单
-    def __init__(self, rest_in_full, exhaust_require, resting_priority, ling_xi=0, workaholic="", max_resting_count=4,free_blacklist="",read_mood =True,skip_validation=False, run_order_buffer_time = 30,resting_threshold = 0.5):
+    def __init__(self, rest_in_full, exhaust_require, resting_priority, ling_xi=0, workaholic="", max_resting_count=4,
+                 free_blacklist="", read_mood=True, skip_validation=False, run_order_buffer_time=30,
+                 resting_threshold=0.5, refresh_trading_config=''):
         self.rest_in_full = to_list(rest_in_full)
         self.exhaust_require = to_list(exhaust_require)
         self.workaholic = to_list(workaholic)
@@ -46,6 +48,11 @@ class PlanConfig(object):
         self.skip_validation = skip_validation
         self.run_order_buffer_time = run_order_buffer_time
         self.resting_threshold = resting_threshold
+        # 格式为 干员名字+ 括弧 +指定房间（逗号分隔）
+        # 不指定房间则默认全跑单站
+        # example： 阿米娅,夕,令
+        #           夕(room_3_1,room_1_3),令(room_3_1)
+        self.refresh_trading_config = [e.strip() for e in refresh_trading_config.split(',')]
 
     def get_config(self, agent_name, config_type):
         if config_type == 0:
@@ -58,3 +65,12 @@ class PlanConfig(object):
             return agent_name in self.resting_priority
         elif config_type == 4:
             return agent_name in self.free_blacklist
+        elif config_type == 5:
+            match = next((e for e in self.refresh_trading_config if agent_name in e.lower()), None)
+            if match is not None:
+                if match.replace(agent_name, '') != '':
+                    return [True, match.replace(agent_name, '').split(',')]
+                else:
+                    return [True, []]
+            else:
+                return [False, []]
