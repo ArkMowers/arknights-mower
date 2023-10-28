@@ -360,29 +360,34 @@ class RecruitSolver(BaseSolver):
                 tmp = [x for x in tmp if x['star'] >= 3]
             if "高级资深干员" not in item:
                 tmp = [x for x in tmp if x['star'] < 6]
+            if len(tmp) == 0:
+                continue
             tmp.sort(key=lambda k: k['star'])
             combined_agent[item] = tmp
         for item in combinations(tags, 2):
             tmp = [j for j in agent_with_tags[item[0]] if j in agent_with_tags[item[1]]]
-            if len(tmp) == 0:
-                continue
+
             if "支援机械" not in item:
                 tmp = [x for x in tmp if x['star'] >= 3]
             if "高级资深干员" not in item:
                 tmp = [x for x in tmp if x['star'] < 6]
+            if len(tmp) == 0:
+                continue
             tmp.sort(key=lambda k: k['star'])
             combined_agent[item] = tmp
         for item in combinations(tags, 3):
             tmp1 = [j for j in agent_with_tags[item[0]] if j in agent_with_tags[item[1]]]
             tmp = [j for j in tmp1 if j in agent_with_tags[item[2]]]
-            if len(tmp) == 0:
-                continue
+
             if "支援机械" not in item:
                 tmp = [x for x in tmp if x['star'] >= 3]
             if "高级资深干员" not in item:
                 tmp = [x for x in tmp if x['star'] < 6]
+            if len(tmp) == 0:
+                continue
             tmp.sort(key=lambda k: k['star'])
             combined_agent[item] = tmp
+
         sorted_list = sorted(combined_agent.items(), key=lambda x: index_dict[x[1][0]['star']])
 
         result_dict = {}
