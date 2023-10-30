@@ -7,7 +7,7 @@ from typing import Tuple, Dict, Any
 import re
 import cv2
 
-from ..data import recruit_agent, agent_with_tags, recruit_tag
+from ..data import recruit_agent, agent_with_tags, recruit_tag, result_template_list
 from ..ocr import ocr_rectify, ocrhandle
 from ..utils import segment, rapidocr
 from .. import __rootdir__
@@ -323,8 +323,8 @@ class RecruitSolver(BaseSolver):
         max = 0
         get_path = ""
 
-        for tem_path in pathlib.Path(f"{__rootdir__}/resources/agent_name").glob("*.png"):
-
+        for template_name in result_template_list:
+            tem_path = f"{__rootdir__}/resources/agent_name/{template_name}.png"
             template_ = cv2.imread(tem_path.__str__())
             template_ = cv2.cvtColor(template_, cv2.COLOR_BGR2GRAY)
             res = cv2.matchTemplate(img_binary, template_, cv2.TM_CCORR_NORMED)
@@ -332,15 +332,13 @@ class RecruitSolver(BaseSolver):
             if max < max_val:
                 get_path = tem_path
                 max = max_val
+            if max > 0.7:
+                break
 
         if max > 0.7:
             agent_id = os.path.basename(get_path)
             agent_id = agent_id.replace(".png", "")
             agent = recruit_agent[agent_id]['name']
-
-            # 暂时不会选6星，所以不会有阿
-            if agent == "阿":
-                agent = "阿消"
 
         if agent is not None:
             # 汇总开包结果
