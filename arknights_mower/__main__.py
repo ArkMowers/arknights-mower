@@ -67,6 +67,9 @@ def hide_password(conf):
     hpconf = deepcopy(conf)
     hpconf["pass_code"] = "*" * len(conf["pass_code"])
     hpconf["sendKey"] = "*" * len(conf["sendKey"])
+    hpconf["skland_config"] = conf["skland_info"]
+    for item in hpconf["skland_config"]:
+        item['password'] = "******"
     return hpconf
 
 
@@ -145,8 +148,11 @@ def set_skland_options(base_scheduler):
     skland_config["skland_enable"] = conf["skland_enable"]
     skland_config["skland_info"] = conf["skland_info"]
     base_scheduler.skland_config = skland_config
+    temp_str = base_scheduler.skland_config
+    for item in temp_str["skland_info"]:
+        item['password'] = "*******"
+    logger.debug(f"更新森空岛设置：{temp_str}")
 
-    logger.debug(f"更新森空岛设置：{base_scheduler.skland_config}")
 
 
 def get_logic_exp(trigger):
