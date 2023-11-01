@@ -67,6 +67,8 @@ def hide_password(conf):
     hpconf = deepcopy(conf)
     hpconf["pass_code"] = "*" * len(conf["pass_code"])
     hpconf["sendKey"] = "*" * len(conf["sendKey"])
+    for item in hpconf["skland_info"]:
+        item['password'] = "*" * len(item['password'])
     return hpconf
 
 
@@ -87,8 +89,7 @@ def update_conf():
     return conf
 
 
-def set_maa_options(base_scheduler):
-    conf = update_conf()
+def set_maa_options(base_scheduler, conf):
 
     global maa_config
     maa_config["maa_enable"] = conf["maa_enable"]
@@ -127,8 +128,7 @@ def set_maa_options(base_scheduler):
     logger.debug(f"更新Maa设置：{base_scheduler.maa_config}")
 
 
-def set_recruit_options(base_scheduler):
-    conf = update_conf()
+def set_recruit_options(base_scheduler, conf):
     global recruit_config
     recruit_config["recruit_enable"] = conf["recruit_enable"]
     recruit_config["permit_target"] = conf["recruitment_permit"]
@@ -139,14 +139,15 @@ def set_recruit_options(base_scheduler):
     logger.debug(f"更新公招设置：{base_scheduler.recruit_config}")
 
 
-def set_skland_options(base_scheduler):
-    conf = update_conf()
+def set_skland_options(base_scheduler, conf):
     global skland_config
     skland_config["skland_enable"] = conf["skland_enable"]
     skland_config["skland_info"] = conf["skland_info"]
     base_scheduler.skland_config = skland_config
-
-    logger.debug(f"更新森空岛设置：{base_scheduler.skland_config}")
+    temp_str = deepcopy(base_scheduler.skland_config)
+    for item in temp_str["skland_info"]:
+        item['password'] = "*" * len(item['password'])
+    logger.debug(f"更新森空岛设置：{temp_str}")
 
 
 def get_logic_exp(trigger):
@@ -246,9 +247,11 @@ def initialize(tasks, scheduler=None):
                 "sendKey": conf["sendKey"],
             }
         }
-        set_maa_options(base_scheduler)
-        set_recruit_options(base_scheduler)
-        set_skland_options(base_scheduler)
+
+        new_conf = update_conf()
+        set_maa_options(base_scheduler, new_conf)
+        set_recruit_options(base_scheduler, new_conf)
+        set_skland_options(base_scheduler, new_conf)
 
         base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
         base_scheduler.error = False
@@ -329,9 +332,10 @@ def simulate():
                     base_scheduler.tasks[0].time - datetime.now()
                 ).total_seconds()
 
-                set_maa_options(base_scheduler)
-                set_recruit_options(base_scheduler)
-                set_skland_options(base_scheduler)
+                new_conf = update_conf()
+                set_maa_options(base_scheduler, new_conf)
+                set_recruit_options(base_scheduler, new_conf)
+                set_skland_options(base_scheduler, new_conf)
 
                 if sleep_time > 540 and base_scheduler.maa_config["maa_enable"] == 1:
                     subject = (

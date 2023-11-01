@@ -357,7 +357,7 @@ class BaseSolver:
                 self.device.exit('com.hypergryph.arknights')
             self.back_to_index()
         logger.info('导航至生息演算')
-        self.tap_element('index_terminal', 0.5)
+        self.tap_themed_element('index_terminal')
         self.tap((self.recog.w * 0.2, self.recog.h * 0.8), interval=0.5)
 
     def to_sss(self, sss_type, ec_type=3):
@@ -365,9 +365,9 @@ class BaseSolver:
         # 导航去保全派驻
         retry = 0
         self.back_to_index()
-        self.tap_element('index_terminal', 0.5)
-        self.tap((self.recog.w * 0.7, self.recog.h * 0.95), interval=0.2)
-        self.tap((self.recog.w * 0.85, self.recog.h * 0.5), interval=0.2)
+        self.tap_themed_element('index_terminal')
+        self.tap((self.recog.w * 0.7, self.recog.h * 0.95)) # 常态事务
+        self.tap((self.recog.w * 0.85, self.recog.h * 0.5)) # 保全
         if sss_type == 1:
             self.tap((self.recog.w * 0.2, self.recog.h * 0.3), interval=5)
         else:
@@ -381,13 +381,14 @@ class BaseSolver:
                 logger.info("选择小队")
             elif self.find('choose_ss_ec') is not None and not choose_team:
                 if ec_type == 1:
-                    self.tap((self.recog.w * 0.3, self.recog.h * 0.5), interval=0.2)
+                    self.tap((self.recog.w * 0.3, self.recog.h * 0.5))
                 elif ec_type == 2:
-                    self.tap((self.recog.w * 0.5, self.recog.h * 0.5), interval=0.2)
+                    self.tap((self.recog.w * 0.5, self.recog.h * 0.5))
                 else:
-                    self.tap((self.recog.w * 0.7, self.recog.h * 0.5), interval=0.2)
+                    self.tap((self.recog.w * 0.7, self.recog.h * 0.5))
                 ec_chosen_step = loop_count
                 logger.info(f"选定导能单元:{ec_type}")
+            # 开始保全作战
             self.tap((self.recog.w * 0.95, self.recog.h * 0.95), interval=(0.2 if not choose_team else 10))
             self.recog.update()
             loop_count += 1
