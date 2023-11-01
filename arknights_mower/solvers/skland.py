@@ -9,17 +9,21 @@ from arknights_mower.utils.log import logger
 class SKLand:
     def __init__(self, skland_info):
         self.account = []
-        for item in skland_info:
-            if item["isCheck"] is False:
-                continue
-            if item['account'] != "" and item['password'] != "":
-                self.account.append({
-                    "name": "",
-                    "phone": item['account'],
-                    "password": item['password'],
-                    "uid": "",
-                    "cred": ""
-                })
+        try:
+            for item in skland_info:
+                if item["isCheck"] is False:
+                    continue
+                if item['account'] != "" and item['password'] != "":
+                    self.account.append({
+                        "name": "",
+                        "phone": item['account'],
+                        "password": item['password'],
+                        "uid": "",
+                        "cred": ""
+                    })
+        except:
+            raise RuntimeError("森空岛信息初始化失败")
+
         self.url = {
             "get_cred": "https://zonai.skland.com/api/v1/user/auth/generate_cred_by_code",
             "token_by_phone_password": "https://as.hypergryph.com/user/auth/v1/token_by_phone_password",
@@ -49,10 +53,9 @@ class SKLand:
             responese_json = json.loads(responese.text)
             return responese_json
         except:
-            logger.info("请求返回数据存在问题")
+            raise RuntimeError("返回信息获取失败")
 
     """登录获取cred"""
-
     def sign_by_phone(self, account):
         data = {"phone": account['phone'], "password": account['password']}
         response = requests.post(headers=self.request_header, url=self.url.get("token_by_phone_password"), data=data)
@@ -60,7 +63,8 @@ class SKLand:
         response_json = self.respone_to_json(response)
         if response_json.get("status") == 0:
             return response_json.get("data").get("token")
-        return ""
+        else:
+            raise RuntimeError("token获取失败")
 
     def check_cred(self, account):
         if account['cred'] == "":
@@ -72,13 +76,12 @@ class SKLand:
 
         if response_json.get("code") == 0:
             logger.debug("验证cred未过期")
-
-        logger.debug("验证cred过期")
+        else:
+            raise RuntimeError("验证cred过期")
 
     def get_binding_player(self, account):
         if account['cred'] == "":
-            logger.error("获取绑定信息失败")
-            raise "获取绑定信息失败"
+            raise RuntimeError("获取绑定信息失败")
         headers = self.request_header
         headers["cred"] = account['cred']
 
@@ -90,14 +93,13 @@ class SKLand:
             player_info = response_json.get('data').get('list')[0].get('bindingList')[0]
             account['name'] = player_info.get('nickName')
             account['uid'] = player_info.get('uid')
-
-        logger.debug("获取玩家信息失败")
+        else:
+            raise RuntimeError("验证cred过期")
 
     def get_OAuth2_token(self, account):
         token = self.sign_by_phone(account)
         if token == "":
-            logger.error("token获取失败")
-            raise "token获取失败"
+            raise RuntimeError("token获取失败")
 
         data = {
             "token": token,
@@ -116,7 +118,7 @@ class SKLand:
         code = self.get_OAuth2_token(account)
 
         if code == "":
-            raise ("OAuth2授权代码获取失败")
+            raise RuntimeError("OAuth2授权代码获取失败")
         data = {
             "kind": 1,
             "code": code

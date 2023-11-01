@@ -2297,8 +2297,8 @@ class BaseSchedulerSolver(BaseSolver):
                     if self.skland_config['skland_enable']:
                         skland = SKLand(self.skland_config['skland_info'])
                         skland.attendance()
-                except Exception:
-                    logger.info(f"森空岛签到失败 {Exception}")
+                except RuntimeError as e:
+                    logger.info("森空岛签到失败:{}".format(e.__str__()))
 
                 """测试公招用"""
                 if self.recruit_config['recruit_enable']:

@@ -54,6 +54,9 @@ scene_list = json.loads(
 recruit_agent = json.loads(
     Path(f'{__rootdir__}/data/recruit.json').read_text('utf-8'))
 
+recruit_result = json.loads(
+    Path(f'{__rootdir__}/data/recruit_result.json').read_text('utf-8'))
+
 key_mapping = json.loads(
     Path(f"{__rootdir__}/data/key_mapping.json").read_text("utf-8"))
 
@@ -79,3 +82,8 @@ for item in recruit_tag:
                 }
             )
 
+result_template_list = []
+
+for item in recruit_result:
+    for name in recruit_result[item]:
+        result_template_list.append(name)
