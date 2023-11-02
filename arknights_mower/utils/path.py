@@ -40,13 +40,13 @@ def get_app_path(path, space = None)->Path:
   global global_space
   if space == None: # 不用 not space 是因为 not '' == True
     space = global_space
-  return _get_path(_internal_dir, path, space)
+  return _get_path(_app_dir, path, space)
 
 def get_internal_path(path, space = None)->Path:
   global global_space
   if space == None:
     space = global_space
-  return _get_path(user_data_dir, path, space)
+  return _get_path(_internal_dir, path, space)
 
 def get_user_path(path, space = None)->Path:
   global global_space
@@ -81,6 +81,8 @@ def get_path(path: str, space = None)->Path:
       return get_user_path(relative_path, space)
     elif special_dir_name == 'app':
       return get_app_path(relative_path, space)
+    elif special_dir_name == 'internal':
+      return get_internal_path(relative_path, space)
     else:
       raise ValueError('{}: {} 不是一个有效的特殊目录别名'.format(path, special_dir_name))
   else:
@@ -101,3 +103,4 @@ class SpecialDir:
 
 user_dir = SpecialDir(get_user_path)
 app_dir = SpecialDir(get_app_path)
+internal_dir = SpecialDir(get_internal_path)
