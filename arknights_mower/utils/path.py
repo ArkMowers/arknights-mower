@@ -20,11 +20,13 @@ def find_git_root(directory: Path) -> Path:
 user_data_dir = Path(platformdirs.user_data_dir(appname, appauthor))
 # define _app_dir
 if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
-    _app_dir = Path(sys._MEIPASS).resolve().parent
+    _internal_dir = Path(sys._MEIPASS).resolve()
+    _app_dir = _internal_dir.parent
 else:
     _app_dir = find_git_root(Path(os.getcwd()).resolve())
     if not _app_dir:
       _app_dir = Path(os.getcwd()).resolve()
+    _internal_dir = _app_dir
 
 
 def _get_path(base_path, path, space)->Path:
@@ -38,8 +40,13 @@ def get_app_path(path, space = None)->Path:
   global global_space
   if space == None: # 不用 not space 是因为 not '' == True
     space = global_space
-  return _get_path(_app_dir, path, space)
+  return _get_path(_internal_dir, path, space)
 
+def get_internal_path(path, space = None)->Path:
+  global global_space
+  if space == None:
+    space = global_space
+  return _get_path(user_data_dir, path, space)
 
 def get_user_path(path, space = None)->Path:
   global global_space
@@ -53,6 +60,7 @@ def get_path(path: str, space = None)->Path:
   使用 '@xxx/' 来表示一些特别的目录
   @user: 用户数据文件夹, 例如 get_path('@user/config.json')
   @app: mower数据文件夹, 例如 get_path('@app/logs/runtime.log')
+  @internal: mower内部文件夹, 在开发时为 .git 所在目录, 打包时为 @app/_internal
   
   指定space来区分配置文件空间，如space为None(默认值)，则使用global_space
   
