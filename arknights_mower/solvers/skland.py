@@ -4,11 +4,13 @@ import datetime
 import requests
 
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.path import get_path
 
 
 class SKLand:
     def __init__(self, skland_info):
         self.account = []
+        self.record_path = get_path("@app/tmp/skland.csv")
         try:
             for item in skland_info:
                 if item["isCheck"] is False:
@@ -46,7 +48,6 @@ class SKLand:
         }
 
         self.get_award = {}
-        self.record_path = "skland_record.csv"
 
     def respone_to_json(self, responese):
         try:
@@ -165,14 +166,16 @@ class SKLand:
         return self.get_award
 
     def record_attendance(self, account, data):
-
-        data_row = [account, data, datetime.date.today()]
-        with open(self.record_path, 'a+') as f:
-            csv_write = csv.writer(f)
-            csv_write.writerow(data_row)
+        data_row = {"account": account,
+                    "data": data,
+                    "date": datetime.date.today().strftime("%Y-%m-%d")
+                    }
+        file = open(self.record_path, 'a+', newline='')
+        csv_writer = csv.DictWriter(file, fieldnames=list(data_row.keys()))
+        csv_writer.writerow(data_row)
+        file.close()
 
     def get_record(self, account):
-
         try:
             with open(self.record_path, 'r+') as f:
                 csv_reader = csv.reader(f)
@@ -180,9 +183,10 @@ class SKLand:
                     if line:
                         if line[0] == account and line[2] == str(datetime.date.today()):
                             return True
-        except:
-            with open(self.record_path, 'a+') as f:
-                return False
+        except FileNotFoundError:
+            logger.info("森空岛记录查询失败")
+        except FileExistsError:
+            logger.info("森空岛记录查询失败")
 
         return False
 

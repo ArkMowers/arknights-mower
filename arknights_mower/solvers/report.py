@@ -13,6 +13,7 @@ from arknights_mower.utils.recognize import Recognizer, RecognizeError
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.solver import BaseSolver
 from arknights_mower.data import __rootdir__
+from ..utils.path import get_path
 
 
 class ReportSolver(BaseSolver):
@@ -22,7 +23,7 @@ class ReportSolver(BaseSolver):
         self.high_range_blue = (100, 255, 255)
         self.low_range_gray = (100, 100, 100)
         self.high_range_gray = (255, 255, 255)
-        self.record_path = f"{__rootdir__.parent}/tmp/report.csv"
+        self.record_path = get_path('@app/tmp/record.csv')
         # 结算数据
         self.report_res = {
         }
@@ -45,7 +46,10 @@ class ReportSolver(BaseSolver):
     def run(self) -> None:
         if self.is_today_recorded():
             return
-        super().run()
+        try:
+            super().run()
+        except TypeError:
+            logger.error("基报识别失败 润！")
 
     def is_today_recorded(self) -> bool:
         if os.path.exists(self.report_csv_path) is not True:
