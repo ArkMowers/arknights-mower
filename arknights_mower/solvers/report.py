@@ -41,8 +41,6 @@ class ReportSolver(BaseSolver):
             'riic_orundum_order': "贸易站合成玉订单",
         }
 
-        self.report_csv_path = f"{__rootdir__.parent}/tmp/report.csv"
-
     def run(self) -> None:
         if self.is_today_recorded():
             return
@@ -52,7 +50,7 @@ class ReportSolver(BaseSolver):
             logger.error("基报识别失败 润！")
 
     def is_today_recorded(self) -> bool:
-        if os.path.exists(self.report_csv_path) is not True:
+        if os.path.exists(self.record_path) is not True:
             return False
         try:
             now = datetime.datetime.now()
