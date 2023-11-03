@@ -14,7 +14,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 from .skland import SKLand
-from ..command import recruit
+from ..command import recruit, daily_report
 from ..data import agent_list, base_room_list, ocr_error
 from ..utils import character_recognize, detector, segment
 from ..utils.digit_reader import DigitReader
@@ -2292,6 +2292,8 @@ class BaseSchedulerSolver(BaseSolver):
                     seconds=self.maa_config['maa_execution_gap'] * 3600) < self.maa_config['last_execution']:
                 logger.info("间隔未超过设定时间，不启动maa")
             else:
+                daily_report()
+
                 """森空岛签到"""
                 try:
                     if self.skland_config['skland_enable']:
