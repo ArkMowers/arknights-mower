@@ -4,6 +4,7 @@ import requests
 from arknights_mower.solvers import record
 from arknights_mower.utils.conf import load_conf, save_conf, load_plan, write_plan
 from arknights_mower.utils import depot
+from arknights_mower.utils.path import get_path
 from arknights_mower.__main__ import main
 from arknights_mower.data import agent_list, shop_items
 
@@ -157,6 +158,10 @@ def start():
 
     if mower_process is not None:
         return "Mower is already running."
+    
+    # 创建 tmp 文件夹
+    tmp_dir = get_path("@app/tmp")
+    tmp_dir.mkdir(exist_ok=True)
 
     read, write = multiprocessing.Pipe()
     mower_process = multiprocessing.Process(
