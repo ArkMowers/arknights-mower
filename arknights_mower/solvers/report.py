@@ -151,7 +151,7 @@ class ReportSolver(BaseSolver):
         self.record_report()
 
     def record_report(self):
-        logger.info(f"存入数据{self.report_res}")
+        logger.debug(f"存入数据{self.report_res}")
         write_header = True
         if os.path.exists(self.record_path):
             write_header = False
