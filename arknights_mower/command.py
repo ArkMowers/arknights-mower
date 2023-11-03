@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from . import __version__
 from .solvers import *
+from .solvers.report import ReportSolver
 from .utils import config
 from .utils.device import Device
 from .utils.log import logger
@@ -95,9 +96,14 @@ def recruit(args: list[str] = [], send_message_config={}, recruit_config={}, dev
     if len(args) == 0:
         choose, result = RecruitSolver(device).run(config.RECRUIT_PRIORITY, send_message_config, recruit_config)
     else:
-        choose, result = RecruitSolver(device).run(args, send_message_config,recruit_config)
+        choose, result = RecruitSolver(device).run(args, send_message_config, recruit_config)
 
     return choose, result
+
+
+def daily_report(device: Device = None):
+    ReportSolver(device).run()
+
 
 def mission(args: list[str] = [], device: Device = None):
     """

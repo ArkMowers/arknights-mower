@@ -296,6 +296,8 @@ class BaseSolver:
             try:
                 if self.get_navigation():
                     self.tap_element('nav_index')
+                elif self.scene() == Scene.RIIC_REPORT:
+                    self.tap_element('riic_return')
                 elif self.scene() == Scene.CLOSE_MINE:
                     self.tap_element('close_mine')
                 elif self.scene() == Scene.CHECK_IN:

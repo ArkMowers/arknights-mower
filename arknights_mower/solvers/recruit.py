@@ -131,9 +131,9 @@ class RecruitSolver(BaseSolver):
                 recruit_ticket_gray = cv2.cvtColor(recruit_ticket_img, cv2.COLOR_BGR2GRAY)
                 try:
                     res = rapidocr.engine(recruit_ticket_gray, use_det=False, use_cls=False, use_rec=True)[0][0][0]
+                    if res == 'o' or res == 'O':
+                        res = '0'
                     res = re.sub("\D", "", res)
-                    if res == '0' or res == 'o' or res == 'O':
-                        res = 0
                     if str(res).isdigit():
                         self.permit_count = int(res)
                         logger.info(f"招募券数量:{res}")
