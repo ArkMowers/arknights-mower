@@ -24,6 +24,8 @@ class Recognizer(object):
     def __init__(self, device: Device, screencap: bytes = None) -> None:
         self.device = device
         self.start(screencap)
+        self.loading_time = 0
+        self.LOADING_TIME_LIMIT = 5
 
     def start(self, screencap: bytes = None, build: bool = True) -> None:
         """ init with screencap, build matcher  """
@@ -220,6 +222,19 @@ class Recognizer(object):
         if config.SCREENSHOT_PATH is not None:
             self.save_screencap(self.scene)
         logger.info(f'Scene: {self.scene}: {SceneComment[self.scene]}')
+
+        if self.scene == Scene.CONNECTING:
+            self.loading_time += 1
+            if self.loading_time > 1:
+                logger.debug(f"检测到连续等待{self.loading_time}次")
+        else:
+            self.loading_time = 0
+        if self.loading_time > self.LOADING_TIME_LIMIT:
+            logger.info(f"检测到连续等待{self.loading_time}次")
+            self.device.exit()
+            time.sleep(3)
+            self.device.check_current_focus()
+
         return self.scene
 
     def get_infra_scene(self)-> int:
@@ -265,6 +280,19 @@ class Recognizer(object):
         if config.SCREENSHOT_PATH is not None:
             self.save_screencap(self.scene)
         logger.info(f'Scene: {self.scene}: {SceneComment[self.scene]}')
+
+        if self.scene == Scene.CONNECTING:
+            self.loading_time += 1
+            if self.loading_time > 1:
+                logger.debug(f"检测到连续等待{self.loading_time}次")
+        else:
+            self.loading_time = 0
+        if self.loading_time > self.LOADING_TIME_LIMIT:
+            logger.info(f"检测到连续等待{self.loading_time}次")
+            self.device.exit()
+            time.sleep(3)
+            self.device.check_current_focus()
+
         return self.scene
 
     def is_black(self) -> None:

@@ -354,7 +354,7 @@ class BaseSolver:
         self.recog.update()
         while self.find('index_terminal') is None:
             if self.scene() == Scene.UNKNOWN:
-                self.device.exit('com.hypergryph.arknights')
+                self.device.exit()
             self.back_to_index()
         logger.info('导航至生息演算')
         self.tap_themed_element('index_terminal')
@@ -404,7 +404,7 @@ class BaseSolver:
                 return True
             wait_count -= 1
         logger.warning("同一等待界面等待超时，重启方舟。")
-        self.device.exit(self.package_name)
+        self.device.exit()
         time.sleep(3)
         self.device.check_current_focus()
         return False

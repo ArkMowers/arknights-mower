@@ -80,6 +80,8 @@ class Device(object):
 
     def launch(self) -> None:
         """ launch the application """
+        logger.info("明日方舟，启动！")
+
         tap = config.TAP_TO_LAUNCH["enable"]
         x = config.TAP_TO_LAUNCH["x"]
         y = config.TAP_TO_LAUNCH["y"]
@@ -89,10 +91,10 @@ class Device(object):
         else:
             self.run(f'am start -n {config.APPNAME}/{config.APP_ACTIVITY_NAME}')
 
-    def exit(self, app: str) -> None:
+    def exit(self) -> None:
         """ exit the application """
         logger.info("退出游戏")
-        self.run(f'am force-stop {app}')
+        self.run(f'am force-stop {config.APPNAME}')
 
     def send_keyevent(self, keycode: int) -> None:
         """ send a key event """

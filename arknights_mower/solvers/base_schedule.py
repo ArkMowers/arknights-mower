@@ -258,7 +258,7 @@ class BaseSchedulerSolver(BaseSolver):
 
     def handle_error(self, force=False):
         if self.scene() == Scene.UNKNOWN:
-            self.device.exit(self.package_name)
+            self.device.exit()
         if self.error or force:
             # 如果没有任何时间小于当前时间的任务才生成空任务
             if find_next_task(self.tasks, datetime.now()) is None:
@@ -2347,7 +2347,7 @@ class BaseSchedulerSolver(BaseSolver):
                     logger.info(hard_stop_msg)
                     self.send_message(hard_stop_msg)
                     time.sleep(180)
-                    self.device.exit(self.package_name)
+                    self.device.exit()
                 elif not one_time:
                     logger.info(f"记录MAA 本次执行时间")
                     self.maa_config['last_execution'] = datetime.now()
@@ -2424,7 +2424,7 @@ class BaseSchedulerSolver(BaseSolver):
                             break
                         else:
                             time.sleep(0)
-                    self.device.exit(self.package_name)
+                    self.device.exit()
             # 生息演算逻辑 结束
             if one_time:
                 if len(self.tasks) > 0:
@@ -2446,7 +2446,7 @@ class BaseSchedulerSolver(BaseSolver):
                     if self.close_simulator_when_idle:
                         restart_simulator(self.simulator, start=False)
                     elif self.exit_game_when_idle:
-                        self.device.exit(self.package_name)
+                        self.device.exit()
                 time.sleep(remaining_time)
                 if self.close_simulator_when_idle:
                     restart_simulator(self.simulator, stop=False)
@@ -2454,7 +2454,7 @@ class BaseSchedulerSolver(BaseSolver):
         except Exception as e:
             logger.exception(e)
             self.MAA = None
-            self.device.exit(self.package_name)
+            self.device.exit()
             self.send_message(str(e), "Maa调用出错！")
             remaining_time = (self.tasks[0].time - datetime.now()).total_seconds()
             if remaining_time > 0:

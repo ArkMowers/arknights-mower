@@ -362,7 +362,7 @@ def simulate():
                         if conf["close_simulator_when_idle"]:
                             restart_simulator(conf["simulator"], start=False)
                         elif conf["exit_game_when_idle"]:
-                            base_scheduler.device.exit(base_scheduler.package_name)
+                            base_scheduler.device.exit()
                     body = task_template.render(
                         tasks=[
                             obj.format(timezone_offset) for obj in base_scheduler.tasks
