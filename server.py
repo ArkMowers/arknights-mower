@@ -158,11 +158,11 @@ def start():
 
     if mower_process is not None:
         return "Mower is already running."
-    
+
     # 创建 tmp 文件夹
     tmp_dir = get_path("@app/tmp")
     tmp_dir.mkdir(exist_ok=True)
-
+    
     read, write = multiprocessing.Pipe()
     mower_process = multiprocessing.Process(
         target=main,

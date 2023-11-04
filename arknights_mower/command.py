@@ -102,7 +102,7 @@ def recruit(args: list[str] = [], send_message_config={}, recruit_config={}, dev
 
 
 def daily_report(device: Device = None):
-    ReportSolver(device).run()
+    return ReportSolver(device).run()
 
 
 def mission(args: list[str] = [], device: Device = None):

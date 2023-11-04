@@ -13,6 +13,7 @@ from arknights_mower.utils.recognize import Recognizer, RecognizeError
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.solver import BaseSolver
 from arknights_mower.data import __rootdir__
+from ..utils.path import get_path
 
 
 class ReportSolver(BaseSolver):
@@ -22,7 +23,7 @@ class ReportSolver(BaseSolver):
         self.high_range_blue = (100, 255, 255)
         self.low_range_gray = (100, 100, 100)
         self.high_range_gray = (255, 255, 255)
-        self.record_path = f"{__rootdir__.parent}/tmp/report.csv"
+        self.record_path = get_path('@app/tmp/record.csv')
         # 结算数据
         self.report_res = {
         }
@@ -40,15 +41,21 @@ class ReportSolver(BaseSolver):
             'riic_orundum_order': "贸易站合成玉订单",
         }
 
-        self.report_csv_path = f"{__rootdir__.parent}/tmp/report.csv"
 
-    def run(self) -> None:
+    def run(self) -> bool:
         if self.is_today_recorded():
-            return
-        super().run()
+            return True
+        try:
+            super().run()
+            return self.record_report()
+        except TypeError:
+            logger.error("基报识别失败 润！")
+        except PermissionError:
+            logger.error("基报记录访问失败")
+        return False
 
     def is_today_recorded(self) -> bool:
-        if os.path.exists(self.report_csv_path) is not True:
+        if os.path.exists(self.record_path) is not True:
             return False
         try:
             now = datetime.datetime.now()
@@ -146,10 +153,10 @@ class ReportSolver(BaseSolver):
                     self.report_res[item] = res
 
         self.report_res['riic_iron_number'] = int(int(self.report_res['riic_iron']) / 500)
-        self.record_report()
+
 
     def record_report(self):
-        logger.info(f"存入数据{self.report_res}")
+        logger.debug(f"存入数据{self.report_res}")
         write_header = True
         if os.path.exists(self.record_path):
             write_header = False
@@ -160,3 +167,5 @@ class ReportSolver(BaseSolver):
             csv_writer.writerow(self.riic_key_str)
         csv_writer.writerow(self.report_res)
         file.close()
+        logger.info("{}的基报记录完成".format(self.report_res['riic_date']))
+        return True
