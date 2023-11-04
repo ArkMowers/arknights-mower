@@ -2289,7 +2289,7 @@ class BaseSchedulerSolver(BaseSolver):
                 })
     def maa_plan_solver(self, tasks='All', one_time=False):
         try:
-            if not one_time and 'last_execution' in self.maa_config and self.maa_config['last_execution'] is not None and datetime.now() - timedelta(
+            if not one_time and 'last_execution' in self.maa_config and self.maa_config[
                     seconds=self.maa_config['maa_execution_gap'] * 3600) < self.maa_config['last_execution']:
                 logger.info("间隔未超过设定时间，不启动maa")
             else:
