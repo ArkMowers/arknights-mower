@@ -337,20 +337,28 @@ def simulate():
                 set_recruit_options(base_scheduler, new_conf)
                 set_skland_options(base_scheduler, new_conf)
 
-                if sleep_time > 540 and base_scheduler.maa_config["maa_enable"] == 1:
-                    subject = (
-                        f"下次任务在{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}"
-                    )
-                    context = f"下一次任务:{base_scheduler.tasks[0].plan}"
-                    logger.info(context)
-                    logger.info(subject)
-                    body = task_template.render(
-                        tasks=[
-                            obj.format(timezone_offset) for obj in base_scheduler.tasks
-                        ]
-                    )
-                    base_scheduler.send_message(body, subject, "html")
-                    base_scheduler.maa_plan_solver()
+                if sleep_time > 540:
+                    if base_scheduler.daily_mission is False:
+                        base_scheduler.daily_mission = base_scheduler.read_report()
+                        base_scheduler.mail_plan_solver()
+                    if base_scheduler.skland_config["skland_enable"] == 1:
+                        base_scheduler.skland_plan_solover()
+                    if base_scheduler.recruit_config['recruit_enable'] == 1:
+                        base_scheduler.recruit_plan_solver()
+                    if base_scheduler.maa_config["maa_enable"] == 1:
+                        subject = (
+                            f"下次任务在{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}"
+                        )
+                        context = f"下一次任务:{base_scheduler.tasks[0].plan}"
+                        logger.info(context)
+                        logger.info(subject)
+                        body = task_template.render(
+                            tasks=[
+                                obj.format(timezone_offset) for obj in base_scheduler.tasks
+                            ]
+                        )
+                        base_scheduler.send_message(body, subject, "html")
+                        base_scheduler.maa_plan_solver()
                 elif sleep_time > 0:
                     subject = f"休息 {format_time(remaining_time)}，到{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}开始工作"
                     context = f"下一次任务:{base_scheduler.tasks[0].plan}"
