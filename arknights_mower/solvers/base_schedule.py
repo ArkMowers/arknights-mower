@@ -1582,7 +1582,7 @@ class BaseSchedulerSolver(BaseSolver):
             self.tap((self.recog.w * arrange_order_res[ArrangeOrder(index)][0],
                       self.recog.h * arrange_order_res[ArrangeOrder(index)][1]), interval=0.2, rebuild=True)
 
-    def scan_agant(self, agent: list[str], error_count=0, max_agent_count=-1):
+    def scan_agent(self, agent: list[str], error_count=0, max_agent_count=-1):
         try:
             # 识别干员
             self.recog.update()
@@ -1606,7 +1606,7 @@ class BaseSchedulerSolver(BaseSolver):
             if error_count < 3:
                 logger.exception(e)
                 self.sleep(3)
-                return self.scan_agant(agent, error_count, max_agent_count)
+                return self.scan_agent(agent, error_count, max_agent_count)
             else:
                 raise e
 
@@ -1696,7 +1696,7 @@ class BaseSchedulerSolver(BaseSolver):
                     pre_order = [3, 'true']
                 if not fast_mode:
                     self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
-                changed, ret = self.scan_agant(agent)
+                changed, ret = self.scan_agent(agent)
                 if changed:
                     selected.extend(changed)
                     if len(agent) == 0: break
@@ -1719,7 +1719,7 @@ class BaseSchedulerSolver(BaseSolver):
                     pre_order = arrange_type
             first_time = False
 
-            changed, ret = self.scan_agant(agent)
+            changed, ret = self.scan_agent(agent)
             if changed:
                 selected.extend(changed)
                 # 如果找到了
@@ -1754,7 +1754,7 @@ class BaseSchedulerSolver(BaseSolver):
             free_list.extend([_name for _name in agent_list if _name not in self.op_data.operators.keys()])
             free_list = list(set(free_list) - set(self.op_data.config.free_blacklist))
             while free_num:
-                selected_name, ret = self.scan_agant(free_list, max_agent_count=free_num)
+                selected_name, ret = self.scan_agent(free_list, max_agent_count=free_num)
                 selected.extend(selected_name)
                 free_num -= len(selected_name)
                 while len(selected_name) > 0:
