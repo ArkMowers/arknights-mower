@@ -2455,7 +2455,12 @@ class BaseSchedulerSolver(BaseSolver):
         skland.attendance()
 
     def recruit_plan_solver(self):
-        recruit([], self.send_message_config, self.recruit_config)
+        if ('last_execution' not in self.recruit_config
+                and self.recruit_config['last_execution'] is None
+                and self.recruit_config['last_execution'] < (datetime.datetime.now() - datetime.timedelta(hours=9))
+        ):
+            recruit([], self.send_message_config, self.recruit_config)
+            self.recruit_config['last_execution'] = datetime.datetime.now()
 
     def read_report(self):
         return daily_report()
