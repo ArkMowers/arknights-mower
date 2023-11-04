@@ -108,10 +108,10 @@ async function save() {
       </tr>
       <tr>
         <td>
-          最大组人数<help-text> <div>请查阅文档</div></help-text>
+          最大组人数<help-text><div>请查阅文档</div></help-text>
         </td>
         <td>
-          <n-input v-model:value="max_resting_count"></n-input>
+          <n-input-number v-model:value="max_resting_count" />
         </td>
       </tr>
       <tr>
