@@ -41,7 +41,7 @@ from arknights_mower.__main__ import format_time
 
 import json
 
-from arknights_mower.utils.email import task_template, maa_template, recruit_template
+from arknights_mower.utils.email import maa_template
 
 
 class ArrangeOrder(Enum):
@@ -2455,7 +2455,11 @@ class BaseSchedulerSolver(BaseSolver):
         skland.attendance()
 
     def recruit_plan_solver(self):
-        recruit([], self.send_message_config, self.recruit_config)
+        if ('last_execution' not in self.recruit_config
+                or self.recruit_config['last_execution'] is None
+                or self.recruit_config['last_execution'] <= (datetime.now() - datetime.timedelta(hours=9))):
+            recruit([], self.send_message_config, self.recruit_config)
+            self.recruit_config['last_execution'] = datetime.now()
 
     def read_report(self):
         return daily_report()
