@@ -2462,4 +2462,3 @@ class BaseSchedulerSolver(BaseSolver):
 
     def mail_plan_solver(self):
         mail([])
-
