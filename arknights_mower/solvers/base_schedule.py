@@ -14,7 +14,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 from .skland import SKLand
-from ..command import recruit, daily_report
+from ..command import recruit, daily_report, mail
 from ..data import agent_list, base_room_list, ocr_error
 from ..utils import character_recognize, detector, segment
 from ..utils.digit_reader import DigitReader
@@ -92,9 +92,10 @@ class BaseSchedulerSolver(BaseSolver):
         self.refresh_connecting = False
         self.recruit_config = {}
         self.skland_config = {}
-        self.sk_time = None
+      
         self.recruit_time = None
 
+        self.daily_mission = False
     def run(self) -> None:
         """
         :param clue_collect: bool, 是否收取线索
@@ -2292,26 +2293,12 @@ class BaseSchedulerSolver(BaseSolver):
                     seconds=self.maa_config['maa_execution_gap'] * 3600) < self.maa_config['last_execution']:
                 logger.info("间隔未超过设定时间，不启动maa")
             else:
-                daily_report()
-
-                """森空岛签到"""
-                try:
-                    if self.skland_config['skland_enable']:
-                        skland = SKLand(self.skland_config['skland_info'])
-                        skland.attendance()
-                except RuntimeError as e:
-                    logger.info("森空岛签到失败:{}".format(e.__str__()))
-
-                """测试公招用"""
-                if self.recruit_config['recruit_enable']:
-                    recruit([], self.send_message_config, self.recruit_config)
-
                 self.send_message('启动MAA')
                 self.back_to_index()
                 # 任务及参数请参考 docs/集成文档.md
                 self.initialize_maa()
                 if tasks == 'All':
-                    tasks = ['StartUp','Fight', 'Visit', 'Mall', 'Award','Depot']
+                    tasks = ['StartUp', 'Fight', 'Visit', 'Mall', 'Award', 'Depot']
                     # tasks = ['StartUp', 'Fight', 'Recruit', 'Visit', 'Mall', 'Award']
                 for maa_task in tasks:
                     if maa_task == 'Recruit':
@@ -2466,4 +2453,13 @@ class BaseSchedulerSolver(BaseSolver):
     def skland_plan_solover(self):
         skland = SKLand(self.skland_config['skland_info'])
         skland.attendance()
-        del self.tasks[0]
+
+    def recruit_plan_solver(self):
+        recruit([], self.send_message_config, self.recruit_config)
+
+    def read_report(self):
+        return daily_report()
+
+    def mail_plan_solver(self):
+        mail([])
+

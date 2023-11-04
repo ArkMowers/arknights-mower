@@ -41,15 +41,18 @@ class ReportSolver(BaseSolver):
             'riic_orundum_order': "贸易站合成玉订单",
         }
 
-    def run(self) -> None:
+
+    def run(self) -> bool:
         if self.is_today_recorded():
-            return
+            return True
         try:
             super().run()
+            return self.record_report()
         except TypeError:
             logger.error("基报识别失败 润！")
         except PermissionError:
             logger.error("基报记录访问失败")
+        return False
 
     def is_today_recorded(self) -> bool:
         if os.path.exists(self.record_path) is not True:
@@ -150,7 +153,7 @@ class ReportSolver(BaseSolver):
                     self.report_res[item] = res
 
         self.report_res['riic_iron_number'] = int(int(self.report_res['riic_iron']) / 500)
-        self.record_report()
+
 
     def record_report(self):
         logger.debug(f"存入数据{self.report_res}")
@@ -164,3 +167,5 @@ class ReportSolver(BaseSolver):
             csv_writer.writerow(self.riic_key_str)
         csv_writer.writerow(self.report_res)
         file.close()
+        logger.info("{}的基报记录完成".format(self.report_res['riic_date']))
+        return True
