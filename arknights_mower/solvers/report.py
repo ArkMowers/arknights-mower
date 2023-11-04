@@ -48,6 +48,8 @@ class ReportSolver(BaseSolver):
             super().run()
         except TypeError:
             logger.error("基报识别失败 润！")
+        except PermissionError:
+            logger.error("基报记录访问失败")
 
     def is_today_recorded(self) -> bool:
         if os.path.exists(self.record_path) is not True:
