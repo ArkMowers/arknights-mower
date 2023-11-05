@@ -2224,9 +2224,14 @@ class BaseSchedulerSolver(BaseSolver):
         if asst_path not in sys.path:
             sys.path.append(asst_path)
         global Message
-        from asst.asst import Asst
-        from asst.utils import Message, Version, InstanceOptionType
-        from asst.updater import Updater
+
+        try:
+            from asst.asst import Asst
+            from asst.utils import Message, InstanceOptionType
+            logger.info("Maa Python模块导入成功")
+        except Exception as e:
+            logger.error(f'Maa Python模块导入失败：{str(e)}')
+            raise Exception("Maa Python模块导入失败")
 
         try:
             logger.debug(f'开始更新Maa活动关卡导航……')
@@ -2236,7 +2241,7 @@ class BaseSchedulerSolver(BaseSolver):
             with open(ota_tasks_path, 'w', encoding='utf-8') as f:
                 with urllib.request.urlopen(ota_tasks_url) as u:
                     f.write(u.read().decode('utf-8'))
-            logger.info(f'Maa活动关卡导航更新成功！')
+            logger.info(f'Maa活动关卡导航更新成功')
         except Exception as e:
             logger.error(f'Maa活动关卡导航更新失败：{str(e)}')
 
