@@ -3,18 +3,15 @@ from datetime import datetime
 import atexit
 import json
 import os
-
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
 from arknights_mower.strategy import Solver
 from arknights_mower.utils.device import Device
 from arknights_mower.utils.email import task_template
 from arknights_mower.utils.log import logger, init_fhlr
-from arknights_mower.utils import config
-from arknights_mower.utils.logic_expression import LogicExpression
+from arknights_mower.utils import config, rapidocr
 from arknights_mower.utils.simulator import restart_simulator
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
-import arknights_mower.utils.paddleocr
-
+from arknights_mower.utils.logic_expression import LogicExpression
 # 下面不能删除
 from arknights_mower.utils.operators import Operators, Operator, Dormitory
 from arknights_mower.utils.scheduler_task import SchedulerTask,TaskTypes
@@ -380,7 +377,7 @@ def simulate():
                 continue
             base_scheduler.run()
             reconnect_tries = 0
-        except ConnectionError or ConnectionAbortedError or AttributeError as e:
+        except (ConnectionError, ConnectionAbortedError, AttributeError) as e:
             reconnect_tries += 1
             if reconnect_tries < reconnect_max_tries:
                 logger.warning(f'连接端口断开....正在重连....')
@@ -389,7 +386,7 @@ def simulate():
                     try:
                         base_scheduler = inialize([], base_scheduler)
                         break
-                    except RuntimeError or ConnectionError or ConnectionAbortedError as ce:
+                    except (ConnectionError, ConnectionAbortedError, AttributeError) as ce:
                         logger.error(ce)
                         restart_simulator(simulator)
                         continue
@@ -411,5 +408,5 @@ def simulate():
 # debuglog()
 atexit.register(save_state)
 savelog()
-arknights_mower.utils.paddleocr.initialize_ocr()
+rapidocr.initialize_ocr()
 simulate()
