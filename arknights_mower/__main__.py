@@ -359,6 +359,23 @@ def simulate():
                         )
                         base_scheduler.send_message(body, subject, "html")
                         base_scheduler.maa_plan_solver()
+                    else:
+                        remaining_time = (base_scheduler.tasks[0].time - datetime.now()).total_seconds()
+                        subject = f"休息 {format_time(remaining_time)}，到{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}开始工作"
+                        context = f"下一次任务:{base_scheduler.tasks[0].plan if len(base_scheduler.tasks[0].plan) != 0 else '空任务' if base_scheduler.tasks[0].type == '' else base_scheduler.tasks[0].type}"
+                        logger.info(context)
+                        logger.info(subject)
+                        base_scheduler.task_count += 1
+                        logger.info(f"第{base_scheduler.task_count}次任务结束")
+                        if remaining_time > 0:
+                            if remaining_time > 300:
+                                if base_scheduler.close_simulator_when_idle:
+                                    restart_simulator(base_scheduler.simulator, start=False)
+                                elif base_scheduler.exit_game_when_idle:
+                                    base_scheduler.device.exit()
+                            time.sleep(remaining_time)
+                            if base_scheduler.close_simulator_when_idle:
+                                restart_simulator(base_scheduler.simulator, stop=False)
                 elif sleep_time > 0:
                     subject = f"休息 {format_time(remaining_time)}，到{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}开始工作"
                     context = f"下一次任务:{base_scheduler.tasks[0].plan}"
