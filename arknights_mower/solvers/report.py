@@ -145,7 +145,7 @@ class ReportSolver(BaseSolver):
 
         # 整理数据
         for item in self.report_res:
-            if self.report_res[item] == 'o' or self.report_res[item] == 'O':
+            if self.report_res[item] == 'o' or self.report_res[item] == 'O' or self.report_res[item] == 'Q':
                 self.report_res[item] = '0'
             if item != 'riic_date':
                 res = re.sub("\D", "", self.report_res[item])
