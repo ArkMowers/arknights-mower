@@ -2238,9 +2238,10 @@ class BaseSchedulerSolver(BaseSolver):
             ota_tasks_url = 'https://ota.maa.plus/MaaAssistantArknights/api/resource/tasks.json'
             ota_tasks_path = path / 'cache' / 'resource' / 'tasks.json'
             ota_tasks_path.parent.mkdir(parents=True, exist_ok=True)
+            with urllib.request.urlopen(ota_tasks_url) as u:
+                res = u.read().decode('utf-8')
             with open(ota_tasks_path, 'w', encoding='utf-8') as f:
-                with urllib.request.urlopen(ota_tasks_url) as u:
-                    f.write(u.read().decode('utf-8'))
+                f.write(res)
             logger.info(f'Maa活动关卡导航更新成功')
         except Exception as e:
             logger.error(f'Maa活动关卡导航更新失败：{str(e)}')
