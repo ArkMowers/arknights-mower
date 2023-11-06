@@ -1303,35 +1303,6 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         logger.debug(clues)
         return clues
 
-    def enter_room(self, room: str) -> tp.Rectangle:
-        """ 获取房间的位置并进入 """
-        success = False
-        retry = 3
-        while not success:
-            try:
-                # 获取基建各个房间的位置
-                base_room = segment.base(self.recog.img, self.find('control_central', strict=True))
-                # 将画面外的部分删去
-                _room = base_room[room]
-
-                for i in range(4):
-                    _room[i, 0] = max(_room[i, 0], 0)
-                    _room[i, 0] = min(_room[i, 0], self.recog.w)
-                    _room[i, 1] = max(_room[i, 1], 0)
-                    _room[i, 1] = min(_room[i, 1], self.recog.h)
-
-                # 点击进入
-                self.tap(_room[0], interval=3)
-                while self.find('control_central') is not None:
-                    self.tap(_room[0], interval=3)
-                success = True
-            except Exception as e:
-                retry -= 1
-                self.back_to_infrastructure()
-                self.wait_for_scene(Scene.INFRA_MAIN, "get_infra_scene")
-                if retry <= 0:
-                    raise e
-
     def adjust_order_time(self, accelerate, room):
         error_count = 0
         while scheduling(self.tasks) is not None:

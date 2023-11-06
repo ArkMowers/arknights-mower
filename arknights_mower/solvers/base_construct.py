@@ -341,25 +341,6 @@ class BaseConstructSolver(BaseSolver, BaseMixin):
         logger.debug(clues)
         return clues
 
-    def enter_room(self, room: str) -> tp.Rectangle:
-        """ 获取房间的位置并进入 """
-
-        # 获取基建各个房间的位置
-        base_room = segment.base(self.recog.img, self.find('control_central', strict=True))
-
-        # 将画面外的部分删去
-        room = base_room[room]
-        for i in range(4):
-            room[i, 0] = max(room[i, 0], 0)
-            room[i, 0] = min(room[i, 0], self.recog.w)
-            room[i, 1] = max(room[i, 1], 0)
-            room[i, 1] = min(room[i, 1], self.recog.h)
-
-        # 点击进入
-        self.tap(room[0], interval=3)
-        while self.find('control_central') is not None:
-            self.tap(room[0], interval=3)
-
     def drone(self, room: str):
         logger.info('基建：无人机加速')
 
