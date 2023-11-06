@@ -892,80 +892,6 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         self.back(interval=2)
         return execute_time
 
-    def double_read_time(self, cord, upperLimit=None, use_digit_reader=False):
-        self.recog.update()
-        time_in_seconds = self.read_time(cord, upperLimit, use_digit_reader)
-        if time_in_seconds is None:
-            return datetime.now()
-        execute_time = datetime.now() + timedelta(seconds=(time_in_seconds))
-        return execute_time
-
-    def read_screen(self, img, type="mood", limit=24, cord=None):
-        if cord is not None:
-            img = img[cord[1]:cord[3], cord[0]:cord[2]]
-        try:
-            ret = rapidocr.engine(img, use_det=False, use_cls=False, use_rec=True)[0]
-            logger.debug(ret)
-            if not ret or not ret[0][0]:
-                if 'name' in type:
-                    return character_recognize.agent_name(img, self.recog.h)
-                raise Exception("识别失败")
-            ret = ret[0][0]
-            if "赤金完成" in ret:
-                raise Exception("读取到赤金收取提示")
-            elif "心情" in ret:
-                raise Exception("识别区域错误")
-            if 'mood' in type:
-                if (f"/{limit}") in ret:
-                    ret = ret.replace(f"/{limit}", '')
-                if len(ret) > 0:
-                    if '.' in ret:
-                        ret = ret.replace(".", "")
-                    return int(ret)
-                else:
-                    return -1
-            elif 'time' in type:
-                if '.' in ret:
-                    ret = ret.replace(".", ":")
-                return ret.strip()
-            elif 'name' in type:
-                if ret in agent_list:
-                    return ret
-                if ret in ocr_error:
-                    name = ocr_error[ret]
-                    logger.debug(f"{ret} =====> {name}")
-                    return name
-                return character_recognize.agent_name(img, self.recog.h)
-            else:
-                return ret
-        except Exception as e:
-            logger.exception(e)
-            return limit + 1
-
-    def read_time(self, cord, upperlimit, error_count=0, use_digit_reader=False):
-        # 刷新图片
-        self.recog.update()
-        try:
-            if use_digit_reader:
-                time_str = self.digit_reader.get_time(self.recog.gray)
-            else:
-                time_str = self.read_screen(self.recog.img, type='time', cord=cord)
-            h, m, s = str(time_str).split(':')
-            if int(m) > 60 or int(s) > 60:
-                raise Exception(f"读取错误")
-            res = int(h) * 3600 + int(m) * 60 + int(s)
-            if upperlimit is not None and res > upperlimit:
-                raise Exception(f"超过读取上限")
-            else:
-                return res
-        except:
-            logger.error("读取失败")
-            if error_count > 3:
-                logger.exception(f"读取失败{error_count}次超过上限")
-                return None
-            else:
-                return self.read_time(cord, upperlimit, error_count + 1, use_digit_reader)
-
     def todo_list(self) -> None:
         """ 处理基建 Todo 列表 """
         tapped = False
@@ -1687,37 +1613,6 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                              rebuild=False)
         self.last_room = room
         logger.info(f"设置上次房间为{self.last_room}")
-
-    def read_accurate_mood(self, img, cord):
-        try:
-            img = img[cord[1]:cord[3], cord[0]:cord[2]]
-            # Convert the image to grayscale
-            gray_image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-            blurred_image = cv2.GaussianBlur(gray_image, (5, 5), 0)
-
-            # Threshold the image to isolate the progress bar region
-            contours, hierarchy = cv2.findContours(blurred_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-            # Calculate the bounding box of the progress bar
-            x, y, w, h = cv2.boundingRect(contours[0])
-
-            # Crop the progress bar region
-            progress_bar = img[y:y + h, x:x + w]
-
-            # Convert the progress bar to grayscale
-            gray_pb = cv2.cvtColor(progress_bar, cv2.COLOR_BGR2GRAY)
-
-            # Threshold the progress bar to isolate the gray fill
-            ret, thresh_pb = cv2.threshold(gray_pb, 137, 255, cv2.THRESH_BINARY)
-
-            # Calculate the ratio of colored pixels to the total number of pixels in the progress bar region
-            total_pixels = w * h
-            colored_pixels = cv2.countNonZero(thresh_pb)
-            return colored_pixels / total_pixels * 24
-
-        except Exception:
-            return 24
 
     def reset_room_time(self, room):
         for _operator in self.op_data.operators.keys():

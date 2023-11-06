@@ -9,8 +9,9 @@ from ..utils.device import Device
 from ..utils.log import logger
 from ..utils.recognize import RecognizeError, Recognizer, Scene
 from ..utils.solver import BaseSolver
+from arknights_mower.utils.digit_reader import DigitReader
 
-
+import time
 import copy
 
 from arknights_mower.solvers.base_mixin import ArrangeOrder, arrange_order_res, BaseMixin
@@ -23,6 +24,7 @@ class BaseConstructSolver(BaseSolver, BaseMixin):
 
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
         super().__init__(device, recog)
+        self.digit_reader = DigitReader()
 
     def run(self, arrange: dict[str, tp.BasePlan] = None, clue_collect: bool = False, drone_room: str = None, fia_room: str = None) -> None:
         """
@@ -908,3 +910,57 @@ class BaseConstructSolver(BaseSolver, BaseMixin):
     #         clues['own'][i] = count
 
     #     return clues
+
+    def get_agent_from_room(self, room, read_time_index=None, length=3):
+        if read_time_index is None:
+            read_time_index = []
+        error_count = 0
+        if room == 'meeting':
+            time.sleep(3)
+            self.recog.update()
+            clue_res = self.read_screen(self.recog.img, limit=10, cord=(645, 977, 755, 1018))
+            if clue_res != 11:
+                self.clue_count = clue_res
+                logger.info(f'当前拥有线索数量为{self.clue_count}')
+        while self.find('room_detail') is None:
+            if error_count > 3:
+                self.reset_room_time(room)
+                raise Exception('未成功进入房间')
+            self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
+            error_count += 1
+        if length > 3:
+            self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, self.recog.h * 0.45), duration=500,
+                                  interval=1,
+                                  rebuild=True)
+        name_p = [((1460, 160), (1800, 215)), ((1460, 365), (1800, 425)), ((1460, 576), (1800, 633)),
+                  ((1460, 555), (1800, 613)), ((1460, 765), (1800, 823))]
+        time_p = [((1650, 270, 1780, 305)), ((1650, 480, 1780, 515)), ((1650, 690, 1780, 725)),
+                  ((1650, 668, 1780, 703)), ((1650, 877, 1780, 912))]
+        mood_p = [((1470, 219, 1780, 221)), ((1470, 428, 1780, 430)), ((1470, 637, 1780, 639)),
+                  ((1470, 615, 1780, 617)), ((1470, 823, 1780, 825))]
+        result = []
+        swiped = False
+        for i in range(length):
+            if i >= 3 and not swiped:
+                self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, -self.recog.h * 0.45), duration=500,
+                           interval=1, rebuild=True)
+                swiped = True
+            _name = self.read_screen(self.recog.img[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]],
+                                     type="name")
+            error_count = 0
+            while i >= 3 and _name != '' and (
+                    next((e for e in result if e['agent'] == _name), None)) is not None:
+                logger.warning("检测到滑动可能失败")
+                self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, -self.recog.h * 0.45), duration=500,
+                           interval=1, rebuild=True)
+                _name = self.read_screen(
+                    self.recog.img[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]], type="name")
+                error_count += 1
+                if error_count > 1:
+                    raise Exception("超过出错上限")
+            if room.startswith('dorm'):
+                extra = self.double_read_time(time_p[i], upperLimit=43200)
+            else:
+                extra = self.read_accurate_mood(self.recog.img, cord=mood_p[i])
+            result.append({_name: extra})
+        return result
