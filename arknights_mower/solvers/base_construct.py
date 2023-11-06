@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from enum import Enum
-
 import numpy as np
 
 from ..data import base_room_list
@@ -11,29 +9,22 @@ from ..utils.device import Device
 from ..utils.log import logger
 from ..utils.recognize import RecognizeError, Recognizer, Scene
 from ..utils.solver import BaseSolver
+from arknights_mower.utils.digit_reader import DigitReader
+
+import time
+import copy
+
+from arknights_mower.solvers.base_mixin import ArrangeOrder, arrange_order_res, BaseMixin
 
 
-class ArrangeOrder(Enum):
-    STATUS = 1
-    SKILL = 2
-    FEELING = 3
-    TRUST = 4
-
-arrange_order_res = {
-    ArrangeOrder.STATUS: ('arrange_status', 0.1),
-    ArrangeOrder.SKILL: ('arrange_skill', 0.35),
-    ArrangeOrder.FEELING: ('arrange_feeling', 0.65),
-    ArrangeOrder.TRUST: ('arrange_trust', 0.9),
-}
-
-
-class BaseConstructSolver(BaseSolver):
+class BaseConstructSolver(BaseSolver, BaseMixin):
     """
     收集基建的产物：物资、赤金、信赖
     """
 
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
         super().__init__(device, recog)
+        self.digit_reader = DigitReader()
 
     def run(self, arrange: dict[str, tp.BasePlan] = None, clue_collect: bool = False, drone_room: str = None, fia_room: str = None) -> None:
         """
@@ -42,6 +33,7 @@ class BaseConstructSolver(BaseSolver):
         :param drone_room: str, 是否使用无人机加速
         :param fia_room: str, 是否使用菲亚梅塔恢复心情
         """
+        self.last_room = ""
         self.arrange = arrange
         self.clue_collect = clue_collect
         self.drone_room = drone_room
@@ -351,25 +343,6 @@ class BaseConstructSolver(BaseSolver):
         logger.debug(clues)
         return clues
 
-    def enter_room(self, room: str) -> tp.Rectangle:
-        """ 获取房间的位置并进入 """
-
-        # 获取基建各个房间的位置
-        base_room = segment.base(self.recog.img, self.find('control_central', strict=True))
-
-        # 将画面外的部分删去
-        room = base_room[room]
-        for i in range(4):
-            room[i, 0] = max(room[i, 0], 0)
-            room[i, 0] = min(room[i, 0], self.recog.w)
-            room[i, 1] = max(room[i, 1], 0)
-            room[i, 1] = min(room[i, 1], self.recog.h)
-
-        # 点击进入
-        self.tap(room[0], interval=3)
-        while self.find('control_central') is not None:
-            self.tap(room[0], interval=3)
-
     def drone(self, room: str):
         logger.info('基建：无人机加速')
 
@@ -404,171 +377,113 @@ class BaseConstructSolver(BaseSolver):
         self.back(interval=2, rebuild=False)
         self.back(interval=2)
 
-    def get_arrange_order(self) -> ArrangeOrder:
-        best_score, best_order = 0, None
-        for order in ArrangeOrder:
-            score = self.recog.score(arrange_order_res[order][0])
-            if score is not None and score[0] > best_score:
-                best_score, best_order = score[0], order
-        # if best_score < 0.6:
-        #     raise RecognizeError
-        logger.debug((best_score, best_order))
-        return best_order
 
-    def switch_arrange_order(self, order: ArrangeOrder) -> None:
-        self.tap_element(arrange_order_res[order][0], x_rate=arrange_order_res[order][1], judge=False)
+    def get_order(self, name):
+        return False, [2, "false"]
 
-    def arrange_order(self, order: ArrangeOrder) -> None:
-        if self.get_arrange_order() != order:
-            self.switch_arrange_order(order)
 
-    def choose_agent(self, agent: list[str], skip_free: int = 0, order: ArrangeOrder = None) -> None:
+    def choose_agent(self, agents: list[str], room: str) -> None:
         """
         :param order: ArrangeOrder, 选择干员时右上角的排序功能
         """
-        logger.info(f'安排干员：{agent}')
-        logger.debug(f'skip_free: {skip_free}')
+        first_name = ''
+        max_swipe = 50
+        position = [(0.35, 0.35), (0.35, 0.75), (0.45, 0.35), (0.45, 0.75), (0.55, 0.35)]
+        for idx, n in enumerate(agents):
+            if n == '':
+                agents[idx] = 'Free'
+        agent = copy.deepcopy(agents)
+        exists = []
+        logger.info(f'安排干员 ：{agent}')
+        # 若不是空房间，则清空工作中的干员
+        is_dorm = room.startswith("dorm")
         h, w = self.recog.h, self.recog.w
         first_time = True
-
         # 在 agent 中 'Free' 表示任意空闲干员
         free_num = agent.count('Free')
-        agent = set(agent) - set(['Free'])
+        for i in range(agent.count("Free")):
+            agent.remove("Free")
+        index_change = False
+        pre_order = [2, False]
+        right_swipe = 0
+        retry_count = 0
+        # 如果重复进入宿舍则需要排序
+        selected = []
+        logger.info(f'上次进入房间为：{self.last_room},本次房间为：{room}')
+        if self.last_room.startswith('dorm') and is_dorm:
+            self.detail_filter(False)
+        while len(agent) > 0:
+            if retry_count > 1: raise Exception(f"到达最大尝试次数 1次")
+            if right_swipe > max_swipe:
+                # 到底了则返回再来一次
+                for _ in range(right_swipe):
+                    self.swipe_only((w // 2, h // 2), (w // 2, 0), interval=0.5)
+                right_swipe = 0
+                max_swipe = 50
+                retry_count += 1
+                self.detail_filter(False)
+            if first_time:
+                # 清空
+                if is_dorm:
+                    self.switch_arrange_order(3, "true")
+                    pre_order = [3, 'true']
+                self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
+                changed, ret = self.scan_agent(agent)
+                if changed:
+                    selected.extend(changed)
+                    if len(agent) == 0: break
+                    index_change = True
 
-        # 安排指定干员
-        if len(agent):
-
-            if not first_time:
-                # 滑动到最左边
-                self.sleep(interval=0.5, rebuild=False)
-                for _ in range(9):
-                    self.swipe_only((w//2, h//2), (w//2, 0), interval=0.5)
-                self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
-            else:
-                # 第一次进入按技能排序
-                if order is not None:
-                    self.arrange_order(order)
+            # 如果选中了人，则可能需要重新排序
+            if index_change or first_time:
+                # 第一次则调整
+                is_custom, arrange_type = self.get_order(agent[0])
+                arrange_type = (3, 'true')
+                # 如果重新排序则滑到最左边
+                if pre_order[0] != arrange_type[0] or pre_order[1] != arrange_type[1]:
+                    self.switch_arrange_order(arrange_type[0], arrange_type[1])
+                    # 滑倒最左边
+                    self.sleep(interval=0.5, rebuild=True)
+                    right_swipe = self.swipe_left(right_swipe, w, h)
+                    pre_order = arrange_type
             first_time = False
 
-            checked = set()  # 已经识别过的干员
-            pre = set()  # 上次识别出的干员
-            error_count = 0
-
-            while len(agent):
-                try:
-                    # 识别干员
-                    ret = character_recognize.agent(self.recog.img)  # 返回的顺序是从左往右从上往下
-                except RecognizeError as e:
-                    error_count += 1
-                    if error_count < 3:
-                        logger.debug(e)
-                        self.sleep(3)
-                    else:
-                        raise e
-                    continue
-
-                # 提取识别出来的干员的名字
-                agent_name = set([x[0] for x in ret])
-                if agent_name == pre:
-                    error_count += 1
-                    if error_count >= 3:
-                        logger.warning(f'未找到干员：{list(agent)}')
-                        break
+            changed, ret = self.scan_agent(agent)
+            if changed:
+                selected.extend(changed)
+                # 如果找到了
+                index_change = True
+            else:
+                # 如果没找到 而且右移次数大于5
+                if ret[0][0] == first_name and right_swipe > 5:
+                    max_swipe = right_swipe
                 else:
-                    pre = agent_name
-
-                # 更新已经识别过的干员
-                checked |= agent_name
-
-                # 如果出现了需要的干员则选择
-                # 优先安排菲亚梅塔
-                if '菲亚梅塔' in agent:
-                    if '菲亚梅塔' in agent_name:
-                        for y in ret:
-                            if y[0] == '菲亚梅塔':
-                                self.tap((y[1][0]), interval=0, rebuild=False)
-                                break
-                        agent.remove('菲亚梅塔')
-
-                        # 如果菲亚梅塔是 the only one
-                        if len(agent) == 0:
-                            break
-                        # 否则滑动到最左边
-                        self.sleep(interval=0.5, rebuild=False)
-                        for _ in range(9):
-                            self.swipe_only((w//2, h//2), (w//2, 0), interval=0.5)
-                        self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
-
-                        # reset the statuses and cancel the rightward-swiping
-                        checked = set()
-                        pre = set()
-                        error_count = 0
-                        continue
-
-                else:
-                    for y in ret:
-                        name = y[0]
-                        if name in agent_name & agent:
-                            self.tap((y[1][0]), interval=0, rebuild=False)
-                            agent.remove(name)
-                    # for name in agent_name & agent:
-                    #     for y in ret:
-                    #         if y[0] == name:
-                    #             self.tap((y[1][0]), interval=0, rebuild=False)
-                    #             break
-                    #     agent.remove(name)
-
-                    # 如果已经完成选择则退出
-                    if len(agent) == 0:
-                        break
-
+                    first_name = ret[0][0]
+                index_change = False
                 st = ret[-2][1][2]  # 起点
-                ed = ret[0][1][1]   # 终点
-                self.swipe_noinertia(st, (ed[0]-st[0], 0))
+                ed = ret[0][1][1]  # 终点
+                self.swipe_noinertia(st, (ed[0] - st[0], 0))
+                right_swipe += 1
+            if len(agent) == 0: break;
+        # 排序
+        if len(agents) != 1:
+            # 左移
+            self.swipe_left(right_swipe, w, h)
+            self.tap((self.recog.w * arrange_order_res[ArrangeOrder.SKILL][0],
+                        self.recog.h * arrange_order_res[ArrangeOrder.SKILL][1]), interval=0.5, rebuild=False)
+            not_match = False
+            exists.extend(selected)
+            for idx, item in enumerate(agents):
+                if agents[idx] != exists[idx] or not_match:
+                    not_match = True
+                    p_idx = exists.index(agents[idx])
+                    self.tap((self.recog.w * position[p_idx][0], self.recog.h * position[p_idx][1]), interval=0,
+                                rebuild=False)
+                    self.tap((self.recog.w * position[p_idx][0], self.recog.h * position[p_idx][1]), interval=0,
+                                rebuild=False)
+        self.last_room = room
+        logger.info(f"设置上次房间为{self.last_room}")
 
-        # 安排空闲干员
-        if free_num:
-
-            if not first_time:
-                # 滑动到最左边
-                self.sleep(interval=0.5, rebuild=False)
-                for _ in range(9):
-                    self.swipe_only((w//2, h//2), (w//2, 0), interval=0.5)
-                self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
-            else:
-                # 第一次进入按技能排序
-                if order is not None:
-                    self.arrange_order(order)
-            first_time = False
-
-            error_count = 0
-
-            while free_num:
-                try:
-                    # 识别空闲干员
-                    ret, st, ed = segment.free_agent(self.recog.img)  # 返回的顺序是从左往右从上往下
-                except RecognizeError as e:
-                    error_count += 1
-                    if error_count < 3:
-                        logger.debug(e)
-                        self.sleep(3)
-                    else:
-                        raise e
-                    continue
-
-                while free_num and len(ret):
-                    if skip_free > 0:
-                        skip_free -= 1
-                    else:
-                        self.tap(ret[0], interval=0, rebuild=False)
-                        free_num -= 1
-                    ret = ret[1:]
-
-                # 如果已经完成选择则退出
-                if free_num == 0:
-                    break
-
-                self.swipe_noinertia(st, (ed[0]-st[0], 0))
 
     def agent_arrange(self, plan: tp.BasePlan) -> None:
         """ 基建排班 """
@@ -621,7 +536,7 @@ class BaseConstructSolver(BaseSolver):
                             else:
                                 default_order = ArrangeOrder.SKILL
                             self.choose_agent(
-                                plan[base_room_list[idx]], skip_free, default_order)
+                                plan[base_room_list[idx]], base_room_list[idx])
                         except RecognizeError as e:
                             error_count += 1
                             if error_count >= 3:
@@ -995,3 +910,56 @@ class BaseConstructSolver(BaseSolver):
     #         clues['own'][i] = count
 
     #     return clues
+
+    def get_agent_from_room(self, room, read_time_index=None, length=3):
+        if read_time_index is None:
+            read_time_index = []
+        error_count = 0
+        if room == 'meeting':
+            time.sleep(3)
+            self.recog.update()
+            clue_res = self.read_screen(self.recog.img, limit=10, cord=(645, 977, 755, 1018))
+            if clue_res != 11:
+                self.clue_count = clue_res
+                logger.info(f'当前拥有线索数量为{self.clue_count}')
+        while self.find('room_detail') is None:
+            if error_count > 3:
+                self.reset_room_time(room)
+                raise Exception('未成功进入房间')
+            self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
+            error_count += 1
+        if length > 3:
+            self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, self.recog.h * 0.45), duration=500,
+                                  interval=1,
+                                  rebuild=True)
+        name_p = [((1460, 160), (1800, 215)), ((1460, 365), (1800, 425)), ((1460, 576), (1800, 633)),
+                  ((1460, 555), (1800, 613)), ((1460, 765), (1800, 823))]
+        time_p = [((1650, 270, 1780, 305)), ((1650, 480, 1780, 515)), ((1650, 690, 1780, 725)),
+                  ((1650, 668, 1780, 703)), ((1650, 877, 1780, 912))]
+        mood_p = [((1470, 219, 1780, 221)), ((1470, 428, 1780, 430)), ((1470, 637, 1780, 639)),
+                  ((1470, 615, 1780, 617)), ((1470, 823, 1780, 825))]
+        result = []
+        swiped = False
+        for i in range(length):
+            if i >= 3 and not swiped:
+                self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, -self.recog.h * 0.45), duration=500,
+                           interval=1, rebuild=True)
+                swiped = True
+            _name = self.read_screen(self.recog.img[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]],
+                                     type="name")
+            error_count = 0
+            while i >= 3 and _name in result:
+                logger.warning("检测到滑动可能失败")
+                self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, -self.recog.h * 0.45), duration=500,
+                           interval=1, rebuild=True)
+                _name = self.read_screen(
+                    self.recog.img[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]], type="name")
+                error_count += 1
+                if error_count > 1:
+                    raise Exception("超过出错上限")
+            if room.startswith('dorm'):
+                extra = self.read_time(time_p[i], upperlimit=43200, error_count=4)
+            else:
+                extra = self.read_accurate_mood(self.recog.img, cord=mood_p[i])
+            result.append((_name, extra))
+        return result

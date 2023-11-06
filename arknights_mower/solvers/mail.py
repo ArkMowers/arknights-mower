@@ -16,7 +16,7 @@ class MailSolver(BaseSolver):
         # if it touched
         self.touched = False
 
-        logger.info('Start: 邮件')
+        logger.info('Start: 领取邮件')
         super().run()
 
     def transition(self) -> bool:
