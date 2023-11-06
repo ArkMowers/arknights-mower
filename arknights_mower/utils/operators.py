@@ -35,6 +35,7 @@ class Operators(object):
         self.run_order_rooms = {}
         self.clues = []
         self.current_room_changed_callback = None
+        self.party_time = None
 
     def __repr__(self):
         return f'Operators(operators={self.operators})'
