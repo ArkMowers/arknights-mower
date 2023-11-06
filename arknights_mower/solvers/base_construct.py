@@ -961,5 +961,5 @@ class BaseConstructSolver(BaseSolver, BaseMixin):
                 extra = self.read_time(time_p[i], upperlimit=43200, error_count=4)
             else:
                 extra = self.read_accurate_mood(self.recog.img, cord=mood_p[i])
-            result.append({_name: extra})
+            result.append((_name, extra))
         return result
