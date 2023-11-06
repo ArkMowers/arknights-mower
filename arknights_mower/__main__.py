@@ -339,7 +339,7 @@ def simulate():
 
                 if sleep_time > 540:
                     if base_scheduler.daily_mission is False:
-                        # base_scheduler.daily_mission = base_scheduler.read_report()
+                        base_scheduler.daily_mission = True
                         base_scheduler.mail_plan_solver()
                     if base_scheduler.skland_config["skland_enable"] == 1:
                         base_scheduler.skland_plan_solover()
