@@ -9,3 +9,4 @@ sort: 1
     - [MAA](./3.externalCall.html#maa)
 - [排班表验证指南](./4.planValidation.html)
 - [内置设定](./5.buildinSettings.html)
+- [自定义条件切班](./6.customConditionPlan.html)
