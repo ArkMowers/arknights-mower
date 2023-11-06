@@ -6,7 +6,6 @@ import os
 import sys
 import pathlib
 import urllib.request
-from enum import Enum
 from datetime import datetime, timedelta
 import numpy as np
 import smtplib
@@ -43,26 +42,13 @@ import json
 
 from arknights_mower.utils.email import maa_template
 
-
-class ArrangeOrder(Enum):
-    STATUS = 1
-    SKILL = 2
-    FEELING = 3
-    TRUST = 4
-
-
-arrange_order_res = {
-    ArrangeOrder.STATUS: (1560 / 2496, 96 / 1404),
-    ArrangeOrder.SKILL: (1720 / 2496, 96 / 1404),
-    ArrangeOrder.FEELING: (1880 / 2496, 96 / 1404),
-    ArrangeOrder.TRUST: (2050 / 2496, 96 / 1404),
-}
+from arknights_mower.solvers.base_mixin import ArrangeOrder, arrange_order_res, BaseMixin
 
 stage_drop = {}
 
 
 
-class BaseSchedulerSolver(BaseSolver):
+class BaseSchedulerSolver(BaseSolver, BaseMixin):
     """
     收集基建的产物：物资、赤金、信赖
     """
@@ -1565,67 +1551,11 @@ class BaseSchedulerSolver(BaseSolver):
         logger.debug((best_score, best_order))
         return best_order
 
-    def switch_arrange_order(self, index: int, asc="false") -> None:
-        self.tap((self.recog.w * arrange_order_res[ArrangeOrder(index)][0],
-                  self.recog.h * arrange_order_res[ArrangeOrder(index)][1]), interval=0, rebuild=False)
-        # 点个不需要的
-        if index < 4:
-            self.tap((self.recog.w * arrange_order_res[ArrangeOrder(index + 1)][0],
-                      self.recog.h * arrange_order_res[ArrangeOrder(index)][1]), interval=0, rebuild=False)
-        else:
-            self.tap((self.recog.w * arrange_order_res[ArrangeOrder(index - 1)][0],
-                      self.recog.h * arrange_order_res[ArrangeOrder(index)][1]), interval=0, rebuild=False)
-        # 切回来
-        self.tap((self.recog.w * arrange_order_res[ArrangeOrder(index)][0],
-                  self.recog.h * arrange_order_res[ArrangeOrder(index)][1]), interval=0.2, rebuild=True)
-        # 倒序
-        if asc != "false":
-            self.tap((self.recog.w * arrange_order_res[ArrangeOrder(index)][0],
-                      self.recog.h * arrange_order_res[ArrangeOrder(index)][1]), interval=0.2, rebuild=True)
-
-    def scan_agent(self, agent: list[str], error_count=0, max_agent_count=-1):
-        try:
-            # 识别干员
-            self.recog.update()
-            ret = character_recognize.agent(self.recog.img)  # 返回的顺序是从左往右从上往下
-            # 提取识别出来的干员的名字
-            select_name = []
-            for y in ret:
-                name = y[0]
-                if name in agent:
-                    select_name.append(name)
-                    # self.get_agent_detail((y[1][0]))
-                    self.tap((y[1][0]), interval=0)
-                    agent.remove(name)
-                    # 如果是按照个数选择 Free
-                    if max_agent_count != -1:
-                        if len(select_name) >= max_agent_count:
-                            return select_name, ret
-            return select_name, ret
-        except Exception as e:
-            error_count += 1
-            if error_count < 3:
-                logger.exception(e)
-                self.sleep(3)
-                return self.scan_agent(agent, error_count, max_agent_count)
-            else:
-                raise e
-
     def get_order(self, name):
         if name in self.op_data.operators:
             return True, self.op_data.operators[name].arrange_order
         else:
             return False, [2, "false"]
-
-    def detail_filter(self, turn_on, type="not_in_dorm"):
-        logger.info(f'开始 {("打开" if turn_on else "关闭")} {type} 筛选')
-        self.tap((self.recog.w * 0.95, self.recog.h * 0.05), interval=1)
-        if type == "not_in_dorm":
-            not_in_dorm = self.find('arrange_non_check_in', score=0.9)
-            if turn_on ^ (not_in_dorm is None):
-                self.tap((self.recog.w * 0.3, self.recog.h * 0.5), interval=0.5)
-        # 确认
-        self.tap((self.recog.w * 0.8, self.recog.h * 0.8), interval=0.5)
 
     def choose_agent(self, agents: list[str], room: str, fast_mode=True) -> None:
         """
@@ -1786,11 +1716,6 @@ class BaseSchedulerSolver(BaseSolver):
                              rebuild=False)
         self.last_room = room
         logger.info(f"设置上次房间为{self.last_room}")
-
-    def swipe_left(self, right_swipe, w, h):
-        for _ in range(right_swipe):
-            self.swipe_only((w // 2, h // 2), (w // 2, 0), interval=0.5)
-        return 0
 
     def read_accurate_mood(self, img, cord):
         try:
