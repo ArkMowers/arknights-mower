@@ -13,6 +13,9 @@ from ..utils.recognize import RecognizeError, Recognizer, Scene
 from ..utils.solver import BaseSolver
 
 
+import copy
+
+
 class ArrangeOrder(Enum):
     STATUS = 1
     SKILL = 2
@@ -20,10 +23,10 @@ class ArrangeOrder(Enum):
     TRUST = 4
 
 arrange_order_res = {
-    ArrangeOrder.STATUS: ('arrange_status', 0.1),
-    ArrangeOrder.SKILL: ('arrange_skill', 0.35),
-    ArrangeOrder.FEELING: ('arrange_feeling', 0.65),
-    ArrangeOrder.TRUST: ('arrange_trust', 0.9),
+    ArrangeOrder.STATUS: (1560 / 2496, 96 / 1404),
+    ArrangeOrder.SKILL: (1720 / 2496, 96 / 1404),
+    ArrangeOrder.FEELING: (1880 / 2496, 96 / 1404),
+    ArrangeOrder.TRUST: (2050 / 2496, 96 / 1404),
 }
 
 
@@ -404,171 +407,178 @@ class BaseConstructSolver(BaseSolver):
         self.back(interval=2, rebuild=False)
         self.back(interval=2)
 
-    def get_arrange_order(self) -> ArrangeOrder:
-        best_score, best_order = 0, None
-        for order in ArrangeOrder:
-            score = self.recog.score(arrange_order_res[order][0])
-            if score is not None and score[0] > best_score:
-                best_score, best_order = score[0], order
-        # if best_score < 0.6:
-        #     raise RecognizeError
-        logger.debug((best_score, best_order))
-        return best_order
 
-    def switch_arrange_order(self, order: ArrangeOrder) -> None:
-        self.tap_element(arrange_order_res[order][0], x_rate=arrange_order_res[order][1], judge=False)
+    def switch_arrange_order(self, index: int, asc="false") -> None:
+        self.tap((self.recog.w * arrange_order_res[ArrangeOrder(index)][0],
+                    self.recog.h * arrange_order_res[ArrangeOrder(index)][1]), interval=0, rebuild=False)
+        # 点个不需要的
+        if index < 4:
+            self.tap((self.recog.w * arrange_order_res[ArrangeOrder(index + 1)][0],
+                        self.recog.h * arrange_order_res[ArrangeOrder(index)][1]), interval=0, rebuild=False)
+        else:
+            self.tap((self.recog.w * arrange_order_res[ArrangeOrder(index - 1)][0],
+                        self.recog.h * arrange_order_res[ArrangeOrder(index)][1]), interval=0, rebuild=False)
+        # 切回来
+        self.tap((self.recog.w * arrange_order_res[ArrangeOrder(index)][0],
+                    self.recog.h * arrange_order_res[ArrangeOrder(index)][1]), interval=0.2, rebuild=True)
+        # 倒序
+        if asc != "false":
+            self.tap((self.recog.w * arrange_order_res[ArrangeOrder(index)][0],
+                        self.recog.h * arrange_order_res[ArrangeOrder(index)][1]), interval=0.2, rebuild=True)
 
-    def arrange_order(self, order: ArrangeOrder) -> None:
-        if self.get_arrange_order() != order:
-            self.switch_arrange_order(order)
 
-    def choose_agent(self, agent: list[str], skip_free: int = 0, order: ArrangeOrder = None) -> None:
+    def scan_agent(self, agent: list[str], error_count=0, max_agent_count=-1):
+        try:
+            # 识别干员
+            self.recog.update()
+            ret = character_recognize.agent(self.recog.img)  # 返回的顺序是从左往右从上往下
+            # 提取识别出来的干员的名字
+            select_name = []
+            for y in ret:
+                name = y[0]
+                if name in agent:
+                    select_name.append(name)
+                    # self.get_agent_detail((y[1][0]))
+                    self.tap((y[1][0]), interval=0)
+                    agent.remove(name)
+                    # 如果是按照个数选择 Free
+                    if max_agent_count != -1:
+                        if len(select_name) >= max_agent_count:
+                            return select_name, ret
+            return select_name, ret
+        except Exception as e:
+            error_count += 1
+            if error_count < 3:
+                logger.exception(e)
+                self.sleep(3)
+                return self.scan_agent(agent, error_count, max_agent_count)
+            else:
+                raise e
+
+
+    def swipe_left(self, right_swipe, w, h):
+        for _ in range(right_swipe):
+            self.swipe_only((w // 2, h // 2), (w // 2, 0), interval=0.5)
+        return 0
+
+
+    def get_order(self, name):
+        return False, [2, "false"]
+
+
+    def detail_filter(self, turn_on, type="not_in_dorm"):
+        logger.info(f'开始 {("打开" if turn_on else "关闭")} {type} 筛选')
+        self.tap((self.recog.w * 0.95, self.recog.h * 0.05), interval=1)
+        if type == "not_in_dorm":
+            not_in_dorm = self.find('arrange_non_check_in', score=0.9)
+            if turn_on ^ (not_in_dorm is None):
+                self.tap((self.recog.w * 0.3, self.recog.h * 0.5), interval=0.5)
+        # 确认
+        self.tap((self.recog.w * 0.8, self.recog.h * 0.8), interval=0.5)
+
+
+    def choose_agent(self, agents: list[str], room: str) -> None:
         """
         :param order: ArrangeOrder, 选择干员时右上角的排序功能
         """
-        logger.info(f'安排干员：{agent}')
-        logger.debug(f'skip_free: {skip_free}')
+        first_name = ''
+        max_swipe = 50
+        position = [(0.35, 0.35), (0.35, 0.75), (0.45, 0.35), (0.45, 0.75), (0.55, 0.35)]
+        for idx, n in enumerate(agents):
+            if n == '':
+                agents[idx] = 'Free'
+        agent = copy.deepcopy(agents)
+        exists = []
+        logger.info(f'安排干员 ：{agent}')
+        # 若不是空房间，则清空工作中的干员
+        is_dorm = room.startswith("dorm")
         h, w = self.recog.h, self.recog.w
         first_time = True
-
         # 在 agent 中 'Free' 表示任意空闲干员
         free_num = agent.count('Free')
-        agent = set(agent) - set(['Free'])
+        for i in range(agent.count("Free")):
+            agent.remove("Free")
+        index_change = False
+        pre_order = [2, False]
+        right_swipe = 0
+        retry_count = 0
+        # 如果重复进入宿舍则需要排序
+        selected = []
+        logger.info(f'上次进入房间为：{self.last_room},本次房间为：{room}')
+        if self.last_room.startswith('dorm') and is_dorm:
+            self.detail_filter(False)
+        while len(agent) > 0:
+            if retry_count > 1: raise Exception(f"到达最大尝试次数 1次")
+            if right_swipe > max_swipe:
+                # 到底了则返回再来一次
+                for _ in range(right_swipe):
+                    self.swipe_only((w // 2, h // 2), (w // 2, 0), interval=0.5)
+                right_swipe = 0
+                max_swipe = 50
+                retry_count += 1
+                self.detail_filter(False)
+            if first_time:
+                # 清空
+                if is_dorm:
+                    self.switch_arrange_order(3, "true")
+                    pre_order = [3, 'true']
+                self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
+                changed, ret = self.scan_agent(agent)
+                if changed:
+                    selected.extend(changed)
+                    if len(agent) == 0: break
+                    index_change = True
 
-        # 安排指定干员
-        if len(agent):
-
-            if not first_time:
-                # 滑动到最左边
-                self.sleep(interval=0.5, rebuild=False)
-                for _ in range(9):
-                    self.swipe_only((w//2, h//2), (w//2, 0), interval=0.5)
-                self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
-            else:
-                # 第一次进入按技能排序
-                if order is not None:
-                    self.arrange_order(order)
+            # 如果选中了人，则可能需要重新排序
+            if index_change or first_time:
+                # 第一次则调整
+                is_custom, arrange_type = self.get_order(agent[0])
+                arrange_type = (3, 'true')
+                # 如果重新排序则滑到最左边
+                if pre_order[0] != arrange_type[0] or pre_order[1] != arrange_type[1]:
+                    self.switch_arrange_order(arrange_type[0], arrange_type[1])
+                    # 滑倒最左边
+                    self.sleep(interval=0.5, rebuild=True)
+                    right_swipe = self.swipe_left(right_swipe, w, h)
+                    pre_order = arrange_type
             first_time = False
 
-            checked = set()  # 已经识别过的干员
-            pre = set()  # 上次识别出的干员
-            error_count = 0
-
-            while len(agent):
-                try:
-                    # 识别干员
-                    ret = character_recognize.agent(self.recog.img)  # 返回的顺序是从左往右从上往下
-                except RecognizeError as e:
-                    error_count += 1
-                    if error_count < 3:
-                        logger.debug(e)
-                        self.sleep(3)
-                    else:
-                        raise e
-                    continue
-
-                # 提取识别出来的干员的名字
-                agent_name = set([x[0] for x in ret])
-                if agent_name == pre:
-                    error_count += 1
-                    if error_count >= 3:
-                        logger.warning(f'未找到干员：{list(agent)}')
-                        break
+            changed, ret = self.scan_agent(agent)
+            if changed:
+                selected.extend(changed)
+                # 如果找到了
+                index_change = True
+            else:
+                # 如果没找到 而且右移次数大于5
+                if ret[0][0] == first_name and right_swipe > 5:
+                    max_swipe = right_swipe
                 else:
-                    pre = agent_name
-
-                # 更新已经识别过的干员
-                checked |= agent_name
-
-                # 如果出现了需要的干员则选择
-                # 优先安排菲亚梅塔
-                if '菲亚梅塔' in agent:
-                    if '菲亚梅塔' in agent_name:
-                        for y in ret:
-                            if y[0] == '菲亚梅塔':
-                                self.tap((y[1][0]), interval=0, rebuild=False)
-                                break
-                        agent.remove('菲亚梅塔')
-
-                        # 如果菲亚梅塔是 the only one
-                        if len(agent) == 0:
-                            break
-                        # 否则滑动到最左边
-                        self.sleep(interval=0.5, rebuild=False)
-                        for _ in range(9):
-                            self.swipe_only((w//2, h//2), (w//2, 0), interval=0.5)
-                        self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
-
-                        # reset the statuses and cancel the rightward-swiping
-                        checked = set()
-                        pre = set()
-                        error_count = 0
-                        continue
-
-                else:
-                    for y in ret:
-                        name = y[0]
-                        if name in agent_name & agent:
-                            self.tap((y[1][0]), interval=0, rebuild=False)
-                            agent.remove(name)
-                    # for name in agent_name & agent:
-                    #     for y in ret:
-                    #         if y[0] == name:
-                    #             self.tap((y[1][0]), interval=0, rebuild=False)
-                    #             break
-                    #     agent.remove(name)
-
-                    # 如果已经完成选择则退出
-                    if len(agent) == 0:
-                        break
-
+                    first_name = ret[0][0]
+                index_change = False
                 st = ret[-2][1][2]  # 起点
-                ed = ret[0][1][1]   # 终点
-                self.swipe_noinertia(st, (ed[0]-st[0], 0))
+                ed = ret[0][1][1]  # 终点
+                self.swipe_noinertia(st, (ed[0] - st[0], 0))
+                right_swipe += 1
+            if len(agent) == 0: break;
+        # 排序
+        if len(agents) != 1:
+            # 左移
+            self.swipe_left(right_swipe, w, h)
+            self.tap((self.recog.w * arrange_order_res[ArrangeOrder.SKILL][0],
+                        self.recog.h * arrange_order_res[ArrangeOrder.SKILL][1]), interval=0.5, rebuild=False)
+            not_match = False
+            exists.extend(selected)
+            for idx, item in enumerate(agents):
+                if agents[idx] != exists[idx] or not_match:
+                    not_match = True
+                    p_idx = exists.index(agents[idx])
+                    self.tap((self.recog.w * position[p_idx][0], self.recog.h * position[p_idx][1]), interval=0,
+                                rebuild=False)
+                    self.tap((self.recog.w * position[p_idx][0], self.recog.h * position[p_idx][1]), interval=0,
+                                rebuild=False)
+        self.last_room = room
+        logger.info(f"设置上次房间为{self.last_room}")
 
-        # 安排空闲干员
-        if free_num:
-
-            if not first_time:
-                # 滑动到最左边
-                self.sleep(interval=0.5, rebuild=False)
-                for _ in range(9):
-                    self.swipe_only((w//2, h//2), (w//2, 0), interval=0.5)
-                self.swipe((w//2, h//2), (w//2, 0), interval=3, rebuild=False)
-            else:
-                # 第一次进入按技能排序
-                if order is not None:
-                    self.arrange_order(order)
-            first_time = False
-
-            error_count = 0
-
-            while free_num:
-                try:
-                    # 识别空闲干员
-                    ret, st, ed = segment.free_agent(self.recog.img)  # 返回的顺序是从左往右从上往下
-                except RecognizeError as e:
-                    error_count += 1
-                    if error_count < 3:
-                        logger.debug(e)
-                        self.sleep(3)
-                    else:
-                        raise e
-                    continue
-
-                while free_num and len(ret):
-                    if skip_free > 0:
-                        skip_free -= 1
-                    else:
-                        self.tap(ret[0], interval=0, rebuild=False)
-                        free_num -= 1
-                    ret = ret[1:]
-
-                # 如果已经完成选择则退出
-                if free_num == 0:
-                    break
-
-                self.swipe_noinertia(st, (ed[0]-st[0], 0))
 
     def agent_arrange(self, plan: tp.BasePlan) -> None:
         """ 基建排班 """
@@ -621,7 +631,7 @@ class BaseConstructSolver(BaseSolver):
                             else:
                                 default_order = ArrangeOrder.SKILL
                             self.choose_agent(
-                                plan[base_room_list[idx]], skip_free, default_order)
+                                plan[base_room_list[idx]], base_room_list[idx])
                         except RecognizeError as e:
                             error_count += 1
                             if error_count >= 3:
