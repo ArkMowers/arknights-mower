@@ -948,8 +948,7 @@ class BaseConstructSolver(BaseSolver, BaseMixin):
             _name = self.read_screen(self.recog.img[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]],
                                      type="name")
             error_count = 0
-            while i >= 3 and _name != '' and (
-                    next((e for e in result if e['agent'] == _name), None)) is not None:
+            while i >= 3 and _name in result:
                 logger.warning("检测到滑动可能失败")
                 self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, -self.recog.h * 0.45), duration=500,
                            interval=1, rebuild=True)
@@ -959,7 +958,7 @@ class BaseConstructSolver(BaseSolver, BaseMixin):
                 if error_count > 1:
                     raise Exception("超过出错上限")
             if room.startswith('dorm'):
-                extra = self.double_read_time(time_p[i], upperLimit=43200)
+                extra = self.read_time(time_p[i], upperlimit=43200, error_count=4)
             else:
                 extra = self.read_accurate_mood(self.recog.img, cord=mood_p[i])
             result.append({_name: extra})
