@@ -71,17 +71,26 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         self.maa_config = {}
         self.free_clue = None
         self.credit_fight = None
-        self.maa_depot_enable = False
+        self.task_count = 0
         self.exit_game_when_idle = False
         self.simulator = None
         self.close_simulator_when_idle = False
         self.refresh_connecting = False
         self.recruit_config = {}
         self.skland_config = {}
-      
         self.recruit_time = None
-
         self.daily_mission = False
+
+    @property
+    def party_time(self):
+        return self._party_time
+
+    @party_time.setter
+    def party_time(self, value):
+        self._party_time = value
+        if self.op_data is not None:
+            self.op_data.party_time = value
+
     def run(self) -> None:
         """
         :param clue_collect: bool, 是否收取线索
