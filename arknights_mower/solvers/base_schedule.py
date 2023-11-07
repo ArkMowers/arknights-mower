@@ -13,12 +13,11 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 from .skland import SKLand
-from ..command import recruit, daily_report, mail
+from ..command import recruit, mail
 from ..data import agent_list, base_room_list, ocr_error
 from ..utils import character_recognize, detector, segment
 from ..utils.digit_reader import DigitReader
 from ..utils.operators import Operators, Operator, Dormitory
-from ..utils.recruit import filter_result
 from ..utils.scheduler_task import SchedulerTask, scheduling, find_next_task, TaskTypes
 from ..utils import typealias as tp
 from ..utils.device import Device
@@ -2266,9 +2265,6 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 or self.recruit_config['last_execution'] <= (datetime.now() - timedelta(hours=9))):
             recruit([], self.send_message_config, self.recruit_config)
             self.recruit_config['last_execution'] = datetime.now()
-
-    def read_report(self):
-        return daily_report()
 
     def mail_plan_solver(self):
         mail([])
