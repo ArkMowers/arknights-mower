@@ -125,8 +125,6 @@ class Recognizer(object):
             self.scene = Scene.FRIEND_LIST_ON
         elif self.find('credit_visiting') is not None:
             self.scene = Scene.FRIEND_VISITING
-        elif self.find('riic_report_title') is not None:
-            self.scene = Scene.RIIC_REPORT
         elif self.find('control_central_assistants') is not None:
             self.scene = Scene.CTRLCENTER_ASSISTANT
         elif self.find('infra_overview') is not None:
