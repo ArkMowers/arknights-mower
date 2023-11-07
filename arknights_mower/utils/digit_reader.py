@@ -85,7 +85,7 @@ class DigitReader:
                 self.drone_template[j],
                 cv.TM_CCORR_NORMED,
             )
-            threshold = 0.92
+            threshold = 0.9
             loc = np.where(res >= threshold)
             for i in range(len(loc[0])):
                 offset = loc[1][i]
@@ -97,4 +97,8 @@ class DigitReader:
                 if accept:
                     result[loc[1][i]] = j
         l = [str(result[k]) for k in sorted(result)]
-        return f"{l[0]}{l[1]}{l[2]}:{l[3]}{l[4]}:{l[5]}{l[6]}"
+        print(l)
+        if len(l) == 6:
+            return (int(f"{l[0]}{l[1]}"), int(f"{l[2]}{l[3]}"), int(f"{l[4]}{l[5]}"))
+        else:
+            return (int(f"{l[0]}{l[1]}{l[2]}"), int(f"{l[3]}{l[4]}"), int(f"{l[5]}{l[6]}"))
