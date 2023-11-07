@@ -85,7 +85,7 @@ class DigitReader:
                 self.drone_template[j],
                 cv.TM_CCORR_NORMED,
             )
-            threshold = 0.9
+            threshold = 0.8
             loc = np.where(res >= threshold)
             for i in range(len(loc[0])):
                 offset = loc[1][i]
