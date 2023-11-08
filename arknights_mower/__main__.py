@@ -343,7 +343,7 @@ def simulate():
                     # 刷新时间以鹰历为准
                     if base_scheduler.daily_mission != (datetime.now() - timedelta(hours=4)).date():
                         base_scheduler.daily_mission = (datetime.now() - timedelta(hours=4)).date()
-                        #base_scheduler.mail_plan_solver()
+                        base_scheduler.mail_plan_solver()
                         daily_report()
                     if base_scheduler.skland_config["skland_enable"] == 1:
                         base_scheduler.skland_plan_solover()
