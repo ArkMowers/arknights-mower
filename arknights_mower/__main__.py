@@ -1,7 +1,7 @@
 import atexit
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from arknights_mower.utils.log import logger
 import json
 
@@ -338,8 +338,9 @@ def simulate():
                 set_skland_options(base_scheduler, new_conf)
 
                 if sleep_time > 540:
-                    if base_scheduler.daily_mission is False:
-                        base_scheduler.daily_mission = True
+                    # 刷新时间以鹰历为准
+                    if base_scheduler.daily_mission != (datetime.now() - timedelta(hours=4)).date():
+                        base_scheduler.daily_mission = (datetime.now() - timedelta(hours=4)).date()
                         base_scheduler.mail_plan_solver()
                     if base_scheduler.skland_config["skland_enable"] == 1:
                         base_scheduler.skland_plan_solover()
