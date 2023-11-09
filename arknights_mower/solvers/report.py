@@ -19,8 +19,8 @@ from ..utils.solver import BaseSolver
 class ReportSolver(BaseSolver):
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
         super().__init__(device, recog)
-        self.template_root = get_path("@app/arknights_mower/resources").__str__()
         self.record_path = get_path("@app/tmp/report.csv")
+        self.template_root=get_path("@app/arknights_mower/resources")
         self.low_range_gray = (100, 100, 100)
         self.high_range_gray = (255, 255, 255)
         self.date = (datetime.datetime.now() - datetime.timedelta(hours=4)).date().__str__()
@@ -113,7 +113,7 @@ class ReportSolver(BaseSolver):
 
     def locate_report(self, img, template_name):
         try:
-            template = cv2.imread("{}/{}.png".format(self.template_root, template_name))
+            template = cv2.imread("{}/{}.png".format(self.template_root,template_name))
             res = cv2.matchTemplate(img, template, cv2.TM_CCOEFF_NORMED)
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
             h, w = template.shape[:-1]
@@ -138,12 +138,12 @@ class ReportSolver(BaseSolver):
     def record_report(self):
         logger.debug(f"存入数据{self.report_res}")
         res_df = pd.DataFrame(self.report_res, index=[self.date])
-        res_df.to_csv(self.record_path, mode='a', header=not os.path.exists(self.record_path))
+        res_df.to_csv(self.record_path, mode='a', header=not os.path.exists(self.record_path), encoding='gbk')
 
     def has_record(self):
         if os.path.exists(self.record_path) is False:
             return False
-        df = pd.read_csv(self.record_path)
+        df = pd.read_csv(self.record_path, encoding='gbk')
         for item in df.iloc:
             if item[0] == (datetime.datetime.now() - datetime.timedelta(hours=4)).date().__str__():
                 return True
