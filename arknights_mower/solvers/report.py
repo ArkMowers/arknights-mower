@@ -113,7 +113,9 @@ class ReportSolver(BaseSolver):
     def locate_report(self, img, template_name):
         try:
             template_path = get_path("@internal/arknights_mower/resources/{}.png".format(template_name))
+            logger.info(template_path)
             template = cv2.imread(template_path.__str__())
+            logger.info(template.shape)
             res = cv2.matchTemplate(img, template, cv2.TM_CCOEFF_NORMED)
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
             h, w = template.shape[:-1]
