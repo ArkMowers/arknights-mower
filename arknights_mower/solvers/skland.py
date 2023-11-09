@@ -205,4 +205,3 @@ class SKLand:
             res.append(temp_res)
 
         logger.info(res)
-

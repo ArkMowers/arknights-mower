@@ -125,7 +125,6 @@ class BaseSolver:
         self.tap(element, x_rate, y_rate, interval, rebuild)
         return True
 
-
     def tap_themed_element(self, name):
         themes = ["dark", "sami", "ep13"]
         themed_names = [name] + ["_".join([name, t]) for t in themes]
@@ -136,7 +135,6 @@ class BaseSolver:
             except:
                 continue
         return False
-
 
     def swipe(self, start: tp.Coordinate, movement: tp.Coordinate, duration: int = 100, interval: float = 1,
               rebuild: bool = True) -> None:
@@ -300,6 +298,8 @@ class BaseSolver:
                     self.tap_element('close_mine')
                 elif self.scene() == Scene.CHECK_IN:
                     self.tap_element('check_in')
+                elif self.scene() == Scene.RIIC_REPORT:
+                    self.tap((100, 60))
                 elif self.scene() == Scene.ANNOUNCEMENT:
                     self.tap(detector.announcement_close(self.recog.img))
                 elif self.scene() == Scene.MATERIEL:
@@ -366,8 +366,8 @@ class BaseSolver:
         retry = 0
         self.back_to_index()
         self.tap_themed_element('index_terminal')
-        self.tap((self.recog.w * 0.7, self.recog.h * 0.95)) # 常态事务
-        self.tap((self.recog.w * 0.85, self.recog.h * 0.5)) # 保全
+        self.tap((self.recog.w * 0.7, self.recog.h * 0.95))  # 常态事务
+        self.tap((self.recog.w * 0.85, self.recog.h * 0.5))  # 保全
         if sss_type == 1:
             self.tap((self.recog.w * 0.2, self.recog.h * 0.3), interval=5)
         else:
@@ -510,13 +510,12 @@ class BaseSolver:
 
         if subtype == 'plain' and subject == '':
             subject = body
-        
+
         # markdown格式的消息体
         mkBody = body
         # 如果body是HTML内容，转换为Markdown格式
         if subtype == 'html':
             mkBody = self.html_to_markdown(body)
-
 
         # 获取QQ邮件配置
         email_config = send_message_config.get('email_config')

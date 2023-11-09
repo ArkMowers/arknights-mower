@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from . import __version__
 from .solvers import *
+from .solvers.report import ReportSolver
 from .utils import config
 from .utils.device import Device
 from .utils.log import logger

@@ -11,6 +11,7 @@ tornado==6.1
 requests==2.22.0
 schedule~=1.1.0
 setuptools~=60.2.0
+pandas==2.0.3
 Pillow~=9.2.0
 pyyaml==6.0
 PySimpleGUI~=4.60.4
