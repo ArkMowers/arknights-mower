@@ -3,7 +3,7 @@ import { ref, watch, computed } from 'vue'
 import axios from 'axios'
 
 export const usePlanStore = defineStore('plan', () => {
-  const ling_xi = ref('1')
+  const ling_xi = ref(1)
   const max_resting_count = ref([])
   const exhaust_require = ref([])
   const rest_in_full = ref([])
@@ -33,8 +33,8 @@ export const usePlanStore = defineStore('plan', () => {
 
   async function load_plan() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/plan`)
-    ling_xi.value = response.data.conf.ling_xi.toString()
-    max_resting_count.value = response.data.conf.max_resting_count.toString()
+    ling_xi.value = response.data.conf.ling_xi
+    max_resting_count.value = response.data.conf.max_resting_count
     exhaust_require.value =
       response.data.conf.exhaust_require == '' ? [] : response.data.conf.exhaust_require.split(',')
     rest_in_full.value =
@@ -99,8 +99,8 @@ export const usePlanStore = defineStore('plan', () => {
       default: 'plan1',
       plan1: {},
       conf: {
-        ling_xi: parseInt(ling_xi.value),
-        max_resting_count: parseInt(max_resting_count.value),
+        ling_xi: ling_xi.value,
+        max_resting_count: max_resting_count.value,
         exhaust_require: exhaust_require.value.join(','),
         rest_in_full: rest_in_full.value.join(','),
         resting_priority: resting_priority.value.join(','),
@@ -174,6 +174,7 @@ export const usePlanStore = defineStore('plan', () => {
     facility_operator_limit,
     left_side_facility,
     build_plan,
-    groups
+    groups,
+    backup_plans
   }
 })
