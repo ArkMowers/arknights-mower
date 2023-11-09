@@ -19,7 +19,6 @@ from ..utils.solver import BaseSolver
 class ReportSolver(BaseSolver):
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
         super().__init__(device, recog)
-        self.template_root = get_path("@app/arknights_mower/resources").__str__()
         self.record_path = get_path("@app/tmp/report.csv")
         self.low_range_gray = (100, 100, 100)
         self.high_range_gray = (255, 255, 255)
@@ -113,7 +112,7 @@ class ReportSolver(BaseSolver):
 
     def locate_report(self, img, template_name):
         try:
-            template = cv2.imread("{}/{}.png".format(self.template_root, template_name))
+            template = cv2.imread("..resources/{}.png".format(self.template_root, template_name))
             res = cv2.matchTemplate(img, template, cv2.TM_CCOEFF_NORMED)
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
             h, w = template.shape[:-1]
