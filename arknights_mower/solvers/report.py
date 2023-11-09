@@ -9,7 +9,7 @@ import cv2
 
 from ..utils import rapidocr
 from ..utils.device import Device
-
+from ..data import __rootdir__
 from ..utils.log import logger
 from ..utils.path import get_path
 from ..utils.recognize import RecognizeError, Recognizer, Scene
@@ -113,7 +113,8 @@ class ReportSolver(BaseSolver):
 
     def locate_report(self, img, template_name):
         try:
-            template = cv2.imread("{}/{}.png".format(self.template_root,template_name))
+            template_path=f"{__rootdir__}/resources/{template_name}.png"
+            template = cv2.imread(template_path)
             res = cv2.matchTemplate(img, template, cv2.TM_CCOEFF_NORMED)
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
             h, w = template.shape[:-1]
