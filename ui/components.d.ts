@@ -66,5 +66,7 @@ declare module '@vue/runtime-core' {
     RouterView: typeof import('vue-router')['RouterView']
     ServerJang: typeof import('./src/components/ServerJang.vue')['default']
     SKLand: typeof import('./src/components/SKLand.vue')['default']
+    TriggerDialog: typeof import('./src/components/TriggerDialog.vue')['default']
+    TriggerEditor: typeof import('./src/components/TriggerEditor.vue')['default']
   }
 }

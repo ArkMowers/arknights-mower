@@ -22,7 +22,7 @@ const {
 } = storeToRefs(plan_store)
 const { load_plan } = plan_store
 
-import { inject, ref, computed } from 'vue'
+import { inject, ref, computed, provide } from 'vue'
 const axios = inject('axios')
 
 import { file_dialog } from '@/utils/dialog'
@@ -116,9 +116,20 @@ const current_conf = computed(() => {
   }
   return backup_plans.value[sub_plan.value].conf
 })
+
+const show_trigger_editor = ref(false)
+provide('show_trigger_editor', show_trigger_editor)
+
+const trigger = computed(() => {
+  if (sub_plan.value == 'main') {
+    return {}
+  }
+  return backup_plans.value[sub_plan.value].trigger
+})
 </script>
 
 <template>
+  <trigger-dialog :trigger="trigger" />
   <div class="home-container plan-bar w-980 mx-auto mt-12">
     <n-input v-model:value="plan_file" />
     <n-button @click="open_plan_file">...</n-button>
@@ -129,8 +140,10 @@ const current_conf = computed(() => {
     <n-select v-model:value="sub_plan" :options="sub_plan_options" />
     <n-button @click="create_sub_plan">新建副表</n-button>
     <n-button :disabled="sub_plan == 'main'" @click="delete_sub_plan">删除此副表</n-button>
-    <n-button>编辑触发条件</n-button>
-    <n-button>编辑任务</n-button>
+    <n-button :disabled="sub_plan == 'main'" @click="show_trigger_editor = true"
+      >编辑触发条件</n-button
+    >
+    <n-button :disabled="sub_plan == 'main'">编辑任务</n-button>
   </div>
   <plan-editor ref="plan_editor" class="w-980 mx-auto" />
   <n-form
@@ -229,26 +242,50 @@ const current_conf = computed(() => {
       <template #label>
         <span>需要回满心情的干员</span><help-text><div>请查阅文档</div></help-text>
       </template>
-      <n-select multiple filterable tag :options="operators" v-model:value="current_conf.rest_in_full" />
+      <n-select
+        multiple
+        filterable
+        tag
+        :options="operators"
+        v-model:value="current_conf.rest_in_full"
+      />
     </n-form-item>
     <n-form-item>
       <template #label>
         <span>需要用尽心情的干员</span
         ><help-text><div>仅推荐写入具有暖机技能的干员</div></help-text>
       </template>
-      <n-select multiple filterable tag :options="operators" v-model:value="current_conf.exhaust_require" />
+      <n-select
+        multiple
+        filterable
+        tag
+        :options="operators"
+        v-model:value="current_conf.exhaust_require"
+      />
     </n-form-item>
     <n-form-item>
       <template #label>
         <span>0心情工作的干员</span><help-text><div>心情涣散状态任能触发技能的干员</div></help-text>
       </template>
-      <n-select multiple filterable tag :options="operators" v-model:value="current_conf.workaholic" />
+      <n-select
+        multiple
+        filterable
+        tag
+        :options="operators"
+        v-model:value="current_conf.workaholic"
+      />
     </n-form-item>
     <n-form-item>
       <template #label>
         <span>宿舍低优先级干员</span><help-text><div>请查阅文档</div></help-text>
       </template>
-      <n-select multiple filterable tag :options="operators" v-model:value="current_conf.resting_priority" />
+      <n-select
+        multiple
+        filterable
+        tag
+        :options="operators"
+        v-model:value="current_conf.resting_priority"
+      />
     </n-form-item>
     <n-form-item v-if="sub_plan != 'main'">
       <template #label>
