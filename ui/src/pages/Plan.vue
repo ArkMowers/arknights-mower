@@ -17,7 +17,8 @@ const {
   operators,
   workaholic,
   backup_plans,
-  plan
+  plan,
+  sub_plan
 } = storeToRefs(plan_store)
 const { load_plan } = plan_store
 
@@ -66,8 +67,6 @@ async function save() {
 
 const mobile = inject('mobile')
 
-const sub_plan = ref('main')
-
 const sub_plan_options = computed(() => {
   const result = [
     {
@@ -110,6 +109,13 @@ function delete_sub_plan() {
   backup_plans.value.splice(sub_plan.value, 1)
   sub_plan.value = 'main'
 }
+
+const current_conf = computed(() => {
+  if (sub_plan.value == 'main') {
+    return {}
+  }
+  return backup_plans.value[sub_plan.value].conf
+})
 </script>
 
 <template>
@@ -133,6 +139,7 @@ function delete_sub_plan() {
     :show-feedback="false"
     label-width="160"
     label-align="left"
+    v-if="sub_plan == 'main'"
   >
     <n-form-item>
       <template #label>
@@ -183,6 +190,80 @@ function delete_sub_plan() {
         <span>宿舍低优先级干员</span><help-text><div>请查阅文档</div></help-text>
       </template>
       <n-select multiple filterable tag :options="operators" v-model:value="resting_priority" />
+    </n-form-item>
+  </n-form>
+  <n-form
+    class="w-980 mx-auto mb-12"
+    :label-placement="mobile ? 'top' : 'left'"
+    :show-feedback="false"
+    label-width="160"
+    label-align="left"
+    v-else
+  >
+    <n-form-item>
+      <template #label>
+        <span>令夕模式</span>
+        <help-text>
+          <div>令夕上班时起作用</div>
+          <div>启动Mower前需要手动对齐心情</div>
+          <div>感知：夕心情-令心情=12</div>
+          <div>烟火：令心情-夕心情=12</div>
+          <div>均衡：夕令心情一样</div>
+        </help-text>
+      </template>
+      <n-radio-group v-model:value="current_conf.ling_xi">
+        <n-space>
+          <n-radio :value="1">感知信息</n-radio>
+          <n-radio :value="2">人间烟火</n-radio>
+          <n-radio :value="3">均衡模式</n-radio>
+        </n-space>
+      </n-radio-group>
+    </n-form-item>
+    <n-form-item>
+      <template #label>
+        <span>最大组人数</span><help-text><div>请查阅文档</div></help-text>
+      </template>
+      <n-input-number v-model:value="current_conf.max_resting_count" />
+    </n-form-item>
+    <n-form-item>
+      <template #label>
+        <span>需要回满心情的干员</span><help-text><div>请查阅文档</div></help-text>
+      </template>
+      <n-select multiple filterable tag :options="operators" v-model:value="current_conf.rest_in_full" />
+    </n-form-item>
+    <n-form-item>
+      <template #label>
+        <span>需要用尽心情的干员</span
+        ><help-text><div>仅推荐写入具有暖机技能的干员</div></help-text>
+      </template>
+      <n-select multiple filterable tag :options="operators" v-model:value="current_conf.exhaust_require" />
+    </n-form-item>
+    <n-form-item>
+      <template #label>
+        <span>0心情工作的干员</span><help-text><div>心情涣散状态任能触发技能的干员</div></help-text>
+      </template>
+      <n-select multiple filterable tag :options="operators" v-model:value="current_conf.workaholic" />
+    </n-form-item>
+    <n-form-item>
+      <template #label>
+        <span>宿舍低优先级干员</span><help-text><div>请查阅文档</div></help-text>
+      </template>
+      <n-select multiple filterable tag :options="operators" v-model:value="current_conf.resting_priority" />
+    </n-form-item>
+    <n-form-item v-if="sub_plan != 'main'">
+      <template #label>
+        <span>宿舍黑名单</span>
+        <help-text>
+          <div>不希望进行填充宿舍的干员</div>
+        </help-text>
+      </template>
+      <n-select
+        multiple
+        filterable
+        tag
+        :options="operators"
+        v-model:value="current_conf.free_blacklist"
+      />
     </n-form-item>
   </n-form>
 </template>

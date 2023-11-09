@@ -7,7 +7,7 @@ import pinyinMatch from 'pinyin-match/es/traditional'
 import { NAvatar, NTag } from 'naive-ui'
 const config_store = useConfigStore()
 const plan_store = usePlanStore()
-const { operators, plan, groups } = storeToRefs(plan_store)
+const { operators, groups, current_plan: plan } = storeToRefs(plan_store)
 const { facility_operator_limit } = plan_store
 const { theme } = storeToRefs(config_store)
 

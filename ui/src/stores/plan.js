@@ -31,23 +31,23 @@ export const usePlanStore = defineStore('plan', () => {
     facility_operator_limit[`dormitory_${i}`] = 5
   }
 
-  async function load_plan() {
-    const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/plan`)
-    ling_xi.value = response.data.conf.ling_xi
-    max_resting_count.value = response.data.conf.max_resting_count
-    exhaust_require.value =
-      response.data.conf.exhaust_require == '' ? [] : response.data.conf.exhaust_require.split(',')
-    rest_in_full.value =
-      response.data.conf.rest_in_full == '' ? [] : response.data.conf.rest_in_full.split(',')
-    resting_priority.value =
-      response.data.conf.resting_priority == ''
-        ? []
-        : response.data.conf.resting_priority.split(',')
-    workaholic.value =
-      response.data.conf.workaholic == '' ? [] : response.data.conf.workaholic.split(',')
-    backup_plans.value = response.data.backup_plans ?? []
+  function list2str(data) {
+    return data.join(',')
+  }
 
-    const full_plan = response.data.plan1
+  function str2list(data) {
+    return data.split(',')
+  }
+
+  const backup_conf_convert_list = [
+    'exhaust_require',
+    'rest_in_full',
+    'resting_priority',
+    'workaholic',
+    'free_blacklist'
+  ]
+
+  function fill_empty(full_plan) {
     for (const i in facility_operator_limit) {
       let count = 0
       if (!full_plan[i]) {
@@ -66,19 +66,7 @@ export const usePlanStore = defineStore('plan', () => {
         full_plan[i].plans.push({ agent: '', group: '', replacement: [] })
       }
     }
-    plan.value = full_plan
-  }
-
-  async function load_operators() {
-    const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/operator`)
-    const option_list = []
-    for (const i of response.data) {
-      option_list.push({
-        value: i,
-        label: i
-      })
-    }
-    operators.value = option_list
+    return full_plan
   }
 
   function remove_empty_agent(input) {
@@ -94,19 +82,79 @@ export const usePlanStore = defineStore('plan', () => {
     return result
   }
 
+  function strip_plan(plan) {
+    const plan1 = {}
+
+    for (const i in facility_operator_limit) {
+      if (i.startsWith('room') && plan[i].name) {
+        plan1[i] = remove_empty_agent(plan[i])
+      } else {
+        let empty = true
+        for (const j of plan[i].plans) {
+          if (j.agent) {
+            empty = false
+            break
+          }
+        }
+        if (!empty) {
+          plan1[i] = remove_empty_agent(plan[i])
+        }
+      }
+    }
+
+    return plan1
+  }
+
+  async function load_plan() {
+    const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/plan`)
+    ling_xi.value = response.data.conf.ling_xi
+    max_resting_count.value = response.data.conf.max_resting_count
+    exhaust_require.value = str2list(response.data.conf.exhaust_require)
+    rest_in_full.value = str2list(response.data.conf.rest_in_full)
+    resting_priority.value = str2list(response.data.conf.resting_priority)
+    workaholic.value = str2list(response.data.conf.workaholic)
+    plan.value = fill_empty(response.data.plan1)
+
+    backup_plans.value = response.data.backup_plans ?? []
+    for (let b of backup_plans.value) {
+      for (const i of backup_conf_convert_list) {
+        b.conf[i] = str2list(b.conf[i])
+      }
+      b.plan = fill_empty(b.plan)
+    }
+  }
+
+  async function load_operators() {
+    const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/operator`)
+    const option_list = []
+    for (const i of response.data) {
+      option_list.push({
+        value: i,
+        label: i
+      })
+    }
+    operators.value = option_list
+  }
+
   function build_plan() {
     const result = {
       default: 'plan1',
-      plan1: {},
+      plan1: strip_plan(plan.value),
       conf: {
         ling_xi: ling_xi.value,
         max_resting_count: max_resting_count.value,
-        exhaust_require: exhaust_require.value.join(','),
-        rest_in_full: rest_in_full.value.join(','),
-        resting_priority: resting_priority.value.join(','),
-        workaholic: workaholic.value.join(',')
+        exhaust_require: list2str(exhaust_require.value),
+        rest_in_full: list2str(rest_in_full.value),
+        resting_priority: list2str(resting_priority.value),
+        workaholic: list2str(workaholic.value)
       },
-      backup_plans: backup_plans.value
+      backup_plans: JSON.parse(JSON.stringify(backup_plans.value))
+    }
+    for (const b of result.backup_plans) {
+      for (const i of backup_conf_convert_list) {
+        b.conf[i] = list2str(b.conf[i])
+      }
+      b.plan = strip_plan(b.plan)
     }
 
     const plan1 = result.plan1
@@ -160,6 +208,15 @@ export const usePlanStore = defineStore('plan', () => {
     return [...new Set(result)]
   })
 
+  const sub_plan = ref('main')
+  const current_plan = computed(() => {
+    if (sub_plan.value == 'main') {
+      return plan.value
+    } else {
+      return backup_plans.value[sub_plan.value].plan
+    }
+  })
+
   return {
     load_plan,
     load_operators,
@@ -175,6 +232,8 @@ export const usePlanStore = defineStore('plan', () => {
     left_side_facility,
     build_plan,
     groups,
-    backup_plans
+    backup_plans,
+    sub_plan,
+    current_plan
   }
 })
