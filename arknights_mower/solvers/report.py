@@ -9,7 +9,7 @@ import cv2
 
 from ..utils import rapidocr
 from ..utils.device import Device
-
+from ..data import __rootdir__
 from ..utils.log import logger
 from ..utils.path import get_path
 from ..utils.recognize import RecognizeError, Recognizer, Scene
@@ -112,17 +112,16 @@ class ReportSolver(BaseSolver):
 
     def locate_report(self, img, template_name):
         try:
-            template_path = get_path("@internal/arknights_mower/resources/{}.png".format(template_name))
-            logger.info(template_path)
+            template_path = "{}/resources/{}.png".format(__rootdir__, template_name)
+            logger.debug("待匹配模板图片{}的路径为{}".format(template_name, template_path))
             template = cv2.imread(template_path.__str__())
-            logger.info(template.shape)
+            logger.debug("待匹配模板图片{}读取成功".format(template_name))
             res = cv2.matchTemplate(img, template, cv2.TM_CCOEFF_NORMED)
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
             h, w = template.shape[:-1]
             top_left = max_loc
             logger.debug("{}的max_val:{}".format(template_name, max_val))
             bottom_right = (top_left[0] + w, top_left[1] + h)
-
             if max_val > 0.8:
                 return top_left, bottom_right
             return None
@@ -130,7 +129,7 @@ class ReportSolver(BaseSolver):
             logger.error("{}匹配失败".format(template_name))
 
     def adjust_result(self):
-        logger.debug("adjust_report_result{}".format(self.report_res))
+        logger.debug("调整基报读取数据 {}".format(self.report_res))
         for key in self.report_res:
             if self.report_res[key] == "o" or self.report_res[key] == "O":
                 self.report_res[key] = 0
@@ -143,10 +142,14 @@ class ReportSolver(BaseSolver):
         res_df.to_csv(self.record_path, mode='a', header=not os.path.exists(self.record_path), encoding='gbk')
 
     def has_record(self):
-        if os.path.exists(self.record_path) is False:
+        try:
+            if os.path.exists(self.record_path) is False:
+                logger.info("基报存档不存在")
+                return False
+            df = pd.read_csv(self.record_path, encoding='gbk')
+            for item in df.iloc:
+                if item[0] == self.date:
+                    return True
             return False
-        df = pd.read_csv(self.record_path, encoding='gbk')
-        for item in df.iloc:
-            if item[0] == (datetime.datetime.now() - datetime.timedelta(hours=4)).date().__str__():
-                return True
-        return False
+        except PermissionError:
+            logger.info("report.csv正在被占用")
