@@ -345,8 +345,8 @@ def simulate():
                         base_scheduler.daily_mission = (datetime.now() - timedelta(hours=4)).date()
                         base_scheduler.mail_plan_solver()
                         daily_report()
-                    if base_scheduler.skland_config["skland_enable"] == 1:
-                        base_scheduler.skland_plan_solover()
+                        if base_scheduler.skland_config["skland_enable"] == 1:
+                            base_scheduler.skland_plan_solover()
                     if base_scheduler.recruit_config['recruit_enable'] == 1:
                         base_scheduler.recruit_plan_solver()
                     if base_scheduler.maa_config["maa_enable"] == 1:
