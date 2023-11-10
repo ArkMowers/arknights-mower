@@ -18,6 +18,8 @@ from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.logic_expression import LogicExpression
 from arknights_mower.utils import rapidocr
 
+from evalidate import Expr
+
 conf = {}
 plan = {}
 operators = {}
@@ -459,7 +461,7 @@ def load_state(file="state.json"):
         return None
     with open(state_file, 'r') as f:
         state = json.load(f)
-    operators = {k: eval(v) for k, v in state["operators"].items()}
+    operators = {k: Expr(v).eval() for k, v in state["operators"].items()}
     for k, v in operators.items():
         if not v.time_stamp == "None":
             v.time_stamp = datetime.strptime(v.time_stamp, "%Y-%m-%d %H:%M:%S.%f")
