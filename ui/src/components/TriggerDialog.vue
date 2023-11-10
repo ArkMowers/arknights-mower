@@ -11,7 +11,6 @@ const plan_store = usePlanStore()
 const { sub_plan, backup_plans } = storeToRefs(plan_store)
 
 function update_trigger(data) {
-  console.log(data)
   backup_plans.value[sub_plan.value].trigger = data
 }
 </script>

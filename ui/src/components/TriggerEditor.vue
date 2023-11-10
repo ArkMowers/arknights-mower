@@ -12,13 +12,12 @@ function generate() {
 }
 
 watch([left, operator, right], () => {
-  console.log(left.value, operator.value, right.value)
   generate()
 })
 
 const le_options = [
   { label: '表达式', value: 'expression' },
-  { label: '字符串', value: 'string' }
+  { label: '值', value: 'string' }
 ]
 </script>
 
@@ -32,7 +31,7 @@ const le_options = [
             :default-value="typeof left == 'object' ? 'expression' : 'string'"
             :on-update:value="
               (v) => {
-                left = v == 'string' ? '' : {}
+                left = v == 'string' ? '' : { left: '', operator: '', right: '' }
               }
             "
             :options="le_options"
@@ -41,7 +40,16 @@ const le_options = [
       </td>
       <td>
         <trigger-editor v-if="typeof left == 'object'" :data="left" @update="(d) => (left = d)" />
-        <n-input v-else v-model:value="left" />
+        <div class="label" v-else>
+          <trigger-string
+            :data="left"
+            @update="
+              (v) => {
+                left = v
+              }
+            "
+          />
+        </div>
       </td>
     </tr>
     <tr>
@@ -58,21 +66,29 @@ const le_options = [
             :default-value="typeof right == 'object' ? 'expression' : 'string'"
             :on-update:value="
               (v) => {
-                right = v == 'string' ? '' : {}
+                right = v == 'string' ? '' : { left: '', operator: '', right: '' }
               }
             "
             :options="le_options"
           />
         </div>
       </td>
-
       <td>
         <trigger-editor
           v-if="typeof right == 'object'"
           :data="right"
           @update="(d) => (right = d)"
         />
-        <n-input v-else v-model:value="right" />
+        <div class="label" v-else>
+          <trigger-string
+            :data="right"
+            @update="
+              (v) => {
+                right = v
+              }
+            "
+          />
+        </div>
       </td>
     </tr>
   </table>
