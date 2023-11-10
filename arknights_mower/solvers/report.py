@@ -4,6 +4,7 @@ import csv
 import os
 import datetime
 
+import numpy as np
 import pandas as pd
 import cv2
 
@@ -128,7 +129,7 @@ class ReportSolver(BaseSolver):
         try:
             template_path = "{}/resources/{}.png".format(__rootdir__, template_name)
             logger.debug("待匹配模板图片{}的路径为{}".format(template_name, template_path))
-            template = cv2.imread(template_path.__str__())
+            template = cv2.imdecode(np.fromfile(template_path.__str__(), dtype=np.uint8), cv2.IMREAD_COLOR)
             logger.debug("待匹配模板图片{}读取成功".format(template_name))
             res = cv2.matchTemplate(img, template, cv2.TM_CCOEFF_NORMED)
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)

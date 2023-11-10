@@ -6,6 +6,7 @@ from itertools import combinations
 from typing import Tuple, Dict, Any
 import re
 import cv2
+import numpy as np
 
 from ..data import recruit_agent, agent_with_tags, recruit_tag, result_template_list
 from ..ocr import ocr_rectify, ocrhandle
@@ -325,8 +326,8 @@ class RecruitSolver(BaseSolver):
 
         for template_name in result_template_list:
             tem_path = f"{__rootdir__}/resources/agent_name/{template_name}.png"
-            template_ = cv2.imread(tem_path.__str__())
-            template_ = cv2.cvtColor(template_, cv2.COLOR_BGR2GRAY)
+            template_ = cv2.imdecode(np.fromfile(tem_path.__str__(), dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
+            # template_ = cv2.cvtColor(template_, cv2.COLOR_BGR2GRAY)
             res = cv2.matchTemplate(img_binary, template_, cv2.TM_CCORR_NORMED)
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
             if max < max_val:

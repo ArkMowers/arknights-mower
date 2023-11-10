@@ -27,9 +27,9 @@ def loadimg(filename: str, gray: bool = False) -> Union[tp.Image, tp.GrayImage]:
     """ load image from file """
     logger.debug(filename)
     if gray:
-        return cv2.imread(filename, cv2.IMREAD_GRAYSCALE)
+        return cv2.imdecode(np.fromfile(filename, dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
     else:
-        return cv2.cvtColor(cv2.imread(filename, cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
+        return cv2.cvtColor(cv2.imdecode(np.fromfile(filename, dtype=np.uint8), cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
 
 
 def thres2(img: tp.GrayImage, thresh: int) -> tp.GrayImage:
