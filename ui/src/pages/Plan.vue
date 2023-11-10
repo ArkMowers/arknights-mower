@@ -120,16 +120,13 @@ const current_conf = computed(() => {
 const show_trigger_editor = ref(false)
 provide('show_trigger_editor', show_trigger_editor)
 
-const trigger = computed(() => {
-  if (sub_plan.value == 'main') {
-    return {}
-  }
-  return backup_plans.value[sub_plan.value].trigger
-})
+const show_task = ref(false)
+provide('show_task', show_task)
 </script>
 
 <template>
-  <trigger-dialog :trigger="trigger" />
+  <trigger-dialog />
+  <task-dialog />
   <div class="home-container plan-bar w-980 mx-auto mt-12">
     <n-input v-model:value="plan_file" />
     <n-button @click="open_plan_file">...</n-button>
@@ -143,7 +140,7 @@ const trigger = computed(() => {
     <n-button :disabled="sub_plan == 'main'" @click="show_trigger_editor = true"
       >编辑触发条件</n-button
     >
-    <n-button :disabled="sub_plan == 'main'">编辑任务</n-button>
+    <n-button :disabled="sub_plan == 'main'" @click="show_task = true">编辑任务</n-button>
   </div>
   <plan-editor ref="plan_editor" class="w-980 mx-auto" />
   <n-form

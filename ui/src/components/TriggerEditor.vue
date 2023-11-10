@@ -22,9 +22,9 @@ const le_options = [
 </script>
 
 <template>
-  <table>
+  <n-table size="small" :single-line="false">
     <tr>
-      <td>
+      <th>
         <div class="label">
           左
           <n-select
@@ -37,7 +37,7 @@ const le_options = [
             :options="le_options"
           />
         </div>
-      </td>
+      </th>
       <td>
         <trigger-editor v-if="typeof left == 'object'" :data="left" @update="(d) => (left = d)" />
         <div class="label" v-else>
@@ -53,13 +53,13 @@ const le_options = [
       </td>
     </tr>
     <tr>
-      <td>运算符</td>
+      <th>运算符</th>
       <td>
         <n-input v-model:value="operator" />
       </td>
     </tr>
     <tr>
-      <td>
+      <th>
         <div class="label">
           右
           <n-select
@@ -72,7 +72,7 @@ const le_options = [
             :options="le_options"
           />
         </div>
-      </td>
+      </th>
       <td>
         <trigger-editor
           v-if="typeof right == 'object'"
@@ -91,19 +91,15 @@ const le_options = [
         </div>
       </td>
     </tr>
-  </table>
+  </n-table>
 </template>
 
 <style scoped lang="scss">
-table {
+.n-table {
   width: 100%;
 
-  td {
-    width: 120px;
-  }
-
-  td:last-child {
-    width: auto;
+  th {
+    width: 110px;
   }
 }
 
