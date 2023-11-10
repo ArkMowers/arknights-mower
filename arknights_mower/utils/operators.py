@@ -3,6 +3,7 @@ from ..data import agent_list, agent_arrange_order, base_room_list
 from ..solvers.record import save_action_to_sqlite_decorator
 from ..utils.log import logger
 import copy
+from evalidate import Expr
 
 
 class Operators(object):
@@ -242,7 +243,7 @@ class Operators(object):
 
     def evaluate_expression(self, expression):
         try:
-            result = eval(expression, {"op_data": self})
+            result = Expr(expression).eval({"op_data": self})
             return result
         except Exception as e:
             logger.exception(f"Error evaluating expression: {e}")

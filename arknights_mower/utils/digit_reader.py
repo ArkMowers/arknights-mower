@@ -83,9 +83,9 @@ class DigitReader:
             res = cv.matchTemplate(
                 时间部分,
                 self.drone_template[j],
-                cv.TM_CCORR_NORMED,
+                cv.TM_CCOEFF_NORMED,
             )
-            threshold = 0.8
+            threshold = 0.85
             loc = np.where(res >= threshold)
             for i in range(len(loc[0])):
                 offset = loc[1][i]
