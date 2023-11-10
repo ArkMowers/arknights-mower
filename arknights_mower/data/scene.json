@@ -103,9 +103,9 @@
         "label": "LOGIN_NEW",
         "comment": "新登陆界面"
     },
-    "115": {
-        "label": "LOGIN_NEW_B",
-        "comment": "新登陆界面B服"
+    "116": {
+        "label": "LOGIN_BILIBILI_PRIVACY",
+        "comment": "B服隐私政策提示"
     },
     "201": {
         "label": "INFRA_MAIN",
