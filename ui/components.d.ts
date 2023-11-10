@@ -68,5 +68,6 @@ declare module '@vue/runtime-core' {
     SKLand: typeof import('./src/components/SKLand.vue')['default']
     TriggerDialog: typeof import('./src/components/TriggerDialog.vue')['default']
     TriggerEditor: typeof import('./src/components/TriggerEditor.vue')['default']
+    TriggerString: typeof import('./src/components/TriggerString.vue')['default']
   }
 }
