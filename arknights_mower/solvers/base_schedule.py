@@ -13,7 +13,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 from .skland import SKLand
-from ..command import recruit, mail
+from ..command import recruit, mail, daily_report
 from ..data import agent_list, base_room_list, ocr_error
 from ..utils import character_recognize, detector, segment
 from ..utils.digit_reader import DigitReader
@@ -79,6 +79,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         self.skland_config = {}
         self.recruit_time = None
         self.daily_mission = False
+        self.mail_enable = True
+        self.read_report_enable=True
+
 
     @property
     def party_time(self):
@@ -2267,4 +2270,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             self.recruit_config['last_execution'] = datetime.now()
 
     def mail_plan_solver(self):
-        mail([])
+        if self.mail_enable:
+            mail([])
+
+    def report_plan_solver(self):
+        if self.read_report_enable:
+            daily_report()

@@ -3,7 +3,7 @@ import os
 import time
 from datetime import datetime, timedelta
 
-from arknights_mower.command import daily_report
+
 from arknights_mower.utils.log import logger
 import json
 
@@ -344,7 +344,7 @@ def simulate():
                     if base_scheduler.daily_mission != (datetime.now() - timedelta(hours=4)).date():
                         base_scheduler.daily_mission = (datetime.now() - timedelta(hours=4)).date()
                         base_scheduler.mail_plan_solver()
-                        daily_report()
+                        base_scheduler.report_plan_solver()
                         if base_scheduler.skland_config["skland_enable"] == 1:
                             base_scheduler.skland_plan_solover()
                     if base_scheduler.recruit_config['recruit_enable'] == 1:
