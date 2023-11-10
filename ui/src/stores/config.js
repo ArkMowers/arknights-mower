@@ -132,8 +132,8 @@ export const useConfigStore = defineStore('config', () => {
     // 新增：加载Server酱的配置
     server_push_enable.value = response.data.server_push_enable != 0
     sendKey.value = response.data.sendKey
-    check_mail_enable.value=response.data.check_mail_enable
-    report_enable.value=response.data.report_enable
+    check_mail_enable.value = response.data.check_mail_enable
+    report_enable.value = response.data.report_enable
   }
 
   function build_config() {
@@ -197,7 +197,7 @@ export const useConfigStore = defineStore('config', () => {
       server_push_enable: server_push_enable.value ? 1 : 0,
       sendKey: sendKey.value,
       check_mail_enable: check_mail_enable.value,
-      report_enable: report_enable.value,
+      report_enable: report_enable.value
     }
   }
 
