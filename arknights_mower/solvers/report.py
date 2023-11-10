@@ -16,6 +16,16 @@ from ..utils.recognize import RecognizeError, Recognizer, Scene
 from ..utils.solver import BaseSolver
 
 
+def remove_blank(target: str):
+    if target is None or target is "":
+        return target
+
+    target.strip()
+    target.replace(" ", "")
+    target.replace("\u3000", "")
+    return target
+
+
 class ReportSolver(BaseSolver):
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
         super().__init__(device, recog)
@@ -122,7 +132,7 @@ class ReportSolver(BaseSolver):
             top_left = max_loc
             logger.debug("{}的max_val:{}".format(template_name, max_val))
             bottom_right = (top_left[0] + w, top_left[1] + h)
-            if max_val > 0.8:
+            if max_val > 0.75:
                 return top_left, bottom_right
             return None
         except:
@@ -131,6 +141,7 @@ class ReportSolver(BaseSolver):
     def adjust_result(self):
         logger.debug("调整基报读取数据 {}".format(self.report_res))
         for key in self.report_res:
+            self.report_res[key] = remove_blank(self.report_res[key])
             if self.report_res[key] == "o" or self.report_res[key] == "O":
                 self.report_res[key] = 0
             if str(self.report_res[key]).isdigit() is False:
