@@ -1,6 +1,4 @@
 <script setup>
-const props = defineProps(['trigger'])
-
 import { inject } from 'vue'
 const show = inject('show_trigger_editor')
 
@@ -23,6 +21,9 @@ function update_trigger(data) {
     transform-origin="center"
     style="width: 900px"
   >
-    <trigger-editor :data="props.trigger" @update="update_trigger" />
+    <trigger-editor :data="backup_plans[sub_plan].trigger" @update="update_trigger" />
+    <n-card style="margin-top: 8px" content-style="padding: 8px" embedded>
+      <n-code :code="JSON.stringify(backup_plans[sub_plan].trigger)" language="json" word-wrap />
+    </n-card>
   </n-modal>
 </template>

@@ -165,6 +165,9 @@ const menuOptions = computed(() => [
 import { zhCN, dateZhCN, darkTheme } from 'naive-ui'
 
 import hljs from 'highlight.js/lib/core'
+import json from 'highlight.js/lib/languages/json'
+
+hljs.registerLanguage('json', json)
 
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'

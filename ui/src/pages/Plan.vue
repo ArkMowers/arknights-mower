@@ -119,17 +119,10 @@ const current_conf = computed(() => {
 
 const show_trigger_editor = ref(false)
 provide('show_trigger_editor', show_trigger_editor)
-
-const trigger = computed(() => {
-  if (sub_plan.value == 'main') {
-    return {}
-  }
-  return backup_plans.value[sub_plan.value].trigger
-})
 </script>
 
 <template>
-  <trigger-dialog :trigger="trigger" />
+  <trigger-dialog />
   <div class="home-container plan-bar w-980 mx-auto mt-12">
     <n-input v-model:value="plan_file" />
     <n-button @click="open_plan_file">...</n-button>
