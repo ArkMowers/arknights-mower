@@ -21,9 +21,15 @@ function update_trigger(data) {
     transform-origin="center"
     style="width: 900px"
   >
-    <trigger-editor :data="backup_plans[sub_plan].trigger" @update="update_trigger" />
-    <n-card style="margin-top: 8px" content-style="padding: 8px" embedded>
-      <n-code :code="JSON.stringify(backup_plans[sub_plan].trigger)" language="json" word-wrap />
-    </n-card>
+    <n-scrollbar style="max-height: 80vh">
+      <trigger-editor :data="backup_plans[sub_plan].trigger" @update="update_trigger" />
+      <n-card style="margin-top: 8px" content-style="padding: 8px" embedded>
+        <n-code
+          :code="JSON.stringify(backup_plans[sub_plan].trigger, null, 2)"
+          language="json"
+          word-wrap
+        />
+      </n-card>
+    </n-scrollbar>
   </n-modal>
 </template>
