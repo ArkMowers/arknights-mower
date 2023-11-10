@@ -16,6 +16,16 @@ from ..utils.recognize import RecognizeError, Recognizer, Scene
 from ..utils.solver import BaseSolver
 
 
+def remove_blank(target: str):
+    if target is None or target is "":
+        return target
+
+    target.strip()
+    target.replace(" ", "")
+    target.replace("\u3000", "")
+    return target
+
+
 class ReportSolver(BaseSolver):
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
         super().__init__(device, recog)
@@ -33,11 +43,15 @@ class ReportSolver(BaseSolver):
         }
 
     def run(self):
-        # logger.info(f'目标干员：{priority if priority else "无，高稀有度优先"}')\
         if self.has_record():
+            logger.info("今天的基报看过了")
             return True
-
-        super().run()
+        logger.info("康康大基报")
+        try:
+            super().run()
+        except:
+            return False
+        return True
 
     def transition(self) -> bool:
         if self.scene() == Scene.INDEX:
@@ -49,7 +63,7 @@ class ReportSolver(BaseSolver):
         elif self.scene() == Scene.CTRLCENTER_ASSISTANT:
             self.tap_element('control_central_assistants')
         elif self.scene() == Scene.RIIC_REPORT:
-            logger.info("RIIC_REPORT")
+            logger.info("找到基报了")
             return self.read_report()
         elif self.scene() == Scene.LOADING:
             self.sleep(3)
@@ -82,7 +96,7 @@ class ReportSolver(BaseSolver):
             iron_threshold_gray = cv2.inRange(img[p2[1]:p3[1], p3[0]:img.shape[1] - 40], self.low_range_gray,
                                               self.high_range_gray)
             iron_padded_img = cv2.resize(iron_threshold_gray,
-                                         [iron_threshold_gray.shape[0] * 3, iron_threshold_gray.shape[1] * 2])
+                                         [iron_threshold_gray.shape[0] * 4, iron_threshold_gray.shape[1] * 2])
             self.report_res['龙门币订单数'] = \
                 rapidocr.engine(iron_padded_img, use_det=False, use_cls=False, use_rec=True)[0][0][0]
 
@@ -93,8 +107,8 @@ class ReportSolver(BaseSolver):
                 rapidocr.engine(img[p2[1]:p1[1], p1[0]:p2[0]], use_det=False, use_cls=False, use_rec=True)[0][0][0]
             if self.report_res['合成玉'] is None or str(self.report_res['合成玉']).isdigit() is False:
                 orundum_padded_img = cv2.resize(img[p2[1]:p1[1], p1[0]:p1[0] + 50],
-                                                [img[p2[1]:p1[1], p1[0]:p1[0] + 50].shape[0] * 2,
-                                                 img[p2[1]:p1[1], p1[0]:p1[0] + 50].shape[1] * 2])
+                                                [img[p2[1]:p1[1], p1[0]:p1[0] + 50].shape[0] * 6,
+                                                 img[p2[1]:p1[1], p1[0]:p1[0] + 50].shape[1] * 3])
                 self.report_res['合成玉'] = \
                     rapidocr.engine(orundum_padded_img, use_det=False, use_cls=False, use_rec=True)[0][0][0]
             orundum_threshold_gray = cv2.inRange(img[p2[1]:p3[1], p3[0]:img.shape[1] - 40], self.low_range_gray,
@@ -122,7 +136,7 @@ class ReportSolver(BaseSolver):
             top_left = max_loc
             logger.debug("{}的max_val:{}".format(template_name, max_val))
             bottom_right = (top_left[0] + w, top_left[1] + h)
-            if max_val > 0.8:
+            if max_val > 0.7:
                 return top_left, bottom_right
             return None
         except:
@@ -131,20 +145,22 @@ class ReportSolver(BaseSolver):
     def adjust_result(self):
         logger.debug("调整基报读取数据 {}".format(self.report_res))
         for key in self.report_res:
+            if self.report_res[key]:
+                self.report_res[key].strip()
             if self.report_res[key] == "o" or self.report_res[key] == "O":
                 self.report_res[key] = 0
             if str(self.report_res[key]).isdigit() is False:
                 self.report_res[key] = None
 
     def record_report(self):
-        logger.debug(f"存入数据{self.report_res}")
+        logger.info(f"存入{self.date}的数据{self.report_res}")
         res_df = pd.DataFrame(self.report_res, index=[self.date])
         res_df.to_csv(self.record_path, mode='a', header=not os.path.exists(self.record_path), encoding='gbk')
 
     def has_record(self):
         try:
             if os.path.exists(self.record_path) is False:
-                logger.info("基报存档不存在")
+                logger.debug("基报不存在")
                 return False
             df = pd.read_csv(self.record_path, encoding='gbk')
             for item in df.iloc:

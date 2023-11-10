@@ -57,6 +57,8 @@ export const useConfigStore = defineStore('config', () => {
   const run_order_grandet_mode = ref({})
   const server_push_enable = ref(false) // Server酱通知开关
   const sendKey = ref('') // Server酱Key值
+  const check_mail_enable = ref(true)
+  const report_enable = ref(true)
 
   async function load_shop() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/shop`)
@@ -130,6 +132,8 @@ export const useConfigStore = defineStore('config', () => {
     // 新增：加载Server酱的配置
     server_push_enable.value = response.data.server_push_enable != 0
     sendKey.value = response.data.sendKey
+    check_mail_enable.value = response.data.check_mail_enable
+    report_enable.value = response.data.report_enable
   }
 
   function build_config() {
@@ -191,7 +195,9 @@ export const useConfigStore = defineStore('config', () => {
       run_order_grandet_mode: run_order_grandet_mode.value,
       // 新增：Server酱的配置
       server_push_enable: server_push_enable.value ? 1 : 0,
-      sendKey: sendKey.value
+      sendKey: sendKey.value,
+      check_mail_enable: check_mail_enable.value,
+      report_enable: report_enable.value
     }
   }
 
@@ -248,7 +254,9 @@ export const useConfigStore = defineStore('config', () => {
       skland_info,
       run_order_grandet_mode,
       server_push_enable,
-      sendKey
+      sendKey,
+      check_mail_enable,
+      report_enable
     ],
     () => {
       axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, build_config())
@@ -313,6 +321,8 @@ export const useConfigStore = defineStore('config', () => {
     skland_info,
     run_order_grandet_mode,
     server_push_enable,
-    sendKey
+    sendKey,
+    check_mail_enable,
+    report_enable
   }
 })

@@ -194,7 +194,7 @@ def load_image(file, is_color=True):
     # Here, use constant 1 and 0
     # 1: COLOR, 0: GRAYSCALE
     flag = 1 if is_color else 0
-    im = cv2.imread(file, flag)
+    im = cv2.imdecode(np.fromfile(file, dtype=np.uint8), flag)
     return im
 
 
