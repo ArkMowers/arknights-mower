@@ -79,8 +79,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         self.skland_config = {}
         self.recruit_time = None
         self.daily_mission = False
-        self.mail_enable = True
-        self.read_report_enable=True
+        self.check_mail_enable = True
+        self.report_enable = True
 
 
     @property
@@ -2270,9 +2270,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             self.recruit_config['last_execution'] = datetime.now()
 
     def mail_plan_solver(self):
-        if self.mail_enable:
-            mail([])
+        if self.check_mail_enable:
+            mail()
 
     def report_plan_solver(self):
-        if self.read_report_enable:
-            daily_report()
+        if self.report_enable:
+            return daily_report()

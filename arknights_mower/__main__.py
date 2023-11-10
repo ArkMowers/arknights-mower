@@ -249,6 +249,8 @@ def initialize(tasks, scheduler=None):
                 "sendKey": conf["sendKey"],
             }
         }
+        base_scheduler.check_mail_enable = conf['check_mail_enable']
+        base_scheduler.report_enable = conf['report_enable']
 
         new_conf = update_conf()
         set_maa_options(base_scheduler, new_conf)
@@ -312,8 +314,8 @@ def simulate():
     if operators != {}:
         for k, v in operators.items():
             if (
-                k in base_scheduler.op_data.operators
-                and not base_scheduler.op_data.operators[k].room.startswith("dorm")
+                    k in base_scheduler.op_data.operators
+                    and not base_scheduler.op_data.operators[k].room.startswith("dorm")
             ):
                 # 只复制心情数据
                 base_scheduler.op_data.operators[k].mood = v.mood
@@ -342,9 +344,10 @@ def simulate():
                 if sleep_time > 540:
                     # 刷新时间以鹰历为准
                     if base_scheduler.daily_mission != (datetime.now() - timedelta(hours=4)).date():
-                        base_scheduler.daily_mission = (datetime.now() - timedelta(hours=4)).date()
+
                         base_scheduler.mail_plan_solver()
-                        base_scheduler.report_plan_solver()
+                        if base_scheduler.report_plan_solver():
+                            base_scheduler.daily_mission = (datetime.now() - timedelta(hours=4)).date()
                         if base_scheduler.skland_config["skland_enable"] == 1:
                             base_scheduler.skland_plan_solover()
                     if base_scheduler.recruit_config['recruit_enable'] == 1:

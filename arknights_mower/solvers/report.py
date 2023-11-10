@@ -47,7 +47,11 @@ class ReportSolver(BaseSolver):
             logger.info("今天的基报看过了")
             return True
         logger.info("康康大基报")
-        super().run()
+        try:
+            super().run()
+        except:
+            return False
+        return True
 
     def transition(self) -> bool:
         if self.scene() == Scene.INDEX:
