@@ -194,7 +194,7 @@ class RecruitSolver(BaseSolver):
         else:
             raise RecognizeError('Unknown scene')
 
-    def recruit_tags(self) -> bool:
+    def recruit_tags(self):
         """ 识别公招标签的逻辑 """
         if self.find('recruit_no_ticket') is not None:
             self.has_ticket = False
@@ -232,7 +232,7 @@ class RecruitSolver(BaseSolver):
                                   "html")
                 logger.info('稀有tag,发送邮件')
                 self.back()
-                return True
+                return
 
             if recruit_cal_result[0][1][0]['star'] == 3:
                 # refresh
@@ -246,19 +246,19 @@ class RecruitSolver(BaseSolver):
         if not self.enough_lmb:
             logger.info('龙门币不足 结束公招')
             self.back()
-            return False
+            return
         # 如果没有招募券则只刷新标签不选人
         if not self.has_ticket:
             logger.info('无招募券')
             self.back()
-            return False
+            return
 
         # best为空说明这次大概率三星
         # 券数量少于预期值，仅招募四星或者停止招募，只刷新标签
         if self.permit_count <= self.recruit_config["permit_target"] and recruit_result_level == 3:
             logger.info('不招三星')
             self.back()
-            return False
+            return
 
         choose = []
         if recruit_result_level > 3:
@@ -327,7 +327,6 @@ class RecruitSolver(BaseSolver):
         for template_name in result_template_list:
             tem_path = f"{__rootdir__}/resources/agent_name/{template_name}.png"
             template_ = cv2.imdecode(np.fromfile(tem_path.__str__(), dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
-            # template_ = cv2.cvtColor(template_, cv2.COLOR_BGR2GRAY)
             res = cv2.matchTemplate(img_binary, template_, cv2.TM_CCORR_NORMED)
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
             if max < max_val:
