@@ -191,7 +191,7 @@ provide('show_task', show_task)
     </n-form-item>
     <n-form-item>
       <template #label>
-        <span>0心情工作的干员</span><help-text><div>心情涣散状态任能触发技能的干员</div></help-text>
+        <span>0心情工作的干员</span><help-text><div>心情涣散状态仍能触发技能的干员</div></help-text>
       </template>
       <n-select multiple filterable tag :options="operators" v-model:value="workaholic" />
     </n-form-item>
@@ -262,7 +262,7 @@ provide('show_task', show_task)
     </n-form-item>
     <n-form-item>
       <template #label>
-        <span>0心情工作的干员</span><help-text><div>心情涣散状态任能触发技能的干员</div></help-text>
+        <span>0心情工作的干员</span><help-text><div>心情涣散状态仍能触发技能的干员</div></help-text>
       </template>
       <n-select
         multiple
