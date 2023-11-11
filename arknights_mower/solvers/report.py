@@ -90,8 +90,6 @@ class ReportSolver(BaseSolver):
             p0, p1 = self.locate_report(img, 'riic_iron')
             p2, p3 = self.locate_report(img, 'riic_iron_text')
             self.report_res['赤金'] = self.digitReader.get_report_number(img[p2[1]:p1[1], p1[0]:p2[0]])
-            if self.report_res['赤金'] is not None:
-                self.report_res['赤金数量'] = int(self.report_res['赤金']/500)
 
             p0, p1 = self.locate_report(img, 'riic_iron_order')
             p2, p3 = self.locate_report(img, 'riic_order')
