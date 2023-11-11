@@ -19,6 +19,7 @@ from .scene import Scene, SceneComment
 class RecognizeError(Exception):
     pass
 
+
 class Recognizer(object):
 
     def __init__(self, device: Device, screencap: bytes = None) -> None:
@@ -70,10 +71,12 @@ class Recognizer(object):
             self.scene = Scene.INDEX
         elif self.find('nav_index') is not None:
             self.scene = Scene.NAVIGATION_BAR
-        elif self.find('login_new',score= 0.8) is not None:
+        elif self.find('login_new', score=0.8) is not None:
             self.scene = Scene.LOGIN_NEW
-        elif self.find('login_bilibili_new',score= 0.8) is not None:
-            self.scene = Scene.LOGIN_NEW_B
+        elif self.find('login_bilibili_entry', score=0.8) is not None:  # 会被识别成公告，优先级应当比公告高
+            self.scene = Scene.LOGIN_BILIBILI
+        elif self.find('login_bilibili_privacy_accept', score=0.8) is not None:
+            self.scene = Scene.LOGIN_BILIBILI_PRIVACY
         elif self.find('close_mine') is not None:
             self.scene = Scene.CLOSE_MINE
         elif self.find('check_in') is not None:
@@ -211,8 +214,6 @@ class Recognizer(object):
             self.scene = Scene.TERMINAL_BIOGRAPHY
         elif self.find('collection') is not None:
             self.scene = Scene.TERMINAL_COLLECTION
-        elif self.find('login_bilibili') is not None:
-            self.scene = Scene.LOGIN_BILIBILI
         elif self.find('loading6') is not None:
             self.scene = Scene.LOADING
         elif self.find('loading7') is not None:
@@ -241,7 +242,7 @@ class Recognizer(object):
 
         return self.scene
 
-    def get_infra_scene(self)-> int:
+    def get_infra_scene(self) -> int:
         if self.scene != Scene.UNDEFINED:
             return self.scene
         if self.find('connecting', scope=((self.w//2, self.h//10*8), (self.w//4*3, self.h)), score=0.2) is not None:
@@ -307,7 +308,7 @@ class Recognizer(object):
         """ find navigation button """
         return self.find('nav_button', thres=128, scope=((0, 0), (100+self.w//4, self.h//10)))
 
-    def find(self, res: str, draw: bool = False, scope: tp.Scope = None, thres: int = None, judge: bool = True, strict: bool = False,score = 0.0) -> tp.Scope:
+    def find(self, res: str, draw: bool = False, scope: tp.Scope = None, thres: int = None, judge: bool = True, strict: bool = False, score=0.0) -> tp.Scope:
         """
         查找元素是否出现在画面中
 
@@ -330,13 +331,13 @@ class Recognizer(object):
 
             gray_img = cropimg(self.gray, scope)
             matcher = Matcher(thres2(gray_img, thres))
-            ret = matcher.match(res_img, draw=draw, judge=judge,prescore=score)
+            ret = matcher.match(res_img, draw=draw, judge=judge, prescore=score)
         else:
             res_img = loadimg(res, True)
             matcher = self.matcher
-            ret = matcher.match(res_img, draw=draw, scope=scope, judge=judge,prescore=score)
+            ret = matcher.match(res_img, draw=draw, scope=scope, judge=judge, prescore=score)
         if strict and ret is None:
-            raise RecognizeError(f"Can't find '{res}'") 
+            raise RecognizeError(f"Can't find '{res}'")
         return ret
 
     def score(self, res: str, draw: bool = False, scope: tp.Scope = None, thres: int = None) -> Optional[List[float]]:

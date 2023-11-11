@@ -32,27 +32,44 @@ const op_data = computed(() => {
       operator: x[1]
     }
   }
+  if (data.value == 'op_data.party_time') {
+    return {
+      type: 'impart'
+    }
+  }
   return {
     type: 'custom'
   }
 })
 
+const op_type = computed(() => {
+  if (op_data.value.type == 'custom') {
+    return 'custom'
+  } else if (op_data.value.type == 'impart') {
+    return 'impart'
+  } else {
+    return 'op'
+  }
+})
+
 const type_options = [
-  { label: '自定义', value: 'custom' },
-  { label: '干员属性', value: 'op' }
+  { label: '干员属性', value: 'op' },
+  { label: '线索交流结束时间', value: 'impart' },
+  { label: '自定义', value: 'custom' }
 ]
 
 const op_options = [
-  { label: '在宿舍', value: 'in_dorm' },
+  { label: '心情', value: 'mood' },
   { label: '当前位置', value: 'room' },
-  { label: '心情', value: 'mood' }
+  { label: '在宿舍', value: 'in_dorm' }
 ]
 
 function set_op_type(v) {
-  if (v == 'custom') {
-    data.value = ''
-  } else {
+  data.value = ''
+  if (v == 'op') {
     data.value = "op_data.operators['阿米娅'].current_mood()"
+  } else if (v == 'impart') {
+    data.value = 'op_data.party_time'
   }
 }
 
@@ -84,13 +101,9 @@ function update_type(type) {
 </script>
 
 <template>
-  <n-select
-    :default-value="op_data.type == 'custom' ? 'custom' : 'op'"
-    :options="type_options"
-    :on-update:value="set_op_type"
-  />
-  <n-input v-if="op_data.type == 'custom'" v-model:value="data" />
-  <template v-else>
+  <n-select :default-value="op_type" :options="type_options" :on-update:value="set_op_type" />
+  <n-input v-if="op_type == 'custom'" v-model:value="data" />
+  <template v-if="op_type == 'op'">
     <n-select
       :default-value="op_data.operator"
       filterable

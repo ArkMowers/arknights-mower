@@ -326,6 +326,14 @@ def simulate():
                 base_scheduler.op_data.operators[k].current_room = v.current_room
                 base_scheduler.op_data.operators[k].current_index = v.current_index
     timezone_offset = 0
+
+    if len(base_scheduler.op_data.backup_plans) > 0:
+        for idx, backplan in enumerate(base_scheduler.op_data.backup_plans):
+            validation_msg = base_scheduler.op_data.swap_plan(idx, True)
+            if validation_msg is not None:
+                logger.error(f"替换排班验证错误：{validation_msg}")
+                return
+            base_scheduler.op_data.swap_plan(-1, True)
     while True:
         try:
             if len(base_scheduler.tasks) > 0:
