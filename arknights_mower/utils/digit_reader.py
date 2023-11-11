@@ -17,6 +17,7 @@ class DigitReader:
         self.drone_template = []
         self.report_template = []
         self.report_template_white = []
+        self.recruit_template = []
         for i in range(10):
             self.time_template.append(
                 loadimg(f'{__rootdir__}/resources/orders_time/{i}.png', True)
@@ -29,6 +30,9 @@ class DigitReader:
             )
             self.report_template_white.append(
                 loadimg(f'{__rootdir__}/resources/report_number/{i}.png', True)
+            )
+            self.recruit_template.append(
+                loadimg(f'{__rootdir__}/resources/recruit_ticket/{i}.png', True)
             )
 
     def get_drone(self, img_grey, h=1080, w=1920):
@@ -134,6 +138,32 @@ class DigitReader:
                     result[loc[1][i]] = j
 
         l = [str(result[k]) for k in sorted(result)]
+        return int("".join(l))
+
+    def get_recruit_ticket(self, digit_part):
+        result = {}
+        digit_part = cv2.cvtColor(digit_part, cv2.COLOR_RGB2GRAY)
+
+        for j in range(10):
+            res = cv.matchTemplate(
+                digit_part,
+                self.recruit_template[j],
+                cv.TM_CCORR_NORMED,
+            )
+            threshold = 0.95
+            loc = np.where(res >= threshold)
+            for i in range(len(loc[0])):
+                x = loc[1][i]
+                accept = True
+                for o in result:
+                    if abs(o - x) < 5:
+                        accept = False
+                        break
+                if accept:
+                    result[loc[1][i]] = j
+
+        l = [str(result[k]) for k in sorted(result)]
+
         return int("".join(l))
 
     def 识别制造加速总剩余时间(self, img_grey, h, w):

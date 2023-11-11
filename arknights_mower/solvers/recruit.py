@@ -13,8 +13,9 @@ from ..ocr import ocr_rectify, ocrhandle
 from ..utils import segment, rapidocr
 from .. import __rootdir__
 from ..utils.device import Device
+from ..utils.digit_reader import DigitReader
 from ..utils.email import recruit_template, recruit_rarity
-from ..utils.image import cropimg, bytes2img
+from ..utils.image import cropimg, bytes2img, loadimg
 from ..utils.log import logger
 from ..utils.recognize import RecognizeError, Recognizer, Scene
 from ..utils.solver import BaseSolver
@@ -42,7 +43,7 @@ class RecruitSolver(BaseSolver):
         self.permit_count = None
         self.can_refresh = None
         self.enough_lmb = True
-
+        self.digitReader = DigitReader()
         self.recruit_order = [6, 5, 1, 4, 3, 2]
 
     def run(self, priority: list[str] = None, send_message_config={}, recruit_config={}):
@@ -125,23 +126,29 @@ class RecruitSolver(BaseSolver):
 
                 logger.info(f"刷新次数:{refresh_res}")
 
-            if self.permit_count is None:
-                p0, p1 = self.find("recruit_ticket")
-                p2, p3 = self.find("stone")
-                recruit_ticket_img = self.recog.img[p0[1]:p1[1], p1[0]:p2[0]]
-                recruit_ticket_gray = cv2.cvtColor(recruit_ticket_img, cv2.COLOR_BGR2GRAY)
-                try:
-                    res = rapidocr.engine(recruit_ticket_gray, use_det=False, use_cls=False, use_rec=True)[0][0][0]
-                    if res == 'o' or res == 'O':
-                        res = '0'
-                    res = re.sub("\D", "", res)
+            try:
+                if self.permit_count is None:
+                    template_ticket = loadimg(f"{__rootdir__}/resources/recruit_ticket.png")
+                    img = self.recog.img
+                    res = cv2.matchTemplate(img, template_ticket, cv2.TM_CCOEFF_NORMED)
+                    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+                    h, w = template_ticket.shape[:-1]
+                    p0 = max_loc
+                    p1 = (p0[0] + w, p0[1] + h)
+
+                    template_stone = loadimg(f"{__rootdir__}/resources/stone.png")
+                    res = cv2.matchTemplate(img, template_stone, cv2.TM_CCOEFF_NORMED)
+                    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+                    p2 = max_loc
+
+                    res = self.digitReader.get_recruit_ticket(img[p2[1]:p1[1], p1[0]:p2[0]])
                     if str(res).isdigit():
                         self.permit_count = int(res)
                         logger.info(f"招募券数量:{res}")
-                except:
-                    # 设置为1 先保证后续流程能正常进行
-                    self.permit_count = 1
-                    logger.error("招募券数量读取失败")
+            except:
+                # 设置为1 先保证后续流程能正常进行
+                self.permit_count = 1
+                logger.error("招募券数量读取失败")
 
             if self.can_refresh is False and self.permit_count <= 0:
                 logger.info("无招募券和刷新次数，结束公招")
