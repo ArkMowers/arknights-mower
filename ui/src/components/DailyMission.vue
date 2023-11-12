@@ -3,7 +3,7 @@ import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 
 const store = useConfigStore()
-const {check_mail_enable, report_enable } = storeToRefs(store)
+const { check_mail_enable, report_enable } = storeToRefs(store)
 </script>
 <template>
   <n-card>

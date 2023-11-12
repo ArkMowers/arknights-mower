@@ -3,7 +3,7 @@ import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 
 const store = useConfigStore()
-const { maa_depot_enable} = storeToRefs(store)
+const { maa_depot_enable } = storeToRefs(store)
 </script>
 <template>
   <n-card>

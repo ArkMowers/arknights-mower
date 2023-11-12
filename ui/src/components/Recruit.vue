@@ -2,7 +2,8 @@
 import { useConfigStore } from '@/stores/config'
 const store = useConfigStore()
 import { storeToRefs } from 'pinia'
-const { recruit_enable, recruitment_permit, recruitment_time, recruit_robot,recruit_gap} = storeToRefs(store)
+const { recruit_enable, recruitment_permit, recruitment_time, recruit_robot, recruit_gap } =
+  storeToRefs(store)
 import { ref, inject } from 'vue'
 
 const mobile = inject('mobile')

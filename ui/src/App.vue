@@ -161,7 +161,8 @@ const menuOptions = computed(() => [
         key: 'go-to-record-depot'
       },
       {
-        label: () => h(RouterLink, { to: { path: '/record/report' } }, { default: () => '基建报表' }),
+        label: () =>
+          h(RouterLink, { to: { path: '/record/report' } }, { default: () => '基建报表' }),
         icon: renderIcon(ReaderOutline),
         key: 'go-to-record-report'
       }
