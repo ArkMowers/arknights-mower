@@ -138,8 +138,8 @@ def set_recruit_options(base_scheduler, conf):
     recruit_config["permit_target"] = conf["recruitment_permit"]
     recruit_config["recruit_robot"] = conf["recruit_robot"]
     recruit_config["recruitment_time"] = conf["recruitment_time"]
+    recruit_config["recruit_execution_gap"] = conf["recruit_gap"]
     base_scheduler.recruit_config = recruit_config
-
     logger.debug(f"更新公招设置：{base_scheduler.recruit_config}")
 
 

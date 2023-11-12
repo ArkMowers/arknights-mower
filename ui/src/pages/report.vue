@@ -97,7 +97,7 @@ const option_iron = computed(() => {
     ],
     dataZoom:[
       {
-        yAxisIndex :0
+        xAxisIndex :0
       }
     ],
     series: [
@@ -207,7 +207,7 @@ const option_orundum = computed(() => {
     ],
     dataZoom:[
       {
-        yAxisIndex :0
+        xAxisIndex :0
       }
     ],
     series: [

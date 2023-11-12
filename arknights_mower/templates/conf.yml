@@ -250,3 +250,4 @@ run_order_grandet_mode:
   buffer_time: 30
 server_push_enable: false
 sendKey: ''
+recruit_gap: 9

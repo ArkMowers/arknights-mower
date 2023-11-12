@@ -318,9 +318,9 @@ def get_report_data():
         df = pd.read_csv(record_path, encoding='gbk')
         data = df.to_dict('records')
 
-        for i in range(len(data) - 1, -1, -1):
-            if i < len(data) - 15:
-                data.pop(i)
+        # for i in range(len(data) - 1, -1, -1):
+        #     if i < len(data) - 15:
+        #         data.pop(i)
 
         for item in data:
             format_data[item['Unnamed: 0']] = {

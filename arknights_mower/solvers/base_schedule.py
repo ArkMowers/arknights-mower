@@ -2265,9 +2265,10 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
     def recruit_plan_solver(self):
         if ('last_execution' not in self.recruit_config
                 or self.recruit_config['last_execution'] is None
-                or self.recruit_config['last_execution'] <= (datetime.now() - timedelta(hours=9))):
+                or self.recruit_config['last_execution'] <= (datetime.now() - timedelta(seconds=self.recruit_config['recruit_execution_gap'] * 3600))):
             recruit([], self.send_message_config, self.recruit_config)
             self.recruit_config['last_execution'] = datetime.now()
+            logger.info("下一次公开招募执行时间在{}小时之后".format(self.recruit_config['recruit_execution_gap']))
 
     def mail_plan_solver(self):
         if self.check_mail_enable:
