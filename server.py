@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
+import pandas as pd
 import requests
 
 from arknights_mower.solvers import record
+from arknights_mower.solvers.report import get_report_data
 from arknights_mower.utils.conf import load_conf, save_conf, load_plan, write_plan
 from arknights_mower.utils import depot
+from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 from arknights_mower.__main__ import main
 from arknights_mower.data import agent_list, shop_items
@@ -34,7 +37,6 @@ import pathlib
 
 import tkinter
 from tkinter import messagebox
-
 
 mimetypes.add_type("text/html", ".html")
 mimetypes.add_type("text/css", ".css")
@@ -162,7 +164,7 @@ def start():
     # 创建 tmp 文件夹
     tmp_dir = get_path("@app/tmp")
     tmp_dir.mkdir(exist_ok=True)
-    
+
     read, write = multiprocessing.Pipe()
     mower_process = multiprocessing.Process(
         target=main,
@@ -290,9 +292,9 @@ def get_maa_adb_version():
 def get_maa_conn_presets():
     try:
         with open(
-            os.path.join(conf["maa_path"], "resource", "config.json"),
-            "r",
-            encoding="utf-8",
+                os.path.join(conf["maa_path"], "resource", "config.json"),
+                "r",
+                encoding="utf-8",
         ) as f:
             presets = [i["configName"] for i in json.load(f)["connection"]]
     except:
@@ -303,6 +305,35 @@ def get_maa_conn_presets():
 @app.route("/record/getMoodRatios")
 def get_mood_ratios():
     return record.get_mood_ratios()
+
+
+@app.route("/report/getReportData")
+def get_report_data():
+    record_path = get_path("@app/tmp/report.csv")
+    try:
+        format_data = {}
+        if os.path.exists(record_path) is False:
+            logger.debug("基报不存在")
+            return False
+        df = pd.read_csv(record_path, encoding='gbk')
+        data = df.to_dict('records')
+
+        for i in range(len(data) - 1, -1, -1):
+            if i < len(data) - 15:
+                data.pop(i)
+
+        for item in data:
+            format_data[item['Unnamed: 0']] = {
+                '作战录像': item['作战录像'],
+                '赤金': item['赤金'],
+                '龙门币订单': item['龙门币订单'],
+                '龙门币订单数': item['龙门币订单数'],
+                '合成玉': item['合成玉'],
+                '合成玉订单数量': item['合成玉订单数量']
+            }
+        return format_data
+    except PermissionError:
+        logger.info("report.csv正在被占用")
 
 
 @app.route("/test-email")

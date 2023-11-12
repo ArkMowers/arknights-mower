@@ -8,18 +8,18 @@ import numpy as np
 import pandas as pd
 import cv2
 
-from ..utils import rapidocr
-from ..utils.device import Device
-from ..data import __rootdir__
-from ..utils.digit_reader import DigitReader
-from ..utils.log import logger
-from ..utils.path import get_path
-from ..utils.recognize import RecognizeError, Recognizer, Scene
-from ..utils.solver import BaseSolver
+from arknights_mower.utils.device import Device
+from arknights_mower.data import __rootdir__
+from arknights_mower.utils.digit_reader import DigitReader
+from arknights_mower.utils.image import loadimg
+from arknights_mower.utils.log import logger
+from arknights_mower.utils.path import get_path
+from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
+from arknights_mower.utils.solver import BaseSolver
 
 
 def remove_blank(target: str):
-    if target is None or target is "":
+    if target is None or target == "":
         return target
 
     target.strip()
@@ -144,3 +144,19 @@ class ReportSolver(BaseSolver):
             return False
         except PermissionError:
             logger.info("report.csv正在被占用")
+
+
+def get_report_data():
+    record_path = get_path("@app/tmp/report.csv")
+    try:
+        data = {}
+        if os.path.exists(record_path) is False:
+            logger.debug("基报不存在")
+            return False
+        df = pd.read_csv(record_path, encoding='gbk')
+        data = df.to_dict('dict')
+        print(data)
+    except PermissionError:
+        logger.info("report.csv正在被占用")
+
+
