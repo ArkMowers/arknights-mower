@@ -46,6 +46,12 @@ export const routes = [
             component: () => import('@/pages/RecordPie.vue'),
             meta: { title: '心情饼图' },
             name: 'record_pie'
+          },
+          {
+            path: 'report',
+            component: () => import('@/pages/report.vue'),
+            meta: { title: '基建报告' },
+            name: 'report'
           }
         ]
       }

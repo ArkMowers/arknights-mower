@@ -77,6 +77,11 @@
                         仓库
                       </n-button>
                     </div>
+                    <div>
+                      <n-button @click=";(showModal = false), $router.push('/record/report')">
+                        基建报告
+                      </n-button>
+                    </div>
                   </n-card>
                 </n-modal>
               </n-tab>
@@ -153,6 +158,11 @@ const menuOptions = computed(() => [
         label: () => h(RouterLink, { to: { path: '/record/depot' } }, { default: () => '仓库' }),
         icon: renderIcon(Storefront),
         key: 'go-to-record-depot'
+      },
+      {
+        label: () => h(RouterLink, { to: { path: '/record/report' } }, { default: () => '基建报告' }),
+        icon: renderIcon(Storefront),
+        key: 'go-to-record-report'
       }
     ]
   },
