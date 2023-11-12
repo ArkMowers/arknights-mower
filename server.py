@@ -331,7 +331,8 @@ def get_report_data():
                 '合成玉': item['合成玉'],
                 '合成玉订单数量': item['合成玉订单数量']
             }
-        return format_data
+        logger.info(data )
+        return data
     except PermissionError:
         logger.info("report.csv正在被占用")
 
