@@ -10,6 +10,7 @@ export {}
 declare module '@vue/runtime-core' {
   export interface GlobalComponents {
     Clue: typeof import('./src/components/Clue.vue')['default']
+    DailyMission: typeof import('./src/components/DailyMission.vue')['default']
     Depotpage: typeof import('./src/components/Depotpage.vue')['default']
     Email: typeof import('./src/components/Email.vue')['default']
     HelpText: typeof import('./src/components/HelpText.vue')['default']

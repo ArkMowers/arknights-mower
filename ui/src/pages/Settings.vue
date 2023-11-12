@@ -301,6 +301,7 @@ function render_label(option) {
           </n-card>
         </div>
         <div><depotpage /></div>
+        <div><DailyMission /></div>
         <div><maa-basic /></div>
         <div><SKLand /></div>
         <div><email /></div>
