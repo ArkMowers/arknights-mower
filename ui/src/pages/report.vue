@@ -18,6 +18,8 @@
       <n-gi>
         <div class="report-card_1">
           <n-card>
+            从{{ orundum_date_array[0] }}记录
+            你卖出了{{ sum_orundum }}玉,相当于{{ Math.floor(sum_orundum / 600) }}抽,{{ Math.floor(sum_orundum / 6000) }}个十连
             <e-charts v-if="show_orundum_chart" class="chart" :option="option_orundum" />
           </n-card>
         </div>
@@ -49,6 +51,8 @@ const min_lmb_y = ref()
 const max_exp_y = ref()
 const min_exp_y = ref()
 const each_order_lmb = ref([])
+const sum_orundum = ref(0)
+const sum_orundum_arry = ref([])
 onMounted(async () => {
   const report_data = await getReportData()
   const date = ref([])
@@ -64,7 +68,9 @@ onMounted(async () => {
     iron_order_array.value.push(report_data[item]['龙门币订单数'])
     each_order_lmb.value[item] = (Math.floor(report_data[item]['龙门币订单'] / report_data[item]['龙门币订单数']))
     orundum_array.value.push(report_data[item]['合成玉'])
-    orundum_order_array.value.push(report_data[item]['合成玉订单数量'])
+    //orundum_order_array.value.push(report_data[item]['合成玉订单数量'])
+    sum_orundum.value = report_data[item]['合成玉'] + sum_orundum.value
+    sum_orundum_arry.value[item] = (sum_orundum.value / 600).toFixed(1)
   }
 
   max_lmb_y.value = Math.floor(Math.max(...lmb_array.value) / 50000 + 1) * 50000
@@ -80,6 +86,7 @@ onMounted(async () => {
         orundum_date_array.value.splice(i, 1)
         orundum_array.value.splice(i, 1)
         orundum_order_array.value.splice(i, 1)
+
       }
     }
   }
@@ -292,7 +299,7 @@ const option_orundum = computed(() => {
       }
     },
     legend: {
-      data: ['合成玉', '合成玉订单数']
+      data: ['合成玉', '累积获得抽数']
     },
     xAxis: [
       {
@@ -316,10 +323,10 @@ const option_orundum = computed(() => {
       },
       {
         type: 'value',
-        name: '订单数',
+        name: '累积获得抽数',
         min: 0,
-        max: 50,
-        interval: 5,
+        max: 10,
+        interval: 1,
         axisLabel: {
           formatter: '{value}'
         }
@@ -337,7 +344,7 @@ const option_orundum = computed(() => {
         data: orundum_array.value
       },
       {
-        name: '合成玉订单数',
+        name: '累积获得抽数',
         type: 'bar',
         yAxisIndex: 1,
         tooltip: {
@@ -345,7 +352,7 @@ const option_orundum = computed(() => {
             return value
           }
         },
-        data: orundum_order_array.value
+        data: sum_orundum_arry.value
       }
     ]
   }
