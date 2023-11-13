@@ -3,7 +3,6 @@ import os
 import time
 from datetime import datetime, timedelta
 
-
 from arknights_mower.utils.log import logger
 import json
 
@@ -94,7 +93,6 @@ def update_conf():
 
 
 def set_maa_options(base_scheduler, conf):
-
     global maa_config
     maa_config["maa_enable"] = conf["maa_enable"]
     maa_config["maa_path"] = conf["maa_path"]
@@ -103,7 +101,7 @@ def set_maa_options(base_scheduler, conf):
     maa_config["expiring_medicine"] = conf["maa_expiring_medicine"]
     maa_config["weekly_plan"] = conf["maa_weekly_plan"]
     maa_config["roguelike"] = (
-        conf["maa_rg_enable"] == 1 and conf["maa_long_task_type"] == "rogue"
+            conf["maa_rg_enable"] == 1 and conf["maa_long_task_type"] == "rogue"
     )
     maa_config["rogue_theme"] = conf["maa_rg_theme"]
     maa_config["sleep_min"] = conf["maa_rg_sleep_min"]
@@ -118,14 +116,14 @@ def set_maa_options(base_scheduler, conf):
     maa_config["maa_depot_enable"] = conf["maa_depot_enable"]
     maa_config["rogue"] = conf["rogue"]
     maa_config["stationary_security_service"] = (
-        conf["maa_rg_enable"] == 1 and conf["maa_long_task_type"] == "sss"
+            conf["maa_rg_enable"] == 1 and conf["maa_long_task_type"] == "sss"
     )
     maa_config["sss_type"] = conf["sss"]["type"]
     maa_config["ec_type"] = conf["sss"]["ec"]
     maa_config["copilot_file_location"] = conf["sss"]["copilot"]
     maa_config["copilot_loop_times"] = conf["sss"]["loop"]
     maa_config["reclamation_algorithm"] = (
-        conf["maa_rg_enable"] == 1 and conf["maa_long_task_type"] == "ra"
+            conf["maa_rg_enable"] == 1 and conf["maa_long_task_type"] == "ra"
     )
     base_scheduler.maa_config = maa_config
 
@@ -238,7 +236,7 @@ def initialize(tasks, scheduler=None):
         logger.info("宿舍黑名单：" + str(plan_config.free_blacklist))
         base_scheduler.MAA = None
         base_scheduler.send_message_config = {
-            "email_config":{
+            "email_config": {
                 "mail_enable": conf["mail_enable"],
                 "subject": conf["mail_subject"],
                 "account": conf["account"],
@@ -246,7 +244,7 @@ def initialize(tasks, scheduler=None):
                 "receipts": [conf["account"]],
                 "notify": False,
             },
-            "serverJang_push_config":{
+            "serverJang_push_config": {
                 "server_push_enable": conf["server_push_enable"],
                 "sendKey": conf["sendKey"],
             }
@@ -339,11 +337,11 @@ def simulate():
             if len(base_scheduler.tasks) > 0:
                 (base_scheduler.tasks.sort(key=lambda x: x.time, reverse=False))
                 sleep_time = (
-                    base_scheduler.tasks[0].time - datetime.now()
+                        base_scheduler.tasks[0].time - datetime.now()
                 ).total_seconds()
                 logger.info("||".join([str(t) for t in base_scheduler.tasks]))
                 remaining_time = (
-                    base_scheduler.tasks[0].time - datetime.now()
+                        base_scheduler.tasks[0].time - datetime.now()
                 ).total_seconds()
 
                 new_conf = update_conf()
@@ -414,8 +412,8 @@ def simulate():
                     if conf["exit_game_when_idle"]:
                         restart_simulator(conf["simulator"], stop=False)
             if (
-                len(base_scheduler.tasks) > 0
-                and base_scheduler.tasks[0].type.value.split("_")[0] == "maa"
+                    len(base_scheduler.tasks) > 0
+                    and base_scheduler.tasks[0].type.value.split("_")[0] == "maa"
             ):
                 logger.info(
                     f"开始执行 MAA {base_scheduler.tasks[0].type.value.split('_')[1]} 任务"
@@ -427,7 +425,7 @@ def simulate():
 
             base_scheduler.run()
             reconnect_tries = 0
-        except ConnectionError or ConnectionAbortedError or AttributeError as e:
+        except (ConnectionError, ConnectionAbortedError, AttributeError) as e:
             reconnect_tries += 1
             if reconnect_tries < reconnect_max_tries:
                 logger.warning(f"出现错误.尝试重启Mower")
@@ -436,9 +434,7 @@ def simulate():
                     try:
                         base_scheduler = initialize([], base_scheduler)
                         break
-                    except (
-                        RuntimeError or ConnectionError or ConnectionAbortedError
-                    ) as ce:
+                    except Exception as ce:
                         logger.error(ce)
                         restart_simulator(conf["simulator"])
                         continue

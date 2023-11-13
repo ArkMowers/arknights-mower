@@ -11,10 +11,17 @@ watch(data, () => {
 })
 
 const op_data = computed(() => {
-  let x = data.value.match(/op_data.operators\['(.+?)'\].current_room.startswith\('dorm'\)/)
+  let x = data.value.match(/op_data.operators\['(.+?)'\].is_resting\(\)/)
   if (x && x[0] == data.value) {
     return {
       type: 'in_dorm',
+      operator: x[1]
+    }
+  }
+  x = data.value.match(/op_data.operators\['(.+?)'\].is_working\(\)/)
+  if (x && x[0] == data.value) {
+    return {
+      type: 'working',
       operator: x[1]
     }
   }
@@ -61,7 +68,8 @@ const type_options = [
 const op_options = [
   { label: '心情', value: 'mood' },
   { label: '当前位置', value: 'room' },
-  { label: '在宿舍', value: 'in_dorm' }
+  { label: '在工作', value: 'working' },
+  { label: '在休息', value: 'in_dorm' }
 ]
 
 function set_op_type(v) {
@@ -81,7 +89,9 @@ const { operators } = storeToRefs(plan_store)
 function build_data(op, type) {
   const x = `op_data.operators['${op}'].`
   if (type == 'in_dorm') {
-    data.value = x + "current_room.startswith('dorm')"
+    data.value = x + 'is_resting()'
+  } else if (type == 'working') {
+    data.value = x + 'is_working()'
   } else if (type == 'room') {
     data.value = x + 'current_room'
   } else if (type == 'mood') {
