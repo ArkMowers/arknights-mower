@@ -4,23 +4,24 @@
       <n-gi>
         <div class="report-card_1">
           <n-card>
-            <e-charts v-if="show_iron_chart" class="chart" :option="option_iron" />
+            <e-charts v-if="show_iron_chart" style="height: 400px" :option="option_iron" />
           </n-card>
         </div>
       </n-gi>
       <n-gi>
         <div class="report-card_1">
           <n-card>
-            <e-charts v-if="show_iron_chart" class="chart" :option="option_exp" />
+            <e-charts v-if="show_iron_chart" style="height: 400px" :option="option_iron" />
           </n-card>
         </div>
       </n-gi>
       <n-gi>
         <div class="report-card_1">
           <n-card>
-            从{{ orundum_date_array[0] }}记录
-            你卖出了{{ sum_orundum }}玉,相当于{{ Math.floor(sum_orundum / 600) }}抽,{{ Math.floor(sum_orundum / 6000) }}个十连
-            <e-charts v-if="show_orundum_chart" class="chart" :option="option_orundum" />
+            从{{ orundum_date_array[0] }}开始，共卖出了{{ sum_orundum }}玉,相当于{{
+              Math.floor(sum_orundum / 600)
+            }}抽,{{ Math.floor(sum_orundum / 6000) }}个十连
+            <e-charts v-if="show_orundum_chart" style="height: 400px" :option="option_orundum" />
           </n-card>
         </div>
       </n-gi>
@@ -66,7 +67,9 @@ onMounted(async () => {
     iron_array.value.push(report_data[item]['赤金'])
     lmb_array.value.push(report_data[item]['龙门币订单'])
     iron_order_array.value.push(report_data[item]['龙门币订单数'])
-    each_order_lmb.value[item] = (Math.floor(report_data[item]['龙门币订单'] / report_data[item]['龙门币订单数']))
+    each_order_lmb.value[item] = Math.floor(
+      report_data[item]['龙门币订单'] / report_data[item]['龙门币订单数']
+    )
     orundum_array.value.push(report_data[item]['合成玉'])
     //orundum_order_array.value.push(report_data[item]['合成玉订单数量'])
     sum_orundum.value = report_data[item]['合成玉'] + sum_orundum.value
@@ -86,7 +89,6 @@ onMounted(async () => {
         orundum_date_array.value.splice(i, 1)
         orundum_array.value.splice(i, 1)
         orundum_order_array.value.splice(i, 1)
-
       }
     }
   }
@@ -203,8 +205,7 @@ const option_iron = computed(() => {
           }
         },
         data: each_order_lmb.value
-      },
-
+      }
     ]
   }
 })
@@ -362,7 +363,6 @@ const option_orundum = computed(() => {
 <style scoped>
 .chart {
   height: 400px;
-
 }
 
 .report-card_1 {
