@@ -4,24 +4,22 @@
       <n-gi>
         <div class="report-card_1">
           <n-card>
-            <e-charts v-if="show_iron_chart" style="height: 400px" :option="option_iron" />
+            <e-charts theme:light style="height: 400px" :option="option_iron" />
           </n-card>
         </div>
       </n-gi>
       <n-gi>
-        <div class="report-card_1">
+        <div class="report-card_1" v-if=show_exp_chart>
           <n-card>
-            <e-charts v-if="show_iron_chart" style="height: 400px" :option="option_iron" />
+            <e-charts style="height: 400px" :option="option_exp" />
           </n-card>
         </div>
       </n-gi>
       <n-gi>
-        <div class="report-card_1">
+        <div class="report-card_1" v-if=show_orundum_chart>
           <n-card>
-            从{{ orundum_date_array[0] }}开始，共卖出了{{ sum_orundum }}玉,相当于{{
-              Math.floor(sum_orundum / 600)
-            }}抽,{{ Math.floor(sum_orundum / 6000) }}个十连
-            <e-charts v-if="show_orundum_chart" style="height: 400px" :option="option_orundum" />
+            共计{{Math.floor(sum_orundum)}}合成玉
+            <e-charts style="height: 400px" :option="option_orundum" />
           </n-card>
         </div>
       </n-gi>
@@ -34,70 +32,36 @@ import { computed, onMounted, ref } from 'vue'
 import ECharts from 'vue-echarts'
 import 'echarts'
 import { useReportStore } from '@/stores/report'
+
 const reportStore = useReportStore()
-const { getReportData } = reportStore
-const date_array = ref([])
-const orundum_date_array = ref([])
-const exp_array = ref([])
-const iron_array = ref([])
-const iron_order_array = ref([])
-const lmb_array = ref([])
-const orundum_array = ref([])
-const orundum_order_array = ref([])
+const { getReportData,getHalfMonthData } = reportStore
+
+
 const show_iron_chart = ref(false)
+const show_exp_chart = ref(true)
 const show_orundum_chart = ref(false)
-const show_orundum_chart_days = ref(15)
-const max_lmb_y = ref()
-const min_lmb_y = ref()
-const max_exp_y = ref()
-const min_exp_y = ref()
-const each_order_lmb = ref([])
 const sum_orundum = ref(0)
-const sum_orundum_arry = ref([])
+
+
+const ReportData=ref([])
+const HalfMonthData=ref([])
 onMounted(async () => {
-  const report_data = await getReportData()
-  const date = ref([])
-  for (let item in report_data) {
-    date.value.push(item)
-  }
-  for (let item in report_data) {
-    date_array.value.push(report_data[item]['Unnamed: 0'])
-    orundum_date_array.value.push(report_data[item]['Unnamed: 0'])
-    exp_array.value.push(report_data[item]['作战录像'])
-    iron_array.value.push(report_data[item]['赤金'])
-    lmb_array.value.push(report_data[item]['龙门币订单'])
-    iron_order_array.value.push(report_data[item]['龙门币订单数'])
-    each_order_lmb.value[item] = Math.floor(
-      report_data[item]['龙门币订单'] / report_data[item]['龙门币订单数']
-    )
-    orundum_array.value.push(report_data[item]['合成玉'])
-    //orundum_order_array.value.push(report_data[item]['合成玉订单数量'])
-    sum_orundum.value = report_data[item]['合成玉'] + sum_orundum.value
-    sum_orundum_arry.value[item] = (sum_orundum.value / 600).toFixed(1)
-  }
-
-  max_lmb_y.value = Math.floor(Math.max(...lmb_array.value) / 50000 + 1) * 50000
-  min_lmb_y.value = 0 //Math.min(...lmb_array.value)
-  max_exp_y.value = Math.floor(Math.max(...exp_array.value) / 30000 + 1) * 30000
-  min_exp_y.value = 0 //Math.min(...exp_array.value)
-
+  ReportData.value = await getReportData()
+  HalfMonthData.value= await getHalfMonthData()
   show_iron_chart.value = true
-  if (orundum_date_array.value.length > show_orundum_chart_days.value) {
-    for (var i = orundum_order_array.value.length - 1; i >= 0; i--) {
-      if (i < orundum_date_array.value.length - show_orundum_chart_days.value) {
-        console.log(i, orundum_date_array.value[i])
-        orundum_date_array.value.splice(i, 1)
-        orundum_array.value.splice(i, 1)
-        orundum_order_array.value.splice(i, 1)
-      }
+
+  for(let item in ReportData.value){
+    console.log("ReportData.value[item]['作战录像']",ReportData.value[item]['作战录像'])
+    if(ReportData.value[item]['作战录像']>0){
+      show_exp_chart.value=true;
     }
   }
-  for (let item in orundum_array.value) {
-    if (orundum_array.value[item] > 0) {
-      show_orundum_chart.value = true
-      break
-    }
+  if(HalfMonthData.value.length>0){
+    show_orundum_chart.value=true;
+    sum_orundum.value = HalfMonthData.value[HalfMonthData.value.length-1]['累计制造合成玉']
   }
+
+
 })
 const option_iron = computed(() => {
   return {
@@ -106,6 +70,22 @@ const option_iron = computed(() => {
         text: '赤金'
       }
     ],
+    toolbox: {
+      feature: {
+        dataView: { show: true, readOnly: false },
+        magicType: { show: true, type: ['line', 'bar'] },
+        restore: { show: true },
+        saveAsImage: { show: true }
+      }
+    },
+    legend: {
+      data: ["龙门币订单",'赤金', '每单获取龙门币'],
+      selected:{
+        '龙门币订单':true,
+        '赤金':true,
+        '每单获取龙门币':false
+      }
+    },
     tooltip: {
       trigger: 'axis',
       axisPointer: {
@@ -115,167 +95,71 @@ const option_iron = computed(() => {
         }
       }
     },
-    toolbox: {
-      feature: {
-        dataView: { show: true, readOnly: true },
-        magicType: { show: true, type: ['line', 'bar'] },
-        restore: { show: true },
-        saveAsImage: { show: true }
-      }
+    dataset: {
+      dimensions: ['日期','每单获取龙门币',"龙门币订单",'赤金'],
+      source: ReportData.value
     },
-    legend: {
-      data: ['赤金', '龙门币', '贸易站龙门币订单数']
-    },
-    xAxis: [
-      {
-        type: 'category',
-        data: date_array.value,
-        axisPointer: {
-          type: 'shadow'
-        }
-      }
-    ],
+    xAxis: {
+      type: 'category',
+      axisPointer: {
+        type: 'shadow'
+      }},
     yAxis: [
-      {
-        type: 'value',
-        min: min_lmb_y.value,
-        max: max_lmb_y.value,
-        interval: 20000,
-        axisLabel: {
-          formatter: '{value}'
-        }
-      },
-      {
-        type: 'value',
-        name: '订单数',
-        min: 0,
-        max: 50,
-        interval: 10,
-        axisLabel: {
-          formatter: '{value}'
-        }
-      }
-    ],
-    dataZoom: [
-      {
-        xAxisIndex: 0
-      }
-    ],
-    series: [
-      {
-        name: '赤金',
-        type: 'line',
-        yAxisIndex: 0,
-        tooltip: {
-          valueFormatter: function (value) {
-            return value
-          }
-        },
-        data: iron_array.value
-      },
-
       {
         name: '龙门币',
-        type: 'line',
-        yAxisIndex: 0,
-        tooltip: {
-          valueFormatter: function (value) {
-            return value
-          }
-        },
-        data: lmb_array.value
-      },
-      {
-        name: '贸易站龙门币订单数',
-        type: 'bar',
-        yAxisIndex: 1,
-        tooltip: {
-          valueFormatter: function (value) {
-            return value
-          }
-        },
-        data: iron_order_array.value
-      },
-      {
-        name: '每订单龙门币',
-        type: 'line',
-        tooltip: {
-          valueFormatter: function (value) {
-            return value
-          }
-        },
-        data: each_order_lmb.value
-      }
-    ]
-  }
-})
-const option_exp = computed(() => {
-  return {
-    title: [
-      {
-        text: '经验'
-      }
-    ],
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: {
-        type: 'cross',
-        crossStyle: {
-          color: '#999'
-        }
-      }
-    },
-    toolbox: {
-      feature: {
-        dataView: { show: true, readOnly: true },
-        magicType: { show: true, type: ['line', 'bar'] },
-        restore: { show: true },
-        saveAsImage: { show: true }
-      }
-    },
-    legend: {
-      data: ['作战录像']
-    },
-    xAxis: [
-      {
-        type: 'category',
-        data: date_array.value,
-        axisPointer: {
-          type: 'shadow'
-        }
-      }
-    ],
-    yAxis: [
-      {
         type: 'value',
-        min: min_exp_y.value,
-        max: max_exp_y.value,
-        interval: 10000,
+        axisLine:{
+          show:true
+        },
         axisLabel: {
           formatter: '{value}'
         }
-      }
-    ],
-    dataZoom: [
+      },
       {
-        xAxisIndex: 0
+        name: '每单平均龙门币',
+        type: 'value',
+        axisLine:{
+          show:true
+        },
+        position: 'right',
+        offset: 25,
       }
     ],
     series: [
       {
-        name: '作战录像',
-        type: 'line',
-        yAxisIndex: 0,
+        type: 'bar',
+        yAxisIndex: 1,
+        color:'#faf0b5',
         tooltip: {
           valueFormatter: function (value) {
             return value
           }
         },
-        data: exp_array.value
+      },
+      {
+        type: 'line',
+        yAxisIndex: 0,
+        color:'#e70000',
+        tooltip: {
+          valueFormatter: function (value) {
+            return value
+          }
+        },
+      },
+      {
+        type: 'line',
+        yAxisIndex: 0,
+        color:'#64a8ff',
+        tooltip: {
+          valueFormatter: function (value) {
+            return value
+          }
+        },
       }
     ]
   }
 })
+
 const option_orundum = computed(() => {
   return {
     title: [
@@ -283,6 +167,22 @@ const option_orundum = computed(() => {
         text: '合成玉'
       }
     ],
+    legend: {
+      data: ['合成玉',"合成玉订单数量",'抽数'],
+      selected:{
+        '合成玉':true,
+        '抽数':false,
+        '合成玉订单数量':false
+      }
+    },
+    toolbox: {
+      feature: {
+        dataView: { show: true, readOnly: false },
+        magicType: { show: true, type: ['line', 'bar'] },
+        restore: { show: true },
+        saveAsImage: { show: true }
+      }
+    },
     tooltip: {
       trigger: 'axis',
       axisPointer: {
@@ -292,42 +192,106 @@ const option_orundum = computed(() => {
         }
       }
     },
-    toolbox: {
-      feature: {
-        dataView: { show: true, readOnly: true },
-        restore: { show: true },
-        saveAsImage: { show: true }
-      }
+    dataset: {
+      dimensions: ['日期','合成玉',"合成玉订单数量",'抽数'],
+      source: HalfMonthData.value
     },
-    legend: {
-      data: ['合成玉', '累积获得抽数']
-    },
-    xAxis: [
-      {
-        type: 'category',
-        data: orundum_date_array.value,
-        axisPointer: {
-          type: 'shadow'
-        }
-      }
-    ],
+    xAxis: {
+      type: 'category',
+      axisPointer: {
+        type: 'shadow'
+      }},
     yAxis: [
       {
         type: 'value',
-        name: '合成玉',
-        min: 0,
-        max: 1000,
-        interval: 100,
+        axisLine:{
+          show:true
+        },
         axisLabel: {
           formatter: '{value}'
         }
       },
       {
         type: 'value',
-        name: '累积获得抽数',
-        min: 0,
-        max: 10,
-        interval: 1,
+        axisLine:{
+          show:true
+        },
+        position: 'right',
+      }
+    ],
+    series: [
+      {
+        type: 'line',
+        yAxisIndex: 0,
+        color:'#faf0b5',
+        tooltip: {
+          valueFormatter: function (value) {
+            return value
+          }
+        },
+      },
+      {
+        type: 'line',
+        yAxisIndex: 0,
+        color:'#e70000',
+        tooltip: {
+          valueFormatter: function (value) {
+            return value
+          }
+        },
+      },
+      {
+        type: 'line',
+        yAxisIndex: 0,
+        color:'#64a8ff',
+        tooltip: {
+          valueFormatter: function (value) {
+            return value
+          }
+        },
+      }
+    ]
+  }
+})
+
+const option_exp = computed(() => {
+  return {
+    title: [
+      {
+        text: '作战录像'
+      }
+    ],
+    toolbox: {
+      feature: {
+        dataView: { show: true, readOnly: false },
+        magicType: { show: true, type: ['line', 'bar'] },
+        saveAsImage: { show: true }
+      }
+    },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: {
+        type: 'cross',
+        crossStyle: {
+          color: '#999'
+        }
+      }
+    },
+    dataset: {
+      dimensions: ['日期','作战录像'],
+      source: ReportData.value
+    },
+    xAxis: {
+      type: 'category',
+      axisPointer: {
+        type: 'shadow'
+      }},
+    yAxis: [
+      {
+        type: 'value',
+        axisLine:{
+          show:true
+        },
         axisLabel: {
           formatter: '{value}'
         }
@@ -335,25 +299,14 @@ const option_orundum = computed(() => {
     ],
     series: [
       {
-        name: '合成玉',
         type: 'line',
+        yAxisIndex: 0,
+        color:'#e70000',
         tooltip: {
           valueFormatter: function (value) {
             return value
           }
         },
-        data: orundum_array.value
-      },
-      {
-        name: '累积获得抽数',
-        type: 'bar',
-        yAxisIndex: 1,
-        tooltip: {
-          valueFormatter: function (value) {
-            return value
-          }
-        },
-        data: sum_orundum_arry.value
       }
     ]
   }
@@ -373,7 +326,7 @@ const option_orundum = computed(() => {
   justify-content: center;
   /* 让内容在垂直方向上居中 */
 
-  width: 600px;
+  width: 800px;
   height: 400px;
   padding: 20px 20px 80px 20px;
   border: 1px solid #ccc;
