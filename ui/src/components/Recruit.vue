@@ -2,7 +2,8 @@
 import { useConfigStore } from '@/stores/config'
 const store = useConfigStore()
 import { storeToRefs } from 'pinia'
-const { recruit_enable, recruitment_permit, recruitment_time, recruit_robot } = storeToRefs(store)
+const { recruit_enable, recruitment_permit, recruitment_time, recruit_robot, recruit_gap } =
+  storeToRefs(store)
 import { ref, inject } from 'vue'
 
 const mobile = inject('mobile')
@@ -18,6 +19,11 @@ const recruit_4 = ref('900')
       </n-checkbox>
     </template>
     <n-form :label-placement="mobile ? 'top' : 'left'" :show-feedback="false">
+      <div class="misc-container">
+        <div>启动间隔</div>
+        <n-input-number class="hour-input" v-model:value="recruit_gap" />
+        <div>小时（可填小数）</div>
+      </div>
       <n-form-item>
         <template #label>
           <span>三星招募阈值</span>

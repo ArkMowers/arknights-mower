@@ -136,8 +136,8 @@ def set_recruit_options(base_scheduler, conf):
     recruit_config["permit_target"] = conf["recruitment_permit"]
     recruit_config["recruit_robot"] = conf["recruit_robot"]
     recruit_config["recruitment_time"] = conf["recruitment_time"]
+    recruit_config["recruit_execution_gap"] = conf["recruit_gap"]
     base_scheduler.recruit_config = recruit_config
-
     logger.debug(f"更新公招设置：{base_scheduler.recruit_config}")
 
 
@@ -352,12 +352,11 @@ def simulate():
                 if sleep_time > 540:
                     # 刷新时间以鹰历为准
                     if base_scheduler.daily_mission != (datetime.now() - timedelta(hours=4)).date():
-
-                        base_scheduler.mail_plan_solver()
                         if base_scheduler.report_plan_solver():
                             base_scheduler.daily_mission = (datetime.now() - timedelta(hours=4)).date()
                         if base_scheduler.skland_config["skland_enable"] == 1:
                             base_scheduler.skland_plan_solover()
+                        base_scheduler.mail_plan_solver()
                     if base_scheduler.recruit_config['recruit_enable'] == 1:
                         base_scheduler.recruit_plan_solver()
                     if base_scheduler.maa_config["maa_enable"] == 1:

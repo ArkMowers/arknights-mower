@@ -4,20 +4,22 @@ import csv
 import os
 import datetime
 
+import numpy as np
 import pandas as pd
 import cv2
 
-from ..utils import rapidocr
-from ..utils.device import Device
-from ..data import __rootdir__
-from ..utils.log import logger
-from ..utils.path import get_path
-from ..utils.recognize import RecognizeError, Recognizer, Scene
-from ..utils.solver import BaseSolver
+from arknights_mower.utils.device import Device
+from arknights_mower.data import __rootdir__
+from arknights_mower.utils.digit_reader import DigitReader
+from arknights_mower.utils.image import loadimg
+from arknights_mower.utils.log import logger
+from arknights_mower.utils.path import get_path
+from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
+from arknights_mower.utils.solver import BaseSolver
 
 
 def remove_blank(target: str):
-    if target is None or target is "":
+    if target is None or target == "":
         return target
 
     target.strip()
@@ -33,9 +35,11 @@ class ReportSolver(BaseSolver):
         self.low_range_gray = (100, 100, 100)
         self.high_range_gray = (255, 255, 255)
         self.date = (datetime.datetime.now() - datetime.timedelta(hours=4)).date().__str__()
+        self.digitReader = DigitReader()
         self.report_res = {
             "作战录像": None,
             "赤金": None,
+            "赤金数量": 0,
             "龙门币订单": None,
             "龙门币订单数": None,
             "合成玉": None,
@@ -81,44 +85,25 @@ class ReportSolver(BaseSolver):
             img = cv2.cvtColor(self.recog.img[0:1080, 1280:1920], cv2.COLOR_BGR2RGB)
             p0, p1 = self.locate_report(img, 'riic_exp')
             p2, p3 = self.locate_report(img, 'riic_exp_text')
-            self.report_res['作战录像'] = \
-                rapidocr.engine(img[p2[1]:p1[1], p1[0]:p2[0]], use_det=False, use_cls=False, use_rec=True)[0][0][0]
+            self.report_res['作战录像'] = self.digitReader.get_report_number(img[p2[1]:p1[1], p1[0]:p2[0]])
 
             p0, p1 = self.locate_report(img, 'riic_iron')
             p2, p3 = self.locate_report(img, 'riic_iron_text')
-            self.report_res['赤金'] = \
-                rapidocr.engine(img[p2[1]:p1[1], p1[0]:p2[0]], use_det=False, use_cls=False, use_rec=True)[0][0][0]
+            self.report_res['赤金'] = self.digitReader.get_report_number(img[p2[1]:p1[1], p1[0]:p2[0]])
 
             p0, p1 = self.locate_report(img, 'riic_iron_order')
             p2, p3 = self.locate_report(img, 'riic_order')
-            self.report_res['龙门币订单'] = \
-                rapidocr.engine(img[p2[1]:p1[1], p1[0]:p2[0]], use_det=False, use_cls=False, use_rec=True)[0][0][0]
-            iron_threshold_gray = cv2.inRange(img[p2[1]:p3[1], p3[0]:img.shape[1] - 40], self.low_range_gray,
-                                              self.high_range_gray)
-            iron_padded_img = cv2.resize(iron_threshold_gray,
-                                         [iron_threshold_gray.shape[0] * 4, iron_threshold_gray.shape[1] * 2])
-            self.report_res['龙门币订单数'] = \
-                rapidocr.engine(iron_padded_img, use_det=False, use_cls=False, use_rec=True)[0][0][0]
+            self.report_res['龙门币订单'] = self.digitReader.get_report_number(img[p2[1]:p1[1], p1[0]:p2[0]])
+            self.report_res['龙门币订单数'] = self.digitReader.get_report_number_white(
+                img[p2[1]:p3[1], p3[0]:img.shape[1] - 20])
 
-            img = img[p3[1]:img.shape[0], 0:img.shape[1] - 40]
+            img = img[p3[1]:img.shape[0], 0:img.shape[1] - 20]
             p0, p1 = self.locate_report(img, 'riic_orundum')
             p2, p3 = self.locate_report(img, 'riic_order')
-            self.report_res['合成玉'] = \
-                rapidocr.engine(img[p2[1]:p1[1], p1[0]:p2[0]], use_det=False, use_cls=False, use_rec=True)[0][0][0]
-            if self.report_res['合成玉'] is None or str(self.report_res['合成玉']).isdigit() is False:
-                orundum_padded_img = cv2.resize(img[p2[1]:p1[1], p1[0]:p1[0] + 50],
-                                                [img[p2[1]:p1[1], p1[0]:p1[0] + 50].shape[0] * 6,
-                                                 img[p2[1]:p1[1], p1[0]:p1[0] + 50].shape[1] * 3])
-                self.report_res['合成玉'] = \
-                    rapidocr.engine(orundum_padded_img, use_det=False, use_cls=False, use_rec=True)[0][0][0]
-            orundum_threshold_gray = cv2.inRange(img[p2[1]:p3[1], p3[0]:img.shape[1] - 40], self.low_range_gray,
-                                                 self.high_range_gray)
-            orundum_padded_img = cv2.resize(orundum_threshold_gray,
-                                            [orundum_threshold_gray.shape[0] * 3, iron_threshold_gray.shape[1] * 2])
-            self.report_res['合成玉订单数量'] = \
-                rapidocr.engine(orundum_padded_img, use_det=False, use_cls=False, use_rec=True)[0][0][0]
+            self.report_res['合成玉'] = self.digitReader.get_report_number(img[p2[1]:p1[1], p1[0]:p2[0]])
+            self.report_res['合成玉订单数量'] = self.digitReader.get_report_number_white(
+                img[p2[1]:p3[1], p3[0]:img.shape[1]])
 
-            self.adjust_result()
             self.record_report()
         except:
             logger.info("基报识别失败 润")
@@ -128,7 +113,7 @@ class ReportSolver(BaseSolver):
         try:
             template_path = "{}/resources/{}.png".format(__rootdir__, template_name)
             logger.debug("待匹配模板图片{}的路径为{}".format(template_name, template_path))
-            template = cv2.imread(template_path.__str__())
+            template = cv2.imdecode(np.fromfile(template_path.__str__(), dtype=np.uint8), cv2.IMREAD_COLOR)
             logger.debug("待匹配模板图片{}读取成功".format(template_name))
             res = cv2.matchTemplate(img, template, cv2.TM_CCOEFF_NORMED)
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
@@ -141,16 +126,6 @@ class ReportSolver(BaseSolver):
             return None
         except:
             logger.error("{}匹配失败".format(template_name))
-
-    def adjust_result(self):
-        logger.debug("调整基报读取数据 {}".format(self.report_res))
-        for key in self.report_res:
-            if self.report_res[key]:
-                self.report_res[key].strip()
-            if self.report_res[key] == "o" or self.report_res[key] == "O":
-                self.report_res[key] = 0
-            if str(self.report_res[key]).isdigit() is False:
-                self.report_res[key] = None
 
     def record_report(self):
         logger.info(f"存入{self.date}的数据{self.report_res}")
@@ -169,3 +144,19 @@ class ReportSolver(BaseSolver):
             return False
         except PermissionError:
             logger.info("report.csv正在被占用")
+
+
+def get_report_data():
+    record_path = get_path("@app/tmp/report.csv")
+    try:
+        data = {}
+        if os.path.exists(record_path) is False:
+            logger.debug("基报不存在")
+            return False
+        df = pd.read_csv(record_path, encoding='gbk')
+        data = df.to_dict('dict')
+        print(data)
+    except PermissionError:
+        logger.info("report.csv正在被占用")
+
+

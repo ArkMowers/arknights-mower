@@ -681,7 +681,8 @@ def main():
         elif args.type == 'structure':
             img, flag_gif, flag_pdf = check_and_read(img_path)
             if not flag_gif and not flag_pdf:
-                img = cv2.imread(img_path)
+                #img = cv2.imread(img_path)
+                img = cv2.imdecode(np.fromfile(img_path.__str__(), dtype=np.uint8), cv2.IMREAD_COLOR)
 
             if args.recovery and args.use_pdf2docx_api and flag_pdf:
                 from pdf2docx.converter import Converter

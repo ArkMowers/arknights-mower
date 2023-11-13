@@ -77,6 +77,11 @@
                         仓库
                       </n-button>
                     </div>
+                    <div>
+                      <n-button @click=";(showModal = false), $router.push('/record/report')">
+                        基建报告
+                      </n-button>
+                    </div>
                   </n-card>
                 </n-modal>
               </n-tab>
@@ -108,7 +113,8 @@ import {
   StatsChart,
   Settings,
   HelpCircle,
-  Storefront
+  Storefront,
+  ReaderOutline
 } from '@vicons/ionicons5'
 
 function renderIcon(icon) {
@@ -133,19 +139,19 @@ const menuOptions = computed(() => [
     key: 'go-to-plan'
   },
   {
-    label: () => '基建报表',
+    label: () => '数据图表',
     key: 'building-report',
     icon: renderIcon(StatsChart),
     children: [
       {
         label: () =>
-          h(RouterLink, { to: { path: '/record/line' } }, { default: () => '基建报表-折线' }),
+          h(RouterLink, { to: { path: '/record/line' } }, { default: () => '干员心情报表' }),
         icon: renderIcon(BarChart),
         key: 'go-to-record-line'
       },
       {
         label: () =>
-          h(RouterLink, { to: { path: '/record/pie' } }, { default: () => '基建报表-饼图' }),
+          h(RouterLink, { to: { path: '/record/pie' } }, { default: () => '工休比报表' }),
         icon: renderIcon(PieChart),
         key: 'go-to-record-pie'
       },
@@ -153,6 +159,12 @@ const menuOptions = computed(() => [
         label: () => h(RouterLink, { to: { path: '/record/depot' } }, { default: () => '仓库' }),
         icon: renderIcon(Storefront),
         key: 'go-to-record-depot'
+      },
+      {
+        label: () =>
+          h(RouterLink, { to: { path: '/record/report' } }, { default: () => '基建报表' }),
+        icon: renderIcon(ReaderOutline),
+        key: 'go-to-record-report'
       }
     ]
   },
