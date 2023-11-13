@@ -48,6 +48,7 @@ const max_lmb_y = ref()
 const min_lmb_y = ref()
 const max_exp_y = ref()
 const min_exp_y = ref()
+const each_order_lmb = ref([])
 onMounted(async () => {
   const report_data = await getReportData()
   const date = ref([])
@@ -61,13 +62,14 @@ onMounted(async () => {
     iron_array.value.push(report_data[item]['赤金'])
     lmb_array.value.push(report_data[item]['龙门币订单'])
     iron_order_array.value.push(report_data[item]['龙门币订单数'])
+    each_order_lmb.value[item] = (Math.floor(report_data[item]['龙门币订单'] / report_data[item]['龙门币订单数']))
     orundum_array.value.push(report_data[item]['合成玉'])
     orundum_order_array.value.push(report_data[item]['合成玉订单数量'])
   }
 
   max_lmb_y.value = Math.floor(Math.max(...lmb_array.value) / 50000 + 1) * 50000
   min_lmb_y.value = 0 //Math.min(...lmb_array.value)
-  max_exp_y.value = Math.floor(Math.max(...exp_array.value) / 50000 + 1) * 50000
+  max_exp_y.value = Math.floor(Math.max(...exp_array.value) / 30000 + 1) * 30000
   min_exp_y.value = 0 //Math.min(...exp_array.value)
 
   show_iron_chart.value = true
@@ -162,6 +164,7 @@ const option_iron = computed(() => {
         },
         data: iron_array.value
       },
+
       {
         name: '龙门币',
         type: 'line',
@@ -183,7 +186,18 @@ const option_iron = computed(() => {
           }
         },
         data: iron_order_array.value
-      }
+      },
+      {
+        name: '每订单龙门币',
+        type: 'line',
+        tooltip: {
+          valueFormatter: function (value) {
+            return value
+          }
+        },
+        data: each_order_lmb.value
+      },
+
     ]
   }
 })
@@ -341,10 +355,7 @@ const option_orundum = computed(() => {
 <style scoped>
 .chart {
   height: 400px;
-  align-items: center;
-  /* 让内容在水平方向上居中 */
-  justify-content: center;
-  /* 让内容在垂直方向上居中 */
+
 }
 
 .report-card_1 {
