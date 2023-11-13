@@ -309,6 +309,20 @@ def get_mood_ratios():
     return record.get_mood_ratios()
 
 
+def str2date(target: str):
+    try:
+        return datetime.datetime.strptime(target, "%Y-%m-%d").date()
+    except ValueError:
+        return datetime.datetime.strptime(target, "%Y/%m/%d").date()
+
+
+def date2str(target: datetime.date):
+    try:
+        return datetime.datetime.strftime(target, "%Y-%m-%d")
+    except ValueError:
+        return datetime.datetime.strftime(target, "%Y/%m/%d")
+
+
 @app.route("/report/getReportData")
 def get_report_data():
     record_path = get_path("@app/tmp/report.csv")
@@ -319,7 +333,7 @@ def get_report_data():
             return False
         df = pd.read_csv(record_path, encoding='gbk')
         data = df.to_dict('records')
-        earliest_date = datetime.datetime.strptime(data[0]['Unnamed: 0'], "%Y-%m-%d").date()
+        earliest_date = str2date(data[0]['Unnamed: 0'])
 
         for item in data:
             format_data.append({
@@ -334,7 +348,7 @@ def get_report_data():
         if len(format_data) < 15:
             for i in range(1, 16 - len(format_data)):
                 format_data.insert(0, {
-                    "日期": datetime.datetime.strftime(earliest_date - datetime.timedelta(days=i), "%Y-%m-%d"),
+                    "日期": date2str(earliest_date - datetime.timedelta(days=i)),
                     '作战录像': '-',
                     '赤金': '-',
                     '龙门币订单': '-',
@@ -367,7 +381,7 @@ def get_half_month_data():
                     data.pop(i)
                 else:
                     if data[i]['合成玉'] > 0:
-                        begin_make_orundum = datetime.datetime.strptime(data[i]['Unnamed: 0'], "%Y-%m-%d").date()
+                        begin_make_orundum = str2date(data[i]['Unnamed: 0'])
         if begin_make_orundum == earliest_date:
             return format_data
         total_orundum = 0
@@ -382,10 +396,10 @@ def get_half_month_data():
             })
 
         if len(format_data) < 15:
-            earliest_date = datetime.datetime.strptime(data[0]['Unnamed: 0'], "%Y-%m-%d").date()
+            earliest_date = str2date(data[0]['Unnamed: 0'])
             for i in range(1, 16 - len(format_data)):
                 format_data.insert(0, {
-                    "日期": datetime.datetime.strftime(earliest_date - datetime.timedelta(days=i), "%Y-%m-%d"),
+                    "日期": date2str(earliest_date - datetime.timedelta(days=i)),
                     '合成玉': '-',
                     '合成玉订单数量': '-',
                     '抽数': '-',
@@ -394,6 +408,7 @@ def get_half_month_data():
         return format_data
     except PermissionError:
         logger.info("report.csv正在被占用")
+
 
 @app.route("/test-email")
 @require_token
