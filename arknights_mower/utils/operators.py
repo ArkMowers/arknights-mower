@@ -3,7 +3,7 @@ from ..data import agent_list, agent_arrange_order, base_room_list
 from ..solvers.record import save_action_to_sqlite_decorator
 from ..utils.log import logger
 import copy
-from evalidate import Expr
+from evalidate import Expr, base_eval_model
 
 
 class Operators(object):
@@ -37,6 +37,10 @@ class Operators(object):
         self.clues = []
         self.current_room_changed_callback = None
         self.party_time = None
+
+        self.eval_model = base_eval_model.clone()
+        self.eval_model.nodes.extend(["Call", "Attribute"])
+        self.eval_model.attributes.extend(["party_time", "is_working", "is_resting", "current_mood", "current_room"])
 
     def __repr__(self):
         return f'Operators(operators={self.operators})'
@@ -243,7 +247,7 @@ class Operators(object):
 
     def evaluate_expression(self, expression):
         try:
-            result = Expr(expression).eval({"op_data": self})
+            result = Expr(expression, self.eval_model).eval({"op_data": self})
             return result
         except Exception as e:
             logger.exception(f"Error evaluating expression: {e}")
