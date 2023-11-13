@@ -1,6 +1,6 @@
 <template>
   <div>
-    <n-grid x-gap="12" y-gap="12" cols="1 1000:2 " style="text-align: center;">
+    <n-grid x-gap="12" y-gap="12" cols="1 1000:2 " style="text-align: center">
       <n-gi>
         <div class="report-card_1">
           <n-card>
@@ -151,7 +151,6 @@ const option_iron = computed(() => {
       }
     ],
     series: [
-
       {
         name: '赤金',
         type: 'line',
@@ -233,8 +232,7 @@ const option_exp = computed(() => {
         axisLabel: {
           formatter: '{value}'
         }
-      },
-
+      }
     ],
     dataZoom: [
       {
@@ -361,6 +359,5 @@ const option_orundum = computed(() => {
   height: 400px;
   padding: 20px 20px 80px 20px;
   border: 1px solid #ccc;
-
 }
 </style>
