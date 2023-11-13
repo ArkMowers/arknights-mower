@@ -42,6 +42,7 @@
     "naive-ui": "^2.34.3",
     "pinyin-match": "^1.2.4",
     "prettier": "^2.8.4",
+    "rollup-plugin-visualizer": "^5.9.2",
     "sass": "^1.63.4",
     "typescript": "^5.0.4",
     "unplugin-auto-import": "^0.15.3",

@@ -1,47 +1,78 @@
 <template>
   <div>
-    <n-grid x-gap="12" y-gap="12" cols="1 1000:2 " style="text-align: center">
+    <n-grid x-gap="12" y-gap="12" cols="1 1000:2 " style="text-align: center" autoresize >
       <n-gi>
         <div class="report-card_1">
-          <n-card>
-            <e-charts theme:light style="height: 400px" :option="option_iron" />
-          </n-card>
+          <v-chart class="chart" v-if=show_iron_chart :option="option_iron" />
         </div>
       </n-gi>
       <n-gi>
-        <div class="report-card_1" v-if=show_exp_chart>
-          <n-card>
-            <e-charts style="height: 400px" :option="option_exp" />
-          </n-card>
+        <div class="report-card_1">
+          <v-chart class="chart" v-if=show_orundum_chart :option="option_orundum"/>
         </div>
       </n-gi>
       <n-gi>
-        <div class="report-card_1" v-if=show_orundum_chart>
-          <n-card>
-            共计{{Math.floor(sum_orundum)}}合成玉
-            <e-charts style="height: 400px" :option="option_orundum" />
-          </n-card>
+        <div class="report-card_1">
+          <v-chart class="chart" v-if=show_exp_chart :option="option_exp"/>
         </div>
       </n-gi>
     </n-grid>
   </div>
+
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
-import ECharts from 'vue-echarts'
-import 'echarts'
+import {registerTheme, use} from 'echarts/core';
+import { CanvasRenderer } from 'echarts/renderers';
+import { BarChart, LineChart } from 'echarts/charts'
+import {
+  TitleComponent,
+  ToolboxComponent,
+  LegendComponent,
+  TooltipComponent,
+  DatasetComponent,
+  GridComponent
+} from 'echarts/components'
+import VChart, { THEME_KEY} from 'vue-echarts';
+import { ref, provide,onMounted,computed } from 'vue';
+
+use([
+  TitleComponent,
+  ToolboxComponent,
+  LegendComponent,
+  TooltipComponent,
+  DatasetComponent,
+  GridComponent,
+  BarChart,
+  LineChart,
+  CanvasRenderer
+])
+import { useConfigStore } from '@/stores/config'
+const store = useConfigStore()
+import { storeToRefs } from 'pinia'
+const { theme } =storeToRefs(store)
+
+import roma from './theme/roma.json'
+import dark from './theme/dark.json'
+registerTheme('dark',dark)
+if(theme.value=='dark'){
+  provide(THEME_KEY, 'dark');
+}
+else{
+  registerTheme('roma',roma)
+  provide(THEME_KEY, 'roma');
+}
+
+
 import { useReportStore } from '@/stores/report'
 
 const reportStore = useReportStore()
 const { getReportData,getHalfMonthData } = reportStore
 
-
 const show_iron_chart = ref(false)
 const show_exp_chart = ref(true)
 const show_orundum_chart = ref(false)
 const sum_orundum = ref(0)
-
 
 const ReportData=ref([])
 const HalfMonthData=ref([])
@@ -60,9 +91,9 @@ onMounted(async () => {
     show_orundum_chart.value=true;
     sum_orundum.value = HalfMonthData.value[HalfMonthData.value.length-1]['累计制造合成玉']
   }
-
-
 })
+
+
 const option_iron = computed(() => {
   return {
     title: [
@@ -168,11 +199,10 @@ const option_orundum = computed(() => {
       }
     ],
     legend: {
-      data: ['合成玉',"合成玉订单数量",'抽数'],
+      data: ['合成玉','抽数'],
       selected:{
         '合成玉':true,
-        '抽数':false,
-        '合成玉订单数量':false
+        '抽数':false
       }
     },
     toolbox: {
@@ -193,7 +223,7 @@ const option_orundum = computed(() => {
       }
     },
     dataset: {
-      dimensions: ['日期','合成玉',"合成玉订单数量",'抽数'],
+      dimensions: ['日期','合成玉','抽数'],
       source: HalfMonthData.value
     },
     xAxis: {
@@ -231,19 +261,9 @@ const option_orundum = computed(() => {
         },
       },
       {
-        type: 'line',
-        yAxisIndex: 0,
+        type: 'bar',
+        yAxisIndex: 1,
         color:'#e70000',
-        tooltip: {
-          valueFormatter: function (value) {
-            return value
-          }
-        },
-      },
-      {
-        type: 'line',
-        yAxisIndex: 0,
-        color:'#64a8ff',
         tooltip: {
           valueFormatter: function (value) {
             return value
@@ -253,7 +273,6 @@ const option_orundum = computed(() => {
     ]
   }
 })
-
 const option_exp = computed(() => {
   return {
     title: [

@@ -319,7 +319,7 @@ def get_report_data():
             return False
         df = pd.read_csv(record_path, encoding='gbk')
         data = df.to_dict('records')
-        earliest_date = datetime.datetime.strptime(data[0]['Unnamed: 0'], "%Y/%m/%d").date()
+        earliest_date = datetime.datetime.strptime(data[0]['Unnamed: 0'], "%Y-%m-%d").date()
 
         for item in data:
             format_data.append({
@@ -334,7 +334,7 @@ def get_report_data():
         if len(format_data) < 15:
             for i in range(1, 16 - len(format_data)):
                 format_data.insert(0, {
-                    "日期": datetime.datetime.strftime(earliest_date - datetime.timedelta(days=i), "%Y/%m/%d"),
+                    "日期": datetime.datetime.strftime(earliest_date - datetime.timedelta(days=i), "%Y-%m-%d"),
                     '作战录像': '-',
                     '赤金': '-',
                     '龙门币订单': '-',
@@ -357,22 +357,22 @@ def get_half_month_data():
             return False
         df = pd.read_csv(record_path, encoding='gbk')
         data = df.to_dict('records')
-        earliest_date = datetime.datetime.strptime(data[0]['Unnamed: 0'], "%Y/%m/%d")
+        earliest_date = datetime.datetime.now()
 
         begin_make_orundum = (earliest_date + datetime.timedelta(days=1)).date()
-
+        print(begin_make_orundum)
         if len(data) > 15:
             for i in range(len(data) - 1, -1, -1):
                 if i < len(data) - 15:
                     data.pop(i)
                 else:
                     if data[i]['合成玉'] > 0:
-                        begin_make_orundum = datetime.datetime.strptime(data[i]['Unnamed: 0'], "%Y/%m/%d").date()
-        if begin_make_orundum == (earliest_date + datetime.timedelta(days=1)).date():
+                        begin_make_orundum = datetime.datetime.strptime(data[i]['Unnamed: 0'], "%Y-%m-%d").date()
+        if begin_make_orundum == earliest_date:
             return format_data
         total_orundum = 0
         for item in data:
-            total_orundum=total_orundum+item['合成玉']
+            total_orundum = total_orundum + item['合成玉']
             format_data.append({
                 "日期": item['Unnamed: 0'],
                 '合成玉': item['合成玉'],
@@ -382,18 +382,18 @@ def get_half_month_data():
             })
 
         if len(format_data) < 15:
+            earliest_date = datetime.datetime.strptime(data[0]['Unnamed: 0'], "%Y-%m-%d").date()
             for i in range(1, 16 - len(format_data)):
                 format_data.insert(0, {
-                    "日期": datetime.datetime.strftime(earliest_date - datetime.timedelta(days=i), "%Y/%m/%d"),
+                    "日期": datetime.datetime.strftime(earliest_date - datetime.timedelta(days=i), "%Y-%m-%d"),
                     '合成玉': '-',
                     '合成玉订单数量': '-',
                     '抽数': '-',
-                    '累计制造合成玉': '-'
+                    '累计制造合成玉': 0,
                 })
         return format_data
     except PermissionError:
         logger.info("report.csv正在被占用")
-
 
 @app.route("/test-email")
 @require_token

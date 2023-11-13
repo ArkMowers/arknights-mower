@@ -300,7 +300,7 @@ function render_label(option) {
             </n-form>
           </n-card>
         </div>
-        <div><depotpage /></div>
+        <div><Depotswitch /></div>
         <div><DailyMission /></div>
         <div><maa-basic /></div>
         <div><SKLand /></div>
