@@ -40,7 +40,7 @@ class Operators(object):
 
         self.eval_model = base_eval_model.clone()
         self.eval_model.nodes.extend(["Call", "Attribute"])
-        self.eval_model.attributes.extend(["party_time", "is_working", "is_resting", "current_mood", "current_room"])
+        self.eval_model.attributes.extend(["operators", "party_time", "is_working", "is_resting", "current_mood", "current_room"])
 
     def __repr__(self):
         return f'Operators(operators={self.operators})'
