@@ -355,7 +355,7 @@ def get_report_data():
                     '龙门币订单数': '-',
                     '每单获取龙门币': '-',
                 })
-        logger.info(format_data)
+        logger.debug(format_data)
         return format_data
     except PermissionError:
         logger.info("report.csv正在被占用")
@@ -375,14 +375,19 @@ def get_half_month_data():
 
         begin_make_orundum = (earliest_date + datetime.timedelta(days=1)).date()
         print(begin_make_orundum)
-        if len(data) > 15:
+        if len(data) >= 15:
             for i in range(len(data) - 1, -1, -1):
-                if i < len(data) - 15:
+                if 0 < i < len(data) - 15:
                     data.pop(i)
                 else:
+                    logger.info("合成玉{}".format(data[i]['合成玉']))
                     if data[i]['合成玉'] > 0:
                         begin_make_orundum = str2date(data[i]['Unnamed: 0'])
-        if begin_make_orundum == earliest_date:
+        else:
+            for item in data:
+                if item['合成玉'] > 0:
+                    begin_make_orundum = str2date(item['Unnamed: 0'])
+        if begin_make_orundum > earliest_date.date():
             return format_data
         total_orundum = 0
         for item in data:
@@ -405,6 +410,7 @@ def get_half_month_data():
                     '抽数': '-',
                     '累计制造合成玉': 0,
                 })
+        logger.debug(format_data)
         return format_data
     except PermissionError:
         logger.info("report.csv正在被占用")
