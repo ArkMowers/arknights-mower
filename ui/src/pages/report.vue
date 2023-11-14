@@ -106,7 +106,10 @@ const option_iron = computed(() => {
         dataView: { show: true, readOnly: false },
         magicType: { show: true, type: ['line', 'bar'] },
         restore: { show: true },
-        saveAsImage: { show: true }
+        saveAsImage: {
+          show: true,
+          backgroundColor: '#FFFFFF'
+        }
       }
     },
     legend: {
@@ -207,10 +210,13 @@ const option_orundum = computed(() => {
     },
     toolbox: {
       feature: {
-        dataView: { show: true, readOnly: false },
+        dataView: { show: false, readOnly: false },
         magicType: { show: true, type: ['line', 'bar'] },
         restore: { show: true },
-        saveAsImage: { show: true }
+        saveAsImage: {
+          show: true,
+          backgroundColor: '#FFFFFF'
+        }
       }
     },
     tooltip: {
@@ -282,9 +288,12 @@ const option_exp = computed(() => {
     ],
     toolbox: {
       feature: {
-        dataView: { show: true, readOnly: false },
+        dataView: { show: false, readOnly: false },
         magicType: { show: true, type: ['line', 'bar'] },
-        saveAsImage: { show: true }
+        saveAsImage: {
+          show: true,
+          backgroundColor: '#FFFFFF'
+        }
       }
     },
     tooltip: {
