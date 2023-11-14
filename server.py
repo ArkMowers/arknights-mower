@@ -6,6 +6,7 @@ import requests
 
 from arknights_mower.solvers import record
 from arknights_mower.solvers.report import get_report_data
+from arknights_mower.solvers.skland import SKLand
 from arknights_mower.utils.conf import load_conf, save_conf, load_plan, write_plan
 from arknights_mower.utils import depot
 from arknights_mower.utils.log import logger
@@ -452,29 +453,4 @@ def test_serverJang_push():
 @app.route("/check-skland")
 @require_token
 def test_skland():
-    skland_info = []
-    skland_info = conf["skland_info"]
-
-    request_header = {
-        "user-agent": "Skland/1.0.1 (com.hypergryph.skland; build:100001014; Android 33; ) Okhttp/4.11.0",
-        "cred": "",
-        "vName": "1.0.1",
-        "vCode": "100001014",
-        "Accept-Encoding": "gzip",
-        "Connection": "close",
-        "dId": "de9759a5afaa634f",
-        "platform": "1",
-    }
-    res = []
-    for item in skland_info:
-        data = {"phone": item["account"], "password": item["password"]}
-        response = requests.post(
-            headers=request_header,
-            url="https://as.hypergryph.com/user/auth/v1/token_by_phone_password",
-            data=data,
-        )
-        response_json = json.loads(response.text)
-        temp_res = {"account": item["account"], "msg": response_json["msg"]}
-        res.append(temp_res)
-
-    return res
+    return SKLand(conf["skland_info"]).test_connect()
