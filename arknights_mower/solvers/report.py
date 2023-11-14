@@ -143,6 +143,8 @@ class ReportSolver(BaseSolver):
             return False
         except PermissionError:
             logger.info("report.csv正在被占用")
+        except pd.errors.EmptyDataError:
+            return False
 
 
 def get_report_data():
