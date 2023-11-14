@@ -143,7 +143,14 @@ const option_iron = computed(() => {
         name: '龙门币',
         type: 'value',
         axisLine:{
-          show:true
+          show:true,
+          symbol:['none','path://M5,20 L5,5 L8,8 L5,2 L2,8 L5,5 L5.3,6 L5.3,20 '],
+          symbolOffset:10,//箭头距离x轴末端距离
+          symbolSize:[35,38]//箭头的宽高
+        },
+        nameLocation:'end',
+        nameTextStyle:{
+          padding:[0,0,0,-50],//控制y轴标题位置
         },
         axisLabel: {
           formatter: '{value}'
@@ -153,7 +160,11 @@ const option_iron = computed(() => {
         name: '每单平均龙门币',
         type: 'value',
         axisLine:{
-          show:true
+          show:true,
+        },
+        axisTick: { show: false },
+        splitLine:{
+          show:false,
         },
         position: 'right',
         offset: 25,
@@ -241,7 +252,10 @@ const option_orundum = computed(() => {
       {
         type: 'value',
         axisLine:{
-          show:true
+          show:true,
+          symbol:['none','path://M5,20 L5,5 L8,8 L5,2 L2,8 L5,5 L5.3,6 L5.3,20 '],
+          symbolOffset:10,//箭头距离x轴末端距离
+          symbolSize:[35,38]//箭头的宽高
         },
         axisLabel: {
           formatter: '{value}'
@@ -318,7 +332,10 @@ const option_exp = computed(() => {
       {
         type: 'value',
         axisLine:{
-          show:true
+          show:true,
+          symbol:['none','path://M5,20 L5,5 L8,8 L5,2 L2,8 L5,5 L5.3,6 L5.3,20 '],
+          symbolOffset:10,//箭头距离x轴末端距离
+          symbolSize:[35,38]//箭头的宽高
         },
         axisLabel: {
           formatter: '{value}'
