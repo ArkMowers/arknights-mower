@@ -79,11 +79,15 @@ class RecruitSolver(BaseSolver):
             logger.info(f"上次公招结果汇总{self.result_agent}")
 
         if self.agent_choose:
-            logger.info(f'公招标签：{self.agent_choose}')
+            for pos in self.agent_choose:
+                agent = []
+                for item in self.agent_choose[pos]['result']:
+                    agent.append(item['name'])
+                logger.info("第{}个位置:[" + ",".join(self.agent_choose[pos]['tags']) + "]:{}".format(pos, ",".join(agent)))
         if self.agent_choose or self.result_agent:
             self.send_message(recruit_template.render(recruit_results=self.agent_choose,
                                                       recruit_get_agent=self.result_agent,
-                                                      permit_count=self.permit_count.__str__(),
+                                                      permit_count=self.permit_count,
                                                       title_text="公招汇总"), "公招汇总通知", "html")
 
         return self.agent_choose, self.result_agent
