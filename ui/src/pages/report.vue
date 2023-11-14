@@ -1,19 +1,19 @@
 <template>
   <div>
     <n-grid x-gap="12" y-gap="12" cols="1 1000:2 " style="text-align: center" autoresize >
-      <n-gi>
+      <n-gi  v-if=show_iron_chart >
         <div class="report-card_1">
-          <v-chart class="chart" v-if=show_iron_chart :option="option_iron" />
+          <v-chart class="chart" :option="option_iron" />
         </div>
       </n-gi>
-      <n-gi>
+      <n-gi  v-if=show_orundum_chart >
         <div class="report-card_1">
-          <v-chart class="chart" v-if=show_orundum_chart :option="option_orundum"/>
+          <v-chart class="chart" :option="option_orundum"/>
         </div>
       </n-gi>
-      <n-gi>
+      <n-gi  v-if=show_exp_chart >
         <div class="report-card_1">
-          <v-chart class="chart" v-if=show_exp_chart :option="option_exp"/>
+          <v-chart class="chart" :option="option_exp"/>
         </div>
       </n-gi>
     </n-grid>
