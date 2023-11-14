@@ -39,7 +39,6 @@ class ReportSolver(BaseSolver):
         self.report_res = {
             "作战录像": None,
             "赤金": None,
-            "赤金数量": 0,
             "龙门币订单": None,
             "龙门币订单数": None,
             "合成玉": None,

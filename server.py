@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+import datetime
+
 import pandas as pd
 import requests
 
@@ -307,32 +309,109 @@ def get_mood_ratios():
     return record.get_mood_ratios()
 
 
+def str2date(target: str):
+    try:
+        return datetime.datetime.strptime(target, "%Y-%m-%d").date()
+    except ValueError:
+        return datetime.datetime.strptime(target, "%Y/%m/%d").date()
+
+
+def date2str(target: datetime.date):
+    try:
+        return datetime.datetime.strftime(target, "%Y-%m-%d")
+    except ValueError:
+        return datetime.datetime.strftime(target, "%Y/%m/%d")
+
+
 @app.route("/report/getReportData")
 def get_report_data():
     record_path = get_path("@app/tmp/report.csv")
     try:
-        format_data = {}
+        format_data = []
         if os.path.exists(record_path) is False:
             logger.debug("基报不存在")
             return False
         df = pd.read_csv(record_path, encoding='gbk')
         data = df.to_dict('records')
-
-        # for i in range(len(data) - 1, -1, -1):
-        #     if i < len(data) - 15:
-        #         data.pop(i)
+        earliest_date = str2date(data[0]['Unnamed: 0'])
 
         for item in data:
-            format_data[item['Unnamed: 0']] = {
+            format_data.append({
+                "日期": item['Unnamed: 0'],
                 '作战录像': item['作战录像'],
                 '赤金': item['赤金'],
                 '龙门币订单': item['龙门币订单'],
                 '龙门币订单数': item['龙门币订单数'],
+                '每单获取龙门币': int(item['龙门币订单'] / item['龙门币订单数']),
+            })
+
+        if len(format_data) < 15:
+            for i in range(1, 16 - len(format_data)):
+                format_data.insert(0, {
+                    "日期": date2str(earliest_date - datetime.timedelta(days=i)),
+                    '作战录像': '-',
+                    '赤金': '-',
+                    '龙门币订单': '-',
+                    '龙门币订单数': '-',
+                    '每单获取龙门币': '-',
+                })
+        logger.debug(format_data)
+        return format_data
+    except PermissionError:
+        logger.info("report.csv正在被占用")
+
+
+@app.route("/report/getHalfMonthData")
+def get_half_month_data():
+    record_path = get_path("@app/tmp/report.csv")
+    try:
+        format_data = []
+        if os.path.exists(record_path) is False:
+            logger.debug("基报不存在")
+            return False
+        df = pd.read_csv(record_path, encoding='gbk')
+        data = df.to_dict('records')
+        earliest_date = datetime.datetime.now()
+
+        begin_make_orundum = (earliest_date + datetime.timedelta(days=1)).date()
+        print(begin_make_orundum)
+        if len(data) >= 15:
+            for i in range(len(data) - 1, -1, -1):
+                if 0 < i < len(data) - 15:
+                    data.pop(i)
+                else:
+                    logger.info("合成玉{}".format(data[i]['合成玉']))
+                    if data[i]['合成玉'] > 0:
+                        begin_make_orundum = str2date(data[i]['Unnamed: 0'])
+        else:
+            for item in data:
+                if item['合成玉'] > 0:
+                    begin_make_orundum = str2date(item['Unnamed: 0'])
+        if begin_make_orundum > earliest_date.date():
+            return format_data
+        total_orundum = 0
+        for item in data:
+            total_orundum = total_orundum + item['合成玉']
+            format_data.append({
+                "日期": item['Unnamed: 0'],
                 '合成玉': item['合成玉'],
-                '合成玉订单数量': item['合成玉订单数量']
-            }
-        logger.info(data )
-        return data
+                '合成玉订单数量': item['合成玉订单数量'],
+                '抽数': round((item['合成玉'] / 600), 1),
+                '累计制造合成玉': total_orundum
+            })
+
+        if len(format_data) < 15:
+            earliest_date = str2date(data[0]['Unnamed: 0'])
+            for i in range(1, 16 - len(format_data)):
+                format_data.insert(0, {
+                    "日期": date2str(earliest_date - datetime.timedelta(days=i)),
+                    '合成玉': '-',
+                    '合成玉订单数量': '-',
+                    '抽数': '-',
+                    '累计制造合成玉': 0,
+                })
+        logger.debug(format_data)
+        return format_data
     except PermissionError:
         logger.info("report.csv正在被占用")
 

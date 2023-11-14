@@ -89,7 +89,7 @@ const { operators } = storeToRefs(plan_store)
 function build_data(op, type) {
   const x = `op_data.operators['${op}'].`
   if (type == 'in_dorm') {
-    data.value = x + "is_resting()"
+    data.value = x + 'is_resting()'
   } else if (type == 'working') {
     data.value = x + 'is_working()'
   } else if (type == 'room') {

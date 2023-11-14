@@ -7,8 +7,12 @@ export const useReportStore = defineStore('report', () => {
     console.log(response.data)
     return response.data
   }
-
+  async function getHalfMonthData() {
+    const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/report/getHalfMonthData`)
+    console.log(response.data)
+    return response.data
+  }
   return {
-    getReportData
+    getReportData,getHalfMonthData
   }
 })
