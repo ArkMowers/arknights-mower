@@ -1,19 +1,19 @@
 <template>
   <div>
     <n-grid x-gap="12" y-gap="12" cols="1 1000:2 " style="text-align: center" autoresize >
-      <n-gi>
+      <n-gi  v-if=show_iron_chart >
         <div class="report-card_1">
-          <v-chart class="chart" v-if=show_iron_chart :option="option_iron" />
+          <v-chart class="chart" :option="option_iron" />
         </div>
       </n-gi>
-      <n-gi>
+      <n-gi  v-if=show_orundum_chart >
         <div class="report-card_1">
-          <v-chart class="chart" v-if=show_orundum_chart :option="option_orundum"/>
+          <v-chart class="chart" :option="option_orundum"/>
         </div>
       </n-gi>
-      <n-gi>
+      <n-gi  v-if=show_exp_chart >
         <div class="report-card_1">
-          <v-chart class="chart" v-if=show_exp_chart :option="option_exp"/>
+          <v-chart class="chart" :option="option_exp"/>
         </div>
       </n-gi>
     </n-grid>
@@ -106,7 +106,10 @@ const option_iron = computed(() => {
         dataView: { show: true, readOnly: false },
         magicType: { show: true, type: ['line', 'bar'] },
         restore: { show: true },
-        saveAsImage: { show: true }
+        saveAsImage: {
+          show: true,
+          backgroundColor: '#FFFFFF'
+        }
       }
     },
     legend: {
@@ -140,7 +143,14 @@ const option_iron = computed(() => {
         name: '龙门币',
         type: 'value',
         axisLine:{
-          show:true
+          show:true,
+          symbol:['none','path://M5,20 L5,5 L8,8 L5,2 L2,8 L5,5 L5.3,6 L5.3,20 '],
+          symbolOffset:10,//箭头距离x轴末端距离
+          symbolSize:[35,38]//箭头的宽高
+        },
+        nameLocation:'end',
+        nameTextStyle:{
+          padding:[0,0,0,-50],//控制y轴标题位置
         },
         axisLabel: {
           formatter: '{value}'
@@ -150,7 +160,11 @@ const option_iron = computed(() => {
         name: '每单平均龙门币',
         type: 'value',
         axisLine:{
-          show:true
+          show:true,
+        },
+        axisTick: { show: false },
+        splitLine:{
+          show:false,
         },
         position: 'right',
         offset: 25,
@@ -207,10 +221,13 @@ const option_orundum = computed(() => {
     },
     toolbox: {
       feature: {
-        dataView: { show: true, readOnly: false },
+        dataView: { show: false, readOnly: false },
         magicType: { show: true, type: ['line', 'bar'] },
         restore: { show: true },
-        saveAsImage: { show: true }
+        saveAsImage: {
+          show: true,
+          backgroundColor: '#FFFFFF'
+        }
       }
     },
     tooltip: {
@@ -235,7 +252,10 @@ const option_orundum = computed(() => {
       {
         type: 'value',
         axisLine:{
-          show:true
+          show:true,
+          symbol:['none','path://M5,20 L5,5 L8,8 L5,2 L2,8 L5,5 L5.3,6 L5.3,20 '],
+          symbolOffset:10,//箭头距离x轴末端距离
+          symbolSize:[35,38]//箭头的宽高
         },
         axisLabel: {
           formatter: '{value}'
@@ -282,9 +302,12 @@ const option_exp = computed(() => {
     ],
     toolbox: {
       feature: {
-        dataView: { show: true, readOnly: false },
+        dataView: { show: false, readOnly: false },
         magicType: { show: true, type: ['line', 'bar'] },
-        saveAsImage: { show: true }
+        saveAsImage: {
+          show: true,
+          backgroundColor: '#FFFFFF'
+        }
       }
     },
     tooltip: {
@@ -309,7 +332,10 @@ const option_exp = computed(() => {
       {
         type: 'value',
         axisLine:{
-          show:true
+          show:true,
+          symbol:['none','path://M5,20 L5,5 L8,8 L5,2 L2,8 L5,5 L5.3,6 L5.3,20 '],
+          symbolOffset:10,//箭头距离x轴末端距离
+          symbolSize:[35,38]//箭头的宽高
         },
         axisLabel: {
           formatter: '{value}'
