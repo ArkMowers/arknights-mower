@@ -6,6 +6,7 @@ import { useConfigStore } from '@/stores/config'
 const store = useConfigStore()
 
 import { storeToRefs } from 'pinia'
+import {NTag} from "naive-ui";
 const { skland_enable, skland_info } = storeToRefs(store)
 
 function add_account() {
@@ -30,6 +31,9 @@ async function test_maa() {
     <template #header>
       <n-checkbox v-model:checked="skland_enable">
         <div class="card-title">森空岛签到</div>
+        <help-text>
+          <p>若账号密码正确但是连接失败，用手机登录查看是否需要人机验证</p>
+        </help-text>
       </n-checkbox>
     </template>
     <div v-if="skland_enable">
