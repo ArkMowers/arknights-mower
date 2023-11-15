@@ -136,7 +136,7 @@ class ReportSolver(BaseSolver):
             if os.path.exists(self.record_path) is False:
                 logger.debug("基报不存在")
                 return False
-            df = pd.read_csv(self.record_path, encoding='gbk')
+            df = pd.read_csv(self.record_path, encoding='gbk', on_bad_lines='skip')
             for item in df.iloc:
                 if item[0] == self.date:
                     return True
@@ -159,5 +159,3 @@ def get_report_data():
         print(data)
     except PermissionError:
         logger.info("report.csv正在被占用")
-
-

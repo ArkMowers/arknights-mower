@@ -204,7 +204,7 @@ class SKLand:
             if os.path.exists(self.record_path) is False:
                 logger.debug("无森空岛记录")
                 return False
-            df = pd.read_csv(self.record_path, header=None, encoding='gbk')
+            df = pd.read_csv(self.record_path, header=None, encoding='gbk',on_bad_lines='skip')
             for item in df.iloc:
                 if item[0] == datetime.datetime.now().strftime("%Y/%m/%d"):
                     if item[1].astype(str) == phone:
