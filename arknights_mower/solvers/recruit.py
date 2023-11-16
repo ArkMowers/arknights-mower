@@ -45,6 +45,7 @@ class RecruitSolver(BaseSolver):
         self.enough_lmb = True
         self.digitReader = DigitReader()
         self.recruit_order = [6, 5, 1, 4, 3, 2]
+        self.recruit_index = 2
 
     def run(self, priority: list[str] = None, send_message_config={}, recruit_config={}):
         """
@@ -83,7 +84,7 @@ class RecruitSolver(BaseSolver):
                 agent = []
                 for item in self.agent_choose[pos]['result']:
                     agent.append(item['name'])
-                logger.info("第{}个位置:[" + ",".join(self.agent_choose[pos]['tags']) + "]:{}".format(pos, ",".join(agent)))
+                logger.info("{}:[".format(pos) + ",".join(self.agent_choose[pos]['tags']) + "]:{}".format(",".join(agent)))
         if self.agent_choose or self.result_agent:
             self.send_message(recruit_template.render(recruit_results=self.agent_choose,
                                                       recruit_get_agent=self.result_agent,
@@ -109,6 +110,10 @@ class RecruitSolver(BaseSolver):
             "recruit_robot": recruit_config['recruit_robot'],
             "permit_target": recruit_config['permit_target']
         }
+
+        if not self.recruit_config['recruit_robot']:
+            self.recruit_order = [6, 5, 4, 3, 2, 1]
+            self.recruit_index = 1
 
     def transition(self) -> bool:
         if self.scene() == Scene.INDEX:
@@ -237,13 +242,14 @@ class RecruitSolver(BaseSolver):
             # 计算招募标签组合结果
             recruit_cal_result = self.recruit_cal(tags)
             recruit_result_level = recruit_cal_result[0][1][0]['star']
-            if len(recruit_cal_result) >= 1 and self.recruit_order.index(recruit_result_level) <= 2:
+            if self.recruit_order.index(recruit_result_level) <= self.recruit_index:
                 self.send_message(recruit_rarity.render(recruit_results=recruit_cal_result, title_text="稀有tag通知"),
                                   "出稀有标签辣",
                                   "html")
                 logger.info('稀有tag,发送邮件')
-                self.back()
-                return
+                if len(recruit_cal_result) > 1:
+                    self.back()
+                    return
 
             if recruit_cal_result[0][1][0]['star'] == 3:
                 # refresh
@@ -359,7 +365,6 @@ class RecruitSolver(BaseSolver):
 
     def recruit_cal(self, tags: list[str]):
         logger.debug(f"选择标签{tags}")
-        self.recruit_order = [6, 5, 1, 4, 3, 2]
         index_dict = {k: i for i, k in enumerate(self.recruit_order)}
 
         combined_agent = {}

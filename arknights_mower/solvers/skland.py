@@ -102,7 +102,8 @@ class SKLand:
                         logger.info(
                             f'{i.get("nickName")}获得了{res["name"]}×{j.get("count") or 1}')
         if len(self.reward) > 0:
-            self.record_log()
+            return self.record_log()
+        return False
 
     def save_param(self, cred_resp):
         self.header['cred'] = cred_resp['cred']
@@ -196,6 +197,7 @@ class SKLand:
             for item in self.reward:
                 res_df = pd.DataFrame(item, index=[date_str])
                 res_df.to_csv(self.record_path, mode='a', header=False, encoding='gbk')
+            return True
         except:
             pass
 
@@ -204,7 +206,7 @@ class SKLand:
             if os.path.exists(self.record_path) is False:
                 logger.debug("无森空岛记录")
                 return False
-            df = pd.read_csv(self.record_path, header=None, encoding='gbk',on_bad_lines='skip')
+            df = pd.read_csv(self.record_path, header=None, encoding='gbk', on_bad_lines='skip')
             for item in df.iloc:
                 if item[0] == datetime.datetime.now().strftime("%Y/%m/%d"):
                     if item[1].astype(str) == phone:
@@ -224,9 +226,8 @@ class SKLand:
                     self.save_param(self.get_cred_by_token(self.log(item)))
                     for i in self.get_binding_list():
                         if i['uid']:
-                            res.append("{}连接成功".format(i['nickName']+"({})".format(i['channelName'])))
+                            res.append("{}连接成功".format(i['nickName'] + "({})".format(i['channelName'])))
                 except:
                     res.append("{}无法连接".format(item['account']))
 
         return res
-
