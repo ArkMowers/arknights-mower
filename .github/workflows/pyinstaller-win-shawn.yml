@@ -55,6 +55,14 @@ jobs:
           python -m venv venv
           venv\Scripts\pip install -r requirements.txt
           venv\Scripts\pip install -U pyinstaller xxhash backports.zoneinfo[tzdata]
+
+      - name: change version number
+        if: github.event.head_commit.message != '发版'
+        working-directory: ./main
+        shell: bash
+        run: |
+          sed -i "s/__version__ = '\(.*\)'/__version__ = '\1+${GITHUB_SHA::7}'/g" ./arknights_mower/__init__.py
+
       - name: Make package
         working-directory: ./main
         shell: cmd
