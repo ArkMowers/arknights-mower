@@ -338,7 +338,7 @@ def get_report_data():
 
         for item in data:
             format_data.append({
-                "日期": item['Unnamed: 0'],
+                "日期": date2str(str2date(item['Unnamed: 0']) - datetime.timedelta(days=1)),
                 '作战录像': item['作战录像'],
                 '赤金': item['赤金'],
                 '龙门币订单': item['龙门币订单'],
@@ -349,7 +349,7 @@ def get_report_data():
         if len(format_data) < 15:
             for i in range(1, 16 - len(format_data)):
                 format_data.insert(0, {
-                    "日期": date2str(earliest_date - datetime.timedelta(days=i)),
+                    "日期": date2str(earliest_date - datetime.timedelta(days=i+1)),
                     '作战录像': '-',
                     '赤金': '-',
                     '龙门币订单': '-',
@@ -394,7 +394,7 @@ def get_half_month_data():
         for item in data:
             total_orundum = total_orundum + item['合成玉']
             format_data.append({
-                "日期": item['Unnamed: 0'],
+                "日期": date2str(str2date(item['Unnamed: 0']) - datetime.timedelta(days=1)),
                 '合成玉': item['合成玉'],
                 '合成玉订单数量': item['合成玉订单数量'],
                 '抽数': round((item['合成玉'] / 600), 1),
@@ -405,7 +405,7 @@ def get_half_month_data():
             earliest_date = str2date(data[0]['Unnamed: 0'])
             for i in range(1, 16 - len(format_data)):
                 format_data.insert(0, {
-                    "日期": date2str(earliest_date - datetime.timedelta(days=i)),
+                    "日期": date2str(earliest_date - datetime.timedelta(days=i+1)),
                     '合成玉': '-',
                     '合成玉订单数量': '-',
                     '抽数': '-',
