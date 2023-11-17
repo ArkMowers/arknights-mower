@@ -15,7 +15,7 @@ import { file_dialog } from '@/utils/dialog'
 async function select_copilot_path() {
   const file_path = await file_dialog()
   if (file_path) {
-    sss.copilot.value = file_path
+    sss.value.copilot = file_path
   }
 }
 </script>
