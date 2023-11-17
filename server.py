@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import datetime
+import re
 
 import pandas as pd
 import requests
@@ -417,15 +418,25 @@ def get_half_month_data():
         logger.info("report.csv正在被占用")
 
 
+
 @app.route("/test-email")
 @require_token
 def test_email():
+    host_smtp = ""
+    if re.findall(r'^[\w]{1,19}@(qq).((com)|(cn))$', conf["account"], re.IGNORECASE):
+        host_smtp = "smtp.qq.com"
+    elif re.findall(r'^[\w]{1,19}@(163).((com)|(cn))$', conf["account"], re.IGNORECASE):
+        host_smtp = "smtp.163.com"
+    elif re.findall(r'^[\w]{1,19}@(126).((com)|(cn))$', conf["account"], re.IGNORECASE):
+        host_smtp = "smtp.126.com"
+
+    print(host_smtp)
     msg = MIMEMultipart()
     msg.attach(MIMEText("arknights-mower测试邮件", "plain"))
     msg["Subject"] = conf["mail_subject"] + "测试邮件"
     msg["From"] = conf["account"]
     try:
-        s = smtplib.SMTP_SSL("smtp.qq.com", 465, timeout=10.0)
+        s = smtplib.SMTP_SSL(host_smtp, 465, timeout=10.0)
         s.login(conf["account"], conf["pass_code"])
         s.sendmail(conf["account"], conf["account"], msg.as_string())
     except Exception as e:
