@@ -353,9 +353,11 @@ def simulate():
                     # 刷新时间以鹰历为准
                     if base_scheduler.daily_report:
                         base_scheduler.daily_report = base_scheduler.report_plan_solver()
-                    if base_scheduler.daily_skland and base_scheduler.skland_config['skland_enable']:
-                        base_scheduler.daily_report = base_scheduler.skland_plan_solover()
-                        base_scheduler.daily_skland=False
+                    # if base_scheduler.daily_skland and base_scheduler.skland_config['skland_enable']:
+                    #     base_scheduler.daily_report = base_scheduler.skland_plan_solover()
+                    #     base_scheduler.daily_skland=False
+                    if base_scheduler.skland_config['skland_enable']:
+                        base_scheduler.skland_plan_solover()
                     if base_scheduler.daily_mail:
                         base_scheduler.daily_report = base_scheduler.mail_plan_solver()
 
