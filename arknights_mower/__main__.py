@@ -28,7 +28,7 @@ operators = {}
 def main(c, p, o={}, child_conn=None):
     from arknights_mower.utils.log import init_fhlr
     from arknights_mower.utils import config
-    
+
     global plan
     global conf
     global operators
@@ -351,18 +351,23 @@ def simulate():
 
                 if sleep_time > 540:
                     # 刷新时间以鹰历为准
-                    if base_scheduler.daily_report:
-                        base_scheduler.daily_report = base_scheduler.report_plan_solver()
-                    # if base_scheduler.daily_skland and base_scheduler.skland_config['skland_enable']:
-                    #     base_scheduler.daily_report = base_scheduler.skland_plan_solover()
-                    #     base_scheduler.daily_skland=False
-                    if base_scheduler.skland_config['skland_enable']:
-                        base_scheduler.skland_plan_solover()
-                    if base_scheduler.daily_mail:
-                        base_scheduler.daily_report = base_scheduler.mail_plan_solver()
+                    if base_scheduler.daily_report < (datetime.now() - timedelta(hours=4)).date():
+                        if base_scheduler.report_plan_solver():
+                            base_scheduler.daily_report = (datetime.now() - timedelta(hours=4)).date()
+
+                    if base_scheduler.skland_config['skland_enable'] and base_scheduler.daily_skland < (
+                            datetime.now() - timedelta(hours=4)).date():
+                        if base_scheduler.skland_plan_solover():
+                            base_scheduler.daily_skland = (datetime.now() - timedelta(hours=4)).date()
+
+                    if base_scheduler.check_mail_enable and base_scheduler.daily_mail < (
+                            datetime.now() - timedelta(hours=8)).date():
+                        if base_scheduler.mail_plan_solver():
+                            base_scheduler.daily_mail = (datetime.now() - timedelta(hours=8)).date()
 
                     if base_scheduler.recruit_config['recruit_enable'] == 1:
                         base_scheduler.recruit_plan_solver()
+
                     if base_scheduler.maa_config["maa_enable"] == 1:
                         subject = (
                             f"下次任务在{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}"

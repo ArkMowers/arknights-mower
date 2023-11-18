@@ -41,7 +41,7 @@ async function test_email() {
           label-width="96"
           label-align="left"
         >
-          <n-form-item label="邮箱">
+          <n-form-item label="QQ邮箱">
             <n-input v-model:value="account" />
           </n-form-item>
           <n-form-item label="授权码">

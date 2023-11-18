@@ -65,12 +65,14 @@ class SKLand:
             'vName': ''
         }
         self.sign_token = ''
+        self.all_recorded = True
 
     def start(self):
         for item in self.account_list:
             if item['isCheck']:
                 if self.has_record(item['account']):
                     continue
+                self.all_recorded = False
                 self.save_param(self.get_cred_by_token(self.log(item)))
                 for i in self.get_binding_list():
                     body = {
@@ -103,6 +105,8 @@ class SKLand:
                             f'{i.get("nickName")}获得了{res["name"]}×{j.get("count") or 1}')
         if len(self.reward) > 0:
             return self.record_log()
+        if self.all_recorded:
+            return True
         return False
 
     def save_param(self, cred_resp):
@@ -197,9 +201,10 @@ class SKLand:
             for item in self.reward:
                 res_df = pd.DataFrame(item, index=[date_str])
                 res_df.to_csv(self.record_path, mode='a', header=False, encoding='gbk')
-            return True
         except:
             pass
+
+        return True
 
     def has_record(self, phone: str):
         try:

@@ -52,9 +52,10 @@ class ReportSolver(BaseSolver):
         logger.info("康康大基报")
         try:
             super().run()
+            return True
         except:
-            return False
-        return True
+            pass
+        return False
 
     def transition(self) -> bool:
         if self.scene() == Scene.INDEX:
