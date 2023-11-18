@@ -122,6 +122,11 @@ provide('show_trigger_editor', show_trigger_editor)
 
 const show_task = ref(false)
 provide('show_task', show_task)
+
+import { IosArrowBack, IosArrowForward } from '@vicons/ionicons4'
+import { TrashOutline, CodeSlash } from '@vicons/ionicons5'
+import { PlusRound, AddTaskRound } from '@vicons/material'
+import { DocumentExport } from '@vicons/carbon'
 </script>
 
 <template>
@@ -131,16 +136,55 @@ provide('show_task', show_task)
     <n-input v-model:value="plan_file" />
     <n-button @click="open_plan_file">...</n-button>
     <n-button v-if="generating_image" disabled>正在生成</n-button>
-    <n-button @click="save" v-else>导出图片</n-button>
+    <n-button @click="save" v-else>
+      <template #icon>
+        <n-icon><document-export /></n-icon>
+      </template>
+      导出图片
+    </n-button>
   </div>
   <div class="home-container plan-bar w-980 mx-auto">
-    <n-select v-model:value="sub_plan" :options="sub_plan_options" />
-    <n-button @click="create_sub_plan">新建副表</n-button>
-    <n-button :disabled="sub_plan == 'main'" @click="delete_sub_plan">删除此副表</n-button>
-    <n-button :disabled="sub_plan == 'main'" @click="show_trigger_editor = true"
-      >编辑触发条件</n-button
+    <n-button
+      :disabled="sub_plan == 'main'"
+      @click="sub_plan = sub_plan == 0 ? 'main' : sub_plan - 1"
     >
-    <n-button :disabled="sub_plan == 'main'" @click="show_task = true">编辑任务</n-button>
+      <template #icon>
+        <n-icon><ios-arrow-back /></n-icon>
+      </template>
+    </n-button>
+    <n-button
+      :disabled="sub_plan == backup_plans.length - 1"
+      @click="sub_plan = sub_plan == 'main' ? 0 : sub_plan + 1"
+    >
+      <template #icon>
+        <n-icon><ios-arrow-forward /></n-icon>
+      </template>
+    </n-button>
+    <n-select v-model:value="sub_plan" :options="sub_plan_options" />
+    <n-button @click="create_sub_plan">
+      <template #icon>
+        <n-icon :size="22"><plus-round /></n-icon>
+      </template>
+      新建副表
+    </n-button>
+    <n-button :disabled="sub_plan == 'main'" @click="show_trigger_editor = true">
+      <template #icon>
+        <n-icon><code-slash /></n-icon>
+      </template>
+      编辑触发条件
+    </n-button>
+    <n-button :disabled="sub_plan == 'main'" @click="show_task = true">
+      <template #icon>
+        <n-icon><add-task-round /></n-icon>
+      </template>
+      编辑任务
+    </n-button>
+    <n-button :disabled="sub_plan == 'main'" @click="delete_sub_plan">
+      <template #icon>
+        <n-icon><trash-outline /></n-icon>
+      </template>
+      删除此副表
+    </n-button>
   </div>
   <plan-editor ref="plan_editor" class="w-980 mx-auto" />
   <n-form
