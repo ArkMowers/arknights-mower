@@ -2,7 +2,7 @@
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
-import { ref, computed, nextTick, watch, h } from 'vue'
+import { ref, computed, nextTick, watch, h, inject } from 'vue'
 import pinyinMatch from 'pinyin-match/es/traditional'
 import { NAvatar, NTag } from 'naive-ui'
 const config_store = useConfigStore()
@@ -19,7 +19,7 @@ const facility_types = [
   { label: '发电站', value: '发电站' }
 ]
 
-const facility = ref('')
+const facility = inject('facility')
 
 const button_type = {
   贸易站: 'info',

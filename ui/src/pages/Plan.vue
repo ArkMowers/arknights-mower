@@ -25,6 +25,9 @@ const { load_plan, fill_empty } = plan_store
 import { inject, ref, computed, provide } from 'vue'
 const axios = inject('axios')
 
+const facility = ref('')
+provide('facility', facility)
+
 import { file_dialog } from '@/utils/dialog'
 
 async function open_plan_file() {
@@ -37,7 +40,6 @@ async function open_plan_file() {
   }
 }
 
-import { toBlob } from 'html-to-image'
 import { useMessage } from 'naive-ui'
 
 const plan_editor = ref(null)
@@ -45,25 +47,32 @@ const plan_editor = ref(null)
 const generating_image = ref(false)
 
 const message = useMessage()
-const loading = ref(null)
+
+import html2canvas from 'html2canvas'
+import { sleep } from '@/utils/sleep'
+import { useLoadingBar } from 'naive-ui'
+
+const loading_bar = useLoadingBar()
 
 async function save() {
   generating_image.value = true
-  loading.value = message.loading('正在生成图片……', { duration: 0 })
-  if (
-    /webkit/i.test(navigator.userAgent) &&
-    /gecko/i.test(navigator.userAgent) &&
-    /safari/i.test(navigator.userAgent)
-  ) {
-    await toBlob(plan_editor.value.outer)
-  }
-  const blob = await toBlob(plan_editor.value.outer, { pixelRatio: 3, backgroundColor: 'white' })
-  loading.value.destroy()
-  generating_image.value = false
-  const form_data = new FormData()
-  form_data.append('img', blob)
-  const resp = await axios.post(`${import.meta.env.VITE_HTTP_URL}/dialog/save/img`, form_data)
-  message.info(resp.data)
+  facility.value = ''
+  loading_bar.start()
+  sleep(500).then(() => {
+    html2canvas(plan_editor.value.outer, { scale: 3 }).then((canvas) => {
+      generating_image.value = false
+      loading_bar.finish()
+      const form_data = new FormData()
+      canvas.toBlob((blob) => {
+        form_data.append('img', blob)
+        axios
+          .post(`${import.meta.env.VITE_HTTP_URL}/dialog/save/img`, form_data)
+          .then(({ data }) => {
+            message.info(data)
+          })
+      })
+    })
+  })
 }
 
 const mobile = inject('mobile')
@@ -136,8 +145,7 @@ import { DocumentExport } from '@vicons/carbon'
   <div class="home-container plan-bar w-980 mx-auto mt-12">
     <n-input v-model:value="plan_file" />
     <n-button @click="open_plan_file">...</n-button>
-    <n-button v-if="generating_image" disabled>正在生成</n-button>
-    <n-button @click="save" v-else>
+    <n-button @click="save" :loading="generating_image" :disabled="generating_image">
       <template #icon>
         <n-icon><document-export /></n-icon>
       </template>

@@ -246,14 +246,15 @@ def save_file_dialog():
     if not img:
         return "图片未上传"
     window = webview.active_window()
-    folder_path = window.create_file_dialog(
+    img_path = window.create_file_dialog(
         dialog_type=webview.SAVE_DIALOG,
         save_filename="plan.png",
         file_types=("PNG图片 (*.png)",),
     )
-    if not folder_path:
+    if not img_path:
         return "保存已取消"
-    img_path = folder_path[0]
+    if not isinstance(img_path, str):
+        img_path = img_path[0]
     if os.path.exists(img_path):
         root = tkinter.Tk()
         root.withdraw()

@@ -24,7 +24,7 @@
     "echarts": "^5.4.3",
     "file-saver": "^2.0.5",
     "highlight.js": "^11.8.0",
-    "html-to-image": "^1.11.11",
+    "html2canvas": "^1.4.1",
     "katex": "^0.16.8",
     "luxon": "^3.4.0",
     "moment": "^2.29.4",
