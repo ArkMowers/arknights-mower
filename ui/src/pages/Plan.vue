@@ -33,6 +33,7 @@ async function open_plan_file() {
     plan_file.value = file_path
     await axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, build_config())
     await load_plan()
+    sub_plan.value = 'main'
   }
 }
 
@@ -153,7 +154,7 @@ import { DocumentExport } from '@vicons/carbon'
       </template>
     </n-button>
     <n-button
-      :disabled="sub_plan == backup_plans.length - 1"
+      :disabled="sub_plan == backup_plans.length - 1 || backup_plans.length == 0"
       @click="sub_plan = sub_plan == 'main' ? 0 : sub_plan + 1"
     >
       <template #icon>
