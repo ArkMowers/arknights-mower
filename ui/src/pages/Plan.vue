@@ -5,7 +5,7 @@ import { usePlanStore } from '@/stores/plan'
 import { deepcopy } from '@/utils/deepcopy'
 
 const config_store = useConfigStore()
-const { plan_file, free_blacklist } = storeToRefs(config_store)
+const { plan_file, free_blacklist, theme } = storeToRefs(config_store)
 const { build_config } = config_store
 
 const plan_store = usePlanStore()
@@ -59,7 +59,10 @@ async function save() {
   facility.value = ''
   loading_bar.start()
   sleep(500).then(() => {
-    html2canvas(plan_editor.value.outer, { scale: 3 }).then((canvas) => {
+    html2canvas(plan_editor.value.outer, {
+      scale: 3,
+      backgroundColor: theme.value == 'light' ? '#ffffff' : '#000000'
+    }).then((canvas) => {
       generating_image.value = false
       loading_bar.finish()
       const form_data = new FormData()
