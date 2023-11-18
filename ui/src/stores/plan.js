@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, watch, computed } from 'vue'
 import axios from 'axios'
+import { deepcopy } from '@/utils/deepcopy'
 
 export const usePlanStore = defineStore('plan', () => {
   const ling_xi = ref(1)
@@ -148,7 +149,7 @@ export const usePlanStore = defineStore('plan', () => {
         resting_priority: list2str(resting_priority.value),
         workaholic: list2str(workaholic.value)
       },
-      backup_plans: JSON.parse(JSON.stringify(backup_plans.value))
+      backup_plans: deepcopy(backup_plans.value)
     }
     for (const b of result.backup_plans) {
       for (const i of backup_conf_convert_list) {
@@ -234,6 +235,7 @@ export const usePlanStore = defineStore('plan', () => {
     groups,
     backup_plans,
     sub_plan,
-    current_plan
+    current_plan,
+    fill_empty
   }
 })

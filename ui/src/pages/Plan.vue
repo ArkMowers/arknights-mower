@@ -2,6 +2,7 @@
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
+import { deepcopy } from '@/utils/deepcopy'
 
 const config_store = useConfigStore()
 const { plan_file, free_blacklist } = storeToRefs(config_store)
@@ -17,10 +18,9 @@ const {
   operators,
   workaholic,
   backup_plans,
-  plan,
   sub_plan
 } = storeToRefs(plan_store)
-const { load_plan } = plan_store
+const { load_plan, fill_empty } = plan_store
 
 import { inject, ref, computed, provide } from 'vue'
 const axios = inject('axios')
@@ -86,15 +86,15 @@ const sub_plan_options = computed(() => {
 function create_sub_plan() {
   backup_plans.value.push({
     conf: {
-      exhaust_require: JSON.parse(JSON.stringify(exhaust_require.value)),
-      free_blacklist: JSON.parse(JSON.stringify(free_blacklist.value)),
+      exhaust_require: deepcopy(exhaust_require.value),
+      free_blacklist: deepcopy(free_blacklist.value),
       ling_xi: ling_xi.value,
       max_resting_count: max_resting_count.value,
-      rest_in_full: JSON.parse(JSON.stringify(rest_in_full.value)),
-      resting_priority: JSON.parse(JSON.stringify(resting_priority.value)),
-      workaholic: JSON.parse(JSON.stringify(workaholic.value))
+      rest_in_full: deepcopy(rest_in_full.value),
+      resting_priority: deepcopy(resting_priority.value),
+      workaholic: deepcopy(workaholic.value)
     },
-    plan: JSON.parse(JSON.stringify(plan.value)),
+    plan: fill_empty({}),
     trigger: {
       left: '',
       operator: '',
