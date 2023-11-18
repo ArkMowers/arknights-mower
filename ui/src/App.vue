@@ -9,91 +9,93 @@
     <n-global-style />
     <n-dialog-provider>
       <n-message-provider>
-        <n-layout :has-sider="!mobile" class="outer-layout">
-          <n-layout-sider
-            v-if="!mobile"
-            bordered
-            collapse-mode="width"
-            :collapsed-width="50"
-            :width="210"
-            show-trigger
-          >
-            <n-menu
-              :indent="24"
-              :collapsed-width="64"
-              :collapsed-icon-size="22"
-              :options="menuOptions"
-            />
-          </n-layout-sider>
-          <n-layout-content class="layout-content-container">
-            <router-view v-if="loaded" />
-          </n-layout-content>
-          <n-layout-footer v-if="mobile">
-            <n-tabs type="line" justify-content="space-evenly" size="small">
-              <n-tab name="主页" @click="$router.push('/')">
-                <div style="display: flex; flex-direction: column; align-items: center">
-                  <n-icon size="20" style="margin-bottom: -1px" :component="BookOutline" />
-                  日志
-                </div>
-              </n-tab>
-              <n-tab name="设置" @click="$router.push('/settings')">
-                <div style="display: flex; flex-direction: column; align-items: center">
-                  <n-icon size="20" style="margin-bottom: -1px" :component="Settings" />
-                  设置
-                </div>
-              </n-tab>
-              <n-tab name="排班" @click="$router.push('/plan-editor')">
-                <div style="display: flex; flex-direction: column; align-items: center">
-                  <n-icon size="20" style="margin-bottom: -1px" :component="Home" />
-                  排班
-                </div>
-              </n-tab>
-              <n-tab name="报表" @click="showModal = true">
-                <div style="display: flex; flex-direction: column; align-items: center">
-                  <n-icon size="20" style="margin-bottom: -1px" :component="StatsChart" />
-                  报表
-                </div>
-                <n-modal v-model:show="showModal">
-                  <n-card
-                    style="width: 300px"
-                    title="基建报表"
-                    :bordered="false"
-                    size="huge"
-                    role="dialog"
-                    aria-modal="true"
-                  >
-                    <div>
-                      <n-button @click=";(showModal = false), $router.push('/record/line')">
-                        心情曲线
-                      </n-button>
-                    </div>
-                    <div>
-                      <n-button @click=";(showModal = false), $router.push('/record/pie')">
-                        心情饼图
-                      </n-button>
-                    </div>
-                    <div>
-                      <n-button @click=";(showModal = false), $router.push('/record/depot')">
-                        仓库
-                      </n-button>
-                    </div>
-                    <div>
-                      <n-button @click=";(showModal = false), $router.push('/record/report')">
-                        基建报告
-                      </n-button>
-                    </div>
-                  </n-card>
-                </n-modal>
-              </n-tab>
-              <n-tab name="帮助" @click="$router.push('/doc')">
-                <div style="display: flex; flex-direction: column; align-items: center">
-                  <n-icon size="20" style="margin-bottom: -1px" :component="HelpCircle" />
-                  帮助
-                </div>
-              </n-tab>
-            </n-tabs>
-          </n-layout-footer>
-        </n-layout>
+        <n-loading-bar-provider>
+          <n-layout :has-sider="!mobile" class="outer-layout">
+            <n-layout-sider
+              v-if="!mobile"
+              bordered
+              collapse-mode="width"
+              :collapsed-width="50"
+              :width="210"
+              show-trigger
+            >
+              <n-menu
+                :indent="24"
+                :collapsed-width="64"
+                :collapsed-icon-size="22"
+                :options="menuOptions"
+              />
+            </n-layout-sider>
+            <n-layout-content class="layout-content-container">
+              <router-view v-if="loaded" />
+            </n-layout-content>
+            <n-layout-footer v-if="mobile">
+              <n-tabs type="line" justify-content="space-evenly" size="small">
+                <n-tab name="主页" @click="$router.push('/')">
+                  <div style="display: flex; flex-direction: column; align-items: center">
+                    <n-icon size="20" style="margin-bottom: -1px" :component="BookOutline" />
+                    日志
+                  </div>
+                </n-tab>
+                <n-tab name="设置" @click="$router.push('/settings')">
+                  <div style="display: flex; flex-direction: column; align-items: center">
+                    <n-icon size="20" style="margin-bottom: -1px" :component="Settings" />
+                    设置
+                  </div>
+                </n-tab>
+                <n-tab name="排班" @click="$router.push('/plan-editor')">
+                  <div style="display: flex; flex-direction: column; align-items: center">
+                    <n-icon size="20" style="margin-bottom: -1px" :component="Home" />
+                    排班
+                  </div>
+                </n-tab>
+                <n-tab name="报表" @click="showModal = true">
+                  <div style="display: flex; flex-direction: column; align-items: center">
+                    <n-icon size="20" style="margin-bottom: -1px" :component="StatsChart" />
+                    报表
+                  </div>
+                  <n-modal v-model:show="showModal">
+                    <n-card
+                      style="width: 300px"
+                      title="基建报表"
+                      :bordered="false"
+                      size="huge"
+                      role="dialog"
+                      aria-modal="true"
+                    >
+                      <div>
+                        <n-button @click=";(showModal = false), $router.push('/record/line')">
+                          心情曲线
+                        </n-button>
+                      </div>
+                      <div>
+                        <n-button @click=";(showModal = false), $router.push('/record/pie')">
+                          心情饼图
+                        </n-button>
+                      </div>
+                      <div>
+                        <n-button @click=";(showModal = false), $router.push('/record/depot')">
+                          仓库
+                        </n-button>
+                      </div>
+                      <div>
+                        <n-button @click=";(showModal = false), $router.push('/record/report')">
+                          基建报告
+                        </n-button>
+                      </div>
+                    </n-card>
+                  </n-modal>
+                </n-tab>
+                <n-tab name="帮助" @click="$router.push('/doc')">
+                  <div style="display: flex; flex-direction: column; align-items: center">
+                    <n-icon size="20" style="margin-bottom: -1px" :component="HelpCircle" />
+                    帮助
+                  </div>
+                </n-tab>
+              </n-tabs>
+            </n-layout-footer>
+          </n-layout>
+        </n-loading-bar-provider>
       </n-message-provider>
     </n-dialog-provider>
   </n-config-provider>
