@@ -559,13 +559,14 @@ defineExpose({
     gap: 4px;
 
     & > div {
+      box-sizing: border-box;
+      width: 175px;
+      height: 76px;
       cursor: pointer;
     }
 
     .info {
       background-color: rgba(32, 128, 240, 0.16);
-      height: 74px;
-      width: 175px;
       border-radius: 3px;
       border: 1px solid transparent;
       transition: all 0.3s;
@@ -584,8 +585,6 @@ defineExpose({
 
     .warning {
       background-color: rgba(240, 160, 32, 0.16);
-      height: 74px;
-      width: 175px;
       border-radius: 3px;
       border: 1px solid transparent;
       transition: all 0.3s;
@@ -606,8 +605,6 @@ defineExpose({
 
     .primary {
       background-color: rgba(24, 160, 88, 0.16);
-      height: 74px;
-      width: 175px;
       border-radius: 3px;
       border: 1px solid transparent;
       transition: all 0.3s;
@@ -634,18 +631,17 @@ defineExpose({
 }
 
 .waiting {
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
   border: 1px dashed rgb(51, 54, 57);
-  min-height: 93px;
   opacity: 0.6;
   transition: all 0.3s;
   cursor: pointer;
   border-radius: 3px;
-}
 
-.waiting {
   &:hover {
     opacity: 1;
     border: 1px dashed rgb(54, 173, 106);
