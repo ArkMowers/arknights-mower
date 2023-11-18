@@ -41,6 +41,8 @@ import pathlib
 import tkinter
 from tkinter import messagebox
 
+import platform
+
 mimetypes.add_type("text/html", ".html")
 mimetypes.add_type("text/css", ".css")
 mimetypes.add_type("application/javascript", ".js")
@@ -255,7 +257,7 @@ def save_file_dialog():
         return "保存已取消"
     if not isinstance(img_path, str):
         img_path = img_path[0]
-    if os.path.exists(img_path):
+    if os.path.exists(img_path) and platform.system() == "Linux":
         root = tkinter.Tk()
         root.withdraw()
         replace = messagebox.askyesno(
@@ -296,9 +298,9 @@ def get_maa_adb_version():
 def get_maa_conn_presets():
     try:
         with open(
-                os.path.join(conf["maa_path"], "resource", "config.json"),
-                "r",
-                encoding="utf-8",
+            os.path.join(conf["maa_path"], "resource", "config.json"),
+            "r",
+            encoding="utf-8",
         ) as f:
             presets = [i["configName"] for i in json.load(f)["connection"]]
     except:
@@ -333,30 +335,37 @@ def get_report_data():
         if os.path.exists(record_path) is False:
             logger.debug("基报不存在")
             return False
-        df = pd.read_csv(record_path, encoding='gbk')
-        data = df.to_dict('records')
-        earliest_date = str2date(data[0]['Unnamed: 0'])
+        df = pd.read_csv(record_path, encoding="gbk")
+        data = df.to_dict("records")
+        earliest_date = str2date(data[0]["Unnamed: 0"])
 
         for item in data:
-            format_data.append({
-                "日期": date2str(str2date(item['Unnamed: 0']) - datetime.timedelta(days=1)),
-                '作战录像': item['作战录像'],
-                '赤金': item['赤金'],
-                '龙门币订单': item['龙门币订单'],
-                '龙门币订单数': item['龙门币订单数'],
-                '每单获取龙门币': int(item['龙门币订单'] / item['龙门币订单数']),
-            })
+            format_data.append(
+                {
+                    "日期": date2str(
+                        str2date(item["Unnamed: 0"]) - datetime.timedelta(days=1)
+                    ),
+                    "作战录像": item["作战录像"],
+                    "赤金": item["赤金"],
+                    "龙门币订单": item["龙门币订单"],
+                    "龙门币订单数": item["龙门币订单数"],
+                    "每单获取龙门币": int(item["龙门币订单"] / item["龙门币订单数"]),
+                }
+            )
 
         if len(format_data) < 15:
             for i in range(1, 16 - len(format_data)):
-                format_data.insert(0, {
-                    "日期": date2str(earliest_date - datetime.timedelta(days=i+1)),
-                    '作战录像': '-',
-                    '赤金': '-',
-                    '龙门币订单': '-',
-                    '龙门币订单数': '-',
-                    '每单获取龙门币': '-',
-                })
+                format_data.insert(
+                    0,
+                    {
+                        "日期": date2str(earliest_date - datetime.timedelta(days=i + 1)),
+                        "作战录像": "-",
+                        "赤金": "-",
+                        "龙门币订单": "-",
+                        "龙门币订单数": "-",
+                        "每单获取龙门币": "-",
+                    },
+                )
         logger.debug(format_data)
         return format_data
     except PermissionError:
@@ -371,8 +380,8 @@ def get_half_month_data():
         if os.path.exists(record_path) is False:
             logger.debug("基报不存在")
             return False
-        df = pd.read_csv(record_path, encoding='gbk')
-        data = df.to_dict('records')
+        df = pd.read_csv(record_path, encoding="gbk")
+        data = df.to_dict("records")
         earliest_date = datetime.datetime.now()
 
         begin_make_orundum = (earliest_date + datetime.timedelta(days=1)).date()
@@ -382,36 +391,43 @@ def get_half_month_data():
                 if 0 < i < len(data) - 15:
                     data.pop(i)
                 else:
-                    logger.info("合成玉{}".format(data[i]['合成玉']))
-                    if data[i]['合成玉'] > 0:
-                        begin_make_orundum = str2date(data[i]['Unnamed: 0'])
+                    logger.info("合成玉{}".format(data[i]["合成玉"]))
+                    if data[i]["合成玉"] > 0:
+                        begin_make_orundum = str2date(data[i]["Unnamed: 0"])
         else:
             for item in data:
-                if item['合成玉'] > 0:
-                    begin_make_orundum = str2date(item['Unnamed: 0'])
+                if item["合成玉"] > 0:
+                    begin_make_orundum = str2date(item["Unnamed: 0"])
         if begin_make_orundum > earliest_date.date():
             return format_data
         total_orundum = 0
         for item in data:
-            total_orundum = total_orundum + item['合成玉']
-            format_data.append({
-                "日期": date2str(str2date(item['Unnamed: 0']) - datetime.timedelta(days=1)),
-                '合成玉': item['合成玉'],
-                '合成玉订单数量': item['合成玉订单数量'],
-                '抽数': round((item['合成玉'] / 600), 1),
-                '累计制造合成玉': total_orundum
-            })
+            total_orundum = total_orundum + item["合成玉"]
+            format_data.append(
+                {
+                    "日期": date2str(
+                        str2date(item["Unnamed: 0"]) - datetime.timedelta(days=1)
+                    ),
+                    "合成玉": item["合成玉"],
+                    "合成玉订单数量": item["合成玉订单数量"],
+                    "抽数": round((item["合成玉"] / 600), 1),
+                    "累计制造合成玉": total_orundum,
+                }
+            )
 
         if len(format_data) < 15:
-            earliest_date = str2date(data[0]['Unnamed: 0'])
+            earliest_date = str2date(data[0]["Unnamed: 0"])
             for i in range(1, 16 - len(format_data)):
-                format_data.insert(0, {
-                    "日期": date2str(earliest_date - datetime.timedelta(days=i+1)),
-                    '合成玉': '-',
-                    '合成玉订单数量': '-',
-                    '抽数': '-',
-                    '累计制造合成玉': 0,
-                })
+                format_data.insert(
+                    0,
+                    {
+                        "日期": date2str(earliest_date - datetime.timedelta(days=i + 1)),
+                        "合成玉": "-",
+                        "合成玉订单数量": "-",
+                        "抽数": "-",
+                        "累计制造合成玉": 0,
+                    },
+                )
         logger.debug(format_data)
         return format_data
     except PermissionError:
