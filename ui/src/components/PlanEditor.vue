@@ -172,7 +172,8 @@ const renderLabel = (option) => {
     {
       style: {
         display: 'flex',
-        alignItems: 'center'
+        alignItems: 'center',
+        gap: '12px'
       }
     },
     [
@@ -181,16 +182,7 @@ const renderLabel = (option) => {
         round: true,
         size: 'small'
       }),
-      h(
-        'div',
-        {
-          style: {
-            marginLeft: '12px',
-            padding: '4px 0'
-          }
-        },
-        [h('div', null, [option.label])]
-      )
+      h('div', null, [option.label])
     ]
   )
 }
@@ -660,5 +652,11 @@ defineExpose({
   flex-direction: column;
   align-items: center;
   justify-content: center;
+}
+</style>
+
+<style>
+.n-base-selection-placeholder .n-avatar {
+  display: none;
 }
 </style>
