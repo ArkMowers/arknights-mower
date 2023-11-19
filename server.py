@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import datetime
+import re
 
 import pandas as pd
 import requests
@@ -432,6 +433,7 @@ def get_half_month_data():
         return format_data
     except PermissionError:
         logger.info("report.csv正在被占用")
+
 
 
 @app.route("/test-email")

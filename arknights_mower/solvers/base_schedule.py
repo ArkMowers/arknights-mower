@@ -46,7 +46,6 @@ from arknights_mower.solvers.base_mixin import ArrangeOrder, arrange_order_res, 
 stage_drop = {}
 
 
-
 class BaseSchedulerSolver(BaseSolver, BaseMixin):
     """
     收集基建的产物：物资、赤金、信赖
@@ -78,13 +77,13 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         self.recruit_config = {}
         self.skland_config = {}
         self.recruit_time = None
-        self.daily_mission = False
-        self.daily_report = False
-        self.daily_skland = True
-        self.daily_mail = False
+
+        self.daily_report = (datetime.now() - timedelta(days=1, hours=4)).date()
+        self.daily_skland = (datetime.now() - timedelta(days=1, hours=4)).date()
+        self.daily_mail = (datetime.now() - timedelta(days=1, hours=8)).date()
+
         self.check_mail_enable = True
         self.report_enable = True
-
 
     @property
     def party_time(self):
@@ -489,7 +488,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 logger.info(f"记录本次无人机使用时间为:{datetime.now()}")
                 self.drone_time = datetime.now()
             if self.reload_room is not None and (
-                    self.reload_time is None or self.reload_time < datetime.now() - timedelta(hours=self.maa_config['maa_execution_gap'])):
+                    self.reload_time is None or self.reload_time < datetime.now() - timedelta(
+                hours=self.maa_config['maa_execution_gap'])):
                 self.reload()
                 logger.info(f"记录本次补货时间为:{datetime.now()}")
             self.todo_task = True
@@ -503,7 +503,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             self.collect_notification = True
         else:
             return self.handle_error()
-    def translate_room(self,room):
+
+    def translate_room(self, room):
         if "room" in room:
             parts = room.split("_")
             return f"B{parts[1]}0{parts[2]}"
@@ -516,6 +517,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             return "控制中枢"
         else:
             return "会客室"
+
     def agent_get_mood(self, skip_dorm=False, force=False):
         # 暂时规定纠错只适用于主班表
         need_read = set(
@@ -528,7 +530,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     _mood_data = self.get_agent_from_room(room)
                     mood_info = [f"干员: {item['agent']}, 心情: {round(item['mood'], 3)}" for item in _mood_data]
                     logger.info(f'房间 {self.translate_room(room)}  {mood_info}')
-                    #logger.info(f'房间 {room} 心情为：{_mood_data}')
+                    # logger.info(f'房间 {room} 心情为：{_mood_data}')
                     break
                 except Exception as e:
                     if error_count > 3: raise e
@@ -735,7 +737,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                                     _time = result[op.current_index]['time'] - timedelta(minutes=10)
                                 elif op.current_mood() > 0.25 + op.lower_limit and op.depletion_rate != 0:
                                     _time = datetime.now() + timedelta(
-                                        hours=(op.current_mood() - op.lower_limit- 0.25) / op.depletion_rate) - timedelta(minutes=10)
+                                        hours=(
+                                                          op.current_mood() - op.lower_limit - 0.25) / op.depletion_rate) - timedelta(
+                                        minutes=10)
                                 self.back()
                                 # plan 是空的是因为得动态生成
                                 exhaust_type = op.name
@@ -1107,7 +1111,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         # 如果启用 MAA，则在线索交流结束后购物
         if self.maa_config['maa_enable'] and self.party_time is not None:
             if find_next_task(self.tasks, task_type=TaskTypes.MAA_MALL) is None:
-                self.tasks.append(SchedulerTask(time=self.party_time - timedelta(milliseconds=1), task_type=TaskTypes.CLUE_PARTY))
+                self.tasks.append(
+                    SchedulerTask(time=self.party_time - timedelta(milliseconds=1), task_type=TaskTypes.CLUE_PARTY))
                 self.tasks.append(SchedulerTask(time=self.party_time, task_type=TaskTypes.MAA_MALL))
 
         self.back(interval=2)
@@ -1360,7 +1365,6 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         self.back(interval=2, rebuild=False)
         self.back(interval=2)
 
-
     # 用于制造站切换产物，请注意在调用该函数前有足够的无人机，并补足相应制造站产物，目前仅支持中级作战记录与赤金之间的切换
     # def 制造站切换产物(self, room: str, 目标产物: str, not_customize=False, not_return=False):
     #     # 点击进入该房间
@@ -1465,7 +1469,6 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
     #             self.tap((self.recog.w * 3 // 4, self.recog.h * 2 // 7), interval=1)    # 点击最多
     #             self.tap((self.recog.w * 3 // 4, self.recog.h * 5 // 6), interval=1)    # 确认数量
     #             self.tap((self.recog.w * 3 // 4, self.recog.h * 7 // 10), interval=1)   # 确认更改
-
 
     def get_arrange_order(self) -> ArrangeOrder:
         best_score, best_order = 0, None
@@ -1758,11 +1761,12 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
 
     def current_room_changed(self, instance):
         logger.info(f"{instance.name} 房间变动")
-        ref_rooms = instance.refresh_order_room[1] if instance.refresh_order_room[1] else list(self.op_data.run_order_rooms.keys())
+        ref_rooms = instance.refresh_order_room[1] if instance.refresh_order_room[1] else list(
+            self.op_data.run_order_rooms.keys())
         for ref_room in ref_rooms:
             self.refresh_run_order_time(ref_room)
 
-    def refresh_run_order_time(self,room):
+    def refresh_run_order_time(self, room):
         logger.debug("检测到插拔房间人员变动！")
         run_order_task = find_next_task(self.tasks, datetime.now() + timedelta(minutes=15),
                                         task_type=TaskTypes.RUN_ORDER,
@@ -2109,12 +2113,14 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 "force_shopping_if_credit_full": self.maa_config['mall_ignore_when_full']
             })
         elif type == 'Depot':
-            self.MAA.append_task('Depot',{
+            self.MAA.append_task('Depot', {
                 "enable": self.maa_config['maa_depot_enable']
-                })
+            })
+
     def maa_plan_solver(self, tasks='All', one_time=False):
         try:
-            if not one_time and 'last_execution' in self.maa_config and self.maa_config['last_execution'] is not None and datetime.now() - timedelta(
+            if not one_time and 'last_execution' in self.maa_config and self.maa_config[
+                'last_execution'] is not None and datetime.now() - timedelta(
                     seconds=self.maa_config['maa_execution_gap'] * 3600) < self.maa_config['last_execution']:
                 logger.info("间隔未超过设定时间，不启动maa")
             else:
@@ -2278,11 +2284,11 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
     def skland_plan_solover(self):
         return SKLand(self.skland_config['skland_info']).start()
 
-
     def recruit_plan_solver(self):
         if ('last_execution' not in self.recruit_config
                 or self.recruit_config['last_execution'] is None
-                or self.recruit_config['last_execution'] <= (datetime.now() - timedelta(seconds=self.recruit_config['recruit_execution_gap'] * 3600))):
+                or self.recruit_config['last_execution'] <= (
+                        datetime.now() - timedelta(seconds=self.recruit_config['recruit_execution_gap'] * 3600))):
             recruit([], self.send_message_config, self.recruit_config)
             self.recruit_config['last_execution'] = datetime.now()
             logger.info("下一次公开招募执行时间在{}小时之后".format(self.recruit_config['recruit_execution_gap']))
