@@ -454,7 +454,7 @@ defineExpose({
             >
           </td>
           <td class="table-space group">
-            <n-input v-model:value="plan[facility].plans[i - 1].group"></n-input>
+            <n-input v-model:value="plan[facility].plans[i - 1].group" />
           </td>
           <td class="select-label">替换：</td>
           <td>

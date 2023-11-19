@@ -48,7 +48,7 @@ async function select_copilot_path() {
       </n-radio-group>
     </n-form-item>
     <n-form-item label="作业路径">
-      <n-input type="textarea" :autosize="true" v-model:value="sss.copilot"></n-input>
+      <n-input type="textarea" :autosize="true" v-model:value="sss.copilot" />
       <n-button @click="select_copilot_path" class="dialog-btn">...</n-button>
     </n-form-item>
     <n-form-item label="循环次数">

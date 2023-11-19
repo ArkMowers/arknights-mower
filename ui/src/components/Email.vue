@@ -59,7 +59,7 @@ async function test_email() {
                 </n-button>
               </help-text>
             </template>
-            <n-input v-model:value="pass_code" type="password" show-password-on="click"></n-input>
+            <n-input v-model:value="pass_code" type="password" show-password-on="click" />
           </n-form-item>
           <n-form-item>
             <template #label>

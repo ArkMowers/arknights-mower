@@ -58,11 +58,11 @@ const maa_touch_options = ['maatouch', 'minitouch', 'adb'].map((x) => {
       label-align="left"
     >
       <n-form-item label="Maa目录">
-        <n-input type="textarea" :autosize="true" v-model:value="maa_path"></n-input>
+        <n-input type="textarea" :autosize="true" v-model:value="maa_path" />
         <n-button @click="select_maa_dir" class="dialog-btn">...</n-button>
       </n-form-item>
       <n-form-item label="ADB路径">
-        <n-input type="textarea" :autosize="true" v-model:value="maa_adb_path"></n-input>
+        <n-input type="textarea" :autosize="true" v-model:value="maa_adb_path" />
         <n-button @click="select_maa_adb_path" class="dialog-btn">...</n-button>
       </n-form-item>
       <n-form-item label="连接配置">

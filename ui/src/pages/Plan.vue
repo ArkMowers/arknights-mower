@@ -145,7 +145,7 @@ import DocumentExport from '@vicons/carbon/DocumentExport'
   <trigger-dialog />
   <task-dialog />
   <div class="home-container plan-bar w-980 mx-auto mt-12">
-    <n-input v-model:value="plan_file" />
+    <n-input type="textarea" :autosize="true" v-model:value="plan_file" />
     <n-button @click="open_plan_file">...</n-button>
     <n-button @click="save" :loading="generating_image" :disabled="generating_image">
       <template #icon>

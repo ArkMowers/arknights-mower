@@ -99,7 +99,7 @@ function render_label(option) {
                     <div>夜神：<code>127.0.0.1:62001</code></div>
                   </help-text>
                 </template>
-                <n-input v-model:value="adb"></n-input>
+                <n-input v-model:value="adb" />
               </n-form-item>
               <n-form-item label="模拟器">
                 <n-select v-model:value="simulator.name" :options="simulator_types" />
@@ -121,7 +121,7 @@ function render_label(option) {
                     <div>MuMu12: 写到shell文件夹</div>
                   </help-text>
                 </template>
-                <n-input v-model:value="simulator.simulator_folder"></n-input>
+                <n-input v-model:value="simulator.simulator_folder" />
                 <n-button @click="select_simulator_folder" class="dialog-btn">...</n-button>
               </n-form-item>
               <n-form-item label="启动游戏：">
