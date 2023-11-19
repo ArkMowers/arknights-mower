@@ -56,26 +56,22 @@ const loading_bar = useLoadingBar()
 
 async function save() {
   generating_image.value = true
-  facility.value = ''
   loading_bar.start()
-  sleep(500).then(() => {
-    html2canvas(plan_editor.value.outer, {
-      scale: 3,
-      backgroundColor: theme.value == 'light' ? '#ffffff' : '#000000'
-    }).then((canvas) => {
-      generating_image.value = false
-      loading_bar.finish()
-      const form_data = new FormData()
-      canvas.toBlob((blob) => {
-        form_data.append('img', blob)
-        axios
-          .post(`${import.meta.env.VITE_HTTP_URL}/dialog/save/img`, form_data)
-          .then(({ data }) => {
-            message.info(data)
-          })
-      })
-    })
+  if (facility.value != '') {
+    facility.value = ''
+    await sleep(500)
+  }
+  const canvas = await html2canvas(plan_editor.value.outer, {
+    scale: 3,
+    backgroundColor: theme.value == 'light' ? '#ffffff' : '#000000'
   })
+  generating_image.value = false
+  loading_bar.finish()
+  const form_data = new FormData()
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve))
+  form_data.append('img', blob)
+  const { data } = await axios.post(`${import.meta.env.VITE_HTTP_URL}/dialog/save/img`, form_data)
+  message.info(data)
 }
 
 const mobile = inject('mobile')
