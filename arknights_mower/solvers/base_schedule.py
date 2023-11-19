@@ -849,9 +849,27 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             if success:
                 # 记录替换组
                 exist_replacement.extend(__replacement)
-                for x in agents:
+                new_plan = False
+                if len(agents) > self.op_data.config.max_resting_count:
+                    first_low = first_high = None
+                    for a in agents:
+                        ag = self.op_data.operators[a]
+                        if ag.resting_priority == 'low' and first_low is None:
+                            first_low = ag
+                        if ag.resting_priority == 'high' and first_high is None:
+                            first_high = ag
+                        if first_low is not None and first_high is not None:
+                            break
+                    # 如果低优先的心情低于高优先
+                    if first_low.current_mood() - first_high.current_mood() < -3:
+                        logger.info("低优先级干员心情过低，自动按心情切换优先级")
+                        new_plan = True
+                for idx, x in enumerate(agents):
                     if self.op_data.operators[x].workaholic:
                         continue
+                    if new_plan:
+                        self.op_data.operators[x].resting_priority = 'high' if idx + 1 <= _high else 'low'
+                        logger.info(f"自动更新{x} 优先级为 {self.op_data.operators[x].resting_priority}")
                     _dorm = self.op_data.assign_dorm(x)
                     if _dorm.position[0] not in plan.keys():
                         plan[_dorm.position[0]] = ['Current'] * 5
