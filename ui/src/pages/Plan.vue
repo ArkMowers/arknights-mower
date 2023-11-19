@@ -132,10 +132,13 @@ provide('show_trigger_editor', show_trigger_editor)
 const show_task = ref(false)
 provide('show_task', show_task)
 
-import { IosArrowBack, IosArrowForward } from '@vicons/ionicons4'
-import { TrashOutline, CodeSlash } from '@vicons/ionicons5'
-import { PlusRound, AddTaskRound } from '@vicons/material'
-import { DocumentExport } from '@vicons/carbon'
+import IosArrowBack from '@vicons/ionicons4/IosArrowBack'
+import IosArrowForward from '@vicons/ionicons4/IosArrowForward'
+import TrashOutline from '@vicons/ionicons5/TrashOutline'
+import CodeSlash from '@vicons/ionicons5/CodeSlash'
+import PlusRound from '@vicons/material/PlusRound'
+import AddTaskRound from '@vicons/material/AddTaskRound'
+import DocumentExport from '@vicons/carbon/DocumentExport'
 </script>
 
 <template>
