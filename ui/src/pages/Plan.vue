@@ -169,6 +169,9 @@ import CodeSlash from '@vicons/ionicons5/CodeSlash'
 import PlusRound from '@vicons/material/PlusRound'
 import AddTaskRound from '@vicons/material/AddTaskRound'
 import DocumentExport from '@vicons/carbon/DocumentExport'
+
+import { render_op_label, render_op_tag } from '@/utils/op_select'
+import { match } from 'pinyin-pro'
 </script>
 
 <template>
@@ -267,9 +270,11 @@ import DocumentExport from '@vicons/carbon/DocumentExport'
       <n-select
         multiple
         filterable
-        tag
         :options="operators"
         v-model:value="current_conf.rest_in_full"
+        :filter="(p, o) => match(o.label, p, { precision: 'any' })"
+        :render-label="render_op_label"
+        :render-tag="render_op_tag"
       />
     </n-form-item>
     <n-form-item>
@@ -280,9 +285,11 @@ import DocumentExport from '@vicons/carbon/DocumentExport'
       <n-select
         multiple
         filterable
-        tag
         :options="operators"
         v-model:value="current_conf.exhaust_require"
+        :filter="(p, o) => match(o.label, p, { precision: 'any' })"
+        :render-label="render_op_label"
+        :render-tag="render_op_tag"
       />
     </n-form-item>
     <n-form-item>
@@ -292,9 +299,11 @@ import DocumentExport from '@vicons/carbon/DocumentExport'
       <n-select
         multiple
         filterable
-        tag
         :options="operators"
         v-model:value="current_conf.workaholic"
+        :filter="(p, o) => match(o.label, p, { precision: 'any' })"
+        :render-label="render_op_label"
+        :render-tag="render_op_tag"
       />
     </n-form-item>
     <n-form-item>
@@ -304,9 +313,11 @@ import DocumentExport from '@vicons/carbon/DocumentExport'
       <n-select
         multiple
         filterable
-        tag
         :options="operators"
         v-model:value="current_conf.resting_priority"
+        :filter="(p, o) => match(o.label, p, { precision: 'any' })"
+        :render-label="render_op_label"
+        :render-tag="render_op_tag"
       />
     </n-form-item>
     <n-form-item v-if="sub_plan != 'main'">
@@ -319,9 +330,11 @@ import DocumentExport from '@vicons/carbon/DocumentExport'
       <n-select
         multiple
         filterable
-        tag
         :options="operators"
         v-model:value="current_conf.free_blacklist"
+        :filter="(p, o) => match(o.label, p, { precision: 'any' })"
+        :render-label="render_op_label"
+        :render-tag="render_op_tag"
       />
     </n-form-item>
   </n-form>
