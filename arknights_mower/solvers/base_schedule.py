@@ -854,6 +854,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     first_low = first_high = None
                     for a in agents:
                         ag = self.op_data.operators[a]
+                        if ag.workaholic:
+                            continue
                         if ag.resting_priority == 'low' and first_low is None:
                             first_low = ag
                         if ag.resting_priority == 'high' and first_high is None:
