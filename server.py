@@ -71,9 +71,9 @@ def require_token(f):
     return decorated_function
 
 
-@app.route("/")
-def serve_index():
-    return send_from_directory("dist", "index.html")
+@app.route("/<path:path>")
+def serve_index(path):
+    return send_from_directory("dist", path)
 
 
 @app.errorhandler(404)
