@@ -2306,7 +2306,10 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             return SKLand(self.skland_config['skland_info']).start()
         except RuntimeError as re:
             logger.info(f"skland_plan_solover: {re}")
-            return self.daily_skland
+        except:
+            pass
+        return self.daily_skland
+
 
     def recruit_plan_solver(self):
         if ('last_execution' not in self.recruit_config
