@@ -4,7 +4,7 @@ import { usePlanStore } from '@/stores/plan'
 import { storeToRefs } from 'pinia'
 import { computed, inject } from 'vue'
 
-import pinyinMatch from 'pinyin-match/es/traditional'
+import { match } from 'pinyin-pro'
 
 import { folder_dialog } from '@/utils/dialog'
 
@@ -61,14 +61,7 @@ async function select_simulator_folder() {
   }
 }
 
-function render_label(option) {
-  return (
-    <div style="display: flex; gap: 6px; align-items: center">
-      <n-avatar src={`/avatar/${option.value}.png`} size="small" round />
-      <div>{option.value}</div>
-    </div>
-  )
-}
+import { render_op_label, render_op_tag } from '@/utils/op_select'
 </script>
 
 <template>
@@ -199,18 +192,19 @@ function render_label(option) {
                   target-filterable
                   :options="operators"
                   v-model:value="free_blacklist"
-                  :render-source-label="(o) => render_label(o.option)"
-                  :render-target-label="(o) => render_label(o.option)"
-                  :filter="(p, o) => (p ? pinyinMatch.match(o.label, p) : true)"
+                  :render-source-label="(o) => render_op_label(o.option)"
+                  :render-target-label="(o) => render_op_label(o.option)"
+                  :filter="(p, o) => (p ? match(o.label, p, { precision: 'any' }) : true)"
                 />
                 <n-select
                   v-else
                   multiple
                   filterable
-                  tag
                   :options="operators"
-                  :render-label="render_label"
+                  :render-label="render_op_label"
+                  :render-tag="render_op_tag"
                   v-model:value="free_blacklist"
+                  :filter="(p, o) => match(o.label, p, { precision: 'any' })"
                 />
               </n-form-item>
               <n-form-item>
