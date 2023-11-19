@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, watchEffect, inject } from 'vue'
 import axios from 'axios'
+import { useDebounceFn } from '@vueuse/core'
 
 export const useConfigStore = defineStore('config', () => {
   const adb = ref('')
@@ -139,6 +140,7 @@ export const useConfigStore = defineStore('config', () => {
   }
 
   function build_config() {
+    console.log('build_config')
     return {
       account: account.value,
       adb: adb.value,
@@ -206,9 +208,14 @@ export const useConfigStore = defineStore('config', () => {
 
   const loaded = inject('loaded')
 
+  const debounce_post = useDebounceFn((new_config) => {
+    axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, new_config)
+  }, 1000)
+
   watchEffect(() => {
     if (loaded.value) {
-      axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, build_config())
+      const new_config = build_config()
+      debounce_post(new_config)
     }
   })
 

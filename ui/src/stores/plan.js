@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, watchEffect, computed, inject } from 'vue'
 import axios from 'axios'
 import { deepcopy } from '@/utils/deepcopy'
+import { useDebounceFn } from '@vueuse/core'
 
 export const usePlanStore = defineStore('plan', () => {
   const ling_xi = ref(1)
@@ -138,6 +139,7 @@ export const usePlanStore = defineStore('plan', () => {
   }
 
   function build_plan() {
+    console.log('build_plan')
     const result = {
       default: 'plan1',
       plan1: strip_plan(plan.value),
@@ -182,9 +184,14 @@ export const usePlanStore = defineStore('plan', () => {
 
   const loaded = inject('loaded')
 
+  const debounce_post = useDebounceFn((new_plan) => {
+    axios.post(`${import.meta.env.VITE_HTTP_URL}/plan`, new_plan)
+  }, 1000)
+
   watchEffect(() => {
     if (loaded.value) {
-      axios.post(`${import.meta.env.VITE_HTTP_URL}/plan`, build_plan())
+      const new_plan = build_plan()
+      debounce_post(new_plan)
     }
   })
 
