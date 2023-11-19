@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, watch, computed } from 'vue'
+import { ref, watchEffect, computed, inject } from 'vue'
 import axios from 'axios'
 import { deepcopy } from '@/utils/deepcopy'
 
@@ -37,7 +37,7 @@ export const usePlanStore = defineStore('plan', () => {
   }
 
   function str2list(data) {
-    return data == "" ? [] : data.split(',')
+    return data == '' ? [] : data.split(',')
   }
 
   const backup_conf_convert_list = [
@@ -180,22 +180,13 @@ export const usePlanStore = defineStore('plan', () => {
     return result
   }
 
-  watch(
-    [
-      plan,
-      ling_xi,
-      max_resting_count,
-      exhaust_require,
-      rest_in_full,
-      resting_priority,
-      workaholic,
-      backup_plans
-    ],
-    () => {
+  const loaded = inject('loaded')
+
+  watchEffect(() => {
+    if (loaded.value) {
       axios.post(`${import.meta.env.VITE_HTTP_URL}/plan`, build_plan())
-    },
-    { deep: true }
-  )
+    }
+  })
 
   const groups = computed(() => {
     const result = []

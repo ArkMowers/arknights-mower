@@ -22,7 +22,7 @@ const {
 } = storeToRefs(plan_store)
 const { load_plan, fill_empty } = plan_store
 
-import { inject, ref, computed, provide } from 'vue'
+import { inject, ref, computed, provide, watchEffect } from 'vue'
 const axios = inject('axios')
 
 const facility = ref('')
@@ -119,11 +119,41 @@ function delete_sub_plan() {
   sub_plan.value = 'main'
 }
 
-const current_conf = computed(() => {
+const current_conf = ref({
+  ling_xi: ling_xi.value,
+  max_resting_count: max_resting_count.value,
+  rest_in_full: rest_in_full.value,
+  resting_priority: resting_priority.value,
+  workaholic: workaholic.value,
+  exhaust_require: exhaust_require.value
+})
+
+watchEffect(() => {
   if (sub_plan.value == 'main') {
-    return {}
+    current_conf.value = {
+      ling_xi: ling_xi.value,
+      max_resting_count: max_resting_count.value,
+      rest_in_full: rest_in_full.value,
+      resting_priority: resting_priority.value,
+      workaholic: workaholic.value,
+      exhaust_require: exhaust_require.value
+    }
+  } else {
+    current_conf.value = backup_plans.value[sub_plan.value].conf
   }
-  return backup_plans.value[sub_plan.value].conf
+})
+
+watchEffect(() => {
+  if (sub_plan.value == 'main') {
+    ling_xi.value = current_conf.value.ling_xi
+    max_resting_count.value = current_conf.value.max_resting_count
+    rest_in_full.value = current_conf.value.rest_in_full
+    max_resting_count.value = current_conf.value.max_resting_count
+    resting_priority.value = current_conf.value.resting_priority
+    workaholic.value = current_conf.value.workaholic
+  } else {
+    backup_plans.value[sub_plan.value].conf = current_conf.value
+  }
 })
 
 const show_trigger_editor = ref(false)
@@ -204,66 +234,6 @@ import DocumentExport from '@vicons/carbon/DocumentExport'
     :show-feedback="false"
     label-width="160"
     label-align="left"
-    v-if="sub_plan == 'main'"
-  >
-    <n-form-item>
-      <template #label>
-        <span>令夕模式</span>
-        <help-text>
-          <div>令夕上班时起作用</div>
-          <div>启动Mower前需要手动对齐心情</div>
-          <div>感知：夕心情-令心情=12</div>
-          <div>烟火：令心情-夕心情=12</div>
-          <div>均衡：夕令心情一样</div>
-        </help-text>
-      </template>
-      <n-radio-group v-model:value="ling_xi">
-        <n-space>
-          <n-radio :value="1">感知信息</n-radio>
-          <n-radio :value="2">人间烟火</n-radio>
-          <n-radio :value="3">均衡模式</n-radio>
-        </n-space>
-      </n-radio-group>
-    </n-form-item>
-    <n-form-item>
-      <template #label>
-        <span>最大组人数</span><help-text><div>请查阅文档</div></help-text>
-      </template>
-      <n-input-number v-model:value="max_resting_count" />
-    </n-form-item>
-    <n-form-item>
-      <template #label>
-        <span>需要回满心情的干员</span><help-text><div>请查阅文档</div></help-text>
-      </template>
-      <n-select multiple filterable tag :options="operators" v-model:value="rest_in_full" />
-    </n-form-item>
-    <n-form-item>
-      <template #label>
-        <span>需要用尽心情的干员</span
-        ><help-text><div>仅推荐写入具有暖机技能的干员</div></help-text>
-      </template>
-      <n-select multiple filterable tag :options="operators" v-model:value="exhaust_require" />
-    </n-form-item>
-    <n-form-item>
-      <template #label>
-        <span>0心情工作的干员</span><help-text><div>心情涣散状态仍能触发技能的干员</div></help-text>
-      </template>
-      <n-select multiple filterable tag :options="operators" v-model:value="workaholic" />
-    </n-form-item>
-    <n-form-item>
-      <template #label>
-        <span>宿舍低优先级干员</span><help-text><div>请查阅文档</div></help-text>
-      </template>
-      <n-select multiple filterable tag :options="operators" v-model:value="resting_priority" />
-    </n-form-item>
-  </n-form>
-  <n-form
-    class="w-980 mx-auto mb-12"
-    :label-placement="mobile ? 'top' : 'left'"
-    :show-feedback="false"
-    label-width="160"
-    label-align="left"
-    v-else
   >
     <n-form-item>
       <template #label>

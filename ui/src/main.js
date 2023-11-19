@@ -1,4 +1,4 @@
-import { createApp } from 'vue'
+import { createApp, ref } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
@@ -10,5 +10,6 @@ app.use(router)
 app.use(VueAxios, axios)
 app.provide('axios', app.config.globalProperties.axios)
 app.use(createPinia())
+app.provide('loaded', ref(false))
 
 app.mount('#app')

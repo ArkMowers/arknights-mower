@@ -211,10 +211,10 @@ function actions_on_resize() {
   mobile.value = window.innerWidth < 800
 }
 
-const loaded = ref(false)
-
 const mobile = ref(true)
 provide('mobile', mobile)
+
+const loaded = inject('loaded')
 
 onMounted(async () => {
   actions_on_resize()
