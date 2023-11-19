@@ -29,6 +29,7 @@
     "luxon": "^3.4.0",
     "moment": "^2.29.4",
     "pinia": "^2.0.32",
+    "pinyin-pro": "^3.18.2",
     "reconnecting-websocket": "^4.4.0",
     "vue": "^3.2.47",
     "vue-axios": "^3.5.2",
