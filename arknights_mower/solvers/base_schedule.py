@@ -2304,12 +2304,15 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
     def skland_plan_solover(self):
         try:
             return SKLand(self.skland_config['skland_info']).start()
-        except RuntimeError as re:
-            logger.info(f"skland_plan_solover: {re}")
+        except(RuntimeError, ConnectionError, ConnectionAbortedError, AttributeError) as re:
+            self.send_message(f"森空岛签到失败: {re}")
+        except Exception as e:
+            self.send_message(f"森空岛签到失败: {e}")
         except:
-            pass
-        return self.daily_skland
-
+            self.send_message(f"森空岛签到失败")
+        logger.warning("森空岛签到失败")
+        #仅尝试一次 不再尝试
+        return (datetime.now() - timedelta(hours=4)).date()
 
     def recruit_plan_solver(self):
         if ('last_execution' not in self.recruit_config
