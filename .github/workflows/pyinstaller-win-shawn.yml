@@ -81,7 +81,7 @@ jobs:
         working-directory: ./docs
         shell: bash
         run: |
-          bundle exec jekyll build -b /docs
+          bundle exec jekyll build -b "/docs"
           mv _site ../main/dist/docs
 
       - name: Make package
