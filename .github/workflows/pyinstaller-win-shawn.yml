@@ -98,7 +98,13 @@ jobs:
         run: |
           ..\..\venv\Scripts\python.exe ..\..\..\updater\publish.py
 
+      - name: create zip
+        working-directory: ./main/dist
+        shell: bash
+        run: |
+          zip -r mower.zip mower
+
       - uses: actions/upload-artifact@v3
         with:
           name: mower
-          path: main/dist/mower
+          path: main/dist/mower.zip
