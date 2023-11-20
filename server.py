@@ -79,6 +79,8 @@ def serve_index(path):
 
 @app.errorhandler(404)
 def not_found(e):
+    if request.path.startswith("/docs"):
+        return "<h1>404 Not Found</h1>", 404
     return send_from_directory("dist", "index.html")
 
 
