@@ -39,7 +39,7 @@ export const usePlanStore = defineStore('plan', () => {
   }
 
   function str2list(data) {
-    return data == '' ? [] : data.split(',')
+    return data && data != '' ? data.split(',') : []
   }
 
   const backup_conf_convert_list = [
