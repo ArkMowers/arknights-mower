@@ -18,7 +18,8 @@ const {
   operators,
   workaholic,
   backup_plans,
-  sub_plan
+  sub_plan,
+  refresh_trading
 } = storeToRefs(plan_store)
 const { load_plan, fill_empty } = plan_store
 
@@ -101,7 +102,8 @@ function create_sub_plan() {
       max_resting_count: max_resting_count.value,
       rest_in_full: deepcopy(rest_in_full.value),
       resting_priority: deepcopy(resting_priority.value),
-      workaholic: deepcopy(workaholic.value)
+      workaholic: deepcopy(workaholic.value),
+      refresh_trading: deepcopy(refresh_trading.value)
     },
     plan: fill_empty({}),
     trigger: {
@@ -125,7 +127,8 @@ const current_conf = ref({
   rest_in_full: rest_in_full.value,
   resting_priority: resting_priority.value,
   workaholic: workaholic.value,
-  exhaust_require: exhaust_require.value
+  exhaust_require: exhaust_require.value,
+  refresh_trading: refresh_trading.value
 })
 
 watchEffect(() => {
@@ -136,7 +139,8 @@ watchEffect(() => {
       rest_in_full: rest_in_full.value,
       resting_priority: resting_priority.value,
       workaholic: workaholic.value,
-      exhaust_require: exhaust_require.value
+      exhaust_require: exhaust_require.value,
+      refresh_trading: refresh_trading.value
     }
   } else {
     current_conf.value = backup_plans.value[sub_plan.value].conf
@@ -151,6 +155,7 @@ watchEffect(() => {
     max_resting_count.value = current_conf.value.max_resting_count
     resting_priority.value = current_conf.value.resting_priority
     workaholic.value = current_conf.value.workaholic
+    refresh_trading.value = current_conf.value.refresh_trading
   } else {
     backup_plans.value[sub_plan.value].conf = current_conf.value
   }
@@ -315,6 +320,20 @@ import { match } from 'pinyin-pro'
         filterable
         :options="operators"
         v-model:value="current_conf.resting_priority"
+        :filter="(p, o) => match(o.label, p, { precision: 'any' })"
+        :render-label="render_op_label"
+        :render-tag="render_op_tag"
+      />
+    </n-form-item>
+    <n-form-item>
+      <template #label>
+        <span>跑单时间刷新干员</span>
+      </template>
+      <n-select
+        multiple
+        filterable
+        :options="operators"
+        v-model:value="current_conf.refresh_trading"
         :filter="(p, o) => match(o.label, p, { precision: 'any' })"
         :render-label="render_op_label"
         :render-tag="render_op_tag"
