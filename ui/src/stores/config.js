@@ -140,7 +140,6 @@ export const useConfigStore = defineStore('config', () => {
   }
 
   function build_config() {
-    console.log('build_config')
     return {
       account: account.value,
       adb: adb.value,

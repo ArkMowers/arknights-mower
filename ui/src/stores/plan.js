@@ -139,7 +139,6 @@ export const usePlanStore = defineStore('plan', () => {
   }
 
   function build_plan() {
-    console.log('build_plan')
     const result = {
       default: 'plan1',
       plan1: strip_plan(plan.value),

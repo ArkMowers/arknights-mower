@@ -72,18 +72,14 @@ def require_token(f):
 
 @app.route("/<path:path>")
 def serve_index(path):
+    if (path := request.path).startswith("/docs/") and path.endswith("/"):
+        return send_from_directory("dist" + path, "index.html")
     return send_from_directory("dist", path)
 
 
 @app.errorhandler(404)
 def not_found(e):
-    if (path := request.path).startswith("/docs/") and path.endswith("/"):
-        try:
-            return send_from_directory("dist" + path, "index.html")
-        except NotFound:
-            return send_from_directory("dist", "index.html")
-    else:
-        return send_from_directory("dist", "index.html")
+    return send_from_directory("dist", "index.html")
 
 
 @app.route("/conf", methods=["GET", "POST"])
