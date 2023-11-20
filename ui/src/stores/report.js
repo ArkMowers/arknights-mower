@@ -13,6 +13,7 @@ export const useReportStore = defineStore('report', () => {
     return response.data
   }
   return {
-    getReportData,getHalfMonthData
+    getReportData,
+    getHalfMonthData
   }
 })

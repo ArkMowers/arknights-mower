@@ -6,7 +6,7 @@ import { useConfigStore } from '@/stores/config'
 const store = useConfigStore()
 
 import { storeToRefs } from 'pinia'
-import {NTag} from "naive-ui";
+import { NTag } from 'naive-ui'
 const { skland_enable, skland_info } = storeToRefs(store)
 
 function add_account() {
