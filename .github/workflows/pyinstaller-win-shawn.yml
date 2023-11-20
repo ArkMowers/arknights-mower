@@ -83,6 +83,7 @@ jobs:
         run: |
           bundle exec jekyll build -b /docs
           move _site ..\main\dist\docs
+          dir ..\main\dist
 
       - name: Make package
         working-directory: ./main
@@ -90,16 +91,16 @@ jobs:
         run: |
           set PYTHONHASHSEED=114514
           set SOURCE_DATE_EPOCH=1694076231
-          venv\Scripts\pyinstaller .\webui_zip.spec
+          venv\Scripts\pyinstaller .\webui_zip.spec --distpath=mower
 
       - name: calculate hash
-        working-directory: ./main/dist/mower
+        working-directory: ./main/mower/mower
         shell: cmd
         run: |
           ..\..\venv\Scripts\python.exe ..\..\..\updater\publish.py
 
       - name: create zip
-        working-directory: ./main/dist
+        working-directory: ./main/mower
         shell: bash
         run: |
           zip -r mower.zip mower
@@ -107,4 +108,4 @@ jobs:
       - uses: actions/upload-artifact@v3
         with:
           name: mower
-          path: main/dist/mower.zip
+          path: main/mower/mower.zip
