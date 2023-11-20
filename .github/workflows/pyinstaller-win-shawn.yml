@@ -11,12 +11,12 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: download source
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           path: main
 
       - name: download updater
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: ArkMowers/updater
           path: updater
@@ -25,8 +25,8 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: 16
-          cache: 'npm'
-          cache-dependency-path: '**/package-lock.json'
+          cache: "npm"
+          cache-dependency-path: "**/package-lock.json"
 
       - name: Install UPX
         uses: crazy-max/ghaction-upx@v2
@@ -62,6 +62,26 @@ jobs:
         shell: bash
         run: |
           sed -i "s/__version__ = '\(.*\)'/__version__ = '\1+${GITHUB_SHA::7}'/g" ./arknights_mower/__init__.py
+
+      - name: download docs
+        uses: actions/checkout@v4
+        with:
+          path: docs
+          ref: doc-pages
+
+      - name: setup ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "2.7.8"
+          bundler-cache: true
+
+      - name: build docs
+        working-directory: ./docs
+        shell: bash
+        run: |
+          bundle install
+          bundle exec jekyll build -b /docs
+          mv _site ../main/dist/docs
 
       - name: Make package
         working-directory: ./main
