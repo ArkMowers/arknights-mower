@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 import datetime
-import re
 
 import pandas as pd
 import requests
 
 from arknights_mower.solvers import record
-from arknights_mower.solvers.report import get_report_data
 from arknights_mower.solvers.skland import SKLand
 from arknights_mower.utils.conf import load_conf, save_conf, load_plan, write_plan
 from arknights_mower.utils import depot
@@ -16,6 +14,7 @@ from arknights_mower.__main__ import main
 from arknights_mower.data import agent_list, shop_items
 
 from flask import Flask, send_from_directory, request, abort
+from werkzeug.exceptions import NotFound
 from flask_cors import CORS
 from flask_sock import Sock
 
@@ -78,7 +77,13 @@ def serve_index(path):
 
 @app.errorhandler(404)
 def not_found(e):
-    return send_from_directory("dist", "index.html")
+    if (path := request.path).startswith("/docs/") and path.endswith("/"):
+        try:
+            return send_from_directory("dist" + path, "index.html")
+        except NotFound:
+            return send_from_directory("dist", "index.html")
+    else:
+        return send_from_directory("dist", "index.html")
 
 
 @app.route("/conf", methods=["GET", "POST"])
@@ -433,7 +438,6 @@ def get_half_month_data():
         return format_data
     except PermissionError:
         logger.info("report.csv正在被占用")
-
 
 
 @app.route("/test-email")
