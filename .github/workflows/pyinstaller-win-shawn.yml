@@ -82,7 +82,7 @@ jobs:
         shell: cmd
         run: |
           bundle exec jekyll build -b /docs
-          mv _site ..\main\dist\docs
+          move _site ..\main\dist\docs
 
       - name: Make package
         working-directory: ./main
