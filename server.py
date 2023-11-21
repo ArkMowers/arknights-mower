@@ -72,15 +72,16 @@ def require_token(f):
 
 @app.route("/<path:path>")
 def serve_index(path):
-    if (path := request.path).startswith("/docs/") and path.endswith("/"):
-        return send_from_directory("dist" + path, "index.html")
     return send_from_directory("dist", path)
 
 
 @app.errorhandler(404)
 def not_found(e):
-    if request.path.startswith("/docs"):
-        return "<h1>404 Not Found</h1>", 404
+    if (path := request.path).startswith("/docs"):
+        try:
+            return send_from_directory("dist" + path, "index.html")
+        except NotFound:
+            return "<h1>404 Not Found</h1>", 404
     return send_from_directory("dist", "index.html")
 
 
