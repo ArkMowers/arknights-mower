@@ -4,22 +4,22 @@ import webview
 import server
 from server import app
 
-import os
 import multiprocessing
 
 from arknights_mower.utils.conf import load_conf, save_conf
+from arknights_mower.utils.path import get_path
 from arknights_mower.__init__ import __version__
 
 from threading import Thread
-from PIL import Image
+from PIL import Image, ImageTk
 from pystray import Icon, Menu, MenuItem
 
 import socket
-import tkinter
+import tkinter as tk
+from tkinter.font import Font
 from tkinter import messagebox
 from time import sleep
 import sys
-import pathlib
 
 
 quit_app = False
@@ -61,8 +61,46 @@ def is_port_in_use(port):
         return s.connect_ex(("localhost", port)) == 0
 
 
+logo_path = get_path("@internal/logo.png")
+tray_img = Image.open(logo_path)
+
+
+class SplashScreen:
+    def __init__(self):
+        self.root = tk.Tk()
+
+        self.canvas = tk.Canvas(self.root, width=256, height=256)
+        self.canvas.pack()
+        self.img = ImageTk.PhotoImage(tray_img)
+        self.canvas.create_image(128, 128, image=self.img)
+
+        self.title_font = Font(size=24)
+        self.title_label = tk.Label(
+            self.root, text=f"arknights-mower {__version__}", font=self.title_font
+        )
+        self.title_label.pack()
+
+        self.loading_label = tk.Label(self.root)
+        self.loading_label.pack()
+        self.root.overrideredirect(True)
+
+    def show_text(self, text):
+        self.loading_label.config(text=text)
+        self.center()
+
+    def center(self):
+        self.root.eval("tk::PlaceWindow . center")
+        self.root.update()
+
+    def stop(self):
+        self.root.destroy()
+
+
 if __name__ == "__main__":
     multiprocessing.freeze_support()
+
+    splash = SplashScreen()
+    splash.show_text("加载配置文件")
 
     conf = load_conf()
 
@@ -71,13 +109,13 @@ if __name__ == "__main__":
     host = "0.0.0.0" if token else "127.0.0.1"
 
     if is_port_in_use(port):
-        root = tkinter.Tk()
-        root.withdraw()
         messagebox.showerror(
             "arknights-mower",
             f"端口{port}已被占用，无法启动！",
         )
         sys.exit()
+
+    splash.show_text("启动flask网页服务器")
 
     app.token = token
     Thread(
@@ -92,15 +130,8 @@ if __name__ == "__main__":
     width = conf["webview"]["width"]
     height = conf["webview"]["height"]
 
-    logo_path = (
-        pathlib.Path(
-            sys._MEIPASS
-            if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")
-            else os.getcwd()
-        )
-        / "logo.png"
-    )
-    tray_img = Image.open(logo_path)
+    splash.show_text("加载托盘图标")
+
     icon = Icon(
         "arknights-mower",
         icon=tray_img,
@@ -118,8 +149,10 @@ if __name__ == "__main__":
     )
     icon.run_detached()
 
+    splash.show_text("准备主窗口")
+
     window = webview.create_window(
-        f"Mower {__version__} (http://{host}:{port})",
+        f"arknights-mower {__version__} (http://{host}:{port})",
         f"http://127.0.0.1:{port}?token={token}",
         width=width,
         height=height,
@@ -131,6 +164,8 @@ if __name__ == "__main__":
 
     while not is_port_in_use(port):
         sleep(0.1)
+
+    splash.stop()
     webview.start()
 
     window = None
