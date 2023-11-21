@@ -43,7 +43,7 @@ if __name__ == "__main__":
 
         def show_text(self, text):
             self.loading_label.config(text=text + "……")
-            self.root.update_idletasks()
+            self.root.update()
 
         def hide(self):
             self.root.withdraw()
