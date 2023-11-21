@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import multiprocessing
 
-
 if __name__ == "__main__":
     multiprocessing.freeze_support()
 
@@ -19,7 +18,7 @@ if __name__ == "__main__":
 
             self.title_font = Font(size=24)
             self.title_label = tk.Label(
-                self.container, text=f"arknights-mower", font=self.title_font
+                self.container, text="arknights-mower", font=self.title_font
             )
             self.title_label.pack()
 
@@ -56,6 +55,7 @@ if __name__ == "__main__":
     splash.show_text("加载图标")
 
     from PIL import Image, ImageTk
+
     from arknights_mower.utils.path import get_path
 
     logo_path = get_path("@internal/logo.png")
@@ -170,6 +170,7 @@ if __name__ == "__main__":
     splash.show_text("准备主窗口")
 
     import webview
+
     from arknights_mower.__init__ import __version__
 
     window = webview.create_window(
