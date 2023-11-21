@@ -7,37 +7,43 @@ if __name__ == "__main__":
 
     import tkinter as tk
     from tkinter.font import Font
-    from arknights_mower.__init__ import __version__
 
     class SplashScreen:
         def __init__(self):
             self.root = tk.Tk()
 
-            self.canvas = tk.Canvas(self.root, width=256, height=256)
+            self.container = tk.Frame(self.root)
+
+            self.canvas = tk.Canvas(self.container, width=256, height=256)
             self.canvas.pack()
 
             self.title_font = Font(size=24)
             self.title_label = tk.Label(
-                self.root, text=f"arknights-mower {__version__}", font=self.title_font
+                self.container, text=f"arknights-mower", font=self.title_font
             )
             self.title_label.pack()
 
-            self.loading_label = tk.Label(self.root)
+            self.loading_label = tk.Label(self.container)
             self.loading_label.pack()
+
+            self.container.pack(expand=1)
             self.root.overrideredirect(True)
+
+            window_width = 500
+            window_height = 400
+            screen_width = self.root.winfo_screenwidth()
+            screen_height = self.root.winfo_screenheight()
+            x = int(screen_width / 2 - window_width / 2)
+            y = int(screen_height / 2 - window_height / 2)
+            self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
 
         def load_img(self, img):
             self.img = ImageTk.PhotoImage(img)
             self.canvas.create_image(128, 128, image=self.img)
-            self.root.update()
 
         def show_text(self, text):
             self.loading_label.config(text=text + "……")
-            self.center()
-
-        def center(self):
-            self.root.eval("tk::PlaceWindow . center")
-            self.root.update()
+            self.root.update_idletasks()
 
         def hide(self):
             self.root.withdraw()
@@ -111,11 +117,12 @@ if __name__ == "__main__":
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             return s.connect_ex(("localhost", port)) == 0
 
-    from tkinter import messagebox
-    import sys
-
     if is_port_in_use(port):
         splash.hide()
+
+        import sys
+        from tkinter import messagebox
+
         messagebox.showerror(
             "arknights-mower",
             f"端口{port}已被占用，无法启动！",
@@ -163,6 +170,7 @@ if __name__ == "__main__":
     splash.show_text("准备主窗口")
 
     import webview
+    from arknights_mower.__init__ import __version__
 
     window = webview.create_window(
         f"arknights-mower {__version__} (http://{host}:{port})",
