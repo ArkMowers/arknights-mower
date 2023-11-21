@@ -115,6 +115,7 @@ if __name__ == "__main__":
 
     def is_port_in_use(port):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.1)
             return s.connect_ex(("localhost", port)) == 0
 
     if is_port_in_use(port):
