@@ -334,32 +334,41 @@ class RecruitSolver(BaseSolver):
             logger.info(f'第{self.recruit_pos + 1}个位置上的公招预测结果：{"随机三星干员"}')
 
     def recruit_result(self):
-        agent = None
-        gray_img = cropimg(self.recog.gray, ((800, 600), (1500, 1000)))
+        try:
+            agent = None
+            gray_img = cropimg(self.recog.gray, ((800, 600), (1500, 1000)))
 
-        img_binary = cv2.threshold(gray_img, 220, 255, cv2.THRESH_BINARY)[1]
-        max = 0
-        get_path = ""
+            img_binary = cv2.threshold(gray_img, 220, 255, cv2.THRESH_BINARY)[1]
+            max = 0
+            get_path = ""
 
-        for template_name in result_template_list:
-            tem_path = f"{__rootdir__}/resources/agent_name/{template_name}.png"
-            template_ = cv2.imdecode(np.fromfile(tem_path.__str__(), dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
-            res = cv2.matchTemplate(img_binary, template_, cv2.TM_CCORR_NORMED)
-            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
-            if max < max_val:
-                get_path = tem_path
-                max = max_val
+            for template_name in result_template_list:
+                tem_path = f"{__rootdir__}/resources/agent_name/{template_name}.png"
+                template_ = cv2.imdecode(np.fromfile(tem_path.__str__(), dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
+                res = cv2.matchTemplate(img_binary, template_, cv2.TM_CCORR_NORMED)
+                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+                if max < max_val:
+                    get_path = tem_path
+                    max = max_val
+                if max > 0.7:
+                    break
+
             if max > 0.7:
-                break
+                agent_id = os.path.basename(get_path)
+                agent_id = agent_id.replace(".png", "")
+                agent = recruit_agent[agent_id]['name']
 
-        if max > 0.7:
-            agent_id = os.path.basename(get_path)
-            agent_id = agent_id.replace(".png", "")
-            agent = recruit_agent[agent_id]['name']
-
-        if agent is not None:
-            # 汇总开包结果
-            self.result_agent[str(self.recruit_pos + 1)] = agent
+            if agent is not None:
+                # 汇总开包结果
+                self.result_agent[str(self.recruit_pos + 1)] = agent
+        except Exception as e:
+            logger.error(f"公招开包异常{e}")
+            self.send_message(f"公招开包异常{e}")
+        except cv2.Error as e:
+            logger.error(f"公招开包异常{e}")
+            self.send_message(f"公招开包异常{e}")
+        except:
+            pass
 
         self.tap((self.recog.w // 2, self.recog.h // 2))
 
