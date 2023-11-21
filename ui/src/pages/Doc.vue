@@ -16,5 +16,6 @@
 .link-container {
   width: 100%;
   padding: 6px 12px 0;
+  box-sizing: border-box;
 }
 </style>
