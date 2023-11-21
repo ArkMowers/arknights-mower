@@ -324,6 +324,8 @@ class BaseSolver:
                     self.tap_element('double_confirm', 0.8)
                 elif self.scene() == Scene.NETWORK_CHECK:
                     self.tap_element('double_confirm', 0.2)
+                elif self.scene() == Scene.RECRUIT_AGENT:
+                    self.tap((self.recog.w // 2, self.recog.h // 2))
                 elif self.scene() == Scene.MAIL:
                     mail = self.find('mail')
                     mid_y = (mail[0][1] + mail[1][1]) // 2
