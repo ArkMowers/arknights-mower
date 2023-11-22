@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import os
 import datetime
+import time
 
 import numpy as np
 import pandas as pd
@@ -44,15 +45,18 @@ class ReportSolver(BaseSolver):
             "合成玉": None,
             "合成玉订单数量": None,
         }
+        self.reload_time = 1
 
     def run(self):
         if self.has_record():
             logger.info("今天的基报看过了")
             return True
-        logger.info("康康大基报")
+        logger.info("康康大基报捏~")
         try:
             super().run()
             return True
+        except Exception as e:
+            logger.error(e)
         except:
             pass
         return False
@@ -67,7 +71,9 @@ class ReportSolver(BaseSolver):
         elif self.scene() == Scene.CTRLCENTER_ASSISTANT:
             self.tap_element('control_central_assistants')
         elif self.scene() == Scene.RIIC_REPORT:
-            logger.info("找到基报了")
+            logger.info("看到基报辣")
+            if self.reload_time > 4:
+                raise RuntimeError("没找到基报 杂鱼~")
             return self.read_report()
         elif self.scene() == Scene.LOADING:
             self.sleep(3)
@@ -81,6 +87,11 @@ class ReportSolver(BaseSolver):
             raise RecognizeError('Unknown scene')
 
     def read_report(self):
+        if not self.locate_report(self.recog.img[0:1080, 1280:1920], 'riic_manufacture'):
+            logger.info("基报未加载完全")
+            time.sleep(self.reload_time)
+            self.reload_time = self.reload_time + 1
+            return False
         try:
             img = cv2.cvtColor(self.recog.img[0:1080, 1280:1920], cv2.COLOR_BGR2RGB)
             p0, p1 = self.locate_report(img, 'riic_exp')
@@ -106,7 +117,7 @@ class ReportSolver(BaseSolver):
 
             self.record_report()
         except:
-            logger.info("基报识别失败 润")
+            logger.info("你的基报不行啊 杂鱼~")
         return True
 
     def locate_report(self, img, template_name):
