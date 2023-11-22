@@ -378,7 +378,7 @@ import { match } from 'pinyin-pro'
               :options="operators_with_free"
               class="operator-select"
               v-model:value="plan[facility].plans[i - 1].agent"
-              :filter="(p, o) => match(o.label, p, { precision: 'any' })"
+              :filter="(p, o) => match(o.label, p)"
               :render-label="render_op_label"
             />
           </td>
@@ -399,7 +399,7 @@ import { match } from 'pinyin-pro'
               :options="operators_with_free"
               class="replacement-select"
               v-model:value="plan[facility].plans[i - 1].replacement"
-              :filter="(p, o) => match(o.label, p, { precision: 'any' })"
+              :filter="(p, o) => match(o.label, p)"
               :render-label="render_op_label"
               :render-tag="render_op_tag"
             />

@@ -277,7 +277,7 @@ import { match } from 'pinyin-pro'
         filterable
         :options="operators"
         v-model:value="current_conf.rest_in_full"
-        :filter="(p, o) => match(o.label, p, { precision: 'any' })"
+        :filter="(p, o) => match(o.label, p)"
         :render-label="render_op_label"
         :render-tag="render_op_tag"
       />
@@ -292,7 +292,7 @@ import { match } from 'pinyin-pro'
         filterable
         :options="operators"
         v-model:value="current_conf.exhaust_require"
-        :filter="(p, o) => match(o.label, p, { precision: 'any' })"
+        :filter="(p, o) => match(o.label, p)"
         :render-label="render_op_label"
         :render-tag="render_op_tag"
       />
@@ -306,7 +306,7 @@ import { match } from 'pinyin-pro'
         filterable
         :options="operators"
         v-model:value="current_conf.workaholic"
-        :filter="(p, o) => match(o.label, p, { precision: 'any' })"
+        :filter="(p, o) => match(o.label, p)"
         :render-label="render_op_label"
         :render-tag="render_op_tag"
       />
@@ -320,7 +320,7 @@ import { match } from 'pinyin-pro'
         filterable
         :options="operators"
         v-model:value="current_conf.resting_priority"
-        :filter="(p, o) => match(o.label, p, { precision: 'any' })"
+        :filter="(p, o) => match(o.label, p)"
         :render-label="render_op_label"
         :render-tag="render_op_tag"
       />
@@ -334,7 +334,7 @@ import { match } from 'pinyin-pro'
         filterable
         :options="operators"
         v-model:value="current_conf.refresh_trading"
-        :filter="(p, o) => match(o.label, p, { precision: 'any' })"
+        :filter="(p, o) => match(o.label, p)"
         :render-label="render_op_label"
         :render-tag="render_op_tag"
       />
@@ -351,7 +351,7 @@ import { match } from 'pinyin-pro'
         filterable
         :options="operators"
         v-model:value="current_conf.free_blacklist"
-        :filter="(p, o) => match(o.label, p, { precision: 'any' })"
+        :filter="(p, o) => match(o.label, p)"
         :render-label="render_op_label"
         :render-tag="render_op_tag"
       />

@@ -194,7 +194,7 @@ import { render_op_label, render_op_tag } from '@/utils/op_select'
                   v-model:value="free_blacklist"
                   :render-source-label="(o) => render_op_label(o.option)"
                   :render-target-label="(o) => render_op_label(o.option)"
-                  :filter="(p, o) => (p ? match(o.label, p, { precision: 'any' }) : true)"
+                  :filter="(p, o) => (p ? match(o.label, p) : true)"
                 />
                 <n-select
                   v-else
@@ -204,7 +204,7 @@ import { render_op_label, render_op_tag } from '@/utils/op_select'
                   :render-label="render_op_label"
                   :render-tag="render_op_tag"
                   v-model:value="free_blacklist"
-                  :filter="(p, o) => match(o.label, p, { precision: 'any' })"
+                  :filter="(p, o) => match(o.label, p)"
                 />
               </n-form-item>
               <n-form-item>

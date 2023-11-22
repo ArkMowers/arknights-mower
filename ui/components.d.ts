@@ -21,6 +21,7 @@ declare module '@vue/runtime-core' {
     MaaWeekly: typeof import('./src/components/MaaWeekly.vue')['default']
     MaaWeeklyNew: typeof import('./src/components/MaaWeeklyNew.vue')['default']
     MaaWeeklypartly: typeof import('./src/components/MaaWeeklypartly.vue')['default']
+    NA: typeof import('naive-ui')['NA']
     NAvatar: typeof import('naive-ui')['NAvatar']
     NButton: typeof import('naive-ui')['NButton']
     NCard: typeof import('naive-ui')['NCard']
