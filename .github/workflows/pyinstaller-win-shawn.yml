@@ -96,6 +96,7 @@ jobs:
       - name: cache mower
         uses: actions/cache/save@v3
         with:
+          enableCrossOsArchive: true
           key: mower-${{ github.sha }}
           path: mower/mower
 
@@ -122,29 +123,36 @@ jobs:
           python -m venv venv
           venv/bin/pip install -U xxhash backports.zoneinfo[tzdata]
 
-      - name: restore mower
-        uses: actions/cache/restore@v3
-        with:
-          key: mower-${{ github.sha }}
-          path: ./mower
-
       - name: restore frontend dist
         uses: actions/cache/restore@v3
         with:
           key: frontend-dist-${{ github.sha }}
-          path: ./mower/_internal/dist
+          path: ui/dist
 
       - name: restore docs
         uses: actions/cache/restore@v3
         with:
           key: docs-${{ github.sha }}
-          path: ./mower/_internal/dist/docs
+          path: _site
+
+      - name: restore mower
+        uses: actions/cache/restore@v3
+        with:
+          enableCrossOsArchive: true
+          key: mower-${{ github.sha }}
+          path: mower/mower
+
+      - name: merge files
+        run: |
+          mv ui/dist mower/mower/_internal/
+          mv _site mower/mower/_internal/dist/docs
 
       - name: calculate hash
         working-directory: mower
         run: ../venv/bin/python ../publish.py
 
       - name: create zip
+        working-directory: mower
         run: zip -r mower.zip mower
 
       - uses: actions/upload-artifact@v3
