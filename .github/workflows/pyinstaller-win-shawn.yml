@@ -99,7 +99,7 @@ jobs:
           key: mower-${{ github.sha }}
           path: mower/mower
 
-  build-win-amd64:
+  package-and-upload:
     needs:
       - build-frontend
       - build-docs
@@ -111,24 +111,6 @@ jobs:
         with:
           repository: ArkMowers/updater
 
-      - name: restore mower
-        uses: actions/cache/restore@v3
-        with:
-          key: mower-${{ github.sha }}
-          path: mower
-
-      - name: restore frontend dist
-        uses: actions/cache/restore@v3
-        with:
-          key: frontend-dist-${{ github.sha }}
-          path: mower/_internal/dist
-
-      - name: restore docs
-        uses: actions/cache/restore@v3
-        with:
-          key: docs-${{ github.sha }}
-          path: mower/_internal/dist/docs
-
       - name: install python 3.8
         uses: actions/setup-python@v4
         with:
@@ -139,6 +121,24 @@ jobs:
         run: |
           python -m venv venv
           venv/bin/pip install -U xxhash backports.zoneinfo[tzdata]
+
+      - name: restore mower
+        uses: actions/cache/restore@v3
+        with:
+          key: mower-${{ github.sha }}
+          path: ./mower
+
+      - name: restore frontend dist
+        uses: actions/cache/restore@v3
+        with:
+          key: frontend-dist-${{ github.sha }}
+          path: ./mower/_internal/dist
+
+      - name: restore docs
+        uses: actions/cache/restore@v3
+        with:
+          key: docs-${{ github.sha }}
+          path: ./mower/_internal/dist/docs
 
       - name: calculate hash
         working-directory: mower
