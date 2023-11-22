@@ -73,9 +73,8 @@ jobs:
           sudo apt install wine
 
       - name: install python 3.8
+        working-directory: py38
         run: |
-          mkdir py38
-          cd py38
           wget https://www.python.org/ftp/python/3.8.10/python-3.8.10-embed-amd64.zip
           unzip python-3.8.10-embed-amd64.zip
           wget https://bootstrap.pypa.io/get-pip.py
