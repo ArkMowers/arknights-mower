@@ -122,9 +122,7 @@ jobs:
 
       - name: create zip
         working-directory: mower
-        shell: bash
-        run: |
-          zip -r mower.zip mower
+        run: tar -cvzf mower.zip mower
 
       - uses: actions/upload-artifact@v3
         with:
