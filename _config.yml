@@ -12,3 +12,4 @@ exclude:
   - CNAME
   - Gemfile
   - Gemfile.lock
+  - vendor
