@@ -84,7 +84,8 @@ class RecruitSolver(BaseSolver):
                 agent = []
                 for item in self.agent_choose[pos]['result']:
                     agent.append(item['name'])
-                logger.info("{}:[".format(pos) + ",".join(self.agent_choose[pos]['tags']) + "]:{}".format(",".join(agent)))
+                logger.info(
+                    "{}:[".format(pos) + ",".join(self.agent_choose[pos]['tags']) + "]:{}".format(",".join(agent)))
         if self.agent_choose or self.result_agent:
             self.send_message(recruit_template.render(recruit_results=self.agent_choose,
                                                       recruit_get_agent=self.result_agent,
@@ -105,10 +106,13 @@ class RecruitSolver(BaseSolver):
         self.recruit_config = {
             "recruitment_time": {
                 "3": recruitment_time,
-                "4": 540
+                "4": 540,
+                "5": 540,
+                "6": 540
             },
             "recruit_robot": recruit_config['recruit_robot'],
-            "permit_target": recruit_config['permit_target']
+            "permit_target": recruit_config['permit_target'],
+            "recruit_auto_5": recruit_config['recruit_auto_5']
         }
 
         if not self.recruit_config['recruit_robot']:
@@ -247,7 +251,10 @@ class RecruitSolver(BaseSolver):
                                   "出稀有标签辣",
                                   "html")
                 logger.info('稀有tag,发送邮件')
-                if len(recruit_cal_result) > 1:
+                if self.recruit_config['recruit_auto_5'] == 3:
+                    self.back()
+                    return
+                if len(recruit_cal_result) > 1 and self.recruit_config['recruit_auto_5'] != 1:
                     self.back()
                     return
 
@@ -291,6 +298,7 @@ class RecruitSolver(BaseSolver):
                 self.device.tap((left + x[2][0][0] - 5, up + x[2][0][1] - 5))
 
         # 9h为True 3h50min为False
+        logger.debug("开始选择时长")
         recruit_time_choose = self.recruit_config["recruitment_time"]["3"]
         if recruit_result_level >= 3:
             if recruit_result_level == 1:
