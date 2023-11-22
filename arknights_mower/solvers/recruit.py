@@ -111,7 +111,8 @@ class RecruitSolver(BaseSolver):
                 "6": 540
             },
             "recruit_robot": recruit_config['recruit_robot'],
-            "permit_target": recruit_config['permit_target']
+            "permit_target": recruit_config['permit_target'],
+            "recruit_auto_5": recruit_config['recruit_auto_5']
         }
 
         if not self.recruit_config['recruit_robot']:
@@ -250,7 +251,10 @@ class RecruitSolver(BaseSolver):
                                   "出稀有标签辣",
                                   "html")
                 logger.info('稀有tag,发送邮件')
-                if len(recruit_cal_result) > 1:
+                if self.recruit_config['recruit_auto_5'] == 3:
+                    self.back()
+                    return
+                if len(recruit_cal_result) > 1 and self.recruit_config['recruit_auto_5'] != 1:
                     self.back()
                     return
 

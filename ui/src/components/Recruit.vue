@@ -2,7 +2,7 @@
 import { useConfigStore } from '@/stores/config'
 const store = useConfigStore()
 import { storeToRefs } from 'pinia'
-const { recruit_enable, recruitment_permit, recruitment_time, recruit_robot, recruit_gap } =
+const { recruit_enable, recruitment_permit, recruitment_time, recruit_robot, recruit_gap,recruit_auto_5} =
   storeToRefs(store)
 import { ref, inject } from 'vue'
 
@@ -11,7 +11,7 @@ const mobile = inject('mobile')
 const recruit_4 = ref('900')
 </script>
 
-<template>
+<template >
   <n-card>
     <template #header>
       <n-checkbox v-model:checked="recruit_enable">
@@ -66,14 +66,40 @@ const recruit_4 = ref('900')
           </td>
         </tr>
         <tr>
-          <td>五星</td>
+          <td rowspan="2">五星</td>
           <td>
-            <n-radio-group name="recruit_4" v-model:value="recruit_4">
+              <n-radio-group name="recruit_4" v-model:value="recruit_4">
+                <n-space justify="start">
+                  <n-radio value="900">
+                    邮件通知
+                    <help-text>
+                      <div>发送邮件通知，不自动选择</div>
+                    </help-text>
+                  </n-radio>
+                </n-space>
+              </n-radio-group>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <n-radio-group name="recruit_auto_5" v-model:value="recruit_auto_5">
               <n-space justify="start">
-                <n-radio value="900">
-                  邮件通知
+                <n-radio :value="1">
+                  自动选择
                   <help-text>
-                    <div>发送邮件通知，不自动选择</div>
+                    <div>自动选择五星tag</div>
+                  </help-text>
+                </n-radio>
+                <n-radio :value="2">
+                  半自动选择
+                  <help-text>
+                    <div>只有一个选项时自动进行选择</div>
+                  </help-text>
+                </n-radio>
+                <n-radio :value="3">
+                  手动选择
+                  <help-text>
+                    <div>不自动选择</div>
                   </help-text>
                 </n-radio>
               </n-space>
@@ -135,33 +161,28 @@ h4 {
   margin: 12px 0 10px 0;
 }
 
-.recruit-3 td {
-  &:nth-child(1) {
-    width: 64px;
-  }
-
-  &:nth-child(2) {
-    width: 200px;
-  }
-}
-
 .big-table {
   margin-top: 10px;
-  max-width: 360px;
+  max-width: 480px;
 
   th {
     text-align: center;
+  }
+
+  tr{
+    width: 70px;
   }
 
   td {
     height: 24px;
 
     &:nth-child(1) {
-      width: 70px;
+      width: 60px;
       text-align: center;
     }
     &:nth-child(2) {
-      padding-left: 18px;
+      width: 420px;
+      text-align: center;
     }
   }
 }

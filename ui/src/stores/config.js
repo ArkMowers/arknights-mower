@@ -61,6 +61,7 @@ export const useConfigStore = defineStore('config', () => {
   const check_mail_enable = ref(true)
   const report_enable = ref(true)
   const recruit_gap = ref(false)
+  const recruit_auto_5=ref("hand")
 
   async function load_shop() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/shop`)
@@ -137,6 +138,7 @@ export const useConfigStore = defineStore('config', () => {
     check_mail_enable.value = response.data.check_mail_enable
     report_enable.value = response.data.report_enable
     recruit_gap.value = response.data.recruit_gap
+    recruit_auto_5.value=response.data.recruit_auto_5
   }
 
   function build_config() {
@@ -202,7 +204,8 @@ export const useConfigStore = defineStore('config', () => {
       sendKey: sendKey.value,
       check_mail_enable: check_mail_enable.value,
       report_enable: report_enable.value,
-      recruit_gap: recruit_gap.value
+      recruit_gap: recruit_gap.value,
+      recruit_auto_5: recruit_auto_5.value
     }
   }
 
@@ -279,6 +282,7 @@ export const useConfigStore = defineStore('config', () => {
     sendKey,
     check_mail_enable,
     report_enable,
-    recruit_gap
+    recruit_gap,
+    recruit_auto_5
   }
 })
