@@ -57,51 +57,46 @@ jobs:
           path: _site
 
   build-mower:
-    runs-on: ubuntu-22.04
+    runs-on: windows-2022
     steps:
       - name: download source
         uses: actions/checkout@v4
 
       - name: change version number
         if: github.event.head_commit.message != '发版'
-        run: sed -i "s/__version__ = '\(.*\)'/__version__ = '\1+${GITHUB_SHA::7}'/g" ./arknights_mower/__init__.py
-
-      - name: install wine
+        shell: bash
         run: |
-          sudo dpkg --add-architecture i386
-          sudo apt update
-          sudo apt install wine
+          sed -i "s/__version__ = '\(.*\)'/__version__ = '\1+${GITHUB_SHA::7}'/g" ./arknights_mower/__init__.py
 
       - name: install python 3.8
-        working-directory: py38
-        run: |
-          wget https://www.python.org/ftp/python/3.8.10/python-3.8.10-embed-amd64.zip
-          unzip python-3.8.10-embed-amd64.zip
-          wget https://bootstrap.pypa.io/get-pip.py
-          wine python.exe get-pip.py
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.8
+          cache: pip
 
       - name: Install dependencies
+        shell: cmd
         run: |
-          wine py38/Scripts/pip.exe install -r requirements.txt
-          wine py38/Scripts/pip.exe install -U pyinstaller
+          python -m venv venv
+          venv\Scripts\pip install -r requirements.txt
+          venv\Scripts\pip install -U pyinstaller
 
       - name: install UPX
-        working-directory: ~/.wine/drive_c
-        run: |
-          wget https://github.com/upx/upx/releases/download/v4.2.1/upx-4.2.1-win64.zip
-          unzip upx-4.2.1-win64.zip
-          mv upx-4.2.1-win64 upx
+        uses: crazy-max/ghaction-upx@v2
+        with:
+          install-only: true
 
-      - name: make package
-        env:
-          PYTHONHASHSEED: 114514
-          SOURCE_DATE_EPOCH: 1694076231
+      - name: Make package
+        shell: cmd
         run: |
-          wine py38/Scripts/pyinstaller ./webui_zip.spec --upx-dir C:\\upx --distpath=mower
+          set PYTHONHASHSEED=114514
+          set SOURCE_DATE_EPOCH=1694076231
+          venv\Scripts\pyinstaller .\webui_zip.spec --distpath=mower
 
       - name: cache mower
         uses: actions/cache/save@v3
         with:
+          enableCrossOsArchive: true
           key: mower-${{ github.sha }}
           path: mower/mower
 
@@ -143,6 +138,7 @@ jobs:
       - name: restore mower
         uses: actions/cache/restore@v3
         with:
+          enableCrossOsArchive: true
           key: mower-${{ github.sha }}
           path: mower/mower
 
