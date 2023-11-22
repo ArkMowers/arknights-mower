@@ -7,13 +7,108 @@ on:
   workflow_dispatch:
 
 jobs:
+  build-frontend:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: fetch source
+        uses: actions/checkout@v4
+
+      - name: setup nodejs 16
+        uses: actions/setup-node@v4
+        with:
+          node-version: 16
+          cache: "npm"
+          cache-dependency-path: "ui/package-lock.json"
+
+      - name: build frontend
+        working-directory: ui
+        shell: bash
+        run: |
+          npm ci
+          npm run build
+
+      - name: cache frontend dist
+        uses: actions/cache/save@v3
+        with:
+          key: frontend-dist
+          path: ui/dist
+
+  build-docs:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: fetch source
+        uses: actions/checkout@v4
+        with:
+          ref: doc-pages
+
+      - name: setup ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "2.7.8"
+          bundler-cache: true
+
+      - name: build docs
+        run: bundle exec jekyll build -b /docs
+
+      - name: cache docs
+        uses: actions/cache/save@v3
+        with:
+          key: docs
+          path: _site
+
   build-win-amd64:
-    runs-on: windows-latest
+    needs:
+      - build-frontend
+      - build-docs
+    runs-on: windows-2022
     steps:
       - name: download source
         uses: actions/checkout@v4
+
+      - name: change version number
+        if: github.event.head_commit.message != '发版'
+        shell: bash
+        run: |
+          sed -i "s/__version__ = '\(.*\)'/__version__ = '\1+${GITHUB_SHA::7}'/g" ./arknights_mower/__init__.py
+
+      - name: install python 3.8
+        uses: actions/setup-python@v4
         with:
-          path: main
+          python-version: 3.8
+          cache: pip
+
+      - name: Install dependencies
+        shell: cmd
+        run: |
+          python -m venv venv
+          venv\Scripts\pip install -r requirements.txt
+          venv\Scripts\pip install -U pyinstaller xxhash backports.zoneinfo[tzdata]
+
+      - name: install UPX
+        uses: crazy-max/ghaction-upx@v2
+        with:
+          install-only: true
+
+      - name: Make package
+        shell: cmd
+        run: |
+          mkdir dist
+          set PYTHONHASHSEED=114514
+          set SOURCE_DATE_EPOCH=1694076231
+          venv\Scripts\pyinstaller .\webui_zip.spec --distpath=mower
+          move ..\docs\_site mower\mower\_internal\dist\docs
+
+      - name: restore frontend dist
+        uses: actions/cache/restore@v3
+        with:
+          key: frontend-dist
+          path: mower/mower/_internal/dist
+
+      - name: restore docs
+        uses: actions/cache/restore@v3
+        with:
+          key: docs
+          path: mower/mower/_internal/dist/docs
 
       - name: download updater
         uses: actions/checkout@v4
@@ -21,90 +116,18 @@ jobs:
           repository: ArkMowers/updater
           path: updater
 
-      - name: setup nodejs 16
-        uses: actions/setup-node@v3
-        with:
-          node-version: 16
-          cache: "npm"
-          cache-dependency-path: "**/package-lock.json"
-
-      - name: Install UPX
-        uses: crazy-max/ghaction-upx@v2
-        with:
-          install-only: true
-
-      - name: Set up Python 3.8 amd64
-        uses: actions/setup-python@v4
-        with:
-          python-version: 3.8
-          cache: pip
-          architecture: x64
-
-      - name: build frontend
-        working-directory: ./main/ui
-        shell: bash
-        run: |
-          npm ci
-          npm run build
-          cp -r dist ../
-
-      - name: Install dependencies
-        working-directory: ./main
-        shell: cmd
-        run: |
-          python -m venv venv
-          venv\Scripts\pip install -r requirements.txt
-          venv\Scripts\pip install -U pyinstaller xxhash backports.zoneinfo[tzdata]
-
-      - name: change version number
-        if: github.event.head_commit.message != '发版'
-        working-directory: ./main
-        shell: bash
-        run: |
-          sed -i "s/__version__ = '\(.*\)'/__version__ = '\1+${GITHUB_SHA::7}'/g" ./arknights_mower/__init__.py
-
-      - name: download docs
-        uses: actions/checkout@v4
-        with:
-          path: docs
-          ref: doc-pages
-
-      - name: setup ruby
-        uses: ruby/setup-ruby@v1
-        env:
-          BUNDLE_GEMFILE: ${{ github.workspace }}/docs/Gemfile
-        with:
-          ruby-version: "2.7.8"
-          bundler-cache: true
-
-      - name: build docs
-        working-directory: ./docs
-        shell: cmd
-        run: |
-          bundle exec jekyll build -b /docs
-
-      - name: Make package
-        working-directory: ./main
-        shell: cmd
-        run: |
-          set PYTHONHASHSEED=114514
-          set SOURCE_DATE_EPOCH=1694076231
-          venv\Scripts\pyinstaller .\webui_zip.spec --distpath=mower
-          move ..\docs\_site mower\mower\_internal\dist\docs
-
       - name: calculate hash
-        working-directory: ./main/mower/mower
+        working-directory: mower/mower
         shell: cmd
         run: |
           ..\..\venv\Scripts\python.exe ..\..\..\updater\publish.py
 
       - name: create zip
-        working-directory: ./main/mower
+        working-directory: mower
         shell: bash
-        run: |
-          zip -r mower.zip mower
+        run: zip -r mower.zip mower
 
       - uses: actions/upload-artifact@v3
         with:
           name: mower
-          path: main/mower/mower.zip
+          path: mower/mower.zip
