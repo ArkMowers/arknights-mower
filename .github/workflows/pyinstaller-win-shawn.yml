@@ -118,7 +118,7 @@ jobs:
         working-directory: mower/mower
         shell: cmd
         run: |
-          ..\..\venv\Scripts\python.exe ..\..\..\updater\publish.py
+          ..\..\venv\Scripts\python.exe ..\..\updater\publish.py
 
       - name: create zip
         working-directory: mower
