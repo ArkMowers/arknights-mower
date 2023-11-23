@@ -27,6 +27,8 @@ class Recognizer(object):
         self.start(screencap)
         self.loading_time = 0
         self.LOADING_TIME_LIMIT = 5
+        self.CONN_SCOPE = ((1087, 978), (1430, 1017))
+        self.CONN_PRESCORE = 0.15
 
     def start(self, screencap: bytes = None, build: bool = True) -> None:
         """ init with screencap, build matcher  """
@@ -65,7 +67,7 @@ class Recognizer(object):
         """ get the current scene in the game """
         if self.scene != Scene.UNDEFINED:
             return self.scene
-        if self.find('connecting', scope=((self.w//2, self.h//10*8), (self.w//4*3, self.h)), score=0.3) is not None:
+        if self.find('connecting', scope=self.CONN_SCOPE, score=self.CONN_PRESCORE) is not None:
             self.scene = Scene.CONNECTING
         elif self.find('index_nav', thres=250, scope=((0, 0), (100+self.w//4, self.h//10))) is not None:
             self.scene = Scene.INDEX
@@ -245,7 +247,7 @@ class Recognizer(object):
     def get_infra_scene(self) -> int:
         if self.scene != Scene.UNDEFINED:
             return self.scene
-        if self.find('connecting', scope=((self.w//2, self.h//10*8), (self.w//4*3, self.h)), score=0.2) is not None:
+        if self.find('connecting', scope=self.CONN_SCOPE, score=self.CONN_PRESCORE) is not None:
             self.scene = Scene.CONNECTING
         elif self.find('double_confirm') is not None:
             if self.find('network_check') is not None:
