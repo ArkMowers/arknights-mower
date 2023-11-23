@@ -149,8 +149,8 @@ jobs:
           mv _site mower/mower/_internal/dist/docs
 
       - name: calculate hash
-        working-directory: mower
-        run: ../venv/bin/python ../publish.py
+        working-directory: mower/mower
+        run: ../../venv/bin/python ../../publish.py
 
       - name: create zip
         working-directory: mower
