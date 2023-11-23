@@ -251,3 +251,4 @@ run_order_grandet_mode:
 server_push_enable: false
 sendKey: ''
 recruit_gap: 9
+recruit_auto_5: 3
