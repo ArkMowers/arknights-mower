@@ -39,6 +39,7 @@ jobs:
       - name: fetch source
         uses: actions/checkout@v4
         with:
+          repository: ArkMowers/arknights-mower
           ref: doc-pages
 
       - name: setup ruby
