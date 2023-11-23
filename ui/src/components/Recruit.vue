@@ -56,66 +56,18 @@ const recruit_4 = ref('900')
           </td>
         </tr>
         <tr>
-          <td>四星</td>
-          <td>
-            <n-radio-group name="recruit_4" v-model:value="recruit_4">
-              <n-space justify="start">
-                <n-radio value="900">9:00</n-radio>
-              </n-space>
-            </n-radio-group>
-          </td>
-        </tr>
-        <tr>
-          <td rowspan="2">五星</td>
-          <td>
-              <n-radio-group name="recruit_4" v-model:value="recruit_4">
-                <n-space justify="start">
-                  <n-radio value="900">
-                    邮件通知
-                    <help-text>
-                      <div>发送邮件通知，不自动选择</div>
-                    </help-text>
-                  </n-radio>
-                </n-space>
-              </n-radio-group>
-          </td>
-        </tr>
-        <tr>
+          <td>五星</td>
           <td>
             <n-radio-group name="recruit_auto_5" v-model:value="recruit_auto_5">
               <n-space justify="start">
                 <n-radio :value="1">
-                  自动选择
-                  <help-text>
-                    <div>自动选择五星tag</div>
-                  </help-text>
+                  手动
                 </n-radio>
                 <n-radio :value="2">
-                  半自动选择
-                  <help-text>
-                    <div>只有一个选项时自动进行选择</div>
-                  </help-text>
+                  自动
                 </n-radio>
                 <n-radio :value="3">
-                  手动选择
-                  <help-text>
-                    <div>不自动选择</div>
-                  </help-text>
-                </n-radio>
-              </n-space>
-            </n-radio-group>
-          </td>
-        </tr>
-        <tr>
-          <td>六星</td>
-          <td>
-            <n-radio-group name="recruit_4" v-model:value="recruit_4">
-              <n-space justify="start">
-                <n-radio value="900">
-                  邮件通知
-                  <help-text>
-                    <div>发送邮件通知，不自动选择</div>
-                  </help-text>
+                  仅标签唯一时自动选择
                 </n-radio>
               </n-space>
             </n-radio-group>
@@ -124,22 +76,9 @@ const recruit_4 = ref('900')
         <tr>
           <td>支援机械</td>
           <td>
-            <n-radio-group name="recruit_robot" v-model:value="recruit_robot">
-              <n-space justify="start">
-                <n-radio :value="true">
-                  邮件通知
-                  <help-text>
-                    <div>发送邮件通知，不自动选择</div>
-                  </help-text>
-                </n-radio>
-                <n-radio :value="false">
-                  忽略标签
-                  <help-text>
-                    <div>忽略支援机械标签，按策略自动刷新或选择标签</div>
-                  </help-text>
-                </n-radio>
-              </n-space>
-            </n-radio-group>
+            <n-checkbox v-model:checked="recruit_robot">
+              保留标签
+            </n-checkbox>
           </td>
         </tr>
       </tbody>
@@ -163,7 +102,7 @@ h4 {
 
 .big-table {
   margin-top: 10px;
-  max-width: 480px;
+  max-width: 320px;
 
   th {
     text-align: center;
@@ -177,12 +116,11 @@ h4 {
     height: 24px;
 
     &:nth-child(1) {
-      width: 60px;
+      width: 70px;
       text-align: center;
     }
     &:nth-child(2) {
       width: 420px;
-      text-align: center;
     }
   }
 }
