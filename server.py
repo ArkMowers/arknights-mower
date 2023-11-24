@@ -5,7 +5,6 @@ import mimetypes
 import multiprocessing
 import os
 import pathlib
-import platform
 import sys
 import time
 from functools import wraps
@@ -216,7 +215,7 @@ def log(ws):
 def open_file_dialog():
     import webview
 
-    window = webview.active_window()
+    window = webview.windows[0]
     file_path = window.create_file_dialog(dialog_type=webview.OPEN_DIALOG)
     if file_path:
         return file_path[0]
@@ -229,12 +228,35 @@ def open_file_dialog():
 def open_folder_dialog():
     import webview
 
-    window = webview.active_window()
+    window = webview.windows[0]
     folder_path = window.create_file_dialog(dialog_type=webview.FOLDER_DIALOG)
     if folder_path:
         return folder_path[0]
     else:
         return ""
+
+
+@app.route("/import")
+@require_token
+def import_from_image():
+    import webview
+
+    window = webview.windows[0]
+    file_path = window.create_file_dialog(dialog_type=webview.OPEN_DIALOG)
+    if not file_path:
+        return "No file selected."
+    img_path = file_path[0]
+
+    from PIL import Image
+
+    from arknights_mower.utils import qrcode
+
+    img = Image.open(img_path)
+    global plan
+    global conf
+    plan = qrcode.decode(img)
+    write_plan(plan, conf["planFile"])
+    return "排班已加载"
 
 
 @app.route("/dialog/save/img", methods=["POST"])
@@ -245,7 +267,19 @@ def save_file_dialog():
     img = request.files["img"]
     if not img:
         return "图片未上传"
-    window = webview.active_window()
+
+    from PIL import Image
+
+    from arknights_mower.utils import qrcode
+
+    upper = Image.open(img)
+
+    global plan
+    global conf
+
+    img = qrcode.export(plan, upper, conf["theme"])
+
+    window = webview.windows[0]
     img_path = window.create_file_dialog(
         dialog_type=webview.SAVE_DIALOG,
         save_filename="plan.png",
@@ -255,19 +289,6 @@ def save_file_dialog():
         return "保存已取消"
     if not isinstance(img_path, str):
         img_path = img_path[0]
-    if os.path.exists(img_path) and platform.system() == "Linux":
-        import tkinter
-        from tkinter import messagebox
-
-        root = tkinter.Tk()
-        root.withdraw()
-        replace = messagebox.askyesno(
-            "arknights-mower",
-            f"同名文件{img_path}已存在，是否覆盖？",
-        )
-        root.destroy()
-        if not replace:
-            return "保存已取消"
     img.save(img_path)
     return f"图片已导出至{img_path}"
 
