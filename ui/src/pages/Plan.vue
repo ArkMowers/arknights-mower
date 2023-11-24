@@ -173,10 +173,19 @@ import TrashOutline from '@vicons/ionicons5/TrashOutline'
 import CodeSlash from '@vicons/ionicons5/CodeSlash'
 import PlusRound from '@vicons/material/PlusRound'
 import AddTaskRound from '@vicons/material/AddTaskRound'
+import DocumentImport from '@vicons/carbon/DocumentImport'
 import DocumentExport from '@vicons/carbon/DocumentExport'
 
 import { render_op_label, render_op_tag } from '@/utils/op_select'
 import { match } from 'pinyin-pro'
+
+async function import_plan() {
+  const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/import`)
+  if (response.data == '排班已加载') {
+    await load_plan()
+    sub_plan.value = 'main'
+  }
+}
 </script>
 
 <template>
@@ -185,6 +194,12 @@ import { match } from 'pinyin-pro'
   <div class="home-container plan-bar w-980 mx-auto mt-12">
     <n-input type="textarea" :autosize="true" v-model:value="plan_file" />
     <n-button @click="open_plan_file">...</n-button>
+    <n-button @click="import_plan">
+      <template #icon>
+        <n-icon><document-import /></n-icon>
+      </template>
+      从图片导入（覆盖当前排班）
+    </n-button>
     <n-button @click="save" :loading="generating_image" :disabled="generating_image">
       <template #icon>
         <n-icon><document-export /></n-icon>
