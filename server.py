@@ -5,7 +5,6 @@ import mimetypes
 import multiprocessing
 import os
 import pathlib
-import platform
 import sys
 import time
 from functools import wraps
@@ -216,7 +215,7 @@ def log(ws):
 def open_file_dialog():
     import webview
 
-    window = webview.active_window()
+    window = webview.windows[0]
     file_path = window.create_file_dialog(dialog_type=webview.OPEN_DIALOG)
     if file_path:
         return file_path[0]
@@ -229,7 +228,7 @@ def open_file_dialog():
 def open_folder_dialog():
     import webview
 
-    window = webview.active_window()
+    window = webview.windows[0]
     folder_path = window.create_file_dialog(dialog_type=webview.FOLDER_DIALOG)
     if folder_path:
         return folder_path[0]
@@ -242,7 +241,7 @@ def open_folder_dialog():
 def import_from_image():
     import webview
 
-    window = webview.active_window()
+    window = webview.windows[0]
     file_path = window.create_file_dialog(dialog_type=webview.OPEN_DIALOG)
     if not file_path:
         return "No file selected."
@@ -280,7 +279,7 @@ def save_file_dialog():
 
     img = qrcode.export(plan, upper, conf["theme"])
 
-    window = webview.active_window()
+    window = webview.windows[0]
     img_path = window.create_file_dialog(
         dialog_type=webview.SAVE_DIALOG,
         save_filename="plan.png",

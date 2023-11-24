@@ -180,6 +180,7 @@ if __name__ == "__main__":
         width=width,
         height=height,
         text_select=True,
+        hidden=True,
     )
 
     window.events.resized += on_resized
@@ -191,7 +192,11 @@ if __name__ == "__main__":
         sleep(0.1)
 
     splash.stop()
-    webview.start()
+
+    def show_window(window):
+        window.show()
+
+    webview.start(show_window, window)
 
     window = None
 
