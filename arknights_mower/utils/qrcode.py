@@ -5,13 +5,15 @@ from zlib import compress, decompress
 from base45 import b45decode, b45encode
 from PIL import Image, ImageChops
 from pyzbar import pyzbar
-from qrcode import make
+from qrcode.main import QRCode
 
 QRCODE_SIZE = 680
 GAP_SIZE = 44
+BLACK = (0, 0, 0)
+WHITE = (255, 255, 255)
 
 
-def encode(data: str, n: int = 4) -> List[Image.Image]:
+def encode(data: str, n: int = 4, theme: str = "light") -> List[Image.Image]:
     data = b45encode(compress(data.encode("utf-8"), level=9))
     length = len(data)
     split: List[bytes] = []
@@ -19,7 +21,15 @@ def encode(data: str, n: int = 4) -> List[Image.Image]:
         start = length // n * i
         end = length if i == n - 1 else length // n * (i + 1)
         split.append(data[start:end])
-    return [trim(make(i).get_image()) for i in split]
+    result: List[Image.Image] = []
+    qr = QRCode()
+    fg, bg = (BLACK, WHITE) if theme == "light" else (WHITE, BLACK)
+    for i in split:
+        qr.add_data(i)
+        img: Image.Image = qr.make_image(fill_color=fg, back_color=bg)
+        result.append(trim(img.get_image()))
+        qr.clear()
+    return result
 
 
 def trim(img: Image.Image) -> Image.Image:
