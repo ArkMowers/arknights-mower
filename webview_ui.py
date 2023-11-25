@@ -170,9 +170,13 @@ if __name__ == "__main__":
 
     splash.show_text("准备主窗口")
 
+    import platform
+
     import webview
 
     from arknights_mower.__init__ import __version__
+
+    is_win = platform.system() == "Windows"
 
     window = webview.create_window(
         f"arknights-mower {__version__} (http://{host}:{port})",
@@ -180,7 +184,7 @@ if __name__ == "__main__":
         width=width,
         height=height,
         text_select=True,
-        hidden=True,
+        hidden=is_win,
     )
 
     window.events.resized += on_resized
@@ -196,7 +200,10 @@ if __name__ == "__main__":
     def show_window(window):
         window.show()
 
-    webview.start(show_window, window)
+    if is_win:
+        webview.start(show_window, window)
+    else:
+        webview.start()
 
     window = None
 
