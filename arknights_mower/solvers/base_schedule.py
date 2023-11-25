@@ -738,7 +738,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                                 elif op.current_mood() > 0.25 + op.lower_limit and op.depletion_rate != 0:
                                     _time = datetime.now() + timedelta(
                                         hours=(
-                                                          op.current_mood() - op.lower_limit - 0.25) / op.depletion_rate) - timedelta(
+                                                      op.current_mood() - op.lower_limit - 0.25) / op.depletion_rate) - timedelta(
                                         minutes=10)
                                 self.back()
                                 # plan 是空的是因为得动态生成
@@ -851,26 +851,27 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 exist_replacement.extend(__replacement)
                 new_plan = False
                 if len(agents) > self.op_data.config.max_resting_count:
-                    first_low = first_high = None
+                    first_low = last_high = None
                     for a in agents:
                         ag = self.op_data.operators[a]
                         if ag.workaholic:
                             continue
                         if ag.resting_priority == 'low' and first_low is None:
                             first_low = ag
-                        if ag.resting_priority == 'high' and first_high is None:
-                            first_high = ag
-                        if first_low is not None and first_high is not None:
-                            break
+                        if ag.resting_priority == 'high':
+                            last_high = ag
                     # 如果低优先的心情低于高优先
-                    if first_low.current_mood() - first_high.current_mood() < -3:
+                    if first_low.current_mood() - last_high.current_mood() < -4:
                         logger.info("低优先级干员心情过低，自动按心情切换优先级")
                         new_plan = True
+                workaholic_count = 0
                 for idx, x in enumerate(agents):
                     if self.op_data.operators[x].workaholic:
+                        workaholic_count += 1
                         continue
                     if new_plan:
-                        self.op_data.operators[x].resting_priority = 'high' if idx + 1 <= _high else 'low'
+                        self.op_data.operators[
+                            x].resting_priority = 'high' if idx + 1 - workaholic_count <= _high else 'low'
                         logger.info(f"自动更新{x} 优先级为 {self.op_data.operators[x].resting_priority}")
                     _dorm = self.op_data.assign_dorm(x)
                     if _dorm.position[0] not in plan.keys():
@@ -1742,7 +1743,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             data['agent'] = _name
             data['mood'] = _mood
             if i in read_time_index:
-                if _mood == 24:
+                if _mood == 24 or room in ["central","meeting","factory"]:
                     data['time'] = datetime.now()
                 else:
                     upperLimit = 43200
@@ -2141,7 +2142,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         try:
             if not one_time and 'last_execution' in self.maa_config and self.maa_config[
                 'last_execution'] is not None and datetime.now() - timedelta(
-                    seconds=self.maa_config['maa_execution_gap'] * 3600) < self.maa_config['last_execution']:
+                seconds=self.maa_config['maa_execution_gap'] * 3600) < self.maa_config['last_execution']:
                 logger.info("间隔未超过设定时间，不启动maa")
             else:
                 self.send_message('启动MAA')
@@ -2311,7 +2312,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         except:
             self.send_message(f"森空岛签到失败")
         logger.warning("森空岛签到失败")
-        #仅尝试一次 不再尝试
+        # 仅尝试一次 不再尝试
         return (datetime.now() - timedelta(hours=4)).date()
 
     def recruit_plan_solver(self):
