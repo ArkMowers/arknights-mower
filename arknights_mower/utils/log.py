@@ -55,11 +55,15 @@ chlr.setLevel('INFO')
 chlr.addFilter(MaxFilter(logging.INFO))
 chlr.addFilter(PackagePathFilter())
 
+whlr = logging.StreamHandler(stream=sys.stderr)
+whlr.setFormatter(color_formatter)
+whlr.setLevel('WARNING')
+whlr.addFilter(PackagePathFilter())
+
 ehlr = logging.StreamHandler(stream=sys.stderr)
 ehlr.setFormatter(color_formatter)
-ehlr.setLevel('WARNING')
+ehlr.setLevel('ERROR')
 ehlr.addFilter(PackagePathFilter())
-
 
 dhlr = logging.StreamHandler(stream=sys.stdout)
 dhlr.setFormatter(color_formatter)
@@ -71,6 +75,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel('DEBUG')
 logger.addHandler(dhlr)
 logger.addHandler(chlr)
+logger.addHandler(whlr)
 logger.addHandler(ehlr)
 
 

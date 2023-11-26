@@ -2,7 +2,6 @@ import { defineStore } from 'pinia'
 import { ref, watchEffect, computed, inject } from 'vue'
 import axios from 'axios'
 import { deepcopy } from '@/utils/deepcopy'
-import { useDebounceFn } from '@vueuse/core'
 
 export const usePlanStore = defineStore('plan', () => {
   const ling_xi = ref(1)
@@ -11,6 +10,7 @@ export const usePlanStore = defineStore('plan', () => {
   const rest_in_full = ref([])
   const resting_priority = ref([])
   const workaholic = ref([])
+  const refresh_trading = ref([])
 
   const plan = ref({})
 
@@ -38,7 +38,7 @@ export const usePlanStore = defineStore('plan', () => {
   }
 
   function str2list(data) {
-    return data == '' ? [] : data.split(',')
+    return data && data != '' ? data.split(',') : []
   }
 
   const backup_conf_convert_list = [
@@ -46,7 +46,8 @@ export const usePlanStore = defineStore('plan', () => {
     'rest_in_full',
     'resting_priority',
     'workaholic',
-    'free_blacklist'
+    'free_blacklist',
+    'refresh_trading'
   ]
 
   function fill_empty(full_plan) {
@@ -115,6 +116,8 @@ export const usePlanStore = defineStore('plan', () => {
     rest_in_full.value = str2list(response.data.conf.rest_in_full)
     resting_priority.value = str2list(response.data.conf.resting_priority)
     workaholic.value = str2list(response.data.conf.workaholic)
+    refresh_trading.value = str2list(response.data.conf.refresh_trading)
+
     plan.value = fill_empty(response.data.plan1)
 
     backup_plans.value = response.data.backup_plans ?? []
@@ -139,7 +142,6 @@ export const usePlanStore = defineStore('plan', () => {
   }
 
   function build_plan() {
-    console.log('build_plan')
     const result = {
       default: 'plan1',
       plan1: strip_plan(plan.value),
@@ -149,7 +151,8 @@ export const usePlanStore = defineStore('plan', () => {
         exhaust_require: list2str(exhaust_require.value),
         rest_in_full: list2str(rest_in_full.value),
         resting_priority: list2str(resting_priority.value),
-        workaholic: list2str(workaholic.value)
+        workaholic: list2str(workaholic.value),
+        refresh_trading: list2str(refresh_trading.value)
       },
       backup_plans: deepcopy(backup_plans.value)
     }
@@ -184,14 +187,9 @@ export const usePlanStore = defineStore('plan', () => {
 
   const loaded = inject('loaded')
 
-  const debounce_post = useDebounceFn((new_plan) => {
-    axios.post(`${import.meta.env.VITE_HTTP_URL}/plan`, new_plan)
-  }, 1000)
-
   watchEffect(() => {
     if (loaded.value) {
-      const new_plan = build_plan()
-      debounce_post(new_plan)
+      axios.post(`${import.meta.env.VITE_HTTP_URL}/plan`, build_plan())
     }
   })
 
@@ -225,6 +223,7 @@ export const usePlanStore = defineStore('plan', () => {
     rest_in_full,
     resting_priority,
     workaholic,
+    refresh_trading,
     plan,
     operators,
     facility_operator_limit,

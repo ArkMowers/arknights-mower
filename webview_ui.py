@@ -1,68 +1,101 @@
 #!/usr/bin/env python3
-
-import webview
-import server
-from server import app
-
-import os
 import multiprocessing
-
-from arknights_mower.utils.conf import load_conf, save_conf
-from arknights_mower.__init__ import __version__
-
-from threading import Thread
-from PIL import Image
-from pystray import Icon, Menu, MenuItem
-
-import socket
-import tkinter
-from tkinter import messagebox
-from time import sleep
-import sys
-import pathlib
-
-
-quit_app = False
-display = True
-window = None
-
-
-def on_resized(w, h):
-    global width
-    global height
-
-    width = w
-    height = h
-
-
-def toggle_window():
-    global window
-    global display
-    window.hide() if display else window.show()
-    display = not display
-
-
-def on_closing():
-    if quit_app:
-        return True
-    Thread(target=toggle_window).start()
-    return False
-
-
-def destroy_window():
-    global quit_app
-    global window
-    quit_app = True
-    window.destroy()
-
-
-def is_port_in_use(port):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        return s.connect_ex(("localhost", port)) == 0
-
 
 if __name__ == "__main__":
     multiprocessing.freeze_support()
+
+    import tkinter as tk
+    from tkinter.font import Font
+
+    class SplashScreen:
+        def __init__(self):
+            self.root = tk.Tk()
+
+            self.container = tk.Frame(self.root)
+
+            self.canvas = tk.Canvas(self.container, width=256, height=256)
+            self.canvas.pack()
+
+            self.title_font = Font(size=24)
+            self.title_label = tk.Label(
+                self.container, text="arknights-mower", font=self.title_font
+            )
+            self.title_label.pack()
+
+            self.loading_label = tk.Label(self.container)
+            self.loading_label.pack()
+
+            self.container.pack(expand=1)
+            self.root.overrideredirect(True)
+
+            window_width = 500
+            window_height = 400
+            screen_width = self.root.winfo_screenwidth()
+            screen_height = self.root.winfo_screenheight()
+            x = int(screen_width / 2 - window_width / 2)
+            y = int(screen_height / 2 - window_height / 2)
+            self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
+
+        def load_img(self, img):
+            self.img = ImageTk.PhotoImage(img)
+            self.canvas.create_image(128, 128, image=self.img)
+
+        def show_text(self, text):
+            self.loading_label.config(text=text + "……")
+            self.root.update()
+
+        def hide(self):
+            self.root.withdraw()
+
+        def stop(self):
+            self.root.destroy()
+
+    splash = SplashScreen()
+
+    splash.show_text("加载图标")
+
+    from PIL import Image, ImageTk
+
+    from arknights_mower.utils.path import get_path
+
+    logo_path = get_path("@internal/logo.png")
+    tray_img = Image.open(logo_path)
+    splash.load_img(tray_img)
+
+    splash.show_text("加载依赖")
+
+    quit_app = False
+    display = True
+    window = None
+
+    def on_resized(w, h):
+        global width
+        global height
+
+        width = w
+        height = h
+
+    def toggle_window():
+        global window
+        global display
+        window.hide() if display else window.show()
+        display = not display
+
+    def on_closing():
+        if quit_app:
+            return True
+        Thread(target=toggle_window).start()
+        return False
+
+    def destroy_window():
+        global quit_app
+        global window
+        quit_app = True
+        window.destroy()
+
+    splash.show_text("加载配置文件")
+
+    from arknights_mower.utils.conf import load_conf, save_conf
 
     conf = load_conf()
 
@@ -70,14 +103,42 @@ if __name__ == "__main__":
     token = conf["webview"]["token"]
     host = "0.0.0.0" if token else "127.0.0.1"
 
+    global width
+    global height
+
+    width = conf["webview"]["width"]
+    height = conf["webview"]["height"]
+
+    splash.show_text("检测端口占用")
+
+    import socket
+
+    def is_port_in_use(port):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.1)
+            return s.connect_ex(("localhost", port)) == 0
+
     if is_port_in_use(port):
-        root = tkinter.Tk()
-        root.withdraw()
+        splash.hide()
+
+        import sys
+        from tkinter import messagebox
+
         messagebox.showerror(
             "arknights-mower",
             f"端口{port}已被占用，无法启动！",
         )
+        splash.stop()
         sys.exit()
+
+    splash.show_text("加载Flask依赖")
+
+    import server
+    from server import app
+
+    splash.show_text("启动Flask网页服务器")
+
+    from threading import Thread
 
     app.token = token
     Thread(
@@ -86,21 +147,10 @@ if __name__ == "__main__":
         daemon=True,
     ).start()
 
-    global width
-    global height
+    splash.show_text("加载托盘图标")
 
-    width = conf["webview"]["width"]
-    height = conf["webview"]["height"]
+    from pystray import Icon, Menu, MenuItem
 
-    logo_path = (
-        pathlib.Path(
-            sys._MEIPASS
-            if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")
-            else os.getcwd()
-        )
-        / "logo.png"
-    )
-    tray_img = Image.open(logo_path)
     icon = Icon(
         "arknights-mower",
         icon=tray_img,
@@ -118,20 +168,42 @@ if __name__ == "__main__":
     )
     icon.run_detached()
 
+    splash.show_text("准备主窗口")
+
+    import platform
+
+    import webview
+
+    from arknights_mower.__init__ import __version__
+
+    is_win = platform.system() == "Windows"
+
     window = webview.create_window(
-        f"Mower {__version__} (http://{host}:{port})",
+        f"arknights-mower {__version__} (http://{host}:{port})",
         f"http://127.0.0.1:{port}?token={token}",
         width=width,
         height=height,
         text_select=True,
+        hidden=is_win,
     )
 
     window.events.resized += on_resized
     window.events.closing += on_closing
 
+    from time import sleep
+
     while not is_port_in_use(port):
         sleep(0.1)
-    webview.start()
+
+    splash.stop()
+
+    def show_window(window):
+        window.show()
+
+    if is_win:
+        webview.start(show_window, window)
+    else:
+        webview.start()
 
     window = None
 

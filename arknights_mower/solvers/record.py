@@ -214,9 +214,3 @@ def calculate_time_difference(start_time, end_time):
     end_datetime = datetime.strptime(end_time, time_format)
     time_difference = end_datetime - start_datetime
     return time_difference.total_seconds()
-
-
-def __main__():
-    get_work_rest_ratios()
-
-__main__()

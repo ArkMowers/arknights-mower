@@ -184,6 +184,7 @@ def initialize(tasks, scheduler=None):
             run_order_buffer_time=conf["run_order_grandet_mode"]["buffer_time"]
             if conf["run_order_grandet_mode"]["enable"]
             else -1,
+            refresh_trading_config=plan["conf"]["refresh_trading"]
         )
         for room, obj in plan[plan["default"]].items():
             plan1[room] = [
@@ -213,6 +214,7 @@ def initialize(tasks, scheduler=None):
                 run_order_buffer_time=conf["run_order_grandet_mode"]["buffer_time"]
                 if conf["run_order_grandet_mode"]["enable"]
                 else -1,
+                refresh_trading_config=i["conf"]["refresh_trading"]
             )
             backup_trigger = get_logic_exp(i["trigger"]) if "trigger" in i else None
             backup_task = i["task"] if "task" in i else None

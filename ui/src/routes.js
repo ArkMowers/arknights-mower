@@ -56,5 +56,6 @@ export const routes = [
         ]
       }
     ]
-  }
+  },
+  { path: '/:pathMatch(.*)', component: () => import('@/pages/NotFound.vue') }
 ]

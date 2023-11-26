@@ -47,7 +47,8 @@ mower_a = Analysis(
         ("venv/Lib/site-packages/shapely/DLLs/geos.dll", "."),
         ("venv/Lib/site-packages/shapely/DLLs/geos_c.dll", "."),
         ("logo.png", "."),
-        ("dist", "dist"),
+        ("venv/Lib/site-packages/pyzbar/libzbar-64.dll", "."),
+        ("venv/Lib/site-packages/pyzbar/libiconv.dll", "."),
     ]
     + add_data,
     hiddenimports=["imghdr", "imgaug", "scipy.io", "lmdb"],

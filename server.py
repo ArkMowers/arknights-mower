@@ -1,48 +1,23 @@
 #!/usr/bin/env python3
 import datetime
-import re
+import json
+import mimetypes
+import multiprocessing
+import os
+import pathlib
+import sys
+import time
+from functools import wraps
+from threading import Thread
 
-import pandas as pd
-import requests
-
-from arknights_mower.solvers import record
-from arknights_mower.solvers.report import get_report_data
-from arknights_mower.solvers.skland import SKLand
-from arknights_mower.utils.conf import load_conf, save_conf, load_plan, write_plan
-from arknights_mower.utils import depot
-from arknights_mower.utils.log import logger
-from arknights_mower.utils.path import get_path
-from arknights_mower.__main__ import main
-from arknights_mower.data import agent_list, shop_items
-
-from flask import Flask, send_from_directory, request, abort
+from flask import Flask, abort, request, send_from_directory
 from flask_cors import CORS
 from flask_sock import Sock
+from werkzeug.exceptions import NotFound
 
-from simple_websocket import ConnectionClosed
-
-import webview
-
-import os
-import multiprocessing
-from threading import Thread
-import json
-import time
-import sys
-import mimetypes
-
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-
-from functools import wraps
-
-import pathlib
-
-import tkinter
-from tkinter import messagebox
-
-import platform
+from arknights_mower.utils.conf import load_conf, load_plan, save_conf, write_plan
+from arknights_mower.utils.log import logger
+from arknights_mower.utils.path import get_path
 
 mimetypes.add_type("text/html", ".html")
 mimetypes.add_type("text/css", ".css")
@@ -78,6 +53,11 @@ def serve_index(path):
 
 @app.errorhandler(404)
 def not_found(e):
+    if (path := request.path).startswith("/docs"):
+        try:
+            return send_from_directory("dist" + path, "index.html")
+        except NotFound:
+            return "<h1>404 Not Found</h1>", 404
     return send_from_directory("dist", "index.html")
 
 
@@ -92,7 +72,7 @@ def load_config():
     else:
         conf.update(request.json)
         save_conf(conf)
-        return f"New config saved!"
+        return "New config saved!"
 
 
 @app.route("/plan", methods=["GET", "POST"])
@@ -112,11 +92,15 @@ def load_plan_from_json():
 
 @app.route("/operator")
 def operator_list():
+    from arknights_mower.data import agent_list
+
     return agent_list
 
 
 @app.route("/shop")
 def shop_list():
+    from arknights_mower.data import shop_items
+
     return shop_items
 
 
@@ -146,6 +130,8 @@ def read_log(conn):
 
 @app.route("/depot/readdepot")
 def read_depot():
+    from arknights_mower.utils import depot
+
     return depot.read_and_compare_depots()
 
 
@@ -170,6 +156,8 @@ def start():
     # 创建 tmp 文件夹
     tmp_dir = get_path("@app/tmp")
     tmp_dir.mkdir(exist_ok=True)
+
+    from arknights_mower.__main__ import main
 
     read, write = multiprocessing.Pipe()
     mower_process = multiprocessing.Process(
@@ -213,6 +201,8 @@ def log(ws):
     ws.send("\n".join(log_lines))
     ws_connections.append(ws)
 
+    from simple_websocket import ConnectionClosed
+
     try:
         while True:
             ws.receive()
@@ -223,7 +213,9 @@ def log(ws):
 @app.route("/dialog/file")
 @require_token
 def open_file_dialog():
-    window = webview.active_window()
+    import webview
+
+    window = webview.windows[0]
     file_path = window.create_file_dialog(dialog_type=webview.OPEN_DIALOG)
     if file_path:
         return file_path[0]
@@ -234,7 +226,9 @@ def open_file_dialog():
 @app.route("/dialog/folder")
 @require_token
 def open_folder_dialog():
-    window = webview.active_window()
+    import webview
+
+    window = webview.windows[0]
     folder_path = window.create_file_dialog(dialog_type=webview.FOLDER_DIALOG)
     if folder_path:
         return folder_path[0]
@@ -242,13 +236,50 @@ def open_folder_dialog():
         return ""
 
 
+@app.route("/import")
+@require_token
+def import_from_image():
+    import webview
+
+    window = webview.windows[0]
+    file_path = window.create_file_dialog(dialog_type=webview.OPEN_DIALOG)
+    if not file_path:
+        return "No file selected."
+    img_path = file_path[0]
+
+    from PIL import Image
+
+    from arknights_mower.utils import qrcode
+
+    img = Image.open(img_path)
+    global plan
+    global conf
+    plan = qrcode.decode(img)
+    write_plan(plan, conf["planFile"])
+    return "排班已加载"
+
+
 @app.route("/dialog/save/img", methods=["POST"])
 @require_token
 def save_file_dialog():
+    import webview
+
     img = request.files["img"]
     if not img:
         return "图片未上传"
-    window = webview.active_window()
+
+    from PIL import Image
+
+    from arknights_mower.utils import qrcode
+
+    upper = Image.open(img)
+
+    global plan
+    global conf
+
+    img = qrcode.export(plan, upper, conf["theme"])
+
+    window = webview.windows[0]
     img_path = window.create_file_dialog(
         dialog_type=webview.SAVE_DIALOG,
         save_filename="plan.png",
@@ -258,16 +289,6 @@ def save_file_dialog():
         return "保存已取消"
     if not isinstance(img_path, str):
         img_path = img_path[0]
-    if os.path.exists(img_path) and platform.system() == "Linux":
-        root = tkinter.Tk()
-        root.withdraw()
-        replace = messagebox.askyesno(
-            "arknights-mower",
-            f"同名文件{img_path}已存在，是否覆盖？",
-        )
-        root.destroy()
-        if not replace:
-            return f"保存已取消"
     img.save(img_path)
     return f"图片已导出至{img_path}"
 
@@ -304,13 +325,15 @@ def get_maa_conn_presets():
             encoding="utf-8",
         ) as f:
             presets = [i["configName"] for i in json.load(f)["connection"]]
-    except:
+    except Exception:
         presets = []
     return presets
 
 
 @app.route("/record/getMoodRatios")
 def get_mood_ratios():
+    from arknights_mower.solvers import record
+
     return record.get_mood_ratios()
 
 
@@ -330,6 +353,8 @@ def date2str(target: datetime.date):
 
 @app.route("/report/getReportData")
 def get_report_data():
+    import pandas as pd
+
     record_path = get_path("@app/tmp/report.csv")
     try:
         format_data = []
@@ -375,6 +400,8 @@ def get_report_data():
 
 @app.route("/report/getHalfMonthData")
 def get_half_month_data():
+    import pandas as pd
+
     record_path = get_path("@app/tmp/report.csv")
     try:
         format_data = []
@@ -435,10 +462,13 @@ def get_half_month_data():
         logger.info("report.csv正在被占用")
 
 
-
 @app.route("/test-email")
 @require_token
 def test_email():
+    import smtplib
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+
     msg = MIMEMultipart()
     msg.attach(MIMEText("arknights-mower测试邮件", "plain"))
     msg["Subject"] = conf["mail_subject"] + "测试邮件"
@@ -455,10 +485,15 @@ def test_email():
 @app.route("/test-serverJang-push")
 @require_token
 def test_serverJang_push():
+    import requests
+
     try:
         response = requests.get(
             f"https://sctapi.ftqq.com/{conf['sendKey']}.send",
-            params={"title": "arknights-mower推送测试", "desp": "arknights-mower推送测试"},
+            params={
+                "title": "arknights-mower推送测试",
+                "desp": "arknights-mower推送测试",
+            },
         )
 
         if response.status_code == 200 and response.json().get("code") == 0:
@@ -472,4 +507,6 @@ def test_serverJang_push():
 @app.route("/check-skland")
 @require_token
 def test_skland():
+    from arknights_mower.solvers.skland import SKLand
+
     return SKLand(conf["skland_info"]).test_connect()

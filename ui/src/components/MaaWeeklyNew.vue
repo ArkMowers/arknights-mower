@@ -109,6 +109,16 @@ function create_tag(label) {
 }
 const aaabbbccc = [
   {
+    stage: 'Annihilation',
+    周一: 1,
+    周二: 1,
+    周三: 1,
+    周四: 1,
+    周五: 1,
+    周六: 1,
+    周日: 1
+  },
+  {
     stage: '点x删除',
     周一: 1,
     周二: 1,
@@ -130,16 +140,6 @@ const aaabbbccc = [
   },
   {
     stage: '自定义关卡3',
-    周一: 1,
-    周二: 1,
-    周三: 1,
-    周四: 1,
-    周五: 1,
-    周六: 1,
-    周日: 1
-  },
-  {
-    stage: 'Annihilation',
     周一: 1,
     周二: 1,
     周三: 1,
@@ -355,7 +355,7 @@ function clear() {
           <tr v-for="(plan, index) in maa_weekly_plan1" :key="plan.weekday1">
             <td>
               <n-select
-                v-if="index < 3"
+                v-if="index > 0 && index < 4"
                 v-model:value="plan.stage"
                 multiple
                 filterable
