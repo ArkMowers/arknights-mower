@@ -7,6 +7,7 @@ import time
 class Simulator_Type(Enum):
     Nox = "夜神"
     MuMu12 = "MuMu12"
+    Leidian9 = "雷电9"
     Waydroid = "Waydroid"
 
 
@@ -14,9 +15,11 @@ def restart_simulator(data, stop=True, start=True):
     index = data["index"]
     simulator_type = data["name"]
     cmd = ""
+
     if simulator_type in [
         Simulator_Type.Nox.value,
         Simulator_Type.MuMu12.value,
+        Simulator_Type.Leidian9.value,
         Simulator_Type.Waydroid.value,
     ]:
         if simulator_type == Simulator_Type.Nox.value:
@@ -31,6 +34,12 @@ def restart_simulator(data, stop=True, start=True):
             cmd += "shutdown_player"
         elif simulator_type == Simulator_Type.Waydroid.value:
             cmd = "waydroid session stop"
+        elif simulator_type == Simulator_Type.Leidian9.value:
+            cmd = "ldconsole.exe quit --index "
+            if index >= 0:
+                cmd += f'{data["index"]} '
+            else:
+                cmd += '0'
         if stop:
             exec_cmd(cmd, data["simulator_folder"])
             logger.info(f"关闭{simulator_type}模拟器")
@@ -41,6 +50,8 @@ def restart_simulator(data, stop=True, start=True):
             cmd = cmd.replace(" shutdown_player", " launch_player")
         elif simulator_type == Simulator_Type.Waydroid.value:
             cmd = "waydroid show-full-ui"
+        elif simulator_type == Simulator_Type.Leidian9.value:
+            cmd = cmd.replace("quit", "launch")
         if start:
             exec_cmd(cmd, data["simulator_folder"])
             logger.info(f"开始启动{simulator_type}模拟器，等待25秒钟")

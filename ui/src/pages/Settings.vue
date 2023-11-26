@@ -46,6 +46,7 @@ const simulator_types = [
   { label: '夜神', value: '夜神' },
   { label: 'MuMu模拟器12', value: 'MuMu12' },
   { label: 'Waydroid', value: 'Waydroid' },
+  { label: '雷电模拟器9', value: '雷电9' },
   { label: '其它', value: '' }
 ]
 
