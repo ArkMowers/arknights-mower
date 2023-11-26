@@ -302,6 +302,7 @@ class BaseSolver:
                     self.tap((100, 60))
                 elif self.scene() == Scene.ANNOUNCEMENT:
                     self.tap(detector.announcement_close(self.recog.img))
+                    self.tap((1800,100))
                 elif self.scene() == Scene.MATERIEL:
                     self.tap_element('materiel_ico')
                 elif self.scene() // 100 == 1:

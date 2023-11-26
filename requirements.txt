@@ -1,7 +1,7 @@
 opencv-python==4.8.1.78 
 colorlog==6.4.1
 matplotlib==3.5.2
-numpy==1.21.2
+numpy==1.23
 scikit_image==0.18.3
 scikit_learn==1.0
 onnxruntime==1.9.0
