@@ -2,8 +2,14 @@
 import { useConfigStore } from '@/stores/config'
 const store = useConfigStore()
 import { storeToRefs } from 'pinia'
-const { recruit_enable, recruitment_permit, recruitment_time, recruit_robot, recruit_gap,recruit_auto_5} =
-  storeToRefs(store)
+const {
+  recruit_enable,
+  recruitment_permit,
+  recruitment_time,
+  recruit_robot,
+  recruit_gap,
+  recruit_auto_5
+} = storeToRefs(store)
 import { ref, inject } from 'vue'
 
 const mobile = inject('mobile')
@@ -11,7 +17,7 @@ const mobile = inject('mobile')
 const recruit_4 = ref('900')
 </script>
 
-<template >
+<template>
   <n-card>
     <template #header>
       <n-checkbox v-model:checked="recruit_enable">
@@ -60,15 +66,9 @@ const recruit_4 = ref('900')
           <td>
             <n-radio-group name="recruit_auto_5" v-model:value="recruit_auto_5">
               <n-space justify="start">
-                <n-radio :value="1">
-                  手动
-                </n-radio>
-                <n-radio :value="2">
-                  自动
-                </n-radio>
-                <n-radio :value="3">
-                  仅标签唯一时自动选择
-                </n-radio>
+                <n-radio :value="1"> 手动 </n-radio>
+                <n-radio :value="2"> 自动 </n-radio>
+                <n-radio :value="3"> 仅标签唯一时自动选择 </n-radio>
               </n-space>
             </n-radio-group>
           </td>
@@ -76,9 +76,7 @@ const recruit_4 = ref('900')
         <tr>
           <td>支援机械</td>
           <td>
-            <n-checkbox v-model:checked="recruit_robot">
-              保留标签
-            </n-checkbox>
+            <n-checkbox v-model:checked="recruit_robot"> 保留标签 </n-checkbox>
           </td>
         </tr>
       </tbody>
@@ -108,7 +106,7 @@ h4 {
     text-align: center;
   }
 
-  tr{
+  tr {
     width: 70px;
   }
 

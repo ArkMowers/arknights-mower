@@ -236,6 +236,17 @@ def open_folder_dialog():
         return ""
 
 
+@app.route("/scale/<float:factor>")
+@app.route("/scale/<int:factor>")
+@require_token
+def scale_interface(factor):
+    import webview
+
+    window = webview.windows[0]
+    window.evaluate_js(f"document.documentElement.style.zoom = '{factor}';")
+    return "OK"
+
+
 @app.route("/import")
 @require_token
 def import_from_image():

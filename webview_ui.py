@@ -197,13 +197,13 @@ if __name__ == "__main__":
 
     splash.stop()
 
-    def show_window(window):
-        window.show()
+    def scale_and_show(window):
+        scale_factor = conf["webview"]["scale"]
+        window.evaluate_js(f"document.documentElement.style.zoom = '{scale_factor}';")
+        if is_win:
+            window.show()
 
-    if is_win:
-        webview.start(show_window, window)
-    else:
-        webview.start()
+    webview.start(scale_and_show, window)
 
     window = None
 
