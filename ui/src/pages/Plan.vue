@@ -343,6 +343,7 @@ async function import_plan() {
     <n-form-item>
       <template #label>
         <span>跑单时间刷新干员</span>
+        <help-text><div>贸易站外影响贸易效率的干员</div></help-text>
       </template>
       <n-select
         multiple

@@ -31,7 +31,8 @@ const {
   exit_game_when_idle,
   close_simulator_when_idle,
   screenshot,
-  run_order_grandet_mode
+  run_order_grandet_mode,
+  webview
 } = storeToRefs(config_store)
 
 const { operators } = storeToRefs(plan_store)
@@ -159,6 +160,20 @@ import { render_op_label, render_op_tag } from '@/utils/op_select'
               </n-form-item>
               <n-form-item label="截图数量：">
                 <n-input-number v-model:value="screenshot" />
+              </n-form-item>
+              <n-form-item>
+                <template #label>
+                  <span>界面缩放</span>
+                  <help-text>重启生效</help-text>
+                </template>
+                <n-slider
+                  v-model:value="webview.scale"
+                  :step="0.25"
+                  :min="0.5"
+                  :max="3.0"
+                  :format-tooltip="(x) => `${x * 100}%`"
+                />
+                <div class="scale">{{ webview.scale * 100 }}%</div>
               </n-form-item>
               <n-form-item label="显示主题：">
                 <n-radio-group v-model:value="theme">
@@ -390,6 +405,11 @@ ul {
   td:nth-child(1) {
     width: 40px;
   }
+}
+
+.scale {
+  width: 60px;
+  text-align: right;
 }
 </style>
 

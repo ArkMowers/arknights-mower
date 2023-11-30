@@ -209,6 +209,7 @@ webview:
   width: 2000
   height: 1000
   token: ''
+  scale: 1.0
 tap_to_launch_game:
   enable: false
   x: 0

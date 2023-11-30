@@ -60,7 +60,8 @@ export const useConfigStore = defineStore('config', () => {
   const check_mail_enable = ref(true)
   const report_enable = ref(true)
   const recruit_gap = ref(false)
-  const recruit_auto_5=ref("hand")
+  const recruit_auto_5 = ref('hand')
+  const webview = ref({})
 
   async function load_shop() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/shop`)
@@ -137,7 +138,8 @@ export const useConfigStore = defineStore('config', () => {
     check_mail_enable.value = response.data.check_mail_enable
     report_enable.value = response.data.report_enable
     recruit_gap.value = response.data.recruit_gap
-    recruit_auto_5.value=response.data.recruit_auto_5
+    recruit_auto_5.value = response.data.recruit_auto_5
+    webview.value = response.data.webview
   }
 
   function build_config() {
@@ -203,12 +205,12 @@ export const useConfigStore = defineStore('config', () => {
       check_mail_enable: check_mail_enable.value,
       report_enable: report_enable.value,
       recruit_gap: recruit_gap.value,
-      recruit_auto_5: recruit_auto_5.value
+      recruit_auto_5: recruit_auto_5.value,
+      webview: webview.value
     }
   }
 
   const loaded = inject('loaded')
-
   watchEffect(() => {
     if (loaded.value) {
       axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, build_config())
@@ -276,6 +278,7 @@ export const useConfigStore = defineStore('config', () => {
     check_mail_enable,
     report_enable,
     recruit_gap,
-    recruit_auto_5
+    recruit_auto_5,
+    webview
   }
 })
