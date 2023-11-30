@@ -4,6 +4,7 @@ import numpy as np
 from pathlib import Path
 import os
 from .image import loadimg, saveimg
+from .log import logger
 from .. import __rootdir__
 
 
@@ -18,6 +19,7 @@ class DigitReader:
         self.report_template = []
         self.report_template_white = []
         self.recruit_template = []
+        self.spent_creidt_number=[]
         for i in range(10):
             self.time_template.append(
                 loadimg(f'{__rootdir__}/resources/orders_time/{i}.png', True)
@@ -33,6 +35,9 @@ class DigitReader:
             )
             self.recruit_template.append(
                 loadimg(f'{__rootdir__}/resources/recruit_ticket/{i}.png', True)
+            )
+            self.spent_creidt_number.append(
+                loadimg(f'{__rootdir__}/resources/spent_creidt_number/{i}.png', True)
             )
 
     def get_drone(self, img_grey, h=1080, w=1920):
@@ -149,6 +154,32 @@ class DigitReader:
                 digit_part,
                 self.recruit_template[j],
                 cv.TM_CCORR_NORMED,
+            )
+            threshold = 0.95
+            loc = np.where(res >= threshold)
+            for i in range(len(loc[0])):
+                x = loc[1][i]
+                accept = True
+                for o in result:
+                    if abs(o - x) < 5:
+                        accept = False
+                        break
+                if accept:
+                    result[loc[1][i]] = j
+
+        l = [str(result[k]) for k in sorted(result)]
+
+        return int("".join(l))
+
+    def get_creidt_number(self, digit_part):
+        result = {}
+        digit_part = cv2.cvtColor(digit_part, cv2.COLOR_RGB2GRAY)
+
+        for j in range(10):
+            res = cv.matchTemplate(
+                digit_part,
+                self.spent_creidt_number[j],
+                cv.TM_CCOEFF_NORMED,
             )
             threshold = 0.95
             loc = np.where(res >= threshold)
