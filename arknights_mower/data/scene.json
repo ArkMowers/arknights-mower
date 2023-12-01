@@ -251,6 +251,10 @@
         "label": "SHOP_ASSIST",
         "comment": "助战使用次数"
     },
+    "705": {
+        "label": "SHOP_UNLOCK_SCHEDULE",
+        "comment": "累计信用消费"
+    },
     "801": {
         "label": "RECRUIT_MAIN",
         "comment": "公招主界面"

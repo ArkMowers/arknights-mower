@@ -1,4 +1,20 @@
 <template>
+
+  <div>
+    <h1 class="page-title">
+      基建报表
+      <help-text>
+        <p>若没有数据显示，请查看tmp文件夹中的report.csv文件</p>
+        <p>若存在空数据删掉对应行或自行填补一个数据</p>
+        <p>report.csv不存在建议先让mower看看你的基报</p>
+      </help-text>
+    </h1>
+  </div>
+  <n-alert title="数据错误" type="error" v-if="show_alert">
+    <p>若没有数据显示，请查看tmp文件夹中的report.csv文件</p>
+    <p>若存在空数据删掉对应行或自行填补一个数据</p>
+    <p>report.csv不存在建议先让mower看看你的基报</p>
+  </n-alert>
   <div>
     <n-grid x-gap="12" y-gap="12" cols="1 1000:2 " style="text-align: center" autoresize>
       <n-gi v-if="show_iron_chart">
@@ -9,11 +25,6 @@
       <n-gi v-if="show_orundum_chart">
         <div class="report-card_1">
           <v-chart class="chart" :option="option_orundum" />
-        </div>
-      </n-gi>
-      <n-gi v-if="show_exp_chart">
-        <div class="report-card_1">
-          <v-chart class="chart" :option="option_exp" />
         </div>
       </n-gi>
     </n-grid>
@@ -67,26 +78,24 @@ const reportStore = useReportStore()
 const { getReportData, getHalfMonthData } = reportStore
 
 const show_iron_chart = ref(false)
-const show_exp_chart = ref(true)
 const show_orundum_chart = ref(false)
 const sum_orundum = ref(0)
-
+const show_alert=ref(false)
 const ReportData = ref([])
 const HalfMonthData = ref([])
 onMounted(async () => {
-  ReportData.value = await getReportData()
-  HalfMonthData.value = await getHalfMonthData()
-  show_iron_chart.value = true
+  try {
+    ReportData.value = await getReportData()
+    HalfMonthData.value = await getHalfMonthData()
+    show_iron_chart.value = true
 
-  for (let item in ReportData.value) {
-    console.log("ReportData.value[item]['作战录像']", ReportData.value[item]['作战录像'])
-    if (ReportData.value[item]['作战录像'] > 0) {
-      show_exp_chart.value = true
+    if (HalfMonthData.value.length > 0) {
+      show_orundum_chart.value = true
+      sum_orundum.value = HalfMonthData.value[HalfMonthData.value.length - 1]['累计制造合成玉']
     }
   }
-  if (HalfMonthData.value.length > 0) {
-    show_orundum_chart.value = true
-    sum_orundum.value = HalfMonthData.value[HalfMonthData.value.length - 1]['累计制造合成玉']
+  catch{
+    show_alert.value = true
   }
 })
 
@@ -109,11 +118,12 @@ const option_iron = computed(() => {
       }
     },
     legend: {
-      data: ['龙门币订单', '赤金', '每单获取龙门币'],
+      data: ['龙门币订单', '赤金', '作战录像', '每单获取龙门币'],
       selected: {
         龙门币订单: true,
         赤金: true,
-        每单获取龙门币: false
+        作战录像:true,
+        每单获取龙门币: true
       }
     },
     tooltip: {
@@ -123,10 +133,20 @@ const option_iron = computed(() => {
         crossStyle: {
           color: '#999'
         }
-      }
+      },
+      formatter(params) {
+          return (
+              params[0].data['日期']+"<br/>"+
+              "钱书和:"+(params[0].data['作战录像']+params[0].data['赤金'])+"<br/>"+
+              "赤金:"+params[0].data['赤金']+"<br/>"+
+              "作战录像:"+params[0].data['作战录像']+"<br/>"+
+              "每单获取龙门币:"+params[0].data['每单获取龙门币']
+          );
+      },
+      extraCssText:'color:#999999'
     },
     dataset: {
-      dimensions: ['日期', '每单获取龙门币', '龙门币订单', '赤金'],
+      dimensions: ['日期', '每单获取龙门币', '龙门币订单', '赤金','作战录像'],
       source: ReportData.value
     },
     xAxis: {
@@ -137,7 +157,6 @@ const option_iron = computed(() => {
     },
     yAxis: [
       {
-        name: '龙门币',
         type: 'value',
         axisLine: {
           show: true,
@@ -154,7 +173,6 @@ const option_iron = computed(() => {
         }
       },
       {
-        name: '每单平均龙门币',
         type: 'value',
         axisLine: {
           show: true
@@ -169,34 +187,25 @@ const option_iron = computed(() => {
     ],
     series: [
       {
-        type: 'bar',
+        type: 'line',
         yAxisIndex: 1,
-        color: '#faf0b5',
-        tooltip: {
-          valueFormatter: function (value) {
-            return value
-          }
-        }
+        color: '#339933'
       },
       {
         type: 'line',
         yAxisIndex: 0,
-        color: '#e70000',
-        tooltip: {
-          valueFormatter: function (value) {
-            return value
-          }
-        }
+        color: '#e70000'
       },
       {
-        type: 'line',
+        type: 'bar',
         yAxisIndex: 0,
-        color: '#64a8ff',
-        tooltip: {
-          valueFormatter: function (value) {
-            return value
-          }
-        }
+        stack: 'Ad',
+        color: '#64a8ff'
+      },
+      {
+        type: 'bar',
+        yAxisIndex: 0,
+        stack: 'Ad'
       }
     ]
   }
