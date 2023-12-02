@@ -73,7 +73,7 @@ class ReportSolver(BaseSolver):
         elif self.scene() == Scene.RIIC_REPORT:
             logger.info("看到基报辣")
             if self.reload_time > 4:
-                raise RuntimeError("没找到基报 杂鱼~")
+                raise RuntimeError("基报不存在")
             return self.read_report()
         elif self.scene() == Scene.LOADING:
             self.sleep(3)
@@ -116,8 +116,8 @@ class ReportSolver(BaseSolver):
                 img[p2[1]:p3[1], p3[0]:img.shape[1]])
 
             self.record_report()
-        except:
-            logger.info("你的基报不行啊 杂鱼~")
+        except Exception as e:
+            logger.info("基报读取失败:{}".format(e))
         return True
 
     def locate_report(self, img, template_name):
@@ -134,9 +134,10 @@ class ReportSolver(BaseSolver):
             bottom_right = (top_left[0] + w, top_left[1] + h)
             if max_val > 0.7:
                 return top_left, bottom_right
-            return None
-        except:
-            logger.error("{}匹配失败".format(template_name))
+
+            raise RuntimeError("{}匹配失败".format(template_name))
+        except Exception as e:
+            logger.error("{}匹配失败:{}".format(template_name, e))
 
     def record_report(self):
         logger.info(f"存入{self.date}的数据{self.report_res}")
