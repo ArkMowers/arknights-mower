@@ -19,7 +19,12 @@
     <n-grid x-gap="12" y-gap="12" cols="1 1000:2 " style="text-align: center" autoresize>
       <n-gi v-if="show_iron_chart">
         <div class="report-card_1">
-          <v-chart class="chart" :option="option_iron" />
+          <v-chart class="chart" :option="option_manufactor" />
+        </div>
+      </n-gi>
+      <n-gi v-if="show_iron_chart">
+        <div class="report-card_1">
+          <v-chart class="chart" :option="option_lmb" />
         </div>
       </n-gi>
       <n-gi v-if="show_orundum_chart">
@@ -41,7 +46,8 @@ import {
   LegendComponent,
   TooltipComponent,
   DatasetComponent,
-  GridComponent
+  GridComponent,
+  DataZoomComponent,
 } from 'echarts/components'
 import VChart, { THEME_KEY } from 'vue-echarts'
 import { ref, provide, onMounted, computed } from 'vue'
@@ -55,6 +61,7 @@ use([
   GridComponent,
   BarChart,
   LineChart,
+  DataZoomComponent,
   CanvasRenderer
 ])
 import { useConfigStore } from '@/stores/config'
@@ -75,7 +82,7 @@ if (theme.value == 'dark') {
 import { useReportStore } from '@/stores/report'
 
 const reportStore = useReportStore()
-const { getReportData, getHalfMonthData } = reportStore
+const { getReportData, getOrundumData } = reportStore
 
 const show_iron_chart = ref(false)
 const show_orundum_chart = ref(false)
@@ -86,10 +93,10 @@ const HalfMonthData = ref([])
 onMounted(async () => {
   try {
     ReportData.value = await getReportData()
-    HalfMonthData.value = await getHalfMonthData()
+    HalfMonthData.value = await getOrundumData  ()
     show_iron_chart.value = true
-
     if (HalfMonthData.value.length > 0) {
+
       show_orundum_chart.value = true
       sum_orundum.value = HalfMonthData.value[HalfMonthData.value.length - 1]['累计制造合成玉']
     }
@@ -99,31 +106,51 @@ onMounted(async () => {
   }
 })
 
-const option_iron = computed(() => {
+const option_manufactor = computed(() => {
   return {
     title: [
       {
-        text: '赤金'
+        text: '制造与龙门币'
       }
     ],
     toolbox: {
       feature: {
-        dataView: { show: true, readOnly: false },
-        magicType: { show: true, type: ['line', 'bar'] },
-        restore: { show: true },
         saveAsImage: {
           show: true,
           backgroundColor: '#FFFFFF'
         }
       }
     },
+    dataZoom: [//滚动条
+      {
+        show: false,
+        type: 'slider',
+        realtime: true,
+        startValue: ReportData.value.length-7,
+        endValue:ReportData.value.length,
+        yAxisIndex: [0],
+        bottom: '10',
+        left: '30',
+        height: 10,
+        borderColor: 'rgba(0,0,0,0)',
+        textStyle: {
+          color: '#05D5FF',
+        },
+      },
+    ],
+
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: '3%',
+      containLabel: true
+    },
     legend: {
-      data: ['龙门币订单', '赤金', '作战录像', '每单获取龙门币'],
+      data: ["龙门币订单",'赤金', '作战录像'],
       selected: {
         龙门币订单: true,
         赤金: true,
-        作战录像:true,
-        每单获取龙门币: true
+        作战录像:true
       }
     },
     tooltip: {
@@ -134,82 +161,208 @@ const option_iron = computed(() => {
           color: '#999'
         }
       },
-      formatter(params) {
-          return (
-              params[0].data['日期']+"<br/>"+
-              "钱书和:"+(params[0].data['作战录像']+params[0].data['赤金'])+"<br/>"+
-              "赤金:"+params[0].data['赤金']+"<br/>"+
-              "作战录像:"+params[0].data['作战录像']+"<br/>"+
-              "每单获取龙门币:"+params[0].data['每单获取龙门币']
-          );
-      },
-      extraCssText:'color:#999999'
+
+      formatter: function(params){
+        const tip=`<div style="font-size:1.4rem;">
+                        <span style="font-size:16px">${params[0].data['日期']}</span>  <br>
+                        ${params[0].marker}    <span style="font-size:16px">${params[0].seriesName}:${params[0].data['龙门币订单']}</span>  <br>
+                        ${params[1].marker}    <span style="font-size:16px">${params[1].seriesName}:${params[0].data['赤金']}</span>  <br>
+                        ${params[2].marker}    <span style="font-size:16px">${params[2].seriesName}:${-params[0].data['作战录像']}</span>  <br>
+                        <span style="font-size:16px">赤金+作战录像:${params[0].data['制造总数']}</span>  <br>
+                        </div>`
+        return tip
+      }
     },
     dataset: {
-      dimensions: ['日期', '每单获取龙门币', '龙门币订单', '赤金','作战录像'],
+      dimensions: ['日期',"龙门币订单",'赤金','作战录像'],
       source: ReportData.value
     },
-    xAxis: {
+    yAxis: {
       type: 'category',
       axisPointer: {
         type: 'shadow'
-      }
+      },
+      axisTick: {
+        show: false
+      },
     },
-    yAxis: [
+    xAxis: {
+      axisLabel: {
+        formatter: function (params) {
+          return Math.abs(params)
+        },
+        scale: true, // 设置数据自动缩放，要不然数据多的话就堆一块了
+      }
+
+    },
+    series: [
       {
-        type: 'value',
-        axisLine: {
+        type: 'bar',
+        color: '#64bfec',
+        label: {
           show: true,
-          symbol: ['none', 'path://M5,20 L5,5 L8,8 L5,2 L2,8 L5,5 L5.3,6 L5.3,20 '],
-          symbolOffset: 10, //箭头距离x轴末端距离
-          symbolSize: [35, 38] //箭头的宽高
+          position: 'inside'
         },
-        nameLocation: 'end',
-        nameTextStyle: {
-          padding: [0, 0, 0, -50] //控制y轴标题位置
-        },
-        axisLabel: {
-          formatter: '{value}'
+        emphasis: {
+          focus: 'series'
         }
       },
       {
-        type: 'value',
-        axisLine: {
-          show: true
+        type: 'bar',
+        stack: 'Total',
+        color: '#f3e28f',
+        label: {
+          show: true,
+          formatter:function(params){
+            if(params.value['赤金'] === 0){
+              return ''
+            }
+          },
         },
-        axisTick: { show: false },
-        splitLine: {
-          show: false
-        },
-        position: 'right',
-        offset: 25
-      }
-    ],
-    series: [
-      {
-        type: 'line',
-        yAxisIndex: 1,
-        color: '#339933'
-      },
-      {
-        type: 'line',
-        yAxisIndex: 0,
-        color: '#e70000'
+        emphasis: {
+          focus: 'series'
+        }
       },
       {
         type: 'bar',
-        yAxisIndex: 0,
-        stack: 'Ad',
-        color: '#64a8ff'
-      },
-      {
-        type: 'bar',
-        yAxisIndex: 0,
-        stack: 'Ad'
+        stack: 'Total',
+        color: '#f5744f',
+        label: {
+          show: true,
+          formatter:function(params){
+            if(params.value['作战录像'] === 0){
+              return ''
+            }
+            else if(params.value['作战录像'] < 0){
+              return -params.value['作战录像']
+            }
+          },
+        },
+        emphasis: {
+          focus: 'series'
+        }
       }
     ]
   }
 })
+
+const option_lmb = computed(() => {
+    return {
+      title: [
+        {
+          text: '赤金贸易'
+        }
+      ],
+      legend: {
+        data: ['生产赤金',"龙门币收入",'每单获取龙门币'],
+        selected: {
+          生产赤金: true,
+          龙门币收入: true
+        }
+      },
+      dataZoom: {
+        show: false,
+        type: 'slider',
+        realtime: true,
+        startValue: ReportData.value.length-7, // 重点
+        // // 重点-dataX.length表示x轴数据长度
+        endValue: ReportData.value.length,
+        xAxisIndex: [0],
+        bottom: '10',
+        left: '30',
+        height: 10,
+        borderColor: 'rgba(0,0,0,0)',
+        textStyle: {
+          color: '#05D5FF',
+        }
+      },
+
+      toolbox: {
+        feature: {
+          dataView: { show: false, readOnly: false },
+          magicType: { show: true, type: ['line', 'bar'] },
+          restore: { show: true },
+          saveAsImage: {
+            show: true,
+            backgroundColor: '#FFFFFF'
+          }
+        }
+      },
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: {
+          type: 'cross',
+          crossStyle: {
+            color: '#999'
+          }
+        }
+      },
+      dataset: {
+        dimensions: ['日期', '赤金',"龙门币订单","每单获取龙门币"],
+        source: ReportData.value
+      },
+      xAxis: {
+        type: 'category',
+        axisPointer: {
+          type: 'shadow'
+        }
+      },
+      yAxis: [
+        {
+          type: 'value',
+          axisLine: {
+            show: true,
+            symbol: ['none', 'path://M5,20 L5,5 L8,8 L5,2 L2,8 L5,5 L5.3,6 L5.3,20 '],
+            symbolOffset: 10, //箭头距离x轴末端距离
+            symbolSize: [35, 38] //箭头的宽高
+          },
+          axisLabel: {
+            formatter: '{value}'
+          }
+        },
+        {
+          type: 'value',
+          axisLabel: {
+            formatter: '{value}'
+          }
+        }
+      ],
+      series: [
+        {
+          name:"龙门币收入",
+          type: 'bar',
+          yAxisIndex: 0,
+          tooltip: {
+            valueFormatter: function (value) {
+              return value
+            }
+          }
+        },
+        {
+          name:"生产赤金",
+          type: 'bar',
+          yAxisIndex: 0,
+          color: '#faf0b5',
+          tooltip: {
+            valueFormatter: function (value) {
+              return value
+            }
+          },
+        },
+        {
+          name:"每单获取龙门币",
+          type: 'line',
+          yAxisIndex: 1,
+          tooltip: {
+            valueFormatter: function (value) {
+              return value
+            }
+          },
+        },
+      ]
+    }
+  })
+
 
 const option_orundum = computed(() => {
   return {
@@ -300,70 +453,7 @@ const option_orundum = computed(() => {
     ]
   }
 })
-const option_exp = computed(() => {
-  return {
-    title: [
-      {
-        text: '作战录像'
-      }
-    ],
-    toolbox: {
-      feature: {
-        dataView: { show: false, readOnly: false },
-        magicType: { show: true, type: ['line', 'bar'] },
-        saveAsImage: {
-          show: true,
-          backgroundColor: '#FFFFFF'
-        }
-      }
-    },
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: {
-        type: 'cross',
-        crossStyle: {
-          color: '#999'
-        }
-      }
-    },
-    dataset: {
-      dimensions: ['日期', '作战录像'],
-      source: ReportData.value
-    },
-    xAxis: {
-      type: 'category',
-      axisPointer: {
-        type: 'shadow'
-      }
-    },
-    yAxis: [
-      {
-        type: 'value',
-        axisLine: {
-          show: true,
-          symbol: ['none', 'path://M5,20 L5,5 L8,8 L5,2 L2,8 L5,5 L5.3,6 L5.3,20 '],
-          symbolOffset: 10, //箭头距离x轴末端距离
-          symbolSize: [35, 38] //箭头的宽高
-        },
-        axisLabel: {
-          formatter: '{value}'
-        }
-      }
-    ],
-    series: [
-      {
-        type: 'line',
-        yAxisIndex: 0,
-        color: '#e70000',
-        tooltip: {
-          valueFormatter: function (value) {
-            return value
-          }
-        }
-      }
-    ]
-  }
-})
+
 </script>
 
 <style scoped>
