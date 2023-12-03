@@ -62,6 +62,8 @@ export const useConfigStore = defineStore('config', () => {
   const recruit_gap = ref(false)
   const recruit_auto_5 = ref('hand')
   const webview = ref({})
+  const shop_collect_enable = ref(true)
+  const meeting_level=ref(3)
 
   async function load_shop() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/shop`)
@@ -140,6 +142,8 @@ export const useConfigStore = defineStore('config', () => {
     recruit_gap.value = response.data.recruit_gap
     recruit_auto_5.value = response.data.recruit_auto_5
     webview.value = response.data.webview
+    shop_collect_enable.value=response.data.shop_collect_enable
+    meeting_level.value=response.data.meeting_level
   }
 
   function build_config() {
@@ -206,7 +210,9 @@ export const useConfigStore = defineStore('config', () => {
       report_enable: report_enable.value,
       recruit_gap: recruit_gap.value,
       recruit_auto_5: recruit_auto_5.value,
-      webview: webview.value
+      webview: webview.value,
+      shop_collect_enable: shop_collect_enable.value ? 1 : 0,
+      meeting_level: meeting_level.value
     }
   }
 
@@ -279,6 +285,8 @@ export const useConfigStore = defineStore('config', () => {
     report_enable,
     recruit_gap,
     recruit_auto_5,
-    webview
+    webview,
+    shop_collect_enable,
+    meeting_level
   }
 })
