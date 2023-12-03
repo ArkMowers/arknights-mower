@@ -87,10 +87,11 @@ class RecruitSolver(BaseSolver):
                 logger.info(
                     "{}:[".format(pos) + ",".join(self.agent_choose[pos]['tags']) + "]:{}".format(",".join(agent)))
         if self.agent_choose or self.result_agent:
-            self.send_message(recruit_template.render(recruit_results=self.agent_choose,
-                                                      recruit_get_agent=self.result_agent,
-                                                      permit_count=self.permit_count,
-                                                      title_text="公招汇总"), "公招汇总通知", "html")
+            if self.recruit_config['recruit_email_enable']:
+                self.send_message(recruit_template.render(recruit_results=self.agent_choose,
+                                                          recruit_get_agent=self.result_agent,
+                                                          permit_count=self.permit_count,
+                                                          title_text="公招汇总"), "公招汇总通知", "html")
 
         return self.agent_choose, self.result_agent
 
@@ -112,7 +113,10 @@ class RecruitSolver(BaseSolver):
             },
             "recruit_robot": recruit_config['recruit_robot'],
             "permit_target": recruit_config['permit_target'],
-            "recruit_auto_5": recruit_config['recruit_auto_5']
+            "recruit_auto_5": recruit_config['recruit_auto_5'],
+            "recruit_auto_only5": recruit_config['recruit_auto_only5'],
+            "recruit_email_enable": recruit_config['recruit_email_enable'],
+
         }
 
         if not self.recruit_config['recruit_robot']:
@@ -246,15 +250,17 @@ class RecruitSolver(BaseSolver):
             # 计算招募标签组合结果
             recruit_cal_result = self.recruit_cal(tags)
             recruit_result_level = recruit_cal_result[0][1][0]['star']
-            if self.recruit_order.index(recruit_result_level) <= self.recruit_index:
+            if self.recruit_order.index(recruit_result_level) <= self.recruit_index and self.recruit_config['recruit_email_enable']:
                 self.send_message(recruit_rarity.render(recruit_results=recruit_cal_result, title_text="稀有tag通知"),
                                   "出稀有标签辣",
                                   "html")
                 logger.info('稀有tag,发送邮件')
-                if self.recruit_config['recruit_auto_5'] == 3:
+                # 手动选择且单五星词条不自动
+                if self.recruit_config['recruit_auto_5'] == 2 and not self.recruit_config['recruit_auto_only5']:
                     self.back()
                     return
-                if len(recruit_cal_result) > 1 and self.recruit_config['recruit_auto_5'] != 1:
+                # 手动选择且单五星词条自动,但词条不止一种
+                if len(recruit_cal_result) > 1 and self.recruit_config['recruit_auto_only5']:
                     self.back()
                     return
 
