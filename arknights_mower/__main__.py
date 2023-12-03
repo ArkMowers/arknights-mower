@@ -138,6 +138,8 @@ def set_recruit_options(base_scheduler, conf):
     recruit_config["recruitment_time"] = conf["recruitment_time"]
     recruit_config["recruit_execution_gap"] = conf["recruit_gap"]
     recruit_config["recruit_auto_5"] = conf["recruit_auto_5"]
+    recruit_config["recruit_auto_only5"] = conf["recruit_auto_only5"]
+    recruit_config["recruit_email_enable"] = conf["recruit_email_enable"]
     base_scheduler.recruit_config = recruit_config
     logger.debug(f"更新公招设置：{base_scheduler.recruit_config}")
 

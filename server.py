@@ -101,7 +101,7 @@ def operator_list():
 def shop_list():
     from arknights_mower.data import shop_items
 
-    return shop_items
+    return list(shop_items.keys())
 
 
 def read_log(conn):
