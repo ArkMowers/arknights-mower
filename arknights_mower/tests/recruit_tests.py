@@ -1,3 +1,4 @@
+# -!- coding: utf-8 -!-
 from __future__ import annotations
 
 import os
@@ -8,27 +9,19 @@ import re
 import cv2
 import numpy as np
 
-from ..data import recruit_agent, agent_with_tags, recruit_tag, result_template_list
-from ..ocr import ocr_rectify, ocrhandle
-from ..utils import segment, rapidocr
-from .. import __rootdir__
-from ..utils.device import Device
-from ..utils.digit_reader import DigitReader
-from ..utils.email import recruit_template, recruit_rarity
-from ..utils.image import cropimg, bytes2img, loadimg
-from ..utils.log import logger
-from ..utils.recognize import RecognizeError, Recognizer, Scene
-from ..utils.solver import BaseSolver
+from arknights_mower.data import recruit_agent, agent_with_tags, recruit_tag, result_template_list
+
+from arknights_mower.utils import segment, rapidocr
+from arknights_mower.__init__ import __rootdir__
+from arknights_mower.utils.digit_reader import DigitReader
+from arknights_mower.utils.image import cropimg, bytes2img, loadimg
+from arknights_mower.utils.log import logger
+from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
+from arknights_mower.utils.solver import BaseSolver
 
 
-class RecruitSolver(BaseSolver):
-    """
-    自动进行公招
-    """
-
-    def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
-        super().__init__(device, recog)
-
+class RecruitSolver:
+    def __init__(self) -> None:
         self.result_agent = {}
         self.agent_choose = {}
         self.recruit_config = {}
@@ -69,7 +62,7 @@ class RecruitSolver(BaseSolver):
 
         # logger.info(f'目标干员：{priority if priority else "无，高稀有度优先"}')\
         try:
-            super().run()
+            pass
         except Exception as e:
             logger.error(e)
 
@@ -88,10 +81,7 @@ class RecruitSolver(BaseSolver):
                     "{}:[".format(pos) + ",".join(self.agent_choose[pos]['tags']) + "]:{}".format(",".join(agent)))
         if self.agent_choose or self.result_agent:
             if self.recruit_config['recruit_email_enable']:
-                self.send_message(recruit_template.render(recruit_results=self.agent_choose,
-                                                          recruit_get_agent=self.result_agent,
-                                                          permit_count=self.permit_count,
-                                                          title_text="公招汇总"), "公招汇总通知", "html")
+                logger.info("发送公招结果邮件")
 
         return self.agent_choose, self.result_agent
 
@@ -218,99 +208,39 @@ class RecruitSolver(BaseSolver):
         else:
             raise RecognizeError('Unknown scene')
 
-    def recruit_tags(self):
-        """ 识别公招标签的逻辑 """
-        if self.find('recruit_no_ticket') is not None:
-            self.has_ticket = False
-        if self.find('recruit_no_refresh') is not None:
-            self.can_refresh = False
-        if self.find('recruit_no_lmb') is not None:
-            self.enough_lmb = False
+    def recruit_tags(self, tags: list[str] = None):
+        recruit_cal_result = self.recruit_cal(tags)
+        recruit_result_level = recruit_cal_result[0][1][0]['star']
 
-        needs = self.find('career_needs', judge=False)
-        avail_level = self.find('available_level', judge=False)
-        budget = self.find('recruit_budget', judge=False)
-        up = needs[0][1] - 80
-        down = needs[1][1] + 60
-        left = needs[1][0]
-        right = avail_level[0][0]
-
-        while True:
-            # ocr the recruitment tags and rectify
-            img = self.recog.img[up:down, left:right]
-            ocr = ocrhandle.predict(img)
-            for x in ocr:
-                if x[1] not in recruit_tag:
-                    x[1] = ocr_rectify(img, x, recruit_tag, '公招标签')
-
-            # recruitment tags
-            tags = [x[1] for x in ocr]
-            logger.info(f'第{self.recruit_pos + 1}个位置上的公招标签：{tags}')
-
-            # 计算招募标签组合结果
-            recruit_cal_result = self.recruit_cal(tags)
-            recruit_result_level = recruit_cal_result[0][1][0]['star']
-            if self.recruit_order.index(recruit_result_level) <= self.recruit_index and self.recruit_config['recruit_email_enable']:
-                self.send_message(recruit_rarity.render(recruit_results=recruit_cal_result, title_text="稀有tag通知"),
-                                  "出稀有标签辣",
-                                  "html")
-                logger.info('稀有tag,发送邮件')
-                if recruit_result_level == 6:
-                    logger.debug('六星tag')
-                    self.back()
-                    return
-                # 手动选择且单五星词条不自动
-                if self.recruit_config['recruit_auto_5'] == 2 and not self.recruit_config['recruit_auto_only5']:
-                    logger.debug('手动选择且单五星词条不自动')
-                    self.back()
-                    return
-                # 手动选择且单五星词条自动,但词条不止一种
-                if (self.recruit_config['recruit_auto_5'] == 2 and
-                        len(recruit_cal_result) > 1 and self.recruit_config['recruit_auto_only5']):
-                    logger.debug('手动选择且单五星词条自动,但词条不止一种')
-                    self.back()
-                    return
-
+        if self.recruit_order.index(recruit_result_level) <= self.recruit_index and self.recruit_config['recruit_email_enable']:
+            logger.info('稀有tag,发送邮件')
+            if recruit_result_level == 6:
+                logger.info('六星tag')
+                return
+            # 手动选择且单五星词条不自动
+            if self.recruit_config['recruit_auto_5'] == 2 and not self.recruit_config['recruit_auto_only5']:
+                logger.info('手动选择且单五星词条不自动')
+                return
+            # 手动选择且单五星词条自动,但词条不止一种
+            if (self.recruit_config['recruit_auto_5'] == 2 and
+                    len(recruit_cal_result) > 1 and self.recruit_config['recruit_auto_only5']):
+                logger.info('手动选择且单五星词条自动,但词条不止一种')
+                return
             if recruit_cal_result[0][1][0]['star'] == 3:
                 # refresh
                 if self.tap_element('recruit_refresh', detected=True):
                     self.tap_element('double_confirm', 0.8,
                                      interval=3, judge=False)
                     logger.info("刷新标签")
-                    continue
-            break
-
-        if not self.enough_lmb:
-            logger.info('龙门币不足 结束公招')
-            self.back()
-            return
-        # 如果没有招募券则只刷新标签不选人
-        if not self.has_ticket:
-            logger.info('无招募券')
-            self.back()
-            return
-
-        # best为空说明这次大概率三星
-        # 券数量少于预期值，仅招募四星或者停止招募，只刷新标签
-        if self.permit_count <= self.recruit_config["permit_target"] and recruit_result_level == 3:
-            logger.info('不招三星')
-            self.back()
-            return
-
+                return
+        logger.info("选干员")
         choose = []
         if recruit_result_level > 3:
             choose = list(recruit_cal_result[0][0])
 
         # tap selected tags
         logger.info(f'选择标签：{list(choose)}')
-        for x in ocr:
-            color = self.recog.img[up + x[2][0][1] - 5, left + x[2][0][0] - 5]
-            if (color[2] < 100) != (x[1] not in choose):
-                # 存在choose为空但是进行标签选择的情况
-                logger.debug(f"tap{x}")
-                self.device.tap((left + x[2][0][0] - 5, up + x[2][0][1] - 5))
 
-        # 9h为True 3h50min为False
         logger.debug("开始选择时长")
         recruit_time_choose = self.recruit_config["recruitment_time"]["3"]
         if recruit_result_level >= 3:
@@ -319,27 +249,7 @@ class RecruitSolver(BaseSolver):
             else:
                 recruit_time_choose = self.recruit_config["recruitment_time"][str(recruit_result_level)]
 
-        if recruit_time_choose == 540:
-            # 09:00
-            logger.debug("时间9h")
-            self.tap_element('one_hour', 0.2, 0.8, 0)
-        elif recruit_time_choose == 230:
-            # 03:50
-            logger.debug("时间3h50min")
-            [self.tap_element('one_hour', 0.2, 0.2, 0) for _ in range(2)]
-            [self.tap_element('one_hour', 0.5, 0.2, 0) for _ in range(5)]
-        elif recruit_time_choose == 460:
-            # 07:40
-            logger.debug("时间7h40min")
-            [self.tap_element('one_hour', 0.2, 0.8, 0) for _ in range(2)]
-            [self.tap_element('one_hour', 0.5, 0.8, 0) for _ in range(2)]
-
-        # start recruit
-        self.tap((avail_level[1][0], budget[0][1]), interval=3)
-
-        # 有券才能点下去
-        if self.permit_count > 1:
-            self.permit_count -= 1
+        logger.info(recruit_time_choose)
 
         if recruit_result_level > 3:
             self.agent_choose[str(self.recruit_pos + 1)] = {
@@ -353,7 +263,6 @@ class RecruitSolver(BaseSolver):
                 "result": [{'id': '', 'name': '随机三星干员', 'star': 3}]
             }
             logger.info(f'第{self.recruit_pos + 1}个位置上的公招预测结果：{"随机三星干员"}')
-
     def recruit_result(self):
         try:
             agent = None
@@ -460,3 +369,21 @@ class RecruitSolver(BaseSolver):
         #     print("do nothing")
         # for item in sorted_list:
         #     print(item)
+
+
+if __name__ == '__main__':
+    recruit_ = RecruitSolver()
+    recruit_.recruit_config = {
+        "recruitment_time": {
+            "3": 460,
+            "4": 540,
+            "5": 540,
+            "6": 540
+        },
+        "recruit_robot": False,
+        "permit_target": 30,
+        "recruit_auto_5": 1,
+        "recruit_auto_only5": False,
+        "recruit_email_enable": True,
+    }
+    print(recruit_.recruit_tags(['近卫干员', '近战位', '资深干员', '支援', '支援机械']))
