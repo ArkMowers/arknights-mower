@@ -82,7 +82,11 @@ def load_plan_from_json():
 
     if request.method == "GET":
         global conf
-        plan = load_plan(conf["planFile"])
+        try:
+            plan = load_plan(conf["planFile"])
+        except PermissionError as e:
+            logger.error("plan.json路径错误,重置为plan.json")
+            plan = load_plan()
         return plan
     else:
         plan = request.json
@@ -331,9 +335,9 @@ def get_maa_adb_version():
 def get_maa_conn_presets():
     try:
         with open(
-            os.path.join(conf["maa_path"], "resource", "config.json"),
-            "r",
-            encoding="utf-8",
+                os.path.join(conf["maa_path"], "resource", "config.json"),
+                "r",
+                encoding="utf-8",
         ) as f:
             presets = [i["configName"] for i in json.load(f)["connection"]]
     except Exception:
