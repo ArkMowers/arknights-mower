@@ -255,12 +255,19 @@ class RecruitSolver(BaseSolver):
                                   "出稀有标签辣",
                                   "html")
                 logger.info('稀有tag,发送邮件')
+                if recruit_result_level == 6:
+                    logger.debug('六星tag')
+                    self.back()
+                    return
                 # 手动选择且单五星词条不自动
                 if self.recruit_config['recruit_auto_5'] == 2 and not self.recruit_config['recruit_auto_only5']:
+                    logger.debug('手动选择且单五星词条不自动')
                     self.back()
                     return
                 # 手动选择且单五星词条自动,但词条不止一种
-                if len(recruit_cal_result) > 1 and self.recruit_config['recruit_auto_only5']:
+                if (self.recruit_config['recruit_auto_5'] == 2 and
+                        len(recruit_cal_result) > 1 and self.recruit_config['recruit_auto_only5']):
+                    logger.debug('手动选择且单五星词条自动,但词条不止一种')
                     self.back()
                     return
 
