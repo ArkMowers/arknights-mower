@@ -5,7 +5,7 @@ import os
 
 
 ################
-#############人名
+#############仓库
 ################
 key_map = {}
 
@@ -22,7 +22,8 @@ for i in items_data:
     destination_file = f"./ui/public/depot/{name}.png"
     if classifyType != "NONE":
         if os.path.exists(source_file):
-            shutil.copy(source_file, destination_file)
+            if not os.path.exists(destination_file):
+                shutil.copy(source_file, destination_file)
             key_map[i] = name
             print(f"Successfully copied: {source_file} to {destination_file}")
         else:
@@ -59,6 +60,6 @@ for i in character_table:
         source_file,
         destination_file
     )
-
+operators.sort(key=len)
 with open("./arknights_mower/data/agent.json", "w", encoding="utf-8") as f:
     json.dump(operators, f, ensure_ascii=False)
