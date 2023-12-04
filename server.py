@@ -386,10 +386,11 @@ def get_report_data():
                     "日期": date2str(
                         str2date(item["Unnamed: 0"]) - datetime.timedelta(days=1)
                     ),
-                    "作战录像": -item["作战录像"],
+                    "作战录像": item["作战录像"],
                     "赤金": item["赤金"],
                     "制造总数": int(item["赤金"] + item["作战录像"]),
                     "龙门币订单": item["龙门币订单"],
+                    "反向龙门币": -item["龙门币订单"],
                     "龙门币订单数": item["龙门币订单数"],
                     "每单获取龙门币": int(item["龙门币订单"] / item["龙门币订单数"]),
                 }
