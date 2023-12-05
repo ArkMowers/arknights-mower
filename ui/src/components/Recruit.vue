@@ -8,13 +8,14 @@ const {
   recruitment_time,
   recruit_robot,
   recruit_gap,
-  recruit_auto_5
+  recruit_auto_5,
+  recruit_auto_only5,
+  recruit_email_enable
 } = storeToRefs(store)
-import { ref, inject } from 'vue'
+import { inject } from 'vue'
 
 const mobile = inject('mobile')
 
-const recruit_4 = ref('900')
 </script>
 
 <template>
@@ -24,63 +25,57 @@ const recruit_4 = ref('900')
         <div class="card-title">公开招募</div>
       </n-checkbox>
     </template>
-    <n-form :label-placement="mobile ? 'top' : 'left'" :show-feedback="false">
-      <div class="misc-container">
-        <div>启动间隔</div>
-        <n-input-number class="hour-input" v-model:value="recruit_gap" />
-        <div>小时（可填小数）</div>
-      </div>
+    <n-form
+        :label-placement="mobile ? 'top' : 'left'"
+        :show-feedback="false"
+        label-width="140"
+        label-align="left"
+    >
+      <n-form-item>
+        <template #label>
+          <span>启动间隔</span>
+        </template>
+        <n-input-number class="hour-input" v-model:value="recruit_gap" /><div>小时（可填小数）</div>
+      </n-form-item>
       <n-form-item>
         <template #label>
           <span>三星招募阈值</span>
-          <help-text>
-            <div>公招券数量大于此阈值时招募三星</div>
-            <div>公招券的数量会维持在阈值附近</div>
-            <div>如果不想招三星，就填一个很大的数</div>
-          </help-text>
         </template>
         <n-input-number v-model:value="recruitment_permit" />
       </n-form-item>
+      <n-form-item>
+        <template #label>
+          <span>三星招募时长</span>
+        </template>
+        <n-radio-group v-model:value="recruitment_time" name="recruitment_time">
+          <n-space justify="start">
+            <n-radio :value="true">7:40</n-radio>
+            <n-radio :value="false">9:00</n-radio>
+          </n-space>
+        </n-radio-group>
+      </n-form-item>
+      <n-form-item>
+        <template #label>
+          <span>五星招募策略</span>
+        </template>
+        <n-radio-group v-model:value="recruit_auto_5" name="recruitment_time">
+          <n-space justify="start">
+            <n-radio :value="1">自动选择</n-radio>
+            <n-radio :value="2">手动选择</n-radio>
+          </n-space>
+        </n-radio-group>
+      </n-form-item>
+      <n-form-item  v-if= "recruit_auto_5===2">
+        <n-checkbox v-model:checked="recruit_auto_only5">五星词条组合唯一时自动选择</n-checkbox>
+      </n-form-item>
+      <n-form-item>
+        <n-checkbox v-model:checked="recruit_email_enable"> 邮件通知 </n-checkbox>
+      </n-form-item>
+      <n-form-item>
+        <n-checkbox v-model:checked="recruit_robot"> 保留支援机械标签 </n-checkbox>
+      </n-form-item>
     </n-form>
-    <n-table :single-line="false" size="small" class="big-table">
-      <thead>
-        <tr>
-          <th>可保底</th>
-          <th>招募选项</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>三星</td>
-          <td>
-            <n-radio-group v-model:value="recruitment_time" name="recruitment_time">
-              <n-space justify="start">
-                <n-radio :value="true">7:40</n-radio>
-                <n-radio :value="false">9:00</n-radio>
-              </n-space>
-            </n-radio-group>
-          </td>
-        </tr>
-        <tr>
-          <td>五星</td>
-          <td>
-            <n-radio-group name="recruit_auto_5" v-model:value="recruit_auto_5">
-              <n-space justify="start">
-                <n-radio :value="1"> 手动 </n-radio>
-                <n-radio :value="2"> 自动 </n-radio>
-                <n-radio :value="3"> 仅标签唯一时自动选择 </n-radio>
-              </n-space>
-            </n-radio-group>
-          </td>
-        </tr>
-        <tr>
-          <td>支援机械</td>
-          <td>
-            <n-checkbox v-model:checked="recruit_robot"> 保留标签 </n-checkbox>
-          </td>
-        </tr>
-      </tbody>
-    </n-table>
+
   </n-card>
 </template>
 

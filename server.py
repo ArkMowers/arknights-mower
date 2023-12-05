@@ -101,7 +101,7 @@ def operator_list():
 def shop_list():
     from arknights_mower.data import shop_items
 
-    return shop_items
+    return list(shop_items.keys())
 
 
 def read_log(conn):
@@ -382,8 +382,9 @@ def get_report_data():
                     "日期": date2str(
                         str2date(item["Unnamed: 0"]) - datetime.timedelta(days=1)
                     ),
-                    "作战录像": item["作战录像"],
+                    "作战录像": -item["作战录像"],
                     "赤金": item["赤金"],
+                    "制造总数": int(item["赤金"] + item["作战录像"]),
                     "龙门币订单": item["龙门币订单"],
                     "龙门币订单数": item["龙门币订单数"],
                     "每单获取龙门币": int(item["龙门币订单"] / item["龙门币订单数"]),
@@ -409,8 +410,8 @@ def get_report_data():
         logger.info("report.csv正在被占用")
 
 
-@app.route("/report/getHalfMonthData")
-def get_half_month_data():
+@app.route("/report/getOrundumData")
+def get_orundum_data():
     import pandas as pd
 
     record_path = get_path("@app/tmp/report.csv")

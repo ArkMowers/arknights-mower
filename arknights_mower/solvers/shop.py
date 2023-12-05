@@ -106,40 +106,44 @@ class ShopSolver(BaseSolver):
             if len(ocr) == 0:
                 raise RecognizeError
             ocr = ocr[0]
-            if ocr[1] not in shop_items:
+            if ocr[1] not in list(shop_items.keys()):
                 ocr[1] = ocr_rectify(self.recog.img[scope2slice(scope)], ocr, shop_items, '物品名称')
 
             shop_sold, discount = self.get_discount(
                 self.recog.img[segments[i][0][1]:segments[i][1][1], segments[i][0][0]:segments[i][1][0]])
 
             item_name = ocr[1]
-            if item_name == '龙门币':
-                price = self.get_item_price(
-                    self.recog.img[segments[i][0][1]:segments[i][1][1], segments[i][0][0]:segments[i][1][0]], shop_sold)
-                price = round(price / (1 - discount * 0.01), 0)
-                if price == 200:
-                    item_name = "龙门币(大)"
-                elif price == 100:
-                    item_name = "龙门币(小)"
-            elif item_name == '家具零件':
-                price = self.get_item_price(
-                    self.recog.img[segments[i][0][1]:segments[i][1][1], segments[i][0][0]:segments[i][1][0]], shop_sold)
-                price = round(price / (1 - discount * 0.01), 0)
-                if price == 200:
-                    item_name = "家具零件(大)"
-                elif price == 160:
-                    item_name = "家具零件(小)"
+            # if item_name == '龙门币':
+            #     price = self.get_item_price(
+            #         self.recog.img[segments[i][0][1]:segments[i][1][1], segments[i][0][0]:segments[i][1][0]], shop_sold)
+            #     price = round(price / (1 - discount * 0.01), 0)
+            #     if price == 200:
+            #         item_name = "龙门币(大)"
+            #     elif price == 100:
+            #         item_name = "龙门币(小)"
+            # elif item_name == '家具零件':
+            #     price = self.get_item_price(
+            #         self.recog.img[segments[i][0][1]:segments[i][1][1], segments[i][0][0]:segments[i][1][0]], shop_sold)
+            #     price = round(price / (1 - discount * 0.01), 0)
+            #     if price == 200:
+            #         item_name = "家具零件(大)"
+            #     elif price == 160:
+            #         item_name = "家具零件(小)"
+            if not shop_sold:
+                self.item_list[i] = {
+                    'index': i,
+                    'name': item_name,
+                    'discount': discount,
+                    'shop_sold': shop_sold,
+                    'position': segments[i],
+                    'price': round(float(shop_items[item_name]) / (1 - discount * 0.01), 0)
+                }
 
-            self.item_list[i] = {
-                'index': i,
-                'name': item_name,
-                'discount': discount,
-                'shop_sold': shop_sold,
-                # 'position': segments[i]
-            }
+        self.shop_data["item"] = sorted(self.item_list.values(), key=lambda x: x['price'], reverse=True)
+        logger.info("购买顺序:{}".format([f"{item['index']+1}:{item['name']}" for item in self.shop_data["item"]]))
 
-        self.shop_data["item"] = self.item_list
-        self.tap_element("agent_unlock")
+        return True
+        # self.tap_element("agent_unlock")
 
     def get_discount(self, item_img: np.ndarray):
         if self.is_sold(item_img):

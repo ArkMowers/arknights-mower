@@ -54,6 +54,8 @@ export const useConfigStore = defineStore('config', () => {
   const recruitment_time = ref(false)
   const recruitment_permit = ref(30)
   const recruit_robot = ref(true)
+  const recruit_auto_only5 = ref(true)
+  const recruit_email_enable = ref(true)
   const run_order_grandet_mode = ref({})
   const server_push_enable = ref(false) // Server酱通知开关
   const sendKey = ref('') // Server酱Key值
@@ -62,6 +64,8 @@ export const useConfigStore = defineStore('config', () => {
   const recruit_gap = ref(false)
   const recruit_auto_5 = ref('hand')
   const webview = ref({})
+  const shop_collect_enable = ref(true)
+  const meeting_level=ref(3)
 
   async function load_shop() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/shop`)
@@ -131,6 +135,8 @@ export const useConfigStore = defineStore('config', () => {
     recruitment_time.value = response.data.recruitment_time
     recruitment_permit.value = response.data.recruitment_permit
     recruit_robot.value = response.data.recruit_robot
+    recruit_auto_only5.value = response.data.recruit_auto_only5
+    recruit_email_enable.value = response.data.recruit_email_enable
     run_order_grandet_mode.value = response.data.run_order_grandet_mode
     // 新增：加载Server酱的配置
     server_push_enable.value = response.data.server_push_enable != 0
@@ -140,6 +146,8 @@ export const useConfigStore = defineStore('config', () => {
     recruit_gap.value = response.data.recruit_gap
     recruit_auto_5.value = response.data.recruit_auto_5
     webview.value = response.data.webview
+    shop_collect_enable.value=response.data.shop_collect_enable
+    meeting_level.value=response.data.meeting_level
   }
 
   function build_config() {
@@ -198,6 +206,8 @@ export const useConfigStore = defineStore('config', () => {
       recruitment_time: recruitment_time.value,
       recruitment_permit: recruitment_permit.value,
       recruit_robot: recruit_robot.value,
+      recruit_auto_only5: recruit_auto_only5.value,
+      recruit_email_enable: recruit_email_enable.value,
       run_order_grandet_mode: run_order_grandet_mode.value,
       // 新增：Server酱的配置
       server_push_enable: server_push_enable.value ? 1 : 0,
@@ -206,7 +216,9 @@ export const useConfigStore = defineStore('config', () => {
       report_enable: report_enable.value,
       recruit_gap: recruit_gap.value,
       recruit_auto_5: recruit_auto_5.value,
-      webview: webview.value
+      webview: webview.value,
+      shop_collect_enable: shop_collect_enable.value ? 1 : 0,
+      meeting_level: meeting_level.value
     }
   }
 
@@ -270,6 +282,8 @@ export const useConfigStore = defineStore('config', () => {
     recruitment_time,
     recruitment_permit,
     recruit_robot,
+    recruit_auto_only5,
+    recruit_email_enable,
     skland_enable,
     skland_info,
     run_order_grandet_mode,
@@ -279,6 +293,8 @@ export const useConfigStore = defineStore('config', () => {
     report_enable,
     recruit_gap,
     recruit_auto_5,
-    webview
+    webview,
+    shop_collect_enable,
+    meeting_level
   }
 })
