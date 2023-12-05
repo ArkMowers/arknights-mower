@@ -148,7 +148,7 @@ const option_manufactor = computed(() => {
     legend: {
       data: ["订单收入",'赤金', '作战录像'],
       selected: {
-        作战录像:true,
+        订单收入:true,
         赤金: true,
         龙门币订单: true,
       }
@@ -165,15 +165,16 @@ const option_manufactor = computed(() => {
       formatter: function(params){
         const tip=`<div style="font-size:1.4rem;">
                         <span style="font-size:15px">${params[0].data['日期']}</span>  <br>
-                        ${params[0].marker}    <span style="font-size:14px">${params[0].seriesName}:${params[0].data['龙门币订单']}</span>  <br>
-                        ${params[1].marker}    <span style="font-size:14px">${params[1].seriesName}:${params[0].data['赤金']}</span>  <br>
-                        ${params[2].marker}    <span style="font-size:14px">${params[2].seriesName}:${-params[0].data['反向龙门币']}</span>  <br>
+                        ${params[0].marker}    <span style="font-size:14px">${params[0].seriesName}:${params[0].data['赤金']}</span>  <br>
+                        ${params[2].marker}    <span style="font-size:14px">${params[2].seriesName}:${params[0].data['龙门币订单']}</span>  <br>
+                        ${params[1].marker}    <span style="font-size:14px">${params[1].seriesName}:${params[0].data['作战录像']}</span>  <br>
+
                         </div>`
         return tip
       }
     },
     dataset: {
-      dimensions: ['日期',"作战录像",'反向龙门币','赤金'],
+      dimensions: ['日期',"赤金",'反向作战录像','龙门币订单'],
       source: ReportData.value
     },
     yAxis: {
@@ -196,15 +197,37 @@ const option_manufactor = computed(() => {
     },
     series: [
       {
-        name: '作战录像',
+        name: '赤金',
         type: 'bar',
-        color: '#f3e28f',
+        color: '#f5744f',
+        position: 'inside',
         label: {
           show: true,
-          position: 'inside',
           formatter:function(params) {
-            if (params.value['作战录像'] === 0) {
+            if (params.value['龙门币订单'] === 0) {
               return ''
+            }
+          },
+        },
+        emphasis: {
+          focus: 'series'
+        }
+      },
+      {
+        name: '作战录像',
+        type: 'bar',
+        stack: 'Total',
+        color: '#f3e28f',
+
+        position: 'inside',
+        label: {
+          show: true,
+          formatter:function(params){
+            if(params.value['反向作战录像'] === 0){
+              return ''
+            }
+            else if(params.value['反向作战录像'] < 0){
+              return -params.value['反向作战录像']
             }
           },
         },
@@ -217,26 +240,6 @@ const option_manufactor = computed(() => {
         type: 'bar',
         stack: 'Total',
         color: '#64bfec',
-        label: {
-          show: true,
-          formatter:function(params){
-            if(params.value['反向龙门币'] === 0){
-              return ''
-            }
-            else if(params.value['反向龙门币'] < 0){
-              return -params.value['反向龙门币']
-            }
-          },
-        },
-        emphasis: {
-          focus: 'series'
-        }
-      },
-      {
-        name: '赤金',
-        type: 'bar',
-        stack: 'Total',
-        color: '#f5744f',
         label: {
           show: true,
           formatter:function(params){
