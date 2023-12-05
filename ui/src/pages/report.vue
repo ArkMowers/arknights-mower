@@ -164,11 +164,10 @@ const option_manufactor = computed(() => {
 
       formatter: function(params){
         const tip=`<div style="font-size:1.4rem;">
-                        <span style="font-size:16px">${params[0].data['日期']}</span>  <br>
-                        ${params[0].marker}    <span style="font-size:16px">${params[0].seriesName}:${params[0].data['龙门币订单']}</span>  <br>
-                        ${params[1].marker}    <span style="font-size:16px">${params[1].seriesName}:${params[0].data['赤金']}</span>  <br>
-                        ${params[2].marker}    <span style="font-size:16px">${params[2].seriesName}:${-params[0].data['反向龙门币']}</span>  <br>
-                        <span style="font-size:16px">赤金+作战录像:${params[0].data['制造总数']}</span>  <br>
+                        <span style="font-size:15px">${params[0].data['日期']}</span>  <br>
+                        ${params[0].marker}    <span style="font-size:14px">${params[0].seriesName}:${params[0].data['龙门币订单']}</span>  <br>
+                        ${params[1].marker}    <span style="font-size:14px">${params[1].seriesName}:${params[0].data['赤金']}</span>  <br>
+                        ${params[2].marker}    <span style="font-size:14px">${params[2].seriesName}:${-params[0].data['反向龙门币']}</span>  <br>
                         </div>`
         return tip
       }
