@@ -146,9 +146,9 @@ const option_manufactor = computed(() => {
       containLabel: true
     },
     legend: {
-      data: ["订单收入",'赤金', '作战录像'],
+      data: ["订单",'赤金', '经验'],
       selected: {
-        作战录像:true,
+        订单收入:true,
         赤金: true,
         龙门币订单: true,
       }
@@ -164,17 +164,17 @@ const option_manufactor = computed(() => {
 
       formatter: function(params){
         const tip=`<div style="font-size:1.4rem;">
-                        <span style="font-size:16px">${params[0].data['日期']}</span>  <br>
-                        ${params[0].marker}    <span style="font-size:16px">${params[0].seriesName}:${params[0].data['龙门币订单']}</span>  <br>
-                        ${params[1].marker}    <span style="font-size:16px">${params[1].seriesName}:${params[0].data['赤金']}</span>  <br>
-                        ${params[2].marker}    <span style="font-size:16px">${params[2].seriesName}:${-params[0].data['反向龙门币']}</span>  <br>
-                        <span style="font-size:16px">赤金+作战录像:${params[0].data['制造总数']}</span>  <br>
+                        <span style="font-size:15px">${params[0].data['日期']}</span>  <br>
+                        ${params[0].marker}    <span style="font-size:14px">${params[0].seriesName}:${params[0].data['赤金']}</span>  <br>
+                        ${params[2].marker}    <span style="font-size:14px">${params[2].seriesName}:${params[0].data['龙门币订单']}</span>  <br>
+                        ${params[1].marker}    <span style="font-size:14px">${params[1].seriesName}:${params[0].data['作战录像']}</span>  <br>
+
                         </div>`
         return tip
       }
     },
     dataset: {
-      dimensions: ['日期',"作战录像",'反向龙门币','赤金'],
+      dimensions: ['日期',"赤金",'反向作战录像','龙门币订单'],
       source: ReportData.value
     },
     yAxis: {
@@ -197,14 +197,14 @@ const option_manufactor = computed(() => {
     },
     series: [
       {
-        name: '作战录像',
+        name: '赤金',
         type: 'bar',
-        color: '#64bfec',
+        color: '#f5744f',
+        position: 'inside',
         label: {
           show: true,
-          position: 'inside',
           formatter:function(params) {
-            if (params.value['作战录像'] === 0) {
+            if (params.value['龙门币订单'] === 0) {
               return ''
             }
           },
@@ -214,18 +214,20 @@ const option_manufactor = computed(() => {
         }
       },
       {
-        name: '订单收入',
+        name: '经验',
         type: 'bar',
         stack: 'Total',
         color: '#f3e28f',
+
+        position: 'inside',
         label: {
           show: true,
           formatter:function(params){
-            if(params.value['反向龙门币'] === 0){
+            if(params.value['反向作战录像'] === 0){
               return ''
             }
-            else if(params.value['反向龙门币'] < 0){
-              return -params.value['反向龙门币']
+            else if(params.value['反向作战录像'] < 0){
+              return -params.value['反向作战录像']
             }
           },
         },
@@ -234,10 +236,10 @@ const option_manufactor = computed(() => {
         }
       },
       {
-        name: '赤金',
+        name: '订单',
         type: 'bar',
         stack: 'Total',
-        color: '#f5744f',
+        color: '#64bfec',
         label: {
           show: true,
           formatter:function(params){
@@ -265,7 +267,7 @@ const option_lmb = computed(() => {
         }
       ],
       legend: {
-        data: ['生产赤金',"订单收入",'每单获取龙门币'],
+        data: ['赤金',"订单",'订单质量'],
         selected: {
           生产赤金: true,
           龙门币收入: true
@@ -340,7 +342,7 @@ const option_lmb = computed(() => {
       ],
       series: [
         {
-          name:"生产赤金",
+          name:"赤金",
           type: 'bar',
           yAxisIndex: 0,
           tooltip: {
@@ -350,7 +352,7 @@ const option_lmb = computed(() => {
           }
         },
         {
-          name:"订单收入",
+          name:"订单",
           type: 'bar',
           yAxisIndex: 0,
           color: '#faf0b5',
@@ -361,7 +363,7 @@ const option_lmb = computed(() => {
           },
         },
         {
-          name:"每单获取龙门币",
+          name:"订单质量",
           type: 'line',
           yAxisIndex: 1,
           tooltip: {
