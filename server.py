@@ -82,7 +82,11 @@ def load_plan_from_json():
 
     if request.method == "GET":
         global conf
-        plan = load_plan(conf["planFile"])
+        try:
+            plan = load_plan(conf["planFile"])
+        except PermissionError as e:
+            logger.error("plan.json路径错误,重置为plan.json")
+            plan = load_plan()
         return plan
     else:
         plan = request.json
@@ -331,9 +335,9 @@ def get_maa_adb_version():
 def get_maa_conn_presets():
     try:
         with open(
-            os.path.join(conf["maa_path"], "resource", "config.json"),
-            "r",
-            encoding="utf-8",
+                os.path.join(conf["maa_path"], "resource", "config.json"),
+                "r",
+                encoding="utf-8",
         ) as f:
             presets = [i["configName"] for i in json.load(f)["connection"]]
     except Exception:
@@ -382,10 +386,11 @@ def get_report_data():
                     "日期": date2str(
                         str2date(item["Unnamed: 0"]) - datetime.timedelta(days=1)
                     ),
-                    "作战录像": -item["作战录像"],
+                    "作战录像": item["作战录像"],
                     "赤金": item["赤金"],
                     "制造总数": int(item["赤金"] + item["作战录像"]),
                     "龙门币订单": item["龙门币订单"],
+                    "反向龙门币": -item["龙门币订单"],
                     "龙门币订单数": item["龙门币订单数"],
                     "每单获取龙门币": int(item["龙门币订单"] / item["龙门币订单数"]),
                 }
