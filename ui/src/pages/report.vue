@@ -146,7 +146,7 @@ const option_manufactor = computed(() => {
       containLabel: true
     },
     legend: {
-      data: ["订单收入",'赤金', '作战录像'],
+      data: ["订单",'赤金', '经验'],
       selected: {
         订单收入:true,
         赤金: true,
@@ -214,7 +214,7 @@ const option_manufactor = computed(() => {
         }
       },
       {
-        name: '作战录像',
+        name: '经验',
         type: 'bar',
         stack: 'Total',
         color: '#f3e28f',
@@ -236,7 +236,7 @@ const option_manufactor = computed(() => {
         }
       },
       {
-        name: '订单收入',
+        name: '订单',
         type: 'bar',
         stack: 'Total',
         color: '#64bfec',
@@ -267,7 +267,7 @@ const option_lmb = computed(() => {
         }
       ],
       legend: {
-        data: ['生产赤金',"订单收入",'每单获取龙门币'],
+        data: ['赤金',"订单",'订单质量'],
         selected: {
           生产赤金: true,
           龙门币收入: true
@@ -342,7 +342,7 @@ const option_lmb = computed(() => {
       ],
       series: [
         {
-          name:"生产赤金",
+          name:"赤金",
           type: 'bar',
           yAxisIndex: 0,
           tooltip: {
@@ -352,7 +352,7 @@ const option_lmb = computed(() => {
           }
         },
         {
-          name:"订单收入",
+          name:"订单",
           type: 'bar',
           yAxisIndex: 0,
           color: '#faf0b5',
@@ -363,7 +363,7 @@ const option_lmb = computed(() => {
           },
         },
         {
-          name:"每单获取龙门币",
+          name:"订单质量",
           type: 'line',
           yAxisIndex: 1,
           tooltip: {
