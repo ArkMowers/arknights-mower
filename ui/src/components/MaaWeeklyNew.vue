@@ -309,7 +309,7 @@ function clear() {
   <n-card>
     <n-checkbox v-model:checked="maa_enable" class="card-title"> Maa周计划-新 </n-checkbox>
 
-    有问题先看问号，2023年12月6日更新了 请点击一下下方表格
+    有问题先看问号，2023年12月6日更新了 请点击下方按钮
     <help-text>
       <p>先看上一个周计划问号</p>
       <p>如何不打本： <b>把所有的"打"都点了</b>或者点一次<b>清除当前配置以匹配最新表格</b></p>
