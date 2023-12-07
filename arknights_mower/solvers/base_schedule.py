@@ -330,9 +330,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         low_priority = []
         for idx, dorm in enumerate(self.op_data.dorm):
             logger.debug(f'开始计算{dorm}')
-            # Filter out resting priority low
-            if idx >= self.op_data.config.max_resting_count:
-                break
+            # # Filter out resting priority low
+            # if idx >= self.op_data.config.max_resting_count:
+            #     break
             # 如果已经plan了，则跳过
             if idx in planned_index or idx in low_priority:
                 continue
@@ -354,6 +354,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     __time = datetime.max
                 for x in __rest_agent:
                     # 如果同小组也是rest_in_full则取最大休息时间 否则忽略
+                    if x in low_priority:
+                        logger.debug("检测到回满组已经安排")
+                        _plan = {}
                     _idx, __dorm = self.op_data.get_dorm_by_name(x)
                     if x in self.op_data.operators.keys() and self.op_data.operators[x].rest_in_full:
                         if __dorm is not None and __dorm.time is not None:
@@ -427,7 +430,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             try:
                 if len(self.task.plan.keys()) > 0:
                     get_time = False
-                    if TaskTypes.SHIFT_ON == self.task.type:
+                    if TaskTypes.SHIFT_OFF == self.task.type:
                         get_time = True
                     if TaskTypes.RUN_ORDER == self.task.type and not self.refresh_connecting and self.op_data.config.run_order_buffer_time > 0:
                         logger.info("退回主界面以确保跑单前的登录状态")
@@ -528,9 +531,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 try:
                     self.enter_room(room)
                     _mood_data = self.get_agent_from_room(room)
-                    mood_info = [f"干员: {item['agent']}, 心情: {round(item['mood'], 3)}" for item in _mood_data]
-                    logger.info(f'房间 {self.translate_room(room)}  {mood_info}')
-                    # logger.info(f'房间 {room} 心情为：{_mood_data}')
+                    logger.info(f'房间 {room} 心情为：{_mood_data}')
                     break
                 except Exception as e:
                     if error_count > 3: raise e
@@ -802,7 +803,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     self.op_data.swap_plan(index, refresh=True)
                     changed = True
             if changed:
-                self.agent_get_mood()
+                self.tasks.append(SchedulerTask(task_plan={}))
         except Exception as e:
             logger.exception(e)
 
