@@ -345,6 +345,7 @@ const option_lmb = computed(() => {
           name:"赤金",
           type: 'bar',
           yAxisIndex: 0,
+          color: '#f5744f',
           tooltip: {
             valueFormatter: function (value) {
               return value
@@ -355,7 +356,7 @@ const option_lmb = computed(() => {
           name:"订单",
           type: 'bar',
           yAxisIndex: 0,
-          color: '#faf0b5',
+          color: '#64bfec',
           tooltip: {
             valueFormatter: function (value) {
               return value
