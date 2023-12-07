@@ -285,92 +285,92 @@ const option_lmb = computed(() => {
       }
     },
 
-      toolbox: {
-        feature: {
-          dataView: { show: false, readOnly: false },
-          magicType: { show: true, type: ['line', 'bar'] },
-          restore: { show: true },
-          saveAsImage: {
-            show: true,
-            backgroundColor: '#FFFFFF'
+    toolbox: {
+      feature: {
+        dataView: { show: false, readOnly: false },
+        magicType: { show: true, type: ['line', 'bar'] },
+        restore: { show: true },
+        saveAsImage: {
+          show: true,
+          backgroundColor: '#FFFFFF'
+        }
+      }
+    },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: {
+        type: 'cross',
+        crossStyle: {
+          color: '#999'
+        }
+      }
+    },
+    dataset: {
+      dimensions: ['日期', '赤金', '龙门币订单', '每单获取龙门币'],
+      source: ReportData.value
+    },
+    xAxis: {
+      type: 'category',
+      axisPointer: {
+        type: 'shadow'
+      }
+    },
+    yAxis: [
+      {
+        type: 'value',
+        axisLine: {
+          show: true,
+          symbol: ['none', 'path://M5,20 L5,5 L8,8 L5,2 L2,8 L5,5 L5.3,6 L5.3,20 '],
+          symbolOffset: 10, //箭头距离x轴末端距离
+          symbolSize: [35, 38] //箭头的宽高
+        },
+        axisLabel: {
+          formatter: '{value}'
+        }
+      },
+      {
+        type: 'value',
+        axisLabel: {
+          formatter: '{value}'
+        }
+      }
+    ],
+    series: [
+      {
+        name: '赤金',
+        type: 'bar',
+        yAxisIndex: 0,
+        color: '#f5744f',
+        tooltip: {
+          valueFormatter: function (value) {
+            return value
           }
         }
       },
-      tooltip: {
-        trigger: 'axis',
-        axisPointer: {
-          type: 'cross',
-          crossStyle: {
-            color: '#999'
+      {
+        name: '订单',
+        type: 'bar',
+        yAxisIndex: 0,
+        color: '#64bfec',
+        tooltip: {
+          valueFormatter: function (value) {
+            return value
           }
         }
       },
-      dataset: {
-        dimensions: ['日期', '赤金',"龙门币订单","每单获取龙门币"],
-        source: ReportData.value
-      },
-      xAxis: {
-        type: 'category',
-        axisPointer: {
-          type: 'shadow'
-        }
-      },
-      yAxis: [
-        {
-          type: 'value',
-          axisLine: {
-            show: true,
-            symbol: ['none', 'path://M5,20 L5,5 L8,8 L5,2 L2,8 L5,5 L5.3,6 L5.3,20 '],
-            symbolOffset: 10, //箭头距离x轴末端距离
-            symbolSize: [35, 38] //箭头的宽高
-          },
-          axisLabel: {
-            formatter: '{value}'
-          }
-        },
-        {
-          type: 'value',
-          axisLabel: {
-            formatter: '{value}'
+      {
+        name: '订单质量',
+        type: 'line',
+        yAxisIndex: 1,
+        tooltip: {
+          valueFormatter: function (value) {
+            return value
           }
         }
-      ],
-      series: [
-        {
-          name:"赤金",
-          type: 'bar',
-          yAxisIndex: 0,
-          color: '#f5744f',
-          tooltip: {
-            valueFormatter: function (value) {
-              return value
-            }
-          }
-        },
-        {
-          name:"订单",
-          type: 'bar',
-          yAxisIndex: 0,
-          color: '#64bfec',
-          tooltip: {
-            valueFormatter: function (value) {
-              return value
-            }
-          },
-        },
-        {
-          name:"订单质量",
-          type: 'line',
-          yAxisIndex: 1,
-          tooltip: {
-            valueFormatter: function (value) {
-              return value
-            }
-          },
-        },
-      ]
-    }
-  })
+      }
+    ]
+  }
+})
 
 const option_orundum = computed(() => {
   return {
