@@ -1,5 +1,4 @@
 <template>
-
   <div>
     <h1 class="page-title">
       基建报表
@@ -47,7 +46,7 @@ import {
   TooltipComponent,
   DatasetComponent,
   GridComponent,
-  DataZoomComponent,
+  DataZoomComponent
 } from 'echarts/components'
 import VChart, { THEME_KEY } from 'vue-echarts'
 import { ref, provide, onMounted, computed } from 'vue'
@@ -87,21 +86,19 @@ const { getReportData, getOrundumData } = reportStore
 const show_iron_chart = ref(false)
 const show_orundum_chart = ref(false)
 const sum_orundum = ref(0)
-const show_alert=ref(false)
+const show_alert = ref(false)
 const ReportData = ref([])
 const HalfMonthData = ref([])
 onMounted(async () => {
   try {
     ReportData.value = await getReportData()
-    HalfMonthData.value = await getOrundumData  ()
+    HalfMonthData.value = await getOrundumData()
     show_iron_chart.value = true
     if (HalfMonthData.value.length > 0) {
-
       show_orundum_chart.value = true
       sum_orundum.value = HalfMonthData.value[HalfMonthData.value.length - 1]['累计制造合成玉']
     }
-  }
-  catch{
+  } catch {
     show_alert.value = true
   }
 })
@@ -121,22 +118,23 @@ const option_manufactor = computed(() => {
         }
       }
     },
-    dataZoom: [//滚动条
+    dataZoom: [
+      //滚动条
       {
         show: false,
         type: 'slider',
         realtime: true,
-        startValue: ReportData.value.length-7,
-        endValue:ReportData.value.length,
+        startValue: ReportData.value.length - 7,
+        endValue: ReportData.value.length,
         yAxisIndex: [0],
         bottom: '10',
         left: '30',
         height: 10,
         borderColor: 'rgba(0,0,0,0)',
         textStyle: {
-          color: '#05D5FF',
-        },
-      },
+          color: '#05D5FF'
+        }
+      }
     ],
 
     grid: {
@@ -146,11 +144,11 @@ const option_manufactor = computed(() => {
       containLabel: true
     },
     legend: {
-      data: ["订单",'赤金', '经验'],
+      data: ['订单', '赤金', '经验'],
       selected: {
-        订单收入:true,
+        订单收入: true,
         赤金: true,
-        龙门币订单: true,
+        龙门币订单: true
       }
     },
     tooltip: {
@@ -162,8 +160,8 @@ const option_manufactor = computed(() => {
         }
       },
 
-      formatter: function(params){
-        const tip=`<div style="font-size:1.4rem;">
+      formatter: function (params) {
+        const tip = `<div style="font-size:1.4rem;">
                         <span style="font-size:15px">${params[0].data['日期']}</span>  <br>
                         ${params[0].marker}    <span style="font-size:14px">${params[0].seriesName}:${params[0].data['赤金']}</span>  <br>
                         ${params[2].marker}    <span style="font-size:14px">${params[2].seriesName}:${params[0].data['龙门币订单']}</span>  <br>
@@ -174,7 +172,7 @@ const option_manufactor = computed(() => {
       }
     },
     dataset: {
-      dimensions: ['日期',"赤金",'反向作战录像','龙门币订单'],
+      dimensions: ['日期', '赤金', '反向作战录像', '龙门币订单'],
       source: ReportData.value
     },
     yAxis: {
@@ -184,16 +182,15 @@ const option_manufactor = computed(() => {
       },
       axisTick: {
         show: false
-      },
+      }
     },
     xAxis: {
       axisLabel: {
         formatter: function (params) {
           return Math.abs(params)
         },
-        scale: true, // 设置数据自动缩放，要不然数据多的话就堆一块了
+        scale: true // 设置数据自动缩放，要不然数据多的话就堆一块了
       }
-
     },
     series: [
       {
@@ -203,11 +200,11 @@ const option_manufactor = computed(() => {
         position: 'inside',
         label: {
           show: true,
-          formatter:function(params) {
+          formatter: function (params) {
             if (params.value['龙门币订单'] === 0) {
               return ''
             }
-          },
+          }
         },
         emphasis: {
           focus: 'series'
@@ -222,14 +219,13 @@ const option_manufactor = computed(() => {
         position: 'inside',
         label: {
           show: true,
-          formatter:function(params){
-            if(params.value['反向作战录像'] === 0){
+          formatter: function (params) {
+            if (params.value['反向作战录像'] === 0) {
               return ''
-            }
-            else if(params.value['反向作战录像'] < 0){
+            } else if (params.value['反向作战录像'] < 0) {
               return -params.value['反向作战录像']
             }
-          },
+          }
         },
         emphasis: {
           focus: 'series'
@@ -242,14 +238,13 @@ const option_manufactor = computed(() => {
         color: '#64bfec',
         label: {
           show: true,
-          formatter:function(params){
-            if(params.value['赤金'] === 0){
+          formatter: function (params) {
+            if (params.value['赤金'] === 0) {
               return ''
-            }
-            else if(params.value['赤金'] < 0){
+            } else if (params.value['赤金'] < 0) {
               return -params.value['赤金']
             }
-          },
+          }
         },
         emphasis: {
           focus: 'series'
@@ -260,123 +255,122 @@ const option_manufactor = computed(() => {
 })
 
 const option_lmb = computed(() => {
-    return {
-      title: [
-        {
-          text: '赤金贸易'
-        }
-      ],
-      legend: {
-        data: ['赤金',"订单",'订单质量'],
-        selected: {
-          生产赤金: true,
-          龙门币收入: true
-        }
-      },
-      dataZoom: {
-        show: false,
-        type: 'slider',
-        realtime: true,
-        startValue: ReportData.value.length-7, // 重点
-        // // 重点-dataX.length表示x轴数据长度
-        endValue: ReportData.value.length,
-        xAxisIndex: [0],
-        bottom: '10',
-        left: '30',
-        height: 10,
-        borderColor: 'rgba(0,0,0,0)',
-        textStyle: {
-          color: '#05D5FF',
-        }
-      },
+  return {
+    title: [
+      {
+        text: '赤金贸易'
+      }
+    ],
+    legend: {
+      data: ['赤金', '订单', '订单质量'],
+      selected: {
+        生产赤金: true,
+        龙门币收入: true
+      }
+    },
+    dataZoom: {
+      show: false,
+      type: 'slider',
+      realtime: true,
+      startValue: ReportData.value.length - 7, // 重点
+      // // 重点-dataX.length表示x轴数据长度
+      endValue: ReportData.value.length,
+      xAxisIndex: [0],
+      bottom: '10',
+      left: '30',
+      height: 10,
+      borderColor: 'rgba(0,0,0,0)',
+      textStyle: {
+        color: '#05D5FF'
+      }
+    },
 
-      toolbox: {
-        feature: {
-          dataView: { show: false, readOnly: false },
-          magicType: { show: true, type: ['line', 'bar'] },
-          restore: { show: true },
-          saveAsImage: {
-            show: true,
-            backgroundColor: '#FFFFFF'
+    toolbox: {
+      feature: {
+        dataView: { show: false, readOnly: false },
+        magicType: { show: true, type: ['line', 'bar'] },
+        restore: { show: true },
+        saveAsImage: {
+          show: true,
+          backgroundColor: '#FFFFFF'
+        }
+      }
+    },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: {
+        type: 'cross',
+        crossStyle: {
+          color: '#999'
+        }
+      }
+    },
+    dataset: {
+      dimensions: ['日期', '赤金', '龙门币订单', '每单获取龙门币'],
+      source: ReportData.value
+    },
+    xAxis: {
+      type: 'category',
+      axisPointer: {
+        type: 'shadow'
+      }
+    },
+    yAxis: [
+      {
+        type: 'value',
+        axisLine: {
+          show: true,
+          symbol: ['none', 'path://M5,20 L5,5 L8,8 L5,2 L2,8 L5,5 L5.3,6 L5.3,20 '],
+          symbolOffset: 10, //箭头距离x轴末端距离
+          symbolSize: [35, 38] //箭头的宽高
+        },
+        axisLabel: {
+          formatter: '{value}'
+        }
+      },
+      {
+        type: 'value',
+        axisLabel: {
+          formatter: '{value}'
+        }
+      }
+    ],
+    series: [
+      {
+        name: '赤金',
+        type: 'bar',
+        yAxisIndex: 0,
+        color: '#f5744f',
+        tooltip: {
+          valueFormatter: function (value) {
+            return value
           }
         }
       },
-      tooltip: {
-        trigger: 'axis',
-        axisPointer: {
-          type: 'cross',
-          crossStyle: {
-            color: '#999'
+      {
+        name: '订单',
+        type: 'bar',
+        yAxisIndex: 0,
+        color: '#64bfec',
+        tooltip: {
+          valueFormatter: function (value) {
+            return value
           }
         }
       },
-      dataset: {
-        dimensions: ['日期', '赤金',"龙门币订单","每单获取龙门币"],
-        source: ReportData.value
-      },
-      xAxis: {
-        type: 'category',
-        axisPointer: {
-          type: 'shadow'
-        }
-      },
-      yAxis: [
-        {
-          type: 'value',
-          axisLine: {
-            show: true,
-            symbol: ['none', 'path://M5,20 L5,5 L8,8 L5,2 L2,8 L5,5 L5.3,6 L5.3,20 '],
-            symbolOffset: 10, //箭头距离x轴末端距离
-            symbolSize: [35, 38] //箭头的宽高
-          },
-          axisLabel: {
-            formatter: '{value}'
-          }
-        },
-        {
-          type: 'value',
-          axisLabel: {
-            formatter: '{value}'
+      {
+        name: '订单质量',
+        type: 'line',
+        yAxisIndex: 1,
+        tooltip: {
+          valueFormatter: function (value) {
+            return value
           }
         }
-      ],
-      series: [
-        {
-          name:"赤金",
-          type: 'bar',
-          yAxisIndex: 0,
-          color: '#f5744f',
-          tooltip: {
-            valueFormatter: function (value) {
-              return value
-            }
-          }
-        },
-        {
-          name:"订单",
-          type: 'bar',
-          yAxisIndex: 0,
-          color: '#64bfec',
-          tooltip: {
-            valueFormatter: function (value) {
-              return value
-            }
-          },
-        },
-        {
-          name:"订单质量",
-          type: 'line',
-          yAxisIndex: 1,
-          tooltip: {
-            valueFormatter: function (value) {
-              return value
-            }
-          },
-        },
-      ]
-    }
-  })
-
+      }
+    ]
+  }
+})
 
 const option_orundum = computed(() => {
   return {
@@ -467,7 +461,6 @@ const option_orundum = computed(() => {
     ]
   }
 })
-
 </script>
 
 <style scoped>

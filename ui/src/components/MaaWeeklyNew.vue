@@ -37,7 +37,8 @@ const showstage = (stage) => {
     'PR-A-1': '重装医疗1',
     'PR-B-1': '狙击术士1',
     'PR-C-1': '先锋辅助1',
-    'PR-D-1': '近卫特种1'
+    'PR-D-1': '近卫特种1',
+    '': '上次作战'
   }
 
   if (stage in valueMapping) {
@@ -110,6 +111,16 @@ function create_tag(label) {
 const aaabbbccc = [
   {
     stage: 'Annihilation',
+    周一: 1,
+    周二: 1,
+    周三: 1,
+    周四: 1,
+    周五: 1,
+    周六: 1,
+    周日: 1
+  },
+  {
+    stage: '',
     周一: 1,
     周二: 1,
     周三: 1,
@@ -298,7 +309,7 @@ function clear() {
   <n-card>
     <n-checkbox v-model:checked="maa_enable" class="card-title"> Maa周计划-新 </n-checkbox>
 
-    有打本问题，理智问题，先看问号
+    有问题先看问号，2023年12月6日更新了 请点击下方按钮
     <help-text>
       <p>先看上一个周计划问号</p>
       <p>如何不打本： <b>把所有的"打"都点了</b>或者点一次<b>清除当前配置以匹配最新表格</b></p>
@@ -355,7 +366,7 @@ function clear() {
           <tr v-for="(plan, index) in maa_weekly_plan1" :key="plan.weekday1">
             <td>
               <n-select
-                v-if="index > 0 && index < 4"
+                v-if="index > 1 && index < 5"
                 v-model:value="plan.stage"
                 multiple
                 filterable

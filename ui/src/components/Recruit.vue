@@ -15,7 +15,6 @@ const {
 import { inject } from 'vue'
 
 const mobile = inject('mobile')
-
 </script>
 
 <template>
@@ -26,16 +25,17 @@ const mobile = inject('mobile')
       </n-checkbox>
     </template>
     <n-form
-        :label-placement="mobile ? 'top' : 'left'"
-        :show-feedback="false"
-        label-width="140"
-        label-align="left"
+      :label-placement="mobile ? 'top' : 'left'"
+      :show-feedback="false"
+      label-width="140"
+      label-align="left"
     >
       <n-form-item>
         <template #label>
           <span>启动间隔</span>
         </template>
-        <n-input-number class="hour-input" v-model:value="recruit_gap" /><div>小时（可填小数）</div>
+        <n-input-number class="hour-input" v-model:value="recruit_gap" />
+        <div>小时（可填小数）</div>
       </n-form-item>
       <n-form-item>
         <template #label>
@@ -65,7 +65,7 @@ const mobile = inject('mobile')
           </n-space>
         </n-radio-group>
       </n-form-item>
-      <n-form-item  v-if= "recruit_auto_5===2">
+      <n-form-item v-if="recruit_auto_5 === 2">
         <n-checkbox v-model:checked="recruit_auto_only5">五星词条组合唯一时自动选择</n-checkbox>
       </n-form-item>
       <n-form-item>
@@ -75,7 +75,6 @@ const mobile = inject('mobile')
         <n-checkbox v-model:checked="recruit_robot"> 保留支援机械标签 </n-checkbox>
       </n-form-item>
     </n-form>
-
   </n-card>
 </template>
 
