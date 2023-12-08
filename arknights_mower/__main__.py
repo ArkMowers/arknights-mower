@@ -401,6 +401,12 @@ def simulate():
                                     restart_simulator(base_scheduler.simulator, start=False)
                                 elif base_scheduler.exit_game_when_idle:
                                     base_scheduler.device.exit()
+                            body = task_template.render(
+                                tasks=[
+                                    obj.format(timezone_offset) for obj in base_scheduler.tasks
+                                ]
+                            )
+                            base_scheduler.send_message(body, subject, "html")
                             time.sleep(remaining_time)
                             if base_scheduler.close_simulator_when_idle:
                                 restart_simulator(base_scheduler.simulator, stop=False)
