@@ -68,6 +68,7 @@ declare module '@vue/runtime-core' {
     NTimePicker: typeof import('naive-ui')['NTimePicker']
     NTooltip: typeof import('naive-ui')['NTooltip']
     NTransfer: typeof import('naive-ui')['NTransfer']
+    NWatermark: typeof import('naive-ui')['NWatermark']
     PlanEditor: typeof import('./src/components/PlanEditor.vue')['default']
     Recruit: typeof import('./src/components/Recruit.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']

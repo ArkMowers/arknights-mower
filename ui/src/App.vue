@@ -10,6 +10,18 @@
     <n-dialog-provider>
       <n-message-provider>
         <n-loading-bar-provider>
+          <n-watermark
+            :content="watermarkData"
+            cross
+            fullscreen
+            :font-size="28"
+            :line-height="16"
+            :width="384"
+            :height="384"
+            :x-offset="12"
+            :y-offset="60"
+            :rotate="-15"
+          />
           <n-layout :has-sider="!mobile" class="outer-layout">
             <n-layout-sider
               v-if="!mobile"
@@ -185,6 +197,13 @@ import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
 import { useMowerStore } from '@/stores/mower'
 
+import { usewatermarkStore } from '@/stores/watermark'
+
+const watermarkStore = usewatermarkStore()
+const { getwatermarkinfo } = watermarkStore
+
+const watermarkData = ref([])
+
 const config_store = useConfigStore()
 const { load_config, load_shop } = config_store
 const { start_automatically, theme } = storeToRefs(config_store)
@@ -232,7 +251,7 @@ onMounted(async () => {
   loaded.value = true
 
   const r = RegExp(operators.value.map((x) => "'" + x.value).join('|'))
-
+  watermarkData.value = await getwatermarkinfo()
   hljs.registerLanguage('mower', () => ({
     contains: [
       {
