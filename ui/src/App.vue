@@ -14,9 +14,9 @@
             :content="watermarkData"
             cross
             fullscreen
-            :font-size="16"
-            :line-height="32"
-            :width="400"
+            :font-size="28"
+            :line-height="16"
+            :width="384"
             :height="384"
             :x-offset="12"
             :y-offset="60"
