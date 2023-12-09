@@ -4,7 +4,7 @@ export const routes = [
     children: [
       {
         path: '',
-        component: () => import('@/pages/Readme.vue'),
+        component: () => import('@/pages/readme.vue'),
         meta: { title: '帮助' },
         name: 'readme'
       },
