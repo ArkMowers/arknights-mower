@@ -46,6 +46,12 @@
                 <n-tab name="主页" @click="$router.push('/')">
                   <div style="display: flex; flex-direction: column; align-items: center">
                     <n-icon size="20" style="margin-bottom: -1px" :component="BookOutline" />
+                    看我
+                  </div>
+                </n-tab>
+                <n-tab name="日志" @click="$router.push('/log')">
+                  <div style="display: flex; flex-direction: column; align-items: center">
+                    <n-icon size="20" style="margin-bottom: -1px" :component="BookOutline" />
                     日志
                   </div>
                 </n-tab>
@@ -136,7 +142,12 @@ function renderIcon(icon) {
 import { RouterLink } from 'vue-router'
 const menuOptions = computed(() => [
   {
-    label: () => h(RouterLink, { to: { path: '/' } }, { default: () => '运行日志' }),
+    label: () => h(RouterLink, { to: { path: '/' } }, { default: () => '读我' }),
+    icon: renderIcon(BookOutline),
+    key: 'readme'
+  },
+  {
+    label: () => h(RouterLink, { to: { path: '/log' } }, { default: () => '运行日志' }),
     icon: renderIcon(BookOutline),
     key: 'go-to-log'
   },
