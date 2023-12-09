@@ -37,6 +37,7 @@
 
       <p>
         （施工中）基建与 Mower 入门指南：<n-a
+          target="_blank"
           href="https://blog.zhaozuohong.vip/categories/arknights-mower/"
           >https://blog.zhaozuohong.vip/categories/arknights-mower/</n-a
         >
@@ -53,6 +54,7 @@
       </p>
       <p>
         从源码运行 mower：<n-a
+          target="_blank"
           href="https://blog.zhaozuohong.vip/2023/08/02/run-arknights-mower-from-source/"
           >https://blog.zhaozuohong.vip/2023/08/02/run-arknights-mower-from-source/</n-a
         >
@@ -61,6 +63,7 @@
       <ul>
         <li>
           （推荐）群文件内获取新版更新器（更新器源码：<n-a
+            target="_blank"
             href="https://github.com/Funny-ppt/MowerUpdater"
             >https://github.com/Funny-ppt/MowerUpdater</n-a
           >）
@@ -74,12 +77,14 @@
         </li>
         <li>
           （不推荐）从 GitHub Actions 下载 CI 最新构建产物：<n-a
+            target="_blank"
             href="https://github.com/ArkMowers/arknights-mower/actions"
             >https://github.com/ArkMowers/arknights-mower/actions</n-a
           >
         </li>
         <li>
           （备用）从 GitHub Release 下载：<n-a
+            target="_blank"
             href="https://github.com/ArkMowers/arknights-mower/releases"
             >https://github.com/ArkMowers/arknights-mower/releases</n-a
           >
@@ -114,6 +119,7 @@
       <p>
         罗德岛物价局（材料定价）：<n-a
           href="https://github.com/Bidgecfah/Rhodes-Island-Bureau-of-Price"
+          target="_blank"
           >https://github.com/Bidgecfah/Rhodes-Island-Bureau-of-Price</n-a
         >
       </p>
@@ -138,6 +144,7 @@
       <p>Maa：<n-a target="_blank" href="https://maa.plus/">https://maa.plus/</n-a></p>
       <p>
         明日方舟定价理论（施工中）：<n-a
+          target="_blank"
           href="https://bidgecfah.gitee.io/2023/07/12/%E6%98%8E%E6%97%A5%E6%96%B9%E8%88%9F%E5%AE%9A%E4%BB%B7%E7%90%86%E8%AE%BA/"
           >明日方舟定价理论</n-a
         >
