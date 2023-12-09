@@ -351,6 +351,14 @@ def get_mood_ratios():
 
     return record.get_mood_ratios()
 
+@app.route("/getwatermark")
+
+def getwatermark():
+
+    from arknights_mower.__init__ import __version__
+
+    return __version__
+
 
 def str2date(target: str):
     try:

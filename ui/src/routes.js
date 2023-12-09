@@ -4,6 +4,12 @@ export const routes = [
     children: [
       {
         path: '',
+        component: () => import('@/pages/Readme.vue'),
+        meta: { title: '帮助' },
+        name: 'readme'
+      },
+      {
+        path: 'log',
         component: () => import('@/pages/Log.vue'),
         meta: { title: '日志' },
         name: 'log'

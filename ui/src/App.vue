@@ -10,6 +10,18 @@
     <n-dialog-provider>
       <n-message-provider>
         <n-loading-bar-provider>
+          <n-watermark
+            :content="watermarkData"
+            cross
+            fullscreen
+            :font-size="16"
+            :line-height="32"
+            :width="400"
+            :height="384"
+            :x-offset="12"
+            :y-offset="60"
+            :rotate="-15"
+          />
           <n-layout :has-sider="!mobile" class="outer-layout">
             <n-layout-sider
               v-if="!mobile"
@@ -32,6 +44,12 @@
             <n-layout-footer v-if="mobile">
               <n-tabs type="line" justify-content="space-evenly" size="small">
                 <n-tab name="主页" @click="$router.push('/')">
+                  <div style="display: flex; flex-direction: column; align-items: center">
+                    <n-icon size="20" style="margin-bottom: -1px" :component="BookOutline" />
+                    看我
+                  </div>
+                </n-tab>
+                <n-tab name="日志" @click="$router.push('/log')">
                   <div style="display: flex; flex-direction: column; align-items: center">
                     <n-icon size="20" style="margin-bottom: -1px" :component="BookOutline" />
                     日志
@@ -124,7 +142,12 @@ function renderIcon(icon) {
 import { RouterLink } from 'vue-router'
 const menuOptions = computed(() => [
   {
-    label: () => h(RouterLink, { to: { path: '/' } }, { default: () => '运行日志' }),
+    label: () => h(RouterLink, { to: { path: '/' } }, { default: () => '读我' }),
+    icon: renderIcon(BookOutline),
+    key: 'readme'
+  },
+  {
+    label: () => h(RouterLink, { to: { path: '/log' } }, { default: () => '运行日志' }),
     icon: renderIcon(BookOutline),
     key: 'go-to-log'
   },
@@ -185,6 +208,13 @@ import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
 import { useMowerStore } from '@/stores/mower'
 
+import { usewatermarkStore } from '@/stores/watermark'
+
+const watermarkStore = usewatermarkStore()
+const { getwatermarkinfo } = watermarkStore
+
+const watermarkData = ref([])
+
 const config_store = useConfigStore()
 const { load_config, load_shop } = config_store
 const { start_automatically, theme } = storeToRefs(config_store)
@@ -232,7 +262,7 @@ onMounted(async () => {
   loaded.value = true
 
   const r = RegExp(operators.value.map((x) => "'" + x.value).join('|'))
-
+  watermarkData.value = await getwatermarkinfo()
   hljs.registerLanguage('mower', () => ({
     contains: [
       {
