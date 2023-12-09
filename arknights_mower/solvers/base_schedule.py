@@ -862,7 +862,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         if ag.resting_priority == 'high':
                             last_high = ag
                     # 如果低优先的心情低于高优先
-                    if first_low.current_mood() - last_high.current_mood() < -4:
+                    if first_low is None or last_high is None:
+                        pass
+                    elif first_low.current_mood() - last_high.current_mood() < -4:
                         logger.info("低优先级干员心情过低，自动按心情切换优先级")
                         new_plan = True
                 workaholic_count = 0
