@@ -9,7 +9,7 @@ from .utils.log import logger
 from .utils.param import ParamError, parse_operation_params
 
 
-def mail(args: list[str] = [], device: Device = None):
+def mail(device: Device = None):
     """
     mail
         自动收取邮件
