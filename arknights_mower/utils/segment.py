@@ -65,7 +65,7 @@ def credit(img: tp.Image, draw: bool = False) -> list[ tp.Scope ]:
             up_2 += 1
 
         down = height - 1
-        while average(down) < 180:
+        while average(down) < 150:
             down -= 1
 
         right = width - 1
