@@ -171,7 +171,9 @@ class DigitReader:
         l = [str(result[k]) for k in sorted(result)]
         return int("".join(l))
 
-    def get_creidt_number(self, digit_part):
+
+
+    def get_credict_number(self, digit_part):
         result = {}
         digit_part = cv2.cvtColor(digit_part, cv2.COLOR_RGB2GRAY)
 

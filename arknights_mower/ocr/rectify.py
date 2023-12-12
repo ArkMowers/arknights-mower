@@ -36,3 +36,7 @@ def ocr_rectify(img, pre, valid, text=''):
         ocr_error[pre_res] = res
         pre_res = res
     return pre_res
+
+
+def ocr_rectify_shop(pre):
+    return ocr_error[pre]
