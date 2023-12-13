@@ -7,7 +7,7 @@
   </div>
   <iframe
     src="/docs/index.html"
-    sandbox="allow-popups allow-scripts allow-same-origin"
+    sandbox="allow-popups allow-scripts allow-same-origin allow-forms"
     style="width: 100%; height: 100vh; border: none"
   />
 </template>
