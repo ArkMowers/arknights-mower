@@ -185,6 +185,7 @@ if __name__ == "__main__":
         height=height,
         text_select=True,
         hidden=is_win,
+        confirm_close=True,
     )
 
     window.events.resized += on_resized
