@@ -475,7 +475,13 @@ class BaseSolver:
     def handle_email_error(self, email_config, msg):
         for delay in self.exponential_backoff():
             try:
-                s = smtplib.SMTP_SSL("smtp.qq.com", 465, timeout=10.0)
+                if email_config["custom_smtp_server"]["enable"]:
+                    smtp_server = email_config["custom_smtp_server"]["server"]
+                    ssl_port = email_config["custom_smtp_server"]["ssl_port"]
+                else:
+                    smtp_server = "smtp.qq.com"
+                    ssl_port = 465
+                s = smtplib.SMTP_SSL(smtp_server, ssl_port, timeout=10.0)
                 s.login(email_config['account'], email_config['pass_code'])
                 s.sendmail(email_config['account'], email_config.get('receipts', []), msg.as_string())
                 logger.info("邮件发送成功")

@@ -502,7 +502,13 @@ def test_email():
     msg["Subject"] = conf["mail_subject"] + "测试邮件"
     msg["From"] = conf["account"]
     try:
-        s = smtplib.SMTP_SSL("smtp.qq.com", 465, timeout=10.0)
+        if conf["custom_smtp_server"]["enable"]:
+            smtp_server = conf["custom_smtp_server"]["server"]
+            ssl_port = conf["custom_smtp_server"]["ssl_port"]
+        else:
+            smtp_server = "smtp.qq.com"
+            ssl_port = 465
+        s = smtplib.SMTP_SSL(smtp_server, ssl_port, timeout=10.0)
         s.login(conf["account"], conf["pass_code"])
         s.sendmail(conf["account"], conf["account"], msg.as_string())
     except Exception as e:
