@@ -432,6 +432,10 @@ ul {
     max-width: 600px;
     margin-top: 10px;
   }
+  .home-container {
+    width: calc(100% - 24px);
+    max-width: 600px;
+  }
 }
 /*双栏 大于1400的内容 */
 @media (min-width: 1400px) {

@@ -1,5 +1,5 @@
 <template>
-  <div style="width: 80%">
+  <div class="home-container">
     <!-- <h2>更新日志</h2> -->
     <h2>资源合集</h2>
     <div>

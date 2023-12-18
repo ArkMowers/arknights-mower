@@ -191,7 +191,7 @@ async function import_plan() {
 <template>
   <trigger-dialog />
   <task-dialog />
-  <div class="home-container plan-bar w-980 mx-auto mt-12">
+  <div class="home-container plan-bar w-980 mx-auto mt-12 mw-980">
     <n-input type="textarea" :autosize="true" v-model:value="plan_file" />
     <n-button @click="open_plan_file">...</n-button>
     <n-button @click="import_plan">
@@ -207,7 +207,7 @@ async function import_plan() {
       导出图片
     </n-button>
   </div>
-  <div class="home-container plan-bar w-980 mx-auto">
+  <div class="home-container plan-bar w-980 mx-auto mw-980">
     <n-button
       :disabled="sub_plan == 'main'"
       @click="sub_plan = sub_plan == 0 ? 'main' : sub_plan - 1"
@@ -250,9 +250,9 @@ async function import_plan() {
       删除此副表
     </n-button>
   </div>
-  <plan-editor ref="plan_editor" class="w-980 mx-auto" />
+  <plan-editor ref="plan_editor" class="w-980 mx-auto mw-980 px-12" />
   <n-form
-    class="w-980 mx-auto mb-12"
+    class="w-980 mx-auto mb-12 px-12 mw-980"
     :label-placement="mobile ? 'top' : 'left'"
     :show-feedback="false"
     label-width="160"
@@ -393,10 +393,18 @@ async function import_plan() {
   margin-bottom: 12px;
 }
 
+.px-12 {
+  padding: 0 12px;
+}
+
+.mw-980 {
+  min-width: 980px;
+}
+
 .plan-bar {
   flex-direction: row;
   flex-grow: 0;
   gap: 6px;
-  padding: 0;
+  padding: 0 12px;
 }
 </style>

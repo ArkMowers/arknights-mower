@@ -213,7 +213,7 @@ import { usewatermarkStore } from '@/stores/watermark'
 const watermarkStore = usewatermarkStore()
 const { getwatermarkinfo } = watermarkStore
 
-const watermarkData = ref("mower")
+const watermarkData = ref('mower')
 
 const config_store = useConfigStore()
 const { load_config, load_shop } = config_store
