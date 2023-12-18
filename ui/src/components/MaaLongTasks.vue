@@ -28,10 +28,10 @@ const mobile = inject('mobile')
     </template>
     <n-form :label-placement="mobile ? 'top' : 'left'" :show-feedback="false">
       <n-grid cols="2">
-        <n-form-item-gi label="开始时间：">
+        <n-form-item-gi label="开始时间">
           <n-time-picker format="H:mm" v-model:formatted-value="maa_rg_sleep_max" />
         </n-form-item-gi>
-        <n-form-item-gi label="停止时间：">
+        <n-form-item-gi label="停止时间">
           <n-time-picker format="H:mm" v-model:formatted-value="maa_rg_sleep_min" />
         </n-form-item-gi>
       </n-grid>

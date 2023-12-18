@@ -18,6 +18,11 @@ async function test_email() {
   const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/test-email`)
   test_result.value = response.data
 }
+
+const email_options = [
+  { label: 'QQ邮箱', value: false },
+  { label: '自定义邮箱', value: true }
+]
 </script>
 
 <template>
@@ -26,11 +31,18 @@ async function test_email() {
       <n-checkbox v-model:checked="mail_enable" class="email-title">
         <div class="card-title">邮件提醒</div>
         <div class="expand"></div>
-        <n-radio-group class="email-mode" v-model:value="custom_smtp_server.enable">
-          <n-radio-button :value="false" label="QQ邮箱" />
-          <n-radio-button :value="true" label="自定义邮箱" />
-        </n-radio-group>
       </n-checkbox>
+      <n-button
+        v-if="mobile"
+        @click="custom_smtp_server.enable = !custom_smtp_server.enable"
+        type="primary"
+        ghost
+        >{{ custom_smtp_server.enable ? '自定义邮箱' : 'QQ邮箱' }}</n-button
+      >
+      <n-radio-group v-else class="email-mode" v-model:value="custom_smtp_server.enable">
+        <n-radio-button :value="false" label="QQ邮箱" />
+        <n-radio-button :value="true" label="自定义邮箱" />
+      </n-radio-group>
     </template>
     <template #default>
       <n-form

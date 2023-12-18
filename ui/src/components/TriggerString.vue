@@ -108,6 +108,9 @@ function update_op(op) {
 function update_type(type) {
   build_data(op_data.value.operator, type)
 }
+
+import { match } from 'pinyin-pro'
+import { render_op_label } from '@/utils/op_select'
 </script>
 
 <template>
@@ -119,6 +122,8 @@ function update_type(type) {
       filterable
       :options="operators"
       :on-update:value="update_op"
+      :filter="(p, o) => match(o.label, p)"
+      :render-label="render_op_label"
     />
     <n-select :default-value="op_data.type" :options="op_options" :on-update:value="update_type" />
   </template>

@@ -1,5 +1,5 @@
 <script setup>
-import { inject, ref, watch, computed } from 'vue'
+import { inject, ref, watch, computed, h } from 'vue'
 const show = inject('show_task')
 
 import { storeToRefs } from 'pinia'
@@ -51,6 +51,9 @@ const operators_with_free_current = computed(() => {
     { value: 'Free', label: 'Free' }
   ].concat(operators.value)
 })
+
+import { match } from 'pinyin-pro'
+import { render_op_label } from '@/utils/op_select'
 </script>
 
 <template>
@@ -79,6 +82,8 @@ const operators_with_free_current = computed(() => {
                     }
                   "
                   :on-blur="deactivate"
+                  :filter="(p, o) => match(o.label, p)"
+                  :render-label="render_op_label"
                 />
               </template>
             </n-dynamic-tags>
@@ -106,5 +111,9 @@ const operators_with_free_current = computed(() => {
   .n-input {
     width: 140px;
   }
+}
+
+.n-dynamic-tags {
+  align-items: center;
 }
 </style>
