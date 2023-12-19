@@ -433,7 +433,6 @@ ul {
     margin-top: 10px;
   }
   .home-container {
-    width: calc(100% - 24px);
     max-width: 600px;
   }
 }
