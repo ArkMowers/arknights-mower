@@ -1842,7 +1842,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     # choose_error <= 0 选人如果失败则马上重新选过
                     if len(new_plan) == 1 and self.op_data.config.run_order_buffer_time > 0 and choose_error <= 0:
                         remaining_time = self.get_order_remaining_time()
-                        if 0 < remaining_time < self.run_order_delay * 60:
+                        if 0 < remaining_time < (self.run_order_delay + 10) * 60:
                             if self.op_data.config.run_order_buffer_time > 0:
                                 self.task.time = datetime.now() + timedelta(seconds=remaining_time) - timedelta(
                                     minutes=self.run_order_delay)
