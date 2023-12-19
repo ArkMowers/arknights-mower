@@ -130,6 +130,8 @@ class DigitReader:
             )
 
             threshold = 0.93
+            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+            print(j, max_val)
             loc = np.where(res >= threshold)
             for i in range(len(loc[0])):
                 x = loc[1][i]
