@@ -12,7 +12,7 @@ import cv2
 from arknights_mower.utils.device import Device
 from arknights_mower.data import __rootdir__
 from arknights_mower.utils.digit_reader import DigitReader
-from arknights_mower.utils.email import report_template
+from arknights_mower.utils.image import loadimg
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
@@ -30,17 +30,13 @@ def remove_blank(target: str):
 
 
 class ReportSolver(BaseSolver):
-    def __init__(self, device: Device = None, recog: Recognizer = None,send_message_config={},send_report:bool=False) -> None:
+    def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
         super().__init__(device, recog)
         self.record_path = get_path("@app/tmp/report.csv")
         self.low_range_gray = (100, 100, 100)
         self.high_range_gray = (255, 255, 255)
         self.date = (datetime.datetime.now() - datetime.timedelta(hours=4)).date().__str__()
         self.digitReader = DigitReader()
-        self.send_message_config = send_message_config
-        logger.info(self.send_message_config)
-
-        self.send_report=send_report
         self.report_res = {
             "作战录像": None,
             "赤金": None,
@@ -145,17 +141,8 @@ class ReportSolver(BaseSolver):
 
     def record_report(self):
         logger.info(f"存入{self.date}的数据{self.report_res}")
-        try:
-            res_df = pd.DataFrame(self.report_res, index=[self.date])
-            res_df.to_csv(self.record_path, mode='a', header=not os.path.exists(self.record_path), encoding='gbk')
-        except Exception as e:
-            logger.error(f"存入数据失败：{e}")
-        if self.send_report:
-            try:
-                self.send_message(report_template.render(report_data=self.report_res, title_text="基建报告"), "基建报告",
-                                  "html")
-            except Exception as e:
-                logger.error(f"基报邮件发送失败：{e}")
+        res_df = pd.DataFrame(self.report_res, index=[self.date])
+        res_df.to_csv(self.record_path, mode='a', header=not os.path.exists(self.record_path), encoding='gbk')
 
     def has_record(self):
         try:
