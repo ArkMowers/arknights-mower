@@ -357,7 +357,7 @@ def simulate():
                 if sleep_time > 540:
                     # 刷新时间以鹰历为准
                     if base_scheduler.daily_report < (datetime.now() - timedelta(hours=4)).date():
-                        if base_scheduler.report_plan_solver():
+                        if base_scheduler.report_plan_solver(conf["send_report"]):
                             base_scheduler.daily_report = (datetime.now() - timedelta(hours=4)).date()
 
                     if base_scheduler.skland_config['skland_enable'] and base_scheduler.daily_skland < (
