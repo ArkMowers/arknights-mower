@@ -213,7 +213,7 @@ import { usewatermarkStore } from '@/stores/watermark'
 const watermarkStore = usewatermarkStore()
 const { getwatermarkinfo } = watermarkStore
 
-const watermarkData = ref([])
+const watermarkData = ref('mower')
 
 const config_store = useConfigStore()
 const { load_config, load_shop } = config_store
@@ -411,5 +411,6 @@ td {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  width: calc(100% - 24px);
 }
 </style>

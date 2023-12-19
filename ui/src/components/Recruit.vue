@@ -33,20 +33,17 @@ const mobile = inject('mobile')
       <n-form-item>
         <template #label>
           <span>启动间隔</span>
+          <help-text>
+            <div>单位：小时</div>
+            <div>可填小数</div>
+          </help-text>
         </template>
-        <n-input-number class="hour-input" v-model:value="recruit_gap" />
-        <div>小时（可填小数）</div>
+        <n-input-number v-model:value="recruit_gap" />
       </n-form-item>
-      <n-form-item>
-        <template #label>
-          <span>三星招募阈值</span>
-        </template>
+      <n-form-item label="三星招募阈值">
         <n-input-number v-model:value="recruitment_permit" />
       </n-form-item>
-      <n-form-item>
-        <template #label>
-          <span>三星招募时长</span>
-        </template>
+      <n-form-item label="三星招募时长">
         <n-radio-group v-model:value="recruitment_time" name="recruitment_time">
           <n-space justify="start">
             <n-radio :value="true">7:40</n-radio>
@@ -54,10 +51,7 @@ const mobile = inject('mobile')
           </n-space>
         </n-radio-group>
       </n-form-item>
-      <n-form-item>
-        <template #label>
-          <span>五星招募策略</span>
-        </template>
+      <n-form-item label="五星招募策略">
         <n-radio-group v-model:value="recruit_auto_5" name="recruitment_time">
           <n-space justify="start">
             <n-radio :value="1">自动选择</n-radio>
@@ -65,14 +59,14 @@ const mobile = inject('mobile')
           </n-space>
         </n-radio-group>
       </n-form-item>
-      <n-form-item v-if="recruit_auto_5 === 2">
+      <n-form-item v-if="recruit_auto_5 === 2" :show-label="false">
         <n-checkbox v-model:checked="recruit_auto_only5">五星词条组合唯一时自动选择</n-checkbox>
       </n-form-item>
-      <n-form-item>
-        <n-checkbox v-model:checked="recruit_email_enable"> 邮件通知 </n-checkbox>
+      <n-form-item :show-label="false">
+        <n-checkbox v-model:checked="recruit_email_enable">邮件通知</n-checkbox>
       </n-form-item>
-      <n-form-item>
-        <n-checkbox v-model:checked="recruit_robot"> 保留支援机械标签 </n-checkbox>
+      <n-form-item :show-label="false">
+        <n-checkbox v-model:checked="recruit_robot">保留支援机械标签</n-checkbox>
       </n-form-item>
     </n-form>
   </n-card>

@@ -34,14 +34,26 @@
 
       <n-modal v-model:show="showModal">
         <n-card
-          style="width: 600px"
+          style="max-width: 1100px; max-height: 600px; overflow: auto"
           title="仓库变化："
           :bordered="false"
           size="huge"
           role="dialog"
           aria-modal="true"
         >
-          {{ reportData[2] }}
+          <n-grid x-gap="10px" y-gap="10px" cols="2 m:6" responsive="screen">
+            <n-gi v-for="(data, title) in reportData[2]">
+              <n-thing>
+                <template #avatar>
+                  <n-avatar color="000" size="large" :src="'/depot/' + title + '.png'" />
+                </template>
+                <template #header>{{ title }} </template>
+                <template #description>
+                  {{ `${data[0]} → ${data[1]}` }}
+                </template>
+              </n-thing>
+            </n-gi>
+          </n-grid>
         </n-card>
       </n-modal>
     </n-card>

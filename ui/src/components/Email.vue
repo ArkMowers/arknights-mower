@@ -9,16 +9,20 @@ const axios = inject('axios')
 
 const mobile = inject('mobile')
 
-const mode = ref('simple')
 const test_result = ref('')
 
-const { mail_enable, account, pass_code, mail_subject } = storeToRefs(store)
+const { mail_enable, account, pass_code, mail_subject, custom_smtp_server } = storeToRefs(store)
 
 async function test_email() {
   test_result.value = '正在发送……'
   const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/test-email`)
   test_result.value = response.data
 }
+
+const email_options = [
+  { label: 'QQ邮箱', value: false },
+  { label: '自定义邮箱', value: true }
+]
 </script>
 
 <template>
@@ -27,25 +31,43 @@ async function test_email() {
       <n-checkbox v-model:checked="mail_enable" class="email-title">
         <div class="card-title">邮件提醒</div>
         <div class="expand"></div>
-        <n-radio-group class="email-mode" v-model:value="mode" disabled>
-          <n-radio-button value="simple" label="简单模式" />
-          <n-radio-button value="advanced" label="高级模式" />
-        </n-radio-group>
       </n-checkbox>
+      <n-button
+        v-if="mobile"
+        @click="custom_smtp_server.enable = !custom_smtp_server.enable"
+        type="primary"
+        ghost
+        >{{ custom_smtp_server.enable ? '自定义邮箱' : 'QQ邮箱' }}</n-button
+      >
+      <n-radio-group v-else class="email-mode" v-model:value="custom_smtp_server.enable">
+        <n-radio-button :value="false" label="QQ邮箱" />
+        <n-radio-button :value="true" label="自定义邮箱" />
+      </n-radio-group>
     </template>
     <template #default>
-      <template v-if="mode == 'simple'">
-        <n-form
-          :label-placement="mobile ? 'top' : 'left'"
-          :show-feedback="false"
-          label-width="96"
-          label-align="left"
-        >
-          <n-form-item label="QQ邮箱">
-            <n-input v-model:value="account" />
-          </n-form-item>
-          <n-form-item label="授权码">
-            <template #label>
+      <n-form
+        :label-placement="mobile ? 'top' : 'left'"
+        :show-feedback="false"
+        label-width="96"
+        label-align="left"
+      >
+        <n-form-item label="SMTP服务器" v-if="custom_smtp_server.enable">
+          <n-input v-model:value="custom_smtp_server.server" />
+        </n-form-item>
+        <n-form-item label="SSL端口号" v-if="custom_smtp_server.enable">
+          <n-input-number v-model:value="custom_smtp_server.ssl_port" />
+        </n-form-item>
+        <n-form-item>
+          <template #label>
+            <span v-if="custom_smtp_server.enable">账号</span>
+            <span v-else>QQ邮箱</span>
+          </template>
+          <n-input v-model:value="account" />
+        </n-form-item>
+        <n-form-item>
+          <template #label>
+            <span v-if="custom_smtp_server.enable">密码</span>
+            <template v-else>
               <span>授权码</span>
               <help-text>
                 <n-button
@@ -59,22 +81,22 @@ async function test_email() {
                 </n-button>
               </help-text>
             </template>
-            <n-input v-model:value="pass_code" type="password" show-password-on="click" />
-          </n-form-item>
-          <n-form-item>
-            <template #label>
-              <span>标题前缀</span>
-              <help-text>可用于区分来自多个Mower的邮件</help-text>
-            </template>
-            <n-input v-model:value="mail_subject" />
-          </n-form-item>
-        </n-form>
-        <n-divider />
-        <div class="email-test mt-16">
-          <n-button @click="test_email">发送测试邮件</n-button>
-          <div>{{ test_result }}</div>
-        </div>
-      </template>
+          </template>
+          <n-input v-model:value="pass_code" type="password" show-password-on="click" />
+        </n-form-item>
+        <n-form-item>
+          <template #label>
+            <span>标题前缀</span>
+            <help-text>可用于区分来自多个Mower的邮件</help-text>
+          </template>
+          <n-input v-model:value="mail_subject" />
+        </n-form-item>
+      </n-form>
+      <n-divider />
+      <div class="email-test mt-16">
+        <n-button @click="test_email">发送测试邮件</n-button>
+        <div>{{ test_result }}</div>
+      </div>
     </template>
   </n-card>
 </template>

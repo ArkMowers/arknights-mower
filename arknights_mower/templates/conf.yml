@@ -189,6 +189,10 @@ maa_weekly_plan1:
 mail_enable: 0
 account: ''
 pass_code: ''
+custom_smtp_server:
+  enable: false
+  server: ''
+  ssl_port: 465
 max_resting_count: 8
 package_type: 1
 planFile: ./plan.json

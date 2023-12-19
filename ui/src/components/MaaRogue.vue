@@ -1,13 +1,20 @@
 <script setup>
 import { useConfigStore } from '@/stores/config'
+import { usePlanStore } from '@/stores/plan'
 import { storeToRefs } from 'pinia'
 import { inject } from 'vue'
 
 const mobile = inject('mobile')
 
-const store = useConfigStore()
+const config_store = useConfigStore()
 
-const { maa_rg_theme, rogue } = storeToRefs(store)
+const { maa_rg_theme, rogue } = storeToRefs(config_store)
+
+const plan_store = usePlanStore()
+const { operators } = storeToRefs(plan_store)
+
+import { match } from 'pinyin-pro'
+import { render_op_label } from '@/utils/op_select'
 
 const rogue_themes = [
   { label: '傀影与猩红孤钻', value: 'Phantom' },
@@ -76,17 +83,23 @@ const roles = [
 
 <template>
   <n-form :label-placement="mobile ? 'top' : 'left'" :show-feedback="false" class="rogue">
-    <n-form-item label="主题：">
+    <n-form-item label="主题">
       <n-select v-model:value="maa_rg_theme" :options="rogue_themes" />
     </n-form-item>
-    <n-form-item label="分队：">
+    <n-form-item label="分队">
       <n-select v-model:value="rogue.squad" :options="squad[maa_rg_theme]" />
     </n-form-item>
-    <n-form-item label="职业：">
+    <n-form-item label="职业">
       <n-select v-model:value="rogue.roles" :options="roles" />
     </n-form-item>
-    <n-form-item label="干员：">
-      <n-input v-model:value="rogue.core_char" />
+    <n-form-item label="干员">
+      <n-select
+        filterable
+        :options="operators"
+        v-model:value="rogue.core_char"
+        :filter="(p, o) => match(o.label, p)"
+        :render-label="render_op_label"
+      />
     </n-form-item>
     <n-form-item :show-label="false">
       <n-checkbox v-model:checked="rogue.use_support">开局干员使用助战</n-checkbox>
@@ -94,7 +107,7 @@ const roles = [
     <n-form-item v-if="rogue.use_support" :show-label="false">
       <n-checkbox v-model:checked="rogue.use_nonfriend_support">开局干员使用非好友助战</n-checkbox>
     </n-form-item>
-    <n-form-item label="策略：">
+    <n-form-item label="策略">
       <n-radio-group v-model:value="rogue.mode">
         <n-space>
           <n-radio :value="0">刷等级</n-radio>

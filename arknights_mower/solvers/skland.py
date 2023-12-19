@@ -232,7 +232,7 @@ class SKLand:
                     for i in self.get_binding_list():
                         if i['uid']:
                             res.append("{}连接成功".format(i['nickName'] + "({})".format(i['channelName'])))
-                except:
-                    res.append("{}无法连接".format(item['account']))
+                except Exception as e:
+                    res.append("{}无法连接-{}".format(item['account'],e))
 
         return res

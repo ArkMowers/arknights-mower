@@ -54,7 +54,7 @@ const maa_touch_options = ['maatouch', 'minitouch', 'adb'].map((x) => {
     <n-form
       :label-placement="mobile ? 'top' : 'left'"
       :show-feedback="false"
-      label-width="72"
+      label-width="96"
       label-align="left"
     >
       <n-form-item label="Maa目录">
@@ -72,16 +72,20 @@ const maa_touch_options = ['maatouch', 'minitouch', 'adb'].map((x) => {
       <n-form-item label="触控模式">
         <n-select v-model:value="maa_touch_option" :options="maa_touch_options" />
       </n-form-item>
+      <n-form-item>
+        <template #label>
+          <span>启动间隔</span>
+          <help-text>
+            <div>单位：小时</div>
+            <div>可填小数</div>
+          </help-text> </template
+        ><n-input-number v-model:value="maa_gap" />
+      </n-form-item>
     </n-form>
+    <n-divider />
     <div class="misc-container">
       <n-button @click="test_maa">测试设置</n-button>
       <div>{{ maa_msg }}</div>
-    </div>
-    <n-divider />
-    <div class="misc-container">
-      <div>启动间隔</div>
-      <n-input-number class="hour-input" v-model:value="maa_gap" />
-      <div>小时（可填小数）</div>
     </div>
   </n-card>
 </template>
@@ -91,45 +95,10 @@ p {
   margin: 0 0 10px 0;
 }
 
-.maa-basic {
-  width: 100%;
-}
-
-.maa-basic {
-  td:nth-child(1) {
-    width: 62px;
-  }
-
-  td:nth-child(2) {
-    padding-right: 6px;
-  }
-
-  td:nth-child(3) {
-    width: 40px;
-  }
-}
-
 .misc-container {
   margin-top: 12px;
   display: flex;
   align-items: center;
   gap: 12px;
-}
-
-.hour-input {
-  width: 120px;
-}
-
-.maa-conn {
-  width: 100%;
-
-  td {
-    &:nth-child(1) {
-      width: 62px;
-    }
-    &:nth-child(3) {
-      width: 56px;
-    }
-  }
 }
 </style>

@@ -247,6 +247,7 @@ def initialize(tasks, scheduler=None):
                 "account": conf["account"],
                 "pass_code": conf["pass_code"],
                 "receipts": [conf["account"]],
+                "custom_smtp_server": conf["custom_smtp_server"],
                 "notify": False,
             },
             "serverJang_push_config": {

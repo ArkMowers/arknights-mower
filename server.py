@@ -335,9 +335,9 @@ def get_maa_adb_version():
 def get_maa_conn_presets():
     try:
         with open(
-                os.path.join(conf["maa_path"], "resource", "config.json"),
-                "r",
-                encoding="utf-8",
+            os.path.join(conf["maa_path"], "resource", "config.json"),
+            "r",
+            encoding="utf-8",
         ) as f:
             presets = [i["configName"] for i in json.load(f)["connection"]]
     except Exception:
@@ -351,10 +351,9 @@ def get_mood_ratios():
 
     return record.get_mood_ratios()
 
+
 @app.route("/getwatermark")
-
 def getwatermark():
-
     from arknights_mower.__init__ import __version__
 
     return __version__
@@ -409,7 +408,9 @@ def get_report_data():
                 format_data.insert(
                     0,
                     {
-                        "日期": date2str(earliest_date - datetime.timedelta(days=i + 1)),
+                        "日期": date2str(
+                            earliest_date - datetime.timedelta(days=i + 1)
+                        ),
                         "作战录像": "-",
                         "赤金": "-",
                         "龙门币订单": "-",
@@ -474,7 +475,9 @@ def get_orundum_data():
                 format_data.insert(
                     0,
                     {
-                        "日期": date2str(earliest_date - datetime.timedelta(days=i + 1)),
+                        "日期": date2str(
+                            earliest_date - datetime.timedelta(days=i + 1)
+                        ),
                         "合成玉": "-",
                         "合成玉订单数量": "-",
                         "抽数": "-",
@@ -499,7 +502,13 @@ def test_email():
     msg["Subject"] = conf["mail_subject"] + "测试邮件"
     msg["From"] = conf["account"]
     try:
-        s = smtplib.SMTP_SSL("smtp.qq.com", 465, timeout=10.0)
+        if conf["custom_smtp_server"]["enable"]:
+            smtp_server = conf["custom_smtp_server"]["server"]
+            ssl_port = conf["custom_smtp_server"]["ssl_port"]
+        else:
+            smtp_server = "smtp.qq.com"
+            ssl_port = 465
+        s = smtplib.SMTP_SSL(smtp_server, ssl_port, timeout=10.0)
         s.login(conf["account"], conf["pass_code"])
         s.sendmail(conf["account"], conf["account"], msg.as_string())
     except Exception as e:

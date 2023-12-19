@@ -67,7 +67,7 @@ import { render_op_label, render_op_tag } from '@/utils/op_select'
 </script>
 
 <template>
-  <div class="home-container">
+
     <div class="grid-two">
       <div class="grid-left">
         <div>
@@ -78,7 +78,7 @@ import { render_op_label, render_op_tag } from '@/utils/op_select'
               label-width="120"
               label-align="left"
             >
-              <n-form-item label="服务器：">
+              <n-form-item label="服务器">
                 <n-radio-group v-model:value="package_type">
                   <n-space>
                     <n-radio value="official">官服</n-radio>
@@ -119,10 +119,10 @@ import { render_op_label, render_op_tag } from '@/utils/op_select'
                 <n-input v-model:value="simulator.simulator_folder" />
                 <n-button @click="select_simulator_folder" class="dialog-btn">...</n-button>
               </n-form-item>
-              <n-form-item label="启动游戏：">
+              <n-form-item label="启动游戏">
                 <n-select v-model:value="tap_to_launch_game.enable" :options="launch_options" />
               </n-form-item>
-              <n-form-item v-if="tap_to_launch_game.enable == 'tap'" label="点击坐标：">
+              <n-form-item v-if="tap_to_launch_game.enable == 'tap'" label="点击坐标">
                 <span class="coord-label">X:</span>
                 <n-input-number v-model:value="tap_to_launch_game.x" />
                 <span class="coord-label">Y:</span>
@@ -158,7 +158,7 @@ import { render_op_label, render_op_tag } from '@/utils/op_select'
               <n-form-item :show-label="false">
                 <n-checkbox v-model:checked="start_automatically">启动后自动开始任务</n-checkbox>
               </n-form-item>
-              <n-form-item label="截图数量：">
+              <n-form-item label="截图数量">
                 <n-input-number v-model:value="screenshot" />
               </n-form-item>
               <n-form-item>
@@ -175,7 +175,7 @@ import { render_op_label, render_op_tag } from '@/utils/op_select'
                 />
                 <div class="scale">{{ webview.scale * 100 }}%</div>
               </n-form-item>
-              <n-form-item label="显示主题：">
+              <n-form-item label="显示主题">
                 <n-radio-group v-model:value="theme">
                   <n-space>
                     <n-radio value="light">亮色</n-radio>
@@ -279,7 +279,7 @@ import { render_op_label, render_op_tag } from '@/utils/op_select'
                 </template>
                 <n-input-number v-model:value="drone_interval" />
               </n-form-item>
-              <n-form-item label="搓玉补货房间：">
+              <n-form-item label="搓玉补货房间">
                 <n-select
                   multiple
                   filterable
@@ -327,7 +327,7 @@ import { render_op_label, render_op_tag } from '@/utils/op_select'
         <div><maa-long-tasks /></div>
       </div>
     </div>
-  </div>
+
 </template>
 
 <style scoped lang="scss">
@@ -432,6 +432,9 @@ ul {
     max-width: 600px;
     margin-top: 10px;
   }
+  .home-container {
+    max-width: 600px;
+  }
 }
 /*双栏 大于1400的内容 */
 @media (min-width: 1400px) {
@@ -439,6 +442,7 @@ ul {
     display: grid;
     grid-template-columns: minmax(0px, 1fr) minmax(0px, 1fr);
     align-items: flex-start;
+    gap: 5px;
   }
   .grid-left {
     display: grid;

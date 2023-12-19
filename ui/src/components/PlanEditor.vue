@@ -69,11 +69,12 @@ watch(
   }
 )
 
+const operators_with_none = computed(() => {
+  return [{ value: '', label: '（无）' }].concat(operators.value)
+})
+
 const operators_with_free = computed(() => {
-  return [
-    { value: '', label: '（无）' },
-    { value: 'Free', label: 'Free' }
-  ].concat(operators.value)
+  return [{ value: 'Free', label: 'Free' }].concat(operators_with_none.value)
 })
 
 const right_side_facility_name = computed(() => {
@@ -375,7 +376,7 @@ import { match } from 'pinyin-pro'
           <td class="table-space">
             <n-select
               filterable
-              :options="operators_with_free"
+              :options="facility.startsWith('dorm') ? operators_with_free : operators_with_none"
               class="operator-select"
               v-model:value="plan[facility].plans[i - 1].agent"
               :filter="(p, o) => match(o.label, p)"
@@ -383,9 +384,8 @@ import { match } from 'pinyin-pro'
             />
           </td>
           <td class="select-label">
-            组<help-text>
-              <div>可以将有联动基建技能的干员或者心情掉率相等的干员编入同组</div></help-text
-            >
+            <span>组</span>
+            <help-text>可以将有联动基建技能的干员或者心情掉率相等的干员编入同组</help-text>
           </td>
           <td class="table-space group">
             <n-input v-model:value="plan[facility].plans[i - 1].group" />
@@ -396,7 +396,7 @@ import { match } from 'pinyin-pro'
               :disabled="!plan[facility].plans[i - 1].agent"
               multiple
               filterable
-              :options="operators_with_free"
+              :options="operators_with_none"
               class="replacement-select"
               v-model:value="plan[facility].plans[i - 1].replacement"
               :filter="(p, o) => match(o.label, p)"
