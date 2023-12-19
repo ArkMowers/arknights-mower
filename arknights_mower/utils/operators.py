@@ -18,8 +18,8 @@ class Operators(object):
     global_plan = None
     plan_name = ""
     shadow_copy = {}
-
     current_room_changed_callback = None
+    first_init = True
 
     def __init__(self, plan):
         self.operators = {}
@@ -40,7 +40,8 @@ class Operators(object):
 
         self.eval_model = base_eval_model.clone()
         self.eval_model.nodes.extend(["Call", "Attribute"])
-        self.eval_model.attributes.extend(["operators", "party_time", "is_working", "is_resting", "current_mood", "current_room"])
+        self.eval_model.attributes.extend(
+            ["operators", "party_time", "is_working", "is_resting", "current_mood", "current_room"])
 
     def __repr__(self):
         return f'Operators(operators={self.operators})'
@@ -59,7 +60,9 @@ class Operators(object):
             logger.info("切换成自定义模式")
         logger.info(("" if self.config.run_order_buffer_time > 0 else "不") + "启动葛朗台跑单")
         if refresh:
+            self.first_init = True
             error = self.init_and_validate(True)
+            self.first_init = False
             if error:
                 return error
 
@@ -230,7 +233,7 @@ class Operators(object):
                         elif self.config.ling_xi == 0:
                             self.set_mood_limit(group_name, lower_limit=0)
                 finished.append(self.operators[name].group)
- 
+
         # 设置铅踝心情阈值
         # 三种情况：
         # 1. 铅踝不是主力：不管
@@ -239,11 +242,11 @@ class Operators(object):
         TOTTER = "铅踝"
         VERMEIL = "红云"
         if TOTTER in self.operators and self.operators[TOTTER].operator_type == "high":
-            if VERMEIL in self.operators and self.operators[VERMEIL].operator_type == "high" and self.operators[VERMEIL].room == self.operators[TOTTER].room:
+            if VERMEIL in self.operators and self.operators[VERMEIL].operator_type == "high" and self.operators[
+                VERMEIL].room == self.operators[TOTTER].room:
                 self.set_mood_limit(TOTTER, upper_limit=12, lower_limit=8)
             else:
                 self.set_mood_limit(TOTTER, upper_limit=24, lower_limit=20)
-
 
     def evaluate_expression(self, expression):
         try:
@@ -298,14 +301,16 @@ class Operators(object):
                     (datetime.now() - agent.time_stamp).total_seconds())
             agent.time_stamp = datetime.now()
         # 如果移出宿舍，则清除对应宿舍数据 且重新记录高效组心情（如果有备用班，则跳过高效组判定）
-        if agent.current_room.startswith('dorm') and not current_room.startswith('dorm') and (agent.is_high() or self.backup_plans):
+        if agent.current_room.startswith('dorm') and not current_room.startswith('dorm') and (
+                agent.is_high() or self.backup_plans):
             self.refresh_dorm_time(agent.current_room, agent.current_index, {'agent': ''})
             if update_time:
                 self.time_stamp = datetime.now()
             else:
                 self.time_stamp = None
             agent.depletion_rate = 0
-        if self.get_dorm_by_name(name)[0] is not None and not current_room.startswith('dorm') and (agent.is_high() or self.backup_plans):
+        if self.get_dorm_by_name(name)[0] is not None and not current_room.startswith('dorm') and (
+                agent.is_high() or self.backup_plans):
             _dorm = self.get_dorm_by_name(name)[1]
             _dorm.name = ''
             _dorm.time = None
@@ -360,8 +365,8 @@ class Operators(object):
                 break
             if dorm.position[0] == room:
                 for i, _name in enumerate(plan):
-                    if _name in self.operators.keys() and self.operators[_name].is_high() and self.operators[
-                        _name].resting_priority == 'high' and not self.operators[_name].room.startswith('dorm'):
+                    if _name in self.operators.keys() and self.operators[_name].is_high() and not self.operators[
+                        _name].room.startswith('dorm'):
                         ret.append(i)
                 break
         return ret

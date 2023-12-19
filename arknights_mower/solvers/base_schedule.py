@@ -1784,11 +1784,12 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         return round((execute_time - datetime.now()).total_seconds(), 1)
 
     def current_room_changed(self, instance):
-        logger.info(f"{instance.name} 房间变动")
-        ref_rooms = instance.refresh_order_room[1] if instance.refresh_order_room[1] else list(
-            self.op_data.run_order_rooms.keys())
-        for ref_room in ref_rooms:
-            self.refresh_run_order_time(ref_room)
+        if not self.op_data.first_init:
+            logger.info(f"{instance.name} 房间变动")
+            ref_rooms = instance.refresh_order_room[1] if instance.refresh_order_room[1] else list(
+                self.op_data.run_order_rooms.keys())
+            for ref_room in ref_rooms:
+                self.refresh_run_order_time(ref_room)
 
     def refresh_run_order_time(self, room):
         logger.debug("检测到插拔房间人员变动！")

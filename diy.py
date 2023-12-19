@@ -94,7 +94,13 @@ maa_config = {
                     {"weekday": "周六", "stage": ['AP-5'], "medicine": 0},
                     {"weekday": "周日", "stage": ['AP-5'], "medicine": 0}],
 }
-
+recruit_config = {
+    "recruit_enable":True,
+    "permit_target":30,
+    "recruit_robot":False,
+    "recruitment_time" : None,
+    "recruit_execution_gap":4
+}
 # 模拟器相关设置
 simulator = {
     "name": "MuMu12",
@@ -267,12 +273,11 @@ def inialize(tasks, scheduler=None):
         # 读取心情开关，有菲亚梅塔或者希望全自动换班得设置为 true
         base_scheduler.read_mood = True
         base_scheduler.last_room = ''
-        base_scheduler.free_blacklist = free_blacklist
-        base_scheduler.resting_threshold = resting_threshold
         base_scheduler.MAA = None
         base_scheduler.send_message_config = send_message_config
         base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
         base_scheduler.maa_config = maa_config
+        base_scheduler.recruit_config = recruit_config
         base_scheduler.error = False
         base_scheduler.drone_count_limit = 102  # 无人机高于于该值时才使用
         base_scheduler.drone_room = drone_room
@@ -377,7 +382,7 @@ def simulate():
                 continue
             base_scheduler.run()
             reconnect_tries = 0
-        except (ConnectionError, ConnectionAbortedError, AttributeError) as e:
+        except (ConnectionError, ConnectionAbortedError, AttributeError,RuntimeError) as e:
             reconnect_tries += 1
             if reconnect_tries < reconnect_max_tries:
                 logger.warning(f'连接端口断开....正在重连....')
@@ -386,13 +391,12 @@ def simulate():
                     try:
                         base_scheduler = inialize([], base_scheduler)
                         break
-                    except (ConnectionError, ConnectionAbortedError, AttributeError) as ce:
+                    except Exception as ce:
                         logger.error(ce)
                         restart_simulator(simulator)
                         continue
                 continue
-            else:
-                raise Exception(e)
+            continue
         except RuntimeError as re:
             restart_simulator(simulator)
         except Exception as E:
