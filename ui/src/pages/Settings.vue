@@ -67,7 +67,7 @@ import { render_op_label, render_op_tag } from '@/utils/op_select'
 </script>
 
 <template>
-  <div class="home-container">
+
     <div class="grid-two">
       <div class="grid-left">
         <div>
@@ -327,7 +327,7 @@ import { render_op_label, render_op_tag } from '@/utils/op_select'
         <div><maa-long-tasks /></div>
       </div>
     </div>
-  </div>
+
 </template>
 
 <style scoped lang="scss">
@@ -442,6 +442,7 @@ ul {
     display: grid;
     grid-template-columns: minmax(0px, 1fr) minmax(0px, 1fr);
     align-items: flex-start;
+    gap: 5px;
   }
   .grid-left {
     display: grid;
