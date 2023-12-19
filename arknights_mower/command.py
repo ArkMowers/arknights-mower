@@ -101,8 +101,8 @@ def recruit(args: list[str] = [], send_message_config={}, recruit_config={}, dev
     return choose, result
 
 
-def daily_report(device: Device = None,send_message_config={},send_report:bool=False):
-    return ReportSolver(device,None,send_message_config,send_report).run()
+def daily_report(device: Device = None):
+    return ReportSolver(device).run()
 
 
 def mission(args: list[str] = [], device: Device = None):
