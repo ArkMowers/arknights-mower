@@ -862,7 +862,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         if ag.resting_priority == 'high':
                             last_high = ag
                     # 如果低优先的心情低于高优先
-                    if first_low.current_mood() - last_high.current_mood() < -4:
+                    if first_low is None or last_high is None:
+                        pass
+                    elif first_low.current_mood() - last_high.current_mood() < -4:
                         logger.info("低优先级干员心情过低，自动按心情切换优先级")
                         new_plan = True
                 workaholic_count = 0
@@ -1782,11 +1784,12 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         return round((execute_time - datetime.now()).total_seconds(), 1)
 
     def current_room_changed(self, instance):
-        logger.info(f"{instance.name} 房间变动")
-        ref_rooms = instance.refresh_order_room[1] if instance.refresh_order_room[1] else list(
-            self.op_data.run_order_rooms.keys())
-        for ref_room in ref_rooms:
-            self.refresh_run_order_time(ref_room)
+        if not self.op_data.first_init:
+            logger.info(f"{instance.name} 房间变动")
+            ref_rooms = instance.refresh_order_room[1] if instance.refresh_order_room[1] else list(
+                self.op_data.run_order_rooms.keys())
+            for ref_room in ref_rooms:
+                self.refresh_run_order_time(ref_room)
 
     def refresh_run_order_time(self, room):
         logger.debug("检测到插拔房间人员变动！")
@@ -1840,7 +1843,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     # choose_error <= 0 选人如果失败则马上重新选过
                     if len(new_plan) == 1 and self.op_data.config.run_order_buffer_time > 0 and choose_error <= 0:
                         remaining_time = self.get_order_remaining_time()
-                        if 0 < remaining_time < self.run_order_delay * 60:
+                        if 0 < remaining_time < (self.run_order_delay + 10) * 60:
                             if self.op_data.config.run_order_buffer_time > 0:
                                 self.task.time = datetime.now() + timedelta(seconds=remaining_time) - timedelta(
                                     minutes=self.run_order_delay)
