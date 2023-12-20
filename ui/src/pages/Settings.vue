@@ -67,267 +67,265 @@ import { render_op_label, render_op_tag } from '@/utils/op_select'
 </script>
 
 <template>
-
-    <div class="grid-two">
-      <div class="grid-left">
-        <div>
-          <n-card title="Mower设置">
-            <n-form
-              :label-placement="mobile ? 'top' : 'left'"
-              :show-feedback="false"
-              label-width="120"
-              label-align="left"
-            >
-              <n-form-item label="服务器">
-                <n-radio-group v-model:value="package_type">
-                  <n-space>
-                    <n-radio value="official">官服</n-radio>
-                    <n-radio value="bilibili">BiliBili服</n-radio>
-                  </n-space>
-                </n-radio-group>
-              </n-form-item>
-              <n-form-item>
-                <template #label>
-                  <span>ADB连接地址</span>
-                  <help-text>
-                    <div>不同模拟器adb地址不同。如不填，系统会自动去寻找adb device中的第一个。</div>
-                    <div>夜神：<code>127.0.0.1:62001</code></div>
-                  </help-text>
-                </template>
-                <n-input v-model:value="adb" />
-              </n-form-item>
-              <n-form-item label="模拟器">
-                <n-select v-model:value="simulator.name" :options="simulator_types" />
-              </n-form-item>
-              <n-form-item v-if="simulator.name">
-                <template #label>
-                  <span>多开编号</span>
-                  <help-text>
-                    <div>除夜神单开选择-1以外，其他的按照改模拟器多开器中的序号。</div>
-                  </help-text>
-                </template>
-                <n-input-number v-model:value="simulator.index"></n-input-number>
-              </n-form-item>
-              <n-form-item v-if="simulator.name">
-                <template #label>
-                  <span>模拟器文件夹</span>
-                  <help-text>
-                    <div>夜神：写到bin文件夹</div>
-                    <div>MuMu12: 写到shell文件夹</div>
-                  </help-text>
-                </template>
-                <n-input v-model:value="simulator.simulator_folder" />
-                <n-button @click="select_simulator_folder" class="dialog-btn">...</n-button>
-              </n-form-item>
-              <n-form-item label="启动游戏">
-                <n-select v-model:value="tap_to_launch_game.enable" :options="launch_options" />
-              </n-form-item>
-              <n-form-item v-if="tap_to_launch_game.enable == 'tap'" label="点击坐标">
-                <span class="coord-label">X:</span>
-                <n-input-number v-model:value="tap_to_launch_game.x" />
-                <span class="coord-label">Y:</span>
-                <n-input-number v-model:value="tap_to_launch_game.y" />
-              </n-form-item>
-              <n-form-item :show-label="false">
-                <n-checkbox
-                  v-model:checked="exit_game_when_idle"
-                  :disabled="close_simulator_when_idle"
-                >
-                  任务结束后退出游戏
-                  <help-text>降低功耗</help-text>
-                </n-checkbox>
-              </n-form-item>
-              <n-form-item :show-label="false">
-                <n-checkbox v-model:checked="close_simulator_when_idle">
-                  任务结束后关闭模拟器
-                  <help-text>减少空闲时的资源占用、避免模拟器长时间运行出现问题</help-text>
-                </n-checkbox>
-              </n-form-item>
-              <n-form-item>
-                <template #label>
-                  <span>运行模式</span>
-                  <help-text>“仅跑单”模式年久失修，推荐使用Mower0</help-text>
-                </template>
-                <n-radio-group v-model:value="run_mode">
-                  <n-space>
-                    <n-radio value="full">换班+跑单</n-radio>
-                    <n-radio value="orders_only">仅跑单</n-radio>
-                  </n-space>
-                </n-radio-group>
-              </n-form-item>
-              <n-form-item :show-label="false">
-                <n-checkbox v-model:checked="start_automatically">启动后自动开始任务</n-checkbox>
-              </n-form-item>
-              <n-form-item label="截图数量">
-                <n-input-number v-model:value="screenshot" />
-              </n-form-item>
-              <n-form-item>
-                <template #label>
-                  <span>界面缩放</span>
-                  <help-text>重启生效</help-text>
-                </template>
-                <n-slider
-                  v-model:value="webview.scale"
-                  :step="0.25"
+  <div class="grid-two">
+    <div class="grid-left">
+      <div>
+        <n-card title="Mower设置">
+          <n-form
+            :label-placement="mobile ? 'top' : 'left'"
+            :show-feedback="false"
+            label-width="120"
+            label-align="left"
+          >
+            <n-form-item label="服务器">
+              <n-radio-group v-model:value="package_type">
+                <n-space>
+                  <n-radio value="official">官服</n-radio>
+                  <n-radio value="bilibili">BiliBili服</n-radio>
+                </n-space>
+              </n-radio-group>
+            </n-form-item>
+            <n-form-item>
+              <template #label>
+                <span>ADB连接地址</span>
+                <help-text>
+                  <div>不同模拟器adb地址不同。如不填，系统会自动去寻找adb device中的第一个。</div>
+                  <div>夜神：<code>127.0.0.1:62001</code></div>
+                </help-text>
+              </template>
+              <n-input v-model:value="adb" />
+            </n-form-item>
+            <n-form-item label="模拟器">
+              <n-select v-model:value="simulator.name" :options="simulator_types" />
+            </n-form-item>
+            <n-form-item v-if="simulator.name">
+              <template #label>
+                <span>多开编号</span>
+                <help-text>
+                  <div>除夜神单开选择-1以外，其他的按照改模拟器多开器中的序号。</div>
+                </help-text>
+              </template>
+              <n-input-number v-model:value="simulator.index"></n-input-number>
+            </n-form-item>
+            <n-form-item v-if="simulator.name">
+              <template #label>
+                <span>模拟器文件夹</span>
+                <help-text>
+                  <div>夜神：写到bin文件夹</div>
+                  <div>MuMu12: 写到shell文件夹</div>
+                </help-text>
+              </template>
+              <n-input v-model:value="simulator.simulator_folder" />
+              <n-button @click="select_simulator_folder" class="dialog-btn">...</n-button>
+            </n-form-item>
+            <n-form-item label="启动游戏">
+              <n-select v-model:value="tap_to_launch_game.enable" :options="launch_options" />
+            </n-form-item>
+            <n-form-item v-if="tap_to_launch_game.enable == 'tap'" label="点击坐标">
+              <span class="coord-label">X:</span>
+              <n-input-number v-model:value="tap_to_launch_game.x" />
+              <span class="coord-label">Y:</span>
+              <n-input-number v-model:value="tap_to_launch_game.y" />
+            </n-form-item>
+            <n-form-item :show-label="false">
+              <n-checkbox
+                v-model:checked="exit_game_when_idle"
+                :disabled="close_simulator_when_idle"
+              >
+                任务结束后退出游戏
+                <help-text>降低功耗</help-text>
+              </n-checkbox>
+            </n-form-item>
+            <n-form-item :show-label="false">
+              <n-checkbox v-model:checked="close_simulator_when_idle">
+                任务结束后关闭模拟器
+                <help-text>减少空闲时的资源占用、避免模拟器长时间运行出现问题</help-text>
+              </n-checkbox>
+            </n-form-item>
+            <n-form-item>
+              <template #label>
+                <span>运行模式</span>
+                <help-text>“仅跑单”模式年久失修，推荐使用Mower0</help-text>
+              </template>
+              <n-radio-group v-model:value="run_mode">
+                <n-space>
+                  <n-radio value="full">换班+跑单</n-radio>
+                  <n-radio value="orders_only">仅跑单</n-radio>
+                </n-space>
+              </n-radio-group>
+            </n-form-item>
+            <n-form-item :show-label="false">
+              <n-checkbox v-model:checked="start_automatically">启动后自动开始任务</n-checkbox>
+            </n-form-item>
+            <n-form-item label="截图数量">
+              <n-input-number v-model:value="screenshot" />
+            </n-form-item>
+            <n-form-item>
+              <template #label>
+                <span>界面缩放</span>
+                <help-text>重启生效</help-text>
+              </template>
+              <n-slider
+                v-model:value="webview.scale"
+                :step="0.25"
+                :min="0.5"
+                :max="3.0"
+                :format-tooltip="(x) => `${x * 100}%`"
+              />
+              <div class="scale">{{ webview.scale * 100 }}%</div>
+            </n-form-item>
+            <n-form-item label="显示主题">
+              <n-radio-group v-model:value="theme">
+                <n-space>
+                  <n-radio value="light">亮色</n-radio>
+                  <n-radio value="dark">暗色</n-radio>
+                </n-space>
+              </n-radio-group>
+            </n-form-item>
+          </n-form>
+        </n-card>
+      </div>
+      <div>
+        <n-card title="基建设置">
+          <n-form
+            :label-placement="mobile ? 'top' : 'left'"
+            :show-feedback="false"
+            label-width="140"
+            label-align="left"
+          >
+            <n-form-item>
+              <template #label>
+                <span>宿舍黑名单</span>
+                <help-text>
+                  <div>不希望进行填充宿舍的干员</div>
+                </help-text>
+              </template>
+              <n-transfer
+                v-if="mobile"
+                virtual-scroll
+                source-filterable
+                target-filterable
+                :options="operators"
+                v-model:value="free_blacklist"
+                :render-source-label="(o) => render_op_label(o.option)"
+                :render-target-label="(o) => render_op_label(o.option)"
+                :filter="(p, o) => (p ? match(o.label, p) : true)"
+              />
+              <n-select
+                v-else
+                multiple
+                filterable
+                :options="operators"
+                :render-label="render_op_label"
+                :render-tag="render_op_tag"
+                v-model:value="free_blacklist"
+                :filter="(p, o) => match(o.label, p)"
+              />
+            </n-form-item>
+            <n-form-item>
+              <template #label>
+                <span>跑单前置延时</span>
+                <help-text>
+                  <div>推荐范围5-10</div>
+                  <div>可填小数</div>
+                  <div>单位：分钟</div>
+                </help-text>
+              </template>
+              <n-input-number v-model:value="run_order_delay" />
+            </n-form-item>
+            <n-form-item :show-label="false">
+              <n-checkbox v-model:checked="run_order_grandet_mode.enable">葛朗台跑单</n-checkbox>
+            </n-form-item>
+            <n-form-item v-if="run_order_grandet_mode.enable">
+              <template #label>
+                <span>葛朗台缓冲时间</span>
+                <help-text>
+                  <div>推荐范围：15-30</div>
+                  <div>单位：秒</div>
+                </help-text>
+              </template>
+              <n-input-number v-model:value="run_order_grandet_mode.buffer_time" />
+            </n-form-item>
+            <n-form-item>
+              <template #label>
+                <span>无人机使用房间</span>
+                <help-text>
+                  <div>加速制造站为指定制造站加速</div>
+                  <div>加速贸易站请选“（加速贸易站）”</div>
+                  <div>（加速贸易站）只会加速有跑单人员作备班的站</div>
+                  <div>例：没填龙舌兰但书的卖玉站 （加速贸易站） 不会被加速</div>
+                </help-text>
+              </template>
+              <n-select :options="facility_with_empty" v-model:value="drone_room" />
+            </n-form-item>
+            <n-form-item>
+              <template #label>
+                <span>无人机使用阈值</span>
+                <help-text>
+                  <div>如加速贸易，推荐大于 贸易站数 x 10 + 92</div>
+                  <div>如加速制造，推荐大于 贸易站数 x 10</div>
+                </help-text>
+              </template>
+              <n-input-number v-model:value="drone_count_limit" />
+            </n-form-item>
+            <n-form-item>
+              <template #label>
+                <span>无人机加速间隔</span>
+                <help-text>
+                  <div>单位：小时</div>
+                  <div>可填小数</div>
+                </help-text>
+              </template>
+              <n-input-number v-model:value="drone_interval" />
+            </n-form-item>
+            <n-form-item label="搓玉补货房间">
+              <n-select
+                multiple
+                filterable
+                tag
+                :options="left_side_facility"
+                v-model:value="reload_room"
+              />
+            </n-form-item>
+            <n-form-item>
+              <template #label>
+                <span>心情阈值：</span>
+                <help-text>
+                  <div>2电站推荐不低于0.75</div>
+                  <div>3电站推荐不低于0.5</div>
+                  <div>即将大更新推荐设置成0.8</div>
+                </help-text>
+              </template>
+              <div class="threshold">
+                <n-slider v-model:value="resting_threshold" :step="0.05" :min="0.5" :max="0.8" />
+                <n-input-number
+                  v-model:value="resting_threshold"
+                  :step="0.05"
                   :min="0.5"
-                  :max="3.0"
-                  :format-tooltip="(x) => `${x * 100}%`"
+                  :max="0.8"
                 />
-                <div class="scale">{{ webview.scale * 100 }}%</div>
-              </n-form-item>
-              <n-form-item label="显示主题">
-                <n-radio-group v-model:value="theme">
-                  <n-space>
-                    <n-radio value="light">亮色</n-radio>
-                    <n-radio value="dark">暗色</n-radio>
-                  </n-space>
-                </n-radio-group>
-              </n-form-item>
-            </n-form>
-          </n-card>
-        </div>
-        <div>
-          <n-card title="基建设置">
-            <n-form
-              :label-placement="mobile ? 'top' : 'left'"
-              :show-feedback="false"
-              label-width="140"
-              label-align="left"
-            >
-              <n-form-item>
-                <template #label>
-                  <span>宿舍黑名单</span>
-                  <help-text>
-                    <div>不希望进行填充宿舍的干员</div>
-                  </help-text>
-                </template>
-                <n-transfer
-                  v-if="mobile"
-                  virtual-scroll
-                  source-filterable
-                  target-filterable
-                  :options="operators"
-                  v-model:value="free_blacklist"
-                  :render-source-label="(o) => render_op_label(o.option)"
-                  :render-target-label="(o) => render_op_label(o.option)"
-                  :filter="(p, o) => (p ? match(o.label, p) : true)"
-                />
-                <n-select
-                  v-else
-                  multiple
-                  filterable
-                  :options="operators"
-                  :render-label="render_op_label"
-                  :render-tag="render_op_tag"
-                  v-model:value="free_blacklist"
-                  :filter="(p, o) => match(o.label, p)"
-                />
-              </n-form-item>
-              <n-form-item>
-                <template #label>
-                  <span>跑单前置延时</span>
-                  <help-text>
-                    <div>推荐范围5-10</div>
-                    <div>可填小数</div>
-                    <div>单位：分钟</div>
-                  </help-text>
-                </template>
-                <n-input-number v-model:value="run_order_delay" />
-              </n-form-item>
-              <n-form-item :show-label="false">
-                <n-checkbox v-model:checked="run_order_grandet_mode.enable">葛朗台跑单</n-checkbox>
-              </n-form-item>
-              <n-form-item v-if="run_order_grandet_mode.enable">
-                <template #label>
-                  <span>葛朗台缓冲时间</span>
-                  <help-text>
-                    <div>推荐范围：15-30</div>
-                    <div>单位：秒</div>
-                  </help-text>
-                </template>
-                <n-input-number v-model:value="run_order_grandet_mode.buffer_time" />
-              </n-form-item>
-              <n-form-item>
-                <template #label>
-                  <span>无人机使用房间</span>
-                  <help-text>
-                    <div>加速制造站为指定制造站加速</div>
-                    <div>加速贸易站请选“（加速贸易站）”</div>
-                    <div>（加速贸易站）只会加速有跑单人员作备班的站</div>
-                    <div>例：没填龙舌兰但书的卖玉站 （加速贸易站） 不会被加速</div>
-                  </help-text>
-                </template>
-                <n-select :options="facility_with_empty" v-model:value="drone_room" />
-              </n-form-item>
-              <n-form-item>
-                <template #label>
-                  <span>无人机使用阈值</span>
-                  <help-text>
-                    <div>如加速贸易，推荐大于 贸易站数 x 10 + 92</div>
-                    <div>如加速制造，推荐大于 贸易站数 x 10</div>
-                  </help-text>
-                </template>
-                <n-input-number v-model:value="drone_count_limit" />
-              </n-form-item>
-              <n-form-item>
-                <template #label>
-                  <span>无人机加速间隔</span>
-                  <help-text>
-                    <div>单位：小时</div>
-                    <div>可填小数</div>
-                  </help-text>
-                </template>
-                <n-input-number v-model:value="drone_interval" />
-              </n-form-item>
-              <n-form-item label="搓玉补货房间">
-                <n-select
-                  multiple
-                  filterable
-                  tag
-                  :options="left_side_facility"
-                  v-model:value="reload_room"
-                />
-              </n-form-item>
-              <n-form-item>
-                <template #label>
-                  <span>心情阈值：</span>
-                  <help-text>
-                    <div>2电站推荐不低于0.75</div>
-                    <div>3电站推荐不低于0.5</div>
-                    <div>即将大更新推荐设置成0.8</div>
-                  </help-text>
-                </template>
-                <div class="threshold">
-                  <n-slider v-model:value="resting_threshold" :step="0.05" :min="0.5" :max="0.8" />
-                  <n-input-number
-                    v-model:value="resting_threshold"
-                    :step="0.05"
-                    :min="0.5"
-                    :max="0.8"
-                  />
-                </div>
-              </n-form-item>
-            </n-form>
-          </n-card>
-        </div>
-        <div><Depotswitch /></div>
-        <div><DailyMission /></div>
-        <div><maa-basic /></div>
-        <div><SKLand /></div>
-        <div><email /></div>
-        <div><ServerJang /></div>
+              </div>
+            </n-form-item>
+          </n-form>
+        </n-card>
       </div>
-
-      <div class="grid-right">
-        <div><clue /></div>
-
-        <div><Recruit /></div>
-        <div><maa-weekly /></div>
-        <div><maa-weekly-new /></div>
-        <div><maa-long-tasks /></div>
-      </div>
+      <div><Depotswitch /></div>
+      <div><DailyMission /></div>
+      <div><maa-basic /></div>
+      <div><SKLand /></div>
+      <div><email /></div>
+      <div><ServerJang /></div>
     </div>
 
+    <div class="grid-right">
+      <div><clue /></div>
+
+      <div><Recruit /></div>
+      <div><maa-weekly /></div>
+      <div><maa-weekly-new /></div>
+      <div><maa-long-tasks /></div>
+    </div>
+  </div>
 </template>
 
 <style scoped lang="scss">
