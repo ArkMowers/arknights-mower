@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>基建报告</title>
+    <style>
+      table,
+      th,
+      td {
+        border: 1px solid black;
+        border-collapse: collapse;
+      }
+    </style>
+  </head>
+  <body>
+    <table>
+        <tr><td>赤金</td><td>{{ report_data['赤金'] }}</td></tr>
+        <tr><td>龙门币订单</td><td>{{ report_data['龙门币订单'] }}</td></tr>
+        <tr><td>龙门币订单数</td><td>{{ report_data['龙门币订单数'] }}</td></tr>
+        <tr><td>作战录像</td><td>{{ report_data['作战录像'] }}</td></tr>
+        <tr><td>合成玉</td><td>{{ report_data['合成玉'] }}</td></tr>
+    </table>
+  </body>
+</html>
