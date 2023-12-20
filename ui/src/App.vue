@@ -412,5 +412,6 @@ td {
   flex-direction: column;
   gap: 12px;
   width: calc(100% - 24px);
+  height: calc(100% - 24px);
 }
 </style>
