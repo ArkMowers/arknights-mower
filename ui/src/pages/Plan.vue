@@ -343,7 +343,13 @@ async function import_plan() {
     <n-form-item>
       <template #label>
         <span>跑单时间刷新干员</span>
-        <help-text><div>贸易站外影响贸易效率的干员</div></help-text>
+        <help-text>
+          <p>贸易站外影响贸易效率的干员</p>
+          <p>
+            默认情况下，mower 只在贸易站内干员换班后重读所有贸易站的订单剩余时间。<br />
+            若有贸易站外的干员影响贸易效率，且与贸易站内的干员不在一组，则需写入此选项中。
+          </p>
+        </help-text>
       </template>
       <n-select
         multiple
