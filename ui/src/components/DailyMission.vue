@@ -21,7 +21,7 @@ const { check_mail_enable, report_enable, send_report } = storeToRefs(store)
     </template>
     <template #footer v-if="report_enable">
       <n-checkbox v-model:checked="send_report">
-        <div>发送至邮件 {{ send_report ? '开启' : '关闭' }}</div>
+        <div>发送至邮件</div>
       </n-checkbox>
     </template>
   </n-card>
