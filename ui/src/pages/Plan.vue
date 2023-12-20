@@ -191,7 +191,7 @@ async function import_plan() {
 <template>
   <trigger-dialog />
   <task-dialog />
-  <div class="home-container plan-bar w-980 mx-auto mt-12 mw-980">
+  <div class="plan-bar w-980 mx-auto mt-12 mw-980">
     <n-input type="textarea" :autosize="true" v-model:value="plan_file" />
     <n-button @click="open_plan_file">...</n-button>
     <n-button @click="import_plan">
@@ -207,7 +207,7 @@ async function import_plan() {
       导出图片
     </n-button>
   </div>
-  <div class="home-container plan-bar w-980 mx-auto mw-980">
+  <div class="plan-bar w-980 mx-auto mw-980">
     <n-button
       :disabled="sub_plan == 'main'"
       @click="sub_plan = sub_plan == 0 ? 'main' : sub_plan - 1"
@@ -408,6 +408,7 @@ async function import_plan() {
 }
 
 .plan-bar {
+  display: flex;
   flex-direction: row;
   flex-grow: 0;
   gap: 6px;
