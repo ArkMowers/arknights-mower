@@ -1,7 +1,14 @@
 from datetime import datetime, timedelta
 import unittest
-from arknights_mower.utils.scheduler_task import scheduling, SchedulerTask, TaskTypes, find_next_task
+from unittest.mock import patch, MagicMock
 
+from arknights_mower.utils.plan import Plan, Room, PlanConfig
+from arknights_mower.utils.scheduler_task import scheduling, SchedulerTask, TaskTypes, find_next_task, \
+    check_dorm_ordering
+from ..utils.operators import Operators
+
+with patch.dict('sys.modules', {'save_action_to_sqlite_decorator': MagicMock()}):
+    from ..solvers.record import save_action_to_sqlite_decorator
 
 class TestScheduling(unittest.TestCase):
 
@@ -73,3 +80,81 @@ class TestScheduling(unittest.TestCase):
                                                                     meta_data="room", compare_type=">")
         self.assertEqual(res1, None)
         self.assertNotEqual(res2, None)
+
+    def test_check_dorm_ordering_add_plan_1(self):
+        # 测试 方程有效
+        task1 = SchedulerTask(time=datetime.now(),
+                              task_plan={'dormitory_1': ['Current', 'Current', '夕', 'Current', 'Current'],'central': ['麒麟R夜刀', 'Current', 'Current', 'Current', 'Current']}, task_type=TaskTypes.SHIFT_OFF, meta_data="")
+        tasks = [task1]
+        op_data = self.init_opdata()
+        check_dorm_ordering(tasks, op_data)
+        # 生成额外宿舍任务
+        self.assertEqual(2, len(tasks))
+        self.assertEqual(1, len(tasks[0].plan))
+        # 老plan含有见行者
+        self.assertEqual("见行者", tasks[1].plan["dormitory_1"][3])
+
+    def test_check_dorm_ordering_add_plan_2(self):
+        # 测试 方程有效
+        task1 = SchedulerTask(time=datetime.now(),
+                              task_plan={'dormitory_1': ['Current', 'Current', '夕', 'Current', 'Current'],'central': ['麒麟R夜刀', 'Current', 'Current', 'Current', 'Current']}, task_type=TaskTypes.SHIFT_OFF, meta_data="")
+        tasks = [task1]
+        op_data = self.init_opdata()
+        # 预设干员位置
+        op_data.operators["见行者"].current_index = -1
+        op_data.operators["见行者"].current_room  = "meeting"
+        op_data.operators["麒麟R夜刀"].current_index = 3
+        op_data.operators["麒麟R夜刀"].current_room = "dormitory_1"
+        check_dorm_ordering(tasks, op_data)
+        # 生成额外宿舍任务
+        self.assertEqual(2, len(tasks))
+        self.assertEqual(1, len(tasks[0].plan))
+        # 老plan不变
+        self.assertEqual("Current", tasks[1].plan["dormitory_1"][3])
+
+    def test_check_dorm_ordering_not_plan(self):
+        # 测试 方程有效
+        task1 = SchedulerTask(time=datetime.now(),
+                              task_plan={'dormitory_1': ['Current', 'Current', 'Current', '夕', 'Current'],'central': ['麒麟R夜刀', 'Current', 'Current', 'Current', 'Current']}, task_type=TaskTypes.SHIFT_OFF, meta_data="")
+        tasks = [task1]
+        op_data = self.init_opdata()
+        # 预设干员位置
+        op_data.operators["红"].current_index = -1
+        op_data.operators["红"].current_room = "meeting"
+        op_data.operators["焰尾"].current_index = 2
+        op_data.operators["焰尾"].current_room = "dormitory_1"
+        check_dorm_ordering(tasks, op_data)
+
+        # 如果VIP位已经被占用，则不会生成新任务
+        self.assertEqual(1, len(tasks))
+
+
+    def init_opdata(self):
+        agent_base_config = PlanConfig("稀音,黑键,伊内丝,承曦格雷伊", "稀音,柏喙,伊内丝", "见行者")
+        plan_config = {"central": [Room("夕", "", ["麒麟R夜刀"]),
+                                   Room("焰尾", "", ["凯尔希"]),
+                                   Room("森蚺", "", ["凯尔希"]),
+                                   Room("令", "", ["火龙S黑角"]),
+                                   Room("薇薇安娜", "", ["玛恩纳"])],
+                       "meeting": [Room("伊内丝", "", ["陈", "红"]), Room("见行者", "", ["陈", "红"])],
+                       "dormitory_1": [Room("塑心", "", []),
+                                       Room("冰酿", "", []),
+                                       Room("Free", "", []),
+                                       Room("Free", "", []),
+                                       Room("Free", "", [])]
+                       }
+        plan = {
+            "default_plan": Plan(plan_config, agent_base_config),
+            "backup_plans": []
+        }
+        op_data = Operators(plan)
+        op_data.init_and_validate()
+        # 预设干员位置
+        op_data.operators["冰酿"].current_room= op_data.operators["塑心"].current_room= op_data.operators["见行者"].current_room ="dormitory_1"
+        op_data.operators["红"].current_room = op_data.operators["玛恩纳"].current_room = "dormitory_1"
+        op_data.operators["冰酿"].current_index = 0
+        op_data.operators["塑心"].current_index = 1
+        op_data.operators["红"].current_index = 2
+        op_data.operators["见行者"].current_index = 3
+        op_data.operators["玛恩纳"].current_index = 4
+        return op_data

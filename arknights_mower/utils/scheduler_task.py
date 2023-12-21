@@ -17,6 +17,7 @@ class TaskTypes(Enum):
     NOT_SPECIFIC = ("", "空任务", 2)
     RECRUIT = ("recruit", "公招", 2)
     SKLAND = ("skland", "森空岛签到", 2)
+    RE_ORDER = ("宿舍排序", "宿舍排序", 2)
 
     def __new__(cls, value, display_value, priority):
         obj = object.__new__(cls)
@@ -103,6 +104,40 @@ def scheduling(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
                         logger.debug('||'.join([str(t) for t in tasks]))
                         break
         tasks.sort(key=lambda x: x.time)
+
+
+def check_dorm_ordering(tasks, op_data):
+    # 仅当下班的时候才触发宿舍排序任务
+    plan = op_data.plan
+    if tasks[0].type == TaskTypes.SHIFT_OFF:
+        extra_plan = {}
+        for room, v in tasks[0].plan.items():
+            # 非宿舍则不需要清空
+            if room.startswith('dorm'):
+                # 是否检查过vip位置
+                pass_first_free = False
+                for idx, agent in enumerate(v):
+                    # 如果当前位置非宿管 且无人员变动（有变动则是下班干员）
+                    if "Free" == plan[room][idx].agent and agent == "Current":
+                        # 如果高优先不变，则跳过逻辑判定
+                        if not pass_first_free:
+                            break
+                        current = next((obj for obj in op_data.operators.values() if
+                                        obj.current_room == room and obj.current_index == idx), None)
+                        if current:
+                            if current.resting_priority != "high":
+                                # 替换成高优先的实际名字
+                                if current.is_high():
+                                    v[idx] = current.name
+                                if room not in extra_plan:
+                                    extra_plan[room] = copy.deepcopy(v)
+                                # 新生成移除任务 --> 换成任意干员
+                                extra_plan[room][idx] = "Free"
+                    if "Free" == plan[room][idx].agent and not pass_first_free:
+                        pass_first_free = True
+        if extra_plan:
+            tasks.insert(0, SchedulerTask(task_plan=extra_plan, time=tasks[0].time - timedelta(seconds=1),
+                                          task_type=TaskTypes.RE_ORDER))
 
 
 class SchedulerTask:

@@ -18,7 +18,7 @@ from ..data import agent_list, base_room_list, ocr_error
 from ..utils import character_recognize, detector, segment
 from ..utils.digit_reader import DigitReader
 from ..utils.operators import Operators, Operator, Dormitory
-from ..utils.scheduler_task import SchedulerTask, scheduling, find_next_task, TaskTypes
+from ..utils.scheduler_task import SchedulerTask, scheduling, find_next_task, TaskTypes, check_dorm_ordering
 from ..utils import typealias as tp
 from ..utils.device import Device
 from ..utils.log import logger
@@ -102,6 +102,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         self.error = False
         self.handle_error(True)
         scheduling(self.tasks)
+        check_dorm_ordering(self.tasks,self.op_data)
         if len(self.tasks) > 0:
             # 找到时间最近的一次单个任务
             self.task = self.tasks[0]
