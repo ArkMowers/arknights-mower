@@ -2337,6 +2337,6 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             mail(self.device)
         return True
 
-    def report_plan_solver(self):
+    def report_plan_solver(self,send_report=False):
         if self.report_enable:
-            return daily_report(self.device)
+            return daily_report(self.device,self.send_message_config,send_report)
