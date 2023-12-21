@@ -444,6 +444,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     self.agent_arrange(self.task.plan, get_time)
                     if get_time:
                         self.plan_metadata()
+                    if TaskTypes.RE_ORDER == self.task.type:
+                        self.skip()
                 # 如果任务名称包含干员名,则为动态生成的
                 elif self.task.type == TaskTypes.FIAMMETTA:
                     self.plan_fia()
