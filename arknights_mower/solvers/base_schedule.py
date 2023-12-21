@@ -177,6 +177,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         current_low = self.op_data.available_free('low')
         logger.debug(f"剩余高效:{current_high},低效：{current_low}")
         logger.debug(f"需求高效:{_high_free},低效：{_low_free}")
+        success = False
         if current_high >= _high_free and current_low >= _low_free:
             # 检查是否目前宿舍满足 low free 和high free 的数量需求，如果满足，则直接安排
             _plan = {}
@@ -188,10 +189,11 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                                                                                    current_low)
             if len(_plan.items()) > 0:
                 self.tasks.append(SchedulerTask(datetime.now(), task_plan=_plan))
+                success = True
             else:
-                msg = f'无法完成 {self.task.meta_data} 的排班，请检查替换组是否被占用'
+                msg = f'无法完成 {self.task.meta_data} 的排班，如果重复接收此邮件请检查替换组是否被占用'
                 self.send_message(msg)
-        else:
+        if not success:
             # 如果不满足，则找到并且执行最近一个type 包含 超过数量的high free 和low free 的 任务并且 干员没有 exaust_require 词条
             task_index = -1
             current_high, current_low = 0, 0
