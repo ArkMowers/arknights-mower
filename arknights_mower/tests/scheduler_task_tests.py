@@ -93,6 +93,10 @@ class TestScheduling(unittest.TestCase):
         self.assertEqual(1, len(tasks[0].plan))
         # 老plan含有见行者
         self.assertEqual("见行者", tasks[1].plan["dormitory_1"][3])
+        del tasks[0]
+        # 重复执行不会生成新的
+        check_dorm_ordering(tasks, op_data)
+        self.assertEqual(1, len(tasks))
 
     def test_check_dorm_ordering_add_plan_2(self):
         # 测试 方程有效
@@ -111,6 +115,12 @@ class TestScheduling(unittest.TestCase):
         self.assertEqual(1, len(tasks[0].plan))
         # 老plan不变
         self.assertEqual("Current", tasks[1].plan["dormitory_1"][3])
+        del tasks[0]
+        # 重复执行不会生成新的
+        check_dorm_ordering(tasks, op_data)
+        self.assertEqual(1, len(tasks))
+
+
 
     def test_check_dorm_ordering_not_plan(self):
         # 测试 方程有效
@@ -126,6 +136,9 @@ class TestScheduling(unittest.TestCase):
         check_dorm_ordering(tasks, op_data)
 
         # 如果VIP位已经被占用，则不会生成新任务
+        self.assertEqual(1, len(tasks))
+        # 重复执行不会生成新的
+        check_dorm_ordering(tasks, op_data)
         self.assertEqual(1, len(tasks))
 
 
