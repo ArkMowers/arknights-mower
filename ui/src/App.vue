@@ -43,12 +43,6 @@
             </n-layout-content>
             <n-layout-footer v-if="mobile">
               <n-tabs type="line" justify-content="space-evenly" size="small">
-                <n-tab name="主页" @click="$router.push('/')">
-                  <div style="display: flex; flex-direction: column; align-items: center">
-                    <n-icon size="20" style="margin-bottom: -1px" :component="BookOutline" />
-                    看我
-                  </div>
-                </n-tab>
                 <n-tab name="日志" @click="$router.push('/log')">
                   <div style="display: flex; flex-direction: column; align-items: center">
                     <n-icon size="20" style="margin-bottom: -1px" :component="BookOutline" />
@@ -110,6 +104,12 @@
                     帮助
                   </div>
                 </n-tab>
+                <n-tab name="资源" @click="$router.push('/')">
+                  <div style="display: flex; flex-direction: column; align-items: center">
+                    <n-icon size="20" style="margin-bottom: -1px" :component="Bag" />
+                    资源
+                  </div>
+                </n-tab>
               </n-tabs>
             </n-layout-footer>
           </n-layout>
@@ -134,6 +134,7 @@ import Settings from '@vicons/ionicons5/Settings'
 import HelpCircle from '@vicons/ionicons5/HelpCircle'
 import Storefront from '@vicons/ionicons5/Storefront'
 import ReaderOutline from '@vicons/ionicons5/ReaderOutline'
+import Bag from '@vicons/ionicons5/Bag'
 
 function renderIcon(icon) {
   return () => h(NIcon, null, { default: () => h(icon) })
@@ -142,12 +143,7 @@ function renderIcon(icon) {
 import { RouterLink } from 'vue-router'
 const menuOptions = computed(() => [
   {
-    label: () => h(RouterLink, { to: { path: '/' } }, { default: () => '读我' }),
-    icon: renderIcon(BookOutline),
-    key: 'readme'
-  },
-  {
-    label: () => h(RouterLink, { to: { path: '/log' } }, { default: () => '运行日志' }),
+    label: () => h(RouterLink, { to: { path: '/' } }, { default: () => '运行日志' }),
     icon: renderIcon(BookOutline),
     key: 'go-to-log'
   },
@@ -195,6 +191,11 @@ const menuOptions = computed(() => [
     label: () => h(RouterLink, { to: { path: '/doc' } }, { default: () => '帮助文档' }),
     icon: renderIcon(HelpCircle),
     key: 'go-to-doc'
+  },
+  {
+    label: () => h(RouterLink, { to: { path: '/readme' } }, { default: () => '其他资源' }),
+    icon: renderIcon(Bag),
+    key: 'readme'
   }
 ])
 import { zhCN, dateZhCN, darkTheme } from 'naive-ui'
