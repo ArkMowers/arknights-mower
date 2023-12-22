@@ -27,7 +27,7 @@
               v-if="!mobile"
               bordered
               collapse-mode="width"
-              :collapsed-width="50"
+              :collapsed-width="64"
               :width="210"
               show-trigger
             >
