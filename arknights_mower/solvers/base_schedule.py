@@ -856,7 +856,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 # 记录替换组
                 exist_replacement.extend(__replacement)
                 new_plan = False
-                if len(agents) > self.op_data.config.max_resting_count:
+                if any(self.op_data.operators[a_name].resting_priority == "low" for a_name in agents):
                     first_low = last_high = None
                     for a in agents:
                         ag = self.op_data.operators[a]
