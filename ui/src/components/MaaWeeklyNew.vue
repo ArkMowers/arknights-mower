@@ -317,7 +317,10 @@ function clear() {
       <p>建议每次更新后 点一次<b>清除当前配置以匹配最新表格</b></p>
       <p>如果觉得这个表有什么要改进的 at群管理</p>
       <p>前三行的空行用来写 一些自定义关卡</p>
-
+      <p>
+        新用法<n-tag closable>SSReopen-XX</n-tag> 如<n-tag closable>SSReopen-FC</n-tag
+        >可以刷照我以火的所有复刻本(FC-1到FC-8)
+      </p>
       <ul>
         <li>
           在第一行填入<n-tag closable class="tag-mr">HE-7</n-tag>

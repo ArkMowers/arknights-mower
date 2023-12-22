@@ -3,13 +3,13 @@ export const routes = [
     path: '/',
     children: [
       {
-        path: '',
+        path: 'readme',
         component: () => import('@/pages/readme.vue'),
         meta: { title: '帮助' },
         name: 'readme'
       },
       {
-        path: 'log',
+        path: '',
         component: () => import('@/pages/Log.vue'),
         meta: { title: '日志' },
         name: 'log'
