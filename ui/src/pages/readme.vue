@@ -1,5 +1,5 @@
 <template>
-  <div class="home-container" style="width: auto; align-content: center">
+  <div class="home-container readme">
     <!-- <h2>更新日志</h2> -->
     <h1 id="资源合集">资源合集</h1>
     <div>
@@ -154,3 +154,10 @@
     </div>
   </div>
 </template>
+
+<style scoped>
+.readme {
+  word-break: break-all;
+  max-width: 800px;
+}
+</style>

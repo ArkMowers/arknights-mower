@@ -43,7 +43,7 @@
             </n-layout-content>
             <n-layout-footer v-if="mobile">
               <n-tabs type="line" justify-content="space-evenly" size="small">
-                <n-tab name="日志" @click="$router.push('/log')">
+                <n-tab name="日志" @click="$router.push('/')">
                   <div style="display: flex; flex-direction: column; align-items: center">
                     <n-icon size="20" style="margin-bottom: -1px" :component="BookOutline" />
                     日志
@@ -104,7 +104,7 @@
                     帮助
                   </div>
                 </n-tab>
-                <n-tab name="资源" @click="$router.push('/')">
+                <n-tab name="资源" @click="$router.push('/readme')">
                   <div style="display: flex; flex-direction: column; align-items: center">
                     <n-icon size="20" style="margin-bottom: -1px" :component="Bag" />
                     资源
@@ -411,7 +411,7 @@ td {
   flex-grow: 1;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   width: calc(100% - 24px);
   height: calc(100% - 24px);
 }

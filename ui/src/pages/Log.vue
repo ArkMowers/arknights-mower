@@ -50,6 +50,10 @@ function refresh() {
 import PlayIcon from '@vicons/ionicons5/Play'
 import StopIcon from '@vicons/ionicons5/Stop'
 import ReloadIcon from '@vicons/ionicons5/Reload'
+import CollapseIcon from '@vicons/fluent/PanelTopContract20Regular'
+import ExpandIcon from '@vicons/fluent/PanelTopExpand20Regular'
+
+const show_task_table = ref(true)
 </script>
 
 <template>
@@ -61,7 +65,7 @@ import ReloadIcon from '@vicons/ionicons5/Reload'
           <th>任务</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody v-show="show_task_table">
         <template v-for="task in task_list">
           <tr>
             <td :rowspan="task.task.length">{{ task.time }}</td>
@@ -105,13 +109,26 @@ import ReloadIcon from '@vicons/ionicons5/Reload'
         <span class="scroll-label">自动滚动</span>
       </div>
     </div>
+    <n-button
+      class="toggle-table-collapse-btn"
+      size="small"
+      @click="show_task_table = !show_task_table"
+      :focusable="false"
+    >
+      <template #icon>
+        <n-icon>
+          <collapse-icon v-if="show_task_table" />
+          <expand-icon v-else />
+        </n-icon>
+      </template>
+    </n-button>
   </div>
 </template>
 
 <style scoped lang="scss">
 .log {
-  flex-grow: 1;
   overflow: hidden;
+  flex: 1;
 }
 
 .task-table {
@@ -119,11 +136,16 @@ import ReloadIcon from '@vicons/ionicons5/Reload'
 
   th {
     padding: 2px 16px;
+
+    &:first-child {
+      box-sizing: border-box;
+      width: 74px;
+    }
   }
 
   td {
     height: 24px;
-    padding: 0 16px;
+    padding: 2px 8px;
   }
 }
 
@@ -141,6 +163,12 @@ import ReloadIcon from '@vicons/ionicons5/Reload'
 
 .expand {
   flex-grow: 1;
+}
+
+.toggle-table-collapse-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
 }
 </style>
 
