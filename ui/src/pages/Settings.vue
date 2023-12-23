@@ -416,7 +416,7 @@ ul {
 @media (max-width: 1399px) {
   .grid-two {
     margin: 0 0 -10px 0;
-    width: calc(100% - 24px);
+    width: 100%;
     max-width: 600px;
   }
   .grid-left {
