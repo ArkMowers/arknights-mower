@@ -59,11 +59,12 @@ function render_label(option) {
       <n-button
         text
         tag="a"
-        href="https://yituliu.site/material/store"
+        href="https://github.com/Bidgecfah/Rhodes-Island-Bureau-of-Price"
         target="_blank"
         type="primary"
-        >明日方舟一图流 - 商店性价比</n-button
       >
+        罗德岛物价局
+      </n-button>
       <p>注意：跑单时赤金与作战记录均大幅升值</p>
     </help-text>
     <n-form

@@ -416,18 +416,18 @@ ul {
 @media (max-width: 1399px) {
   .grid-two {
     margin: 0 0 -10px 0;
+    width: calc(100% - 24px);
+    max-width: 600px;
   }
   .grid-left {
     display: grid;
     row-gap: 10px;
     grid-template-columns: 100%;
-    max-width: 600px;
   }
   .grid-right {
     display: grid;
     row-gap: 10px;
     grid-template-columns: 100%;
-    max-width: 600px;
     margin-top: 10px;
   }
 }
