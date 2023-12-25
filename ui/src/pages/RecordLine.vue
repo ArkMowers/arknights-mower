@@ -15,9 +15,13 @@
         :class="{ 'report-card-expand': expand_card == index }"
       >
         <h2>{{ groupData.groupName }}</h2>
-        <Line :data="groupData.moodData" :options="chartOptions" />
+        <div class="line-outer-container">
+          <div class="line-inner-container" :style="{ width: expand_chart[index] + '%' }">
+            <Line :data="groupData.moodData" :options="chartOptions" />
+          </div>
+        </div>
         <n-button
-          class="toggle-size"
+          class="toggle toggle-size"
           size="small"
           @click="expand_card = expand_card == -1 ? index : -1"
           :focusable="false"
@@ -26,6 +30,18 @@
             <n-icon>
               <expand-icon v-if="expand_card == index" />
               <collapse-icon v-else />
+            </n-icon>
+          </template>
+        </n-button>
+        <n-button
+          class="toggle toggle-width"
+          size="small"
+          @click="adjust_width(index)"
+          :focusable="false"
+        >
+          <template #icon>
+            <n-icon>
+              <width-icon />
             </n-icon>
           </template>
         </n-button>
@@ -73,11 +89,13 @@ ChartJS.register(
 )
 
 const expand_card = ref(-1)
+const expand_chart = ref([])
 
 // Mock report data
 const reportData = ref([])
 onMounted(async () => {
   reportData.value = await getMoodRatios()
+  expand_chart.value = new Array(reportData.value.length).fill(100)
 })
 
 // Chart.js options
@@ -110,11 +128,22 @@ const chartOptions = ref({
 
 import CollapseIcon from '@vicons/tabler/ArrowsDiagonal'
 import ExpandIcon from '@vicons/tabler/ArrowsDiagonalMinimize2'
+import WidthIcon from '@vicons/tabler/ArrowsHorizontal'
+
+function adjust_width(idx) {
+  if (expand_chart.value[idx] == 100) {
+    expand_chart.value[idx] = 300
+  } else if (expand_chart.value[idx] == 300) {
+    expand_chart.value[idx] = 700
+  } else {
+    expand_chart.value[idx] = 100
+  }
+}
 </script>
 
 <style scoped>
 h2 {
-  margin-bottom: 10px;
+  margin: 0;
   font-size: 1.2rem;
   text-align: center;
 }
@@ -128,6 +157,10 @@ h2 {
 .report-card {
   position: relative;
   background-color: var(--n-color);
+  padding: 10px 20px 16px 20px;
+  height: 300px;
+  box-sizing: border-box;
+  border-radius: 8px;
 }
 
 .report-card-expand {
@@ -140,9 +173,28 @@ h2 {
   z-index: 9;
 }
 
-.toggle-size {
+.toggle {
   position: absolute;
   top: 10px;
+}
+
+.toggle-size {
   right: 10px;
+}
+
+.toggle-width {
+  left: 10px;
+}
+
+.line-outer-container {
+  width: 100%;
+  overflow-x: scroll;
+  flex: 1;
+}
+
+.line-inner-container {
+  padding: 0 12px 16px 12px;
+  height: 100%;
+  box-sizing: border-box;
 }
 </style>
