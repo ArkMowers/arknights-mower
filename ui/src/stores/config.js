@@ -32,7 +32,7 @@ export const useConfigStore = defineStore('config', () => {
   const shop_list = ref([])
   const maa_gap = ref(false)
   const simulator = ref({ name: '', index: -1 })
-  const resting_threshold = ref(0.5)
+  const resting_threshold = ref(50)
   const theme = ref('light')
   const tap_to_launch_game = ref(false)
   const exit_game_when_idle = ref(true)
@@ -114,7 +114,7 @@ export const useConfigStore = defineStore('config', () => {
       response.data.maa_mall_blacklist == '' ? [] : response.data.maa_mall_blacklist.split(',')
     maa_gap.value = response.data.maa_gap
     simulator.value = response.data.simulator
-    resting_threshold.value = response.data.resting_threshold
+    resting_threshold.value = response.data.resting_threshold * 100
     theme.value = response.data.theme
     tap_to_launch_game.value = response.data.tap_to_launch_game
     tap_to_launch_game.value.enable = tap_to_launch_game.value.enable ? 'tap' : 'adb'
@@ -185,7 +185,7 @@ export const useConfigStore = defineStore('config', () => {
       maa_gap: maa_gap.value,
       simulator: simulator.value,
       theme: theme.value,
-      resting_threshold: resting_threshold.value,
+      resting_threshold: resting_threshold.value / 100,
       tap_to_launch_game: {
         enable: tap_to_launch_game.value.enable == 'tap',
         x: tap_to_launch_game.value.x,

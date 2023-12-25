@@ -289,21 +289,24 @@ import { render_op_label, render_op_tag } from '@/utils/op_select'
             </n-form-item>
             <n-form-item>
               <template #label>
-                <span>心情阈值：</span>
+                <span>心情阈值</span>
                 <help-text>
-                  <div>2电站推荐不低于0.75</div>
-                  <div>3电站推荐不低于0.5</div>
-                  <div>即将大更新推荐设置成0.8</div>
+                  <div>2电站推荐不低于65%</div>
+                  <div>3电站推荐不低于50%</div>
+                  <div>即将大更新推荐设置成80%</div>
                 </help-text>
               </template>
               <div class="threshold">
-                <n-slider v-model:value="resting_threshold" :step="0.05" :min="0.5" :max="0.8" />
-                <n-input-number
+                <n-slider
                   v-model:value="resting_threshold"
-                  :step="0.05"
-                  :min="0.5"
-                  :max="0.8"
+                  :step="5"
+                  :min="50"
+                  :max="80"
+                  :format-tooltip="(v) => `${v}%`"
                 />
+                <n-input-number v-model:value="resting_threshold" :step="5" :min="50" :max="80">
+                  <template #suffix>%</template>
+                </n-input-number>
               </div>
             </n-form-item>
           </n-form>
