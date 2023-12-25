@@ -8,9 +8,27 @@
       cols="1 s:1 m:2 l:3 xl:4 2xl:5"
       responsive="screen"
     >
-      <n-gi v-for="(groupData, index) in reportData" :key="index" class="report-card">
+      <n-gi
+        v-for="(groupData, index) in reportData"
+        :key="index"
+        class="report-card"
+        :class="{ 'report-card-expand': expand_card == index }"
+      >
         <h2>{{ groupData.groupName }}</h2>
         <Line :data="groupData.moodData" :options="chartOptions" />
+        <n-button
+          class="toggle-size"
+          size="small"
+          @click="expand_card = expand_card == -1 ? index : -1"
+          :focusable="false"
+        >
+          <template #icon>
+            <n-icon>
+              <expand-icon v-if="expand_card == index" />
+              <collapse-icon v-else />
+            </n-icon>
+          </template>
+        </n-button>
       </n-gi>
     </n-grid>
   </div>
@@ -53,6 +71,9 @@ ChartJS.register(
   ArcElement,
   ChartDataLabels
 )
+
+const expand_card = ref(-1)
+
 // Mock report data
 const reportData = ref([])
 onMounted(async () => {
@@ -86,6 +107,9 @@ const chartOptions = ref({
     }
   }
 })
+
+import CollapseIcon from '@vicons/tabler/ArrowsDiagonal'
+import ExpandIcon from '@vicons/tabler/ArrowsDiagonalMinimize2'
 </script>
 
 <style scoped>
@@ -99,5 +123,26 @@ h2 {
   text-align: center;
   font-size: 24px;
   margin-bottom: 20px;
+}
+
+.report-card {
+  position: relative;
+  background-color: var(--n-color);
+}
+
+.report-card-expand {
+  position: absolute;
+  width: calc(100% - 24px);
+  height: calc(100% - 24px);
+  top: 12px;
+  left: 12px;
+  box-sizing: border-box;
+  z-index: 9;
+}
+
+.toggle-size {
+  position: absolute;
+  top: 10px;
+  right: 10px;
 }
 </style>
