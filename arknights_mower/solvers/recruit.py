@@ -259,6 +259,9 @@ class RecruitSolver(BaseSolver):
                     logger.debug('六星tag')
                     self.back()
                     return
+                if recruit_result_level == 1 and self.recruit_config['recruit_robot']:
+                    logger.debug('支援机械 发送邮件')
+                    return
                 # 手动选择且单五星词条不自动
                 if self.recruit_config['recruit_auto_5'] == 2 and not self.recruit_config['recruit_auto_only5']:
                     logger.debug('手动选择且单五星词条不自动')
