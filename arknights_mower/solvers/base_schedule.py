@@ -491,7 +491,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             if self.clue_count > self.clue_count_limit and self.enable_party:
                 self.share_clue()
             if self.drone_room not in self.op_data.run_order_rooms and (self.drone_time is None or self.drone_time < datetime.now() - timedelta(
-                    hours=self.drone_execution_gap)):
+                    hours=self.drone_execution_gap)) and self.drone_room is not None:
                 self.drone(self.drone_room)
                 logger.info(f"记录本次无人机使用时间为:{datetime.now()}")
                 self.drone_time = datetime.now()
@@ -1373,7 +1373,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         return
                 self.recog.update()
                 self.recog.save_screencap('run_order')
-                if self.drone_room not in self.op_data.run_order_rooms:
+                if self.drone_room is not None or self.drone_room not in self.op_data.run_order_rooms:
                     break
                 if not_customize:
                     drone_count = self.digit_reader.get_drone(self.recog.gray)
