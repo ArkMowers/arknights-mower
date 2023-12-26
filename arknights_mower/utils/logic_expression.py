@@ -11,7 +11,4 @@ class LogicExpression:
         self.right = right
 
     def __str__(self):
-        if self.operator:
-            return f"({str(self.left)} {self.operator} {str(self.right)})"
-        else:
-            return ""
+        return f"({str(self.left)} {self.operator} {str(self.right)})"
