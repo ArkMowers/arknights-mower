@@ -111,6 +111,7 @@ def check_dorm_ordering(tasks, op_data):
     plan = op_data.plan
     if tasks[0].type == TaskTypes.SHIFT_OFF and tasks[0].meta_data == "":
         extra_plan = {}
+        other_plan = {}
         for room, v in tasks[0].plan.items():
             # 非宿舍则不需要清空
             if room.startswith('dorm'):
@@ -135,8 +136,13 @@ def check_dorm_ordering(tasks, op_data):
                                 extra_plan[room][idx] = "Free"
                     if "Free" == plan[room][idx].agent and not pass_first_free:
                         pass_first_free = True
+            else:
+                other_plan[room] = v
         tasks[0].meta_data = "宿舍排序完成"
         if extra_plan:
+            for k, v in other_plan.items():
+                del tasks[0].plan[k]
+                extra_plan[k] = v
             tasks.insert(0, SchedulerTask(task_plan=extra_plan, time=tasks[0].time - timedelta(seconds=1),
                                           task_type=TaskTypes.RE_ORDER))
 

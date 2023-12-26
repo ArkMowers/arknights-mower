@@ -90,13 +90,17 @@ class TestScheduling(unittest.TestCase):
         check_dorm_ordering(tasks, op_data)
         # 生成额外宿舍任务
         self.assertEqual(2, len(tasks))
-        self.assertEqual(1, len(tasks[0].plan))
+        # 验证第一个宿舍任务包含换班+宿舍任务
+        self.assertEqual(2, len(tasks[0].plan))
         # 老plan含有见行者
         self.assertEqual("见行者", tasks[1].plan["dormitory_1"][3])
+        # 假设换班任务执行完毕
         del tasks[0]
         # 重复执行不会生成新的
         check_dorm_ordering(tasks, op_data)
         self.assertEqual(1, len(tasks))
+        # 验证第二个任务仅仅包宿舍任务
+        self.assertEqual(1, len(tasks[0].plan))
 
     def test_check_dorm_ordering_add_plan_2(self):
         # 测试 方程有效
@@ -112,13 +116,17 @@ class TestScheduling(unittest.TestCase):
         check_dorm_ordering(tasks, op_data)
         # 生成额外宿舍任务
         self.assertEqual(2, len(tasks))
-        self.assertEqual(1, len(tasks[0].plan))
+        # 验证第一个宿舍任务包含换班+宿舍任务
+        self.assertEqual(2, len(tasks[0].plan))
         # 老plan不变
         self.assertEqual("Current", tasks[1].plan["dormitory_1"][3])
+        # 假设换班任务执行完毕
         del tasks[0]
         # 重复执行不会生成新的
         check_dorm_ordering(tasks, op_data)
         self.assertEqual(1, len(tasks))
+        # 验证第二个任务仅仅包宿舍任务
+        self.assertEqual(1, len(tasks[0].plan))
 
 
 
@@ -137,9 +145,13 @@ class TestScheduling(unittest.TestCase):
 
         # 如果VIP位已经被占用，则不会生成新任务
         self.assertEqual(1, len(tasks))
+        # 验证第任务包含换班+宿舍任务
+        self.assertEqual(2, len(tasks[0].plan))
         # 重复执行不会生成新的
         check_dorm_ordering(tasks, op_data)
         self.assertEqual(1, len(tasks))
+        # 验证第任务包宿舍+换班任务
+        self.assertEqual(2, len(tasks[0].plan))
 
 
     def init_opdata(self):
