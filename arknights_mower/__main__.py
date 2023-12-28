@@ -244,6 +244,7 @@ def initialize(tasks, scheduler=None):
             "email_config": {
                 "mail_enable": conf["mail_enable"],
                 "subject": conf["mail_subject"],
+                "encryption": conf["encryption"],#添加判断starttls的变量
                 "account": conf["account"],
                 "pass_code": conf["pass_code"],
                 "receipts": [conf["account"]],
