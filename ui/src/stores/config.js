@@ -20,6 +20,7 @@ export const useConfigStore = defineStore('config', () => {
   const mail_enable = ref(false)
   const account = ref('')
   const pass_code = ref('')
+  const recipient = ref('')
   const custom_smtp_server = ref({})
   const package_type = ref('official')
   const plan_file = ref('')
@@ -101,6 +102,7 @@ export const useConfigStore = defineStore('config', () => {
     mail_enable.value = response.data.mail_enable != 0
     account.value = response.data.account
     pass_code.value = response.data.pass_code
+    recipient.value = response.data.recipient
     custom_smtp_server.value = response.data.custom_smtp_server
     package_type.value = response.data.package_type == 1 ? 'official' : 'bilibili'
     plan_file.value = response.data.planFile
@@ -174,6 +176,7 @@ export const useConfigStore = defineStore('config', () => {
       mail_enable: mail_enable.value ? 1 : 0,
       package_type: package_type.value == 'official' ? 1 : 0,
       pass_code: pass_code.value,
+      recipient: recipient.value,
       custom_smtp_server: custom_smtp_server.value,
       planFile: plan_file.value,
       reload_room: reload_room.value.join(','),
@@ -254,6 +257,7 @@ export const useConfigStore = defineStore('config', () => {
     mail_enable,
     account,
     pass_code,
+    recipient,
     custom_smtp_server,
     package_type,
     plan_file,

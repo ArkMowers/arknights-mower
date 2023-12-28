@@ -11,7 +11,8 @@ const mobile = inject('mobile')
 
 const test_result = ref('')
 
-const { mail_enable, account, pass_code, mail_subject, custom_smtp_server } = storeToRefs(store)
+const { mail_enable, account, pass_code, recipient, mail_subject, custom_smtp_server } =
+  storeToRefs(store)
 
 async function test_email() {
   test_result.value = '正在发送……'
@@ -54,7 +55,13 @@ const email_options = [
         <n-form-item label="SMTP服务器" v-if="custom_smtp_server.enable">
           <n-input v-model:value="custom_smtp_server.server" />
         </n-form-item>
-        <n-form-item label="SSL端口号" v-if="custom_smtp_server.enable">
+        <n-form-item label="加密方式" v-if="custom_smtp_server.enable">
+          <n-radio-group v-model:value="custom_smtp_server.encryption">
+            <n-radio value="tls" label="SSL/TLS" />
+            <n-radio value="starttls" label="STARTTLS" />
+          </n-radio-group>
+        </n-form-item>
+        <n-form-item label="端口号" v-if="custom_smtp_server.enable">
           <n-input-number v-model:value="custom_smtp_server.ssl_port" />
         </n-form-item>
         <n-form-item>
@@ -90,6 +97,9 @@ const email_options = [
             <help-text>可用于区分来自多个Mower的邮件</help-text>
           </template>
           <n-input v-model:value="mail_subject" />
+        </n-form-item>
+        <n-form-item label="收件人">
+          <n-input v-model:value="recipient" />
         </n-form-item>
       </n-form>
       <n-divider />
