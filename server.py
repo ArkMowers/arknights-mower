@@ -508,23 +508,23 @@ def test_email():
     enable_custom_smtp = conf["custom_smtp_server"]["enable"]
     # 根据encryption键的值选择加密方法
     encryption = conf["custom_smtp_server"]["encryption"]
-    if enable_custom_smtp == "False":
-        # 如果不用自定义用qq邮箱就使用TLS加密
-        smtp_server = "smtp.qq.com"
-        ssl_port = 465
-        s = smtplib.SMTP_SSL(smtp_server, ssl_port, timeout=10.0)
-    elif encryption == "starttls":
-        # 使用STARTTLS加密
-        s = smtplib.SMTP(smtp_server, ssl_port, timeout=10.0)
-        s.starttls()
-    else:
-        # 如果encryption键的值不是starttls，则使用默认的TLS加密
-        s = smtplib.SMTP_SSL(smtp_server, ssl_port, timeout=10.0)
     try:
-        # 登录SMTP服务器
-        s.login(conf["account"], conf["pass_code"])
-        # 发送邮件
-        s.sendmail(conf["account"], conf["recipient"], msg.as_string())
+        if enable_custom_smtp == "False":
+            # 如果不用自定义用qq邮箱就使用TLS加密
+            smtp_server = "smtp.qq.com"
+            ssl_port = 465
+            s = smtplib.SMTP_SSL(smtp_server, ssl_port, timeout=10.0)
+        elif encryption == "starttls":
+            # 使用STARTTLS加密
+            s = smtplib.SMTP(smtp_server, ssl_port, timeout=10.0)
+            s.starttls()
+        else:
+            # 如果encryption键的值不是starttls，则使用默认的TLS加密
+            s = smtplib.SMTP_SSL(smtp_server, ssl_port, timeout=10.0)
+            # 登录SMTP服务器
+            s.login(conf["account"], conf["pass_code"])
+            # 发送邮件
+            s.sendmail(conf["account"], conf["recipient"], msg.as_string())
     except Exception as e:
         return "邮件发送失败！\n" + str(e)
     return "邮件发送成功！"
