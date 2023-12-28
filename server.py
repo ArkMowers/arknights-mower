@@ -521,10 +521,10 @@ def test_email():
         else:
             # 如果encryption键的值不是starttls，则使用默认的TLS加密
             s = smtplib.SMTP_SSL(smtp_server, ssl_port, timeout=10.0)
-            # 登录SMTP服务器
-            s.login(conf["account"], conf["pass_code"])
-            # 发送邮件
-            s.sendmail(conf["account"], conf["recipient"], msg.as_string())
+        # 登录SMTP服务器
+        s.login(conf["account"], conf["pass_code"])
+        # 发送邮件
+        s.sendmail(conf["account"], conf["recipient"], msg.as_string())
     except Exception as e:
         return "邮件发送失败！\n" + str(e)
     return "邮件发送成功！"
