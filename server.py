@@ -500,7 +500,7 @@ def test_email():
     msg = MIMEMultipart()
     msg.attach(MIMEText("arknights-mower测试邮件", "plain"))
     msg["Subject"] = conf["mail_subject"] + "测试邮件"
-    msg['To'] = conf["recipient"]
+    msg['To'] = ", ".join(conf["recipient"])
     msg["From"] = conf["account"]
         # 根据conf字典中的custom_smtp_server设置SMTP服务器和端口
     smtp_server = conf["custom_smtp_server"]["server"]

@@ -544,6 +544,7 @@ class BaseSolver:
             msg.attach(MIMEText(body, subtype))
             msg['Subject'] = email_config.get('subject', '') + subject
             msg['From'] = email_config.get('account', '')
+            msg['To'] = ", ".join(email_config.get('receipts', []))
 
             try:
                 self.handle_email_error(email_config, msg)  # 第一次尝试

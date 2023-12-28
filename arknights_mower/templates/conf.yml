@@ -190,7 +190,7 @@ maa_weekly_plan1:
 mail_enable: 0
 account: ''
 pass_code: ''
-recipient: ''
+recipient: []
 custom_smtp_server:
   enable: false
   server: ''

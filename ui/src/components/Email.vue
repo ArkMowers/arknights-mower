@@ -99,7 +99,7 @@ const email_options = [
           <n-input v-model:value="mail_subject" />
         </n-form-item>
         <n-form-item label="收件人">
-          <n-input v-model:value="recipient" />
+          <n-dynamic-input v-model:value="recipient" :min="1" />
         </n-form-item>
       </n-form>
       <n-divider />
