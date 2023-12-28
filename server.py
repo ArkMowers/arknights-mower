@@ -500,7 +500,7 @@ def test_email():
     msg = MIMEMultipart()
     msg.attach(MIMEText("arknights-mower测试邮件", "plain"))
     msg["Subject"] = conf["mail_subject"] + "测试邮件"
-    msg['To'] = conf["receiver"]
+    msg['To'] = conf["recipient"]
     msg["From"] = conf["account"]
         # 根据conf字典中的custom_smtp_server设置SMTP服务器和端口
     smtp_server = conf["custom_smtp_server"]["server"]
@@ -524,7 +524,7 @@ def test_email():
         # 登录SMTP服务器
         s.login(conf["account"], conf["pass_code"])
         # 发送邮件
-        s.sendmail(conf["account"], conf["receiver"], msg.as_string())
+        s.sendmail(conf["account"], conf["recipient"], msg.as_string())
     except Exception as e:
         return "邮件发送失败！\n" + str(e)
     return "邮件发送成功！"
