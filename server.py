@@ -500,20 +500,35 @@ def test_email():
     msg = MIMEMultipart()
     msg.attach(MIMEText("arknights-mower测试邮件", "plain"))
     msg["Subject"] = conf["mail_subject"] + "测试邮件"
+    msg['To'] = conf["receiver"]
     msg["From"] = conf["account"]
-    try:
-        if conf["custom_smtp_server"]["enable"]:
-            smtp_server = conf["custom_smtp_server"]["server"]
-            ssl_port = conf["custom_smtp_server"]["ssl_port"]
-        else:
-            smtp_server = "smtp.qq.com"
-            ssl_port = 465
+        # 根据conf字典中的custom_smtp_server设置SMTP服务器和端口
+    smtp_server = conf["custom_smtp_server"]["server"]
+    ssl_port = conf["custom_smtp_server"]["ssl_port"]
+    enable_custom_smtp = conf["custom_smtp_server"]["enable"]
+    # 根据encryption键的值选择加密方法
+    encryption = conf["custom_smtp_server"]["encryption"]
+    if enable_custom_smtp == "False":
+        # 如果不用自定义用qq邮箱就使用TLS加密
+        smtp_server = "smtp.qq.com"
+        ssl_port = 465
         s = smtplib.SMTP_SSL(smtp_server, ssl_port, timeout=10.0)
+    elif encryption == "starttls":
+        # 使用STARTTLS加密
+        s = smtplib.SMTP(smtp_server, ssl_port, timeout=10.0)
+        s.starttls()
+    else:
+        # 如果encryption键的值不是starttls，则使用默认的TLS加密
+        s = smtplib.SMTP_SSL(smtp_server, ssl_port, timeout=10.0)
+    try:
+        # 登录SMTP服务器
         s.login(conf["account"], conf["pass_code"])
-        s.sendmail(conf["account"], conf["account"], msg.as_string())
+        # 发送邮件
+        s.sendmail(conf["account"], conf["receiver"], msg.as_string())
     except Exception as e:
         return "邮件发送失败！\n" + str(e)
     return "邮件发送成功！"
+
 
 
 @app.route("/test-serverJang-push")

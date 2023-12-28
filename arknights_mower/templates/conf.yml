@@ -190,9 +190,11 @@ maa_weekly_plan1:
 mail_enable: 0
 account: ''
 pass_code: ''
+receiver: ''
 custom_smtp_server:
   enable: false
   server: ''
+  encryption: 'tls'
   ssl_port: 465
 max_resting_count: 8
 package_type: 1
