@@ -2,6 +2,8 @@ import subprocess
 from enum import Enum
 from arknights_mower.utils.log import logger
 import time
+import psutil
+
 
 
 class Simulator_Type(Enum):
@@ -12,6 +14,10 @@ class Simulator_Type(Enum):
 
 
 def restart_simulator(data, stop=True, start=True):
+    for proc in psutil.process_iter(): # 遍历所有进程        
+        if proc.name() == "adb.exe": # 如果进程名是adb.exe            
+            proc.kill() # 杀死进程            
+            logger.info("杀死adb.exe进程")
     index = data["index"]
     simulator_type = data["name"]
     cmd = ""
