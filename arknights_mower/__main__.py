@@ -247,7 +247,7 @@ def initialize(tasks, scheduler=None):
                 "encryption": conf["custom_smtp_server"]["encryption"], #添加判断starttls的变量
                 "account": conf["account"],
                 "pass_code": conf["pass_code"],
-                "receipts": conf["recipient"],
+                "recipients": conf["recipient"],
                 "custom_smtp_server": conf["custom_smtp_server"],
                 "notify": False,
             },

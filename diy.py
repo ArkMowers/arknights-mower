@@ -24,7 +24,7 @@ send_message_config= {
         # 在QQ邮箱“帐户设置-账户-开启SMTP服务”中，按照指示开启服务获得授权码
         'pass_code':'xxx',
         # 收件人邮箱
-        'receipts':['任何邮箱'],
+        'recipients':['任何邮箱'],
         # 是否启用邮件提醒
         'mail_enable':False,
         # 邮件主题

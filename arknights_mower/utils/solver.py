@@ -490,7 +490,7 @@ class BaseSolver:
                     ssl_port = 465
                     s = smtplib.SMTP_SSL(smtp_server, ssl_port, timeout=10.0)
                 s.login(email_config['account'], email_config['pass_code'])
-                s.sendmail(email_config['account'], email_config.get('receipts', []), msg.as_string())
+                s.sendmail(email_config['account'], email_config.get('recipients', []), msg.as_string())
                 logger.info("邮件发送成功")
                 break
             except Exception as e:
@@ -544,7 +544,7 @@ class BaseSolver:
             msg.attach(MIMEText(body, subtype))
             msg['Subject'] = email_config.get('subject', '') + subject
             msg['From'] = email_config.get('account', '')
-            msg['To'] = ", ".join(email_config.get('receipts', []))
+            msg['To'] = ", ".join(email_config.get('recipients', []))
 
             try:
                 self.handle_email_error(email_config, msg)  # 第一次尝试
