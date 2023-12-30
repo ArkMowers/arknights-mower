@@ -505,11 +505,10 @@ def test_email():
         # 根据conf字典中的custom_smtp_server设置SMTP服务器和端口
     smtp_server = conf["custom_smtp_server"]["server"]
     ssl_port = conf["custom_smtp_server"]["ssl_port"]
-    enable_custom_smtp = conf["custom_smtp_server"]["enable"]
     # 根据encryption键的值选择加密方法
     encryption = conf["custom_smtp_server"]["encryption"]
     try:
-        if enable_custom_smtp == "False":
+        if conf["custom_smtp_server"]["enable"]:
             # 如果不用自定义用qq邮箱就使用TLS加密
             smtp_server = "smtp.qq.com"
             ssl_port = 465
