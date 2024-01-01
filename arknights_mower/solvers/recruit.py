@@ -250,11 +250,12 @@ class RecruitSolver(BaseSolver):
             # 计算招募标签组合结果
             recruit_cal_result = self.recruit_cal(tags)
             recruit_result_level = recruit_cal_result[0][1][0]['star']
-            if self.recruit_order.index(recruit_result_level) <= self.recruit_index and self.recruit_config['recruit_email_enable']:
-                self.send_message(recruit_rarity.render(recruit_results=recruit_cal_result, title_text="稀有tag通知"),
-                                  "出稀有标签辣",
-                                  "html")
-                logger.info('稀有tag,发送邮件')
+            if self.recruit_order.index(recruit_result_level) <= self.recruit_index :
+                if self.recruit_config['recruit_email_enable']:
+                    self.send_message(recruit_rarity.render(recruit_results=recruit_cal_result, title_text="稀有tag通知"),
+                                      "出稀有标签辣",
+                                      "html")
+                    logger.info('稀有tag,发送邮件')
                 if recruit_result_level == 6:
                     logger.debug('六星tag')
                     self.back()
