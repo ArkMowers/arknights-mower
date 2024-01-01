@@ -500,20 +500,18 @@ def test_email():
     msg = MIMEMultipart()
     msg.attach(MIMEText("arknights-mower测试邮件", "plain"))
     msg["Subject"] = conf["mail_subject"] + "测试邮件"
-    msg['To'] = ", ".join(conf["recipient"])
+    msg["To"] = ", ".join(conf["recipient"])
     msg["From"] = conf["account"]
-        # 根据conf字典中的custom_smtp_server设置SMTP服务器和端口
+    # 根据conf字典中的custom_smtp_server设置SMTP服务器和端口
     smtp_server = conf["custom_smtp_server"]["server"]
     ssl_port = conf["custom_smtp_server"]["ssl_port"]
-    enable_custom_smtp = conf["custom_smtp_server"]["enable"]
+    use_qq_mail = not conf["custom_smtp_server"]["enable"]
     # 根据encryption键的值选择加密方法
     encryption = conf["custom_smtp_server"]["encryption"]
     try:
-        if enable_custom_smtp == "False":
+        if use_qq_mail:
             # 如果不用自定义用qq邮箱就使用TLS加密
-            smtp_server = "smtp.qq.com"
-            ssl_port = 465
-            s = smtplib.SMTP_SSL(smtp_server, ssl_port, timeout=10.0)
+            s = smtplib.SMTP_SSL("smtp.qq.com", 465, timeout=10.0)
         elif encryption == "starttls":
             # 使用STARTTLS加密
             s = smtplib.SMTP(smtp_server, ssl_port, timeout=10.0)
@@ -525,10 +523,10 @@ def test_email():
         s.login(conf["account"], conf["pass_code"])
         # 发送邮件
         s.sendmail(conf["account"], conf["recipient"], msg.as_string())
+        s.close()
     except Exception as e:
         return "邮件发送失败！\n" + str(e)
     return "邮件发送成功！"
-
 
 
 @app.route("/test-serverJang-push")

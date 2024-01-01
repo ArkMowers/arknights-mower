@@ -486,11 +486,10 @@ class BaseSolver:
                         # 使用TLS加密
                         s = smtplib.SMTP_SSL(smtp_server, ssl_port, timeout=10.0)
                 else:
-                    smtp_server = "smtp.qq.com"
-                    ssl_port = 465
-                    s = smtplib.SMTP_SSL(smtp_server, ssl_port, timeout=10.0)
+                    s = smtplib.SMTP_SSL("smtp.qq.com", 465, timeout=10.0)
                 s.login(email_config['account'], email_config['pass_code'])
                 s.sendmail(email_config['account'], email_config.get('recipients', []), msg.as_string())
+                s.close()
                 logger.info("邮件发送成功")
                 break
             except Exception as e:
