@@ -262,4 +262,4 @@ recruit_gap: 9
 recruit_auto_5: 1
 recruit_auto_only5: false
 recruit_email_enable: true
-fix_mumu12_adb_disconnect: true
+fix_mumu12_adb_disconnect: false
