@@ -437,7 +437,7 @@ import { match } from 'pinyin-pro'
 }
 
 .group {
-  width: 120px;
+  width: 160px;
 }
 
 .facility-2 {
