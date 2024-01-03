@@ -47,6 +47,7 @@ def main(c, p, o={}, child_conn=None):
         else "com.hypergryph.arknights.bilibili"
     )  # 服务器
     config.TAP_TO_LAUNCH = conf["tap_to_launch_game"]
+    config.fix_mumu12_adb_disconnect = conf["fix_mumu12_adb_disconnect"]
     init_fhlr(child_conn)
     Pipe.conn = child_conn
     logger.info("开始运行Mower")
@@ -244,7 +245,7 @@ def initialize(tasks, scheduler=None):
             "email_config": {
                 "mail_enable": conf["mail_enable"],
                 "subject": conf["mail_subject"],
-                "encryption": conf["custom_smtp_server"]["encryption"], #添加判断starttls的变量
+                "encryption": conf["custom_smtp_server"]["encryption"],  # 添加判断starttls的变量
                 "account": conf["account"],
                 "pass_code": conf["pass_code"],
                 "recipients": conf["recipient"],
