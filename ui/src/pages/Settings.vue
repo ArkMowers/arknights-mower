@@ -32,7 +32,8 @@ const {
   close_simulator_when_idle,
   screenshot,
   run_order_grandet_mode,
-  webview
+  webview,
+  fix_mumu12_adb_disconnect
 } = storeToRefs(config_store)
 
 const { operators } = storeToRefs(plan_store)
@@ -140,6 +141,18 @@ import { render_op_label, render_op_tag } from '@/utils/op_select'
               <n-checkbox v-model:checked="close_simulator_when_idle">
                 任务结束后关闭模拟器
                 <help-text>减少空闲时的资源占用、避免模拟器长时间运行出现问题</help-text>
+              </n-checkbox>
+            </n-form-item>
+            <n-form-item
+              :show-label="false"
+              v-if="simulator.name == 'MuMu12' && close_simulator_when_idle"
+            >
+              <n-checkbox v-model:checked="fix_mumu12_adb_disconnect">
+                关闭MuMu模拟器12时结束adb进程
+                <help-text>
+                  <div>运行命令<code>taskkill /f /t /im adb.exe</code></div>
+                  <div>使用MuMu模拟器12时，若遇到adb断连问题，可尝试开启此选项</div>
+                </help-text>
               </n-checkbox>
             </n-form-item>
             <n-form-item>

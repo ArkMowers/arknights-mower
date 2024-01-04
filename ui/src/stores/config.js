@@ -69,6 +69,7 @@ export const useConfigStore = defineStore('config', () => {
   const webview = ref({})
   const shop_collect_enable = ref(true)
   const meeting_level = ref(3)
+  const fix_mumu12_adb_disconnect = ref(false)
 
   async function load_shop() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/shop`)
@@ -154,6 +155,7 @@ export const useConfigStore = defineStore('config', () => {
     webview.value = response.data.webview
     shop_collect_enable.value = response.data.shop_collect_enable
     meeting_level.value = response.data.meeting_level
+    fix_mumu12_adb_disconnect.value = response.fix_mumu12_adb_disconnect
   }
 
   function build_config() {
@@ -227,7 +229,8 @@ export const useConfigStore = defineStore('config', () => {
       recruit_auto_5: recruit_auto_5.value,
       webview: webview.value,
       shop_collect_enable: shop_collect_enable.value ? 1 : 0,
-      meeting_level: meeting_level.value
+      meeting_level: meeting_level.value,
+      fix_mumu12_adb_disconnect: fix_mumu12_adb_disconnect.value
     }
   }
 
@@ -307,6 +310,7 @@ export const useConfigStore = defineStore('config', () => {
     recruit_auto_5,
     webview,
     shop_collect_enable,
-    meeting_level
+    meeting_level,
+    fix_mumu12_adb_disconnect
   }
 })
