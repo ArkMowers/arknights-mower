@@ -95,11 +95,17 @@ if __name__ == "__main__":
 
     splash.show_text("加载配置文件")
 
+    import sys
+
+    from arknights_mower.utils import path
+
+    if len(sys.argv) == 2:
+        path.global_space = sys.argv[1]
+
     from arknights_mower.utils.conf import load_conf, save_conf
 
     conf = load_conf()
 
-    port = conf["webview"]["port"]
     token = conf["webview"]["token"]
     host = "0.0.0.0" if token else "127.0.0.1"
 
@@ -118,18 +124,25 @@ if __name__ == "__main__":
             s.settimeout(0.1)
             return s.connect_ex(("localhost", port)) == 0
 
-    if is_port_in_use(port):
-        splash.hide()
+    if token:
+        port = conf["webview"]["port"]
 
-        import sys
-        from tkinter import messagebox
+        if is_port_in_use(port):
+            splash.hide()
 
-        messagebox.showerror(
-            "arknights-mower",
-            f"端口{port}已被占用，无法启动！",
-        )
-        splash.stop()
-        sys.exit()
+            import sys
+            from tkinter import messagebox
+
+            messagebox.showerror(
+                "arknights-mower",
+                f"端口{port}已被占用，无法启动！",
+            )
+            splash.stop()
+            sys.exit()
+    else:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("localhost", 0))
+            port = s.getsockname()[1]
 
     splash.show_text("加载Flask依赖")
 
@@ -151,8 +164,12 @@ if __name__ == "__main__":
 
     from pystray import Icon, Menu, MenuItem
 
+    title = (
+        f"mower@{port}({path.global_space})" if path.global_space else f"mower@{port}"
+    )
+
     icon = Icon(
-        "arknights-mower",
+        name="arknights-mower",
         icon=tray_img,
         menu=Menu(
             MenuItem(
@@ -165,6 +182,7 @@ if __name__ == "__main__":
                 action=destroy_window,
             ),
         ),
+        title=title,
     )
     icon.run_detached()
 
