@@ -147,6 +147,7 @@
       <p>Maa：<n-a target="_blank" href="https://maa.plus/">https://maa.plus/</n-a></p>
       <p>
         明日方舟定价理论（施工中）：<n-a
+          target="_blank"
           href="https://bidgecfah.gitee.io/2023/07/12/%E6%98%8E%E6%97%A5%E6%96%B9%E8%88%9F%E5%AE%9A%E4%BB%B7%E7%90%86%E8%AE%BA/"
           >https://bidgecfah.gitee.io/2023/07/12/%E6%98%8E%E6%97%A5%E6%96%B9%E8%88%9F%E5%AE%9A%E4%BB%B7%E7%90%86%E8%AE%BA/</n-a
         >
