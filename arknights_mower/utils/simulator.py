@@ -1,9 +1,11 @@
-from os import system
 import subprocess
-from enum import Enum
-from arknights_mower.utils.log import logger
 import time
+from enum import Enum
+from os import system
+
 from arknights_mower.utils import config
+from arknights_mower.utils.log import logger
+
 
 class Simulator_Type(Enum):
     Nox = "夜神"
@@ -40,12 +42,13 @@ def restart_simulator(data, stop=True, start=True):
             if index >= 0:
                 cmd += f'{data["index"]} '
             else:
-                cmd += '0'
+                cmd += "0"
         if stop:
             exec_cmd(cmd, data["simulator_folder"])
-            if data["name"] == 'MuMu12' and config.fix_mumu12_adb_disconnect:
-                system('taskkill /f /t /im adb.exe')
             logger.info(f"关闭{simulator_type}模拟器")
+            if data["name"] == "MuMu12" and config.fix_mumu12_adb_disconnect:
+                system("taskkill /f /t /im adb.exe")
+                logger.info("结束adb进程")
             time.sleep(2)
         if simulator_type == Simulator_Type.Nox.value:
             cmd = cmd.replace(" -quit", "")
