@@ -1373,7 +1373,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         return
                 self.recog.update()
                 self.recog.save_screencap('run_order')
-                if self.drone_room is not None or room not in self.op_data.run_order_rooms:
+                if self.drone_room is not None or self.drone_room not in self.op_data.run_order_rooms:
                     break
                 if not_customize:
                     drone_count = self.digit_reader.get_drone(self.recog.gray)
@@ -1970,7 +1970,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 # 接受当前订单
                 while self.find("order_ready", scope=((450, 675), (600, 750))) is not None:
                     self.tap((self.recog.w * 0.25, self.recog.h * 0.25), interval=0.5)
-                if self.drone_room is None or room in self.op_data.run_order_rooms:
+                if self.drone_room is None or (self.drone_room == room and room in self.op_data.run_order_rooms):
                     drone_count = self.digit_reader.get_drone(self.recog.gray)
                     logger.info(f'当前无人机数量为：{drone_count}')
                     # 200 为识别错误
