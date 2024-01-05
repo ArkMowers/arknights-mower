@@ -11,7 +11,7 @@ import sys
 class Api:
     def __init__(self):
         try:
-            with open("instances.json", "r") as f:
+            with open("instances.json", "r", encoding="utf-8") as f:
                 self.instances = json.load(f)
         except Exception:
             self.instances = []
