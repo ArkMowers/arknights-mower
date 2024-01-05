@@ -3,7 +3,6 @@ from pathlib import Path
 
 import rapidocr_onnxruntime
 
-
 block_cipher = None
 
 # 参考 https://github.com/RapidAI/RapidOCR/blob/main/ocrweb/rapidocr_web/ocrweb.spec
@@ -62,7 +61,11 @@ mower_a = Analysis(
     noarchive=False,
 )
 
-mower_pyz = PYZ(mower_a.pure, mower_a.zipped_data, cipher=block_cipher)
+mower_pyz = PYZ(
+    mower_a.pure,
+    mower_a.zipped_data,
+    cipher=block_cipher,
+)
 
 mower_exe = EXE(
     mower_pyz,
@@ -83,11 +86,58 @@ mower_exe = EXE(
     icon="logo.ico",
 )
 
+
+manager_a = Analysis(
+    ["manager.py"],
+    pathex=[],
+    binaries=[],
+    datas=[],
+    hiddenimports=[],
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=[],
+    win_no_prefer_redirects=False,
+    win_private_assemblies=False,
+    cipher=block_cipher,
+    noarchive=False,
+)
+
+manager_pyz = PYZ(
+    manager_a.pure,
+    manager_a.zipped_data,
+    cipher=block_cipher,
+)
+
+manager_exe = EXE(
+    manager_pyz,
+    manager_a.scripts,
+    [],
+    exclude_binaries=True,
+    name="多开管理器",
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    console=False,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+    icon="logo.ico",
+)
+
+
 coll = COLLECT(
     mower_exe,
     mower_a.binaries,
     mower_a.zipfiles,
     mower_a.datas,
+    manager_exe,
+    manager_a.binaries,
+    manager_a.zipfiles,
+    manager_a.datas,
     strip=False,
     upx=True,
     upx_exclude=[],
