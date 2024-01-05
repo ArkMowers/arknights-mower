@@ -30,15 +30,6 @@ class PackagePathFilter(logging.Filter):
         return True
 
 
-class MaxFilter(object):
-    def __init__(self, max_level: int) -> None:
-        self.max_level = max_level
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        if record.levelno <= self.max_level:
-            return True
-
-
 class Handler(logging.StreamHandler):
     def __init__(self, pipe):
         logging.StreamHandler.__init__(self)
@@ -49,22 +40,6 @@ class Handler(logging.StreamHandler):
         self.pipe.send({'type':'log','data':record})
 
 
-chlr = logging.StreamHandler(stream=sys.stdout)
-chlr.setFormatter(color_formatter)
-chlr.setLevel('INFO')
-chlr.addFilter(MaxFilter(logging.INFO))
-chlr.addFilter(PackagePathFilter())
-
-whlr = logging.StreamHandler(stream=sys.stderr)
-whlr.setFormatter(color_formatter)
-whlr.setLevel('WARNING')
-whlr.addFilter(PackagePathFilter())
-
-ehlr = logging.StreamHandler(stream=sys.stderr)
-ehlr.setFormatter(color_formatter)
-ehlr.setLevel('ERROR')
-ehlr.addFilter(PackagePathFilter())
-
 dhlr = logging.StreamHandler(stream=sys.stdout)
 dhlr.setFormatter(color_formatter)
 dhlr.setLevel('DEBUG')
@@ -74,9 +49,6 @@ dhlr.addFilter(PackagePathFilter())
 logger = logging.getLogger(__name__)
 logger.setLevel('DEBUG')
 logger.addHandler(dhlr)
-logger.addHandler(chlr)
-logger.addHandler(whlr)
-logger.addHandler(ehlr)
 
 
 def init_fhlr(pipe=None) -> None:
