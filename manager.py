@@ -4,6 +4,8 @@ import json
 from subprocess import Popen
 
 import webview
+import platform
+import sys
 
 
 class Api:
@@ -46,8 +48,15 @@ class Api:
         return folder
 
     def start(self, idx):
-        # Popen(["mower.exe", self.instances[idx]["path"]])
-        Popen(["python3", "webview_ui.py", self.instances[idx]["path"]])
+        is_win = platform.system() == "Windows"
+        frozen = getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")
+        if is_win and frozen:
+            Popen(["mower.exe", self.instances[idx]["path"]])
+        else:
+            if is_win:
+                Popen(["python3.exe", "webview_ui.py", self.instances[idx]["path"]])
+            else:
+                Popen(["python3", "webview_ui.py", self.instances[idx]["path"]])
 
 
 def jump_to_index(window):
