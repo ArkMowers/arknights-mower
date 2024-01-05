@@ -259,6 +259,11 @@ import { render_op_label, render_op_tag } from '@/utils/op_select'
               </template>
               <n-input-number v-model:value="run_order_grandet_mode.buffer_time" />
             </n-form-item>
+            <n-form-item v-if="run_order_grandet_mode.enable" :show-label="false">
+              <n-checkbox v-model:checked="run_order_grandet_mode.back_to_index">
+                跑单前返回主界面以保持登录状态
+              </n-checkbox>
+            </n-form-item>
             <n-form-item>
               <template #label>
                 <span>无人机使用房间</span>

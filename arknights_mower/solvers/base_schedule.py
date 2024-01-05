@@ -30,6 +30,7 @@ from ..utils.depot import process_itemlist
 from arknights_mower.utils.news import get_update_time
 from arknights_mower.utils import rapidocr
 from arknights_mower.utils.simulator import restart_simulator
+from arknights_mower.utils import config
 import cv2
 
 from ctypes import CFUNCTYPE, c_int, c_char_p, c_void_p
@@ -435,8 +436,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     get_time = False
                     if TaskTypes.SHIFT_OFF == self.task.type:
                         get_time = True
-                    if TaskTypes.RUN_ORDER == self.task.type and not self.refresh_connecting and self.op_data.config.run_order_buffer_time > 0:
-                        logger.info("退回主界面以确保跑单前的登录状态")
+                    if config.grandet_back_to_index and TaskTypes.RUN_ORDER == self.task.type and not self.refresh_connecting and self.op_data.config.run_order_buffer_time > 0:
+                        logger.info("跑单前返回主界面以保持登录状态")
                         self.back_to_index()
                         self.refresh_connecting = True
                         return

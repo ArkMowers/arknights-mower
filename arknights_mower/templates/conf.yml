@@ -256,6 +256,7 @@ sss:
 run_order_grandet_mode:
   enable: true
   buffer_time: 30
+  back_to_index: false
 server_push_enable: false
 sendKey: ''
 recruit_gap: 9
