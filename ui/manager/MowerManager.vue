@@ -139,30 +139,6 @@ async function start(idx) {
         </n-button>
       </div>
     </n-card>
-    <n-card size="small" v-if="false">
-      <template #header>
-        <div class="header">
-          <n-input placeholder="实例名称" />
-          <n-button type="primary" size="tiny" circle>
-            <template #icon>
-              <n-icon>
-                <check-icon />
-              </n-icon>
-            </template>
-          </n-button>
-          <n-button type="error" size="tiny" circle>
-            <template #icon>
-              <n-icon>
-                <cross-icon />
-              </n-icon>
-            </template>
-          </n-button>
-        </div>
-      </template>
-      <div class="folder">
-        <code class="folder-content">/home/zhao/Documents/mower-profile</code>
-      </div>
-    </n-card>
     <n-button size="large" dashed v-if="!loading" @click="add">
       <template #icon>
         <n-icon>
