@@ -154,6 +154,7 @@ if __name__ == "__main__":
     from threading import Thread
 
     app.token = token
+    app.global_space = path.global_space
     Thread(
         target=app.run,
         kwargs={"host": host, "port": port},

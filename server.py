@@ -171,6 +171,7 @@ def start():
             plan,
             operators,
             write,
+            app.global_space,
         ),
         daemon=False,
     )

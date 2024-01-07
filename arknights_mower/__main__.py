@@ -25,7 +25,11 @@ operators = {}
 
 
 # 执行自动排班
-def main(c, p, o={}, child_conn=None):
+def main(c, p, o={}, child_conn=None, global_space=None):
+    from arknights_mower.utils import path
+
+    path.global_space = global_space
+
     from arknights_mower.utils.log import init_fhlr
     from arknights_mower.utils import config
 
