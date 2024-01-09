@@ -98,8 +98,12 @@ const email_options = [
           </template>
           <n-input v-model:value="mail_subject" />
         </n-form-item>
-        <n-form-item label="收件人">
-          <n-dynamic-input v-model:value="recipient" :min="1" />
+        <n-form-item>
+          <template #label>
+            <span>收件人</span>
+            <help-text>不填时将邮件发给自己</help-text>
+          </template>
+          <n-dynamic-input v-model:value="recipient" />
         </n-form-item>
       </n-form>
       <n-divider />
