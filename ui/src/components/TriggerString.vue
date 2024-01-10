@@ -114,7 +114,12 @@ import { render_op_label } from '@/utils/op_select'
 </script>
 
 <template>
-  <n-select :default-value="op_type" :options="type_options" :on-update:value="set_op_type" />
+  <n-select
+    :default-value="op_type"
+    :options="type_options"
+    :on-update:value="set_op_type"
+    style="min-width: 180px"
+  />
   <n-input v-if="op_type == 'custom'" v-model:value="data" />
   <template v-if="op_type == 'op'">
     <n-select
@@ -124,7 +129,13 @@ import { render_op_label } from '@/utils/op_select'
       :on-update:value="update_op"
       :filter="(p, o) => match(o.label, p)"
       :render-label="render_op_label"
+      style="min-width: 220px"
     />
-    <n-select :default-value="op_data.type" :options="op_options" :on-update:value="update_type" />
+    <n-select
+      :default-value="op_data.type"
+      :options="op_options"
+      :on-update:value="update_type"
+      style="min-width: 120px"
+    />
   </template>
 </template>

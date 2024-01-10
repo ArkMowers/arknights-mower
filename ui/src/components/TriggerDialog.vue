@@ -19,10 +19,12 @@ function update_trigger(data) {
     preset="card"
     title="触发条件"
     transform-origin="center"
-    style="width: 900px"
+    style="max-width: 90vw"
   >
     <n-scrollbar style="max-height: 80vh">
-      <trigger-editor :data="backup_plans[sub_plan].trigger" @update="update_trigger" />
+      <n-scrollbar x-scrollable>
+        <trigger-editor :data="backup_plans[sub_plan].trigger" @update="update_trigger" />
+      </n-scrollbar>
       <n-card style="margin-top: 8px" content-style="padding: 8px" embedded>
         <n-code
           :code="JSON.stringify(backup_plans[sub_plan].trigger, null, 2)"

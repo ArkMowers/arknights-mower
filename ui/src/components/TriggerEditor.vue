@@ -96,10 +96,11 @@ const le_options = [
 
 <style scoped lang="scss">
 .n-table {
-  width: 100%;
+  min-width: 100%;
 
   th {
-    width: 110px;
+    width: 124px;
+    box-sizing: border-box;
   }
 }
 
