@@ -19,6 +19,8 @@ const le_options = [
   { label: '表达式', value: 'expression' },
   { label: '值', value: 'string' }
 ]
+
+const operator_tips = ['and', 'or', '==', '>', '<', '>=', '<=', '+', '-']
 </script>
 
 <template>
@@ -55,7 +57,7 @@ const le_options = [
     <tr>
       <th>运算符</th>
       <td>
-        <n-input v-model:value="operator" />
+        <n-auto-complete v-model:value="operator" :options="operator_tips" blur-after-select />
       </td>
     </tr>
     <tr>

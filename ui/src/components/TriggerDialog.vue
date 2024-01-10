@@ -19,7 +19,7 @@ function update_trigger(data) {
     preset="card"
     title="触发条件"
     transform-origin="center"
-    style="max-width: 90vw"
+    style="width: auto; max-width: 90vw"
   >
     <n-scrollbar style="max-height: 80vh">
       <n-scrollbar x-scrollable>

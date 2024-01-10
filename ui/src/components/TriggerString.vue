@@ -111,6 +111,8 @@ function update_type(type) {
 
 import { match } from 'pinyin-pro'
 import { render_op_label } from '@/utils/op_select'
+
+const custom_tips = ['True', 'False', 'None']
 </script>
 
 <template>
@@ -120,7 +122,12 @@ import { render_op_label } from '@/utils/op_select'
     :on-update:value="set_op_type"
     style="min-width: 180px"
   />
-  <n-input v-if="op_type == 'custom'" v-model:value="data" />
+  <n-auto-complete
+    v-if="op_type == 'custom'"
+    v-model:value="data"
+    :options="custom_tips"
+    blur-after-select
+  />
   <template v-if="op_type == 'op'">
     <n-select
       :default-value="op_data.operator"
