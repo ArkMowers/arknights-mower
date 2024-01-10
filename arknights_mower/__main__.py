@@ -437,7 +437,7 @@ def simulate():
                     )
                     base_scheduler.send_message(body, subject, "html")
                     time.sleep(sleep_time)
-                    if conf["exit_game_when_idle"]:
+                    if conf["close_simulator_when_idle"]:
                         restart_simulator(conf["simulator"], stop=False)
             if (
                     len(base_scheduler.tasks) > 0
