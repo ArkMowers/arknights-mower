@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
 
 import json
-from subprocess import Popen
 
 import webview
-import platform
-import sys
 
 
 class Api:
@@ -48,6 +45,10 @@ class Api:
         return folder
 
     def start(self, idx):
+        import platform
+        import sys
+        from subprocess import Popen
+
         is_win = platform.system() == "Windows"
         frozen = getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")
         if is_win and frozen:
