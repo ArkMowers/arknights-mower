@@ -1374,7 +1374,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         return
                 self.recog.update()
                 self.recog.save_screencap('run_order')
-                if room is not in self.op_data.run_order_rooms:
+                if room not in self.op_data.run_order_rooms:
                     break
                 elif self.drone_room is not None and self.drone_room != room:
                     break
