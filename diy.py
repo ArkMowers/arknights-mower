@@ -28,7 +28,10 @@ send_message_config= {
         # 是否启用邮件提醒
         'mail_enable':False,
         # 邮件主题
-        'subject': '任务数据'
+        'subject': '任务数据',
+        'custom_smtp_server':{
+            "enable":False
+        }
     },
     # Server酱通知配置
     "serverJang_push_config":{
