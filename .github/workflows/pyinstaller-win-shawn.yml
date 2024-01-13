@@ -12,8 +12,6 @@ jobs:
     steps:
       - name: fetch source
         uses: actions/checkout@v4
-        with:
-          lfs: true
 
       - name: setup nodejs 16
         uses: actions/setup-node@v4
@@ -64,8 +62,6 @@ jobs:
     steps:
       - name: download source
         uses: actions/checkout@v4
-        with:
-          lfs: true
 
       - name: change version number
         if: github.event.head_commit.message != '发版'
