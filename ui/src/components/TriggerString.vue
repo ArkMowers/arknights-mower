@@ -127,6 +127,7 @@ const custom_tips = ['True', 'False', 'None']
     v-model:value="data"
     :options="custom_tips"
     blur-after-select
+    :get-show="() => true"
   />
   <template v-if="op_type == 'op'">
     <n-select

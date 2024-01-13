@@ -57,7 +57,12 @@ const operator_tips = ['and', 'or', '==', '>', '<', '>=', '<=', '+', '-']
     <tr>
       <th>运算符</th>
       <td>
-        <n-auto-complete v-model:value="operator" :options="operator_tips" blur-after-select />
+        <n-auto-complete
+          v-model:value="operator"
+          :options="operator_tips"
+          blur-after-select
+          :get-show="() => true"
+        />
       </td>
     </tr>
     <tr>
