@@ -4,6 +4,7 @@ from enum import Enum
 from ..utils.log import logger
 
 from arknights_mower.utils.datetime import the_same_time
+from arknights_mower.utils import config
 
 
 class TaskTypes(Enum):
@@ -66,7 +67,7 @@ def scheduling(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
             if task.type.priority == 1:
                 if last_priority_0_task is not None:
                     time_difference = task.time - last_priority_0_task.time
-                    if time_difference < min_time_interval and time_now < last_priority_0_task.time:
+                    if config.grandet_mode and time_difference < min_time_interval and time_now < last_priority_0_task.time:
                         logger.info("检测到跑单任务过于接近，准备修正跑单时间")
                         return last_priority_0_task
                 # 更新上一个优先级0任务和总执行时间
