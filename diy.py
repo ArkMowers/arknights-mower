@@ -273,8 +273,6 @@ def inialize(tasks, scheduler=None):
         base_scheduler.current_base = {}
         base_scheduler.resting = []
         base_scheduler.tasks = tasks
-        # 读取心情开关，有菲亚梅塔或者希望全自动换班得设置为 true
-        base_scheduler.read_mood = True
         base_scheduler.last_room = ''
         base_scheduler.MAA = None
         base_scheduler.send_message_config = send_message_config

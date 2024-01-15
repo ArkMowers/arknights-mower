@@ -25,7 +25,6 @@ export const useConfigStore = defineStore('config', () => {
   const package_type = ref('official')
   const plan_file = ref('')
   const reload_room = ref('')
-  const run_mode = ref(1)
   const run_order_delay = ref(10)
   const start_automatically = ref(false)
   const maa_mall_buy = ref('')
@@ -108,7 +107,6 @@ export const useConfigStore = defineStore('config', () => {
     package_type.value = response.data.package_type == 1 ? 'official' : 'bilibili'
     plan_file.value = response.data.planFile
     reload_room.value = response.data.reload_room == '' ? [] : response.data.reload_room.split(',')
-    run_mode.value = response.data.run_mode == 2 ? 'orders_only' : 'full'
     run_order_delay.value = response.data.run_order_delay
     start_automatically.value = response.data.start_automatically
     maa_mall_buy.value =
@@ -182,7 +180,6 @@ export const useConfigStore = defineStore('config', () => {
       custom_smtp_server: custom_smtp_server.value,
       planFile: plan_file.value,
       reload_room: reload_room.value.join(','),
-      run_mode: run_mode.value == 'orders_only' ? 2 : 1,
       run_order_delay: run_order_delay.value,
       start_automatically: start_automatically.value,
       maa_mall_buy: maa_mall_buy.value.join(','),
@@ -265,7 +262,6 @@ export const useConfigStore = defineStore('config', () => {
     package_type,
     plan_file,
     reload_room,
-    run_mode,
     run_order_delay,
     start_automatically,
     maa_mall_buy,

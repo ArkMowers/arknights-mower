@@ -472,11 +472,10 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 if find_next_task(self.tasks, datetime.now() + timedelta(seconds=300)) is not None:
                     self.skip(['planned', 'todo_task', 'collect_notification'])
                 else:
-                    if self.read_mood:
-                        mood_result = self.agent_get_mood(skip_dorm=True)
-                        if mood_result is not None:
-                            self.skip(['planned', 'todo_task', 'collect_notification'])
-                            return True
+                    mood_result = self.agent_get_mood(skip_dorm=True)
+                    if mood_result is not None:
+                        self.skip(['planned', 'todo_task', 'collect_notification'])
+                        return True
                     self.plan_solver()
             except Exception as e:
                 logger.exception(e)
@@ -681,109 +680,108 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     self.drone(adj_task.meta_data, adjust_time=True)
         # 准备数据
         logger.debug(self.op_data.print())
-        if self.read_mood:
-            # 根据剩余心情排序
-            self.total_agent = list(
-                v for k, v in self.op_data.operators.items() if v.is_high() and not v.room.startswith('dorm'))
-            self.total_agent.sort(key=lambda x: x.current_mood(), reverse=False)
-            # 目前有换班的计划后面改
-            logger.debug(f'当前基地数据--> {self.total_agent}')
-            fia_plan, fia_room = self.check_fia()
-            if fia_room is not None and fia_plan is not None:
-                if find_next_task(self.tasks, task_type=TaskTypes.FIAMMETTA) is None:
-                    fia_data = self.op_data.operators['菲亚梅塔']
-                    fia_idx = fia_data.current_index if fia_data.current_index != -1 else fia_data.index
-                    result = [{}] * (fia_idx + 1)
-                    result[fia_idx]['time'] = datetime.now()
-                    if fia_data.mood != 24:
-                        if fia_data.time_stamp is not None and fia_data.time_stamp > datetime.now():
-                            result[fia_idx]['time'] = fia_data.time_stamp
-                        else:
-                            self.enter_room(fia_room)
-                            result = self.get_agent_from_room(fia_room, [fia_idx])
-                            self.back()
-                    logger.info('下一次进行菲亚梅塔充能：' + result[fia_idx]['time'].strftime("%H:%M:%S"))
-                    self.tasks.append(SchedulerTask(time=result[fia_idx]['time'], task_type=TaskTypes.FIAMMETTA))
-            try:
-                # 重新排序
-                if find_next_task(self.tasks, task_type=TaskTypes.SHIFT_OFF) is not None:
-                    logger.info("有未完成的下班任务")
-                    return
-                self.total_agent.sort(key=lambda x: x.current_mood() - x.lower_limit, reverse=False)
-                # 自动生成任务
-                self.plan_metadata()
-                # 剩余高效组位置
-                high_free = self.op_data.available_free()
-                # 剩余低效位置
-                low_free = self.op_data.available_free('low')
-                _replacement = []
-                _plan = {}
-                for op in self.total_agent:
-                    # 忽略掉菲亚梅塔充能的干员
-                    if high_free == 0 or low_free == 0:
-                        break
-                    if fia_room is not None and op.name in self.op_data.operators['菲亚梅塔'].replacement[:-1]:
-                        continue
-                    if op.name in self.op_data.workaholic_agent:
-                        continue
-                    # 忽略掉正在休息的
-                    if op.is_resting() or op.current_room in ['factory']:
-                        continue
-                    # 忽略掉心情值没低于上限的的
-                    if op.current_mood() > int(
-                            (op.upper_limit - op.lower_limit) * self.op_data.config.resting_threshold + op.lower_limit):
-                        continue
-                    if op.name in self.op_data.exhaust_agent:
-                        if op.current_mood() <= op.lower_limit + 2:
-                            if find_next_task(self.tasks, meta_data=op.name) is None:
-                                self.enter_room(op.current_room)
-                                result = self.get_agent_from_room(op.current_room, [op.current_index])
-                                _time = datetime.now()
-                                if result[op.current_index]['time'] is not None and result[op.current_index][
-                                    'time'] > _time:
-                                    _time = result[op.current_index]['time'] - timedelta(minutes=10)
-                                elif op.current_mood() > 0.25 + op.lower_limit and op.depletion_rate != 0:
-                                    _time = datetime.now() + timedelta(
-                                        hours=(
-                                                      op.current_mood() - op.lower_limit - 0.25) / op.depletion_rate) - timedelta(
-                                        minutes=10)
-                                self.back()
-                                # plan 是空的是因为得动态生成
-                                exhaust_type = op.name
-                                if op.group != '':
-                                    exhaust_type = ','.join(self.op_data.groups[op.group])
-                                self.tasks.append(SchedulerTask(time=_time, meta_data=exhaust_type))
-                                # 如果是生成的过去时间，则停止 plan 其他
-                                if _time < datetime.now():
-                                    break
-                        continue
-                    if op.group != '':
-                        if op.group in self.op_data.exhaust_group:
-                            # 忽略掉用尽心情的分组
-                            continue
-                        # 如果在group里则同时上下班
-                        group_resting = self.op_data.groups[op.group]
-                        _replacement, _plan, high_free, low_free = self.get_resting_plan(
-                            group_resting, _replacement, _plan, high_free, low_free)
+        # 根据剩余心情排序
+        self.total_agent = list(
+            v for k, v in self.op_data.operators.items() if v.is_high() and not v.room.startswith('dorm'))
+        self.total_agent.sort(key=lambda x: x.current_mood(), reverse=False)
+        # 目前有换班的计划后面改
+        logger.debug(f'当前基地数据--> {self.total_agent}')
+        fia_plan, fia_room = self.check_fia()
+        if fia_room is not None and fia_plan is not None:
+            if find_next_task(self.tasks, task_type=TaskTypes.FIAMMETTA) is None:
+                fia_data = self.op_data.operators['菲亚梅塔']
+                fia_idx = fia_data.current_index if fia_data.current_index != -1 else fia_data.index
+                result = [{}] * (fia_idx + 1)
+                result[fia_idx]['time'] = datetime.now()
+                if fia_data.mood != 24:
+                    if fia_data.time_stamp is not None and fia_data.time_stamp > datetime.now():
+                        result[fia_idx]['time'] = fia_data.time_stamp
                     else:
-                        _replacement, _plan, high_free, low_free = self.get_resting_plan([op.name],
-                                                                                         _replacement,
-                                                                                         _plan,
-                                                                                         high_free,
-                                                                                         low_free)
-                if len(_plan.keys()) > 0:
-                    if find_next_task(self.tasks, datetime.now() + timedelta(seconds=300),
-                                      task_type=TaskTypes.RUN_ORDER) is not None: return
-                    self.tasks.append(SchedulerTask(task_plan=_plan, task_type=TaskTypes.SHIFT_OFF))
-            except Exception as e:
-                logger.exception(e)
-                # 如果下个 普通任务 >5 分钟则补全宿舍
-            logger.debug('tasks:' + str(self.tasks))
-            if find_next_task(self.tasks, datetime.now() + timedelta(seconds=300)) is not None:
-                logger.info("5分钟内有其他任务,跳过宿舍纠错")
+                        self.enter_room(fia_room)
+                        result = self.get_agent_from_room(fia_room, [fia_idx])
+                        self.back()
+                logger.info('下一次进行菲亚梅塔充能：' + result[fia_idx]['time'].strftime("%H:%M:%S"))
+                self.tasks.append(SchedulerTask(time=result[fia_idx]['time'], task_type=TaskTypes.FIAMMETTA))
+        try:
+            # 重新排序
+            if find_next_task(self.tasks, task_type=TaskTypes.SHIFT_OFF) is not None:
+                logger.info("有未完成的下班任务")
                 return
-            if self.agent_get_mood() is None:
-                self.backup_plan_solver()
+            self.total_agent.sort(key=lambda x: x.current_mood() - x.lower_limit, reverse=False)
+            # 自动生成任务
+            self.plan_metadata()
+            # 剩余高效组位置
+            high_free = self.op_data.available_free()
+            # 剩余低效位置
+            low_free = self.op_data.available_free('low')
+            _replacement = []
+            _plan = {}
+            for op in self.total_agent:
+                # 忽略掉菲亚梅塔充能的干员
+                if high_free == 0 or low_free == 0:
+                    break
+                if fia_room is not None and op.name in self.op_data.operators['菲亚梅塔'].replacement[:-1]:
+                    continue
+                if op.name in self.op_data.workaholic_agent:
+                    continue
+                # 忽略掉正在休息的
+                if op.is_resting() or op.current_room in ['factory']:
+                    continue
+                # 忽略掉心情值没低于上限的的
+                if op.current_mood() > int(
+                        (op.upper_limit - op.lower_limit) * self.op_data.config.resting_threshold + op.lower_limit):
+                    continue
+                if op.name in self.op_data.exhaust_agent:
+                    if op.current_mood() <= op.lower_limit + 2:
+                        if find_next_task(self.tasks, meta_data=op.name) is None:
+                            self.enter_room(op.current_room)
+                            result = self.get_agent_from_room(op.current_room, [op.current_index])
+                            _time = datetime.now()
+                            if result[op.current_index]['time'] is not None and result[op.current_index][
+                                'time'] > _time:
+                                _time = result[op.current_index]['time'] - timedelta(minutes=10)
+                            elif op.current_mood() > 0.25 + op.lower_limit and op.depletion_rate != 0:
+                                _time = datetime.now() + timedelta(
+                                    hours=(
+                                                    op.current_mood() - op.lower_limit - 0.25) / op.depletion_rate) - timedelta(
+                                    minutes=10)
+                            self.back()
+                            # plan 是空的是因为得动态生成
+                            exhaust_type = op.name
+                            if op.group != '':
+                                exhaust_type = ','.join(self.op_data.groups[op.group])
+                            self.tasks.append(SchedulerTask(time=_time, meta_data=exhaust_type))
+                            # 如果是生成的过去时间，则停止 plan 其他
+                            if _time < datetime.now():
+                                break
+                    continue
+                if op.group != '':
+                    if op.group in self.op_data.exhaust_group:
+                        # 忽略掉用尽心情的分组
+                        continue
+                    # 如果在group里则同时上下班
+                    group_resting = self.op_data.groups[op.group]
+                    _replacement, _plan, high_free, low_free = self.get_resting_plan(
+                        group_resting, _replacement, _plan, high_free, low_free)
+                else:
+                    _replacement, _plan, high_free, low_free = self.get_resting_plan([op.name],
+                                                                                        _replacement,
+                                                                                        _plan,
+                                                                                        high_free,
+                                                                                        low_free)
+            if len(_plan.keys()) > 0:
+                if find_next_task(self.tasks, datetime.now() + timedelta(seconds=300),
+                                    task_type=TaskTypes.RUN_ORDER) is not None: return
+                self.tasks.append(SchedulerTask(task_plan=_plan, task_type=TaskTypes.SHIFT_OFF))
+        except Exception as e:
+            logger.exception(e)
+            # 如果下个 普通任务 >5 分钟则补全宿舍
+        logger.debug('tasks:' + str(self.tasks))
+        if find_next_task(self.tasks, datetime.now() + timedelta(seconds=300)) is not None:
+            logger.info("5分钟内有其他任务,跳过宿舍纠错")
+            return
+        if self.agent_get_mood() is None:
+            self.backup_plan_solver()
 
     def backup_plan_solver(self):
         try:

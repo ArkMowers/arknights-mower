@@ -32,7 +32,7 @@ class PlanConfig(object):
     #   >  0 时是葛朗台跑单
     #   <= 0 时是无人机跑单
     def __init__(self, rest_in_full, exhaust_require, resting_priority, ling_xi=0, workaholic="", max_resting_count=4,
-                 free_blacklist="", read_mood=True, skip_validation=False, run_order_buffer_time=30,
+                 free_blacklist="", skip_validation=False, run_order_buffer_time=30,
                  resting_threshold=0.5, refresh_trading_config=''):
         self.rest_in_full = to_list(rest_in_full)
         self.exhaust_require = to_list(exhaust_require)
@@ -40,7 +40,6 @@ class PlanConfig(object):
         self.resting_priority = to_list(resting_priority)
         self.max_resting_count = max_resting_count
         self.free_blacklist = to_list(free_blacklist)
-        self.read_mood = read_mood
         # 0 为均衡模式
         # 1 为感知信息模式
         # 2 为人间烟火模式

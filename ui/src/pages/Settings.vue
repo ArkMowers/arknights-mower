@@ -14,7 +14,6 @@ const plan_store = usePlanStore()
 const mobile = inject('mobile')
 
 const {
-  run_mode,
   run_order_delay,
   drone_room,
   drone_count_limit,
@@ -154,18 +153,6 @@ import { render_op_label, render_op_tag } from '@/utils/op_select'
                   <div>使用MuMu模拟器12时，若遇到adb断连问题，可尝试开启此选项</div>
                 </help-text>
               </n-checkbox>
-            </n-form-item>
-            <n-form-item>
-              <template #label>
-                <span>运行模式</span>
-                <help-text>“仅跑单”模式年久失修，推荐使用Mower0</help-text>
-              </template>
-              <n-radio-group v-model:value="run_mode">
-                <n-space>
-                  <n-radio value="full">换班+跑单</n-radio>
-                  <n-radio value="orders_only">仅跑单</n-radio>
-                </n-space>
-              </n-radio-group>
             </n-form-item>
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="start_automatically">启动后自动开始任务</n-checkbox>
