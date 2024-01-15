@@ -1,3 +1,5 @@
+from arknights_mower.utils import config
+
 class Plan(object):
 
     def __init__(self, plan, config, trigger=None, task=None):
@@ -46,6 +48,7 @@ class PlanConfig(object):
         self.ling_xi = ling_xi
         self.skip_validation = skip_validation
         self.run_order_buffer_time = run_order_buffer_time
+        config.grandet_mode = run_order_buffer_time > 0
         self.resting_threshold = resting_threshold
         # 格式为 干员名字+ 括弧 +指定房间（逗号分隔）
         # 不指定房间则默认全跑单站
