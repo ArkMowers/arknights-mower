@@ -245,8 +245,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         if not is_exhaust_require:
                             rooms.extend(_rooms)
                             remove_idx.append(idx)
-                for idx in remove_idx:
-                    del self.tasks[idx]
+                for idx in sorted(remove_idx, reverse=True):
+                    self.tasks.pop(idx)
                 plan = {}
                 for room in rooms:
                     if room not in plan.keys():
