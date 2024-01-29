@@ -1678,6 +1678,24 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             if self.op_data.operators[_operator].room == room:
                 self.op_data.operators[_operator].time_stamp = None
 
+    def turn_on_room_detail(self,room):
+        error_count = 0
+        while self.find('room_detail') is None:
+            if error_count > 3:
+                self.reset_room_time(room)
+                raise Exception('未成功进入房间')
+            if self.find('arrange_check_in'):
+                self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
+            else:
+                back_count  = 0
+                while  self.find('control_central') is None and back_count<2:
+                    self.back()
+                    back_count+=1
+                if self.find('control_central') is None:
+                    self.back_to_infrastructure()
+                self.enter_room(room)
+            error_count += 1
+
     @push_operators
     def get_agent_from_room(self, room, read_time_index=None):
         if read_time_index is None:
@@ -1690,12 +1708,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             if clue_res != 11:
                 self.clue_count = clue_res
                 logger.info(f'当前拥有线索数量为{self.clue_count}')
-        while self.find('room_detail') is None:
-            if error_count > 3:
-                self.reset_room_time(room)
-                raise Exception('未成功进入房间')
-            self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
-            error_count += 1
+        self.turn_on_room_detail(room)
         length = len(self.op_data.plan[room])
         if length > 3: self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, self.recog.h * 0.45), duration=500,
                                   interval=1,
@@ -1812,11 +1825,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             try:
                 error_count = 0
                 if not skip_enter: self.enter_room(room)
-                while self.find('room_detail') is None:
-                    if error_count > 3:
-                        raise Exception('未成功进入房间')
-                    self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
-                    error_count += 1
+                self.turn_on_room_detail(room)
                 error_count = 0
                 if not checked:
                     if ('但书' in plan[room] or '龙舌兰' in plan[room]) and not \
@@ -1853,11 +1862,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                                     minutes=self.run_order_delay)
                                 logger.info(f"订单倒计时 {remaining_time}秒")
                                 self.back()
-                                while self.find('room_detail') is None:
-                                    if error_count > 3:
-                                        raise Exception('未成功进入房间')
-                                    self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
-                                    error_count += 1
+                                self.turn_on_room_detail(room)
                         else:
                             logger.info(f"检测到漏单")
                             self.recog.save_screencap("run_order_failure")
