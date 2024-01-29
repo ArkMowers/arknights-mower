@@ -110,6 +110,8 @@ def scheduling(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
 def check_dorm_ordering(tasks, op_data):
     # 仅当下班的时候才触发宿舍排序任务
     plan = op_data.plan
+    if len(tasks) == 0:
+        return
     if tasks[0].type == TaskTypes.SHIFT_OFF and tasks[0].meta_data == "":
         extra_plan = {}
         other_plan = {}
