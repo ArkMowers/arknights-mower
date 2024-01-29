@@ -144,24 +144,24 @@ class RecruitSolver(BaseSolver):
                 logger.info(f"刷新次数:{refresh_res}")
 
             try:
-                if self.permit_count is None:
-                    template_ticket = loadimg(f"{__rootdir__}/resources/recruit_ticket.png")
-                    img = self.recog.img
-                    res = cv2.matchTemplate(img, template_ticket, cv2.TM_CCOEFF_NORMED)
-                    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
-                    h, w = template_ticket.shape[:-1]
-                    p0 = max_loc
-                    p1 = (p0[0] + w, p0[1] + h)
+                # 招募前读取数量
+                template_ticket = loadimg(f"{__rootdir__}/resources/recruit_ticket.png")
+                img = self.recog.img
+                res = cv2.matchTemplate(img, template_ticket, cv2.TM_CCOEFF_NORMED)
+                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+                h, w = template_ticket.shape[:-1]
+                p0 = max_loc
+                p1 = (p0[0] + w, p0[1] + h)
 
-                    template_stone = loadimg(f"{__rootdir__}/resources/stone.png")
-                    res = cv2.matchTemplate(img, template_stone, cv2.TM_CCOEFF_NORMED)
-                    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
-                    p2 = max_loc
+                template_stone = loadimg(f"{__rootdir__}/resources/stone.png")
+                res = cv2.matchTemplate(img, template_stone, cv2.TM_CCOEFF_NORMED)
+                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+                p2 = max_loc
 
-                    res = self.digitReader.get_recruit_ticket(img[p2[1]:p1[1], p1[0]:p2[0]])
-                    if str(res).isdigit():
-                        self.permit_count = int(res)
-                        logger.info(f"招募券数量:{res}")
+                res = self.digitReader.get_recruit_ticket(img[p2[1]:p1[1], p1[0]:p2[0]])
+                if str(res).isdigit():
+                    self.permit_count = int(res)
+                    logger.info(f"招募券数量:{res}")
             except:
                 # 设置为1 先保证后续流程能正常进行
                 self.permit_count = 1
@@ -250,18 +250,13 @@ class RecruitSolver(BaseSolver):
             # 计算招募标签组合结果
             recruit_cal_result = self.recruit_cal(tags)
             recruit_result_level = recruit_cal_result[0][1][0]['star']
-            if self.recruit_order.index(recruit_result_level) <= self.recruit_index :
-                if self.recruit_config['recruit_email_enable']:
-                    self.send_message(recruit_rarity.render(recruit_results=recruit_cal_result, title_text="稀有tag通知"),
-                                      "出稀有标签辣",
-                                      "html")
-                    logger.info('稀有tag,发送邮件')
+            if self.recruit_order.index(recruit_result_level) <= self.recruit_index and self.recruit_config['recruit_email_enable']:
+                self.send_message(recruit_rarity.render(recruit_results=recruit_cal_result, title_text="稀有tag通知"),
+                                  "出稀有标签辣",
+                                  "html")
+                logger.info('稀有tag,发送邮件')
                 if recruit_result_level == 6:
                     logger.debug('六星tag')
-                    self.back()
-                    return
-                if recruit_result_level == 1 and self.recruit_config['recruit_robot']:
-                    logger.debug('支援机械 发送邮件')
                     self.back()
                     return
                 # 手动选择且单五星词条不自动

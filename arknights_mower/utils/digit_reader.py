@@ -98,9 +98,9 @@ class DigitReader:
             res = cv2.matchTemplate(
                 digit_part,
                 self.report_template[j],
-                cv2.TM_CCORR_NORMED,
+                cv2.TM_CCOEFF_NORMED,
             )
-            threshold = 0.89
+            threshold = 0.8
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
             loc = np.where(res >= threshold)
             for i in range(len(loc[0])):
@@ -123,6 +123,7 @@ class DigitReader:
         l = [str(result[k]["value"]) for k in sorted(result)]
         return int("".join(l))
 
+
     def get_report_number_white(self, digit_part):
         result = {}
         digit_part = cv2.cvtColor(digit_part, cv2.COLOR_RGB2GRAY)
@@ -135,8 +136,6 @@ class DigitReader:
             )
 
             threshold = 0.93
-            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
-            print(j, max_val)
             loc = np.where(res >= threshold)
             for i in range(len(loc[0])):
                 x = loc[1][i]
