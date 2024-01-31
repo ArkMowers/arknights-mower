@@ -132,7 +132,7 @@ class BaseSolver:
             try:
                 if self.tap_element(i):
                     return True
-            except:
+            except Exception:
                 continue
         return False
 

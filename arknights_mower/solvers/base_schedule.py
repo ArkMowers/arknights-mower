@@ -147,7 +147,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         elif self.get_navigation():
             self.tap_element('nav_infrastructure')
         elif self.get_infra_scene() == Scene.INFRA_ARRANGE_ORDER:
-            self.tap_element('arrange_blue_yes')
+            self.tap_element('arrange_blue_yes', x_rate=0.66)
         elif self.get_infra_scene() == Scene.UNKNOWN or self.scene() != Scene.UNKNOWN:
             self.back_to_index()
             self.last_room = ''

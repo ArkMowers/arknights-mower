@@ -62,7 +62,7 @@ class BaseConstructSolver(BaseSolver, BaseMixin):
         elif self.get_navigation():
             self.tap_element('nav_infrastructure')
         elif self.scene() == Scene.INFRA_ARRANGE_ORDER:
-            self.tap_element('arrange_blue_yes')
+            self.tap_element('arrange_blue_yes', x_rate=0.66)
         elif self.scene() != Scene.UNKNOWN:
             self.back_to_index()
         else:
@@ -612,7 +612,7 @@ class BaseConstructSolver(BaseSolver, BaseMixin):
         if exclude_checked_in:
             self.tap_element('arrange_order_options')
             self.tap_element('arrange_non_check_in')
-            self.tap_element('arrange_blue_yes')
+            self.tap_element('arrange_blue_yes', x_rate=0.66)
         self.tap_element('arrange_clean')
 
         h, w = self.recog.h, self.recog.w
