@@ -20,16 +20,16 @@ class MissionSolver(BaseSolver):
         super().run()
 
     def transition(self) -> bool:
-        if self.scene() == Scene.INDEX:
+        if (scene := self.scene()) == Scene.INDEX:
             self.tap_element('index_mission')
-        elif self.scene() == Scene.MISSION_TRAINEE:
+        elif scene == Scene.MISSION_TRAINEE:
             if self.checked & 1 == 0:
                 self.tap_element('mission_daily')
             elif self.checked & 2 == 0:
                 self.tap_element('mission_weekly')
             else:
                 return True
-        elif self.scene() == Scene.MISSION_DAILY:
+        elif scene == Scene.MISSION_DAILY:
             self.checked |= 1
             collect = self.find('mission_collect')
             if collect is None:
@@ -42,7 +42,7 @@ class MissionSolver(BaseSolver):
                 self.tap_element('mission_weekly')
             else:
                 return True
-        elif self.scene() == Scene.MISSION_WEEKLY:
+        elif scene == Scene.MISSION_WEEKLY:
             self.checked |= 2
             collect = self.find('mission_collect')
             if collect is None:
@@ -55,15 +55,15 @@ class MissionSolver(BaseSolver):
                 self.tap_element('mission_daily')
             else:
                 return True
-        elif self.scene() == Scene.MATERIEL:
+        elif scene == Scene.MATERIEL:
             self.tap_element('materiel_ico')
-        elif self.scene() == Scene.LOADING:
+        elif scene == Scene.LOADING:
             self.sleep(3)
-        elif self.scene() == Scene.CONNECTING:
+        elif scene == Scene.CONNECTING:
             self.sleep(3)
         elif self.get_navigation():
             self.tap_element('nav_mission')
-        elif self.scene() != Scene.UNKNOWN:
+        elif scene != Scene.UNKNOWN:
             self.back_to_index()
         else:
             raise RecognizeError('Unknown scene')

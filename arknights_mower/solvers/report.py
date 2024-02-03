@@ -59,31 +59,31 @@ class ReportSolver(BaseSolver):
             return True
         except Exception as e:
             logger.error(e)
-        except:
+        except Exception:
             pass
         return False
 
     def transition(self) -> bool:
-        if self.scene() == Scene.INDEX:
+        if (scene := self.scene()) == Scene.INDEX:
             self.tap_themed_element('index_infrastructure')
-        elif self.scene() == Scene.SKIP:
+        elif scene == Scene.SKIP:
             self.tap_element('skip')
-        elif self.scene() == Scene.INFRA_MAIN:
+        elif scene == Scene.INFRA_MAIN:
             self.tap_element('control_central')
-        elif self.scene() == Scene.CTRLCENTER_ASSISTANT:
+        elif scene == Scene.CTRLCENTER_ASSISTANT:
             self.tap_element('control_central_assistants')
-        elif self.scene() == Scene.RIIC_REPORT:
+        elif scene == Scene.RIIC_REPORT:
             logger.info("看到基报辣")
             if self.reload_time > 4:
                 raise RuntimeError("基报不存在")
             return self.read_report()
-        elif self.scene() == Scene.LOADING:
+        elif scene == Scene.LOADING:
             self.sleep(3)
-        elif self.scene() == Scene.CONNECTING:
+        elif scene == Scene.CONNECTING:
             self.sleep(3)
         elif self.get_navigation():
             self.tap_element('nav_infrastructure')
-        elif self.scene() != Scene.UNKNOWN:
+        elif scene != Scene.UNKNOWN:
             self.back_to_index()
         else:
             raise RecognizeError('Unknown scene')

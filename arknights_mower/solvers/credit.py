@@ -18,16 +18,16 @@ class CreditSolver(BaseSolver):
         super().run()
 
     def transition(self) -> bool:
-        if self.scene() == Scene.INDEX:
+        if (scene := self.scene()) == Scene.INDEX:
             self.tap_element('index_friend')
-        elif self.scene() == Scene.FRIEND_LIST_OFF:
+        elif scene == Scene.FRIEND_LIST_OFF:
             self.tap_element('friend_list')
-        elif self.scene() == Scene.FRIEND_LIST_ON:
+        elif scene == Scene.FRIEND_LIST_ON:
             down = self.find('friend_list_on', strict=True)[1][1]
             scope = [(0, 0), (100000, down)]
             if not self.tap_element('friend_visit', scope=scope, detected=True):
                 self.sleep(1)
-        elif self.scene() == Scene.FRIEND_VISITING:
+        elif scene == Scene.FRIEND_VISITING:
             visit_limit = self.find('visit_limit')
             if visit_limit is not None:
                 return True
@@ -36,13 +36,13 @@ class CreditSolver(BaseSolver):
                 self.tap(visit_next)
             else:
                 return True
-        elif self.scene() == Scene.LOADING:
+        elif scene == Scene.LOADING:
             self.sleep(3)
-        elif self.scene() == Scene.CONNECTING:
+        elif scene == Scene.CONNECTING:
             self.sleep(3)
         elif self.get_navigation():
             self.tap_element('nav_social')
-        elif self.scene() != Scene.UNKNOWN:
+        elif scene != Scene.UNKNOWN:
             self.back_to_index()
         else:
             raise RecognizeError('Unknown scene')

@@ -132,23 +132,23 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
 
     def transition(self) -> None:
         self.recog.update()
-        if self.get_infra_scene() == Scene.INDEX:
+        if (scene := self.get_infra_scene()) == Scene.INDEX:
             self.tap_themed_element('index_infrastructure')
-        elif self.get_infra_scene() == Scene.INFRA_MAIN:
+        elif scene == Scene.INFRA_MAIN:
             return self.infra_main()
-        elif self.get_infra_scene() == Scene.INFRA_TODOLIST:
+        elif scene == Scene.INFRA_TODOLIST:
             return self.todo_list()
-        elif self.get_infra_scene() == Scene.INFRA_DETAILS:
+        elif scene == Scene.INFRA_DETAILS:
             self.back()
-        elif self.get_infra_scene() == Scene.LOADING:
+        elif scene == Scene.LOADING:
             self.waiting_solver(Scene.LOADING)
-        elif self.get_infra_scene() == Scene.CONNECTING:
+        elif scene == Scene.CONNECTING:
             self.waiting_solver(Scene.CONNECTING)
         elif self.get_navigation():
             self.tap_element('nav_infrastructure')
-        elif self.get_infra_scene() == Scene.INFRA_ARRANGE_ORDER:
+        elif scene == Scene.INFRA_ARRANGE_ORDER:
             self.tap_element('arrange_blue_yes', x_rate=0.66)
-        elif self.get_infra_scene() == Scene.UNKNOWN or self.scene() != Scene.UNKNOWN:
+        elif scene == Scene.UNKNOWN or self.scene() != Scene.UNKNOWN:
             self.back_to_index()
             self.last_room = ''
             logger.info("重设上次房间为空")

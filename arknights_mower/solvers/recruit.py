@@ -124,9 +124,9 @@ class RecruitSolver(BaseSolver):
             self.recruit_index = 1
 
     def transition(self) -> bool:
-        if self.scene() == Scene.INDEX:
+        if (scene := self.scene()) == Scene.INDEX:
             self.tap_themed_element('index_recruit')
-        elif self.scene() == Scene.RECRUIT_MAIN:
+        elif scene == Scene.RECRUIT_MAIN:
             segments = segment.recruit(self.recog.img)
 
             if self.can_refresh is None:
@@ -162,7 +162,7 @@ class RecruitSolver(BaseSolver):
                 if str(res).isdigit():
                     self.permit_count = int(res)
                     logger.info(f"招募券数量:{res}")
-            except:
+            except Exception:
                 # 设置为1 先保证后续流程能正常进行
                 self.permit_count = 1
                 logger.error("招募券数量读取失败")
@@ -199,21 +199,21 @@ class RecruitSolver(BaseSolver):
                     break
             if not tapped:
                 return True
-        elif self.scene() == Scene.RECRUIT_TAGS:
+        elif scene == Scene.RECRUIT_TAGS:
             return self.recruit_tags()
-        elif self.scene() == Scene.SKIP:
+        elif scene == Scene.SKIP:
             self.tap_element('skip')
-        elif self.scene() == Scene.RECRUIT_AGENT:
+        elif scene == Scene.RECRUIT_AGENT:
             return self.recruit_result()
-        elif self.scene() == Scene.MATERIEL:
+        elif scene == Scene.MATERIEL:
             self.tap_element('materiel_ico')
-        elif self.scene() == Scene.LOADING:
+        elif scene == Scene.LOADING:
             self.sleep(3)
-        elif self.scene() == Scene.CONNECTING:
+        elif scene == Scene.CONNECTING:
             self.sleep(3)
         elif self.get_navigation():
             self.tap_element('nav_recruit')
-        elif self.scene() != Scene.UNKNOWN:
+        elif scene != Scene.UNKNOWN:
             self.back_to_index()
         else:
             raise RecognizeError('Unknown scene')
