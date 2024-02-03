@@ -187,6 +187,10 @@
         "label": "TERMINAL_COLLECTION",
         "comment": "资源收集"
     },
+    "507": {
+        "label": "TERMINAL_LONGTERM",
+        "comment": "长期探索"
+    },
     "602": {
         "label": "OPERATOR_BEFORE",
         "comment": "作战前，关卡已选定"
@@ -266,6 +270,14 @@
     "803": {
         "label": "RECRUIT_AGENT",
         "comment": "开包干员展示"
+    },
+    "901": {
+        "label": "RA_MAIN",
+        "comment": "生息演算界面首页"
+    },
+    "902": {
+        "label": "RA_GUIDE_1",
+        "comment": "生息演算剧情入口：众人会聚之地（后舍）"
     },
     "9998": {
         "label": "LOADING",

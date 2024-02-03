@@ -197,6 +197,12 @@ class BaseSolver:
     def get_infra_scene(self) -> int:
         """ get the current scene in the infra """
         return self.recog.get_infra_scene()
+    
+    def ra_scene(self) -> int:
+        """
+        生息演算场景识别
+        """
+        return self.recog.get_ra_scene()
 
     def is_login(self):
         """ check if you are logged in """

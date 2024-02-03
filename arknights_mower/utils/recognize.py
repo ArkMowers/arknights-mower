@@ -64,13 +64,32 @@ class Recognizer(object):
     def save_screencap(self, folder):
         save_screenshot(self.screencap, subdir=f'{folder}/{self.h}x{self.w}')
 
+    def detect_connecting_scene(self) -> bool:
+        return (matched_scope := self.find('connecting', scope=self.CONN_SCOPE, score=self.CONN_PRESCORE)) is not None and matched_scope[1][0] - matched_scope[0][0] > self.CONN_MINWIDTH
+    
+    def detect_index_scene(self) -> bool:
+        return self.find('index_nav', thres=250, scope=((0, 0), (100+self.w//4, self.h//10))) is not None
+    
+    def check_loading_time(self):
+        if self.scene == Scene.CONNECTING:
+            self.loading_time += 1
+            if self.loading_time > 1:
+                logger.debug(f"检测到连续等待{self.loading_time}次")
+        else:
+            self.loading_time = 0
+        if self.loading_time > self.LOADING_TIME_LIMIT:
+            logger.info(f"检测到连续等待{self.loading_time}次")
+            self.device.exit()
+            time.sleep(3)
+            self.device.check_current_focus()
+
     def get_scene(self) -> int:
         """ get the current scene in the game """
         if self.scene != Scene.UNDEFINED:
             return self.scene
-        if (matched_scope := self.find('connecting', scope=self.CONN_SCOPE, score=self.CONN_PRESCORE)) is not None and matched_scope[1][0] - matched_scope[0][0] > self.CONN_MINWIDTH:
+        if self.detect_connecting_scene():
             self.scene = Scene.CONNECTING
-        elif self.find('index_nav', thres=250, scope=((0, 0), (100+self.w//4, self.h//10))) is not None:
+        elif self.detect_index_scene():
             self.scene = Scene.INDEX
         elif self.find('nav_index') is not None:
             self.scene = Scene.NAVIGATION_BAR
@@ -233,24 +252,14 @@ class Recognizer(object):
             self.save_screencap(self.scene)
         logger.info(f'Scene: {self.scene}: {SceneComment[self.scene]}')
 
-        if self.scene == Scene.CONNECTING:
-            self.loading_time += 1
-            if self.loading_time > 1:
-                logger.debug(f"检测到连续等待{self.loading_time}次")
-        else:
-            self.loading_time = 0
-        if self.loading_time > self.LOADING_TIME_LIMIT:
-            logger.info(f"检测到连续等待{self.loading_time}次")
-            self.device.exit()
-            time.sleep(3)
-            self.device.check_current_focus()
+        self.check_loading_time()
 
         return self.scene
 
     def get_infra_scene(self) -> int:
         if self.scene != Scene.UNDEFINED:
             return self.scene
-        if (matched_scope := self.find('connecting', scope=self.CONN_SCOPE, score=self.CONN_PRESCORE)) is not None and matched_scope[1][0] - matched_scope[0][0] > self.CONN_MINWIDTH:
+        if self.detect_connecting_scene():
             self.scene = Scene.CONNECTING
         elif self.find('double_confirm') is not None:
             if self.find('network_check') is not None:
@@ -279,7 +288,7 @@ class Recognizer(object):
             self.scene = Scene.LOADING
         elif self.find('loading4') is not None:
             self.scene = Scene.LOADING
-        elif self.find('index_nav', thres=250, scope=((0, 0), (100+self.w//4, self.h//10))) is not None:
+        elif self.detect_index_scene():
             self.scene = Scene.INDEX
         elif self.is_black():
             self.scene = Scene.LOADING
@@ -291,17 +300,39 @@ class Recognizer(object):
             self.save_screencap(self.scene)
         logger.info(f'Scene: {self.scene}: {SceneComment[self.scene]}')
 
-        if self.scene == Scene.CONNECTING:
-            self.loading_time += 1
-            if self.loading_time > 1:
-                logger.debug(f"检测到连续等待{self.loading_time}次")
+        self.check_loading_time()
+
+        return self.scene
+    
+    def get_ra_scene(self) -> int:
+        """
+        生息演算场景识别
+        """
+        if self.scene != Scene.UNDEFINED:
+            return self.scene
+        if self.detect_connecting_scene():
+            self.scene = Scene.CONNECTING
+        elif self.detect_index_scene():
+            self.scene = Scene.INDEX
+        elif self.find('terminal_pre') is not None:
+            self.scene = Scene.TERMINAL_MAIN
+        elif self.find("terminal_longterm"):
+            self.scene = Scene.TERMINAL_LONGTERM
+        elif self.find("terminal_longterm"):
+            self.scene = Scene.TERMINAL_LONGTERM
+        elif self.find("ra_start_button"):
+            self.scene = Scene.RA_MAIN
+        elif self.find("ra_guide_1"):
+            self.scene = Scene.RA_GUIDE_1
         else:
-            self.loading_time = 0
-        if self.loading_time > self.LOADING_TIME_LIMIT:
-            logger.info(f"检测到连续等待{self.loading_time}次")
-            self.device.exit()
-            time.sleep(3)
+            self.scene = Scene.UNKNOWN
             self.device.check_current_focus()
+        # save screencap to analyse
+        if config.SCREENSHOT_PATH is not None:
+            self.save_screencap(self.scene)
+        logger.info(f'Scene: {self.scene}: {SceneComment[self.scene]}')
+
+        self.check_loading_time()
 
         return self.scene
 
