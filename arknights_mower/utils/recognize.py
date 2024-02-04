@@ -317,65 +317,66 @@ class Recognizer(object):
             self.scene = Scene.CONNECTING
 
         # 快速跳过剧情对话
-        elif self.find("ra/guide_dialog", ((0, 0), (160, 110))):
+        elif self.find("ra/guide_dialog", scope=((0, 0), (160, 110))):
             self.scene = Scene.RA_GUIDE_DIALOG
         
         # 快速退出作战
-        elif self.find("ra/battle_exit"):
+        elif self.find("ra/battle_exit", scope=((0, 0), (200, 160))):
             self.scene = Scene.RA_BATTLE
-        elif self.find("ra/battle_exit_confirm"):
+        elif self.find("ra/battle_exit_dialog", scope=((600, 360), (970, 430))):
             self.scene = Scene.RA_BATTLE_EXIT_CONFIRM
 
-        # 森蚺图耶对话与“一张便条”剧情，优先级高于地图识别
-        elif self.find("ra/guide_entrance"):
-            self.scene = Scene.RA_GUIDE_ENTRANCE
-        elif self.find("ra/guide_note_entrance"):
-            self.scene = Scene.RA_GUIDE_NOTE_ENTRANCE
-        elif self.find("ra/guide_note_dialog"):
-            self.scene = Scene.RA_GUIDE_NOTE_DIALOG
-
         # 作战与分队
-        elif self.find("ra/start_action"):
+        elif self.find("ra/start_action", scope=((1410, 790), (1900, 935))):
             self.scene = Scene.RA_BATTLE_ENTRANCE
-        elif self.find("ra/squad_edit"):
+        elif self.find("ra/squad_edit", scope=((1090, 0), (1910, 105))):
             self.scene = Scene.RA_SQUAD_EDIT
-        elif self.find("ra/drink_cooked"):
+        elif self.find("ra/drink_cooked", scope=((875, 360), (1055, 420))):
             self.scene = Scene.RA_KITCHEN_DIALOG
-        elif self.find("ra/return_from_kitchen"):
+        elif self.find("ra/return_from_kitchen", scope=((0, 0), (300, 105))):
             self.scene = Scene.RA_KITCHEN
-        elif self.find("ra/squad_edit_confirm_dialog"):
+        elif self.find("ra/squad_edit_confirm_dialog", scope=((585, 345), (1485, 440))):
             self.scene = Scene.RA_SQUAD_EDIT_DIALOG
+        elif self.find("ra/battle_complete", scope=((70, 310), (580, 500))):
+            self.scene = Scene.RA_BATTLE_COMPLETE
 
         # 结算界面
-        elif self.find("ra/day_complete"):
+        elif self.find("ra/day_complete", scope=((800, 330), (1130, 410))):
             self.scene = Scene.RA_DAY_COMPLETE
-        elif self.find("ra/period_complete"):
+        elif self.find("ra/period_complete", scope=((800, 190), (1120, 265))):
             self.scene = Scene.RA_PERIOD_COMPLETE
 
+        # 森蚺图耶对话与“一张便条”剧情，优先级高于地图识别
+        elif self.find("ra/guide_entrance", scope=((810, 270), (1320, 610))):
+            self.scene = Scene.RA_GUIDE_ENTRANCE
+        elif self.find("ra/guide_note_entrance", scope=((860, 290), (1050, 480))):
+            self.scene = Scene.RA_GUIDE_NOTE_ENTRANCE
+        elif self.find("ra/guide_note_dialog", scope=((370, 460), (580, 540))):
+            self.scene = Scene.RA_GUIDE_NOTE_DIALOG
+
         # 存档操作
-        elif self.find("ra/delete_save_confirm_dialog"):
+        elif self.find("ra/delete_save_confirm_dialog", scope=((585, 345), (1020, 440))):
             self.scene = Scene.RA_DELETE_SAVE_DIALOG
-        elif self.find("ra/delete_save_double_confirm_dialog"):
+        elif self.find("ra/delete_save_double_confirm_dialog", scope=((585, 345), (1020, 440))):
             self.scene = Scene.RA_DELETE_SAVE_DOUBLE_DIALOG
-        
 
         # 地图识别
-        elif self.find("ra/waste_time_button"):
+        elif self.find("ra/waste_time_button", scope=((1665, 220), (1855, 290))):
             self.scene = Scene.RA_DAY_DETAIL
-        elif self.find("ra/waste_time_dialog"):
+        elif self.find("ra/waste_time_dialog", scope=((585, 345), (1070, 440))):
             self.scene = Scene.RA_WASTE_TIME_DIALOG
-        elif any(self.find, [f"ra/day_{i}" for i in range(1, 5)] + ["next_day_button"]):
+        elif any([self.find(i, scope=((1610, 0), (1900, 260))) for i in ["ra/days", "ra/save", "ra/next_day_button"]]):
             self.scene = Scene.RA_MAP
 
         # 从首页选择终端进入生息演算主页
+        elif self.find("terminal_longterm"):
+            self.scene = Scene.TERMINAL_LONGTERM
         elif self.find("ra/main_title"):
             self.scene = Scene.RA_MAIN
         elif self.detect_index_scene():
             self.scene = Scene.INDEX
-        elif self.find('terminal_pre') is not None:
+        elif self.find("terminal_pre") is not None:
             self.scene = Scene.TERMINAL_MAIN
-        elif self.find("terminal_longterm"):
-            self.scene = Scene.TERMINAL_LONGTERM
         else:
             self.scene = Scene.UNKNOWN
             self.device.check_current_focus()

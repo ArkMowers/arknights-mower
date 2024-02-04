@@ -333,7 +333,7 @@
     },
     "916": {
         "label": "RA_WASTE_TIME_DIALOG",
-        "comment": "跳过确认对话框"
+        "comment": "跳过行动确认对话框"
     },
     "917": {
         "label": "RA_PERIOD_COMPLETE",
@@ -346,6 +346,10 @@
     "919": {
         "label": "RA_DELETE_SAVE_DOUBLE_DIALOG",
         "comment": "存档删除二次确认"
+    },
+    "920": {
+        "label": "RA_BATTLE_COMPLETE",
+        "comment": "作战结算"
     },
     "9998": {
         "label": "LOADING",
