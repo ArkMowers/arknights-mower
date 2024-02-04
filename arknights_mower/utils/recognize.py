@@ -308,42 +308,78 @@ class Recognizer(object):
         """
         生息演算场景识别
         """
+        # 场景缓存
         if self.scene != Scene.UNDEFINED:
             return self.scene
+        
+        # 连接中，优先级最高
         if self.detect_connecting_scene():
             self.scene = Scene.CONNECTING
+
+        # 快速跳过剧情对话
+        elif self.find("ra/guide_dialog", ((0, 0), (160, 110))):
+            self.scene = Scene.RA_GUIDE_DIALOG
+        
+        # 快速退出作战
+        elif self.find("ra/battle_exit"):
+            self.scene = Scene.RA_BATTLE
+        elif self.find("ra/battle_exit_confirm"):
+            self.scene = Scene.RA_BATTLE_EXIT_CONFIRM
+
+        # 森蚺图耶对话与“一张便条”剧情，优先级高于地图识别
+        elif self.find("ra/guide_entrance"):
+            self.scene = Scene.RA_GUIDE_ENTRANCE
+        elif self.find("ra/guide_note_entrance"):
+            self.scene = Scene.RA_GUIDE_NOTE_ENTRANCE
+        elif self.find("ra/guide_note_dialog"):
+            self.scene = Scene.RA_GUIDE_NOTE_DIALOG
+
+        # 作战与分队
+        elif self.find("ra/start_action"):
+            self.scene = Scene.RA_BATTLE_ENTRANCE
+        elif self.find("ra/squad_edit"):
+            self.scene = Scene.RA_SQUAD_EDIT
+        elif self.find("ra/drink_cooked"):
+            self.scene = Scene.RA_KITCHEN_DIALOG
+        elif self.find("ra/return_from_kitchen"):
+            self.scene = Scene.RA_KITCHEN
+        elif self.find("ra/squad_edit_confirm_dialog"):
+            self.scene = Scene.RA_SQUAD_EDIT_DIALOG
+
+        # 结算界面
+        elif self.find("ra/day_complete"):
+            self.scene = Scene.RA_DAY_COMPLETE
+        elif self.find("ra/period_complete"):
+            self.scene = Scene.RA_PERIOD_COMPLETE
+
+        # 存档操作
+        elif self.find("ra/delete_save_confirm_dialog"):
+            self.scene = Scene.RA_DELETE_SAVE_DIALOG
+        elif self.find("ra/delete_save_double_confirm_dialog"):
+            self.scene = Scene.RA_DELETE_SAVE_DOUBLE_DIALOG
+        
+
+        # 地图识别
+        elif self.find("ra/waste_time_button"):
+            self.scene = Scene.RA_DAY_DETAIL
+        elif self.find("ra/waste_time_dialog"):
+            self.scene = Scene.RA_WASTE_TIME_DIALOG
+        elif any(self.find, [f"ra/day_{i}" for i in range(1, 5)] + ["next_day_button"]):
+            self.scene = Scene.RA_MAP
+
+        # 从首页选择终端进入生息演算主页
+        elif self.find("ra/main_title"):
+            self.scene = Scene.RA_MAIN
         elif self.detect_index_scene():
             self.scene = Scene.INDEX
         elif self.find('terminal_pre') is not None:
             self.scene = Scene.TERMINAL_MAIN
         elif self.find("terminal_longterm"):
             self.scene = Scene.TERMINAL_LONGTERM
-        elif self.find("terminal_longterm"):
-            self.scene = Scene.TERMINAL_LONGTERM
-        elif self.find("ra/main_title"):
-            self.scene = Scene.RA_MAIN
-        elif self.find("ra/guide_entrance"):
-            self.scene = Scene.RA_GUIDE_ENTRANCE
-        elif self.find("ra/guide_dialog"):
-            self.scene = Scene.RA_GUIDE_DIALOG
-        elif self.find("ra/start_action"):
-            self.scene = Scene.RA_BATTLE_ENTRANCE
-        elif self.find("ra/battle_exit"):
-            self.scene = Scene.RA_BATTLE
-        elif self.find("ra/battle_exit_confirm"):
-            self.scene = Scene.RA_BATTLE_EXIT_CONFIRM
-        elif self.find("ra/guide_note_entrance"):
-            self.scene = Scene.RA_GUIDE_NOTE_ENTRANCE
-        elif self.find("ra/guide_note_dialog"):
-            self.scene = Scene.RA_GUIDE_NOTE_DIALOG
-        elif self.find("ra/day_label"):
-            if self.find("ra/base"):
-                self.scene = Scene.RA_MAP_CENTRAL_BASE
-            else:
-                self.scene = Scene.RA_MAP
         else:
             self.scene = Scene.UNKNOWN
             self.device.check_current_focus()
+
         # save screencap to analyse
         if config.SCREENSHOT_PATH is not None:
             self.save_screencap(self.scene)
