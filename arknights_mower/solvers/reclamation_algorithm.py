@@ -41,11 +41,12 @@ class ReclamationAlgorithm(BaseSolver):
 
         # 进入与退出战斗
         elif scene == Scene.RA_BATTLE_ENTRANCE:
-            # 判断行动点数是否足够
-            ap_1 = self.get_color((1852, 80))
-            ap_2 = self.get_color((1875, 80))
-            if ap_1[0] < 175 and ap_2[0] < 175:
-                self.enter_battle = False
+            # 判断决断次数是否足够
+            if self.find("ra/action_points"):
+                ap_1 = self.get_color((1852, 80))
+                ap_2 = self.get_color((1875, 80))
+                if ap_1[0] < 175 and ap_2[0] < 175:
+                    self.enter_battle = False
             if self.enter_battle:
                 self.tap_element("ra/start_action")
             else:
