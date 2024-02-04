@@ -21,6 +21,8 @@ class ReclamationAlgorithm(BaseSolver):
 
         # 从生息演算主页进入生息演算
         elif scene == Scene.RA_MAIN:
+            self.enter_battle = True
+            self.battle_not_exit = 3
             # 等动画
             if pos := self.find("ra/start_action"):
                 self.tap(pos, interval=3)
