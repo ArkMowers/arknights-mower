@@ -276,8 +276,40 @@
         "comment": "生息演算界面首页"
     },
     "902": {
-        "label": "RA_GUIDE_1",
+        "label": "RA_GUIDE_ENTRANCE",
         "comment": "生息演算剧情入口：众人会聚之地（后舍）"
+    },
+    "903": {
+        "label": "RA_GUIDE_DIALOG",
+        "comment": "生息演算剧情对话"
+    },
+    "904": {
+        "label": "RA_BATTLE_ENTRANCE",
+        "comment": "生息演算作战入口"
+    },
+    "905": {
+        "label": "RA_BATTLE",
+        "comment": "生息演算作战中"
+    },
+    "906": {
+        "label": "RA_BATTLE_EXIT_CONFIRM",
+        "comment": "生息演算作战退出确认对话框"
+    },
+    "907": {
+        "label": "RA_GUIDE_NOTE_ENTRANCE",
+        "comment": "生息演算剧情（一张便条）入口"
+    },
+    "908": {
+        "label": "RA_GUIDE_NOTE_DIALOG",
+        "comment": "生息演算剧情（一张便条）对话框"
+    },
+    "909": {
+        "label": "RA_MAP",
+        "comment": "生息演算地图（基地不在中央）"
+    },
+    "910": {
+        "label": "RA_MAP_CENTRAL_BASE",
+        "comment": "生息演算地图（基地在中央）"
     },
     "9998": {
         "label": "LOADING",

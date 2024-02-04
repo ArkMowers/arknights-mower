@@ -320,10 +320,27 @@ class Recognizer(object):
             self.scene = Scene.TERMINAL_LONGTERM
         elif self.find("terminal_longterm"):
             self.scene = Scene.TERMINAL_LONGTERM
-        elif self.find("ra_start_button"):
+        elif self.find("ra/main_title"):
             self.scene = Scene.RA_MAIN
-        elif self.find("ra_guide_1"):
-            self.scene = Scene.RA_GUIDE_1
+        elif self.find("ra/guide_entrance"):
+            self.scene = Scene.RA_GUIDE_ENTRANCE
+        elif self.find("ra/guide_dialog"):
+            self.scene = Scene.RA_GUIDE_DIALOG
+        elif self.find("ra/start_action"):
+            self.scene = Scene.RA_BATTLE_ENTRANCE
+        elif self.find("ra/battle_exit"):
+            self.scene = Scene.RA_BATTLE
+        elif self.find("ra/battle_exit_confirm"):
+            self.scene = Scene.RA_BATTLE_EXIT_CONFIRM
+        elif self.find("ra/guide_note_entrance"):
+            self.scene = Scene.RA_GUIDE_NOTE_ENTRANCE
+        elif self.find("ra/guide_note_dialog"):
+            self.scene = Scene.RA_GUIDE_NOTE_DIALOG
+        elif self.find("ra/day_label"):
+            if self.find("ra/base"):
+                self.scene = Scene.RA_MAP_CENTRAL_BASE
+            else:
+                self.scene = Scene.RA_MAP
         else:
             self.scene = Scene.UNKNOWN
             self.device.check_current_focus()
