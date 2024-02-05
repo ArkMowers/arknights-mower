@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -303,7 +303,7 @@ class Recognizer(object):
         self.check_loading_time()
 
         return self.scene
-    
+
     def get_ra_scene(self) -> int:
         """
         生息演算场景识别
@@ -455,3 +455,35 @@ class Recognizer(object):
             matcher = self.matcher
             score = matcher.score(res_img, draw=draw, scope=scope, only_score=True)
         return score
+
+    def template_match(self, res: str, scope: Optional[tp.Scope] = None, method: int = cv2.TM_CCOEFF) -> Tuple[float, tp.Scope]:
+        logger.debug(f"template_match: {res}")
+        res = f'{__rootdir__}/resources/{res}.png'
+
+        template = loadimg(res, True)
+        w, h = template.shape[::-1]
+
+        if scope:
+            x, y = scope[0]
+            img = cropimg(self.gray, scope)
+        else:
+            x, y = (0, 0)
+            img = self.gray
+
+        result = cv2.matchTemplate(img, template, method)
+        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+
+        if method in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]:
+            top_left = min_loc
+            score = min_val
+        else:
+            top_left = max_loc
+            score = max_val
+
+        p1 = (top_left[0] + x, top_left[1] + y)
+        p2 = (p1[0] + w, p1[1] + h)
+
+        ret_val = (score, (p1, p2))
+        logger.debug(f"template_match: {ret_val}")
+
+        return ret_val

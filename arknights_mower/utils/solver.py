@@ -1,4 +1,7 @@
 from __future__ import annotations
+from typing import Optional, Tuple
+
+import cv2
 
 import smtplib
 from email.mime.text import MIMEText
@@ -135,6 +138,9 @@ class BaseSolver:
             except Exception:
                 continue
         return False
+
+    def template_match(self, res: str, scope: Optional[tp.Scope] = None, method: int = cv2.TM_CCOEFF) -> Tuple[float, tp.Scope]:
+        return self.recog.template_match(res, scope, method)
 
     def swipe(self, start: tp.Coordinate, movement: tp.Coordinate, duration: int = 100, interval: float = 1,
               rebuild: bool = True) -> None:

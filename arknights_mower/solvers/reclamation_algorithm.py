@@ -1,3 +1,5 @@
+from threading import Event, Thread
+
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.solver import BaseSolver
@@ -6,13 +8,42 @@ from arknights_mower.utils.solver import BaseSolver
 class ReclamationAlgorithm(BaseSolver):
     def run(self) -> None:
         logger.info("Start: 生息演算")
-        self.enter_battle = True # 没有饮料时不要进入战斗
-        self.battle_not_exit = 3 # 第一次战斗不要点左上角按钮，等剧情
+        self.enter_battle = True  # 没有饮料时不要进入战斗
+        self.battle_not_exit = 3  # 第一次战斗不要点左上角按钮，等剧情
+        self.thread = None
+        self.event = Event()
+        self.last_scene = Scene.UNKNOWN
         super().run()
 
+    def tap_loop(self, pos):
+        while not self.event.is_set():
+            self.device.tap(pos)
+
+    def fast_tap(self, pos):
+        self.event.clear()
+        if not self.thread:
+            self.thread = Thread(target=self.tap_loop, args=(pos,))
+            self.thread.start()
+        self.recog.update()
+
+    def detect_prepared(self) -> int:
+        templates = [f"ra/prepared_{i}" for i in range(3)]
+        scores = [self.template_match(i, ((510, 820), (700, 900)))[0] for i in templates]
+        result = scores.index(max(scores))
+        logger.info(f"已准备 {result}")
+        return result
+
     def transition(self) -> bool:
+        scene = self.ra_scene()
+        fast_tap_scenes = [Scene.RA_GUIDE_DIALOG, Scene.RA_GUIDE_NOTE_DIALOG]
+        if self.last_scene in fast_tap_scenes and self.scene not in fast_tap_scenes:
+            self.event.set()
+            if self.thread:
+                self.thread.join()
+                self.thread = None
+
         # 从首页进入生息演算主页
-        if (scene := self.ra_scene()) == Scene.INDEX:
+        if scene == Scene.INDEX:
             self.tap_themed_element("index_terminal")
         elif scene == Scene.TERMINAL_MAIN:
             self.tap_element("terminal_button_longterm")
@@ -34,12 +65,12 @@ class ReclamationAlgorithm(BaseSolver):
             self.tap_element("ra/guide_entrance")
         elif scene == Scene.RA_GUIDE_DIALOG:
             if self.battle_not_exit > 0:
-                self.battle_not_exit  = 0
-            self.tap((1631, 675))
+                self.battle_not_exit = 0
+            self.fast_tap((1631, 675))
         elif scene == Scene.RA_GUIDE_NOTE_ENTRANCE:
             self.tap_element("ra/guide_note_entrance")
         elif scene == Scene.RA_GUIDE_NOTE_DIALOG:
-            self.tap((1743, 620))
+            self.fast_tap((1743, 620))
 
         # 进入与退出战斗
         elif scene == Scene.RA_BATTLE_ENTRANCE:
@@ -93,7 +124,7 @@ class ReclamationAlgorithm(BaseSolver):
             elif self.enter_battle:
                 if pos := self.find("ra/battle_wood_entrance_1"):
                     self.tap(pos)
-                elif pos:= self.find("ra/battle_wood_entrance_2"):
+                elif pos := self.find("ra/battle_wood_entrance_2"):
                     self.tap(pos)
                 else:
                     # 返回首页重新进入，使基地位于屏幕中央
@@ -125,16 +156,16 @@ class ReclamationAlgorithm(BaseSolver):
         elif scene == Scene.RA_KITCHEN:
             if self.enter_battle:
                 self.tap_element("ra/auto+1")
-                if not self.find("ra/prepared_1", score=0.66):
+                if self.detect_prepared() == 1:
+                    self.tap_element("ra/auto+1")
+                    if self.detect_prepared() == 2:
+                        self.tap_element("ra/cook_button")
+                    else:
+                        self.enter_battle = False
+                        self.recog.update()
+                else:
                     self.enter_battle = False
                     self.recog.update()
-                    return False
-                self.tap_element("ra/auto+1")
-                if not self.find("ra/prepared_2", score=0.66):
-                    self.enter_battle = False
-                    self.recog.update()
-                    return False
-                self.tap_element("ra/cook_button")
             else:
                 self.tap_element("ra/return_from_kitchen", x_rate=0.07)
         elif scene == Scene.RA_KITCHEN_DIALOG:
@@ -146,3 +177,5 @@ class ReclamationAlgorithm(BaseSolver):
             self.sleep(1)
         else:
             self.recog.update()
+
+        self.last_scene = scene
