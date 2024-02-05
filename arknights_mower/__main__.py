@@ -17,6 +17,8 @@ from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.logic_expression import LogicExpression
 from arknights_mower.utils import rapidocr
 
+from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
+
 from evalidate import Expr
 
 conf = {}
@@ -421,6 +423,24 @@ def simulate():
                             if base_scheduler.close_simulator_when_idle:
                                 restart_simulator(base_scheduler.simulator, stop=False)
                 elif sleep_time > 0:
+
+                    now_time = datetime.now().time()
+                    try:
+                        min_time = datetime.strptime(base_scheduler.maa_config['sleep_min'], "%H:%M").time()
+                        max_time = datetime.strptime(base_scheduler.maa_config['sleep_max'], "%H:%M").time()
+                        if max_time < min_time:
+                            rg_sleep = now_time > min_time or now_time < max_time
+                        else:
+                            rg_sleep = min_time < now_time < max_time
+                    except ValueError:
+                        rg_sleep = False
+                    
+                    if not rg_sleep and base_scheduler.maa_config["reclamation_algorithm"]:
+                        base_scheduler.recog.update()
+                        base_scheduler.back_to_index()
+                        ra_solver = ReclamationAlgorithm()
+                        ra_solver.run(base_scheduler.tasks[0].time - datetime.now())
+
                     subject = f"休息 {format_time(remaining_time)}，到{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}开始工作"
                     context = f"下一次任务:{base_scheduler.tasks[0].plan}"
                     logger.info(context)

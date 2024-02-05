@@ -2224,15 +2224,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 min_time = datetime.strptime(self.maa_config['sleep_min'], "%H:%M").time()
                 max_time = datetime.strptime(self.maa_config['sleep_max'], "%H:%M").time()
                 if max_time < min_time:
-                    if now_time > min_time or now_time < max_time:
-                        rg_sleep = True
-                    else:
-                        rg_sleep = False
+                    rg_sleep = now_time > min_time or now_time < max_time
                 else:
-                    if min_time < now_time < max_time:
-                        rg_sleep = True
-                    else:
-                        rg_sleep = False
+                    rg_sleep = min_time < now_time < max_time
             except ValueError:
                 rg_sleep = False
             if (self.maa_config['roguelike'] or self.maa_config['stationary_security_service']) and not rg_sleep:
