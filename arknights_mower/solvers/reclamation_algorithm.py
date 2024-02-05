@@ -8,7 +8,11 @@ from arknights_mower.utils.solver import BaseSolver
 
 
 class ReclamationAlgorithm(BaseSolver):
-    fast_tap_scenes = [Scene.RA_GUIDE_DIALOG, Scene.RA_GUIDE_NOTE_DIALOG]
+    fast_tap_scenes = [
+        Scene.RA_GUIDE_DIALOG,
+        Scene.RA_GUIDE_NOTE_DIALOG,
+        Scene.RA_GUIDE_NOTE_DIALOG,
+    ]
 
     def run(self, duration: Optional[timedelta] = None) -> None:
         logger.info("Start: 生息演算")
