@@ -1,4 +1,6 @@
+from datetime import datetime, timedelta
 from threading import Event, Thread
+from typing import Optional
 
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.scene import Scene
@@ -6,8 +8,13 @@ from arknights_mower.utils.solver import BaseSolver
 
 
 class ReclamationAlgorithm(BaseSolver):
-    def run(self) -> None:
+    fast_tap_scenes = [Scene.RA_GUIDE_DIALOG, Scene.RA_GUIDE_NOTE_DIALOG]
+
+    def run(self, duration: Optional[timedelta] = None) -> None:
         logger.info("Start: 生息演算")
+
+        self.deadline = datetime.now() + duration if duration else None
+
         self.enter_battle = True  # 没有饮料时不要进入战斗
         self.battle_not_exit = 3  # 第一次战斗不要点左上角按钮，等剧情
         self.thread = None
@@ -24,23 +31,27 @@ class ReclamationAlgorithm(BaseSolver):
         if not self.thread:
             self.thread = Thread(target=self.tap_loop, args=(pos,))
             self.thread.start()
+            logger.debug(f"开始快速点击{pos}")
         self.recog.update()
+
+    def stop_fast_tap(self):
+        self.event.set()
+        if self.thread:
+            self.thread.join()
+            self.thread = None
+        logger.debug("快速点击已停止")
 
     def detect_prepared(self) -> int:
         templates = [f"ra/prepared_{i}" for i in range(3)]
-        scores = [self.template_match(i, ((510, 820), (700, 900)))[0] for i in templates]
+        scores = [
+            self.template_match(i, ((510, 820), (700, 900)))[0] for i in templates
+        ]
         result = scores.index(max(scores))
         logger.info(f"已准备 {result}")
         return result
 
-    def transition(self) -> bool:
-        scene = self.ra_scene()
-        fast_tap_scenes = [Scene.RA_GUIDE_DIALOG, Scene.RA_GUIDE_NOTE_DIALOG]
-        if self.last_scene in fast_tap_scenes and self.scene not in fast_tap_scenes:
-            self.event.set()
-            if self.thread:
-                self.thread.join()
-                self.thread = None
+    def move_forward(self):
+        scene = self.scene
 
         # 从首页进入生息演算主页
         if scene == Scene.INDEX:
@@ -69,6 +80,7 @@ class ReclamationAlgorithm(BaseSolver):
             self.fast_tap((1631, 675))
         elif scene == Scene.RA_GUIDE_NOTE_ENTRANCE:
             self.tap_element("ra/guide_note_entrance")
+            self.fast_tap((1743, 620))
         elif scene == Scene.RA_GUIDE_NOTE_DIALOG:
             self.fast_tap((1743, 620))
 
@@ -178,4 +190,47 @@ class ReclamationAlgorithm(BaseSolver):
         else:
             self.recog.update()
 
-        self.last_scene = scene
+    def back_to_index(self):
+        scene = self.scene
+
+        if scene in [Scene.RA_MAIN, Scene.TERMINAL_LONGTERM]:
+            self.tap_element("nav_button", x_rate=0.21)
+        elif scene in [
+            Scene.RA_BATTLE_ENTRANCE,
+            Scene.RA_GUIDE_NOTE_ENTRANCE,
+            Scene.RA_GUIDE_NOTE_DIALOG,
+            Scene.RA_MAP,
+            Scene.RA_DAY_DETAIL,
+        ]:
+            self.tap_element("ra/map_back")
+        elif scene == Scene.RA_SQUAD_EDIT:
+            self.tap_element("ra/squad_back")
+        elif scene == Scene.RA_KITCHEN:
+            self.tap_element("ra/return_from_kitchen", x_rate=0.07)
+        elif scene in [Scene.RA_SQUAD_EDIT_DIALOG, Scene.RA_WASTE_TIME_DIALOG]:
+            self.tap_element("ra/dialog_cancel")
+        elif 900 < scene < 1000:
+            self.move_forward()
+        elif scene == Scene.CONNECTING:
+            self.sleep(1)
+        else:
+            self.recog.update()
+
+    def transition(self) -> bool:
+        self.scene = self.ra_scene()
+
+        if (
+            self.last_scene in self.fast_tap_scenes
+            and self.scene not in self.fast_tap_scenes
+        ):
+            self.stop_fast_tap()
+
+        if self.deadline and self.deadline < datetime.now():
+            if self.scene == Scene.INDEX:
+                return True
+            else:
+                self.back_to_index()
+        else:
+            self.move_forward()
+
+        self.last_scene = self.scene
