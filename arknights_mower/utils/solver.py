@@ -365,16 +365,6 @@ class BaseSolver:
         if self.scene() != Scene.INDEX:
             raise StrategyError
 
-    def back_to_reclamation_algorithm(self):
-        self.recog.update()
-        while self.find('index_terminal') is None:
-            if self.scene() == Scene.UNKNOWN:
-                self.device.exit()
-            self.back_to_index()
-        logger.info('导航至生息演算')
-        self.tap_themed_element('index_terminal')
-        self.tap((self.recog.w * 0.2, self.recog.h * 0.8), interval=0.5)
-
     def to_sss(self, sss_type, ec_type=3):
         self.recog.update()
         # 导航去保全派驻

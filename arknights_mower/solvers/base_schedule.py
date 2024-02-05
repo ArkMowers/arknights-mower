@@ -44,6 +44,8 @@ from arknights_mower.utils.email import maa_template
 
 from arknights_mower.solvers.base_mixin import ArrangeOrder, arrange_order_res, BaseMixin
 
+from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
+
 stage_drop = {}
 
 
@@ -2233,10 +2235,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         rg_sleep = False
             except ValueError:
                 rg_sleep = False
-            if (self.maa_config['roguelike'] or self.maa_config['reclamation_algorithm'] or self.maa_config[
-                'stationary_security_service']) and not rg_sleep:
-                logger.info(f'准备开始：肉鸽/保全/演算')
-                self.send_message('启动 肉鸽/保全/演算')
+            if (self.maa_config['roguelike'] or self.maa_config['stationary_security_service']) and not rg_sleep:
+                logger.info('准备开始：肉鸽/保全')
+                self.send_message('启动 肉鸽/保全')
                 while (self.tasks[0].time - datetime.now()).total_seconds() > 30:
                     self.MAA = None
                     self.initialize_maa()
@@ -2255,9 +2256,6 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                             'starts_count': 9999999,
                             'investments_count': 9999999,
                         })
-                    elif self.maa_config['reclamation_algorithm']:
-                        self.back_to_reclamation_algorithm()
-                        self.MAA.append_task('ReclamationAlgorithm')
                     elif self.maa_config['stationary_security_service']:
                         if self.maa_config['copilot_file_location'] == "" or self.maa_config[
                             'copilot_loop_times'] <= 0 or self.maa_config['sss_type'] not in [1, 2]:
@@ -2279,7 +2277,13 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         else:
                             time.sleep(0)
                     self.device.exit()
-            # 生息演算逻辑 结束
+
+            elif not rg_sleep and self.maa_config["reclamation_algorithm"]:
+                self.recog.update()
+                self.back_to_index()
+                ra_solver = ReclamationAlgorithm()
+                ra_solver.run(self.tasks[0].time - datetime.now())
+
             if one_time:
                 if len(self.tasks) > 0:
                     del self.tasks[0]

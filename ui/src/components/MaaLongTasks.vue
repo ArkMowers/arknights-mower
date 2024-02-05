@@ -14,7 +14,7 @@ const mobile = inject('mobile')
     <template #header>
       <n-checkbox v-model:checked="maa_rg_enable">
         <div class="card-title">
-          Maa大型任务
+          大型任务
           <help-text>
             <div>开始与结束时间设置为相同值时全天开启。</div>
             <div>若结束时间早于开始时间，则表示开启至次日。例如：</div>
@@ -45,13 +45,15 @@ const mobile = inject('mobile')
         }
       "
     >
-      <n-tab-pane name="rogue" tab="集成战略">
+      <n-tab-pane name="rogue" tab="集成战略 (Maa)">
         <maa-rogue />
       </n-tab-pane>
-      <n-tab-pane name="sss" tab="保全派驻">
+      <n-tab-pane name="sss" tab="保全派驻 (Maa)">
         <maa-sss />
       </n-tab-pane>
-      <n-tab-pane name="ra" tab="生息演算" disabled></n-tab-pane>
+      <n-tab-pane name="ra" tab="生息演算">
+        <n-text depth="3">暂无选项</n-text>
+      </n-tab-pane>
     </n-tabs>
   </n-card>
 </template>
