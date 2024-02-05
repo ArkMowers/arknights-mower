@@ -1,4 +1,7 @@
 from __future__ import annotations
+from typing import Optional, Tuple
+
+import cv2
 
 import smtplib
 from email.mime.text import MIMEText
@@ -136,6 +139,9 @@ class BaseSolver:
                 continue
         return False
 
+    def template_match(self, res: str, scope: Optional[tp.Scope] = None, method: int = cv2.TM_CCOEFF) -> Tuple[float, tp.Scope]:
+        return self.recog.template_match(res, scope, method)
+
     def swipe(self, start: tp.Coordinate, movement: tp.Coordinate, duration: int = 100, interval: float = 1,
               rebuild: bool = True) -> None:
         """ swipe """
@@ -197,10 +203,16 @@ class BaseSolver:
     def get_infra_scene(self) -> int:
         """ get the current scene in the infra """
         return self.recog.get_infra_scene()
+    
+    def ra_scene(self) -> int:
+        """
+        生息演算场景识别
+        """
+        return self.recog.get_ra_scene()
 
     def is_login(self):
         """ check if you are logged in """
-        return not (self.scene() // 100 == 1 or self.scene() // 100 == 99 or self.scene() == -1)
+        return not ((scene := self.scene()) // 100 == 1 or scene // 100 == 99 or scene == -1)
 
     def login(self):
         """
@@ -209,24 +221,24 @@ class BaseSolver:
         retry_times = config.MAX_RETRYTIME
         while retry_times and not self.is_login():
             try:
-                if self.scene() == Scene.LOGIN_START:
+                if (scene := self.scene()) == Scene.LOGIN_START:
                     self.tap((self.recog.w // 2, self.recog.h - 10), 3)
-                elif self.scene() == Scene.LOGIN_NEW:
+                elif scene == Scene.LOGIN_NEW:
                     self.tap(self.find('login_new', score=0.8))
-                elif self.scene() == Scene.LOGIN_BILIBILI:
+                elif scene == Scene.LOGIN_BILIBILI:
                     self.tap(self.find('login_bilibili_entry', score=0.8))
-                elif self.scene() == Scene.LOGIN_BILIBILI_PRIVACY:
+                elif scene == Scene.LOGIN_BILIBILI_PRIVACY:
                     self.tap(self.find('login_bilibili_privacy_accept', score=0.8))
-                elif self.scene() == Scene.LOGIN_QUICKLY:
+                elif scene == Scene.LOGIN_QUICKLY:
                     self.tap_element('login_awake')
-                elif self.scene() == Scene.LOGIN_MAIN:
+                elif scene == Scene.LOGIN_MAIN:
                     self.tap_element('login_account', 0.25)
-                elif self.scene() == Scene.LOGIN_REGISTER:
+                elif scene == Scene.LOGIN_REGISTER:
                     self.back(2)
-                elif self.scene() == Scene.LOGIN_CAPTCHA:
+                elif scene == Scene.LOGIN_CAPTCHA:
                     exit()
                     # self.back(600)  # TODO: Pending
-                elif self.scene() == Scene.LOGIN_INPUT:
+                elif scene == Scene.LOGIN_INPUT:
                     input_area = self.find('login_username')
                     if input_area is not None:
                         self.input('Enter username: ', input_area, config.USERNAME)
@@ -234,23 +246,23 @@ class BaseSolver:
                     if input_area is not None:
                         self.input('Enter password: ', input_area, config.PASSWORD)
                     self.tap_element('login_button')
-                elif self.scene() == Scene.LOGIN_ANNOUNCE:
+                elif scene == Scene.LOGIN_ANNOUNCE:
                     self.tap_element('login_iknow')
-                elif self.scene() == Scene.LOGIN_LOADING:
+                elif scene == Scene.LOGIN_LOADING:
                     self.waiting_solver(Scene.LOGIN_LOADING)
-                elif self.scene() == Scene.LOADING:
+                elif scene == Scene.LOADING:
                     self.waiting_solver(Scene.LOADING)
-                elif self.scene() == Scene.CONNECTING:
+                elif scene == Scene.CONNECTING:
                     self.waiting_solver(Scene.CONNECTING)
-                elif self.scene() == Scene.CONFIRM:
+                elif scene == Scene.CONFIRM:
                     self.tap(detector.confirm(self.recog.img))
-                elif self.scene() == Scene.LOGIN_MAIN_NOENTRY:
+                elif scene == Scene.LOGIN_MAIN_NOENTRY:
                     self.waiting_solver(Scene.LOGIN_MAIN_NOENTRY)
-                elif self.scene() == Scene.LOGIN_CADPA_DETAIL:
+                elif scene == Scene.LOGIN_CADPA_DETAIL:
                     self.back(2)
-                elif self.scene() == Scene.NETWORK_CHECK:
+                elif scene == Scene.NETWORK_CHECK:
                     self.tap_element('double_confirm', 0.2)
-                elif self.scene() == Scene.UNKNOWN:
+                elif scene == Scene.UNKNOWN:
                     raise RecognizeError('Unknown scene')
                 else:
                     raise RecognizeError('Unanticipated scene')
@@ -290,53 +302,53 @@ class BaseSolver:
         logger.info('back to index')
         retry_times = config.MAX_RETRYTIME
         pre_scene = None
-        while retry_times and self.scene() != Scene.INDEX:
+        while retry_times and (scene := self.scene()) != Scene.INDEX:
             try:
                 if self.get_navigation():
                     self.tap_element('nav_index')
-                elif self.scene() == Scene.CLOSE_MINE:
+                elif scene == Scene.CLOSE_MINE:
                     self.tap_element('close_mine')
-                elif self.scene() == Scene.CHECK_IN:
+                elif scene == Scene.CHECK_IN:
                     self.tap_element('check_in')
-                elif self.scene() == Scene.RIIC_REPORT:
+                elif scene == Scene.RIIC_REPORT:
                     self.tap((100, 60))
-                elif self.scene() == Scene.ANNOUNCEMENT:
+                elif scene == Scene.ANNOUNCEMENT:
                     self.tap(detector.announcement_close(self.recog.img))
                     self.tap((1800,100))
-                elif self.scene() == Scene.MATERIEL:
+                elif scene == Scene.MATERIEL:
                     self.tap_element('materiel_ico')
-                elif self.scene() // 100 == 1:
+                elif scene // 100 == 1:
                     self.login()
-                elif self.scene() == Scene.CONFIRM:
+                elif scene == Scene.CONFIRM:
                     self.tap(detector.confirm(self.recog.img))
-                elif self.scene() == Scene.LOADING:
+                elif scene == Scene.LOADING:
                     self.waiting_solver(Scene.LOADING)
-                elif self.scene() == Scene.CONNECTING:
+                elif scene == Scene.CONNECTING:
                     self.waiting_solver(Scene.CONNECTING)
-                elif self.scene() == Scene.SKIP:
+                elif scene == Scene.SKIP:
                     self.tap_element('skip')
-                elif self.scene() == Scene.OPERATOR_ONGOING:
+                elif scene == Scene.OPERATOR_ONGOING:
                     self.sleep(10)
-                elif self.scene() == Scene.OPERATOR_FINISH:
+                elif scene == Scene.OPERATOR_FINISH:
                     self.tap((self.recog.w // 2, 10))
-                elif self.scene() == Scene.OPERATOR_ELIMINATE_FINISH:
+                elif scene == Scene.OPERATOR_ELIMINATE_FINISH:
                     self.tap((self.recog.w // 2, 10))
-                elif self.scene() == Scene.DOUBLE_CONFIRM:
+                elif scene == Scene.DOUBLE_CONFIRM:
                     self.tap_element('double_confirm', 0.8)
-                elif self.scene() == Scene.NETWORK_CHECK:
+                elif scene == Scene.NETWORK_CHECK:
                     self.tap_element('double_confirm', 0.2)
-                elif self.scene() == Scene.RECRUIT_AGENT:
+                elif scene == Scene.RECRUIT_AGENT:
                     self.tap((self.recog.w // 2, self.recog.h // 2))
-                elif self.scene() == Scene.MAIL:
+                elif scene == Scene.MAIL:
                     mail = self.find('mail')
                     mid_y = (mail[0][1] + mail[1][1]) // 2
                     self.tap((mid_y, mid_y))
-                elif self.scene() == Scene.INFRA_ARRANGE_CONFIRM:
+                elif scene == Scene.INFRA_ARRANGE_CONFIRM:
                     self.tap((self.recog.w // 3, self.recog.h - 10))
-                elif self.scene() == Scene.UNKNOWN:
+                elif scene == Scene.UNKNOWN:
                     raise RecognizeError('Unknown scene')
-                elif pre_scene is None or pre_scene != self.scene():
-                    pre_scene = self.scene()
+                elif pre_scene is None or pre_scene != scene:
+                    pre_scene = scene
                     self.back()
                 else:
                     raise RecognizeError('Unanticipated scene')

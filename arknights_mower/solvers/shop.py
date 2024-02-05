@@ -65,19 +65,19 @@ class ShopSolver(BaseSolver):
         super().run()
 
     def transition(self) -> bool:
-        if self.scene() == Scene.INDEX:
+        if (scene := self.scene()) == Scene.INDEX:
             self.tap_element('index_shop')
-        elif self.scene() == Scene.SHOP_OTHERS:
+        elif scene == Scene.SHOP_OTHERS:
             self.tap_element('shop_credit_2')
-        elif self.scene() == Scene.SHOP_UNLOCK_SCHEDULE:
+        elif scene == Scene.SHOP_UNLOCK_SCHEDULE:
             return self.get_spent_credits()
-        elif self.scene() == Scene.SHOP_CREDIT:
+        elif scene == Scene.SHOP_CREDIT:
             collect = self.find('shop_collect')
             if collect is not None:
                 self.tap(collect)
             else:
                 return self.shop_credit()
-        elif self.scene() == Scene.SHOP_CREDIT_CONFIRM:
+        elif scene == Scene.SHOP_CREDIT_CONFIRM:
             if self.find('shop_credit_not_enough') is None:
                 self.tap_element('shop_cart')
             elif len(self.priority) > 0:
@@ -87,17 +87,17 @@ class ShopSolver(BaseSolver):
                 self.back()
             else:
                 return True
-        elif self.scene() == Scene.SHOP_ASSIST:
+        elif scene == Scene.SHOP_ASSIST:
             self.back()
-        elif self.scene() == Scene.MATERIEL:
+        elif scene == Scene.MATERIEL:
             self.tap_element('materiel_ico')
-        elif self.scene() == Scene.LOADING:
+        elif scene == Scene.LOADING:
             self.sleep(3)
-        elif self.scene() == Scene.CONNECTING:
+        elif scene == Scene.CONNECTING:
             self.sleep(3)
         elif self.get_navigation():
             self.tap_element('nav_shop')
-        elif self.scene() != Scene.UNKNOWN:
+        elif scene != Scene.UNKNOWN:
             self.back_to_index()
         else:
             raise RecognizeError('Unknown scene')

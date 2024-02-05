@@ -88,46 +88,46 @@ class OpeSolver(BaseSolver):
         if len(self.plan) == 0:
             return True
 
-        if self.scene() == Scene.INDEX:
+        if (scene := self.scene()) == Scene.INDEX:
             self.tap_themed_element('index_terminal')
-        elif self.scene() == Scene.TERMINAL_MAIN:
+        elif scene == Scene.TERMINAL_MAIN:
             return self.terminal_main()
-        elif self.scene() == Scene.OPERATOR_BEFORE:
+        elif scene == Scene.OPERATOR_BEFORE:
             return self.operator_before()
-        elif self.scene() == Scene.OPERATOR_ELIMINATE:
+        elif scene == Scene.OPERATOR_ELIMINATE:
             return self.operator_before_elimi()
-        elif self.scene() == Scene.OPERATOR_ELIMINATE_AGENCY:
+        elif scene == Scene.OPERATOR_ELIMINATE_AGENCY:
             self.tap_element('ope_elimi_agency_confirm')
-        elif self.scene() == Scene.OPERATOR_SELECT:
+        elif scene == Scene.OPERATOR_SELECT:
             self.tap_element('ope_select_start')
-        elif self.scene() == Scene.OPERATOR_ONGOING:
+        elif scene == Scene.OPERATOR_ONGOING:
             self.ope_ongoing()
-        elif self.scene() == Scene.OPERATOR_FINISH:
+        elif scene == Scene.OPERATOR_FINISH:
             self.ope_finish()
-        elif self.scene() == Scene.OPERATOR_ELIMINATE_FINISH:
+        elif scene == Scene.OPERATOR_ELIMINATE_FINISH:
             self.ope_finish_elimi()
-        elif self.scene() == Scene.OPERATOR_GIVEUP:  # TODO 得找个稳定复现代理三星变两星的地图
+        elif scene == Scene.OPERATOR_GIVEUP:  # TODO 得找个稳定复现代理三星变两星的地图
             logger.error('代理出现失误')
             return True
-        elif self.scene() == Scene.OPERATOR_FAILED:
+        elif scene == Scene.OPERATOR_FAILED:
             logger.error('代理出现失误')
             self.failed = True
             self.tap((self.recog.w // 2, 10))
-        elif self.scene() == Scene.OPERATOR_RECOVER_POTION:
+        elif scene == Scene.OPERATOR_RECOVER_POTION:
             return self.recover_potion()
-        elif self.scene() == Scene.OPERATOR_RECOVER_ORIGINITE:
+        elif scene == Scene.OPERATOR_RECOVER_ORIGINITE:
             return self.recover_originite()
-        elif self.scene() == Scene.LOADING:
+        elif scene == Scene.LOADING:
             self.sleep(3)
-        elif self.scene() == Scene.CONNECTING:
+        elif scene == Scene.CONNECTING:
             self.sleep(3)
-        elif self.scene() == Scene.UPGRADE:
+        elif scene == Scene.UPGRADE:
             self.tap_element('upgrade')
-        elif self.scene() == Scene.OPERATOR_DROP:
+        elif scene == Scene.OPERATOR_DROP:
             self.tap_element('nav_button', 0.2)
         elif self.get_navigation():
             self.tap_element('nav_terminal')
-        elif self.scene() != Scene.UNKNOWN:
+        elif scene != Scene.UNKNOWN:
             self.back_to_index()
         else:
             raise RecognizeError('Unknown scene')
