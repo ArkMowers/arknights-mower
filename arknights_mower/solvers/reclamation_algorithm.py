@@ -58,9 +58,6 @@ class ReclamationAlgorithm(BaseSolver):
             self.tap_element("ra/save")
 
     def move_forward(self, scene):
-        if scene != Scene.UNKNOWN:
-            self.unknown_time = None
-
         # 从首页进入生息演算主页
         if scene == Scene.INDEX:
             self.tap_themed_element("index_terminal")
@@ -122,7 +119,10 @@ class ReclamationAlgorithm(BaseSolver):
 
         # 地图页操作
         elif scene == Scene.RA_MAP:
-            if pos := self.find("ra/day_4"):
+            if self.get_color((1817, 333))[0] < 250:
+                # 剧情动画未结束
+                self.sleep(3)
+            elif pos := self.find("ra/day_4"):
                 if pos := self.find("ra/delete_save"):
                     self.tap(pos)
                 else:
@@ -179,13 +179,7 @@ class ReclamationAlgorithm(BaseSolver):
         elif scene == Scene.CONNECTING:
             self.sleep(1)
         else:
-            now = datetime.now()
-            if not self.unknown_time:
-                self.unknown_time = now
-            elif now - self.unknown_time > timedelta(seconds=10):
-                super().back_to_index()
-            else:
-                self.recog.update()
+            self.recog.update()
 
     def back_to_index(self, scene):
         if scene in [Scene.RA_MAIN, Scene.TERMINAL_LONGTERM]:
@@ -199,15 +193,25 @@ class ReclamationAlgorithm(BaseSolver):
         elif scene in [Scene.RA_SQUAD_EDIT_DIALOG, Scene.RA_WASTE_TIME_DIALOG]:
             self.tap_element("ra/dialog_cancel")
         elif 900 < scene < 1000:
-            self.move_forward()
+            self.move_forward(scene)
         elif scene == Scene.CONNECTING:
             self.sleep(1)
         else:
-            super().back_to_index()
+            self.recog.update()
 
     def transition(self) -> bool:
         if (scene := self.ra_scene()) not in self.fast_tap_scenes:
             self.stop_fast_tap()
+
+        now = datetime.now()
+
+        if scene == Scene.UNKNOWN:
+            if not self.unknown_time:
+                self.unknown_time = now
+            elif now - self.unknown_time > timedelta(seconds=10):
+                super().back_to_index()
+        else:
+            self.unknown_time = None
 
         if self.deadline and self.deadline < datetime.now():
             if scene == Scene.INDEX:
