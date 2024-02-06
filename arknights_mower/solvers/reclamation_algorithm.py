@@ -195,7 +195,6 @@ class ReclamationAlgorithm(BaseSolver):
         if scene in [Scene.RA_MAIN, Scene.TERMINAL_LONGTERM]:
             self.tap_element("nav_button", x_rate=0.21)
         elif scene in [
-            Scene.RA_BATTLE_ENTRANCE,
             Scene.RA_GUIDE_NOTE_ENTRANCE,
             Scene.RA_GUIDE_NOTE_DIALOG,
             Scene.RA_MAP,
