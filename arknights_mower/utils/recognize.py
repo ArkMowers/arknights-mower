@@ -346,13 +346,9 @@ class Recognizer(object):
         elif self.find("ra/period_complete", scope=((800, 190), (1120, 265))):
             self.scene = Scene.RA_PERIOD_COMPLETE
 
-        # 森蚺图耶对话与“一张便条”剧情，优先级高于地图识别
+        # 森蚺图耶对话
         elif self.find("ra/guide_entrance", scope=((810, 270), (1320, 610))):
             self.scene = Scene.RA_GUIDE_ENTRANCE
-        elif self.find("ra/guide_note_entrance", scope=((860, 290), (1050, 480))):
-            self.scene = Scene.RA_GUIDE_NOTE_ENTRANCE
-        elif self.find("ra/guide_note_dialog", scope=((370, 460), (580, 540))):
-            self.scene = Scene.RA_GUIDE_NOTE_DIALOG
 
         # 存档操作
         elif self.find("ra/delete_save_confirm_dialog", scope=((585, 345), (1020, 440))):

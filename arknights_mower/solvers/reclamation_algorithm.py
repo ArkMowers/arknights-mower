@@ -19,7 +19,7 @@ class ReclamationAlgorithm(BaseSolver):
         self.battle_not_exit = 3  # 第一次战斗不要点左上角按钮，等剧情
         self.thread = None
         self.event = Event()
-        self.last_scene = Scene.UNKNOWN
+        self.unknown_time = None
         super().run()
 
     def tap_loop(self, pos):
@@ -50,8 +50,9 @@ class ReclamationAlgorithm(BaseSolver):
         logger.info(f"已准备 {result}")
         return result
 
-    def move_forward(self):
-        scene = self.scene
+    def move_forward(self, scene):
+        if scene != Scene.UNKNOWN:
+            self.unknown_time = None
 
         # 从首页进入生息演算主页
         if scene == Scene.INDEX:
@@ -78,10 +79,6 @@ class ReclamationAlgorithm(BaseSolver):
             if self.battle_not_exit > 0:
                 self.battle_not_exit = 0
             self.fast_tap((1631, 675))
-        elif scene == Scene.RA_GUIDE_NOTE_ENTRANCE:
-            self.tap_element("ra/guide_note_entrance")
-        elif scene == Scene.RA_GUIDE_NOTE_DIALOG:
-            self.tap((1743, 620))
 
         # 进入与退出战斗
         elif scene == Scene.RA_BATTLE_ENTRANCE:
@@ -180,26 +177,26 @@ class ReclamationAlgorithm(BaseSolver):
             else:
                 self.tap_element("ra/return_from_kitchen", x_rate=0.07)
         elif scene == Scene.RA_KITCHEN_DIALOG:
-            while not (pos := self.find("ra/click_to_continue")):
+            if pos := self.find("ra/click_to_continue"):
+                self.tap(pos)
+                self.tap_element("ra/return_from_kitchen", x_rate=0.07)
+            else:
                 self.recog.update()
-            self.tap(pos)
-            self.tap_element("ra/return_from_kitchen", x_rate=0.07)
         elif scene == Scene.CONNECTING:
             self.sleep(1)
         else:
-            self.recog.update()
+            now = datetime.now()
+            if not self.unknown_time:
+                self.unknown_time = now
+            elif now - self.unknown_time > timedelta(seconds=10):
+                super().back_to_index()
+            else:
+                self.recog.update()
 
-    def back_to_index(self):
-        scene = self.scene
-
+    def back_to_index(self, scene):
         if scene in [Scene.RA_MAIN, Scene.TERMINAL_LONGTERM]:
             self.tap_element("nav_button", x_rate=0.21)
-        elif scene in [
-            Scene.RA_GUIDE_NOTE_ENTRANCE,
-            Scene.RA_GUIDE_NOTE_DIALOG,
-            Scene.RA_MAP,
-            Scene.RA_DAY_DETAIL,
-        ]:
+        elif scene in [Scene.RA_MAP, Scene.RA_DAY_DETAIL]:
             self.tap_element("ra/map_back")
         elif scene == Scene.RA_SQUAD_EDIT:
             self.tap_element("ra/squad_back")
@@ -212,23 +209,16 @@ class ReclamationAlgorithm(BaseSolver):
         elif scene == Scene.CONNECTING:
             self.sleep(1)
         else:
-            self.recog.update()
+            super().back_to_index()
 
     def transition(self) -> bool:
-        self.scene = self.ra_scene()
-
-        if (
-            self.last_scene in self.fast_tap_scenes
-            and self.scene not in self.fast_tap_scenes
-        ):
+        if (scene := self.ra_scene()) not in self.fast_tap_scenes:
             self.stop_fast_tap()
 
         if self.deadline and self.deadline < datetime.now():
-            if self.scene == Scene.INDEX:
+            if scene == Scene.INDEX:
                 return True
             else:
-                self.back_to_index()
+                self.back_to_index(scene)
         else:
-            self.move_forward()
-
-        self.last_scene = self.scene
+            self.move_forward(scene)
