@@ -321,7 +321,7 @@ class Recognizer(object):
             self.scene = Scene.RA_GUIDE_DIALOG
         
         # 快速退出作战
-        elif self.find("ra/battle_exit", scope=((0, 0), (200, 160))):
+        elif self.find("ra/battle_exit", scope=((0, 0), (200, 160)), prescore=0.7):
             self.scene = Scene.RA_BATTLE
         elif self.find("ra/battle_exit_dialog", scope=((600, 360), (970, 430))):
             self.scene = Scene.RA_BATTLE_EXIT_CONFIRM
