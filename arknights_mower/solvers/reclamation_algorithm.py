@@ -128,7 +128,7 @@ class ReclamationAlgorithm(BaseSolver):
             if pos := self.find("ra/day_4"):
                 self.tap((1540, 1010))
                 while (pos := self.find("ra/delete_save")) is None:
-                    self.recog.update()
+                    self.tap((1540, 1010))
                 self.tap(pos)
             elif pos := self.find("ra/next_day_button"):
                 self.tap(pos)
