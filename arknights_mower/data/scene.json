@@ -296,12 +296,12 @@
         "comment": "作战退出确认对话框"
     },
     "907": {
-        "label": "RA_GUIDE_NOTE_ENTRANCE",
-        "comment": "剧情（一张便条）入口"
+        "label": "RA_GUIDE_BATTLE_ENTRANCE",
+        "comment": "剧情作战入口"
     },
     "908": {
-        "label": "RA_GUIDE_NOTE_DIALOG",
-        "comment": "剧情（一张便条）对话框"
+        "label": "RA_BATTLE_COMPLETE",
+        "comment": "作战结算"
     },
     "909": {
         "label": "RA_MAP",
@@ -342,14 +342,6 @@
     "918": {
         "label": "RA_DELETE_SAVE_DIALOG",
         "comment": "存档删除确认"
-    },
-    "919": {
-        "label": "RA_DELETE_SAVE_DOUBLE_DIALOG",
-        "comment": "存档删除二次确认"
-    },
-    "920": {
-        "label": "RA_BATTLE_COMPLETE",
-        "comment": "作战结算"
     },
     "9998": {
         "label": "LOADING",

@@ -319,16 +319,19 @@ class Recognizer(object):
         # 快速跳过剧情对话
         elif self.find("ra/guide_dialog", scope=((0, 0), (160, 110))):
             self.scene = Scene.RA_GUIDE_DIALOG
-        
+
         # 快速退出作战
-        elif self.find("ra/battle_exit", scope=((0, 0), (200, 160)), score=0.7):
+        elif self.find("ra/battle_exit", scope=((0, 0), (200, 160)), score=0.5):
             self.scene = Scene.RA_BATTLE
         elif self.find("ra/battle_exit_dialog", scope=((600, 360), (970, 430))):
             self.scene = Scene.RA_BATTLE_EXIT_CONFIRM
 
         # 作战与分队
         elif self.find("ra/start_action", scope=((1410, 790), (1900, 935))):
-            self.scene = Scene.RA_BATTLE_ENTRANCE
+            if self.find("ra/action_points", scope=((1660, 55), (1820, 110))):
+                self.scene = Scene.RA_BATTLE_ENTRANCE
+            else:
+                self.scene = Scene.RA_GUIDE_BATTLE_ENTRANCE
         elif self.find("ra/squad_edit", scope=((1090, 0), (1910, 105))):
             self.scene = Scene.RA_SQUAD_EDIT
         elif self.find("ra/drink_cooked", scope=((875, 360), (1055, 420))):
@@ -353,8 +356,6 @@ class Recognizer(object):
         # 存档操作
         elif self.find("ra/delete_save_confirm_dialog", scope=((585, 345), (1020, 440))):
             self.scene = Scene.RA_DELETE_SAVE_DIALOG
-        elif self.find("ra/delete_save_double_confirm_dialog", scope=((585, 345), (1020, 440))):
-            self.scene = Scene.RA_DELETE_SAVE_DOUBLE_DIALOG
 
         # 地图识别
         elif self.find("ra/waste_time_button", scope=((1665, 220), (1855, 290))):
@@ -380,7 +381,11 @@ class Recognizer(object):
         # save screencap to analyse
         if config.SCREENSHOT_PATH is not None:
             self.save_screencap(self.scene)
-        logger.info(f'Scene: {self.scene}: {SceneComment[self.scene]}')
+        log_msg = f"Scene: {self.scene}: {SceneComment[self.scene]}"
+        if self.scene == Scene.UNKNOWN:
+            logger.debug(log_msg)
+        else:
+            logger.info(log_msg)
 
         self.check_loading_time()
 

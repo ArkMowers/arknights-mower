@@ -15,8 +15,8 @@ class ReclamationAlgorithm(BaseSolver):
 
         self.deadline = datetime.now() + duration if duration else None
 
-        self.enter_battle = True  # 没有饮料时不要进入战斗
-        self.battle_not_exit = 3  # 第一次战斗不要点左上角按钮，等剧情
+        self.enter_battle = False  # 只在第一天决断次数为2时进入战斗，多进不加分
+        self.battle_wait = 0  # 进入战斗后等待剧情出现
         self.thread = None
         self.event = Event()
         self.unknown_time = None
@@ -50,6 +50,13 @@ class ReclamationAlgorithm(BaseSolver):
         logger.info(f"已准备 {result}")
         return result
 
+    def map_skip_day(self):
+        # 跳过行动，进入下一天
+        if pos := self.find("ra/days"):
+            self.tap(pos)
+        else:
+            self.tap_element("ra/save")
+
     def move_forward(self, scene):
         if scene != Scene.UNKNOWN:
             self.unknown_time = None
@@ -64,8 +71,6 @@ class ReclamationAlgorithm(BaseSolver):
 
         # 从生息演算主页进入生息演算
         elif scene == Scene.RA_MAIN:
-            self.enter_battle = True
-            self.battle_not_exit = 3
             # 等动画
             if pos := self.find("ra/start_action"):
                 self.tap(pos, interval=3)
@@ -76,25 +81,21 @@ class ReclamationAlgorithm(BaseSolver):
         elif scene == Scene.RA_GUIDE_ENTRANCE:
             self.tap_element("ra/guide_entrance")
         elif scene == Scene.RA_GUIDE_DIALOG:
-            if self.battle_not_exit > 0:
-                self.battle_not_exit = 0
+            self.battle_wait = 0
             self.fast_tap((1631, 675))
+        elif scene == Scene.RA_GUIDE_BATTLE_ENTRANCE:
+            self.battle_wait = 3
+            self.tap_element("ra/start_action")
 
         # 进入与退出战斗
         elif scene == Scene.RA_BATTLE_ENTRANCE:
-            # 判断决断次数是否足够
-            if self.find("ra/action_points"):
-                ap_1 = self.get_color((1852, 80))
-                ap_2 = self.get_color((1875, 80))
-                if ap_1[0] < 175 and ap_2[0] < 175:
-                    self.enter_battle = False
             if self.enter_battle:
                 self.tap_element("ra/start_action")
             else:
                 self.tap_element("ra/map_back")
         elif scene == Scene.RA_BATTLE:
-            if self.battle_not_exit > 0:
-                self.battle_not_exit -= 1
+            if self.battle_wait > 0:
+                self.battle_wait -= 1
                 self.recog.update()
             else:
                 if pos := self.find("ra/battle_exit"):
@@ -112,12 +113,11 @@ class ReclamationAlgorithm(BaseSolver):
                 self.tap(pos)
             else:
                 self.tap((960, 900))
-            self.enter_battle = True
         elif scene == Scene.RA_PERIOD_COMPLETE:
             self.tap_element("ra/period_complete")
 
         # 存档操作
-        elif scene in [Scene.RA_DELETE_SAVE_DIALOG, Scene.RA_DELETE_SAVE_DOUBLE_DIALOG]:
+        elif scene == Scene.RA_DELETE_SAVE_DIALOG:
             self.tap_element("ra/delete_save_confirm_dialog_ok_button")
 
         # 地图页操作
@@ -127,22 +127,28 @@ class ReclamationAlgorithm(BaseSolver):
                     self.tap(pos)
                 else:
                     self.tap((1540, 1010))
-            elif pos := self.find("ra/next_day_button"):
+            elif pos := self.find("ra/next_day_button", scope=((1610, 0), (1900, 260))):
                 self.tap(pos)
-            elif self.enter_battle:
-                if pos := self.find("ra/battle_wood_entrance_1"):
-                    self.tap(pos)
-                elif pos := self.find("ra/battle_wood_entrance_2"):
-                    self.tap(pos)
+            elif (
+                self.template_match("ra/day_1", scope=((1730, 110), (1805, 175)))[0]
+                > 6000000
+            ):
+                # 判断决断次数
+                ap_1 = self.get_color((1752, 182))
+                ap_2 = self.get_color((1774, 182))
+                self.enter_battle = ap_1[0] > 175 and ap_2[0] > 175
+                if self.enter_battle:
+                    if pos := self.find("ra/battle_wood_entrance_1"):
+                        self.tap(pos)
+                    elif pos := self.find("ra/battle_wood_entrance_2"):
+                        self.tap(pos)
+                    else:
+                        # 返回首页重新进入，使基地位于屏幕中央
+                        self.tap_element("ra/map_back")
                 else:
-                    # 返回首页重新进入，使基地位于屏幕中央
-                    self.tap_element("ra/map_back")
+                    self.map_skip_day()
             else:
-                # 跳过行动，进入下一天
-                if pos := self.find("ra/days"):
-                    self.tap(pos)
-                else:
-                    self.tap_element("ra/save")
+                self.map_skip_day()
         elif scene == Scene.RA_DAY_DETAIL:
             self.tap_element("ra/waste_time_button")
         elif scene == Scene.RA_WASTE_TIME_DIALOG:
@@ -162,20 +168,8 @@ class ReclamationAlgorithm(BaseSolver):
 
         # 烹饪台
         elif scene == Scene.RA_KITCHEN:
-            if self.enter_battle:
-                self.tap_element("ra/auto+1")
-                if self.detect_prepared() == 1:
-                    self.tap_element("ra/auto+1")
-                    if self.detect_prepared() == 2:
-                        self.tap_element("ra/cook_button")
-                    else:
-                        self.enter_battle = False
-                        self.recog.update()
-                else:
-                    self.enter_battle = False
-                    self.recog.update()
-            else:
-                self.tap_element("ra/return_from_kitchen", x_rate=0.07)
+            # 速刷不需要合成饮料
+            self.tap_element("ra/return_from_kitchen", x_rate=0.07)
         elif scene == Scene.RA_KITCHEN_DIALOG:
             if pos := self.find("ra/click_to_continue"):
                 self.tap(pos)
@@ -196,7 +190,7 @@ class ReclamationAlgorithm(BaseSolver):
     def back_to_index(self, scene):
         if scene in [Scene.RA_MAIN, Scene.TERMINAL_LONGTERM]:
             self.tap_element("nav_button", x_rate=0.21)
-        elif scene in [Scene.RA_MAP, Scene.RA_DAY_DETAIL]:
+        elif scene in [Scene.RA_MAP, Scene.RA_DAY_DETAIL, Scene.RA_BATTLE_ENTRANCE]:
             self.tap_element("ra/map_back")
         elif scene == Scene.RA_SQUAD_EDIT:
             self.tap_element("ra/squad_back")
