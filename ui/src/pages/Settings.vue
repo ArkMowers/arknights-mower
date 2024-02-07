@@ -332,7 +332,7 @@ import { render_op_label, render_op_tag } from '@/utils/op_select'
       <div><Recruit /></div>
       <div><maa-weekly /></div>
       <div><maa-weekly-new /></div>
-      <div><maa-long-tasks /></div>
+      <div><long-tasks /></div>
     </div>
   </div>
 </template>

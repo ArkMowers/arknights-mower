@@ -52,7 +52,7 @@ const mobile = inject('mobile')
         <maa-sss />
       </n-tab-pane>
       <n-tab-pane name="ra" tab="生息演算">
-        <n-text depth="3">暂无选项</n-text>
+        <reclamation-algorithm />
       </n-tab-pane>
     </n-tabs>
   </n-card>

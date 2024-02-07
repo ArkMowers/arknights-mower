@@ -10,10 +10,15 @@ from arknights_mower.utils.solver import BaseSolver
 class ReclamationAlgorithm(BaseSolver):
     fast_tap_scenes = [Scene.RA_GUIDE_DIALOG]
 
-    def run(self, duration: Optional[timedelta] = None) -> None:
+    def run(
+        self,
+        duration: Optional[timedelta] = None,
+        timeout: timedelta = timedelta(seconds=30),
+    ) -> None:
         logger.info("Start: 生息演算")
 
-        self.deadline = datetime.now() + duration if duration else None
+        self.timeout = timeout
+        self.deadline = datetime.now() + duration - timeout if duration else None
 
         self.enter_battle = False  # 只在第一天决断次数为2时进入战斗，多进不加分
         self.battle_wait = 0  # 进入战斗后等待剧情出现
@@ -141,7 +146,9 @@ class ReclamationAlgorithm(BaseSolver):
                 self.tap(pos)
             else:
                 if (day := self.detect_day()) == 4:
-                    score, pos = self.template_match("ra/delete_save", scope=((1675, 820), (1785, 940)))
+                    score, pos = self.template_match(
+                        "ra/delete_save", scope=((1675, 820), (1785, 940))
+                    )
                     if score > 5000000:
                         self.tap(pos)
                     else:
@@ -228,7 +235,7 @@ class ReclamationAlgorithm(BaseSolver):
         if scene == Scene.UNKNOWN:
             if not self.unknown_time:
                 self.unknown_time = now
-            elif now - self.unknown_time > timedelta(seconds=20):
+            elif now - self.unknown_time > self.timeout:
                 logger.warning("连续识别到未知场景")
                 try:
                     super().back_to_index()

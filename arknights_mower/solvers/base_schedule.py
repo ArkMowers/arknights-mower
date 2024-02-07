@@ -2276,7 +2276,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 self.recog.update()
                 self.back_to_index()
                 ra_solver = ReclamationAlgorithm()
-                ra_solver.run(self.tasks[0].time - datetime.now())
+                ra_solver.run(self.tasks[0].time - datetime.now(), self.maa_config["ra_timeout"])
 
             if one_time:
                 if len(self.tasks) > 0:

@@ -137,6 +137,7 @@ def set_maa_options(base_scheduler, conf):
     maa_config["reclamation_algorithm"] = (
             conf["maa_rg_enable"] == 1 and conf["maa_long_task_type"] == "ra"
     )
+    maa_config["ra_timeout"] = timedelta(seconds=conf["reclamation_algorithm"]["timeout"])
     base_scheduler.maa_config = maa_config
 
     logger.debug(f"更新Maa设置：{base_scheduler.maa_config}")
@@ -436,7 +437,7 @@ def simulate():
                         base_scheduler.recog.update()
                         base_scheduler.back_to_index()
                         ra_solver = ReclamationAlgorithm()
-                        ra_solver.run(base_scheduler.tasks[0].time - datetime.now())
+                        ra_solver.run(base_scheduler.tasks[0].time - datetime.now(), base_scheduler.maa_config["ra_timeout"])
                         remaining_time = (
                                 base_scheduler.tasks[0].time - datetime.now()
                         ).total_seconds()
