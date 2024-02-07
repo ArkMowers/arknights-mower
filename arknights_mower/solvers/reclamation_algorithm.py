@@ -50,6 +50,24 @@ class ReclamationAlgorithm(BaseSolver):
         logger.info(f"已准备 {result}")
         return result
 
+    def detect_day(self) -> int:
+        templates = [f"ra/day_{i}" for i in range(1, 5)]
+        scores = [
+            self.template_match(i, ((1730, 110), (1805, 175)))[0] for i in templates
+        ]
+        result = scores.index(max(scores)) + 1
+        logger.info(f"第{result}天")
+        return result
+
+    def detect_ap(self) -> int:
+        ap = 0
+        if self.get_color((1752, 182))[0] > 175:
+            ap += 1
+        if self.get_color((1774, 182))[0] > 175:
+            ap += 1
+        logger.info(f"决断次数：{ap}")
+        return ap
+
     def map_skip_day(self):
         # 跳过行动，进入下一天
         if pos := self.find("ra/days"):
@@ -95,7 +113,7 @@ class ReclamationAlgorithm(BaseSolver):
                 self.battle_wait -= 1
                 self.recog.update()
             else:
-                if pos := self.find("ra/battle_exit"):
+                if pos := self.find("ra/battle_exit", scope=((0, 0), (200, 160))):
                     self.tap(pos)
                 else:
                     self.recog.update()
@@ -119,36 +137,38 @@ class ReclamationAlgorithm(BaseSolver):
 
         # 地图页操作
         elif scene == Scene.RA_MAP:
-            if self.get_color((1817, 333))[0] < 250:
-                # 剧情动画未结束
-                self.sleep(3)
-            elif pos := self.find("ra/day_4"):
-                if pos := self.find("ra/delete_save"):
-                    self.tap(pos)
-                else:
-                    self.tap((1540, 1010))
-            elif pos := self.find("ra/next_day_button", scope=((1610, 0), (1900, 260))):
+            if pos := self.find("ra/next_day_button", scope=((1610, 0), (1900, 260))):
                 self.tap(pos)
-            elif (
-                self.template_match("ra/day_1", scope=((1730, 110), (1805, 175)))[0]
-                > 6000000
-            ):
-                # 判断决断次数
-                ap_1 = self.get_color((1752, 182))
-                ap_2 = self.get_color((1774, 182))
-                self.enter_battle = ap_1[0] > 175 and ap_2[0] > 175
-                if self.enter_battle:
-                    if pos := self.find("ra/battle_wood_entrance_1"):
-                        self.tap(pos)
-                    elif pos := self.find("ra/battle_wood_entrance_2"):
+            else:
+                if (day := self.detect_day()) == 4:
+                    score, pos = self.template_match("ra/delete_save", scope=((1675, 820), (1785, 940)))
+                    if score > 5000000:
                         self.tap(pos)
                     else:
-                        # 返回首页重新进入，使基地位于屏幕中央
-                        self.tap_element("ra/map_back")
+                        self.tap((1540, 1010), interval=2)
+                elif day == 1:
+                    ap = self.detect_ap()
+                    self.enter_battle = ap > 0
+                    if self.enter_battle:
+                        if ap == 2:
+                            if pos := self.find("ra/battle_wood_entrance_1"):
+                                self.tap(pos)
+                            elif pos := self.find("ra/battle_wood_entrance_2"):
+                                self.tap(pos, x_rate=0.32, y_rate=0.21)
+                            else:
+                                # 返回首页重新进入，使基地位于屏幕中央
+                                self.tap_element("ra/map_back")
+                        elif ap == 1:
+                            if pos := self.find("ra/battle_hunt_entrance_1"):
+                                self.tap(pos)
+                            elif pos := self.find("ra/battle_hunt_entrance_2"):
+                                self.tap(pos)
+                            else:
+                                self.tap_element("ra/map_back")
+                    else:
+                        self.map_skip_day()
                 else:
                     self.map_skip_day()
-            else:
-                self.map_skip_day()
         elif scene == Scene.RA_DAY_DETAIL:
             self.tap_element("ra/waste_time_button")
         elif scene == Scene.RA_WASTE_TIME_DIALOG:
@@ -208,8 +228,12 @@ class ReclamationAlgorithm(BaseSolver):
         if scene == Scene.UNKNOWN:
             if not self.unknown_time:
                 self.unknown_time = now
-            elif now - self.unknown_time > timedelta(seconds=10):
-                super().back_to_index()
+            elif now - self.unknown_time > timedelta(seconds=20):
+                logger.warning("连续识别到未知场景")
+                try:
+                    super().back_to_index()
+                except Exception:
+                    self.device.exit()
         else:
             self.unknown_time = None
 
