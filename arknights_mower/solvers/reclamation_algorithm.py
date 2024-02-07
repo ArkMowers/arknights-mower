@@ -118,7 +118,9 @@ class ReclamationAlgorithm(BaseSolver):
                 self.battle_wait -= 1
                 self.recog.update()
             else:
-                if pos := self.find("ra/battle_exit", scope=((0, 0), (200, 160))):
+                if pos := self.find(
+                    "ra/battle_exit", scope=((0, 0), (200, 160)), score=0.5
+                ):
                     self.tap(pos)
                 else:
                     self.recog.update()
