@@ -362,7 +362,7 @@ class Recognizer(object):
             self.scene = Scene.RA_DAY_DETAIL
         elif self.find("ra/waste_time_dialog", scope=((585, 345), (1070, 440))):
             self.scene = Scene.RA_WASTE_TIME_DIALOG
-        elif any([self.find(i, scope=((1610, 0), (1900, 260))) for i in ["ra/days", "ra/save", "ra/next_day_button"]]) and self.color(1817, 333)[0] > 250:
+        elif self.find("ra/notice", scope=((1785, 305), (1845, 370))) and self.color(1817, 333)[0] > 250:
             self.scene = Scene.RA_MAP
 
         # 从首页选择终端进入生息演算主页

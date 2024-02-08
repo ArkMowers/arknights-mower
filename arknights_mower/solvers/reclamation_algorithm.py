@@ -56,12 +56,12 @@ class ReclamationAlgorithm(BaseSolver):
         return result
 
     def detect_day(self) -> int:
-        templates = [f"ra/day_{i}" for i in range(1, 5)]
+        templates = ["ra/day_next"] + [f"ra/day_{i}" for i in range(1, 5)]
         scores = [
             self.template_match(i, ((1730, 110), (1805, 175)))[0] for i in templates
         ]
-        result = scores.index(max(scores)) + 1
-        logger.info(f"第{result}天")
+        result = scores.index(max(scores))
+        logger.info(f"第{result}天" if result > 0 else "进入下一天")
         return result
 
     def detect_ap(self) -> int:
@@ -144,40 +144,39 @@ class ReclamationAlgorithm(BaseSolver):
 
         # 地图页操作
         elif scene == Scene.RA_MAP:
-            if pos := self.find("ra/next_day_button", scope=((1610, 0), (1900, 260))):
-                self.tap(pos)
-            else:
-                if (day := self.detect_day()) == 4:
-                    score, pos = self.template_match(
-                        "ra/delete_save", scope=((1675, 820), (1785, 940))
-                    )
-                    if score > 5000000:
-                        self.tap(pos)
-                    else:
-                        self.tap((1540, 1010), interval=2)
-                elif day == 1:
-                    ap = self.detect_ap()
-                    self.enter_battle = ap > 0
-                    if self.enter_battle:
-                        if ap == 2:
-                            if pos := self.find("ra/battle_wood_entrance_1"):
-                                self.tap(pos)
-                            elif pos := self.find("ra/battle_wood_entrance_2"):
-                                self.tap(pos, x_rate=0.32, y_rate=0.21)
-                            else:
-                                # 返回首页重新进入，使基地位于屏幕中央
-                                self.tap_element("ra/map_back")
-                        elif ap == 1:
-                            if pos := self.find("ra/battle_hunt_entrance_1"):
-                                self.tap(pos)
-                            elif pos := self.find("ra/battle_hunt_entrance_2"):
-                                self.tap(pos)
-                            else:
-                                self.tap_element("ra/map_back")
-                    else:
-                        self.map_skip_day()
+            if (day := self.detect_day()) == 0:
+                self.tap((1760, 140))
+            elif day == 4:
+                score, pos = self.template_match(
+                    "ra/delete_save", scope=((1675, 820), (1785, 940))
+                )
+                if score > 5000000:
+                    self.tap(pos)
+                else:
+                    self.tap((1540, 1010), interval=2)
+            elif day == 1:
+                ap = self.detect_ap()
+                self.enter_battle = ap > 0
+                if self.enter_battle:
+                    if ap == 2:
+                        if pos := self.find("ra/battle_wood_entrance_1"):
+                            self.tap(pos)
+                        elif pos := self.find("ra/battle_wood_entrance_2"):
+                            self.tap(pos, x_rate=0.32, y_rate=0.21)
+                        else:
+                            # 返回首页重新进入，使基地位于屏幕中央
+                            self.tap_element("ra/map_back")
+                    elif ap == 1:
+                        if pos := self.find("ra/battle_hunt_entrance_1"):
+                            self.tap(pos)
+                        elif pos := self.find("ra/battle_hunt_entrance_2"):
+                            self.tap(pos)
+                        else:
+                            self.tap_element("ra/map_back")
                 else:
                     self.map_skip_day()
+            else:
+                self.map_skip_day()
         elif scene == Scene.RA_DAY_DETAIL:
             self.tap_element("ra/waste_time_button")
         elif scene == Scene.RA_WASTE_TIME_DIALOG:
@@ -211,7 +210,7 @@ class ReclamationAlgorithm(BaseSolver):
             self.recog.update()
 
     def back_to_index(self, scene):
-        if scene in [Scene.RA_MAIN, Scene.TERMINAL_LONGTERM]:
+        if scene in [Scene.RA_MAIN, Scene.TERMINAL_LONGTERM, Scene.TERMINAL_MAIN]:
             self.tap_element("nav_button", x_rate=0.21)
         elif scene in [Scene.RA_MAP, Scene.RA_DAY_DETAIL, Scene.RA_BATTLE_ENTRANCE]:
             self.tap_element("ra/map_back")
