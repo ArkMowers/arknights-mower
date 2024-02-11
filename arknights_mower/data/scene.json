@@ -316,8 +316,8 @@
         "comment": "烹饪台"
     },
     "912": {
-        "label": "RA_KITCHEN_DIALOG",
-        "comment": "烹饪台获得物资"
+        "label": "RA_GET_ITEM",
+        "comment": "获得物资"
     },
     "913": {
         "label": "RA_SQUAD_EDIT_DIALOG",
@@ -342,6 +342,10 @@
     "918": {
         "label": "RA_DELETE_SAVE_DIALOG",
         "comment": "存档删除确认"
+    },
+    "919": {
+        "label": "RA_ADVENTURE",
+        "comment": "奇遇"
     },
     "9998": {
         "label": "LOADING",

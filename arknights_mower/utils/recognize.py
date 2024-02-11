@@ -321,7 +321,7 @@ class Recognizer(object):
             self.scene = Scene.RA_GUIDE_DIALOG
 
         # 快速退出作战
-        elif self.find("ra/battle_exit", scope=((0, 0), (200, 160)), score=0.5):
+        elif self.find("ra/battle_exit", scope=((0, 0), (200, 160)), score=0.4):
             self.scene = Scene.RA_BATTLE
         elif self.find("ra/battle_exit_dialog", scope=((600, 360), (970, 430))):
             self.scene = Scene.RA_BATTLE_EXIT_CONFIRM
@@ -334,8 +334,8 @@ class Recognizer(object):
                 self.scene = Scene.RA_GUIDE_BATTLE_ENTRANCE
         elif self.find("ra/squad_edit", scope=((1090, 0), (1910, 105))):
             self.scene = Scene.RA_SQUAD_EDIT
-        elif self.find("ra/drink_cooked", scope=((875, 360), (1055, 420))):
-            self.scene = Scene.RA_KITCHEN_DIALOG
+        elif self.find("ra/get_item", scope=((875, 360), (1055, 420))):
+            self.scene = Scene.RA_GET_ITEM
         elif self.find("ra/return_from_kitchen", scope=((0, 0), (300, 105))):
             self.scene = Scene.RA_KITCHEN
         elif self.find("ra/squad_edit_confirm_dialog", scope=((585, 345), (1485, 440))):
@@ -357,12 +357,16 @@ class Recognizer(object):
         elif self.find("ra/delete_save_confirm_dialog", scope=((585, 345), (1020, 440))):
             self.scene = Scene.RA_DELETE_SAVE_DIALOG
 
+        # 奇遇
+        elif self.find("ra/adventure", scope=((380, 360), (470, 460)), thres=127):
+            self.scene = Scene.RA_ADVENTURE
+
         # 地图识别
         elif self.find("ra/waste_time_button", scope=((1665, 220), (1855, 290))):
             self.scene = Scene.RA_DAY_DETAIL
         elif self.find("ra/waste_time_dialog", scope=((585, 345), (1070, 440))):
             self.scene = Scene.RA_WASTE_TIME_DIALOG
-        elif self.find("ra/notice", scope=((1785, 305), (1845, 370))) and self.color(1817, 333)[0] > 250:
+        elif self.find("ra/notice", scope=((1785, 305), (1845, 370)), score=0.4) and self.color(1817, 333)[0] > 250:
             self.scene = Scene.RA_MAP
 
         # 从首页选择终端进入生息演算主页

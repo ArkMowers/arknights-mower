@@ -8,7 +8,7 @@ import numpy as np
 
 from arknights_mower import __rootdir__
 from arknights_mower.utils import typealias as tp
-from arknights_mower.utils.image import cropimg, loadimg
+from arknights_mower.utils.image import cropimg, loadimg, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.matcher import Matcher
 from arknights_mower.utils.scene import Scene
@@ -102,16 +102,16 @@ class ReclamationAlgorithm(BaseSolver):
         if place.startswith("奇遇"):
             adventures = [i for i in self.places if i.startswith("奇遇")]
             scores = []
-            img = cropimg(self.map.map, pos)
+            img = cropimg(self.map.map, ((pos[0][0] + 110, pos[0][1]), pos[1]))
+            img = thres2(img, 180)
             for i in adventures:
                 template = loadimg(f"{__rootdir__}/resources/ra/map/{i}.png", True)
                 template = cropimg(template, ((151, 36), (254, 62)))
-                result = cv2.matchTemplate(img, template, cv2.TM_CCOEFF)[0]
-                result = cv2.minMaxLoc(result)[0]
+                template = thres2(template, 180)
+                result = cv2.matchTemplate(img, template, cv2.TM_CCOEFF)
+                result = cv2.minMaxLoc(result)[1]
                 scores.append(result)
-            logger.info(scores)
             place = adventures[scores.index(max(scores))]
-        logger.info(f"找到地点：{place}")
 
         res_img = loadimg(f"{__rootdir__}/resources/ra/map/{res}.png", True)
         top_left = (
@@ -136,6 +136,8 @@ class ReclamationAlgorithm(BaseSolver):
             self.device.swipe_ext(
                 (start_point, end_point, end_point), durations=[500, 500]
             )
+        self.recog.update()
+        return True
 
     def detect_prepared(self) -> int:
         templates = [f"ra/prepared_{i}" for i in range(3)]
@@ -168,8 +170,10 @@ class ReclamationAlgorithm(BaseSolver):
         # 跳过行动，进入下一天
         if pos := self.find("ra/days"):
             self.tap(pos)
+        elif pos := self.find("ra/save"):
+            self.tap(pos)
         else:
-            self.tap_element("ra/save")
+            self.recog.update()
 
     def move_forward(self, scene):
         # 从首页进入生息演算主页
@@ -210,7 +214,7 @@ class ReclamationAlgorithm(BaseSolver):
                 self.recog.update()
             else:
                 if pos := self.find(
-                    "ra/battle_exit", scope=((0, 0), (200, 160)), score=0.5
+                    "ra/battle_exit", scope=((0, 0), (200, 160)), score=0.4
                 ):
                     self.tap(pos)
                 else:
@@ -233,6 +237,33 @@ class ReclamationAlgorithm(BaseSolver):
         elif scene == Scene.RA_DELETE_SAVE_DIALOG:
             self.tap_element("ra/delete_save_confirm_dialog_ok_button")
 
+        # 奇遇
+        elif scene == Scene.RA_ADVENTURE:
+            if self.find("ra/no_enough_resources"):
+                logger.info("所需资源不足")
+                self.tap_element("ra/map_back")
+                self.recog.update()
+            else:
+                tpl = loadimg(f"{__rootdir__}/resources/ra/ap-1.png", True)
+                tpl = thres2(tpl, 127)
+                w, h = tpl.shape[::-1]
+                scope = ((1640, 400), (1900, 900))
+                x, y = scope[0]
+                img = thres2(self.recog.gray, 127)
+                img = cropimg(img, scope)
+                res = cv2.matchTemplate(img, tpl, cv2.TM_CCOEFF_NORMED)
+                threshold = 0.8
+                loc = np.where(res >= threshold)
+                scope = tuple(
+                    ((a + x, b + y), (a + x + w, b + y + h)) for a, b in zip(*loc[::-1])
+                )
+                if scope:
+                    self.tap(scope[-1])
+                elif pos := self.find("ra/adventure_ok"):
+                    self.tap((1740, round((pos[0][1] + pos[1][1]) / 2)))
+                else:
+                    self.tap((428, 411))
+
         # 地图页操作
         elif scene == Scene.RA_MAP:
             self.map = Map(self.recog.gray)
@@ -251,18 +282,48 @@ class ReclamationAlgorithm(BaseSolver):
                 self.enter_battle = ap > 0
                 if self.enter_battle:
                     if ap == 2:
-                        if pos := self.find("ra/battle_wood_entrance_1"):
-                            self.tap(pos)
-                        elif pos := self.find("ra/battle_wood_entrance_2"):
-                            self.tap(pos, x_rate=0.32, y_rate=0.21)
+                        if self.drag("奇遇_风啸峡谷"):
+                            self.tap_element("ra/map/奇遇_风啸峡谷")
                         else:
                             # 返回首页重新进入，使基地位于屏幕中央
                             self.tap_element("ra/map_back")
                     elif ap == 1:
-                        if pos := self.find("ra/battle_hunt_entrance_1"):
-                            self.tap(pos)
-                        elif pos := self.find("ra/battle_hunt_entrance_2"):
-                            self.tap(pos)
+                        if self.drag("捕猎区_聚羽之地"):
+                            self.tap_element("ra/map/捕猎区_聚羽之地")
+                        else:
+                            self.tap_element("ra/map_back")
+                else:
+                    self.map_skip_day()
+            elif day == 2:
+                ap = self.detect_ap()
+                self.enter_battle = ap > 0
+                if self.enter_battle:
+                    if ap == 2:
+                        if self.drag("资源区_林中寻宝"):
+                            self.tap_element("ra/map/资源区_林中寻宝")
+                        else:
+                            # 返回首页重新进入，使基地位于屏幕中央
+                            self.tap_element("ra/map_back")
+                    elif ap == 1:
+                        if self.drag("奇遇_砾沙平原"):
+                            self.tap_element("ra/map/奇遇_砾沙平原")
+                        else:
+                            self.tap_element("ra/map_back")
+                else:
+                    self.map_skip_day()
+            elif day == 3:
+                ap = self.detect_ap()
+                self.enter_battle = ap > 0
+                if self.enter_battle:
+                    if ap == 2:
+                        if self.drag("资源区_射程以内"):
+                            self.tap_element("ra/map/资源区_射程以内")
+                        else:
+                            # 返回首页重新进入，使基地位于屏幕中央
+                            self.tap_element("ra/map_back")
+                    elif ap == 1:
+                        if self.drag("奇遇_崎岖窄路"):
+                            self.tap_element("ra/map/奇遇_崎岖窄路")
                         else:
                             self.tap_element("ra/map_back")
                 else:
@@ -288,12 +349,25 @@ class ReclamationAlgorithm(BaseSolver):
 
         # 烹饪台
         elif scene == Scene.RA_KITCHEN:
-            # 速刷不需要合成饮料
-            self.tap_element("ra/return_from_kitchen", x_rate=0.07)
-        elif scene == Scene.RA_KITCHEN_DIALOG:
+            if self.enter_battle:
+                self.tap_element("ra/auto+1")
+                if self.detect_prepared() == 1:
+                    self.tap_element("ra/auto+1")
+                    if self.detect_prepared() == 2:
+                        self.tap_element("ra/cook_button")
+                    else:
+                        self.enter_battle = False
+                        self.recog.update()
+                else:
+                    self.enter_battle = False
+                    self.recog.update()
+            else:
+                self.tap_element("ra/return_from_kitchen", x_rate=0.07)
+        elif scene == Scene.RA_GET_ITEM:
             if pos := self.find("ra/click_to_continue"):
                 self.tap(pos)
-                self.tap_element("ra/return_from_kitchen", x_rate=0.07)
+                if pos := self.find("ra/return_from_kitchen"):
+                    self.tap(pos, x_rate=0.07)
             else:
                 self.recog.update()
         elif scene == Scene.CONNECTING:
