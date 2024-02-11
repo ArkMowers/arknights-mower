@@ -55,7 +55,7 @@ class Matcher(object):
         """ get SIFT feature points """
         self.kp, self.des = SIFT.detectAndCompute(self.origin, None)
 
-    def match(self, query: tp.GrayImage, draw: bool = False, scope: tp.Scope = None, judge: bool = True,prescore = 0.0) -> Optional(tp.Scope):
+    def match(self, query: tp.GrayImage, draw: bool = False, scope: tp.Scope = None, judge: bool = True,prescore = 0.0) -> Optional[tp.Scope]:
         """ check if the image can be matched """
         rect_score = self.score(query, draw, scope)  # get matching score
         if rect_score is None:
@@ -77,7 +77,7 @@ class Matcher(object):
             logger.debug(f'match success: {score}')
             return rect  # success in matching
 
-    def score(self, query: tp.GrayImage, draw: bool = False, scope: tp.Scope = None, only_score: bool = False) -> Optional(Tuple[tp.Scope, tp.Score]):
+    def score(self, query: tp.GrayImage, draw: bool = False, scope: tp.Scope = None, only_score: bool = False) -> Optional[Tuple[tp.Scope, tp.Score]]:
         """ scoring of image matching """
         try:
             # if feature points is empty

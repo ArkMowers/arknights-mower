@@ -1,14 +1,58 @@
+import math
 from datetime import datetime, timedelta
 from threading import Event, Thread
 from typing import Optional
 
+import cv2
+import numpy as np
+
+from arknights_mower import __rootdir__
+from arknights_mower.utils import typealias as tp
+from arknights_mower.utils.image import cropimg, loadimg
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.matcher import Matcher
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.solver import BaseSolver
 
 
+class Map:
+    def __init__(self, img: tp.GrayImage):
+        src_pts = np.float32([[0, 97], [1920, 97], [-400, 1080], [2320, 1080]])
+        dst_pts = np.float32([[0, 0], [1920, 0], [0, 1000], [1920, 1000]])
+        self.trans_mat = cv2.getPerspectiveTransform(src_pts, dst_pts)
+        self.rev_mat = np.linalg.inv(self.trans_mat)
+
+        self.map = cv2.warpPerspective(img, self.trans_mat, (1920, 1000))
+        self.matcher = Matcher(self.map)
+
+    def map2scrn(self, point: tp.Coordinate) -> tp.Coordinate:
+        x = np.array([[point[0]], [point[1]], [1]])
+        y = np.dot(self.rev_mat, x)
+        return (round(y[0][0] / y[2][0]), round(y[1][0] / y[2][0]))
+
+    def find(
+        self, res: str, scope: Optional[tp.Scope] = None, score: float = 0.0
+    ) -> Optional[tp.Scope]:
+        logger.debug(f"find: {res}")
+        res = f"{__rootdir__}/resources/ra/map/{res}.png"
+        res_img = loadimg(res, True)
+        return self.matcher.match(res_img, scope=scope, prescore=score)
+
+
 class ReclamationAlgorithm(BaseSolver):
     fast_tap_scenes = [Scene.RA_GUIDE_DIALOG]
+    places = {
+        "base": ((1463, 21), (1782, 338)),
+        "奇遇_砾沙平原": ((402, 781), (657, 866)),
+        "奇遇_崎岖窄路": ((322, 1197), (579, 1281)),
+        "奇遇_风啸峡谷": ((2015, 651), (2272, 736)),
+        "冲突区_丢失的订单": ((1579, 724), (1860, 808)),
+        "捕猎区_聚羽之地": ((858, 194), (1114, 321)),
+        "资源区_射程以内": ((9, 1044), (267, 1171)),
+        "资源区_林中寻宝": ((702, 477), (960, 607)),
+        "要塞_征税的选择": ((593, 993), (874, 1077)),
+    }
+    drag_scope = ((250, 10), (1630, 895))
 
     def run(
         self,
@@ -25,6 +69,7 @@ class ReclamationAlgorithm(BaseSolver):
         self.thread = None
         self.event = Event()
         self.unknown_time = None
+
         super().run()
 
     def tap_loop(self, pos):
@@ -45,6 +90,52 @@ class ReclamationAlgorithm(BaseSolver):
             self.thread.join()
             self.thread = None
         logger.debug("快速点击已停止")
+
+    def drag(self, res: str, position: tp.Coordinate = (960, 500)) -> bool:
+        place = None
+        pos = None
+        for place in self.places:
+            if pos := self.map.find(place, score=0.65):
+                break
+        if pos is None:
+            return False
+        if place.startswith("奇遇"):
+            adventures = [i for i in self.places if i.startswith("奇遇")]
+            scores = []
+            img = cropimg(self.map.map, pos)
+            for i in adventures:
+                template = loadimg(f"{__rootdir__}/resources/ra/map/{i}.png", True)
+                template = cropimg(template, ((151, 36), (254, 62)))
+                result = cv2.matchTemplate(img, template, cv2.TM_CCOEFF)[0]
+                result = cv2.minMaxLoc(result)[0]
+                scores.append(result)
+            logger.info(scores)
+            place = adventures[scores.index(max(scores))]
+        logger.info(f"找到地点：{place}")
+
+        res_img = loadimg(f"{__rootdir__}/resources/ra/map/{res}.png", True)
+        top_left = (
+            position[0] - round(res_img.shape[1] / 2),
+            position[1] - round(res_img.shape[0] / 2),
+        )
+        vp1 = tuple(a - b for a, b in zip(self.places[place][0], pos[0]))
+        vp2 = tuple(a - b for a, b in zip(self.places[res][0], top_left))
+        vp_offset = tuple(a - b for a, b in zip(vp1, vp2))
+        total_distance = tuple(abs(a) for a in vp_offset)
+        max_drag = tuple(b - a for a, b in zip(*self.drag_scope))
+        steps = max(math.ceil(d / m) for d, m in zip(total_distance, max_drag))
+        step_distance = tuple(round(i / steps) for i in vp_offset)
+        center_point = tuple(round((a + b) / 2) for a, b in zip(*self.drag_scope))
+        start_point = self.map.map2scrn(
+            tuple(a - round(b / 2) for a, b in zip(center_point, step_distance))
+        )
+        end_point = self.map.map2scrn(
+            tuple(a + round(b / 2) for a, b in zip(center_point, step_distance))
+        )
+        for _ in range(steps):
+            self.device.swipe_ext(
+                (start_point, end_point, end_point), durations=[500, 500]
+            )
 
     def detect_prepared(self) -> int:
         templates = [f"ra/prepared_{i}" for i in range(3)]
@@ -144,6 +235,7 @@ class ReclamationAlgorithm(BaseSolver):
 
         # 地图页操作
         elif scene == Scene.RA_MAP:
+            self.map = Map(self.recog.gray)
             if (day := self.detect_day()) == 0:
                 self.tap((1760, 140))
             elif day == 4:
