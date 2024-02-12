@@ -64,11 +64,14 @@ class ReclamationAlgorithm(BaseSolver):
         self.timeout = timeout
         self.deadline = datetime.now() + duration - timeout if duration else None
 
-        self.enter_battle = False  # 只在第一天决断次数为2时进入战斗，多进不加分
         self.battle_wait = 0  # 进入战斗后等待剧情出现
+
         self.thread = None
         self.event = Event()
         self.unknown_time = None
+
+        self.task_queue = []
+        self.in_adventure = False
 
         super().run()
 
@@ -204,10 +207,7 @@ class ReclamationAlgorithm(BaseSolver):
 
         # 进入与退出战斗
         elif scene == Scene.RA_BATTLE_ENTRANCE:
-            if self.enter_battle:
-                self.tap_element("ra/start_action")
-            else:
-                self.tap_element("ra/map_back")
+            self.tap_element("ra/start_action")
         elif scene == Scene.RA_BATTLE:
             if self.battle_wait > 0:
                 self.battle_wait -= 1
@@ -239,8 +239,13 @@ class ReclamationAlgorithm(BaseSolver):
 
         # 奇遇
         elif scene == Scene.RA_ADVENTURE:
+            self.in_adventure = True
             if self.find("ra/no_enough_resources"):
                 logger.info("所需资源不足")
+                place = self.task_queue.pop(0)
+                if place == "奇遇_砾沙平原":
+                    self.task_queue.remove("资源区_射程以内")
+                    self.task_queue.remove("奇遇_崎岖窄路")
                 self.tap_element("ra/map_back")
                 self.recog.update()
             else:
@@ -266,70 +271,51 @@ class ReclamationAlgorithm(BaseSolver):
 
         # 地图页操作
         elif scene == Scene.RA_MAP:
-            self.map = Map(self.recog.gray)
+            if (
+                self.in_adventure
+                and self.task_queue
+                and self.task_queue[0].startswith("奇遇")
+            ):
+                self.task_queue.pop(0)
+                self.in_adventure = False
             if (day := self.detect_day()) == 0:
                 self.tap((1760, 140))
-            elif day == 4:
-                score, pos = self.template_match(
-                    "ra/delete_save", scope=((1675, 820), (1785, 940))
-                )
-                if score > 5000000:
-                    self.tap(pos)
-                else:
-                    self.tap((1540, 1010), interval=2)
-            elif day == 1:
-                ap = self.detect_ap()
-                self.enter_battle = ap > 0
-                if self.enter_battle:
-                    if ap == 2:
-                        if self.drag("奇遇_风啸峡谷"):
-                            self.tap_element("ra/map/奇遇_风啸峡谷")
-                        else:
-                            # 返回首页重新进入，使基地位于屏幕中央
-                            self.tap_element("ra/map_back")
-                    elif ap == 1:
-                        if self.drag("捕猎区_聚羽之地"):
-                            self.tap_element("ra/map/捕猎区_聚羽之地")
-                        else:
-                            self.tap_element("ra/map_back")
-                else:
-                    self.map_skip_day()
-            elif day == 2:
-                ap = self.detect_ap()
-                self.enter_battle = ap > 0
-                if self.enter_battle:
-                    if ap == 2:
-                        if self.drag("资源区_林中寻宝"):
-                            self.tap_element("ra/map/资源区_林中寻宝")
-                        else:
-                            # 返回首页重新进入，使基地位于屏幕中央
-                            self.tap_element("ra/map_back")
-                    elif ap == 1:
-                        if self.drag("奇遇_砾沙平原"):
-                            self.tap_element("ra/map/奇遇_砾沙平原")
-                        else:
-                            self.tap_element("ra/map_back")
-                else:
-                    self.map_skip_day()
-            elif day == 3:
-                ap = self.detect_ap()
-                self.enter_battle = ap > 0
-                if self.enter_battle:
-                    if ap == 2:
-                        if self.drag("资源区_射程以内"):
-                            self.tap_element("ra/map/资源区_射程以内")
-                        else:
-                            # 返回首页重新进入，使基地位于屏幕中央
-                            self.tap_element("ra/map_back")
-                    elif ap == 1:
-                        if self.drag("奇遇_崎岖窄路"):
-                            self.tap_element("ra/map/奇遇_崎岖窄路")
-                        else:
-                            self.tap_element("ra/map_back")
-                else:
-                    self.map_skip_day()
             else:
-                self.map_skip_day()
+                ap = self.detect_ap()
+                if day == 1 and ap == 2:
+                    self.task_queue = [
+                        "奇遇_风啸峡谷",
+                        "捕猎区_聚羽之地",
+                        "资源区_林中寻宝",
+                        "奇遇_砾沙平原",
+                        "资源区_射程以内",
+                        "奇遇_崎岖窄路",
+                    ]
+                if day == 4 or not self.task_queue:
+                    score, pos = self.template_match(
+                        "ra/delete_save", scope=((1610, 820), (1785, 940))
+                    )
+                    logger.info(score)
+                    if score > 5000000:
+                        self.tap(pos)
+                    else:
+                        self.tap((1540, 1010), interval=2)
+                elif ap > 0:
+                    remain_ap = (3 - day) * 2 + ap
+                    if len(self.task_queue) >= remain_ap:
+                        place = self.task_queue[0]
+                        self.map = Map(self.recog.gray)
+                        if self.drag(place):
+                            if not place.startswith("奇遇"):
+                                self.task_queue.pop(0)
+                            self.tap_element(f"ra/map/{place}")
+                        else:
+                            # 返回首页重新进入，使基地位于屏幕中央
+                            self.tap_element("ra/map_back")
+                    else:
+                        self.map_skip_day()
+                else:
+                    self.map_skip_day()
         elif scene == Scene.RA_DAY_DETAIL:
             self.tap_element("ra/waste_time_button")
         elif scene == Scene.RA_WASTE_TIME_DIALOG:
@@ -337,32 +323,24 @@ class ReclamationAlgorithm(BaseSolver):
 
         # 作战编队
         elif scene == Scene.RA_SQUAD_EDIT:
-            if self.enter_battle:
-                if pos := self.find("ra/out_of_drink", score=0.7):
-                    self.tap(pos)
-                else:
-                    self.tap_element("ra/squad_edit_start_button")
+            if pos := self.find("ra/out_of_drink", score=0.7):
+                self.tap(pos)
             else:
-                self.tap_element("ra/squad_back")
+                self.tap_element("ra/squad_edit_start_button")
         elif scene == Scene.RA_SQUAD_EDIT_DIALOG:
             self.tap_element("ra/squad_edit_confirm_dialog_ok_button")
 
         # 烹饪台
         elif scene == Scene.RA_KITCHEN:
-            if self.enter_battle:
+            self.tap_element("ra/auto+1")
+            if self.detect_prepared() == 1:
                 self.tap_element("ra/auto+1")
-                if self.detect_prepared() == 1:
-                    self.tap_element("ra/auto+1")
-                    if self.detect_prepared() == 2:
-                        self.tap_element("ra/cook_button")
-                    else:
-                        self.enter_battle = False
-                        self.recog.update()
+                if self.detect_prepared() == 2:
+                    self.tap_element("ra/cook_button")
                 else:
-                    self.enter_battle = False
                     self.recog.update()
             else:
-                self.tap_element("ra/return_from_kitchen", x_rate=0.07)
+                self.recog.update()
         elif scene == Scene.RA_GET_ITEM:
             if pos := self.find("ra/click_to_continue"):
                 self.tap(pos)

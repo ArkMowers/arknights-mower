@@ -316,6 +316,10 @@ class Recognizer(object):
         if self.detect_connecting_scene():
             self.scene = Scene.CONNECTING
 
+        # 奇遇
+        elif self.find("ra/adventure", scope=((380, 360), (470, 460)), thres=127):
+            self.scene = Scene.RA_ADVENTURE
+
         # 快速跳过剧情对话
         elif self.find("ra/guide_dialog", scope=((0, 0), (160, 110))):
             self.scene = Scene.RA_GUIDE_DIALOG
@@ -356,10 +360,6 @@ class Recognizer(object):
         # 存档操作
         elif self.find("ra/delete_save_confirm_dialog", scope=((585, 345), (1020, 440))):
             self.scene = Scene.RA_DELETE_SAVE_DIALOG
-
-        # 奇遇
-        elif self.find("ra/adventure", scope=((380, 360), (470, 460)), thres=127):
-            self.scene = Scene.RA_ADVENTURE
 
         # 地图识别
         elif self.find("ra/waste_time_button", scope=((1665, 220), (1855, 290))):
