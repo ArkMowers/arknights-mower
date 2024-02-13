@@ -23,6 +23,7 @@ class RecognizeError(Exception):
 class Recognizer(object):
 
     def __init__(self, device: Device, screencap: bytes = None) -> None:
+        self.preclick = None
         self.device = device
         self.start(screencap)
         self.loading_time = 0
@@ -33,6 +34,10 @@ class Recognizer(object):
 
     def start(self, screencap: bytes = None, build: bool = True) -> None:
         """ init with screencap, build matcher  """
+        if self.preclick:
+            self.device.tap(self.preclick)
+            self.preclick = None
+
         retry_times = config.MAX_RETRYTIME
         while retry_times > 0:
             try:
