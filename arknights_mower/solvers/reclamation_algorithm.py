@@ -73,8 +73,6 @@ class ReclamationAlgorithm(BaseSolver):
         self.task_queue = []
         self.in_adventure = False
 
-        self.recog.preclick = None
-
         super().run()
 
     def tap_loop(self, pos):
@@ -87,7 +85,7 @@ class ReclamationAlgorithm(BaseSolver):
             self.thread = Thread(target=self.tap_loop, args=(pos,))
             self.thread.start()
             logger.debug(f"开始快速点击{pos}")
-        self.sleep()
+        self.recog.update()
 
     def stop_fast_tap(self):
         self.event.set()
@@ -141,7 +139,7 @@ class ReclamationAlgorithm(BaseSolver):
             self.device.swipe_ext(
                 (start_point, end_point, end_point), durations=[500, 500]
             )
-        self.sleep()
+        self.recog.update()
         return True
 
     def detect_prepared(self) -> int:
@@ -178,7 +176,7 @@ class ReclamationAlgorithm(BaseSolver):
         elif pos := self.find("ra/save"):
             self.tap(pos)
         else:
-            self.sleep()
+            self.recog.update()
 
     def move_forward(self, scene):
         # 从首页进入生息演算主页
@@ -192,14 +190,13 @@ class ReclamationAlgorithm(BaseSolver):
         # 从生息演算主页进入生息演算
         elif scene == Scene.RA_MAIN:
             # 等动画
-            if pos := self.find("ra/start_button"):
+            if pos := self.find("ra/start_action"):
                 self.tap(pos, interval=3)
             else:
                 self.tap_element("ra/continue_button", interval=3)
 
         # 剧情
         elif scene == Scene.RA_GUIDE_ENTRANCE:
-            self.recog.preclick = (1793, 862)
             self.tap_element("ra/guide_entrance")
         elif scene == Scene.RA_GUIDE_DIALOG:
             self.battle_wait = 0
@@ -214,15 +211,14 @@ class ReclamationAlgorithm(BaseSolver):
         elif scene == Scene.RA_BATTLE:
             if self.battle_wait > 0:
                 self.battle_wait -= 1
-                self.sleep()
+                self.recog.update()
             else:
                 if pos := self.find(
                     "ra/battle_exit", scope=((0, 0), (200, 160)), score=0.4
                 ):
-                    self.recog.preclick = (1475, 725)
                     self.tap(pos)
                 else:
-                    self.sleep()
+                    self.recog.update()
         elif scene == Scene.RA_BATTLE_EXIT_CONFIRM:
             self.tap_element("ra/battle_exit_confirm")
         elif scene == Scene.RA_BATTLE_COMPLETE:
@@ -239,14 +235,11 @@ class ReclamationAlgorithm(BaseSolver):
 
         # 存档操作
         elif scene == Scene.RA_DELETE_SAVE_DIALOG:
-            if pos := self.find("ra/delete_save_confirm_dialog_ok_button"):
-                self.recog.preclick = (1475, 725)
-                self.tap(pos)
+            self.tap_element("ra/delete_save_confirm_dialog_ok_button")
 
         # 奇遇
         elif scene == Scene.RA_ADVENTURE:
             self.in_adventure = True
-            self.recog.preclick = (428, 411)
             if self.find("ra/no_enough_resources"):
                 logger.info("所需资源不足")
                 place = self.task_queue.pop(0)
@@ -254,6 +247,7 @@ class ReclamationAlgorithm(BaseSolver):
                     self.task_queue.remove("资源区_射程以内")
                     self.task_queue.remove("奇遇_崎岖窄路")
                 self.tap_element("ra/map_back")
+                self.recog.update()
             else:
                 tpl = loadimg(f"{__rootdir__}/resources/ra/ap-1.png", True)
                 tpl = thres2(tpl, 127)
@@ -269,15 +263,11 @@ class ReclamationAlgorithm(BaseSolver):
                     ((a + x, b + y), (a + x + w, b + y + h)) for a, b in zip(*loc[::-1])
                 )
                 if scope:
-                    pos = self.get_pos(scope[-1])
-                    self.recog.preclick = pos
-                    self.tap(pos, interval=0.5)
+                    self.tap(scope[-1])
                 elif pos := self.find("ra/adventure_ok"):
-                    pos = (1740, round((pos[0][1] + pos[1][1]) / 2))
-                    self.recog.preclick = pos
-                    self.tap(pos, interval=0.5)
+                    self.tap((1740, round((pos[0][1] + pos[1][1]) / 2)))
                 else:
-                    self.tap((428, 411), interval=0.5)
+                    self.tap((428, 411))
 
         # 地图页操作
         elif scene == Scene.RA_MAP:
@@ -292,7 +282,7 @@ class ReclamationAlgorithm(BaseSolver):
                 self.tap((1760, 140))
             else:
                 ap = self.detect_ap()
-                if day == 1 and ap == 2 and not self.task_queue:
+                if day == 1 and ap == 2:
                     self.task_queue = [
                         "奇遇_风啸峡谷",
                         "捕猎区_聚羽之地",
@@ -307,9 +297,7 @@ class ReclamationAlgorithm(BaseSolver):
                     )
                     logger.info(score)
                     if score > 5000000:
-                        pos = self.get_pos(pos)
-                        self.recog.preclick = pos
-                        self.tap(pos, interval=0.5)
+                        self.tap(pos)
                     else:
                         self.tap((1540, 1010), interval=2)
                 elif ap > 0:
@@ -320,19 +308,16 @@ class ReclamationAlgorithm(BaseSolver):
                         if self.drag(place):
                             if not place.startswith("奇遇"):
                                 self.task_queue.pop(0)
-                            self.recog.preclick = (1793, 862)
                             self.tap_element(f"ra/map/{place}")
                         else:
                             # 返回首页重新进入，使基地位于屏幕中央
-                            self.recog.preclick = (1730, 970)
                             self.tap_element("ra/map_back")
                     else:
                         self.map_skip_day()
                 else:
                     self.map_skip_day()
         elif scene == Scene.RA_DAY_DETAIL:
-            self.recog.preclick = (1437, 725)
-            self.tap_element("ra/waste_time_button", interval=0.5)
+            self.tap_element("ra/waste_time_button")
         elif scene == Scene.RA_WASTE_TIME_DIALOG:
             self.tap_element("ra/waste_time_dialog_confirm_button")
 
@@ -341,8 +326,7 @@ class ReclamationAlgorithm(BaseSolver):
             if pos := self.find("ra/out_of_drink", score=0.7):
                 self.tap(pos)
             else:
-                self.recog.preclick = (1475, 725)
-                self.tap_element("ra/squad_edit_start_button", interval=0.5)
+                self.tap_element("ra/squad_edit_start_button")
         elif scene == Scene.RA_SQUAD_EDIT_DIALOG:
             self.tap_element("ra/squad_edit_confirm_dialog_ok_button")
 
@@ -354,18 +338,20 @@ class ReclamationAlgorithm(BaseSolver):
                 if self.detect_prepared() == 2:
                     self.tap_element("ra/cook_button")
                 else:
-                    self.sleep()
+                    self.recog.update()
             else:
-                self.sleep()
+                self.recog.update()
         elif scene == Scene.RA_GET_ITEM:
             if pos := self.find("ra/click_to_continue"):
                 self.tap(pos)
                 if pos := self.find("ra/return_from_kitchen"):
                     self.tap(pos, x_rate=0.07)
             else:
-                self.sleep()
+                self.recog.update()
+        elif scene == Scene.CONNECTING:
+            self.sleep(1)
         else:
-            self.sleep()
+            self.recog.update()
 
     def back_to_index(self, scene):
         if scene in [Scene.RA_MAIN, Scene.TERMINAL_LONGTERM, Scene.TERMINAL_MAIN]:
@@ -383,7 +369,7 @@ class ReclamationAlgorithm(BaseSolver):
         elif scene == Scene.CONNECTING:
             self.sleep(1)
         else:
-            self.sleep()
+            self.recog.update()
 
     def transition(self) -> bool:
         if (scene := self.ra_scene()) not in self.fast_tap_scenes:
