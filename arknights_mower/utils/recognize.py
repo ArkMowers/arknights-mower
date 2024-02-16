@@ -24,7 +24,6 @@ class Recognizer(object):
 
     def __init__(self, device: Device, screencap: bytes = None) -> None:
         self.preclick = None
-        self.preclick_enable = True
         self.device = device
         self.start(screencap)
         self.loading_time = 0
@@ -32,11 +31,10 @@ class Recognizer(object):
         self.CONN_SCOPE = ((1087, 978), (1430, 1017))
         self.CONN_PRESCORE = 0.15
         self.CONN_MINWIDTH = 300
-        self.res_cache = {}
 
     def start(self, screencap: bytes = None, build: bool = True) -> None:
         """ init with screencap, build matcher  """
-        if self.preclick_enable and self.preclick:
+        if self.preclick:
             self.device.tap(self.preclick)
             self.preclick = None
 
@@ -425,19 +423,17 @@ class Recognizer(object):
         :return ret: 若匹配成功，则返回元素在游戏界面中出现的位置，否则返回 None
         """
         logger.debug(f'find: {res}')
-        if res in self.res_cache:
-            res_img = self.res_cache[res]
-        else:
-            res_img = loadimg(f'{__rootdir__}/resources/{res}.png', True)
+        res = f'{__rootdir__}/resources/{res}.png'
 
         if thres is not None:
             # 对图像二值化处理
-            res_img = thres2(res_img, thres)
+            res_img = thres2(loadimg(res, True), thres)
 
             gray_img = cropimg(self.gray, scope)
             matcher = Matcher(thres2(gray_img, thres))
             ret = matcher.match(res_img, draw=draw, judge=judge, prescore=score)
         else:
+            res_img = loadimg(res, True)
             matcher = self.matcher
             ret = matcher.match(res_img, draw=draw, scope=scope, judge=judge, prescore=score)
         if strict and ret is None:
