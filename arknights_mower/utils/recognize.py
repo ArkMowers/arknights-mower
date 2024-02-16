@@ -23,6 +23,8 @@ class RecognizeError(Exception):
 class Recognizer(object):
 
     def __init__(self, device: Device, screencap: bytes = None) -> None:
+        self.preclick = None
+        self.preclick_enable = True
         self.device = device
         self.start(screencap)
         self.loading_time = 0
@@ -34,6 +36,10 @@ class Recognizer(object):
 
     def start(self, screencap: bytes = None, build: bool = True) -> None:
         """ init with screencap, build matcher  """
+        if self.preclick_enable and self.preclick:
+            self.device.tap(self.preclick)
+            self.preclick = None
+
         retry_times = config.MAX_RETRYTIME
         while retry_times > 0:
             try:
@@ -309,6 +315,10 @@ class Recognizer(object):
         """
         生息演算场景识别
         """
+        # 场景缓存
+        if self.scene != Scene.UNDEFINED:
+            return self.scene
+        
         # 连接中，优先级最高
         if self.detect_connecting_scene():
             self.scene = Scene.CONNECTING
