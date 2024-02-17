@@ -170,6 +170,15 @@ class ReclamationAlgorithm(BaseSolver):
         logger.info(f"决断次数：{ap}")
         return ap
 
+    def detect_drink(self) -> int:
+        templates = [f"ra/drink_{i}" for i in range(0, 6, 2)]
+        scores = [
+            self.template_match(i, ((1448, 1004), (1465, 1028)))[0] for i in templates
+        ]
+        result = scores.index(max(scores)) * 2
+        logger.info(f"饮料数量：{result}")
+        return result
+
     def map_skip_day(self):
         # 跳过行动，进入下一天
         if pos := self.find("ra/days"):
@@ -177,7 +186,7 @@ class ReclamationAlgorithm(BaseSolver):
         elif pos := self.find("ra/save"):
             self.tap(pos, interval=0.5)
         else:
-            self.recog.update()
+            self.sleep()
 
     def move_forward(self, scene):
         # 从首页进入生息演算主页
@@ -337,8 +346,8 @@ class ReclamationAlgorithm(BaseSolver):
 
         # 作战编队
         elif scene == Scene.RA_SQUAD_EDIT:
-            if pos := self.find("ra/out_of_drink", score=0.7):
-                self.tap(pos, interval=0.5)
+            if self.detect_drink() == 0:
+                self.tap((1430, 1015), interval=0.5)
             else:
                 self.tap_element("ra/squad_edit_start_button", interval=0.5)
         elif scene == Scene.RA_SQUAD_EDIT_DIALOG:
