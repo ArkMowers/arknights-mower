@@ -323,7 +323,7 @@ class Recognizer(object):
             self.scene = Scene.CONNECTING
 
         # 奇遇
-        elif self.find("ra/adventure", scope=((380, 360), (470, 460)), thres=127):
+        elif self.find("ra/adventure", scope=((380, 360), (470, 460)), thres=250):
             self.scene = Scene.RA_ADVENTURE
 
         # 快速跳过剧情对话
@@ -429,10 +429,8 @@ class Recognizer(object):
         if thres is not None:
             # 对图像二值化处理
             res_img = thres2(loadimg(res, True), thres)
-
-            gray_img = cropimg(self.gray, scope)
-            matcher = Matcher(thres2(gray_img, thres))
-            ret = matcher.match(res_img, draw=draw, judge=judge, prescore=score)
+            matcher = Matcher(thres2(self.gray, thres))
+            ret = matcher.match(res_img, draw=draw, scope=scope, judge=judge, prescore=score)
         else:
             res_img = loadimg(res, True)
             matcher = self.matcher

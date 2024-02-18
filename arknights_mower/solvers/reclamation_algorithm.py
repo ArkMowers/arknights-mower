@@ -234,7 +234,7 @@ class ReclamationAlgorithm(BaseSolver):
         elif scene == Scene.RA_BATTLE_EXIT_CONFIRM:
             self.tap_element("ra/battle_exit_confirm", interval=0.5)
         elif scene == Scene.RA_BATTLE_COMPLETE:
-            self.tap_element("ra/battle_complete", interval=5)
+            self.tap_element("ra/battle_complete", interval=0.5)
 
         # 结算界面
         elif scene == Scene.RA_DAY_COMPLETE:
@@ -249,7 +249,7 @@ class ReclamationAlgorithm(BaseSolver):
         elif scene == Scene.RA_DELETE_SAVE_DIALOG:
             if pos := self.find("ra/delete_save_confirm_dialog_ok_button"):
                 self.tap(pos, rebuild=False, interval=0.5)
-                self.tap(pos, interval=2)
+                self.tap(pos)
                 self.task_queue = None
                 self.ap = None
 
@@ -353,7 +353,7 @@ class ReclamationAlgorithm(BaseSolver):
                 if place in self.task_queue:
                     self.task_queue.remove(place)
                     self.ap -= 1
-            self.recog.update()
+                self.recog.update()
         elif scene == Scene.RA_DAY_DETAIL:
             self.tap_element("ra/waste_time_button", interval=0.5)
         elif scene == Scene.RA_WASTE_TIME_DIALOG:
@@ -370,13 +370,24 @@ class ReclamationAlgorithm(BaseSolver):
 
         # 烹饪台
         elif scene == Scene.RA_KITCHEN:
-            self.tap_element("ra/auto+1", interval=0.5)
-            if self.detect_prepared() == 1:
-                self.tap_element("ra/auto+1", interval=0.5)
-                if self.detect_prepared() == 2:
-                    self.tap_element("ra/cook_button", interval=0.5)
-                else:
-                    self.recog.update()
+            if pos := self.find("ra/auto+1"):
+                self.tap(pos, interval=0.5)
+            else:
+                self.recog.update()
+                return
+            if self.detect_prepared() != 1:
+                self.recog.update()
+                return
+            if pos := self.find("ra/auto+1"):
+                self.tap(pos, interval=0.5)
+            else:
+                self.recog.update()
+                return
+            if self.detect_prepared() != 2:
+                self.recog.update()
+                return
+            if pos := self.find("ra/cook_button"):
+                self.tap(pos, interval=0.5)
             else:
                 self.recog.update()
 
@@ -396,7 +407,7 @@ class ReclamationAlgorithm(BaseSolver):
         elif scene == Scene.CONNECTING:
             self.sleep(1)
         else:
-            self.recog.update()
+            self.sleep(0.5)
 
     def back_to_index(self, scene):
         if scene in [Scene.RA_MAIN, Scene.TERMINAL_LONGTERM, Scene.TERMINAL_MAIN]:
