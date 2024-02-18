@@ -304,6 +304,13 @@ class Recognizer(object):
 
         return self.scene
 
+    def find_ra_battle_exit(self) -> bool:
+        im = cv2.cvtColor(self.img, cv2.COLOR_BGR2HSV)
+        im = cv2.inRange(im, (29, 0, 0), (31, 255, 255))
+        matcher = Matcher(im)
+        res = loadimg(f"{__rootdir__}/resources/ra/battle_exit.png", True)
+        return matcher.match(res)
+
     def get_ra_scene(self) -> int:
         """
         生息演算场景识别
@@ -325,7 +332,7 @@ class Recognizer(object):
             self.scene = Scene.RA_GUIDE_DIALOG
 
         # 快速退出作战
-        elif self.find("ra/battle_exit", scope=((0, 0), (200, 160)), score=0.4):
+        elif self.find_ra_battle_exit():
             self.scene = Scene.RA_BATTLE
         elif self.find("ra/battle_exit_dialog", scope=((600, 360), (970, 430))):
             self.scene = Scene.RA_BATTLE_EXIT_CONFIRM

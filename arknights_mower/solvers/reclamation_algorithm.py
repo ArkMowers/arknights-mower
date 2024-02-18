@@ -223,10 +223,8 @@ class ReclamationAlgorithm(BaseSolver):
                 self.battle_wait -= 1
                 self.sleep()
             else:
-                if pos := self.find(
-                    "ra/battle_exit", scope=((0, 0), (200, 160)), score=0.4
-                ):
-                    self.tap(pos)
+                if pos := self.recog.find_ra_battle_exit():
+                    self.tap(pos, interval=0.5)
                 else:
                     self.recog.update()
         elif scene == Scene.RA_BATTLE_EXIT_CONFIRM:
