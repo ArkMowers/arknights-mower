@@ -305,7 +305,7 @@ class Recognizer(object):
         return self.scene
 
     def find_ra_battle_exit(self) -> bool:
-        im = cv2.cvtColor(self.img, cv2.COLOR_BGR2HSV)
+        im = cv2.cvtColor(self.img, cv2.COLOR_RGB2HSV)
         im = cv2.inRange(im, (29, 0, 0), (31, 255, 255))
         score, scope = self.template_match("ra/battle_exit", ((75, 47), (165, 126)), cv2.TM_CCOEFF_NORMED)
         return scope if score > 0.8 else None
