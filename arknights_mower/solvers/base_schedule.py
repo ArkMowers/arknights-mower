@@ -1729,7 +1729,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                            interval=1, rebuild=True)
                 swiped = True
             data = {}
-            _name = self.read_screen(self.recog.img[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]],
+            _name = self.read_screen(self.recog.gray[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]],
                                      type="name")
             error_count = 0
             while i >= 3 and _name != '' and (
@@ -1738,7 +1738,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, -self.recog.h * 0.45), duration=500,
                            interval=1, rebuild=True)
                 _name = self.read_screen(
-                    self.recog.img[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]], type="name")
+                    self.recog.gray[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]], type="name")
                 error_count += 1
                 if error_count > 1:
                     raise Exception("超过出错上限")

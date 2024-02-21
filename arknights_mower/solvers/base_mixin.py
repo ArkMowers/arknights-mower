@@ -2,15 +2,20 @@ from __future__ import annotations
 
 from datetime import timedelta, datetime
 from enum import Enum
+import lzma
+import pickle
 
 import cv2
+import numpy as np
 
+from arknights_mower import __rootdir__
 from arknights_mower.utils import character_recognize, segment
 from arknights_mower.utils.log import logger
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.recognize import Scene
 from arknights_mower.utils import rapidocr
 from arknights_mower.data import agent_list, ocr_error
+from arknights_mower.utils.image import thres2
 
 
 class ArrangeOrder(Enum):
@@ -26,6 +31,13 @@ arrange_order_res = {
     ArrangeOrder.FEELING: (1880 / 2496, 96 / 1404),
     ArrangeOrder.TRUST: (2050 / 2496, 96 / 1404),
 }
+
+with lzma.open(f"{__rootdir__}/models/operator_room.model", "rb") as f:
+    OP_ROOM = pickle.loads(f.read())
+
+kernel = np.ones((10, 10), np.uint8)
+mh = 44
+mw = 265
 
 
 class BaseMixin:
@@ -191,10 +203,25 @@ class BaseMixin:
 
         except Exception:
             return 24
+        
+    def read_operator_in_room(self, img):
+        img = thres2(img, 200)
+        img = cv2.copyMakeBorder(img, 10, 10, 10, 10, cv2.BORDER_CONSTANT, None, (0,))
+        dilation = cv2.dilate(img, kernel, iterations=1)
+        contours, _ = cv2.findContours(dilation, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        rect = map(lambda c: cv2.boundingRect(c), contours)
+        x, y, w, h = sorted(rect, key=lambda c: c[0])[0]
+        img = img[y : y + h, x : x + w]
+        tpl = np.zeros((mh, mw))
+        tpl[: img.shape[0], : img.shape[1]] = img
+        tpl = tpl.reshape(mh * mw)
+        return agent_list[OP_ROOM.predict([tpl])[0]]
 
     def read_screen(self, img, type="mood", limit=24, cord=None):
         if cord is not None:
             img = img[cord[1] : cord[3], cord[0] : cord[2]]
+        if type == "name":
+            return self.read_operator_in_room(img)
         try:
             ret = rapidocr.engine(img, use_det=False, use_cls=False, use_rec=True)[0]
             logger.debug(ret)
@@ -203,10 +230,6 @@ class BaseMixin:
                     return character_recognize.agent_name(img, self.recog.h)
                 raise Exception("识别失败")
             ret = ret[0][0]
-            if "赤金完成" in ret:
-                raise Exception("读取到赤金收取提示")
-            elif "心情" in ret:
-                raise Exception("识别区域错误")
             if "mood" in type:
                 if (f"/{limit}") in ret:
                     ret = ret.replace(f"/{limit}", "")
@@ -244,13 +267,13 @@ class BaseMixin:
                 time_str = self.read_screen(self.recog.img, type="time", cord=cord)
             h, m, s = str(time_str).split(":")
             if int(m) > 60 or int(s) > 60:
-                raise Exception(f"读取错误")
+                raise Exception("读取错误")
             res = int(h) * 3600 + int(m) * 60 + int(s)
             if upperlimit is not None and res > upperlimit:
-                raise Exception(f"超过读取上限")
+                raise Exception("超过读取上限")
             else:
                 return res
-        except:
+        except Exception:
             logger.error("读取失败")
             if error_count > 3:
                 logger.exception(f"读取失败{error_count}次超过上限")
