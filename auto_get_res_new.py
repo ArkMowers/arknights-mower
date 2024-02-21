@@ -118,7 +118,7 @@ class Arknights数据处理器:
                 print()
 
     def 读取关卡(self):
-
+        可以刷的活动关卡=[]
         关卡 = self.关卡表["stageValidInfo"]
         还未结束的非常驻关卡 = {
             键: 值
@@ -131,6 +131,7 @@ class Arknights数据处理器:
             if 键.endswith("#f#"):
                 关卡代码 += " 突袭"
             关卡名称 = self.关卡表["stages"][键]["name"]
+            关卡结束时间戳=还未结束的非常驻关卡[键]["endTs"] 
             关卡结束时间 = datetime.datetime.fromtimestamp(
                 还未结束的非常驻关卡[键]["endTs"] + 1
             )
@@ -145,7 +146,12 @@ class Arknights数据处理器:
                     关卡掉落["普通掉落"].append(
                         self.物品表["items"][item["id"]]["name"]
                     )
-            print(关卡代码, 关卡名称, 关卡掉落, 关卡结束时间)
+            if 关卡掉落["普通掉落"]!=[]:
+                可以刷的活动关卡.append({"id":关卡代码,"name":关卡名称,"drop":关卡掉落,"end":关卡结束时间戳 })
+            # print(关卡代码, 关卡名称, 关卡掉落, 关卡结束时间)
+            print(可以刷的活动关卡)
+        with open("./ui\src\pages\stage_data\event_data.json", "w", encoding="utf-8") as f:
+            json.dump(可以刷的活动关卡, f, ensure_ascii=False)
 
 
 if __name__ == "__main__":
