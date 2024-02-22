@@ -214,6 +214,7 @@ class BaseMixin:
         img = img[y : y + h, x : x + w]
         tpl = np.zeros((mh, mw))
         tpl[: img.shape[0], : img.shape[1]] = img
+        tpl /= 255
         tpl = tpl.reshape(mh * mw)
         return agent_list[OP_ROOM.predict([tpl])[0]]
 
