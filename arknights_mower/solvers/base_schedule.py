@@ -1569,7 +1569,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         if self.last_room.startswith('dorm') and is_dorm:
             self.detail_filter(False)
         while len(agent) > 0:
-            if retry_count > 1: raise Exception(f"到达最大尝试次数 1次")
+            if retry_count > 1: raise Exception("到达最大尝试次数 1次")
             if right_swipe > max_swipe:
                 # 到底了则返回再来一次
                 for _ in range(right_swipe):
@@ -1702,10 +1702,12 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
     def get_agent_from_room(self, room, read_time_index=None):
         if read_time_index is None:
             read_time_index = []
+        while self.detect_gold_or_exp_complete():
+            logger.info("检测到产物收取提示")
+            self.sleep(1)
         error_count = 0
         if room == 'meeting':
-            time.sleep(3)
-            self.recog.update()
+            self.sleep(3)
             clue_res = self.read_screen(self.recog.img, limit=10, cord=(645, 977, 755, 1018))
             if clue_res != 11:
                 self.clue_count = clue_res

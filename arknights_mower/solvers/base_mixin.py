@@ -15,7 +15,8 @@ from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.recognize import Scene
 from arknights_mower.utils import rapidocr
 from arknights_mower.data import agent_list, ocr_error
-from arknights_mower.utils.image import thres2
+from arknights_mower.utils.image import thres2, loadimg
+from arknights_mower.utils.matcher import Matcher
 
 
 class ArrangeOrder(Enum):
@@ -204,6 +205,13 @@ class BaseMixin:
         except Exception:
             return 24
         
+    def detect_gold_or_exp_complete(self):
+        _, img = cv2.threshold(self.recog.img, 40, 255, cv2.THRESH_TOZERO)
+        matcher = Matcher(img)
+        gold = loadimg(f"{__rootdir__}/resources/infra_gold_complete.png")
+        exp = loadimg(f"{__rootdir__}/resources/infra_exp_complete.png")
+        return matcher.match(gold) or matcher.match(exp)
+
     def read_operator_in_room(self, img):
         img = thres2(img, 200)
         img = cv2.copyMakeBorder(img, 10, 10, 10, 10, cv2.BORDER_CONSTANT, None, (0,))
