@@ -945,8 +945,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 raise Exception('未成功进入无人机界面')
             self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=1)
             error_count += 1
-        execute_time = self.double_read_time((int(self.recog.w * 650 / 2496), int(self.recog.h * 660 / 1404),
-                                              int(self.recog.w * 815 / 2496), int(self.recog.h * 710 / 1404)),
+        execute_time = self.double_read_time(((int(self.recog.w * 650 / 2496), int(self.recog.h * 660 / 1404)),
+                                              (int(self.recog.w * 815 / 2496), int(self.recog.h * 710 / 1404))),
                                              use_digit_reader=True)
         execute_time = execute_time - timedelta(seconds=(60 * self.run_order_delay))
         logger.info('下一次进行插拔的时间为：' + execute_time.strftime("%H:%M:%S"))
@@ -1117,7 +1117,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 # 返回线索主界面
             self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3, rebuild=False)
         # 线索交流开启
-        PARTY_TIME_COORDNIATE = (1768, 438, 1902, 480)
+        PARTY_TIME_COORDNIATE = ((1768, 438), (1902, 480))
         if clue_unlock is not None and get_all_clue:
             self.tap(clue_unlock)
             self.party_time = self.double_read_time(PARTY_TIME_COORDNIATE)
@@ -1313,8 +1313,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     raise Exception('未成功进入订单界面')
                 self.tap((self.recog.w // 20, self.recog.h * 19 // 20), interval=1)
                 error_count += 1
-            _time = self.double_read_time((self.recog.w * 650 // 2496, self.recog.h * 660 // 1404,
-                                           self.recog.w * 815 // 2496, self.recog.h * 710 // 1404),
+            _time = self.double_read_time(((self.recog.w * 650 // 2496, self.recog.h * 660 // 1404),
+                                           (self.recog.w * 815 // 2496, self.recog.h * 710 // 1404)),
                                           use_digit_reader=True)
             task_time = _time - timedelta(minutes=(self.run_order_delay))
             task = find_next_task(self.tasks, task_type=TaskTypes.RUN_ORDER, meta_data=room)
@@ -1809,8 +1809,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=0.5)
             error_count += 1
         # 订单剩余时间
-        execute_time = self.double_read_time((int(self.recog.w * 650 / 2496), int(self.recog.h * 660 / 1404),
-                                              int(self.recog.w * 815 / 2496), int(self.recog.h * 710 / 1404)),
+        execute_time = self.double_read_time(((int(self.recog.w * 650 / 2496), int(self.recog.h * 660 / 1404)),
+                                              (int(self.recog.w * 815 / 2496), int(self.recog.h * 710 / 1404))),
                                              use_digit_reader=True)
         return round((execute_time - datetime.now()).total_seconds(), 1)
 
@@ -1971,8 +1971,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=0.5)
                     error_count += 1
                 # 订单剩余时间
-                execute_time = self.double_read_time((int(self.recog.w * 650 / 2496), int(self.recog.h * 660 / 1404),
-                                                      int(self.recog.w * 815 / 2496), int(self.recog.h * 710 / 1404)),
+                execute_time = self.double_read_time(((int(self.recog.w * 650 / 2496), int(self.recog.h * 660 / 1404)),
+                                                      (int(self.recog.w * 815 / 2496), int(self.recog.h * 710 / 1404))),
                                                      use_digit_reader=True)
                 wait_time = round((execute_time - datetime.now()).total_seconds(), 1)
                 logger.debug(f"停止{wait_time}秒等待订单完成")
