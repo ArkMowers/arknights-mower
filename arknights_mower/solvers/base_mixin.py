@@ -175,7 +175,7 @@ class BaseMixin:
     def read_accurate_mood(self, img):
         try:
             img = thres2(img, 200)
-            return cv2.countNonZero(img) / 310
+            return cv2.countNonZero(img) * 24 / 310
         except Exception:
             return 24
         
