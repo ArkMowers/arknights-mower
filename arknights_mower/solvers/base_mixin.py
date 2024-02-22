@@ -172,36 +172,10 @@ class BaseMixin:
         execute_time = datetime.now() + timedelta(seconds=(time_in_seconds))
         return execute_time
 
-    def read_accurate_mood(self, img, cord):
+    def read_accurate_mood(self, img):
         try:
-            img = img[cord[1] : cord[3], cord[0] : cord[2]]
-            # Convert the image to grayscale
-            gray_image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-            blurred_image = cv2.GaussianBlur(gray_image, (5, 5), 0)
-
-            # Threshold the image to isolate the progress bar region
-            contours, hierarchy = cv2.findContours(
-                blurred_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-            )
-
-            # Calculate the bounding box of the progress bar
-            x, y, w, h = cv2.boundingRect(contours[0])
-
-            # Crop the progress bar region
-            progress_bar = img[y : y + h, x : x + w]
-
-            # Convert the progress bar to grayscale
-            gray_pb = cv2.cvtColor(progress_bar, cv2.COLOR_BGR2GRAY)
-
-            # Threshold the progress bar to isolate the gray fill
-            ret, thresh_pb = cv2.threshold(gray_pb, 137, 255, cv2.THRESH_BINARY)
-
-            # Calculate the ratio of colored pixels to the total number of pixels in the progress bar region
-            total_pixels = w * h
-            colored_pixels = cv2.countNonZero(thresh_pb)
-            return colored_pixels / total_pixels * 24
-
+            img = thres2(img, 200)
+            return cv2.countNonZero(img) / 310
         except Exception:
             return 24
         
