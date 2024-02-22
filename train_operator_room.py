@@ -20,10 +20,9 @@ Y = []
 kernel = np.ones((10, 10), np.uint8)
 
 for idx, operator in enumerate(agent_list):
-    op = operator.replace("-", "")
     img = Image.new(mode="L", size=(400, 100))
     draw = ImageDraw.Draw(img)
-    draw.text((50, 20), op, fill=(255,), font=font)
+    draw.text((50, 20), operator, fill=(255,), font=font)
     img = np.array(img, dtype=np.uint8)
     img = thres2(img, 200)
     dilation = cv2.dilate(img, kernel, iterations=1)
