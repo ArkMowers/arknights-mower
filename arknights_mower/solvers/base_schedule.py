@@ -1721,10 +1721,14 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         name_x = (1288, 1869)
         name_y = [(135, 326), (344, 535), (553, 744), (532, 723), (741, 932)]
         name_p = [tuple(zip(name_x, y)) for y in name_y]
-        time_p = [((1650, 270, 1780, 305)), ((1650, 480, 1780, 515)), ((1650, 690, 1780, 725)),
-                  ((1650, 668, 1780, 703)), ((1650, 877, 1780, 912))]
-        mood_p = [((1470, 219, 1780, 221)), ((1470, 428, 1780, 430)), ((1470, 637, 1780, 639)),
-                  ((1470, 615, 1780, 617)), ((1470, 823, 1780, 825))]
+        time_x = (1650, 1780)
+        time_y = [(270, 305), (480, 515), (690, 725), (668, 703), (877, 912)]
+        time_p = [tuple(zip(time_x, y)) for y in time_y]
+        mood_x = (1470, 1780)
+        mood_y = [(219, 220), (428, 429), (637, 638), (615, 616), (823, 825)]
+        mood_y = (219, 428, 637, 615, 823)
+        mood_y = [(y, y + 1) for y in mood_y]
+        mood_p = [tuple(zip(mood_x, y)) for y in mood_y]
         result = []
         swiped = False
         for i in range(0, length):
@@ -1759,7 +1763,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 agent = self.op_data.operators[_name]
                 if self.op_data.operators[_name].need_to_refresh(r=room) or (
                         agent.is_resting() and not room.startswith('dorm') and agent.is_high()):
-                    _mood = self.read_accurate_mood(self.recog.img, cord=mood_p[i])
+                    _mood = self.read_accurate_mood(cropimg(self.recog.gray, mood_p[i]))
                     update_time = True
                 else:
                     _mood = self.op_data.operators[_name].current_mood()
