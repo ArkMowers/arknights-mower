@@ -31,6 +31,7 @@ from arknights_mower.utils.news import get_update_time
 from arknights_mower.utils import rapidocr
 from arknights_mower.utils.simulator import restart_simulator
 from arknights_mower.utils import config
+from arknights_mower.utils.image import cropimg
 import cv2
 
 from ctypes import CFUNCTYPE, c_int, c_char_p, c_void_p
@@ -1717,8 +1718,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         if length > 3: self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, self.recog.h * 0.45), duration=500,
                                   interval=1,
                                   rebuild=True)
-        name_p = [((1460, 160), (1800, 215)), ((1460, 365), (1800, 425)), ((1460, 576), (1800, 633)),
-                  ((1460, 555), (1800, 613)), ((1460, 765), (1800, 823))]
+        name_x = (1288, 1869)
+        name_y = [(135, 326), (344, 535), (553, 744), (532, 723), (741, 932)]
+        name_p = [tuple(zip(name_x, y)) for y in name_y]
         time_p = [((1650, 270, 1780, 305)), ((1650, 480, 1780, 515)), ((1650, 690, 1780, 725)),
                   ((1650, 668, 1780, 703)), ((1650, 877, 1780, 912))]
         mood_p = [((1470, 219, 1780, 221)), ((1470, 428, 1780, 430)), ((1470, 637, 1780, 639)),
@@ -1731,16 +1733,20 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                            interval=1, rebuild=True)
                 swiped = True
             data = {}
-            _name = self.read_screen(self.recog.gray[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]],
-                                     type="name")
+            if self.find("infra_no_operator", scope=name_p[i]):
+                _name = ""
+            else:
+                _name = self.read_screen(cropimg(self.recog.gray, name_p[i]), type="name")
             error_count = 0
             while i >= 3 and _name != '' and (
                     next((e for e in result if e['agent'] == _name), None)) is not None:
                 logger.warning("检测到滑动可能失败")
                 self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, -self.recog.h * 0.45), duration=500,
                            interval=1, rebuild=True)
-                _name = self.read_screen(
-                    self.recog.gray[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]], type="name")
+                if self.find("infra_no_operator", scope=name_p[i]):
+                    _name = ""
+                else:
+                    _name = self.read_screen(cropimg(self.recog.gray, name_p[i]), type="name")
                 error_count += 1
                 if error_count > 1:
                     raise Exception("超过出错上限")

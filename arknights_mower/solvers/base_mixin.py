@@ -15,7 +15,7 @@ from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.recognize import Scene
 from arknights_mower.utils import rapidocr
 from arknights_mower.data import agent_list, ocr_error
-from arknights_mower.utils.image import thres2, loadimg
+from arknights_mower.utils.image import thres2, loadimg, cropimg
 from arknights_mower.utils.matcher import Matcher
 
 
@@ -229,8 +229,9 @@ class BaseMixin:
 
     def read_screen(self, img, type="mood", limit=24, cord=None):
         if cord is not None:
-            img = img[cord[1] : cord[3], cord[0] : cord[2]]
+            img = cropimg(img, cord)
         if type == "name":
+            img = cropimg(img, ((169, 22), (513, 80)))
             return self.read_operator_in_room(img)
         try:
             ret = rapidocr.engine(img, use_det=False, use_cls=False, use_rec=True)[0]
