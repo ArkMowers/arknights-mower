@@ -205,12 +205,13 @@ class BaseMixin:
         except Exception:
             return 24
         
-    def detect_gold_or_exp_complete(self):
+    def detect_product_complete(self):
         _, img = cv2.threshold(self.recog.img, 40, 255, cv2.THRESH_TOZERO)
         matcher = Matcher(img)
         gold = loadimg(f"{__rootdir__}/resources/infra_gold_complete.png")
         exp = loadimg(f"{__rootdir__}/resources/infra_exp_complete.png")
-        return matcher.match(gold) or matcher.match(exp)
+        lmd = loadimg(f"{__rootdir__}/resources/infra_lmd_complete.png")
+        return matcher.match(gold) or matcher.match(exp) or matcher.match(lmd)
 
     def read_operator_in_room(self, img):
         img = thres2(img, 200)

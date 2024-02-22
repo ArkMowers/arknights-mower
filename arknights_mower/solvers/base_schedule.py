@@ -1702,7 +1702,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
     def get_agent_from_room(self, room, read_time_index=None):
         if read_time_index is None:
             read_time_index = []
-        while self.detect_gold_or_exp_complete():
+        while self.detect_product_complete():
             logger.info("检测到产物收取提示")
             self.sleep(1)
         error_count = 0
