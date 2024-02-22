@@ -1709,7 +1709,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         error_count = 0
         if room == 'meeting':
             self.sleep(3)
-            clue_res = self.read_screen(self.recog.img, limit=10, cord=(645, 977, 755, 1018))
+            clue_res = self.read_screen(self.recog.img, limit=10, cord=((645, 977), (755, 1018)))
             if clue_res != 11:
                 self.clue_count = clue_res
                 logger.info(f'当前拥有线索数量为{self.clue_count}')
