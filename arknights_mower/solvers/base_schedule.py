@@ -1621,8 +1621,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 else:
                     first_name = ret[0][0]
                 index_change = False
-                st = ret[-2][1][2]  # 起点
-                ed = ret[0][1][1]  # 终点
+                st = ret[-2][1][0]  # 起点
+                ed = ret[0][1][0]  # 终点
                 self.swipe_noinertia(st, (ed[0] - st[0], 0))
                 right_swipe += 1
             if len(agent) == 0: break;
@@ -1653,8 +1653,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 if free_num == 0:
                     break
                 else:
-                    st = ret[-2][1][2]  # 起点
-                    ed = ret[0][1][1]  # 终点
+                    st = ret[-2][1][0]  # 起点
+                    ed = ret[0][1][0]  # 终点
                     self.swipe_noinertia(st, (ed[0] - st[0], 0))
                     right_swipe += 1
         # 排序

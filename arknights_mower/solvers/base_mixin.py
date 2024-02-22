@@ -94,15 +94,14 @@ class BaseMixin:
         try:
             # 识别干员
             self.recog.update()
-            ret = character_recognize.agent(self.recog.img)  # 返回的顺序是从左往右从上往下
+            ret = character_recognize.operator_list(self.recog.img)  # 返回的顺序是从左往右从上往下
             # 提取识别出来的干员的名字
             select_name = []
-            for y in ret:
-                name = y[0]
+            for name, scope in ret:
                 if name in agent:
                     select_name.append(name)
                     # self.get_agent_detail((y[1][0]))
-                    self.tap((y[1][0]), interval=0)
+                    self.tap(scope, interval=0)
                     agent.remove(name)
                     # 如果是按照个数选择 Free
                     if max_agent_count != -1:
