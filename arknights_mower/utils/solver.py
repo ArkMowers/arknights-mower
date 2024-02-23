@@ -173,7 +173,7 @@ class BaseSolver:
     #     if interval > 0:
     #         self.sleep(interval, rebuild)
 
-    def swipe_noinertia(self, start: tp.Coordinate, movement: tp.Coordinate, duration: int = 100, interval: float = 1,
+    def swipe_noinertia(self, start: tp.Coordinate, movement: tp.Coordinate, duration: int = 50, interval: float = 1,
                         rebuild: bool = False) -> None:
         """ swipe with no inertia (movement should be vertical) """
         points = [start]
