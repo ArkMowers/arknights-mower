@@ -36,7 +36,8 @@
     "vue-axios": "^3.5.2",
     "vue-chartjs": "^5.2.0",
     "vue-echarts": "^6.6.1",
-    "vue-router": "^4.2.5"
+    "vue-router": "^4.2.5",
+    "vue-slicksort": "^2.0.5"
   },
   "devDependencies": {
     "@rushstack/eslint-patch": "^1.2.0",
@@ -45,7 +46,7 @@
     "@vue/eslint-config-prettier": "^7.1.0",
     "eslint": "^8.34.0",
     "eslint-plugin-vue": "^9.9.0",
-    "naive-ui": "^2.34.3",
+    "naive-ui": "^2.37.3",
     "prettier": "^2.8.4",
     "sass": "^1.63.4",
     "typescript": "^5.0.4",
