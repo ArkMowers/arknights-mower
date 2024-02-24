@@ -182,12 +182,7 @@ class ReclamationAlgorithm(BaseSolver):
 
     def map_skip_day(self, reason: str):
         logger.info(f"{reason}，跳过行动，进入下一天")
-        if pos := self.find("ra/days"):
-            self.tap(pos, interval=0.5)
-        elif pos := self.find("ra/save"):
-            self.tap(pos, interval=0.5)
-        else:
-            self.sleep()
+        self.tap((1764, 134), interval=0.5)
 
     def print_ap(self):
         logger.info(f"剩余决断次数：{self.ap}")
@@ -259,11 +254,11 @@ class ReclamationAlgorithm(BaseSolver):
                 self.in_adventure = self.task_queue[0]
             if self.find("ra/no_enough_resources"):
                 logger.info("所需资源不足")
-                if self.in_adventure == "奇遇_砾沙平原":
-                    self.task_queue.remove("资源区_射程以内")
-                    self.task_queue.remove("奇遇_崎岖窄路")
                 if self.in_adventure in self.task_queue:
                     self.task_queue.remove(self.in_adventure)
+                    if self.in_adventure == "奇遇_砾沙平原":
+                        self.task_queue.remove("资源区_射程以内")
+                        self.task_queue.remove("奇遇_崎岖窄路")
                 self.tap_element("ra/map_back")
             else:
                 tpl = loadimg(f"{__rootdir__}/resources/ra/ap-1.png", True)
@@ -422,10 +417,8 @@ class ReclamationAlgorithm(BaseSolver):
             self.tap_element("ra/dialog_cancel")
         elif 900 < scene < 1000:
             self.move_forward(scene)
-        elif scene == Scene.CONNECTING:
-            self.sleep(1)
         else:
-            self.recog.update()
+            self.sleep()
 
     def transition(self) -> bool:
         if (scene := self.ra_scene()) not in self.fast_tap_scenes:
