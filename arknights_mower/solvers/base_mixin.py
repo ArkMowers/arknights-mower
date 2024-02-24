@@ -122,13 +122,13 @@ class BaseMixin:
             self.swipe_only((w // 2, h // 2), (w // 2, 0), interval=0.5)
         return 0
 
-    def detail_filter(self, turn_on, type="not_in_dorm"):
+    def detail_filter(self, turn_on: bool, type="not_in_dorm"):
         logger.info(f'开始 {("打开" if turn_on else "关闭")} {type} 筛选')
         self.tap((self.recog.w * 0.95, self.recog.h * 0.05), interval=1)
         if type == "not_in_dorm":
-            not_in_dorm = self.find("arrange_non_check_in", score=0.9)
-            if turn_on ^ (not_in_dorm is None):
-                self.tap((self.recog.w * 0.3, self.recog.h * 0.5), interval=0.5)
+            not_in_dorm = self.get_color((605, 540))[2] > 100
+            if turn_on != not_in_dorm:
+                self.tap((self.recog.w * 0.3, self.recog.h * 0.5), interval=0.5, rebuild=False)
         # 确认
         self.tap((self.recog.w * 0.8, self.recog.h * 0.8), interval=0.5)
 
