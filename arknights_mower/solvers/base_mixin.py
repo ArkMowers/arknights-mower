@@ -122,13 +122,22 @@ class BaseMixin:
             self.swipe_only((w // 2, h // 2), (w // 2, 0), interval=0.5)
         return 0
 
-    def detail_filter(self, turn_on: bool, type="not_in_dorm"):
-        logger.info(f'开始 {("打开" if turn_on else "关闭")} {type} 筛选')
-        self.tap((self.recog.w * 0.95, self.recog.h * 0.05), interval=1)
-        if type == "not_in_dorm":
-            not_in_dorm = self.get_color((605, 540))[2] > 100
-            if turn_on != not_in_dorm:
-                self.tap((self.recog.w * 0.3, self.recog.h * 0.5), interval=0.5, rebuild=False)
+    def detail_filter(self, **kwargs):
+        labels = ["未进驻", "产出设施", "功能设施", "自定义设施", "控制中枢", "生产类后勤", "功能类后勤", "恢复类后勤"]
+        label_x = (560, 815, 1070, 1330)
+        label_y = (540, 645)
+        label_pos = []
+        for y in label_y:
+            for x in label_x:
+                label_pos.append((x, y))
+        label_pos_map = dict(zip(labels, label_pos))
+        target_state = dict(zip(labels, [False] * len(labels))).update(kwargs)
+        logger.info("，".join(f"{'打开' if value else '关闭'}{label}筛选" for label, value in kwargs.items()))
+        self.tap((self.recog.w * 0.95, self.recog.h * 0.05))
+        for label, pos in label_pos_map.items():
+            current_state = self.get_color(pos)[2] > 100
+            if target_state[label] != current_state:
+                self.tap(pos, interval=0.1, rebuild=False)
         # 确认
         self.tap((self.recog.w * 0.8, self.recog.h * 0.8), interval=0.5)
 

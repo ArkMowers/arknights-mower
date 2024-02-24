@@ -1568,7 +1568,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         selected = []
         logger.info(f'上次进入房间为：{self.last_room},本次房间为：{room}')
         if self.last_room.startswith('dorm') and is_dorm:
-            self.detail_filter(False)
+            self.detail_filter()
         while len(agent) > 0:
             if retry_count > 1: raise Exception("到达最大尝试次数 1次")
             if right_swipe > max_swipe:
@@ -1578,7 +1578,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 right_swipe = 0
                 max_swipe = 50
                 retry_count += 1
-                self.detail_filter(False)
+                self.detail_filter()
             if first_time:
                 # 清空
                 if is_dorm:
@@ -1635,7 +1635,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 # 滑动到最左边
                 self.sleep(interval=0.5, rebuild=False)
                 right_swipe = self.swipe_left(right_swipe, w, h)
-            self.detail_filter(True)
+            self.detail_filter(未进驻=True)
             self.switch_arrange_order(3, "true")
             # 只选择在列表里面的
             # 替换组小于20才休息，防止进入就满心情进行网络连接
