@@ -1612,7 +1612,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             first_time = False
 
             changed, ret = self.scan_agent(agent)
-            if not siege and agent == ["推进之王"]:
+            if not siege and agent == ["推进之王"] and not is_dorm:
                 siege = True
                 self.detail_filter(恢复类后勤=True)
             if changed:
