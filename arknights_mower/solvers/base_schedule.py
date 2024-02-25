@@ -1569,6 +1569,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         logger.info(f'上次进入房间为：{self.last_room},本次房间为：{room}')
         if self.last_room.startswith('dorm') and is_dorm:
             self.detail_filter()
+        siege = False # 推进之王
         while len(agent) > 0:
             if retry_count > 1: raise Exception("到达最大尝试次数 1次")
             if right_swipe > max_swipe:
@@ -1605,11 +1606,15 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     self.switch_arrange_order(arrange_type[0], arrange_type[1])
                     # 滑倒最左边
                     self.sleep(interval=0.5, rebuild=True)
-                    right_swipe = self.swipe_left(right_swipe, w, h)
+                    if not siege:
+                        right_swipe = self.swipe_left(right_swipe, w, h)
                     pre_order = arrange_type
             first_time = False
 
             changed, ret = self.scan_agent(agent)
+            if not siege and agent == ["推进之王"]:
+                siege = True
+                self.detail_filter(恢复类后勤=True)
             if changed:
                 selected.extend(changed)
                 # 如果找到了
@@ -1625,7 +1630,11 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 ed = ret[0][1][0]  # 终点
                 self.swipe_noinertia(st, (ed[0] - st[0], 0))
                 right_swipe += 1
-            if len(agent) == 0: break;
+            if len(agent) == 0:
+                if siege:
+                    self.detail_filter()
+                    right_swipe = 0
+                break
 
         # 安排空闲干员
         if free_num:
