@@ -131,8 +131,10 @@ class BaseMixin:
             for x in label_x:
                 label_pos.append((x, y))
         label_pos_map = dict(zip(labels, label_pos))
-        target_state = dict(zip(labels, [False] * len(labels))).update(kwargs)
-        logger.info("，".join(f"{'打开' if value else '关闭'}{label}筛选" for label, value in kwargs.items()))
+        target_state = dict(zip(labels, [False] * len(labels)))
+        target_state.update(kwargs)
+        if kwargs:
+            logger.info("，".join(f"{'打开' if value else '关闭'}{label}筛选" for label, value in kwargs.items()))
         self.tap((self.recog.w * 0.95, self.recog.h * 0.05))
         for label, pos in label_pos_map.items():
             current_state = self.get_color(pos)[2] > 100
