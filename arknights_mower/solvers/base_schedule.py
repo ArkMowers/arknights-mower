@@ -958,17 +958,17 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
     def todo_list(self) -> None:
         """ 处理基建 Todo 列表 """
         tapped = False
-        trust = self.find('infra_collect_trust')
+        trust = self.find('infra_collect_trust', score=0.6)
         if trust is not None:
             logger.info('基建：干员信赖')
             self.tap(trust)
             tapped = True
-        bill = self.find('infra_collect_bill')
+        bill = self.find('infra_collect_bill', score=0.6)
         if bill is not None:
             logger.info('基建：订单交付')
             self.tap(bill)
             tapped = True
-        factory = self.find('infra_collect_factory')
+        factory = self.find('infra_collect_factory', score=0.6)
         if factory is not None:
             logger.info('基建：可收获')
             self.tap(factory)
