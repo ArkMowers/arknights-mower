@@ -123,18 +123,25 @@ class BaseMixin:
         return 0
 
     def detail_filter(self, **kwargs):
+        if kwargs:
+            text = "，".join(f"{'打开' if value else '关闭'}{label}筛选" for label, value in kwargs.items())
+            text += "，关闭其余筛选"
+            logger.info(text)
+        else:
+            logger.info("关闭所有筛选")
+
         labels = ["未进驻", "产出设施", "功能设施", "自定义设施", "控制中枢", "生产类后勤", "功能类后勤", "恢复类后勤"]
         label_x = (560, 815, 1070, 1330)
         label_y = (540, 645)
+
         label_pos = []
         for y in label_y:
             for x in label_x:
                 label_pos.append((x, y))
+
         label_pos_map = dict(zip(labels, label_pos))
         target_state = dict(zip(labels, [False] * len(labels)))
         target_state.update(kwargs)
-        if kwargs:
-            logger.info("，".join(f"{'打开' if value else '关闭'}{label}筛选" for label, value in kwargs.items()))
         self.tap((self.recog.w * 0.95, self.recog.h * 0.05))
         for label, pos in label_pos_map.items():
             current_state = self.get_color(pos)[2] > 100
