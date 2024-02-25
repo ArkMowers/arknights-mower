@@ -170,9 +170,9 @@ class BaseMixin:
                     _room[i, 1] = min(_room[i, 1], self.recog.h)
 
                 # 点击进入
-                self.tap(_room[0], interval=3)
+                self.tap(_room[0], interval=1.1)
                 while self.find("control_central") is not None:
-                    self.tap(_room[0], interval=3)
+                    self.tap(_room[0], interval=1.1)
                 success = True
             except Exception as e:
                 retry -= 1
