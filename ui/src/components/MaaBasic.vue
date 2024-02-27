@@ -50,7 +50,7 @@ const maa_touch_options = ['maatouch', 'minitouch', 'adb'].map((x) => {
 
 <template>
   <n-card title="Maa设置">
-    <p>清理智、线索收集（信用商店购物）、集成战略、保全派驻、生息演算</p>
+    <p>清理智、线索收集（信用商店购物）、集成战略、保全派驻</p>
     <n-form
       :label-placement="mobile ? 'top' : 'left'"
       :show-feedback="false"

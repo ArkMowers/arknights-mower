@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -64,13 +64,32 @@ class Recognizer(object):
     def save_screencap(self, folder):
         save_screenshot(self.screencap, subdir=f'{folder}/{self.h}x{self.w}')
 
+    def detect_connecting_scene(self) -> bool:
+        return (matched_scope := self.find('connecting', scope=self.CONN_SCOPE, score=self.CONN_PRESCORE)) is not None and matched_scope[1][0] - matched_scope[0][0] > self.CONN_MINWIDTH
+    
+    def detect_index_scene(self) -> bool:
+        return self.find('index_nav', thres=250, scope=((0, 0), (100+self.w//4, self.h//10))) is not None
+    
+    def check_loading_time(self):
+        if self.scene == Scene.CONNECTING:
+            self.loading_time += 1
+            if self.loading_time > 1:
+                logger.debug(f"检测到连续等待{self.loading_time}次")
+        else:
+            self.loading_time = 0
+        if self.loading_time > self.LOADING_TIME_LIMIT:
+            logger.info(f"检测到连续等待{self.loading_time}次")
+            self.device.exit()
+            time.sleep(3)
+            self.device.check_current_focus()
+
     def get_scene(self) -> int:
         """ get the current scene in the game """
         if self.scene != Scene.UNDEFINED:
             return self.scene
-        if (matched_scope := self.find('connecting', scope=self.CONN_SCOPE, score=self.CONN_PRESCORE)) is not None and matched_scope[1][0] - matched_scope[0][0] > self.CONN_MINWIDTH:
+        if self.detect_connecting_scene():
             self.scene = Scene.CONNECTING
-        elif self.find('index_nav', thres=250, scope=((0, 0), (100+self.w//4, self.h//10))) is not None:
+        elif self.detect_index_scene():
             self.scene = Scene.INDEX
         elif self.find('nav_index') is not None:
             self.scene = Scene.NAVIGATION_BAR
@@ -233,24 +252,14 @@ class Recognizer(object):
             self.save_screencap(self.scene)
         logger.info(f'Scene: {self.scene}: {SceneComment[self.scene]}')
 
-        if self.scene == Scene.CONNECTING:
-            self.loading_time += 1
-            if self.loading_time > 1:
-                logger.debug(f"检测到连续等待{self.loading_time}次")
-        else:
-            self.loading_time = 0
-        if self.loading_time > self.LOADING_TIME_LIMIT:
-            logger.info(f"检测到连续等待{self.loading_time}次")
-            self.device.exit()
-            time.sleep(3)
-            self.device.check_current_focus()
+        self.check_loading_time()
 
         return self.scene
 
     def get_infra_scene(self) -> int:
         if self.scene != Scene.UNDEFINED:
             return self.scene
-        if (matched_scope := self.find('connecting', scope=self.CONN_SCOPE, score=self.CONN_PRESCORE)) is not None and matched_scope[1][0] - matched_scope[0][0] > self.CONN_MINWIDTH:
+        if self.detect_connecting_scene():
             self.scene = Scene.CONNECTING
         elif self.find('double_confirm') is not None:
             if self.find('network_check') is not None:
@@ -279,7 +288,7 @@ class Recognizer(object):
             self.scene = Scene.LOADING
         elif self.find('loading4') is not None:
             self.scene = Scene.LOADING
-        elif self.find('index_nav', thres=250, scope=((0, 0), (100+self.w//4, self.h//10))) is not None:
+        elif self.detect_index_scene():
             self.scene = Scene.INDEX
         elif self.is_black():
             self.scene = Scene.LOADING
@@ -291,17 +300,104 @@ class Recognizer(object):
             self.save_screencap(self.scene)
         logger.info(f'Scene: {self.scene}: {SceneComment[self.scene]}')
 
-        if self.scene == Scene.CONNECTING:
-            self.loading_time += 1
-            if self.loading_time > 1:
-                logger.debug(f"检测到连续等待{self.loading_time}次")
+        self.check_loading_time()
+
+        return self.scene
+
+    def find_ra_battle_exit(self) -> bool:
+        im = cv2.cvtColor(self.img, cv2.COLOR_RGB2HSV)
+        im = cv2.inRange(im, (29, 0, 0), (31, 255, 255))
+        score, scope = self.template_match("ra/battle_exit", ((75, 47), (165, 126)), cv2.TM_CCOEFF_NORMED)
+        return scope if score > 0.8 else None
+
+    def get_ra_scene(self) -> int:
+        """
+        生息演算场景识别
+        """
+        # 场景缓存
+        if self.scene != Scene.UNDEFINED:
+            return self.scene
+        
+        # 连接中，优先级最高
+        if self.detect_connecting_scene():
+            self.scene = Scene.CONNECTING
+
+        # 奇遇
+        elif self.find("ra/adventure", scope=((380, 360), (470, 460)), thres=250):
+            self.scene = Scene.RA_ADVENTURE
+
+        # 快速跳过剧情对话
+        elif self.find("ra/guide_dialog", scope=((0, 0), (160, 110))):
+            self.scene = Scene.RA_GUIDE_DIALOG
+
+        # 快速退出作战
+        elif self.find_ra_battle_exit():
+            self.scene = Scene.RA_BATTLE
+        elif self.find("ra/battle_exit_dialog", scope=((600, 360), (970, 430))):
+            self.scene = Scene.RA_BATTLE_EXIT_CONFIRM
+
+        # 作战与分队
+        elif self.find("ra/start_action", scope=((1410, 790), (1900, 935))):
+            if self.find("ra/action_points", scope=((1660, 55), (1820, 110))):
+                self.scene = Scene.RA_BATTLE_ENTRANCE
+            else:
+                self.scene = Scene.RA_GUIDE_BATTLE_ENTRANCE
+        elif self.find("ra/squad_edit", scope=((1090, 0), (1910, 105))):
+            self.scene = Scene.RA_SQUAD_EDIT
+        elif self.find("ra/get_item", scope=((875, 360), (1055, 420))):
+            self.scene = Scene.RA_GET_ITEM
+        elif self.find("ra/return_from_kitchen", scope=((0, 0), (300, 105))):
+            self.scene = Scene.RA_KITCHEN
+        elif self.find("ra/squad_edit_confirm_dialog", scope=((585, 345), (1485, 440))):
+            self.scene = Scene.RA_SQUAD_EDIT_DIALOG
+        elif self.find("ra/battle_complete", scope=((70, 310), (580, 500))):
+            self.scene = Scene.RA_BATTLE_COMPLETE
+
+        # 结算界面
+        elif self.find("ra/day_complete", scope=((800, 330), (1130, 410))):
+            self.scene = Scene.RA_DAY_COMPLETE
+        elif self.find("ra/period_complete", scope=((800, 190), (1120, 265))):
+            self.scene = Scene.RA_PERIOD_COMPLETE
+
+        # 森蚺图耶对话
+        elif self.find("ra/guide_entrance", scope=((810, 270), (1320, 610))):
+            self.scene = Scene.RA_GUIDE_ENTRANCE
+
+        # 存档操作
+        elif self.find("ra/delete_save_confirm_dialog", scope=((585, 345), (1020, 440))):
+            self.scene = Scene.RA_DELETE_SAVE_DIALOG
+
+        # 地图识别
+        elif self.find("ra/waste_time_button", scope=((1665, 220), (1855, 290))):
+            self.scene = Scene.RA_DAY_DETAIL
+        elif self.find("ra/waste_time_dialog", scope=((585, 345), (1070, 440))):
+            self.scene = Scene.RA_WASTE_TIME_DIALOG
+        elif self.find("ra/notice", scope=((1785, 305), (1845, 370)), score=0.4) and self.color(1817, 333)[0] == 255:
+            self.scene = Scene.RA_MAP
+
+        # 从首页选择终端进入生息演算主页
+        elif self.find("terminal_longterm"):
+            self.scene = Scene.TERMINAL_LONGTERM
+        elif self.find("ra/main_title"):
+            self.scene = Scene.RA_MAIN
+        elif self.detect_index_scene():
+            self.scene = Scene.INDEX
+        elif self.find("terminal_pre") is not None:
+            self.scene = Scene.TERMINAL_MAIN
         else:
-            self.loading_time = 0
-        if self.loading_time > self.LOADING_TIME_LIMIT:
-            logger.info(f"检测到连续等待{self.loading_time}次")
-            self.device.exit()
-            time.sleep(3)
+            self.scene = Scene.UNKNOWN
             self.device.check_current_focus()
+
+        # save screencap to analyse
+        if config.SCREENSHOT_PATH is not None:
+            self.save_screencap(self.scene)
+        log_msg = f"Scene: {self.scene}: {SceneComment[self.scene]}"
+        if self.scene == Scene.UNKNOWN:
+            logger.debug(log_msg)
+        else:
+            logger.info(log_msg)
+
+        self.check_loading_time()
 
         return self.scene
 
@@ -333,10 +429,8 @@ class Recognizer(object):
         if thres is not None:
             # 对图像二值化处理
             res_img = thres2(loadimg(res, True), thres)
-
-            gray_img = cropimg(self.gray, scope)
-            matcher = Matcher(thres2(gray_img, thres))
-            ret = matcher.match(res_img, draw=draw, judge=judge, prescore=score)
+            matcher = Matcher(thres2(self.gray, thres))
+            ret = matcher.match(res_img, draw=draw, scope=scope, judge=judge, prescore=score)
         else:
             res_img = loadimg(res, True)
             matcher = self.matcher
@@ -370,3 +464,35 @@ class Recognizer(object):
             matcher = self.matcher
             score = matcher.score(res_img, draw=draw, scope=scope, only_score=True)
         return score
+
+    def template_match(self, res: str, scope: Optional[tp.Scope] = None, method: int = cv2.TM_CCOEFF) -> Tuple[float, tp.Scope]:
+        logger.debug(f"template_match: {res}")
+        res = f'{__rootdir__}/resources/{res}.png'
+
+        template = loadimg(res, True)
+        w, h = template.shape[::-1]
+
+        if scope:
+            x, y = scope[0]
+            img = cropimg(self.gray, scope)
+        else:
+            x, y = (0, 0)
+            img = self.gray
+
+        result = cv2.matchTemplate(img, template, method)
+        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+
+        if method in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]:
+            top_left = min_loc
+            score = min_val
+        else:
+            top_left = max_loc
+            score = max_val
+
+        p1 = (top_left[0] + x, top_left[1] + y)
+        p2 = (p1[0] + w, p1[1] + h)
+
+        ret_val = (score, (p1, p2))
+        logger.debug(f"template_match: {ret_val}")
+
+        return ret_val

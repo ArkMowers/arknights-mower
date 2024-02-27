@@ -17,6 +17,8 @@ from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.logic_expression import LogicExpression
 from arknights_mower.utils import rapidocr
 
+from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
+
 from evalidate import Expr
 
 conf = {}
@@ -62,12 +64,16 @@ def main(c, p, o={}, child_conn=None, global_space=None):
 
 # newbing说用这个来定义休息时间省事
 def format_time(seconds):
+    if seconds<0:# 权宜之计 配合刷生息演算
+        return f"{0} 分钟" # 权宜之计 配合刷生息演算
     # 计算小时和分钟
     rest_hours = int(seconds / 3600)
     rest_minutes = int((seconds % 3600) / 60)
     # 根据小时是否为零来决定是否显示
     if rest_hours == 0:
         return f"{rest_minutes} 分钟"
+    elif rest_minutes==0:
+        return f"{rest_hours} 小时"
     else:
         return f"{rest_hours} 小时 {rest_minutes} 分钟"
 
@@ -131,6 +137,7 @@ def set_maa_options(base_scheduler, conf):
     maa_config["reclamation_algorithm"] = (
             conf["maa_rg_enable"] == 1 and conf["maa_long_task_type"] == "ra"
     )
+    maa_config["ra_timeout"] = timedelta(seconds=conf["reclamation_algorithm"]["timeout"])
     base_scheduler.maa_config = maa_config
 
     logger.debug(f"更新Maa设置：{base_scheduler.maa_config}")
@@ -347,9 +354,6 @@ def simulate():
         try:
             if len(base_scheduler.tasks) > 0:
                 (base_scheduler.tasks.sort(key=lambda x: x.time, reverse=False))
-                sleep_time = (
-                        base_scheduler.tasks[0].time - datetime.now()
-                ).total_seconds()
                 logger.info("||".join([str(t) for t in base_scheduler.tasks]))
                 remaining_time = (
                         base_scheduler.tasks[0].time - datetime.now()
@@ -360,7 +364,7 @@ def simulate():
                 set_recruit_options(base_scheduler, new_conf)
                 set_skland_options(base_scheduler, new_conf)
 
-                if sleep_time > 540:
+                if remaining_time > 540:
                     # 刷新时间以鹰历为准
                     if base_scheduler.daily_report < (datetime.now() - timedelta(hours=4)).date():
                         if base_scheduler.report_plan_solver(conf["send_report"]):
@@ -416,14 +420,35 @@ def simulate():
                             time.sleep(remaining_time)
                             if base_scheduler.close_simulator_when_idle:
                                 restart_simulator(base_scheduler.simulator, stop=False)
-                elif sleep_time > 0:
+                elif remaining_time > 0:
+
+                    now_time = datetime.now().time()
+                    try:
+                        min_time = datetime.strptime(base_scheduler.maa_config['sleep_min'], "%H:%M").time()
+                        max_time = datetime.strptime(base_scheduler.maa_config['sleep_max'], "%H:%M").time()
+                        if max_time < min_time:
+                            rg_sleep = now_time > min_time or now_time < max_time
+                        else:
+                            rg_sleep = min_time < now_time < max_time
+                    except ValueError:
+                        rg_sleep = False
+                    
+                    if not rg_sleep and base_scheduler.maa_config["reclamation_algorithm"]:
+                        base_scheduler.recog.update()
+                        base_scheduler.back_to_index()
+                        ra_solver = ReclamationAlgorithm()
+                        ra_solver.run(base_scheduler.tasks[0].time - datetime.now(), base_scheduler.maa_config["ra_timeout"])
+                        remaining_time = (
+                                base_scheduler.tasks[0].time - datetime.now()
+                        ).total_seconds()
+
                     subject = f"休息 {format_time(remaining_time)}，到{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}开始工作"
                     context = f"下一次任务:{base_scheduler.tasks[0].plan}"
                     logger.info(context)
                     logger.info(subject)
                     base_scheduler.task_count += 1
                     logger.info(f"第{base_scheduler.task_count}次任务结束")
-                    if sleep_time > 300:
+                    if remaining_time > 300:
                         if conf["close_simulator_when_idle"]:
                             restart_simulator(conf["simulator"], start=False)
                         elif conf["exit_game_when_idle"]:
@@ -434,7 +459,7 @@ def simulate():
                         ]
                     )
                     base_scheduler.send_message(body, subject, "html")
-                    time.sleep(sleep_time)
+                    time.sleep(remaining_time)
                     if conf["close_simulator_when_idle"]:
                         restart_simulator(conf["simulator"], stop=False)
             if (

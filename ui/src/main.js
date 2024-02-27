@@ -13,3 +13,9 @@ app.use(createPinia())
 app.provide('loaded', ref(false))
 
 app.mount('#app')
+// main.js
+
+import { plugin as Slicksort } from 'vue-slicksort'
+
+// Enables groups and drag and drop functionality
+app.use(Slicksort)

@@ -16,9 +16,10 @@ from .image import cropimg
 from .log import logger
 
 MATCHER_DEBUG = False
-FLANN_INDEX_KDTREE = 0
+# FLANN_INDEX_KDTREE = 1
+FLANN_INDEX_LSH = 6
 GOOD_DISTANCE_LIMIT = 0.7
-SIFT = cv2.SIFT_create()
+ORB = cv2.ORB_create(nfeatures=100000)
 with open(f'{__rootdir__}/models/svm.model', 'rb') as f:
     SVC = pickle.loads(f.read())
 
@@ -52,10 +53,10 @@ class Matcher(object):
         self.init_sift()
 
     def init_sift(self) -> None:
-        """ get SIFT feature points """
-        self.kp, self.des = SIFT.detectAndCompute(self.origin, None)
+        """ get ORB feature points """
+        self.kp, self.des = ORB.detectAndCompute(self.origin, None)
 
-    def match(self, query: tp.GrayImage, draw: bool = False, scope: tp.Scope = None, judge: bool = True,prescore = 0.0) -> Optional(tp.Scope):
+    def match(self, query: tp.GrayImage, draw: bool = False, scope: tp.Scope = None, judge: bool = True,prescore = 0.0) -> Optional[tp.Scope]:
         """ check if the image can be matched """
         rect_score = self.score(query, draw, scope)  # get matching score
         if rect_score is None:
@@ -77,7 +78,7 @@ class Matcher(object):
             logger.debug(f'match success: {score}')
             return rect  # success in matching
 
-    def score(self, query: tp.GrayImage, draw: bool = False, scope: tp.Scope = None, only_score: bool = False) -> Optional(Tuple[tp.Scope, tp.Score]):
+    def score(self, query: tp.GrayImage, draw: bool = False, scope: tp.Scope = None, only_score: bool = False) -> Optional[Tuple[tp.Scope, tp.Score]]:
         """ scoring of image matching """
         try:
             # if feature points is empty
@@ -106,20 +107,30 @@ class Matcher(object):
             # the height & width of query image
             h, w = query.shape
 
+            bordered = cv2.copyMakeBorder(query, 31, 31, 31, 31, cv2.BORDER_REPLICATE)
+
             # the feature point of query image
-            qry_kp, qry_des = SIFT.detectAndCompute(query, None)
+            qry_kp, qry_des = ORB.detectAndCompute(bordered, None)
 
             # build FlannBasedMatcher
-            index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
+            # index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
+            index_params= dict(algorithm = FLANN_INDEX_LSH,
+                   table_number = 6, # 12
+                   key_size = 12,     # 20
+                   multi_probe_level = 1) #2
             search_params = dict(checks=50)
             flann = cv2.FlannBasedMatcher(index_params, search_params)
             matches = flann.knnMatch(qry_des, ori_des, k=2)
 
             # store all the good matches as per Lowe's ratio test
             good = []
-            for x, y in matches:
-                if x.distance < GOOD_DISTANCE_LIMIT * y.distance:
-                    good.append(x)
+            for pair in matches:
+                if (len_pair := len(pair)) == 2:
+                    x, y = pair
+                    if x.distance < GOOD_DISTANCE_LIMIT * y.distance:
+                        good.append(x)
+                elif len_pair == 1:
+                    good.append(pair[0])
             good_matches_rate = len(good) / len(qry_des)
 
             # draw all the good matches, for debug
@@ -150,7 +161,8 @@ class Matcher(object):
                 return None
 
             # calc the location of the query image
-            quad = np.float32([[[0, 0]], [[0, h-1]], [[w-1, h-1]], [[w-1, 0]]])
+            # quad = np.float32([[[0, 0]], [[0, h-1]], [[w-1, h-1]], [[w-1, 0]]])
+            quad = np.float32([[[31, 31]], [[31, h+30]], [[w+30, h+30]], [[w+30, 31]]])
             quad = cv2.perspectiveTransform(quad, M)  # quadrangle
             quad_points = qp = np.int32(quad).reshape(4, 2).tolist()
 

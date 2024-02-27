@@ -1,12 +1,15 @@
-import requests
-from bs4 import BeautifulSoup
 import re
 from datetime import datetime
+
+import requests
+from bs4 import BeautifulSoup
+
 from arknights_mower.utils.log import logger
 
 
 def get_update_time():
-    url = "https://ak.hypergryph.com/news/"
+    host = "https://ak.hypergryph.com"
+    url = host + "/news/"
     response = requests.get(url)
     response.encoding = "utf8"
     soup = BeautifulSoup(response.text, "lxml")
@@ -25,11 +28,15 @@ def get_update_time():
                 logger.info("闪断更新时间已过")
             else:
                 delta = update_time - now
+                msg = "距离闪断更新的时间："
                 if delta.days > 0:
-                    logger.info(f"距离闪断更新的时间：{delta.days}天{delta.seconds // 3600}小时")
+                    msg += f"{delta.days}天{delta.seconds // 3600}小时"
                 else:
                     h = delta.seconds // 3600
                     m = (delta.seconds - h * 3600) // 60
-                    logger.info(f"距离闪断更新的时间：{h}小时{m}分钟")
+                    msg += f"{h}小时{m}分钟"
+                link = h1.parent["href"]
+                msg += "；更新公告：" + host + link
+                logger.info(msg)
             return update_time
     return None

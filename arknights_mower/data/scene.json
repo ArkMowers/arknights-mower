@@ -187,6 +187,10 @@
         "label": "TERMINAL_COLLECTION",
         "comment": "资源收集"
     },
+    "507": {
+        "label": "TERMINAL_LONGTERM",
+        "comment": "长期探索"
+    },
     "602": {
         "label": "OPERATOR_BEFORE",
         "comment": "作战前，关卡已选定"
@@ -266,6 +270,82 @@
     "803": {
         "label": "RECRUIT_AGENT",
         "comment": "开包干员展示"
+    },
+    "901": {
+        "label": "RA_MAIN",
+        "comment": "生息演算首页"
+    },
+    "902": {
+        "label": "RA_GUIDE_ENTRANCE",
+        "comment": "剧情入口：众人会聚之地（后舍）"
+    },
+    "903": {
+        "label": "RA_GUIDE_DIALOG",
+        "comment": "剧情对话"
+    },
+    "904": {
+        "label": "RA_BATTLE_ENTRANCE",
+        "comment": "作战入口"
+    },
+    "905": {
+        "label": "RA_BATTLE",
+        "comment": "作战中"
+    },
+    "906": {
+        "label": "RA_BATTLE_EXIT_CONFIRM",
+        "comment": "作战退出确认对话框"
+    },
+    "907": {
+        "label": "RA_GUIDE_BATTLE_ENTRANCE",
+        "comment": "剧情作战入口"
+    },
+    "908": {
+        "label": "RA_BATTLE_COMPLETE",
+        "comment": "作战结算"
+    },
+    "909": {
+        "label": "RA_MAP",
+        "comment": "地图"
+    },
+    "910": {
+        "label": "RA_SQUAD_EDIT",
+        "comment": "作战分队编辑"
+    },
+    "911": {
+        "label": "RA_KITCHEN",
+        "comment": "烹饪台"
+    },
+    "912": {
+        "label": "RA_GET_ITEM",
+        "comment": "获得物资"
+    },
+    "913": {
+        "label": "RA_SQUAD_EDIT_DIALOG",
+        "comment": "作战分队不携带干员确认"
+    },
+    "914": {
+        "label": "RA_DAY_COMPLETE",
+        "comment": "生息日结算"
+    },
+    "915": {
+        "label": "RA_DAY_DETAIL",
+        "comment": "当日详细信息"
+    },
+    "916": {
+        "label": "RA_WASTE_TIME_DIALOG",
+        "comment": "跳过行动确认对话框"
+    },
+    "917": {
+        "label": "RA_PERIOD_COMPLETE",
+        "comment": "生存周期完成"
+    },
+    "918": {
+        "label": "RA_DELETE_SAVE_DIALOG",
+        "comment": "存档删除确认"
+    },
+    "919": {
+        "label": "RA_ADVENTURE",
+        "comment": "奇遇"
     },
     "9998": {
         "label": "LOADING",

@@ -69,6 +69,7 @@ export const useConfigStore = defineStore('config', () => {
   const shop_collect_enable = ref(true)
   const meeting_level = ref(3)
   const fix_mumu12_adb_disconnect = ref(false)
+  const ra_timeout = ref(30)
 
   async function load_shop() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/shop`)
@@ -153,7 +154,8 @@ export const useConfigStore = defineStore('config', () => {
     webview.value = response.data.webview
     shop_collect_enable.value = response.data.shop_collect_enable
     meeting_level.value = response.data.meeting_level
-    fix_mumu12_adb_disconnect.value = response.fix_mumu12_adb_disconnect
+    fix_mumu12_adb_disconnect.value = response.data.fix_mumu12_adb_disconnect
+    ra_timeout.value = response.data.reclamation_algorithm.timeout
   }
 
   function build_config() {
@@ -227,7 +229,10 @@ export const useConfigStore = defineStore('config', () => {
       webview: webview.value,
       shop_collect_enable: shop_collect_enable.value ? 1 : 0,
       meeting_level: meeting_level.value,
-      fix_mumu12_adb_disconnect: fix_mumu12_adb_disconnect.value
+      fix_mumu12_adb_disconnect: fix_mumu12_adb_disconnect.value,
+      reclamation_algorithm: {
+        timeout: ra_timeout.value
+      }
     }
   }
 
@@ -307,6 +312,7 @@ export const useConfigStore = defineStore('config', () => {
     webview,
     shop_collect_enable,
     meeting_level,
-    fix_mumu12_adb_disconnect
+    fix_mumu12_adb_disconnect,
+    ra_timeout
   }
 })

@@ -28,7 +28,7 @@ jobs:
           npm run build
 
       - name: cache frontend dist
-        uses: actions/cache/save@v3
+        uses: actions/cache/save@v4
         with:
           key: frontend-dist-${{ github.sha }}
           path: ui/dist
@@ -52,7 +52,7 @@ jobs:
         run: bundle exec jekyll build -b /docs
 
       - name: cache docs
-        uses: actions/cache/save@v3
+        uses: actions/cache/save@v4
         with:
           key: docs-${{ github.sha }}
           path: _site
@@ -70,7 +70,7 @@ jobs:
           sed -i "s/__version__ = '\(.*\)'/__version__ = '\1+${GITHUB_SHA::7}'/g" ./arknights_mower/__init__.py
 
       - name: install python 3.8
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: 3.8
           cache: pip
@@ -83,7 +83,7 @@ jobs:
           venv\Scripts\pip install -U pyinstaller
 
       - name: install UPX
-        uses: crazy-max/ghaction-upx@v2
+        uses: crazy-max/ghaction-upx@v3
         with:
           install-only: true
 
@@ -95,7 +95,7 @@ jobs:
           venv\Scripts\pyinstaller .\webui_zip.spec --distpath=mower
 
       - name: cache mower
-        uses: actions/cache/save@v3
+        uses: actions/cache/save@v4
         with:
           enableCrossOsArchive: true
           key: mower-${{ github.sha }}
@@ -114,7 +114,7 @@ jobs:
           repository: ArkMowers/updater
 
       - name: install python 3.8
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: 3.8
           cache: pip
@@ -125,19 +125,19 @@ jobs:
           venv/bin/pip install -U xxhash backports.zoneinfo[tzdata]
 
       - name: restore frontend dist
-        uses: actions/cache/restore@v3
+        uses: actions/cache/restore@v4
         with:
           key: frontend-dist-${{ github.sha }}
           path: ui/dist
 
       - name: restore docs
-        uses: actions/cache/restore@v3
+        uses: actions/cache/restore@v4
         with:
           key: docs-${{ github.sha }}
           path: _site
 
       - name: restore mower
-        uses: actions/cache/restore@v3
+        uses: actions/cache/restore@v4
         with:
           enableCrossOsArchive: true
           key: mower-${{ github.sha }}
@@ -156,7 +156,7 @@ jobs:
         working-directory: mower
         run: zip -r mower.zip mower
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: mower
           path: mower/mower.zip

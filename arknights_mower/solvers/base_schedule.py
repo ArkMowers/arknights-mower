@@ -44,6 +44,8 @@ from arknights_mower.utils.email import maa_template
 
 from arknights_mower.solvers.base_mixin import ArrangeOrder, arrange_order_res, BaseMixin
 
+from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
+
 stage_drop = {}
 
 
@@ -132,23 +134,23 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
 
     def transition(self) -> None:
         self.recog.update()
-        if self.get_infra_scene() == Scene.INDEX:
+        if (scene := self.get_infra_scene()) == Scene.INDEX:
             self.tap_themed_element('index_infrastructure')
-        elif self.get_infra_scene() == Scene.INFRA_MAIN:
+        elif scene == Scene.INFRA_MAIN:
             return self.infra_main()
-        elif self.get_infra_scene() == Scene.INFRA_TODOLIST:
+        elif scene == Scene.INFRA_TODOLIST:
             return self.todo_list()
-        elif self.get_infra_scene() == Scene.INFRA_DETAILS:
+        elif scene == Scene.INFRA_DETAILS:
             self.back()
-        elif self.get_infra_scene() == Scene.LOADING:
+        elif scene == Scene.LOADING:
             self.waiting_solver(Scene.LOADING)
-        elif self.get_infra_scene() == Scene.CONNECTING:
+        elif scene == Scene.CONNECTING:
             self.waiting_solver(Scene.CONNECTING)
         elif self.get_navigation():
             self.tap_element('nav_infrastructure')
-        elif self.get_infra_scene() == Scene.INFRA_ARRANGE_ORDER:
-            self.tap_element('arrange_blue_yes')
-        elif self.get_infra_scene() == Scene.UNKNOWN or self.scene() != Scene.UNKNOWN:
+        elif scene == Scene.INFRA_ARRANGE_ORDER:
+            self.tap_element('arrange_blue_yes', x_rate=0.66)
+        elif scene == Scene.UNKNOWN or self.scene() != Scene.UNKNOWN:
             self.back_to_index()
             self.last_room = ''
             logger.info("重设上次房间为空")
@@ -1678,6 +1680,24 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             if self.op_data.operators[_operator].room == room:
                 self.op_data.operators[_operator].time_stamp = None
 
+    def turn_on_room_detail(self,room):
+        error_count = 0
+        while self.find('room_detail') is None:
+            if error_count > 3:
+                self.reset_room_time(room)
+                raise Exception('未成功进入房间')
+            if self.find('arrange_check_in'):
+                self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
+            else:
+                back_count  = 0
+                while  self.find('control_central') is None and back_count<2:
+                    self.back()
+                    back_count+=1
+                if self.find('control_central') is None:
+                    self.back_to_infrastructure()
+                self.enter_room(room)
+            error_count += 1
+
     @push_operators
     def get_agent_from_room(self, room, read_time_index=None):
         if read_time_index is None:
@@ -1690,12 +1710,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             if clue_res != 11:
                 self.clue_count = clue_res
                 logger.info(f'当前拥有线索数量为{self.clue_count}')
-        while self.find('room_detail') is None:
-            if error_count > 3:
-                self.reset_room_time(room)
-                raise Exception('未成功进入房间')
-            self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
-            error_count += 1
+        self.turn_on_room_detail(room)
         length = len(self.op_data.plan[room])
         if length > 3: self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, self.recog.h * 0.45), duration=500,
                                   interval=1,
@@ -1812,11 +1827,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             try:
                 error_count = 0
                 if not skip_enter: self.enter_room(room)
-                while self.find('room_detail') is None:
-                    if error_count > 3:
-                        raise Exception('未成功进入房间')
-                    self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
-                    error_count += 1
+                self.turn_on_room_detail(room)
                 error_count = 0
                 if not checked:
                     if ('但书' in plan[room] or '龙舌兰' in plan[room]) and not \
@@ -1853,11 +1864,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                                     minutes=self.run_order_delay)
                                 logger.info(f"订单倒计时 {remaining_time}秒")
                                 self.back()
-                                while self.find('room_detail') is None:
-                                    if error_count > 3:
-                                        raise Exception('未成功进入房间')
-                                    self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
-                                    error_count += 1
+                                self.turn_on_room_detail(room)
                         else:
                             logger.info(f"检测到漏单")
                             self.recog.save_screencap("run_order_failure")
@@ -2217,21 +2224,14 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 min_time = datetime.strptime(self.maa_config['sleep_min'], "%H:%M").time()
                 max_time = datetime.strptime(self.maa_config['sleep_max'], "%H:%M").time()
                 if max_time < min_time:
-                    if now_time > min_time or now_time < max_time:
-                        rg_sleep = True
-                    else:
-                        rg_sleep = False
+                    rg_sleep = now_time > min_time or now_time < max_time
                 else:
-                    if min_time < now_time < max_time:
-                        rg_sleep = True
-                    else:
-                        rg_sleep = False
+                    rg_sleep = min_time < now_time < max_time
             except ValueError:
                 rg_sleep = False
-            if (self.maa_config['roguelike'] or self.maa_config['reclamation_algorithm'] or self.maa_config[
-                'stationary_security_service']) and not rg_sleep:
-                logger.info(f'准备开始：肉鸽/保全/演算')
-                self.send_message('启动 肉鸽/保全/演算')
+            if (self.maa_config['roguelike'] or self.maa_config['stationary_security_service']) and not rg_sleep:
+                logger.info('准备开始：肉鸽/保全')
+                self.send_message('启动 肉鸽/保全')
                 while (self.tasks[0].time - datetime.now()).total_seconds() > 30:
                     self.MAA = None
                     self.initialize_maa()
@@ -2250,9 +2250,6 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                             'starts_count': 9999999,
                             'investments_count': 9999999,
                         })
-                    elif self.maa_config['reclamation_algorithm']:
-                        self.back_to_reclamation_algorithm()
-                        self.MAA.append_task('ReclamationAlgorithm')
                     elif self.maa_config['stationary_security_service']:
                         if self.maa_config['copilot_file_location'] == "" or self.maa_config[
                             'copilot_loop_times'] <= 0 or self.maa_config['sss_type'] not in [1, 2]:
@@ -2274,7 +2271,13 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         else:
                             time.sleep(0)
                     self.device.exit()
-            # 生息演算逻辑 结束
+
+            elif not rg_sleep and self.maa_config["reclamation_algorithm"]:
+                self.recog.update()
+                self.back_to_index()
+                ra_solver = ReclamationAlgorithm()
+                ra_solver.run(self.tasks[0].time - datetime.now(), self.maa_config["ra_timeout"])
+
             if one_time:
                 if len(self.tasks) > 0:
                     del self.tasks[0]
