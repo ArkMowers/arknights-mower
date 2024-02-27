@@ -74,6 +74,7 @@ class ReclamationAlgorithm(BaseSolver):
         self.task_queue = None
         self.in_adventure = False
         self.ap = None
+        self.vp = None
 
         super().run()
 
@@ -96,35 +97,79 @@ class ReclamationAlgorithm(BaseSolver):
             self.thread = None
         logger.debug("快速点击已停止")
 
-    def drag(self, res: str, position: tp.Coordinate = (960, 500)) -> bool:
-        place = None
-        pos = None
-        for place in self.places:
-            if pos := self.map.find(place, score=0.65):
-                break
-        if pos is None:
-            return False
-        if place.startswith("奇遇"):
-            adventures = [i for i in self.places if i.startswith("奇遇")]
-            scores = []
-            img = cropimg(self.map.map, ((pos[0][0] + 110, pos[0][1]), pos[1]))
-            img = thres2(img, 180)
-            for i in adventures:
-                template = loadimg(f"{__rootdir__}/resources/ra/map/{i}.png", True)
-                template = cropimg(template, ((151, 36), (254, 62)))
-                template = thres2(template, 180)
-                result = cv2.matchTemplate(img, template, cv2.TM_CCOEFF)
-                result = cv2.minMaxLoc(result)[1]
-                scores.append(result)
-            place = adventures[scores.index(max(scores))]
+    def detect_adventure(self, pos):
+        adventures = [i for i in self.places if i.startswith("奇遇")]
+        scores = []
+        img = cropimg(
+            self.map.map,
+            ((pos[0][0] + 140, pos[0][1] + 25), (pos[1][0], pos[1][1] - 15)),
+        )
+        img = thres2(img, 180)
+        for i in adventures:
+            template = loadimg(f"{__rootdir__}/resources/ra/map/{i}.png", True)
+            template = cropimg(template, ((151, 36), (254, 62)))
+            template = thres2(template, 180)
+            result = cv2.matchTemplate(img, template, cv2.TM_CCOEFF)
+            result = cv2.minMaxLoc(result)[1]
+            scores.append(result)
+        return adventures[scores.index(max(scores))]
 
+    def find_place(self, place=None):
+        self.map = Map(self.recog.gray)
+        if place is None:
+            for place in self.places:
+                if pos := self.map.find(place):
+                    break
+            if pos is None:
+                logger.info("在当前地图中没有找到任何地点")
+                return None, None
+            pos = self.map.map2scrn(pos[0]), self.map.map2scrn(pos[1])
+            if place.startswith("奇遇"):
+                place = self.detect_adventure(pos)
+            logger.info(f"在区域{pos}识别到任意地点{place}")
+            return pos, place
+        elif place.startswith("奇遇"):
+            while True:
+                pos = self.map.find(place)
+                if pos is None:
+                    logger.info(f"没有找到地点{place}")
+                    return None
+                if place == self.detect_adventure(pos):
+                    pos = self.map.map2scrn(pos[0]), self.map.map2scrn(pos[1])
+                    logger.info(f"在区域{pos}识别到指定地点{place}")
+                    return pos
+                else:
+                    cv2.rectangle(self.map.map, pos[0], pos[1], (255,), -1)
+                    self.map.matcher = Matcher(self.map.map)
+        else:
+            pos = self.map.find(place)
+            if pos is None:
+                logger.info(f"没有找到地点{place}")
+                return None
+            pos = self.map.map2scrn(pos[0]), self.map.map2scrn(pos[1])
+            logger.info(f"在区域{pos}识别到指定地点{place}")
+            return pos
+
+
+    def drag(
+        self, res: str, position: tp.Coordinate = (960, 500), update_vp: bool = True
+    ) -> bool:
+        self.map = Map(self.recog.gray)
         res_img = loadimg(f"{__rootdir__}/resources/ra/map/{res}.png", True)
         top_left = (
             position[0] - round(res_img.shape[1] / 2),
             position[1] - round(res_img.shape[0] / 2),
         )
-        vp1 = tuple(a - b for a, b in zip(self.places[place][0], pos[0]))
+        if update_vp:
+            pos, place = self.find_place()
+            if pos is None:
+                logger.warning("没有找到任何地点，拖拽失败")
+                return False
+            vp1 = tuple(a - b for a, b in zip(self.places[place][0], pos[0]))
+        else:
+            vp1 = self.vp
         vp2 = tuple(a - b for a, b in zip(self.places[res][0], top_left))
+        self.vp = vp2
         vp_offset = tuple(a - b for a, b in zip(vp1, vp2))
         total_distance = tuple(abs(a) for a in vp_offset)
         max_drag = tuple(b - a for a, b in zip(*self.drag_scope))
@@ -139,10 +184,60 @@ class ReclamationAlgorithm(BaseSolver):
         )
         for _ in range(steps):
             self.device.swipe_ext(
-                (start_point, end_point, end_point), durations=[500, 500]
+                (start_point, end_point, end_point), durations=[500, 200]
             )
         self.recog.update()
         return True
+
+    def plan_task(self):
+        self.task_queue = []
+        if not self.drag("奇遇_风啸峡谷"):
+            self.tap_element("ra/map_back")
+            return
+        if self.find_place("冲突区_丢失的订单"):
+            logger.info("奇遇_风啸峡谷已完成")
+        else:
+            logger.info("添加任务：奇遇_风啸峡谷")
+            self.task_queue.append("奇遇_风啸峡谷")
+        if not self.drag("资源区_射程以内", update_vp=False):
+            self.tap_element("ra/map_back")
+            return
+        if self.find_place("要塞_征税的选择"):
+            logger.info("左侧区域任务已完成")
+        elif self.find_place("奇遇_崎岖窄路"):
+            logger.info("添加任务：奇遇_崎岖窄路")
+            self.task_queue.append("奇遇_崎岖窄路")
+        elif self.find_place("资源区_射程以内"):
+            logger.info("添加任务：资源区_射程以内、奇遇_崎岖窄路")
+            self.task_queue += ["资源区_射程以内", "奇遇_崎岖窄路"]
+        elif self.find_place("奇遇_砾沙平原"):
+            logger.info("添加任务：奇遇_砾沙平原，资源区_射程以内，奇遇_崎岖窄路")
+            self.task_queue += ["奇遇_砾沙平原", "资源区_射程以内", "奇遇_崎岖窄路"]
+        else:
+            if not self.drag("资源区_林中寻宝", update_vp=False):
+                self.tap_element("ra/map_back")
+                return
+            if self.find_place("资源区_林中寻宝"):
+                logger.info(
+                    "添加任务：资源区_林中寻宝，奇遇_砾沙平原，资源区_射程以内，奇遇_崎岖窄路"
+                )
+                self.task_queue += [
+                    "资源区_林中寻宝",
+                    "奇遇_砾沙平原",
+                    "资源区_射程以内",
+                    "奇遇_崎岖窄路",
+                ]
+            else:
+                logger.info(
+                    "添加任务：捕猎区_聚羽之地，资源区_林中寻宝，奇遇_砾沙平原，资源区_射程以内，奇遇_崎岖窄路"
+                )
+                self.task_queue += [
+                    "捕猎区_聚羽之地",
+                    "资源区_林中寻宝",
+                    "奇遇_砾沙平原",
+                    "资源区_射程以内",
+                    "奇遇_崎岖窄路",
+                ]
 
     def detect_prepared(self) -> int:
         templates = [f"ra/prepared_{i}" for i in range(3)]
@@ -309,14 +404,7 @@ class ReclamationAlgorithm(BaseSolver):
                     self.tap((1540, 1010), interval=1.5)
                 return
             if self.task_queue is None:
-                self.task_queue = [
-                    "奇遇_风啸峡谷",
-                    "捕猎区_聚羽之地",
-                    "资源区_林中寻宝",
-                    "奇遇_砾沙平原",
-                    "资源区_射程以内",
-                    "奇遇_崎岖窄路",
-                ]
+                self.plan_task()
             if self.ap is None:
                 self.ap = self.detect_ap()
             if self.ap == 0:
@@ -332,11 +420,10 @@ class ReclamationAlgorithm(BaseSolver):
                 return
             logger.info(self.task_queue)
             place = self.task_queue[0]
-            self.map = Map(self.recog.gray)
-            pos = self.find(f"ra/map/{place}")
+            pos = self.find_place(place)
             if not pos:
                 if self.drag(place):
-                    pos = self.find(f"ra/map/{place}")
+                    pos = self.find_place(place)
                 else:
                     # 返回首页重新进入，使基地位于屏幕中央
                     self.tap_element("ra/map_back")
