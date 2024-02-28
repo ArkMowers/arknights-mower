@@ -224,7 +224,7 @@ class depotREC(BaseSolver):
 
     def 匹配物品一次(self, 物品, 物品灰, 次数):
         物品切 = 物品[21:239, 21:239]
-        物品特征 = cv2.resize(物品特征, (64, 64)) ## 把图片缩小了
+        物品切 = cv2.resize(物品切, (64, 64)) ## 把图片缩小了
         物品特征 = self.特征点提取(物品切)
         predicted_label = self.knn模型.predict([物品特征])
         物品数字 = self.读取物品数字(物品灰, predicted_label[0], 次数)
