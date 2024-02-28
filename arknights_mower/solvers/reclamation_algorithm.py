@@ -465,22 +465,18 @@ class ReclamationAlgorithm(BaseSolver):
 
         # 烹饪台
         elif scene == Scene.RA_KITCHEN:
-            self.tap_element("ra/auto+1", interval=0.5)
-            if self.detect_prepared() != 1:
-                logger.info("饮料无法合成，返回地图，清空任务列表")
-                self.tap_element("ra/return_from_kitchen", x_rate=0.07)
-                self.tap_element("ra/squad_back")
-                self.map_back()
-                self.task_queue = []
-                return
-            self.tap_element("ra/auto+1", interval=0.5)
-            if self.detect_prepared() != 2:
-                logger.info("饮料无法合成，返回地图，清空任务列表")
-                self.tap_element("ra/return_from_kitchen", x_rate=0.07)
-                self.tap_element("ra/squad_back")
-                self.map_back()
-                self.task_queue = []
-                return
+            last_drink = self.detect_prepared()
+            while last_drink < 2:
+                self.tap_element("ra/auto+1", interval=0.5)
+                drink = self.detect_prepared()
+                if drink == last_drink:
+                    logger.info("饮料无法合成，返回地图，清空任务列表")
+                    self.tap_element("ra/return_from_kitchen", x_rate=0.07)
+                    self.tap_element("ra/squad_back")
+                    self.map_back()
+                    self.task_queue = []
+                    return
+                last_drink = drink
             self.tap_element("ra/cook_button", interval=0.5)
 
         # 获得物资
