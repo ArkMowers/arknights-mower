@@ -5,6 +5,7 @@
     class="provider"
     :theme="theme == 'dark' ? darkTheme : undefined"
     :hljs="hljs"
+    style="user-select: none"
   >
     <n-global-style />
     <n-dialog-provider>
@@ -151,6 +152,11 @@ const menuOptions = computed(() => [
     label: () => h(RouterLink, { to: { path: '/settings' } }, { default: () => '全部设置' }),
     icon: renderIcon(Settings),
     key: 'go-to-allsetting'
+  },
+  {
+    label: () => h(RouterLink, { to: { path: '/aio' } }, { default: () => 'aio' }),
+    icon: renderIcon(Settings),
+    key: 'go-to-aio'
   },
   {
     label: () => h(RouterLink, { to: { path: '/plan-editor' } }, { default: () => '排班编辑' }),

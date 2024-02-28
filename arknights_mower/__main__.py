@@ -382,7 +382,32 @@ def simulate():
 
                     if base_scheduler.recruit_config['recruit_enable'] == 1:
                         base_scheduler.recruit_plan_solver()
+                    #应该在maa任务之后
+                    def _is_depotscan():
+                            import pandas as pd
+                            path=get_path("@app/tmp/depotresult.csv")
+                            # 读取 CSV 文件
+                            if os.path.exists(path):
+                                df = pd.read_csv(path)
+                                last_row_first_value = df.iloc[-1, 0]  # 最后一行的第一个值
+                                return int(last_row_first_value)
 
+                            else:
+                                logger.info(f"{path} 不存在,新建一个存储仓库物品的csv  扫描在{maa_config['maa_execution_gap']}之后")
+                                now_time=int(datetime.now().timestamp())
+                                result = [
+                                    now_time,
+                                    json.dumps({"空":0}, ensure_ascii=False),
+                                ]
+                                df = pd.DataFrame([result], columns=['Timestamp', 'Data'])
+                                df.to_csv(path, mode="a", index=False, header=True)
+                                return now_time
+
+                    if maa_config["maa_depot_enable"]:
+                        if int(datetime.now().timestamp())-_is_depotscan()>maa_config["maa_execution_gap"]*3600:
+                            base_scheduler.仓库扫描()
+                        else:
+                            logger.info("仓库扫描未到时间，暂不扫描")
                     if base_scheduler.maa_config["maa_enable"] == 1:
                         subject = (
                             f"下次任务在{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}"
@@ -420,6 +445,7 @@ def simulate():
                             time.sleep(remaining_time)
                             if base_scheduler.close_simulator_when_idle:
                                 restart_simulator(base_scheduler.simulator, stop=False)
+
                 elif remaining_time > 0:
 
                     now_time = datetime.now().time()
@@ -497,6 +523,7 @@ def simulate():
             restart_simulator(conf["simulator"])
         except Exception as E:
             logger.exception(f"程序出错--->{E}")
+
 
 
 def save_state(op_data, file="state.json"):
