@@ -94,33 +94,29 @@ class DigitReader:
     def get_report_number(self, digit_part):
         result = {}
         digit_part = cv2.cvtColor(digit_part, cv2.COLOR_BGR2RGB)
-        for j in range(9,-1,-1):
+        # digit_part = cv2.resize(digit_part, (width*2, height*2), interpolation=cv2.INTER_AREA)
+        for j in range(10):
+
             res = cv2.matchTemplate(
                 digit_part,
                 self.report_template[j],
-                cv2.TM_CCOEFF_NORMED,
+                cv2.TM_CCORR_NORMED,
             )
-            threshold = 0.8
+            threshold = 0.9
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+            # print(max_val, j)
             loc = np.where(res >= threshold)
             for i in range(len(loc[0])):
                 x = loc[1][i]
                 accept = True
                 for o in result:
                     if abs(o - x) < 5:
-                        if result[o]["max_val"] < max_val:
-                            result[o] = {
-                                "value": j,
-                                "max_val": max_val,
-                            }
                         accept = False
                         break
                 if accept:
-                    result[loc[1][i]] = {
-                        "value": j,
-                        "max_val": max_val,
-                    }
-        l = [str(result[k]["value"]) for k in sorted(result)]
+                    result[loc[1][i]] = j
+
+        l = [str(result[k]) for k in sorted(result)]
         return int("".join(l))
 
 

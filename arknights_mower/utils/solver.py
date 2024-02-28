@@ -173,7 +173,7 @@ class BaseSolver:
     #     if interval > 0:
     #         self.sleep(interval, rebuild)
 
-    def swipe_noinertia(self, start: tp.Coordinate, movement: tp.Coordinate, duration: int = 100, interval: float = 1,
+    def swipe_noinertia(self, start: tp.Coordinate, movement: tp.Coordinate, duration: int = 50, interval: float = 0.2,
                         rebuild: bool = False) -> None:
         """ swipe with no inertia (movement should be vertical) """
         points = [start]
@@ -222,7 +222,10 @@ class BaseSolver:
         while retry_times and not self.is_login():
             try:
                 if (scene := self.scene()) == Scene.LOGIN_START:
-                    self.tap((self.recog.w // 2, self.recog.h - 10), 3)
+                    # 应对两种情况：
+                    # 1. 点击左上角“网络检测”后出现“您即将进行一次网络拨测，该操作将采集您的网络状态并上报，点击确认继续”，点x
+                    # 2. 点击左上角“清除缓存”之后取消
+                    self.tap((665, 741), 3)
                 elif scene == Scene.LOGIN_NEW:
                     self.tap(self.find('login_new', score=0.8))
                 elif scene == Scene.LOGIN_BILIBILI:

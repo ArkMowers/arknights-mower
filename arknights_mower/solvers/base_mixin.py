@@ -2,15 +2,21 @@ from __future__ import annotations
 
 from datetime import timedelta, datetime
 from enum import Enum
+import lzma
+import pickle
 
 import cv2
+import numpy as np
 
+from arknights_mower import __rootdir__
 from arknights_mower.utils import character_recognize, segment
 from arknights_mower.utils.log import logger
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.recognize import Scene
 from arknights_mower.utils import rapidocr
 from arknights_mower.data import agent_list, ocr_error
+from arknights_mower.utils.image import thres2, loadimg, cropimg
+from arknights_mower.utils.matcher import Matcher
 
 
 class ArrangeOrder(Enum):
@@ -26,6 +32,13 @@ arrange_order_res = {
     ArrangeOrder.FEELING: (1880 / 2496, 96 / 1404),
     ArrangeOrder.TRUST: (2050 / 2496, 96 / 1404),
 }
+
+with lzma.open(f"{__rootdir__}/models/operator_room.model", "rb") as f:
+    OP_ROOM = pickle.loads(f.read())
+
+kernel = np.ones((10, 10), np.uint8)
+mh = 44
+mw = 265
 
 
 class BaseMixin:
@@ -81,15 +94,14 @@ class BaseMixin:
         try:
             # 识别干员
             self.recog.update()
-            ret = character_recognize.agent(self.recog.img)  # 返回的顺序是从左往右从上往下
+            ret = character_recognize.operator_list(self.recog.img)  # 返回的顺序是从左往右从上往下
             # 提取识别出来的干员的名字
             select_name = []
-            for y in ret:
-                name = y[0]
+            for name, scope in ret:
                 if name in agent:
                     select_name.append(name)
                     # self.get_agent_detail((y[1][0]))
-                    self.tap((y[1][0]), interval=0)
+                    self.tap(scope, interval=0)
                     agent.remove(name)
                     # 如果是按照个数选择 Free
                     if max_agent_count != -1:
@@ -110,13 +122,31 @@ class BaseMixin:
             self.swipe_only((w // 2, h // 2), (w // 2, 0), interval=0.5)
         return 0
 
-    def detail_filter(self, turn_on, type="not_in_dorm"):
-        logger.info(f'开始 {("打开" if turn_on else "关闭")} {type} 筛选')
-        self.tap((self.recog.w * 0.95, self.recog.h * 0.05), interval=1)
-        if type == "not_in_dorm":
-            not_in_dorm = self.find("arrange_non_check_in", score=0.9)
-            if turn_on ^ (not_in_dorm is None):
-                self.tap((self.recog.w * 0.3, self.recog.h * 0.5), interval=0.5)
+    def detail_filter(self, **kwargs):
+        if kwargs:
+            text = "，".join(f"{'打开' if value else '关闭'}{label}筛选" for label, value in kwargs.items())
+            text += "，关闭其余筛选"
+            logger.info(text)
+        else:
+            logger.info("关闭所有筛选")
+
+        labels = ["未进驻", "产出设施", "功能设施", "自定义设施", "控制中枢", "生产类后勤", "功能类后勤", "恢复类后勤"]
+        label_x = (560, 815, 1070, 1330)
+        label_y = (540, 645)
+
+        label_pos = []
+        for y in label_y:
+            for x in label_x:
+                label_pos.append((x, y))
+
+        label_pos_map = dict(zip(labels, label_pos))
+        target_state = dict(zip(labels, [False] * len(labels)))
+        target_state.update(kwargs)
+        self.tap((self.recog.w * 0.95, self.recog.h * 0.05))
+        for label, pos in label_pos_map.items():
+            current_state = self.get_color(pos)[2] > 100
+            if target_state[label] != current_state:
+                self.tap(pos, interval=0.1, rebuild=False)
         # 确认
         self.tap((self.recog.w * 0.8, self.recog.h * 0.8), interval=0.5)
 
@@ -140,9 +170,9 @@ class BaseMixin:
                     _room[i, 1] = min(_room[i, 1], self.recog.h)
 
                 # 点击进入
-                self.tap(_room[0], interval=3)
+                self.tap(_room[0], interval=1.1)
                 while self.find("control_central") is not None:
-                    self.tap(_room[0], interval=3)
+                    self.tap(_room[0], interval=1.1)
                 success = True
             except Exception as e:
                 retry -= 1
@@ -159,42 +189,41 @@ class BaseMixin:
         execute_time = datetime.now() + timedelta(seconds=(time_in_seconds))
         return execute_time
 
-    def read_accurate_mood(self, img, cord):
+    def read_accurate_mood(self, img):
         try:
-            img = img[cord[1] : cord[3], cord[0] : cord[2]]
-            # Convert the image to grayscale
-            gray_image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-            blurred_image = cv2.GaussianBlur(gray_image, (5, 5), 0)
-
-            # Threshold the image to isolate the progress bar region
-            contours, hierarchy = cv2.findContours(
-                blurred_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-            )
-
-            # Calculate the bounding box of the progress bar
-            x, y, w, h = cv2.boundingRect(contours[0])
-
-            # Crop the progress bar region
-            progress_bar = img[y : y + h, x : x + w]
-
-            # Convert the progress bar to grayscale
-            gray_pb = cv2.cvtColor(progress_bar, cv2.COLOR_BGR2GRAY)
-
-            # Threshold the progress bar to isolate the gray fill
-            ret, thresh_pb = cv2.threshold(gray_pb, 137, 255, cv2.THRESH_BINARY)
-
-            # Calculate the ratio of colored pixels to the total number of pixels in the progress bar region
-            total_pixels = w * h
-            colored_pixels = cv2.countNonZero(thresh_pb)
-            return colored_pixels / total_pixels * 24
-
+            img = thres2(img, 200)
+            return cv2.countNonZero(img) * 24 / 310
         except Exception:
             return 24
+        
+    def detect_product_complete(self):
+        _, img = cv2.threshold(self.recog.gray, 40, 255, cv2.THRESH_TOZERO)
+        matcher = Matcher(img)
+        gold = loadimg(f"{__rootdir__}/resources/infra_gold_complete.png", True)
+        exp = loadimg(f"{__rootdir__}/resources/infra_exp_complete.png", True)
+        lmd = loadimg(f"{__rootdir__}/resources/infra_lmd_complete.png", True)
+        return matcher.match(gold) or matcher.match(exp) or matcher.match(lmd)
+
+    def read_operator_in_room(self, img):
+        img = thres2(img, 200)
+        img = cv2.copyMakeBorder(img, 10, 10, 10, 10, cv2.BORDER_CONSTANT, None, (0,))
+        dilation = cv2.dilate(img, kernel, iterations=1)
+        contours, _ = cv2.findContours(dilation, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        rect = map(lambda c: cv2.boundingRect(c), contours)
+        x, y, w, h = sorted(rect, key=lambda c: c[0])[0]
+        img = img[y : y + h, x : x + w]
+        tpl = np.zeros((mh, mw))
+        tpl[: img.shape[0], : img.shape[1]] = img
+        tpl /= 255
+        tpl = tpl.reshape(mh * mw)
+        return agent_list[OP_ROOM.predict([tpl])[0]]
 
     def read_screen(self, img, type="mood", limit=24, cord=None):
         if cord is not None:
-            img = img[cord[1] : cord[3], cord[0] : cord[2]]
+            img = cropimg(img, cord)
+        if type == "name":
+            img = cropimg(img, ((169, 22), (513, 80)))
+            return self.read_operator_in_room(img)
         try:
             ret = rapidocr.engine(img, use_det=False, use_cls=False, use_rec=True)[0]
             logger.debug(ret)
@@ -203,10 +232,6 @@ class BaseMixin:
                     return character_recognize.agent_name(img, self.recog.h)
                 raise Exception("识别失败")
             ret = ret[0][0]
-            if "赤金完成" in ret:
-                raise Exception("读取到赤金收取提示")
-            elif "心情" in ret:
-                raise Exception("识别区域错误")
             if "mood" in type:
                 if (f"/{limit}") in ret:
                     ret = ret.replace(f"/{limit}", "")
@@ -244,13 +269,13 @@ class BaseMixin:
                 time_str = self.read_screen(self.recog.img, type="time", cord=cord)
             h, m, s = str(time_str).split(":")
             if int(m) > 60 or int(s) > 60:
-                raise Exception(f"读取错误")
+                raise Exception("读取错误")
             res = int(h) * 3600 + int(m) * 60 + int(s)
             if upperlimit is not None and res > upperlimit:
-                raise Exception(f"超过读取上限")
+                raise Exception("超过读取上限")
             else:
                 return res
-        except:
+        except Exception:
             logger.error("读取失败")
             if error_count > 3:
                 logger.exception(f"读取失败{error_count}次超过上限")

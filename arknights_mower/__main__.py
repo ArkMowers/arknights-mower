@@ -21,6 +21,9 @@ from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
 
 from evalidate import Expr
 
+from warnings import simplefilter
+simplefilter(action="ignore", category=FutureWarning)
+
 conf = {}
 plan = {}
 operators = {}
@@ -505,7 +508,7 @@ def simulate():
         except (ConnectionError, ConnectionAbortedError, AttributeError) as e:
             reconnect_tries += 1
             if reconnect_tries < reconnect_max_tries:
-                logger.warning(f"出现错误.尝试重启Mower")
+                logger.warning("出现错误.尝试重启Mower")
                 connected = False
                 while not connected:
                     try:

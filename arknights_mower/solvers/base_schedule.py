@@ -31,6 +31,7 @@ from arknights_mower.utils.news import get_update_time
 from arknights_mower.utils import rapidocr
 from arknights_mower.utils.simulator import restart_simulator
 from arknights_mower.utils import config
+from arknights_mower.utils.image import cropimg
 import cv2
 
 from ctypes import CFUNCTYPE, c_int, c_char_p, c_void_p
@@ -947,8 +948,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 raise Exception('未成功进入无人机界面')
             self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=1)
             error_count += 1
-        execute_time = self.double_read_time((int(self.recog.w * 650 / 2496), int(self.recog.h * 660 / 1404),
-                                              int(self.recog.w * 815 / 2496), int(self.recog.h * 710 / 1404)),
+        execute_time = self.double_read_time(((int(self.recog.w * 650 / 2496), int(self.recog.h * 660 / 1404)),
+                                              (int(self.recog.w * 815 / 2496), int(self.recog.h * 710 / 1404))),
                                              use_digit_reader=True)
         execute_time = execute_time - timedelta(seconds=(60 * self.run_order_delay))
         logger.info('下一次进行插拔的时间为：' + execute_time.strftime("%H:%M:%S"))
@@ -960,17 +961,17 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
     def todo_list(self) -> None:
         """ 处理基建 Todo 列表 """
         tapped = False
-        trust = self.find('infra_collect_trust')
+        trust = self.find('infra_collect_trust', score=0.6)
         if trust is not None:
             logger.info('基建：干员信赖')
             self.tap(trust)
             tapped = True
-        bill = self.find('infra_collect_bill')
+        bill = self.find('infra_collect_bill', score=0.6)
         if bill is not None:
             logger.info('基建：订单交付')
             self.tap(bill)
             tapped = True
-        factory = self.find('infra_collect_factory')
+        factory = self.find('infra_collect_factory', score=0.6)
         if factory is not None:
             logger.info('基建：可收获')
             self.tap(factory)
@@ -1119,7 +1120,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 # 返回线索主界面
             self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3, rebuild=False)
         # 线索交流开启
-        PARTY_TIME_COORDNIATE = (1768, 438, 1902, 480)
+        PARTY_TIME_COORDNIATE = ((1768, 438), (1902, 480))
         if clue_unlock is not None and get_all_clue:
             self.tap(clue_unlock)
             self.party_time = self.double_read_time(PARTY_TIME_COORDNIATE)
@@ -1315,8 +1316,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     raise Exception('未成功进入订单界面')
                 self.tap((self.recog.w // 20, self.recog.h * 19 // 20), interval=1)
                 error_count += 1
-            _time = self.double_read_time((self.recog.w * 650 // 2496, self.recog.h * 660 // 1404,
-                                           self.recog.w * 815 // 2496, self.recog.h * 710 // 1404),
+            _time = self.double_read_time(((self.recog.w * 650 // 2496, self.recog.h * 660 // 1404),
+                                           (self.recog.w * 815 // 2496, self.recog.h * 710 // 1404)),
                                           use_digit_reader=True)
             task_time = _time - timedelta(minutes=(self.run_order_delay))
             task = find_next_task(self.tasks, task_type=TaskTypes.RUN_ORDER, meta_data=room)
@@ -1570,9 +1571,10 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         selected = []
         logger.info(f'上次进入房间为：{self.last_room},本次房间为：{room}')
         if self.last_room.startswith('dorm') and is_dorm:
-            self.detail_filter(False)
+            self.detail_filter()
+        siege = False # 推进之王
         while len(agent) > 0:
-            if retry_count > 1: raise Exception(f"到达最大尝试次数 1次")
+            if retry_count > 1: raise Exception("到达最大尝试次数 1次")
             if right_swipe > max_swipe:
                 # 到底了则返回再来一次
                 for _ in range(right_swipe):
@@ -1580,7 +1582,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 right_swipe = 0
                 max_swipe = 50
                 retry_count += 1
-                self.detail_filter(False)
+                self.detail_filter()
             if first_time:
                 # 清空
                 if is_dorm:
@@ -1607,11 +1609,15 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     self.switch_arrange_order(arrange_type[0], arrange_type[1])
                     # 滑倒最左边
                     self.sleep(interval=0.5, rebuild=True)
-                    right_swipe = self.swipe_left(right_swipe, w, h)
+                    if not siege:
+                        right_swipe = self.swipe_left(right_swipe, w, h)
                     pre_order = arrange_type
             first_time = False
 
             changed, ret = self.scan_agent(agent)
+            if not siege and agent == ["推进之王"] and not is_dorm:
+                siege = True
+                self.detail_filter(恢复类后勤=True)
             if changed:
                 selected.extend(changed)
                 # 如果找到了
@@ -1623,11 +1629,15 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 else:
                     first_name = ret[0][0]
                 index_change = False
-                st = ret[-2][1][2]  # 起点
-                ed = ret[0][1][1]  # 终点
+                st = ret[-2][1][0]  # 起点
+                ed = ret[0][1][0]  # 终点
                 self.swipe_noinertia(st, (ed[0] - st[0], 0))
                 right_swipe += 1
-            if len(agent) == 0: break;
+            if len(agent) == 0:
+                if siege:
+                    self.detail_filter()
+                    right_swipe = 0
+                break
 
         # 安排空闲干员
         if free_num:
@@ -1637,7 +1647,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 # 滑动到最左边
                 self.sleep(interval=0.5, rebuild=False)
                 right_swipe = self.swipe_left(right_swipe, w, h)
-            self.detail_filter(True)
+            self.detail_filter(未进驻=True)
             self.switch_arrange_order(3, "true")
             # 只选择在列表里面的
             # 替换组小于20才休息，防止进入就满心情进行网络连接
@@ -1655,8 +1665,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 if free_num == 0:
                     break
                 else:
-                    st = ret[-2][1][2]  # 起点
-                    ed = ret[0][1][1]  # 终点
+                    st = ret[-2][1][0]  # 起点
+                    ed = ret[0][1][0]  # 终点
                     self.swipe_noinertia(st, (ed[0] - st[0], 0))
                     right_swipe += 1
         # 排序
@@ -1689,7 +1699,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             if error_count > 3:
                 self.reset_room_time(room)
                 raise Exception('未成功进入房间')
-            if self.find('arrange_check_in'):
+            if self.find('arrange_check_in', score=0.5):
                 self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
             else:
                 back_count  = 0
@@ -1705,11 +1715,13 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
     def get_agent_from_room(self, room, read_time_index=None):
         if read_time_index is None:
             read_time_index = []
+        while self.detect_product_complete():
+            logger.info("检测到产物收取提示")
+            self.sleep(1)
         error_count = 0
         if room == 'meeting':
-            time.sleep(3)
-            self.recog.update()
-            clue_res = self.read_screen(self.recog.img, limit=10, cord=(645, 977, 755, 1018))
+            self.sleep(3)
+            clue_res = self.read_screen(self.recog.img, limit=10, cord=((645, 977), (755, 1018)))
             if clue_res != 11:
                 self.clue_count = clue_res
                 logger.info(f'当前拥有线索数量为{self.clue_count}')
@@ -1718,12 +1730,17 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         if length > 3: self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, self.recog.h * 0.45), duration=500,
                                   interval=1,
                                   rebuild=True)
-        name_p = [((1460, 160), (1800, 215)), ((1460, 365), (1800, 425)), ((1460, 576), (1800, 633)),
-                  ((1460, 555), (1800, 613)), ((1460, 765), (1800, 823))]
-        time_p = [((1650, 270, 1780, 305)), ((1650, 480, 1780, 515)), ((1650, 690, 1780, 725)),
-                  ((1650, 668, 1780, 703)), ((1650, 877, 1780, 912))]
-        mood_p = [((1470, 219, 1780, 221)), ((1470, 428, 1780, 430)), ((1470, 637, 1780, 639)),
-                  ((1470, 615, 1780, 617)), ((1470, 823, 1780, 825))]
+        name_x = (1288, 1869)
+        name_y = [(135, 326), (344, 535), (553, 744), (532, 723), (741, 932)]
+        name_p = [tuple(zip(name_x, y)) for y in name_y]
+        time_x = (1650, 1780)
+        time_y = [(270, 305), (480, 515), (690, 725), (668, 703), (877, 912)]
+        time_p = [tuple(zip(time_x, y)) for y in time_y]
+        mood_x = (1470, 1780)
+        mood_y = [(219, 220), (428, 429), (637, 638), (615, 616), (823, 825)]
+        mood_y = (219, 428, 637, 615, 823)
+        mood_y = [(y, y + 1) for y in mood_y]
+        mood_p = [tuple(zip(mood_x, y)) for y in mood_y]
         result = []
         swiped = False
         for i in range(0, length):
@@ -1732,16 +1749,20 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                            interval=1, rebuild=True)
                 swiped = True
             data = {}
-            _name = self.read_screen(self.recog.img[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]],
-                                     type="name")
+            if self.find("infra_no_operator", scope=name_p[i]):
+                _name = ""
+            else:
+                _name = self.read_screen(cropimg(self.recog.gray, name_p[i]), type="name")
             error_count = 0
             while i >= 3 and _name != '' and (
                     next((e for e in result if e['agent'] == _name), None)) is not None:
                 logger.warning("检测到滑动可能失败")
                 self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, -self.recog.h * 0.45), duration=500,
                            interval=1, rebuild=True)
-                _name = self.read_screen(
-                    self.recog.img[name_p[i][0][1]:name_p[i][1][1], name_p[i][0][0]:name_p[i][1][0]], type="name")
+                if self.find("infra_no_operator", scope=name_p[i]):
+                    _name = ""
+                else:
+                    _name = self.read_screen(cropimg(self.recog.gray, name_p[i]), type="name")
                 error_count += 1
                 if error_count > 1:
                     raise Exception("超过出错上限")
@@ -1754,7 +1775,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 agent = self.op_data.operators[_name]
                 if self.op_data.operators[_name].need_to_refresh(r=room) or (
                         agent.is_resting() and not room.startswith('dorm') and agent.is_high()):
-                    _mood = self.read_accurate_mood(self.recog.img, cord=mood_p[i])
+                    _mood = self.read_accurate_mood(cropimg(self.recog.gray, mood_p[i]))
                     update_time = True
                 else:
                     _mood = self.op_data.operators[_name].current_mood()
@@ -1800,8 +1821,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=0.5)
             error_count += 1
         # 订单剩余时间
-        execute_time = self.double_read_time((int(self.recog.w * 650 / 2496), int(self.recog.h * 660 / 1404),
-                                              int(self.recog.w * 815 / 2496), int(self.recog.h * 710 / 1404)),
+        execute_time = self.double_read_time(((int(self.recog.w * 650 / 2496), int(self.recog.h * 660 / 1404)),
+                                              (int(self.recog.w * 815 / 2496), int(self.recog.h * 710 / 1404))),
                                              use_digit_reader=True)
         return round((execute_time - datetime.now()).total_seconds(), 1)
 
@@ -1962,8 +1983,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=0.5)
                     error_count += 1
                 # 订单剩余时间
-                execute_time = self.double_read_time((int(self.recog.w * 650 / 2496), int(self.recog.h * 660 / 1404),
-                                                      int(self.recog.w * 815 / 2496), int(self.recog.h * 710 / 1404)),
+                execute_time = self.double_read_time(((int(self.recog.w * 650 / 2496), int(self.recog.h * 660 / 1404)),
+                                                      (int(self.recog.w * 815 / 2496), int(self.recog.h * 710 / 1404))),
                                                      use_digit_reader=True)
                 wait_time = round((execute_time - datetime.now()).total_seconds(), 1)
                 logger.debug(f"停止{wait_time}秒等待订单完成")
