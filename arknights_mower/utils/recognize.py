@@ -174,7 +174,7 @@ class Recognizer(object):
             self.scene = Scene.MISSION_DAILY
         elif self.find('mission_weekly_on') is not None:
             self.scene = Scene.MISSION_WEEKLY
-        elif self.find('terminal_pre') is not None:
+        elif self.find('terminal_pre', score=0.5) is not None:
             self.scene = Scene.TERMINAL_MAIN
         elif self.find('open_recruitment') is not None:
             self.scene = Scene.RECRUIT_MAIN
@@ -378,7 +378,7 @@ class Recognizer(object):
             self.scene = Scene.RA_MAIN
         elif self.detect_index_scene():
             self.scene = Scene.INDEX
-        elif self.find("terminal_pre") is not None:
+        elif self.find("terminal_pre", 0.5) is not None:
             self.scene = Scene.TERMINAL_MAIN
         else:
             self.scene = Scene.UNKNOWN
