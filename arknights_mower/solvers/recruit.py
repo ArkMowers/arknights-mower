@@ -213,9 +213,7 @@ class RecruitSolver(BaseSolver):
             self.sleep(3)
         elif self.get_navigation():
             self.tap_element('nav_recruit')
-        elif scene != Scene.DOUBLE_CONFIRM:
-            self.tap_element('double_confirm', 0.2)
-        elif scene != Scene.UNKNOWN:
+        elif scene == Scene.UNKNOWN or self.scene() != Scene.UNKNOWN:
             self.back_to_index()
         else:
             raise RecognizeError('Unknown scene')
