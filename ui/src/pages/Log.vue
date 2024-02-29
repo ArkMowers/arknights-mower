@@ -57,7 +57,7 @@ const show_task_table = ref(true)
 </script>
 
 <template>
-  <div class="home-container">
+  <div class="home-container" style="user-select: text">
     <n-table class="task-table" size="small" :single-line="false">
       <thead>
         <tr>

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from . import __version__
 from .solvers import *
-from .solvers.report import ReportSolver
 from .utils import config
 from .utils.device import Device
 from .utils.log import logger
@@ -16,6 +15,11 @@ def mail(device: Device = None):
     """
     MailSolver(device).run()
 
+def depotscan(args: list[str] = [], device: Device = None):
+    """
+    仓库扫描
+    """
+    DepotSolver(device).run()
 
 def base(args: list[str] = [], device: Device = None):
     """

@@ -13,7 +13,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 from .skland import SKLand
-from ..command import recruit, mail, daily_report
+from ..command import recruit, mail, daily_report,depotscan
 from ..data import agent_list, base_room_list, ocr_error
 from ..utils import character_recognize, detector, segment
 from ..utils.digit_reader import DigitReader
@@ -26,7 +26,7 @@ from ..utils.pipe import push_operators
 from ..utils.recognize import RecognizeError, Recognizer, Scene
 from ..utils.solver import BaseSolver
 from ..utils.datetime import get_server_weekday, the_same_time
-from ..utils.depot import process_itemlist
+# from ..utils.depot import process_itemlist
 from arknights_mower.utils.news import get_update_time
 from arknights_mower.utils import rapidocr
 from arknights_mower.utils.simulator import restart_simulator
@@ -103,10 +103,13 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         """
         :param clue_collect: bool, 是否收取线索
         """
+
         self.error = False
         self.handle_error(True)
+
         scheduling(self.tasks)
         check_dorm_ordering(self.tasks,self.op_data)
+        
         if len(self.tasks) > 0:
             # 找到时间最近的一次单个任务
             self.task = self.tasks[0]
@@ -2094,9 +2097,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         elif "what" in d and d["what"] == "RecruitSpecialTag":
             global recruit_special_tags
             recruit_special_tags["tags"].append(d["details"]["tags"])
-        elif d.get("what") == "DepotInfo" and d["details"].get("done") is True:
-            logger.info(f"开始扫描仓库（MAA）")
-            process_itemlist(d)
+        # elif d.get("what") == "DepotInfo" and d["details"].get("done") is True:
+        #     logger.info(f"开始扫描仓库（MAA）")
+        #     process_itemlist(d)
 
     def initialize_maa(self):
         path = pathlib.Path(self.maa_config['maa_path'])
@@ -2169,10 +2172,10 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 'credit_fight': self.maa_config['credit_fight'] and '' not in self.stages and self.credit_fight is None,
                 "force_shopping_if_credit_full": self.maa_config['mall_ignore_when_full']
             })
-        elif type == 'Depot':
-            self.MAA.append_task('Depot', {
-                "enable": self.maa_config['maa_depot_enable']
-            })
+        # elif type == 'Depot':
+        #     self.MAA.append_task('Depot', {
+        #         "enable": self.maa_config['maa_depot_enable']
+        #     })
 
     def maa_plan_solver(self, tasks='All', one_time=False):
         try:
@@ -2186,7 +2189,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 # 任务及参数请参考 docs/集成文档.md
                 self.initialize_maa()
                 if tasks == 'All':
-                    tasks = ['StartUp', 'Fight', 'Visit', 'Mall', 'Award', 'Depot']
+                    tasks = ['StartUp', 'Fight', 'Visit', 'Mall', 'Award']
+                    # tasks = ['StartUp', 'Fight', 'Visit', 'Mall', 'Award', 'Depot']
                     # tasks = ['StartUp', 'Fight', 'Recruit', 'Visit', 'Mall', 'Award']
                 for maa_task in tasks:
                     if maa_task == 'Recruit':
@@ -2366,3 +2370,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
     def report_plan_solver(self,send_report=False):
         if self.report_enable:
             return daily_report(self.device,self.send_message_config,send_report)
+
+    def 仓库扫描(self):
+        depotscan()
+        return True
