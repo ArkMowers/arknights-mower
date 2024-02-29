@@ -143,7 +143,7 @@ def init_config() -> None:
     global DEBUG_MODE, LOGFILE_PATH, LOGFILE_AMOUNT, SCREENSHOT_PATH, SCREENSHOT_MAXNUM
     DEBUG_MODE = __get('debug/enabled', False)
     LOGFILE_PATH = __get('debug/logfile/path', None)
-    LOGFILE_AMOUNT = __get('debug/logfile/amount', 3)
+    LOGFILE_AMOUNT = __get('debug/logfile/amount', 20)
     SCREENSHOT_PATH = __get('debug/screenshot/path', None)
     SCREENSHOT_MAXNUM = __get('debug/screenshot/max_total', 20)
 
