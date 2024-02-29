@@ -1,27 +1,21 @@
 import cv2
-import functools
-import itertools
 import json
-import multiprocessing
+
 import numpy as np
 import os
 import pandas as pd
 import pickle
 import re
-import time
+
 from datetime import datetime
-from pathlib import Path
+
 
 import lzma
-from rapidocr_onnxruntime import RapidOCR
 from sklearn.cluster import KMeans
-from sklearn.neighbors import KNeighborsClassifier
 from skimage.feature import hog
-from skimage.metrics import structural_similarity
 
 from .. import __rootdir__
 from ..data import key_mapping
-from ..utils import typealias as tp
 from ..utils.device import Device
 from ..utils.image import loadimg
 from ..utils.log import logger
@@ -57,12 +51,12 @@ class depotREC(BaseSolver):
         with lzma.open(knn模型目录, "rb") as pkl:
             self.knn模型 = pickle.load(pkl)
         # self.时间模板 = self.导入_时间模板()
-        self.模板名称 = key_mapping
         self.物品数字 = self.导入_数字模板()
         self.截图字典 = {}  # 所有截图的字典（尽量不重不漏）
         self.截图计数器 = 1  # 所有截图的列表的计数器
         # self.仓库图片 = self.导入_仓库图片()  # [140:1000, :] 需要传入&裁剪
         self.结果字典 = {}
+        self.明日方舟工具箱json={}
         logger.info(f"吟唱用时{datetime.now() - time}")
 
     # def 导入_时间模板(self) -> list[str, np.ndarray]:
@@ -291,18 +285,17 @@ class depotREC(BaseSolver):
             for idx, [物品, 物品灰] in enumerate(self.切图列表):
                 [物品名称, 物品数字] = self.匹配物品一次(物品, 物品灰, idx)
                 logger.debug([物品名称, 物品数字])
-                if 物品名称 in self.结果字典:
-                    self.结果字典[物品名称] += 物品数字
-                else:
-                    self.结果字典[物品名称] = 物品数字
+                self.结果字典[物品名称] = self.结果字典.get(物品名称, 0) + 物品数字
+                self.明日方舟工具箱json[key_mapping[物品名称][0]] = self.明日方舟工具箱json.get(key_mapping[物品名称][0], 0) + 物品数字
             logger.info(f"仓库扫描: 匹配，识别用时{datetime.now() - time}")
             logger.info(f"仓库扫描:结果{self.结果字典}")
             result = [
                 int(datetime.now().timestamp()),
                 json.dumps(self.结果字典, ensure_ascii=False),
+                json.dumps(self.明日方舟工具箱json, ensure_ascii=False),
             ]
-            df = pd.DataFrame([result], columns=["Timestamp", "Data"])
-            df.to_csv(self.仓库输出, mode="a", index=False, header=True)
+            depotinfo = pd.DataFrame([result], columns=['Timestamp', 'Data','json'])
+            depotinfo.to_csv(self.仓库输出, mode="a", index=False, header=False)
 
         return True
 

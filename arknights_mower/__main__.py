@@ -16,7 +16,7 @@ from arknights_mower.utils.path import get_path
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.logic_expression import LogicExpression
 from arknights_mower.utils import rapidocr
-
+from arknights_mower.utils.depot import 创建csv
 from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
 
 from evalidate import Expr
@@ -391,26 +391,21 @@ def simulate():
                             path=get_path("@app/tmp/depotresult.csv")
                             # 读取 CSV 文件
                             if os.path.exists(path):
-                                df = pd.read_csv(path)
-                                last_row_first_value = df.iloc[-1, 0]  # 最后一行的第一个值
-                                return int(last_row_first_value)
-
+                                depotinfo = pd.read_csv(path)
+                                仓库识别时间戳 = depotinfo.iloc[-1, 0]  # 最后一行的第一个值
+                                return int(仓库识别时间戳)
                             else:
-                                logger.info(f"{path} 不存在,新建一个存储仓库物品的csv  扫描在{maa_config['maa_execution_gap']}之后")
-                                now_time=int(datetime.now().timestamp())
-                                result = [
-                                    now_time,
-                                    json.dumps({"空":0}, ensure_ascii=False),
-                                ]
-                                df = pd.DataFrame([result], columns=['Timestamp', 'Data'])
-                                df.to_csv(path, mode="a", index=False, header=True)
+                                logger.info(f"{path} 不存在,新建一个存储仓库物品的csv")
+                                now_time=int(datetime.now().timestamp())-maa_config["maa_execution_gap"]*3600
+                                创建csv()
                                 return now_time
 
                     if maa_config["maa_depot_enable"]:
-                        if int(datetime.now().timestamp())-_is_depotscan()>maa_config["maa_execution_gap"]*3600:
+                        dt=int(datetime.now().timestamp())-_is_depotscan()
+                        if dt>maa_config["maa_execution_gap"]*3600:
                             base_scheduler.仓库扫描()
                         else:
-                            logger.info("仓库扫描未到时间，暂不扫描")
+                            logger.info(f"仓库扫描未到时间，将在 {maa_config['maa_execution_gap']}小时之内开始扫描")
                     if base_scheduler.maa_config["maa_enable"] == 1:
                         subject = (
                             f"下次任务在{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}"
