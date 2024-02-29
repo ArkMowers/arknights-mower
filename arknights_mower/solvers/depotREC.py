@@ -46,9 +46,9 @@ class depotREC(BaseSolver):
         self.matcher = cv2.FlannBasedMatcher(
             dict(algorithm=1, trees=2), dict(checks=50)
         )  # 初始化一个识别
-        knn模型目录 = get_path("@internal/arknights_mower\models\depot.pkl")
+        
         self.仓库输出 = get_path("@app/tmp/depotresult.csv")
-        with lzma.open(knn模型目录, "rb") as pkl:
+        with lzma.open(f"{__rootdir__}/models/depot.pkl", "rb") as pkl:
             self.knn模型 = pickle.load(pkl)
         # self.时间模板 = self.导入_时间模板()
         self.物品数字 = self.导入_数字模板()
@@ -56,7 +56,7 @@ class depotREC(BaseSolver):
         self.截图计数器 = 1  # 所有截图的列表的计数器
         # self.仓库图片 = self.导入_仓库图片()  # [140:1000, :] 需要传入&裁剪
         self.结果字典 = {}
-        self.明日方舟工具箱json={}
+        self.明日方舟工具箱json = {}
         logger.info(f"吟唱用时{datetime.now() - time}")
 
     # def 导入_时间模板(self) -> list[str, np.ndarray]:
@@ -73,15 +73,15 @@ class depotREC(BaseSolver):
     #         json_data = json.loads(file.read())
     #         return json_data
 
-    def 导入_数字模板(self) -> list:
-        模板文件夹 = get_path("@internal/arknights_mower/resources/depot_num")
+    def 导入_数字模板(self):
+        模板文件夹 = f"{__rootdir__}/resources/depot_num"
         数字模板列表 = []
         for 文件名 in os.listdir(模板文件夹):
             文件路径 = os.path.join(模板文件夹, 文件名)
             数字模板列表.append(cv2.imread(文件路径, cv2.IMREAD_GRAYSCALE))
         return 数字模板列表
 
-    def 识别空物品(self, 物品灰) -> bool:
+    def 识别空物品(self, 物品灰):
         # 对灰度图像进行阈值处理，得到二值图像
         _, 二值图 = cv2.threshold(物品灰, 50, 255, cv2.THRESH_BINARY)
         # 计算白色像素所占的比例
@@ -94,14 +94,14 @@ class depotREC(BaseSolver):
         else:
             return True
 
-    def 找几何中心(self, coordinates, n_clusters=3) -> list:
+    def 找几何中心(self, coordinates, n_clusters=3):
         coordinates_array = np.array(coordinates).reshape(-1, 1)
         kmeans = KMeans(n_clusters=n_clusters)
         kmeans.fit(coordinates_array)
         centers = kmeans.cluster_centers_.flatten().astype(int)
         return centers
 
-    def 拼图(self, 图片列表) -> np.ndarray:
+    def 拼图(self, 图片列表):
         stitcher = cv2.Stitcher.create(mode=cv2.Stitcher_SCANS)
         status, result = stitcher.stitch(图片列表)
 
@@ -135,7 +135,7 @@ class depotREC(BaseSolver):
             cv2.imwrite(f"{self.结果目录}/result_with_circles.png", 拼接结果)
         return 圆
 
-    def 算坐标(self, 圆) -> tuple[list, list]:
+    def 算坐标(self, 圆):
         if 圆 is not None:
             circles_x = sorted(圆[:, 0])
             groups = []
@@ -152,7 +152,7 @@ class depotREC(BaseSolver):
             circles_y = self.找几何中心(圆[:, 1], 3)
             return circles_x, circles_y
 
-    def 切图(self, 圆心x坐标, 圆心y坐标, 拼接结果, 正方形边长=130) -> list[np.ndarray]:
+    def 切图(self, 圆心x坐标, 圆心y坐标, 拼接结果, 正方形边长=130):
         图片 = []
         for x in 圆心x坐标:
             for y in 圆心y坐标:
@@ -218,7 +218,7 @@ class depotREC(BaseSolver):
 
     def 匹配物品一次(self, 物品, 物品灰, 次数):
         物品切 = 物品[21:239, 21:239]
-        物品切 = cv2.resize(物品切, (64, 64)) ## 把图片缩小了
+        物品切 = cv2.resize(物品切, (64, 64))  ## 把图片缩小了
         物品特征 = self.特征点提取(物品切)
         predicted_label = self.knn模型.predict([物品特征])
         物品数字 = self.读取物品数字(物品灰, predicted_label[0], 次数)
@@ -274,8 +274,8 @@ class depotREC(BaseSolver):
             logger.info(f"仓库扫描: 开始计算裁切图像")
             time = datetime.now()
             self.截图列表 = list(self.截图字典.values())
-            for index, img in enumerate(self.截图列表):
-                cv2.imwrite(f"{self.结果目录}/{index}.png", img)
+            # for index, img in enumerate(self.截图列表):
+            #     cv2.imwrite(f"{self.结果目录}/{index}.png", img)
             self.切图列表 = self.切图主程序(self.截图列表)
             logger.info(
                 f"仓库扫描: 切图用时{datetime.now() - time},需要识别{len(self.切图列表)}个物品"
@@ -286,7 +286,9 @@ class depotREC(BaseSolver):
                 [物品名称, 物品数字] = self.匹配物品一次(物品, 物品灰, idx)
                 logger.debug([物品名称, 物品数字])
                 self.结果字典[物品名称] = self.结果字典.get(物品名称, 0) + 物品数字
-                self.明日方舟工具箱json[key_mapping[物品名称][0]] = self.明日方舟工具箱json.get(key_mapping[物品名称][0], 0) + 物品数字
+                self.明日方舟工具箱json[key_mapping[物品名称][0]] = (
+                    self.明日方舟工具箱json.get(key_mapping[物品名称][0], 0) + 物品数字
+                )
             logger.info(f"仓库扫描: 匹配，识别用时{datetime.now() - time}")
             logger.info(f"仓库扫描:结果{self.结果字典}")
             result = [
@@ -294,7 +296,7 @@ class depotREC(BaseSolver):
                 json.dumps(self.结果字典, ensure_ascii=False),
                 json.dumps(self.明日方舟工具箱json, ensure_ascii=False),
             ]
-            depotinfo = pd.DataFrame([result], columns=['Timestamp', 'Data','json'])
+            depotinfo = pd.DataFrame([result], columns=["Timestamp", "Data", "json"])
             depotinfo.to_csv(self.仓库输出, mode="a", index=False, header=False)
 
         return True
