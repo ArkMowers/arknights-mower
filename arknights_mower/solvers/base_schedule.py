@@ -1895,7 +1895,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                             self.send_message("检测到漏单！")
                             self.reset_room_time(room)
                             raise Exception("检测到漏单！")
-                    while self.find('arrange_order_options') is None:
+                    while self.find('arrange_order_options', score=0.5) is None:
                         if error_count > 3:
                             raise Exception('未成功进入干员选择界面')
                         self.tap((self.recog.w * 0.82, self.recog.h * 0.2), interval=1)

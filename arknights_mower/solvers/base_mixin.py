@@ -213,7 +213,8 @@ class BaseMixin:
         x, y, w, h = sorted(rect, key=lambda c: c[0])[0]
         img = img[y : y + h, x : x + w]
         tpl = np.zeros((mh, mw))
-        tpl[: img.shape[0], : img.shape[1]] = img
+        dy = int((mh - img.shape[0]) / 2)
+        tpl[dy : img.shape[0] + dy, : img.shape[1]] = img
         tpl /= 255
         tpl = tpl.reshape(mh * mw)
         return agent_list[OP_ROOM.predict([tpl])[0]]
