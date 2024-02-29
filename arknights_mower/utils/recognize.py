@@ -378,7 +378,7 @@ class Recognizer(object):
             self.scene = Scene.RA_MAIN
         elif self.detect_index_scene():
             self.scene = Scene.INDEX
-        elif self.find("terminal_pre", 0.5) is not None:
+        elif self.find("terminal_pre", score=0.5) is not None:
             self.scene = Scene.TERMINAL_MAIN
         else:
             self.scene = Scene.UNKNOWN
