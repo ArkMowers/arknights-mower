@@ -171,6 +171,9 @@ class ReclamationAlgorithm(BaseSolver):
         total_distance = tuple(abs(a) for a in vp_offset)
         max_drag = tuple(b - a for a, b in zip(*self.drag_scope))
         steps = max(math.ceil(d / m) for d, m in zip(total_distance, max_drag))
+        if steps == 0:
+            logger.warning("拖拽距离异常")
+            return False
         step_distance = tuple(round(i / steps) for i in vp_offset)
         center_point = tuple(round((a + b) / 2) for a, b in zip(*self.drag_scope))
         map = Map(self.recog.gray)
