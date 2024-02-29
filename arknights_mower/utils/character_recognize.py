@@ -327,8 +327,8 @@ def operator_list(img, draw=False):
     name_x = []
     for i in range(1, line1.shape[1]):
         curr = last_line[i]
-        if prev == 0 and curr == 255 and start and i - start > 188:
-            name_x.append((start + 600, i + 600))
+        if prev == 0 and curr == 255 and start and i - start > 186:
+            name_x.append((start + 600, i + 598))
         elif prev == 255 and curr == 0:
             start = i
         prev = curr
