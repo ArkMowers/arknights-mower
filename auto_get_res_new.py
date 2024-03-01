@@ -28,45 +28,81 @@ class Arknights数据处理器:
         self.关卡表 = self.加载json(
             "./ArknightsGameResource/gamedata/excel/stage_table.json"
         )
+        self.活动表 = self.加载json(
+            "./ArknightsGameResource/gamedata/excel/activity_table.json"
+        )
 
     def 加载json(self, file_path):
         with open(file_path, "r", encoding="utf-8") as f:
             return json.load(f)
 
     def 添加物品(self):
+        def 检查图标代码匹配(目标图标代码):
+            限定十连 = self.抽卡表["limitTenGachaItem"]
+            联动十连 = self.抽卡表["linkageTenGachaItem"]
+            匹配结果 = False
+            for 限定池子 in 限定十连:
+                if 限定池子["itemId"] == 目标图标代码:
+                    if self.当前时间戳 > 限定池子["endTime"]:
+                        匹配结果 = True
+                    break
+
+            for 联动池子 in 联动十连:
+                if 联动池子["itemId"] == 目标图标代码:
+                    if self.当前时间戳 > 联动池子["endTime"]:
+                        匹配结果 = True
+                    break
+
+            分割部分 = 目标图标代码.split("_")
+            if len(分割部分) == 2 and 分割部分[0].endswith("recruitment10"):
+                匹配结果 = True
+
+            if len(分割部分) == 6 and int(分割部分[5]) < 2023:
+                匹配结果 = True
+
+            # if 目标图标代码 == "ap_supply_lt_60":
+            #     匹配结果 = True
+
+            抽卡 = self.抽卡表.get("gachaPoolClient", [])
+            for 卡池 in 抽卡:
+                if 卡池["LMTGSID"] == 目标图标代码 and self.当前时间戳 > int(
+                    卡池["endTime"]
+                ):
+                    匹配结果 = True
+            return 匹配结果
+
         物品_名称对 = {}
 
         for 物品代码, 物品数据 in self.物品表["items"].items():
             图标代码 = 物品数据["iconId"]
             排序代码 = 物品数据["sortId"]
-            名称 = 物品数据["name"]
+            中文名称 = 物品数据["name"]
             分类类型 = 物品数据["classifyType"]
             源文件路径 = f"./ArknightsGameResource/item/{图标代码}.png"
             目标文件路径 = f"./ui/public/depot/{图标代码}.png"
-            if 分类类型 != "NONE":
-                if os.path.exists(源文件路径):
+
+            if 分类类型 != "NONE" and 排序代码 > 0:
+                排除开关 = False
+                排除开关 = 检查图标代码匹配(图标代码)
+                if os.path.exists(源文件路径) and not 排除开关:
                     if not os.path.exists(目标文件路径):
                         shutil.copy(源文件路径, 目标文件路径)
                     物品_名称对[图标代码] = [
                         物品代码,
-                        名称,
+                        中文名称,
                         分类类型,
                         排序代码,
                     ]
                     print(f"复制 {源文件路径} 到 {目标文件路径}")
                 else:
-                    print(f"未找到: {源文件路径}")
-            else:
-                print(f"{名称} 的分类类型为 {分类类型}")
+                    print(f"可以复制，但是未找到: {源文件路径}")
 
         # 物品_名称对 = OrderedDict(物品_名称对)
         with open(
             "./arknights_mower/data/key_mapping.json", "w", encoding="utf8"
         ) as json_file:
             json.dump(物品_名称对, json_file, ensure_ascii=False)
-        with open(
-            "./ui\src\pages\key_mapping.json", "w", encoding="utf8"
-        ) as json_file:
+        with open("./ui\src\pages\key_mapping.json", "w", encoding="utf8") as json_file:
             json.dump(物品_名称对, json_file, ensure_ascii=False)
         print()
 
@@ -201,7 +237,7 @@ class Arknights数据处理器:
                     filepath = os.path.join(directory, filename)
                     image = cv2.imread(filepath)
                     image = cv2.resize(image, (218, 218))
-                    image = cv2.resize(image, (64, 64))
+                    image = cv2.resize(image, (128, 128))
                     image_features = 提取特征点(image)
                     images.append(image_features)
                     labels.append(filename[:-4])  # 假设图片名称即为标签
@@ -225,12 +261,13 @@ class Arknights数据处理器:
 
 if __name__ == "__main__":
     数据处理器 = Arknights数据处理器()
-    # 数据处理器.添加物品()
-    # 数据处理器.添加干员()
-    # 数据处理器.读取卡池()
-    # 数据处理器.读取关卡()
+    数据处理器.添加物品()
+    数据处理器.添加干员()
+    数据处理器.读取卡池()
+    数据处理器.读取关卡()
     数据处理器.knn模型训练()
-# # 加载模型
+    
+# 加载模型
 # model_path = "knn_classifier.pkl"
 # loaded_knn_classifier = load_classifier(model_path)
 
