@@ -389,10 +389,9 @@ def simulate():
                     def _is_depotscan():
                             import pandas as pd
                             path=get_path("@app/tmp/depotresult.csv")
-                            # 读取 CSV 文件
                             if os.path.exists(path):
                                 depotinfo = pd.read_csv(path)
-                                仓库识别时间戳 = depotinfo.iloc[-1, 0]  # 最后一行的第一个值
+                                仓库识别时间戳 = depotinfo.iloc[-1, 0] 
                                 return int(仓库识别时间戳)
                             else:
                                 logger.info(f"{path} 不存在,新建一个存储仓库物品的csv")

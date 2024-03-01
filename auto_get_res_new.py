@@ -229,18 +229,17 @@ class Arknights数据处理器:
             )
             return hog_features
 
-        def 加载图片特征点_标签(directory):
+        def 加载图片特征点_标签(directory,缩小宽度=64):
             images = []
             labels = []
             for filename in os.listdir(directory):
-                if filename.endswith(".png"):
-                    filepath = os.path.join(directory, filename)
-                    image = cv2.imread(filepath)
-                    image = cv2.resize(image, (218, 218))
-                    image = cv2.resize(image, (128, 128))
-                    image_features = 提取特征点(image)
-                    images.append(image_features)
-                    labels.append(filename[:-4])  # 假设图片名称即为标签
+                filepath = os.path.join(directory, filename)
+                image = cv2.imread(filepath)
+                image = cv2.resize(image, (218, 218))
+                image = cv2.resize(image, (缩小宽度, 缩小宽度))
+                image_features = 提取特征点(image)
+                images.append(image_features)
+                labels.append(filename[:-4])  # 假设图片名称即为标签
             return images, labels
 
         def 训练knn模型(images, labels, k=1):
@@ -266,7 +265,7 @@ if __name__ == "__main__":
     数据处理器.读取卡池()
     数据处理器.读取关卡()
     数据处理器.knn模型训练()
-    
+
 # 加载模型
 # model_path = "knn_classifier.pkl"
 # loaded_knn_classifier = load_classifier(model_path)
