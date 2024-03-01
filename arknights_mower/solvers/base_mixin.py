@@ -36,8 +36,8 @@ arrange_order_res = {
 with lzma.open(f"{__rootdir__}/models/operator_room.model", "rb") as f:
     OP_ROOM = pickle.loads(f.read())
 
-kernel = np.ones((10, 10), np.uint8)
-mh = 44
+kernel = np.ones((12, 12), np.uint8)
+mh = 46
 mw = 265
 
 
@@ -213,7 +213,8 @@ class BaseMixin:
         x, y, w, h = sorted(rect, key=lambda c: c[0])[0]
         img = img[y : y + h, x : x + w]
         tpl = np.zeros((mh, mw))
-        tpl[: img.shape[0], : img.shape[1]] = img
+        dy = int((mh - img.shape[0]) / 2)
+        tpl[dy : img.shape[0] + dy, : img.shape[1]] = img
         tpl /= 255
         tpl = tpl.reshape(mh * mw)
         return agent_list[OP_ROOM.predict([tpl])[0]]

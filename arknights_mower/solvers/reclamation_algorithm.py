@@ -97,12 +97,11 @@ class ReclamationAlgorithm(BaseSolver):
             self.thread = None
         logger.debug("快速点击已停止")
 
-    def detect_adventure(self, pos):
+    def detect_adventure(self, map, pos):
         adventures = [i for i in self.places if i.startswith("奇遇")]
         scores = []
         img = cropimg(
-            self.map.map,
-            ((pos[0][0] + 140, pos[0][1] + 25), (pos[1][0], pos[1][1] - 15)),
+            map, ((pos[0][0] + 140, pos[0][1] + 25), (pos[1][0], pos[1][1] - 15))
         )
         img = thres2(img, 180)
         for i in adventures:
@@ -115,45 +114,44 @@ class ReclamationAlgorithm(BaseSolver):
         return adventures[scores.index(max(scores))]
 
     def find_place(self, place=None):
-        self.map = Map(self.recog.gray)
+        map = Map(self.recog.gray)
         if place is None:
             for place in self.places:
-                if pos := self.map.find(place):
+                if pos := map.find(place):
                     break
             if pos is None:
                 logger.info("在当前地图中没有找到任何地点")
                 return None, None
-            pos = self.map.map2scrn(pos[0]), self.map.map2scrn(pos[1])
             if place.startswith("奇遇"):
-                place = self.detect_adventure(pos)
+                place = self.detect_adventure(map.map, pos)
+            pos = map.map2scrn(pos[0]), map.map2scrn(pos[1])
             logger.info(f"在区域{pos}识别到任意地点{place}")
             return pos, place
         elif place.startswith("奇遇"):
             while True:
-                pos = self.map.find(place)
+                pos = map.find(place)
                 if pos is None:
                     logger.info(f"没有找到地点{place}")
                     return None
-                if place == self.detect_adventure(pos):
-                    pos = self.map.map2scrn(pos[0]), self.map.map2scrn(pos[1])
+                if place == self.detect_adventure(map.map, pos):
+                    pos = map.map2scrn(pos[0]), map.map2scrn(pos[1])
                     logger.info(f"在区域{pos}识别到指定地点{place}")
                     return pos
                 else:
-                    cv2.rectangle(self.map.map, pos[0], pos[1], (255,), -1)
-                    self.map.matcher = Matcher(self.map.map)
+                    cv2.rectangle(map.map, pos[0], pos[1], (255,), -1)
+                    map.matcher = Matcher(map.map)
         else:
-            pos = self.map.find(place)
+            pos = map.find(place)
             if pos is None:
                 logger.info(f"没有找到地点{place}")
                 return None
-            pos = self.map.map2scrn(pos[0]), self.map.map2scrn(pos[1])
+            pos = map.map2scrn(pos[0]), map.map2scrn(pos[1])
             logger.info(f"在区域{pos}识别到指定地点{place}")
             return pos
 
     def drag(
         self, res: str, position: tp.Coordinate = (960, 500), update_vp: bool = True
     ) -> bool:
-        self.map = Map(self.recog.gray)
         res_img = loadimg(f"{__rootdir__}/resources/ra/map/{res}.png", True)
         top_left = (
             position[0] - round(res_img.shape[1] / 2),
@@ -173,12 +171,16 @@ class ReclamationAlgorithm(BaseSolver):
         total_distance = tuple(abs(a) for a in vp_offset)
         max_drag = tuple(b - a for a, b in zip(*self.drag_scope))
         steps = max(math.ceil(d / m) for d, m in zip(total_distance, max_drag))
+        if steps == 0:
+            logger.warning("拖拽距离异常")
+            return False
         step_distance = tuple(round(i / steps) for i in vp_offset)
         center_point = tuple(round((a + b) / 2) for a, b in zip(*self.drag_scope))
-        start_point = self.map.map2scrn(
+        map = Map(self.recog.gray)
+        start_point = map.map2scrn(
             tuple(a - round(b / 2) for a, b in zip(center_point, step_distance))
         )
-        end_point = self.map.map2scrn(
+        end_point = map.map2scrn(
             tuple(a + round(b / 2) for a, b in zip(center_point, step_distance))
         )
         for _ in range(steps):
@@ -198,9 +200,7 @@ class ReclamationAlgorithm(BaseSolver):
         else:
             logger.info("添加任务：奇遇_风啸峡谷")
             self.task_queue.append("奇遇_风啸峡谷")
-        if not self.drag("资源区_射程以内", update_vp=False):
-            self.map_back()
-            return
+        self.drag("资源区_射程以内", update_vp=False)
         if self.find_place("要塞_征税的选择"):
             logger.info("左侧区域任务已完成")
         elif self.find_place("奇遇_崎岖窄路"):
@@ -213,9 +213,7 @@ class ReclamationAlgorithm(BaseSolver):
             logger.info("添加任务：奇遇_砾沙平原，资源区_射程以内，奇遇_崎岖窄路")
             self.task_queue += ["奇遇_砾沙平原", "资源区_射程以内", "奇遇_崎岖窄路"]
         else:
-            if not self.drag("资源区_林中寻宝", update_vp=False):
-                self.map_back()
-                return
+            self.drag("资源区_林中寻宝", update_vp=False)
             if self.find_place("资源区_林中寻宝"):
                 logger.info(
                     "添加任务：资源区_林中寻宝，奇遇_砾沙平原，资源区_射程以内，奇遇_崎岖窄路"
@@ -409,18 +407,19 @@ class ReclamationAlgorithm(BaseSolver):
             if self.ap is None:
                 self.ap = self.detect_ap()
             self.print_ap()
-            if self.task_queue is None and day == 1 and self.ap == 2:
-                logger.info("初始化任务列表")
-                self.task_queue = [
-                    "奇遇_风啸峡谷",
-                    "捕猎区_聚羽之地",
-                    "资源区_林中寻宝",
-                    "奇遇_砾沙平原",
-                    "资源区_射程以内",
-                    "奇遇_崎岖窄路",
-                ]
-            elif self.task_queue is None:
-                self.plan_task()
+            if self.task_queue is None:
+                if day == 1 and self.ap == 2:
+                    logger.info("初始化任务列表")
+                    self.task_queue = [
+                        "奇遇_风啸峡谷",
+                        "捕猎区_聚羽之地",
+                        "资源区_林中寻宝",
+                        "奇遇_砾沙平原",
+                        "资源区_射程以内",
+                        "奇遇_崎岖窄路",
+                    ]
+                else:
+                    self.plan_task()
             if self.ap == 0:
                 self.map_skip_day("当日已无决断次数")
                 return
@@ -433,8 +432,7 @@ class ReclamationAlgorithm(BaseSolver):
                 return
             logger.info(self.task_queue)
             place = self.task_queue[0]
-            pos = self.find_place(place)
-            if not pos:
+            if (pos := self.find_place(place)) is None:
                 if self.drag(place):
                     pos = self.find_place(place)
                 else:

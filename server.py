@@ -136,7 +136,7 @@ def read_log(conn):
 def read_depot():
     from arknights_mower.utils import depot
 
-    return depot.read_and_compare_depots()
+    return depot.读取仓库()
 
 
 @app.route("/running")

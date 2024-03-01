@@ -331,8 +331,8 @@ class OpeSolver(BaseSolver):
     def choose_level(self, level: str) -> None:
         """ 在终端主界面选择关卡 """
         if level == 'pre_ope':
-            logger.info(f'前往上一次关卡')
-            self.tap_element('terminal_pre')
+            logger.info('前往上一次关卡')
+            self.tap_element('terminal_pre', score=0.5)
             return
 
         zone_name = level_list[level]['zone_id']
