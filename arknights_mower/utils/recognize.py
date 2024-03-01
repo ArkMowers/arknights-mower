@@ -180,7 +180,7 @@ class Recognizer(object):
             self.scene = Scene.RECRUIT_MAIN
         elif self.find('recruiting_instructions') is not None:
             self.scene = Scene.RECRUIT_TAGS
-        elif self.find('agent_token'):
+        elif self.find('agent_token', score=0.2):
             self.scene = Scene.RECRUIT_AGENT
         elif self.find('agent_unlock') is not None:
             self.scene = Scene.SHOP_CREDIT
