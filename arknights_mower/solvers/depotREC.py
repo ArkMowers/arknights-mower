@@ -36,7 +36,6 @@ class depotREC(BaseSolver):
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
         super().__init__(device, recog)
         time = datetime.now()
-        os.makedirs("temp", exist_ok=True)
         sift = cv2.SIFT_create()
         # surf = cv2.xfeatures2d.SURF_create(**surf_arg)
         ORB = cv2.ORB_create()
@@ -69,9 +68,7 @@ class depotREC(BaseSolver):
         return 数字模板列表
 
     def 识别空物品(self, 物品灰):
-        # 对灰度图像进行阈值处理，得到二值图像
         _, 二值图 = cv2.threshold(物品灰, 50, 255, cv2.THRESH_BINARY)
-        # 计算白色像素所占的比例
         白像素个数 = cv2.countNonZero(二值图)
         所有像素个数 = 二值图.shape[0] * 二值图.shape[1]
         白像素比值 = int((白像素个数 / 所有像素个数) * 100)
@@ -103,7 +100,7 @@ class depotREC(BaseSolver):
     def 找圆(
         self, 拼接结果, 参数1=50, 参数2=30, 圆心间隔=230, 最小半径=90, 最大半径=100
     ):
-        灰图 = cv2.cvtColor(拼接结果, cv2.COLOR_RGB2GRAY)
+        灰图 = cv2.cvtColor(拼接结果, cv2.COLOR_BGR2GRAY)
         圆 = cv2.HoughCircles(
             灰图,
             cv2.HOUGH_GRADIENT,
@@ -150,7 +147,7 @@ class depotREC(BaseSolver):
                     左上角坐标[1] : 右下角坐标[1],
                     左上角坐标[0] : 右下角坐标[0],
                 ]
-                正方形灰 = cv2.cvtColor(正方形, cv2.COLOR_RGB2GRAY)
+                正方形灰 = cv2.cvtColor(正方形, cv2.COLOR_BGR2GRAY)
                 if self.识别空物品(正方形灰):
                     图片.append([正方形, 正方形灰])
         return 图片
@@ -193,9 +190,7 @@ class depotREC(BaseSolver):
         if not 物品个数:
             return 0
         # # 格式化数字
-        格式化数字 = int("".join(re.findall(r"\d+", 物品个数))) * (
-            1000 if "万" in 物品个数 else 1
-        )
+        格式化数字 = int(float("".join(re.findall(r"\d+\.\d+|\d+", 物品个数))) * (10000 if "万" in 物品个数 else 1))
         # 保存结果图片
         cv2.imencode(".png", 数字图片)[1].tofile(
             os.path.join(self.结果目录, f"{物品名称}_{格式化数字}_{识别次数}.png")
@@ -203,9 +198,9 @@ class depotREC(BaseSolver):
 
         return 格式化数字
 
-    def 匹配物品一次(self, 物品, 物品灰, 次数):
+    def 匹配物品一次(self, 物品, 物品灰, 次数,缩小宽度=64):
         物品切 = 物品[21:239, 21:239]
-        物品切 = cv2.resize(物品切, (128, 128))  ## 把图片缩小了
+        物品切 = cv2.resize(物品切, (缩小宽度, 缩小宽度))  ## 把图片缩小了
         物品特征 = self.特征点提取(物品切)
         predicted_label = self.knn模型.predict([物品特征])
         物品数字 = self.读取物品数字(物品灰, predicted_label[0], 次数)
@@ -236,7 +231,8 @@ class depotREC(BaseSolver):
             self.tap_themed_element("index_warehouse")
 
             旧的截图 = self.recog.img
-            旧的截图 = cv2.cvtColor(旧的截图[140:1000, :], cv2.COLOR_RGB2BGR)
+            # 旧的截图 = cv2.cvtColor(旧的截图[140:1000, :], cv2.COLOR_RGB2BGR)
+            旧的截图=旧的截图[140:1000, :]
             self.recog.update()
             self.截图字典[self.截图计数器] = 旧的截图  # 1 第一张图片
             logger.info(f"仓库扫描: 把第{self.截图计数器}页保存进内存中等待识别")
@@ -244,7 +240,8 @@ class depotREC(BaseSolver):
                 self.swipe_noinertia((1800, 450), (-1000, 0))  # 滑动
                 self.recog.update()
                 新的截图 = self.recog.img
-                新的截图 = cv2.cvtColor(新的截图[140:1000, :], cv2.COLOR_RGB2BGR)
+                # 新的截图 = cv2.cvtColor(新的截图[140:1000, :], cv2.COLOR_RGB2BGR)
+                新的截图=新的截图[140:1000, :]
                 相似度 = self.compare_screenshot(
                     self.截图字典[self.截图计数器], 新的截图
                 )
@@ -287,8 +284,8 @@ class depotREC(BaseSolver):
         return True
 
     def compare_screenshot(self, image1, image2):
-        image1 = cv2.cvtColor(image1, cv2.COLOR_RGB2GRAY)
-        image2 = cv2.cvtColor(image2, cv2.COLOR_RGB2GRAY)
+        image1 = cv2.cvtColor(image1, cv2.COLOR_BGR2GRAY)
+        image2 = cv2.cvtColor(image2, cv2.COLOR_BGR2GRAY)
         keypoints1, descriptors1 = self.detector.detectAndCompute(image1, None)
         _, descriptors2 = self.detector.detectAndCompute(image2, None)
 

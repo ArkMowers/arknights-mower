@@ -29,10 +29,8 @@ from datetime import datetime
 #         writer.writerow(itemlist)
 
 
-def 读取仓库() -> List[Union[Dict[str, List[int]], str]]:
+def 读取仓库() :
     path = get_path("@app/tmp/depotresult.csv")
-    融合: Dict[str, List[int]] = {}
-
     if not os.path.exists(path):
         创建csv()
     depotinfo = pd.read_csv(path)
@@ -171,7 +169,7 @@ def 读取仓库() -> List[Union[Dict[str, List[int]], str]]:
 
 
 def 创建csv(path=get_path("@app/tmp/depotresult.csv")):
-    now_time = int(datetime.now().timestamp())
+    now_time = int(datetime.now().timestamp())-24*3600
     result = [
         now_time,
         json.dumps({"还未开始过扫描": 0}, ensure_ascii=False),
