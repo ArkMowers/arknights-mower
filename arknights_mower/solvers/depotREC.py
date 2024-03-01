@@ -17,7 +17,7 @@ from skimage.feature import hog
 from .. import __rootdir__
 from ..data import key_mapping
 from ..utils.device import Device
-from ..utils.image import loadimg
+from ..utils.image import loadimg, saveimg
 from ..utils.log import logger
 from ..utils.path import get_path
 from ..utils.recognize import Recognizer, Scene
@@ -42,11 +42,11 @@ class depotREC(BaseSolver):
         ORB = cv2.ORB_create()
         self.detector = sift  # 检测器类型
         self.结果目录 = get_path("@app/screenshot/depot")
-        get_path("@app/screenshot/depot").mkdir(exist_ok=True)
+        self.结果目录.mkdir(exist_ok=True)
         self.matcher = cv2.FlannBasedMatcher(
             dict(algorithm=1, trees=2), dict(checks=50)
         )  # 初始化一个识别
-        
+
         self.仓库输出 = get_path("@app/tmp/depotresult.csv")
         with lzma.open(f"{__rootdir__}/models/depot.pkl", "rb") as pkl:
             self.knn模型 = pickle.load(pkl)
@@ -59,26 +59,13 @@ class depotREC(BaseSolver):
         self.明日方舟工具箱json = {}
         logger.info(f"吟唱用时{datetime.now() - time}")
 
-    # def 导入_时间模板(self) -> list[str, np.ndarray]:
-    #     templates_folder_path = "./item_expire_time"
-    #     templates_list = []
-    #     file_list = os.listdir(templates_folder_path)
-    #     for file_name in file_list:
-    #         file_path = os.path.join(templates_folder_path, file_name)
-    #         image = cv2.imread(file_path, cv2.IMREAD_GRAYSCALE)
-    #         templates_list.append([file_name, image])
-
-    # def 导入_模板名称(self) -> dict:
-    #     with open("key_mapping.json", "r", encoding="utf-8") as file:
-    #         json_data = json.loads(file.read())
-    #         return json_data
-
     def 导入_数字模板(self):
         模板文件夹 = f"{__rootdir__}/resources/depot_num"
         数字模板列表 = []
         for 文件名 in os.listdir(模板文件夹):
             文件路径 = os.path.join(模板文件夹, 文件名)
-            数字模板列表.append(cv2.imread(文件路径, cv2.IMREAD_GRAYSCALE))
+            数字模板列表.append(loadimg(文件路径, True))
+
         return 数字模板列表
 
     def 识别空物品(self, 物品灰):
@@ -106,7 +93,7 @@ class depotREC(BaseSolver):
         status, result = stitcher.stitch(图片列表)
 
         if status == cv2.Stitcher_OK:
-            cv2.imwrite(f"{self.结果目录}/result.png", result)
+            saveimg(result, "depot_all")
             logger.info("拼接完成。")
         else:
             logger.info("拼接失败:", status)
@@ -132,7 +119,7 @@ class depotREC(BaseSolver):
             圆 = np.round(圆[0, :]).astype("int")
             for x, y, r in 圆:
                 cv2.circle(拼接结果, (x, y), r, (128, 255, 0), 4)
-            cv2.imwrite(f"{self.结果目录}/result_with_circles.png", 拼接结果)
+            saveimg(拼接结果, "depot_with_citcle")
         return 圆
 
     def 算坐标(self, 圆):
@@ -218,7 +205,7 @@ class depotREC(BaseSolver):
 
     def 匹配物品一次(self, 物品, 物品灰, 次数):
         物品切 = 物品[21:239, 21:239]
-        物品切 = cv2.resize(物品切, (64, 64))  ## 把图片缩小了
+        物品切 = cv2.resize(物品切, (128, 128))  ## 把图片缩小了
         物品特征 = self.特征点提取(物品切)
         predicted_label = self.knn模型.predict([物品特征])
         物品数字 = self.读取物品数字(物品灰, predicted_label[0], 次数)
@@ -274,8 +261,6 @@ class depotREC(BaseSolver):
             logger.info(f"仓库扫描: 开始计算裁切图像")
             time = datetime.now()
             self.截图列表 = list(self.截图字典.values())
-            # for index, img in enumerate(self.截图列表):
-            #     cv2.imwrite(f"{self.结果目录}/{index}.png", img)
             self.切图列表 = self.切图主程序(self.截图列表)
             logger.info(
                 f"仓库扫描: 切图用时{datetime.now() - time},需要识别{len(self.切图列表)}个物品"
