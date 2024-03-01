@@ -62,7 +62,7 @@ class depotREC(BaseSolver):
     def 导入_数字模板(self):
         模板文件夹 = f"{__rootdir__}/resources/depot_num"
         数字模板列表 = []
-        for 文件名 in os.listdir(模板文件夹):
+        for 文件名 in sorted(os.listdir(模板文件夹)) :
             文件路径 = os.path.join(模板文件夹, 文件名)
             数字模板列表.append(loadimg(文件路径, True))
 

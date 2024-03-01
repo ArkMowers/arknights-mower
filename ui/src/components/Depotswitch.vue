@@ -9,7 +9,7 @@ const { maa_depot_enable } = storeToRefs(store)
   <n-card>
     <template #header>
       <n-checkbox v-model:checked="maa_depot_enable">
-        <div class="card-title">MAA仓库扫描 {{ maa_depot_enable ? '开启' : '关闭' }}</div>
+        <div class="card-title">扫描仓库</div>
       </n-checkbox>
     </template>
   </n-card>
