@@ -400,8 +400,8 @@ def simulate():
                                 return now_time
 
                     if maa_config["maa_depot_enable"]:
-                        dt=int(datetime.now().timestamp())-_is_depotscan()
-                        if dt>maa_config["maa_execution_gap"]*3600:
+                        dt = int(datetime.now().timestamp())-_is_depotscan()
+                        if dt >= maa_config["maa_execution_gap"]*3600:
                             base_scheduler.仓库扫描()
                         else:
                             logger.info(f"仓库扫描未到时间，将在 {maa_config['maa_execution_gap']}小时之内开始扫描")
