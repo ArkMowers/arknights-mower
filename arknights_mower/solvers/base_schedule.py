@@ -682,8 +682,12 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         SchedulerTask(time=self.get_run_roder_time(k), task_plan=in_out_plan,
                                       task_type=TaskTypes.RUN_ORDER, meta_data=k))
                 adj_task = scheduling(self.tasks)
-                if adj_task is not None:
+                max_execution = 3
+                adj_count = 0
+                while adj_task is not None and adj_count<max_execution:
                     self.drone(adj_task.meta_data, adjust_time=True)
+                    adj_task = scheduling(self.tasks)
+                    adj_count += 1
         # 准备数据
         logger.debug(self.op_data.print())
         # 根据剩余心情排序
@@ -1298,7 +1302,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
 
     def adjust_order_time(self, accelerate, room):
         error_count = 0
-        while scheduling(self.tasks) is not None:
+        action_required_task = scheduling(self.tasks)
+        while action_required_task is not None and action_required_task.meta_data == room:
             self.tap(accelerate)
             if self.get_infra_scene() == Scene.CONNECTING:
                 if not self.waiting_solver(Scene.CONNECTING, sleep_time=2):
@@ -1324,6 +1329,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             if task is not None:
                 task.time = task_time
                 logger.info(f'房间 {room} 无人机加速后接单时间为 {task_time.strftime("%H:%M:%S")}')
+                action_required_task = scheduling(self.tasks)
             else:
                 break
 
