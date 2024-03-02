@@ -51,7 +51,7 @@ def scheduling(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
         tasks.sort(key=lambda x: x.time)
 
         # 任务间隔最小时间（5分钟）
-        min_time_interval = timedelta(minutes=run_order_delay)
+        min_time_interval = timedelta(minutes=2)
 
         # 初始化变量以跟踪上一个优先级0任务和计划执行时间总和
         last_priority_0_task = None
