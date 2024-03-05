@@ -37,8 +37,6 @@ with lzma.open(f"{__rootdir__}/models/operator_room.model", "rb") as f:
     OP_ROOM = pickle.loads(f.read())
 
 kernel = np.ones((12, 12), np.uint8)
-mh = 46
-mw = 265
 
 
 class BaseMixin:
@@ -212,12 +210,16 @@ class BaseMixin:
         rect = map(lambda c: cv2.boundingRect(c), contours)
         x, y, w, h = sorted(rect, key=lambda c: c[0])[0]
         img = img[y : y + h, x : x + w]
-        tpl = np.zeros((mh, mw))
-        dy = int((mh - img.shape[0]) / 2)
-        tpl[dy : img.shape[0] + dy, : img.shape[1]] = img
-        tpl /= 255
-        tpl = tpl.reshape(mh * mw)
-        return agent_list[OP_ROOM.predict([tpl])[0]]
+        img = cv2.copyMakeBorder(img, 2, 2, 2, 2, cv2.BORDER_CONSTANT, None, (0,))
+        for operator, template in OP_ROOM.items():
+            try:
+                result = cv2.matchTemplate(img, template, cv2.TM_CCORR_NORMED)
+                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+                if max_val > 0.7:
+                    return operator
+            except Exception:
+                pass
+        return None
 
     def read_screen(self, img, type="mood", limit=24, cord=None):
         if cord is not None:

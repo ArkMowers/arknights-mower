@@ -4,22 +4,17 @@ import pickle
 import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
-from sklearn.neighbors import KNeighborsClassifier
 
 from arknights_mower.data import agent_list
 from arknights_mower.utils.image import thres2
 
-mh = 46
-mw = 265
-
 font = ImageFont.truetype("arknights_mower/fonts/SourceHanSansCN-Medium.otf", 37)
 
-X = []
-Y = []
+data = {}
 
 kernel = np.ones((12, 12), np.uint8)
 
-for idx, operator in enumerate(agent_list):
+for operator in sorted(agent_list, key=lambda x: len(x), reverse=True):
     img = Image.new(mode="L", size=(400, 100))
     draw = ImageDraw.Draw(img)
     draw.text((50, 20), operator, fill=(255,), font=font)
@@ -30,17 +25,8 @@ for idx, operator in enumerate(agent_list):
     rect = map(lambda c: cv2.boundingRect(c), contours)
     x, y, w, h = sorted(rect, key=lambda c: c[0])[0]
     img = img[y : y + h, x : x + w]
-    tpl = np.zeros((mh, mw))
-    dy = int((mh - img.shape[0]) / 2)
-    tpl[dy : img.shape[0] + dy, : img.shape[1]] = img
-    # cv2.imwrite(f"/home/zhao/Desktop/data/{operator}.png", tpl)
-    tpl /= 255
-    tpl = tpl.reshape(mh * mw)
-    X.append(tpl)
-    Y.append(idx)
-
-model = KNeighborsClassifier(n_neighbors=1)
-model.fit(X, Y)
+    # cv2.imwrite(f"/home/zhao/Desktop/data/{operator}.png", img)
+    data[operator] = img
 
 with lzma.open("arknights_mower/models/operator_room.model", "wb") as f:
-    pickle.dump(model, f)
+    pickle.dump(data, f)
