@@ -116,13 +116,13 @@ class BaseSolver:
             self.sleep(interval, rebuild)
 
     def tap_element(self, element_name: str, x_rate: float = 0.5, y_rate: float = 0.5, interval: float = 1,
-                    rebuild: bool = True,
+                    rebuild: bool = True, score: float = 0.0,
                     draw: bool = False, scope: tp.Scope = None, judge: bool = True, detected: bool = False) -> bool:
         """ tap element """
         if element_name == 'nav_button':
             element = self.recog.nav_button()
         else:
-            element = self.find(element_name, draw, scope, judge=judge)
+            element = self.find(element_name, draw, scope, judge=judge, score=score)
         if detected and element is None:
             return False
         self.tap(element, x_rate, y_rate, interval, rebuild)
@@ -319,7 +319,7 @@ class BaseSolver:
                     self.tap(detector.announcement_close(self.recog.img))
                     self.tap((1800,100))
                 elif scene == Scene.MATERIEL:
-                    self.tap_element('materiel_ico')
+                    self.tap_element('materiel_ico', score=0.2)
                 elif scene // 100 == 1:
                     self.login()
                 elif scene == Scene.CONFIRM:

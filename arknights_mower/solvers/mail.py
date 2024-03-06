@@ -34,7 +34,7 @@ class MailSolver(BaseSolver):
         elif scene == Scene.CONNECTING:
             self.sleep(3)
         elif scene == Scene.MATERIEL:
-            self.tap_element('materiel_ico')
+            self.tap_element('materiel_ico', score=0.2)
         elif self.get_navigation():
             self.tap_element('nav_index')
         elif scene != Scene.UNKNOWN:

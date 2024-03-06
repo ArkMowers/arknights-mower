@@ -206,7 +206,7 @@ class RecruitSolver(BaseSolver):
         elif scene == Scene.RECRUIT_AGENT:
             return self.recruit_result()
         elif scene == Scene.MATERIEL:
-            self.tap_element('materiel_ico')
+            self.tap_element('materiel_ico', score=0.2)
         elif scene == Scene.LOADING:
             self.sleep(3)
         elif scene == Scene.CONNECTING:
