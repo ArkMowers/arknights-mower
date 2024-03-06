@@ -7,6 +7,7 @@ import cv2
 import numpy as np
 
 from arknights_mower import __rootdir__
+from arknights_mower.utils import rapidocr
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.image import cropimg, loadimg, thres2
 from arknights_mower.utils.log import logger
@@ -283,6 +284,17 @@ class ReclamationAlgorithm(BaseSolver):
         pos = self.find("ra/map_back", thres=200)
         self.tap(pos)
 
+    def detect_score(self, scope=None, find_max=True):
+        if find_max and self.find("ra/max", scope=scope, score=0.2):
+            return "已达上限"
+        score = rapidocr.engine(
+            thres2(cropimg(self.recog.gray, scope), 127),
+            use_det=False,
+            use_cls=False,
+            use_rec=True,
+        )[0][0][0]
+        return score or "识别失败"
+
     def move_forward(self, scene):
         # 从首页进入生息演算主页
         if scene == Scene.INDEX:
@@ -334,7 +346,14 @@ class ReclamationAlgorithm(BaseSolver):
             else:
                 self.tap((960, 900))
         elif scene == Scene.RA_PERIOD_COMPLETE:
-            self.tap_element("ra/period_complete")
+            scope_list = (
+                (((860, 550), (1060, 640)), "生息总结", False),
+                (((870, 785), (956, 825)), "转化技术点数", False),
+                (((1250, 785), (1345, 825)), "转化繁荣点数", False),
+            )
+            for scope, title, find_max in scope_list:
+                score = self.detect_score(scope=scope, find_max=find_max)
+                logger.info(f"{title}：{score}")
 
         # 存档操作
         elif scene == Scene.RA_DELETE_SAVE_DIALOG:
