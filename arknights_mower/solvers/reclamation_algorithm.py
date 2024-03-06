@@ -348,12 +348,13 @@ class ReclamationAlgorithm(BaseSolver):
         elif scene == Scene.RA_PERIOD_COMPLETE:
             scope_list = (
                 (((860, 550), (1060, 640)), "生息总结", False),
-                (((870, 785), (956, 825)), "转化技术点数", False),
-                (((1250, 785), (1345, 825)), "转化繁荣点数", False),
+                (((870, 785), (956, 825)), "转化技术点数", True),
+                (((1250, 785), (1345, 825)), "转化繁荣点数", True),
             )
             for scope, title, find_max in scope_list:
                 score = self.detect_score(scope=scope, find_max=find_max)
                 logger.info(f"{title}：{score}")
+            self.tap_element("ra/period_complete")
 
         # 存档操作
         elif scene == Scene.RA_DELETE_SAVE_DIALOG:
