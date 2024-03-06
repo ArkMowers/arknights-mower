@@ -1740,11 +1740,13 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         mood_p = [tuple(zip(mood_x, y)) for y in mood_y]
         result = []
         swiped = False
+        self.recog.save_screencap("get_agent_from_room")
         for i in range(0, length):
             if i >= 3 and not swiped:
                 self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, -self.recog.h * 0.45), duration=500,
                            interval=1, rebuild=True)
                 swiped = True
+                self.recog.save_screencap("get_agent_from_room")
             data = {}
             if self.find("infra_no_operator", scope=name_p[i]):
                 _name = ""
@@ -1756,6 +1758,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 logger.warning("检测到滑动可能失败")
                 self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, -self.recog.h * 0.45), duration=500,
                            interval=1, rebuild=True)
+                self.recog.save_screencap("get_agent_from_room")
                 if self.find("infra_no_operator", scope=name_p[i]):
                     _name = ""
                 else:
