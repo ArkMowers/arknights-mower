@@ -25,8 +25,10 @@ for operator in sorted(agent_list, key=lambda x: len(x), reverse=True):
     rect = map(lambda c: cv2.boundingRect(c), contours)
     x, y, w, h = sorted(rect, key=lambda c: c[0])[0]
     img = img[y : y + h, x : x + w]
-    # cv2.imwrite(f"/home/zhao/Desktop/data/{operator}.png", img)
-    data[operator] = img
+    tpl = np.zeros((46, 265), dtype=np.uint8)
+    tpl[: img.shape[0], : img.shape[1]] = img
+    # cv2.imwrite(f"/home/zhao/Desktop/data/{operator}.png", tpl)
+    data[operator] = tpl
 
 with lzma.open("arknights_mower/models/operator_room.model", "wb") as f:
     pickle.dump(data, f)

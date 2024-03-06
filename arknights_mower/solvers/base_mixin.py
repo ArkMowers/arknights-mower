@@ -210,16 +210,18 @@ class BaseMixin:
         rect = map(lambda c: cv2.boundingRect(c), contours)
         x, y, w, h = sorted(rect, key=lambda c: c[0])[0]
         img = img[y : y + h, x : x + w]
-        img = cv2.copyMakeBorder(img, 2, 2, 2, 2, cv2.BORDER_CONSTANT, None, (0,))
+        tpl = np.zeros((46, 265), dtype=np.uint8)
+        tpl[: img.shape[0], : img.shape[1]] = img
+        tpl = cv2.copyMakeBorder(tpl, 2, 2, 2, 2, cv2.BORDER_CONSTANT, None, (0,))
+        max_score = 0
+        best_operator = None
         for operator, template in OP_ROOM.items():
-            try:
-                result = cv2.matchTemplate(img, template, cv2.TM_CCORR_NORMED)
-                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-                if max_val > 0.7:
-                    return operator
-            except Exception:
-                pass
-        return None
+            result = cv2.matchTemplate(tpl, template, cv2.TM_CCORR_NORMED)
+            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+            if max_val > max_score:
+                max_score = max_val
+                best_operator = operator
+        return best_operator
 
     def read_screen(self, img, type="mood", limit=24, cord=None):
         if cord is not None:
