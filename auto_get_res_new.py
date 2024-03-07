@@ -60,8 +60,8 @@ class Arknights数据处理器:
             if len(分割部分) == 6 and int(分割部分[5]) < 2023:
                 匹配结果 = True
 
-            # if 目标图标代码 == "ap_supply_lt_60":
-            #     匹配结果 = True
+            if 目标图标代码 == "ap_supply_lt_60":
+                匹配结果 = True
 
             抽卡 = self.抽卡表.get("gachaPoolClient", [])
             for 卡池 in 抽卡:
@@ -79,12 +79,12 @@ class Arknights数据处理器:
             中文名称 = 物品数据["name"]
             分类类型 = 物品数据["classifyType"]
             源文件路径 = f"./ArknightsGameResource/item/{图标代码}.png"
-            目标文件路径 = f"./ui/public/depot/{图标代码}.png"
-
+            os.makedirs(f"./ui/public/depot/{分类类型}", exist_ok=True)
             if 分类类型 != "NONE" and 排序代码 > 0:
                 排除开关 = False
                 排除开关 = 检查图标代码匹配(图标代码)
                 if os.path.exists(源文件路径) and not 排除开关:
+                    目标文件路径 = f"./ui/public/depot/{分类类型}/{图标代码}.png"
                     if not os.path.exists(目标文件路径):
                         shutil.copy(源文件路径, 目标文件路径)
                     物品_名称对[图标代码] = [
@@ -97,7 +97,6 @@ class Arknights数据处理器:
                 else:
                     print(f"可以复制，但是未找到: {源文件路径}")
 
-        # 物品_名称对 = OrderedDict(物品_名称对)
         with open(
             "./arknights_mower/data/key_mapping.json", "w", encoding="utf8"
         ) as json_file:
@@ -215,35 +214,36 @@ class Arknights数据处理器:
         ) as f:
             json.dump(可以刷的活动关卡, f, ensure_ascii=False)
 
-    def knn模型训练(self):
-        def 提取特征点(image):
-            # 提取HOG特征
-            hog_features, _ = hog(
-                image,
+    def 训练knn模型(self, 模板文件夹, 模型保存路径):
+        def 提取特征点(模板):
+            模板 = 模板[40:173, 40:173]
+            hog_features = hog(
+                模板,
                 orientations=18,
                 pixels_per_cell=(8, 8),
                 cells_per_block=(2, 2),
                 block_norm="L2-Hys",
-                visualize=True,
                 transform_sqrt=True,
+                multichannel=True,
             )
             return hog_features
 
-        def 加载图片特征点_标签(directory,缩小宽度=64):
-            images = []
-            labels = []
-            for filename in os.listdir(directory):
-                filepath = os.path.join(directory, filename)
-                image = cv2.imread(filepath)
-                image = cv2.resize(image, (218, 218))
-                image = cv2.resize(image, (缩小宽度, 缩小宽度))
-                image_features = 提取特征点(image)
-                images.append(image_features)
-                labels.append(filename[:-4])  # 假设图片名称即为标签
-            return images, labels
+        def 加载图片特征点_标签(模板文件夹):
+            特征点列表 = []
+            标签列表 = []
+            for 文件名 in sorted(os.listdir(模板文件夹)):
+                文件位置 = os.path.join(模板文件夹, 文件名)
+                模板 = cv2.imread(文件位置)
+                模板 = cv2.resize(模板, (213, 213))
+                特征点 = 提取特征点(模板)
+                特征点列表.append(特征点)
+                标签列表.append(文件名[:-4])
+            return 特征点列表, 标签列表
 
-        def 训练knn模型(images, labels, k=1):
-            knn_classifier = KNeighborsClassifier(n_neighbors=k, n_jobs=-1)
+        def 训练knn模型(images, labels):
+            knn_classifier = KNeighborsClassifier(
+                weights="distance", n_neighbors=1, n_jobs=-1
+            )
             knn_classifier.fit(images, labels)
             return knn_classifier
 
@@ -251,11 +251,20 @@ class Arknights数据处理器:
             with lzma.open(filename, "wb") as f:
                 pickle.dump(classifier, f)
 
-        time = datetime.now()
-        模板特征点, 模板标签 = 加载图片特征点_标签("./ui/public/depot/")
-        knn_classifier = 训练knn模型(模板特征点, 模板标签, k=1)
-        保存knn模型(knn_classifier, "./arknights_mower/models/depot.pkl")
-        print(datetime.now() - time)
+        模板特征点, 模板标签 = 加载图片特征点_标签(模板文件夹)
+        knn模型 = 训练knn模型(模板特征点, 模板标签)
+        保存knn模型(knn模型, 模型保存路径)
+
+    def 批量训练并保存模型(self):
+        self.训练knn模型(
+            "./ui/public/depot/NORMAL/", "./arknights_mower/models/NORMAL.pkl"
+        )
+        self.训练knn模型(
+            "./ui/public/depot/CONSUME/", "./arknights_mower/models/CONSUME.pkl"
+        )
+        self.训练knn模型(
+            "./ui/public/depot/MATERIAL/", "./arknights_mower/models/MATERIAL.pkl"
+        )
 
 
 if __name__ == "__main__":
@@ -264,20 +273,6 @@ if __name__ == "__main__":
     数据处理器.添加干员()
     数据处理器.读取卡池()
     数据处理器.读取关卡()
-    数据处理器.knn模型训练()
+    数据处理器.批量训练并保存模型()
 
-# 加载模型
-# model_path = "knn_classifier.pkl"
-# loaded_knn_classifier = load_classifier(model_path)
 
-# # 对指定文件夹中的图像进行预测
-# folder_path = "./output/depot"
-# time = datetime.now()
-# predictions = predict_images_in_folder(folder_path, loaded_knn_classifier)
-# for filename, predicted_label in predictions:
-#     if filename.startswith(predicted_label):
-#         print(f"{filename}: {predicted_label} 成功")
-#     else:
-#         print(f"{filename}: {predicted_label} 失败")
-# print(datetime.now() - time)
-# # 打印预测结果
