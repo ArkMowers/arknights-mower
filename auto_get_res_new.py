@@ -208,12 +208,12 @@ class Arknights数据处理器:
                     }
                 )
             # print(关卡代码, 关卡名称, 关卡掉落, 关卡结束时间)
-            print(可以刷的活动关卡)
+            
         with open(
             "./ui/src/pages/stage_data/event_data.json", "w", encoding="utf-8"
         ) as f:
             json.dump(可以刷的活动关卡, f, ensure_ascii=False)
-
+        print(可以刷的活动关卡)
     def 训练knn模型(self, 模板文件夹, 模型保存路径):
         def 提取特征点(模板):
             模板 = 模板[40:173, 40:173]
