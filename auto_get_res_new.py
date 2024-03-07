@@ -102,7 +102,7 @@ class Arknights数据处理器:
             "./arknights_mower/data/key_mapping.json", "w", encoding="utf8"
         ) as json_file:
             json.dump(物品_名称对, json_file, ensure_ascii=False)
-        with open("./ui\src\pages\key_mapping.json", "w", encoding="utf8") as json_file:
+        with open("./ui/src/pages/key_mapping.json", "w", encoding="utf8") as json_file:
             json.dump(物品_名称对, json_file, ensure_ascii=False)
         print()
 
@@ -211,7 +211,7 @@ class Arknights数据处理器:
             # print(关卡代码, 关卡名称, 关卡掉落, 关卡结束时间)
             print(可以刷的活动关卡)
         with open(
-            "./ui\src\pages\stage_data\event_data.json", "w", encoding="utf-8"
+            "./ui/src/pages/stage_data/event_data.json", "w", encoding="utf-8"
         ) as f:
             json.dump(可以刷的活动关卡, f, ensure_ascii=False)
 
@@ -252,9 +252,9 @@ class Arknights数据处理器:
                 pickle.dump(classifier, f)
 
         time = datetime.now()
-        模板特征点, 模板标签 = 加载图片特征点_标签("./ui\public\depot/")
+        模板特征点, 模板标签 = 加载图片特征点_标签("./ui/public/depot/")
         knn_classifier = 训练knn模型(模板特征点, 模板标签, k=1)
-        保存knn模型(knn_classifier, "./arknights_mower\models\depot.pkl")
+        保存knn模型(knn_classifier, "./arknights_mower/models/depot.pkl")
         print(datetime.now() - time)
 
 
@@ -271,7 +271,7 @@ if __name__ == "__main__":
 # loaded_knn_classifier = load_classifier(model_path)
 
 # # 对指定文件夹中的图像进行预测
-# folder_path = "./output\depot"
+# folder_path = "./output/depot"
 # time = datetime.now()
 # predictions = predict_images_in_folder(folder_path, loaded_knn_classifier)
 # for filename, predicted_label in predictions:
