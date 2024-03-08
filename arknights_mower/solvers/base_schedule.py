@@ -542,7 +542,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 try:
                     self.enter_room(room)
                     _mood_data = self.get_agent_from_room(room)
-                    logger.info(f'房间 {room} 心情为：{_mood_data}')
+                    mood_info = [f"干员: {item['agent']}, 心情: {round(item['mood'], 3)}" for item in _mood_data]
+                    logger.info(f'房间 {self.translate_room(room)}  {mood_info}')
+                    # logger.info(f'房间 {room} 心情为：{_mood_data}')
                     break
                 except Exception as e:
                     if error_count > 3: raise e

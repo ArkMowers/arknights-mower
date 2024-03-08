@@ -188,16 +188,14 @@ class Arknights数据处理器:
             关卡结束时间戳 = 还未结束的非常驻关卡[键]["endTs"]
             关卡结束时间 = datetime.fromtimestamp(还未结束的非常驻关卡[键]["endTs"] + 1)
             关卡掉落表 = self.关卡表["stages"][键]["stageDropInfo"]["displayRewards"]
-            关卡掉落 = {"首次掉落": [], "普通掉落": []}
+            关卡掉落 = {"普通掉落": []}
             for item in 关卡掉落表:
-                if item["dropType"] == 8:
-                    关卡掉落["首次掉落"].append(
-                        self.物品表["items"][item["id"]]["name"]
-                    )
-                else:
-                    关卡掉落["普通掉落"].append(
-                        self.物品表["items"][item["id"]]["name"]
-                    )
+                if not "side_token" in self.物品表["items"][item["id"]]["iconId"]:
+                    if not item["dropType"] == 8:
+
+                        关卡掉落["普通掉落"].append(
+                            self.物品表["items"][item["id"]]["iconId"]
+                        )
             if 关卡掉落["普通掉落"] != []:
                 可以刷的活动关卡.append(
                     {
@@ -208,12 +206,13 @@ class Arknights数据处理器:
                     }
                 )
             # print(关卡代码, 关卡名称, 关卡掉落, 关卡结束时间)
-            
+
         with open(
             "./ui/src/pages/stage_data/event_data.json", "w", encoding="utf-8"
         ) as f:
             json.dump(可以刷的活动关卡, f, ensure_ascii=False)
         print(可以刷的活动关卡)
+
     def 训练knn模型(self, 模板文件夹, 模型保存路径):
         def 提取特征点(模板):
             模板 = 模板[40:173, 40:173]
@@ -274,5 +273,3 @@ if __name__ == "__main__":
     数据处理器.读取卡池()
     数据处理器.读取关卡()
     数据处理器.批量训练并保存模型()
-
-
