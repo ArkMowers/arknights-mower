@@ -2374,5 +2374,5 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             return daily_report(self.device,self.send_message_config,send_report)
 
     def 仓库扫描(self):
-        depotscan()
+        depotscan(self.device)
         return True

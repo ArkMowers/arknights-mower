@@ -15,7 +15,7 @@ def mail(device: Device = None):
     """
     MailSolver(device).run()
 
-def depotscan(args: list[str] = [], device: Device = None):
+def depotscan(device: Device = None):
     """
     仓库扫描
     """
