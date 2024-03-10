@@ -475,7 +475,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         elif not self.planned:
             try:
                 # 如果有任何type 则会最后修正
-                if find_next_task(self.tasks, datetime.now() + timedelta(seconds=300)) is not None:
+                if find_next_task(self.tasks, datetime.now()) is not None:
                     self.skip(['planned', 'todo_task', 'collect_notification'])
                 else:
                     mood_result = self.agent_get_mood(skip_dorm=True)
@@ -780,15 +780,13 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                                                                                         high_free,
                                                                                         low_free)
             if len(_plan.keys()) > 0:
-                if find_next_task(self.tasks, datetime.now() + timedelta(seconds=300),
-                                    task_type=TaskTypes.RUN_ORDER) is not None: return
                 self.tasks.append(SchedulerTask(task_plan=_plan, task_type=TaskTypes.SHIFT_OFF))
         except Exception as e:
             logger.exception(e)
             # 如果下个 普通任务 >5 分钟则补全宿舍
         logger.debug('tasks:' + str(self.tasks))
-        if find_next_task(self.tasks, datetime.now() + timedelta(seconds=300)) is not None:
-            logger.info("5分钟内有其他任务,跳过宿舍纠错")
+        if find_next_task(self.tasks, datetime.now()) is not None:
+            logger.info("有其他任务,跳过宿舍纠错")
             return
         if self.agent_get_mood() is None:
             self.backup_plan_solver()
