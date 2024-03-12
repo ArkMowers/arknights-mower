@@ -77,7 +77,7 @@ const show_task_table = ref(true)
         </template>
       </tbody>
     </n-table>
-    <n-log class="log" :log="log" language="mower"  style="user-select: text"/>
+    <n-log class="log" :log="log" language="mower" style="user-select: text" />
     <div class="action-container">
       <n-button type="error" @click="stop" v-if="running">
         <template #icon>

@@ -404,7 +404,7 @@ def simulate():
                         if dt >= maa_config["maa_execution_gap"]*3600:
                             base_scheduler.仓库扫描()
                         else:
-                            logger.info(f"仓库扫描未到时间，将在 {maa_config['maa_execution_gap']}小时之内开始扫描")
+                            logger.info(f"仓库扫描未到时间，将在 {maa_config['maa_execution_gap']-dt//3600}小时之内开始扫描")
                     if base_scheduler.maa_config["maa_enable"] == 1:
                         subject = (
                             f"下次任务在{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}"

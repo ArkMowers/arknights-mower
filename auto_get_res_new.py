@@ -1,16 +1,17 @@
 import json
 import shutil
 import os
-from collections import OrderedDict
-import os
 import cv2
 import numpy as np
+import pickle
+import lzma
+
 from sklearn.neighbors import KNeighborsClassifier
 from skimage.feature import hog
-import pickle
-from skimage import feature
-import lzma
 from datetime import datetime
+from PIL import Image, ImageDraw, ImageFont
+from arknights_mower.data import agent_list
+from arknights_mower.utils.image import thres2
 
 
 class Arknights数据处理器:
@@ -171,7 +172,7 @@ class Arknights数据处理器:
                 print(卡池类型代码)
                 print()
 
-    def 读取关卡(self):
+    def 读取活动关卡(self):
         可以刷的活动关卡 = []
         关卡 = self.关卡表["stageValidInfo"]
         还未结束的非常驻关卡 = {
@@ -254,7 +255,7 @@ class Arknights数据处理器:
         knn模型 = 训练knn模型(模板特征点, 模板标签)
         保存knn模型(knn模型, 模型保存路径)
 
-    def 批量训练并保存模型(self):
+    def 批量训练并保存扫仓库模型(self):
         self.训练knn模型(
             "./ui/public/depot/NORMAL/", "./arknights_mower/models/NORMAL.pkl"
         )
@@ -265,11 +266,90 @@ class Arknights数据处理器:
             "./ui/public/depot/MATERIAL/", "./arknights_mower/models/MATERIAL.pkl"
         )
 
+    def 训练在房间内的干员名的模型(self):
+
+        font = ImageFont.truetype(
+            "arknights_mower/fonts/SourceHanSansCN-Medium.otf", 37)
+
+        data = {}
+
+        kernel = np.ones((12, 12), np.uint8)
+
+        for operator in sorted(agent_list, key=lambda x: len(x), reverse=True):
+            img = Image.new(mode="L", size=(400, 100))
+            draw = ImageDraw.Draw(img)
+            draw.text((50, 20), operator, fill=(255,), font=font)
+            img = np.array(img, dtype=np.uint8)
+            img = thres2(img, 200)
+            dilation = cv2.dilate(img, kernel, iterations=1)
+            contours, _ = cv2.findContours(
+                dilation, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+            rect = map(lambda c: cv2.boundingRect(c), contours)
+            x, y, w, h = sorted(rect, key=lambda c: c[0])[0]
+            img = img[y: y + h, x: x + w]
+            tpl = np.zeros((46, 265), dtype=np.uint8)
+            tpl[: img.shape[0], : img.shape[1]] = img
+            # cv2.imwrite(f"/home/zhao/Desktop/data/{operator}.png", tpl)
+            data[operator] = tpl
+
+        with lzma.open("arknights_mower/models/operator_room.model", "wb") as f:
+            pickle.dump(data, f)
+
+    def 训练选中的干员名的模型(self):
+        mh = 42
+        mw = 200
+        font31 = ImageFont.truetype(
+            "arknights_mower/fonts/SourceHanSansCN-Medium.otf", 31)
+        font30 = ImageFont.truetype(
+            "arknights_mower/fonts/SourceHanSansCN-Medium.otf", 30)
+        font25 = ImageFont.truetype(
+            "arknights_mower/fonts/SourceHanSansCN-Medium.otf", 25)
+
+        X = []
+        Y = []
+
+        kernel = np.ones((10, 10), np.uint8)
+
+        for idx, operator in enumerate(agent_list):
+            font = font31
+            if not operator[0].encode().isalpha():
+                if len(operator) == 7:
+                    font = font25
+                elif len(operator) == 6:
+                    font = font30
+            img = Image.new(mode="L", size=(400, 100))
+            draw = ImageDraw.Draw(img)
+            draw.text((50, 20), operator, fill=(255,), font=font)
+            img = np.array(img, dtype=np.uint8)
+            img = thres2(img, 140)
+            dilation = cv2.dilate(img, kernel, iterations=1)
+            contours, _ = cv2.findContours(
+                dilation, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+            rect = map(lambda c: cv2.boundingRect(c), contours)
+            x, y, w, h = sorted(rect, key=lambda c: c[0])[0]
+            img = img[y: y + h, x: x + w]
+            tpl = np.zeros((mh, mw))
+            tpl[: img.shape[0], : img.shape[1]] = img
+            # cv2.imwrite(f"/home/zhao/Desktop/data/{operator}.png", tpl)
+            tpl /= 255
+            tpl = tpl.reshape(mh * mw)
+            X.append(tpl)
+            Y.append(idx)
+
+        model = KNeighborsClassifier(n_neighbors=1)
+        model.fit(X, Y)
+
+        with lzma.open("arknights_mower/models/operator_select.model", "wb") as f:
+            pickle.dump(model, f)
+
 
 if __name__ == "__main__":
     数据处理器 = Arknights数据处理器()
     数据处理器.添加物品()
     数据处理器.添加干员()
     数据处理器.读取卡池()
-    数据处理器.读取关卡()
-    数据处理器.批量训练并保存模型()
+    数据处理器.读取活动关卡()
+    数据处理器.批量训练并保存扫仓库模型()
+    
+    数据处理器.训练在房间内的干员名的模型()
+    数据处理器.训练选中的干员名的模型()

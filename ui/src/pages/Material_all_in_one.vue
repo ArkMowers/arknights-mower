@@ -29,13 +29,11 @@ const deleteResult = (key) => {
   <n-flex>
     <div>
       <n-thing>
-        <n-button>关卡</n-button> 
+        <n-button>关卡</n-button>
         <SlickList axis="y" v-model:list="event_list" group="123">
           <SlickItem v-for="(event, i) in event_list" :key="event" :index="i">
             <n-list bordered hoverable clickable>
-              <n-list-item>
-                {{ event['id'] }} {{ event['name'] }}
-              </n-list-item>
+              <n-list-item> {{ event['id'] }} {{ event['name'] }} </n-list-item>
             </n-list>
           </SlickItem>
         </SlickList>
@@ -48,18 +46,13 @@ const deleteResult = (key) => {
         <SlickList axis="y" v-model:list="weekly_result[day]" group="123">
           <SlickItem v-for="(event, i) in weekly_result[day]" :key="event" :index="i">
             <n-list bordered hoverable clickable>
-              <n-list-item>
-              {{ event['id'] }} {{ event['name'] }} {}
-            </n-list-item>
+              <n-list-item> {{ event['id'] }} {{ event['name'] }} {} </n-list-item>
             </n-list>
-            
           </SlickItem>
         </SlickList>
-        {{  weekly_result[day] }}
+        {{ weekly_result[day] }}
       </n-thing>
     </div>
-
-
   </n-flex>
 </template>
 <style>
