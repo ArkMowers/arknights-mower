@@ -1,14 +1,17 @@
 import json
 import shutil
 import os
+
 import cv2
 import numpy as np
 import pickle
 import lzma
 
+from datetime import datetime
+
 from sklearn.neighbors import KNeighborsClassifier
 from skimage.feature import hog
-from datetime import datetime
+
 from PIL import Image, ImageDraw, ImageFont
 from arknights_mower.data import agent_list
 from arknights_mower.utils.image import thres2
@@ -32,6 +35,7 @@ class Arknights数据处理器:
         self.活动表 = self.加载json(
             "./ArknightsGameResource/gamedata/excel/activity_table.json"
         )
+        self.装仓库物品的字典 = {"NORMAL": [], "CONSUME": [], "MATERIAL": []}
 
     def 加载json(self, file_path):
         with open(file_path, "r", encoding="utf-8") as f:
@@ -85,7 +89,9 @@ class Arknights数据处理器:
                 排除开关 = False
                 排除开关 = 检查图标代码匹配(图标代码)
                 if os.path.exists(源文件路径) and not 排除开关:
-                    目标文件路径 = f"./ui/public/depot/{分类类型}/{图标代码}.png"
+                    目标文件路径 = f"./ui/public/depot/{图标代码}.png"
+                    self.装仓库物品的字典[分类类型].append(目标文件路径)
+
                     if not os.path.exists(目标文件路径):
                         shutil.copy(源文件路径, 目标文件路径)
                     物品_名称对[图标代码] = [
@@ -97,7 +103,6 @@ class Arknights数据处理器:
                     print(f"复制 {源文件路径} 到 {目标文件路径}")
                 else:
                     print(f"可以复制，但是未找到: {源文件路径}")
-
         with open(
             "./arknights_mower/data/key_mapping.json", "w", encoding="utf8"
         ) as json_file:
@@ -214,7 +219,7 @@ class Arknights数据处理器:
             json.dump(可以刷的活动关卡, f, ensure_ascii=False)
         print(可以刷的活动关卡)
 
-    def 训练knn模型(self, 模板文件夹, 模型保存路径):
+    def 训练仓库的knn模型(self, 模板文件夹, 模型保存路径):
         def 提取特征点(模板):
             模板 = 模板[40:173, 40:173]
             hog_features = hog(
@@ -228,16 +233,15 @@ class Arknights数据处理器:
             )
             return hog_features
 
-        def 加载图片特征点_标签(模板文件夹):
+        def 加载图片特征点_标签(模板类型):
             特征点列表 = []
             标签列表 = []
-            for 文件名 in sorted(os.listdir(模板文件夹)):
-                文件位置 = os.path.join(模板文件夹, 文件名)
-                模板 = cv2.imread(文件位置)
+            for 文件名 in (self.装仓库物品的字典[模板类型]):
+                模板 = cv2.imread(文件名)
                 模板 = cv2.resize(模板, (213, 213))
                 特征点 = 提取特征点(模板)
                 特征点列表.append(特征点)
-                标签列表.append(文件名[:-4])
+                标签列表.append(文件名[18:-4])
             return 特征点列表, 标签列表
 
         def 训练knn模型(images, labels):
@@ -256,14 +260,14 @@ class Arknights数据处理器:
         保存knn模型(knn模型, 模型保存路径)
 
     def 批量训练并保存扫仓库模型(self):
-        self.训练knn模型(
-            "./ui/public/depot/NORMAL/", "./arknights_mower/models/NORMAL.pkl"
+        self.训练仓库的knn模型(
+            "NORMAL", "./arknights_mower/models/NORMAL.pkl"
         )
-        self.训练knn模型(
-            "./ui/public/depot/CONSUME/", "./arknights_mower/models/CONSUME.pkl"
+        self.训练仓库的knn模型(
+            "CONSUME", "./arknights_mower/models/CONSUME.pkl"
         )
-        self.训练knn模型(
-            "./ui/public/depot/MATERIAL/", "./arknights_mower/models/MATERIAL.pkl"
+        self.训练仓库的knn模型(
+            "MATERIAL", "./arknights_mower/models/MATERIAL.pkl"
         )
 
     def 训练在房间内的干员名的模型(self):
@@ -343,13 +347,19 @@ class Arknights数据处理器:
             pickle.dump(model, f)
 
 
-if __name__ == "__main__":
-    数据处理器 = Arknights数据处理器()
-    数据处理器.添加物品()
-    数据处理器.添加干员()
-    数据处理器.读取卡池()
-    数据处理器.读取活动关卡()
-    数据处理器.批量训练并保存扫仓库模型()
-    
-    数据处理器.训练在房间内的干员名的模型()
-    数据处理器.训练选中的干员名的模型()
+数据处理器 = Arknights数据处理器()
+
+数据处理器.添加物品()
+# 希望可以运行一下 npm run format json在后端和前端存了两份一样的
+# 权宜之计
+
+数据处理器.添加干员()
+
+数据处理器.读取卡池()
+数据处理器.读取活动关卡()
+
+数据处理器.批量训练并保存扫仓库模型()
+# 批量训练并保存扫仓库模型 和 添加物品 有联动 ， 添加物品提供了分类的图片位置
+
+数据处理器.训练在房间内的干员名的模型()
+数据处理器.训练选中的干员名的模型()

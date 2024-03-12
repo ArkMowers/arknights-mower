@@ -43,12 +43,12 @@ def 导入_数字模板():
 
 def 找几何中心(coordinates, n_clusters=3):
     if len(coordinates) > 2:
-        logger.info(coordinates)
+        logger.debug(coordinates)
         coordinates_array = np.array(coordinates).reshape(-1, 1)
         kmeans = KMeans(n_clusters=n_clusters)
         kmeans.fit(coordinates_array)
         centers = kmeans.cluster_centers_.flatten().astype(int)
-        logger.info(centers)
+        logger.debug(centers)
     else:
         centers = [144, 430, 715]  # 权宜之计 在扫不出足够的圆时直接固定Y坐标
     return sorted(centers)
