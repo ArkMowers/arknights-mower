@@ -57,7 +57,7 @@ const show_task_table = ref(true)
 </script>
 
 <template>
-  <div class="home-container" style="user-select: text">
+  <div class="home-container">
     <n-table class="task-table" size="small" :single-line="false">
       <thead>
         <tr>
@@ -77,7 +77,7 @@ const show_task_table = ref(true)
         </template>
       </tbody>
     </n-table>
-    <n-log class="log" :log="log" language="mower" />
+    <n-log class="log" :log="log" language="mower" style="user-select: text" />
     <div class="action-container">
       <n-button type="error" @click="stop" v-if="running">
         <template #icon>

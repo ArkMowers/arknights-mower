@@ -26,33 +26,34 @@ const deleteResult = (key) => {
 }
 </script>
 <template>
-  <n-grid x-gap="150" class="unselectable">
-    <n-gi style="width: 300px">
-      <n-card class="card_out">
-        关卡<n-button @click="deleteResult(day)">重选</n-button>
+  <n-flex>
+    <div>
+      <n-thing>
+        <n-button>关卡</n-button>
         <SlickList axis="y" v-model:list="event_list" group="123">
           <SlickItem v-for="(event, i) in event_list" :key="event" :index="i">
-            <n-card class="card_in">
-              {{ event['id'] }}
-            </n-card>
+            <n-list bordered hoverable clickable>
+              <n-list-item> {{ event['id'] }} {{ event['name'] }} </n-list-item>
+            </n-list>
           </SlickItem>
         </SlickList>
-      </n-card>
-    </n-gi>
-    <n-gi style="width: 300px" v-for="(result, day) in weekly_result" :key="day">
-      <n-card class="card_out">
-        {{ day }}
-        <n-button @click="deleteResult(day)">重选</n-button>
+      </n-thing>
+    </div>
+
+    <div v-for="(result, day) in weekly_result" :key="day">
+      <n-thing class="card_out">
+        <n-button @click="deleteResult(day)">{{ day }} 重选</n-button>
         <SlickList axis="y" v-model:list="weekly_result[day]" group="123">
           <SlickItem v-for="(event, i) in weekly_result[day]" :key="event" :index="i">
-            <n-card class="card_in">
-              {{ event['id'] }}
-            </n-card>
+            <n-list bordered hoverable clickable>
+              <n-list-item> {{ event['id'] }} {{ event['name'] }} {} </n-list-item>
+            </n-list>
           </SlickItem>
         </SlickList>
-      </n-card>
-    </n-gi>
-  </n-grid>
+        {{ weekly_result[day] }}
+      </n-thing>
+    </div>
+  </n-flex>
 </template>
 <style>
 .unselectable {

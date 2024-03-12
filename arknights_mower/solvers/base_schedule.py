@@ -519,18 +519,21 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             return self.handle_error()
 
     def translate_room(self, room):
-        if "room" in room:
-            parts = room.split("_")
-            return f"B{parts[1]}0{parts[2]}"
-        elif "dormitory" in room:
-            parts = room.split("_")
-            return f"{parts[1]}层宿舍"
-        elif "contact" in room:
-            return "办公室"
-        elif "central" in room:
-            return "控制中枢"
-        else:
-            return "会客室"
+        translations = {
+            "room": lambda parts: f"B{parts[1]}0{parts[2]}",
+            "dormitory": lambda parts: f"{parts[1]}层宿舍",
+            "contact": lambda parts: "办公室",
+            "central": lambda parts: "控制中枢",
+            "factory": lambda parts: "加工站",
+            "meeting": lambda parts: "会客室"
+        }
+
+        for keyword, translation_func in translations.items():
+            if keyword in room:
+                parts = room.split("_")
+                return translation_func(parts)
+
+        return room
 
     def agent_get_mood(self, skip_dorm=False, force=False):
         # 暂时规定纠错只适用于主班表
@@ -542,7 +545,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 try:
                     self.enter_room(room)
                     _mood_data = self.get_agent_from_room(room)
-                    logger.info(f'房间 {room} 心情为：{_mood_data}')
+                    mood_info = [f"干员: {item['agent']}, 心情: {round(item['mood'], 3)}" for item in _mood_data]
+                    logger.info(f'房间 {self.translate_room(room)}  {mood_info}')
+                    # logger.info(f'房间 {room} 心情为：{_mood_data}')
                     break
                 except Exception as e:
                     if error_count > 3: raise e
@@ -2370,5 +2375,5 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             return daily_report(self.device,self.send_message_config,send_report)
 
     def 仓库扫描(self):
-        depotscan()
+        depotscan(self.device)
         return True

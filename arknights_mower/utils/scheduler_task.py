@@ -19,6 +19,7 @@ class TaskTypes(Enum):
     RECRUIT = ("recruit", "公招", 2)
     SKLAND = ("skland", "森空岛签到", 2)
     RE_ORDER = ("宿舍排序", "宿舍排序", 2)
+    DEPOT=("仓库扫描","仓库扫描",2) #但是我不会写剩下的
 
     def __new__(cls, value, display_value, priority):
         obj = object.__new__(cls)

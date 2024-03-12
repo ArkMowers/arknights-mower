@@ -140,11 +140,11 @@ def 读取仓库() :
             "EXGG_SHD",
             "MTL_ASC_DI",
         ],
-        "K未知": [],
+        "K未分类": [],
     }
 
     classified_data = {}
-    classified_data["K未知"] = {}
+    classified_data["K未分类"] = {}
     for category, items in sort.items():
         classified_data[category] = {
             item: {"number": 0, "sort": key_mapping[item][3]} for item in items
@@ -161,8 +161,8 @@ def 读取仓库() :
                 found_category = True
                 break
         if not found_category:
-            # 如果未找到匹配的分类，则放入 "K未知" 中
-            classified_data["K未知"][key] = {"number": value, "sort": key_mapping[key][3]}
+            # 如果未找到匹配的分类，则放入 "K未分类" 中
+            classified_data["K未分类"][key] = {"number": value, "sort": key_mapping[key][3]}
 
     logger.info(classified_data)
     return [classified_data, 新物品json]
@@ -176,4 +176,4 @@ def 创建csv(path=get_path("@app/tmp/depotresult.csv")):
         json.dumps({"空": ""}, ensure_ascii=False),
     ]
     depotinfo = pd.DataFrame([result], columns=["Timestamp", "Data", "json"])
-    depotinfo.to_csv(path, mode="a", index=False, header=True)
+    depotinfo.to_csv(path, mode="a", index=False, header=True,encoding="utf-8")

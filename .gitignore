@@ -190,3 +190,6 @@ MAA
 
 #testspace
 /testspace
+ui/public/depot/CONSUME/*
+ui/public/depot/MATERIAL/*
+ui/public/depot/NORMAL/*

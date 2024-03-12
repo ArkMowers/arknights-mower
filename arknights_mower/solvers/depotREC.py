@@ -32,139 +32,161 @@ from ..utils.solver import BaseSolver
 # [140:1000, :]
 
 
-class depotREC(BaseSolver):
-    def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
-        super().__init__(device, recog)
-        time = datetime.now()
-        sift = cv2.SIFT_create()
-        # surf = cv2.xfeatures2d.SURF_create(**surf_arg)
-        ORB = cv2.ORB_create()
-        self.detector = sift  # 检测器类型
-        self.结果目录 = get_path("@app/screenshot/depot")
-        self.结果目录.mkdir(exist_ok=True)
-        self.matcher = cv2.FlannBasedMatcher(
-            dict(algorithm=1, trees=2), dict(checks=50)
-        )  # 初始化一个识别
+def 导入_数字模板():
+    模板文件夹 = f"{__rootdir__}/resources/depot_num"
+    数字模板列表 = []
+    for 文件名 in sorted(os.listdir(模板文件夹)):
+        文件路径 = os.path.join(模板文件夹, 文件名)
+        数字模板列表.append(loadimg(文件路径, True))
+    return 数字模板列表
 
-        self.仓库输出 = get_path("@app/tmp/depotresult.csv")
-        with lzma.open(f"{__rootdir__}/models/depot.pkl", "rb") as pkl:
-            self.knn模型 = pickle.load(pkl)
-        # self.时间模板 = self.导入_时间模板()
-        self.物品数字 = self.导入_数字模板()
-        self.截图字典 = {}  # 所有截图的字典（尽量不重不漏）
-        self.截图计数器 = 1  # 所有截图的列表的计数器
-        # self.仓库图片 = self.导入_仓库图片()  # [140:1000, :] 需要传入&裁剪
-        self.结果字典 = {}
-        self.明日方舟工具箱json = {}
-        logger.info(f"吟唱用时{datetime.now() - time}")
 
-    def 导入_数字模板(self):
-        模板文件夹 = f"{__rootdir__}/resources/depot_num"
-        数字模板列表 = []
-        for 文件名 in sorted(os.listdir(模板文件夹)) :
-            文件路径 = os.path.join(模板文件夹, 文件名)
-            数字模板列表.append(loadimg(文件路径, True))
-
-        return 数字模板列表
-
-    def 识别空物品(self, 物品灰):
-        _, 二值图 = cv2.threshold(物品灰, 50, 255, cv2.THRESH_BINARY)
-        白像素个数 = cv2.countNonZero(二值图)
-        所有像素个数 = 二值图.shape[0] * 二值图.shape[1]
-        白像素比值 = int((白像素个数 / 所有像素个数) * 100)
-        if 白像素比值 == 100:
-            logger.info("删除一次空物品")
-            return False
-        else:
-            return True
-
-    def 找几何中心(self, coordinates, n_clusters=3):
+def 找几何中心(coordinates, n_clusters=3):
+    if len(coordinates) > 2:
+        logger.debug(coordinates)
         coordinates_array = np.array(coordinates).reshape(-1, 1)
         kmeans = KMeans(n_clusters=n_clusters)
         kmeans.fit(coordinates_array)
         centers = kmeans.cluster_centers_.flatten().astype(int)
-        return centers
+        logger.debug(centers)
+    else:
+        centers = [144, 430, 715]  # 权宜之计 在扫不出足够的圆时直接固定Y坐标
+    return sorted(centers)
 
-    def 拼图(self, 图片列表):
-        stitcher = cv2.Stitcher.create(mode=cv2.Stitcher_SCANS)
-        status, result = stitcher.stitch(图片列表)
 
-        if status == cv2.Stitcher_OK:
-            saveimg(result, "depot_all")
-            logger.info("拼接完成。")
-        else:
-            logger.info("拼接失败:", status)
+def 找圆(
+        拼接结果, 参数1=50, 参数2=30, 圆心间隔=230, 最小半径=90, 最大半径=100
+):
+    灰图 = cv2.cvtColor(拼接结果, cv2.COLOR_BGR2GRAY)
+    saveimg(拼接结果, "depot_without_circle")
+    圆 = cv2.HoughCircles(
+        灰图,
+        cv2.HOUGH_GRADIENT,
+        dp=1,
+        minDist=圆心间隔,
+        param1=参数1,
+        param2=参数2,
+        minRadius=最小半径,
+        maxRadius=最大半径,
+    )
+    if 圆 is not None:
+        圆 = np.round(圆[0, :]).astype("int")
+        for x, y, r in 圆:
+            cv2.circle(拼接结果, (x, y), r, (128, 255, 0), 4)
+        saveimg(拼接结果, "depot_with_circle")
 
-        return result
+    return 圆
 
-    def 找圆(
-        self, 拼接结果, 参数1=50, 参数2=30, 圆心间隔=230, 最小半径=90, 最大半径=100
-    ):
-        灰图 = cv2.cvtColor(拼接结果, cv2.COLOR_BGR2GRAY)
-        圆 = cv2.HoughCircles(
-            灰图,
-            cv2.HOUGH_GRADIENT,
-            dp=1,
-            minDist=圆心间隔,
-            param1=参数1,
-            param2=参数2,
-            minRadius=最小半径,
-            maxRadius=最大半径,
+
+def 拼图(图片列表):
+    stitcher = cv2.Stitcher.create(mode=cv2.Stitcher_SCANS)
+    status, result = stitcher.stitch(图片列表)
+    if status == cv2.Stitcher_OK:
+        logger.info("拼接完成。")
+    else:
+        logger.info("拼接失败:", status)
+    return result
+
+
+def 提取特征点(模板):
+    模板 = 模板[40:173, 40:173]
+    hog_features = hog(
+        模板,
+        orientations=18,
+        pixels_per_cell=(8, 8),
+        cells_per_block=(2, 2),
+        block_norm="L2-Hys",
+        transform_sqrt=True,
+        multichannel=True,
+    )
+    return hog_features
+
+
+def 算坐标(圆):
+    circles_x = sorted(圆[:, 0])
+    groups = []
+    start_index = 0
+
+    for i in range(1, len(circles_x)):
+        if circles_x[i] - circles_x[i - 1] >= 20:
+            groups.append(circles_x[start_index:i])
+            start_index = i
+
+    groups.append(circles_x[start_index:])
+    circles_x = [int(sum(group) / len(group)) for group in groups]
+    circles_y = 找几何中心(圆[:, 1], 3)
+    return circles_x, circles_y
+
+
+def 识别空物品(物品灰):
+    _, 二值图 = cv2.threshold(物品灰, 50, 255, cv2.THRESH_BINARY)
+    白像素个数 = cv2.countNonZero(二值图)
+    所有像素个数 = 二值图.shape[0] * 二值图.shape[1]
+    白像素比值 = int((白像素个数 / 所有像素个数) * 100)
+    if 白像素比值 == 100:
+        logger.info("删除一次空物品")
+        return False
+    else:
+        return True
+
+
+def 切图(圆心x坐标, 圆心y坐标, 拼接结果, 正方形边长=130):
+    图片 = []
+    for x in 圆心x坐标:
+        for y in 圆心y坐标:
+
+            左上角坐标 = (x - 正方形边长, y - 正方形边长)
+            右下角坐标 = (x + 正方形边长, y + 正方形边长)
+            正方形 = 拼接结果[
+                左上角坐标[1]: 右下角坐标[1],
+                左上角坐标[0]: 右下角坐标[0],
+            ]
+            正方形灰 = cv2.cvtColor(正方形, cv2.COLOR_BGR2GRAY)
+            if 识别空物品(正方形灰):
+                图片.append([正方形[26:239, 26:239], 正方形灰])
+    return 图片
+
+
+class depotREC(BaseSolver):
+    def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
+        super().__init__(device, recog)
+
+        time = datetime.now()
+
+        sift = cv2.SIFT_create()
+        # surf = cv2.xfeatures2d.SURF_create()
+        # ORB = cv2.ORB_create()
+        self.detector = sift
+        self.matcher = cv2.FlannBasedMatcher(
+            dict(algorithm=1, trees=2), dict(checks=50)
         )
 
-        if 圆 is not None:
-            圆 = np.round(圆[0, :]).astype("int")
-            for x, y, r in 圆:
-                cv2.circle(拼接结果, (x, y), r, (128, 255, 0), 4)
-            saveimg(拼接结果, "depot_with_citcle")
-        return 圆
+        self.仓库输出 = get_path("@app/tmp/depotresult.csv")
+        # with lzma.open(f"{__rootdir__}/models/depot.pkl", "rb") as pkl:
+        #     self.knn模型 = pickle.load(pkl)
+        with lzma.open(f"{__rootdir__}/models/CONSUME.pkl", "rb") as pkl:
+            self.knn模型_CONSUME = pickle.load(pkl)
+        with lzma.open(f"{__rootdir__}/models/MATERIAL.pkl", "rb") as pkl:
+            self.knn模型_MATERIAL = pickle.load(pkl)
+        with lzma.open(f"{__rootdir__}/models/NORMAL.pkl", "rb") as pkl:
+            self.knn模型_NORMAL = pickle.load(pkl)
+        # self.时间模板 = self.导入_时间模板()
+        self.物品数字 = 导入_数字模板()
 
-    def 算坐标(self, 圆):
-        if 圆 is not None:
-            circles_x = sorted(圆[:, 0])
-            groups = []
-            start_index = 0
+        self.结果字典 = {}
+        self.明日方舟工具箱json = {}
 
-            for i in range(1, len(circles_x)):
-                if circles_x[i] - circles_x[i - 1] >= 20:
-                    groups.append(circles_x[start_index:i])
-                    start_index = i
+        logger.info(f"吟唱用时{datetime.now() - time}")
 
-            groups.append(circles_x[start_index:])
-            circles_x = [int(sum(group) / len(group)) for group in groups]
+    def 切图主程序(self, 拼接好的图片):
+        圆 = 找圆(拼接好的图片)
+        横坐标, 纵坐标 = 算坐标(圆)
+        结果 = 切图(横坐标, 纵坐标, 拼接好的图片)
+        return 结果
 
-            circles_y = self.找几何中心(圆[:, 1], 3)
-            return circles_x, circles_y
-
-    def 切图(self, 圆心x坐标, 圆心y坐标, 拼接结果, 正方形边长=130):
-        图片 = []
-        for x in 圆心x坐标:
-            for y in 圆心y坐标:
-
-                左上角坐标 = (x - 正方形边长, y - 正方形边长)
-                右下角坐标 = (x + 正方形边长, y + 正方形边长)
-                正方形 = 拼接结果[
-                    左上角坐标[1] : 右下角坐标[1],
-                    左上角坐标[0] : 右下角坐标[0],
-                ]
-                正方形灰 = cv2.cvtColor(正方形, cv2.COLOR_BGR2GRAY)
-                if self.识别空物品(正方形灰):
-                    图片.append([正方形, 正方形灰])
-        return 图片
-
-    def 切图主程序(self, 仓库图片):
-        拼接好的图片 = self.拼图(仓库图片)
-        圆 = self.找圆(拼接好的图片)
-        横坐标, 纵坐标 = self.算坐标(圆)
-        return self.切图(横坐标, 纵坐标, 拼接好的图片)
-
-    def 读取物品数字(self, 数字图片, 物品名称, 识别次数, 距离阈值=5, 阈值=0.85):
-
+    def 读取物品数字(self, 数字图片, 距离阈值=5, 阈值=0.85):
         结果 = {}
-
-        # 匹配数字模板
         for idx, 模板图片 in enumerate(self.物品数字):
-
             res = cv2.matchTemplate(数字图片, 模板图片, cv2.TM_CCORR_NORMED)
             loc = np.where(res >= 阈值)
             for i in range(len(loc[0])):
@@ -183,41 +205,23 @@ class depotREC(BaseSolver):
                 str(结果[k]) if 结果[k] < 10 else ("万" if 结果[k] == 10 else ".")
             )
 
-        # # 对数字进行格式化
-        # 物品个数 = re.sub(r"\.{2,}", "", 物品个数)
-        # 物品个数 = 物品个数[1:] if 物品个数.startswith(".") else 物品个数
-
         if not 物品个数:
-            return 0
+            return 999999
         # # 格式化数字
-        格式化数字 = int(float("".join(re.findall(r"\d+\.\d+|\d+", 物品个数))) * (10000 if "万" in 物品个数 else 1))
-        # 保存结果图片
-        cv2.imencode(".png", 数字图片)[1].tofile(
-            os.path.join(self.结果目录, f"{物品名称}_{格式化数字}_{识别次数}.png")
+        格式化数字 = int(
+            float("".join(re.findall(r"\d+\.\d+|\d+", 物品个数)))
+            * (10000 if "万" in 物品个数 else 1)
         )
+        # 保存结果图片
+        saveimg(数字图片, "depot")
 
         return 格式化数字
 
-    def 匹配物品一次(self, 物品, 物品灰, 次数,缩小宽度=64):
-        物品切 = 物品[21:239, 21:239]
-        物品切 = cv2.resize(物品切, (缩小宽度, 缩小宽度))  ## 把图片缩小了
-        物品特征 = self.特征点提取(物品切)
-        predicted_label = self.knn模型.predict([物品特征])
-        物品数字 = self.读取物品数字(物品灰, predicted_label[0], 次数)
+    def 匹配物品一次(self, 物品, 物品灰, 模型名称):
+        物品特征 = 提取特征点(物品)
+        predicted_label = 模型名称.predict([物品特征])
+        物品数字 = self.读取物品数字(物品灰)
         return [predicted_label[0], 物品数字]
-
-    def 特征点提取(self, image):
-        # 提取HOG特征
-        hog_features, _ = hog(
-            image,
-            orientations=18,
-            pixels_per_cell=(8, 8),
-            cells_per_block=(2, 2),
-            block_norm="L2-Hys",
-            visualize=True,
-            transform_sqrt=True,
-        )
-        return hog_features
 
     def run(self) -> None:
         logger.info("Start: 仓库扫描")
@@ -227,50 +231,16 @@ class depotREC(BaseSolver):
         logger.info("仓库扫描: 回到桌面")
         self.back_to_index()
         if self.scene() == Scene.INDEX:
-            logger.info("仓库扫描: 从主界面点击仓库界面")
             self.tap_themed_element("index_warehouse")
-
-            旧的截图 = self.recog.img
-            # 旧的截图 = cv2.cvtColor(旧的截图[140:1000, :], cv2.COLOR_RGB2BGR)
-            旧的截图=旧的截图[140:1000, :]
-            self.recog.update()
-            self.截图字典[self.截图计数器] = 旧的截图  # 1 第一张图片
-            logger.info(f"仓库扫描: 把第{self.截图计数器}页保存进内存中等待识别")
-            while True:
-                self.swipe_noinertia((1800, 450), (-1000, 0))  # 滑动
-                self.recog.update()
-                新的截图 = self.recog.img
-                # 新的截图 = cv2.cvtColor(新的截图[140:1000, :], cv2.COLOR_RGB2BGR)
-                新的截图=新的截图[140:1000, :]
-                相似度 = self.compare_screenshot(
-                    self.截图字典[self.截图计数器], 新的截图
-                )
-                self.截图计数器 += 1  # 第二张图片
-                if 相似度 < 70:
-                    self.截图字典[self.截图计数器] = 新的截图
-                    logger.info(
-                        f"仓库扫描: 把第{self.截图计数器}页保存进内存中等待识别,相似度{相似度}"
-                    )
-                else:
-                    logger.info("仓库扫描: 这大抵是最后一页了")
-                    break
-            logger.info(f"仓库扫描: 截图读取完了,有{len(self.截图字典)}张截图")
-            logger.info(f"仓库扫描: 开始计算裁切图像")
-            time = datetime.now()
-            self.截图列表 = list(self.截图字典.values())
-            self.切图列表 = self.切图主程序(self.截图列表)
-            logger.info(
-                f"仓库扫描: 切图用时{datetime.now() - time},需要识别{len(self.切图列表)}个物品"
-            )
+            logger.info("仓库扫描: 从主界面点击仓库界面")
 
             time = datetime.now()
-            for idx, [物品, 物品灰] in enumerate(self.切图列表):
-                [物品名称, 物品数字] = self.匹配物品一次(物品, 物品灰, idx)
-                logger.debug([物品名称, 物品数字])
-                self.结果字典[物品名称] = self.结果字典.get(物品名称, 0) + 物品数字
-                self.明日方舟工具箱json[key_mapping[物品名称][0]] = (
-                    self.明日方舟工具箱json.get(key_mapping[物品名称][0], 0) + 物品数字
-                )
+            self.tap((1200, 70))
+            self.分类扫描(self.knn模型_CONSUME)
+            self.tap((1400, 70))
+            self.分类扫描(self.knn模型_NORMAL)
+            self.tap((1700, 70))
+            self.分类扫描(self.knn模型_MATERIAL)
             logger.info(f"仓库扫描: 匹配，识别用时{datetime.now() - time}")
             logger.info(f"仓库扫描:结果{self.结果字典}")
             result = [
@@ -278,9 +248,12 @@ class depotREC(BaseSolver):
                 json.dumps(self.结果字典, ensure_ascii=False),
                 json.dumps(self.明日方舟工具箱json, ensure_ascii=False),
             ]
-            depotinfo = pd.DataFrame([result], columns=["Timestamp", "Data", "json"])
-            depotinfo.to_csv(self.仓库输出, mode="a", index=False, header=False)
-
+            depotinfo = pd.DataFrame(
+                [result], columns=["Timestamp", "Data", "json"])
+            depotinfo.to_csv(self.仓库输出, mode="a", index=False,
+                             header=False, encoding="utf-8")
+        else:
+            self.back_to_index()
         return True
 
     def compare_screenshot(self, image1, image2):
@@ -296,3 +269,42 @@ class depotREC(BaseSolver):
                 good_matches.append(m)
         similarity = len(good_matches) / len(keypoints1) * 100
         return similarity
+
+    def 分类扫描(self, 模型名称):
+        截图列表 = []
+        旧的截图 = self.recog.img
+        旧的截图 = 旧的截图[140:1000, :]
+        截图列表.append(旧的截图)
+        saveimg(旧的截图, "depot_screenshot")
+        self.recog.update()
+
+        logger.info(f"仓库扫描: 把第{len(截图列表)}页保存进内存中等待识别")
+        while True:
+            self.swipe_noinertia((1800, 450), (-1000, 0))  # 滑动
+            self.recog.update()
+            新的截图 = self.recog.img
+            新的截图 = 新的截图[140:1000, :]
+            saveimg(新的截图, "depot_screenshot")
+            相似度 = self.compare_screenshot(截图列表[-1], 新的截图)
+            if 相似度 < 70:
+                截图列表.append(新的截图)
+                logger.info(f"仓库扫描: 把第{len(截图列表)}页保存进内存中等待识别,相似度{相似度}")
+            else:
+                logger.info("仓库扫描: 这大抵是最后一页了")
+                break
+        logger.info(f"仓库扫描: 截图读取完了,有{len(截图列表)}张截图")
+        logger.info(f"仓库扫描: 开始计算裁切图像")
+
+        if len(截图列表) > 1:
+            拼接好的图片 = 拼图(截图列表)
+        else:
+            拼接好的图片 = 截图列表[0]
+        切图列表 = self.切图主程序(拼接好的图片)
+        logger.info(f"仓库扫描: 需要识别{len(切图列表)}个物品")
+
+        for [物品, 物品灰] in 切图列表:
+            [物品名称, 物品数字] = self.匹配物品一次(物品, 物品灰, 模型名称)
+            logger.debug([物品名称, 物品数字])
+            self.结果字典[物品名称] = self.结果字典.get(物品名称, 0) + 物品数字
+            self.明日方舟工具箱json[key_mapping[物品名称][0]] = (
+                self.明日方舟工具箱json.get(key_mapping[物品名称][0], 0) + 物品数字)
