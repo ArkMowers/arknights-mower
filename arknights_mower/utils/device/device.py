@@ -9,6 +9,10 @@ from .adb_client import ADBClient
 from .minitouch import MiniTouch
 from .scrcpy import Scrcpy
 
+import gzip
+import numpy as np
+import cv2
+
 
 class Device(object):
     """ Android Device """
@@ -111,11 +115,16 @@ class Device(object):
 
     def screencap(self, save: bool = False) -> bytes:
         """ get a screencap """
-        command = 'screencap -p 2>/dev/null'
-        screencap = self.run(command)
+        command = 'screencap 2>/dev/null | gzip -1'
+        data = gzip.decompress(self.run(command))
+        array = np.frombuffer(data[16:], np.uint8).reshape(1080, 1920, 4)
+        img = cv2.cvtColor(array, cv2.COLOR_RGBA2RGB)
+        gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+        screencap = cv2.imencode('.png', cv2.cvtColor(img, cv2.COLOR_RGB2BGR))[1]
+
         if save:
             save_screenshot(screencap)
-        return screencap
+        return screencap, img, gray
 
     def current_focus(self) -> str:
         """ detect current focus app """

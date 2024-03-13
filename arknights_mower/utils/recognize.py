@@ -10,7 +10,7 @@ from .. import __rootdir__
 from . import config, detector
 from . import typealias as tp
 from .device import Device
-from .image import bytes2img, cropimg, loadimg, thres2
+from .image import cropimg, loadimg, thres2
 from .log import logger, save_screenshot
 from .matcher import Matcher
 from .scene import Scene, SceneComment
@@ -39,9 +39,7 @@ class Recognizer(object):
                 if screencap is not None:
                     self.screencap = screencap
                 else:
-                    self.screencap = self.device.screencap()
-                self.img = bytes2img(self.screencap, False)
-                self.gray = bytes2img(self.screencap, True)
+                    self.screencap, self.img, self.gray = self.device.screencap()
                 self.h, self.w, _ = self.img.shape
                 self.matcher = Matcher(self.gray) if build else None
                 self.scene = Scene.UNDEFINED
