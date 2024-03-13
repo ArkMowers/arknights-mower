@@ -200,7 +200,8 @@ class BaseMixin:
         gold = loadimg(f"{__rootdir__}/resources/infra_gold_complete.png", True)
         exp = loadimg(f"{__rootdir__}/resources/infra_exp_complete.png", True)
         lmd = loadimg(f"{__rootdir__}/resources/infra_lmd_complete.png", True)
-        return matcher.match(gold) or matcher.match(exp) or matcher.match(lmd)
+        ori = loadimg(f"{__rootdir__}/resources/infra_ori_complete.png", True)
+        return matcher.match(gold) or matcher.match(exp) or matcher.match(lmd) or matcher.match(ori)
 
     def read_operator_in_room(self, img):
         img = thres2(img, 200)
