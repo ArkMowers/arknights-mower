@@ -1707,7 +1707,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 self.reset_room_time(room)
                 raise Exception('未成功进入房间')
             if self.find('arrange_check_in', score=0.5):
-                self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.5)
+                self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.7)
             else:
                 back_count  = 0
                 while  self.find('control_central') is None and back_count<2:
