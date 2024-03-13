@@ -188,6 +188,7 @@ class ReclamationAlgorithm(BaseSolver):
             self.device.swipe_ext(
                 (start_point, end_point, end_point), durations=[500, 200]
             )
+            self.sleep(interval=0.1, rebuild=False)
         self.recog.update()
         return True
 
