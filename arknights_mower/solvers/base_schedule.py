@@ -1695,7 +1695,14 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
 
     def turn_on_room_detail(self,room):
         error_count = 0
-        while self.find('room_detail') is None:
+        while True:
+            if pos := self.find('room_detail'):
+                if self.get_color(pos[0])[0] == 255:
+                    return
+                else:
+                    logger.info("等待动画")
+                    self.sleep(interval=0.5)
+                    continue
             if error_count > 3:
                 self.reset_room_time(room)
                 raise Exception('未成功进入房间')
