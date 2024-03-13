@@ -2310,7 +2310,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             elif not rg_sleep and self.maa_config["reclamation_algorithm"]:
                 self.recog.update()
                 self.back_to_index()
-                ra_solver = ReclamationAlgorithm()
+                ra_solver = ReclamationAlgorithm(self.device, self.recog)
                 ra_solver.run(self.tasks[0].time - datetime.now(), self.maa_config["ra_timeout"])
 
             if one_time:

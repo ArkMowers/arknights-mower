@@ -459,7 +459,7 @@ def simulate():
                     if not rg_sleep and base_scheduler.maa_config["reclamation_algorithm"]:
                         base_scheduler.recog.update()
                         base_scheduler.back_to_index()
-                        ra_solver = ReclamationAlgorithm()
+                        ra_solver = ReclamationAlgorithm(base_scheduler.device, base_scheduler.recog)
                         ra_solver.run(base_scheduler.tasks[0].time - datetime.now(), base_scheduler.maa_config["ra_timeout"])
                         remaining_time = (
                                 base_scheduler.tasks[0].time - datetime.now()
