@@ -117,7 +117,7 @@ class Device(object):
         """ get a screencap """
         command = 'screencap 2>/dev/null | gzip -1'
         data = gzip.decompress(self.run(command))
-        array = np.frombuffer(data[16:], np.uint8).reshape(1080, 1920, 4)
+        array = np.frombuffer(data[-1920 * 1080 * 4:], np.uint8).reshape(1080, 1920, 4)
         img = cv2.cvtColor(array, cv2.COLOR_RGBA2RGB)
         gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
         screencap = cv2.imencode('.png', cv2.cvtColor(img, cv2.COLOR_RGB2BGR))[1]
