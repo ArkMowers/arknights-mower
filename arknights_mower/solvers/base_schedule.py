@@ -1734,9 +1734,10 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 logger.info(f'当前拥有线索数量为{self.clue_count}')
         self.turn_on_room_detail(room)
         length = len(self.op_data.plan[room])
-        if length > 3: self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, self.recog.h * 0.45), duration=500,
-                                  interval=1,
-                                  rebuild=True)
+        if length > 3:
+            while self.get_color((1800, 138))[0] != 49:
+                self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, self.recog.h * 0.45), duration=500,
+                            interval=1, rebuild=True)
         name_x = (1288, 1869)
         name_y = [(135, 326), (344, 535), (553, 744), (532, 723), (741, 932)]
         name_p = [tuple(zip(name_x, y)) for y in name_y]
@@ -1753,8 +1754,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         self.recog.save_screencap("get_agent_from_room")
         for i in range(0, length):
             if i >= 3 and not swiped:
-                self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, -self.recog.h * 0.45), duration=500,
-                           interval=1, rebuild=True)
+                while self.get_color((1800, 930))[0] != 49:
+                    self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, -self.recog.h * 0.45), duration=500,
+                                interval=1, rebuild=True)
                 swiped = True
                 self.recog.save_screencap("get_agent_from_room")
             data = {}
@@ -1762,20 +1764,6 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 _name = ""
             else:
                 _name = self.read_screen(cropimg(self.recog.gray, name_p[i]), type="name")
-            error_count = 0
-            while i >= 3 and _name != '' and (
-                    next((e for e in result if e['agent'] == _name), None)) is not None:
-                logger.warning("检测到滑动可能失败")
-                self.swipe((self.recog.w * 0.8, self.recog.h * 0.5), (0, -self.recog.h * 0.45), duration=500,
-                           interval=1, rebuild=True)
-                self.recog.save_screencap("get_agent_from_room")
-                if self.find("infra_no_operator", scope=name_p[i]):
-                    _name = ""
-                else:
-                    _name = self.read_screen(cropimg(self.recog.gray, name_p[i]), type="name")
-                error_count += 1
-                if error_count > 1:
-                    raise Exception("超过出错上限")
             _mood = 24
             # 如果房间不为空
             if _name != '':
