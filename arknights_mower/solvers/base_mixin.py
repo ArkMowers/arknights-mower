@@ -140,13 +140,17 @@ class BaseMixin:
         label_pos_map = dict(zip(labels, label_pos))
         target_state = dict(zip(labels, [False] * len(labels)))
         target_state.update(kwargs)
-        self.tap((self.recog.w * 0.95, self.recog.h * 0.05))
+
+        while not self.find("arrange_order_options_scene"):
+            self.tap((self.recog.w * 0.95, self.recog.h * 0.05))
+        self.recog.save_screencap("detail_filter")
         for label, pos in label_pos_map.items():
             current_state = self.get_color(pos)[2] > 100
             if target_state[label] != current_state:
                 self.tap(pos, interval=0.1, rebuild=False)
-        # 确认
-        self.tap((self.recog.w * 0.8, self.recog.h * 0.8), interval=0.5)
+        self.recog.update()
+        while self.find("arrange_order_options_scene"):
+            self.tap((self.recog.w * 0.8, self.recog.h * 0.8), interval=0.5)
 
     def enter_room(self, room: str) -> tp.Rectangle:
         """获取房间的位置并进入"""
