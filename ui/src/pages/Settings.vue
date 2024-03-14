@@ -32,7 +32,8 @@ const {
   screenshot,
   run_order_grandet_mode,
   webview,
-  fix_mumu12_adb_disconnect
+  fix_mumu12_adb_disconnect,
+  touch_method
 } = storeToRefs(config_store)
 
 const { operators } = storeToRefs(plan_store)
@@ -94,6 +95,14 @@ import { render_op_label, render_op_tag } from '@/utils/op_select'
                 </help-text>
               </template>
               <n-input v-model:value="adb" />
+            </n-form-item>
+            <n-form-item label="触控方案">
+              <n-radio-group v-model:value="touch_method">
+                <n-space>
+                  <n-radio value="scrcpy">scrcpy-1.21-novideo</n-radio>
+                  <n-radio value="maatouch">MaaTouch-1.1.0</n-radio>
+                </n-space>
+              </n-radio-group>
             </n-form-item>
             <n-form-item label="模拟器">
               <n-select v-model:value="simulator.name" :options="simulator_types" />

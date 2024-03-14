@@ -265,3 +265,4 @@ recruit_email_enable: true
 fix_mumu12_adb_disconnect: false
 reclamation_algorithm:
   timeout: 30
+touch_method: scrcpy

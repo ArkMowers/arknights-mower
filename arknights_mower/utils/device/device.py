@@ -6,7 +6,7 @@ from typing import Optional
 from .. import config
 from ..log import logger, save_screenshot
 from .adb_client import ADBClient
-from .minitouch import MiniTouch
+from .maatouch import MaaTouch
 from .scrcpy import Scrcpy
 
 import gzip
@@ -22,31 +22,25 @@ class Device(object):
 
         def __init__(self, device: Device, client: ADBClient = None, touch_device: str = None) -> None:
             self.device = device
-            self.minitouch = None
+            self.maatouch = None
             self.scrcpy = None
 
-            if config.ADB_CONTROL_CLIENT == 'minitouch':
-                self.minitouch = MiniTouch(client, touch_device)
-            elif config.ADB_CONTROL_CLIENT == 'scrcpy':
-                self.scrcpy = Scrcpy(client)
+            if config.ADB_CONTROL_CLIENT == 'maatouch':
+                self.maatouch = MaaTouch(client)
             else:
-                # MiniTouch does not support Android 10+
-                if int(client.android_version().split('.')[0]) < 10:
-                    self.minitouch = MiniTouch(client, touch_device)
-                else:
-                    self.scrcpy = Scrcpy(client)
+                self.scrcpy = Scrcpy(client)
 
         def tap(self, point: tuple[int, int]) -> None:
-            if self.minitouch:
-                self.minitouch.tap([point], self.device.display_frames())
+            if self.maatouch:
+                self.maatouch.tap([point], self.device.display_frames())
             elif self.scrcpy:
                 self.scrcpy.tap(point[0], point[1])
             else:
                 raise NotImplementedError
 
         def swipe(self, start: tuple[int, int], end: tuple[int, int], duration: int) -> None:
-            if self.minitouch:
-                self.minitouch.swipe(
+            if self.maatouch:
+                self.maatouch.swipe(
                     [start, end], self.device.display_frames(), duration=duration)
             elif self.scrcpy:
                 self.scrcpy.swipe(
@@ -55,8 +49,8 @@ class Device(object):
                 raise NotImplementedError
 
         def swipe_ext(self, points: list[tuple[int, int]], durations: list[int], up_wait: int) -> None:
-            if self.minitouch:
-                self.minitouch.swipe(
+            if self.maatouch:
+                self.maatouch.swipe(
                     points, self.device.display_frames(), duration=durations, up_wait=up_wait)
             elif self.scrcpy:
                 total = len(durations)

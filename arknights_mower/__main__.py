@@ -58,6 +58,7 @@ def main(c, p, o={}, child_conn=None, global_space=None):
     config.TAP_TO_LAUNCH = conf["tap_to_launch_game"]
     config.fix_mumu12_adb_disconnect = conf["fix_mumu12_adb_disconnect"]
     config.grandet_back_to_index = conf["run_order_grandet_mode"]["back_to_index"]
+    config.ADB_CONTROL_CLIENT = conf["touch_method"]
     init_fhlr(child_conn)
     Pipe.conn = child_conn
     logger.info("开始运行Mower")
