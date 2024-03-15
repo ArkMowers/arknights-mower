@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import platform
 import subprocess
 
 from arknights_mower.utils.device.adb_client import ADBClient
@@ -22,6 +23,9 @@ class Session(object):
             stdin=subprocess.PIPE,
             text=True,
             bufsize=0,
+            creationflags=subprocess.CREATE_NO_WINDOW
+            if platform.system() == "Windows"
+            else 0,
         )
 
         try:
