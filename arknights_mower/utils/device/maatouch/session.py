@@ -24,22 +24,25 @@ class Session(object):
                 stdout=subprocess.PIPE,
                 stdin=subprocess.PIPE,
                 text=True,
-                bufsize=0,
                 creationflags=subprocess.CREATE_NO_WINDOW
                 if platform.system() == "Windows"
                 else 0,
             )
+            output_line = self.process.stdout.readline()
+            logger.debug("maatouch output line 1: " + output_line.replace("\n", "\\n"))
             # ^ <max-contacts> <max-x> <max-y> <max-pressure>
-            _, max_contacts, max_x, max_y, max_pressure, *_ = (
-                self.process.stdout.readline().strip().split(" ")
+            _, max_contacts, max_x, max_y, max_pressure, *_ = output_line.strip().split(
+                " "
             )
             self.max_contacts = max_contacts
             self.max_x = max_x
             self.max_y = max_y
             self.max_pressure = max_pressure
 
+            output_line = self.process.stdout.readline()
+            logger.debug("maatouch output line 2: " + output_line.replace("\n", "\\n"))
             # $ <pid>
-            _, pid = self.process.stdout.readline().strip().split(" ")
+            _, pid = output_line.strip().split(" ")
             self.pid = pid
         except Exception:
             logger.error(traceback.format_exc())
@@ -57,3 +60,4 @@ class Session(object):
 
     def send(self, content: str):
         self.process.stdin.write(content)
+        self.process.stdin.flush()
