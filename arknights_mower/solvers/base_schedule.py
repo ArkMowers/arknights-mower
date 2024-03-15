@@ -790,7 +790,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             logger.exception(e)
             # 如果下个 普通任务 >5 分钟则补全宿舍
         logger.debug('tasks:' + str(self.tasks))
-        if find_next_task(self.tasks, datetime.now()) is not None:
+        if find_next_task(self.tasks, datetime.now() + timedelta(seconds=15)) is not None:
             logger.info("有其他任务,跳过宿舍纠错")
             return
         if self.agent_get_mood() is None:
