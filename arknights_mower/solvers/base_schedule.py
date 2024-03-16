@@ -31,7 +31,9 @@ from arknights_mower.utils.news import get_update_time
 from arknights_mower.utils import rapidocr
 from arknights_mower.utils.simulator import restart_simulator
 from arknights_mower.utils import config
-from arknights_mower.utils.image import cropimg
+from arknights_mower.utils.image import cropimg, loadimg
+from arknights_mower import __rootdir__
+from arknights_mower.utils.matcher import Matcher
 import cv2
 
 from ctypes import CFUNCTYPE, c_int, c_char_p, c_void_p
@@ -968,12 +970,19 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
     def todo_list(self) -> None:
         """ 处理基建 Todo 列表 """
         tapped = False
-        for _ in range(3):
-            if (scope := self.find("infra_collect", score=0.2)) is None:
-                break
-            logger.info("基建产物/信赖收取")
-            self.tap(scope)
-            tapped = True
+        img = cropimg(self.recog.gray, ((200, 900), (1500, 1080)))
+        img = cv2.copyMakeBorder(img, 31, 31, 31, 31, cv2.BORDER_REPLICATE)
+        matcher = Matcher(img)
+        for res in ["bill", "factory", "trust"]:
+            res_img = loadimg(f"{__rootdir__}/resources/infra_collect_{res}.png", True)
+            if scope := matcher.match(res_img, prescore=0.2):
+                logger.info(f"基建产物/信赖收取：{res}")
+                x, y = self.get_pos(scope)
+                self.tap((x + 200 - 31, y + 900 - 31))
+                tapped = True
+                img = cropimg(self.recog.gray, ((200, 900), (1500, 1080)))
+                img = cv2.copyMakeBorder(img, 31, 31, 31, 31, cv2.BORDER_REPLICATE)
+                matcher = Matcher(img)
         if not tapped:
             self.tap((self.recog.w * 0.05, self.recog.h * 0.95))
             self.todo_task = True
