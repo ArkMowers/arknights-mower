@@ -136,7 +136,7 @@ class Matcher(object):
             # draw all the good matches, for debug
             if draw:
                 result = cv2.drawMatches(
-                    query, qry_kp, self.origin, ori_kp, good, None)
+                    bordered, qry_kp, self.origin, ori_kp, good, None)
                 plt.imshow(result, 'gray')
                 plt.show()
             # if the number of good matches no more than 4
@@ -172,7 +172,7 @@ class Matcher(object):
                               True, 0, 2, cv2.LINE_AA)
                 draw_params = dict(matchColor=(0, 255, 0), singlePointColor=None,
                                    matchesMask=matchesMask, flags=2)
-                result = cv2.drawMatches(query, qry_kp, self.origin, ori_kp,
+                result = cv2.drawMatches(bordered, qry_kp, self.origin, ori_kp,
                                          good, None, **draw_params)
                 plt.imshow(result, 'gray')
                 plt.show()
