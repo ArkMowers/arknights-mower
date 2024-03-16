@@ -129,7 +129,7 @@ class BaseSolver:
         return True
 
     def tap_themed_element(self, name):
-        themes = ["dark", "sami", "ep13"]
+        themes = ["dark", "sami", "ep13", "rainbow6"]
         themed_names = [name] + ["_".join([name, t]) for t in themes]
         for i in themed_names:
             try:
