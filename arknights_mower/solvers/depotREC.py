@@ -235,12 +235,18 @@ class depotREC(BaseSolver):
             logger.info("仓库扫描: 从主界面点击仓库界面")
 
             time = datetime.now()
-            self.tap((1200, 70))
-            self.分类扫描(self.knn模型_CONSUME)
-            self.tap((1400, 70))
-            self.分类扫描(self.knn模型_NORMAL)
-            self.tap((1700, 70))
-            self.分类扫描(self.knn模型_MATERIAL)
+            任务组 = [
+                (1200, self.knn模型_CONSUME),
+                (1400, self.knn模型_NORMAL),
+                (1700, self.knn模型_MATERIAL)
+            ]
+
+            for 任务 in 任务组:
+                self.tap((任务[0], 70))
+                if not self.find("depot_empty"):
+                    self.分类扫描(任务[1])
+                else:
+                    logger.info("这个分类下没有物品")
             logger.info(f"仓库扫描: 匹配，识别用时{datetime.now() - time}")
             logger.info(f"仓库扫描:结果{self.结果字典}")
             result = [
@@ -300,6 +306,7 @@ class depotREC(BaseSolver):
         else:
             拼接好的图片 = 截图列表[0]
         切图列表 = self.切图主程序(拼接好的图片)
+        saveimg(拼接好的图片, "stitcher")
         logger.info(f"仓库扫描: 需要识别{len(切图列表)}个物品")
 
         for [物品, 物品灰] in 切图列表:
