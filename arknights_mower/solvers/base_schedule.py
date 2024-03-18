@@ -139,7 +139,6 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         return super().run()
 
     def transition(self) -> None:
-        self.recog.update()
         if (scene := self.get_infra_scene()) == Scene.INDEX:
             self.tap_themed_element('index_infrastructure')
         elif scene == Scene.INFRA_MAIN:

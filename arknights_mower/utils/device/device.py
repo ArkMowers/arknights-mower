@@ -153,9 +153,11 @@ class Device(object):
             f'swipe_ext: points={points}, durations={durations}, up_wait={up_wait}')
         self.control.swipe_ext(points, durations, up_wait)
 
-    def check_current_focus(self):
+    def check_current_focus(self) -> bool:
         """ check if the application is in the foreground """
         if self.current_focus() != f"{config.APPNAME}/{config.APP_ACTIVITY_NAME}":
             self.launch()
             # wait for app to finish launching
             time.sleep(10)
+            return True
+        return False

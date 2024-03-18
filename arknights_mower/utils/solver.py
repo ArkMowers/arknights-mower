@@ -35,8 +35,8 @@ class BaseSolver:
             raise RuntimeError
         self.device = device if device is not None else Device()
         self.recog = recog if recog is not None else Recognizer(self.device)
-        self.device.check_current_focus()
-        self.recog.update()
+        if self.device.check_current_focus():
+            self.recog.update()
 
     def run(self) -> None:
         retry_times = config.MAX_RETRYTIME
@@ -414,7 +414,8 @@ class BaseSolver:
         logger.warning("同一等待界面等待超时，重启方舟。")
         self.device.exit()
         time.sleep(3)
-        self.device.check_current_focus()
+        if self.device.check_current_focus():
+            self.recog.update()
         return False
 
     def wait_for_scene(self, scene, method, wait_count=10, sleep_time=1):

@@ -79,7 +79,8 @@ class Recognizer(object):
             logger.info(f"检测到连续等待{self.loading_time}次")
             self.device.exit()
             time.sleep(3)
-            self.device.check_current_focus()
+            if self.device.check_current_focus():
+                self.recog.update()
 
     def get_scene(self) -> int:
         """ get the current scene in the game """
@@ -240,7 +241,8 @@ class Recognizer(object):
             self.scene = Scene.INFRA_ARRANGE_ORDER
         else:
             self.scene = Scene.UNKNOWN
-            self.device.check_current_focus()
+            if self.device.check_current_focus():
+                self.recog.update()
         # save screencap to analyse
         if config.SCREENSHOT_PATH is not None:
             self.save_screencap(self.scene)
@@ -288,7 +290,8 @@ class Recognizer(object):
             self.scene = Scene.LOADING
         else:
             self.scene = Scene.UNKNOWN
-            self.device.check_current_focus()
+            if self.device.check_current_focus():
+                self.recog.update()
         # save screencap to analyse
         if config.SCREENSHOT_PATH is not None:
             self.save_screencap(self.scene)
@@ -380,7 +383,8 @@ class Recognizer(object):
             self.scene = Scene.TERMINAL_MAIN
         else:
             self.scene = Scene.UNKNOWN
-            self.device.check_current_focus()
+            if self.device.check_current_focus():
+                self.recog.update()
 
         # save screencap to analyse
         if config.SCREENSHOT_PATH is not None:
