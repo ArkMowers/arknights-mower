@@ -57,7 +57,7 @@ def 找几何中心(coordinates, n_clusters=3):
 def 找圆(
         拼接结果, 参数1=50, 参数2=30, 圆心间隔=230, 最小半径=90, 最大半径=100
 ):
-    灰图 = cv2.cvtColor(拼接结果, cv2.COLOR_BGR2GRAY)
+    灰图 = cv2.cvtColor(拼接结果, cv2.COLOR_RGB2GRAY)
     saveimg(拼接结果, "depot_without_circle")
     圆 = cv2.HoughCircles(
         灰图,
@@ -141,7 +141,7 @@ def 切图(圆心x坐标, 圆心y坐标, 拼接结果, 正方形边长=130):
                 左上角坐标[1]: 右下角坐标[1],
                 左上角坐标[0]: 右下角坐标[0],
             ]
-            正方形灰 = cv2.cvtColor(正方形, cv2.COLOR_BGR2GRAY)
+            正方形灰 = cv2.cvtColor(正方形, cv2.COLOR_RGB2GRAY)
             if 识别空物品(正方形灰):
                 图片.append([正方形[26:239, 26:239], 正方形灰])
     return 图片
@@ -263,8 +263,8 @@ class depotREC(BaseSolver):
         return True
 
     def compare_screenshot(self, image1, image2):
-        image1 = cv2.cvtColor(image1, cv2.COLOR_BGR2GRAY)
-        image2 = cv2.cvtColor(image2, cv2.COLOR_BGR2GRAY)
+        image1 = cv2.cvtColor(image1, cv2.COLOR_RGB2GRAY)
+        image2 = cv2.cvtColor(image2, cv2.COLOR_RGB2GRAY)
         keypoints1, descriptors1 = self.detector.detectAndCompute(image1, None)
         _, descriptors2 = self.detector.detectAndCompute(image2, None)
 
