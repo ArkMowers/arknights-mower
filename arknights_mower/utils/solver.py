@@ -128,16 +128,17 @@ class BaseSolver:
         self.tap(element, x_rate, y_rate, interval, rebuild)
         return True
 
-    def tap_themed_element(self, name):
-        themes = ["dark", "sami", "ep13", "rainbow6"]
-        themed_names = [name] + ["_".join([name, t]) for t in themes]
-        for i in themed_names:
-            try:
-                if self.tap_element(i):
-                    return True
-            except Exception:
-                continue
-        return False
+    def tap_index_element(self, name):
+        pos = {
+            "friend": (544, 862),
+            "infrastructure": (1545, 948),
+            "mission": (1201, 904),
+            "recruit": (1507, 774),
+            "shop": (1251, 727),
+            "terminal": (1458, 297),
+            "warehouse": (1788, 973),
+        }
+        self.tap(pos[name])
 
     def template_match(self, res: str, scope: Optional[tp.Scope] = None, method: int = cv2.TM_CCOEFF) -> Tuple[float, tp.Scope]:
         return self.recog.template_match(res, scope, method)
@@ -296,7 +297,7 @@ class BaseSolver:
 
     def back_to_infrastructure(self):
         self.back_to_index()
-        self.tap_themed_element('index_infrastructure')
+        self.tap_index_element('infrastructure')
 
     def back_to_index(self):
         """
@@ -373,7 +374,7 @@ class BaseSolver:
         # 导航去保全派驻
         retry = 0
         self.back_to_index()
-        self.tap_themed_element('index_terminal')
+        self.tap_index_element('terminal')
         self.tap((self.recog.w * 0.7, self.recog.h * 0.95))  # 常态事务
         self.tap((self.recog.w * 0.85, self.recog.h * 0.5))  # 保全
         if sss_type == 1:

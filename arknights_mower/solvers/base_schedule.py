@@ -140,7 +140,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
 
     def transition(self) -> None:
         if (scene := self.get_infra_scene()) == Scene.INDEX:
-            self.tap_themed_element('index_infrastructure')
+            self.tap_index_element('infrastructure')
         elif scene == Scene.INFRA_MAIN:
             return self.infra_main()
         elif scene == Scene.INFRA_TODOLIST:
@@ -1730,10 +1730,6 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
     def get_agent_from_room(self, room, read_time_index=None):
         if read_time_index is None:
             read_time_index = []
-        while self.detect_product_complete():
-            logger.info("检测到产物收取提示")
-            self.sleep(1)
-        error_count = 0
         if room == 'meeting':
             self.sleep(3)
             clue_res = self.read_screen(self.recog.img, limit=10, cord=((645, 977), (755, 1018)))
@@ -1741,6 +1737,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 self.clue_count = clue_res
                 logger.info(f'当前拥有线索数量为{self.clue_count}')
         self.turn_on_room_detail(room)
+        while self.detect_product_complete():
+            logger.info("检测到产物收取提示")
+            self.sleep(1)
         length = len(self.op_data.plan[room])
         if length > 3:
             while self.get_color((1800, 138))[0] != 49:

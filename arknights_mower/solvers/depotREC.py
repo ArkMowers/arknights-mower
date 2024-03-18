@@ -231,7 +231,7 @@ class depotREC(BaseSolver):
         logger.info("仓库扫描: 回到桌面")
         self.back_to_index()
         if self.scene() == Scene.INDEX:
-            self.tap_themed_element("index_warehouse")
+            self.tap_index_element("warehouse")
             logger.info("仓库扫描: 从主界面点击仓库界面")
 
             time = datetime.now()

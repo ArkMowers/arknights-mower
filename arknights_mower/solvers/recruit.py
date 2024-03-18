@@ -125,7 +125,7 @@ class RecruitSolver(BaseSolver):
 
     def transition(self) -> bool:
         if (scene := self.scene()) == Scene.INDEX:
-            self.tap_themed_element('index_recruit')
+            self.tap_index_element('recruit')
         elif scene == Scene.RECRUIT_MAIN:
             segments = segment.recruit(self.recog.img)
 

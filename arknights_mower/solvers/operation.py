@@ -89,7 +89,7 @@ class OpeSolver(BaseSolver):
             return True
 
         if (scene := self.scene()) == Scene.INDEX:
-            self.tap_themed_element('index_terminal')
+            self.tap_index_element('terminal')
         elif scene == Scene.TERMINAL_MAIN:
             return self.terminal_main()
         elif scene == Scene.OPERATOR_BEFORE:

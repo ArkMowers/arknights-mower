@@ -299,7 +299,7 @@ class ReclamationAlgorithm(BaseSolver):
     def move_forward(self, scene):
         # 从首页进入生息演算主页
         if scene == Scene.INDEX:
-            self.tap_themed_element("index_terminal")
+            self.tap_index_element("terminal")
         elif scene == Scene.TERMINAL_MAIN:
             self.tap_element("terminal_button_longterm")
         elif scene == Scene.TERMINAL_LONGTERM:

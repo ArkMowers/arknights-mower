@@ -65,7 +65,7 @@ class ReportSolver(BaseSolver):
 
     def transition(self) -> bool:
         if (scene := self.scene()) == Scene.INDEX:
-            self.tap_themed_element('index_infrastructure')
+            self.tap_index_element('infrastructure')
         elif scene == Scene.SKIP:
             self.tap_element('skip')
         elif scene == Scene.INFRA_MAIN:

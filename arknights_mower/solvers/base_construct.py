@@ -46,7 +46,7 @@ class BaseConstructSolver(BaseSolver, BaseMixin):
 
     def transition(self) -> None:
         if self.scene() == Scene.INDEX:
-            self.tap_themed_element('index_infrastructure')
+            self.tap_index_element('infrastructure')
         elif self.scene() == Scene.INFRA_MAIN:
             return self.infra_main()
         elif self.scene() == Scene.INFRA_TODOLIST:
