@@ -80,7 +80,7 @@ class Recognizer(object):
             self.device.exit()
             time.sleep(3)
             if self.device.check_current_focus():
-                self.recog.update()
+                self.update()
 
     def get_scene(self) -> int:
         """ get the current scene in the game """
@@ -242,7 +242,7 @@ class Recognizer(object):
         else:
             self.scene = Scene.UNKNOWN
             if self.device.check_current_focus():
-                self.recog.update()
+                self.update()
         # save screencap to analyse
         if config.SCREENSHOT_PATH is not None:
             self.save_screencap(self.scene)
@@ -291,7 +291,7 @@ class Recognizer(object):
         else:
             self.scene = Scene.UNKNOWN
             if self.device.check_current_focus():
-                self.recog.update()
+                self.update()
         # save screencap to analyse
         if config.SCREENSHOT_PATH is not None:
             self.save_screencap(self.scene)
@@ -384,7 +384,7 @@ class Recognizer(object):
         else:
             self.scene = Scene.UNKNOWN
             if self.device.check_current_focus():
-                self.recog.update()
+                self.update()
 
         # save screencap to analyse
         if config.SCREENSHOT_PATH is not None:
