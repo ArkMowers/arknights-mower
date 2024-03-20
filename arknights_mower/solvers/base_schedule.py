@@ -2286,6 +2286,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                             'copilot_loop_times'] <= 0 or self.maa_config['sss_type'] not in [1, 2]:
                             raise Exception("保全派驻配置无法找到")
                         ec_type = self.maa_config['ec_type'] if 'ec_type' in self.maa_config else 2
+                        self.recog.update()
+                        self.back_to_index()
                         if self.to_sss(self.maa_config['sss_type'], ec_type) is not None:
                             raise Exception("保全派驻导航失败")
                         self.MAA.append_task('SSSCopilot', {

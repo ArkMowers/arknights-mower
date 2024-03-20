@@ -10,6 +10,7 @@ from email.mime.multipart import MIMEMultipart
 import time
 import traceback
 import requests
+from datetime import datetime, timedelta
 
 from bs4 import BeautifulSoup
 from abc import abstractmethod
@@ -138,7 +139,7 @@ class BaseSolver:
             "terminal": (1458, 297),
             "warehouse": (1788, 973),
         }
-        self.tap(pos[name])
+        self.tap(pos[name], interval=2)
 
     def template_match(self, res: str, scope: Optional[tp.Scope] = None, method: int = cv2.TM_CCOEFF) -> Tuple[float, tp.Scope]:
         return self.recog.template_match(res, scope, method)
@@ -210,6 +211,12 @@ class BaseSolver:
         生息演算场景识别
         """
         return self.recog.get_ra_scene()
+    
+    def sss_scene(self) -> int:
+        """
+        保全导航场景识别
+        """
+        return self.recog.get_sss_scene()
 
     def is_login(self):
         """ check if you are logged in """
@@ -370,39 +377,39 @@ class BaseSolver:
             raise StrategyError
 
     def to_sss(self, sss_type, ec_type=3):
-        self.recog.update()
-        # 导航去保全派驻
-        retry = 0
-        self.back_to_index()
-        self.tap_index_element('terminal')
-        self.tap((self.recog.w * 0.7, self.recog.h * 0.95))  # 常态事务
-        self.tap((self.recog.w * 0.85, self.recog.h * 0.5))  # 保全
-        if sss_type == 1:
-            self.tap((self.recog.w * 0.2, self.recog.h * 0.3), interval=5)
-        else:
-            self.tap((self.recog.w * 0.4, self.recog.h * 0.6), interval=5)
-        loop_count = 0
-        ec_chosen_step = -99
-        choose_team = False
-        while self.find('end_sss', score=0.8) is None and loop_count < 8:
-            if loop_count == ec_chosen_step + 2 or self.find('sss_team_up') is not None:
-                choose_team = True
-                logger.info("选择小队")
-            elif self.find('choose_ss_ec') is not None and not choose_team:
+        """保全导航"""
+        logger.info('保全导航')
+        start_time = datetime.now()
+
+        while (scene := self.sss_scene()) not in [Scene.SSS_DEPLOY, Scene.SSS_REDEPLOY]:
+            if scene == Scene.INDEX:
+                self.tap_index_element("terminal")
+            elif scene == Scene.TERMINAL_MAIN:
+                self.tap((1317, 1005))
+            elif scene == Scene.TERMINAL_REGULAR:
+                self.tap((1548, 870))
+            elif scene == Scene.SSS_MAIN:
+                self.tap((384, 324) if sss_type == 1 else (768, 648))
+            elif scene == Scene.SSS_START:
+                self.tap_element("sss/start_button")
+            elif scene == Scene.SSS_EC:
                 if ec_type == 1:
-                    self.tap((self.recog.w * 0.3, self.recog.h * 0.5))
+                    ec_x = 576
                 elif ec_type == 2:
-                    self.tap((self.recog.w * 0.5, self.recog.h * 0.5))
+                    ec_x = 960
                 else:
-                    self.tap((self.recog.w * 0.7, self.recog.h * 0.5))
-                ec_chosen_step = loop_count
-                logger.info(f"选定导能单元:{ec_type}")
-            # 开始保全作战
-            self.tap((self.recog.w * 0.95, self.recog.h * 0.95), interval=(0.2 if not choose_team else 10))
-            self.recog.update()
-            loop_count += 1
-        if loop_count == 8:
-            return "保全派驻导航失败"
+                    ec_x = 1344
+                self.tap((ec_x, 540))
+                self.tap_element("sss/ec_button")
+            elif scene == Scene.SSS_DEVICE:
+                self.tap_element("sss/device_button")
+            elif scene == Scene.SSS_SQUAD:
+                self.tap_element("sss/squad_button")
+            now = datetime.now()
+            if now - start_time > timedelta(minutes=1):
+                return "保全导航失败"
+            self.sleep()
+        logger.info(f"保全导航成功，用时{(datetime.now() - start_time).total_seconds():.0f}秒")
 
     def waiting_solver(self, scenes, wait_count=20, sleep_time=3):
         """需要等待的页面解决方法。触发超时重启会返回False

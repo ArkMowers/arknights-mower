@@ -332,7 +332,7 @@ class OpeSolver(BaseSolver):
         """ 在终端主界面选择关卡 """
         if level == 'pre_ope':
             logger.info('前往上一次关卡')
-            self.tap_element('terminal_pre', score=0.5)
+            self.tap_element('terminal_pre', score=0.3)
             return
 
         zone_name = level_list[level]['zone_id']

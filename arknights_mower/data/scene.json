@@ -187,6 +187,10 @@
         "label": "TERMINAL_COLLECTION",
         "comment": "资源收集"
     },
+    "506": {
+        "label": "TERMINAL_REGULAR",
+        "comment": "常态事务"
+    },
     "507": {
         "label": "TERMINAL_LONGTERM",
         "comment": "长期探索"
@@ -346,6 +350,38 @@
     "919": {
         "label": "RA_ADVENTURE",
         "comment": "奇遇"
+    },
+    "1001": {
+        "label": "SSS_MAIN",
+        "comment": "保全作战首页"
+    },
+    "1002": {
+        "label": "SSS_START",
+        "comment": "开始保全作战"
+    },
+    "1003": {
+        "label": "SSS_EC",
+        "comment": "定向导能元件"
+    },
+    "1004": {
+        "label": "SSS_DEVICE",
+        "comment": "战术装备配置"
+    },
+    "1005": {
+        "label": "SSS_SQUAD",
+        "comment": "首批作战小队选任"
+    },
+    "1006": {
+        "label": "SSS_DEPLOY",
+        "comment": "开始部署"
+    },
+    "1007": {
+        "label": "SSS_REDEPLOY",
+        "comment": "重新部署"
+    },
+    "1008": {
+        "label": "SSS_LOADING",
+        "comment": "正在进入"
     },
     "9998": {
         "label": "LOADING",

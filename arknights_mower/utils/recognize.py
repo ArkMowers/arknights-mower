@@ -173,7 +173,7 @@ class Recognizer(object):
             self.scene = Scene.MISSION_DAILY
         elif self.find('mission_weekly_on') is not None:
             self.scene = Scene.MISSION_WEEKLY
-        elif self.find('terminal_pre', score=0.5) is not None:
+        elif self.find('terminal_pre', score=0.3) is not None:
             self.scene = Scene.TERMINAL_MAIN
         elif self.find('open_recruitment') is not None:
             self.scene = Scene.RECRUIT_MAIN
@@ -379,7 +379,7 @@ class Recognizer(object):
             self.scene = Scene.RA_MAIN
         elif self.detect_index_scene():
             self.scene = Scene.INDEX
-        elif self.find("terminal_pre", score=0.5) is not None:
+        elif self.find("terminal_pre", score=0.3) is not None:
             self.scene = Scene.TERMINAL_MAIN
         else:
             self.scene = Scene.UNKNOWN
@@ -394,6 +394,54 @@ class Recognizer(object):
             logger.debug(log_msg)
         else:
             logger.info(log_msg)
+
+        self.check_loading_time()
+
+        return self.scene
+
+    def get_sss_scene(self) -> int:
+        """
+        保全导航场景识别
+        """
+        # 场景缓存
+        if self.scene != Scene.UNDEFINED:
+            return self.scene
+        
+        # 连接中，优先级最高
+        if self.detect_connecting_scene():
+            self.scene = Scene.CONNECTING
+
+        elif self.detect_index_scene():
+            self.scene = Scene.INDEX
+        elif self.find("terminal_pre", score=0.3) is not None:
+            self.scene = Scene.TERMINAL_MAIN
+        elif self.find("terminal_regular"):
+            self.scene = Scene.TERMINAL_REGULAR
+        elif self.find("sss/main"):
+            self.scene = Scene.SSS_MAIN
+        elif self.find("sss/start_button"):
+            self.scene = Scene.SSS_START
+        elif self.find("sss/ec_button"):
+            self.scene = Scene.SSS_EC
+        elif self.find("sss/device_button"):
+            self.scene = Scene.SSS_DEVICE
+        elif self.find("sss/squad_button"):
+            self.scene = Scene.SSS_SQUAD
+        elif self.find("sss/deploy_button"):
+            self.scene = Scene.SSS_DEPLOY
+        elif self.find("sss/redeploy_button"):
+            self.scene = Scene.SSS_REDEPLOY
+        elif self.find("sss/loading"):
+            self.scene = Scene.SSS_LOADING
+        else:
+            self.scene = Scene.UNKNOWN
+            if self.device.check_current_focus():
+                self.update()
+
+        # save screencap to analyse
+        if config.SCREENSHOT_PATH is not None:
+            self.save_screencap(self.scene)
+        logger.info(f"Scene: {self.scene}: {SceneComment[self.scene]}")
 
         self.check_loading_time()
 
