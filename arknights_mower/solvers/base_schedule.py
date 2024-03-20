@@ -1622,10 +1622,11 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     pre_order = arrange_type
             first_time = False
 
-            changed, ret = self.scan_agent(agent)
             if not siege and agent == ["推进之王"] and not is_dorm:
                 siege = True
+                right_swipe = 0
                 self.detail_filter(恢复类后勤=True)
+            changed, ret = self.scan_agent(agent)
             if changed:
                 selected.extend(changed)
                 # 如果找到了
