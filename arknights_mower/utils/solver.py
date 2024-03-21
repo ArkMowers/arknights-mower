@@ -407,6 +407,8 @@ class BaseSolver:
                 self.tap_element("sss/device_button")
             elif scene == Scene.SSS_SQUAD:
                 self.tap_element("sss/squad_button")
+            elif scene == Scene.SSS_GUIDE:
+                self.tap_element("sss/close_button")
             now = datetime.now()
             if now - start_time > timedelta(minutes=1):
                 return "保全导航失败"

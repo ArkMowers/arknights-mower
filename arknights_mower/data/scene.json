@@ -383,6 +383,10 @@
         "label": "SSS_LOADING",
         "comment": "正在进入"
     },
+    "1009": {
+        "label": "SSS_GUIDE",
+        "comment": "保全教程"
+    },
     "9998": {
         "label": "LOADING",
         "comment": "场景跳转时的等待界面"
