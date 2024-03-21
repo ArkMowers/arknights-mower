@@ -164,14 +164,17 @@ def visit_next(img: tp.Image) -> tp.Coordinate:
     return point
 
 
-on_shift = loadimg(f'{__rootdir__}/resources/agent_on_shift.png', True)
-distracted = loadimg(f'{__rootdir__}/resources/distracted.png', True)
-resting = loadimg(f'{__rootdir__}/resources/agent_resting.png', True)
+# on_shift = loadimg(f'{__rootdir__}/resources/agent_on_shift.png', True)
+# distracted = loadimg(f'{__rootdir__}/resources/distracted.png', True)
+# resting = loadimg(f'{__rootdir__}/resources/agent_resting.png', True)
 
 def is_on_shift(img: tp.Image) -> bool:
     """
     检测干员是否正在工作中
     """
+    on_shift = loadimg(f'{__rootdir__}/resources/agent_on_shift.png', True)
+    distracted = loadimg(f'{__rootdir__}/resources/distracted.png', True)
+    resting = loadimg(f'{__rootdir__}/resources/agent_resting.png', True)
     matcher = Matcher(cv2.cvtColor(img, cv2.COLOR_RGB2GRAY))
     if matcher.match(on_shift, judge=False) is not None:
         return True
