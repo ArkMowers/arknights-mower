@@ -329,6 +329,7 @@ def simulate():
     if base_scheduler.recog.h != 1080 or base_scheduler.recog.w != 1920:
         logger.error("模拟器分辨率不为1920x1080")
         return
+    # base_scheduler.仓库扫描() #别删了 方便我找
     validation_msg = base_scheduler.initialize_operators()
     if validation_msg is not None:
         logger.error(validation_msg)

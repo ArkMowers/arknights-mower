@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import Optional, Tuple
 
+import sys
 import cv2
 
 import smtplib
@@ -247,8 +248,9 @@ class BaseSolver:
                 elif scene == Scene.LOGIN_REGISTER:
                     self.back(2)
                 elif scene == Scene.LOGIN_CAPTCHA:
-                    exit()
-                    # self.back(600)  # TODO: Pending
+                    self.send_message("登录时遇到验证码，退出游戏、停止运行mower")
+                    self.device.exit()
+                    sys.exit()
                 elif scene == Scene.LOGIN_INPUT:
                     input_area = self.find('login_username')
                     if input_area is not None:
@@ -405,6 +407,8 @@ class BaseSolver:
                 self.tap_element("sss/device_button")
             elif scene == Scene.SSS_SQUAD:
                 self.tap_element("sss/squad_button")
+            elif scene == Scene.SSS_GUIDE:
+                self.tap_element("sss/close_button")
             now = datetime.now()
             if now - start_time > timedelta(minutes=1):
                 return "保全导航失败"

@@ -433,6 +433,8 @@ class Recognizer(object):
             self.scene = Scene.SSS_REDEPLOY
         elif self.find("sss/loading"):
             self.scene = Scene.SSS_LOADING
+        elif self.find("sss/close_button"):
+            self.scene = Scene.SSS_GUIDE
         else:
             self.scene = Scene.UNKNOWN
             if self.device.check_current_focus():
