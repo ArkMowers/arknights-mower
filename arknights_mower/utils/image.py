@@ -83,3 +83,10 @@ def saveimg(img, folder='failure'):
         img2bytes(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)),
         subdir=f'{folder}/{img.shape[0]}x{img.shape[1]}',
     )
+
+def saveimg_depot(img,filename, folder='depot'):
+    save_screenshot(
+        img2bytes(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)),
+        subdir=f'{folder}/',
+        filename=filename
+    )
