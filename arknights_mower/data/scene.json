@@ -143,6 +143,10 @@
         "label": "CTRLCENTER_ASSISTANT",
         "comment": "控制中枢界面"
     },
+    "210": {
+        "label": "OPERATOR_SELECT",
+        "comment": "干员选择界面"
+    },
     "301": {
         "label": "FRIEND_LIST_OFF",
         "comment": "好友列表（未选中）"
