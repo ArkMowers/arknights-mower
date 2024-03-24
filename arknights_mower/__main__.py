@@ -441,7 +441,7 @@ def simulate():
                                 ]
                             )
                             base_scheduler.send_message(body, subject, "html")
-                            time.sleep(remaining_time)
+                            base_scheduler.sleep(remaining_time)
                             if base_scheduler.close_simulator_when_idle:
                                 restart_simulator(base_scheduler.simulator, stop=False)
 
@@ -484,7 +484,7 @@ def simulate():
                         ]
                     )
                     base_scheduler.send_message(body, subject, "html")
-                    time.sleep(remaining_time)
+                    base_scheduler.sleep(remaining_time)
                     if conf["close_simulator_when_idle"]:
                         restart_simulator(conf["simulator"], stop=False)
             if (

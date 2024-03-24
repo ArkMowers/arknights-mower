@@ -2332,7 +2332,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         restart_simulator(self.simulator, start=False)
                     elif self.exit_game_when_idle:
                         self.device.exit()
-                time.sleep(remaining_time)
+                self.sleep(remaining_time)
                 if self.close_simulator_when_idle:
                     restart_simulator(self.simulator, stop=False)
             self.MAA = None
