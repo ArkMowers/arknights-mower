@@ -2302,7 +2302,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                             self.MAA.stop()
                             break
                         else:
-                            time.sleep(0)
+                            time.sleep(5)
                     self.device.exit()
 
             elif not rg_sleep and self.maa_config["reclamation_algorithm"]:
