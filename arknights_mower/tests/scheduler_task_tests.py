@@ -153,6 +153,29 @@ class TestScheduling(unittest.TestCase):
         # 验证第任务包宿舍+换班任务
         self.assertEqual(2, len(tasks[0].plan))
 
+    def test_adjust_three_orders(self):
+        # 测试342跑单任务被拉开
+        task1 = SchedulerTask(time=datetime.strptime("2023-09-19 10:00", "%Y-%m-%d %H:%M"),
+                              task_plan={"task1": "Task 1"}, task_type=TaskTypes.RUN_ORDER,meta_data="task1")
+        task2 = SchedulerTask(time=datetime.strptime("2023-09-19 10:01", "%Y-%m-%d %H:%M"),
+                              task_plan={"task2": "Task 2"}, task_type=TaskTypes.RUN_ORDER,meta_data="task2")
+        task3 = SchedulerTask(time=datetime.strptime("2023-09-19 10:02", "%Y-%m-%d %H:%M"),
+                              task_plan={"task3": "Task 3"}, task_type=TaskTypes.RUN_ORDER,meta_data="task3")
+        tasks = [task1, task2, task3]
+        res = scheduling(tasks,time_now=datetime.strptime("2023-09-19 09:01", "%Y-%m-%d %H:%M"))
+
+        while res is not None and res.meta_data == 'task1':
+            task_time = res.time - timedelta(minutes=(2))
+            task = find_next_task(tasks, task_type=TaskTypes.RUN_ORDER, meta_data='task1')
+            if task is not None:
+                task.time = task_time
+                res = scheduling(tasks,time_now=datetime.strptime("2023-09-19 09:03", "%Y-%m-%d %H:%M"))
+            else:
+                break
+        # 返还的是应该拉开跑单的任务
+        self.assertNotEqual(res, None)
+
+
 
     def init_opdata(self):
         agent_base_config = PlanConfig("稀音,黑键,伊内丝,承曦格雷伊", "稀音,柏喙,伊内丝", "见行者")
