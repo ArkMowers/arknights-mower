@@ -19,7 +19,6 @@
   "ap_supply_lt_80": ["ap_supply_lt_80", "应急理智加强剂", "CONSUME", 30003],
   "EXTERMINATION_AGENT": ["EXTERMINATION_AGENT", "PRTS剿灭代理卡", "NORMAL", 30200],
   "TKT_GACHA_10": ["7004", "十连寻访凭证", "NORMAL", 40001],
-  "LINKAGE_TKT_GACHA_10_4801": ["LINKAGE_TKT_GACHA_10_4801", "特勤专家寻访凭证", "NORMAL", 40003],
   "TKT_GACHA": ["7003", "寻访凭证", "NORMAL", 40011],
   "TKT_RECRUIT": ["7001", "招聘许可", "NORMAL", 40012],
   "TKT_INST_FIN": ["7002", "加急许可", "NORMAL", 40013],
