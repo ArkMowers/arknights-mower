@@ -1535,7 +1535,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         max_swipe = 50
         position = [(0.35, 0.35), (0.35, 0.75), (0.45, 0.35), (0.45, 0.75), (0.55, 0.35)]
         # 空位置跳过安排
-        agents = [item for item in agents if item != '']
+        if '' in agents:
+            fast_mode = False
+            agents = [item for item in agents if item != '']
         for idx, n in enumerate(agents):
             if room.startswith('dorm'):
                 if self.op_data.plan_name != "default_plan":
@@ -1928,7 +1930,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         self.op_data.operators[plan[room][0]].time_stamp = None
                     current = self.get_agent_from_room(room, read_time_index)
                     for idx, name in enumerate(plan[room]):
-                        if current[idx]['agent'] != name:
+                        if current[idx]['agent'] != name and name != "Free":
                             logger.error(f'检测到的干员{current[idx]["agent"]},需要安排的干员{name}')
                             raise Exception('检测到安排干员未成功')
                 else:
