@@ -272,6 +272,8 @@ class Recognizer(object):
             self.scene = Scene.INFRA_DETAILS
         elif self.find('infra_overview_in') is not None:
             self.scene = Scene.INFRA_ARRANGE
+        elif self.find("arrange_order_options"):
+            self.scene = Scene.INFRA_ARRANGE_ORDER
         elif self.find('arrange_confirm') is not None:
             self.scene = Scene.INFRA_ARRANGE_CONFIRM
         elif self.find('arrange_order_options_scene') is not None:
