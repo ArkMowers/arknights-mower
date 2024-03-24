@@ -1914,7 +1914,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                                               self.run_order_delay * 60 - self.op_data.config.run_order_buffer_time),
                                              1)
                         if wait_confirm > 0:
-                            logger.info(f'龙舌兰、但书进驻前等待 {str(wait_confirm)} 秒')
+                            logger.info(f'{"龙舌兰、" if "龙舌兰" in plan[room] else ""}{"但书" if "但书" in plan[room] else ""}进驻前等待 {str(wait_confirm)} 秒')
                             time.sleep(wait_confirm)
                     self.tap_element('confirm_blue', detected=True, judge=False, interval=3)
                     if self.get_infra_scene() == Scene.INFRA_ARRANGE_CONFIRM:
