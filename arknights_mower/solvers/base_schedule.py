@@ -1534,11 +1534,10 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         first_name = ''
         max_swipe = 50
         position = [(0.35, 0.35), (0.35, 0.75), (0.45, 0.35), (0.45, 0.75), (0.55, 0.35)]
+        # 空位置跳过安排
+        agents = [item for item in agents if item != '']
         for idx, n in enumerate(agents):
-            if n == '':
-                agents[idx] = 'Free'
-            # 如果是宿舍且干员不为高效组，则改为Free 加速换班时间
-            elif room.startswith('dorm'):
+            if room.startswith('dorm'):
                 if self.op_data.plan_name != "default_plan":
                     continue
                 if n not in self.op_data.operators.keys():
