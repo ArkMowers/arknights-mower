@@ -1695,8 +1695,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                              rebuild=False)
                     self.tap((self.recog.w * position[p_idx][0], self.recog.h * position[p_idx][1]), interval=0,
                              rebuild=False)
-        if len(agents) == 2 and agents[1] == "菲亚梅塔":
-            logger.info("开始验证菲亚排序")
+        if (len(agents) == 2 and agents[1] == "菲亚梅塔") or ("龙舌兰" in agents or "但书" in agents):
+            logger.info("验证干员选择..")
             self.switch_arrange_order(2)
             if not self.verify_agent(agents):
                 raise Exception("检测到干员选择错误，重新选择")
