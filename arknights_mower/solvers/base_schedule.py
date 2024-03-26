@@ -1873,7 +1873,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                                                          value == "Current"])
                         for current_idx, _name in enumerate(plan[room]):
                             if _name == 'Current':
-                                plan[room][current_idx] = self.op_data.get_current_room(room, True)[current_idx]
+                                plan[room][current_idx] = self.op_data.get_current_room(room, True)[current_idx] if self.op_data.get_current_room(room, True)[current_idx] != "" else "Free"
                     if room in self.op_data.run_order_rooms and len(
                             new_plan) == 0 and self.task.type != TaskTypes.RUN_ORDER:
                         if plan[room] != self.op_data.get_current_room(room):
