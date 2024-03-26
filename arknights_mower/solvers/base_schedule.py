@@ -811,7 +811,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         self.op_data.swap_plan(idx, refresh=True)
                         task = self.op_data.backup_plans[idx].task
                         if task:
-                            self.tasks.append(SchedulerTask(task_plan=task))
+                            self.tasks.append(SchedulerTask(task_plan=copy.deepcopy(task)))
                         index = idx
                         changed = True
                         break
