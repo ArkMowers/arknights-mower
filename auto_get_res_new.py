@@ -300,8 +300,6 @@ class Arknights数据处理器:
             pickle.dump(data, f)
 
     def 训练选中的干员名的模型(self):
-        mh = 42
-        mw = 200
         font31 = ImageFont.truetype(
             "arknights_mower/fonts/SourceHanSansCN-Medium.otf", 31)
         font30 = ImageFont.truetype(
@@ -309,8 +307,7 @@ class Arknights数据处理器:
         font25 = ImageFont.truetype(
             "arknights_mower/fonts/SourceHanSansCN-Medium.otf", 25)
 
-        X = []
-        Y = []
+        data = {}
 
         kernel = np.ones((10, 10), np.uint8)
 
@@ -332,19 +329,13 @@ class Arknights数据处理器:
             rect = map(lambda c: cv2.boundingRect(c), contours)
             x, y, w, h = sorted(rect, key=lambda c: c[0])[0]
             img = img[y: y + h, x: x + w]
-            tpl = np.zeros((mh, mw))
+            tpl = np.zeros((42, 200), dtype=np.uint8)
             tpl[: img.shape[0], : img.shape[1]] = img
             # cv2.imwrite(f"/home/zhao/Desktop/data/{operator}.png", tpl)
-            tpl /= 255
-            tpl = tpl.reshape(mh * mw)
-            X.append(tpl)
-            Y.append(idx)
-
-        model = KNeighborsClassifier(n_neighbors=1)
-        model.fit(X, Y)
+            data[operator] = tpl
 
         with lzma.open("arknights_mower/models/operator_select.model", "wb") as f:
-            pickle.dump(model, f)
+            pickle.dump(data, f)
 
 
 数据处理器 = Arknights数据处理器()
