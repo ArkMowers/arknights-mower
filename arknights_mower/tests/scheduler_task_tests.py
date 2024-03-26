@@ -145,20 +145,23 @@ class TestScheduling(unittest.TestCase):
         self.assertEqual(2, len(tasks))
         # 验证第任务包含换班+宿舍任务
         self.assertEqual(2, len(tasks[0].plan))
+        # 假设换班任务执行完毕
+        del tasks[0]
         # 重复执行不会生成新的
         check_dorm_ordering(tasks, op_data)
         self.assertEqual(1, len(tasks))
         # 验证第任务包宿舍+换班任务
-        self.assertEqual(2, len(tasks[0].plan))
+        self.assertEqual(1, len(tasks[0].plan))
 
     def test_check_dorm_ordering_not_plan(self):
-        # 测试 方程有效
+        # 测试 如果当前已经有前置位VIP干员在吃单回，则不会新增任务
         task1 = SchedulerTask(time=datetime.now(),
-                              task_plan={'dormitory_1': ['Current', 'Current', 'Current', '夕', 'Current'],'central': ['麒麟R夜刀', 'Current', 'Current', 'Current', 'Current']}, task_type=TaskTypes.SHIFT_OFF, meta_data="")
+                              task_plan={'dormitory_1': ['Current', 'Current', 'Current', '夕', '令'],'central': ['麒麟R夜刀', 'Current', 'Current', 'Current', '火龙S黑角']}, task_type=TaskTypes.SHIFT_OFF, meta_data="")
         tasks = [task1]
         op_data = self.init_opdata()
         # 预设干员位置
         op_data.operators["红"].current_index = -1
+        op_data.operators["夕"].resting_priority = "low"
         op_data.operators["红"].current_room = "meeting"
         op_data.operators["焰尾"].current_index = 2
         op_data.operators["焰尾"].current_room = "dormitory_1"

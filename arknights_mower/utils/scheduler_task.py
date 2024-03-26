@@ -126,7 +126,7 @@ def check_dorm_ordering(tasks, op_data):
                     if "Free" == plan[room][idx].agent and agent == "Current":
                         # 如果高优先不变，则跳过逻辑判定
                         if not pass_first_free:
-                            break
+                            continue
                         current = next((obj for obj in op_data.operators.values() if
                                         obj.current_room == room and obj.current_index == idx), None)
                         if current:
