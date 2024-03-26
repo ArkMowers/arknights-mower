@@ -115,6 +115,34 @@ class BaseMixin:
             else:
                 raise e
 
+    def verify_agent(self, agent: list[str], error_count=0, max_agent_count=-1):
+        try:
+            # 识别干员
+            self.recog.update()
+            ret = character_recognize.operator_list(self.recog.img)  # 返回的顺序是从左往右从上往下
+            # 提取识别出来的干员的名字
+            select_name = []
+            index = 0
+            for name, scope in ret:
+                if index >= len(agent):
+                    return True
+                if name != agent[index]:
+                    return False
+                index += 1
+            return True
+        except Exception as e:
+            error_count += 1
+            self.tap((self.recog.w * arrange_order_res[ArrangeOrder.SKILL][0],
+                      self.recog.h * arrange_order_res[ArrangeOrder.SKILL][1]), interval=0, rebuild=False)
+            self.tap((self.recog.w * arrange_order_res[ArrangeOrder.SKILL][0],
+                      self.recog.h * arrange_order_res[ArrangeOrder.SKILL][1]), interval=0, rebuild=False)
+            if error_count < 3:
+                logger.exception(e)
+                self.sleep(3)
+                return self.verify_agent(agent, error_count, max_agent_count)
+            else:
+                raise e
+
     def swipe_left(self, right_swipe, w, h):
         for _ in range(right_swipe):
             self.swipe_only((w // 2, h // 2), (w // 2, 0), interval=0.5)

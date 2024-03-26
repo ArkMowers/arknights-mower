@@ -1695,8 +1695,12 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                              rebuild=False)
                     self.tap((self.recog.w * position[p_idx][0], self.recog.h * position[p_idx][1]), interval=0,
                              rebuild=False)
+        if len(agents) == 2 and agents[1] == "菲亚梅塔":
+            logger.info("开始验证菲亚排序")
+            self.switch_arrange_order(2)
+            if not self.verify_agent(agents):
+                raise Exception("检测到干员选择错误，重新选择")
         self.last_room = room
-        logger.info(f"设置上次房间为{self.last_room}")
 
     def reset_room_time(self, room):
         for _operator in self.op_data.operators.keys():
