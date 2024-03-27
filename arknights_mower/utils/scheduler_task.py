@@ -19,6 +19,7 @@ class TaskTypes(Enum):
     RECRUIT = ("recruit", "公招", 2)
     SKLAND = ("skland", "森空岛签到", 2)
     RE_ORDER = ("宿舍排序", "宿舍排序", 2)
+    RELEASE_DORM = ("释放宿舍空位", "释放宿舍空位", 2)
     DEPOT=("仓库扫描","仓库扫描",2) #但是我不会写剩下的
 
     def __new__(cls, value, display_value, priority):
@@ -132,10 +133,10 @@ def check_dorm_ordering(tasks, op_data):
                         if current:
                             if current.is_high():
                                 v[idx] = current.name
-                            if room not in extra_plan:
-                                extra_plan[room] = copy.deepcopy(v)
-                            # 新生成移除任务 --> 换成移除
-                            extra_plan[room][idx] = ""
+                        if room not in extra_plan:
+                            extra_plan[room] = copy.deepcopy(v)
+                        # 新生成移除任务 --> 换成移除
+                        extra_plan[room][idx] = ""
                     if "Free" == plan[room][idx].agent and not pass_first_free:
                         pass_first_free = True
             else:
