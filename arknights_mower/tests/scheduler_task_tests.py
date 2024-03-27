@@ -256,8 +256,8 @@ class TestScheduling(unittest.TestCase):
                                    Room("令", "", ["火龙S黑角"]),
                                    Room("薇薇安娜", "", ["玛恩纳"])],
                        "meeting": [Room("伊内丝", "", ["陈", "红"]), Room("见行者", "", ["陈", "红"])],
-                       "dormitory_1": [Room("波登可", "", []),
-                                       Room("Free", "", []),
+                       "dormitory_1": [Room("塑心", "", []),
+                                       Room("冰酿", "", []),
                                        Room("Free", "", []),
                                        Room("Free", "", []),
                                        Room("Free", "", [])]

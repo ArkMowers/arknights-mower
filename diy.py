@@ -102,7 +102,11 @@ recruit_config = {
     "permit_target":30,
     "recruit_robot":False,
     "recruitment_time" : None,
-    "recruit_execution_gap":4
+    "recruit_execution_gap":2,
+    "recruit_auto_5":True,
+    "recruit_auto_only5":False,
+    "recruit_email_enable":True,
+    "last_execution": datetime(2024, 1, 31, 20, 0),
 }
 # 模拟器相关设置
 simulator = {
@@ -300,18 +304,21 @@ def save_state():
 
 
 def load_state():
-    if not os.path.exists(state_file_name):
+    try:
+        if not os.path.exists(state_file_name):
+            return None
+        with open(state_file_name, 'r') as f:
+            state = json.load(f)
+        operators = {k: eval(v) for k, v in state['operators'].items()}
+        for k, v in operators.items():
+            if not v.time_stamp == 'None':
+                v.time_stamp = datetime.strptime(v.time_stamp, '%Y-%m-%d %H:%M:%S.%f')
+            else:
+                v.time_stamp = None
+        return operators
+    except Exception:
         return None
 
-    with open(state_file_name, 'r') as f:
-        state = json.load(f)
-    operators = {k: eval(v) for k, v in state['operators'].items()}
-    for k, v in operators.items():
-        if not v.time_stamp == 'None':
-            v.time_stamp = datetime.strptime(v.time_stamp, '%Y-%m-%d %H:%M:%S.%f')
-        else:
-            v.time_stamp = None
-    return operators
 
 
 def simulate():
@@ -356,8 +363,8 @@ def simulate():
                 base_scheduler.op_data.operators[k].depletion_rate = v.depletion_rate
                 base_scheduler.op_data.operators[k].current_room = v.current_room
                 base_scheduler.op_data.operators[k].current_index = v.current_index
-
-    if len(base_scheduler.op_data.backup_plans)>0 :
+    base_scheduler.op_data.first_init = False
+    if len(base_scheduler.op_data.backup_plans) > 0:
         for idx, backplan in enumerate(base_scheduler.op_data.backup_plans):
             validation_msg = base_scheduler.op_data.swap_plan(idx,True)
             if validation_msg is not None:
@@ -370,16 +377,23 @@ def simulate():
                 (base_scheduler.tasks.sort(key=lambda x: x.time, reverse=False))
                 sleep_time = (base_scheduler.tasks[0].time - datetime.now()).total_seconds()
                 logger.info('||'.join([str(t) for t in base_scheduler.tasks]))
-                base_scheduler.send_message(
-                    task_template.render(tasks=[obj.format(timezone_offset) for obj in base_scheduler.tasks]), '',
-                    'html')
+                body = task_template.render(
+                    tasks=[
+                        obj.format(timezone_offset) for obj in base_scheduler.tasks
+                    ],
+                    base_scheduler=base_scheduler
+                )
+                base_scheduler.send_message(body, "", "html")
                 # 如果任务间隔时间超过9分钟则启动MAA
                 if sleep_time > 540:
+                    if base_scheduler.recruit_config['recruit_enable'] == 1:
+                        base_scheduler.recruit_plan_solver()
                     base_scheduler.maa_plan_solver()
                 elif sleep_time > 0:
                     time.sleep(sleep_time)
             if len(base_scheduler.tasks) > 0 and base_scheduler.tasks[0].type.value.split('_')[0] == 'maa':
-                base_scheduler.maa_plan_solver((base_scheduler.tasks[0].type.value.split('_')[1]).split(','), one_time=True)
+                base_scheduler.maa_plan_solver((base_scheduler.tasks[0].type.value.split('_')[1]).split(','),
+                                               one_time=True)
                 continue
             base_scheduler.run()
             reconnect_tries = 0
