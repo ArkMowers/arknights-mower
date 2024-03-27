@@ -35,7 +35,7 @@ class PlanConfig(object):
     #   <= 0 时是无人机跑单
     def __init__(self, rest_in_full, exhaust_require, resting_priority, ling_xi=0, workaholic="", max_resting_count=4,
                  free_blacklist="", skip_validation=False, run_order_buffer_time=30,
-                 resting_threshold=0.5, refresh_trading_config=''):
+                 resting_threshold=0.5, refresh_trading_config='', free_room=False):
         self.rest_in_full = to_list(rest_in_full)
         self.exhaust_require = to_list(exhaust_require)
         self.workaholic = to_list(workaholic)
@@ -50,6 +50,7 @@ class PlanConfig(object):
         self.run_order_buffer_time = run_order_buffer_time
         config.grandet_mode = run_order_buffer_time > 0
         self.resting_threshold = resting_threshold
+        self.free_room = free_room
         # 格式为 干员名字+ 括弧 +指定房间（逗号分隔）
         # 不指定房间则默认全跑单站
         # example： 阿米娅,夕,令

@@ -131,13 +131,14 @@ class TestScheduling(unittest.TestCase):
     def test_check_dorm_ordering_add_plan_3(self):
         # 测试 宿舍4号位置已经吃到VIP的情况，安排新的高效干员去3号位置刷新VIP
         task1 = SchedulerTask(time=datetime.now(),
-                              task_plan={'dormitory_1': ['Current', 'Current', '夕', 'Current', 'Current'],'central': ['麒麟R夜刀', 'Current', 'Current', 'Current', 'Current']}, task_type=TaskTypes.SHIFT_OFF, meta_data="")
+                              task_plan={'dormitory_1': ['Current', 'Current', 'Current', '夕', 'Current'],'central': ['麒麟R夜刀', 'Current', 'Current', 'Current', 'Current']}, task_type=TaskTypes.SHIFT_OFF, meta_data="")
         tasks = [task1]
         op_data = self.init_opdata()
         # 预设干员位置
         op_data.operators["红"].current_index = -1
         op_data.operators["红"].current_room = "meeting"
-        op_data.operators["焰尾"].current_index = 3
+        op_data.operators["夕"].resting_priority = "low"
+        op_data.operators["焰尾"].current_index = 2
         op_data.operators["焰尾"].current_room = "dormitory_1"
         check_dorm_ordering(tasks, op_data)
 
@@ -165,6 +166,29 @@ class TestScheduling(unittest.TestCase):
         op_data.operators["红"].current_room = "meeting"
         op_data.operators["焰尾"].current_index = 2
         op_data.operators["焰尾"].current_room = "dormitory_1"
+        check_dorm_ordering(tasks, op_data)
+
+        # 如果VIP位已经被占用，则不会生成新任务
+        self.assertEqual(1, len(tasks))
+        # 验证第任务包含换班+宿舍任务
+        self.assertEqual(2, len(tasks[0].plan))
+        # 重复执行不会生成新的
+        check_dorm_ordering(tasks, op_data)
+        self.assertEqual(1, len(tasks))
+        # 验证第任务包宿舍+换班任务
+        self.assertEqual(2, len(tasks[0].plan))
+
+    def test_check_dorm_ordering_not_plan(self):
+        # 测试 如果当前已经有前置位VIP干员在吃单回，则不会新增任务
+        task1 = SchedulerTask(time=datetime.now(),
+                              task_plan={'dormitory_1': ['Current', 'Current', 'Current', '夕', 'Current'],'central': ['麒麟R夜刀', 'Current', 'Current', 'Current', 'Current']}, task_type=TaskTypes.SHIFT_OFF, meta_data="")
+        tasks = [task1]
+        op_data = self.init_opdata()
+        # 预设干员位置
+        op_data.operators["红"].current_index = 2
+        op_data.operators["红"].current_room = "dormitory_1"
+        op_data.operators["夕"].resting_priority = "low"
+        op_data.operators["红"].current_room = "meeting"
         check_dorm_ordering(tasks, op_data)
 
         # 如果VIP位已经被占用，则不会生成新任务
