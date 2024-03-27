@@ -392,7 +392,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 _free = self.op_data.operators[_name]
                 # 释放满心情其他干员
                 _idx, __dorm = self.op_data.get_dorm_by_name(_name)
-                if __dorm.time > datetime.now():
+                if __dorm.time > datetime.now() and find_next_task(meta_data=_name) is None:
                     __plan = {_free.current_room: ['Current'] * 5 }
                     __plan[_free.current_room][_free.current_index] = "Free"
                     self.tasks.append(SchedulerTask(time=__dorm.time, task_type=TaskTypes.RELEASE_DORM, task_plan=__plan,meta_data=_name))

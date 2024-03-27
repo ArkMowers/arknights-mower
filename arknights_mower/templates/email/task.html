@@ -20,13 +20,17 @@
         <th colspan="2">任务</th>
       </tr>
       {% for task in tasks %}
-      {% if task.plan %}
+      {% if task.plan or task.type == '释放宿舍空位'%}
       {% for r, p in task.plan.items() %}
       <tr>
         {% if loop.first %}
         <td rowspan="{{ task.plan|length }}">{{ task.time.strftime('%H:%M:%S') }}</td>
         {% endif %}
+        {% if task.type == '释放宿舍空位'%}
+        <td>{{ task.meta_data }}在{{ base_scheduler.translate_room(r) }}休息完毕</td>
+        {% else %}
         <td>{{ base_scheduler.translate_room(r) }}</td>
+        {% endif %}
         <td>{{ p|join(', ') }}</td>
       </tr>
       {% endfor %}
