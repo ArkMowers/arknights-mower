@@ -472,6 +472,12 @@ class Operators(object):
         _room.name = name
         return _room
 
+    def get_current_operator(self, room, index):
+        for key, value in self.operators.items():
+            if value.current_room == room and value.current_index == index:
+                return value
+        return None
+
     def print(self):
         ret = "{"
         op = []

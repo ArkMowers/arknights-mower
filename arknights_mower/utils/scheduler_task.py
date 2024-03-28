@@ -20,7 +20,7 @@ class TaskTypes(Enum):
     SKLAND = ("skland", "森空岛签到", 2)
     RE_ORDER = ("宿舍排序", "宿舍排序", 2)
     RELEASE_DORM = ("释放宿舍空位", "释放宿舍空位", 2)
-    DEPOT=("仓库扫描","仓库扫描",2) #但是我不会写剩下的
+    DEPOT = ("仓库扫描", "仓库扫描", 2)  # 但是我不会写剩下的
 
     def __new__(cls, value, display_value, priority):
         obj = object.__new__(cls)
@@ -107,6 +107,28 @@ def scheduling(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
                         logger.debug('||'.join([str(t) for t in tasks]))
                         break
         tasks.sort(key=lambda x: x.time)
+
+
+def try_add_release_dorm(plan, time, op_data, tasks):
+    if not op_data.config.free_room:
+        return
+    for k, v in plan.items():
+        for name in v:
+            if name != "Current":
+                _idx, __dorm = op_data.get_dorm_by_name(name)
+                if __dorm and __dorm.time < time:
+                    add_release_dorm(tasks, op_data, name)
+
+
+def add_release_dorm(tasks, op_data, name):
+    _idx, __dorm = op_data.get_dorm_by_name(name)
+    if __dorm.time > datetime.now() and find_next_task(task_type=TaskTypes.RELEASE_DORM, meta_data=name) is None:
+        _free = op_data.operators[name]
+        __plan = {_free.current_room: ['Current'] * 5}
+        __plan[_free.current_room][_free.current_index] = "Free"
+        logger.debug(name + " 新增释放宿舍任务")
+        tasks.append(
+            SchedulerTask(time=__dorm.time, task_type=TaskTypes.RELEASE_DORM, task_plan=__plan, meta_data=name))
 
 
 def check_dorm_ordering(tasks, op_data):

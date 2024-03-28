@@ -18,7 +18,8 @@ from ..data import agent_list, base_room_list, ocr_error
 from ..utils import character_recognize, detector, segment
 from ..utils.digit_reader import DigitReader
 from ..utils.operators import Operators, Operator, Dormitory
-from ..utils.scheduler_task import SchedulerTask, scheduling, find_next_task, TaskTypes, check_dorm_ordering
+from ..utils.scheduler_task import SchedulerTask, scheduling, find_next_task, TaskTypes, check_dorm_ordering, \
+    add_release_dorm, try_add_release_dorm
 from ..utils import typealias as tp
 from ..utils.device import Device
 from ..utils.log import logger
@@ -127,8 +128,6 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             self.free_clue = None
         if self.credit_fight is not None and self.credit_fight != get_server_weekday():
             self.credit_fight = None
-        # if self.credit_fight is not None and self.credit_fight != get_server_weekday():
-        #     self.credit_fight = None
         self.todo_task = False
         self.collect_notification = False
         self.planned = False
@@ -340,9 +339,6 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         low_priority = []
         for idx, dorm in enumerate(self.op_data.dorm):
             logger.debug(f'开始计算{dorm}')
-            # # Filter out resting priority low
-            # if idx >= self.op_data.config.max_resting_count:
-            #     break
             # 如果已经plan了，则跳过
             if idx in planned_index or idx in low_priority:
                 continue
@@ -383,19 +379,15 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 if __time != datetime.max:
                     self.tasks.append(SchedulerTask(time=__time, task_type=TaskTypes.SHIFT_ON, task_plan=__plan,
                                                     meta_data=','.join(__type)))
+                    try_add_release_dorm(__plan, __time, self.op_data, self.tasks)
                 else:
                     self.op_data.reset_dorm_time()
                     self.error = True
             # 如果非 rest in full， 则同组取时间最小值
             elif _name in self.op_data.operators.keys() and not self.op_data.operators[
                 _name].is_high() and self.op_data.config.free_room:
-                _free = self.op_data.operators[_name]
                 # 释放满心情其他干员
-                _idx, __dorm = self.op_data.get_dorm_by_name(_name)
-                if __dorm.time > datetime.now() and find_next_task(meta_data=_name) is None:
-                    __plan = {_free.current_room: ['Current'] * 5 }
-                    __plan[_free.current_room][_free.current_index] = "Free"
-                    self.tasks.append(SchedulerTask(time=__dorm.time, task_type=TaskTypes.RELEASE_DORM, task_plan=__plan,meta_data=_name))
+                add_release_dorm(self.tasks, self.op_data, _name)
             else:
                 if dorm.time is not None and dorm.time < _time:
                     logger.debug(f"更新任务时间{dorm.time}")
@@ -431,10 +423,12 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             if _time != datetime.max:
                 _time -= timedelta(minutes=8)
                 if _time < datetime.now(): _time = datetime.now()
+                _time = _time if not short_rest else (datetime.now() + timedelta(hours=0.5))
                 self.tasks.append(
-                    SchedulerTask(time=_time if not short_rest else (datetime.now() + timedelta(hours=0.5)),
+                    SchedulerTask(time=_time,
                                   task_plan=_plan, task_type=TaskTypes.SHIFT_ON,
                                   meta_data=','.join(_type)))
+                try_add_release_dorm(_plan, _time, self.op_data, self.tasks)
             else:
                 logger.debug("检测到时间数据不存在")
                 self.op_data.reset_dorm_time()
@@ -459,6 +453,16 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                             free_agent = self.op_data.operators[self.task.meta_data]
                             if free_agent.current_room == free_room and free_agent.current_index == free_index:
                                 get_time = True
+                                # 如果是高优先，还需要把宿舍reference移除
+                                if free_agent.is_high():
+                                    idx, dorm = self.op_data.get_dorm_by_name(free_agent.name)
+                                    if idx is not None:
+                                        update_task = find_next_task(self.tasks, task_type=TaskTypes.SHIFT_ON, meta_data = 'dorm' + str(idx))
+                                        if update_task:
+                                            logger.debug("开始更新宿舍信息")
+                                            dorm_list = update_task.meta_data.split(',')
+                                            dorm_list.remove('dorm' + str(idx))
+                                            update_task.meta_data = ",".join(dorm_list)
                             else:
                                 self.task.plan = {}
                         else:
@@ -1568,6 +1572,11 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     agents[idx] = 'Free'
                 elif not self.op_data.operators[n].is_high():
                     agents[idx] = 'Free'
+                if agents[idx] == 'Free' and self.task.type != TaskTypes.SHIFT_OFF:
+                    if self.op_data.config.free_room:
+                        current_free = self.op_data.get_current_room(room, idx)
+                        if current_free and current_free.mood < current_free.upper_limit:
+                            agents[idx] = current_free.name
         agent = copy.deepcopy(agents)
         exists = []
         if fast_mode:
@@ -1836,6 +1845,10 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                                                                                             result]:
                 self.op_data.operators[_operator].current_room = ''
                 self.op_data.operators[_operator].current_index = -1
+                if self.op_data.config.free_room:
+                    release_task = find_next_task(task_type=TaskTypes.RELEASE_DORM, meta_data=_operator)
+                    if release_task:
+                        self.tasks.remove(release_task)
                 logger.info(f'重设 {_operator} 至空闲')
         return result
 
@@ -1894,13 +1907,16 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         new_plan[room] = self.refresh_current_room(room)
                         working_room = self.op_data.operators[plan[room][0]].room
                         new_plan[working_room] = self.op_data.get_current_room(working_room, True)
-                    if 'Current' in plan[room]:
+                    if 'Current' in plan[room] or "" in plan[room]:
                         self.refresh_current_room(room, [index for index, value in enumerate(plan[room]) if
                                                          value == "Current"])
+                        _current_room = self.op_data.get_current_room(room, True)
                         for current_idx, _name in enumerate(plan[room]):
                             if _name == 'Current':
-                                plan[room][current_idx] = self.op_data.get_current_room(room, True)[current_idx] if \
-                                self.op_data.get_current_room(room, True)[current_idx] != "" else "Free"
+                                plan[room][current_idx] = _current_room[current_idx] if \
+                                _current_room[current_idx] != "" else "Free"
+                            if _name == "":
+                                _current_room[current_idx] = "Free"
                     if room in self.op_data.run_order_rooms and len(
                             new_plan) == 0 and self.task.type != TaskTypes.RUN_ORDER:
                         if plan[room] != self.op_data.get_current_room(room):
