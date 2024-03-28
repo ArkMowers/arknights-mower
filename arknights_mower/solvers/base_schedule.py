@@ -1845,7 +1845,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                                                                                             result]:
                 self.op_data.operators[_operator].current_room = ''
                 self.op_data.operators[_operator].current_index = -1
-                if self.op_data.config.free_room:
+                if self.op_data.config.free_room and self.task is not None and self.task.type != TaskTypes.SHIFT_OFF:
                     release_task = find_next_task(task_type=TaskTypes.RELEASE_DORM, meta_data=_operator)
                     if release_task:
                         self.tasks.remove(release_task)
@@ -1916,7 +1916,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                                 plan[room][current_idx] = _current_room[current_idx] if \
                                 _current_room[current_idx] != "" else "Free"
                             if _name == "":
-                                _current_room[current_idx] = "Free"
+                                plan[room][current_idx] = "Free"
                     if room in self.op_data.run_order_rooms and len(
                             new_plan) == 0 and self.task.type != TaskTypes.RUN_ORDER:
                         if plan[room] != self.op_data.get_current_room(room):
