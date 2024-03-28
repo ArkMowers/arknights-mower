@@ -137,6 +137,14 @@ defineExpose({
 
 import { render_op_label, render_op_tag } from '@/utils/op_select'
 import { match } from 'pinyin-pro'
+
+function fill_with_free() {
+  for (let i = 0; i < operator_limit.value; ++i) {
+    if (plan.value[facility.value].plans[i].agent == '') {
+      plan.value[facility.value].plans[i].agent = 'Free'
+    }
+  }
+}
 </script>
 
 <template>
@@ -360,6 +368,16 @@ import { match } from 'pinyin-pro'
               v-if="facility.startsWith('room')"
             />
             <span v-else class="type-select">{{ right_side_facility_name }}</span>
+          </td>
+          <td>
+            <n-button
+              ghost
+              type="primary"
+              @click="fill_with_free"
+              v-if="facility.startsWith('dorm')"
+            >
+              此宿舍内空位填充Free
+            </n-button>
           </td>
           <td>
             <n-button ghost type="error" @click="clear" :disabled="facility_empty">
