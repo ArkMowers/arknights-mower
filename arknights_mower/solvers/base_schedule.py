@@ -1574,7 +1574,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     agents[idx] = 'Free'
                 if agents[idx] == 'Free' and self.task.type != TaskTypes.SHIFT_OFF:
                     if self.op_data.config.free_room:
-                        current_free = self.op_data.get_current_room(room, idx)
+                        current_free = self.op_data.get_current_operator(room, idx)
                         if current_free and current_free.mood < current_free.upper_limit:
                             agents[idx] = current_free.name
         agent = copy.deepcopy(agents)
