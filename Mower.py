@@ -118,8 +118,8 @@ simulator = {
 
 # --->>下面是配置信息
 
-# Free (宿舍填充)干员安排黑名单 有英文逗号分开
-free_blacklist = ["艾丽妮", "但书", "龙舌兰"]
+# Free (宿舍填充)干员安排黑名单 用英文逗号分开
+free_blacklist = "艾丽妮,但书,龙舌兰"
 
 # 干员宿舍回复阈值
 resting_threshold = 0.5
