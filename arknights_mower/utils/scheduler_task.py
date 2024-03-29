@@ -126,9 +126,10 @@ def add_release_dorm(tasks, op_data, name):
         _free = op_data.operators[name]
         __plan = {_free.current_room: ['Current'] * 5}
         __plan[_free.current_room][_free.current_index] = "Free"
-        logger.debug(name + " 新增释放宿舍任务")
-        tasks.append(
-            SchedulerTask(time=__dorm.time, task_type=TaskTypes.RELEASE_DORM, task_plan=__plan, meta_data=name))
+        task = SchedulerTask(time=__dorm.time, task_type=TaskTypes.RELEASE_DORM, task_plan=__plan, meta_data=name)
+        tasks.append(task)
+        logger.info(name + " 新增释放宿舍任务")
+        logger.debug(str(task))
 
 
 def check_dorm_ordering(tasks, op_data):
@@ -168,8 +169,11 @@ def check_dorm_ordering(tasks, op_data):
             for k, v in other_plan.items():
                 del tasks[0].plan[k]
                 extra_plan[k] = v
-            tasks.insert(0, SchedulerTask(task_plan=extra_plan, time=tasks[0].time - timedelta(seconds=1),
-                                          task_type=TaskTypes.RE_ORDER))
+            logger.info("新增排序任务任务")
+            task = SchedulerTask(task_plan=extra_plan, time=tasks[0].time - timedelta(seconds=1),
+                                          task_type=TaskTypes.RE_ORDER)
+            tasks.insert(0, task)
+            logger.debug(str(task))
 
 
 class SchedulerTask:

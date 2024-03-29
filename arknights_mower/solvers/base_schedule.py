@@ -463,6 +463,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                                             dorm_list = update_task.meta_data.split(',')
                                             dorm_list.remove('dorm' + str(idx))
                                             update_task.meta_data = ",".join(dorm_list)
+                                            free_agent.mood = free_agent.upper_limit
+                                            free_agent.time_stamp = dorm.time
                             else:
                                 self.task.plan = {}
                         else:
