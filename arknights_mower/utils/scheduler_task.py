@@ -122,7 +122,7 @@ def try_add_release_dorm(plan, time, op_data, tasks):
 
 def add_release_dorm(tasks, op_data, name):
     _idx, __dorm = op_data.get_dorm_by_name(name)
-    if __dorm.time > datetime.now() and find_next_task(task_type=TaskTypes.RELEASE_DORM, meta_data=name) is None:
+    if __dorm.time > datetime.now() and find_next_task(tasks, task_type=TaskTypes.RELEASE_DORM, meta_data=name) is None:
         _free = op_data.operators[name]
         __plan = {_free.current_room: ['Current'] * 5}
         __plan[_free.current_room][_free.current_index] = "Free"

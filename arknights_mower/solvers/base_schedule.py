@@ -1846,7 +1846,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 self.op_data.operators[_operator].current_room = ''
                 self.op_data.operators[_operator].current_index = -1
                 if self.op_data.config.free_room and self.task is not None and self.task.type != TaskTypes.SHIFT_OFF:
-                    release_task = find_next_task(task_type=TaskTypes.RELEASE_DORM, meta_data=_operator)
+                    release_task = find_next_task(self.tasks, task_type=TaskTypes.RELEASE_DORM, meta_data=_operator)
                     if release_task:
                         self.tasks.remove(release_task)
                 logger.info(f'重设 {_operator} 至空闲')
