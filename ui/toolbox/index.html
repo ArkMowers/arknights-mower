@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mower Toolbox</title>
+    <style>
+      .outer {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+      }
+
+      #log {
+        padding: 12px;
+        overflow-y: scroll;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="outer">
+      <div id="app"></div>
+      <script type="module" src="/toolbox/main.js"></script>
+      <code id="log"></code>
+      <script>
+        function append_log(line) {
+          var ele = document.createElement('div')
+          ele.innerHTML = line
+          parent = document.querySelector('#log')
+          parent.appendChild(ele)
+          while (parent.children.length > 20) {
+            parent.firstChild.remove()
+          }
+          ele.scrollIntoView()
+        }
+      </script>
+    </div>
+  </body>
+</html>

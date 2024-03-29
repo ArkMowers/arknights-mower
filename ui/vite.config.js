@@ -35,7 +35,8 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: 'index.html',
-        nested: 'manager/index.html'
+        manager: 'manager/index.html',
+        toolbox: 'toolbox/index.html'
       }
     }
   }
