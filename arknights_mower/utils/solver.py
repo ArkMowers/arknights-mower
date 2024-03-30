@@ -275,7 +275,7 @@ class BaseSolver:
         mask = cv2.bitwise_not(mask)
         result = cv2.matchTemplate(right_part, source, cv2.TM_SQDIFF_NORMED, None, mask)
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-        x = offset_x + _t(0.201) + min_loc[0] - x - tpl_padding + _t(0.128)
+        x = offset_x + _t(0.201) + min_loc[0] - _t(0.032) - x - tpl_padding + _t(0.128)
         start = (offset_x + _t(0.128), offset_y + _t(0.711))
         end = (x, offset_y + _t(0.711))
         logger.info("滑动验证码")
@@ -306,13 +306,18 @@ class BaseSolver:
                 elif scene == Scene.LOGIN_REGISTER:
                     self.back(2)
                 elif scene == Scene.LOGIN_CAPTCHA:
-                    if retry_times > 0:
-                        self.solve_captcha(retry_times < config.MAX_RETRYTIME)
-                    else:
-                        self.send_message("滑动验证码失败，退出游戏，停止运行mower")
+                    captcha_times = 3
+                    while captcha_times > 0:
+                        self.solve_captcha(captcha_times < 3)
+                        self.sleep(5)
+                        if self.find('login_captcha'):
+                            captcha_times -= 1
+                        else:
+                            break
+                    if captcha_times <= 0:
+                        self.send_message("验证码自动滑动失败，退出游戏，停止运行mower")
                         self.device.exit()
                         sys.exit()
-                    retry_times -= 1
                 elif scene == Scene.LOGIN_INPUT:
                     input_area = self.find('login_username')
                     if input_area is not None:
