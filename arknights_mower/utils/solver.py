@@ -22,6 +22,9 @@ from .device import Device, KeyCode
 from .log import logger
 from .recognize import RecognizeError, Recognizer, Scene
 
+from arknights_mower.utils.image import cropimg
+from arknights_mower.utils.matcher import Matcher
+import numpy as np
 
 class StrategyError(Exception):
     """ Strategy Error """
@@ -223,6 +226,28 @@ class BaseSolver:
         """ check if you are logged in """
         return not ((scene := self.scene()) // 100 == 1 or scene // 100 == 99 or scene == -1)
 
+    def solve_captcha(self):
+        left_part = cropimg(self.recog.img, ((588, 155), (725, 614)))
+        hsv = cv2.cvtColor(left_part, cv2.COLOR_RGB2HSV)
+        mask = cv2.inRange(hsv, (25, 0, 0), (35, 255, 255))
+        tpl = np.zeros((115, 115), np.uint8)
+        tpl[:] = (255,)
+        tpl[10:105, 10:105] = (0,)
+        result = cv2.matchTemplate(mask, tpl, cv2.TM_CCOEFF_NORMED)
+        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+        x, y = max_loc
+        source = cropimg(left_part, ((x + 15, y + 15), (x + 100, y + 100)))
+        source = cv2.cvtColor(source, cv2.COLOR_RGB2GRAY)
+        if pos := self.find(source, score=0.1, scope=((725, 155), (1330, 614))):
+            logger.info("自动处理登录验证码")
+            x, y = self.get_pos(pos)
+            start = (666, 710)
+            end = (x, 710)
+            self.device.swipe_ext((start, end, end), durations=[500, 200])
+        else:
+            logger.info("刷新登录验证码")
+            self.tap((717, 879))
+
     def login(self):
         """
         登录进游戏
@@ -248,9 +273,13 @@ class BaseSolver:
                 elif scene == Scene.LOGIN_REGISTER:
                     self.back(2)
                 elif scene == Scene.LOGIN_CAPTCHA:
-                    self.send_message("登录时遇到验证码，退出游戏、停止运行mower")
-                    self.device.exit()
-                    sys.exit()
+                    if retry_times > 0:
+                        self.solve_captcha()
+                    else:
+                        self.send_message("登录时遇到验证码，自动滑动失败。退出游戏、停止运行mower")
+                        self.device.exit()
+                        sys.exit()
+                    retry_times -= 2
                 elif scene == Scene.LOGIN_INPUT:
                     input_area = self.find('login_username')
                     if input_area is not None:
