@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Optional, Tuple
 
 import sys
+import random
 import cv2
 
 import smtplib
@@ -276,6 +277,7 @@ class BaseSolver:
         result = cv2.matchTemplate(right_part, source, cv2.TM_SQDIFF_NORMED, None, mask)
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
         x = offset_x + _t(0.201) + min_loc[0] - _t(0.032) - x - tpl_padding + _t(0.128)
+        x += random.choice([-4, -3, -2, 2, 3, 4])
         start = (offset_x + _t(0.128), offset_y + _t(0.711))
         end = (x, offset_y + _t(0.711))
         logger.info("滑动验证码")
