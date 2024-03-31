@@ -1748,6 +1748,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     return
                 else:
                     logger.info("等待动画")
+                    error_count += 1
                     self.sleep(interval=0.5)
                     continue
             if error_count > 3:
