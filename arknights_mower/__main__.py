@@ -417,7 +417,8 @@ def simulate():
                         body = task_template.render(
                             tasks=[
                                 obj.format(timezone_offset) for obj in base_scheduler.tasks
-                            ]
+                            ],
+                            base_scheduler=base_scheduler
                         )
                         base_scheduler.send_message(body, subject, "html")
                         base_scheduler.maa_plan_solver()
@@ -438,10 +439,11 @@ def simulate():
                             body = task_template.render(
                                 tasks=[
                                     obj.format(timezone_offset) for obj in base_scheduler.tasks
-                                ]
+                                ],
+                                base_scheduler=base_scheduler
                             )
                             base_scheduler.send_message(body, subject, "html")
-                            time.sleep(remaining_time)
+                            base_scheduler.sleep(remaining_time)
                             if base_scheduler.close_simulator_when_idle:
                                 restart_simulator(base_scheduler.simulator, stop=False)
 
@@ -481,10 +483,11 @@ def simulate():
                     body = task_template.render(
                         tasks=[
                             obj.format(timezone_offset) for obj in base_scheduler.tasks
-                        ]
+                        ],
+                        base_scheduler=base_scheduler
                     )
                     base_scheduler.send_message(body, subject, "html")
-                    time.sleep(remaining_time)
+                    base_scheduler.sleep(remaining_time)
                     if conf["close_simulator_when_idle"]:
                         restart_simulator(conf["simulator"], stop=False)
             if (

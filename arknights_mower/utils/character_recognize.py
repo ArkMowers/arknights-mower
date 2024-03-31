@@ -38,9 +38,6 @@ FLANN_INDEX_KDTREE = 0
 GOOD_DISTANCE_LIMIT = 0.7
 SIFT = cv2.SIFT_create()
 
-mh = 42
-mw = 200
-
 kernel = np.ones((10, 10), np.uint8)
 
 with lzma.open(f"{__rootdir__}/models/operator_select.model", "rb") as f:
@@ -352,11 +349,18 @@ def operator_list(img, draw=False):
         rect = map(lambda c: cv2.boundingRect(c), contours)
         x, y, w, h = sorted(rect, key=lambda c: c[0])[0]
         im = im[y : y + h, x : x + w]
-        tpl = np.zeros((mh, mw))
+        tpl = np.zeros((42, 200), dtype=np.uint8)
         tpl[: im.shape[0], : im.shape[1]] = im
-        tpl /= 255
-        tpl = tpl.reshape(mh * mw)
-        op_name.append(agent_list[OP_SELECT.predict([tpl])[0]])
+        tpl = cv2.copyMakeBorder(tpl, 2, 2, 2, 2, cv2.BORDER_CONSTANT, None, (0,))
+        max_score = 0
+        best_operator = None
+        for operator, template in OP_SELECT.items():
+            result = cv2.matchTemplate(tpl, template, cv2.TM_CCORR_NORMED)
+            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+            if max_val > max_score:
+                max_score = max_val
+                best_operator = operator
+        op_name.append(best_operator)
 
     logger.debug(op_name)
 

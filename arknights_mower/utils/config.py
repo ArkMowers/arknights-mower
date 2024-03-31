@@ -25,6 +25,9 @@ __ydoc = None
 BASE_CONSTRUCT_PLAN: dict[str, tp.BasePlan]
 OPE_PLAN: list[tp.OpePlan]
 
+grandet_mode = True
+grandet_back_to_index = True
+fix_mumu12_adb_disconnect = True
 
 def __dig_mapping(path: str):
     path = path.split('/')

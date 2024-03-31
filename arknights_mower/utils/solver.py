@@ -22,6 +22,9 @@ from .device import Device, KeyCode
 from .log import logger
 from .recognize import RecognizeError, Recognizer, Scene
 
+from arknights_mower.utils.image import cropimg, thres2
+from arknights_mower.utils.matcher import Matcher
+import numpy as np
 
 class StrategyError(Exception):
     """ Strategy Error """
@@ -223,6 +226,61 @@ class BaseSolver:
         """ check if you are logged in """
         return not ((scene := self.scene()) // 100 == 1 or scene // 100 == 99 or scene == -1)
 
+    def solve_captcha(self, refresh=False):
+        th = thres2(self.recog.gray, 254)
+        pos = np.nonzero(th)
+        offset_x = pos[1].min()
+        offset_y = pos[0].min()
+        img_scope = ((offset_x, offset_y), (pos[1].max(), pos[0].max()))
+        img = cropimg(self.recog.img, img_scope)
+        h = img.shape[0]
+
+        def _t(ratio):
+            return int(h * ratio)
+
+        def _p(ratio_x, ratio_y):
+            return _t(ratio_x), _t(ratio_y)
+
+        if refresh:
+            logger.info("刷新验证码")
+            self.tap((offset_x + _t(0.189), offset_y + _t(0.916)), interval=3)
+            img = cropimg(self.recog.img, img_scope)
+
+        left_part = cropimg(img, (_p(0.032, 0.032), _p(0.202, 0.591)))
+        hsv = cv2.cvtColor(left_part, cv2.COLOR_RGB2HSV)
+        mask = cv2.inRange(hsv, (25, 0, 0), (35, 255, 255))
+
+        tpl_width = _t(0.148)
+        tpl_height = _t(0.135)
+        tpl_border = _t(0.0056)
+        tpl_padding = _t(0.018)
+        tpl = np.zeros((tpl_height, tpl_width), np.uint8)
+        tpl[:] = (255,)
+        tpl[tpl_border:tpl_height - tpl_border, tpl_border:tpl_width - tpl_border] = (0,)
+
+        result = cv2.matchTemplate(mask, tpl, cv2.TM_SQDIFF, None, tpl)
+        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+        x, y = min_loc
+
+        source_p = (x + tpl_padding, y + tpl_padding), (x + tpl_width - tpl_padding, y + tpl_height - tpl_padding)
+        source = cropimg(left_part, source_p)
+        mask = cropimg(mask, source_p)
+        right_part = cropimg(img, ((_t(0.201), _t(0.032) + source_p[0][1]), (_t(0.94), _t(0.032) + source_p[1][1])))
+
+        for _y in range(source.shape[0]):
+            for _x in range(source.shape[1]):
+                for _c in range(source.shape[2]):
+                    source[_y, _x, _c] = np.clip(source[_y, _x, _c] * 0.7 - 23, 0, 255)
+
+        mask = cv2.bitwise_not(mask)
+        result = cv2.matchTemplate(right_part, source, cv2.TM_SQDIFF_NORMED, None, mask)
+        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+        x = offset_x + _t(0.201) + min_loc[0] - _t(0.032) - x - tpl_padding + _t(0.128)
+        start = (offset_x + _t(0.128), offset_y + _t(0.711))
+        end = (x, offset_y + _t(0.711))
+        logger.info("滑动验证码")
+        self.device.swipe_ext((start, end, end), durations=[500, 200])
+
     def login(self):
         """
         登录进游戏
@@ -248,9 +306,18 @@ class BaseSolver:
                 elif scene == Scene.LOGIN_REGISTER:
                     self.back(2)
                 elif scene == Scene.LOGIN_CAPTCHA:
-                    self.send_message("登录时遇到验证码，退出游戏、停止运行mower")
-                    self.device.exit()
-                    sys.exit()
+                    captcha_times = 3
+                    while captcha_times > 0:
+                        self.solve_captcha(captcha_times < 3)
+                        self.sleep(5)
+                        if self.find('login_captcha'):
+                            captcha_times -= 1
+                        else:
+                            break
+                    if captcha_times <= 0:
+                        self.send_message("验证码自动滑动失败，退出游戏，停止运行mower")
+                        self.device.exit()
+                        sys.exit()
                 elif scene == Scene.LOGIN_INPUT:
                     input_area = self.find('login_username')
                     if input_area is not None:

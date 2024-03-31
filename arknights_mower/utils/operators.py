@@ -334,7 +334,7 @@ class Operators(object):
             if dorm.position[0] == room and dorm.position[1] == index:
                 # 如果人为高效组，则记录时间
                 _name = agent["agent"]
-                if _name in self.operators.keys() and self.operators[_name].is_high():
+                if _name in self.operators.keys() and (self.operators[_name].is_high() or self.config.free_room):
                     dorm.name = _name
                     _agent = self.operators[_name]
                     # 如果干员有心情上限，则按比例修改休息时间
@@ -362,11 +362,18 @@ class Operators(object):
         for idx, dorm in enumerate(self.dorm):
             # Filter out resting priority low
             if idx >= self.config.max_resting_count:
-                break
+                if not self.config.free_room:
+                    break
             if dorm.position[0] == room:
                 for i, _name in enumerate(plan):
-                    if _name in self.operators.keys() and self.operators[_name].is_high() and not self.operators[
-                        _name].room.startswith('dorm'):
+                    if _name not in self.operators.keys():
+                        self.add(Operator(_name, ""))
+                    if not self.config.free_room:
+                        if self.operators[_name].is_high() and not self.operators[
+                            _name].room.startswith('dorm'):
+                            ret.append(i)
+                    elif not self.operators[
+                            _name].room.startswith('dorm'):
                         ret.append(i)
                 break
         return ret
@@ -464,6 +471,12 @@ class Operators(object):
                     break
         _room.name = name
         return _room
+
+    def get_current_operator(self, room, index):
+        for key, value in self.operators.items():
+            if value.current_room == room and value.current_index == index:
+                return value
+        return None
 
     def print(self):
         ret = "{"
