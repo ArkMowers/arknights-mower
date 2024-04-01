@@ -72,6 +72,7 @@ class ReclamationAlgorithm(BaseSolver):
         self.event = Event()
         self.unknown_time = None
 
+        self.battle_task = None
         self.task_queue = None
         self.in_adventure = False
         self.ap = None
@@ -296,12 +297,38 @@ class ReclamationAlgorithm(BaseSolver):
         )[0][0][0]
         return score or "识别失败"
 
+    def map_select_place(self, pos, place):
+        if popup := self.find("ra/popup"):
+            if (
+                popup[0][0] > pos[1][0]
+                or popup[1][0] < pos[0][0]
+                or popup[0][1] > pos[1][1]
+                or popup[1][1] < pos[0][1]
+            ):
+                x = int((pos[0][0] + pos[1][0]) / 2)
+            else:
+                logger.info(f"{place}被虫子挡住了！")
+                if popup[0][0] < pos[1][0] < popup[1][0]:
+                    x = int((pos[0][0] + popup[0][0]) / 2)
+                elif popup[0][0] < pos[0][0] < popup[1][0]:
+                    x = int((popup[1][0] + pos[1][0]) / 2)
+                else:
+                    ll = popup[0][0] - pos[0][0]
+                    lr = pos[1][0] - popup[1][0]
+                    if ll > lr:
+                        x = int(pos[0][0] + ll / 2)
+                    else:
+                        x = int(popup[1][0] + lr / 2)
+        else:
+            x = int((pos[0][0] + pos[1][0]) / 2)
+        self.tap((x, int((pos[0][1] + pos[1][1]) / 2)), rebuild=False, interval=0.5)
+
     def move_forward(self, scene):
         # 从首页进入生息演算主页
         if scene == Scene.INDEX:
             self.tap_index_element("terminal")
         elif scene == Scene.TERMINAL_MAIN:
-            self.tap_element("terminal_button_longterm")
+            self.tap_element("terminal_button_longterm", score=0.2)
         elif scene == Scene.TERMINAL_LONGTERM:
             self.tap_element("terminal_longterm_reclamation_algorithm")
 
@@ -325,6 +352,9 @@ class ReclamationAlgorithm(BaseSolver):
 
         # 进入与退出战斗
         elif scene == Scene.RA_BATTLE_ENTRANCE:
+            if self.battle_task in self.task_queue:
+                self.task_queue.remove(self.battle_task)
+                self.ap -= 1
             self.tap_element("ra/start_action", interval=1.5)
         elif scene == Scene.RA_BATTLE:
             if self.battle_wait > 0:
@@ -460,13 +490,11 @@ class ReclamationAlgorithm(BaseSolver):
                     # 返回首页重新进入，使基地位于屏幕中央
                     self.map_back()
                     return
-            self.tap(pos, rebuild=False, interval=0.5)
+            self.map_select_place(pos, place)
             if place.startswith("奇遇"):
                 self.tap((428, 411), interval=0.5)
             else:
-                if place in self.task_queue:
-                    self.task_queue.remove(place)
-                    self.ap -= 1
+                self.battle_task = place
                 self.recog.update()
         elif scene == Scene.RA_DAY_DETAIL:
             self.tap_element("ra/waste_time_button", interval=0.5)
