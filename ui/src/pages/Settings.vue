@@ -33,7 +33,8 @@ const {
   run_order_grandet_mode,
   webview,
   fix_mumu12_adb_disconnect,
-  touch_method
+  touch_method,
+  free_room
 } = storeToRefs(config_store)
 
 const { operators } = storeToRefs(plan_store)
@@ -323,6 +324,12 @@ import { render_op_label, render_op_tag } from '@/utils/op_select'
                   <template #suffix>%</template>
                 </n-input-number>
               </div>
+            </n-form-item>
+            <n-form-item :show-label="false">
+              <n-checkbox v-model:checked="free_room">
+                宿舍不养闲人
+                <help-text>干员心情回满后，立即释放宿舍空位</help-text>
+              </n-checkbox>
             </n-form-item>
           </n-form>
         </n-card>
