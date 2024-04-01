@@ -221,7 +221,7 @@ class Recognizer(object):
             self.scene = Scene.CONFIRM
         elif self.find('login_verify') is not None:
             self.scene = Scene.LOGIN_INPUT
-        elif self.find('login_captcha') is not None:
+        elif self.find('login_captcha', score=0.5) is not None:
             self.scene = Scene.LOGIN_CAPTCHA
         elif self.find('login_connecting') is not None:
             self.scene = Scene.LOGIN_LOADING

@@ -320,7 +320,7 @@ class BaseSolver:
                     while captcha_times > 0:
                         self.solve_captcha(captcha_times < 3)
                         self.sleep(5)
-                        if self.find('login_captcha'):
+                        if self.find('login_captcha', score=0.5):
                             captcha_times -= 1
                         else:
                             break
