@@ -1,3 +1,5 @@
+from typing import Optional
+
 import logging
 import os
 import sys
@@ -80,7 +82,7 @@ def set_debug_mode() -> None:
         init_fhlr()
 
 
-def save_screenshot(img: bytes,filename: str  =time.strftime('%Y%m%d%H%M%S.png', time.localtime()), subdir: str = '') -> None:
+def save_screenshot(img: bytes, filename: Optional[str] = None, subdir: str = '') -> None:
     """ save screenshot """
     if config.SCREENSHOT_PATH is None:
         return
@@ -92,6 +94,8 @@ def save_screenshot(img: bytes,filename: str  =time.strftime('%Y%m%d%H%M%S.png',
         for x in screenshots[: -config.SCREENSHOT_MAXNUM]:
             logger.debug(f'remove screenshot: {x.name}')
             x.unlink()
+    if filename is None:
+        filename = time.strftime('%Y%m%d%H%M%S.png', time.localtime())
     with folder.joinpath(filename).open('wb') as f:
         f.write(img)
     logger.debug(f'save screenshot: {filename}')

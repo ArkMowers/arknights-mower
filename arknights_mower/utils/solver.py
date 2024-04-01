@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Optional, Tuple
 
 import sys
+import random
 import cv2
 
 import smtplib
@@ -275,11 +276,20 @@ class BaseSolver:
         mask = cv2.bitwise_not(mask)
         result = cv2.matchTemplate(right_part, source, cv2.TM_SQDIFF_NORMED, None, mask)
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-        x = offset_x + _t(0.201) + min_loc[0] - _t(0.032) - x - tpl_padding + _t(0.128)
-        start = (offset_x + _t(0.128), offset_y + _t(0.711))
-        end = (x, offset_y + _t(0.711))
+        x = _t(0.201) + min_loc[0] - _t(0.032) - x - tpl_padding + _t(0.128)
+        x += random.choice([-4, -3, -2, 2, 3, 4])
+
+        def _rb(R, r):
+            return random.random() * _t(R) + _t(r)
+
+        btn_x = _rb(0.1, 0.01)
+        start = offset_x + btn_x + _t(0.128), offset_y + _rb(0.1, 0.01) + _t(0.711)
+        end = offset_x + btn_x + x, offset_y + _rb(0.1, 0.01) + _t(0.711)
+        p1 = end[0] + _rb(0.1, 0.02), end[1] + _rb(0.05, 0.02)
+        p2 = end[0] + _rb(0.1, 0.02), end[1] + _rb(0.05, 0.02)
+
         logger.info("滑动验证码")
-        self.device.swipe_ext((start, end, end), durations=[500, 200])
+        self.device.swipe_ext((start, p1, p2, end, end), durations=[random.randint(400, 600), random.randint(200, 300), random.randint(200, 300), random.randint(200, 300)])
 
     def login(self):
         """
@@ -310,7 +320,7 @@ class BaseSolver:
                     while captcha_times > 0:
                         self.solve_captcha(captcha_times < 3)
                         self.sleep(5)
-                        if self.find('login_captcha'):
+                        if self.find('login_captcha', score=0.5):
                             captcha_times -= 1
                         else:
                             break
