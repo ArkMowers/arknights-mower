@@ -278,15 +278,13 @@ async function import_plan() {
       </n-radio-group>
     </n-form-item>
     <n-form-item>
-      <template #label>
-        <span>最大组人数</span><help-text><div>请查阅文档</div></help-text>
-      </template>
-      <n-input-number v-model:value="current_conf.max_resting_count" />
+      <template #label><span>最大组人数</span><help-text>请查阅文档</help-text></template>
+      <n-input-number v-model:value="current_conf.max_resting_count">
+        <template #suffix>人</template>
+      </n-input-number>
     </n-form-item>
     <n-form-item>
-      <template #label>
-        <span>需要回满心情的干员</span><help-text><div>请查阅文档</div></help-text>
-      </template>
+      <template #label><span>需要回满心情的干员</span><help-text>请查阅文档</help-text></template>
       <n-select
         multiple
         filterable
@@ -299,8 +297,7 @@ async function import_plan() {
     </n-form-item>
     <n-form-item>
       <template #label>
-        <span>需要用尽心情的干员</span
-        ><help-text><div>仅推荐写入具有暖机技能的干员</div></help-text>
+        <span>需要用尽心情的干员</span><help-text>仅推荐写入具有暖机技能的干员</help-text>
       </template>
       <n-select
         multiple
@@ -314,7 +311,7 @@ async function import_plan() {
     </n-form-item>
     <n-form-item>
       <template #label>
-        <span>0心情工作的干员</span><help-text><div>心情涣散状态仍能触发技能的干员</div></help-text>
+        <span>0心情工作的干员</span><help-text>心情涣散状态仍能触发技能的干员</help-text>
       </template>
       <n-select
         multiple
@@ -327,9 +324,7 @@ async function import_plan() {
       />
     </n-form-item>
     <n-form-item>
-      <template #label>
-        <span>宿舍低优先级干员</span><help-text><div>请查阅文档</div></help-text>
-      </template>
+      <template #label><span>宿舍低优先级干员</span><help-text>请查阅文档</help-text></template>
       <n-select
         multiple
         filterable
@@ -364,9 +359,7 @@ async function import_plan() {
     <n-form-item v-if="sub_plan != 'main'">
       <template #label>
         <span>宿舍黑名单</span>
-        <help-text>
-          <div>不希望进行填充宿舍的干员</div>
-        </help-text>
+        <help-text>不希望进行填充宿舍的干员</help-text>
       </template>
       <n-select
         multiple
