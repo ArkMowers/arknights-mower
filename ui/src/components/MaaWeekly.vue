@@ -163,7 +163,9 @@ function create_tag(label) {
           />
         </td>
         <td>
-          <n-input-number v-model:value="plan.medicine" :min="0" />
+          <n-input-number v-model:value="plan.medicine" :min="0" :show-button="false">
+            <template #suffix>支</template>
+          </n-input-number>
         </td>
       </tr>
     </table>
