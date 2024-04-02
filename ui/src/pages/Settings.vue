@@ -168,7 +168,9 @@ import { render_op_label, render_op_tag } from '@/utils/op_select'
               <n-checkbox v-model:checked="start_automatically">启动后自动开始任务</n-checkbox>
             </n-form-item>
             <n-form-item label="截图数量">
-              <n-input-number v-model:value="screenshot" />
+              <n-input-number v-model:value="screenshot">
+                <template #suffix>张</template>
+              </n-input-number>
             </n-form-item>
             <n-form-item>
               <template #label>
@@ -238,10 +240,11 @@ import { render_op_label, render_op_tag } from '@/utils/op_select'
                 <help-text>
                   <div>推荐范围5-10</div>
                   <div>可填小数</div>
-                  <div>单位：分钟</div>
                 </help-text>
               </template>
-              <n-input-number v-model:value="run_order_delay" />
+              <n-input-number v-model:value="run_order_delay">
+                <template #suffix>分钟</template>
+              </n-input-number>
             </n-form-item>
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="run_order_grandet_mode.enable">葛朗台跑单</n-checkbox>
@@ -249,12 +252,11 @@ import { render_op_label, render_op_tag } from '@/utils/op_select'
             <n-form-item v-if="run_order_grandet_mode.enable">
               <template #label>
                 <span>葛朗台缓冲时间</span>
-                <help-text>
-                  <div>推荐范围：15-30</div>
-                  <div>单位：秒</div>
-                </help-text>
+                <help-text>推荐范围：15-30</help-text>
               </template>
-              <n-input-number v-model:value="run_order_grandet_mode.buffer_time" />
+              <n-input-number v-model:value="run_order_grandet_mode.buffer_time">
+                <template #suffix>秒</template>
+              </n-input-number>
             </n-form-item>
             <n-form-item v-if="run_order_grandet_mode.enable" :show-label="false">
               <n-checkbox v-model:checked="run_order_grandet_mode.back_to_index">
@@ -288,11 +290,12 @@ import { render_op_label, render_op_tag } from '@/utils/op_select'
               <template #label>
                 <span>无人机加速间隔</span>
                 <help-text>
-                  <div>单位：小时</div>
                   <div>可填小数</div>
                 </help-text>
               </template>
-              <n-input-number v-model:value="drone_interval" />
+              <n-input-number v-model:value="drone_interval">
+                <template #suffix>小时</template>
+              </n-input-number>
             </n-form-item>
             <n-form-item label="搓玉补货房间">
               <n-select

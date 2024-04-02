@@ -33,15 +33,20 @@ const mobile = inject('mobile')
       <n-form-item>
         <template #label>
           <span>启动间隔</span>
-          <help-text>
-            <div>单位：小时</div>
-            <div>可填小数</div>
-          </help-text>
+          <help-text>可填小数</help-text>
         </template>
-        <n-input-number v-model:value="recruit_gap" />
+        <n-input-number v-model:value="recruit_gap">
+          <template #suffix>小时</template>
+        </n-input-number>
       </n-form-item>
-      <n-form-item label="三星招募阈值">
-        <n-input-number v-model:value="recruitment_permit" />
+      <n-form-item>
+        <template #label>
+          <span>三星招募阈值</span>
+          <help-text>剩余公招券大于此阈值时招募三星干员</help-text>
+        </template>
+        <n-input-number v-model:value="recruitment_permit">
+          <template #suffix>张</template>
+        </n-input-number>
       </n-form-item>
       <n-form-item label="三星招募时长">
         <n-radio-group v-model:value="recruitment_time" name="recruitment_time">

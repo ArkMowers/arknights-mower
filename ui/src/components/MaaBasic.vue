@@ -75,11 +75,11 @@ const maa_touch_options = ['maatouch', 'minitouch', 'adb'].map((x) => {
       <n-form-item>
         <template #label>
           <span>启动间隔</span>
-          <help-text>
-            <div>单位：小时</div>
-            <div>可填小数</div>
-          </help-text> </template
-        ><n-input-number v-model:value="maa_gap" />
+          <help-text>可填小数</help-text>
+        </template>
+        <n-input-number v-model:value="maa_gap">
+          <template #suffix>小时</template>
+        </n-input-number>
       </n-form-item>
     </n-form>
     <n-divider />
