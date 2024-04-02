@@ -52,7 +52,9 @@ async function select_copilot_path() {
       <n-button @click="select_copilot_path" class="dialog-btn">...</n-button>
     </n-form-item>
     <n-form-item label="循环次数">
-      <n-input-number v-model:value="sss.loop" />
+      <n-input-number v-model:value="sss.loop">
+        <template #suffix>次</template>
+      </n-input-number>
     </n-form-item>
   </n-form>
 </template>
