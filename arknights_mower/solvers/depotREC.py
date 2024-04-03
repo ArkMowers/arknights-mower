@@ -176,7 +176,7 @@ class depotREC(BaseSolver):
             圆 = np.round(圆[0, :]).astype("int")
             横坐标, 纵坐标 = 算坐标(圆)
         else:
-            横坐标 = [188]
+            横坐标 = [188 + 234 * i for i in range(0, 8)]
             纵坐标 = [144, 430, 715]
             logger.warning("仓库扫描: 在这个分类下没有找到足够多的圆，使用预设坐标")
         切图列表 = 切图(横坐标, 纵坐标, 拼接好的图片)
