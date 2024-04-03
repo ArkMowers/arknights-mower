@@ -76,7 +76,7 @@ class Arknights数据处理器:
                     匹配结果 = True
             return 匹配结果
 
-        物品_名称对 = {}
+        self.物品_名称对 = {}
 
         for 物品代码, 物品数据 in self.物品表["items"].items():
             图标代码 = 物品数据["iconId"]
@@ -89,13 +89,13 @@ class Arknights数据处理器:
                 排除开关 = False
                 排除开关 = 检查图标代码匹配(图标代码)
                 if os.path.exists(源文件路径) and not 排除开关:
-                    目标文件路径 = f"./ui/public/depot/{图标代码}.png"
+                    目标文件路径 = f"./ui/public/depot/{中文名称}.png"
                     self.装仓库物品的字典[分类类型].append(目标文件路径)
-
                     if not os.path.exists(目标文件路径):
                         shutil.copy(源文件路径, 目标文件路径)
-                    物品_名称对[图标代码] = [
+                    self.物品_名称对[中文名称] = [
                         物品代码,
+                        图标代码,
                         中文名称,
                         分类类型,
                         排序代码,
@@ -106,9 +106,7 @@ class Arknights数据处理器:
         with open(
             "./arknights_mower/data/key_mapping.json", "w", encoding="utf8"
         ) as json_file:
-            json.dump(物品_名称对, json_file, ensure_ascii=False)
-        with open("./ui/src/pages/key_mapping.json", "w", encoding="utf8") as json_file:
-            json.dump(物品_名称对, json_file, ensure_ascii=False)
+            json.dump(self.物品_名称对, json_file, ensure_ascii=False)
         print()
 
     def 添加干员(self):
@@ -241,7 +239,7 @@ class Arknights数据处理器:
                 模板 = cv2.resize(模板, (213, 213))
                 特征点 = 提取特征点(模板)
                 特征点列表.append(特征点)
-                标签列表.append(文件名[18:-4])
+                标签列表.append(self.物品_名称对[文件名[18:-4]][1])
             return 特征点列表, 标签列表
 
         def 训练knn模型(images, labels):
@@ -341,16 +339,17 @@ class Arknights数据处理器:
 数据处理器 = Arknights数据处理器()
 
 数据处理器.添加物品()
-# 希望可以运行一下 npm run format json在后端和前端存了两份一样的
-# 权宜之计
 
 数据处理器.添加干员()
 
 数据处理器.读取卡池()
-数据处理器.读取活动关卡()
+# 数据处理器.读取活动关卡()
 
 数据处理器.批量训练并保存扫仓库模型()
+print("批量训练并保存扫仓库模型,完成")
 # 批量训练并保存扫仓库模型 和 添加物品 有联动 ， 添加物品提供了分类的图片位置
 
 数据处理器.训练在房间内的干员名的模型()
+print("训练在房间内的干员名的模型,完成")
 数据处理器.训练选中的干员名的模型()
+print("训练选中的干员名的模型,完成")
