@@ -29,7 +29,7 @@ from datetime import datetime
 #         writer.writerow(itemlist)
 
 
-def 读取仓库() :
+def 读取仓库():
     path = get_path("@app/tmp/depotresult.csv")
     if not os.path.exists(path):
         创建csv()
@@ -37,117 +37,130 @@ def 读取仓库() :
     新物品 = json.loads(depotinfo.iloc[-1, 1])
     新物品json = depotinfo.iloc[-1, 2]
     sort = {
-        "A常用": [
-            "DIAMOND",
-            "DIAMOND_SHD",
-            "TKT_GACHA",
-            "TKT_GACHA_10",
-            "GOLD",
-            "HGG_SHD",
-            "LGG_SHD",
-            "TKT_RECRUIT",
+        "A\u5e38\u7528": [
+            "\u81f3\u7eaf\u6e90\u77f3",
+            "\u5408\u6210\u7389",
+            "\u5bfb\u8bbf\u51ed\u8bc1",
+            "\u5341\u8fde\u5bfb\u8bbf\u51ed\u8bc1",
+            "\u9f99\u95e8\u5e01",
+            "\u9ad8\u7ea7\u51ed\u8bc1",
+            "\u8d44\u8d28\u51ed\u8bc1",
+            "\u62db\u8058\u8bb8\u53ef",
         ],
-        "B经验卡": [
-            "sprite_exp_card_t1",
-            "sprite_exp_card_t2",
-            "sprite_exp_card_t3",
-            "sprite_exp_card_t4",
+        "B\u7ecf\u9a8c\u5361": [
+            "\u57fa\u7840\u4f5c\u6218\u8bb0\u5f55",
+            "\u521d\u7ea7\u4f5c\u6218\u8bb0\u5f55",
+            "\u4e2d\u7ea7\u4f5c\u6218\u8bb0\u5f55",
+            "\u9ad8\u7ea7\u4f5c\u6218\u8bb0\u5f55",
         ],
-        "C稀有度5": ["MTL_SL_SHJ", "MTL_SL_OEU", "MTL_SL_DS", "MTL_SL_BN", "MTL_SL_PP"],
-        "D稀有度4": [
-            "MTL_SL_G4",
-            "MTL_SL_BOSS4",
-            "MTL_SL_RUSH4",
-            "MTL_SL_STRG4",
-            "MTL_SL_IRON4",
-            "MTL_SL_KETONE4",
-            "MTL_SL_ZYK",
-            "MTL_SL_PLCF",
-            "MTL_SL_RS",
-            "MTL_SL_OC4",
-            "MTL_SL_IAM4",
-            "MTL_SL_PGEL4",
-            "MTL_SL_ALCOHOL2",
-            "MTL_SL_MANGANESE2",
-            "MTL_SL_PG2",
-            "MTL_SL_RMA7024",
-            "MTL_SL_HTT",
-            "MTL_SL_XWB",
+        "C\u7a00\u6709\u5ea65": [
+            "\u70e7\u7ed3\u6838\u51dd\u6676",
+            "\u6676\u4f53\u7535\u5b50\u5355\u5143",
+            "D32\u94a2",
+            "\u53cc\u6781\u7eb3\u7c73\u7247",
+            "\u805a\u5408\u5242",
         ],
-        "E稀有度3": [
-            "MTL_SL_G3",
-            "MTL_SL_BOSS3",
-            "MTL_SL_RUSH3",
-            "MTL_SL_STRG3",
-            "MTL_SL_IRON3",
-            "MTL_SL_KETONE3",
-            "MTL_SL_ZY",
-            "MTL_SL_CCF",
-            "MTL_SL_SS",
-            "MTL_SL_OC3",
-            "MTL_SL_IAM3",
-            "MTL_SL_PGEL3",
-            "MTL_SL_ALCOHOL1",
-            "MTL_SL_MANGANESE1",
-            "MTL_SL_PG1",
-            "MTL_SL_RMA7012",
-            "MTL_SL_HT",
-            "MTL_SL_XW",
+        "D\u7a00\u6709\u5ea64": [
+            "\u63d0\u7eaf\u6e90\u5ca9",
+            "\u6539\u91cf\u88c5\u7f6e",
+            "\u805a\u9178\u916f\u5757",
+            "\u7cd6\u805a\u5757",
+            "\u5f02\u94c1\u5757",
+            "\u916e\u9635\u5217",
+            "\u8f6c\u8d28\u76d0\u805a\u5757",
+            "\u5207\u524a\u539f\u6db2",
+            "\u7cbe\u70bc\u6eb6\u5242",
+            "\u6676\u4f53\u7535\u8def",
+            "\u70bd\u5408\u91d1\u5757",
+            "\u805a\u5408\u51dd\u80f6",
+            "\u767d\u9a6c\u9187",
+            "\u4e09\u6c34\u9530\u77ff",
+            "\u4e94\u6c34\u7814\u78e8\u77f3",
+            "RMA70-24",
+            "\u73af\u70c3\u9884\u5236\u4f53",
+            "\u56fa\u5316\u7ea4\u7ef4\u677f",
         ],
-        "F稀有度2": [
-            "MTL_SL_G2",
-            "MTL_SL_BOSS2",
-            "MTL_SL_RUSH2",
-            "MTL_SL_STRG2",
-            "MTL_SL_IRON2",
-            "MTL_SL_KETONE2",
+        "E\u7a00\u6709\u5ea63": [
+            "\u56fa\u6e90\u5ca9\u7ec4",
+            "\u5168\u65b0\u88c5\u7f6e",
+            "\u805a\u9178\u916f\u7ec4",
+            "\u7cd6\u7ec4",
+            "\u5f02\u94c1\u7ec4",
+            "\u916e\u51dd\u96c6\u7ec4",
+            "\u8f6c\u8d28\u76d0\u7ec4",
+            "\u5316\u5408\u5207\u524a\u6db2",
+            "\u534a\u81ea\u7136\u6eb6\u5242",
+            "\u6676\u4f53\u5143\u4ef6",
+            "\u70bd\u5408\u91d1",
+            "\u51dd\u80f6",
+            "\u626d\u8f6c\u9187",
+            "\u8f7b\u9530\u77ff",
+            "\u7814\u78e8\u77f3",
+            "RMA70-12",
+            "\u73af\u70c3\u805a\u8d28",
+            "\u8910\u7d20\u7ea4\u7ef4",
         ],
-        "G稀有度1": [
-            "MTL_SL_G1",
-            "MTL_SL_BOSS1",
-            "MTL_SL_RUSH1",
-            "MTL_SL_STRG1",
-            "MTL_SL_IRON1",
-            "MTL_SL_KETONE1",
+        "F\u7a00\u6709\u5ea62": [
+            "\u56fa\u6e90\u5ca9",
+            "\u88c5\u7f6e",
+            "\u805a\u9178\u916f",
+            "\u7cd6",
+            "\u5f02\u94c1",
+            "\u916e\u51dd\u96c6",
         ],
-        "H模组": ["mod_unlock_token", "mod_update_token_2", "mod_update_token_1"],
-        "I技能书": ["MTL_SKILL3", "MTL_SKILL2", "MTL_SKILL1"],
-        "J芯片相关": [
-            "MTL_ASC_TNK3",
-            "MTL_ASC_TNK2",
-            "MTL_ASC_TNK1",
-            "MTL_ASC_SNP3",
-            "MTL_ASC_SNP2",
-            "MTL_ASC_SNP1",
-            "MTL_ASC_MED3",
-            "MTL_ASC_MED2",
-            "MTL_ASC_MED1",
-            "MTL_ASC_CST3",
-            "MTL_ASC_CST2",
-            "MTL_ASC_CST1",
-            "MTL_ASC_PIO3",
-            "MTL_ASC_PIO2",
-            "MTL_ASC_PIO1",
-            "MTL_ASC_GRD3",
-            "MTL_ASC_GRD2",
-            "MTL_ASC_GRD1",
-            "MTL_ASC_SUP3",
-            "MTL_ASC_SUP2",
-            "MTL_ASC_SUP1",
-            "MTL_ASC_SPC3",
-            "MTL_ASC_SPC2",
-            "MTL_ASC_SPC1",
-            "EXGG_SHD",
-            "MTL_ASC_DI",
+        "G\u7a00\u6709\u5ea61": [
+            "\u6e90\u5ca9",
+            "\u7834\u635f\u88c5\u7f6e",
+            "\u916f\u539f\u6599",
+            "\u4ee3\u7cd6",
+            "\u5f02\u94c1\u788e\u7247",
+            "\u53cc\u916e",
         ],
-        "K未分类": [],
+        "H\u6a21\u7ec4": [
+            "\u6a21\u7ec4\u6570\u636e\u5757",
+            "\u6570\u636e\u589e\u8865\u4eea",
+            "\u6570\u636e\u589e\u8865\u6761",
+        ],
+        "I\u6280\u80fd\u4e66": [
+            "\u6280\u5de7\u6982\u8981\u00b7\u53773",
+            "\u6280\u5de7\u6982\u8981\u00b7\u53772",
+            "\u6280\u5de7\u6982\u8981\u00b7\u53771",
+        ],
+        "J\u82af\u7247\u76f8\u5173": [
+            "\u91cd\u88c5\u53cc\u82af\u7247",
+            "\u91cd\u88c5\u82af\u7247\u7ec4",
+            "\u91cd\u88c5\u82af\u7247",
+            "\u72d9\u51fb\u53cc\u82af\u7247",
+            "\u72d9\u51fb\u82af\u7247\u7ec4",
+            "\u72d9\u51fb\u82af\u7247",
+            "\u533b\u7597\u53cc\u82af\u7247",
+            "\u533b\u7597\u82af\u7247\u7ec4",
+            "\u533b\u7597\u82af\u7247",
+            "\u672f\u5e08\u53cc\u82af\u7247",
+            "\u672f\u5e08\u82af\u7247\u7ec4",
+            "\u672f\u5e08\u82af\u7247",
+            "\u5148\u950b\u53cc\u82af\u7247",
+            "\u5148\u950b\u82af\u7247\u7ec4",
+            "\u5148\u950b\u82af\u7247",
+            "\u8fd1\u536b\u53cc\u82af\u7247",
+            "\u8fd1\u536b\u82af\u7247\u7ec4",
+            "\u8fd1\u536b\u82af\u7247",
+            "\u8f85\u52a9\u53cc\u82af\u7247",
+            "\u8f85\u52a9\u82af\u7247\u7ec4",
+            "\u8f85\u52a9\u82af\u7247",
+            "\u7279\u79cd\u53cc\u82af\u7247",
+            "\u7279\u79cd\u82af\u7247\u7ec4",
+            "\u7279\u79cd\u82af\u7247",
+            "\u91c7\u8d2d\u51ed\u8bc1",
+            "\u82af\u7247\u52a9\u5242",
+        ],
+        "K\u672a\u5206\u7c7b": [],
     }
-
     classified_data = {}
     classified_data["K未分类"] = {}
     for category, items in sort.items():
         classified_data[category] = {
-            item: {"number": 0, "sort": key_mapping[item][3]} for item in items
+            item: {"number": 0, "sort": key_mapping[item][4]} for item in items
         }
 
     for key, value in 新物品.items():
@@ -156,24 +169,36 @@ def 读取仓库() :
             if key in items:
                 classified_data[category][key] = {
                     "number": value,
-                    "sort": key_mapping[key][3],
+                    "sort": key_mapping[key][4],
                 }
                 found_category = True
                 break
         if not found_category:
             # 如果未找到匹配的分类，则放入 "K未分类" 中
-            classified_data["K未分类"][key] = {"number": value, "sort": key_mapping[key][3]}
+            classified_data["K未分类"][key] = {
+                "number": value,
+                "sort": key_mapping[key][4],
+            }
 
-    logger.info(classified_data)
+    classified_data["B经验卡"]["全经验"] = {
+        "number": (
+            classified_data["B经验卡"]["基础作战记录"]["number"] * 200
+            + classified_data["B经验卡"]["初级作战记录"]["number"] * 400
+            + classified_data["B经验卡"]["中级作战记录"]["number"] * 1000
+            + classified_data["B经验卡"]["高级作战记录"]["number"] * 2000
+        ),
+        "sort": 9999999,
+    }
+
     return [classified_data, 新物品json]
 
 
 def 创建csv(path=get_path("@app/tmp/depotresult.csv")):
-    now_time = int(datetime.now().timestamp())-24*3600
+    now_time = int(datetime.now().timestamp()) - 24 * 3600
     result = [
         now_time,
         json.dumps({"还未开始过扫描": 0}, ensure_ascii=False),
         json.dumps({"空": ""}, ensure_ascii=False),
     ]
     depotinfo = pd.DataFrame([result], columns=["Timestamp", "Data", "json"])
-    depotinfo.to_csv(path, mode="a", index=False, header=True,encoding="utf-8")
+    depotinfo.to_csv(path, mode="a", index=False, header=True, encoding="utf-8")
