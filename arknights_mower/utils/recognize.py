@@ -159,7 +159,7 @@ class Recognizer(object):
             self.scene = Scene.INFRA_TODOLIST
         elif self.find('clue') is not None:
             self.scene = Scene.INFRA_CONFIDENTIAL
-        elif self.find('arrange_check_in') or self.find('arrange_check_in_on') is not None:
+        elif self.find('arrange_check_in', thres=127, scope=((0, 320), (200, 500))) or self.find('arrange_check_in_on') is not None:
             self.scene = Scene.INFRA_DETAILS
         elif self.find('infra_overview_in') is not None:
             self.scene = Scene.INFRA_ARRANGE
@@ -268,7 +268,7 @@ class Recognizer(object):
             self.scene = Scene.INFRA_TODOLIST
         elif self.find('clue') is not None:
             self.scene = Scene.INFRA_CONFIDENTIAL
-        elif self.find('arrange_check_in') or self.find('arrange_check_in_on') is not None:
+        elif self.find('arrange_check_in', thres=127, scope=((0, 320), (200, 500))) or self.find('arrange_check_in_on') is not None:
             self.scene = Scene.INFRA_DETAILS
         elif self.find('infra_overview_in') is not None:
             self.scene = Scene.INFRA_ARRANGE
