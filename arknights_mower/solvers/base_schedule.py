@@ -1002,7 +1002,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         matcher = Matcher(img)
         for res in ["bill", "factory", "trust"]:
             res_img = loadimg(f"{__rootdir__}/resources/infra_collect_{res}.png", True)
-            if scope := matcher.match(res_img, prescore=0.2):
+            if scope := matcher.match(res_img):
                 logger.info(f"基建产物/信赖收取：{res}")
                 x, y = self.get_pos(scope)
                 self.tap((x + 200 - 31, y + 900 - 31))
@@ -1754,7 +1754,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             if error_count > 3:
                 self.reset_room_time(room)
                 raise Exception('未成功进入房间')
-            if self.find('arrange_check_in', score=0.5):
+            if self.find('arrange_check_in'):
                 self.tap((self.recog.w * 0.05, self.recog.h * 0.4), interval=0.7)
             else:
                 back_count = 0
@@ -1948,7 +1948,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                             self.send_message("检测到漏单！")
                             self.reset_room_time(room)
                             raise Exception("检测到漏单！")
-                    while self.find('arrange_order_options', score=0.5) is None:
+                    while self.find('arrange_order_options') is None:
                         if error_count > 3:
                             raise Exception('未成功进入干员选择界面')
                         self.tap((self.recog.w * 0.82, self.recog.h * 0.2), interval=1)

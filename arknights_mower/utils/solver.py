@@ -304,7 +304,7 @@ class BaseSolver:
                     # 2. 点击左上角“清除缓存”之后取消
                     self.tap((665, 741), 3)
                 elif scene == Scene.LOGIN_NEW:
-                    self.tap(self.find('login_new', score=0.8))
+                    self.tap_element('login_new')
                 elif scene == Scene.LOGIN_BILIBILI:
                     self.tap(self.find('login_bilibili_entry', score=0.8))
                 elif scene == Scene.LOGIN_BILIBILI_PRIVACY:
@@ -320,7 +320,7 @@ class BaseSolver:
                     while captcha_times > 0:
                         self.solve_captcha(captcha_times < 3)
                         self.sleep(5)
-                        if self.find('login_captcha', score=0.5):
+                        if self.find('login_captcha'):
                             captcha_times -= 1
                         else:
                             break
@@ -406,7 +406,7 @@ class BaseSolver:
                     self.tap(detector.announcement_close(self.recog.img))
                     self.tap((1800,100))
                 elif scene == Scene.MATERIEL:
-                    self.tap_element('materiel_ico', score=0.2)
+                    self.tap_element('materiel_ico', scope=((860, 60), (1072, 217)))
                 elif scene // 100 == 1:
                     self.login()
                 elif scene == Scene.CONFIRM:

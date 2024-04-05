@@ -234,7 +234,7 @@ class BaseMixin:
         
     def detect_product_complete(self):
         for product in ["gold", "exp", "lmd", "ori", "trust"]:
-            if pos := self.find(f"infra_{product}_complete", score=0.1, scope=((1230, 0), (1920, 1080))):
+            if pos := self.find(f"infra_{product}_complete", scope=((1230, 0), (1920, 1080))):
                 return pos
 
     def read_operator_in_room(self, img):

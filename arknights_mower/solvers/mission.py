@@ -56,7 +56,7 @@ class MissionSolver(BaseSolver):
             else:
                 return True
         elif scene == Scene.MATERIEL:
-            self.tap_element('materiel_ico', score=0.2)
+            self.tap_element('materiel_ico', scope=((860, 60), (1072, 217)))
         elif scene == Scene.LOADING:
             self.sleep(3)
         elif scene == Scene.CONNECTING:

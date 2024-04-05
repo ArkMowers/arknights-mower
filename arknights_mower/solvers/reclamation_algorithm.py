@@ -287,7 +287,7 @@ class ReclamationAlgorithm(BaseSolver):
         self.tap(pos)
 
     def detect_score(self, scope=None, find_max=True):
-        if find_max and self.find("ra/max", scope=scope, score=0.2):
+        if find_max and self.find("ra/max", scope=scope):
             return "已达上限"
         score = rapidocr.engine(
             thres2(cropimg(self.recog.gray, scope), 127),
@@ -328,7 +328,7 @@ class ReclamationAlgorithm(BaseSolver):
         if scene == Scene.INDEX:
             self.tap_index_element("terminal")
         elif scene == Scene.TERMINAL_MAIN:
-            self.tap_element("terminal_button_longterm", score=0.2)
+            self.tap_element("terminal_button_longterm")
         elif scene == Scene.TERMINAL_LONGTERM:
             self.tap_element("terminal_longterm_reclamation_algorithm")
 

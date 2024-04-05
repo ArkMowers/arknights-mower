@@ -92,7 +92,7 @@ class Recognizer(object):
             self.scene = Scene.INDEX
         elif self.find('nav_index') is not None:
             self.scene = Scene.NAVIGATION_BAR
-        elif self.find('login_new', score=0.8) is not None:
+        elif self.find('login_new') is not None:
             self.scene = Scene.LOGIN_NEW
         elif self.find('login_bilibili_entry', score=0.8) is not None:  # 会被识别成公告，优先级应当比公告高
             self.scene = Scene.LOGIN_BILIBILI
@@ -102,7 +102,7 @@ class Recognizer(object):
             self.scene = Scene.CLOSE_MINE
         elif self.find('check_in') is not None:
             self.scene = Scene.CHECK_IN
-        elif self.find('materiel_ico', score=0.2) is not None:
+        elif self.find('materiel_ico', scope=((860, 60), (1072, 217))) is not None:
             self.scene = Scene.MATERIEL
         elif self.find('read_mail') is not None:
             self.scene = Scene.MAIL
@@ -179,7 +179,7 @@ class Recognizer(object):
             self.scene = Scene.RECRUIT_MAIN
         elif self.find('recruiting_instructions') is not None:
             self.scene = Scene.RECRUIT_TAGS
-        elif self.find('agent_token', score=0.2):
+        elif self.find('agent_token', scope=((1735, 745), (1855, 820))):
             self.scene = Scene.RECRUIT_AGENT
         elif self.find('agent_unlock') is not None:
             self.scene = Scene.SHOP_CREDIT
@@ -221,7 +221,7 @@ class Recognizer(object):
             self.scene = Scene.CONFIRM
         elif self.find('login_verify') is not None:
             self.scene = Scene.LOGIN_INPUT
-        elif self.find('login_captcha', score=0.5) is not None:
+        elif self.find('login_captcha') is not None:
             self.scene = Scene.LOGIN_CAPTCHA
         elif self.find('login_connecting') is not None:
             self.scene = Scene.LOGIN_LOADING
@@ -371,7 +371,7 @@ class Recognizer(object):
             self.scene = Scene.RA_DAY_DETAIL
         elif self.find("ra/waste_time_dialog", scope=((585, 345), (1070, 440))):
             self.scene = Scene.RA_WASTE_TIME_DIALOG
-        elif self.find("ra/notice", scope=((1785, 305), (1845, 370)), score=0.4) and self.color(1817, 333)[0] == 255:
+        elif self.find("ra/notice", scope=((1785, 305), (1845, 370))) and self.color(1817, 333)[0] == 255:
             self.scene = Scene.RA_MAP
 
         # 从首页选择终端进入生息演算主页
