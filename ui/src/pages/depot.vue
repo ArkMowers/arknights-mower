@@ -18,7 +18,7 @@
               <template #avatar>
                 <n-avatar color="000" size="large" :src="'/depot/' + itemData['key'] + '.png'" />
               </template>
-              <template #header>{{ itemData['key']}}</template>
+              <template #header>{{ itemData['key'] }}</template>
               <template #description>拥有：{{ itemData['number'] }}</template>
             </n-thing>
           </n-gi>
