@@ -23,7 +23,7 @@ MATCHER_DEBUG = False
 FLANN_INDEX_LSH = 6
 GOOD_DISTANCE_LIMIT = 0.7
 ORB = cv2.ORB_create(nfeatures=100000)
-with lzma.open(f'{__rootdir__}/models/linear_svm.model', 'rb') as f:
+with lzma.open(f'{__rootdir__}/models/svm.model', 'rb') as f:
     SVC = pickle.loads(f.read())
 
 
@@ -124,19 +124,19 @@ class Matcher(object):
             # search_params = dict(checks=50)
             # flann = cv2.FlannBasedMatcher(index_params, search_params)
             # matches = flann.knnMatch(qry_des, ori_des, k=2)
-            bf = cv2.BFMatcher()
-            matches = bf.knnMatch(qry_des, ori_des, k=2)
+            bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+            good = bf.match(qry_des, ori_des)
 
             # store all the good matches as per Lowe's ratio test
-            good = []
-            for pair in matches:
-                if (len_pair := len(pair)) == 2:
-                    x, y = pair
-                    # if x.distance < GOOD_DISTANCE_LIMIT * y.distance:
-                    if x.distance < 0.75 * y.distance:
-                        good.append(x)
-                elif len_pair == 1:
-                    good.append(pair[0])
+            # good = []
+            # for pair in matches:
+            #     if (len_pair := len(pair)) == 2:
+            #         x, y = pair
+            #         # if x.distance < GOOD_DISTANCE_LIMIT * y.distance:
+            #         if x.distance < 0.7 * y.distance:
+            #             good.append(x)
+            #     elif len_pair == 1:
+            #         good.append(pair[0])
             good_matches_rate = len(good) / len(qry_des)
 
             # draw all the good matches, for debug

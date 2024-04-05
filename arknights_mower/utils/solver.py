@@ -406,7 +406,7 @@ class BaseSolver:
                     self.tap(detector.announcement_close(self.recog.img))
                     self.tap((1800,100))
                 elif scene == Scene.MATERIEL:
-                    self.tap_element('materiel_ico', scope=((860, 60), (1072, 217)))
+                    self.tap_element('materiel_ico')
                 elif scene // 100 == 1:
                     self.login()
                 elif scene == Scene.CONFIRM:

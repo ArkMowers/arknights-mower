@@ -90,7 +90,7 @@ class ShopSolver(BaseSolver):
         elif scene == Scene.SHOP_ASSIST:
             self.back()
         elif scene == Scene.MATERIEL:
-            self.tap_element('materiel_ico', scope=((860, 60), (1072, 217)))
+            self.tap_element('materiel_ico')
         elif scene == Scene.LOADING:
             self.sleep(3)
         elif scene == Scene.CONNECTING:

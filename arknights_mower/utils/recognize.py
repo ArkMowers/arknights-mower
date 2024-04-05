@@ -159,7 +159,7 @@ class Recognizer(object):
             self.scene = Scene.INFRA_TODOLIST
         elif self.find('clue') is not None:
             self.scene = Scene.INFRA_CONFIDENTIAL
-        elif self.find('arrange_check_in', thres=127, scope=((0, 320), (200, 500))) or self.find('arrange_check_in_on') is not None:
+        elif self.find('arrange_check_in') or self.find('arrange_check_in_on') is not None:
             self.scene = Scene.INFRA_DETAILS
         elif self.find('infra_overview_in') is not None:
             self.scene = Scene.INFRA_ARRANGE
@@ -173,7 +173,7 @@ class Recognizer(object):
             self.scene = Scene.MISSION_DAILY
         elif self.find('mission_weekly_on') is not None:
             self.scene = Scene.MISSION_WEEKLY
-        elif self.find('terminal_pre', score=0.3) is not None:
+        elif self.find('terminal_pre') is not None:
             self.scene = Scene.TERMINAL_MAIN
         elif self.find('open_recruitment') is not None:
             self.scene = Scene.RECRUIT_MAIN
@@ -268,7 +268,7 @@ class Recognizer(object):
             self.scene = Scene.INFRA_TODOLIST
         elif self.find('clue') is not None:
             self.scene = Scene.INFRA_CONFIDENTIAL
-        elif self.find('arrange_check_in', thres=127, scope=((0, 320), (200, 500))) or self.find('arrange_check_in_on') is not None:
+        elif self.find('arrange_check_in') or self.find('arrange_check_in_on') is not None:
             self.scene = Scene.INFRA_DETAILS
         elif self.find('infra_overview_in') is not None:
             self.scene = Scene.INFRA_ARRANGE
@@ -371,7 +371,7 @@ class Recognizer(object):
             self.scene = Scene.RA_DAY_DETAIL
         elif self.find("ra/waste_time_dialog", scope=((585, 345), (1070, 440))):
             self.scene = Scene.RA_WASTE_TIME_DIALOG
-        elif self.find("ra/notice", scope=((1785, 305), (1845, 370))) and self.color(1817, 333)[0] == 255:
+        elif self.find("ra/notice") and self.color(1817, 333)[0] == 255:
             self.scene = Scene.RA_MAP
 
         # 从首页选择终端进入生息演算主页
@@ -381,7 +381,7 @@ class Recognizer(object):
             self.scene = Scene.RA_MAIN
         elif self.detect_index_scene():
             self.scene = Scene.INDEX
-        elif self.find("terminal_pre", score=0.3) is not None:
+        elif self.find("terminal_pre") is not None:
             self.scene = Scene.TERMINAL_MAIN
         else:
             self.scene = Scene.UNKNOWN
