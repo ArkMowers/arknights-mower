@@ -342,7 +342,8 @@ class ReclamationAlgorithm(BaseSolver):
 
         # 剧情
         elif scene == Scene.RA_GUIDE_ENTRANCE:
-            self.tap_element("ra/guide_entrance", interval=0.5)
+            pos = self.find("ra/guide_entrance", scope=((810, 270), (1320, 610)))
+            self.tap(pos, interval=0.5)
         elif scene == Scene.RA_GUIDE_BATTLE_ENTRANCE:
             self.battle_wait = 3
             self.tap_element("ra/start_action", interval=5)
