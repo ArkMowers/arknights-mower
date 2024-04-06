@@ -74,7 +74,7 @@ class ReclamationAlgorithm(BaseSolver):
 
         self.battle_task = None
         self.task_queue = None
-        self.in_adventure = False
+        self.in_adventure = None
         self.ap = None
         self.vp = None
 
@@ -532,13 +532,11 @@ class ReclamationAlgorithm(BaseSolver):
         elif scene == Scene.RA_GET_ITEM:
             if pos := self.find("ra/click_to_continue"):
                 self.tap(pos, interval=0.5)
-                if pos := self.find("ra/return_from_kitchen"):
-                    # 烹饪台合成
-                    self.tap(pos, x_rate=0.07)
-                else:
-                    # 奇遇
+                if self.in_adventure:
                     self.sleep(0.5, rebuild=False)
                     self.tap((428, 411), interval=0.5)
+                else:
+                    self.tap_element("ra/return_from_kitchen", x_rate=0.07)
             else:
                 self.recog.update()
         elif scene == Scene.CONNECTING:
