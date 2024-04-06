@@ -1028,7 +1028,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         while self.find('clue_func') is None:
             if error_count > 5:
                 raise Exception('未成功进入线索详情界面')
-            self.tap((self.recog.w * 0.1, self.recog.h * 0.9), interval=3)
+            self.tap((660, 630), interval=3)
             error_count += 1
         # 识别右侧按钮
         (x0, y0), (x1, y1) = self.find('clue_func', strict=True)
@@ -1084,7 +1084,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             self.find('clue_summary') and self.back()
             if error_count > 5:
                 raise Exception('未成功进入线索详情界面')
-            self.tap((self.recog.w * 0.1, self.recog.h * 0.9), interval=3)
+            self.tap((660, 630), interval=3)
             error_count += 1
         # 识别右侧按钮
         (x0, y0), (x1, y1) = self.find('clue_func', strict=True)
