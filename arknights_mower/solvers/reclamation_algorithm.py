@@ -484,7 +484,8 @@ class ReclamationAlgorithm(BaseSolver):
                 return
             logger.info(self.task_queue)
             place = self.task_queue[0]
-            if (pos := self.find_place(place)) is None:
+            pos = self.find_place(place)
+            if pos is None:
                 if self.drag(place):
                     pos = self.find_place(place)
                 else:
