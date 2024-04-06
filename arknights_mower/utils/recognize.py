@@ -120,7 +120,7 @@ class Recognizer(object):
             self.scene = Scene.OPERATOR_BEFORE
         elif self.find('ope_select_start') is not None:
             self.scene = Scene.OPERATOR_SELECT
-        elif self.find('ope_agency_going') is not None:
+        elif self.find('ope_agency_going', scope=((470, 915), (755, 1045))) is not None:
             self.scene = Scene.OPERATOR_ONGOING
         elif self.find('ope_elimi_finished') is not None:
             self.scene = Scene.OPERATOR_ELIMINATE_FINISH
@@ -179,7 +179,7 @@ class Recognizer(object):
             self.scene = Scene.RECRUIT_MAIN
         elif self.find('recruiting_instructions') is not None:
             self.scene = Scene.RECRUIT_TAGS
-        elif self.find('agent_token', scope=((1735, 745), (1855, 820))):
+        elif self.find('agent_token', scope=((1735, 745), (1855, 820)), score=0.1):
             self.scene = Scene.RECRUIT_AGENT
         elif self.find('agent_unlock') is not None:
             self.scene = Scene.SHOP_CREDIT
