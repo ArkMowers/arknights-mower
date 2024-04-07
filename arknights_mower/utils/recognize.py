@@ -10,7 +10,7 @@ from .. import __rootdir__
 from . import config, detector
 from . import typealias as tp
 from .device import Device
-from .image import cropimg, loadimg, thres2
+from .image import cropimg, loadimg, thres2, bytes2img
 from .log import logger, save_screenshot
 from .matcher import Matcher
 from .scene import Scene, SceneComment
@@ -38,6 +38,8 @@ class Recognizer(object):
             try:
                 if screencap is not None:
                     self.screencap = screencap
+                    self.img = bytes2img(screencap)
+                    self.gray = bytes2img(screencap, True)
                 else:
                     self.screencap, self.img, self.gray = self.device.screencap()
                 self.h, self.w, _ = self.img.shape
@@ -128,7 +130,7 @@ class Recognizer(object):
             self.scene = Scene.OPERATOR_FINISH
         elif self.find('ope_recover_potion_on') is not None:
             self.scene = Scene.OPERATOR_RECOVER_POTION
-        elif self.find('ope_recover_originite_on') is not None:
+        elif self.find('ope_recover_originite_on', scope=((1530, 120), (1850, 190))) is not None:
             self.scene = Scene.OPERATOR_RECOVER_ORIGINITE
         elif self.find('double_confirm') is not None:
             if self.find('network_check') is not None:
@@ -161,17 +163,17 @@ class Recognizer(object):
             self.scene = Scene.INFRA_CONFIDENTIAL
         elif self.find('arrange_check_in') or self.find('arrange_check_in_on') is not None:
             self.scene = Scene.INFRA_DETAILS
-        elif self.find('infra_overview_in') is not None:
+        elif self.find('infra_overview_in', scope=((50, 690), (430, 770))) is not None:
             self.scene = Scene.INFRA_ARRANGE
         elif self.find('arrange_confirm') is not None:
             self.scene = Scene.INFRA_ARRANGE_CONFIRM
         elif self.find('friend_list') is not None:
             self.scene = Scene.FRIEND_LIST_OFF
-        elif self.find("mission_trainee_on") is not None:
+        elif self.find("mission_trainee_on", scope=((670, 0), (1920, 120))) is not None:
             self.scene = Scene.MISSION_TRAINEE
-        elif self.find('mission_daily_on') is not None:
+        elif self.find('mission_daily_on', scope=((670, 0), (1920, 120))) is not None:
             self.scene = Scene.MISSION_DAILY
-        elif self.find('mission_weekly_on') is not None:
+        elif self.find('mission_weekly_on', scope=((670, 0), (1920, 120))) is not None:
             self.scene = Scene.MISSION_WEEKLY
         elif self.find('terminal_pre') is not None:
             self.scene = Scene.TERMINAL_MAIN
@@ -270,7 +272,7 @@ class Recognizer(object):
             self.scene = Scene.INFRA_CONFIDENTIAL
         elif self.find('arrange_check_in') or self.find('arrange_check_in_on') is not None:
             self.scene = Scene.INFRA_DETAILS
-        elif self.find('infra_overview_in') is not None:
+        elif self.find('infra_overview_in', scope=((50, 690), (430, 770))) is not None:
             self.scene = Scene.INFRA_ARRANGE
         elif self.find("arrange_order_options"):
             self.scene = Scene.INFRA_ARRANGE_ORDER
