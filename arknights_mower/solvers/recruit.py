@@ -227,9 +227,9 @@ class RecruitSolver(BaseSolver):
         if self.find('recruit_no_lmb') is not None:
             self.enough_lmb = False
 
-        needs = self.find('career_needs', judge=False)
-        avail_level = self.find('available_level', judge=False)
-        budget = self.find('recruit_budget', judge=False)
+        needs = self.find('career_needs')
+        avail_level = self.find('available_level')
+        budget = self.find('recruit_budget')
         up = needs[0][1] - 80
         down = needs[1][1] + 60
         left = needs[1][0]
@@ -281,8 +281,7 @@ class RecruitSolver(BaseSolver):
             if recruit_cal_result[0][1][0]['star'] == 3:
                 # refresh
                 if self.tap_element('recruit_refresh', detected=True):
-                    self.tap_element('double_confirm', 0.8,
-                                     interval=3, judge=False)
+                    self.tap_element('double_confirm', 0.8, interval=3)
                     logger.info("刷新标签")
                     continue
             break

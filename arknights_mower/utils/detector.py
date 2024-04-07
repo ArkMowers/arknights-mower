@@ -176,11 +176,11 @@ def is_on_shift(img: tp.Image) -> bool:
     distracted = loadimg(f'{__rootdir__}/resources/distracted.png', True)
     resting = loadimg(f'{__rootdir__}/resources/agent_resting.png', True)
     matcher = Matcher(cv2.cvtColor(img, cv2.COLOR_RGB2GRAY))
-    if matcher.match(on_shift, judge=False) is not None:
+    if matcher.match(on_shift) is not None:
         return True
-    if matcher.match(resting, judge=False) is not None:
+    if matcher.match(resting) is not None:
         return True
-    if matcher.match(distracted, judge=False) is not None:
+    if matcher.match(distracted) is not None:
         return False
     width = img.shape[1]
     __width = int(width * 0.7)
