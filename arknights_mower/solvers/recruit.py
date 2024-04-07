@@ -280,7 +280,9 @@ class RecruitSolver(BaseSolver):
 
             if recruit_cal_result[0][1][0]['star'] == 3:
                 # refresh
-                if self.tap_element('recruit_refresh', detected=True):
+                recruit_refresh_pos = (1455, 610)
+                if self.get_color(recruit_refresh_pos)[2] > 200:
+                    self.tap(recruit_refresh_pos)
                     self.tap_element('double_confirm', 0.8, interval=3)
                     logger.info("刷新标签")
                     continue
