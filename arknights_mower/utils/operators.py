@@ -359,6 +359,8 @@ class Operators(object):
 
     def get_refresh_index(self, room, plan):
         ret = []
+        if room.startswith("dorm") and self.config.free_room:
+            return [i for i, x in enumerate(self.plan[room]) if x == "Free"]
         for idx, dorm in enumerate(self.dorm):
             # Filter out resting priority low
             if idx >= self.config.max_resting_count:

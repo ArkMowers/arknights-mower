@@ -399,6 +399,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 else:
                     __rest_agent.extend(self.op_data.groups[self.op_data.operators[_name].group])
                 logger.debug(f"小组分组为{__rest_agent}")
+                # 如果小组有其他人是rest_in_full则跳过
+                if next((d for d in __rest_agent if d in self.op_data.operators.keys() and self.op_data.operators[d].rest_in_full), None):
+                    continue
                 for x in __rest_agent:
                     if x in low_priority:
                         continue
@@ -1574,7 +1577,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     agents[idx] = 'Free'
                 elif not self.op_data.operators[n].is_high():
                     agents[idx] = 'Free'
-                if agents[idx] == 'Free' and self.task.type != TaskTypes.SHIFT_OFF:
+                if agents[idx] == 'Free' and self.task.type != TaskTypes.RE_ORDER:
                     if self.op_data.config.free_room:
                         current_free = self.op_data.get_current_operator(room, idx)
                         if current_free and current_free.mood < current_free.upper_limit:

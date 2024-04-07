@@ -154,8 +154,7 @@ def check_dorm_ordering(tasks, op_data):
                         current = next((obj for obj in op_data.operators.values() if
                                         obj.current_room == room and obj.current_index == idx), None)
                         if current:
-                            if current.is_high():
-                                v[idx] = current.name
+                            v[idx] = current.name
                         if room not in extra_plan:
                             extra_plan[room] = copy.deepcopy(v)
                         # 新生成移除任务 --> 换成移除
