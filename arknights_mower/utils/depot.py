@@ -35,6 +35,7 @@ def 读取仓库():
         创建csv()
     depotinfo = pd.read_csv(path)
     新物品 = json.loads(depotinfo.iloc[-1, 1])
+    time=depotinfo.iloc[-1, 0]
     新物品json = depotinfo.iloc[-1, 2]
     sort = {
         "A\u5e38\u7528": [
@@ -180,7 +181,7 @@ def 读取仓库():
                 "sort": key_mapping[key][4],
             }
 
-    classified_data["B经验卡"]["全经验"] = {
+    classified_data["B经验卡"]["全部经验（计算）"] = {
         "number": (
             classified_data["B经验卡"]["基础作战记录"]["number"] * 200
             + classified_data["B经验卡"]["初级作战记录"]["number"] * 400
@@ -190,7 +191,7 @@ def 读取仓库():
         "sort": 9999999,
     }
 
-    return [classified_data, 新物品json]
+    return [classified_data, 新物品json,str(datetime.fromtimestamp(time))]
 
 
 def 创建csv(path=get_path("@app/tmp/depotresult.csv")):
