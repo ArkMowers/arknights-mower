@@ -186,6 +186,68 @@ class BaseMixin:
         while self.find("arrange_order_options_scene"):
             self.tap(confirm_pos)
 
+    def detect_room_number(self, img) -> int:
+        score = []
+        for i in range(1, 5):
+            digit = loadimg(f"{__rootdir__}/resources/room/{i}.png")
+            result = cv2.matchTemplate(img, digit, cv2.TM_CCOEFF_NORMED)
+            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+            score.append(max_val)
+        return score.index(max(score)) + 1
+
+    def detect_room(self) -> str:
+        color_map = {
+            "制造站": 25,
+            "贸易站": 99,
+            "发电站": 36,
+            "训练室": 178,
+            "加工站": 32,
+        }
+        img = cropimg(self.recog.img, ((568, 18), (957, 95)))
+        hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
+        colored_room = None
+        for room, color in color_map.items():
+            mask = cv2.inRange(hsv, (color - 1, 0, 0), (color + 2, 255, 255))
+            if cv2.countNonZero(mask) > 0:
+                colored_room = room
+                break
+        if colored_room in ["制造站", "贸易站", "发电站"]:
+            digit_1 = cropimg(img, ((211, 24), (232, 54)))
+            digit_2 = cropimg(img, ((253, 24), (274, 54)))
+            digit_1 = self.detect_room_number(digit_1)
+            digit_2 = self.detect_room_number(digit_2)
+            logger.info(f"{colored_room}B{digit_1}0{digit_2}")
+            return f"room_{digit_1}_{digit_2}"
+        elif colored_room == "训练室":
+            logger.info("训练室B305")
+            return "train"
+        elif colored_room == "加工站":
+            logger.info("加工站B105")
+            return "factory"
+        white_room = ["central", "dormitory", "meeting", "contact"]
+        score = []
+        for room in white_room:
+            tpl = loadimg(f"{__rootdir__}/resources/room/{room}.png")
+            result = cv2.matchTemplate(img, tpl, cv2.TM_CCOEFF_NORMED)
+            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+            score.append(max_val)
+        room = white_room[score.index(max(score))]
+        if room == "central":
+            logger.info("控制中枢")
+        elif room == "dormitory":
+            digit = cropimg(img, ((174, 24), (195, 54)))
+            digit = self.detect_room_number(digit)
+            if digit == 4:
+                logger.info("宿舍B401")
+            else:
+                logger.info(f"宿舍B{digit}04")
+            return f"dormitory_{digit}"
+        elif room == "meeting":
+            logger.info("会客室1F02")
+        else:
+            logger.info("办公室B205")
+        return room
+
     def enter_room(self, room: str) -> tp.Rectangle:
         """获取房间的位置并进入"""
         success = False
@@ -209,7 +271,10 @@ class BaseMixin:
                 self.tap(_room[0], interval=1.1)
                 while self.find("control_central") is not None:
                     self.tap(_room[0], interval=1.1)
-                success = True
+                if self.detect_room() == room:
+                    success = True
+                else:
+                    self.back()
             except Exception as e:
                 retry -= 1
                 self.back_to_infrastructure()

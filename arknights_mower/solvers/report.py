@@ -70,6 +70,8 @@ class ReportSolver(BaseSolver):
             self.tap_element('skip')
         elif scene == Scene.INFRA_MAIN:
             self.tap_element('control_central')
+        elif scene == Scene.INFRA_DETAILS:
+            self.back()
         elif scene == Scene.CTRLCENTER_ASSISTANT:
             self.tap_element('control_central_assistants')
         elif scene == Scene.RIIC_REPORT:
