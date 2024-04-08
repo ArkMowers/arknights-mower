@@ -208,7 +208,7 @@ class BaseMixin:
         colored_room = None
         for room, color in color_map.items():
             mask = cv2.inRange(hsv, (color - 1, 0, 0), (color + 2, 255, 255))
-            if cv2.countNonZero(mask) > 0:
+            if cv2.countNonZero(mask) > 1000:
                 colored_room = room
                 break
         if colored_room in ["制造站", "贸易站", "发电站"]:
