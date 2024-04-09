@@ -35,6 +35,7 @@ def 读取仓库():
         创建csv()
     depotinfo = pd.read_csv(path)
     新物品 = json.loads(depotinfo.iloc[-1, 1])
+    time = depotinfo.iloc[-1, 0]
     新物品json = depotinfo.iloc[-1, 2]
     sort = {
         "A\u5e38\u7528": [
@@ -160,7 +161,7 @@ def 读取仓库():
     classified_data["K未分类"] = {}
     for category, items in sort.items():
         classified_data[category] = {
-            item: {"number": 0, "sort": key_mapping[item][4]} for item in items
+            item: {"number": 0, "sort": key_mapping[item][4], "icon": item} for item in items
         }
 
     for key, value in 新物品.items():
@@ -170,6 +171,7 @@ def 读取仓库():
                 classified_data[category][key] = {
                     "number": value,
                     "sort": key_mapping[key][4],
+                    "icon": key
                 }
                 found_category = True
                 break
@@ -178,9 +180,10 @@ def 读取仓库():
             classified_data["K未分类"][key] = {
                 "number": value,
                 "sort": key_mapping[key][4],
+                "icon": key
             }
 
-    classified_data["B经验卡"]["全经验"] = {
+    classified_data["B经验卡"]["全部经验（计算）"] = {
         "number": (
             classified_data["B经验卡"]["基础作战记录"]["number"] * 200
             + classified_data["B经验卡"]["初级作战记录"]["number"] * 400
@@ -188,9 +191,27 @@ def 读取仓库():
             + classified_data["B经验卡"]["高级作战记录"]["number"] * 2000
         ),
         "sort": 9999999,
+        "icon": "全部经验（计算）"
     }
 
-    return [classified_data, 新物品json]
+    classified_data["A常用"]["玉+卷"] = {
+        "number": (
+            classified_data["A常用"]["合成玉"]["number"]/600 +
+            classified_data["A常用"]["寻访凭证"]["number"] +
+            classified_data["A常用"]["十连寻访凭证"]["number"]
+        ),
+        "sort": 9999999,
+        "icon": "寻访凭证"
+    }
+    classified_data["A常用"]["玉+卷+石"] = {
+        "number": (
+            classified_data["A常用"]["玉+卷"]["number"] +
+            classified_data["A常用"]["至纯源石"]["number"]*180/600
+        ),
+        "sort": 9999999,
+        "icon": "寻访凭证"
+    }
+    return [classified_data, 新物品json, str(datetime.fromtimestamp(time))]
 
 
 def 创建csv(path=get_path("@app/tmp/depotresult.csv")):
@@ -201,4 +222,5 @@ def 创建csv(path=get_path("@app/tmp/depotresult.csv")):
         json.dumps({"空": ""}, ensure_ascii=False),
     ]
     depotinfo = pd.DataFrame([result], columns=["Timestamp", "Data", "json"])
-    depotinfo.to_csv(path, mode="a", index=False, header=True, encoding="utf-8")
+    depotinfo.to_csv(path, mode="a", index=False,
+                     header=True, encoding="utf-8")

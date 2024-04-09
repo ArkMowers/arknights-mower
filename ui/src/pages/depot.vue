@@ -9,14 +9,16 @@
       明日方舟工具箱代码 点击复制
     </n-button>
     <n-divider />
+
     <n-grid cols="1" responsive="screen">
+      <n-gi> 扫描时间：{{ reportData[2] }} <n-divider /></n-gi>
       <n-gi v-for="(categoryItems, categoryName) in sortedReportData" :key="categoryName">
         <n-h2>{{ categoryName.slice(1) }}</n-h2>
         <n-grid x-gap="10px" y-gap="10px" cols="2 m:6 l:6 " responsive="screen">
           <n-gi v-for="itemData in categoryItems" :key="itemData">
             <n-thing>
               <template #avatar>
-                <n-avatar color="000" size="large" :src="'/depot/' + itemData['key'] + '.png'" />
+                <n-avatar color="000" size="large" :src="'/depot/' + itemData['icon'] + '.png'" />
               </template>
               <template #header>{{ itemData['key'] }}</template>
               <template #description>拥有：{{ itemData['number'] }}</template>
