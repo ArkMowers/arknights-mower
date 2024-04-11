@@ -85,6 +85,7 @@ def saveimg(img, folder='failure'):
     )
 
 def saveimg_depot(img,filename, folder='depot'):
+    """ filename 传入文件拓展名 """
     save_screenshot(
         img2bytes(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)),
         subdir=f'{folder}/',

@@ -198,7 +198,7 @@ class Arknights数据处理器:
                     if not item["dropType"] == 8:
 
                         关卡掉落["普通掉落"].append(
-                            self.物品表["items"][item["id"]]["iconId"]
+                            self.物品表["items"][item["id"]]["name"]
                         )
             if 关卡掉落["普通掉落"] != []:
                 可以刷的活动关卡.append(
@@ -343,7 +343,7 @@ class Arknights数据处理器:
 数据处理器.添加干员()
 
 数据处理器.读取卡池()
-# 数据处理器.读取活动关卡()
+数据处理器.读取活动关卡()
 
 数据处理器.批量训练并保存扫仓库模型()
 print("批量训练并保存扫仓库模型,完成")
