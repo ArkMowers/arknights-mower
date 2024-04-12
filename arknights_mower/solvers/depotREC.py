@@ -55,7 +55,6 @@ def 找圆(
         拼接结果, 参数1=50, 参数2=30, 圆心间隔=230, 最小半径=90, 最大半径=100
 ):
     灰图 = cv2.cvtColor(拼接结果, cv2.COLOR_RGB2GRAY)
-    # saveimg(拼接结果, "depot_without_circle")
     圆 = cv2.HoughCircles(
         灰图,
         cv2.HOUGH_GRADIENT,
@@ -115,8 +114,10 @@ def 识别空物品(物品灰):
     白像素个数 = cv2.countNonZero(二值图)
     所有像素个数 = 二值图.shape[0] * 二值图.shape[1]
     白像素比值 = int((白像素个数 / 所有像素个数) * 100)
-    if 白像素比值 > 95:
+    if 白像素比值 > 97:
         logger.info("仓库扫描: 删除一次空物品")
+        # saveimg_depot(cv2.hconcat([物品灰, 二值图]),f"{白像素比值}_{datetime.now().timestamp()}.png","depot_3_empty",)
+
         return False
     else:
         return True
@@ -135,7 +136,11 @@ def 切图(圆心x坐标, 圆心y坐标, 拼接结果, 正方形边长=130):
             ]
             正方形灰 = cv2.cvtColor(正方形, cv2.COLOR_RGB2GRAY)
             if 识别空物品(正方形灰):
-                图片.append([正方形[26:239, 26:239], 正方形灰])
+                id = str(datetime.now().timestamp())
+                正方形切 = 正方形[26:239, 26:239]
+                图片.append([正方形切, 正方形灰, id])
+                # saveimg_depot(正方形切, id + ".png", "depot_4_name")
+                # saveimg_depot(正方形灰, id + ".png", "depot_4_num")
     return 图片
 
 
@@ -145,11 +150,11 @@ class depotREC(BaseSolver):
 
         time = datetime.now()
 
-        sift = cv2.SIFT_create()
+        # sift = cv2.SIFT_create()
         orb = cv2.ORB_create()
         bf = cv2.BFMatcher(cv2.NORM_HAMMING2, crossCheck=True)
-        flann = cv2.FlannBasedMatcher(
-            dict(algorithm=1, trees=2), dict(checks=50))
+        # flann = cv2.FlannBasedMatcher(
+        #     dict(algorithm=1, trees=2), dict(checks=50))
         self.detector = orb
         self.matcher = bf
 
@@ -182,7 +187,7 @@ class depotREC(BaseSolver):
         切图列表 = 切图(横坐标, 纵坐标, 拼接好的图片)
         return 切图列表
 
-    def 读取物品数字(self, 数字图片, 名字, 距离阈值=5, 阈值=0.85):
+    def 读取物品数字(self, 数字图片, 距离阈值=5, 阈值=0.85):
         结果 = {}
         for idx, 模板图片 in enumerate(self.物品数字):
             res = cv2.matchTemplate(数字图片, 模板图片, cv2.TM_CCORR_NORMED)
@@ -210,16 +215,12 @@ class depotREC(BaseSolver):
             float("".join(re.findall(r"\d+\.\d+|\d+", 物品个数)))
             * (10000 if "万" in 物品个数 else 1)
         )
-        # 保存结果图片
-        # saveimg_depot(
-        #     数字图片, f"{名字}_{格式化数字}_{time.strftime('%Y%m%d%H%M%S.png', time.localtime())}", "depot")
-
         return 格式化数字
 
     def 匹配物品一次(self, 物品, 物品灰, 模型名称):
         物品特征 = 提取特征点(物品)
         predicted_label = 模型名称.predict([物品特征])
-        物品数字 = self.读取物品数字(物品灰, predicted_label[0])
+        物品数字 = self.读取物品数字(物品灰)
         return [predicted_label[0], 物品数字]
 
     def run(self) -> None:
@@ -269,14 +270,14 @@ class depotREC(BaseSolver):
         keypoints2, descriptors2 = self.detector.detectAndCompute(image2, None)
         matches = self.matcher.match(descriptors1, descriptors2)
         similarity = len(matches) / max(len(descriptors1), len(descriptors2))
-        return similarity*100
+        return similarity * 100
 
     def 分类扫描(self, 模型名称):
         截图列表 = []
         旧的截图 = self.recog.img
         旧的截图 = 旧的截图[140:1000, :]
         截图列表.append(旧的截图)
-        # saveimg(旧的截图, "depot_screenshot")
+        # saveimg(旧的截图, "depot_1_screenshot")
         self.recog.update()
 
         logger.info(f"仓库扫描: 把第{len(截图列表)}页保存进内存中等待识别")
@@ -285,7 +286,7 @@ class depotREC(BaseSolver):
             self.recog.update()
             新的截图 = self.recog.img
             新的截图 = 新的截图[140:1000, :]
-            # saveimg(新的截图, "depot_screenshot")
+            # saveimg(新的截图, "depot_1_screenshot")
             相似度 = self.对比截图(截图列表[-1], 新的截图)
             if 相似度 < 70:
                 截图列表.append(新的截图)
@@ -300,15 +301,16 @@ class depotREC(BaseSolver):
             拼接好的图片 = 拼图(截图列表)
         else:
             拼接好的图片 = 截图列表[0]
+        # saveimg(拼接好的图片, "depot_2_stitcher")
         切图列表 = self.切图主程序(拼接好的图片)
-        # saveimg(拼接好的图片, "stitcher")
+
         logger.info(f"仓库扫描: 需要识别{len(切图列表)}个物品")
 
-        for [物品, 物品灰] in 切图列表:
+        for [物品, 物品灰, id] in 切图列表:
             [物品名称, 物品数字] = self.匹配物品一次(物品, 物品灰, 模型名称)
-            # saveimg_depot(
-            #     物品, f"{物品名称}_{物品数字}_{time.strftime('%Y%m%d%H%M%S.png', time.localtime())}", "depot_color")
+            # saveimg_depot(物品,f"{id}_{物品名称}_{物品数字}.png","depot_5_result",)
             logger.debug([物品名称, 物品数字])
             self.结果字典[物品名称] = self.结果字典.get(物品名称, 0) + 物品数字
             self.明日方舟工具箱json[key_mapping[物品名称][0]] = (
-                self.明日方舟工具箱json.get(key_mapping[物品名称][0], 0) + 物品数字)
+                self.明日方舟工具箱json.get(key_mapping[物品名称][0], 0) + 物品数字
+            )

@@ -239,7 +239,7 @@ class Arknights数据处理器:
                 模板 = cv2.resize(模板, (213, 213))
                 特征点 = 提取特征点(模板)
                 特征点列表.append(特征点)
-                标签列表.append(self.物品_名称对[文件名[18:-4]][1])
+                标签列表.append(self.物品_名称对[文件名[18:-4]][2])
             return 特征点列表, 标签列表
 
         def 训练knn模型(images, labels):
