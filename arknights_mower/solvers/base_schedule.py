@@ -162,6 +162,10 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
 
     def overtake_room(self):
         candidates = self.task.meta_data.split(',')
+        if len(candidates)>0:
+            # 更新list
+            candidates = self.op_data.groups[self.op_data.operators[candidates[0]].group]
+            logger.debug(f"更新下班小组信息为{candidates}")
         # 在candidate 中，计算出需要的high free 和 Low free 数量
         _high_free = 0
         _low_free = 0
@@ -486,7 +490,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 # 如果任务名称包含干员名,则为动态生成的
                 elif self.task.type == TaskTypes.FIAMMETTA:
                     self.plan_fia()
-                elif self.task.meta_data.split(',')[0] in agent_list:
+                elif self.task.meta_data.split(',')[0] in agent_list and self.task.type == TaskTypes.EXHAUST_OFF:
                     self.overtake_room()
                 elif self.task.type == TaskTypes.CLUE_PARTY:
                     self.party_time = None
@@ -779,7 +783,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     continue
                 if op.name in self.op_data.exhaust_agent:
                     if op.current_mood() <= op.lower_limit + 2:
-                        if find_next_task(self.tasks, meta_data=op.name) is None:
+                        if find_next_task(self.tasks, task_type=TaskTypes.EXHAUST_OFF, meta_data=op.name) is None:
                             self.enter_room(op.current_room)
                             result = self.get_agent_from_room(op.current_room, [op.current_index])
                             _time = datetime.now()
@@ -793,10 +797,22 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                                     minutes=10)
                             self.back()
                             # plan 是空的是因为得动态生成
-                            exhaust_type = op.name
+                            update_time = False
                             if op.group != '':
-                                exhaust_type = ','.join(self.op_data.groups[op.group])
-                            self.tasks.append(SchedulerTask(time=_time, meta_data=exhaust_type))
+                                # 检查是否有其他同组任务，刷新时间
+                                for item in self.op_data.groups[op.group]:
+                                    if item not in self.op_data.exhaust_agent:
+                                        continue
+                                    elif find_next_task(self.tasks, task_type=TaskTypes.EXHAUST_OFF, meta_data=item) is not None:
+                                        update_time = True
+                                        exh_task = find_next_task(self.tasks, task_type=TaskTypes.EXHAUST_OFF, meta_data=item)
+                                        if _time < exh_task.time:
+                                            logger.info(f"检测到用尽同组{op.name}比{item}提前下班，更新任务时间为{_time}")
+                                            exh_task.time = _time
+                                        exh_task.meta_data += f",{op.name}"
+                                        logger.debug(f"更新用尽meta_data为{exh_task.meta_data}")
+                            if not update_time:
+                                self.tasks.append(SchedulerTask(time=_time,task_type=TaskTypes.EXHAUST_OFF, meta_data=op.name))
                             # 如果是生成的过去时间，则停止 plan 其他
                             if _time < datetime.now():
                                 break

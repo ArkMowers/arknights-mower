@@ -12,6 +12,7 @@ class TaskTypes(Enum):
     FIAMMETTA = ("菲亚梅塔", "肥鸭", 2)
     SHIFT_OFF = ("shifit_off", "下班", 2)
     SHIFT_ON = ("shifit_on", "上班", 2)
+    EXHAUST_OFF = ("exhaust_on", "用尽下班", 2)
     SELF_CORRECTION = ("self_correction", "纠错", 2)
     CLUE_PARTY = ("Impart", "趴体", 2)
     MAA_MALL = ("maa_Mall", "MAA信用购物", 2)
