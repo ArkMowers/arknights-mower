@@ -151,11 +151,11 @@ class Recognizer(object):
             self.scene = Scene.FRIEND_LIST_ON
         elif self.find('credit_visiting') is not None:
             self.scene = Scene.FRIEND_VISITING
-        elif self.find('riic_report_title'):
+        elif self.find("riic_report_title", scope=((1700, 0), (1920, 100))):
             self.scene = Scene.RIIC_REPORT
         elif self.find('control_central_assistants') is not None:
             self.scene = Scene.CTRLCENTER_ASSISTANT
-        elif self.find('infra_overview') is not None:
+        elif self.find("infra_overview", scope=((20, 120), (360, 245))) is not None:
             self.scene = Scene.INFRA_MAIN
         elif self.find('infra_todo') is not None:
             self.scene = Scene.INFRA_TODOLIST
@@ -264,7 +264,7 @@ class Recognizer(object):
                 self.scene = Scene.NETWORK_CHECK
             else:
                 self.scene = Scene.DOUBLE_CONFIRM
-        elif self.find('infra_overview') is not None:
+        elif self.find("infra_overview", scope=((20, 120), (360, 245))) is not None:
             self.scene = Scene.INFRA_MAIN
         elif self.find('infra_todo') is not None:
             self.scene = Scene.INFRA_TODOLIST
