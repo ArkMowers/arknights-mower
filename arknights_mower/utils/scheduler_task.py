@@ -141,6 +141,10 @@ def check_dorm_ordering(tasks, op_data):
     if tasks[0].type == TaskTypes.SHIFT_OFF and tasks[0].meta_data == "":
         extra_plan = {}
         other_plan = {}
+        working_agent = []
+        for room, v in tasks[0].plan.items():
+            if not room.startswith('dorm'):
+                working_agent.extend(v)
         for room, v in tasks[0].plan.items():
             # 非宿舍则不需要清空
             if room.startswith('dorm'):
@@ -155,7 +159,11 @@ def check_dorm_ordering(tasks, op_data):
                         current = next((obj for obj in op_data.operators.values() if
                                         obj.current_room == room and obj.current_index == idx), None)
                         if current:
-                            v[idx] = current.name
+                            if current.name not in working_agent:
+                                v[idx] = current.name
+                            else:
+                                logger.debug(f"检测到干员{current.name}已经上班")
+                                v[idx] = "Free"
                         if room not in extra_plan:
                             extra_plan[room] = copy.deepcopy(v)
                         # 新生成移除任务 --> 换成移除
