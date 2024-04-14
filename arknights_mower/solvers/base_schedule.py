@@ -162,7 +162,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
 
     def overtake_room(self):
         candidates = self.task.meta_data.split(',')
-        if len(candidates)>0:
+        if len(candidates) > 1:
             # 更新list
             candidates = self.op_data.groups[self.op_data.operators[candidates[0]].group]
             logger.debug(f"更新下班小组信息为{candidates}")
