@@ -2226,7 +2226,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     # 'stage': '',
                     'stage': stage,
                     'medicine': _plan["medicine"],
-                    'stone': 0,
+                    'stone': 999 if self.maa_config['eat_stone'] else 0,
                     'times': 999,
                     'report_to_penguin': True,
                     'client_type': '',
