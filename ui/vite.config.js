@@ -1,8 +1,8 @@
 import { fileURLToPath, URL } from 'node:url'
-
+import { resolve } from 'path'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-
+import Inspect from 'vite-plugin-inspect'
 import vueJsx from '@vitejs/plugin-vue-jsx'
 
 import AutoImport from 'unplugin-auto-import/vite'
@@ -12,6 +12,7 @@ import { NaiveUiResolver } from 'unplugin-vue-components/resolvers'
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
+    Inspect(),
     vue(),
     vueJsx(),
     AutoImport({
@@ -34,9 +35,9 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
-        main: 'index.html',
-        manager: 'manager/index.html',
-        toolbox: 'toolbox/index.html'
+        main: resolve(__dirname, 'index.html'),
+        manager: resolve(__dirname, 'manager/index.html'),
+        toolbox: resolve(__dirname, 'toolbox/index.html'),
       }
     }
   }
