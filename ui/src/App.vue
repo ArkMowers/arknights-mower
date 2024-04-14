@@ -136,7 +136,8 @@ import HelpCircle from '@vicons/ionicons5/HelpCircle'
 import Storefront from '@vicons/ionicons5/Storefront'
 import ReaderOutline from '@vicons/ionicons5/ReaderOutline'
 import Bag from '@vicons/ionicons5/Bag'
-
+import Wrench from '@vicons/fa/Wrench'
+import WikipediaW from '@vicons/fa/WikipediaW'
 function renderIcon(icon) {
   return () => h(NIcon, null, { default: () => h(icon) })
 }
@@ -202,6 +203,34 @@ const menuOptions = computed(() => [
     label: () => h(RouterLink, { to: { path: '/readme' } }, { default: () => '其他资源' }),
     icon: renderIcon(Bag),
     key: 'readme'
+  },
+  {
+    label: () =>
+      h(
+        'a',
+        {
+          href: 'https://arkn.lolicon.app/ ',
+          target: '_blank',
+          rel: 'noopenner noreferrer'
+        },
+        '明日方舟工具箱'
+      ),
+    key: 'toolbox',
+    icon: renderIcon(Wrench)
+  },
+  {
+    label: () =>
+      h(
+        'a',
+        {
+          href: 'https://prts.wiki/w/%E9%A6%96%E9%A1%B5',
+          target: '_blank',
+          rel: 'noopenner noreferrer'
+        },
+        '明日方舟PRTS'
+      ),
+    key: 'wiki',
+    icon: renderIcon(WikipediaW)
   }
 ])
 import { zhCN, dateZhCN, darkTheme } from 'naive-ui'
