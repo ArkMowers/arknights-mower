@@ -198,3 +198,6 @@ ui/public/depot/MATERIAL/*
 ui/public/depot/NORMAL/*
 
 /.buildozer/
+
+/ArknightsGameResource/
+*.ipynb
