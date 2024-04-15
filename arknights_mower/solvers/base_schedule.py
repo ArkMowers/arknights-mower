@@ -1584,7 +1584,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                                   self.run_order_delay * 60 - self.op_data.config.run_order_buffer_time),
                                  1)
             if wait_confirm > 0:
-                logger.info(f'龙舌兰、但书进驻前等待 {str(wait_confirm)} 秒')
+                logger.info(f'等待跑单 {str(wait_confirm)} 秒')
                 time.sleep(wait_confirm)
         self.tap_element('confirm_blue', detected=True, judge=False, interval=3)
         if self.get_infra_scene() == Scene.INFRA_ARRANGE_CONFIRM:
@@ -1594,7 +1594,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
 
     def choose_train_agent(self, current_room, agents, idx, error_count=0, fast_mode=False):
         if current_room[idx] != agents[idx]:
-            while self.find('arrange_order_options', score=0.5) is None and self.find('confirm_blue') is None:
+            while self.find('arrange_order_options') is None and self.find('confirm_blue') is None:
                 if error_count > 3:
                     raise Exception('未成功进入干员选择界面')
                 self.tap((self.recog.w * 0.82, self.recog.h * 0.18 * (idx + 1)), interval=1)
