@@ -199,7 +199,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                                                                                    current_high,
                                                                                    current_low)
             if len(_plan.items()) > 0:
-                self.tasks.append(SchedulerTask(datetime.now(), task_plan=_plan))
+                self.tasks.append(SchedulerTask(datetime.now(), task_plan=_plan, task_type= TaskTypes.SHIFT_OFF))
                 success = True
             else:
                 msg = f'无法完成 {self.task.meta_data} 的排班，如果重复接收此邮件请检查替换组是否被占用'
