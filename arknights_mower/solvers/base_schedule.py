@@ -775,7 +775,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 if op.name in self.op_data.workaholic_agent:
                     continue
                 # 忽略掉正在休息的
-                if op.is_resting() or op.current_room in ['factory']:
+                if op.is_resting() or op.current_room in ['factory','train']:
                     continue
                 # 忽略掉心情值没低于上限的的
                 if op.current_mood() > int(
@@ -1574,7 +1574,41 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         else:
             return False, [2, "false"]
 
-    def choose_agent(self, agents: list[str], room: str, fast_mode=True) -> None:
+    def tap_confirm(self, room, new_plan=None):
+        if new_plan is None:
+            new_plan = {}
+        self.recog.update()
+        if room in self.op_data.run_order_rooms and len(
+                new_plan) == 1 and self.op_data.config.run_order_buffer_time > 0:
+            wait_confirm = round(((self.task.time - datetime.now()).total_seconds() +
+                                  self.run_order_delay * 60 - self.op_data.config.run_order_buffer_time),
+                                 1)
+            if wait_confirm > 0:
+                logger.info(f'龙舌兰、但书进驻前等待 {str(wait_confirm)} 秒')
+                time.sleep(wait_confirm)
+        self.tap_element('confirm_blue', detected=True, judge=False, interval=3)
+        if self.get_infra_scene() == Scene.INFRA_ARRANGE_CONFIRM:
+            _x0 = self.recog.w // 3 * 2  # double confirm
+            _y0 = self.recog.h - 10
+            self.tap((_x0, _y0), rebuild=True)
+
+    def choose_train_agent(self, current_room, agents, idx, error_count=0, fast_mode=False):
+        if current_room[idx] != agents[idx]:
+            while self.find('arrange_order_options', score=0.5) is None and self.find('confirm_blue') is None:
+                if error_count > 3:
+                    raise Exception('未成功进入干员选择界面')
+                self.tap((self.recog.w * 0.82, self.recog.h * 0.18 * (idx + 1)), interval=1)
+                error_count += 1
+            self.choose_agent([agents[idx]], "train", fast_mode)
+            self.tap_confirm("train")
+
+    def choose_train(self,agents: list[str], fast_mode=True):
+        current_room = self.op_data.get_current_room("train", True)
+        self.choose_train_agent(current_room, agents, 0, 0, fast_mode)
+        # 训练室第二个人的干员识别会出错（工作中的干员无法识别 + 正在训练的干员无法换下）
+        # self.choose_train_agent(current_room, agents, 1, 0, fast_mode)
+
+    def choose_agent(self, agents: list[str], room: str, fast_mode=True,train_index = 0) -> None:
         """
         :param order: ArrangeOrder, 选择干员时右上角的排序功能
         """
@@ -1610,6 +1644,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     differences.append(i)
                 else:
                     exists.append(current_room[i])
+            if room == "train":
+                differences = [x for x in differences if x == train_index]
             for pos in differences:
                 if current_room[pos] != '':
                     self.tap((self.recog.w * position[pos][0], self.recog.h * position[pos][1]), interval=0,
@@ -1967,26 +2003,16 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                             self.send_message("检测到漏单！")
                             self.reset_room_time(room)
                             raise Exception("检测到漏单！")
-                    while self.find('arrange_order_options') is None:
-                        if error_count > 3:
-                            raise Exception('未成功进入干员选择界面')
-                        self.tap((self.recog.w * 0.82, self.recog.h * 0.2), interval=1)
-                        error_count += 1
-                    self.choose_agent(plan[room], room, choose_error <= 0)
-                    self.recog.update()
-                    if room in self.op_data.run_order_rooms and len(
-                            new_plan) == 1 and self.op_data.config.run_order_buffer_time > 0:
-                        wait_confirm = round(((self.task.time - datetime.now()).total_seconds() +
-                                              self.run_order_delay * 60 - self.op_data.config.run_order_buffer_time),
-                                             1)
-                        if wait_confirm > 0:
-                            logger.info(f'{"龙舌兰、" if "龙舌兰" in plan[room] else ""}{"但书" if "但书" in plan[room] else ""}进驻前等待 {str(wait_confirm)} 秒')
-                            time.sleep(wait_confirm)
-                    self.tap_element('confirm_blue', detected=True, judge=False, interval=3)
-                    if self.get_infra_scene() == Scene.INFRA_ARRANGE_CONFIRM:
-                        _x0 = self.recog.w // 3 * 2  # double confirm
-                        _y0 = self.recog.h - 10
-                        self.tap((_x0, _y0), rebuild=True)
+                    if room == "train":
+                        self.choose_train(plan[room], choose_error <= 0)
+                    else:
+                        while self.find('arrange_order_options', score=0.5) is None:
+                            if error_count > 3:
+                                raise Exception('未成功进入干员选择界面')
+                            self.tap((self.recog.w * 0.82, self.recog.h * 0.2), interval=1)
+                            error_count += 1
+                        self.choose_agent(plan[room], room, choose_error <= 0)
+                        self.tap_confirm(room, new_plan)
                     read_time_index = []
                     if get_time:
                         read_time_index = self.op_data.get_refresh_index(room, plan[room])
