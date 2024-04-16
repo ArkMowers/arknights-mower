@@ -88,6 +88,8 @@ const right_side_facility_name = computed(() => {
     return '会客室'
   } else if (facility.value == 'factory') {
     return '加工站'
+  } else if (facility.value == 'train') {
+    return '训练室（仅可安排协助位）'
   } else {
     return '未知'
   }
@@ -353,7 +355,26 @@ function fill_with_free() {
             </div>
           </n-button>
         </div>
-        <div class="right_contain"><n-button disabled class="facility-2">训练室</n-button></div>
+        <!-- <div class="right_contain"><n-button disabled class="facility-2">训练室</n-button></div> -->
+        <div class="right_contain">
+          <n-button :secondary="facility != 'train'" class="facility-2" @click="facility = 'train'">
+            <div>
+              <div class="facility-name">
+                <div>协助位</div>
+                <div>训练位</div>
+              </div>
+              <div class="avatars">
+                <img
+                  v-for="i in plan.train.plans"
+                  :src="`avatar/${i.agent}.png`"
+                  width="45"
+                  height="45"
+                  :style="{ 'border-bottom': color_map[i.group] }"
+                />
+              </div>
+            </div>
+          </n-button>
+        </div>
       </div>
     </div>
     <n-space justify="center" v-if="facility">
@@ -390,7 +411,11 @@ function fill_with_free() {
     <n-space justify="center">
       <table>
         <tr v-for="i in operator_limit" :key="i">
-          <td class="select-label">干员：</td>
+          <td class="select-label">
+            <template v-if="facility == 'train' && i == 1">协助位</template>
+            <template v-else-if="facility == 'train' && i == 2">训练位</template>
+            <template v-else>干员：</template>
+          </td>
           <td class="table-space">
             <n-select
               filterable
@@ -399,6 +424,7 @@ function fill_with_free() {
               v-model:value="plan[facility].plans[i - 1].agent"
               :filter="(p, o) => match(o.label, p)"
               :render-label="render_op_label"
+              :disabled="facility == 'train' && i == 2"
             />
           </td>
           <td class="select-label">
@@ -406,12 +432,15 @@ function fill_with_free() {
             <help-text>可以将有联动基建技能的干员或者心情掉率相等的干员编入同组</help-text>
           </td>
           <td class="table-space group">
-            <n-input v-model:value="plan[facility].plans[i - 1].group" />
+            <n-input
+              v-model:value="plan[facility].plans[i - 1].group"
+              :disabled="facility == 'train' && i == 2"
+            />
           </td>
           <td class="select-label">替换：</td>
           <td>
             <n-select
-              :disabled="!plan[facility].plans[i - 1].agent"
+              :disabled="!plan[facility].plans[i - 1].agent || (facility == 'train' && i == 2)"
               multiple
               filterable
               :options="operators_with_none"
@@ -485,6 +514,8 @@ function fill_with_free() {
   margin-bottom: 4px;
   text-align: center;
   line-height: 1;
+  display: flex;
+  justify-content: space-around;
 }
 
 .avatars > img {
@@ -526,10 +557,12 @@ function fill_with_free() {
       &:hover {
         background-color: rgba(32, 128, 240, 0.22);
       }
+
       &.true {
         background-color: var(--n-color);
         border: 1px solid rgb(32, 128, 240);
       }
+
       .facility-name {
         color: #2080f0;
       }
