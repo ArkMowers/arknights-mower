@@ -110,13 +110,15 @@ def 算坐标(圆):
 
 
 def 识别空物品(物品灰):
-    _, 二值图 = cv2.threshold(物品灰, 50, 255, cv2.THRESH_BINARY)
+    物品灰=物品灰[0:130,130:260]
+    _, 二值图 = cv2.threshold(物品灰, 60, 255, cv2.THRESH_BINARY)
     白像素个数 = cv2.countNonZero(二值图)
     所有像素个数 = 二值图.shape[0] * 二值图.shape[1]
     白像素比值 = int((白像素个数 / 所有像素个数) * 100)
-    if 白像素比值 > 97:
+    saveimg_depot(cv2.hconcat([物品灰, 二值图]),f"{白像素比值}_{datetime.now().timestamp()}.png","depot_3_empty",)
+    if 白像素比值 > 99:
         logger.info("仓库扫描: 删除一次空物品")
-        # saveimg_depot(cv2.hconcat([物品灰, 二值图]),f"{白像素比值}_{datetime.now().timestamp()}.png","depot_3_empty",)
+
 
         return False
     else:
