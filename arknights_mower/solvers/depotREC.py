@@ -244,7 +244,7 @@ class depotREC(BaseSolver):
             for 任务 in 任务组:
                 self.tap((任务[0], 70))
                 if not self.find("depot_empty"):
-                    self.分类扫描(任务[1])
+                    self.分类扫描(任务[1],任务[2])
                     logger.info(
                         f"仓库扫描: {任务[2]}识别，识别用时{datetime.now() - time}")
                 else:
@@ -272,7 +272,7 @@ class depotREC(BaseSolver):
         similarity = len(matches) / max(len(descriptors1), len(descriptors2))
         return similarity * 100
 
-    def 分类扫描(self, 模型名称):
+    def 分类扫描(self, 模型名称,分类名称):
         截图列表 = []
         旧的截图 = self.recog.img
         旧的截图 = 旧的截图[140:1000, :]
@@ -281,19 +281,20 @@ class depotREC(BaseSolver):
         self.recog.update()
 
         logger.info(f"仓库扫描: 把第{len(截图列表)}页保存进内存中等待识别")
-        while True:
-            self.swipe_noinertia((1800, 450), (-1000, 0))  # 滑动
-            self.recog.update()
-            新的截图 = self.recog.img
-            新的截图 = 新的截图[140:1000, :]
-            # saveimg(新的截图, "depot_1_screenshot")
-            相似度 = self.对比截图(截图列表[-1], 新的截图)
-            if 相似度 < 70:
-                截图列表.append(新的截图)
-                logger.info(f"仓库扫描: 把第{len(截图列表)}页保存进内存中等待识别,相似度{相似度}")
-            else:
-                logger.info("仓库扫描: 这大抵是最后一页了")
-                break
+        if "养成材料" in 分类名称:
+            while True:
+                self.swipe_noinertia((1800, 450), (-1000, 0))  # 滑动
+                self.recog.update()
+                新的截图 = self.recog.img
+                新的截图 = 新的截图[140:1000, :]
+                # saveimg(新的截图, "depot_1_screenshot")
+                相似度 = self.对比截图(截图列表[-1], 新的截图)
+                if 相似度 < 70:
+                    截图列表.append(新的截图)
+                    logger.info(f"仓库扫描: 把第{len(截图列表)}页保存进内存中等待识别,相似度{相似度}")
+                else:
+                    logger.info("仓库扫描: 这大抵是最后一页了")
+                    break
         logger.info(f"仓库扫描: 截图读取完了,有{len(截图列表)}张截图")
         logger.info(f"仓库扫描: 开始计算裁切图像")
 
@@ -302,6 +303,7 @@ class depotREC(BaseSolver):
         else:
             拼接好的图片 = 截图列表[0]
         # saveimg(拼接好的图片, "depot_2_stitcher")
+        
         切图列表 = self.切图主程序(拼接好的图片)
 
         logger.info(f"仓库扫描: 需要识别{len(切图列表)}个物品")
