@@ -226,13 +226,13 @@ class BaseMixin:
             digit_2 = cropimg(img, ((253, 24), (274, 54)))
             digit_1 = self.detect_room_number(digit_1)
             digit_2 = self.detect_room_number(digit_2)
-            logger.info(f"{colored_room}B{digit_1}0{digit_2}")
+            logger.debug(f"{colored_room}B{digit_1}0{digit_2}")
             return f"room_{digit_1}_{digit_2}"
         elif colored_room == "训练室":
-            logger.info("训练室B305")
+            logger.debug("训练室B305")
             return "train"
         elif colored_room == "加工站":
-            logger.info("加工站B105")
+            logger.debug("加工站B105")
             return "factory"
         white_room = ["central", "dormitory", "meeting", "contact"]
         score = []
@@ -243,19 +243,19 @@ class BaseMixin:
             score.append(max_val)
         room = white_room[score.index(max(score))]
         if room == "central":
-            logger.info("控制中枢")
+            logger.debug("控制中枢")
         elif room == "dormitory":
             digit = cropimg(img, ((174, 24), (195, 54)))
             digit = self.detect_room_number(digit)
             if digit == 4:
-                logger.info("宿舍B401")
+                logger.debug("宿舍B401")
             else:
-                logger.info(f"宿舍B{digit}04")
+                logger.debug(f"宿舍B{digit}04")
             return f"dormitory_{digit}"
         elif room == "meeting":
-            logger.info("会客室1F02")
+            logger.debug("会客室1F02")
         else:
-            logger.info("办公室B205")
+            logger.debug("办公室B205")
         return room
 
     def enter_room(self, room: str) -> tp.Rectangle:
