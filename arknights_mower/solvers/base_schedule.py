@@ -162,10 +162,11 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
 
     def overtake_room(self):
         candidates = self.task.meta_data.split(',')
-        if len(candidates) > 1:
-            # 更新list
+        if len(candidates) == 0:
+            return
+        if self.op_data.operators[candidates[0]].group != "":
             candidates = self.op_data.groups[self.op_data.operators[candidates[0]].group]
-            logger.debug(f"更新下班小组信息为{candidates}")
+        logger.debug(f"更新下班小组信息为{candidates}")
         # 在candidate 中，计算出需要的high free 和 Low free 数量
         _high_free = 0
         _low_free = 0
@@ -179,8 +180,6 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 else:
                     _low_free += 1
         candidates = [x for x in candidates if x not in remove_name]
-        if len(candidates) == 0:
-            return
         self.agent_get_mood(force=True)
         # 剩余高效组位置
         current_high = self.op_data.available_free()
