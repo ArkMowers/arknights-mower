@@ -140,7 +140,7 @@
         </li>
       </ul>
       <p>
-        明日方舟工具箱（基建技能、养成规划）：<n-a target="_blank" href="https://arkn.lolicon.app/"
+        明日方舟工具箱（基建技能、养成规划）：<n-a target="_blank" href="https://arkntools.app/"
           >https://arkn.lolicon.app</n-a
         >
       </p>
