@@ -171,8 +171,13 @@ class BaseMixin:
 
         filter_pos = (self.recog.w * 0.95, self.recog.h * 0.05)
         self.tap(filter_pos)
+
+        err_cnt = 0
         while not self.find("arrange_order_options_scene"):
             self.tap(filter_pos)
+            err_cnt += 1
+            if err_cnt > 3:
+                raise Exception("未进入筛选页面")
 
         self.recog.save_screencap("detail_filter")
         for label, pos in label_pos_map.items():
@@ -183,8 +188,13 @@ class BaseMixin:
         self.recog.update()
         confirm_pos = (self.recog.w * 0.8, self.recog.h * 0.8)
         self.tap(confirm_pos)
+
+        err_cnt = 0
         while self.find("arrange_order_options_scene"):
             self.tap(confirm_pos)
+            err_cnt += 1
+            if err_cnt > 3:
+                raise Exception("筛选确认失败")
 
     def detect_room_number(self, img) -> int:
         score = []
