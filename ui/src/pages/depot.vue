@@ -3,7 +3,7 @@
     <n-button
       @click="copyToClipboard"
       tag="a"
-      href="https://arkn.lolicon.app/#/material"
+      href="https://arkntools.app/#/material"
       target="_blank"
     >
       明日方舟工具箱代码 点击复制

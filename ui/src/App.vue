@@ -209,7 +209,7 @@ const menuOptions = computed(() => [
       h(
         'a',
         {
-          href: 'https://arkn.lolicon.app/ ',
+          href: 'https://arkntools.app/ ',
           target: '_blank',
           rel: 'noopenner noreferrer'
         },
