@@ -32,7 +32,7 @@ from arknights_mower.utils.news import get_update_time
 from arknights_mower.utils import rapidocr
 from arknights_mower.utils.simulator import restart_simulator
 from arknights_mower.utils import config
-from arknights_mower.utils.image import cropimg, loadimg
+from arknights_mower.utils.image import cropimg, loadimg, thres2
 from arknights_mower import __rootdir__
 from arknights_mower.utils.matcher import Matcher
 import cv2
@@ -525,10 +525,12 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             self.planned = True
         elif not self.todo_task:
             get_update_time()
-            if (self.party_time is None or self.free_clue is None) and self.enable_party:
-                self.clue()
-            if self.clue_count > self.clue_count_limit and self.enable_party:
-                self.share_clue()
+            if self.enable_party:
+                self.clue_new()
+            # if (self.party_time is None or self.free_clue is None) and self.enable_party:
+            #     self.clue()
+            # if self.clue_count > self.clue_count_limit and self.enable_party:
+            #     self.share_clue()
             if self.drone_room not in self.op_data.run_order_rooms and (
                     self.drone_time is None or self.drone_time < datetime.now() - timedelta(
                     hours=self.drone_execution_gap)) and self.drone_room is not None:
@@ -1078,6 +1080,255 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         self.tap((self.recog.w * 0.95, self.recog.h * 0.05), interval=3)
         self.back()
         self.back()
+
+    def clue_new(self):
+        logger.info("基建：线索")
+        self.enter_room("meeting")
+
+        clue_size = (162, 216)
+        clue_top_left = {
+            "daily": (1118, 334),
+            "receive": (1305, 122),
+            "give_away": (30, 208),
+            # 摆放线索界面，线索框的左上角
+            1: (72, 228),
+            2: (374, 334),
+            3: (679, 198),
+            4: (1003, 265),
+            5: (495, 660),
+            6: (805, 573),
+            7: (154, 608),
+        }
+        dot_offset = (168, -8)
+        main_offset = (425, 0)
+
+        def va(a, b):
+            return a[0] + b[0], a[1] + b[1]
+
+        def tl2p(top_left):
+            return top_left, va(top_left, clue_size)
+
+        orange_dot = (255, 104, 1)
+
+        clue_scope = {}
+        for index, top_left in clue_top_left.items():
+            clue_scope[index] = tl2p(top_left)
+        clue_dots = {}
+        main_dots = {}
+        main_scope = {}
+        for i in range(1, 8):
+            clue_dots[i] = va(clue_top_left[i], dot_offset)
+            main_dots[i] = va(clue_dots[i], main_offset)
+            main_scope[i] = tl2p(va(clue_top_left[i], main_offset))
+
+        class ClueTaskManager:
+            def __init__(self):
+                # 操作顺序：领取每日线索、接收好友线索、摆线索、送线索
+                self.task_list = ["daily", "receive", "place", "give_away"]
+                self.task = self.task_list[0]
+
+            def complete(self, task):
+                task = task or self.task
+                if task in self.task_list:
+                    self.task_list.remove(task)
+                self.task = self.task_list[0] if self.task_list else None
+
+        tm_thres = 0.6
+
+        def clue_cls(scope):
+            img = cropimg(self.recog.img, clue_scope[scope])
+            for i in range(1, 8):
+                res = loadimg(f"{__rootdir__}/resources/clue/{i}.png")
+                result = cv2.matchTemplate(img, res, cv2.TM_CCOEFF_NORMED)
+                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+                if max_val > tm_thres:
+                    return i
+            return None
+
+        exit_pos = (1239, 144)
+
+        current_clue = None
+        ctm = ClueTaskManager()
+
+        friend_clue = []
+
+        unknown_cnt = 0
+
+        while ctm.task:
+            scene = self.clue_scene()
+
+            if scene == Scene.UNKNOWN:
+                unknown_cnt += 1
+                if unknown_cnt > 5:
+                    unknown_cnt = 0
+                    self.back_to_infrastructure()
+                    self.enter_room("meeting")
+                    continue
+                else:
+                    self.sleep()
+
+            if scene == Scene.INFRA_DETAILS:
+                # 点击左下角，关闭进驻信息，进入线索界面
+                self.tap((725, 850))
+            elif scene == Scene.INFRA_CONFIDENTIAL:
+                if ctm.task == "daily":
+                    # 检查是否领过线索
+                    daily_scope = ((1815, 200), (1895, 250))
+                    if self.find("clue/badge_new", scope=daily_scope):
+                        self.tap((1800, 270))
+                    else:
+                        ctm.complete("daily")
+                elif ctm.task == "receive":
+                    receive_scope = ((1815, 360), (1895, 410))
+                    if self.find("clue/badge_new", scope=receive_scope):
+                        self.tap((1800, 430))
+                    else:
+                        ctm.complete("receive")
+                elif ctm.task == "place":
+                    if unlock_pos := self.find("clue/button_unlock", score=0.7):
+                        self.tap(unlock_pos)
+                        continue
+                    current_clue = None
+                    for i in range(1, 8):
+                        if all(self.get_color(main_dots[i]) == orange_dot):
+                            current_clue = i
+                            break
+                    if current_clue:
+                        self.tap(main_scope[current_clue])
+                    else:
+                        ctm.complete("place")
+                elif ctm.task == "give_away":
+                    self.tap((1799, 578))
+            elif scene == Scene.CLUE_DAILY:
+                if clue := clue_cls("daily"):
+                    logger.info(f"领取今日线索（{clue}号）")
+                    self.tap_element("clue/button_get")
+                    ctm.complete("daily")
+                else:
+                    # 今日线索已领取，点X退出
+                    self.tap((1484, 152))
+            elif scene == Scene.CLUE_RECEIVE:
+                if clue := clue_cls("receive"):
+                    name_scope = ((1580, 220), (1880, 255))
+                    name = rapidocr.engine(
+                        cropimg(self.recog.gray, name_scope),
+                        use_det=False,
+                        use_cls=False,
+                        use_rec=True,
+                    )[0][0][0]
+                    name = name.strip() if name else "好友"
+                    logger.info(f"接收{name}的{clue}号线索")
+                    self.tap(name_scope)
+                else:
+                    ctm.complete("receive")
+                    self.tap(exit_pos)
+            elif scene == Scene.CLUE_PLACE:
+                if not current_clue:
+                    if unlock_pos := self.find("clue/button_unlock", score=0.7):
+                        self.tap(unlock_pos)
+                        continue
+                    for i in range(1, 8):
+                        if all(self.get_color(clue_dots[i]) == (255, 104, 1)):
+                            current_clue = i
+                            break
+                    if not current_clue:
+                        ctm.complete("place")
+                        self.tap(exit_pos)
+                    else:
+                        self.tap(clue_scope[current_clue])
+                    continue
+                # filter_receive = (1900, 45)
+                # if all(self.get_color(filter_receive) == [255] * 3):
+                #     self.tap(filter_receive)
+                #     continue
+                clue_pos = (
+                    (1305, 208),
+                    (1305, 503),
+                    (1305, 797),
+                )
+                clue_list = []
+                for cp in clue_pos:
+                    clue_img = cropimg(self.recog.img, tl2p(cp))
+                    res = loadimg(f"{__rootdir__}/resources/clue/{current_clue}.png")
+                    result = cv2.matchTemplate(clue_img, res, cv2.TM_CCOEFF_NORMED)
+                    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+                    if max_val > tm_thres:
+                        name_scope = (va(cp, (274, 99)), va(cp, (580, 134)))
+                        name = rapidocr.engine(
+                            cropimg(self.recog.gray, name_scope),
+                            use_det=False,
+                            use_cls=False,
+                            use_rec=True,
+                        )[0][0][0]
+                        if name:
+                            name = name.strip()
+                        time_scope = (va(cp, (45, 222)), va(cp, (168, 255)))
+                        time_hsv = cropimg(self.recog.img, time_scope)
+                        time_hsv = cv2.cvtColor(time_hsv, cv2.COLOR_RGB2HSV)
+                        if 165 < time_hsv[0][0][0] < 175:
+                            time_img = thres2(cropimg(self.recog.gray, time_scope), 180)
+                            time_img = cv2.copyMakeBorder(time_img, 24, 24, 24, 24, cv2.BORDER_CONSTANT, None, (0,))
+                            time = rapidocr.engine(
+                                time_img,
+                                use_det=False,
+                                use_cls=False,
+                                use_rec=True,
+                            )[0][0][0]
+                            if time:
+                                time = time.strip()
+                        else:
+                            time = None
+                        clue_list.append(
+                            {"name": name, "time": time, "scope": tl2p(cp)}
+                        )
+                    else:
+                        break
+                logger.info(f"{current_clue}号线索列表：{clue_list}")
+                selected = None
+                for c in clue_list:
+                    if c["time"]:
+                        selected = c
+                        break
+                selected = selected or clue_list[0]
+                self.tap(selected["scope"])
+                current_clue = None
+            elif scene == Scene.CLUE_GIVE_AWAY:
+                if not friend_clue:
+                    for i in range(4):
+                        name_top_left = (870, 127 + 222 * i)
+                        name_scope = (name_top_left, va(name_top_left, (383, 62)))
+                        name = rapidocr.engine(
+                            cropimg(self.recog.gray, name_scope),
+                            use_det=False,
+                            use_cls=False,
+                            use_rec=True,
+                        )[0][0][0]
+                        if name:
+                            name = name.strip()
+                        data = {"name": name}
+                        for j in range(1, 8):
+                            pos = (1294 + j * 64, 142 + i * 222)
+                            data[j] = self.get_color(pos)[0] > 137
+                        friend_clue.append(data)
+                logger.info(friend_clue)
+                if c := clue_cls("give_away"):
+                    friend = None
+                    for idx, fc in enumerate(friend_clue):
+                        if not fc[c]:
+                            friend = idx
+                            fc[c] = True
+                            break
+                    friend = friend or 0
+                    logger.info(f"把线索{c}送给{friend_clue[friend]['name']}")
+                    self.tap(clue_scope["give_away"])
+                    self.tap((1790, 200 + friend * 222))
+                else:
+                    ctm.complete("give_away")
+                    self.tap((1868, 54))
+            else:
+                self.sleep()
+
+        self.back_to_infrastructure()
 
     def clue(self) -> None:
         # 一些识别时会用到的参数

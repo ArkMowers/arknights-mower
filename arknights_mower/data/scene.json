@@ -147,6 +147,26 @@
         "label": "OPERATOR_SELECT",
         "comment": "干员选择界面"
     },
+    "211": {
+        "label": "CLUE_DAILY",
+        "comment": "每日线索领取"
+    },
+    "212": {
+        "label": "CLUE_RECEIVE",
+        "comment": "接收线索"
+    },
+    "213": {
+        "label": "CLUE_GIVE_AWAY",
+        "comment": "传递线索"
+    },
+    "214": {
+        "label": "CLUE_SUMMARY",
+        "comment": "线索交流活动汇总"
+    },
+    "215": {
+        "label": "CLUE_PLACE",
+        "comment": "放置线索"
+    },
     "301": {
         "label": "FRIEND_LIST_OFF",
         "comment": "好友列表（未选中）"

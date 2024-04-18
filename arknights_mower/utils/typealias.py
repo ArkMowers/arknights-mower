@@ -5,7 +5,7 @@ from numpy.typing import NDArray
 
 # Image
 Image = NDArray[np.int8]
-Pixel = Tuple[int, int, int]
+Pixel = NDArray[np.int8]
 
 GrayImage = NDArray[np.int8]
 GrayPixel = int

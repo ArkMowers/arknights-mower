@@ -21,7 +21,6 @@ class RecognizeError(Exception):
 
 
 class Recognizer(object):
-
     def __init__(self, device: Device, screencap: bytes = None) -> None:
         self.device = device
         self.start(screencap)
@@ -32,7 +31,7 @@ class Recognizer(object):
         self.CONN_MINWIDTH = 300
 
     def start(self, screencap: bytes = None, build: bool = True) -> None:
-        """ init with screencap, build matcher  """
+        """init with screencap, build matcher"""
         retry_times = config.MAX_RETRYTIME
         while retry_times > 0:
             try:
@@ -51,25 +50,36 @@ class Recognizer(object):
                 retry_times -= 1
                 time.sleep(1)
                 continue
-        raise RuntimeError('init Recognizer failed')
+        raise RuntimeError("init Recognizer failed")
 
     def update(self, screencap: bytes = None, rebuild: bool = True) -> None:
-        """ rebuild matcher """
+        """rebuild matcher"""
         self.start(screencap, rebuild)
 
     def color(self, x: int, y: int) -> tp.Pixel:
-        """ get the color of the pixel """
+        """get the color of the pixel"""
         return self.img[y][x]
 
     def save_screencap(self, folder):
-        save_screenshot(self.screencap, subdir=f'{folder}/{self.h}x{self.w}')
+        save_screenshot(self.screencap, subdir=f"{folder}/{self.h}x{self.w}")
 
     def detect_connecting_scene(self) -> bool:
-        return (matched_scope := self.find('connecting', scope=self.CONN_SCOPE, score=self.CONN_PRESCORE)) is not None and matched_scope[1][0] - matched_scope[0][0] > self.CONN_MINWIDTH
-    
+        return (
+            matched_scope := self.find(
+                "connecting", scope=self.CONN_SCOPE, score=self.CONN_PRESCORE
+            )
+        ) is not None and matched_scope[1][0] - matched_scope[0][0] > self.CONN_MINWIDTH
+
     def detect_index_scene(self) -> bool:
-        return self.find('index_nav', thres=250, scope=((0, 0), (100+self.w//4, self.h//10))) is not None
-    
+        return (
+            self.find(
+                "index_nav",
+                thres=250,
+                scope=((0, 0), (100 + self.w // 4, self.h // 10)),
+            )
+            is not None
+        )
+
     def check_loading_time(self):
         if self.scene == Scene.CONNECTING:
             self.loading_time += 1
@@ -85,161 +95,171 @@ class Recognizer(object):
                 self.update()
 
     def get_scene(self) -> int:
-        """ get the current scene in the game """
+        """get the current scene in the game"""
         if self.scene != Scene.UNDEFINED:
             return self.scene
         if self.detect_connecting_scene():
             self.scene = Scene.CONNECTING
         elif self.detect_index_scene():
             self.scene = Scene.INDEX
-        elif self.find('nav_index') is not None:
+        elif self.find("nav_index") is not None:
             self.scene = Scene.NAVIGATION_BAR
-        elif self.find('login_new') is not None:
+        elif self.find("login_new") is not None:
             self.scene = Scene.LOGIN_NEW
-        elif self.find('login_bilibili_entry', score=0.8) is not None:  # 会被识别成公告，优先级应当比公告高
+        elif (
+            self.find("login_bilibili_entry", score=0.8) is not None
+        ):  # 会被识别成公告，优先级应当比公告高
             self.scene = Scene.LOGIN_BILIBILI
-        elif self.find('login_bilibili_privacy_accept', score=0.8) is not None:
+        elif self.find("login_bilibili_privacy_accept", score=0.8) is not None:
             self.scene = Scene.LOGIN_BILIBILI_PRIVACY
-        elif self.find('close_mine') is not None:
+        elif self.find("close_mine") is not None:
             self.scene = Scene.CLOSE_MINE
-        elif self.find('check_in') is not None:
+        elif self.find("check_in") is not None:
             self.scene = Scene.CHECK_IN
-        elif self.find('materiel_ico', scope=((860, 60), (1072, 217))) is not None:
+        elif self.find("materiel_ico", scope=((860, 60), (1072, 217))) is not None:
             self.scene = Scene.MATERIEL
-        elif self.find('read_mail') is not None:
+        elif self.find("read_mail") is not None:
             self.scene = Scene.MAIL
-        elif self.find('loading') is not None:
+        elif self.find("loading") is not None:
             self.scene = Scene.LOADING
-        elif self.find('loading2') is not None:
+        elif self.find("loading2") is not None:
             self.scene = Scene.LOADING
-        elif self.find('loading3') is not None:
+        elif self.find("loading3") is not None:
             self.scene = Scene.LOADING
-        elif self.find('loading4') is not None:
+        elif self.find("loading4") is not None:
             self.scene = Scene.LOADING
         elif self.is_black():
             self.scene = Scene.LOADING
-        elif self.find('ope_plan') is not None:
+        elif self.find("ope_plan") is not None:
             self.scene = Scene.OPERATOR_BEFORE
-        elif self.find('ope_select_start') is not None:
+        elif self.find("ope_select_start") is not None:
             self.scene = Scene.OPERATOR_SELECT
-        elif self.find('ope_agency_going', scope=((470, 915), (755, 1045))) is not None:
+        elif self.find("ope_agency_going", scope=((470, 915), (755, 1045))) is not None:
             self.scene = Scene.OPERATOR_ONGOING
-        elif self.find('ope_elimi_finished') is not None:
+        elif self.find("ope_elimi_finished") is not None:
             self.scene = Scene.OPERATOR_ELIMINATE_FINISH
-        elif self.find('ope_finish') is not None:
+        elif self.find("ope_finish") is not None:
             self.scene = Scene.OPERATOR_FINISH
-        elif self.find('ope_recover_potion_on') is not None:
+        elif self.find("ope_recover_potion_on") is not None:
             self.scene = Scene.OPERATOR_RECOVER_POTION
-        elif self.find('ope_recover_originite_on', scope=((1530, 120), (1850, 190))) is not None:
+        elif (
+            self.find("ope_recover_originite_on", scope=((1530, 120), (1850, 190)))
+            is not None
+        ):
             self.scene = Scene.OPERATOR_RECOVER_ORIGINITE
-        elif self.find('double_confirm') is not None:
-            if self.find('network_check') is not None:
+        elif self.find("double_confirm") is not None:
+            if self.find("network_check") is not None:
                 self.scene = Scene.NETWORK_CHECK
             else:
                 self.scene = Scene.DOUBLE_CONFIRM
-        elif self.find('ope_firstdrop') is not None:
+        elif self.find("ope_firstdrop") is not None:
             self.scene = Scene.OPERATOR_DROP
-        elif self.find('ope_eliminate') is not None:
+        elif self.find("ope_eliminate") is not None:
             self.scene = Scene.OPERATOR_ELIMINATE
-        elif self.find('ope_elimi_agency_panel') is not None:
+        elif self.find("ope_elimi_agency_panel") is not None:
             self.scene = Scene.OPERATOR_ELIMINATE_AGENCY
-        elif self.find('ope_giveup') is not None:
+        elif self.find("ope_giveup") is not None:
             self.scene = Scene.OPERATOR_GIVEUP
-        elif self.find('ope_failed') is not None:
+        elif self.find("ope_failed") is not None:
             self.scene = Scene.OPERATOR_FAILED
-        elif self.find('friend_list_on') is not None:
+        elif self.find("friend_list_on") is not None:
             self.scene = Scene.FRIEND_LIST_ON
-        elif self.find('credit_visiting') is not None:
+        elif self.find("credit_visiting") is not None:
             self.scene = Scene.FRIEND_VISITING
         elif self.find("riic_report_title", scope=((1700, 0), (1920, 100))):
             self.scene = Scene.RIIC_REPORT
-        elif self.find('control_central_assistants') is not None:
+        elif self.find("control_central_assistants") is not None:
             self.scene = Scene.CTRLCENTER_ASSISTANT
         elif self.find("infra_overview", scope=((20, 120), (360, 245))) is not None:
             self.scene = Scene.INFRA_MAIN
-        elif self.find('infra_todo') is not None:
+        elif self.find("infra_todo") is not None:
             self.scene = Scene.INFRA_TODOLIST
-        elif self.find('clue') is not None:
+        elif self.find("clue") is not None:
             self.scene = Scene.INFRA_CONFIDENTIAL
-        elif self.find('arrange_check_in') or self.find('arrange_check_in_on') is not None:
+        elif (
+            self.find("arrange_check_in")
+            or self.find("arrange_check_in_on") is not None
+        ):
             self.scene = Scene.INFRA_DETAILS
-        elif self.find('infra_overview_in', scope=((50, 690), (430, 770))) is not None:
+        elif self.find("infra_overview_in", scope=((50, 690), (430, 770))) is not None:
             self.scene = Scene.INFRA_ARRANGE
-        elif self.find('arrange_confirm') is not None:
+        elif self.find("arrange_confirm") is not None:
             self.scene = Scene.INFRA_ARRANGE_CONFIRM
-        elif self.find('friend_list') is not None:
+        elif self.find("friend_list") is not None:
             self.scene = Scene.FRIEND_LIST_OFF
         elif self.find("mission_trainee_on", scope=((670, 0), (1920, 120))) is not None:
             self.scene = Scene.MISSION_TRAINEE
-        elif self.find('mission_daily_on', scope=((670, 0), (1920, 120))) is not None:
+        elif self.find("mission_daily_on", scope=((670, 0), (1920, 120))) is not None:
             self.scene = Scene.MISSION_DAILY
-        elif self.find('mission_weekly_on', scope=((670, 0), (1920, 120))) is not None:
+        elif self.find("mission_weekly_on", scope=((670, 0), (1920, 120))) is not None:
             self.scene = Scene.MISSION_WEEKLY
-        elif self.find('terminal_pre') is not None:
+        elif self.find("terminal_pre") is not None:
             self.scene = Scene.TERMINAL_MAIN
-        elif self.find('open_recruitment') is not None:
+        elif self.find("open_recruitment") is not None:
             self.scene = Scene.RECRUIT_MAIN
-        elif self.find('recruiting_instructions') is not None:
+        elif self.find("recruiting_instructions") is not None:
             self.scene = Scene.RECRUIT_TAGS
-        elif self.find('agent_token', scope=((1735, 745), (1855, 820)), score=0.1):
+        elif self.find("agent_token", scope=((1735, 745), (1855, 820)), score=0.1):
             self.scene = Scene.RECRUIT_AGENT
-        elif self.find('agent_unlock') is not None:
+        elif self.find("agent_unlock") is not None:
             self.scene = Scene.SHOP_CREDIT
-        elif self.find('shop_credit_2') is not None:
+        elif self.find("shop_credit_2") is not None:
             self.scene = Scene.SHOP_OTHERS
-        elif self.find('shop_cart') is not None:
+        elif self.find("shop_cart") is not None:
             self.scene = Scene.SHOP_CREDIT_CONFIRM
-        elif self.find('shop_assist') is not None:
+        elif self.find("shop_assist") is not None:
             self.scene = Scene.SHOP_ASSIST
-        elif self.find('spent_credit') is not None:
+        elif self.find("spent_credit") is not None:
             self.scene = Scene.SHOP_UNLOCK_SCHEDULE
-        elif self.find('login_logo') is not None and self.find('hypergryph') is not None:
-            if self.find('login_awake') is not None:
+        elif (
+            self.find("login_logo") is not None and self.find("hypergryph") is not None
+        ):
+            if self.find("login_awake") is not None:
                 self.scene = Scene.LOGIN_QUICKLY
-            elif self.find('login_account') is not None:
+            elif self.find("login_account") is not None:
                 self.scene = Scene.LOGIN_MAIN
-            elif self.find('login_iknow') is not None:
+            elif self.find("login_iknow") is not None:
                 self.scene = Scene.LOGIN_ANNOUNCE
             else:
                 self.scene = Scene.LOGIN_MAIN_NOENTRY
-        elif self.find('register') is not None:
+        elif self.find("register") is not None:
             self.scene = Scene.LOGIN_REGISTER
-        elif self.find('login_loading') is not None:
+        elif self.find("login_loading") is not None:
             self.scene = Scene.LOGIN_LOADING
-        elif self.find('login_iknow') is not None:
+        elif self.find("login_iknow") is not None:
             self.scene = Scene.LOGIN_ANNOUNCE
-        elif self.find('12cadpa') is not None:
-            if self.find('cadpa_detail') is not None:
+        elif self.find("12cadpa") is not None:
+            if self.find("cadpa_detail") is not None:
                 self.scene = Scene.LOGIN_CADPA_DETAIL
             else:
                 self.scene = Scene.LOGIN_START
         elif detector.announcement_close(self.img) is not None:
             self.scene = Scene.ANNOUNCEMENT
-        elif self.find('skip') is not None:
+        elif self.find("skip") is not None:
             self.scene = Scene.SKIP
-        elif self.find('upgrade') is not None:
+        elif self.find("upgrade") is not None:
             self.scene = Scene.UPGRADE
         elif detector.confirm(self.img) is not None:
             self.scene = Scene.CONFIRM
-        elif self.find('login_verify') is not None:
+        elif self.find("login_verify") is not None:
             self.scene = Scene.LOGIN_INPUT
-        elif self.find('login_captcha') is not None:
+        elif self.find("login_captcha") is not None:
             self.scene = Scene.LOGIN_CAPTCHA
-        elif self.find('login_connecting') is not None:
+        elif self.find("login_connecting") is not None:
             self.scene = Scene.LOGIN_LOADING
-        elif self.find('main_theme') is not None:
+        elif self.find("main_theme") is not None:
             self.scene = Scene.TERMINAL_MAIN_THEME
-        elif self.find('episode') is not None:
+        elif self.find("episode") is not None:
             self.scene = Scene.TERMINAL_EPISODE
-        elif self.find('biography') is not None:
+        elif self.find("biography") is not None:
             self.scene = Scene.TERMINAL_BIOGRAPHY
-        elif self.find('collection') is not None:
+        elif self.find("collection") is not None:
             self.scene = Scene.TERMINAL_COLLECTION
-        elif self.find('loading6') is not None:
+        elif self.find("loading6") is not None:
             self.scene = Scene.LOADING
-        elif self.find('loading7') is not None:
+        elif self.find("loading7") is not None:
             self.scene = Scene.LOADING
-        elif self.find('arrange_order_options_scene') is not None:
+        elif self.find("arrange_order_options_scene") is not None:
             self.scene = Scene.INFRA_ARRANGE_ORDER
         else:
             self.scene = Scene.UNKNOWN
@@ -248,7 +268,7 @@ class Recognizer(object):
         # save screencap to analyse
         if config.SCREENSHOT_PATH is not None:
             self.save_screencap(self.scene)
-        logger.info(f'Scene: {self.scene}: {SceneComment[self.scene]}')
+        logger.info(f"Scene: {self.scene}: {SceneComment[self.scene]}")
 
         self.check_loading_time()
 
@@ -259,34 +279,37 @@ class Recognizer(object):
             return self.scene
         if self.detect_connecting_scene():
             self.scene = Scene.CONNECTING
-        elif self.find('double_confirm') is not None:
-            if self.find('network_check') is not None:
+        elif self.find("double_confirm") is not None:
+            if self.find("network_check") is not None:
                 self.scene = Scene.NETWORK_CHECK
             else:
                 self.scene = Scene.DOUBLE_CONFIRM
         elif self.find("infra_overview", scope=((20, 120), (360, 245))) is not None:
             self.scene = Scene.INFRA_MAIN
-        elif self.find('infra_todo') is not None:
+        elif self.find("infra_todo") is not None:
             self.scene = Scene.INFRA_TODOLIST
-        elif self.find('clue') is not None:
+        elif self.find("clue") is not None:
             self.scene = Scene.INFRA_CONFIDENTIAL
-        elif self.find('arrange_check_in') or self.find('arrange_check_in_on') is not None:
+        elif (
+            self.find("arrange_check_in")
+            or self.find("arrange_check_in_on") is not None
+        ):
             self.scene = Scene.INFRA_DETAILS
-        elif self.find('infra_overview_in', scope=((50, 690), (430, 770))) is not None:
+        elif self.find("infra_overview_in", scope=((50, 690), (430, 770))) is not None:
             self.scene = Scene.INFRA_ARRANGE
         elif self.find("arrange_order_options"):
             self.scene = Scene.INFRA_ARRANGE_ORDER
-        elif self.find('arrange_confirm') is not None:
+        elif self.find("arrange_confirm") is not None:
             self.scene = Scene.INFRA_ARRANGE_CONFIRM
-        elif self.find('arrange_order_options_scene') is not None:
+        elif self.find("arrange_order_options_scene") is not None:
             self.scene = Scene.INFRA_ARRANGE_ORDER
-        elif self.find('loading') is not None:
+        elif self.find("loading") is not None:
             self.scene = Scene.LOADING
-        elif self.find('loading2') is not None:
+        elif self.find("loading2") is not None:
             self.scene = Scene.LOADING
-        elif self.find('loading3') is not None:
+        elif self.find("loading3") is not None:
             self.scene = Scene.LOADING
-        elif self.find('loading4') is not None:
+        elif self.find("loading4") is not None:
             self.scene = Scene.LOADING
         elif self.detect_index_scene():
             self.scene = Scene.INDEX
@@ -299,7 +322,7 @@ class Recognizer(object):
         # save screencap to analyse
         if config.SCREENSHOT_PATH is not None:
             self.save_screencap(self.scene)
-        logger.info(f'Scene: {self.scene}: {SceneComment[self.scene]}')
+        logger.info(f"Scene: {self.scene}: {SceneComment[self.scene]}")
 
         self.check_loading_time()
 
@@ -308,7 +331,9 @@ class Recognizer(object):
     def find_ra_battle_exit(self) -> bool:
         im = cv2.cvtColor(self.img, cv2.COLOR_RGB2HSV)
         im = cv2.inRange(im, (29, 0, 0), (31, 255, 255))
-        score, scope = self.template_match("ra/battle_exit", ((75, 47), (165, 126)), cv2.TM_CCOEFF_NORMED)
+        score, scope = self.template_match(
+            "ra/battle_exit", ((75, 47), (165, 126)), cv2.TM_CCOEFF_NORMED
+        )
         return scope if score > 0.8 else None
 
     def get_ra_scene(self) -> int:
@@ -318,7 +343,7 @@ class Recognizer(object):
         # 场景缓存
         if self.scene != Scene.UNDEFINED:
             return self.scene
-        
+
         # 连接中，优先级最高
         if self.detect_connecting_scene():
             self.scene = Scene.CONNECTING
@@ -365,7 +390,9 @@ class Recognizer(object):
             self.scene = Scene.RA_GUIDE_ENTRANCE
 
         # 存档操作
-        elif self.find("ra/delete_save_confirm_dialog", scope=((585, 345), (1020, 440))):
+        elif self.find(
+            "ra/delete_save_confirm_dialog", scope=((585, 345), (1020, 440))
+        ):
             self.scene = Scene.RA_DELETE_SAVE_DIALOG
 
         # 地图识别
@@ -410,7 +437,7 @@ class Recognizer(object):
         # 场景缓存
         if self.scene != Scene.UNDEFINED:
             return self.scene
-        
+
         # 连接中，优先级最高
         if self.detect_connecting_scene():
             self.scene = Scene.CONNECTING
@@ -453,15 +480,66 @@ class Recognizer(object):
 
         return self.scene
 
+    def get_clue_scene(self) -> int:
+        """
+        线索场景识别
+        """
+        # 场景缓存
+        if self.scene != Scene.UNDEFINED:
+            return self.scene
+
+        # 连接中，优先级最高
+        if self.detect_connecting_scene():
+            self.scene = Scene.CONNECTING
+
+        elif self.find("arrange_check_in") or self.find("arrange_check_in_on"):
+            self.scene = Scene.INFRA_DETAILS
+        elif self.find("clue/main", scope=((1740, 850), (1860, 1050))):
+            self.scene = Scene.INFRA_CONFIDENTIAL
+        elif self.find("clue/daily"):
+            self.scene = Scene.CLUE_DAILY
+        elif self.find("clue/receive", scope=((1280, 0), (1600, 90))):
+            self.scene = Scene.CLUE_RECEIVE
+        elif self.find("clue/filter", scope=((0, 80), (650, 180))):
+            self.scene = Scene.CLUE_GIVE_AWAY
+        elif self.find("clue/summary", scope=((30, 120), (350, 370))):
+            self.scene = Scene.CLUE_SUMMARY
+        elif self.find("clue/filter", scope=((1280, 80), (1920, 180))):
+            self.scene = Scene.CLUE_PLACE
+        else:
+            self.scene = Scene.UNKNOWN
+            if self.device.check_current_focus():
+                self.update()
+
+        # save screencap to analyse
+        if config.SCREENSHOT_PATH is not None:
+            self.save_screencap(self.scene)
+        logger.info(f"Scene: {self.scene}: {SceneComment[self.scene]}")
+
+        self.check_loading_time()
+
+        return self.scene
+
     def is_black(self) -> None:
-        """ check if the current scene is all black """
+        """check if the current scene is all black"""
         return np.max(self.gray[:, 105:-105]) < 16
 
     def nav_button(self):
-        """ find navigation button """
-        return self.find('nav_button', thres=128, scope=((0, 0), (100+self.w//4, self.h//10)))
+        """find navigation button"""
+        return self.find(
+            "nav_button", thres=128, scope=((0, 0), (100 + self.w // 4, self.h // 10))
+        )
 
-    def find(self, res: str, draw: bool = False, scope: tp.Scope = None, thres: int = None, judge: bool = True, strict: bool = False, score=0.0) -> tp.Scope:
+    def find(
+        self,
+        res: str,
+        draw: bool = False,
+        scope: tp.Scope = None,
+        thres: int = None,
+        judge: bool = True,
+        strict: bool = False,
+        score=0.0,
+    ) -> tp.Scope:
         """
         查找元素是否出现在画面中
 
@@ -475,23 +553,29 @@ class Recognizer(object):
 
         :return ret: 若匹配成功，则返回元素在游戏界面中出现的位置，否则返回 None
         """
-        logger.debug(f'find: {res}')
-        res = f'{__rootdir__}/resources/{res}.png'
+        logger.debug(f"find: {res}")
+        res = f"{__rootdir__}/resources/{res}.png"
 
         if thres is not None:
             # 对图像二值化处理
             res_img = thres2(loadimg(res, True), thres)
             matcher = Matcher(thres2(self.gray, thres))
-            ret = matcher.match(res_img, draw=draw, scope=scope, judge=judge, prescore=score)
+            ret = matcher.match(
+                res_img, draw=draw, scope=scope, judge=judge, prescore=score
+            )
         else:
             res_img = loadimg(res, True)
             matcher = self.matcher
-            ret = matcher.match(res_img, draw=draw, scope=scope, judge=judge, prescore=score)
+            ret = matcher.match(
+                res_img, draw=draw, scope=scope, judge=judge, prescore=score
+            )
         if strict and ret is None:
             raise RecognizeError(f"Can't find '{res}'")
         return ret
 
-    def score(self, res: str, draw: bool = False, scope: tp.Scope = None, thres: int = None) -> Optional[List[float]]:
+    def score(
+        self, res: str, draw: bool = False, scope: tp.Scope = None, thres: int = None
+    ) -> Optional[List[float]]:
         """
         查找元素是否出现在画面中，并返回分数
 
@@ -502,8 +586,8 @@ class Recognizer(object):
 
         :return ret: 若匹配成功，则返回元素在游戏界面中出现的位置，否则返回 None
         """
-        logger.debug(f'find: {res}')
-        res = f'{__rootdir__}/resources/{res}.png'
+        logger.debug(f"find: {res}")
+        res = f"{__rootdir__}/resources/{res}.png"
 
         if thres is not None:
             # 对图像二值化处理
@@ -517,9 +601,11 @@ class Recognizer(object):
             score = matcher.score(res_img, draw=draw, scope=scope, only_score=True)
         return score
 
-    def template_match(self, res: str, scope: Optional[tp.Scope] = None, method: int = cv2.TM_CCOEFF) -> Tuple[float, tp.Scope]:
+    def template_match(
+        self, res: str, scope: Optional[tp.Scope] = None, method: int = cv2.TM_CCOEFF
+    ) -> Tuple[float, tp.Scope]:
         logger.debug(f"template_match: {res}")
-        res = f'{__rootdir__}/resources/{res}.png'
+        res = f"{__rootdir__}/resources/{res}.png"
 
         template = loadimg(res, True)
         w, h = template.shape[::-1]

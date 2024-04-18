@@ -223,6 +223,12 @@ class BaseSolver:
         """
         return self.recog.get_sss_scene()
 
+    def clue_scene(self) -> int:
+        """
+        线索场景识别
+        """
+        return self.recog.get_clue_scene()
+
     def is_login(self):
         """ check if you are logged in """
         return not ((scene := self.scene()) // 100 == 1 or scene // 100 == 99 or scene == -1)
