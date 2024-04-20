@@ -500,11 +500,11 @@ class Recognizer(object):
             self.scene = Scene.CLUE_DAILY
         elif self.find("clue/receive", scope=((1280, 0), (1600, 90))):
             self.scene = Scene.CLUE_RECEIVE
-        elif self.find("clue/filter", scope=((0, 80), (650, 180))):
+        elif self.find("clue/filter", scope=((0, 80), (650, 180)), score=0.5):
             self.scene = Scene.CLUE_GIVE_AWAY
         elif self.find("clue/summary", scope=((30, 120), (350, 370))):
             self.scene = Scene.CLUE_SUMMARY
-        elif self.find("clue/filter", scope=((1280, 80), (1920, 180))):
+        elif self.find("clue/filter", scope=((1280, 80), (1920, 180)), score=0.5):
             self.scene = Scene.CLUE_PLACE
         else:
             self.scene = Scene.UNKNOWN
