@@ -1338,6 +1338,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 else:
                     ctm.complete("give_away")
                     self.tap((1868, 54))
+            elif scene == Scene.CLUE_SUMMARY:
+                self.back()
             else:
                 self.sleep()
         self.back()
