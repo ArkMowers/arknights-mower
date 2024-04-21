@@ -125,9 +125,7 @@ class Operators(object):
                         if _replacement not in self.operators:
                             return f'菲亚梅塔替换不在高效组列: 房间->{room}, 干员->{_replacement}'
                         if _replacement in self.operators and not self.operators[_replacement].is_high():
-                            return f'菲亚梅塔替换只能高效组干员: 房间->{room}, 干员->{_replacement}'
-                        if _replacement in self.operators and self.operators[_replacement].group != '':
-                            return f'菲亚梅塔替换不可分组: 房间->{room}, 干员->{_replacement}'
+                            return f'菲亚梅塔替换只能为高效组干员: 房间->{room}, 干员->{_replacement}'
         # 判定替换缺失
         if "菲亚梅塔" in missing_replacements:
             return f'菲亚梅塔替换缺失'

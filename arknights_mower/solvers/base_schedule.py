@@ -287,39 +287,48 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
 
     def plan_fia(self):
         fia_plan, fia_room = self.check_fia()
-        if fia_room is not None and fia_plan is not None:
-            current_time = self.task.time
-            candidate_lst = []
-            # 复制最后一位的当前信息
-            last_candidate = copy.deepcopy(self.op_data.operators[self.op_data.operators['菲亚梅塔'].replacement[-1]])
-            plan_last = True
-            for name in self.op_data.operators['菲亚梅塔'].replacement[:-1]:
-                if name in self.op_data.operators:
-                    # 必须有心情消耗速率才可以进行计算
-                    if not 0 < self.op_data.operators[name].depletion_rate < 2:
-                        logger.info(f'{name}的心情消耗速率缺失或不在合理范围内')
-                        plan_last = False
-                    # 复制除去最后一位的当前信息
-                    data = copy.deepcopy(self.op_data.operators[name])
-                    data.mood = data.current_mood()
-                    candidate_lst.append(data)
-            self.skip()
-            # 排序
-            candidate_lst.sort(key=lambda x: (x.mood - x.lower_limit) / (x.upper_limit - x.lower_limit), reverse=False)
-            print(candidate_lst)
-            print(last_candidate)
-            name = candidate_lst[0].name
-            # 只有主要充能干员心情在20以上才会考虑额外干员
-            if (plan_last or candidate_lst[0].current_mood() >= 20) and not last_candidate.is_resting():
-                mood = last_candidate.current_mood()
-                is_lowest = mood < candidate_lst[0].current_mood()
-                logger.debug(f'{last_candidate.name},mood:{mood}')
-                if is_lowest:
-                    if plan_last and self.op_data.predict_fia(copy.deepcopy(candidate_lst), mood):
-                        name = last_candidate.name
-                    elif not plan_last:
-                        name = last_candidate.name
-            self.tasks.append(SchedulerTask(time=current_time, task_plan={fia_room: [name, '菲亚梅塔']}))
+        if fia_room is None or fia_plan is None:
+            return
+        # 肥鸭充能新模式：https://github.com/ArkMowers/arknights-mower/issues/551
+        target = None
+        fia_threshold = 0.9
+        for operator in fia_plan:
+            data = self.op_data.operators[operator]
+            if data.current_mood() > fia_threshold * 24:
+                logger.debug(f"干员{operator}心情高于阈值，跳过充能")
+                continue
+            if data.rest_in_full and data.exhaust_require and not data.is_resting():
+                logger.debug(f"暖机干员{operator}不在宿舍，跳过充能")
+                continue
+            if data.group:
+                lowest = True
+                for member in self.op_data.groups[data.group]:
+                    member_morale = self.op_data.operators[member].current_mood()
+                    if member_morale < data.current_mood():
+                        lowest = False
+                        logger.debug(
+                            f"干员{operator}心情{data.current_mood()}高于同组干员{member}心情{member_morale}，跳过充能"
+                        )
+                        break
+                if not lowest:
+                    continue
+            target = operator
+            break
+        if target:
+            self.tasks.append(
+                SchedulerTask(
+                    time=self.task.time,
+                    task_plan={fia_room: [target, "菲亚梅塔"]},
+                )
+            )
+        else:
+            logger.info("肥鸭充能干员不足，请添加更多干员！")
+            self.tasks.append(
+                SchedulerTask(
+                    time=self.task.time + timedelta(hours=24 * (1 - fia_threshold) / 2),
+                    task_type=TaskTypes.FIAMMETTA,
+                )
+            )
 
     def plan_metadata(self):
         planned_index = []
@@ -883,10 +892,20 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             else:
                 _high += 1
         logger.debug(f"需求高效:{_high},低效：{_low}")
+        # 肥鸭充能新模式：https://github.com/ArkMowers/arknights-mower/issues/551
+        fia_plan, fia_room = self.check_fia()
         # 排序
-        agents.sort(key=lambda y: (self.op_data.operators[y].current_room == "factory",
-                                   self.op_data.operators[y].current_mood() - self.op_data.operators[y].lower_limit),
-                    reverse=False)
+        # 1. 肥鸭充能列表中的干员靠前
+        # 2. 不在加工站的干员靠前
+        # 3. 心情低的干员靠前
+        agents.sort(
+            key=lambda y: (
+                y not in fia_plan,
+                self.op_data.operators[y].current_room in ["factory", "train"],
+                self.op_data.operators[y].current_mood()
+                - self.op_data.operators[y].lower_limit,
+            )
+        )
         # 进行位置数量的初步判定
         # 对于252可能需要进行额外判定，由于 low_free 性质等同于 high_free
         success = True
