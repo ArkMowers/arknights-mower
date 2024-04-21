@@ -1022,7 +1022,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         matcher = Matcher(img)
         for res in ["bill", "factory", "trust"]:
             res_img = loadimg(f"{__rootdir__}/resources/infra_collect_{res}.png", True)
-            if scope := matcher.match(res_img):
+            tap_times = 0
+            while scope := matcher.match(res_img):
                 logger.info(f"基建产物/信赖收取：{res}")
                 x, y = self.get_pos(scope)
                 self.tap((x + 200 - 31, y + 900 - 31))
@@ -1030,6 +1031,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 img = cropimg(self.recog.gray, ((200, 900), (1500, 1080)))
                 img = cv2.copyMakeBorder(img, 31, 31, 31, 31, cv2.BORDER_REPLICATE)
                 matcher = Matcher(img)
+                tap_times += 1
+                if tap_times > 5:
+                    break
         if not tapped:
             self.tap((self.recog.w * 0.05, self.recog.h * 0.95))
             self.todo_task = True
@@ -1124,7 +1128,13 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         class ClueTaskManager:
             def __init__(self):
                 # 操作顺序：领取每日线索、接收好友线索、摆线索、送线索、更新线索交流结束时间
-                self.task_list = ["daily", "receive", "place", "give_away", "party_time"]
+                self.task_list = [
+                    "daily",
+                    "receive",
+                    "place",
+                    "give_away",
+                    "party_time",
+                ]
                 self.task = self.task_list[0]
 
             def complete(self, task):
@@ -1177,8 +1187,29 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             if scene == Scene.INFRA_DETAILS:
                 if ctm.task == "party_time":
                     if self.find("clue/title_party", scope=((1600, 190), (1880, 260))):
-                        self.party_time = self.double_read_time(((1768, 438), (1902, 480)))
+                        self.party_time = self.double_read_time(
+                            ((1768, 438), (1902, 480))
+                        )
                         logger.info(f"线索交流结束时间：{self.party_time}")
+                        # 如果启用MAA，则在线索交流结束后购物
+                        if self.maa_config["maa_enable"]:
+                            if not find_next_task(
+                                self.tasks,
+                                task_type=TaskTypes.MAA_MALL,
+                            ):
+                                self.tasks.append(
+                                    SchedulerTask(
+                                        time=self.party_time
+                                        - timedelta(milliseconds=1),
+                                        task_type=TaskTypes.CLUE_PARTY,
+                                    )
+                                )
+                                self.tasks.append(
+                                    SchedulerTask(
+                                        time=self.party_time,
+                                        task_type=TaskTypes.MAA_MALL,
+                                    )
+                                )
                     else:
                         self.party_time = None
                         logger.info(f"线索交流未开启")
@@ -1275,7 +1306,16 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         time_hsv = cv2.cvtColor(time_hsv, cv2.COLOR_RGB2HSV)
                         if 165 < time_hsv[0][0][0] < 175:
                             time_img = thres2(cropimg(self.recog.gray, time_scope), 180)
-                            time_img = cv2.copyMakeBorder(time_img, 48, 48, 48, 48, cv2.BORDER_CONSTANT, None, (0,))
+                            time_img = cv2.copyMakeBorder(
+                                time_img,
+                                48,
+                                48,
+                                48,
+                                48,
+                                cv2.BORDER_CONSTANT,
+                                None,
+                                (0,),
+                            )
                             time = rapidocr.engine(
                                 time_img,
                                 use_det=False,
@@ -1287,11 +1327,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         else:
                             time = None
                         clue_list.append(
-                            {
-                                "name": name,
-                                "time": time,
-                                "scope": tl2p(cp)
-                            }
+                            {"name": name, "time": time, "scope": tl2p(cp)}
                         )
                     else:
                         break
