@@ -129,10 +129,6 @@ class Operators(object):
         # 判定替换缺失
         if "菲亚梅塔" in missing_replacements:
             return f'菲亚梅塔替换缺失'
-        if '菲亚梅塔' in self.operators:
-            for _agent in missing_replacements[:]:
-                if _agent in self.operators['菲亚梅塔'].replacement[:-1]:
-                    missing_replacements.remove(_agent)
         if len(missing_replacements):
             return f'以下干员替换组缺失：{",".join(missing_replacements)}'
         dorm_names = [k for k in self.plan.keys() if k.startswith("dorm")]
