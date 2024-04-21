@@ -780,8 +780,6 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 # 忽略掉菲亚梅塔充能的干员
                 if high_free == 0 or low_free == 0:
                     break
-                if fia_room is not None and op.name in self.op_data.operators['菲亚梅塔'].replacement[:-1]:
-                    continue
                 if op.name in self.op_data.workaholic_agent:
                     continue
                 # 忽略掉正在休息的
@@ -1124,6 +1122,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         }
         dot_offset = (168, -8)
         main_offset = (425, 0)
+        main_time_offset = (443, 257)
 
         def va(a, b):
             return a[0] + b[0], a[1] + b[1]
@@ -1138,10 +1137,12 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             clue_scope[index] = tl2p(top_left)
         clue_dots = {}
         main_dots = {}
+        main_time = {}
         main_scope = {}
         for i in range(1, 8):
             clue_dots[i] = va(clue_top_left[i], dot_offset)
             main_dots[i] = va(clue_dots[i], main_offset)
+            main_time[i] = va(clue_top_left[i], main_time_offset)
             main_scope[i] = tl2p(va(clue_top_left[i], main_offset))
 
         class ClueTaskManager:
@@ -1165,7 +1166,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         tm_thres = 0.6
 
         def clue_cls(scope):
-            img = cropimg(self.recog.img, clue_scope[scope])
+            scope_dict = clue_scope if isinstance(scope, str) else main_scope
+            img = cropimg(self.recog.img, scope_dict[scope])
             for i in range(1, 8):
                 res = loadimg(f"{__rootdir__}/resources/clue/{i}.png")
                 result = cv2.matchTemplate(img, res, cv2.TM_CCOEFF_NORMED)
@@ -1185,10 +1187,10 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         clue_status = {}
 
         def place_index():
-            for i, s in clue_status.items():
-                if s:
-                    return i
-            return None
+            for cl, st in clue_status.items():
+                if st in ["available", "self", "available_self_only"]:
+                    return cl, st
+            return None, None
 
         while ctm.task:
             scene = self.clue_scene()
@@ -1236,6 +1238,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 else:
                     # 点击左下角，关闭进驻信息，进入线索界面
                     self.tap((725, 850))
+
             elif scene == Scene.INFRA_CONFIDENTIAL:
                 if ctm.task == "daily":
                     # 检查是否领过线索
@@ -1255,16 +1258,26 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         self.tap(unlock_pos)
                         continue
                     for i in range(1, 8):
-                        clue_status[i] = all(self.get_color(main_dots[i]) == orange_dot)
-                    if current_clue := place_index():
-                        self.tap(main_scope[current_clue])
+                        if all(self.get_color(main_dots[i]) == orange_dot):
+                            clue_status[i] = "available"
+                        elif clue_cls(i):
+                            if self.get_color(main_time[i])[0] < 100:
+                                clue_status[i] = "self"
+                            else:
+                                clue_status[i] = "friend"
+                        else:
+                            clue_status[i] = None
+                    cl, st = place_index()
+                    if st in ["available", "self", "available_self_only"]:
+                        self.tap(main_scope[cl])
                         continue
                     else:
                         ctm.complete("place")
                 elif ctm.task == "give_away":
-                    self.tap((1799, 578))
+                    self.tap((1799, 578), interval=3)
                 elif ctm.task == "party_time":
                     self.back()
+
             elif scene == Scene.CLUE_DAILY:
                 if clue := clue_cls("daily"):
                     logger.info(f"领取今日线索（{clue}号）")
@@ -1273,51 +1286,65 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 else:
                     # 今日线索已领取，点X退出
                     self.tap((1484, 152))
+
             elif scene == Scene.CLUE_RECEIVE:
                 if clue := clue_cls("receive"):
                     name_scope = ((1580, 220), (1880, 255))
+                    name_img = cropimg(self.recog.gray, name_scope)
+                    name_img = cv2.copyMakeBorder(
+                        name_img, 48, 48, 48, 48, cv2.BORDER_REPLICATE
+                    )
                     name = rapidocr.engine(
-                        cropimg(self.recog.gray, name_scope),
-                        use_det=False,
+                        name_img,
+                        use_det=True,
                         use_cls=False,
                         use_rec=True,
-                    )[0][0][0]
+                    )[0][0][1]
                     name = name.strip() if name else "好友"
                     logger.info(f"接收{name}的{clue}号线索")
                     self.tap(name_scope)
                 else:
                     ctm.complete("receive")
                     self.tap(exit_pos)
+
             elif scene == Scene.CLUE_PLACE:
-                if not (current_clue := place_index()):
+                cl, st = place_index()
+                if cl is None:
                     if unlock_pos := self.find("clue/button_unlock", score=0.7):
                         self.tap(unlock_pos)
                     else:
                         ctm.complete("place")
                         self.tap(exit_pos)
                     continue
-                if self.get_color((1328 + 77 * current_clue, 114))[0] < 150:
-                    self.tap(clue_scope[current_clue])
+                if self.get_color((1328 + 77 * cl, 114))[0] < 150:
+                    self.tap(clue_scope[cl])
                     continue
+                receive = st in ["available", "self"]
                 filter_receive = (1900, 45)
-                if all(self.get_color(filter_receive) != [255] * 3):
-                    self.tap(filter_receive)
+                filter_self = (1610, 70)
+                filter_pos = filter_receive if receive else filter_self
+                if all(self.get_color(filter_pos) != [255] * 3):
+                    self.tap(filter_pos)
                     continue
                 clue_pos = ((1305, 208), (1305, 503), (1305, 797))
                 clue_list = []
                 for cp in clue_pos:
                     clue_img = cropimg(self.recog.img, tl2p(cp))
-                    res = loadimg(f"{__rootdir__}/resources/clue/{current_clue}.png")
+                    res = loadimg(f"{__rootdir__}/resources/clue/{cl}.png")
                     result = cv2.matchTemplate(clue_img, res, cv2.TM_CCOEFF_NORMED)
                     min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
                     if max_val > tm_thres:
                         name_scope = (va(cp, (274, 99)), va(cp, (580, 134)))
+                        name_img = cropimg(self.recog.gray, name_scope)
+                        name_img = cv2.copyMakeBorder(
+                            name_img, 48, 48, 48, 48, cv2.BORDER_REPLICATE
+                        )
                         name = rapidocr.engine(
-                            cropimg(self.recog.gray, name_scope),
-                            use_det=False,
+                            name_img,
+                            use_det=True,
                             use_cls=False,
                             use_rec=True,
-                        )[0][0][0]
+                        )[0][0][1]
                         if name:
                             name = name.strip()
                         time_scope = (va(cp, (45, 222)), va(cp, (168, 255)))
@@ -1326,21 +1353,14 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         if 165 < time_hsv[0][0][0] < 175:
                             time_img = thres2(cropimg(self.recog.gray, time_scope), 180)
                             time_img = cv2.copyMakeBorder(
-                                time_img,
-                                48,
-                                48,
-                                48,
-                                48,
-                                cv2.BORDER_CONSTANT,
-                                None,
-                                (0,),
+                                time_img, 48, 48, 48, 48, cv2.BORDER_REPLICATE
                             )
                             time = rapidocr.engine(
                                 time_img,
-                                use_det=False,
+                                use_det=True,
                                 use_cls=False,
                                 use_rec=True,
-                            )[0][0][0]
+                            )[0][0][1]
                             if time:
                                 time = time.strip()
                         else:
@@ -1351,7 +1371,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     else:
                         break
                 if clue_list:
-                    logger.info(f"{current_clue}号线索列表：{clue_list}")
+                    list_name = "接收库" if receive else "自有库"
+                    logger.info(f"{cl}号线索{list_name}：{clue_list}")
                     selected = None
                     for c in clue_list:
                         if c["time"]:
@@ -1359,7 +1380,24 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                             break
                     selected = selected or clue_list[0]
                     self.tap(selected["scope"])
-                clue_status[current_clue] = False
+                    if clue_status[cl] == "available":
+                        clue_status[cl] = "friend"
+                    elif clue_status[cl] == "available_self_only":
+                        clue_status[cl] = "self_only"
+                    elif clue_status[cl] == "self":
+                        clue_status[cl] = "friend"
+                    else:
+                        clue_status[cl] = None
+                else:
+                    if clue_status[cl] == "available":
+                        clue_status[cl] = "available_self_only"
+                    elif clue_status[cl] == "available_self_only":
+                        clue_status[cl] = None
+                    elif clue_status[cl] == "self":
+                        clue_status[cl] = "self_only"
+                    else:
+                        clue_status[cl] = None
+
             elif scene == Scene.CLUE_GIVE_AWAY:
                 if not friend_clue:
                     for i in range(4):
@@ -1367,10 +1405,10 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         name_scope = (name_top_left, va(name_top_left, (383, 62)))
                         name = rapidocr.engine(
                             cropimg(self.recog.gray, name_scope),
-                            use_det=False,
+                            use_det=True,
                             use_cls=False,
                             use_rec=True,
-                        )[0][0][0]
+                        )[0][0][1]
                         if name:
                             name = name.strip()
                         data = {"name": name}
@@ -1378,7 +1416,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                             pos = (1230 + j * 64, 142 + i * 222)
                             data[j] = self.get_color(pos)[0] > 137
                         friend_clue.append(data)
-                logger.info(friend_clue)
+                logger.debug(friend_clue)
                 if c := clue_cls("give_away"):
                     friend = None
                     for idx, fc in enumerate(friend_clue):
@@ -1393,10 +1431,13 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 else:
                     ctm.complete("give_away")
                     self.tap((1868, 54))
+
             elif scene == Scene.CLUE_SUMMARY:
                 self.back()
+
             else:
                 self.sleep()
+
         self.back()
 
     def clue(self) -> None:
