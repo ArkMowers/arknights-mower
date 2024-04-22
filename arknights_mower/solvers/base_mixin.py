@@ -144,6 +144,9 @@ class BaseMixin:
                 raise e
 
     def swipe_left(self, right_swipe, w, h):
+        if right_swipe > 3:
+            self.detail_filter(控制中枢=True)
+            self.detail_filter(控制中枢=False)
         for _ in range(right_swipe):
             self.swipe_only((w // 2, h // 2), (w // 2, 0), interval=0.5)
         return 0
