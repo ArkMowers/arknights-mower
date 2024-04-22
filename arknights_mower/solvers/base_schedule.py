@@ -2137,7 +2137,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         # 排序
         if len(agents) != 1:
             # 左移
-            self.swipe_left(right_swipe, w, h)
+            right_swipe = self.swipe_left(right_swipe, w, h)
             self.tap((self.recog.w * arrange_order_res[ArrangeOrder.SKILL][0],
                       self.recog.h * arrange_order_res[ArrangeOrder.SKILL][1]), interval=0.5, rebuild=False)
             not_match = False
@@ -2151,6 +2151,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     self.tap((self.recog.w * position[p_idx][0], self.recog.h * position[p_idx][1]), interval=0,
                              rebuild=False)
         logger.debug("验证干员选择..")
+        self.swipe_left(right_swipe, w, h)
         self.switch_arrange_order(2)
         if not self.verify_agent(agents):
             raise Exception("检测到干员选择错误，重新选择")
