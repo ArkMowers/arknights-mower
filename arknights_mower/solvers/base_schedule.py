@@ -2150,11 +2150,10 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                              rebuild=False)
                     self.tap((self.recog.w * position[p_idx][0], self.recog.h * position[p_idx][1]), interval=0,
                              rebuild=False)
-        if (len(agents) == 2 and agents[1] == "菲亚梅塔") or ("龙舌兰" in agents or "但书" in agents):
-            logger.info("验证干员选择..")
-            self.switch_arrange_order(2)
-            if not self.verify_agent(agents):
-                raise Exception("检测到干员选择错误，重新选择")
+        logger.debug("验证干员选择..")
+        self.switch_arrange_order(2)
+        if not self.verify_agent(agents):
+            raise Exception("检测到干员选择错误，重新选择")
         self.last_room = room
 
     def reset_room_time(self, room):
