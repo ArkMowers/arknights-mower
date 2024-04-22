@@ -2032,11 +2032,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         pre_order = [2, False]
         right_swipe = 0
         retry_count = 0
-        # 如果重复进入宿舍则需要排序
         selected = []
         logger.info(f'上次进入房间为：{self.last_room},本次房间为：{room}')
-        if self.last_room.startswith('dorm') and is_dorm:
-            self.detail_filter()
+        self.detail_filter()
         siege = False  # 推进之王
         while len(agent) > 0:
             if retry_count > 1: raise Exception("到达最大尝试次数 1次")
