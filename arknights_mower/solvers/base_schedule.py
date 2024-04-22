@@ -1269,10 +1269,11 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         if all(self.get_color(main_dots[i]) == orange_dot):
                             clue_status[i] = "available"
                         elif clue_cls(i):
-                            if self.get_color(main_time[i])[0] < 100:
-                                clue_status[i] = "self"
-                            else:
+                            hsv = cv2.cvtColor(self.recog.img, cv2.COLOR_RGB2HSV)
+                            if 165 < hsv[main_time[i][1]][main_time[i][0]][0] < 175:
                                 clue_status[i] = "friend"
+                            else:
+                                clue_status[i] = "self"
                         else:
                             clue_status[i] = None
                     cl, st = place_index()
