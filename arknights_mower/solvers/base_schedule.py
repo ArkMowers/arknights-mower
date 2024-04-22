@@ -898,7 +898,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         # 3. 心情低的干员靠前
         agents.sort(
             key=lambda y: (
-                y not in fia_plan,
+                y not in fia_plan if fia_plan else True,
                 self.op_data.operators[y].current_room in ["factory", "train"],
                 self.op_data.operators[y].current_mood()
                 - self.op_data.operators[y].lower_limit,
