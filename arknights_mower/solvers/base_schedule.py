@@ -321,6 +321,14 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     task_plan={fia_room: [target, "菲亚梅塔"]},
                 )
             )
+            # 充能结束后整组立即上班
+            for task in self.tasks:
+                if task.type == TaskTypes.SHIFT_ON:
+                    for room, operators in task.plan.items():
+                        if target in operators:
+                            task.time = self.task.time + timedelta(seconds=1)
+                            self.tasks.sort(key=lambda task: task.time)
+                            return
         else:
             logger.info("肥鸭充能干员不足，请添加更多干员！")
             self.tasks.append(
