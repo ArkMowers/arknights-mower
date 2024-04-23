@@ -1,4 +1,5 @@
 import math
+import time
 from datetime import datetime, timedelta
 from threading import Event, Thread
 from typing import Optional
@@ -189,7 +190,7 @@ class ReclamationAlgorithm(BaseSolver):
             self.device.swipe_ext(
                 (start_point, end_point, end_point), durations=[500, 200]
             )
-            self.sleep(interval=0.1, rebuild=False)
+            time.sleep(0.1)
         self.recog.update()
         self.recog.save_screencap("ra_drag_map")
         return True

@@ -4,6 +4,7 @@ from datetime import timedelta, datetime
 from enum import Enum
 import lzma
 import pickle
+import time
 
 import cv2
 import numpy as np
@@ -149,6 +150,7 @@ class BaseMixin:
             self.detail_filter(控制中枢=False)
         for _ in range(right_swipe):
             self.swipe_only((w // 2, h // 2), (w // 2, 0), interval=0.5)
+            time.sleep(0.1)
         return 0
 
     def detail_filter(self, **kwargs):
