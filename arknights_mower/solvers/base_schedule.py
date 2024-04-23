@@ -294,21 +294,22 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         fia_threshold = 0.9
         for operator in fia_plan:
             data = self.op_data.operators[operator]
-            if data.current_mood() > fia_threshold * 24:
-                logger.debug(f"干员{operator}心情高于阈值，跳过充能")
+            operator_morale = data.current_mood()
+            logger.debug(f"{operator}的心情为{operator_morale}")
+            if operator_morale > fia_threshold * 24:
+                logger.debug(f"{operator}的心情高于阈值，跳过充能")
                 continue
             if data.rest_in_full and data.exhaust_require and not data.is_resting():
-                logger.debug(f"暖机干员{operator}不在宿舍，跳过充能")
+                logger.debug(f"{operator}为暖机干员但不在宿舍，跳过充能")
                 continue
             if data.group:
                 lowest = True
                 for member in self.op_data.groups[data.group]:
                     member_morale = self.op_data.operators[member].current_mood()
-                    if member_morale < data.current_mood():
+                    logger.debug(f"{data.group}组内{member}的心情为{member_morale}")
+                    if member_morale < operator_morale:
                         lowest = False
-                        logger.debug(
-                            f"干员{operator}心情{data.current_mood()}高于同组干员{member}心情{member_morale}，跳过充能"
-                        )
+                        logger.debug(f"{operator}的心情高于{member}，跳过充能")
                         break
                 if not lowest:
                     continue
@@ -337,6 +338,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     task_type=TaskTypes.FIAMMETTA,
                 )
             )
+            self.tasks.sort(key=lambda task: task.time)
 
     def plan_metadata(self):
         planned_index = []
