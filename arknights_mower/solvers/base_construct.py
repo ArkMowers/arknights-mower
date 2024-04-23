@@ -14,7 +14,7 @@ from arknights_mower.utils.digit_reader import DigitReader
 import time
 import copy
 
-from arknights_mower.solvers.base_mixin import ArrangeOrder, arrange_order_res, BaseMixin
+from arknights_mower.solvers.base_mixin import BaseMixin
 from arknights_mower.data import agent_list
 
 

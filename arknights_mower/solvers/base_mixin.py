@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import timedelta, datetime
-from enum import Enum
 import lzma
 import pickle
 import time
@@ -17,22 +16,6 @@ from arknights_mower.utils.recognize import Scene
 from arknights_mower.utils import rapidocr
 from arknights_mower.data import agent_list, ocr_error
 from arknights_mower.utils.image import thres2, loadimg, cropimg
-from arknights_mower.utils.matcher import Matcher
-
-
-class ArrangeOrder(Enum):
-    STATUS = 1
-    SKILL = 2
-    FEELING = 3
-    TRUST = 4
-
-
-arrange_order_res = {
-    ArrangeOrder.STATUS: (1560 / 2496, 96 / 1404),
-    ArrangeOrder.SKILL: (1720 / 2496, 96 / 1404),
-    ArrangeOrder.FEELING: (1880 / 2496, 96 / 1404),
-    ArrangeOrder.TRUST: (2050 / 2496, 96 / 1404),
-}
 
 with lzma.open(f"{__rootdir__}/models/operator_room.model", "rb") as f:
     OP_ROOM = pickle.loads(f.read())
@@ -41,59 +24,39 @@ kernel = np.ones((12, 12), np.uint8)
 
 
 class BaseMixin:
-    def switch_arrange_order(self, index: int, asc="false") -> None:
-        self.tap(
-            (
-                self.recog.w * arrange_order_res[ArrangeOrder(index)][0],
-                self.recog.h * arrange_order_res[ArrangeOrder(index)][1],
-            ),
-            interval=0,
-            rebuild=False,
-        )
-        # 点个不需要的
-        if index < 4:
-            self.tap(
-                (
-                    self.recog.w * arrange_order_res[ArrangeOrder(index + 1)][0],
-                    self.recog.h * arrange_order_res[ArrangeOrder(index)][1],
-                ),
-                interval=0,
-                rebuild=False,
-            )
-        else:
-            self.tap(
-                (
-                    self.recog.w * arrange_order_res[ArrangeOrder(index - 1)][0],
-                    self.recog.h * arrange_order_res[ArrangeOrder(index)][1],
-                ),
-                interval=0,
-                rebuild=False,
-            )
-        # 切回来
-        self.tap(
-            (
-                self.recog.w * arrange_order_res[ArrangeOrder(index)][0],
-                self.recog.h * arrange_order_res[ArrangeOrder(index)][1],
-            ),
-            interval=0.2,
-            rebuild=True,
-        )
-        # 倒序
-        if asc != "false":
-            self.tap(
-                (
-                    self.recog.w * arrange_order_res[ArrangeOrder(index)][0],
-                    self.recog.h * arrange_order_res[ArrangeOrder(index)][1],
-                ),
-                interval=0.2,
-                rebuild=True,
-            )
+    def detect_arrange_order(self):
+        name_list = ["工作状态", "技能", "心情", "信赖值"]
+        x_list = (1196, 1320, 1445, 1572)
+        y = 70
+        hsv = cv2.cvtColor(self.recog.img, cv2.COLOR_RGB2HSV)
+        mask = cv2.inRange(hsv, (99, 200, 0), (100, 255, 255))
+        for idx, x in enumerate(x_list):
+            if np.count_nonzero(mask[y : y + 3, x : x + 5]):
+                return (name_list[idx], True)
+            if np.count_nonzero(mask[y + 10 : y + 13, x : x + 5]):
+                return (name_list[idx], False)
+
+    def switch_arrange_order(self, name, ascending=False):
+        name_x = {"工作状态": 1197, "技能": 1322, "心情": 1447, "信赖值": 1575}
+        if isinstance(name, int):
+            name = list(name_x.keys())[name - 1]
+        if isinstance(ascending, str):
+            ascending = ascending == "true"
+        name_y = 60
+        self.tap((name_x[name], name_y), interval=0.5)
+        while True:
+            n, s = self.detect_arrange_order()
+            if n == name and s == ascending:
+                break
+            self.tap((name_x[name], name_y), interval=0.5)
 
     def scan_agent(self, agent: list[str], error_count=0, max_agent_count=-1):
         try:
             # 识别干员
             self.recog.update()
-            ret = character_recognize.operator_list(self.recog.img)  # 返回的顺序是从左往右从上往下
+            ret = character_recognize.operator_list(
+                self.recog.img
+            )  # 返回的顺序是从左往右从上往下
             # 提取识别出来的干员的名字
             select_name = []
             for name, scope in ret:
@@ -120,7 +83,9 @@ class BaseMixin:
         try:
             # 识别干员
             self.recog.update()
-            ret = character_recognize.operator_list(self.recog.img)  # 返回的顺序是从左往右从上往下
+            ret = character_recognize.operator_list(
+                self.recog.img
+            )  # 返回的顺序是从左往右从上往下
             # 提取识别出来的干员的名字
             select_name = []
             index = 0
@@ -133,10 +98,7 @@ class BaseMixin:
             return True
         except Exception as e:
             error_count += 1
-            self.tap((self.recog.w * arrange_order_res[ArrangeOrder.SKILL][0],
-                      self.recog.h * arrange_order_res[ArrangeOrder.SKILL][1]), interval=0, rebuild=False)
-            self.tap((self.recog.w * arrange_order_res[ArrangeOrder.SKILL][0],
-                      self.recog.h * arrange_order_res[ArrangeOrder.SKILL][1]), interval=0, rebuild=False)
+            self.switch_arrange_order("技能")
             if error_count < 3:
                 logger.exception(e)
                 self.sleep(3)
@@ -148,20 +110,33 @@ class BaseMixin:
         if right_swipe > 3:
             self.detail_filter(控制中枢=True)
             self.detail_filter(控制中枢=False)
-        for _ in range(right_swipe):
-            self.swipe_only((w // 2, h // 2), (w // 2, 0), interval=0.5)
-            time.sleep(0.1)
+        else:
+            for _ in range(right_swipe):
+                self.swipe_only((w // 2, h // 2), (w // 2, 0), interval=0.5)
+                time.sleep(0.1)
         return 0
 
     def detail_filter(self, **kwargs):
         if kwargs:
-            text = "，".join(f"{'打开' if value else '关闭'}{label}筛选" for label, value in kwargs.items())
+            text = "，".join(
+                f"{'打开' if value else '关闭'}{label}筛选"
+                for label, value in kwargs.items()
+            )
             text += "，关闭其余筛选"
             logger.info(text)
         else:
             logger.info("关闭所有筛选")
 
-        labels = ["未进驻", "产出设施", "功能设施", "自定义设施", "控制中枢", "生产类后勤", "功能类后勤", "恢复类后勤"]
+        labels = [
+            "未进驻",
+            "产出设施",
+            "功能设施",
+            "自定义设施",
+            "控制中枢",
+            "生产类后勤",
+            "功能类后勤",
+            "恢复类后勤",
+        ]
         label_x = (560, 815, 1070, 1330)
         label_y = (540, 645)
 
@@ -311,10 +286,12 @@ class BaseMixin:
             return cv2.countNonZero(img) * 24 / 310
         except Exception:
             return 24
-        
+
     def detect_product_complete(self):
         for product in ["gold", "exp", "lmd", "ori", "oru", "trust"]:
-            if pos := self.find(f"infra_{product}_complete", scope=((1230, 0), (1920, 1080))):
+            if pos := self.find(
+                f"infra_{product}_complete", scope=((1230, 0), (1920, 1080))
+            ):
                 return pos
 
     def read_operator_in_room(self, img):
