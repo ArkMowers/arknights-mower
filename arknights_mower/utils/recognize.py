@@ -106,11 +106,9 @@ class Recognizer(object):
             self.scene = Scene.NAVIGATION_BAR
         elif self.find("login_new") is not None:
             self.scene = Scene.LOGIN_NEW
-        elif (
-            self.find("login_bilibili_entry", score=0.8) is not None
-        ):  # 会被识别成公告，优先级应当比公告高
+        elif self.find("login_bilibili"):  # 会被识别成公告，优先级应当比公告高
             self.scene = Scene.LOGIN_BILIBILI
-        elif self.find("login_bilibili_privacy_accept", score=0.8) is not None:
+        elif self.find("login_bilibili_privacy_accept"):
             self.scene = Scene.LOGIN_BILIBILI_PRIVACY
         elif self.find("close_mine") is not None:
             self.scene = Scene.CLOSE_MINE
