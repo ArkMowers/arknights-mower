@@ -111,9 +111,12 @@ class BaseMixin:
             self.detail_filter(控制中枢=True)
             self.detail_filter(控制中枢=False)
         else:
-            for _ in range(right_swipe):
-                self.swipe_only((w // 2, h // 2), (w // 2, 0), interval=0.5)
-                time.sleep(0.1)
+            for i in range(right_swipe):
+                self.swipe_noinertia(
+                    (650, 540),
+                    (1900, 0),
+                    rebuild=i == right_swipe - 1,
+                )
         return 0
 
     def detail_filter(self, **kwargs):
