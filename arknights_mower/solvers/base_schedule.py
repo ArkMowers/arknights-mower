@@ -341,6 +341,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             if data.group:
                 lowest = True
                 for member in self.op_data.groups[data.group]:
+                    if member == operator:
+                        continue
                     member_morale = self.op_data.operators[member].current_mood()
                     logger.debug(f"{data.group}组内{member}的心情为{member_morale}")
                     if member_morale < operator_morale:
