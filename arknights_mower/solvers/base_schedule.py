@@ -2463,9 +2463,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         retry_count = 0
         selected = []
         logger.info(f"上次进入房间为：{self.last_room},本次房间为：{room}")
+        self.detail_filter()
         if self.detect_arrange_order()[0] == "信赖值":
             self.switch_arrange_order("工作状态")
-        self.detail_filter()
         siege = False  # 推进之王
         while len(agent) > 0:
             if retry_count > 1:
