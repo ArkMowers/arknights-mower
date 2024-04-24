@@ -108,7 +108,7 @@ class Recognizer(object):
             self.scene = Scene.LOGIN_NEW
         elif self.find("login_bilibili"):  # 会被识别成公告，优先级应当比公告高
             self.scene = Scene.LOGIN_BILIBILI
-        elif self.find("login_bilibili_privacy_accept"):
+        elif self.find("login_bilibili_privacy"):
             self.scene = Scene.LOGIN_BILIBILI_PRIVACY
         elif self.find("close_mine") is not None:
             self.scene = Scene.CLOSE_MINE
