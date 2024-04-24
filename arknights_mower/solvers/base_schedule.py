@@ -1551,7 +1551,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                                 )
                     else:
                         self.party_time = None
-                        logger.info(f"线索交流未开启")
+                        logger.info("线索交流未开启")
                     ctm.complete("party_time")
                 else:
                     # 点击左下角，关闭进驻信息，进入线索界面
@@ -1593,12 +1593,14 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     else:
                         ctm.complete("place")
                 elif ctm.task == "give_away":
-                    self.tap((1799, 578), interval=3)
+                    self.tap((1799, 578))
                 elif ctm.task == "party_time":
                     self.back()
 
             elif scene == Scene.CLUE_DAILY:
-                if clue := clue_cls("daily"):
+                if not self.find(
+                    "clue/icon_notification", scope=((1400, 0), (1920, 400))
+                ) and (clue := clue_cls("daily")):
                     logger.info(f"领取今日线索（{clue}号）")
                     self.tap_element("clue/button_get")
                     ctm.complete("daily")
@@ -1720,6 +1722,11 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             elif scene == Scene.CLUE_GIVE_AWAY:
                 if c := clue_cls("give_away"):
                     if not friend_clue:
+                        if self.find(
+                            "clue/icon_notification", scope=((1400, 0), (1920, 400))
+                        ):
+                            self.sleep()
+                            continue
                         for i in range(4):
                             name_top_left = (870, 127 + 222 * i)
                             name_scope = (name_top_left, va(name_top_left, (383, 62)))
