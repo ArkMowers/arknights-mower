@@ -217,6 +217,85 @@ class Arknights数据处理器:
             json.dump(可以刷的活动关卡, f, ensure_ascii=False)
         print(可以刷的活动关卡)
 
+    def load_recruit_data(self):
+        recruit_data = {}
+        recruit_result_data = {
+            4: [],
+            3: [],
+            2: [],
+            1: [],
+            -1: [],
+        }
+        # for 干员代码, 干员数据 in self.干员表.items():
+        #     print(干员代码,干员数据)
+        recruit_list = self.抽卡表['recruitDetail'].replace("\\n<@rc.eml>", "")
+        recruit_list = recruit_list.replace("\\n", "")
+        recruit_list = recruit_list.replace("★", "")
+        recruit_list = recruit_list.replace("<@rc.eml>", "")
+        recruit_list = recruit_list.replace("</>", "")
+        recruit_list = recruit_list.replace("/", "")
+        recruit_list = recruit_list.replace("  ", "\n")
+        recruit_list = recruit_list.replace("--------------------", "")
+        recruit_list = recruit_list.replace("<@rc.title>公开招募说明", "")
+        recruit_list = recruit_list.replace("<@rc.em>※稀有职业需求招募说明※", "")
+        recruit_list = recruit_list.replace("<@rc.em>当职业需求包含高级资深干员，且招募时限为9小时时，招募必得6星干员",
+                                            "")
+        recruit_list = recruit_list.replace(
+            "<@rc.em>当职业需求包含资深干员同时不包含高级资深干员，且招募时限为9小时，则该次招募必得5星干员", "")
+        recruit_list = recruit_list.replace("<@rc.subtitle>※全部可能出现的干员※", "")
+        recruit_list = recruit_list.replace("绿色高亮的不可寻访干员，可以在此招募", "")
+        recruit_list = recruit_list.split('\n')
+
+        profession = {
+            "MEDIC": "医疗干员",
+            "WARRIOR": "近卫干员",
+            "SPECIAL": "特种干员",
+            "SNIPER": "狙击干员",
+            "CASTER": "术师干员",
+            "TANK": "重装干员",
+            "SUPPORT": "辅助干员",
+            "PIONEER": "先锋干员"
+        }
+
+        for 干员代码, 干员数据 in self.干员表.items():
+            if not 干员数据["itemObtainApproach"]:
+                continue
+            干员名 = 干员数据["name"]
+            if 干员名 in recruit_list:
+                tag = 干员数据['tagList']
+
+                if len(干员名) <= 4:
+                    recruit_result_data[len(干员名)].append(干员代码)
+                else:
+                    recruit_result_data[-1].append(干员代码)
+
+                if int(干员数据['rarity'].split('TIER_')[1]) == 5:
+                    tag.append("资深干员")
+                elif int(干员数据['rarity'].split('TIER_')[1]) == 6:
+                    tag.append("高级资深干员")
+                elif int(干员数据['rarity'].split('TIER_')[1]) == 1:
+                    tag.append("支援机械")
+
+                if 干员数据['position'] == "MELEE":
+                    if 干员数据['description'].find("可以放置于远程位") == -1:
+                        tag.append("近战位")
+                elif 干员数据['position'] == "RANGED":
+                    tag.append("远程位")
+
+                tag.append(profession[干员数据['profession']])
+
+                recruit_data[干员代码] = {
+                    "name": 干员名,
+                    "stars": int(干员数据['rarity'].split('TIER_')[1]),
+                    "tags": 干员数据['tagList']
+                }
+
+        with open("./arknights_mower/data/recruit.json", "w", encoding="utf-8") as f:
+            json.dump(recruit_data, f, ensure_ascii=False)
+
+        with open("./arknights_mower/data/recruit_result.json", "w", encoding="utf-8") as f:
+            json.dump(recruit_result_data, f, ensure_ascii=False)
+
     def 训练仓库的knn模型(self, 模板文件夹, 模型保存路径):
         def 提取特征点(模板):
             模板 = 模板[40:173, 40:173]
@@ -344,6 +423,8 @@ class Arknights数据处理器:
 
 数据处理器.读取卡池()
 数据处理器.读取活动关卡()
+
+数据处理器.load_recruit_data()
 
 数据处理器.批量训练并保存扫仓库模型()
 print("批量训练并保存扫仓库模型,完成")
