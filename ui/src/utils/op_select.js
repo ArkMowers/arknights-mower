@@ -27,7 +27,7 @@ export const render_op_tag = ({ option, handleClose }) => {
           },
           [
             h(NAvatar, {
-              src: 'avatar/' + option.value + '.png',
+              src: 'avatar/' + option.value + '.webp',
               round: true,
               size: 22,
               style: {
@@ -53,7 +53,7 @@ export const render_op_label = (option) => {
     },
     [
       h(NAvatar, {
-        src: 'avatar/' + option.value + '.png',
+        src: 'avatar/' + option.value + '.webp',
         round: true,
         size: 'small'
       }),

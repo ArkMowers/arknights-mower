@@ -65,6 +65,11 @@ class Arknights数据处理器:
             if len(分割部分) == 6 and int(分割部分[5]) < 2023:
                 匹配结果 = True
 
+            if len(分割部分) == 3 and 目标图标代码.startswith("uni"):
+                匹配结果 = True
+
+            if len(分割部分) == 3 and 目标图标代码.startswith("voucher_full"):
+                匹配结果 = True
             if 目标图标代码 == "ap_supply_lt_60":
                 匹配结果 = True
 
@@ -77,22 +82,22 @@ class Arknights数据处理器:
             return 匹配结果
 
         self.物品_名称对 = {}
-
+        from PIL import Image
         for 物品代码, 物品数据 in self.物品表["items"].items():
             图标代码 = 物品数据["iconId"]
             排序代码 = 物品数据["sortId"]
             中文名称 = 物品数据["name"]
             分类类型 = 物品数据["classifyType"]
             源文件路径 = f"./ArknightsGameResource/item/{图标代码}.png"
-            os.makedirs(f"./ui/public/depot/{分类类型}", exist_ok=True)
             if 分类类型 != "NONE" and 排序代码 > 0:
                 排除开关 = False
                 排除开关 = 检查图标代码匹配(图标代码)
                 if os.path.exists(源文件路径) and not 排除开关:
-                    目标文件路径 = f"./ui/public/depot/{中文名称}.png"
-                    self.装仓库物品的字典[分类类型].append(目标文件路径)
+                    目标文件路径 = f"./ui/public/depot/{中文名称}.webp"
+                    self.装仓库物品的字典[分类类型].append([目标文件路径, 源文件路径])
                     if not os.path.exists(目标文件路径):
-                        shutil.copy(源文件路径, 目标文件路径)
+                        png_image = Image.open(源文件路径)
+                        png_image.save(目标文件路径, "WEBP")
                     self.物品_名称对[中文名称] = [
                         物品代码,
                         图标代码,
@@ -119,11 +124,11 @@ class Arknights数据处理器:
             干员名 = 干员数据["name"]
             干员_名称列表.append(干员名)
             干员头像路径 = f"./ArknightsGameResource/avatar/{干员代码}.png"
-            目标路径 = f"./ui/public/avatar/{干员数据['name']}.png"
+            目标路径 = f"./ui/public/avatar/{干员数据['name']}.webp"
             print(f"{干员名}: {干员代码}")
 
-            shutil.copy(干员头像路径, 目标路径)
-
+            png_image = Image.open(干员头像路径)
+            png_image.save(目标路径, "WEBP")
         干员_名称列表.sort(key=len)
         with open("./arknights_mower/data/agent.json", "w", encoding="utf-8") as f:
             json.dump(干员_名称列表, f, ensure_ascii=False)
@@ -313,12 +318,12 @@ class Arknights数据处理器:
         def 加载图片特征点_标签(模板类型):
             特征点列表 = []
             标签列表 = []
-            for 文件名 in (self.装仓库物品的字典[模板类型]):
-                模板 = cv2.imread(文件名)
+            for [目标文件路径, 源文件路径] in (self.装仓库物品的字典[模板类型]):
+                模板 = cv2.imread(源文件路径)
                 模板 = cv2.resize(模板, (213, 213))
                 特征点 = 提取特征点(模板)
                 特征点列表.append(特征点)
-                标签列表.append(self.物品_名称对[文件名[18:-4]][2])
+                标签列表.append(self.物品_名称对[目标文件路径[18:-5]][2])
             return 特征点列表, 标签列表
 
         def 训练knn模型(images, labels):
