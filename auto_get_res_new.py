@@ -274,11 +274,11 @@ class Arknights数据处理器:
                 else:
                     recruit_result_data[-1].append(干员代码)
 
-                if int(干员数据['rarity'].split('TIER_')[1]) == 5:
+                if 干员数据['rarity'] == 5:
                     tag.append("资深干员")
-                elif int(干员数据['rarity'].split('TIER_')[1]) == 6:
+                elif 干员数据['rarity'] == 6:
                     tag.append("高级资深干员")
-                elif int(干员数据['rarity'].split('TIER_')[1]) == 1:
+                elif 干员数据['rarity'] == 1:
                     tag.append("支援机械")
 
                 if 干员数据['position'] == "MELEE":
@@ -291,7 +291,7 @@ class Arknights数据处理器:
 
                 recruit_data[干员代码] = {
                     "name": 干员名,
-                    "stars": int(干员数据['rarity'].split('TIER_')[1]),
+                    "stars": 干员数据['rarity'],
                     "tags": 干员数据['tagList']
                 }
 
