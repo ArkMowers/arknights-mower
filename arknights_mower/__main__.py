@@ -18,6 +18,7 @@ from arknights_mower.utils.logic_expression import LogicExpression
 from arknights_mower.utils import rapidocr
 from arknights_mower.utils.depot import 创建csv
 from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
+from arknights_mower.solvers.sign_in import SignInSolver
 
 from evalidate import Expr
 
@@ -375,6 +376,9 @@ def simulate():
                 if remaining_time > 540:
                     # 刷新时间以鹰历为准
                     if base_scheduler.daily_report < (datetime.now() - timedelta(hours=4)).date():
+                        sign_in_solver = SignInSolver(base_scheduler.device, base_scheduler.recog)
+                        sign_in_solver.send_message_config = base_scheduler.send_message_config
+                        sign_in_solver.run()
                         if base_scheduler.report_plan_solver(conf["send_report"]):
                             base_scheduler.daily_report = (datetime.now() - timedelta(hours=4)).date()
 
