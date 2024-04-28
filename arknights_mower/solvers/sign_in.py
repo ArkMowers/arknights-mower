@@ -36,7 +36,7 @@ class SignInSolver(BaseSolver):
             self.materiel = True
             self.notify("今天的五周年专享月卡已经领取过了")
             self.back()
-        elif self.find("materiel_ico", scope=((860, 60), (1072, 217))):
+        elif self.find("materiel_ico"):
             if not self.materiel:
                 self.notify("成功领取五周年专享月卡")
                 self.materiel = True

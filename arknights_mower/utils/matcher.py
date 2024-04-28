@@ -68,17 +68,17 @@ class Matcher(object):
             rect, score = rect_score
 
         if prescore != 0.0 and score[3] >= prescore:
-            logger.debug(f'match success: {score}')
+            logger.debug(f'match success: {rect_score}')
             return rect
         # use SVC to determine if the score falls within the legal range
         if judge and not SVC.predict([score])[0]:  # numpy.bool_
-            logger.debug(f'match fail: {score}')
+            logger.debug(f'match fail: {rect_score}')
             return None  # failed in matching
         else:
             if prescore>0 and score[3]<prescore:
-                logger.debug(f'score is not greater than {prescore}: {score}')
+                logger.debug(f'score is not greater than {prescore}: {rect_score}')
                 return None
-            logger.debug(f'match success: {score}')
+            logger.debug(f'match success: {rect_score}')
             return rect  # success in matching
 
     def score(self, query: tp.GrayImage, draw: bool = False, scope: tp.Scope = None, only_score: bool = False) -> Optional[Tuple[tp.Scope, tp.Score]]:

@@ -26,7 +26,6 @@ class Recognizer(object):
         self.start(screencap)
         self.loading_time = 0
         self.LOADING_TIME_LIMIT = 5
-        self.CONN_SCOPE = ((1087, 978), (1430, 1017))
         self.CONN_PRESCORE = 0.15
         self.CONN_MINWIDTH = 300
 
@@ -65,9 +64,7 @@ class Recognizer(object):
 
     def detect_connecting_scene(self) -> bool:
         return (
-            matched_scope := self.find(
-                "connecting", scope=self.CONN_SCOPE, score=self.CONN_PRESCORE
-            )
+            matched_scope := self.find("connecting", score=self.CONN_PRESCORE)
         ) is not None and matched_scope[1][0] - matched_scope[0][0] > self.CONN_MINWIDTH
 
     def detect_index_scene(self) -> bool:
@@ -114,7 +111,7 @@ class Recognizer(object):
             self.scene = Scene.CLOSE_MINE
         elif self.find("check_in") is not None:
             self.scene = Scene.CHECK_IN
-        elif self.find("materiel_ico", scope=((860, 60), (1072, 217))) is not None:
+        elif self.find("materiel_ico") is not None:
             self.scene = Scene.MATERIEL
         elif self.find("read_mail") is not None:
             self.scene = Scene.MAIL
@@ -554,6 +551,15 @@ class Recognizer(object):
         :return ret: 若匹配成功，则返回元素在游戏界面中出现的位置，否则返回 None
         """
         logger.debug(f"find: {res}")
+
+        if scope is None:
+            if res in ["arrange_check_in", "arrange_check_in_on"]:
+                scope = ((0, 350), (200, 530))
+            elif res == "connecting":
+                scope = ((1087, 978), (1430, 1017))
+            elif res == "materiel_ico":
+                scope = ((860, 60), (1072, 217))
+
         res = f"{__rootdir__}/resources/{res}.png"
 
         if thres is not None:
