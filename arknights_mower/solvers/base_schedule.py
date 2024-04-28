@@ -829,9 +829,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         fix_plan[moved_room] = ["Current"] * len(
                             self.op_data.plan[moved_room]
                         )
-                    fix_plan[moved_room][moved_index] = self.op_data.plan[moved_room][
-                        moved_index
-                    ].agent
+                    for index in range(len(self.op_data.plan[moved_room])):
+                        fix_plan[moved_room][index] = self.op_data.plan[moved_room][index].agent
         if len(fix_plan.keys()) > 0:
             # 不能在房间里安排同一个人 如果有重复则换成Free
             remove_keys = []
