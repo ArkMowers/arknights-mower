@@ -75,7 +75,7 @@ class Matcher(object):
             logger.debug(f'match fail: {rect_score}')
             return None  # failed in matching
         else:
-            if prescore>0 and score[3]<prescore:
+            if (prescore>0 and score[3]<prescore) or score[1]<=0.1:
                 logger.debug(f'score is not greater than {prescore}: {rect_score}')
                 return None
             logger.debug(f'match success: {rect_score}')
