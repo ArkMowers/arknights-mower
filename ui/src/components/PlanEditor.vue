@@ -176,7 +176,7 @@ function fill_with_free() {
               <div class="avatars">
                 <img
                   v-for="i in plan[r].plans"
-                  :src="`avatar/${i.agent}.png`"
+                  :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
                   :style="{ 'border-bottom': color_map[i.group] }"
@@ -203,7 +203,7 @@ function fill_with_free() {
               <div class="avatars">
                 <img
                   v-for="i in plan.central.plans"
-                  :src="`avatar/${i.agent}.png`"
+                  :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
                   :style="{ 'border-bottom': color_map[i.group] }"
@@ -223,7 +223,7 @@ function fill_with_free() {
               <div class="avatars">
                 <img
                   v-for="i in plan.dormitory_1.plans"
-                  :src="`avatar/${i.agent}.png`"
+                  :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
                   :style="{ 'border-bottom': color_map[i.group] }"
@@ -243,7 +243,7 @@ function fill_with_free() {
               <div class="avatars">
                 <img
                   v-for="i in plan.dormitory_2.plans"
-                  :src="`avatar/${i.agent}.png`"
+                  :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
                   :style="{ 'border-bottom': color_map[i.group] }"
@@ -263,7 +263,7 @@ function fill_with_free() {
               <div class="avatars">
                 <img
                   v-for="i in plan.dormitory_3.plans"
-                  :src="`avatar/${i.agent}.png`"
+                  :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
                   :style="{ 'border-bottom': color_map[i.group] }"
@@ -283,7 +283,7 @@ function fill_with_free() {
               <div class="avatars">
                 <img
                   v-for="i in plan.dormitory_4.plans"
-                  :src="`avatar/${i.agent}.png`"
+                  :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
                   :style="{ 'border-bottom': color_map[i.group] }"
@@ -306,7 +306,7 @@ function fill_with_free() {
               <div class="avatars">
                 <img
                   v-for="i in plan.meeting.plans"
-                  :src="`avatar/${i.agent}.png`"
+                  :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
                   :style="{ 'border-bottom': color_map[i.group] }"
@@ -326,7 +326,7 @@ function fill_with_free() {
               <div class="avatars">
                 <img
                   v-for="i in plan.factory.plans"
-                  :src="`avatar/${i.agent}.png`"
+                  :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
                   :style="{ 'border-bottom': color_map[i.group] }"
@@ -346,7 +346,7 @@ function fill_with_free() {
               <div class="avatars">
                 <img
                   v-for="i in plan.contact.plans"
-                  :src="`avatar/${i.agent}.png`"
+                  :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
                   :style="{ 'border-bottom': color_map[i.group] }"
@@ -366,7 +366,7 @@ function fill_with_free() {
               <div class="avatars">
                 <img
                   v-for="i in plan.train.plans"
-                  :src="`avatar/${i.agent}.png`"
+                  :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
                   :style="{ 'border-bottom': color_map[i.group] }"

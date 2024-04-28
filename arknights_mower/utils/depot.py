@@ -190,7 +190,8 @@ def 读取仓库():
     return [classified_data, 新物品json, str(datetime.fromtimestamp(time))]
 
 
-def 创建csv(path=get_path("@app/tmp/depotresult.csv")):
+def 创建csv():
+    path=get_path("@app/tmp/depotresult.csv")
     now_time = int(datetime.now().timestamp()) - 24 * 3600
     result = [
         now_time,

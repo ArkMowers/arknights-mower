@@ -408,7 +408,7 @@ def simulate():
                                 创建csv()
                                 return now_time
 
-                    if maa_config["maa_depot_enable"]:
+                    if conf["maa_depot_enable"]:
                         dt = int(datetime.now().timestamp())-_is_depotscan()
                         if dt >= maa_config["maa_execution_gap"]*3600:
                             base_scheduler.仓库扫描()
