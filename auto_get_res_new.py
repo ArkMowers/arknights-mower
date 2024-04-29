@@ -83,6 +83,8 @@ class Arknights数据处理器:
 
         self.物品_名称对 = {}
         from PIL import Image
+        png_image = Image.open("./ArknightsGameResource/item/EXP_PLAYER.png")
+        png_image.save("./ui/public/depot/EXP.webp", "WEBP")
         for 物品代码, 物品数据 in self.物品表["items"].items():
             图标代码 = 物品数据["iconId"]
             排序代码 = 物品数据["sortId"]
@@ -296,10 +298,10 @@ class Arknights数据处理器:
                 }
 
         with open("./arknights_mower/data/recruit.json", "w", encoding="utf-8") as f:
-            json.dump(recruit_data, f, ensure_ascii=False)
+            json.dump(recruit_data, f, ensure_ascii=False,indent=4)
 
         with open("./arknights_mower/data/recruit_result.json", "w", encoding="utf-8") as f:
-            json.dump(recruit_result_data, f, ensure_ascii=False)
+            json.dump(recruit_result_data, f, ensure_ascii=False,indent=4)
 
     def 训练仓库的knn模型(self, 模板文件夹, 模型保存路径):
         def 提取特征点(模板):
