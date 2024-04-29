@@ -26,7 +26,6 @@ class Recognizer(object):
         self.start(screencap)
         self.loading_time = 0
         self.LOADING_TIME_LIMIT = 5
-        self.CONN_PRESCORE = 0.15
         self.CONN_MINWIDTH = 300
 
     def start(self, screencap: bytes = None, build: bool = True) -> None:
@@ -63,9 +62,9 @@ class Recognizer(object):
         save_screenshot(self.screencap, subdir=f"{folder}/{self.h}x{self.w}")
 
     def detect_connecting_scene(self) -> bool:
-        return (
-            matched_scope := self.find("connecting", score=self.CONN_PRESCORE)
-        ) is not None and matched_scope[1][0] - matched_scope[0][0] > self.CONN_MINWIDTH
+        if pos := self.find("connecting"):
+            return pos[1][0] - pos[0][0] > self.CONN_MINWIDTH
+        return False
 
     def detect_index_scene(self) -> bool:
         return (
@@ -563,11 +562,15 @@ class Recognizer(object):
         """
         logger.debug(f"find: {res}")
 
-        if scope is None:
-            if res in ["arrange_check_in", "arrange_check_in_on"]:
+        if scope is None and score == 0.0:
+            if res == "arrange_check_in":
+                scope = ((0, 350), (200, 530))
+                score = 0.55
+            elif res == "arrange_check_in_on":
                 scope = ((0, 350), (200, 530))
             elif res == "connecting":
                 scope = ((1087, 978), (1430, 1017))
+                score = 0.15
             elif res == "materiel_ico":
                 scope = ((860, 60), (1072, 217))
 
