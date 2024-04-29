@@ -230,11 +230,12 @@ class Arknights数据处理器:
         #     print(干员代码,干员数据)
         recruit_list = self.抽卡表['recruitDetail'].replace("\\n<@rc.eml>", "")
         recruit_list = recruit_list.replace("\\n", "")
+        recruit_list = recruit_list.replace("\r", "")
         recruit_list = recruit_list.replace("★", "")
         recruit_list = recruit_list.replace("<@rc.eml>", "")
         recruit_list = recruit_list.replace("</>", "")
         recruit_list = recruit_list.replace("/", "")
-        recruit_list = recruit_list.replace("  ", "\n")
+        recruit_list = recruit_list.replace(" ", "\n")
         recruit_list = recruit_list.replace("--------------------", "")
         recruit_list = recruit_list.replace("<@rc.title>公开招募说明", "")
         recruit_list = recruit_list.replace("<@rc.em>※稀有职业需求招募说明※", "")
@@ -256,19 +257,20 @@ class Arknights数据处理器:
             "SUPPORT": "辅助干员",
             "PIONEER": "先锋干员"
         }
-
         for 干员代码, 干员数据 in self.干员表.items():
-            if not 干员数据["itemObtainApproach"]:
-                continue
             干员名 = 干员数据["name"]
+
+            if 干员数据['profession'] not in profession:
+                continue
+
             if 干员名 in recruit_list:
                 tag = 干员数据['tagList']
-
+                # 数据中稀有度从0-5
+                干员数据['rarity'] = 干员数据['rarity'] + 1
                 if len(干员名) <= 4:
                     recruit_result_data[len(干员名)].append(干员代码)
                 else:
                     recruit_result_data[-1].append(干员代码)
-
                 if 干员数据['rarity'] == 5:
                     tag.append("资深干员")
                 elif 干员数据['rarity'] == 6:
@@ -289,7 +291,8 @@ class Arknights数据处理器:
                     "stars": 干员数据['rarity'],
                     "tags": 干员数据['tagList']
                 }
-
+                print("{} stars：{} tags:{}".format(干员名, 干员数据['rarity'], 干员数据['tagList']))
+        print("载入公招干员数据{}个".format(len(recruit_data)))
         with open("./arknights_mower/data/recruit.json", "w", encoding="utf-8") as f:
             json.dump(recruit_data, f, ensure_ascii=False)
 
