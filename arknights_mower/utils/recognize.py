@@ -91,6 +91,17 @@ class Recognizer(object):
             if self.device.check_current_focus():
                 self.update()
 
+    def check_announcement(self):
+        img = cropimg(self.gray, ((960, 0), (1920, 540)))
+        tpl = loadimg(f"{__rootdir__}/resources/announcement_close.png", True)
+        msk = thres2(tpl, 1)
+        result = cv2.matchTemplate(img, tpl, cv2.TM_CCORR_NORMED, None, msk)
+        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+        if max_val > 0.99:
+            return (max_loc[0] + 960 + 42, max_loc[1] + 42)
+        if self.find("sign_in/banner"):
+            return (1605, 240)
+
     def get_scene(self) -> int:
         """get the current scene in the game"""
         if self.scene != Scene.UNDEFINED:
@@ -228,7 +239,7 @@ class Recognizer(object):
                 self.scene = Scene.LOGIN_CADPA_DETAIL
             else:
                 self.scene = Scene.LOGIN_START
-        elif detector.announcement_close(self.img) is not None:
+        elif self.check_announcement():
             self.scene = Scene.ANNOUNCEMENT
         elif self.find("skip") is not None:
             self.scene = Scene.SKIP

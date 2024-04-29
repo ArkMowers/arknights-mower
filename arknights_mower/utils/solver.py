@@ -409,8 +409,7 @@ class BaseSolver:
                 elif scene == Scene.RIIC_REPORT:
                     self.tap((100, 60))
                 elif scene == Scene.ANNOUNCEMENT:
-                    self.tap(detector.announcement_close(self.recog.img))
-                    self.tap((1800,100))
+                    self.tap(self.recog.check_announcement())
                 elif scene == Scene.MATERIEL:
                     self.tap_element('materiel_ico')
                 elif scene // 100 == 1:
