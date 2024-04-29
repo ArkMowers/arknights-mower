@@ -159,39 +159,41 @@ def 读取仓库():
             + classified_data["B经验卡"]["高级作战记录"]["number"] * 2000
         ),
         "sort": 9999999,
-        "icon": "全部经验（计算）",
+        "icon": "EXP",
     }
-
+    合成玉数量 = classified_data["A常用"]["合成玉"]["number"]
+    寻访凭证数量 = (
+        classified_data["A常用"]["寻访凭证"]["number"]
+        + classified_data["A常用"]["十连寻访凭证"]["number"] * 10
+    )
+    源石数量 = classified_data["A常用"]["至纯源石"]["number"]
+    源石碎片=classified_data["K未分类"]["源石碎片"]["number"]
+    土=classified_data["F稀有度2"]["固源岩"]["number"]
     classified_data["A常用"]["玉+卷"] = {
-        "number": int(
-            (
-                classified_data["A常用"]["合成玉"]["number"] / 600
-                + classified_data["A常用"]["寻访凭证"]["number"]
-                + classified_data["A常用"]["十连寻访凭证"]["number"] * 10
-            )
-            * 10
-        )
-        / 10,
+        "number": round(合成玉数量 / 600 + 寻访凭证数量, 1),
         "sort": 9999999,
         "icon": "寻访凭证",
     }
     classified_data["A常用"]["玉+卷+石"] = {
-        "number": int(
-            (
-                classified_data["A常用"]["玉+卷"]["number"]
-                + classified_data["A常用"]["至纯源石"]["number"] * 180 / 600
-            )
-            * 10
-        )
-        / 10,
+        "number": round((合成玉数量+源石数量*180)/600+寻访凭证数量,1),
         "sort": 9999999,
         "icon": "寻访凭证",
     }
-    return [classified_data, 新物品json, str(datetime.fromtimestamp(time))]
+    classified_data["A常用"]["额外+碎片"] = {
+        "number": round((合成玉数量+源石数量*180+int(源石碎片/2)*20)/600+寻访凭证数量,1),
+        "sort": 9999999,
+        "icon": "寻访凭证",
+    }
+    classified_data["A常用"]["额外+碎片+土"] = {
+        "number": round((合成玉数量+源石数量*180+int(源石碎片/2+int(土/2))*20)/600+寻访凭证数量,1),
+        "sort": 9999999,
+        "icon": "寻访凭证",
+    }
+    return [classified_data, 新物品json, str(datetime.fromtimestamp(int(time)))]
 
 
 def 创建csv():
-    path=get_path("@app/tmp/depotresult.csv")
+    path = get_path("@app/tmp/depotresult.csv")
     now_time = int(datetime.now().timestamp()) - 24 * 3600
     result = [
         now_time,
