@@ -159,7 +159,7 @@ def 读取仓库():
             + classified_data["B经验卡"]["高级作战记录"]["number"] * 2000
         ),
         "sort": 9999999,
-        "icon": "全部经验（计算）",
+        "icon": "EXP",
     }
     合成玉数量 = classified_data["A常用"]["合成玉"]["number"]
     寻访凭证数量 = (
