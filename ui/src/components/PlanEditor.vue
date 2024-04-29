@@ -147,6 +147,40 @@ function fill_with_free() {
     }
   }
 }
+
+const trading_products = [
+  { label: '赤金订单', value: 'lmd' },
+  { label: '合成玉订单', value: 'orundum' }
+]
+
+const factory_products = [
+  { label: '赤金', value: 'gold' },
+  { label: '中级作战记录', value: 'exp3' },
+  { label: '源石碎片', value: 'orirock' }
+]
+
+import { NAvatar } from 'naive-ui'
+
+const render_product = (option) => {
+  return h(
+    'div',
+    {
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px'
+      }
+    },
+    [
+      h(NAvatar, {
+        src: '/product/' + option.value + '.png',
+        round: true,
+        size: 'small'
+      }),
+      option.label
+    ]
+  )
+}
 </script>
 
 <template>
@@ -162,6 +196,13 @@ function fill_with_free() {
             :class="[button_type[plan[r].name], r === facility ? 'true' : 'false']"
           >
             <div
+              class="product-bg"
+              v-if="['制造站', '贸易站'].includes(plan[r].name)"
+              :style="{
+                'background-image': `url(/product/${plan[r].product}.png)`
+              }"
+            ></div>
+            <div
               v-show="plan[r].name"
               draggable="true"
               @dragstart="drag_facility(r, $event)"
@@ -174,14 +215,16 @@ function fill_with_free() {
                 {{ plan[r].name }}
               </div>
               <div class="avatars">
-                <img
-                  v-for="i in plan[r].plans"
-                  :src="`avatar/${i.agent}.webp`"
-                  width="45"
-                  height="45"
-                  :style="{ 'border-bottom': color_map[i.group] }"
-                  draggable="false"
-                />
+                <template v-for="i in plan[r].plans">
+                  <img
+                    v-if="i.agent"
+                    :src="`avatar/${i.agent}.webp`"
+                    width="45"
+                    height="45"
+                    :style="{ 'border-bottom': color_map[i.group] }"
+                    draggable="false"
+                  />
+                </template>
               </div>
             </div>
             <div v-show="!plan[r].name" class="waiting">
@@ -390,6 +433,17 @@ function fill_with_free() {
             />
             <span v-else class="type-select">{{ right_side_facility_name }}</span>
           </td>
+          <template v-if="['制造站', '贸易站'].includes(plan[facility].name)">
+            <td>产物<help-text>切产物功能暂未实装</help-text></td>
+            <td>
+              <n-select
+                v-model:value="plan[facility].product"
+                :options="plan[facility].name == '制造站' ? factory_products : trading_products"
+                class="product-select"
+                :render-label="render_product"
+              />
+            </td>
+          </template>
           <td>
             <n-button
               ghost
@@ -467,6 +521,11 @@ function fill_with_free() {
   margin-right: 8px;
 }
 
+.product-select {
+  width: 180px;
+  margin-right: 8px;
+}
+
 .operator-select {
   width: 220px;
 }
@@ -508,6 +567,13 @@ function fill_with_free() {
 .avatars {
   display: flex;
   gap: 6px;
+  z-index: 5;
+
+  & > img {
+    box-sizing: content-box;
+    border-radius: 2px;
+    background: v-bind(avatar_bg);
+  }
 }
 
 .facility-name {
@@ -516,12 +582,7 @@ function fill_with_free() {
   line-height: 1;
   display: flex;
   justify-content: space-around;
-}
-
-.avatars > img {
-  box-sizing: content-box;
-  border-radius: 2px;
-  background: v-bind(avatar_bg);
+  z-index: 5;
 }
 
 .outer {
@@ -553,6 +614,7 @@ function fill_with_free() {
       border-radius: 3px;
       border: 1px solid transparent;
       transition: all 0.3s;
+      position: relative;
 
       &:hover {
         background-color: rgba(32, 128, 240, 0.22);
@@ -573,6 +635,7 @@ function fill_with_free() {
       border-radius: 3px;
       border: 1px solid transparent;
       transition: all 0.3s;
+      position: relative;
 
       &:hover {
         background-color: rgba(240, 160, 32, 0.22);
@@ -645,6 +708,21 @@ function fill_with_free() {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+}
+
+.product-bg {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 173px;
+  height: 74px;
+  opacity: 0.3;
+  background-repeat: no-repeat;
+  background-size: 100%;
+  background-position: 110px -20px;
+  z-index: 3;
+  pointer-events: none;
 }
 </style>
 

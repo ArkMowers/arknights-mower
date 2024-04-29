@@ -66,6 +66,14 @@ export const usePlanStore = defineStore('plan', () => {
         let limit = facility_operator_limit[i]
         if (full_plan[i].name == '发电站') {
           limit = 1
+        } else if (full_plan[i].name == '贸易站') {
+          if (!['lmd', 'orundum'].includes(full_plan[i].product)) {
+            full_plan[i].product = 'lmd'
+          }
+        } else if (full_plan[i].name == '制造站') {
+          if (!['gold', 'exp3', 'orirock'].includes(full_plan[i].product)) {
+            full_plan[i].product = 'gold'
+          }
         }
         if (full_plan[i].plans.length < limit) {
           count = limit - full_plan[i].plans.length
@@ -82,6 +90,9 @@ export const usePlanStore = defineStore('plan', () => {
     const result = {
       name: input.name,
       plans: []
+    }
+    if (['贸易站', '制造站'].includes(input.name)) {
+      result.product = input.product
     }
     for (const i of input.plans) {
       if (i.agent) {
