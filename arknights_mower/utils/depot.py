@@ -161,31 +161,38 @@ def 读取仓库():
         "sort": 9999999,
         "icon": "EXP",
     }
-    合成玉数量 = classified_data["A常用"]["合成玉"]["number"]
+    合成玉数量 = classified_data["A常用"].get("合成玉", {"number": 0})["number"]
     寻访凭证数量 = (
-        classified_data["A常用"]["寻访凭证"]["number"]
-        + classified_data["A常用"]["十连寻访凭证"]["number"] * 10
+        classified_data["A常用"].get("寻访凭证", {"number": 0})["number"]
+        + classified_data["A常用"].get("十连寻访凭证", {"number": 0})["number"] * 10
     )
-    源石数量 = classified_data["A常用"]["至纯源石"]["number"]
-    源石碎片=classified_data["K未分类"]["源石碎片"]["number"]
-    土=classified_data["F稀有度2"]["固源岩"]["number"]
+    源石数量 = classified_data["A常用"].get("至纯源石", {"number": 0})["number"]
+    源石碎片 = classified_data["K未分类"].get("源石碎片", {"number": 0})["number"]
+    土 = classified_data["F稀有度2"].get("固源岩", {"number": 0})["number"]
     classified_data["A常用"]["玉+卷"] = {
         "number": round(合成玉数量 / 600 + 寻访凭证数量, 1),
         "sort": 9999999,
         "icon": "寻访凭证",
     }
     classified_data["A常用"]["玉+卷+石"] = {
-        "number": round((合成玉数量+源石数量*180)/600+寻访凭证数量,1),
+        "number": round((合成玉数量 + 源石数量 * 180) / 600 + 寻访凭证数量, 1),
         "sort": 9999999,
         "icon": "寻访凭证",
     }
     classified_data["A常用"]["额外+碎片"] = {
-        "number": round((合成玉数量+源石数量*180+int(源石碎片/2)*20)/600+寻访凭证数量,1),
+        "number": round(
+            (合成玉数量 + 源石数量 * 180 + int(源石碎片 / 2) * 20) / 600 + 寻访凭证数量,
+            1,
+        ),
         "sort": 9999999,
         "icon": "寻访凭证",
     }
     classified_data["A常用"]["额外+碎片+土"] = {
-        "number": round((合成玉数量+源石数量*180+int(源石碎片/2+int(土/2))*20)/600+寻访凭证数量,1),
+        "number": round(
+            (合成玉数量 + 源石数量 * 180 + int(源石碎片 / 2 + int(土 / 2)) * 20) / 600
+            + 寻访凭证数量,
+            1,
+        ),
         "sort": 9999999,
         "icon": "寻访凭证",
     }
