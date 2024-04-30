@@ -181,6 +181,10 @@ const render_product = (option) => {
     ]
   )
 }
+
+const product_bg_opacity = computed(() => {
+  return theme.value == 'light' ? 0.6 : 0.7
+})
 </script>
 
 <template>
@@ -717,7 +721,7 @@ const render_product = (option) => {
   left: 0;
   width: 173px;
   height: 74px;
-  opacity: 0.3;
+  opacity: v-bind(product_bg_opacity);
   background-repeat: no-repeat;
   background-size: 100%;
   background-position: 110px -20px;
