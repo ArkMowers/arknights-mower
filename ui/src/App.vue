@@ -449,5 +449,6 @@ td {
   gap: 8px;
   width: calc(100% - 24px);
   height: calc(100% - 24px);
+  position: relative;
 }
 </style>
