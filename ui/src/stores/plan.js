@@ -35,7 +35,7 @@ export const usePlanStore = defineStore('plan', () => {
       left_side_facility.push({ label: display_name, value: facility_name })
     }
   }
-  for (let i = 0; i <= 4; ++i) {
+  for (let i = 1; i <= 4; ++i) {
     facility_operator_limit[`dormitory_${i}`] = 5
   }
 
