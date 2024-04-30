@@ -49,11 +49,13 @@ const generating_image = ref(false)
 
 const message = useMessage()
 
-import html2canvas from 'html2canvas'
+import { toBlob } from 'html-to-image'
 import { sleep } from '@/utils/sleep'
 import { useLoadingBar } from 'naive-ui'
 
 const loading_bar = useLoadingBar()
+
+import Bowser from 'bowser'
 
 async function save() {
   generating_image.value = true
@@ -62,14 +64,19 @@ async function save() {
     facility.value = ''
     await sleep(500)
   }
-  const canvas = await html2canvas(plan_editor.value.outer, {
-    scale: 3,
-    backgroundColor: theme.value == 'light' ? '#ffffff' : '#000000'
+  const browser = Bowser.getParser(window.navigator.userAgent)
+  let blob
+  if (browser.getEngine().name == 'WebKit') {
+    blob = await toBlob(plan_editor.value.outer)
+  }
+  blob = await toBlob(plan_editor.value.outer, {
+    pixelRatio: 3,
+    backgroundColor: theme.value == 'light' ? '#ffffff' : '#000000',
+    style: { margin: '8px 0' }
   })
   generating_image.value = false
   loading_bar.finish()
   const form_data = new FormData()
-  const blob = await new Promise((resolve) => canvas.toBlob(resolve))
   form_data.append('img', blob)
   const { data } = await axios.post(`${import.meta.env.VITE_HTTP_URL}/dialog/save/img`, form_data)
   message.info(data)
