@@ -83,8 +83,9 @@ class Arknights数据处理器:
 
         self.物品_名称对 = {}
         from PIL import Image
-        png_image = Image.open("./ArknightsGameResource/item/EXP_PLAYER.png")
-        png_image.save("./ui/public/depot/EXP.webp", "WEBP")
+        if not os.path.exists("./ui/public/depot/EXP.webp"):
+            png_image = Image.open("./ArknightsGameResource/item/EXP_PLAYER.png")
+            png_image.save("./ui/public/depot/EXP.webp", "WEBP")
         for 物品代码, 物品数据 in self.物品表["items"].items():
             图标代码 = 物品数据["iconId"]
             排序代码 = 物品数据["sortId"]
