@@ -98,7 +98,7 @@ class Recognizer(object):
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
         if max_val > 0.99:
             return (max_loc[0] + 960 + 42, max_loc[1] + 42)
-        if self.find("sign_in/banner"):
+        if self.find("sign_in/monthly_card/banner"):
             return (1605, 240)
 
     def get_scene(self) -> int:

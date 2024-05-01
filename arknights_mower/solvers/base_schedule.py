@@ -1522,9 +1522,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     unknown_cnt = 0
                     self.back_to_infrastructure()
                     self.enter_room("meeting")
-                    continue
                 else:
                     self.sleep()
+                continue
 
             if scene == Scene.INFRA_DETAILS:
                 if ctm.task == "party_time":
