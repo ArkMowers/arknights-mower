@@ -5,7 +5,7 @@ import { usePlanStore } from '@/stores/plan'
 import { ref, computed, nextTick, watch, inject } from 'vue'
 const config_store = useConfigStore()
 const plan_store = usePlanStore()
-const { operators, groups, current_plan: plan } = storeToRefs(plan_store)
+const { operators, groups, current_plan: plan, workaholic } = storeToRefs(plan_store)
 const { facility_operator_limit } = plan_store
 const { theme } = storeToRefs(config_store)
 
@@ -185,6 +185,16 @@ const render_product = (option) => {
 const product_bg_opacity = computed(() => {
   return theme.value == 'light' ? 0.6 : 0.7
 })
+
+const fia_list = computed(() => {
+  for (let i = 1; i <= 4; ++i) {
+    for (let j = 0; j < 5; ++j) {
+      if (plan.value[`dormitory_${i}`].plans[j].agent == '菲亚梅塔') {
+        return plan.value[`dormitory_${i}`].plans[j].replacement
+      }
+    }
+  }
+})
 </script>
 
 <template>
@@ -220,14 +230,19 @@ const product_bg_opacity = computed(() => {
               </div>
               <div class="avatars">
                 <template v-for="i in plan[r].plans">
-                  <img
-                    v-if="i.agent"
-                    :src="`avatar/${i.agent}.webp`"
-                    width="45"
-                    height="45"
-                    :style="{ 'border-bottom': color_map[i.group] }"
-                    draggable="false"
-                  />
+                  <div class="avatar-wrapper" v-if="i.agent">
+                    <img
+                      :src="`avatar/${i.agent}.webp`"
+                      width="45"
+                      height="45"
+                      :style="{ 'border-bottom': color_map[i.group] }"
+                      draggable="false"
+                    />
+                    <div
+                      class="workaholic"
+                      v-if="workaholic.includes(i.agent) && !fia_list.includes(i.agent)"
+                    ></div>
+                  </div>
                 </template>
               </div>
             </div>
@@ -573,7 +588,7 @@ const product_bg_opacity = computed(() => {
   gap: 6px;
   z-index: 5;
 
-  & > img {
+  & img {
     box-sizing: content-box;
     border-radius: 2px;
     background: v-bind(avatar_bg);
@@ -726,6 +741,22 @@ const product_bg_opacity = computed(() => {
   background-size: 100%;
   background-position: 110px -20px;
   z-index: 3;
+  pointer-events: none;
+}
+
+.avatar-wrapper {
+  position: relative;
+}
+
+.workaholic {
+  position: absolute;
+  content: '';
+  top: 0;
+  left: 0;
+  width: 45px;
+  height: 45px;
+  opacity: 0.35;
+  background-color: red;
   pointer-events: none;
 }
 </style>
