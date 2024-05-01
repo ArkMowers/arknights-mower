@@ -265,6 +265,8 @@ class Arknights数据处理器:
             "SUPPORT": "辅助干员",
             "PIONEER": "先锋干员"
         }
+
+        print(recruit_list)
         for 干员代码, 干员数据 in self.干员表.items():
             干员名 = 干员数据["name"]
 
@@ -306,6 +308,23 @@ class Arknights数据处理器:
 
         with open("./arknights_mower/data/recruit_result.json", "w", encoding="utf-8") as f:
             json.dump(recruit_result_data, f, ensure_ascii=False,indent=4)
+
+    def load_recruit_template(self):
+        # !/usr/bin/env python3
+        with open(
+                "./arknights_mower/data/recruit.json", "r",
+                encoding='utf-8') as f:
+            recruit_operators = json.load(f)
+
+        font = ImageFont.truetype(
+            "FZDYSK.TTF", 120)
+        print(len(recruit_operators))
+        for operator in recruit_operators:
+            im = Image.new(mode="RGBA", size=(1920, 1080))
+            draw = ImageDraw.Draw(im)
+            draw.text((0, 0), recruit_operators[operator]["name"], font=font)
+            im = im.crop(im.getbbox())
+            im.save(f"./arknights_mower/resources/agent_name/{operator}.png")
 
     def 训练仓库的knn模型(self, 模板文件夹, 模型保存路径):
         def 提取特征点(模板):
@@ -436,12 +455,13 @@ class Arknights数据处理器:
 数据处理器.读取活动关卡()
 
 数据处理器.load_recruit_data()
+数据处理器.load_recruit_template()
 
-数据处理器.批量训练并保存扫仓库模型()
-print("批量训练并保存扫仓库模型,完成")
-# 批量训练并保存扫仓库模型 和 添加物品 有联动 ， 添加物品提供了分类的图片位置
-
-数据处理器.训练在房间内的干员名的模型()
-print("训练在房间内的干员名的模型,完成")
-数据处理器.训练选中的干员名的模型()
-print("训练选中的干员名的模型,完成")
+# 数据处理器.批量训练并保存扫仓库模型()
+# print("批量训练并保存扫仓库模型,完成")
+# # 批量训练并保存扫仓库模型 和 添加物品 有联动 ， 添加物品提供了分类的图片位置
+#
+# 数据处理器.训练在房间内的干员名的模型()
+# print("训练在房间内的干员名的模型,完成")
+# 数据处理器.训练选中的干员名的模型()
+# print("训练选中的干员名的模型,完成")
