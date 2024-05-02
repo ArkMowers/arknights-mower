@@ -266,7 +266,6 @@ class Arknights数据处理器:
             "PIONEER": "先锋干员"
         }
 
-        print(recruit_list)
         for 干员代码, 干员数据 in self.干员表.items():
             干员名 = 干员数据["name"]
 
@@ -287,8 +286,7 @@ class Arknights数据处理器:
                     tag.append("高级资深干员")
 
                 if 干员数据['position'] == "MELEE":
-                    if 干员数据['description'].find("可以放置于远程位") == -1:
-                        tag.append("近战位")
+                    tag.append("近战位")
                 elif 干员数据['position'] == "RANGED":
                     tag.append("远程位")
 
@@ -453,13 +451,13 @@ class Arknights数据处理器:
 数据处理器.读取活动关卡()
 
 数据处理器.load_recruit_data()
-数据处理器.load_recruit_template()
-
-数据处理器.批量训练并保存扫仓库模型()
-print("批量训练并保存扫仓库模型,完成")
-# 批量训练并保存扫仓库模型 和 添加物品 有联动 ， 添加物品提供了分类的图片位置
-
-数据处理器.训练在房间内的干员名的模型()
-print("训练在房间内的干员名的模型,完成")
-数据处理器.训练选中的干员名的模型()
-print("训练选中的干员名的模型,完成")
+# 数据处理器.load_recruit_template()
+#
+# 数据处理器.批量训练并保存扫仓库模型()
+# print("批量训练并保存扫仓库模型,完成")
+# # 批量训练并保存扫仓库模型 和 添加物品 有联动 ， 添加物品提供了分类的图片位置
+#
+# 数据处理器.训练在房间内的干员名的模型()
+# print("训练在房间内的干员名的模型,完成")
+# 数据处理器.训练选中的干员名的模型()
+# print("训练选中的干员名的模型,完成")
