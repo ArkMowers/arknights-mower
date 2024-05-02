@@ -105,6 +105,11 @@ class SignInSolver(BaseSolver):
                     self.back()
             else:
                 self.back()
+        elif self.find("sign_in/headhunting/banner_exclusive"):
+            if self.tm.task == "headhunting":
+                self.tap((1880, 590))
+            else:
+                self.back()
         elif self.find("sign_in/headhunting/dialog"):
             if self.tm.task == "headhunting":
                 self.tap((1263, 744))
