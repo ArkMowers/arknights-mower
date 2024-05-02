@@ -136,13 +136,14 @@ class BaseSolver:
 
     def tap_index_element(self, name):
         pos = {
-            "friend": (544, 862),
-            "infrastructure": (1545, 948),
-            "mission": (1201, 904),
-            "recruit": (1507, 774),
-            "shop": (1251, 727),
-            "terminal": (1458, 297),
-            "warehouse": (1788, 973),
+            "friend": (544, 862),  # 好友
+            "infrastructure": (1545, 948),  # 基建
+            "mission": (1201, 904),  # 任务
+            "recruit": (1507, 774),  # 公开招募
+            "shop": (1251, 727),  # 采购中心
+            "terminal": (1458, 297),  # 终端
+            "warehouse": (1788, 973),  # 仓库
+            "headhunting": (1749, 783),  # 干员寻访
         }
         self.tap(pos[name], interval=2)
 

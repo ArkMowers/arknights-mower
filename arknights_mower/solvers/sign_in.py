@@ -22,6 +22,7 @@ class SignInSolver(BaseSolver):
             [
                 "monthly_card",  # 五周年专享月卡
                 "orundum",  # 限时开采许可
+                "headhunting",  # 每日赠送单抽
             ]
         )
 
@@ -55,6 +56,10 @@ class SignInSolver(BaseSolver):
                 else:
                     self.notify("未检测到限时开采许可入口！")
                     self.tm.complete("orundum")
+            elif self.tm.task == "headhunting":
+                self.tap_index_element("headhunting")
+            else:
+                return True
         elif self.find("sign_in/monthly_card/banner"):
             if self.tm.task == "monthly_card":
                 if pos := self.find("sign_in/monthly_card/button_ok"):
@@ -90,6 +95,28 @@ class SignInSolver(BaseSolver):
                     self.sleep()
             else:
                 self.back()
+        elif self.find("sign_in/headhunting/banner"):
+            if self.tm.task == "headhunting":
+                if self.find("sign_in/headhunting/available"):
+                    self.tap((1355, 975))
+                else:
+                    self.notify("今天的赠送单抽已经抽完了")
+                    self.tm.complete("headhunting")
+                    self.back()
+            else:
+                self.back()
+        elif self.find("sign_in/headhunting/dialog"):
+            if self.tm.task == "headhunting":
+                self.tap((1263, 744))
+            else:
+                self.tap((663, 741))
+        elif pos := self.find("skip"):
+            self.tap(pos)
+        elif self.find("agent_token"):
+            if self.tm.task == "headhunting":
+                self.notify("成功抽完赠送单抽")
+                self.tm.complete("headhunting")
+            self.tap((960, 540))
         else:
             self.failure += 1
             if self.failure > 15:
