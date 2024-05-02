@@ -4,7 +4,7 @@ from arknights_mower.utils.solver import BaseSolver
 
 class TaskManager:
     def __init__(self, task_list):
-        self.task_list = task_list
+        self.task_list = task_list + ["back_to_index"]
         self.task = self.task_list[0]
 
     def complete(self, task):
@@ -37,11 +37,13 @@ class SignInSolver(BaseSolver):
 
     def transition(self) -> bool:
         if not self.tm.task:
-            self.back_to_index()
             return True
 
         if self.recog.detect_index_scene():
-            if self.tm.task == "monthly_card":
+            if self.tm.task == "back_to_index":
+                self.tm.complete("back_to_index")
+                return True
+            elif self.tm.task == "monthly_card":
                 if pos := self.find("sign_in/monthly_card/entry"):
                     self.tap(pos)
                 else:
@@ -70,7 +72,7 @@ class SignInSolver(BaseSolver):
             elif self.tm.task == "orundum":
                 self.notify("成功开采合成玉")
                 self.in_progress = False
-                self.tm.complete("monthly_card")
+                self.tm.complete("orundum")
             self.tap((960, 960))
         elif self.find("sign_in/orundum/banner"):
             if self.tm.task == "orundum":
