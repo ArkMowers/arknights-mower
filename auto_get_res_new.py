@@ -285,8 +285,6 @@ class Arknights数据处理器:
                     tag.append("资深干员")
                 elif 干员数据['rarity'] == 6:
                     tag.append("高级资深干员")
-                elif 干员数据['rarity'] == 1:
-                    tag.append("支援机械")
 
                 if 干员数据['position'] == "MELEE":
                     if 干员数据['description'].find("可以放置于远程位") == -1:
