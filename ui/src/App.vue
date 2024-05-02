@@ -280,7 +280,7 @@ function actions_on_resize() {
     '--app-width',
     `${window.innerWidth / webview.value.scale}px`
   )
-  mobile.value = window.innerWidth < 800
+  mobile.value = window.innerWidth < 800 * webview.value.scale
 }
 
 const mobile = ref(true)

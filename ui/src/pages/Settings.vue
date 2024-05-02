@@ -74,10 +74,6 @@ for (let i = 0.5; i <= 3.0; i += 0.25) {
 }
 
 const new_scale = ref(webview.value.scale)
-
-const scale_applicable = computed(() => {
-  new_scale.value != webview.value.scale
-})
 </script>
 
 <template>
