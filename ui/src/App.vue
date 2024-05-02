@@ -253,7 +253,7 @@ const watermarkData = ref('mower')
 
 const config_store = useConfigStore()
 const { load_config, load_shop } = config_store
-const { start_automatically, theme } = storeToRefs(config_store)
+const { start_automatically, theme, webview } = storeToRefs(config_store)
 
 const plan_store = usePlanStore()
 const { operators } = storeToRefs(plan_store)
@@ -272,8 +272,14 @@ function start() {
 }
 
 function actions_on_resize() {
-  const vh = window.innerHeight * 0.01
-  document.documentElement.style.setProperty('--vh', `${vh}px`)
+  document.documentElement.style.setProperty(
+    '--app-height',
+    `${window.innerHeight / webview.value.scale}px`
+  )
+  document.documentElement.style.setProperty(
+    '--app-width',
+    `${window.innerWidth / webview.value.scale}px`
+  )
   mobile.value = window.innerWidth < 800
 }
 
@@ -334,6 +340,15 @@ onMounted(async () => {
     start()
   }
 })
+
+watch(
+  () => webview.value.scale,
+  (scale) => {
+    const ele = document.querySelector('#app')
+    ele.style.transform = `scale(${webview.value.scale})`
+    actions_on_resize()
+  }
+)
 </script>
 
 <style scoped>
@@ -352,8 +367,9 @@ onMounted(async () => {
 
 <style lang="scss">
 #app {
-  height: calc(var(--vh, 1vh) * 100);
-  width: 100%;
+  height: var(--app-height, 100vh);
+  width: var(--app-width, 100vw);
+  transform-origin: 0 0;
 }
 
 .n-tab-pane {

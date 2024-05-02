@@ -66,6 +66,18 @@ async function select_simulator_folder() {
 }
 
 import { render_op_label, render_op_tag } from '@/utils/op_select'
+
+const scale_marks = {}
+const display_marks = [0.5, 1.0, 1.5, 2.0, 3.0]
+for (let i = 0.5; i <= 3.0; i += 0.25) {
+  scale_marks[i] = display_marks.includes(i) ? `${i * 100}%` : ''
+}
+
+const new_scale = ref(webview.value.scale)
+
+const scale_applicable = computed(() => {
+  new_scale.value != webview.value.scale
+})
 </script>
 
 <template>
@@ -172,19 +184,22 @@ import { render_op_label, render_op_tag } from '@/utils/op_select'
                 <template #suffix>张</template>
               </n-input-number>
             </n-form-item>
-            <n-form-item>
-              <template #label>
-                <span>界面缩放</span>
-                <help-text>重启生效</help-text>
-              </template>
+            <n-form-item label="界面缩放">
               <n-slider
-                v-model:value="webview.scale"
+                v-model:value="new_scale"
                 :step="0.25"
                 :min="0.5"
                 :max="3.0"
+                :marks="scale_marks"
                 :format-tooltip="(x) => `${x * 100}%`"
               />
-              <div class="scale">{{ webview.scale * 100 }}%</div>
+              <n-button
+                class="scale-apply"
+                :disabled="new_scale == webview.scale"
+                @click="webview.scale = new_scale"
+              >
+                应用
+              </n-button>
             </n-form-item>
             <n-form-item label="显示主题">
               <n-radio-group v-model:value="theme">
@@ -436,6 +451,10 @@ ul {
 .scale {
   width: 60px;
   text-align: right;
+}
+
+.scale-apply {
+  margin-left: 24px;
 }
 </style>
 
