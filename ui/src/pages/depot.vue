@@ -11,8 +11,10 @@
     <n-divider />
 
     <n-grid cols="1" responsive="screen">
-      <n-gi> 扫描时间：{{ reportData[2] }} <br>
-        注：万以下的数字并不会计入，如“龙门币 245万” “资质凭证 2万”<n-divider /></n-gi> 
+      <n-gi>
+        扫描时间：{{ reportData[2] }} <br />
+        注：万以下的数字并不会计入，如“龙门币 245万” “资质凭证 2万”<n-divider
+      /></n-gi>
       <n-gi v-for="(categoryItems, categoryName) in sortedReportData" :key="categoryName">
         <n-h2>{{ categoryName.slice(1) }}</n-h2>
         <n-grid x-gap="10px" y-gap="10px" cols="2 m:6 l:6 " responsive="screen">
