@@ -558,7 +558,7 @@ class Operator(object):
 
     def not_valid(self):
         if self.workaholic:
-            return False
+            return self.current_room != self.room or self.index != self.current_index
         if self.operator_type == 'high':
             if not self.room.startswith("dorm") and self.current_room.startswith("dorm"):
                 if self.mood == -1 or self.mood == 24:

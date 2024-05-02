@@ -775,7 +775,6 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         )
                         and len(plan[key][idx].replacement) > 0
                     )
-                    or not self.op_data.operators[name].need_to_refresh(h=2.5)
                 ):
                     if not need_fix:
                         fix_plan[key] = ["Current"] * len(plan[key])
