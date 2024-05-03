@@ -17,6 +17,7 @@ declare module 'vue' {
     MaaRogue: typeof import('./src/components/MaaRogue.vue')['default']
     MaaSss: typeof import('./src/components/MaaSss.vue')['default']
     MaaWeekly: typeof import('./src/components/MaaWeekly.vue')['default']
+    MaaWeeklyanotherNew: typeof import('./src/components/MaaWeeklyanotherNew.vue')['default']
     MaaWeeklyNew: typeof import('./src/components/MaaWeeklyNew.vue')['default']
     Material_all_in_one: typeof import('./src/components/Material_all_in_one.vue')['default']
     NA: typeof import('naive-ui')['NA']
