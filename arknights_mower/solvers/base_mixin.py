@@ -111,11 +111,12 @@ class BaseMixin:
             self.detail_filter(控制中枢=True)
             self.detail_filter(控制中枢=False)
         else:
-            for i in range(right_swipe):
+            swipe_time = 2 if right_swipe == 3 else right_swipe
+            for i in range(swipe_time):
                 self.swipe_noinertia(
                     (650, 540),
                     (1900, 0),
-                    rebuild=i == right_swipe - 1,
+                    rebuild=i == swipe_time - 1,
                 )
         return 0
 

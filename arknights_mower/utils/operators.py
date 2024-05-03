@@ -16,7 +16,7 @@ class Operators(object):
     plan = None
 
     global_plan = None
-    plan_name = ""
+    plan_condition = []
     shadow_copy = {}
     current_room_changed_callback = None
     first_init = True
@@ -32,7 +32,7 @@ class Operators(object):
         self.global_plan = plan
         self.backup_plans = plan["backup_plans"]
         # 切换默认排班
-        self.swap_plan()
+        self.swap_plan([False] * (len(self.backup_plans)))
         self.run_order_rooms = {}
         self.clues = []
         self.current_room_changed_callback = None
@@ -46,19 +46,13 @@ class Operators(object):
     def __repr__(self):
         return f'Operators(operators={self.operators})'
 
-    def swap_plan(self, idx=-1, refresh=False):
-        # -1 则使用默认排班方案
-        logger.info("启动超级变换形态")
-        if idx == -1:
-            self.plan = copy.deepcopy(self.global_plan["default_plan"].plan)
-            self.plan_name = "default_plan"
-            self.config = copy.deepcopy(self.global_plan["default_plan"].config)
-            logger.info("切换成常态模式")
-        else:
-            self.plan, self.config = self.merge_plan(idx)
-            self.plan_name = idx
-            logger.info("切换成自定义模式")
-        logger.info(("" if self.config.run_order_buffer_time > 0 else "不") + "启动葛朗台跑单")
+    def swap_plan(self, condition, refresh=False):
+        self.plan = copy.deepcopy(self.global_plan["default_plan"].plan)
+        self.config = copy.deepcopy(self.global_plan["default_plan"].config)
+        for index, success in enumerate(condition):
+            if success:
+                self.plan, self.config = self.merge_plan(index, self.config, self.plan)
+        self.plan_condition = condition
         if refresh:
             self.first_init = True
             error = self.init_and_validate(True)
@@ -66,14 +60,28 @@ class Operators(object):
             if error:
                 return error
 
-    def merge_plan(self, idx):
-        default_plan = copy.deepcopy(self.global_plan["default_plan"].plan)
+    def merge_plan(self, idx, ext_config, default_plan=None):
+        if default_plan is None:
+            default_plan = copy.deepcopy(self.global_plan["default_plan"].plan)
         plan = copy.deepcopy(self.global_plan["backup_plans"][idx])
         # 更新切换排班表
         for key, value in plan.plan.items():
             if key in default_plan:
-                default_plan[key] = value
-        return default_plan, copy.deepcopy(self.global_plan["backup_plans"][idx].config)
+                for idx, operator in enumerate(value):
+                    if operator.agent != "Current":
+                        default_plan[key][idx] = operator
+        return default_plan, ext_config.merge_config(plan.config)
+
+    def generate_conditions(self, n):
+        if n == 1:
+            return [[True], [False]]
+        else:
+            prev_conditions = self.generate_conditions(n - 1)
+            conditions = []
+            for condition in prev_conditions:
+                conditions.append(condition + [True])
+                conditions.append(condition + [False])
+            return conditions
 
     def init_and_validate(self, update=False):
         self.groups = {}
@@ -369,7 +377,7 @@ class Operators(object):
                             _name].room.startswith('dorm'):
                             ret.append(i)
                     elif not self.operators[
-                            _name].room.startswith('dorm'):
+                        _name].room.startswith('dorm'):
                         ret.append(i)
                 break
         return ret
@@ -558,7 +566,7 @@ class Operator(object):
 
     def not_valid(self):
         if self.workaholic:
-            return False
+            return self.current_room != self.room or self.index != self.current_index
         if self.operator_type == 'high':
             if not self.room.startswith("dorm") and self.current_room.startswith("dorm"):
                 if self.mood == -1 or self.mood == 24:

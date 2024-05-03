@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from email import encoders
-from email.mime.base import MIMEBase
 from email.mime.image import MIMEImage
 from io import BytesIO
 from typing import Optional, Tuple
@@ -19,7 +17,6 @@ import traceback
 import requests
 from datetime import datetime, timedelta
 
-from PIL import Image
 from bs4 import BeautifulSoup
 from abc import abstractmethod
 
@@ -143,13 +140,14 @@ class BaseSolver:
 
     def tap_index_element(self, name):
         pos = {
-            "friend": (544, 862),
-            "infrastructure": (1545, 948),
-            "mission": (1201, 904),
-            "recruit": (1507, 774),
-            "shop": (1251, 727),
-            "terminal": (1458, 297),
-            "warehouse": (1788, 973),
+            "friend": (544, 862),  # 好友
+            "infrastructure": (1545, 948),  # 基建
+            "mission": (1201, 904),  # 任务
+            "recruit": (1507, 774),  # 公开招募
+            "shop": (1251, 727),  # 采购中心
+            "terminal": (1458, 297),  # 终端
+            "warehouse": (1788, 973),  # 仓库
+            "headhunting": (1749, 783),  # 干员寻访
         }
         self.tap(pos[name], interval=2)
 
@@ -625,7 +623,14 @@ class BaseSolver:
                 time.sleep(delay)
 
     # 消息发送 原Email发送 EightyDollars
-    def send_message(self, body='', subject='', subtype='plain', retry_times=3, attach_image=None):
+    def send_message(
+        self,
+        body="",
+        subject="",
+        subtype="plain",
+        retry_times=3,
+        attach_image: Optional[tp.Image] = None,
+    ):
         send_message_config = getattr(self, 'send_message_config', None)
         if not send_message_config:
             logger.error("send_message_config 未在配置中定义!")
@@ -655,26 +660,15 @@ class BaseSolver:
             msg['From'] = email_config.get('account', '')
             msg['To'] = ", ".join(email_config.get('recipients', []))
 
-            with BytesIO(attach_image) as f:
-                logger.info(type(f))
-                f.seek(0)
-                image_content = MIMEImage(f.getvalue(), "png")
+            if attach_image is not None:
+                img = cv2.cvtColor(attach_image, cv2.COLOR_RGB2BGR)
+                _, attachment = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
+                with BytesIO(attachment) as f:
+                    f.seek(0)
+                    image_content = MIMEImage(f.getvalue())
 
-                image_content.add_header('Content-Disposition', 'attachment', filename="image.png")
-                msg.attach(image_content)
-                # 设置附件的MIME和文件名，这里是png类型:
-                # mime = MIMEBase('image', 'png', filename='test.png')
-                # # 加上必要的头信息:
-                # mime.add_header('Content-Disposition', 'attachment', filename='test.png')
-                # mime.add_header('Content-ID', '<0>')
-                # mime.add_header('X-Attachment-Id', '0')
-                # # 把附件的内容读进来:
-                #
-                # mime.set_payload(f.read())
-                # # 用Base64编码:
-                # encoders.encode_base64(mime)
-                # 添加到MIMEMultipart:
-            # msg.attach(mime)
+                    image_content.add_header('Content-Disposition', 'attachment', filename="image.jpg")
+                    msg.attach(image_content)
 
             try:
                 self.handle_email_error(email_config, msg)  # 第一次尝试

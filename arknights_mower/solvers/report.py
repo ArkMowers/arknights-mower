@@ -151,12 +151,20 @@ class ReportSolver(BaseSolver):
         except Exception as e:
             logger.error(f"存入数据失败：{e}")
         if self.send_report:
+            self.tap((1253, 81), interval=2)
             try:
-                self.send_message(report_template.render(report_data=self.report_res, title_text="基建报告"),
-                                  "基建报告",
-                                  "html")
+                self.send_message(
+                    report_template.render(
+                        report_data=self.report_res,
+                        title_text="基建报告",
+                    ),
+                    "基建报告",
+                    "html",
+                    attach_image=self.recog.img,
+                )
             except Exception as e:
                 logger.error(f"基报邮件发送失败：{e}")
+            self.tap((40, 80), interval=2)
 
     def has_record(self):
         try:
