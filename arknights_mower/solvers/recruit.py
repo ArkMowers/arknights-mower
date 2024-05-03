@@ -249,15 +249,25 @@ class RecruitSolver(BaseSolver):
 
             # 计算招募标签组合结果
             recruit_cal_result = self.recruit_cal(tags)
-            recruit_result_level = recruit_cal_result[0][1][0]['star']
-            logger.debug(f"recruit_index:{self.recruit_index}")
-            logger.debug(f"recruit_order:{self.recruit_order.index(recruit_result_level)}")
+            logger.debug("筛选结果:{}".format(recruit_cal_result))
+            recruit_result_level = -1
+
+            for index in self.recruit_order:
+                if recruit_cal_result[index]:
+                    recruit_result_level = index
+                    break
+            if recruit_result_level == -1:
+                logger.error("筛选结果为 {}".format(recruit_cal_result))
+                raise "筛选tag失败"
+            logger.info("recruit_result_level={}".format(recruit_result_level))
+
             if self.recruit_order.index(recruit_result_level) <= self.recruit_index:
                 if self.recruit_config['recruit_email_enable']:
-                    self.send_message(recruit_rarity.render(recruit_results=recruit_cal_result, title_text="稀有tag通知"),
+                    self.send_message(recruit_rarity.render(recruit_results=recruit_cal_result[recruit_result_level], title_text="稀有tag通知"),
                                       "出稀有标签辣",
                                       "html")
                     logger.info('稀有tag,发送邮件')
+
                 if recruit_result_level == 6:
                     logger.debug('六星tag')
                     self.back()
@@ -273,12 +283,12 @@ class RecruitSolver(BaseSolver):
                     return
                 # 手动选择且单五星词条自动,但词条不止一种
                 if (self.recruit_config['recruit_auto_5'] == 2 and
-                        len(recruit_cal_result) > 1 and self.recruit_config['recruit_auto_only5']):
+                        len(recruit_cal_result[recruit_result_level]) > 1 and self.recruit_config['recruit_auto_only5']):
                     logger.debug('手动选择且单五星词条自动,但词条不止一种')
                     self.back()
                     return
 
-            if recruit_cal_result[0][1][0]['star'] == 3:
+            if recruit_result_level == 3:
                 # refresh
                 recruit_refresh_pos = (1455, 610)
                 if self.get_color(recruit_refresh_pos)[2] > 200:
@@ -308,7 +318,7 @@ class RecruitSolver(BaseSolver):
 
         choose = []
         if recruit_result_level > 3:
-            choose = list(recruit_cal_result[0][0])
+            choose = recruit_cal_result[recruit_result_level][0]['tag']
 
         # tap selected tags
         logger.info(f'选择标签：{list(choose)}')
@@ -353,9 +363,9 @@ class RecruitSolver(BaseSolver):
         if recruit_result_level > 3:
             self.agent_choose[str(self.recruit_pos + 1)] = {
                 "tags": choose,
-                "result": recruit_cal_result[0][1]
+                "result": recruit_cal_result[recruit_result_level][0]['result']
             }
-            logger.info(f'第{self.recruit_pos + 1}个位置上的公招预测结果：{recruit_cal_result[0][1]}')
+            logger.info('第{}个位置上的公招预测结果：{}'.format(self.recruit_pos + 1,recruit_cal_result[recruit_result_level][0]['result']))
         else:
             self.agent_choose[str(self.recruit_pos + 1)] = {
                 "tags": choose,
@@ -411,21 +421,14 @@ class RecruitSolver(BaseSolver):
             tags.remove('新手')
         for item in combinations(tags, 1):
             tmp = agent_with_tags[item[0]]
-            if "支援机械" not in item:
-                tmp = [x for x in tmp if x['star'] >= 3]
-            if "高级资深干员" not in item:
-                tmp = [x for x in tmp if x['star'] < 6]
+
             if len(tmp) == 0:
                 continue
-            tmp.sort(key=lambda k: k['star'])
+            tmp.sort(key=lambda k: k['star'], reverse=True)
             combined_agent[item] = tmp
         for item in combinations(tags, 2):
             tmp = [j for j in agent_with_tags[item[0]] if j in agent_with_tags[item[1]]]
 
-            if "支援机械" not in item:
-                tmp = [x for x in tmp if x['star'] >= 3]
-            if "高级资深干员" not in item:
-                tmp = [x for x in tmp if x['star'] < 6]
             if len(tmp) == 0:
                 continue
             tmp.sort(key=lambda k: k['star'])
@@ -434,38 +437,55 @@ class RecruitSolver(BaseSolver):
             tmp1 = [j for j in agent_with_tags[item[0]] if j in agent_with_tags[item[1]]]
             tmp = [j for j in tmp1 if j in agent_with_tags[item[2]]]
 
-            if "支援机械" not in item:
-                tmp = [x for x in tmp if x['star'] >= 3]
-            if "高级资深干员" not in item:
-                tmp = [x for x in tmp if x['star'] < 6]
             if len(tmp) == 0:
                 continue
-            tmp.sort(key=lambda k: k['star'])
+            tmp.sort(key=lambda k: k['star'], reverse=True)
             combined_agent[item] = tmp
 
         sorted_list = sorted(combined_agent.items(), key=lambda x: index_dict[x[1][0]['star']])
 
         result_dict = {}
         for item in sorted_list:
-            if item[1][0]['star'] == sorted_list[0][1][0]['star']:
-                result_dict[item[0]] = item[1]
-
-        sorted_list = sorted(result_dict.items(), key=lambda x: len(x[1]), reverse=True)
-        logger.debug(f"before sort{sorted_list}")
-        if 3 <= sorted_list[0][1][0]['star'] <= 5:
-            for res in sorted_list[1:]:
-                if len(res[1]) != len(sorted_list[0][1]) and sorted_list[0][1][0]['star'] > 4:
+            result_dict[item[0]] = []
+            max_star = -1
+            min_star = 7
+            for agent in item[1]:
+                if "高级资深干员" not in item[0] and agent['star'] == 6:
                     continue
-                contain_all = True
-                for value in res[1]:
-                    if value not in sorted_list[0][1]:
-                        contain_all = False
-                if contain_all:
-                    sorted_list.remove(res)
+                if agent['star'] > max_star:
+                    max_star = agent['star']
+                if agent['star'] < min_star:
+                    min_star = agent['star']
+            for agent in item[1]:
+                if max_star > 1 and agent['star'] == 2:
+                    continue
+                if max_star > 1 and agent['star'] == 1:
+                    continue
+                if max_star < 6 and agent['star'] == 6:
+                    continue
+                result_dict[item[0]].append(agent)
+            result_dict[item[0]] = sorted(result_dict[item[0]], key=lambda x: x['star'], reverse=True)
+            min_star = result_dict[item[0]][-1]['star']
+            for res in result_dict[item[0]][:]:
+                if res['star'] > min_star:
+                    result_dict[item[0]].remove(res)
+        result = {
+            6: [],
+            5: [],
+            4: [],
+            3: [],
+            2: [],
+            1: [],
 
-        logger.debug(f"recruit_cal result:{sorted_list}")
-        return sorted_list
-        # if len(sorted_list) > 1 and sorted_list[0][1][0]['star'] >= 5:
-        #     print("do nothing")
-        # for item in sorted_list:
-        #     print(item)
+        }
+        for tag in result_dict:
+            result[result_dict[tag][0]['star']].append(
+                {
+                    'tag': tag,
+                    'result': result_dict[tag]
+                }
+            )
+        for item in result:
+            if result[item]:
+                logger.info("{}:{}".format(item, result[item]))
+        return result
