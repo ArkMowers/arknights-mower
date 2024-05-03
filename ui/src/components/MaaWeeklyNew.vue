@@ -31,6 +31,16 @@ const togglePlan = (plan) => {
       .flat()
   })
 };
+const changestage = (plan,newstage) => {
+  plan["stage"]=newstage
+  console.log(plan["stage"])
+  maa_weekly_plan.value.slice(0, daysOfWeek.length).forEach((p, i) => {
+    p.stage = maa_weekly_plan1.value
+      .filter((item) => item[daysOfWeek[i]] === 2)
+      .map((item) => item.stage)
+      .flat()
+  })
+};
 const showstage = (stage) => {
   const valueMapping = {
     '1-7': '1-7',
@@ -365,6 +375,7 @@ function clear() {
             </th>
           </tr>
           <tr>
+            <th></th>
             <th>药</th>
             <th v-for="(day, index) in daysOfWeek" :key="index">
               <n-input-number
@@ -398,6 +409,7 @@ function clear() {
                 :show-arrow="false"
                 :render-tag="render_tag"
                 :on-create="create_tag"
+                @update:value="(value) => changestage(plan, value)"
               />
               <span v-else>{{ showstage(plan.stage) }}</span>
             </td>
