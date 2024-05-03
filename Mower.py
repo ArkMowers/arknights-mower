@@ -301,11 +301,11 @@ def simulate():
     if len(base_scheduler.op_data.backup_plans) > 0:
         conditions = base_scheduler.op_data.generate_conditions(len(base_scheduler.op_data.backup_plans))
         for con in conditions:
-            validation_msg = base_scheduler.op_data.swap_plan_new(con, True)
+            validation_msg = base_scheduler.op_data.swap_plan(con, True)
             if validation_msg is not None:
                 logger.error(f"替换排班验证错误：{validation_msg}, 附表条件为 {con}")
                 return
-        base_scheduler.op_data.swap_plan_new([False] * len(base_scheduler.op_data.backup_plans), True)
+        base_scheduler.op_data.swap_plan([False] * len(base_scheduler.op_data.backup_plans), True)
     while True:
         try:
             if len(base_scheduler.tasks) > 0:
