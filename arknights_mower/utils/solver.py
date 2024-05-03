@@ -1,4 +1,9 @@
 from __future__ import annotations
+
+from email import encoders
+from email.mime.base import MIMEBase
+from email.mime.image import MIMEImage
+from io import BytesIO
 from typing import Optional, Tuple
 
 import sys
@@ -14,6 +19,7 @@ import traceback
 import requests
 from datetime import datetime, timedelta
 
+from PIL import Image
 from bs4 import BeautifulSoup
 from abc import abstractmethod
 
@@ -26,6 +32,7 @@ from .recognize import RecognizeError, Recognizer, Scene
 from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.matcher import Matcher
 import numpy as np
+
 
 class StrategyError(Exception):
     """ Strategy Error """
@@ -147,7 +154,8 @@ class BaseSolver:
         }
         self.tap(pos[name], interval=2)
 
-    def template_match(self, res: str, scope: Optional[tp.Scope] = None, method: int = cv2.TM_CCOEFF) -> Tuple[float, tp.Scope]:
+    def template_match(self, res: str, scope: Optional[tp.Scope] = None, method: int = cv2.TM_CCOEFF) -> Tuple[
+        float, tp.Scope]:
         return self.recog.template_match(res, scope, method)
 
     def swipe(self, start: tp.Coordinate, movement: tp.Coordinate, duration: int = 100, interval: float = 1,
@@ -211,13 +219,13 @@ class BaseSolver:
     def get_infra_scene(self) -> int:
         """ get the current scene in the infra """
         return self.recog.get_infra_scene()
-    
+
     def ra_scene(self) -> int:
         """
         生息演算场景识别
         """
         return self.recog.get_ra_scene()
-    
+
     def sss_scene(self) -> int:
         """
         保全导航场景识别
@@ -296,7 +304,9 @@ class BaseSolver:
         p2 = end[0] + _rb(0.1, 0.02), end[1] + _rb(0.05, 0.02)
 
         logger.info("滑动验证码")
-        self.device.swipe_ext((start, p1, p2, end, end), durations=[random.randint(400, 600), random.randint(200, 300), random.randint(200, 300), random.randint(200, 300)])
+        self.device.swipe_ext((start, p1, p2, end, end),
+                              durations=[random.randint(400, 600), random.randint(200, 300), random.randint(200, 300),
+                                         random.randint(200, 300)])
 
     def login(self):
         """
@@ -616,7 +626,7 @@ class BaseSolver:
                 time.sleep(delay)
 
     # 消息发送 原Email发送 EightyDollars
-    def send_message(self, body='', subject='', subtype='plain', retry_times=3):
+    def send_message(self, body='', subject='', subtype='plain', retry_times=3, attach_image=None):
         send_message_config = getattr(self, 'send_message_config', None)
         if not send_message_config:
             logger.error("send_message_config 未在配置中定义!")
@@ -645,6 +655,27 @@ class BaseSolver:
             msg['Subject'] = email_config.get('subject', '') + subject
             msg['From'] = email_config.get('account', '')
             msg['To'] = ", ".join(email_config.get('recipients', []))
+
+            with BytesIO(attach_image) as f:
+                logger.info(type(f))
+                f.seek(0)
+                image_content = MIMEImage(f.getvalue(), "png")
+
+                image_content.add_header('Content-Disposition', 'attachment', filename="image.png")
+                msg.attach(image_content)
+                # 设置附件的MIME和文件名，这里是png类型:
+                # mime = MIMEBase('image', 'png', filename='test.png')
+                # # 加上必要的头信息:
+                # mime.add_header('Content-Disposition', 'attachment', filename='test.png')
+                # mime.add_header('Content-ID', '<0>')
+                # mime.add_header('X-Attachment-Id', '0')
+                # # 把附件的内容读进来:
+                #
+                # mime.set_payload(f.read())
+                # # 用Base64编码:
+                # encoders.encode_base64(mime)
+                # 添加到MIMEMultipart:
+            # msg.attach(mime)
 
             try:
                 self.handle_email_error(email_config, msg)  # 第一次尝试

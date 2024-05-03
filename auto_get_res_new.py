@@ -266,7 +266,6 @@ class Arknights数据处理器:
             "PIONEER": "先锋干员"
         }
 
-        print(recruit_list)
         for 干员代码, 干员数据 in self.干员表.items():
             干员名 = 干员数据["name"]
 
@@ -285,12 +284,9 @@ class Arknights数据处理器:
                     tag.append("资深干员")
                 elif 干员数据['rarity'] == 6:
                     tag.append("高级资深干员")
-                elif 干员数据['rarity'] == 1:
-                    tag.append("支援机械")
 
                 if 干员数据['position'] == "MELEE":
-                    if 干员数据['description'].find("可以放置于远程位") == -1:
-                        tag.append("近战位")
+                    tag.append("近战位")
                 elif 干员数据['position'] == "RANGED":
                     tag.append("远程位")
 
