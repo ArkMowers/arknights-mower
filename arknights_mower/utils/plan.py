@@ -1,3 +1,5 @@
+import copy
+
 from arknights_mower.utils import config
 
 class Plan(object):
@@ -77,3 +79,33 @@ class PlanConfig(object):
                     return [True, []]
             else:
                 return [False, []]
+
+    def merge_config(self, target):
+        n = copy.deepcopy(self)
+
+        rest_in_full_dict = set(n.rest_in_full)
+        target_rest_in_full = set(target.rest_in_full)
+        n.rest_in_full = list(rest_in_full_dict.union(target_rest_in_full))
+
+        exhaust_require_dict = set(n.exhaust_require)
+        target_exhaust_require = set(target.exhaust_require)
+        n.exhaust_require = list(exhaust_require_dict.union(target_exhaust_require))
+
+        workaholic_dict = set(n.workaholic)
+        target_workaholic = set(target.workaholic)
+        n.workaholic = list(workaholic_dict.union(target_workaholic))
+
+        resting_priority_dict = set(n.resting_priority)
+        target_resting_priority = set(target.resting_priority)
+        n.resting_priority = list(resting_priority_dict.union(target_resting_priority))
+
+        free_blacklist_dict = set(n.free_blacklist)
+        target_free_blacklist = set(target.free_blacklist)
+        n.free_blacklist = list(free_blacklist_dict.union(target_free_blacklist))
+
+        refresh_trading_config_dict = set(n.refresh_trading_config)
+        target_refresh_trading_config = set(target.refresh_trading_config)
+        n.refresh_trading_config = list(refresh_trading_config_dict.union(target_refresh_trading_config))
+
+        return n
+

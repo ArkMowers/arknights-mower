@@ -95,6 +95,7 @@ maa_config = {
                     {"weekday": "周五", "stage": ['Annihilation', '1-7'], "medicine": 0},
                     {"weekday": "周六", "stage": ['AP-5'], "medicine": 0},
                     {"weekday": "周日", "stage": ['AP-5'], "medicine": 0}],
+    "eat_stone": False
 }
 recruit_config = {
     "recruit_enable": True,
@@ -298,12 +299,13 @@ def simulate():
                 base_scheduler.op_data.operators[k].current_index = v.current_index
     base_scheduler.op_data.first_init = False
     if len(base_scheduler.op_data.backup_plans) > 0:
-        for idx, backplan in enumerate(base_scheduler.op_data.backup_plans):
-            validation_msg = base_scheduler.op_data.swap_plan(idx,True)
+        conditions = base_scheduler.op_data.generate_conditions(len(base_scheduler.op_data.backup_plans))
+        for con in conditions:
+            validation_msg = base_scheduler.op_data.swap_plan_new(con, True)
             if validation_msg is not None:
-                logger.error(f"替换排班验证错误：{validation_msg}")
+                logger.error(f"替换排班验证错误：{validation_msg}, 附表条件为 {con}")
                 return
-            base_scheduler.op_data.swap_plan(-1,True)
+        base_scheduler.op_data.swap_plan_new([False] * len(base_scheduler.op_data.backup_plans), True)
     while True:
         try:
             if len(base_scheduler.tasks) > 0:

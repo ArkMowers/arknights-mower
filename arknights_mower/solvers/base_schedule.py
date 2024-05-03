@@ -1136,31 +1136,27 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
     def backup_plan_solver(self):
         try:
             changed = False
-            index = -1
             if self.op_data.backup_plans:
+                con = copy.deepcopy(self.op_data.plan_condition)
+                current_con = self.op_data.plan_condition
                 for idx, bp in enumerate(self.op_data.backup_plans):
                     func = str(bp.trigger)
                     logger.debug(func)
                     valid = self.op_data.evaluate_expression(func)
-                    if valid and self.op_data.plan_name != idx:
-                        logger.info(
-                            f"满足第{idx + 1}个备用排班表使用条件，启动超级变换形态"
-                        )
-                        self.op_data.swap_plan(idx, refresh=True)
+                    con[idx] = valid
+                    if valid and current_con[idx] != valid:
+
                         task = self.op_data.backup_plans[idx].task
                         if task:
                             self.tasks.append(
                                 SchedulerTask(task_plan=copy.deepcopy(task))
                             )
-                        index = idx
                         changed = True
-                        break
-                    if valid:
-                        index = idx
                 # 不满足条件且为其他排班表，则切换回来
-                if index == -1 and self.op_data.plan_name != "default_plan":
-                    self.op_data.swap_plan(index, refresh=True)
-                    changed = True
+                if changed:
+                    logger.info(f"检测到副班条件变更，启动超级变换形态, 当前条件:{current_con}")
+                    logger.info(f"新条件列表:{con}")
+                    self.op_data.swap_plan(con, refresh=True)
             if changed:
                 self.tasks.append(SchedulerTask(task_plan={}))
         except Exception as e:
@@ -2411,7 +2407,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             agents = [item for item in agents if item != ""]
         for idx, n in enumerate(agents):
             if room.startswith("dorm"):
-                if self.op_data.plan_name != "default_plan":
+                if self.op_data.plan_condition != [False]*(len(self.op_data.backup_plans)):
                     continue
                 if n not in self.op_data.operators.keys():
                     agents[idx] = "Free"
