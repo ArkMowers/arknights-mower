@@ -34,13 +34,23 @@ class SignInSolver(BaseSolver):
         logger.info(msg)
         self.recog.save_screencap("sign_in")
         if hasattr(self, "send_message_config") and self.send_message_config:
-            self.send_message(msg)
+            self.send_message(msg, attach_image=self.recog.img)
+
+    def handle_unknown(self):
+        self.failure += 1
+        if self.failure > 30:
+            self.notify("签到任务执行失败！")
+            self.back_to_index()
+            return True
+        self.sleep()
 
     def transition(self) -> bool:
         if not self.tm.task:
             return True
 
-        if self.recog.detect_index_scene():
+        if self.recog.detect_connecting_scene():
+            return self.handle_unknown()
+        elif self.recog.detect_index_scene():
             if self.tm.task == "back_to_index":
                 self.tm.complete("back_to_index")
                 return True
@@ -117,15 +127,14 @@ class SignInSolver(BaseSolver):
                 self.tap((663, 741))
         elif pos := self.find("skip"):
             self.tap(pos)
-        elif self.find("agent_token"):
+        elif self.find(
+            "sign_in/headhunting/contract",
+            scope=((1550, 650), (1920, 850)),
+            score=0.1,
+        ):
             if self.tm.task == "headhunting":
                 self.notify("成功抽完赠送单抽")
                 self.tm.complete("headhunting")
             self.tap((960, 540))
         else:
-            self.failure += 1
-            if self.failure > 15:
-                self.notify("签到任务执行失败！")
-                self.back_to_index()
-                return True
-            self.sleep()
+            return self.handle_unknown()
