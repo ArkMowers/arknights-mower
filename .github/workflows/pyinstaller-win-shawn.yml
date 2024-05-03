@@ -1,10 +1,9 @@
-name: dev_shawn分支自动打包
+name: 2024.02分支自动打包
 
 on:
   push:
     branches:
-      - dev_shawn
-  workflow_dispatch:
+      - 2024.02
 
 jobs:
   build-frontend:
