@@ -1,10 +1,11 @@
 import copy
-
+from enum import Enum
 from arknights_mower.utils import config
+
 
 class Plan(object):
 
-    def __init__(self, plan, config, trigger=None, task=None):
+    def __init__(self, plan, config, trigger=None, task=None, trigger_timing=None):
         # 基建计划 or 触发备用plan 的排班表，只需要填和默认不一样的部分
         self.plan = plan
         # 基建计划相关配置，必须填写全部配置
@@ -13,6 +14,17 @@ class Plan(object):
         self.trigger = trigger
         # 触发备用plan 的时间生成的任务 (选填）
         self.task = task
+        if trigger_timing is None:
+            self.trigger_timing = PlanTriggerTiming.AFTER_PLANNING
+        else:
+            self.trigger_timing = trigger_timing
+
+
+class PlanTriggerTiming(Enum):
+    BEGINNING = 0
+    BEFORE_PLANNING = 300
+    AFTER_PLANNING = 600
+    END = 999
 
 
 class Room(object):
@@ -108,4 +120,3 @@ class PlanConfig(object):
         n.refresh_trading_config = list(refresh_trading_config_dict.union(target_refresh_trading_config))
 
         return n
-
