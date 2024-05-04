@@ -306,6 +306,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
     def handle_error(self, force=False):
         if self.scene() == Scene.UNKNOWN:
             self.device.exit()
+            if self.device.check_current_focus():
+                self.recog.update()
         if self.error or force:
             # 如果没有任何时间小于当前时间的任务才生成空任务
             if find_next_task(self.tasks, datetime.now()) is None:
@@ -3283,6 +3285,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     self.send_message(hard_stop_msg)
                     time.sleep(180)
                     self.device.exit()
+                    if self.device.check_current_focus():
+                        self.recog.update()
                 elif not one_time:
                     logger.info(f"记录MAA 本次执行时间")
                     self.maa_config["last_execution"] = datetime.now()
@@ -3386,6 +3390,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         else:
                             time.sleep(5)
                     self.device.exit()
+                    if self.device.check_current_focus():
+                        self.recog.update()
 
             elif not rg_sleep and self.maa_config["reclamation_algorithm"]:
                 self.recog.update()
@@ -3422,6 +3428,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 self.sleep(remaining_time)
                 if self.close_simulator_when_idle:
                     restart_simulator(self.simulator, stop=False)
+                if self.device.check_current_focus():
+                    self.recog.update()
             self.MAA = None
         except Exception as e:
             logger.exception(e)
@@ -3434,6 +3442,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     f"休息 {format_time(remaining_time)}，到{self.tasks[0].time.strftime('%H:%M:%S')}开始工作"
                 )
                 time.sleep(remaining_time)
+            if self.device.check_current_focus():
+                self.recog.update()
 
     def skland_plan_solover(self):
         try:
