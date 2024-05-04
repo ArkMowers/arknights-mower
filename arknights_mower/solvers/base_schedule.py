@@ -14,6 +14,7 @@ from ..data import agent_list, base_room_list
 from ..utils import detector, segment
 from ..utils.digit_reader import DigitReader
 from ..utils.operators import Operators, Operator
+from ..utils.plan import PlanTriggerTiming
 from ..utils.scheduler_task import (
     SchedulerTask,
     scheduling,
@@ -615,6 +616,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     self.refresh_connecting = False
                     self.agent_arrange(self.task.plan, get_time)
                     if get_time:
+                        self.backup_plan_solver(PlanTriggerTiming.BEFORE_PLANNING)
                         self.plan_metadata()
                     if TaskTypes.RE_ORDER == self.task.type:
                         self.skip()
@@ -631,7 +633,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     self.skip(["planned", "collect_notification"])
                 del self.tasks[0]
                 if self.tasks and self.tasks[0].type in [TaskTypes.SHIFT_ON]:
-                    self.backup_plan_solver()
+                    self.backup_plan_solver(PlanTriggerTiming.AFTER_PLANNING)
             except Exception as e:
                 logger.exception(e)
                 if (
@@ -1135,7 +1137,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         if self.agent_get_mood() is None:
             self.backup_plan_solver()
 
-    def backup_plan_solver(self):
+    def backup_plan_solver(self, timing=None):
+        if timing is None:
+            timing = PlanTriggerTiming.END
         try:
             changed = False
             if self.op_data.backup_plans:
@@ -1146,8 +1150,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     logger.debug(func)
                     valid = self.op_data.evaluate_expression(func)
                     con[idx] = valid
-                    if valid and current_con[idx] != valid:
-
+                    if valid and current_con[idx] != valid and bp.trigger_timing.value <= timing.value:
                         task = self.op_data.backup_plans[idx].task
                         if task:
                             self.tasks.append(
