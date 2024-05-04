@@ -32,13 +32,11 @@ class Map:
         y = np.dot(self.rev_mat, x)
         return (round(y[0][0] / y[2][0]), round(y[1][0] / y[2][0]))
 
-    def find(
-        self, res: str, scope: Optional[tp.Scope] = None, score: float = 0.0
-    ) -> Optional[tp.Scope]:
+    def find(self, res: str) -> Optional[tp.Scope]:
         logger.debug(f"find: {res}")
         res = f"{__rootdir__}/resources/ra/map/{res}.png"
         res_img = loadimg(res, True)
-        return self.matcher.match(res_img, scope=scope, prescore=score)
+        return self.matcher.match(res_img, scope=((250, 0), (1620, 900)), prescore=0.5)
 
 
 class ReclamationAlgorithm(BaseSolver):
