@@ -140,6 +140,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         if self.op_data is None or self.op_data.operators is None:
             self.initialize_operators()
         self.op_data.correct_dorm()
+        self.backup_plan_solver(PlanTriggerTiming.BEGINNING)
         return super().run()
 
     def transition(self) -> None:
