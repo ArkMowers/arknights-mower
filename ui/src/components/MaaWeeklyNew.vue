@@ -21,8 +21,8 @@ const togglePlanAndStage = (plan, day) => {
   })
 }
 const togglePlan = (plan) => {
-  daysOfWeek.forEach(day => {
-    plan[day] = plan[day] === 1 ? 2 : 1;
+  daysOfWeek.forEach((day) => {
+    plan[day] = plan[day] === 1 ? 2 : 1
   })
   maa_weekly_plan.value.slice(0, daysOfWeek.length).forEach((p, i) => {
     p.stage = maa_weekly_plan1.value
@@ -30,17 +30,17 @@ const togglePlan = (plan) => {
       .map((item) => item.stage)
       .flat()
   })
-};
-const changestage = (plan,newstage) => {
-  plan["stage"]=newstage
-  console.log(plan["stage"])
+}
+const changestage = (plan, newstage) => {
+  plan['stage'] = newstage
+  console.log(plan['stage'])
   maa_weekly_plan.value.slice(0, daysOfWeek.length).forEach((p, i) => {
     p.stage = maa_weekly_plan1.value
       .filter((item) => item[daysOfWeek[i]] === 2)
       .map((item) => item.stage)
       .flat()
   })
-};
+}
 const showstage = (stage) => {
   const valueMapping = {
     '1-7': '1-7',
