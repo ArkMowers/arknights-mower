@@ -26,7 +26,6 @@ class Recognizer(object):
         self.start(screencap)
         self.loading_time = 0
         self.LOADING_TIME_LIMIT = 5
-        self.CONN_MINWIDTH = 300
 
     def start(self, screencap: bytes = None, build: bool = True) -> None:
         """init with screencap, build matcher"""
@@ -60,11 +59,6 @@ class Recognizer(object):
 
     def save_screencap(self, folder):
         save_screenshot(self.screencap, subdir=f"{folder}/{self.h}x{self.w}")
-
-    def detect_connecting_scene(self) -> bool:
-        if pos := self.find("connecting"):
-            return pos[1][0] - pos[0][0] > self.CONN_MINWIDTH
-        return False
 
     def detect_index_scene(self) -> bool:
         return (
@@ -105,7 +99,7 @@ class Recognizer(object):
         """get the current scene in the game"""
         if self.scene != Scene.UNDEFINED:
             return self.scene
-        if self.detect_connecting_scene():
+        if self.find("connecting"):
             self.scene = Scene.CONNECTING
         elif self.detect_index_scene():
             self.scene = Scene.INDEX
@@ -282,7 +276,7 @@ class Recognizer(object):
     def get_infra_scene(self) -> int:
         if self.scene != Scene.UNDEFINED:
             return self.scene
-        if self.detect_connecting_scene():
+        if self.find("connecting"):
             self.scene = Scene.CONNECTING
         elif self.find("double_confirm") is not None:
             if self.find("network_check") is not None:
@@ -350,7 +344,7 @@ class Recognizer(object):
             return self.scene
 
         # 连接中，优先级最高
-        if self.detect_connecting_scene():
+        if self.find("connecting"):
             self.scene = Scene.CONNECTING
 
         # 奇遇
@@ -444,7 +438,7 @@ class Recognizer(object):
             return self.scene
 
         # 连接中，优先级最高
-        if self.detect_connecting_scene():
+        if self.find("connecting"):
             self.scene = Scene.CONNECTING
 
         elif self.detect_index_scene():
@@ -494,7 +488,7 @@ class Recognizer(object):
             return self.scene
 
         # 连接中，优先级最高
-        if self.detect_connecting_scene():
+        if self.find("connecting"):
             self.scene = Scene.CONNECTING
 
         elif self.find("arrange_check_in") or self.find("arrange_check_in_on"):
@@ -562,6 +556,14 @@ class Recognizer(object):
         """
         logger.debug(f"find: {res}")
 
+        dpi_aware = res in [
+            "login_bilibili",
+            "login_bilibili_privacy",
+            "login_bilibili_entry",
+            "login_bilibili_privacy_accept",
+            "login_captcha",
+        ]
+
         if scope is None and score == 0.0:
             if res == "arrange_check_in":
                 scope = ((0, 350), (200, 530))
@@ -581,13 +583,23 @@ class Recognizer(object):
             res_img = thres2(loadimg(res, True), thres)
             matcher = Matcher(thres2(self.gray, thres))
             ret = matcher.match(
-                res_img, draw=draw, scope=scope, judge=judge, prescore=score
+                res_img,
+                draw=draw,
+                scope=scope,
+                judge=judge,
+                prescore=score,
+                dpi_aware=dpi_aware,
             )
         else:
             res_img = loadimg(res, True)
             matcher = self.matcher
             ret = matcher.match(
-                res_img, draw=draw, scope=scope, judge=judge, prescore=score
+                res_img,
+                draw=draw,
+                scope=scope,
+                judge=judge,
+                prescore=score,
+                dpi_aware=dpi_aware,
             )
         if strict and ret is None:
             raise RecognizeError(f"Can't find '{res}'")

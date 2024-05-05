@@ -48,7 +48,7 @@ class SignInSolver(BaseSolver):
         if not self.tm.task:
             return True
 
-        if self.recog.detect_connecting_scene():
+        if self.find("connecting"):
             return self.handle_unknown()
         elif self.recog.detect_index_scene():
             if self.tm.task == "back_to_index":
