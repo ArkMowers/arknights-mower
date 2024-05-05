@@ -1149,21 +1149,19 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 for idx, bp in enumerate(self.op_data.backup_plans):
                     func = str(bp.trigger)
                     logger.debug(func)
-                    valid = self.op_data.evaluate_expression(func)
-                    con[idx] = valid
-                    if valid and current_con[idx] != valid and bp.trigger_timing.value <= timing.value:
+                    con[idx] = self.op_data.evaluate_expression(func)
+                    if current_con[idx] != con[idx] and bp.trigger_timing.value <= timing.value:
                         task = self.op_data.backup_plans[idx].task
                         if task:
                             self.tasks.append(
                                 SchedulerTask(task_plan=copy.deepcopy(task))
                             )
-                        changed = True
                 # 不满足条件且为其他排班表，则切换回来
-                if changed:
+                if con != current_con:
                     logger.info(f"检测到副班条件变更，启动超级变换形态, 当前条件:{current_con}")
                     logger.info(f"新条件列表:{con}")
                     self.op_data.swap_plan(con, refresh=True)
-            if changed:
+            if con != current_con:
                 self.tasks.append(SchedulerTask(task_plan={}))
         except Exception as e:
             logger.exception(e)
