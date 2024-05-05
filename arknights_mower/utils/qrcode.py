@@ -11,7 +11,7 @@ QRCODE_SIZE = 210
 GAP_SIZE = 16
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
-TOP = 980
+TOP = 1000
 
 
 def encode(data: str, n: int = 9, theme: str = "light") -> List[Image.Image]:
@@ -44,9 +44,9 @@ def trim(img: Image.Image) -> Image.Image:
 def export(plan: Dict, img: Image.Image, theme: str = "light") -> Image.Image:
     qrcode_list = encode(json.dumps(plan), theme=theme)
     for idx, i in enumerate(qrcode_list[:7]):
-        img.paste(i, (112 + idx * (GAP_SIZE + QRCODE_SIZE), TOP))
+        img.paste(i, (75 + idx * (GAP_SIZE + QRCODE_SIZE), TOP))
     for idx, i in enumerate(qrcode_list[7:]):
-        img.paste(i, (2550 + idx * (GAP_SIZE + QRCODE_SIZE), TOP))
+        img.paste(i, (2520 + idx * (GAP_SIZE + QRCODE_SIZE), TOP))
     return img
 
 

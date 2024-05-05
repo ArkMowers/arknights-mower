@@ -72,7 +72,7 @@ async function save() {
   blob = await toBlob(plan_editor.value.outer, {
     pixelRatio: 3,
     backgroundColor: theme.value == 'light' ? '#ffffff' : '#000000',
-    style: { margin: '8px 0' }
+    style: { margin: 0, padding: '8px 0' }
   })
   generating_image.value = false
   loading_bar.finish()
