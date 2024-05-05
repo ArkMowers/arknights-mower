@@ -65,7 +65,7 @@ export const useConfigStore = defineStore('config', () => {
   const send_report = ref(true)
   const recruit_gap = ref(false)
   const recruit_auto_5 = ref('hand')
-  const webview = ref({})
+  const webview = ref({ scale: 1.0 })
   const shop_collect_enable = ref(true)
   const meeting_level = ref(3)
   const fix_mumu12_adb_disconnect = ref(false)
