@@ -59,14 +59,14 @@ import { useConfigStore } from '@/stores/config'
 const config_store = useConfigStore()
 const { theme } = storeToRefs(config_store)
 
-const fia_opacity = computed(() => {
+const bg_opacity = computed(() => {
   return theme.value == 'light' ? 0.2 : 0.4
 })
 </script>
 
 <template>
   <div class="home-container">
-    <div class="fia-bg"></div>
+    <div class="log-bg"></div>
     <n-table class="task-table" size="small" :single-line="false">
       <thead>
         <tr>
@@ -180,18 +180,18 @@ const fia_opacity = computed(() => {
   right: 12px;
 }
 
-.fia-bg {
+.log-bg {
   content: '';
   width: 100%;
   height: 100%;
   position: absolute;
   top: 0;
   left: 0;
-  opacity: v-bind(fia_opacity);
-  background-image: url(/fia.webp);
+  opacity: v-bind(bg_opacity);
+  background-image: url(/bg.webp);
   background-repeat: no-repeat;
   background-size: cover;
-  background-position: 46% 20%;
+  background-position: 30% 75%;
   pointer-events: none;
 }
 </style>
