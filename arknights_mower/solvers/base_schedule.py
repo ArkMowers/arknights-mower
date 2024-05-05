@@ -1142,17 +1142,19 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         if timing is None:
             timing = PlanTriggerTiming.END
         try:
-            changed = False
             if self.op_data.backup_plans:
                 con = copy.deepcopy(self.op_data.plan_condition)
                 current_con = self.op_data.plan_condition
+                new_task = False
                 for idx, bp in enumerate(self.op_data.backup_plans):
                     func = str(bp.trigger)
                     logger.debug(func)
+                    logger.debug(bp.task)
                     con[idx] = self.op_data.evaluate_expression(func)
                     if current_con[idx] != con[idx] and bp.trigger_timing.value <= timing.value:
                         task = self.op_data.backup_plans[idx].task
-                        if task:
+                        if task and con[idx]:
+                            new_task = True
                             self.tasks.append(
                                 SchedulerTask(task_plan=copy.deepcopy(task))
                             )
@@ -1161,7 +1163,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     logger.info(f"检测到副班条件变更，启动超级变换形态, 当前条件:{current_con}")
                     logger.info(f"新条件列表:{con}")
                     self.op_data.swap_plan(con, refresh=True)
-                if con != current_con:
+                if con != current_con and not new_task:
                     self.tasks.append(SchedulerTask(task_plan={}))
         except Exception as e:
             logger.exception(e)
