@@ -1161,8 +1161,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     logger.info(f"检测到副班条件变更，启动超级变换形态, 当前条件:{current_con}")
                     logger.info(f"新条件列表:{con}")
                     self.op_data.swap_plan(con, refresh=True)
-            if con != current_con:
-                self.tasks.append(SchedulerTask(task_plan={}))
+                if con != current_con:
+                    self.tasks.append(SchedulerTask(task_plan={}))
         except Exception as e:
             logger.exception(e)
 
