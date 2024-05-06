@@ -1150,9 +1150,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     func = str(bp.trigger)
                     logger.debug(func)
                     con[idx] = self.op_data.evaluate_expression(func)
-                    if current_con[idx] != con[idx] and con[idx] and bp.trigger_timing.value <= timing.value:
+                    if current_con[idx] != con[idx] and bp.trigger_timing.value <= timing.value:
                         task = self.op_data.backup_plans[idx].task
-                        if task:
+                        if task and con[idx]:
                             new_task = True
                             self.tasks.append(
                                 SchedulerTask(task_plan=copy.deepcopy(task))
