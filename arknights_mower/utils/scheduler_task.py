@@ -125,12 +125,13 @@ def add_release_dorm(tasks, op_data, name):
     _idx, __dorm = op_data.get_dorm_by_name(name)
     if __dorm.time > datetime.now() and find_next_task(tasks, task_type=TaskTypes.RELEASE_DORM, meta_data=name) is None:
         _free = op_data.operators[name]
-        __plan = {_free.current_room: ['Current'] * 5}
-        __plan[_free.current_room][_free.current_index] = "Free"
-        task = SchedulerTask(time=__dorm.time, task_type=TaskTypes.RELEASE_DORM, task_plan=__plan, meta_data=name)
-        tasks.append(task)
-        logger.info(name + " 新增释放宿舍任务")
-        logger.debug(str(task))
+        if _free.current_room.startswith('dorm'):
+            __plan = {_free.current_room: ['Current'] * 5}
+            __plan[_free.current_room][_free.current_index] = "Free"
+            task = SchedulerTask(time=__dorm.time, task_type=TaskTypes.RELEASE_DORM, task_plan=__plan, meta_data=name)
+            tasks.append(task)
+            logger.info(name + " 新增释放宿舍任务")
+            logger.debug(str(task))
 
 
 def check_dorm_ordering(tasks, op_data):
