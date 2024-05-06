@@ -237,11 +237,14 @@ class Matcher(object):
                 (np.max(quad[:, 0, 0]), np.max(quad[:, 0, 1])),
             ]
 
-            min_width = max(10, w * 0.8 if dpi_aware else 0)
-            min_height = max(10, h * 0.8 if dpi_aware else 0)
+            min_width = max(10, 0 if dpi_aware else w * 0.8)
+            min_height = max(10, 0 if dpi_aware else h * 0.8)
 
             # if rectangle is too small
-            if rect[1][0] - rect[0][0] < min_width or rect[1][1] - rect[0][1] < min_height:
+            if (
+                rect[1][0] - rect[0][0] < min_width
+                or rect[1][1] - rect[0][1] < min_height
+            ):
                 logger.debug(f"rectangle is too small: {rect}")
                 return None
 
