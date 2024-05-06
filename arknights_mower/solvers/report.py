@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import io
 import os
 import datetime
 import time
@@ -8,6 +9,7 @@ import time
 import numpy as np
 import pandas as pd
 import cv2
+import base64
 
 from arknights_mower.utils.device import Device
 from arknights_mower.data import __rootdir__
@@ -30,7 +32,8 @@ def remove_blank(target: str):
 
 
 class ReportSolver(BaseSolver):
-    def __init__(self, device: Device = None, recog: Recognizer = None, send_message_config={}, send_report: bool = False) -> None:
+    def __init__(self, device: Device = None, recog: Recognizer = None, send_message_config={},
+                 send_report: bool = False) -> None:
         super().__init__(device, recog)
         self.record_path = get_path("@app/tmp/report.csv")
         self.low_range_gray = (100, 100, 100)
@@ -39,6 +42,7 @@ class ReportSolver(BaseSolver):
         self.digitReader = DigitReader()
         self.send_message_config = send_message_config
         self.send_report = send_report
+        self.three_report = None
         self.report_res = {
             "作战录像": None,
             "赤金": None,
@@ -120,6 +124,7 @@ class ReportSolver(BaseSolver):
                 img[p2[1]:p3[1], p3[0]:img.shape[1]])
 
             self.record_report()
+
         except Exception as e:
             logger.info("基报读取失败:{}".format(e))
         return True
