@@ -464,11 +464,19 @@ class RecruitSolver(BaseSolver):
                 if max_star < 6 and agent['star'] == 6:
                     continue
                 result_dict[item[0]].append(agent)
-            result_dict[item[0]] = sorted(result_dict[item[0]], key=lambda x: x['star'], reverse=True)
-            min_star = result_dict[item[0]][-1]['star']
-            for res in result_dict[item[0]][:]:
-                if res['star'] > min_star:
-                    result_dict[item[0]].remove(res)
+            try:
+                for key in list(result_dict.keys()):
+                    if len(result_dict[key])==0:
+                        result_dict.pop(key)
+
+                result_dict[item[0]] = sorted(result_dict[item[0]], key=lambda x: x['star'], reverse=True)
+                min_star = result_dict[item[0]][-1]['star']
+                for res in result_dict[item[0]][:]:
+                    if res['star'] > min_star:
+                        result_dict[item[0]].remove(res)
+            except KeyError as e:
+                logger.debug("Recruit Cal Key Error :{}".format(result_dict))
+                break
         result = {
             6: [],
             5: [],
