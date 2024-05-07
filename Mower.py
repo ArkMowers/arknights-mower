@@ -197,6 +197,7 @@ def savelog():
     config.TAP_TO_LAUNCH["x"], config.TAP_TO_LAUNCH["y"] = 0, 0
     #  com.hypergryph.arknights.bilibili   # Bilibili 服
     config.ADB_BINARY = ['F:\\MAA-v4.20.0-win-x64\\adb\\platform-tools\\adb.exe']
+    config.FEATURE_MATCHER = "flann"
     init_fhlr()
 
 

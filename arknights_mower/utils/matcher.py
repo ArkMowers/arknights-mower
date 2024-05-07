@@ -17,6 +17,7 @@ from .. import __rootdir__
 from . import typealias as tp
 from .image import cropimg
 from .log import logger
+from arknights_mower.utils import config
 
 MATCHER_DEBUG = False
 # FLANN_INDEX_KDTREE = 1
@@ -140,28 +141,30 @@ class Matcher(object):
             # the feature point of query image
             qry_kp, qry_des = ORB.detectAndCompute(bordered, None)
 
-            # build FlannBasedMatcher
-            # index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
-            # index_params= dict(algorithm = FLANN_INDEX_LSH,
-            #        table_number = 6, # 12
-            #        key_size = 12,     # 20
-            #        multi_probe_level = 1) #2
-            # search_params = dict(checks=50)
-            # flann = cv2.FlannBasedMatcher(index_params, search_params)
-            # matches = flann.knnMatch(qry_des, ori_des, k=2)
-            bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
-            good = bf.match(qry_des, ori_des)
+            if config.FEATURE_MATCHER == "flann":
+                # build FlannBasedMatcher
+                index_params = dict(
+                    algorithm=FLANN_INDEX_LSH,
+                    table_number=6,  # 12
+                    key_size=12,  # 20
+                    multi_probe_level=1,  # 2
+                )
+                search_params = dict(checks=50)  # 100
+                flann = cv2.FlannBasedMatcher(index_params, search_params)
+                matches = flann.knnMatch(qry_des, ori_des, k=2)
+            else:
+                bf = cv2.BFMatcher(cv2.NORM_HAMMING)
+                matches = bf.knnMatch(qry_des, ori_des, k=2)
 
             # store all the good matches as per Lowe's ratio test
-            # good = []
-            # for pair in matches:
-            #     if (len_pair := len(pair)) == 2:
-            #         x, y = pair
-            #         # if x.distance < GOOD_DISTANCE_LIMIT * y.distance:
-            #         if x.distance < 0.7 * y.distance:
-            #             good.append(x)
-            #     elif len_pair == 1:
-            #         good.append(pair[0])
+            good = []
+            for pair in matches:
+                if (len_pair := len(pair)) == 2:
+                    x, y = pair
+                    if x.distance < GOOD_DISTANCE_LIMIT * y.distance:
+                        good.append(x)
+                elif len_pair == 1:
+                    good.append(pair[0])
             good_matches_rate = len(good) / len(qry_des)
 
             # draw all the good matches, for debug

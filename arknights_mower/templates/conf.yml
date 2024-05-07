@@ -269,3 +269,4 @@ reclamation_algorithm:
   timeout: 30
 touch_method: scrcpy
 free_room: false
+feature_matcher: "flann"

@@ -72,6 +72,7 @@ export const useConfigStore = defineStore('config', () => {
   const ra_timeout = ref(30)
   const touch_method = ref('scrcpy')
   const free_room = ref(false)
+  const feature_matcher = ref('flann')
 
   async function load_shop() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/shop`)
@@ -160,6 +161,7 @@ export const useConfigStore = defineStore('config', () => {
     ra_timeout.value = response.data.reclamation_algorithm.timeout
     touch_method.value = response.data.touch_method
     free_room.value = response.data.free_room
+    feature_matcher.value = response.data.feature_matcher
   }
 
   function build_config() {
@@ -238,7 +240,8 @@ export const useConfigStore = defineStore('config', () => {
         timeout: ra_timeout.value
       },
       touch_method: touch_method.value,
-      free_room: free_room.value
+      free_room: free_room.value,
+      feature_matcher: feature_matcher.value
     }
   }
 
@@ -321,6 +324,7 @@ export const useConfigStore = defineStore('config', () => {
     fix_mumu12_adb_disconnect,
     ra_timeout,
     touch_method,
-    free_room
+    free_room,
+    feature_matcher
   }
 })

@@ -399,7 +399,10 @@ class Recognizer(object):
             self.scene = Scene.RA_DAY_DETAIL
         elif self.find("ra/waste_time_dialog", scope=((585, 345), (1070, 440))):
             self.scene = Scene.RA_WASTE_TIME_DIALOG
-        elif self.find("ra/notice") and self.color(1817, 333)[0] == 255:
+        elif (
+            self.find("ra/notice", scope=((1780, 300), (1850, 380)))
+            and self.color(1817, 333)[0] == 255
+        ):
             self.scene = Scene.RA_MAP
 
         # 从首页选择终端进入生息演算主页

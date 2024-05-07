@@ -34,7 +34,8 @@ const {
   webview,
   fix_mumu12_adb_disconnect,
   touch_method,
-  free_room
+  free_room,
+  feature_matcher
 } = storeToRefs(config_store)
 
 const { operators } = storeToRefs(plan_store)
@@ -111,6 +112,18 @@ const new_scale = ref(webview.value.scale)
                 <n-space>
                   <n-radio value="scrcpy">scrcpy-1.21-novideo</n-radio>
                   <n-radio value="maatouch">MaaTouch-1.1.0</n-radio>
+                </n-space>
+              </n-radio-group>
+            </n-form-item>
+            <n-form-item label="特征点匹配算法">
+              <n-radio-group v-model:value="feature_matcher">
+                <n-space>
+                  <n-radio value="bf">
+                    BFMatcher<help-text>结果更精确，可以多核并行</help-text>
+                  </n-radio>
+                  <n-radio value="flann">
+                    FlannBasedMatcher<help-text>计算量更小</help-text>
+                  </n-radio>
                 </n-space>
               </n-radio-group>
             </n-form-item>
