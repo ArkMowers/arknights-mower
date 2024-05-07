@@ -805,7 +805,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         None,
                     )
                     is not None
-                    and (_agent.current_mood() == _agent.upper_limit or _agent.workaholic)
+                    and (_agent.current_mood() == _agent.upper_limit or _agent.workaholic or _agent.mood == _agent.upper_limit)
                 ):
                     continue
                 elif _agent.group != "":
