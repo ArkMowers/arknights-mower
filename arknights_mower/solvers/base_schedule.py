@@ -1112,8 +1112,28 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     if op.group in self.op_data.exhaust_group:
                         # 忽略掉用尽心情的分组
                         continue
+
+                    self.rearrange_resting_priority(op.group)
                     # 如果在group里则同时上下班
                     group_resting = self.op_data.groups[op.group]
+
+                    skip_resting = False
+                    for operator in group_resting:
+                        if self.op_data.operators[
+                            operator
+                        ].resting_priority == "high" and (
+                            self.op_data.operators[operator].upper_limit
+                            - self.op_data.operators[operator].current_mood()
+                            < 2
+                        ):
+                            skip_resting = True
+                            break
+                    if skip_resting:
+                        logger.debug(
+                            f"{op.group}组内干员{operator}的心情{self.op_data.operators[operator].current_mood()}过高，跳过休息"
+                        )
+                        continue
+
                     _replacement, _plan, high_free, low_free = self.get_resting_plan(
                         group_resting, _replacement, _plan, high_free, low_free
                     )
@@ -1169,6 +1189,34 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         self.tasks.append(SchedulerTask(task_plan={}))
         except Exception as e:
             logger.exception(e)
+
+
+    def rearrange_resting_priority(self, group):
+        operators = self.op_data.groups[group]
+        # 肥鸭充能新模式：https://github.com/ArkMowers/arknights-mower/issues/551
+        fia_plan, fia_room = self.check_fia()
+        # 排序
+        # 1. 肥鸭充能列表中的干员靠前
+        # 2. 不在加工站的干员靠前
+        # 3. 心情低的干员靠前
+        operators.sort(
+            key=lambda y: (
+                y not in fia_plan if fia_plan else True,
+                self.op_data.operators[y].current_room in ["factory", "train"],
+                self.op_data.operators[y].current_mood()
+                - self.op_data.operators[y].lower_limit,
+            )
+        )
+
+        high_count = 0
+        for operator in operators:
+            if self.op_data.operators[operator].resting_priority == "high":
+                high_count += 1
+        for operator in operators:
+            self.op_data.operators[operator].resting_priority = (
+                "high" if high_count > 0 else "low"
+            )
+            high_count -= 1
 
     def get_resting_plan(self, agents, exist_replacement, plan, high_free, low_free):
         _low, _high = 0, 0
