@@ -23,13 +23,21 @@ def img2bytes(img) -> bytes:
     return cv2.imencode('.png', img)[1]
 
 
+image_cache = {}
+
+
 def loadimg(filename: str, gray: bool = False) -> Union[tp.Image, tp.GrayImage]:
     """ load image from file """
     logger.debug(filename)
-    if gray:
-        return cv2.imdecode(np.fromfile(filename, dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
+    if filename in image_cache:
+        img_data = image_cache[filename]
     else:
-        return cv2.cvtColor(cv2.imdecode(np.fromfile(filename, dtype=np.uint8), cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
+        img_data = np.fromfile(filename, dtype=np.uint8)
+        image_cache[filename] = img_data
+    if gray:
+        return cv2.imdecode(img_data, cv2.IMREAD_GRAYSCALE)
+    else:
+        return cv2.cvtColor(cv2.imdecode(img_data, cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
 
 
 def thres2(img: tp.GrayImage, thresh: int) -> tp.GrayImage:
