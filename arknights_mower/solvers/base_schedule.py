@@ -1210,9 +1210,13 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
 
         high_count = 0
         for operator in operators:
+            if self.op_data.operators[operator].workaholic:
+                continue
             if self.op_data.operators[operator].resting_priority == "high":
                 high_count += 1
         for operator in operators:
+            if self.op_data.operators[operator].workaholic:
+                continue
             self.op_data.operators[operator].resting_priority = (
                 "high" if high_count > 0 else "low"
             )
