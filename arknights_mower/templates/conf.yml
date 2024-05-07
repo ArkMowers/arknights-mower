@@ -7,8 +7,9 @@ exhaust_require: ''
 workaholic: ''
 simulator:
   name: ''
-  index: -1
+  index: '-1'
   simulator_folder: ''
+  wait_time: 30
 free_blacklist: ''
 ling_xi: 1
 check_mail_enable: true

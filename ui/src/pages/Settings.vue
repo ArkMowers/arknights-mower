@@ -50,6 +50,7 @@ const simulator_types = [
   { label: 'MuMu模拟器12', value: 'MuMu12' },
   { label: 'Waydroid', value: 'Waydroid' },
   { label: '雷电模拟器9', value: '雷电9' },
+  { label: 'ReDroid', value: 'ReDroid' },
   { label: '其它', value: '' }
 ]
 
@@ -118,15 +119,6 @@ const new_scale = ref(webview.value.scale)
             </n-form-item>
             <n-form-item v-if="simulator.name">
               <template #label>
-                <span>多开编号</span>
-                <help-text>
-                  <div>除夜神单开选择-1以外，其他的按照改模拟器多开器中的序号。</div>
-                </help-text>
-              </template>
-              <n-input-number v-model:value="simulator.index"></n-input-number>
-            </n-form-item>
-            <n-form-item v-if="simulator.name">
-              <template #label>
                 <span>模拟器文件夹</span>
                 <help-text>
                   <div>夜神：写到bin文件夹</div>
@@ -135,6 +127,20 @@ const new_scale = ref(webview.value.scale)
               </template>
               <n-input v-model:value="simulator.simulator_folder" />
               <n-button @click="select_simulator_folder" class="dialog-btn">...</n-button>
+            </n-form-item>
+            <n-form-item v-if="simulator.name">
+              <template #label>
+                <span>多开编号</span>
+                <help-text>
+                  <div>除夜神单开选择-1以外，其他的按照改模拟器多开器中的序号。</div>
+                </help-text>
+              </template>
+              <n-input v-model:value="simulator.index" />
+            </n-form-item>
+            <n-form-item label="模拟器启动时间">
+              <n-input-number v-model:value="simulator.wait_time">
+                <template #suffix>秒</template>
+              </n-input-number>
             </n-form-item>
             <n-form-item label="启动游戏">
               <n-select v-model:value="tap_to_launch_game.enable" :options="launch_options" />
