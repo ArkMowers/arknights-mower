@@ -3308,7 +3308,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 - timedelta(seconds=self.maa_config["maa_execution_gap"] * 3600)
                 < self.maa_config["last_execution"]
             ):
-                logger.info("间隔未超过设定时间，不启动maa")
+                delta = datetime.now() - timedelta(seconds=self.maa_config["maa_execution_gap"] * 3600)
+                logger.info(f"间隔未超过设定时间，将在{delta}后启动Maa")
             else:
                 self.send_message("启动MAA")
                 self.back_to_index()
