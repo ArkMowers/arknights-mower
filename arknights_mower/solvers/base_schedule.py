@@ -88,6 +88,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         self.recruit_config = {}
         self.skland_config = {}
         self.recruit_time = None
+        self.last_clue = None
 
         self.daily_report = (datetime.now() - timedelta(days=1, hours=4)).date()
         self.daily_skland = (datetime.now() - timedelta(days=1, hours=4)).date()
@@ -671,8 +672,13 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             self.planned = True
         elif not self.todo_task:
             get_update_time()
-            if self.enable_party:
+            if (
+                self.enable_party
+                and self.last_clue
+                and datetime.now() - self.last_clue > timedelta(hours=1)
+            ):
                 self.clue_new()
+                self.last_clue = datetime.now()
             # if (self.party_time is None or self.free_clue is None) and self.enable_party:
             #     self.clue()
             # if self.clue_count > self.clue_count_limit and self.enable_party:
