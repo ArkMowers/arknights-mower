@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.solver import BaseSolver
 
@@ -28,6 +30,7 @@ class SignInSolver(BaseSolver):
 
         self.failure = 0
         self.in_progress = False
+        self.start_time = datetime.now()
         super().run()
 
     def notify(self, msg):
@@ -45,6 +48,10 @@ class SignInSolver(BaseSolver):
         self.sleep()
 
     def transition(self) -> bool:
+        if datetime.now() - self.start_time > timedelta(minutes=2):
+            self.notify("签到任务超时！")
+            self.back_to_index()
+            return True
         if not self.tm.task:
             return True
 
