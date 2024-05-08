@@ -91,7 +91,7 @@ class SignInSolver(BaseSolver):
             self.tap((960, 960))
         elif self.find("sign_in/orundum/banner"):
             if self.tm.task == "orundum":
-                if pos := self.find("sign_in/orundum/button_start"):
+                if pos := self.find("sign_in/orundum/button_start", score=0.6):
                     self.in_progress = True
                     self.tap(pos)
                 elif self.find("sign_in/orundum/button_complete"):
