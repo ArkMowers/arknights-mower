@@ -349,7 +349,10 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     if member == operator:
                         continue
                     # Lancet-2
-                    if self.op_data.operators[member].workaholic and member not in fia_plan:
+                    if (
+                        self.op_data.operators[member].workaholic
+                        and member not in fia_plan
+                    ):
                         continue
                     member_morale = self.op_data.operators[member].current_mood()
                     logger.debug(f"{data.group}组内{member}的心情为{member_morale}")
@@ -632,6 +635,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     self.overtake_room()
                 elif self.task.type == TaskTypes.CLUE_PARTY:
                     self.party_time = None
+                    self.last_clue = None
                     self.skip(["planned", "collect_notification"])
                 del self.tasks[0]
                 if self.tasks and self.tasks[0].type in [TaskTypes.SHIFT_ON]:
@@ -672,10 +676,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             self.planned = True
         elif not self.todo_task:
             get_update_time()
-            if (
-                self.enable_party
-                and self.last_clue
-                and datetime.now() - self.last_clue > timedelta(hours=1)
+            if self.enable_party and (
+                self.last_clue is None
+                or datetime.now() - self.last_clue > timedelta(hours=1)
             ):
                 self.clue_new()
                 self.last_clue = datetime.now()
@@ -811,7 +814,11 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         None,
                     )
                     is not None
-                    and (_agent.current_mood() == _agent.upper_limit or _agent.workaholic or _agent.mood == _agent.upper_limit)
+                    and (
+                        _agent.current_mood() == _agent.upper_limit
+                        or _agent.workaholic
+                        or _agent.mood == _agent.upper_limit
+                    )
                 ):
                     continue
                 elif _agent.group != "":
@@ -1176,7 +1183,10 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     func = str(bp.trigger)
                     logger.debug(func)
                     con[idx] = self.op_data.evaluate_expression(func)
-                    if current_con[idx] != con[idx] and bp.trigger_timing.value <= timing.value:
+                    if (
+                        current_con[idx] != con[idx]
+                        and bp.trigger_timing.value <= timing.value
+                    ):
                         task = self.op_data.backup_plans[idx].task
                         if task and con[idx]:
                             new_task = True
@@ -1188,14 +1198,15 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         con[idx] = current_con[idx]
                 # 不满足条件且为其他排班表，则切换回来
                 if con != current_con:
-                    logger.info(f"检测到副班条件变更，启动超级变换形态, 当前条件:{current_con}")
+                    logger.info(
+                        f"检测到副班条件变更，启动超级变换形态, 当前条件:{current_con}"
+                    )
                     logger.info(f"新条件列表:{con}")
                     self.op_data.swap_plan(con, refresh=True)
                     if not new_task:
                         self.tasks.append(SchedulerTask(task_plan={}))
         except Exception as e:
             logger.exception(e)
-
 
     def rearrange_resting_priority(self, group):
         operators = self.op_data.groups[group]
@@ -2473,7 +2484,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             agents = [item for item in agents if item != ""]
         for idx, n in enumerate(agents):
             if room.startswith("dorm"):
-                if self.op_data.plan_condition != [False]*(len(self.op_data.backup_plans)):
+                if self.op_data.plan_condition != [False] * (
+                    len(self.op_data.backup_plans)
+                ):
                     continue
                 if n not in self.op_data.operators.keys():
                     agents[idx] = "Free"
