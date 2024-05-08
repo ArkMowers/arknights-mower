@@ -102,7 +102,7 @@ class ReclamationAlgorithm(BaseSolver):
         adventures = [i for i in self.places if i.startswith("奇遇")]
         scores = []
         img = cropimg(
-            map, ((pos[0][0] + 140, pos[0][1] + 25), (pos[1][0], pos[1][1] - 15))
+            map, ((pos[0][0] + 140, pos[0][1] + 25), (pos[1][0] + 10, pos[1][1] - 15))
         )
         img = thres2(img, 180)
         for i in adventures:
