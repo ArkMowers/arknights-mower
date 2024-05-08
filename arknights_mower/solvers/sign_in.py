@@ -1,5 +1,8 @@
 from datetime import datetime, timedelta
 
+import cv2
+import numpy as np
+
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.solver import BaseSolver
 
@@ -25,6 +28,7 @@ class SignInSolver(BaseSolver):
                 "monthly_card",  # 五周年专享月卡
                 "orundum",  # 限时开采许可
                 "headhunting",  # 每日赠送单抽
+                "ann5",  # 五周年庆典签到活动
             ]
         )
 
@@ -75,6 +79,12 @@ class SignInSolver(BaseSolver):
                     self.tm.complete("orundum")
             elif self.tm.task == "headhunting":
                 self.tap_index_element("headhunting")
+            elif self.tm.task == "ann5":
+                if pos := self.find("sign_in/ann5/entry"):
+                    self.tap(pos)
+                else:
+                    self.notify("未检测到五周年庆典签到活动入口！")
+                    self.tm.complete("ann5")
             else:
                 return True
         elif self.find("sign_in/monthly_card/banner"):
@@ -95,6 +105,8 @@ class SignInSolver(BaseSolver):
                 self.notify("成功开采合成玉")
                 self.in_progress = False
                 self.tm.complete("orundum")
+            elif self.tm.task == "ann5":
+                self.notify("成功领取五周年庆典签到活动奖励")
             self.tap((960, 960))
         elif self.find("sign_in/orundum/banner"):
             if self.tm.task == "orundum":
@@ -142,6 +154,33 @@ class SignInSolver(BaseSolver):
             if self.tm.task == "headhunting":
                 self.notify("成功抽完赠送单抽")
                 self.tm.complete("headhunting")
+            self.tap((960, 540))
+        elif self.find("sign_in/ann5/banner"):
+            if self.tm.task == "ann5":
+                img = cv2.cvtColor(self.recog.img, cv2.COLOR_RGB2HSV)
+                img = cv2.inRange(img, (8, 150, 0), (8, 255, 255))
+                tpl = np.zeros((100, 100), dtype=np.uint8)
+                tpl[:] = (255,)
+                result = cv2.matchTemplate(img, tpl, cv2.TM_CCORR_NORMED)
+                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+                if max_val > 0.9:
+                    self.in_progress = True
+                    self.tap((max_loc[0] + 50, max_loc[1] + 50))
+                else:
+                    if not self.in_progress:
+                        self.notify("五周年庆典签到活动奖励已领完")
+                    self.in_progress = False
+                    self.tm.complete("ann5")
+                    self.back()
+            else:
+                self.back()
+        elif self.find("sign_in/ann5/phono"):
+            if self.tm.task == "ann5":
+                self.notify("成功领取PhonoR-0小车")
+            self.tap((960, 540))
+        elif self.find("sign_in/ann5/savage"):
+            if self.tm.task == "ann5":
+                self.notify("成功领取暴行皮肤")
             self.tap((960, 540))
         else:
             return self.handle_unknown()
