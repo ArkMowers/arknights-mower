@@ -1,57 +1,47 @@
 from __future__ import annotations
+
 import copy
-import time
+import json
 import os
-import sys
 import pathlib
+import sys
+import time
 import urllib.request
+from ctypes import CFUNCTYPE, c_char_p, c_int, c_void_p
 from datetime import datetime, timedelta
+
+import cv2
 import numpy as np
 
-from .skland import SKLand
-from ..command import recruit, mail, daily_report, depotscan
-from ..data import agent_list, base_room_list
-from ..utils import detector, segment
-from ..utils.digit_reader import DigitReader
-from ..utils.operators import Operators, Operator
-from ..utils.plan import PlanTriggerTiming
-from ..utils.scheduler_task import (
-    SchedulerTask,
-    scheduling,
-    find_next_task,
-    TaskTypes,
-    check_dorm_ordering,
-    add_release_dorm,
-    try_add_release_dorm,
-)
-from ..utils import typealias as tp
-from ..utils.device import Device
-from ..utils.log import logger
-from ..utils.pipe import push_operators
-from ..utils.recognize import RecognizeError, Recognizer, Scene
-from ..utils.solver import BaseSolver
-from ..utils.datetime import get_server_weekday
-from arknights_mower.utils.news import get_update_time
-from arknights_mower.utils import rapidocr
-from arknights_mower.utils.simulator import restart_simulator
-from arknights_mower.utils import config
-from arknights_mower.utils.image import cropimg, loadimg, thres2
 from arknights_mower import __rootdir__
-from arknights_mower.utils.matcher import Matcher
-import cv2
-
-from ctypes import CFUNCTYPE, c_int, c_char_p, c_void_p
-
 # 借用__main__.py里的时间计算器
 from arknights_mower.__main__ import format_time
-
-import json
-
-from arknights_mower.utils.email import maa_template
-
 from arknights_mower.solvers.base_mixin import BaseMixin
-
 from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
+from arknights_mower.utils import config, rapidocr
+from arknights_mower.utils.email import maa_template
+from arknights_mower.utils.image import cropimg, loadimg, thres2
+from arknights_mower.utils.matcher import Matcher
+from arknights_mower.utils.news import get_update_time
+from arknights_mower.utils.simulator import restart_simulator
+
+from ..command import daily_report, depotscan, mail, recruit
+from ..data import agent_list, base_room_list
+from ..utils import detector, segment
+from ..utils import typealias as tp
+from ..utils.datetime import get_server_weekday
+from ..utils.device import Device
+from ..utils.digit_reader import DigitReader
+from ..utils.log import logger
+from ..utils.operators import Operator, Operators
+from ..utils.pipe import push_operators
+from ..utils.plan import PlanTriggerTiming
+from ..utils.recognize import RecognizeError, Recognizer, Scene
+from ..utils.scheduler_task import (SchedulerTask, TaskTypes, add_release_dorm,
+                                    check_dorm_ordering, find_next_task,
+                                    scheduling, try_add_release_dorm)
+from ..utils.solver import BaseSolver
+from .skland import SKLand
 
 stage_drop = {}
 
@@ -1414,7 +1404,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         execute_time = execute_time - timedelta(seconds=(60 * self.run_order_delay))
         logger.info("下一次进行插拔的时间为：" + execute_time.strftime("%H:%M:%S"))
         logger.info("返回基建主界面")
-        self.back(interval=2, rebuild=False)
+        self.back(interval=2)
         self.back(interval=2)
         return execute_time
 
@@ -1461,7 +1451,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         # 识别右侧按钮
         (x0, y0), (x1, y1) = self.find("clue_func", strict=True)
 
-        self.tap(((x0 + x1) // 2, (y0 + y1 * 3) // 4), interval=3, rebuild=True)
+        self.tap(((x0 + x1) // 2, (y0 + y1 * 3) // 4), interval=3)
         if self.get_infra_scene() == Scene.CONNECTING:
             if not self.waiting_solver(Scene.CONNECTING, sleep_time=2):
                 return
@@ -1870,8 +1860,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         (x0, y0), (x1, y1) = self.find("clue_func", strict=True)
 
         logger.info("接收线索")
-        self.tap(((x0 + x1) // 2, (y0 * 3 + y1) // 4), interval=3, rebuild=False)
-        self.tap((self.recog.w - 10, self.recog.h - 10), interval=3, rebuild=False)
+        self.tap(((x0 + x1) // 2, (y0 * 3 + y1) // 4), interval=3)
+        self.tap((self.recog.w - 10, self.recog.h - 10), interval=3)
         self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3)
 
         if self.free_clue is None and self.clue_count < 10 and self.clue_count != -1:
@@ -1900,7 +1890,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             self.recog_bar()
 
             # 点击总览
-            self.tap(((x1 * 7 + x2) // 8, y0 // 2), rebuild=False)
+            self.tap(((x1 * 7 + x2) // 8, y0 // 2))
 
             # 获得和线索视图相关的数据
             self.recog_view(only_y2=False)
@@ -1933,15 +1923,12 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                             (self.recog.w * 0.8, self.recog.h * 0.5),
                             (0, -self.recog.h * 0.45),
                             duration=500,
-                            rebuild=False,
                         )
                     self.recog.update()
                 logger.info(f"放置线索{i}")
                 self.place_clue(last_ori)
                 # 返回线索主界面
-            self.tap(
-                (self.recog.w * 0.05, self.recog.h * 0.95), interval=3, rebuild=False
-            )
+            self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3)
         # 线索交流开启
         PARTY_TIME_COORDNIATE = ((1768, 438), (1902, 480))
         if clue_unlock is not None and get_all_clue:
@@ -2074,7 +2061,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             ):
                 flag = True
         if not flag:
-            self.tap(((x1 + x2) // 2, y1 + 10), rebuild=False)
+            self.tap(((x1 + x2) // 2, y1 + 10))
             x3 = x2
             while True:
                 max_abs = 0
@@ -2134,7 +2121,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         > 20
                         and np.ptp(self.recog.img[y, x3 - 2]) == 0
                     ):
-                        self.tap((x3 - 2, y + 1), rebuild=True)
+                        self.tap((x3 - 2, y + 1))
                         mask = True
                         break
                 if mask:
@@ -2255,12 +2242,10 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 tap_times = drone_count - self.drone_count_limit  # 修改为无人机阈值
                 _count = 0
                 while _count < tap_times:
-                    self.tap(
-                        (self.recog.w * 0.7, self.recog.h * 0.5),
-                        interval=0.1,
-                        rebuild=False,
-                    )
+                    self.device.tap((self.recog.w * 0.7, self.recog.h * 0.5))
+                    time.sleep(0.1)
                     _count += 1
+                self.recog.update()
             else:
                 self.tap_element("all_in")
             self.tap(accelerate, y_rate=1)
@@ -2293,14 +2278,14 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 st = accelerate[1]  # 起点
                 ed = accelerate[0]  # 终点
                 # 0.95, 1.05 are offset compensations
-                self.swipe_noinertia(st, (ed[0] * 0.95 - st[0] * 1.05, 0), rebuild=True)
+                self.swipe_noinertia(st, (ed[0] * 0.95 - st[0] * 1.05, 0))
                 accelerate = self.find("bill_accelerate")
             if adjust_time:
                 self.adjust_order_time(accelerate, room)
         if not_return:
             return
         logger.info("返回基建主界面")
-        self.back(interval=2, rebuild=False)
+        self.back(interval=2)
         self.back(interval=2)
 
     # 用于制造站切换产物，请注意在调用该函数前有足够的无人机，并补足相应制造站产物，目前仅支持中级作战记录与赤金之间的切换
@@ -2438,7 +2423,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         if self.get_infra_scene() == Scene.INFRA_ARRANGE_CONFIRM:
             _x0 = self.recog.w // 3 * 2  # double confirm
             _y0 = self.recog.h - 10
-            self.tap((_x0, _y0), rebuild=True)
+            self.tap((_x0, _y0))
 
     def choose_train_agent(
         self, current_room, agents, idx, error_count=0, fast_mode=False
@@ -2522,7 +2507,6 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                             self.recog.h * position[pos][1],
                         ),
                         interval=0,
-                        rebuild=False,
                     )
             agent = [x for x in agents if x not in exists]
         logger.info(f"安排干员 ：{agent}")
@@ -2582,7 +2566,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 if pre_order[0] != arrange_type[0] or pre_order[1] != arrange_type[1]:
                     self.switch_arrange_order(arrange_type[0], arrange_type[1])
                     # 滑倒最左边
-                    self.sleep(interval=0.5, rebuild=True)
+                    self.sleep(interval=0.5)
                     if not siege:
                         right_swipe = self.swipe_left(right_swipe, w, h)
                     pre_order = arrange_type
@@ -2620,7 +2604,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
             if not first_time:
                 # 滑动到最左边
-                self.sleep(interval=0.5, rebuild=False)
+                self.sleep(interval=0.5)
                 right_swipe = self.swipe_left(right_swipe, w, h)
             self.detail_filter(未进驻=True)
             self.switch_arrange_order(3, "true")
@@ -2674,7 +2658,6 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                             self.recog.h * position[p_idx][1],
                         ),
                         interval=0,
-                        rebuild=False,
                     )
                     self.tap(
                         (
@@ -2682,7 +2665,6 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                             self.recog.h * position[p_idx][1],
                         ),
                         interval=0,
-                        rebuild=False,
                     )
         logger.debug("验证干员选择..")
         self.swipe_left(right_swipe, w, h)
@@ -2738,7 +2720,6 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     (0, self.recog.h * 0.45),
                     duration=500,
                     interval=1,
-                    rebuild=True,
                 )
         name_x = (1288, 1869)
         name_y = [(135, 326), (344, 535), (553, 744), (532, 723), (741, 932)]
@@ -2762,7 +2743,6 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         (0, -self.recog.h * 0.45),
                         duration=500,
                         interval=1,
-                        rebuild=True,
                     )
                 swiped = True
                 self.recog.save_screencap("get_agent_from_room")
@@ -3211,7 +3191,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
 
         try:
             from asst.asst import Asst
-            from asst.utils import Message, InstanceOptionType
+            from asst.utils import InstanceOptionType, Message
 
             logger.info("Maa Python模块导入成功")
         except Exception as e:

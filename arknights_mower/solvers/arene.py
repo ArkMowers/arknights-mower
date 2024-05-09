@@ -9,8 +9,8 @@ from arknights_mower import __rootdir__
 from arknights_mower.utils import character_recognize, segment
 from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.solver import BaseSolver
 from arknights_mower.utils.scene import Scene
+from arknights_mower.utils.solver import BaseSolver
 
 with lzma.open(f"{__rootdir__}/models/operator_room.model", "rb") as f:
     OP_ROOM = pickle.loads(f.read())
@@ -88,7 +88,6 @@ class AreneSolver(BaseSolver):
                 (0, self.recog.h * 0.45),
                 duration=500,
                 interval=1,
-                rebuild=True,
             )
         name_x = (1288, 1869)
         name_y = [(135, 326), (344, 535), (553, 744), (532, 723), (741, 932)]
@@ -103,7 +102,6 @@ class AreneSolver(BaseSolver):
                         (0, -self.recog.h * 0.45),
                         duration=500,
                         interval=1,
-                        rebuild=True,
                     )
                 swiped = True
             if self.find("infra_no_operator", scope=name_p[i]):
@@ -154,7 +152,7 @@ class AreneSolver(BaseSolver):
         for label, pos in label_pos_map.items():
             current_state = self.get_color(pos)[2] > 100
             if target_state[label] != current_state:
-                self.tap(pos, interval=0.1, rebuild=False)
+                self.tap(pos, interval=0.1)
 
         self.recog.update()
         confirm_pos = (self.recog.w * 0.8, self.recog.h * 0.8)
@@ -235,8 +233,8 @@ class AreneSolver(BaseSolver):
             i = selected.index(op)
             x = w * position[i][0]
             y = h * position[i][1]
-            self.tap((x, y), interval=0, rebuild=False)
-            self.tap((x, y), interval=0, rebuild=False)
+            self.tap((x, y), interval=0)
+            self.tap((x, y), interval=0)
 
         self.recog.update()
         self.tap_element("confirm_blue")

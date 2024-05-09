@@ -1,21 +1,20 @@
 from __future__ import annotations
 
-from datetime import timedelta, datetime
 import lzma
 import pickle
 import time
+from datetime import datetime, timedelta
 
 import cv2
 import numpy as np
 
 from arknights_mower import __rootdir__
-from arknights_mower.utils import character_recognize, segment
-from arknights_mower.utils.log import logger
-from arknights_mower.utils import typealias as tp
-from arknights_mower.utils.recognize import Scene
-from arknights_mower.utils import rapidocr
 from arknights_mower.data import agent_list, ocr_error
-from arknights_mower.utils.image import thres2, loadimg, cropimg
+from arknights_mower.utils import character_recognize, rapidocr, segment
+from arknights_mower.utils import typealias as tp
+from arknights_mower.utils.image import cropimg, loadimg, thres2
+from arknights_mower.utils.log import logger
+from arknights_mower.utils.recognize import Scene
 
 with lzma.open(f"{__rootdir__}/models/operator_room.model", "rb") as f:
     OP_ROOM = pickle.loads(f.read())
@@ -113,11 +112,7 @@ class BaseMixin:
         else:
             swipe_time = 2 if right_swipe == 3 else right_swipe
             for i in range(swipe_time):
-                self.swipe_noinertia(
-                    (650, 540),
-                    (1900, 0),
-                    rebuild=i == swipe_time - 1,
-                )
+                self.swipe_noinertia((650, 540), (1900, 0))
         return 0
 
     def detail_filter(self, **kwargs):
@@ -167,7 +162,7 @@ class BaseMixin:
         for label, pos in label_pos_map.items():
             current_state = self.get_color(pos)[2] > 100
             if target_state[label] != current_state:
-                self.tap(pos, interval=0.1, rebuild=False)
+                self.tap(pos, interval=0.1)
 
         self.recog.update()
         confirm_pos = (self.recog.w * 0.8, self.recog.h * 0.8)

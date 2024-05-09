@@ -10,7 +10,7 @@ from .. import __rootdir__
 from . import config, detector
 from . import typealias as tp
 from .device import Device
-from .image import cropimg, loadimg, thres2, bytes2img
+from .image import bytes2img, cropimg, loadimg, thres2
 from .log import logger, save_screenshot
 from .matcher import Matcher
 from .scene import Scene, SceneComment
@@ -27,8 +27,8 @@ class Recognizer(object):
         self.loading_time = 0
         self.LOADING_TIME_LIMIT = 5
 
-    def start(self, screencap: bytes = None, build: bool = True) -> None:
-        """init with screencap, build matcher"""
+    def start(self, screencap: bytes = None) -> None:
+        """init with screencap"""
         retry_times = config.MAX_RETRYTIME
         while retry_times > 0:
             try:
@@ -39,7 +39,7 @@ class Recognizer(object):
                 else:
                     self.screencap, self.img, self.gray = self.device.screencap()
                 self.h, self.w, _ = self.img.shape
-                self.matcher = Matcher(self.gray) if build else None
+                self.matcher = None
                 self.scene = Scene.UNDEFINED
                 return
             except cv2.error as e:
@@ -49,9 +49,8 @@ class Recognizer(object):
                 continue
         raise RuntimeError("init Recognizer failed")
 
-    def update(self, screencap: bytes = None, rebuild: bool = True) -> None:
-        """rebuild matcher"""
-        self.start(screencap, rebuild)
+    def update(self, screencap: bytes = None) -> None:
+        self.start(screencap)
 
     def color(self, x: int, y: int) -> tp.Pixel:
         """get the color of the pixel"""
@@ -595,6 +594,8 @@ class Recognizer(object):
             )
         else:
             res_img = loadimg(res, True)
+            if self.matcher is None:
+                self.matcher = Matcher(self.gray)
             matcher = self.matcher
             ret = matcher.match(
                 res_img,

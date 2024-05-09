@@ -1,24 +1,24 @@
 from __future__ import annotations
 
+import random
+import smtplib
+import sys
+import time
+import traceback
+from abc import abstractmethod
+from datetime import datetime, timedelta
 from email.mime.image import MIMEImage
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from io import BytesIO
 from typing import Optional, Tuple
 
-import sys
-import random
 import cv2
-
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-
-import time
-import traceback
+import numpy as np
 import requests
-from datetime import datetime, timedelta
-
 from bs4 import BeautifulSoup
-from abc import abstractmethod
+
+from arknights_mower.utils.image import cropimg, thres2
 
 from ..utils import typealias as tp
 from . import config, detector
@@ -26,18 +26,15 @@ from .device import Device, KeyCode
 from .log import logger
 from .recognize import RecognizeError, Recognizer, Scene
 
-from arknights_mower.utils.image import cropimg, thres2
-from arknights_mower.utils.matcher import Matcher
-import numpy as np
-
 
 class StrategyError(Exception):
-    """ Strategy Error """
+    """Strategy Error"""
+
     pass
 
 
 class BaseSolver:
-    """ Base class, provide basic operation """
+    """Base class, provide basic operation"""
 
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
         # self.device = device if device is not None else (recog.device if recog is not None else Device())
@@ -57,8 +54,8 @@ class BaseSolver:
                 if result:
                     return result
             except RecognizeError as e:
-                logger.warning(f'识别出了点小差错 qwq: {e}')
-                self.recog.save_screencap('failure')
+                logger.warning(f"识别出了点小差错 qwq: {e}")
+                self.recog.save_screencap("failure")
                 retry_times -= 1
                 self.sleep(3)
                 continue
@@ -76,19 +73,32 @@ class BaseSolver:
         return True  # means task completed
 
     def get_color(self, pos: tp.Coordinate) -> tp.Pixel:
-        """ get the color of the pixel """
+        """get the color of the pixel"""
         return self.recog.color(pos[0], pos[1])
 
-    def get_pos(self, poly: tp.Location, x_rate: float = 0.5, y_rate: float = 0.5) -> tp.Coordinate:
-        """ get the pos form tp.Location """
+    def get_pos(
+        self,
+        poly: tp.Location,
+        x_rate: float = 0.5,
+        y_rate: float = 0.5,
+    ) -> tp.Coordinate:
+        """get the pos form tp.Location"""
         if poly is None:
-            raise RecognizeError('poly is empty')
+            raise RecognizeError("poly is empty")
         elif len(poly) == 4:
             # tp.Rectangle
-            x = (poly[0][0] * (1 - x_rate) + poly[1][0] * (1 - x_rate) +
-                 poly[2][0] * x_rate + poly[3][0] * x_rate) / 2
-            y = (poly[0][1] * (1 - y_rate) + poly[3][1] * (1 - y_rate) +
-                 poly[1][1] * y_rate + poly[2][1] * y_rate) / 2
+            x = (
+                poly[0][0] * (1 - x_rate)
+                + poly[1][0] * (1 - x_rate)
+                + poly[2][0] * x_rate
+                + poly[3][0] * x_rate
+            ) / 2
+            y = (
+                poly[0][1] * (1 - y_rate)
+                + poly[3][1] * (1 - y_rate)
+                + poly[1][1] * y_rate
+                + poly[2][1] * y_rate
+            ) / 2
         elif len(poly) == 2 and isinstance(poly[0], (list, tuple)):
             # tp.Scope
             x = poly[0][0] * (1 - x_rate) + poly[1][0] * x_rate
@@ -98,14 +108,14 @@ class BaseSolver:
             x, y = poly
         return (int(x), int(y))
 
-    def sleep(self, interval: float = 1, rebuild: bool = True) -> None:
-        """ sleeping for a interval """
+    def sleep(self, interval: float = 1) -> None:
+        """sleeping for a interval"""
         time.sleep(interval)
-        self.recog.update(rebuild=rebuild)
+        self.recog.update()
 
     def input(self, referent: str, input_area: tp.Scope, text: str = None) -> None:
-        """ input text """
-        logger.debug(f'input: {referent} {input_area}')
+        """input text"""
+        logger.debug(f"input: {referent} {input_area}")
         self.device.tap(self.get_pos(input_area))
         time.sleep(0.5)
         if text is None:
@@ -113,29 +123,51 @@ class BaseSolver:
         self.device.send_text(str(text))
         self.device.tap((0, 0))
 
-    def find(self, res: str, draw: bool = False, scope: tp.Scope = None, thres: int = None, judge: bool = True,
-             strict: bool = False, score=0.0) -> tp.Scope:
+    def find(
+        self,
+        res: str,
+        draw: bool = False,
+        scope: tp.Scope = None,
+        thres: int = None,
+        judge: bool = True,
+        strict: bool = False,
+        score=0.0,
+    ) -> tp.Scope:
         return self.recog.find(res, draw, scope, thres, judge, strict, score)
 
-    def tap(self, poly: tp.Location, x_rate: float = 0.5, y_rate: float = 0.5, interval: float = 1,
-            rebuild: bool = True) -> None:
-        """ tap """
+    def tap(
+        self,
+        poly: tp.Location,
+        x_rate: float = 0.5,
+        y_rate: float = 0.5,
+        interval: float = 1,
+    ) -> None:
+        """tap"""
         pos = self.get_pos(poly, x_rate, y_rate)
         self.device.tap(pos)
         if interval > 0:
-            self.sleep(interval, rebuild)
+            self.sleep(interval)
 
-    def tap_element(self, element_name: str, x_rate: float = 0.5, y_rate: float = 0.5, interval: float = 1,
-                    rebuild: bool = True, score: float = 0.0,
-                    draw: bool = False, scope: tp.Scope = None, judge: bool = True, detected: bool = False) -> bool:
-        """ tap element """
-        if element_name == 'nav_button':
+    def tap_element(
+        self,
+        element_name: str,
+        x_rate: float = 0.5,
+        y_rate: float = 0.5,
+        interval: float = 1,
+        score: float = 0.0,
+        draw: bool = False,
+        scope: tp.Scope = None,
+        judge: bool = True,
+        detected: bool = False,
+    ) -> bool:
+        """tap element"""
+        if element_name == "nav_button":
             element = self.recog.nav_button()
         else:
             element = self.find(element_name, draw, scope, judge=judge, score=score)
         if detected and element is None:
             return False
-        self.tap(element, x_rate, y_rate, interval, rebuild)
+        self.tap(element, x_rate, y_rate, interval)
         return True
 
     def tap_index_element(self, name):
@@ -151,21 +183,35 @@ class BaseSolver:
         }
         self.tap(pos[name], interval=2)
 
-    def template_match(self, res: str, scope: Optional[tp.Scope] = None, method: int = cv2.TM_CCOEFF) -> Tuple[
-        float, tp.Scope]:
+    def template_match(
+        self,
+        res: str,
+        scope: Optional[tp.Scope] = None,
+        method: int = cv2.TM_CCOEFF,
+    ) -> Tuple[float, tp.Scope]:
         return self.recog.template_match(res, scope, method)
 
-    def swipe(self, start: tp.Coordinate, movement: tp.Coordinate, duration: int = 100, interval: float = 1,
-              rebuild: bool = True) -> None:
-        """ swipe """
+    def swipe(
+        self,
+        start: tp.Coordinate,
+        movement: tp.Coordinate,
+        duration: int = 100,
+        interval: float = 1,
+    ) -> None:
+        """swipe"""
         end = (start[0] + movement[0], start[1] + movement[1])
         self.device.swipe(start, end, duration=duration)
         if interval > 0:
-            self.sleep(interval, rebuild)
+            self.sleep(interval)
 
-    def swipe_only(self, start: tp.Coordinate, movement: tp.Coordinate, duration: int = 100,
-                   interval: float = 1) -> None:
-        """ swipe only, no rebuild and recapture """
+    def swipe_only(
+        self,
+        start: tp.Coordinate,
+        movement: tp.Coordinate,
+        duration: int = 100,
+        interval: float = 1,
+    ) -> None:
+        """swipe only, no rebuild and recapture"""
         end = (start[0] + movement[0], start[1] + movement[1])
         self.device.swipe(start, end, duration=duration)
         if interval > 0:
@@ -186,9 +232,14 @@ class BaseSolver:
     #     if interval > 0:
     #         self.sleep(interval, rebuild)
 
-    def swipe_noinertia(self, start: tp.Coordinate, movement: tp.Coordinate, duration: int = 50, interval: float = 0.2,
-                        rebuild: bool = False) -> None:
-        """ swipe with no inertia (movement should be vertical) """
+    def swipe_noinertia(
+        self,
+        start: tp.Coordinate,
+        movement: tp.Coordinate,
+        duration: int = 50,
+        interval: float = 0.2,
+    ) -> None:
+        """swipe with no inertia (movement should be vertical)"""
         points = [start]
         if movement[0] == 0:
             dis = abs(movement[1])
@@ -202,19 +253,19 @@ class BaseSolver:
             points.append((start[0] + movement[0], start[1]))
         self.device.swipe_ext(points, durations=[200, dis * duration // 100, 200])
         if interval > 0:
-            self.sleep(interval, rebuild)
+            self.sleep(interval)
 
-    def back(self, interval: float = 1, rebuild: bool = True) -> None:
-        """ send back keyevent """
+    def back(self, interval: float = 1) -> None:
+        """send back keyevent"""
         self.device.send_keyevent(KeyCode.KEYCODE_BACK)
-        self.sleep(interval, rebuild)
+        self.sleep(interval)
 
     def scene(self) -> int:
-        """ get the current scene in the game """
+        """get the current scene in the game"""
         return self.recog.get_scene()
 
     def get_infra_scene(self) -> int:
-        """ get the current scene in the infra """
+        """get the current scene in the infra"""
         return self.recog.get_infra_scene()
 
     def ra_scene(self) -> int:
@@ -236,8 +287,10 @@ class BaseSolver:
         return self.recog.get_clue_scene()
 
     def is_login(self):
-        """ check if you are logged in """
-        return not ((scene := self.scene()) // 100 == 1 or scene // 100 == 99 or scene == -1)
+        """check if you are logged in"""
+        return not (
+            (scene := self.scene()) // 100 == 1 or scene // 100 == 99 or scene == -1
+        )
 
     def solve_captcha(self, refresh=False):
         th = thres2(self.recog.gray, 254)
@@ -269,16 +322,28 @@ class BaseSolver:
         tpl_padding = _t(0.018)
         tpl = np.zeros((tpl_height, tpl_width), np.uint8)
         tpl[:] = (255,)
-        tpl[tpl_border:tpl_height - tpl_border, tpl_border:tpl_width - tpl_border] = (0,)
+        tpl[
+            tpl_border : tpl_height - tpl_border,
+            tpl_border : tpl_width - tpl_border,
+        ] = (0,)
 
         result = cv2.matchTemplate(mask, tpl, cv2.TM_SQDIFF, None, tpl)
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
         x, y = min_loc
 
-        source_p = (x + tpl_padding, y + tpl_padding), (x + tpl_width - tpl_padding, y + tpl_height - tpl_padding)
+        source_p = (
+            (x + tpl_padding, y + tpl_padding),
+            (x + tpl_width - tpl_padding, y + tpl_height - tpl_padding),
+        )
         source = cropimg(left_part, source_p)
         mask = cropimg(mask, source_p)
-        right_part = cropimg(img, ((_t(0.201), _t(0.032) + source_p[0][1]), (_t(0.94), _t(0.032) + source_p[1][1])))
+        right_part = cropimg(
+            img,
+            (
+                (_t(0.201), _t(0.032) + source_p[0][1]),
+                (_t(0.94), _t(0.032) + source_p[1][1]),
+            ),
+        )
 
         for _y in range(source.shape[0]):
             for _x in range(source.shape[1]):
@@ -301,9 +366,15 @@ class BaseSolver:
         p2 = end[0] + _rb(0.1, 0.02), end[1] + _rb(0.05, 0.02)
 
         logger.info("滑动验证码")
-        self.device.swipe_ext((start, p1, p2, end, end),
-                              durations=[random.randint(400, 600), random.randint(200, 300), random.randint(200, 300),
-                                         random.randint(200, 300)])
+        self.device.swipe_ext(
+            (start, p1, p2, end, end),
+            durations=[
+                random.randint(400, 600),
+                random.randint(200, 300),
+                random.randint(200, 300),
+                random.randint(200, 300),
+            ],
+        )
 
     def login(self):
         """
@@ -318,15 +389,15 @@ class BaseSolver:
                     # 2. 点击左上角“清除缓存”之后取消
                     self.tap((665, 741), 3)
                 elif scene == Scene.LOGIN_NEW:
-                    self.tap_element('login_new')
+                    self.tap_element("login_new")
                 elif scene == Scene.LOGIN_BILIBILI:
-                    self.tap_element('login_bilibili_entry')
+                    self.tap_element("login_bilibili_entry")
                 elif scene == Scene.LOGIN_BILIBILI_PRIVACY:
-                    self.tap_element('login_bilibili_privacy_accept')
+                    self.tap_element("login_bilibili_privacy_accept")
                 elif scene == Scene.LOGIN_QUICKLY:
-                    self.tap_element('login_awake')
+                    self.tap_element("login_awake")
                 elif scene == Scene.LOGIN_MAIN:
-                    self.tap_element('login_account', 0.25)
+                    self.tap_element("login_account", 0.25)
                 elif scene == Scene.LOGIN_REGISTER:
                     self.back(2)
                 elif scene == Scene.LOGIN_CAPTCHA:
@@ -334,7 +405,7 @@ class BaseSolver:
                     while captcha_times > 0:
                         self.solve_captcha(captcha_times < 3)
                         self.sleep(5)
-                        if self.find('login_captcha'):
+                        if self.find("login_captcha"):
                             captcha_times -= 1
                         else:
                             break
@@ -343,15 +414,15 @@ class BaseSolver:
                         self.device.exit()
                         sys.exit()
                 elif scene == Scene.LOGIN_INPUT:
-                    input_area = self.find('login_username')
+                    input_area = self.find("login_username")
                     if input_area is not None:
-                        self.input('Enter username: ', input_area, config.USERNAME)
-                    input_area = self.find('login_password')
+                        self.input("Enter username: ", input_area, config.USERNAME)
+                    input_area = self.find("login_password")
                     if input_area is not None:
-                        self.input('Enter password: ', input_area, config.PASSWORD)
-                    self.tap_element('login_button')
+                        self.input("Enter password: ", input_area, config.PASSWORD)
+                    self.tap_element("login_button")
                 elif scene == Scene.LOGIN_ANNOUNCE:
-                    self.tap_element('login_iknow')
+                    self.tap_element("login_iknow")
                 elif scene == Scene.LOGIN_LOADING:
                     self.waiting_solver(Scene.LOGIN_LOADING)
                 elif scene == Scene.LOADING:
@@ -365,14 +436,14 @@ class BaseSolver:
                 elif scene == Scene.LOGIN_CADPA_DETAIL:
                     self.back(2)
                 elif scene == Scene.NETWORK_CHECK:
-                    self.tap_element('double_confirm', 0.2)
+                    self.tap_element("double_confirm", 0.2)
                 elif scene == Scene.UNKNOWN:
-                    raise RecognizeError('Unknown scene')
+                    raise RecognizeError("Unknown scene")
                 else:
-                    raise RecognizeError('Unanticipated scene')
+                    raise RecognizeError("Unanticipated scene")
             except RecognizeError as e:
-                logger.warning(f'识别出了点小差错 qwq: {e}')
-                self.recog.save_screencap('failure')
+                logger.warning(f"识别出了点小差错 qwq: {e}")
+                self.recog.save_screencap("failure")
                 retry_times -= 1
                 self.sleep(3)
                 continue
@@ -391,35 +462,35 @@ class BaseSolver:
         while retry_times:
             if self.scene() == Scene.NAVIGATION_BAR:
                 return True
-            elif not self.tap_element('nav_button', detected=True):
+            elif not self.tap_element("nav_button", detected=True):
                 return False
             retry_times -= 1
 
     def back_to_infrastructure(self):
         self.back_to_index()
-        self.tap_index_element('infrastructure')
+        self.tap_index_element("infrastructure")
 
     def back_to_index(self):
         """
         返回主页
         """
-        logger.info('back to index')
+        logger.info("back to index")
         retry_times = config.MAX_RETRYTIME
         pre_scene = None
         while retry_times and (scene := self.scene()) != Scene.INDEX:
             try:
                 if self.get_navigation():
-                    self.tap_element('nav_index')
+                    self.tap_element("nav_index")
                 elif scene == Scene.CLOSE_MINE:
-                    self.tap_element('close_mine')
+                    self.tap_element("close_mine")
                 elif scene == Scene.CHECK_IN:
-                    self.tap_element('check_in')
+                    self.tap_element("check_in")
                 elif scene == Scene.RIIC_REPORT:
                     self.tap((100, 60))
                 elif scene == Scene.ANNOUNCEMENT:
                     self.tap(self.recog.check_announcement())
                 elif scene == Scene.MATERIEL:
-                    self.tap_element('materiel_ico')
+                    self.tap_element("materiel_ico")
                 elif scene // 100 == 1:
                     self.login()
                 elif scene == Scene.CONFIRM:
@@ -429,7 +500,7 @@ class BaseSolver:
                 elif scene == Scene.CONNECTING:
                     self.waiting_solver(Scene.CONNECTING)
                 elif scene == Scene.SKIP:
-                    self.tap_element('skip')
+                    self.tap_element("skip")
                 elif scene == Scene.OPERATOR_ONGOING:
                     self.sleep(10)
                 elif scene == Scene.OPERATOR_FINISH:
@@ -437,27 +508,27 @@ class BaseSolver:
                 elif scene == Scene.OPERATOR_ELIMINATE_FINISH:
                     self.tap((self.recog.w // 2, 10))
                 elif scene == Scene.DOUBLE_CONFIRM:
-                    self.tap_element('double_confirm', 0.8)
+                    self.tap_element("double_confirm", 0.8)
                 elif scene == Scene.NETWORK_CHECK:
-                    self.tap_element('double_confirm', 0.2)
+                    self.tap_element("double_confirm", 0.2)
                 elif scene == Scene.RECRUIT_AGENT:
                     self.tap((self.recog.w // 2, self.recog.h // 2))
                 elif scene == Scene.MAIL:
-                    mail = self.find('mail')
+                    mail = self.find("mail")
                     mid_y = (mail[0][1] + mail[1][1]) // 2
                     self.tap((mid_y, mid_y))
                 elif scene == Scene.INFRA_ARRANGE_CONFIRM:
                     self.tap((self.recog.w // 3, self.recog.h - 10))
                 elif scene == Scene.UNKNOWN:
-                    raise RecognizeError('Unknown scene')
+                    raise RecognizeError("Unknown scene")
                 elif pre_scene is None or pre_scene != scene:
                     pre_scene = scene
                     self.back()
                 else:
-                    raise RecognizeError('Unanticipated scene')
+                    raise RecognizeError("Unanticipated scene")
             except RecognizeError as e:
-                logger.warning(f'识别出了点小差错 qwq: {e}')
-                self.recog.save_screencap('failure')
+                logger.warning(f"识别出了点小差错 qwq: {e}")
+                self.recog.save_screencap("failure")
                 retry_times -= 1
                 self.sleep(3)
                 continue
@@ -470,7 +541,7 @@ class BaseSolver:
 
     def to_sss(self, sss_type, ec_type=3):
         """保全导航"""
-        logger.info('保全导航')
+        logger.info("保全导航")
         start_time = datetime.now()
 
         while (scene := self.sss_scene()) not in [Scene.SSS_DEPLOY, Scene.SSS_REDEPLOY]:
@@ -503,11 +574,12 @@ class BaseSolver:
             if now - start_time > timedelta(minutes=1):
                 return "保全导航失败"
             self.sleep()
-        logger.info(f"保全导航成功，用时{(datetime.now() - start_time).total_seconds():.0f}秒")
+        logger.info(
+            f"保全导航成功，用时{(datetime.now() - start_time).total_seconds():.0f}秒"
+        )
 
     def waiting_solver(self, scenes, wait_count=20, sleep_time=3):
-        """需要等待的页面解决方法。触发超时重启会返回False
-        """
+        """需要等待的页面解决方法。触发超时重启会返回False"""
         while wait_count > 0:
             self.sleep(sleep_time)
             if self.scene() != scenes and self.get_infra_scene() != scenes:
@@ -521,8 +593,7 @@ class BaseSolver:
         return False
 
     def wait_for_scene(self, scene, method, wait_count=10, sleep_time=1):
-        """等待某个页面载入
-        """
+        """等待某个页面载入"""
         while wait_count > 0:
             self.sleep(sleep_time)
             if method == "get_infra_scene":
@@ -536,34 +607,34 @@ class BaseSolver:
 
     # 将html表单转化为通用markdown格式（为了避免修改之前email内容，采用基于之前数据格式进行加工的方案）
     def html_to_markdown(self, html_content):
-        soup = BeautifulSoup(html_content, 'html.parser')
+        soup = BeautifulSoup(html_content, "html.parser")
 
         markdown_output = ""
 
         # 提取标题
-        title = soup.find('title')
+        title = soup.find("title")
         if title:
             markdown_output += f"## {title.get_text()}\n\n"
 
         # 提取表格
-        for table in soup.find_all('table'):
-            rows = table.find_all('tr')
+        for table in soup.find_all("table"):
+            rows = table.find_all("tr")
             header_processed = False  # 标记是否已经处理过列头
             for row in rows:
-                columns = row.find_all(['td', 'th'])
+                columns = row.find_all(["td", "th"])
                 line_data = []
                 for col in columns:
-                    colspan = int(col.get('colspan', 1))
-                    content = col.get_text().strip() + ' ' * (colspan - 1)
+                    colspan = int(col.get("colspan", 1))
+                    content = col.get_text().strip() + " " * (colspan - 1)
                     line_data.append(content)
                 markdown_output += "| " + " | ".join(line_data) + " |\n"
 
                 # 仅为首个列头添加分隔线
-                if any(cell.name == 'th' for cell in columns) and not header_processed:
+                if any(cell.name == "th" for cell in columns) and not header_processed:
                     line_separators = []
                     for col in columns:
-                        colspan = int(col.get('colspan', 1))
-                        line_separators.extend(['---'] * colspan)
+                        colspan = int(col.get("colspan", 1))
+                        line_separators.extend(["---"] * colspan)
                     markdown_output += "| " + " | ".join(line_separators) + " |\n"
                     header_processed = True
 
@@ -571,7 +642,7 @@ class BaseSolver:
 
     # 指数退避策略逐渐增加等待时间
     def exponential_backoff(self, initial_delay=1, max_retries=3, factor=2):
-        """ Implement exponential backoff for retries. """
+        """Implement exponential backoff for retries."""
         delay = initial_delay
         retries = 0
         while retries < max_retries:
@@ -595,8 +666,12 @@ class BaseSolver:
                         s = smtplib.SMTP_SSL(smtp_server, ssl_port, timeout=10.0)
                 else:
                     s = smtplib.SMTP_SSL("smtp.qq.com", 465, timeout=10.0)
-                s.login(email_config['account'], email_config['pass_code'])
-                s.sendmail(email_config['account'], email_config.get('recipients', []), msg.as_string())
+                s.login(email_config["account"], email_config["pass_code"])
+                s.sendmail(
+                    email_config["account"],
+                    email_config.get("recipients", []),
+                    msg.as_string(),
+                )
                 s.close()
                 logger.info("邮件发送成功")
                 break
@@ -611,11 +686,13 @@ class BaseSolver:
             try:
                 response = requests.post(url, data=data)
                 json_data = response.json()
-                if json_data.get('code') == 0:
-                    logger.info('Server酱通知发送成功')
+                if json_data.get("code") == 0:
+                    logger.info("Server酱通知发送成功")
                     break
                 else:
-                    logger.error(f"Server酱通知发送失败，错误信息：{json_data.get('message')}")
+                    logger.error(
+                        f"Server酱通知发送失败，错误信息：{json_data.get('message')}"
+                    )
                     time.sleep(delay)
             except Exception as e:
                 logger.error("Server酱通知发送失败")
@@ -631,78 +708,81 @@ class BaseSolver:
         retry_times=3,
         attach_image: Optional[tp.Image] = None,
     ):
-        send_message_config = getattr(self, 'send_message_config', None)
+        send_message_config = getattr(self, "send_message_config", None)
         if not send_message_config:
             logger.error("send_message_config 未在配置中定义!")
             return
 
         failed_methods = []
 
-        if subtype == 'plain' and subject == '':
+        if subtype == "plain" and subject == "":
             subject = body
 
         # markdown格式的消息体
         mkBody = body
         # 如果body是HTML内容，转换为Markdown格式
-        if subtype == 'html':
+        if subtype == "html":
             mkBody = self.html_to_markdown(body)
 
         # 获取QQ邮件配置
-        email_config = send_message_config.get('email_config')
+        email_config = send_message_config.get("email_config")
         # 获取Server酱配置
-        serverJang_push_config = send_message_config.get('serverJang_push_config')
+        serverJang_push_config = send_message_config.get("serverJang_push_config")
 
         # 邮件通知部分
-        if email_config and email_config.get('mail_enable', 0):
+        if email_config and email_config.get("mail_enable", 0):
             msg = MIMEMultipart()
             msg.attach(MIMEText(body, subtype))
-            msg['Subject'] = email_config.get('subject', '') + subject
-            msg['From'] = email_config.get('account', '')
-            msg['To'] = ", ".join(email_config.get('recipients', []))
+            msg["Subject"] = email_config.get("subject", "") + subject
+            msg["From"] = email_config.get("account", "")
+            msg["To"] = ", ".join(email_config.get("recipients", []))
 
             if attach_image is not None:
                 img = cv2.cvtColor(attach_image, cv2.COLOR_RGB2BGR)
-                _, attachment = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
+                _, attachment = cv2.imencode(
+                    ".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), 75]
+                )
                 with BytesIO(attachment) as f:
                     f.seek(0)
                     image_content = MIMEImage(f.getvalue())
 
-                    image_content.add_header('Content-Disposition', 'attachment', filename="image.jpg")
+                    image_content.add_header(
+                        "Content-Disposition", "attachment", filename="image.jpg"
+                    )
                     msg.attach(image_content)
 
             try:
                 self.handle_email_error(email_config, msg)  # 第一次尝试
             except Exception as e:
-                failed_methods.append(('email', email_config, msg))
+                failed_methods.append(("email", email_config, msg))
 
         # Server酱通知部分
-        if serverJang_push_config and serverJang_push_config.get('server_push_enable', False):
-            send_key = serverJang_push_config.get('sendKey')
+        if serverJang_push_config and serverJang_push_config.get(
+            "server_push_enable", False
+        ):
+            send_key = serverJang_push_config.get("sendKey")
             if not send_key:
-                logger.error('Server酱的sendKey未配置')
+                logger.error("Server酱的sendKey未配置")
                 return
 
-            url = f'https://sctapi.ftqq.com/{send_key}.send'
-            data = {
-                'title': '[Mower通知]' + subject,
-                'desp': mkBody
-            }
+            url = f"https://sctapi.ftqq.com/{send_key}.send"
+            data = {"title": "[Mower通知]" + subject, "desp": mkBody}
 
             try:
                 self.handle_serverJang_error(url, data)  # 第一次尝试
             except Exception as e:
-                failed_methods.append(('serverJang', url, data))
+                failed_methods.append(("serverJang", url, data))
 
         # 处理失败的方法
         for method, *args in failed_methods:
-            if method == 'email':
+            if method == "email":
                 for _ in range(retry_times):
                     try:
                         self.handle_email_error(*args)
                         break
                     except:
                         time.sleep(1)
-            elif method == 'serverJang':
+            elif method == "serverJang":
                 for _ in range(retry_times):
                     try:
                         self.handle_serverJang_error(*args)

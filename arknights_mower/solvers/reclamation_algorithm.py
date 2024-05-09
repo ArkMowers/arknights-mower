@@ -321,7 +321,7 @@ class ReclamationAlgorithm(BaseSolver):
                         x = int(popup[1][0] + lr / 2)
         else:
             x = int((pos[0][0] + pos[1][0]) / 2)
-        self.tap((x, int((pos[0][1] + pos[1][1]) / 2)), rebuild=False, interval=0.5)
+        self.tap((x, int((pos[0][1] + pos[1][1]) / 2)), interval=0.5)
 
     def move_forward(self, scene):
         # 从首页进入生息演算主页
@@ -391,7 +391,7 @@ class ReclamationAlgorithm(BaseSolver):
         # 存档操作
         elif scene == Scene.RA_DELETE_SAVE_DIALOG:
             if pos := self.find("ra/delete_save_confirm_dialog_ok_button"):
-                self.tap(pos, rebuild=False, interval=0.5)
+                self.tap(pos, interval=0.5)
                 self.tap(pos)
                 self.task_queue = None
                 self.ap = None
@@ -423,14 +423,14 @@ class ReclamationAlgorithm(BaseSolver):
                     ((a + x, b + y), (a + x + w, b + y + h)) for a, b in zip(*loc[::-1])
                 )
                 if scope:
-                    self.tap(scope[-1], interval=0.5, rebuild=False)
+                    self.tap(scope[-1], interval=0.5)
                     self.tap(scope[-1])
                 elif pos := self.find("ra/adventure_ok"):
                     if self.in_adventure in self.task_queue:
                         self.task_queue.remove(self.in_adventure)
                         self.ap -= 1
                     pos = (1740, round((pos[0][1] + pos[1][1]) / 2))
-                    self.tap(pos, interval=0.5, rebuild=False)
+                    self.tap(pos, interval=0.5)
                     self.tap(pos)
                 else:
                     self.tap((428, 411), interval=0.5)
@@ -533,7 +533,7 @@ class ReclamationAlgorithm(BaseSolver):
             if pos := self.find("ra/click_to_continue"):
                 self.tap(pos, interval=0.5)
                 if self.in_adventure:
-                    self.sleep(0.5, rebuild=False)
+                    self.sleep(0.5)
                     self.tap((428, 411), interval=0.5)
                 else:
                     self.tap_element("ra/return_from_kitchen", x_rate=0.07)
