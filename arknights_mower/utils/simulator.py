@@ -29,19 +29,19 @@ def restart_simulator(data, stop=True, start=True):
     ]:
         if simulator_type == Simulator_Type.Nox.value:
             cmd = "Nox.exe"
-            if index >= 0:
+            if int(index) >= 0:
                 cmd += f' -clone:Nox_{data["index"]}'
             cmd += " -quit"
         elif simulator_type == Simulator_Type.MuMu12.value:
             cmd = "MuMuManager.exe api -v "
-            if index >= 0:
+            if int(index) >= 0:
                 cmd += f'{data["index"]} '
             cmd += "shutdown_player"
         elif simulator_type == Simulator_Type.Waydroid.value:
             cmd = "waydroid session stop"
         elif simulator_type == Simulator_Type.Leidian9.value:
             cmd = "ldconsole.exe quit --index "
-            if index >= 0:
+            if int(index) >= 0:
                 cmd += f'{data["index"]} '
             else:
                 cmd += "0"
