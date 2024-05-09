@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from typing import Optional
 
 import cv2
 import numpy as np
@@ -8,29 +9,33 @@ from arknights_mower.utils.solver import BaseSolver
 
 
 class TaskManager:
-    def __init__(self, task_list):
-        self.task_list = task_list + ["back_to_index"]
-        self.task = self.task_list[0]
+    def __init__(self):
+        self.task_list = ["back_to_index"]
 
-    def complete(self, task):
+    @property
+    def task(self):
+        return self.task_list[0] if self.task_list else None
+
+    def add(self, task: str, year: int, month: int, day: int):
+        if datetime.now() > datetime(year, month, day):
+            return
+        self.task_list.insert(-1, task)
+
+    def complete(self, task: Optional[str]):
         task = task or self.task
         if task in self.task_list:
             self.task_list.remove(task)
-        self.task = self.task_list[0] if self.task_list else None
 
 
 class SignInSolver(BaseSolver):
     def run(self) -> None:
         logger.info("Start: 签到活动")
         self.back_to_index()
-        self.tm = TaskManager(
-            [
-                "monthly_card",  # 五周年专享月卡
-                "orundum",  # 限时开采许可
-                "headhunting",  # 每日赠送单抽
-                "ann5",  # 五周年庆典签到活动
-            ]
-        )
+        self.tm = TaskManager()
+        self.tm.add("monthly_card", 2024, 6, 1)  # 五周年专享月卡
+        self.tm.add("orundum", 2024, 5, 15)  # 限时开采许可
+        self.tm.add("headhunting", 2024, 5, 15)  # 每日赠送单抽
+        self.tm.add("ann5", 2024, 5, 15)  # 五周年庆典签到活动
 
         self.failure = 0
         self.in_progress = False
