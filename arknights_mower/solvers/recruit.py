@@ -464,6 +464,7 @@ class RecruitSolver(BaseSolver):
                 if max_star < 6 and agent['star'] == 6:
                     continue
                 result_dict[item[0]].append(agent)
+                logger.debug(item[0], agent)
             try:
                 for key in list(result_dict.keys()):
                     if len(result_dict[key])==0:
@@ -476,7 +477,7 @@ class RecruitSolver(BaseSolver):
                         result_dict[item[0]].remove(res)
             except KeyError as e:
                 logger.debug("Recruit Cal Key Error :{}".format(result_dict))
-                break
+                continue
         result = {
             6: [],
             5: [],
