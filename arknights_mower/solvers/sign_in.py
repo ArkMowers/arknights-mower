@@ -124,19 +124,21 @@ class SignInSolver(BaseSolver):
                     self.sleep()
             else:
                 self.back()
-        elif self.find("sign_in/headhunting/banner"):
+        elif pos := self.find("sign_in/headhunting/button"):
             if self.tm.task == "headhunting":
-                if self.find("sign_in/headhunting/available"):
-                    self.tap((1355, 975))
+                if self.find("sign_in/headhunting/banner"):
+                    if self.find("sign_in/headhunting/available"):
+                        self.tap(pos, x_rate=0.25)
+                    else:
+                        self.notify("今天的赠送单抽已经抽完了")
+                        self.tm.complete("headhunting")
+                        self.back()
+                elif self.find("sign_in/headhunting/banner_exclusive"):
+                    self.tap((1880, 590))
                 else:
-                    self.notify("今天的赠送单抽已经抽完了")
+                    self.notify("何以为我卡池已关闭")
                     self.tm.complete("headhunting")
                     self.back()
-            else:
-                self.back()
-        elif self.find("sign_in/headhunting/banner_exclusive"):
-            if self.tm.task == "headhunting":
-                self.tap((1880, 590))
             else:
                 self.back()
         elif self.find("sign_in/headhunting/dialog"):
