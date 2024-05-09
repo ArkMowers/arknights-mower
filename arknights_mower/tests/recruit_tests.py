@@ -21,15 +21,15 @@ from arknights_mower.utils.log import logger
 from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
 from arknights_mower.utils.solver import BaseSolver
 
-
-
 env = Environment(
-    loader=FileSystemLoader("D:\\Git_Repositories\\Pycharm_Project\\Mower\\arknights-mower\\arknights_mower\\templates\\email"),
+    loader=FileSystemLoader(
+        "D:\\Git_Repositories\\Pycharm_Project\\Mower\\arknights-mower\\arknights_mower\\templates\\email"),
     autoescape=select_autoescape(),
 )
 
 recruit_template = env.get_template("recruit_template.html")
 recruit_rarity = env.get_template("recruit_rarity.html")
+
 
 class RecruitSolver:
     def __init__(self) -> None:
@@ -233,14 +233,13 @@ class RecruitSolver:
         if self.recruit_order.index(recruit_result_level) <= self.recruit_index:
 
             if self.recruit_config['recruit_email_enable']:
-                with open('recruit_rarity.html', 'w') as file:
+                with open('recruit_rarity.html', 'w', encoding='utf-8') as file:
                     file.write(recruit_rarity.render(recruit_results=recruit_cal_result[recruit_result_level],
                                                      title_text="基建报告"))
                 logger.info('稀有tag,发送邮件')
 
             logger.info('稀有tag,发送邮件')
             if recruit_result_level == 6:
-
                 logger.info('六星tag')
                 return
             if recruit_result_level == 1 and self.recruit_config['recruit_robot']:
@@ -285,7 +284,8 @@ class RecruitSolver:
                 "tags": choose,
                 "result": recruit_cal_result[recruit_result_level][0]['result']
             }
-            logger.info('第{}个位置上的公招预测结果：{}'.format(self.recruit_pos + 1,recruit_cal_result[recruit_result_level][0]['result']))
+            logger.info('第{}个位置上的公招预测结果：{}'.format(self.recruit_pos + 1,
+                                                               recruit_cal_result[recruit_result_level][0]['result']))
         else:
             self.agent_choose[str(self.recruit_pos + 1)] = {
                 "tags": choose,
@@ -335,20 +335,17 @@ class RecruitSolver:
     def recruit_cal(self, tags: list[str]):
         logger.debug(f"选择标签{tags}")
         index_dict = {k: i for i, k in enumerate(self.recruit_order)}
-
         combined_agent = {}
         if '新手' in tags:
             tags.remove('新手')
         for item in combinations(tags, 1):
             tmp = agent_with_tags[item[0]]
-
             if len(tmp) == 0:
                 continue
             tmp.sort(key=lambda k: k['star'], reverse=True)
             combined_agent[item] = tmp
         for item in combinations(tags, 2):
             tmp = [j for j in agent_with_tags[item[0]] if j in agent_with_tags[item[1]]]
-
             if len(tmp) == 0:
                 continue
             tmp.sort(key=lambda k: k['star'])
@@ -356,13 +353,13 @@ class RecruitSolver:
         for item in combinations(tags, 3):
             tmp1 = [j for j in agent_with_tags[item[0]] if j in agent_with_tags[item[1]]]
             tmp = [j for j in tmp1 if j in agent_with_tags[item[2]]]
-
             if len(tmp) == 0:
                 continue
             tmp.sort(key=lambda k: k['star'], reverse=True)
             combined_agent[item] = tmp
 
         sorted_list = sorted(combined_agent.items(), key=lambda x: index_dict[x[1][0]['star']])
+
 
         result_dict = {}
         for item in sorted_list:
@@ -384,11 +381,21 @@ class RecruitSolver:
                 if max_star < 6 and agent['star'] == 6:
                     continue
                 result_dict[item[0]].append(agent)
-            result_dict[item[0]] = sorted(result_dict[item[0]], key=lambda x: x['star'], reverse=True)
-            min_star = result_dict[item[0]][-1]['star']
-            for res in result_dict[item[0]][:]:
-                if res['star'] > min_star:
-                    result_dict[item[0]].remove(res)
+                logger.debug(item[0],agent)
+
+            try:
+                for key in list(result_dict.keys()):
+                    if len(result_dict[key]) == 0:
+                        result_dict.pop(key)
+                result_dict[item[0]] = sorted(result_dict[item[0]], key=lambda x: x['star'], reverse=True)
+                min_star = result_dict[item[0]][-1]['star']
+                for res in result_dict[item[0]][:]:
+                    if res['star'] > min_star:
+                        result_dict[item[0]].remove(res)
+            except KeyError as e:
+                logger.debug("Recruit Cal Key Error :{}".format(result_dict))
+                continue
+
         result = {
             6: [],
             5: [],
@@ -426,4 +433,4 @@ if __name__ == '__main__':
         "recruit_auto_only5": True,
         "recruit_email_enable": True,
     }
-    print(recruit_.recruit_tags(['防护', '近战位', '位移', '爆发', '近卫干员']))
+    print(recruit_.recruit_tags(['重装干员', '先锋干员', '高级资深干员', '支援', '支援机械']))
