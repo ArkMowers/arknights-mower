@@ -4,6 +4,7 @@ from typing import Optional
 import cv2
 import numpy as np
 
+import arknights_mower.utils.typealias as tp
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.solver import BaseSolver
 
@@ -37,6 +38,8 @@ class SignInSolver(BaseSolver):
         self.tm.add("headhunting", 2024, 5, 15)  # 每日赠送单抽
         self.tm.add("ann5", 2024, 5, 15)  # 五周年庆典签到活动
 
+        self.tap_info = None, None
+
         self.failure = 0
         self.in_progress = False
         self.start_time = datetime.now()
@@ -55,6 +58,15 @@ class SignInSolver(BaseSolver):
             self.back_to_index()
             return True
         self.sleep()
+
+    def ctap(self, id: str, pos: tp.Location, max_seconds: int = 5):
+        now = datetime.now()
+        lid, ltime = self.tap_info
+        if lid != id or (lid == id and now - ltime > timedelta(seconds=max_seconds)):
+            self.tap_info = id, now
+            self.tap(pos)
+        else:
+            self.sleep()
 
     def transition(self) -> bool:
         if datetime.now() - self.start_time > timedelta(minutes=2):
@@ -95,7 +107,7 @@ class SignInSolver(BaseSolver):
         elif self.find("sign_in/monthly_card/banner"):
             if self.tm.task == "monthly_card":
                 if pos := self.find("sign_in/monthly_card/button_ok"):
-                    self.tap(pos)
+                    self.ctap("monthly_card", pos)
                 else:
                     self.notify("今天的五周年专享月卡已经领取过了")
                     self.tm.complete("monthly_card")
@@ -152,7 +164,7 @@ class SignInSolver(BaseSolver):
             else:
                 self.tap((663, 741))
         elif pos := self.find("skip"):
-            self.tap(pos)
+            self.ctap("skip", pos)
         elif self.find(
             "sign_in/headhunting/contract",
             scope=((1550, 650), (1920, 850)),
@@ -172,7 +184,7 @@ class SignInSolver(BaseSolver):
                 min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
                 if max_val > 0.9:
                     self.in_progress = True
-                    self.tap((max_loc[0] + 50, max_loc[1] + 50))
+                    self.ctap("ann5", (max_loc[0] + 50, max_loc[1] + 50))
                 else:
                     if not self.in_progress:
                         self.notify("五周年庆典签到活动奖励已领完")
@@ -184,10 +196,10 @@ class SignInSolver(BaseSolver):
         elif self.find("sign_in/ann5/phono"):
             if self.tm.task == "ann5":
                 self.notify("成功领取PhonoR-0小车")
-            self.tap((960, 540))
+            self.ctap("phono", (960, 540))
         elif self.find("sign_in/ann5/savage"):
             if self.tm.task == "ann5":
                 self.notify("成功领取暴行皮肤")
-            self.tap((960, 540))
+            self.ctap("skin", (960, 540))
         else:
             return self.handle_unknown()
