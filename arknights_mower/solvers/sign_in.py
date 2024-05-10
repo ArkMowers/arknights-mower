@@ -252,15 +252,13 @@ class SignInSolver(BaseSolver):
                 self.back()
         elif self.find("sign_in/ep14/banner"):
             if self.tm.task == "ep14":
-                img = cropimg(self.recog.img, ((135, 132), (174, 171)))
-                hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
-                mask = cv2.inRange(hsv, (8, 0, 0), (9, 255, 255))
-                if cv2.countNonZero(mask) > 700:
-                    self.ctap("ep14", (157, 215))
-                else:
-                    self.tm.complete("ep14")
-                    self.notify("理智小样和材料箱子领完啦")
+                self.ctap("ep14", (157, 215))
             else:
                 self.back()
+        elif self.find("sign_in/ep14/details"):
+            if self.tm.task == "ep14":
+                self.notify("理智小样和材料箱子领完啦")
+                self.tm.complete("ep14")
+            self.back()
         else:
             return self.handle_unknown()
