@@ -42,8 +42,6 @@ class SignInSolver(BaseSolver):
         self.tm.add("ann5", 2024, 5, 15)  # 五周年庆典签到活动
         self.tm.add("ep14", 2024, 5, 22)  # 第十四章慈悲灯塔物资领取
 
-        self.tap_info = None, None
-
         self.failure = 0
         self.in_progress = False
         self.start_time = datetime.now()
@@ -62,15 +60,6 @@ class SignInSolver(BaseSolver):
             self.back_to_index()
             return True
         self.sleep()
-
-    def ctap(self, id: str, pos: tp.Location, max_seconds: int = 5):
-        now = datetime.now()
-        lid, ltime = self.tap_info
-        if lid != id or (lid == id and now - ltime > timedelta(seconds=max_seconds)):
-            self.tap_info = id, now
-            self.tap(pos)
-        else:
-            self.sleep()
 
     def transition(self) -> bool:
         if datetime.now() - self.start_time > timedelta(minutes=2):

@@ -46,6 +46,7 @@ class BaseSolver:
             self.recog.update()
 
     def run(self) -> None:
+        self.tap_info = None, None
         retry_times = config.MAX_RETRYTIME
         result = None
         while retry_times > 0:
@@ -147,6 +148,15 @@ class BaseSolver:
         self.device.tap(pos)
         if interval > 0:
             self.sleep(interval)
+
+    def ctap(self, id: str, pos: tp.Location, max_seconds: int = 5):
+        now = datetime.now()
+        lid, ltime = self.tap_info
+        if lid != id or (lid == id and now - ltime > timedelta(seconds=max_seconds)):
+            self.tap_info = id, now
+            self.tap(pos)
+        else:
+            self.sleep()
 
     def tap_element(
         self,

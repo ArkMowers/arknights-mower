@@ -14,6 +14,7 @@ import cv2
 import numpy as np
 
 from arknights_mower import __rootdir__
+
 # 借用__main__.py里的时间计算器
 from arknights_mower.__main__ import format_time
 from arknights_mower.solvers.base_mixin import BaseMixin
@@ -37,9 +38,15 @@ from ..utils.operators import Operator, Operators
 from ..utils.pipe import push_operators
 from ..utils.plan import PlanTriggerTiming
 from ..utils.recognize import RecognizeError, Recognizer, Scene
-from ..utils.scheduler_task import (SchedulerTask, TaskTypes, add_release_dorm,
-                                    check_dorm_ordering, find_next_task,
-                                    scheduling, try_add_release_dorm)
+from ..utils.scheduler_task import (
+    SchedulerTask,
+    TaskTypes,
+    add_release_dorm,
+    check_dorm_ordering,
+    find_next_task,
+    scheduling,
+    try_add_release_dorm,
+)
 from ..utils.solver import BaseSolver
 from .skland import SKLand
 
@@ -1633,7 +1640,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 elif ctm.task == "receive":
                     receive_scope = ((1815, 360), (1895, 410))
                     if self.find("clue/badge_new", scope=receive_scope):
-                        self.tap((1800, 430))
+                        self.ctap("clue_receive", (1800, 430))
                     else:
                         ctm.complete("receive")
                 elif ctm.task == "place":
@@ -1658,7 +1665,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     else:
                         ctm.complete("place")
                 elif ctm.task == "give_away":
-                    self.tap((1799, 578))
+                    self.ctap("clue_give_away", (1799, 578))
                 elif ctm.task == "party_time":
                     self.back()
 
