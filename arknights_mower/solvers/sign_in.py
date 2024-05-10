@@ -5,7 +5,10 @@ import cv2
 import numpy as np
 
 import arknights_mower.utils.typealias as tp
+from arknights_mower import __rootdir__
+from arknights_mower.utils.image import cropimg, loadimg, saveimg
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.matcher import ORB
 from arknights_mower.utils.solver import BaseSolver
 
 
@@ -37,6 +40,7 @@ class SignInSolver(BaseSolver):
         self.tm.add("orundum", 2024, 5, 15)  # 限时开采许可
         self.tm.add("headhunting", 2024, 5, 15)  # 每日赠送单抽
         self.tm.add("ann5", 2024, 5, 15)  # 五周年庆典签到活动
+        self.tm.add("ep14", 2024, 5, 22)  # 第十四章慈悲灯塔物资领取
 
         self.tap_info = None, None
 
@@ -102,6 +106,8 @@ class SignInSolver(BaseSolver):
                 else:
                     self.notify("未检测到五周年庆典签到活动入口！")
                     self.tm.complete("ann5")
+            elif self.tm.task == "ep14":
+                self.tap_index_element("terminal")
             else:
                 return True
         elif self.find("sign_in/monthly_card/banner"):
@@ -124,6 +130,9 @@ class SignInSolver(BaseSolver):
                 self.tm.complete("orundum")
             elif self.tm.task == "ann5":
                 self.notify("成功领取五周年庆典签到活动奖励")
+            elif self.tm.task == "ep14":
+                self.notify("成功领取理智小样和材料箱子")
+                self.tm.complete("ep14")
             self.tap((960, 960))
         elif self.find("sign_in/orundum/banner"):
             if self.tm.task == "orundum":
@@ -201,5 +210,57 @@ class SignInSolver(BaseSolver):
             if self.tm.task == "ann5":
                 self.notify("成功领取暴行皮肤")
             self.ctap("skin", (960, 540))
+        elif self.find("terminal_pre"):
+            if self.tm.task == "ep14":
+                img = loadimg(
+                    f"{__rootdir__}/resources/sign_in/ep14/terminal.jpg", True
+                )
+                kp1, des1 = ORB.detectAndCompute(img, None)
+                kp2, des2 = ORB.detectAndCompute(self.recog.gray, None)
+                FLANN_INDEX_LSH = 6
+                index_params = dict(
+                    algorithm=FLANN_INDEX_LSH,
+                    table_number=6,  # 12
+                    key_size=12,  # 20
+                    multi_probe_level=1,  # 2
+                )
+                search_params = dict(checks=50)
+                flann = cv2.FlannBasedMatcher(index_params, search_params)
+                matches = flann.knnMatch(des1, des2, k=2)
+                GOOD_DISTANCE_LIMIT = 0.7
+                good = []
+                for pair in matches:
+                    if (len_pair := len(pair)) == 2:
+                        x, y = pair
+                        if x.distance < GOOD_DISTANCE_LIMIT * y.distance:
+                            good.append(x)
+                    elif len_pair == 1:
+                        good.append(pair[0])
+                good = sorted(good, key=lambda x: x.distance)
+                debug_img = cv2.drawMatches(
+                    img,
+                    kp1,
+                    self.recog.gray,
+                    kp2,
+                    good[:10],
+                    None,
+                    flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS,
+                )
+                saveimg(debug_img, "navigation")
+                self.tap(kp2[good[0].trainIdx].pt)
+            else:
+                self.back()
+        elif self.find("sign_in/ep14/banner"):
+            if self.tm.task == "ep14":
+                img = cropimg(self.recog.img, ((135, 132), (174, 171)))
+                hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
+                mask = cv2.inRange(hsv, (8, 0, 0), (9, 255, 255))
+                if cv2.countNonZero(mask) > 700:
+                    self.ctap("ep14", (157, 215))
+                else:
+                    self.tm.complete("ep14")
+                    self.notify("理智小样和材料箱子领完啦")
+            else:
+                self.back()
         else:
             return self.handle_unknown()
