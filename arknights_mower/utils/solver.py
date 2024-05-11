@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from inspect import getframeinfo, stack
 from io import BytesIO
 from typing import Optional, Tuple
 
@@ -149,7 +150,10 @@ class BaseSolver:
         if interval > 0:
             self.sleep(interval)
 
-    def ctap(self, id: str, pos: tp.Location, max_seconds: int = 5):
+    def ctap(self, pos: tp.Location, max_seconds: int = 5):
+        caller = getframeinfo(stack()[1][0])
+        id = f"{caller.filename}:{caller.lineno}"
+        logger.debug(id)
         now = datetime.now()
         lid, ltime = self.tap_info
         if lid != id or (lid == id and now - ltime > timedelta(seconds=max_seconds)):

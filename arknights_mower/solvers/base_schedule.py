@@ -1640,7 +1640,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 elif ctm.task == "receive":
                     receive_scope = ((1815, 360), (1895, 410))
                     if self.find("clue/badge_new", scope=receive_scope):
-                        self.ctap("clue_receive", (1800, 430))
+                        self.ctap((1800, 430))
                     else:
                         ctm.complete("receive")
                 elif ctm.task == "place":
@@ -1665,7 +1665,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     else:
                         ctm.complete("place")
                 elif ctm.task == "give_away":
-                    self.ctap("clue_give_away", (1799, 578))
+                    self.ctap((1799, 578))
                 elif ctm.task == "party_time":
                     self.back()
 
