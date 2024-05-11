@@ -153,7 +153,7 @@ class BaseMixin:
 
         err_cnt = 0
         while not self.find("arrange_order_options_scene"):
-            self.tap(filter_pos)
+            self.ctap(filter_pos)
             err_cnt += 1
             if err_cnt > 3:
                 raise Exception("未进入筛选页面")
@@ -170,7 +170,7 @@ class BaseMixin:
 
         err_cnt = 0
         while self.find("arrange_order_options_scene"):
-            self.tap(confirm_pos)
+            self.ctap(confirm_pos)
             err_cnt += 1
             if err_cnt > 3:
                 raise Exception("筛选确认失败")

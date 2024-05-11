@@ -14,7 +14,6 @@ import cv2
 import numpy as np
 
 from arknights_mower import __rootdir__
-
 # 借用__main__.py里的时间计算器
 from arknights_mower.__main__ import format_time
 from arknights_mower.solvers.base_mixin import BaseMixin
@@ -38,15 +37,9 @@ from ..utils.operators import Operator, Operators
 from ..utils.pipe import push_operators
 from ..utils.plan import PlanTriggerTiming
 from ..utils.recognize import RecognizeError, Recognizer, Scene
-from ..utils.scheduler_task import (
-    SchedulerTask,
-    TaskTypes,
-    add_release_dorm,
-    check_dorm_ordering,
-    find_next_task,
-    scheduling,
-    try_add_release_dorm,
-)
+from ..utils.scheduler_task import (SchedulerTask, TaskTypes, add_release_dorm,
+                                    check_dorm_ordering, find_next_task,
+                                    scheduling, try_add_release_dorm)
 from ..utils.solver import BaseSolver
 from .skland import SKLand
 
@@ -2442,9 +2435,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             ):
                 if error_count > 3:
                     raise Exception("未成功进入干员选择界面")
-                self.tap(
-                    (self.recog.w * 0.82, self.recog.h * 0.18 * (idx + 1)), interval=1
-                )
+                self.ctap((self.recog.w * 0.82, self.recog.h * 0.18 * (idx + 1)))
                 error_count += 1
             self.choose_agent([agents[idx]], "train", fast_mode)
             self.tap_confirm("train")
@@ -2962,9 +2953,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         while self.find("arrange_order_options", score=0.5) is None:
                             if error_count > 3:
                                 raise Exception("未成功进入干员选择界面")
-                            self.tap(
-                                (self.recog.w * 0.82, self.recog.h * 0.2), interval=1
-                            )
+                            self.ctap((self.recog.w * 0.82, self.recog.h * 0.2))
                             error_count += 1
                         self.choose_agent(plan[room], room, choose_error <= 0)
                         self.tap_confirm(room, new_plan)
