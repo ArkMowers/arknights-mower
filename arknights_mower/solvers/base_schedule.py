@@ -173,8 +173,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         remove_name = []
         for x in candidates:
             if (
-                self.op_data.operators[x].is_resting()
-                or self.op_data.operators[x].current_mood() == 24
+                    self.op_data.operators[x].is_resting()
+                    or self.op_data.operators[x].current_mood() == 24
             ):
                 remove_name.append(x)
             else:
@@ -220,8 +220,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     for _id in ids:
                         if not is_exhaust_require:
                             if (
-                                self.op_data.dorm[_id].name
-                                in self.op_data.exhaust_agent
+                                    self.op_data.dorm[_id].name
+                                    in self.op_data.exhaust_agent
                             ):
                                 is_exhaust_require = True
 
@@ -231,9 +231,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                             current_high += 1
                     # 休息满需要则跳过
                     if (
-                        current_high >= _high_free
-                        and current_low >= _low_free
-                        and not is_exhaust_require
+                            current_high >= _high_free
+                            and current_low >= _low_free
+                            and not is_exhaust_require
                     ):
                         task_index = idx
                     else:
@@ -262,8 +262,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         for _id in ids:
                             if not is_exhaust_require:
                                 if (
-                                    self.op_data.dorm[_id].name
-                                    in self.op_data.exhaust_agent
+                                        self.op_data.dorm[_id].name
+                                        in self.op_data.exhaust_agent
                                 ):
                                     is_exhaust_require = True
                             __room = self.op_data.operators[
@@ -306,8 +306,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 self.tasks.append(SchedulerTask())
             # 如果没有任何时间小于当前时间的任务-10分钟 则清空任务
             if (
-                find_next_task(self.tasks, datetime.now() - timedelta(seconds=900))
-                is not None
+                    find_next_task(self.tasks, datetime.now() - timedelta(seconds=900))
+                    is not None
             ):
                 logger.info("检测到执行超过15分钟的任务，清空全部任务")
                 self.tasks = []
@@ -340,8 +340,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         continue
                     # Lancet-2
                     if (
-                        self.op_data.operators[member].workaholic
-                        and member not in fia_plan
+                            self.op_data.operators[member].workaholic
+                            and member not in fia_plan
                     ):
                         continue
                     member_morale = self.op_data.operators[member].current_mood()
@@ -398,17 +398,17 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             key=lambda x: x.current_mood() - x.lower_limit, reverse=False
         )
         if (
-            next(
-                (
-                    a
-                    for a in self.total_agent
-                    if (a.name not in self.op_data.exhaust_agent)
-                    and not a.workaholic
-                    and a.current_mood() <= 3
-                ),
-                None,
-            )
-            is not None
+                next(
+                    (
+                            a
+                            for a in self.total_agent
+                            if (a.name not in self.op_data.exhaust_agent)
+                               and not a.workaholic
+                               and a.current_mood() <= 3
+                    ),
+                    None,
+                )
+                is not None
         ):
             short_rest = True
         low_priority = []
@@ -422,8 +422,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 continue
             # 如果是rest in full，则新增单独任务..
             if (
-                _name in self.op_data.operators.keys()
-                and self.op_data.operators[_name].rest_in_full
+                    _name in self.op_data.operators.keys()
+                    and self.op_data.operators[_name].rest_in_full
             ):
                 __plan = {}
                 __rest_agent = []
@@ -445,13 +445,13 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         _plan = {}
                     _idx, __dorm = self.op_data.get_dorm_by_name(x)
                     if (
-                        x in self.op_data.operators.keys()
-                        and self.op_data.operators[x].rest_in_full
+                            x in self.op_data.operators.keys()
+                            and self.op_data.operators[x].rest_in_full
                     ):
                         if __dorm is not None and __dorm.time is not None:
                             if (
-                                __dorm.time > __time
-                                and self.op_data.operators[x].resting_priority == "high"
+                                    __dorm.time > __time
+                                    and self.op_data.operators[x].resting_priority == "high"
                             ):
                                 __time = __dorm.time
                     if _idx is not None:
@@ -478,9 +478,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     self.error = True
             # 如果非 rest in full， 则同组取时间最小值
             elif (
-                _name in self.op_data.operators.keys()
-                and not self.op_data.operators[_name].is_high()
-                and self.op_data.config.free_room
+                    _name in self.op_data.operators.keys()
+                    and not self.op_data.operators[_name].is_high()
+                    and self.op_data.config.free_room
             ):
                 # 释放满心情其他干员
                 add_release_dorm(self.tasks, self.op_data, _name)
@@ -499,13 +499,13 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 logger.debug(f"小组分组为{__rest_agent}")
                 # 如果小组有其他人是rest_in_full则跳过
                 if next(
-                    (
-                        d
-                        for d in __rest_agent
-                        if d in self.op_data.operators.keys()
-                        and self.op_data.operators[d].rest_in_full
-                    ),
-                    None,
+                        (
+                                d
+                                for d in __rest_agent
+                                if d in self.op_data.operators.keys()
+                                   and self.op_data.operators[d].rest_in_full
+                        ),
+                        None,
                 ):
                     continue
                 for x in __rest_agent:
@@ -522,9 +522,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         _type.append("dorm" + str(_dorm_idx))
                         planned_index.append(_dorm_idx)
                         if (
-                            __dorm.time is not None
-                            and __dorm.time < _time
-                            and self.op_data.operators[x].resting_priority == "high"
+                                __dorm.time is not None
+                                and __dorm.time < _time
+                                and self.op_data.operators[x].resting_priority == "high"
                         ):
                             logger.debug(f"更新任务时间{dorm.time}")
                             _time = __dorm.time
@@ -572,8 +572,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         if self.task.meta_data in self.op_data.operators.keys():
                             free_agent = self.op_data.operators[self.task.meta_data]
                             if (
-                                free_agent.current_room == free_room
-                                and free_agent.current_index == free_index
+                                    free_agent.current_room == free_room
+                                    and free_agent.current_index == free_index
                             ):
                                 get_time = True
                                 # 如果是高优先，还需要把宿舍reference移除
@@ -599,10 +599,10 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         else:
                             self.task.plan = {}
                     if (
-                        config.grandet_back_to_index
-                        and TaskTypes.RUN_ORDER == self.task.type
-                        and not self.refresh_connecting
-                        and self.op_data.config.run_order_buffer_time > 0
+                            config.grandet_back_to_index
+                            and TaskTypes.RUN_ORDER == self.task.type
+                            and not self.refresh_connecting
+                            and self.op_data.config.run_order_buffer_time > 0
                     ):
                         logger.info("跑单前返回主界面以保持登录状态")
                         self.back_to_index()
@@ -619,23 +619,26 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 elif self.task.type == TaskTypes.FIAMMETTA:
                     self.plan_fia()
                 elif (
-                    self.task.meta_data.split(",")[0] in agent_list
-                    and self.task.type == TaskTypes.EXHAUST_OFF
+                        self.task.meta_data.split(",")[0] in agent_list
+                        and self.task.type == TaskTypes.EXHAUST_OFF
                 ):
                     self.overtake_room()
                 elif self.task.type == TaskTypes.CLUE_PARTY:
                     self.party_time = None
                     self.last_clue = None
                     self.skip(["planned", "collect_notification"])
+                elif self.task.type == TaskTypes.REFRESH_ORDER_TIME:
+                    self.plan_run_order(self.task.meta_data)
+                    self.skip(["planned", "todo_task", "collect_notification"])
                 del self.tasks[0]
                 if self.tasks and self.tasks[0].type in [TaskTypes.SHIFT_ON]:
                     self.backup_plan_solver(PlanTriggerTiming.AFTER_PLANNING)
             except Exception as e:
                 logger.exception(e)
                 if (
-                    type(e) is ConnectionAbortedError
-                    or type(e) is AttributeError
-                    or type(e) is ConnectionError
+                        type(e) is ConnectionAbortedError
+                        or type(e) is AttributeError
+                        or type(e) is ConnectionError
                 ):
                     raise e
                 else:
@@ -656,9 +659,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             except Exception as e:
                 logger.exception(e)
                 if (
-                    type(e) is ConnectionAbortedError
-                    or type(e) is AttributeError
-                    or type(e) is ConnectionError
+                        type(e) is ConnectionAbortedError
+                        or type(e) is AttributeError
+                        or type(e) is ConnectionError
                 ):
                     raise e
                 else:
@@ -667,8 +670,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         elif not self.todo_task:
             get_update_time()
             if self.enable_party and (
-                self.last_clue is None
-                or datetime.now() - self.last_clue > timedelta(hours=1)
+                    self.last_clue is None
+                    or datetime.now() - self.last_clue > timedelta(hours=1)
             ):
                 self.clue_new()
                 self.last_clue = datetime.now()
@@ -677,21 +680,21 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             # if self.clue_count > self.clue_count_limit and self.enable_party:
             #     self.share_clue()
             if (
-                self.drone_room not in self.op_data.run_order_rooms
-                and (
+                    self.drone_room not in self.op_data.run_order_rooms
+                    and (
                     self.drone_time is None
                     or self.drone_time
                     < datetime.now() - timedelta(hours=self.drone_execution_gap)
-                )
-                and self.drone_room is not None
+            )
+                    and self.drone_room is not None
             ):
                 self.drone(self.drone_room)
                 logger.info(f"记录本次无人机使用时间为:{datetime.now()}")
                 self.drone_time = datetime.now()
             if self.reload_room is not None and (
-                self.reload_time is None
-                or self.reload_time
-                < datetime.now() - timedelta(hours=self.maa_config["maa_execution_gap"])
+                    self.reload_time is None
+                    or self.reload_time
+                    < datetime.now() - timedelta(hours=self.maa_config["maa_execution_gap"])
             ):
                 self.reload()
                 logger.info(f"记录本次补货时间为:{datetime.now()}")
@@ -771,14 +774,14 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 if plan[key][idx].agent == "Free":
                     continue
                 if not (
-                    name == plan[key][idx].agent
-                    or (
-                        (
-                            name in plan[key][idx].replacement
-                            and name not in ["但书", "龙舌兰"]
+                        name == plan[key][idx].agent
+                        or (
+                                (
+                                        name in plan[key][idx].replacement
+                                        and name not in ["但书", "龙舌兰"]
+                                )
+                                and len(plan[key][idx].replacement) > 0
                         )
-                        and len(plan[key][idx].replacement) > 0
-                    )
                 ):
                     if not need_fix:
                         fix_plan[key] = ["Current"] * len(plan[key])
@@ -792,23 +795,23 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             for key in miss_list:
                 _agent = miss_list[key]
                 if (
-                    _agent.group != ""
-                    and next(
-                        (
+                        _agent.group != ""
+                        and next(
+                    (
                             k
                             for k, v in self.op_data.operators.items()
                             if v.group == _agent.group
-                            and not v.not_valid()
-                            and v.is_resting()
-                        ),
-                        None,
-                    )
-                    is not None
-                    and (
+                               and not v.not_valid()
+                               and v.is_resting()
+                    ),
+                    None,
+                )
+                        is not None
+                        and (
                         _agent.current_mood() == _agent.upper_limit
                         or _agent.workaholic
                         or _agent.mood == _agent.upper_limit
-                    )
+                )
                 ):
                     continue
                 elif _agent.group != "":
@@ -828,7 +831,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 fix_plan[_agent.room][_agent.index] = key
                 # 如果是错位：
                 if (
-                    _agent.current_index != -1 and _agent.current_index != _agent.index
+                        _agent.current_index != -1 and _agent.current_index != _agent.index
                 ) or (_agent.current_room != "" and _agent.room != _agent.current_room):
                     moved_room = _agent.current_room
                     moved_index = _agent.current_index
@@ -847,12 +850,12 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 if "dormitory" in key:
                     # 如果宿舍差Free干员  则跳过
                     if (
-                        next(
-                            (e for e in fix_plan[key] if e not in ["Free", "Current"]),
-                            None,
-                        )
-                        is None
-                        and skip_dorm
+                            next(
+                                (e for e in fix_plan[key] if e not in ["Free", "Current"]),
+                                None,
+                            )
+                            is None
+                            and skip_dorm
                     ):
                         remove_keys.append(key)
                         continue
@@ -867,7 +870,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         x
                         for x in g_agents
                         if self.op_data.operators[x].current_room != ""
-                        and not self.op_data.operators[x].is_resting()
+                           and not self.op_data.operators[x].is_resting()
                     ),
                     None,
                 )
@@ -878,7 +881,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                             x
                             for x in g_agents
                             if self.op_data.operators[x].current_room == ""
-                            or self.op_data.operators[x].is_resting()
+                               or self.op_data.operators[x].is_resting()
                         ),
                         None,
                     )
@@ -886,8 +889,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         # 生成纠错任务
                         for x in g_agents:
                             if (
-                                self.op_data.operators[x].current_room == ""
-                                or self.op_data.operators[x].is_resting()
+                                    self.op_data.operators[x].current_room == ""
+                                    or self.op_data.operators[x].is_resting()
                             ):
                                 room = self.op_data.operators[x].room
                                 if room not in fix_plan:
@@ -903,9 +906,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 )
                 # 如果下个任务的操作时间超过下个任务，则跳过
                 if (
-                    not force
-                    and next_task is not None
-                    and len(fix_plan.keys()) * 45 > second
+                        not force
+                        and next_task is not None
+                        and len(fix_plan.keys()) * 45 > second
                 ):
                     logger.info("有未完成的任务，跳过纠错")
                     self.skip()
@@ -918,6 +921,23 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     )
                     logger.info(f"纠错任务为-->{fix_plan}")
                     return "self_correction"
+
+    def plan_run_order(self, room):
+        plan = self.op_data.plan
+        if find_next_task(self.tasks, meta_data=room, task_type=TaskTypes.RUN_ORDER) is not None:
+            return
+        in_out_plan = {room: ["Current"] * len(plan[room])}
+        for idx, x in enumerate(plan[room]):
+            if "但书" in x.replacement or "龙舌兰" in x.replacement:
+                in_out_plan[room][idx] = x.replacement[0]
+        self.tasks.append(
+            SchedulerTask(
+                time=self.get_run_roder_time(room),
+                task_plan=in_out_plan,
+                task_type=TaskTypes.RUN_ORDER,
+                meta_data=room,
+            )
+        )
 
     def plan_solver(self):
         plan = self.op_data.plan
@@ -936,22 +956,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             if valid:
                 # 处理龙舌兰和但书的插拔
                 for k, v in self.op_data.run_order_rooms.items():
-                    if find_next_task(self.tasks, meta_data=k) is not None:
-                        continue
-                    if not valid:
-                        continue
-                    in_out_plan = {k: ["Current"] * len(plan[k])}
-                    for idx, x in enumerate(plan[k]):
-                        if "但书" in x.replacement or "龙舌兰" in x.replacement:
-                            in_out_plan[k][idx] = x.replacement[0]
-                    self.tasks.append(
-                        SchedulerTask(
-                            time=self.get_run_roder_time(k),
-                            task_plan=in_out_plan,
-                            task_type=TaskTypes.RUN_ORDER,
-                            meta_data=k,
-                        )
-                    )
+                    self.plan_run_order(k)
                 adj_task = scheduling(self.tasks)
                 max_execution = 3
                 adj_count = 0
@@ -983,8 +988,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 result[fia_idx]["time"] = datetime.now()
                 if fia_data.mood != 24:
                     if (
-                        fia_data.time_stamp is not None
-                        and fia_data.time_stamp > datetime.now()
+                            fia_data.time_stamp is not None
+                            and fia_data.time_stamp > datetime.now()
                     ):
                         result[fia_idx]["time"] = fia_data.time_stamp
                     else:
@@ -1027,20 +1032,20 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     continue
                 # 忽略掉心情值没低于上限的的
                 if op.current_mood() > int(
-                    (op.upper_limit - op.lower_limit)
-                    * self.op_data.config.resting_threshold
-                    + op.lower_limit
+                        (op.upper_limit - op.lower_limit)
+                        * self.op_data.config.resting_threshold
+                        + op.lower_limit
                 ):
                     continue
                 if op.name in self.op_data.exhaust_agent:
                     if op.current_mood() <= op.lower_limit + 2:
                         if (
-                            find_next_task(
-                                self.tasks,
-                                task_type=TaskTypes.EXHAUST_OFF,
-                                meta_data=op.name,
-                            )
-                            is None
+                                find_next_task(
+                                    self.tasks,
+                                    task_type=TaskTypes.EXHAUST_OFF,
+                                    meta_data=op.name,
+                                )
+                                is None
                         ):
                             self.enter_room(op.current_room)
                             result = self.get_agent_from_room(
@@ -1048,25 +1053,25 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                             )
                             _time = datetime.now()
                             if (
-                                result[op.current_index]["time"] is not None
-                                and result[op.current_index]["time"] > _time
+                                    result[op.current_index]["time"] is not None
+                                    and result[op.current_index]["time"] > _time
                             ):
                                 _time = result[op.current_index]["time"] - timedelta(
                                     minutes=10
                                 )
                             elif (
-                                op.current_mood() > 0.25 + op.lower_limit
-                                and op.depletion_rate != 0
+                                    op.current_mood() > 0.25 + op.lower_limit
+                                    and op.depletion_rate != 0
                             ):
                                 _time = (
-                                    datetime.now()
-                                    + timedelta(
-                                        hours=(
-                                            op.current_mood() - op.lower_limit - 0.25
-                                        )
-                                        / op.depletion_rate
-                                    )
-                                    - timedelta(minutes=10)
+                                        datetime.now()
+                                        + timedelta(
+                                    hours=(
+                                                  op.current_mood() - op.lower_limit - 0.25
+                                          )
+                                          / op.depletion_rate
+                                )
+                                        - timedelta(minutes=10)
                                 )
                             self.back()
                             # plan 是空的是因为得动态生成
@@ -1077,12 +1082,12 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                                     if item not in self.op_data.exhaust_agent:
                                         continue
                                     elif (
-                                        find_next_task(
-                                            self.tasks,
-                                            task_type=TaskTypes.EXHAUST_OFF,
-                                            meta_data=item,
-                                        )
-                                        is not None
+                                            find_next_task(
+                                                self.tasks,
+                                                task_type=TaskTypes.EXHAUST_OFF,
+                                                meta_data=item,
+                                            )
+                                            is not None
                                     ):
                                         update_time = True
                                         exh_task = find_next_task(
@@ -1125,9 +1130,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         if self.op_data.operators[
                             operator
                         ].resting_priority == "high" and (
-                            self.op_data.operators[operator].upper_limit
-                            - self.op_data.operators[operator].current_mood()
-                            < 2
+                                self.op_data.operators[operator].upper_limit
+                                - self.op_data.operators[operator].current_mood()
+                                < 2
                         ):
                             skip_resting = True
                             break
@@ -1153,8 +1158,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             # 如果下个 普通任务 >5 分钟则补全宿舍
         logger.debug("tasks:" + str(self.tasks))
         if (
-            find_next_task(self.tasks, datetime.now() + timedelta(seconds=15))
-            is not None
+                find_next_task(self.tasks, datetime.now() + timedelta(seconds=15))
+                is not None
         ):
             logger.info("有其他任务,跳过宿舍纠错")
             return
@@ -1174,8 +1179,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     logger.debug(func)
                     con[idx] = self.op_data.evaluate_expression(func)
                     if (
-                        current_con[idx] != con[idx]
-                        and bp.trigger_timing.value <= timing.value
+                            current_con[idx] != con[idx]
+                            and bp.trigger_timing.value <= timing.value
                     ):
                         task = self.op_data.backup_plans[idx].task
                         if task and con[idx]:
@@ -1272,15 +1277,15 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         obj
                         for obj in x.replacement
                         if (
-                            not (
-                                self.op_data.operators[obj].current_room != ""
-                                and not self.op_data.operators[obj].is_resting()
-                            )
-                        )
-                        and obj not in ["但书", "龙舌兰"]
-                        and obj not in exist_replacement
-                        and obj not in __replacement
-                        and self.op_data.operators[obj].current_room != x.room
+                               not (
+                                       self.op_data.operators[obj].current_room != ""
+                                       and not self.op_data.operators[obj].is_resting()
+                               )
+                           )
+                           and obj not in ["但书", "龙舌兰"]
+                           and obj not in exist_replacement
+                           and obj not in __replacement
+                           and self.op_data.operators[obj].current_room != x.room
                     ),
                     None,
                 )
@@ -1296,8 +1301,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 exist_replacement.extend(__replacement)
                 new_plan = False
                 if any(
-                    self.op_data.operators[a_name].resting_priority == "low"
-                    for a_name in agents
+                        self.op_data.operators[a_name].resting_priority == "low"
+                        for a_name in agents
                 ):
                     first_low = last_high = None
                     for a in agents:
@@ -1312,8 +1317,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     if first_low is None or last_high is None:
                         pass
                     elif (
-                        first_low.current_mood() - last_high.current_mood()
-                        < (last_high.lower_limit - last_high.upper_limit) / 8
+                            first_low.current_mood() - last_high.current_mood()
+                            < (last_high.lower_limit - last_high.upper_limit) / 8
                     ):
                         logger.info("低优先级干员心情过低，自动按心情切换优先级")
                         new_plan = True
@@ -1379,8 +1384,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             "菲亚梅塔"
         ].room.startswith("dormitory"):
             return self.op_data.operators[
-                "菲亚梅塔"
-            ].replacement, self.op_data.operators["菲亚梅塔"].room
+                       "菲亚梅塔"
+                   ].replacement, self.op_data.operators["菲亚梅塔"].room
         return None, None
 
     def get_run_roder_time(self, room):
@@ -1598,13 +1603,13 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         # 如果启用MAA，则在线索交流结束后购物
                         if self.maa_config["maa_enable"]:
                             if not find_next_task(
-                                self.tasks,
-                                task_type=TaskTypes.MAA_MALL,
+                                    self.tasks,
+                                    task_type=TaskTypes.MAA_MALL,
                             ):
                                 self.tasks.append(
                                     SchedulerTask(
                                         time=self.party_time
-                                        - timedelta(milliseconds=1),
+                                             - timedelta(milliseconds=1),
                                         task_type=TaskTypes.CLUE_PARTY,
                                     )
                                 )
@@ -1664,7 +1669,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
 
             elif scene == Scene.CLUE_DAILY:
                 if not self.find(
-                    "clue/icon_notification", scope=((1400, 0), (1920, 400))
+                        "clue/icon_notification", scope=((1400, 0), (1920, 400))
                 ) and (clue := clue_cls("daily")):
                     logger.info(f"领取今日线索（{clue}号）")
                     self.tap_element("clue/button_get")
@@ -1788,7 +1793,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 if c := clue_cls("give_away"):
                     if not friend_clue:
                         if self.find(
-                            "clue/icon_notification", scope=((1400, 0), (1920, 400))
+                                "clue/icon_notification", scope=((1400, 0), (1920, 400))
                         ):
                             self.sleep()
                             continue
@@ -1869,8 +1874,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             self.tap(((x0 + x1) // 2, (y0 * 5 - y1) // 4), interval=3)
             obtain = self.find("clue_obtain")
             if (
-                obtain is not None
-                and self.get_color(self.get_pos(obtain, 0.25, 0.5))[0] < 20
+                    obtain is not None
+                    and self.get_color(self.get_pos(obtain, 0.25, 0.5))[0] < 20
             ):
                 self.tap(obtain, interval=2)
                 if self.find("clue_full") is not None:
@@ -1997,21 +2002,21 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
 
         (x1, y0), (x2, y1) = self.find("clue_nav", strict=True)
         while (
-            int(self.recog.img[y0, x1 - 1].max()) - int(self.recog.img[y0, x1].max())
-            <= 1
+                int(self.recog.img[y0, x1 - 1].max()) - int(self.recog.img[y0, x1].max())
+                <= 1
         ):
             x1 -= 1
         while (
-            int(self.recog.img[y0, x2].max()) - int(self.recog.img[y0, x2 - 1].max())
-            <= 1
+                int(self.recog.img[y0, x2].max()) - int(self.recog.img[y0, x2 - 1].max())
+                <= 1
         ):
             x2 += 1
         while (
-            abs(
-                int(self.recog.img[y1 + 1, x1].max())
-                - int(self.recog.img[y1, x1].max())
-            )
-            <= 1
+                abs(
+                    int(self.recog.img[y1 + 1, x1].max())
+                    - int(self.recog.img[y1, x1].max())
+                )
+                <= 1
         ):
             y1 += 1
         y1 += 1
@@ -2056,8 +2061,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         flag = False
         for y in range(y1, y2):
             if (
-                int(self.recog.img[y, x3 - 1, 0]) - int(self.recog.img[y, x3 - 2, 0])
-                == max_abs
+                    int(self.recog.img[y, x3 - 1, 0]) - int(self.recog.img[y, x3 - 2, 0])
+                    == max_abs
             ):
                 flag = True
         if not flag:
@@ -2080,9 +2085,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             flag = False
             for y in range(y1, y2):
                 if (
-                    int(self.recog.img[y, x3 - 1, 0])
-                    - int(self.recog.img[y, x3 - 2, 0])
-                    == max_abs
+                        int(self.recog.img[y, x3 - 1, 0])
+                        - int(self.recog.img[y, x3 - 2, 0])
+                        == max_abs
                 ):
                     flag = True
             if not flag:
@@ -2095,10 +2100,10 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             mask = []
             for y in range(y1, y2):
                 if (
-                    int(self.recog.img[y, x3 - 1, 0])
-                    - int(self.recog.img[y, x3 - 2, 0])
-                    > 20
-                    and np.ptp(self.recog.img[y, x3 - 2]) == 0
+                        int(self.recog.img[y, x3 - 1, 0])
+                        - int(self.recog.img[y, x3 - 2, 0])
+                        > 20
+                        and np.ptp(self.recog.img[y, x3 - 2]) == 0
                 ):
                     mask.append(y)
             if len(mask) > 0:
@@ -2116,10 +2121,10 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 mask = False
                 for y in range(y1, y2):
                     if (
-                        int(self.recog.img[y, x3 - 1, 0])
-                        - int(self.recog.img[y, x3 - 2, 0])
-                        > 20
-                        and np.ptp(self.recog.img[y, x3 - 2]) == 0
+                            int(self.recog.img[y, x3 - 1, 0])
+                            - int(self.recog.img[y, x3 - 2, 0])
+                            > 20
+                            and np.ptp(self.recog.img[y, x3 - 2]) == 0
                     ):
                         self.tap((x3 - 2, y + 1))
                         mask = True
@@ -2136,7 +2141,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         y3 = y1
         status = -2
         for y in range(y1, y2):
-            if self.recog.img[y, x4 - 5 : x4 + 5].max() < 192:
+            if self.recog.img[y, x4 - 5: x4 + 5].max() < 192:
                 if status == -1:
                     status = 20
                 if status > 0:
@@ -2159,7 +2164,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         error_count = 0
         action_required_task = scheduling(self.tasks)
         while (
-            action_required_task is not None and action_required_task.meta_data == room
+                action_required_task is not None and action_required_task.meta_data == room
         ):
             self.tap(accelerate)
             if self.get_infra_scene() == Scene.CONNECTING:
@@ -2199,12 +2204,12 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 break
 
     def drone(
-        self,
-        room: str,
-        not_customize=False,
-        not_return=False,
-        adjust_time=False,
-        skip_enter=False,
+            self,
+            room: str,
+            not_customize=False,
+            not_return=False,
+            adjust_time=False,
+            skip_enter=False,
     ):
         logger.info("基建：无人机加速" if not adjust_time else "开始调整订单时间")
         all_in = 0
@@ -2219,8 +2224,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         # 关闭掉房间总览
         error_count = 0
         while (
-            self.find("factory_accelerate") is None
-            and self.find("bill_accelerate") is None
+                self.find("factory_accelerate") is None
+                and self.find("bill_accelerate") is None
         ):
             if error_count > 5:
                 raise Exception("未成功进入无人机界面")
@@ -2262,10 +2267,10 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 self.recog.update()
                 self.recog.save_screencap("run_order")
                 if not (
-                    self.drone_room is None
-                    or (
-                        self.drone_room == room and room in self.op_data.run_order_rooms
-                    )
+                        self.drone_room is None
+                        or (
+                                self.drone_room == room and room in self.op_data.run_order_rooms
+                        )
                 ):
                     break
                 if not_customize:
@@ -2404,15 +2409,15 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             new_plan = {}
         self.recog.update()
         if (
-            room in self.op_data.run_order_rooms
-            and len(new_plan) == 1
-            and self.op_data.config.run_order_buffer_time > 0
+                room in self.op_data.run_order_rooms
+                and len(new_plan) == 1
+                and self.op_data.config.run_order_buffer_time > 0
         ):
             wait_confirm = round(
                 (
-                    (self.task.time - datetime.now()).total_seconds()
-                    + self.run_order_delay * 60
-                    - self.op_data.config.run_order_buffer_time
+                        (self.task.time - datetime.now()).total_seconds()
+                        + self.run_order_delay * 60
+                        - self.op_data.config.run_order_buffer_time
                 ),
                 1,
             )
@@ -2426,12 +2431,12 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             self.tap((_x0, _y0))
 
     def choose_train_agent(
-        self, current_room, agents, idx, error_count=0, fast_mode=False
+            self, current_room, agents, idx, error_count=0, fast_mode=False
     ):
         if current_room[idx] != agents[idx]:
             while (
-                self.find("arrange_order_options") is None
-                and self.find("confirm_blue") is None
+                    self.find("arrange_order_options") is None
+                    and self.find("confirm_blue") is None
             ):
                 if error_count > 3:
                     raise Exception("未成功进入干员选择界面")
@@ -2447,7 +2452,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         # self.choose_train_agent(current_room, agents, 1, 0, fast_mode)
 
     def choose_agent(
-        self, agents: list[str], room: str, fast_mode=True, train_index=0
+            self, agents: list[str], room: str, fast_mode=True, train_index=0
     ) -> None:
         """
         :param order: ArrangeOrder, 选择干员时右上角的排序功能
@@ -2468,7 +2473,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         for idx, n in enumerate(agents):
             if room.startswith("dorm"):
                 if self.op_data.plan_condition != [False] * (
-                    len(self.op_data.backup_plans)
+                        len(self.op_data.backup_plans)
                 ):
                     continue
                 if n not in self.op_data.operators.keys():
@@ -2479,8 +2484,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     if self.op_data.config.free_room:
                         current_free = self.op_data.get_current_operator(room, idx)
                         if (
-                            current_free
-                            and current_free.mood < current_free.upper_limit
+                                current_free
+                                and current_free.mood < current_free.upper_limit
                         ):
                             agents[idx] = current_free.name
         agent = copy.deepcopy(agents)
@@ -2556,8 +2561,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 # 第一次则调整
                 is_custom, arrange_type = self.get_order(agent[0])
                 if is_dorm and not (
-                    agent[0] in self.op_data.operators.keys()
-                    and self.op_data.operators[agent[0]].room.startswith("dormitory")
+                        agent[0] in self.op_data.operators.keys()
+                        and self.op_data.operators[agent[0]].room.startswith("dormitory")
                 ):
                     arrange_type = (3, "true")
                 # 如果重新排序则滑到最左边
@@ -2612,8 +2617,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 v.name
                 for k, v in self.op_data.operators.items()
                 if v.name not in agents
-                and v.operator_type != "high"
-                and v.current_room == ""
+                   and v.operator_type != "high"
+                   and v.current_room == ""
             ]
             free_list.extend(
                 [
@@ -2759,9 +2764,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 update_time = False
                 agent = self.op_data.operators[_name]
                 if self.op_data.operators[_name].need_to_refresh(r=room) or (
-                    agent.is_resting()
-                    and not room.startswith("dorm")
-                    and agent.is_high()
+                        agent.is_resting()
+                        and not room.startswith("dorm")
+                        and agent.is_high()
                 ):
                     _mood = self.read_accurate_mood(cropimg(self.recog.gray, mood_p[i]))
                     update_time = True
@@ -2801,9 +2806,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 self.op_data.operators[_operator].current_room = ""
                 self.op_data.operators[_operator].current_index = -1
                 if (
-                    self.op_data.config.free_room
-                    and self.task is not None
-                    and self.task.type != TaskTypes.SHIFT_OFF
+                        self.op_data.config.free_room
+                        and self.task is not None
+                        and self.task.type != TaskTypes.SHIFT_OFF
                 ):
                     release_task = find_next_task(
                         self.tasks,
@@ -2825,8 +2830,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
     def get_order_remaining_time(self):
         error_count = 0
         while (
-            self.find("factory_accelerate") is None
-            and self.find("bill_accelerate") is None
+                self.find("factory_accelerate") is None
+                and self.find("bill_accelerate") is None
         ):
             if error_count > 5:
                 raise Exception("未成功进入无人机界面")
@@ -2855,19 +2860,41 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
 
     def refresh_run_order_time(self, room):
         logger.debug("检测到插拔房间人员变动！")
+        limit = 15
         run_order_task = find_next_task(
             self.tasks,
-            datetime.now() + timedelta(minutes=15),
+            datetime.now() + timedelta(minutes=limit),
             task_type=TaskTypes.RUN_ORDER,
             meta_data=room,
             compare_type=">",
         )
         if run_order_task is not None:
-            logger.info("移除超过5分钟的跑单任务以刷新时间")
+            logger.info(f"移除超过{limit}分钟的跑单任务以刷新时间")
             self.tasks.remove(run_order_task)
+        run_order_task = find_next_task(
+            self.tasks,
+            datetime.now() + timedelta(minutes=limit),
+            task_type=TaskTypes.RUN_ORDER,
+            meta_data=room,
+            compare_type="<",
+        )
+        if run_order_task is not None:
+            logger.info(f"移除{limit}分钟以内的跑单任务以强X刷新时间")
+            self.tasks.remove(run_order_task)
+            logger.info("新增强X刷新跑单时间任务")
+            task_time = datetime.now() if len(self.tasks) == 0 else self.tasks[0].time - timedelta(seconds=1)
+            self.tasks.append(
+                (
+                    SchedulerTask(
+                        time=task_time,
+                        task_plan={},
+                        task_type=TaskTypes.REFRESH_ORDER_TIME,
+                        meta_data=room
+                    )
+                ))
 
     def agent_arrange_room(
-        self, new_plan, room, plan, skip_enter=False, get_time=False
+            self, new_plan, room, plan, skip_enter=False, get_time=False
     ):
         finished = False
         choose_error = 0
@@ -2881,7 +2908,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 error_count = 0
                 if not checked:
                     if (
-                        "但书" in plan[room] or "龙舌兰" in plan[room]
+                            "但书" in plan[room] or "龙舌兰" in plan[room]
                     ) and not room.startswith("dormitory"):
                         new_plan[room] = self.refresh_current_room(room)
                     if "菲亚梅塔" in plan[room] and len(plan[room]) == 2:
@@ -2910,9 +2937,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                             if _name == "":
                                 plan[room][current_idx] = "Free"
                     if (
-                        room in self.op_data.run_order_rooms
-                        and len(new_plan) == 0
-                        and self.task.type != TaskTypes.RUN_ORDER
+                            room in self.op_data.run_order_rooms
+                            and len(new_plan) == 0
+                            and self.task.type != TaskTypes.RUN_ORDER
                     ):
                         if plan[room] != self.op_data.get_current_room(room):
                             self.refresh_run_order_time(room)
@@ -2926,17 +2953,17 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 if not same:
                     # choose_error <= 0 选人如果失败则马上重新选过
                     if (
-                        len(new_plan) == 1
-                        and self.op_data.config.run_order_buffer_time > 0
-                        and choose_error <= 0
+                            len(new_plan) == 1
+                            and self.op_data.config.run_order_buffer_time > 0
+                            and choose_error <= 0
                     ):
                         remaining_time = self.get_order_remaining_time()
                         if 0 < remaining_time < (self.run_order_delay + 10) * 60:
                             if self.op_data.config.run_order_buffer_time > 0:
                                 self.task.time = (
-                                    datetime.now()
-                                    + timedelta(seconds=remaining_time)
-                                    - timedelta(minutes=self.run_order_delay)
+                                        datetime.now()
+                                        + timedelta(seconds=remaining_time)
+                                        - timedelta(minutes=self.run_order_delay)
                                 )
                                 logger.info(f"订单倒计时 {remaining_time}秒")
                                 self.back()
@@ -3024,8 +3051,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 # 葛朗台跑单模式
                 error_count = 0
                 while (
-                    self.find("factory_accelerate") is None
-                    and self.find("bill_accelerate") is None
+                        self.find("factory_accelerate") is None
+                        and self.find("bill_accelerate") is None
                 ):
                     if error_count > 5:
                         raise Exception("未成功进入无人机界面")
@@ -3058,11 +3085,11 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 self.recog.save_screencap("run_order")
                 # 接受当前订单
                 while (
-                    self.find("order_ready", scope=((450, 675), (600, 750))) is not None
+                        self.find("order_ready", scope=((450, 675), (600, 750))) is not None
                 ):
                     self.tap((self.recog.w * 0.25, self.recog.h * 0.25), interval=0.5)
                 if self.drone_room is None or (
-                    self.drone_room == room and room in self.op_data.run_order_rooms
+                        self.drone_room == room and room in self.op_data.run_order_rooms
                 ):
                     drone_count = self.digit_reader.get_drone(self.recog.gray)
                     logger.info(f"当前无人机数量为：{drone_count}")
@@ -3080,8 +3107,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             # 防止由于意外导致的死循环
             run_order_room = next(iter(new_plan))
             if (
-                "但书" in new_plan[run_order_room]
-                or "龙舌兰" in new_plan[run_order_room]
+                    "但书" in new_plan[run_order_room]
+                    or "龙舌兰" in new_plan[run_order_room]
             ):
                 new_plan[run_order_room] = [
                     data.agent for data in self.op_data.plan[room]
@@ -3217,9 +3244,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             InstanceOptionType.touch_type, self.maa_config["touch_option"]
         )
         if self.MAA.connect(
-            self.maa_config["maa_adb_path"],
-            self.device.client.device_id,
-            self.maa_config["conn_preset"],
+                self.maa_config["maa_adb_path"],
+                self.device.client.device_id,
+                self.maa_config["conn_preset"],
         ):
             logger.info("MAA 连接成功")
         else:
@@ -3262,8 +3289,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     "buy_first": self.maa_config["buy_first"].split(","),
                     "blacklist": self.maa_config["blacklist"].split(","),
                     "credit_fight": self.maa_config["credit_fight"]
-                    and "" not in self.stages
-                    and self.credit_fight is None,
+                                    and "" not in self.stages
+                                    and self.credit_fight is None,
                     "force_shopping_if_credit_full": self.maa_config[
                         "mall_ignore_when_full"
                     ],
@@ -3277,17 +3304,17 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
     def maa_plan_solver(self, tasks="All", one_time=False):
         try:
             if (
-                not one_time
-                and "last_execution" in self.maa_config
-                and self.maa_config["last_execution"] is not None
-                and datetime.now()
-                - timedelta(seconds=self.maa_config["maa_execution_gap"] * 3600)
-                < self.maa_config["last_execution"]
+                    not one_time
+                    and "last_execution" in self.maa_config
+                    and self.maa_config["last_execution"] is not None
+                    and datetime.now()
+                    - timedelta(seconds=self.maa_config["maa_execution_gap"] * 3600)
+                    < self.maa_config["last_execution"]
             ):
                 delta = (
-                    timedelta(seconds=self.maa_config["maa_execution_gap"] * 3600)
-                    + self.maa_config["last_execution"]
-                    - datetime.now()
+                        timedelta(seconds=self.maa_config["maa_execution_gap"] * 3600)
+                        + self.maa_config["last_execution"]
+                        - datetime.now()
                 )
                 logger.info(f"间隔未超过设定时间，将在{delta}后启动Maa")
             else:
@@ -3326,8 +3353,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         hard_stop = True
                     # 5分钟之前就停止
                     elif (
-                        not one_time
-                        and (self.tasks[0].time - datetime.now()).total_seconds() < 300
+                            not one_time
+                            and (self.tasks[0].time - datetime.now()).total_seconds() < 300
                     ):
                         self.MAA.stop()
                         hard_stop = True
@@ -3374,8 +3401,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             except ValueError:
                 rg_sleep = False
             if (
-                self.maa_config["roguelike"]
-                or self.maa_config["stationary_security_service"]
+                    self.maa_config["roguelike"]
+                    or self.maa_config["stationary_security_service"]
             ) and not rg_sleep:
                 logger.info("准备开始：肉鸽/保全")
                 self.send_message("启动 肉鸽/保全")
@@ -3410,9 +3437,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         )
                     elif self.maa_config["stationary_security_service"]:
                         if (
-                            self.maa_config["copilot_file_location"] == ""
-                            or self.maa_config["copilot_loop_times"] <= 0
-                            or self.maa_config["sss_type"] not in [1, 2]
+                                self.maa_config["copilot_file_location"] == ""
+                                or self.maa_config["copilot_loop_times"] <= 0
+                                or self.maa_config["sss_type"] not in [1, 2]
                         ):
                             raise Exception("保全派驻配置无法找到")
                         ec_type = (
@@ -3423,8 +3450,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         self.recog.update()
                         self.back_to_index()
                         if (
-                            self.to_sss(self.maa_config["sss_type"], ec_type)
-                            is not None
+                                self.to_sss(self.maa_config["sss_type"], ec_type)
+                                is not None
                         ):
                             raise Exception("保全派驻导航失败")
                         self.MAA.append_task(
@@ -3460,8 +3487,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     del self.tasks[0]
                 self.MAA = None
                 if (
-                    find_next_task(self.tasks, datetime.now() + timedelta(seconds=900))
-                    is None
+                        find_next_task(self.tasks, datetime.now() + timedelta(seconds=900))
+                        is None
                 ):
                     # 未来10分钟没有任务就新建
                     self.tasks.append(SchedulerTask())
@@ -3503,10 +3530,10 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         try:
             return SKLand(self.skland_config["skland_info"]).start()
         except (
-            RuntimeError,
-            ConnectionError,
-            ConnectionAbortedError,
-            AttributeError,
+                RuntimeError,
+                ConnectionError,
+                ConnectionAbortedError,
+                AttributeError,
         ) as re:
             self.send_message(f"森空岛签到失败: {re}")
             logger.warning(f"森空岛签到失败:{re}")
@@ -3521,13 +3548,13 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
 
     def recruit_plan_solver(self):
         if (
-            "last_execution" not in self.recruit_config
-            or self.recruit_config["last_execution"] is None
-            or self.recruit_config["last_execution"]
-            <= (
+                "last_execution" not in self.recruit_config
+                or self.recruit_config["last_execution"] is None
+                or self.recruit_config["last_execution"]
+                <= (
                 datetime.now()
                 - timedelta(seconds=self.recruit_config["recruit_execution_gap"] * 3600)
-            )
+        )
         ):
             recruit([], self.send_message_config, self.recruit_config, self.device)
             self.recruit_config["last_execution"] = datetime.now()
