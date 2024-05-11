@@ -40,6 +40,7 @@ def task_ra(settings, write):
         if settings["package_type"] == "official"
         else "com.hypergryph.arknights.bilibili"
     )
+    config.FEATURE_MATCHER = "flann"
 
     rapidocr.initialize_ocr()
 
