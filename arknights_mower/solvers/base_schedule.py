@@ -2900,7 +2900,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             meta_data=room,
             compare_type="<",
         )
-        if run_order_task is not None:
+        if run_order_task is not None and run_order_task.time > datetime.now():
             logger.info(f"移除{limit}分钟以内的跑单任务以强X刷新时间")
             self.tasks.remove(run_order_task)
             logger.info("新增强X刷新跑单时间任务")
