@@ -15,7 +15,7 @@ from .. import __rootdir__
 from ..utils.device import Device
 from ..utils.digit_reader import DigitReader
 from ..utils.email import recruit_template, recruit_rarity
-from ..utils.image import cropimg, bytes2img, loadimg
+from ..utils.image import cropimg, loadres
 from ..utils.log import logger
 from ..utils.recognize import RecognizeError, Recognizer, Scene
 from ..utils.solver import BaseSolver
@@ -145,7 +145,7 @@ class RecruitSolver(BaseSolver):
 
             try:
                 # 招募前读取数量
-                template_ticket = loadimg(f"{__rootdir__}/resources/recruit_ticket.png")
+                template_ticket = loadres("recruit_ticket")
                 img = self.recog.img
                 res = cv2.matchTemplate(img, template_ticket, cv2.TM_CCOEFF_NORMED)
                 min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
@@ -153,7 +153,7 @@ class RecruitSolver(BaseSolver):
                 p0 = max_loc
                 p1 = (p0[0] + w, p0[1] + h)
 
-                template_stone = loadimg(f"{__rootdir__}/resources/stone.png")
+                template_stone = loadres("stone")
                 res = cv2.matchTemplate(img, template_stone, cv2.TM_CCOEFF_NORMED)
                 min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
                 p2 = max_loc

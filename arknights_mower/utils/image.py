@@ -1,14 +1,18 @@
+from functools import lru_cache
 from typing import Union
 
 import cv2
 import numpy as np
+
+from arknights_mower import __rootdir__
+from arknights_mower.utils.path import get_path
 
 from . import typealias as tp
 from .log import logger, save_screenshot
 
 
 def bytes2img(data: bytes, gray: bool = False) -> Union[tp.Image, tp.GrayImage]:
-    """ bytes -> image """
+    """bytes -> image"""
     if gray:
         return cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_GRAYSCALE)
     else:
@@ -19,21 +23,26 @@ def bytes2img(data: bytes, gray: bool = False) -> Union[tp.Image, tp.GrayImage]:
 
 
 def img2bytes(img) -> bytes:
-    """ bytes -> image """
-    return cv2.imencode('.png', img)[1]
+    """bytes -> image"""
+    return cv2.imencode(".png", img)[1]
 
 
-image_cache = {}
-
-
-def loadimg(filename: str, gray: bool = False) -> Union[tp.Image, tp.GrayImage]:
-    """ load image from file """
-    logger.debug(filename)
-    if filename in image_cache:
-        img_data = image_cache[filename]
+def loadres(res: str, gray: bool = False) -> Union[tp.Image, tp.GrayImage]:
+    if res.startswith("@hot"):
+        res_name = res.replace("@hot", "@internal/tmp/hot_update", 1)
     else:
-        img_data = np.fromfile(filename, dtype=np.uint8)
-        image_cache[filename] = img_data
+        res_name = f"{__rootdir__}/resources/{res}"
+    if not res.endswith(".jpg"):
+        res_name += ".png"
+    filename = get_path(res_name, "")
+    return loadimg(filename, gray)
+
+
+@lru_cache(maxsize=128)
+def loadimg(filename: str, gray: bool = False) -> Union[tp.Image, tp.GrayImage]:
+    """load image from file"""
+    logger.debug(filename)
+    img_data = np.fromfile(filename, dtype=np.uint8)
     if gray:
         return cv2.imdecode(img_data, cv2.IMREAD_GRAYSCALE)
     else:
@@ -41,7 +50,7 @@ def loadimg(filename: str, gray: bool = False) -> Union[tp.Image, tp.GrayImage]:
 
 
 def thres2(img: tp.GrayImage, thresh: int) -> tp.GrayImage:
-    """ binarization of images """
+    """binarization of images"""
     _, ret = cv2.threshold(img, thresh, 255, cv2.THRESH_BINARY)
     return ret
 
@@ -70,32 +79,33 @@ def thres2(img: tp.GrayImage, thresh: int) -> tp.GrayImage:
 
 
 def rgb2gray(img: tp.Image) -> tp.GrayImage:
-    """ change image from rgb to gray """
+    """change image from rgb to gray"""
     return cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 
 
 def scope2slice(scope: tp.Scope) -> tp.Slice:
-    """ ((x0, y0), (x1, y1)) -> ((y0, y1), (x0, x1)) """
+    """((x0, y0), (x1, y1)) -> ((y0, y1), (x0, x1))"""
     if scope is None:
         return slice(None), slice(None)
     return slice(scope[0][1], scope[1][1]), slice(scope[0][0], scope[1][0])
 
 
 def cropimg(img: tp.Image, scope: tp.Scope) -> tp.Image:
-    """ crop image """
+    """crop image"""
     return img[scope2slice(scope)]
 
 
-def saveimg(img, folder='failure'):
+def saveimg(img, folder="failure"):
     save_screenshot(
         img2bytes(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)),
-        subdir=f'{folder}/{img.shape[0]}x{img.shape[1]}',
+        subdir=f"{folder}/{img.shape[0]}x{img.shape[1]}",
     )
 
-def saveimg_depot(img,filename, folder='depot'):
-    """ filename 传入文件拓展名 """
+
+def saveimg_depot(img, filename, folder="depot"):
+    """filename 传入文件拓展名"""
     save_screenshot(
         img2bytes(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)),
-        subdir=f'{folder}/',
-        filename=filename
+        subdir=f"{folder}/",
+        filename=filename,
     )

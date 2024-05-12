@@ -10,7 +10,7 @@ from .. import __rootdir__
 from . import config, detector
 from . import typealias as tp
 from .device import Device
-from .image import bytes2img, cropimg, loadimg, thres2
+from .image import bytes2img, cropimg, loadres, thres2
 from .log import logger, save_screenshot
 from .matcher import Matcher
 from .scene import Scene, SceneComment
@@ -85,7 +85,7 @@ class Recognizer(object):
 
     def check_announcement(self):
         img = cropimg(self.gray, ((960, 0), (1920, 540)))
-        tpl = loadimg(f"{__rootdir__}/resources/announcement_close.png", True)
+        tpl = loadres("announcement_close", True)
         msk = thres2(tpl, 1)
         result = cv2.matchTemplate(img, tpl, cv2.TM_CCORR_NORMED, None, msk)
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
@@ -578,11 +578,9 @@ class Recognizer(object):
             elif res == "materiel_ico":
                 scope = ((860, 60), (1072, 217))
 
-        res = f"{__rootdir__}/resources/{res}.png"
-
         if thres is not None:
             # 对图像二值化处理
-            res_img = thres2(loadimg(res, True), thres)
+            res_img = thres2(loadres(res, True), thres)
             matcher = Matcher(thres2(self.gray, thres))
             ret = matcher.match(
                 res_img,
@@ -593,7 +591,7 @@ class Recognizer(object):
                 dpi_aware=dpi_aware,
             )
         else:
-            res_img = loadimg(res, True)
+            res_img = loadres(res, True)
             if self.matcher is None:
                 self.matcher = Matcher(self.gray)
             matcher = self.matcher
@@ -627,12 +625,12 @@ class Recognizer(object):
 
         if thres is not None:
             # 对图像二值化处理
-            res_img = thres2(loadimg(res, True), thres)
+            res_img = thres2(loadres(res, True), thres)
             gray_img = cropimg(self.gray, scope)
             matcher = Matcher(thres2(gray_img, thres))
             score = matcher.score(res_img, draw=draw, only_score=True)
         else:
-            res_img = loadimg(res, True)
+            res_img = loadres(res, True)
             matcher = self.matcher
             score = matcher.score(res_img, draw=draw, scope=scope, only_score=True)
         return score
@@ -641,9 +639,8 @@ class Recognizer(object):
         self, res: str, scope: Optional[tp.Scope] = None, method: int = cv2.TM_CCOEFF
     ) -> Tuple[float, tp.Scope]:
         logger.debug(f"template_match: {res}")
-        res = f"{__rootdir__}/resources/{res}.png"
 
-        template = loadimg(res, True)
+        template = loadres(res, True)
         w, h = template.shape[::-1]
 
         if scope:

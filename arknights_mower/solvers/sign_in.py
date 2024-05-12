@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 
 from arknights_mower import __rootdir__
-from arknights_mower.utils.image import loadimg, saveimg
+from arknights_mower.utils.image import loadres, saveimg
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.matcher import ORB
 from arknights_mower.utils.solver import BaseSolver
@@ -200,9 +200,7 @@ class SignInSolver(BaseSolver):
             self.ctap((960, 540))
         elif self.find("terminal_pre"):
             if self.tm.task == "ep14":
-                img = loadimg(
-                    f"{__rootdir__}/resources/sign_in/ep14/terminal.jpg", True
-                )
+                img = loadres("sign_in/ep14/terminal.jpg", True)
                 kp1, des1 = ORB.detectAndCompute(img, None)
                 kp2, des2 = ORB.detectAndCompute(self.recog.gray, None)
                 FLANN_INDEX_LSH = 6

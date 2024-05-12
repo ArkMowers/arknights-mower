@@ -7,10 +7,9 @@ from typing import Optional
 import cv2
 import numpy as np
 
-from arknights_mower import __rootdir__
 from arknights_mower.utils import rapidocr
 from arknights_mower.utils import typealias as tp
-from arknights_mower.utils.image import cropimg, loadimg, thres2
+from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.matcher import Matcher
 from arknights_mower.utils.scene import Scene
@@ -34,8 +33,7 @@ class Map:
 
     def find(self, res: str) -> Optional[tp.Scope]:
         logger.debug(f"find: {res}")
-        res = f"{__rootdir__}/resources/ra/map/{res}.png"
-        res_img = loadimg(res, True)
+        res_img = loadres(f"ra/map/{res}", True)
         return self.matcher.match(res_img, scope=((250, 0), (1620, 900)), prescore=0.5)
 
 
@@ -106,7 +104,7 @@ class ReclamationAlgorithm(BaseSolver):
         )
         img = thres2(img, 180)
         for i in adventures:
-            template = loadimg(f"{__rootdir__}/resources/ra/map/{i}.png", True)
+            template = loadres(f"ra/map/{i}", True)
             template = cropimg(template, ((151, 36), (254, 62)))
             template = thres2(template, 180)
             result = cv2.matchTemplate(img, template, cv2.TM_CCOEFF)
@@ -153,7 +151,7 @@ class ReclamationAlgorithm(BaseSolver):
     def drag(
         self, res: str, position: tp.Coordinate = (960, 500), update_vp: bool = True
     ) -> bool:
-        res_img = loadimg(f"{__rootdir__}/resources/ra/map/{res}.png", True)
+        res_img = loadres(f"ra/map/{res}", True)
         top_left = (
             position[0] - round(res_img.shape[1] / 2),
             position[1] - round(res_img.shape[0] / 2),
@@ -409,7 +407,7 @@ class ReclamationAlgorithm(BaseSolver):
                         self.task_queue.remove("奇遇_崎岖窄路")
                 self.map_back()
             else:
-                tpl = loadimg(f"{__rootdir__}/resources/ra/ap-1.png", True)
+                tpl = loadres("ra/ap-1.png", True)
                 tpl = thres2(tpl, 127)
                 w, h = tpl.shape[::-1]
                 scope = ((1640, 400), (1900, 900))

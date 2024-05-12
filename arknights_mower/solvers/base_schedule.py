@@ -20,7 +20,7 @@ from arknights_mower.solvers.base_mixin import BaseMixin
 from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
 from arknights_mower.utils import config, rapidocr
 from arknights_mower.utils.email import maa_template
-from arknights_mower.utils.image import cropimg, loadimg, thres2
+from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.matcher import Matcher
 from arknights_mower.utils.news import get_update_time
 from arknights_mower.utils.simulator import restart_simulator
@@ -1420,7 +1420,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         img = cv2.copyMakeBorder(img, 31, 31, 31, 31, cv2.BORDER_REPLICATE)
         matcher = Matcher(img)
         for res in ["bill", "factory", "trust"]:
-            res_img = loadimg(f"{__rootdir__}/resources/infra_collect_{res}.png", True)
+            res_img = loadres(f"infra_collect_{res}", True)
             tap_times = 0
             while scope := matcher.match(res_img):
                 logger.info(f"基建产物/信赖收取：{res}")
@@ -1557,7 +1557,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             scope_dict = clue_scope if isinstance(scope, str) else main_scope
             img = cropimg(self.recog.img, scope_dict[scope])
             for i in range(1, 8):
-                res = loadimg(f"{__rootdir__}/resources/clue/{i}.png")
+                res = loadres(f"clue/{i}")
                 result = cv2.matchTemplate(img, res, cv2.TM_CCOEFF_NORMED)
                 min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
                 if max_val > tm_thres:
@@ -1721,7 +1721,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 clue_list = []
                 for cp in clue_pos:
                     clue_img = cropimg(self.recog.img, tl2p(cp))
-                    res = loadimg(f"{__rootdir__}/resources/clue/{cl}.png")
+                    res = loadres(f"clue/{cl}")
                     result = cv2.matchTemplate(clue_img, res, cv2.TM_CCOEFF_NORMED)
                     min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
                     if max_val > tm_thres:

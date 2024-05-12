@@ -12,7 +12,7 @@ from arknights_mower import __rootdir__
 from arknights_mower.data import agent_list, ocr_error
 from arknights_mower.utils import character_recognize, rapidocr, segment
 from arknights_mower.utils import typealias as tp
-from arknights_mower.utils.image import cropimg, loadimg, thres2
+from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.recognize import Scene
 
@@ -178,7 +178,7 @@ class BaseMixin:
     def detect_room_number(self, img) -> int:
         score = []
         for i in range(1, 5):
-            digit = loadimg(f"{__rootdir__}/resources/room/{i}.png")
+            digit = loadres(f"room/{i}")
             result = cv2.matchTemplate(img, digit, cv2.TM_CCOEFF_NORMED)
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
             score.append(max_val)
@@ -216,7 +216,7 @@ class BaseMixin:
         white_room = ["central", "dormitory", "meeting", "contact"]
         score = []
         for room in white_room:
-            tpl = loadimg(f"{__rootdir__}/resources/room/{room}.png")
+            tpl = loadres(f"room/{room}")
             result = cv2.matchTemplate(img, tpl, cv2.TM_CCOEFF_NORMED)
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
             score.append(max_val)
