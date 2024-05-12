@@ -117,7 +117,7 @@ class Recognizer(object):
             self.scene = Scene.CHECK_IN
         elif self.find("materiel_ico") is not None:
             self.scene = Scene.MATERIEL
-        elif self.find("read_mail") is not None:
+        elif self.find("mail") is not None:
             self.scene = Scene.MAIL
         elif self.find("loading") is not None:
             self.scene = Scene.LOADING

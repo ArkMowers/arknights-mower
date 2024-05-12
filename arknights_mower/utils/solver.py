@@ -443,9 +443,7 @@ class BaseSolver:
                 elif scene == Scene.RECRUIT_AGENT:
                     self.tap((self.recog.w // 2, self.recog.h // 2))
                 elif scene == Scene.MAIL:
-                    mail = self.find('mail')
-                    mid_y = (mail[0][1] + mail[1][1]) // 2
-                    self.tap((mid_y, mid_y))
+                    self.back()
                 elif scene == Scene.INFRA_ARRANGE_CONFIRM:
                     self.tap((self.recog.w // 3, self.recog.h - 10))
                 elif scene == Scene.UNKNOWN:
