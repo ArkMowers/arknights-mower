@@ -4,9 +4,8 @@ from typing import Optional
 import cv2
 import numpy as np
 
-import arknights_mower.utils.typealias as tp
 from arknights_mower import __rootdir__
-from arknights_mower.utils.image import cropimg, loadimg, saveimg
+from arknights_mower.utils.image import loadimg, saveimg
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.matcher import ORB
 from arknights_mower.utils.solver import BaseSolver
