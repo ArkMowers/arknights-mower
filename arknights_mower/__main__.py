@@ -277,6 +277,7 @@ def initialize(tasks, scheduler=None):
         }
         base_scheduler.check_mail_enable = conf['check_mail_enable']
         base_scheduler.report_enable = conf['report_enable']
+        base_scheduler.sign_in_enable = conf['sign_in']['enable']
 
         new_conf = update_conf()
         set_maa_options(base_scheduler, new_conf)
@@ -376,6 +377,10 @@ def simulate():
 
                 if remaining_time > 540:
                     # 刷新时间以鹰历为准
+                    if base_scheduler.sign_in < (datetime.now() - timedelta(hours=4)).date():
+                        if base_scheduler.sign_in_plan_solver():
+                            base_scheduler.sign_in = (datetime.now() - timedelta(hours=4)).date()
+
                     if base_scheduler.daily_report < (datetime.now() - timedelta(hours=4)).date():
                         if base_scheduler.report_plan_solver(conf["send_report"]):
                             base_scheduler.daily_report = (datetime.now() - timedelta(hours=4)).date()

@@ -73,6 +73,7 @@ export const useConfigStore = defineStore('config', () => {
   const touch_method = ref('scrcpy')
   const free_room = ref(false)
   const feature_matcher = ref('flann')
+  const sign_in = ref({ enable: true })
 
   async function load_shop() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/shop`)
@@ -162,6 +163,7 @@ export const useConfigStore = defineStore('config', () => {
     touch_method.value = response.data.touch_method
     free_room.value = response.data.free_room
     feature_matcher.value = response.data.feature_matcher
+    sign_in.value = response.data.sign_in
   }
 
   function build_config() {
@@ -241,7 +243,8 @@ export const useConfigStore = defineStore('config', () => {
       },
       touch_method: touch_method.value,
       free_room: free_room.value,
-      feature_matcher: feature_matcher.value
+      feature_matcher: feature_matcher.value,
+      sign_in: sign_in.value
     }
   }
 
@@ -325,6 +328,7 @@ export const useConfigStore = defineStore('config', () => {
     ra_timeout,
     touch_method,
     free_room,
-    feature_matcher
+    feature_matcher,
+    sign_in
   }
 })

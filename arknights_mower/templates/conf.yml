@@ -270,3 +270,5 @@ reclamation_algorithm:
 touch_method: scrcpy
 free_room: false
 feature_matcher: "flann"
+sign_in:
+  enable: true

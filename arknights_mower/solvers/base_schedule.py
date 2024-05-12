@@ -43,6 +43,8 @@ from ..utils.scheduler_task import (SchedulerTask, TaskTypes, add_release_dorm,
 from ..utils.solver import BaseSolver
 from .skland import SKLand
 
+from arknights_mower.solvers.sign_in import update_sign_in_solver
+
 stage_drop = {}
 
 
@@ -80,10 +82,12 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         self.recruit_time = None
         self.last_clue = None
 
+        self.sign_in = (datetime.now() - timedelta(days=1, hours=4)).date()
         self.daily_report = (datetime.now() - timedelta(days=1, hours=4)).date()
         self.daily_skland = (datetime.now() - timedelta(days=1, hours=4)).date()
         self.daily_mail = (datetime.now() - timedelta(days=1, hours=8)).date()
 
+        self.sign_in_enable = True
         self.check_mail_enable = True
         self.report_enable = True
 
@@ -3572,6 +3576,15 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
     def report_plan_solver(self, send_report=False):
         if self.report_enable:
             return daily_report(self.device, self.send_message_config, send_report)
+
+    def sign_in_plan_solver(self):
+        if self.sign_in_enable:
+            SignInSolver = update_sign_in_solver()
+            sign_in_solver = SignInSolver()
+            try:
+                return sign_in_solver.run()
+            except Exception:
+                return True
 
     def 仓库扫描(self):
         depotscan(self.device)
