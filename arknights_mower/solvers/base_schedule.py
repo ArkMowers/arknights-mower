@@ -1675,7 +1675,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     else:
                         ctm.complete("place")
                 elif ctm.task == "give_away":
-                    self.ctap((1799, 578))
+                    self.ctap((1799, 578), max_seconds=10)
                 elif ctm.task == "party_time":
                     self.back()
 
@@ -1810,6 +1810,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                             self.sleep()
                             continue
                         for i in range(4):
+                            label_scope = ((1450, 228 + i * 222), (1580, 278 + i * 222))
+                            if not self.find("clue/label_give_away", scope=label_scope):
+                                break
                             name_top_left = (870, 127 + 222 * i)
                             name_scope = (name_top_left, va(name_top_left, (383, 62)))
                             name = rapidocr.engine(
