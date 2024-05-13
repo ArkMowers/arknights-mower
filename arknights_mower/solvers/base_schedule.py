@@ -1590,6 +1590,15 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     return cl, st
             return None, None
 
+        def detect_unlock():
+            unlock_pos = self.find("clue/button_unlock")
+            if unlock_pos is None:
+                return None
+            color = self.get_color(self.get_pos(unlock_pos))
+            if all(color == [255] * 3):
+                return unlock_pos
+            return None
+
         while ctm.task:
             scene = self.clue_scene()
 
@@ -1652,7 +1661,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     else:
                         ctm.complete("receive")
                 elif ctm.task == "place":
-                    if unlock_pos := self.find("clue/button_unlock", score=0.7):
+                    if unlock_pos := detect_unlock():
                         self.tap(unlock_pos)
                         continue
                     for i in range(1, 8):
@@ -1711,7 +1720,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             elif scene == Scene.CLUE_PLACE:
                 cl, st = place_index()
                 if cl is None:
-                    if unlock_pos := self.find("clue/button_unlock", score=0.7):
+                    if unlock_pos := detect_unlock():
                         self.tap(unlock_pos)
                     else:
                         ctm.complete("place")
