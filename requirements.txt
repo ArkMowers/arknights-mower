@@ -30,3 +30,4 @@ evalidate==2.0.2
 qrcode==7.4.2
 pyzbar==0.1.9
 base45==0.4.4
+htmllistparse==0.6.1

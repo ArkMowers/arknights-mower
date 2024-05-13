@@ -3578,14 +3578,17 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             return daily_report(self.device, self.send_message_config, send_report)
 
     def sign_in_plan_solver(self):
-        if self.sign_in_enable:
-            SignInSolver = update_sign_in_solver()
+        if not self.sign_in_enable:
+            return
+        SignInSolver = update_sign_in_solver()
+        if SignInSolver is None:
+            return True
+        try:
             sign_in_solver = SignInSolver()
             sign_in_solver.send_message_config = self.send_message_config
-            try:
-                return sign_in_solver.run()
-            except Exception:
-                return True
+            return sign_in_solver.run()
+        except Exception:
+            return True
 
     def 仓库扫描(self):
         depotscan(self.device)
