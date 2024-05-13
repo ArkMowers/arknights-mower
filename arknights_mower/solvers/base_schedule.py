@@ -3581,6 +3581,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         if self.sign_in_enable:
             SignInSolver = update_sign_in_solver()
             sign_in_solver = SignInSolver()
+            sign_in_solver.send_message_config = self.send_message_config
             try:
                 return sign_in_solver.run()
             except Exception:
