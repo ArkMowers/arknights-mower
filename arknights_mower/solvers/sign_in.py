@@ -23,7 +23,7 @@ def update_sign_in_solver():
     entry = next(i for i in listing if i.name == filename)
     remote_time = datetime.fromtimestamp(mktime(entry.modified))
     download_update = True
-    extract_path = get_path("@internal/tmp/hot_update", "")
+    extract_path = get_path("@install/tmp/hot_update", "")
     if extract_path.exists():
         local_time = datetime.fromtimestamp(os.path.getctime(extract_path))
         if local_time > remote_time:
@@ -35,7 +35,7 @@ def update_sign_in_solver():
         retry_times = 3
         for i in range(retry_times):
             try:
-                with urlopen(f"{mirror}/hot_update.zip") as u:
+                with urlopen(f"{mirror}/{filename}") as u:
                     ZipFile(BytesIO(u.read())).extractall(extract_path)
                 break
             except Exception as e:

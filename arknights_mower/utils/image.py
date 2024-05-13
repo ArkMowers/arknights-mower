@@ -29,7 +29,7 @@ def img2bytes(img) -> bytes:
 
 def loadres(res: str, gray: bool = False) -> Union[tp.Image, tp.GrayImage]:
     if res.startswith("@hot"):
-        res_name = res.replace("@hot", "@internal/tmp/hot_update", 1)
+        res_name = res.replace("@hot", "@install/tmp/hot_update", 1)
     else:
         res_name = f"{__rootdir__}/resources/{res}"
     if not res.endswith(".jpg"):
