@@ -60,7 +60,7 @@ const config_store = useConfigStore()
 const { theme } = storeToRefs(config_store)
 
 const bg_opacity = computed(() => {
-  return theme.value == 'light' ? 0.2 : 0.4
+  return theme.value == 'light' ? 0.2 : 0.3
 })
 </script>
 
