@@ -1823,7 +1823,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                             data = {"name": name}
                             for j in range(1, 8):
                                 pos = (1230 + j * 64, 142 + i * 222)
-                                data[j] = self.get_color(pos)[0] > 137
+                                data[j] = self.get_color(pos)[0] < 137
                             friend_clue.append(data)
                     logger.debug(friend_clue)
                     friend = None
