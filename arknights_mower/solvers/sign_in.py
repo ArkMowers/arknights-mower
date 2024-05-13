@@ -5,9 +5,9 @@ from importlib import reload
 from io import BytesIO
 from shutil import rmtree
 from time import mktime
-from urllib.request import urlopen
 from zipfile import ZipFile
 
+import requests
 from htmllistparse import fetch_listing
 
 from arknights_mower.utils.image import loadimg
@@ -35,8 +35,8 @@ def update_sign_in_solver():
         retry_times = 3
         for i in range(retry_times):
             try:
-                with urlopen(f"{mirror}/{filename}") as u:
-                    ZipFile(BytesIO(u.read())).extractall(extract_path)
+                r = requests.get(f"{mirror}/{filename}")
+                ZipFile(BytesIO(r.content)).extractall(extract_path)
                 break
             except Exception as e:
                 logger.info(f"更新出错：{e}")

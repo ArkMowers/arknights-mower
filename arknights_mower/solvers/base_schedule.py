@@ -6,14 +6,13 @@ import os
 import pathlib
 import sys
 import time
-import urllib.request
 from ctypes import CFUNCTYPE, c_char_p, c_int, c_void_p
 from datetime import datetime, timedelta
 
 import cv2
 import numpy as np
+import requests
 
-from arknights_mower import __rootdir__
 # 借用__main__.py里的时间计算器
 from arknights_mower.__main__ import format_time
 from arknights_mower.solvers.base_mixin import BaseMixin
@@ -3235,17 +3234,16 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             raise Exception("Maa Python模块导入失败")
 
         try:
-            logger.debug(f"开始更新Maa活动关卡导航……")
+            logger.debug("开始更新Maa活动关卡导航……")
             ota_tasks_url = (
                 "https://ota.maa.plus/MaaAssistantArknights/api/resource/tasks.json"
             )
             ota_tasks_path = path / "cache" / "resource" / "tasks.json"
             ota_tasks_path.parent.mkdir(parents=True, exist_ok=True)
-            with urllib.request.urlopen(ota_tasks_url) as u:
-                res = u.read().decode("utf-8")
+            r = requests.get(ota_tasks_url)
             with open(ota_tasks_path, "w", encoding="utf-8") as f:
-                f.write(res)
-            logger.info(f"Maa活动关卡导航更新成功")
+                f.write(r.text)
+            logger.info("Maa活动关卡导航更新成功")
         except Exception as e:
             logger.error(f"Maa活动关卡导航更新失败：{str(e)}")
 
