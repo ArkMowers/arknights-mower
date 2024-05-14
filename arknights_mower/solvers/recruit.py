@@ -9,7 +9,6 @@ import cv2
 import numpy as np
 
 from ..data import recruit_agent, agent_with_tags, recruit_tag, result_template_list
-from ..ocr import ocr_rectify, ocrhandle
 from ..utils import segment, rapidocr
 from .. import __rootdir__
 from ..utils.device import Device

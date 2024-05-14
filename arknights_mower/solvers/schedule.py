@@ -16,7 +16,6 @@ from ..utils.recognize import Recognizer
 from ..utils.solver import BaseSolver
 from ..utils.typealias import ParamArgs
 from ..utils.yaml import yaml
-from .operation import OpeSolver
 
 task_priority = {'base': 0, 'recruit': 1, 'mail': 2,
                  'credit': 3, 'shop': 4, 'mission': 5, 'operation': 6}

@@ -13,7 +13,7 @@ from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.matcher import Matcher
 from arknights_mower.utils.scene import Scene
-from arknights_mower.utils.solver import BaseSolver
+from arknights_mower.utils.solver import BaseSolver, MowerExit
 
 
 class Map:
@@ -571,6 +571,8 @@ class ReclamationAlgorithm(BaseSolver):
                 logger.warning("连续识别到未知场景")
                 try:
                     super().back_to_index()
+                except MowerExit:
+                    raise
                 except Exception:
                     self.device.exit()
                     if self.device.check_current_focus():

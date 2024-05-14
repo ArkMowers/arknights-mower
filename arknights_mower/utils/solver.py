@@ -34,6 +34,10 @@ class StrategyError(Exception):
     pass
 
 
+class MowerExit(Exception):
+    pass
+
+
 class BaseSolver:
     """Base class, provide basic operation"""
 
@@ -55,6 +59,8 @@ class BaseSolver:
                 result = self.transition()
                 if result:
                     return result
+            except MowerExit:
+                raise
             except RecognizeError as e:
                 logger.warning(f"识别出了点小差错 qwq: {e}")
                 self.recog.save_screencap("failure")
@@ -455,6 +461,8 @@ class BaseSolver:
                     raise RecognizeError("Unknown scene")
                 else:
                     raise RecognizeError("Unanticipated scene")
+            except MowerExit:
+                raise
             except RecognizeError as e:
                 logger.warning(f"识别出了点小差错 qwq: {e}")
                 self.recog.save_screencap("failure")
@@ -538,6 +546,8 @@ class BaseSolver:
                     self.back()
                 else:
                     raise RecognizeError("Unanticipated scene")
+            except MowerExit:
+                raise
             except RecognizeError as e:
                 logger.warning(f"识别出了点小差错 qwq: {e}")
                 self.recog.save_screencap("failure")

@@ -146,7 +146,6 @@ if __name__ == "__main__":
 
     splash.show_text("加载Flask依赖")
 
-    import server
     from server import app
 
     splash.show_text("启动Flask网页服务器")
@@ -223,10 +222,6 @@ if __name__ == "__main__":
     webview.start(win_show, window)
 
     window = None
-
-    if server.mower_process:
-        server.mower_process.terminate()
-        server.mower_process = None
 
     icon.stop()
 

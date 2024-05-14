@@ -2,22 +2,22 @@
 import datetime
 import json
 import mimetypes
-import multiprocessing
 import os
 import pathlib
 import sys
 import time
 from functools import wraps
-from threading import Thread
+from queue import Queue
+from threading import Event, Thread
 
+from arknights_mower.utils import config
+from arknights_mower.utils.conf import load_conf, load_plan, save_conf, write_plan
+from arknights_mower.utils.log import logger
+from arknights_mower.utils.path import get_path
 from flask import Flask, abort, request, send_from_directory
 from flask_cors import CORS
 from flask_sock import Sock
 from werkzeug.exceptions import NotFound
-
-from arknights_mower.utils.conf import load_conf, load_plan, save_conf, write_plan
-from arknights_mower.utils.log import logger
-from arknights_mower.utils.path import get_path
 
 mimetypes.add_type("text/html", ".html")
 mimetypes.add_type("text/css", ".css")
@@ -29,9 +29,12 @@ CORS(app)
 
 conf = {}
 plan = {}
-mower_process = None
-read = None
 operators = {}
+config.stop_mower = Event()
+config.log_queue = Queue()
+config.wh = None
+
+mower_thread = None
 log_lines = []
 ws_connections = []
 
@@ -85,7 +88,7 @@ def load_plan_from_json():
         try:
             plan = load_plan(conf["planFile"])
         except PermissionError as e:
-            logger.error("plan.json路径错误,重置为plan.json")
+            logger.error(f"plan.json路径错误{e}，重置为plan.json")
             plan = load_plan()
         return plan
     else:
@@ -108,28 +111,20 @@ def shop_list():
     return list(shop_items.keys())
 
 
-def read_log(conn):
-    global operators
-    global mower_process
+def read_log():
     global log_lines
     global ws_connections
 
-    try:
-        while True:
-            msg = conn.recv()
-            if msg["type"] == "log":
-                new_line = time.strftime("%m-%d %H:%M:%S ") + msg["data"]
-                log_lines.append(new_line)
-                log_lines = log_lines[-500:]
-                for ws in ws_connections:
-                    ws.send(new_line)
-            elif msg["type"] == "operators":
-                operators = msg["data"]
-            elif msg["type"] == "update_conf":
-                global conf
-                conn.send(conf)
-    except EOFError:
-        conn.close()
+    while True:
+        msg = config.log_queue.get()
+        new_line = time.strftime("%m-%d %H:%M:%S ") + msg
+        log_lines.append(new_line)
+        log_lines = log_lines[-500:]
+        for ws in ws_connections:
+            ws.send(new_line)
+
+
+Thread(target=read_log, daemon=True).start()
 
 
 @app.route("/depot/readdepot")
@@ -141,20 +136,16 @@ def read_depot():
 
 @app.route("/running")
 def running():
-    global mower_process
-    return "false" if mower_process is None else "true"
+    return "false" if mower_thread is None or config.stop_mower.is_set() else "true"
 
 
 @app.route("/start")
 @require_token
 def start():
-    global conf
-    global plan
-    global mower_process
-    global operators
+    global mower_thread
     global log_lines
 
-    if mower_process is not None:
+    if mower_thread is not None and not config.stop_mower.is_set():
         return "Mower is already running."
 
     # 创建 tmp 文件夹
@@ -163,21 +154,12 @@ def start():
 
     from arknights_mower.__main__ import main
 
-    read, write = multiprocessing.Pipe()
-    mower_process = multiprocessing.Process(
-        target=main,
-        args=(
-            conf,
-            plan,
-            operators,
-            write,
-            app.global_space,
-        ),
-        daemon=False,
-    )
-    mower_process.start()
-
-    Thread(target=read_log, args=(read,)).start()
+    config.stop_mower.clear()
+    config.conf = conf
+    config.plan = plan
+    config.operators = {}
+    mower_thread = Thread(target=main, daemon=True)
+    mower_thread.start()
 
     log_lines = []
 
@@ -187,13 +169,13 @@ def start():
 @app.route("/stop")
 @require_token
 def stop():
-    global mower_process
+    global mower_thread
 
-    if mower_process is None:
+    if mower_thread is None:
         return "Mower is not running."
 
-    mower_process.terminate()
-    mower_process = None
+    config.stop_mower.set()
+    mower_thread = None
 
     return "Mower stopped."
 
@@ -263,9 +245,8 @@ def import_from_image():
         return "No file selected."
     img_path = file_path[0]
 
-    from PIL import Image
-
     from arknights_mower.utils import qrcode
+    from PIL import Image
 
     img = Image.open(img_path)
     global plan
@@ -284,9 +265,8 @@ def save_file_dialog():
     if not img:
         return "图片未上传"
 
-    from PIL import Image
-
     from arknights_mower.utils import qrcode
+    from PIL import Image
 
     upper = Image.open(img)
 

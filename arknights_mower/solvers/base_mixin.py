@@ -2,19 +2,19 @@ from __future__ import annotations
 
 import lzma
 import pickle
-import time
 from datetime import datetime, timedelta
 
 import cv2
 import numpy as np
 
 from arknights_mower import __rootdir__
-from arknights_mower.data import agent_list, ocr_error
-from arknights_mower.utils import character_recognize, rapidocr, segment
+from arknights_mower.utils import rapidocr, segment
 from arknights_mower.utils import typealias as tp
+from arknights_mower.utils.character_recognize import operator_list
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.recognize import Scene
+from arknights_mower.utils.solver import MowerExit
 
 with lzma.open(f"{__rootdir__}/models/operator_room.model", "rb") as f:
     OP_ROOM = pickle.loads(f.read())
@@ -53,9 +53,8 @@ class BaseMixin:
         try:
             # 识别干员
             self.recog.update()
-            ret = character_recognize.operator_list(
-                self.recog.img
-            )  # 返回的顺序是从左往右从上往下
+            # 返回的顺序是从左往右从上往下
+            ret = operator_list(self.recog.img)
             # 提取识别出来的干员的名字
             select_name = []
             for name, scope in ret:
@@ -69,6 +68,8 @@ class BaseMixin:
                         if len(select_name) >= max_agent_count:
                             return select_name, ret
             return select_name, ret
+        except MowerExit:
+            raise
         except Exception as e:
             error_count += 1
             if error_count < 3:
@@ -82,9 +83,7 @@ class BaseMixin:
         try:
             # 识别干员
             self.recog.update()
-            ret = character_recognize.operator_list(
-                self.recog.img
-            )  # 返回的顺序是从左往右从上往下
+            ret = operator_list(self.recog.img)  # 返回的顺序是从左往右从上往下
             # 提取识别出来的干员的名字
             select_name = []
             index = 0
@@ -264,6 +263,8 @@ class BaseMixin:
                     success = True
                 else:
                     self.back()
+            except MowerExit:
+                raise
             except Exception as e:
                 retry -= 1
                 self.back_to_infrastructure()
@@ -324,8 +325,6 @@ class BaseMixin:
             ret = rapidocr.engine(img, use_det=False, use_cls=False, use_rec=True)[0]
             logger.debug(ret)
             if not ret or not ret[0][0]:
-                if "name" in type:
-                    return character_recognize.agent_name(img, self.recog.h)
                 raise Exception("识别失败")
             ret = ret[0][0]
             if "mood" in type:
@@ -341,14 +340,6 @@ class BaseMixin:
                 if "." in ret:
                     ret = ret.replace(".", ":")
                 return ret.strip()
-            elif "name" in type:
-                if ret in agent_list:
-                    return ret
-                if ret in ocr_error:
-                    name = ocr_error[ret]
-                    logger.debug(f"{ret} =====> {name}")
-                    return name
-                return character_recognize.agent_name(img, self.recog.h)
             else:
                 return ret
         except Exception as e:

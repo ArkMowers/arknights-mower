@@ -1,54 +1,39 @@
-import atexit
-import os
-import time
-from datetime import datetime, timedelta
-
-from arknights_mower.utils.log import logger
 import json
-
+import os
 from copy import deepcopy
-
-from arknights_mower.utils.pipe import Pipe
-from arknights_mower.utils.simulator import restart_simulator
-from arknights_mower.utils.email import task_template
-from arknights_mower.utils import path
-from arknights_mower.utils.path import get_path
-from arknights_mower.utils.plan import Plan, PlanConfig, Room
-from arknights_mower.utils.logic_expression import LogicExpression
-from arknights_mower.utils import rapidocr
-from arknights_mower.utils.depot import 创建csv
-from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
+from datetime import datetime, timedelta
 
 from evalidate import Expr
 
-from warnings import simplefilter
-simplefilter(action="ignore", category=FutureWarning)
+from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
+from arknights_mower.utils import config, path, rapidocr
+from arknights_mower.utils.depot import 创建csv
+from arknights_mower.utils.email import task_template
+from arknights_mower.utils.log import init_fhlr, logger
+from arknights_mower.utils.logic_expression import LogicExpression
+from arknights_mower.utils.path import get_path
+from arknights_mower.utils.plan import Plan, PlanConfig, Room
+from arknights_mower.utils.simulator import restart_simulator
+from arknights_mower.utils.solver import MowerExit
 
-conf = {}
-plan = {}
-operators = {}
+maa_config = {}
+recruit_config = {}
+skland_config = {}
 
 
 # 执行自动排班
-def main(c, p, o={}, child_conn=None, global_space=None):
-    from arknights_mower.utils import path
-
-    path.global_space = global_space
-
-    from arknights_mower.utils.log import init_fhlr
-    from arknights_mower.utils import config
-
-    global plan
+def main():
     global conf
+    global plan
     global operators
-    conf = c
-    plan = p
-    operators = o
-    config.LOGFILE_PATH = str(get_path('@app/log'))
-    config.SCREENSHOT_PATH = str(get_path('@app/screenshot'))
+    conf = deepcopy(config.conf)
+    plan = deepcopy(config.plan)
+    operators = deepcopy(config.operators)
+
+    config.LOGFILE_PATH = str(get_path("@app/log"))
+    config.SCREENSHOT_PATH = str(get_path("@app/screenshot"))
     config.SCREENSHOT_MAXNUM = conf["screenshot"]
     config.ADB_DEVICE = [conf["adb"]]
-    config.ADB_CONNECT = [conf["adb"]]
     config.ADB_CONNECT = [conf["adb"]]
     config.APPNAME = (
         "com.hypergryph.arknights"
@@ -60,8 +45,8 @@ def main(c, p, o={}, child_conn=None, global_space=None):
     config.grandet_back_to_index = conf["run_order_grandet_mode"]["back_to_index"]
     config.ADB_CONTROL_CLIENT = conf["touch_method"]
     config.FEATURE_MATCHER = conf["feature_matcher"]
-    init_fhlr(child_conn)
-    Pipe.conn = child_conn
+    if config.wh is None:
+        init_fhlr()
     logger.info("开始运行Mower")
     rapidocr.initialize_ocr()
     simulate()
@@ -69,15 +54,15 @@ def main(c, p, o={}, child_conn=None, global_space=None):
 
 # newbing说用这个来定义休息时间省事
 def format_time(seconds):
-    if seconds<0:# 权宜之计 配合刷生息演算
-        return f"{0} 分钟" # 权宜之计 配合刷生息演算
+    if seconds < 0:  # 权宜之计 配合刷生息演算
+        return f"{0} 分钟"  # 权宜之计 配合刷生息演算
     # 计算小时和分钟
     rest_hours = int(seconds / 3600)
     rest_minutes = int((seconds % 3600) / 60)
     # 根据小时是否为零来决定是否显示
     if rest_hours == 0:
         return f"{rest_minutes} 分钟"
-    elif rest_minutes==0:
+    elif rest_minutes == 0:
         return f"{rest_hours} 小时"
     else:
         return f"{rest_hours} 小时 {rest_minutes} 分钟"
@@ -88,29 +73,11 @@ def hide_password(conf):
     hpconf["pass_code"] = "*" * len(conf["pass_code"])
     hpconf["sendKey"] = "*" * len(conf["sendKey"])
     for item in hpconf["skland_info"]:
-        item['password'] = "*" * len(item['password'])
+        item["password"] = "*" * len(item["password"])
     return hpconf
 
 
-def update_conf():
-    logger.debug("运行中更新设置")
-
-    if not Pipe or not Pipe.conn:
-        logger.error("管道关闭")
-        logger.info(maa_config)
-        return
-
-    logger.debug("通过管道发送更新设置请求")
-    Pipe.conn.send({"type": "update_conf"})
-    logger.debug("开始通过管道读取设置")
-    conf = Pipe.conn.recv()
-    logger.debug(f"接收设置：{hide_password(conf)}")
-
-    return conf
-
-
 def set_maa_options(base_scheduler, conf):
-    global maa_config
     maa_config["maa_enable"] = conf["maa_enable"]
     maa_config["maa_path"] = conf["maa_path"]
     maa_config["maa_adb_path"] = conf["maa_adb_path"]
@@ -119,7 +86,7 @@ def set_maa_options(base_scheduler, conf):
     maa_config["eat_stone"] = conf["maa_eat_stone"]
     maa_config["weekly_plan"] = conf["maa_weekly_plan"]
     maa_config["roguelike"] = (
-            conf["maa_rg_enable"] == 1 and conf["maa_long_task_type"] == "rogue"
+        conf["maa_rg_enable"] == 1 and conf["maa_long_task_type"] == "rogue"
     )
     maa_config["rogue_theme"] = conf["maa_rg_theme"]
     maa_config["sleep_min"] = conf["maa_rg_sleep_min"]
@@ -134,23 +101,24 @@ def set_maa_options(base_scheduler, conf):
     maa_config["maa_depot_enable"] = conf["maa_depot_enable"]
     maa_config["rogue"] = conf["rogue"]
     maa_config["stationary_security_service"] = (
-            conf["maa_rg_enable"] == 1 and conf["maa_long_task_type"] == "sss"
+        conf["maa_rg_enable"] == 1 and conf["maa_long_task_type"] == "sss"
     )
     maa_config["sss_type"] = conf["sss"]["type"]
     maa_config["ec_type"] = conf["sss"]["ec"]
     maa_config["copilot_file_location"] = conf["sss"]["copilot"]
     maa_config["copilot_loop_times"] = conf["sss"]["loop"]
     maa_config["reclamation_algorithm"] = (
-            conf["maa_rg_enable"] == 1 and conf["maa_long_task_type"] == "ra"
+        conf["maa_rg_enable"] == 1 and conf["maa_long_task_type"] == "ra"
     )
-    maa_config["ra_timeout"] = timedelta(seconds=conf["reclamation_algorithm"]["timeout"])
+    maa_config["ra_timeout"] = timedelta(
+        seconds=conf["reclamation_algorithm"]["timeout"]
+    )
     base_scheduler.maa_config = maa_config
 
     logger.debug(f"更新Maa设置：{base_scheduler.maa_config}")
 
 
 def set_recruit_options(base_scheduler, conf):
-    global recruit_config
     recruit_config["recruit_enable"] = conf["recruit_enable"]
     recruit_config["permit_target"] = conf["recruitment_permit"]
     recruit_config["recruit_robot"] = conf["recruit_robot"]
@@ -164,13 +132,12 @@ def set_recruit_options(base_scheduler, conf):
 
 
 def set_skland_options(base_scheduler, conf):
-    global skland_config
     skland_config["skland_enable"] = conf["skland_enable"]
     skland_config["skland_info"] = conf["skland_info"]
     base_scheduler.skland_config = skland_config
     temp_str = deepcopy(base_scheduler.skland_config)
     for item in temp_str["skland_info"]:
-        item['password'] = "*" * len(item['password'])
+        item["password"] = "*" * len(item["password"])
     logger.debug(f"更新森空岛设置：{temp_str}")
 
 
@@ -182,131 +149,119 @@ def get_logic_exp(trigger):
 
 
 def initialize(tasks, scheduler=None):
+    if scheduler is not None:
+        scheduler.handle_error(True)
+        return scheduler
     from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
-    from arknights_mower.strategy import Solver
-    from arknights_mower.utils.device import Device
-    from arknights_mower.utils import config
 
-    device = Device()
-    cli = Solver(device)
-    if scheduler is None:
-        base_scheduler = BaseSchedulerSolver(cli.device, cli.recog)
-        base_scheduler.operators = {}
-        plan1 = {}
-        plan_config = PlanConfig(
-            plan["conf"]["rest_in_full"],
-            plan["conf"]["exhaust_require"],
-            plan["conf"]["resting_priority"],
-            ling_xi=plan["conf"]["ling_xi"],
-            workaholic=plan["conf"]["workaholic"],
-            max_resting_count=plan["conf"]["max_resting_count"],
-            free_blacklist=conf["free_blacklist"],
+    base_scheduler = BaseSchedulerSolver()
+    base_scheduler.operators = {}
+    plan1 = {}
+    plan_config = PlanConfig(
+        plan["conf"]["rest_in_full"],
+        plan["conf"]["exhaust_require"],
+        plan["conf"]["resting_priority"],
+        ling_xi=plan["conf"]["ling_xi"],
+        workaholic=plan["conf"]["workaholic"],
+        max_resting_count=plan["conf"]["max_resting_count"],
+        free_blacklist=conf["free_blacklist"],
+        resting_threshold=conf["resting_threshold"],
+        run_order_buffer_time=conf["run_order_grandet_mode"]["buffer_time"]
+        if conf["run_order_grandet_mode"]["enable"]
+        else -1,
+        refresh_trading_config=plan["conf"]["refresh_trading"],
+        free_room=conf["free_room"],
+    )
+    for room, obj in plan[plan["default"]].items():
+        plan1[room] = [
+            Room(op["agent"], op["group"], op["replacement"]) for op in obj["plans"]
+        ]
+    # 默认任务
+    plan["default_plan"] = Plan(plan1, plan_config)
+    # 备用自定义任务
+    backup_plans = []
+
+    for i in plan["backup_plans"]:
+        backup_plan = {}
+        for room, obj in i["plan"].items():
+            backup_plan[room] = [
+                Room(op["agent"], op["group"], op["replacement"]) for op in obj["plans"]
+            ]
+        backup_config = PlanConfig(
+            i["conf"]["rest_in_full"],
+            i["conf"]["exhaust_require"],
+            i["conf"]["resting_priority"],
+            ling_xi=i["conf"]["ling_xi"],
+            workaholic=i["conf"]["workaholic"],
+            max_resting_count=i["conf"]["max_resting_count"],
+            free_blacklist=i["conf"]["free_blacklist"],
             resting_threshold=conf["resting_threshold"],
             run_order_buffer_time=conf["run_order_grandet_mode"]["buffer_time"]
             if conf["run_order_grandet_mode"]["enable"]
             else -1,
-            refresh_trading_config=plan["conf"]["refresh_trading"],
-            free_room=conf["free_room"]
+            refresh_trading_config=i["conf"]["refresh_trading"],
+            free_room=conf["free_room"],
         )
-        for room, obj in plan[plan["default"]].items():
-            plan1[room] = [
-                Room(op["agent"], op["group"], op["replacement"]) for op in obj["plans"]
-            ]
-        # 默认任务
-        plan["default_plan"] = Plan(plan1, plan_config)
-        # 备用自定义任务
-        backup_plans = []
-
-        for i in plan["backup_plans"]:
-            backup_plan = {}
-            for room, obj in i["plan"].items():
-                backup_plan[room] = [
-                    Room(op["agent"], op["group"], op["replacement"])
-                    for op in obj["plans"]
-                ]
-            backup_config = PlanConfig(
-                i["conf"]["rest_in_full"],
-                i["conf"]["exhaust_require"],
-                i["conf"]["resting_priority"],
-                ling_xi=i["conf"]["ling_xi"],
-                workaholic=i["conf"]["workaholic"],
-                max_resting_count=i["conf"]["max_resting_count"],
-                free_blacklist=i["conf"]["free_blacklist"],
-                resting_threshold=conf["resting_threshold"],
-                run_order_buffer_time=conf["run_order_grandet_mode"]["buffer_time"]
-                if conf["run_order_grandet_mode"]["enable"]
-                else -1,
-                refresh_trading_config=i["conf"]["refresh_trading"],
-                free_room=conf["free_room"]
-            )
-            backup_trigger = get_logic_exp(i["trigger"]) if "trigger" in i else None
-            backup_task = i["task"] if "task" in i else None
-            backup_plans.append(
-                Plan(
-                    backup_plan, backup_config, trigger=backup_trigger, task=backup_task
-                )
-            )
-        plan["backup_plans"] = backup_plans
-
-        logger.debug(plan)
-        base_scheduler.package_name = config.APPNAME  # 服务器
-        base_scheduler.global_plan = plan
-        base_scheduler.drone_count_limit = conf["drone_count_limit"]
-        base_scheduler.tasks = tasks
-        base_scheduler.enable_party = conf["enable_party"] == 1  # 是否使用线索
-        # 干员宿舍回复阈值
-        # 高效组心情低于 UpperLimit  * 阈值 (向下取整)的时候才会会安排休息
-        base_scheduler.last_room = ""
-        logger.info("宿舍黑名单：" + str(plan_config.free_blacklist))
-        base_scheduler.MAA = None
-        base_scheduler.send_message_config = {
-            "email_config": {
-                "mail_enable": conf["mail_enable"],
-                "subject": conf["mail_subject"],
-                "encryption": conf["custom_smtp_server"]["encryption"],  # 添加判断starttls的变量
-                "account": conf["account"],
-                "pass_code": conf["pass_code"],
-                "recipients": conf["recipient"] or [conf["account"]],
-                "custom_smtp_server": conf["custom_smtp_server"],
-                "notify": False,
-            },
-            "serverJang_push_config": {
-                "server_push_enable": conf["server_push_enable"],
-                "sendKey": conf["sendKey"],
-            }
-        }
-        base_scheduler.check_mail_enable = conf['check_mail_enable']
-        base_scheduler.report_enable = conf['report_enable']
-        base_scheduler.sign_in_enable = conf['sign_in']['enable']
-
-        new_conf = update_conf()
-        set_maa_options(base_scheduler, new_conf)
-        set_recruit_options(base_scheduler, new_conf)
-        set_skland_options(base_scheduler, new_conf)
-
-        base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
-        base_scheduler.error = False
-        base_scheduler.drone_room = (
-            None if conf["drone_room"] == "" else conf["drone_room"]
+        backup_trigger = get_logic_exp(i["trigger"]) if "trigger" in i else None
+        backup_task = i["task"] if "task" in i else None
+        backup_plans.append(
+            Plan(backup_plan, backup_config, trigger=backup_trigger, task=backup_task)
         )
-        base_scheduler.reload_room = list(
-            filter(None, conf["reload_room"].replace("，", ",").split(","))
-        )
-        base_scheduler.drone_execution_gap = conf["drone_interval"]
-        base_scheduler.run_order_delay = conf["run_order_delay"]
-        base_scheduler.exit_game_when_idle = conf["exit_game_when_idle"]
-        base_scheduler.simulator = conf["simulator"]
-        base_scheduler.close_simulator_when_idle = conf["close_simulator_when_idle"]
+    plan["backup_plans"] = backup_plans
 
-        # 关闭游戏次数计数器
-        base_scheduler.task_count = 0
+    logger.debug(plan)
+    base_scheduler.package_name = config.APPNAME  # 服务器
+    base_scheduler.global_plan = plan
+    base_scheduler.drone_count_limit = conf["drone_count_limit"]
+    base_scheduler.tasks = tasks
+    base_scheduler.enable_party = conf["enable_party"] == 1  # 是否使用线索
+    # 干员宿舍回复阈值
+    # 高效组心情低于 UpperLimit  * 阈值 (向下取整)的时候才会会安排休息
+    base_scheduler.last_room = ""
+    logger.info("宿舍黑名单：" + str(plan_config.free_blacklist))
+    base_scheduler.MAA = None
+    base_scheduler.send_message_config = {
+        "email_config": {
+            "mail_enable": conf["mail_enable"],
+            "subject": conf["mail_subject"],
+            "encryption": conf["custom_smtp_server"][
+                "encryption"
+            ],  # 添加判断starttls的变量
+            "account": conf["account"],
+            "pass_code": conf["pass_code"],
+            "recipients": conf["recipient"] or [conf["account"]],
+            "custom_smtp_server": conf["custom_smtp_server"],
+            "notify": False,
+        },
+        "serverJang_push_config": {
+            "server_push_enable": conf["server_push_enable"],
+            "sendKey": conf["sendKey"],
+        },
+    }
+    base_scheduler.check_mail_enable = conf["check_mail_enable"]
+    base_scheduler.report_enable = conf["report_enable"]
+    base_scheduler.sign_in_enable = conf["sign_in"]["enable"]
 
-        return base_scheduler
-    else:
-        scheduler.device = cli.device
-        scheduler.recog = cli.recog
-        scheduler.handle_error(True)
-        return scheduler
+    set_maa_options(base_scheduler, conf)
+    set_recruit_options(base_scheduler, conf)
+    set_skland_options(base_scheduler, conf)
+
+    base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
+    base_scheduler.error = False
+    base_scheduler.drone_room = None if conf["drone_room"] == "" else conf["drone_room"]
+    base_scheduler.reload_room = list(
+        filter(None, conf["reload_room"].replace("，", ",").split(","))
+    )
+    base_scheduler.drone_execution_gap = conf["drone_interval"]
+    base_scheduler.run_order_delay = conf["run_order_delay"]
+    base_scheduler.exit_game_when_idle = conf["exit_game_when_idle"]
+    base_scheduler.simulator = conf["simulator"]
+    base_scheduler.close_simulator_when_idle = conf["close_simulator_when_idle"]
+
+    # 关闭游戏次数计数器
+    base_scheduler.task_count = 0
+
+    return base_scheduler
 
 
 def simulate():
@@ -323,6 +278,8 @@ def simulate():
         try:
             base_scheduler = initialize(tasks)
             success = True
+        except MowerExit:
+            return
         except Exception as E:
             reconnect_tries += 1
             if reconnect_tries < 3:
@@ -342,8 +299,8 @@ def simulate():
     if operators != {}:
         for k, v in operators.items():
             if (
-                    k in base_scheduler.op_data.operators
-                    and not base_scheduler.op_data.operators[k].room.startswith("dorm")
+                k in base_scheduler.op_data.operators
+                and not base_scheduler.op_data.operators[k].room.startswith("dorm")
             ):
                 # 只复制心情数据
                 base_scheduler.op_data.operators[k].mood = v.mood
@@ -354,86 +311,117 @@ def simulate():
     timezone_offset = 0
 
     if len(base_scheduler.op_data.backup_plans) > 0:
-        conditions = base_scheduler.op_data.generate_conditions(len(base_scheduler.op_data.backup_plans))
+        conditions = base_scheduler.op_data.generate_conditions(
+            len(base_scheduler.op_data.backup_plans)
+        )
         for con in conditions:
             validation_msg = base_scheduler.op_data.swap_plan(con, True)
             if validation_msg is not None:
                 logger.error(f"替换排班验证错误：{validation_msg}, 附表条件为 {con}")
                 return
-        base_scheduler.op_data.swap_plan([False] * len(base_scheduler.op_data.backup_plans), True)
+        base_scheduler.op_data.swap_plan(
+            [False] * len(base_scheduler.op_data.backup_plans), True
+        )
     while True:
         try:
             if len(base_scheduler.tasks) > 0:
                 (base_scheduler.tasks.sort(key=lambda x: x.time, reverse=False))
                 logger.info("||".join([str(t) for t in base_scheduler.tasks]))
                 remaining_time = (
-                        base_scheduler.tasks[0].time - datetime.now()
+                    base_scheduler.tasks[0].time - datetime.now()
                 ).total_seconds()
 
-                new_conf = update_conf()
-                set_maa_options(base_scheduler, new_conf)
-                set_recruit_options(base_scheduler, new_conf)
-                set_skland_options(base_scheduler, new_conf)
+                set_maa_options(base_scheduler, conf)
+                set_recruit_options(base_scheduler, conf)
+                set_skland_options(base_scheduler, conf)
 
                 if remaining_time > 540:
                     # 刷新时间以鹰历为准
-                    if base_scheduler.sign_in < (datetime.now() - timedelta(hours=4)).date():
+                    if (
+                        base_scheduler.sign_in
+                        < (datetime.now() - timedelta(hours=4)).date()
+                    ):
                         if base_scheduler.sign_in_plan_solver():
-                            base_scheduler.sign_in = (datetime.now() - timedelta(hours=4)).date()
+                            base_scheduler.sign_in = (
+                                datetime.now() - timedelta(hours=4)
+                            ).date()
 
-                    if base_scheduler.daily_report < (datetime.now() - timedelta(hours=4)).date():
+                    if (
+                        base_scheduler.daily_report
+                        < (datetime.now() - timedelta(hours=4)).date()
+                    ):
                         if base_scheduler.report_plan_solver(conf["send_report"]):
-                            base_scheduler.daily_report = (datetime.now() - timedelta(hours=4)).date()
+                            base_scheduler.daily_report = (
+                                datetime.now() - timedelta(hours=4)
+                            ).date()
 
-                    if base_scheduler.skland_config['skland_enable'] and base_scheduler.daily_skland < (
-                            datetime.now() - timedelta(hours=4)).date():
+                    if (
+                        base_scheduler.skland_config["skland_enable"]
+                        and base_scheduler.daily_skland
+                        < (datetime.now() - timedelta(hours=4)).date()
+                    ):
                         if base_scheduler.skland_plan_solover():
-                            base_scheduler.daily_skland = (datetime.now() - timedelta(hours=4)).date()
+                            base_scheduler.daily_skland = (
+                                datetime.now() - timedelta(hours=4)
+                            ).date()
 
-                    if base_scheduler.check_mail_enable and base_scheduler.daily_mail < (
-                            datetime.now() - timedelta(hours=8)).date():
+                    if (
+                        base_scheduler.check_mail_enable
+                        and base_scheduler.daily_mail
+                        < (datetime.now() - timedelta(hours=8)).date()
+                    ):
                         if base_scheduler.mail_plan_solver():
-                            base_scheduler.daily_mail = (datetime.now() - timedelta(hours=8)).date()
+                            base_scheduler.daily_mail = (
+                                datetime.now() - timedelta(hours=8)
+                            ).date()
 
-                    if base_scheduler.recruit_config['recruit_enable'] == 1:
+                    if base_scheduler.recruit_config["recruit_enable"] == 1:
                         base_scheduler.recruit_plan_solver()
-                    #应该在maa任务之后
+
+                    # 应该在maa任务之后
                     def _is_depotscan():
-                            import pandas as pd
-                            path=get_path("@app/tmp/depotresult.csv")
-                            if os.path.exists(path):
-                                depotinfo = pd.read_csv(path)
-                                仓库识别时间戳 = depotinfo.iloc[-1, 0] 
-                                return int(仓库识别时间戳)
-                            else:
-                                logger.info(f"{path} 不存在,新建一个存储仓库物品的csv")
-                                now_time=int(datetime.now().timestamp())-maa_config["maa_execution_gap"]*3600
-                                创建csv()
-                                return now_time
+                        import pandas as pd
+
+                        path = get_path("@app/tmp/depotresult.csv")
+                        if os.path.exists(path):
+                            depotinfo = pd.read_csv(path)
+                            仓库识别时间戳 = depotinfo.iloc[-1, 0]
+                            return int(仓库识别时间戳)
+                        else:
+                            logger.info(f"{path} 不存在,新建一个存储仓库物品的csv")
+                            now_time = (
+                                int(datetime.now().timestamp())
+                                - maa_config["maa_execution_gap"] * 3600
+                            )
+                            创建csv()
+                            return now_time
 
                     if conf["maa_depot_enable"]:
-                        dt = int(datetime.now().timestamp())-_is_depotscan()
-                        if dt >= maa_config["maa_execution_gap"]*3600:
+                        dt = int(datetime.now().timestamp()) - _is_depotscan()
+                        if dt >= maa_config["maa_execution_gap"] * 3600:
                             base_scheduler.仓库扫描()
                         else:
-                            logger.info(f"仓库扫描未到时间，将在 {maa_config['maa_execution_gap']-dt//3600}小时之内开始扫描")
+                            logger.info(
+                                f"仓库扫描未到时间，将在 {maa_config['maa_execution_gap']-dt//3600}小时之内开始扫描"
+                            )
                     if base_scheduler.maa_config["maa_enable"] == 1:
-                        subject = (
-                            f"下次任务在{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}"
-                        )
+                        subject = f"下次任务在{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}"
                         context = f"下一次任务:{base_scheduler.tasks[0].plan}"
                         logger.info(context)
                         logger.info(subject)
                         body = task_template.render(
                             tasks=[
-                                obj.format(timezone_offset) for obj in base_scheduler.tasks
+                                obj.format(timezone_offset)
+                                for obj in base_scheduler.tasks
                             ],
-                            base_scheduler=base_scheduler
+                            base_scheduler=base_scheduler,
                         )
                         base_scheduler.send_message(body, subject, "html")
                         base_scheduler.maa_plan_solver()
                     else:
-                        remaining_time = (base_scheduler.tasks[0].time - datetime.now()).total_seconds()
+                        remaining_time = (
+                            base_scheduler.tasks[0].time - datetime.now()
+                        ).total_seconds()
                         subject = f"休息 {format_time(remaining_time)}，到{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}开始工作"
                         context = f"下一次任务:{base_scheduler.tasks[0].plan if len(base_scheduler.tasks[0].plan) != 0 else '空任务' if base_scheduler.tasks[0].type == '' else base_scheduler.tasks[0].type}"
                         logger.info(context)
@@ -443,14 +431,17 @@ def simulate():
                         if remaining_time > 0:
                             if remaining_time > 300:
                                 if base_scheduler.close_simulator_when_idle:
-                                    restart_simulator(base_scheduler.simulator, start=False)
+                                    restart_simulator(
+                                        base_scheduler.simulator, start=False
+                                    )
                                 elif base_scheduler.exit_game_when_idle:
                                     base_scheduler.device.exit()
                             body = task_template.render(
                                 tasks=[
-                                    obj.format(timezone_offset) for obj in base_scheduler.tasks
+                                    obj.format(timezone_offset)
+                                    for obj in base_scheduler.tasks
                                 ],
-                                base_scheduler=base_scheduler
+                                base_scheduler=base_scheduler,
                             )
                             base_scheduler.send_message(body, subject, "html")
                             base_scheduler.sleep(remaining_time)
@@ -460,25 +451,36 @@ def simulate():
                                 base_scheduler.recog.update()
 
                 elif remaining_time > 0:
-
                     now_time = datetime.now().time()
                     try:
-                        min_time = datetime.strptime(base_scheduler.maa_config['sleep_min'], "%H:%M").time()
-                        max_time = datetime.strptime(base_scheduler.maa_config['sleep_max'], "%H:%M").time()
+                        min_time = datetime.strptime(
+                            base_scheduler.maa_config["sleep_min"], "%H:%M"
+                        ).time()
+                        max_time = datetime.strptime(
+                            base_scheduler.maa_config["sleep_max"], "%H:%M"
+                        ).time()
                         if max_time < min_time:
                             rg_sleep = now_time > min_time or now_time < max_time
                         else:
                             rg_sleep = min_time < now_time < max_time
                     except ValueError:
                         rg_sleep = False
-                    
-                    if not rg_sleep and base_scheduler.maa_config["reclamation_algorithm"]:
+
+                    if (
+                        not rg_sleep
+                        and base_scheduler.maa_config["reclamation_algorithm"]
+                    ):
                         base_scheduler.recog.update()
                         base_scheduler.back_to_index()
-                        ra_solver = ReclamationAlgorithm(base_scheduler.device, base_scheduler.recog)
-                        ra_solver.run(base_scheduler.tasks[0].time - datetime.now(), base_scheduler.maa_config["ra_timeout"])
+                        ra_solver = ReclamationAlgorithm(
+                            base_scheduler.device, base_scheduler.recog
+                        )
+                        ra_solver.run(
+                            base_scheduler.tasks[0].time - datetime.now(),
+                            base_scheduler.maa_config["ra_timeout"],
+                        )
                         remaining_time = (
-                                base_scheduler.tasks[0].time - datetime.now()
+                            base_scheduler.tasks[0].time - datetime.now()
                         ).total_seconds()
 
                     subject = f"休息 {format_time(remaining_time)}，到{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}开始工作"
@@ -496,7 +498,7 @@ def simulate():
                         tasks=[
                             obj.format(timezone_offset) for obj in base_scheduler.tasks
                         ],
-                        base_scheduler=base_scheduler
+                        base_scheduler=base_scheduler,
                     )
                     base_scheduler.send_message(body, subject, "html")
                     base_scheduler.sleep(remaining_time)
@@ -505,8 +507,8 @@ def simulate():
                     if base_scheduler.device.check_current_focus():
                         base_scheduler.recog.update()
             if (
-                    len(base_scheduler.tasks) > 0
-                    and base_scheduler.tasks[0].type.value.split("_")[0] == "maa"
+                len(base_scheduler.tasks) > 0
+                and base_scheduler.tasks[0].type.value.split("_")[0] == "maa"
             ):
                 logger.info(
                     f"开始执行 MAA {base_scheduler.tasks[0].type.value.split('_')[1]} 任务"
@@ -518,6 +520,9 @@ def simulate():
 
             base_scheduler.run()
             reconnect_tries = 0
+        except MowerExit:
+            print("MowerExit")
+            return
         except (ConnectionError, ConnectionAbortedError, AttributeError) as e:
             reconnect_tries += 1
             if reconnect_tries < reconnect_max_tries:
@@ -527,6 +532,8 @@ def simulate():
                     try:
                         base_scheduler = initialize([], base_scheduler)
                         break
+                    except MowerExit:
+                        raise
                     except Exception as ce:
                         logger.error(ce)
                         restart_simulator(conf["simulator"])
@@ -541,9 +548,8 @@ def simulate():
             logger.exception(f"程序出错--->{E}")
 
 
-
 def save_state(op_data, file="state.json"):
-    tmp_dir = get_path('@app/tmp')
+    tmp_dir = get_path("@app/tmp")
     if not tmp_dir.exists():
         tmp_dir.mkdir()
     state_file = tmp_dir / file
@@ -553,10 +559,10 @@ def save_state(op_data, file="state.json"):
 
 
 def load_state(file="state.json"):
-    state_file = get_path('@app/tmp') / file
+    state_file = get_path("@app/tmp") / file
     if not state_file.exists():
         return None
-    with open(state_file, 'r') as f:
+    with open(state_file, "r") as f:
         state = json.load(f)
     operators = {k: Expr(v).eval() for k, v in state["operators"].items()}
     for k, v in operators.items():
@@ -566,8 +572,3 @@ def load_state(file="state.json"):
             v.time_stamp = None
     logger.info("基建配置已加载！")
     return operators
-
-
-maa_config = {}
-recruit_config = {}
-skland_config = {}

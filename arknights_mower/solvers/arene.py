@@ -6,7 +6,8 @@ import cv2
 import numpy as np
 
 from arknights_mower import __rootdir__
-from arknights_mower.utils import character_recognize, segment
+from arknights_mower.utils import segment
+from arknights_mower.utils.character_recognize import operator_list
 from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.scene import Scene
@@ -161,7 +162,7 @@ class AreneSolver(BaseSolver):
             self.tap(confirm_pos)
 
     def scan_agent(self, agent):
-        ret = character_recognize.operator_list(self.recog.img)
+        ret = operator_list(self.recog.img)
         selected = []
         for name, scope in ret:
             if name in agent:
