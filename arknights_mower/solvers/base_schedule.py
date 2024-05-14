@@ -329,6 +329,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         for operator in fia_plan:
             data = self.op_data.operators[operator]
             operator_morale = data.current_mood()
+            operator_limit = data.lower_limit
             logger.debug(f"{operator}的心情为{operator_morale}")
             if operator_morale > fia_threshold * 24:
                 logger.debug(f"{operator}的心情高于阈值，跳过充能")
@@ -348,8 +349,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     ):
                         continue
                     member_morale = self.op_data.operators[member].current_mood()
+                    member_limit = self.op_data.operators[member].lower_limit
                     logger.debug(f"{data.group}组内{member}的心情为{member_morale}")
-                    if member_morale < operator_morale:
+                    if member_morale - member_limit < operator_morale - operator_limit:
                         lowest = False
                         logger.debug(f"{operator}的心情高于{member}，跳过充能")
                         break
