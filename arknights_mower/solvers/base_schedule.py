@@ -651,7 +651,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         elif not self.planned:
             try:
                 # 如果有任何type 则会最后修正
-                if find_next_task(self.tasks, datetime.now()) is not None:
+                if not self.no_pending_task(2):
                     self.skip(["planned", "todo_task", "collect_notification"])
                 else:
                     mood_result = self.agent_get_mood(skip_dorm=True)
@@ -675,7 +675,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             if self.enable_party and (
                     self.last_clue is None
                     or datetime.now() - self.last_clue > timedelta(hours=1)
-            ):
+            ) and self.no_pending_task(3):
                 self.clue_new()
                 self.last_clue = datetime.now()
             # if (self.party_time is None or self.free_clue is None) and self.enable_party:
@@ -690,11 +690,12 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     < datetime.now() - timedelta(hours=self.drone_execution_gap)
             )
                     and self.drone_room is not None
+                    and self.no_pending_task(2)
             ):
                 self.drone(self.drone_room)
                 logger.info(f"记录本次无人机使用时间为:{datetime.now()}")
                 self.drone_time = datetime.now()
-            if self.reload_room is not None and (
+            if self.reload_room is not None and self.no_pending_task(2) and (
                     self.reload_time is None
                     or self.reload_time
                     < datetime.now() - timedelta(hours=self.maa_config["maa_execution_gap"])
@@ -703,12 +704,13 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 logger.info(f"记录本次补货时间为:{datetime.now()}")
             self.todo_task = True
         elif not self.collect_notification:
-            notification = detector.infra_notification(self.recog.img)
-            if notification is None:
-                self.sleep(1)
+            if self.no_pending_task(1):
                 notification = detector.infra_notification(self.recog.img)
-            if notification is not None:
-                self.tap(notification)
+                if notification is None:
+                    self.sleep(1)
+                    notification = detector.infra_notification(self.recog.img)
+                if notification is not None:
+                    self.tap(notification)
             self.collect_notification = True
         else:
             return self.handle_error()
@@ -1955,7 +1957,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             self.tap(clue_unlock)
             self.party_time = self.double_read_time(PARTY_TIME_COORDNIATE)
             if self.party_time < datetime.now():
-                logger.info(f"检测到impart开启失败!")
+                logger.info("检测到impart开启失败!")
                 self.party_time = None
                 self.error = True
             else:
@@ -2984,7 +2986,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                                 self.back()
                                 self.turn_on_room_detail(room)
                         else:
-                            logger.info(f"检测到漏单")
+                            logger.info("检测到漏单")
                             self.recog.save_screencap("run_order_failure")
                             self.send_message("检测到漏单！")
                             self.reset_room_time(room)
@@ -3156,6 +3158,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             self.todo_task = True
         if "collect_notification" in task_names:
             self.collect_notification = True
+
+    def no_pending_task(self, minute=0):
+        return find_next_task(self.tasks, datetime.now() + timedelta(minutes=minute)) is None
 
     def reload(self):
         error = False
@@ -3358,7 +3363,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     global stage_drop
                     stage_drop = {"details": [], "summary": {}}
 
-                logger.info(f"MAA 启动")
+                logger.info("MAA 启动")
                 hard_stop = False
                 while self.MAA.running():
                     # 单次任务默认5分钟
@@ -3383,7 +3388,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     if self.device.check_current_focus():
                         self.recog.update()
                 elif not one_time:
-                    logger.info(f"记录MAA 本次执行时间")
+                    logger.info("记录MAA 本次执行时间")
                     self.maa_config["last_execution"] = datetime.now()
                     logger.info(self.maa_config["last_execution"])
                     if "Mall" in tasks and self.credit_fight is None:
@@ -3554,9 +3559,6 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         except Exception as e:
             self.send_message(f"森空岛签到失败: {e}")
             logger.warning(f"森空岛签到失败:{e}")
-        except:
-            self.send_message(f"森空岛签到失败")
-            logger.warning("森空岛签到失败:{unknown reason}")
         # 仅尝试一次 不再尝试
         return (datetime.now() - timedelta(hours=4)).date()
 
