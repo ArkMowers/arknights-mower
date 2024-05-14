@@ -407,7 +407,7 @@ class ReclamationAlgorithm(BaseSolver):
                         self.task_queue.remove("奇遇_崎岖窄路")
                 self.map_back()
             else:
-                tpl = loadres("ra/ap-1.png", True)
+                tpl = loadres("ra/ap-1", True)
                 tpl = thres2(tpl, 127)
                 w, h = tpl.shape[::-1]
                 scope = ((1640, 400), (1900, 900))
