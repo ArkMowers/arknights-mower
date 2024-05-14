@@ -332,7 +332,7 @@ class Arknights数据处理器:
                 cells_per_block=(2, 2),
                 block_norm="L2-Hys",
                 transform_sqrt=True,
-                multichannel=True,
+                channel_axis=-1,
             )
             return hog_features
 

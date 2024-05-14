@@ -69,10 +69,10 @@ jobs:
         run: |
           sed -i "s/__version__ = '\(.*\)'/__version__ = '\1+${GITHUB_SHA::7}'/g" ./arknights_mower/__init__.py
 
-      - name: install python 3.8
+      - name: install python 3.12
         uses: actions/setup-python@v5
         with:
-          python-version: 3.8
+          python-version: 3.12
           cache: pip
 
       - name: Install dependencies
@@ -113,16 +113,16 @@ jobs:
         with:
           repository: ArkMowers/updater
 
-      - name: install python 3.8
+      - name: install python 3.12
         uses: actions/setup-python@v5
         with:
-          python-version: 3.8
+          python-version: 3.12
           cache: pip
 
       - name: Install dependencies
         run: |
           python -m venv venv
-          venv/bin/pip install -U xxhash backports.zoneinfo[tzdata]
+          venv/bin/pip install -U xxhash
 
       - name: restore frontend dist
         uses: actions/cache/restore@v4

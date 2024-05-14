@@ -1,20 +1,22 @@
 import os
 import json
 from pathlib import Path
-from ruamel import yaml
+from ruamel.yaml import YAML
 from flatten_dict import flatten, unflatten
 from .. import __rootdir__
-from .path import app_dir, get_path
+from .path import app_dir
+
+yaml = YAML()
 
 def __get_temp_conf():
     with Path(f'{__rootdir__}/templates/conf.yml').open('r', encoding='utf8') as f:
-        return yaml.load(f,Loader=yaml.Loader)
+        return yaml.load(f)
 
 
 def save_conf(conf, path="./conf.yml"):
     path = app_dir / path
     with path.open('w', encoding='utf8') as f:
-        yaml.dump(conf, f, allow_unicode=True)
+        yaml.dump(conf, f)
 
 
 def load_conf(path="./conf.yml"):
@@ -27,7 +29,7 @@ def load_conf(path="./conf.yml"):
         return temp_conf
     else:
         with path.open('r', encoding='utf8') as c:
-            conf = yaml.load(c, Loader=yaml.Loader)
+            conf = yaml.load(c)
             if conf is None:
                 conf = {}
             flat_temp = flatten(temp_conf)
