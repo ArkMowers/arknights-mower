@@ -199,3 +199,4 @@ MAA
 
 
 *.ipynb
+.rgignore
