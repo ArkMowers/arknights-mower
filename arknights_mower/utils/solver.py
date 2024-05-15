@@ -118,6 +118,8 @@ class BaseSolver:
 
     def sleep(self, interval: float = 1) -> None:
         """sleeping for a interval"""
+        if config.stop_mower.is_set():
+            raise MowerExit
         time.sleep(interval)
         self.recog.update()
 
@@ -151,6 +153,8 @@ class BaseSolver:
         interval: float = 1,
     ) -> None:
         """tap"""
+        if config.stop_mower.is_set():
+            raise MowerExit
         pos = self.get_pos(poly, x_rate, y_rate)
         self.device.tap(pos)
         if interval > 0:
@@ -219,6 +223,8 @@ class BaseSolver:
         interval: float = 1,
     ) -> None:
         """swipe"""
+        if config.stop_mower.is_set():
+            raise MowerExit
         end = (start[0] + movement[0], start[1] + movement[1])
         self.device.swipe(start, end, duration=duration)
         if interval > 0:
@@ -232,6 +238,8 @@ class BaseSolver:
         interval: float = 1,
     ) -> None:
         """swipe only, no rebuild and recapture"""
+        if config.stop_mower.is_set():
+            raise MowerExit
         end = (start[0] + movement[0], start[1] + movement[1])
         self.device.swipe(start, end, duration=duration)
         if interval > 0:

@@ -426,7 +426,7 @@ def get_orundum_data():
                 if 0 < i < len(data) - 15:
                     data.pop(i)
                 else:
-                    logger.info("合成玉{}".format(data[i]["合成玉"]))
+                    logger.debug("合成玉{}".format(data[i]["合成玉"]))
                     if data[i]["合成玉"] > 0:
                         begin_make_orundum = str2date(data[i]["Unnamed: 0"])
         else:
