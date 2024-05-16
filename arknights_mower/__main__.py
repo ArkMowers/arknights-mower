@@ -45,6 +45,7 @@ def main():
     config.grandet_back_to_index = conf["run_order_grandet_mode"]["back_to_index"]
     config.ADB_CONTROL_CLIENT = conf["touch_method"]
     config.FEATURE_MATCHER = conf["feature_matcher"]
+    config.get_scene = conf["get_scene"]
     if config.wh is None:
         init_fhlr()
     logger.info("开始运行Mower")

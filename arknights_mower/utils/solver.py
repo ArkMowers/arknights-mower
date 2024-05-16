@@ -304,7 +304,10 @@ class BaseSolver:
 
     def scene(self) -> int:
         """get the current scene in the game"""
-        return self.recog.get_scene()
+        if config.get_scene["concurrent"]:
+            return self.recog.get_scene_concurrent()
+        else:
+            return self.recog.get_scene()
 
     def get_infra_scene(self) -> int:
         """get the current scene in the infra"""

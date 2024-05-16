@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from typing import List, Optional, Tuple
+from concurrent.futures import ThreadPoolExecutor
 
 import cv2
 import numpy as np
@@ -267,6 +268,270 @@ class Recognizer(object):
             self.scene = Scene.UNKNOWN
             if self.device.check_current_focus():
                 self.update()
+        # save screencap to analyse
+        if config.SCREENSHOT_PATH is not None:
+            self.save_screencap(self.scene)
+        logger.info(f"Scene: {self.scene}: {SceneComment[self.scene]}")
+
+        self.check_loading_time()
+
+        return self.scene
+
+    def get_scene_concurrent(self) -> int:
+        if self.scene != Scene.UNDEFINED:
+            return self.scene
+
+        if self.matcher is None:
+            self.matcher = Matcher(self.gray)
+
+        with ThreadPoolExecutor(max_workers=config.get_scene["max_workers"]) as e:
+
+            def submit(res, scope=None):
+                return e.submit(lambda: self.find(res, scope=scope))
+
+            connecting = submit("connecting")
+            index = e.submit(self.detect_index_scene)
+            nav_index = submit("nav_index")
+            login_new = submit("login_new")
+            login_bilibili = submit("login_bilibili")
+            login_bilibili_privacy = submit("login_bilibili_privacy")
+            close_mine = submit("close_mine")
+            check_in = submit("check_in")
+            materiel_ico = submit("materiel_ico")
+            mail = submit("mail")
+            loading = submit("loading")
+            loading2 = submit("loading2")
+            loading3 = submit("loading3")
+            loading4 = submit("loading4")
+            black = e.submit(self.is_black)
+            ope_plan = submit("ope_plan")
+            ope_select_start = submit("ope_select_start")
+            ope_agency_going = submit("ope_agency_going", ((470, 915), (755, 1045)))
+            ope_elimi_finished = submit("ope_elimi_finished")
+            ope_finish = submit("ope_finish")
+            ope_recover_potion_on = submit("ope_recover_potion_on")
+            ope_recover_originite_on = submit(
+                "ope_recover_originite_on", ((1530, 120), (1850, 190))
+            )
+            double_confirm = submit("double_confirm")
+            network_check = submit("network_check")
+            ope_firstdrop = submit("ope_firstdrop")
+            ope_eliminate = submit("ope_eliminate")
+            ope_elimi_agency_panel = submit("ope_elimi_agency_panel")
+            ope_giveup = submit("ope_giveup")
+            ope_failed = submit("ope_failed")
+            friend_list_on = submit("friend_list_on")
+            credit_visiting = submit("credit_visiting")
+            riic_report_title = submit("riic_report_title", ((1700, 0), (1920, 100)))
+            control_central_assistants = submit("control_central_assistants")
+            infra_overview = submit("infra_overview", ((20, 120), (360, 245)))
+            infra_todo = submit("infra_todo")
+            clue = submit("clue")
+            arrange_check_in = submit("arrange_check_in")
+            arrange_check_in_on = submit("arrange_check_in_on")
+            infra_overview_in = submit("infra_overview_in", ((50, 690), (430, 770)))
+            arrange_confirm = submit("arrange_confirm")
+            friend_list = submit("friend_list")
+            mission_trainee_on = submit("mission_trainee_on", ((670, 0), (1920, 120)))
+            mission_daily_on = submit("mission_daily_on", ((670, 0), (1920, 120)))
+            mission_weekly_on = submit("mission_weekly_on", ((670, 0), (1920, 120)))
+            terminal_pre = submit("terminal_pre")
+            open_recruitment = submit("open_recruitment")
+            recruiting_instructions = submit("recruiting_instructions")
+            agent_token = e.submit(
+                lambda: self.find(
+                    "agent_token",
+                    scope=((1735, 745), (1855, 820)),
+                    score=0.1,
+                ),
+            )
+            agent_unlock = submit("agent_unlock")
+            shop_credit_2 = submit("shop_credit_2")
+            shop_cart = submit("shop_cart")
+            shop_assist = submit("shop_assist")
+            spent_credit = submit("spent_credit")
+            login_logo = submit("login_logo")
+            hypergryph = submit("hypergryph")
+            login_awake = submit("login_awake")
+            login_account = submit("login_account")
+            login_iknow = submit("login_iknow")
+            register = submit("register")
+            login_loading = submit("login_loading")
+            cadpa12 = submit("12cadpa")
+            cadpa_detail = submit("cadpa_detail")
+            announcement = e.submit(self.check_announcement)
+            skip = submit("skip")
+            upgrade = submit("upgrade")
+            detector_confirm = e.submit(lambda: detector_confirm(self.img))
+            login_verify = submit("login_verify")
+            login_captcha = submit("login_captcha")
+            login_connecting = submit("login_connecting")
+            main_theme = submit("main_theme")
+            episode = submit("episode")
+            biography = submit("biography")
+            collection = submit("collection")
+            loading6 = submit("loading6")
+            loading7 = submit("loading7")
+            arrange_order_options_scene = submit("arrange_order_options_scene")
+
+            if connecting.result():
+                self.scene = Scene.CONNECTING
+            elif index.result():
+                self.scene = Scene.INDEX
+            elif nav_index.result():
+                self.scene = Scene.NAVIGATION_BAR
+            elif login_new.result():
+                self.scene = Scene.LOGIN_NEW
+            elif login_bilibili.result():  # 会被识别成公告，优先级应当比公告高
+                self.scene = Scene.LOGIN_BILIBILI
+            elif login_bilibili_privacy.result():
+                self.scene = Scene.LOGIN_BILIBILI_PRIVACY
+            elif close_mine.result():
+                self.scene = Scene.CLOSE_MINE
+            elif check_in.result():
+                self.scene = Scene.CHECK_IN
+            elif materiel_ico.result():
+                self.scene = Scene.MATERIEL
+            elif mail.result():
+                self.scene = Scene.MAIL
+            elif loading.result():
+                self.scene = Scene.LOADING
+            elif loading2.result():
+                self.scene = Scene.LOADING
+            elif loading3.result():
+                self.scene = Scene.LOADING
+            elif loading4.result():
+                self.scene = Scene.LOADING
+            elif black.result():
+                self.scene = Scene.LOADING
+            elif ope_plan.result():
+                self.scene = Scene.OPERATOR_BEFORE
+            elif ope_select_start.result():
+                self.scene = Scene.OPERATOR_SELECT
+            elif ope_agency_going.result():
+                self.scene = Scene.OPERATOR_ONGOING
+            elif ope_elimi_finished.result():
+                self.scene = Scene.OPERATOR_ELIMINATE_FINISH
+            elif ope_finish.result():
+                self.scene = Scene.OPERATOR_FINISH
+            elif ope_recover_potion_on.result():
+                self.scene = Scene.OPERATOR_RECOVER_POTION
+            elif ope_recover_originite_on.result():
+                self.scene = Scene.OPERATOR_RECOVER_ORIGINITE
+            elif double_confirm.result():
+                if network_check.result():
+                    self.scene = Scene.NETWORK_CHECK
+                else:
+                    self.scene = Scene.DOUBLE_CONFIRM
+            elif ope_firstdrop.result():
+                self.scene = Scene.OPERATOR_DROP
+            elif ope_eliminate.result():
+                self.scene = Scene.OPERATOR_ELIMINATE
+            elif ope_elimi_agency_panel.result():
+                self.scene = Scene.OPERATOR_ELIMINATE_AGENCY
+            elif ope_giveup.result():
+                self.scene = Scene.OPERATOR_GIVEUP
+            elif ope_failed.result():
+                self.scene = Scene.OPERATOR_FAILED
+            elif friend_list_on.result():
+                self.scene = Scene.FRIEND_LIST_ON
+            elif credit_visiting.result():
+                self.scene = Scene.FRIEND_VISITING
+            elif riic_report_title.result():
+                self.scene = Scene.RIIC_REPORT
+            elif control_central_assistants.result():
+                self.scene = Scene.CTRLCENTER_ASSISTANT
+            elif infra_overview.result():
+                self.scene = Scene.INFRA_MAIN
+            elif infra_todo.result():
+                self.scene = Scene.INFRA_TODOLIST
+            elif clue.result():
+                self.scene = Scene.INFRA_CONFIDENTIAL
+            elif arrange_check_in.result() or arrange_check_in_on.result():
+                self.scene = Scene.INFRA_DETAILS
+            elif infra_overview_in.result():
+                self.scene = Scene.INFRA_ARRANGE
+            elif arrange_confirm.result():
+                self.scene = Scene.INFRA_ARRANGE_CONFIRM
+            elif friend_list.result():
+                self.scene = Scene.FRIEND_LIST_OFF
+            elif mission_trainee_on.result():
+                self.scene = Scene.MISSION_TRAINEE
+            elif mission_daily_on.result():
+                self.scene = Scene.MISSION_DAILY
+            elif mission_weekly_on.result():
+                self.scene = Scene.MISSION_WEEKLY
+            elif terminal_pre.result():
+                self.scene = Scene.TERMINAL_MAIN
+            elif open_recruitment.result():
+                self.scene = Scene.RECRUIT_MAIN
+            elif recruiting_instructions.result():
+                self.scene = Scene.RECRUIT_TAGS
+            elif agent_token.result():
+                self.scene = Scene.RECRUIT_AGENT
+            elif agent_unlock.result():
+                self.scene = Scene.SHOP_CREDIT
+            elif shop_credit_2.result():
+                self.scene = Scene.SHOP_OTHERS
+            elif shop_cart.result():
+                self.scene = Scene.SHOP_CREDIT_CONFIRM
+            elif shop_assist.result():
+                self.scene = Scene.SHOP_ASSIST
+            elif spent_credit.result():
+                self.scene = Scene.SHOP_UNLOCK_SCHEDULE
+            elif login_logo.result() and hypergryph.result():
+                if login_awake.result():
+                    self.scene = Scene.LOGIN_QUICKLY
+                elif login_account.result():
+                    self.scene = Scene.LOGIN_MAIN
+                elif login_iknow.result():
+                    self.scene = Scene.LOGIN_ANNOUNCE
+                else:
+                    self.scene = Scene.LOGIN_MAIN_NOENTRY
+            elif register.result():
+                self.scene = Scene.LOGIN_REGISTER
+            elif login_loading.result():
+                self.scene = Scene.LOGIN_LOADING
+            elif login_iknow.result():
+                self.scene = Scene.LOGIN_ANNOUNCE
+            elif cadpa12.result():
+                if cadpa_detail.result():
+                    self.scene = Scene.LOGIN_CADPA_DETAIL
+                else:
+                    self.scene = Scene.LOGIN_START
+            elif announcement.result():
+                self.scene = Scene.ANNOUNCEMENT
+            elif skip.result():
+                self.scene = Scene.SKIP
+            elif upgrade.result():
+                self.scene = Scene.UPGRADE
+            elif detector_confirm.result() is not None:
+                self.scene = Scene.CONFIRM
+            elif login_verify.result():
+                self.scene = Scene.LOGIN_INPUT
+            elif login_captcha.result():
+                self.scene = Scene.LOGIN_CAPTCHA
+            elif login_connecting.result():
+                self.scene = Scene.LOGIN_LOADING
+            elif main_theme.result():
+                self.scene = Scene.TERMINAL_MAIN_THEME
+            elif episode.result():
+                self.scene = Scene.TERMINAL_EPISODE
+            elif biography.result():
+                self.scene = Scene.TERMINAL_BIOGRAPHY
+            elif collection.result():
+                self.scene = Scene.TERMINAL_COLLECTION
+            elif loading6.result():
+                self.scene = Scene.LOADING
+            elif loading7.result():
+                self.scene = Scene.LOADING
+            elif arrange_order_options_scene.result():
+                self.scene = Scene.INFRA_ARRANGE_ORDER
+            else:
+                self.scene = Scene.UNKNOWN
+                if self.device.check_current_focus():
+                    self.update()
+
         # save screencap to analyse
         if config.SCREENSHOT_PATH is not None:
             self.save_screencap(self.scene)

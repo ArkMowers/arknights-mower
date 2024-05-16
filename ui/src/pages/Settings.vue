@@ -35,7 +35,8 @@ const {
   fix_mumu12_adb_disconnect,
   touch_method,
   free_room,
-  feature_matcher
+  feature_matcher,
+  get_scene
 } = storeToRefs(config_store)
 
 const { operators } = storeToRefs(plan_store)
@@ -126,6 +127,19 @@ const new_scale = ref(webview.value.scale)
                   </n-radio>
                 </n-space>
               </n-radio-group>
+            </n-form-item>
+            <n-form-item :show-label="false">
+              <n-flex>
+                <n-checkbox v-model:checked="get_scene.concurrent">场景并行分类</n-checkbox>
+                <n-input-number
+                  v-model:value="get_scene.max_workers"
+                  :disabled="!get_scene.concurrent"
+                  :min="2"
+                  :max="64"
+                >
+                  <template #suffix>线程</template>
+                </n-input-number>
+              </n-flex>
             </n-form-item>
             <n-form-item label="模拟器">
               <n-select v-model:value="simulator.name" :options="simulator_types" />

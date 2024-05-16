@@ -273,3 +273,6 @@ free_room: false
 feature_matcher: "flann"
 sign_in:
   enable: true
+get_scene:
+  concurrent: true
+  max_workers: 4
