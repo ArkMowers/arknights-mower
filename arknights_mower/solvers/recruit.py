@@ -15,7 +15,7 @@ from .. import __rootdir__
 from ..utils.device import Device
 from ..utils.digit_reader import DigitReader
 from ..utils.email import recruit_template, recruit_rarity
-from ..utils.image import cropimg, loadres, loadimg
+from ..utils.image import cropimg, loadres
 from ..utils.log import logger
 from ..utils.recognize import RecognizeError, Recognizer, Scene
 from ..utils.solver import BaseSolver

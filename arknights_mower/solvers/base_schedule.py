@@ -62,8 +62,7 @@ def depotscan(device: Device = None):
     """
     仓库扫描
     """
-    pass
-    #DepotSolver(device).run()
+    DepotSolver(device).run()
 
 
 def mail(device: Device = None):
