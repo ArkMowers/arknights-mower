@@ -67,7 +67,7 @@ class RecruitSolver(BaseSolver):
         self.result_agent = {}
         self.agent_choose = {}
         self.tag_template = {}
-        self.font=ImageFont.truetype("{}/fonts/SourceHanSansCN-Medium.otf".format(__rootdir__), 30)
+        self.font = ImageFont.truetype("{}/fonts/SourceHanSansCN-Medium.otf".format(__rootdir__), 30)
         for tag in recruit_tag:
             im = Image.new(mode="RGBA", color=(49, 49, 49), size=(215, 70))
             # im=Image.open("D:\\Git_Repositories\\Pycharm_Project\\Mower\\screenshot_tags\\{}.png".format(tag))
@@ -80,9 +80,11 @@ class RecruitSolver(BaseSolver):
 
             draw.text(((W - w) / 2, (H - h) / 2 - 5), tag, font=self.font)
 
-            self.tag_template[tag]= cv2.cvtColor(np.array(im.crop(im.getbbox())), cv2.COLOR_RGB2BGR)
+            self.tag_template[tag] = cv2.cvtColor(np.array(im.crop(im.getbbox())), cv2.COLOR_RGB2BGR)
         # logger.info(f'目标干员：{priority if priority else "无，高稀有度优先"}')\
         try:
+            if len(self.tag_template) < len(recruit_tag):
+                raise "tag生成失败{}".format(self.tag_template)
             super().run()
         except Exception as e:
             logger.error(e)
@@ -257,10 +259,13 @@ class RecruitSolver(BaseSolver):
             h, w, _ = img.shape
             for index, value in enumerate(tags_img):
                 res = self.get_recruit_tag(value)
-                tag_pos = (int(left + (index % 3) * int(w / 3) + 30), int(up + int(index/3) * int(h / 2) + 30))
+                tag_pos = (int(left + (index % 3) * int(w / 3) + 30), int(up + int(index / 3) * int(h / 2) + 30))
                 tags[res['tag']] = tag_pos
 
                 logger.info("tag识别结果{} {}".format(res, tag_pos))
+
+            if len(tags) != 5:
+                raise "标签识别失败 tag={}".format(tags)
 
             logger.info(f'第{self.recruit_pos + 1}个位置上的公招标签：{tags}')
 
