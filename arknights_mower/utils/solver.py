@@ -116,9 +116,23 @@ class BaseSolver:
             x, y = poly
         return (int(x), int(y))
 
+    def csleep(self, interval: float = 1):
+        """check and sleep"""
+        stop_time = datetime.now() + timedelta(seconds=interval)
+        while True:
+            if config.stop_mower.is_set():
+                raise MowerExit
+            remaining = stop_time - datetime.now()
+            if remaining > timedelta(seconds=1):
+                time.sleep(1)
+            elif remaining > timedelta():
+                time.sleep(remaining.total_seconds())
+            else:
+                return
+
     def sleep(self, interval: float = 1) -> None:
         """sleeping for a interval"""
-        time.sleep(interval)
+        self.csleep(interval)
         self.recog.update()
 
     def input(self, referent: str, input_area: tp.Scope, text: str = None) -> None:
@@ -151,6 +165,8 @@ class BaseSolver:
         interval: float = 1,
     ) -> None:
         """tap"""
+        if config.stop_mower.is_set():
+            raise MowerExit
         pos = self.get_pos(poly, x_rate, y_rate)
         self.device.tap(pos)
         if interval > 0:
@@ -219,6 +235,8 @@ class BaseSolver:
         interval: float = 1,
     ) -> None:
         """swipe"""
+        if config.stop_mower.is_set():
+            raise MowerExit
         end = (start[0] + movement[0], start[1] + movement[1])
         self.device.swipe(start, end, duration=duration)
         if interval > 0:
@@ -232,10 +250,12 @@ class BaseSolver:
         interval: float = 1,
     ) -> None:
         """swipe only, no rebuild and recapture"""
+        if config.stop_mower.is_set():
+            raise MowerExit
         end = (start[0] + movement[0], start[1] + movement[1])
         self.device.swipe(start, end, duration=duration)
         if interval > 0:
-            time.sleep(interval)
+            self.csleep(interval)
 
     # def swipe_seq(self, points: list[tp.Coordinate], duration: int = 100, interval: float = 1, rebuild: bool = True) -> None:
     #     """ swipe with point sequence """
@@ -256,10 +276,12 @@ class BaseSolver:
         self,
         start: tp.Coordinate,
         movement: tp.Coordinate,
-        duration: int = 50,
+        duration: int = 20,
         interval: float = 0.2,
     ) -> None:
         """swipe with no inertia (movement should be vertical)"""
+        if config.stop_mower.is_set():
+            raise MowerExit
         points = [start]
         if movement[0] == 0:
             dis = abs(movement[1])
@@ -609,7 +631,7 @@ class BaseSolver:
             wait_count -= 1
         logger.warning("同一等待界面等待超时，重启方舟。")
         self.device.exit()
-        time.sleep(3)
+        self.csleep(3)
         if self.device.check_current_focus():
             self.recog.update()
         return False
@@ -700,7 +722,7 @@ class BaseSolver:
             except Exception as e:
                 logger.error("邮件发送失败")
                 logger.exception(e)
-                time.sleep(delay)
+                self.csleep(delay)
 
     # Server酱异常处理
     def handle_serverJang_error(self, url, data):
@@ -715,11 +737,11 @@ class BaseSolver:
                     logger.error(
                         f"Server酱通知发送失败，错误信息：{json_data.get('message')}"
                     )
-                    time.sleep(delay)
+                    self.csleep(delay)
             except Exception as e:
                 logger.error("Server酱通知发送失败")
                 logger.exception(e)
-                time.sleep(delay)
+                self.csleep(delay)
 
     # 消息发送 原Email发送 EightyDollars
     def send_message(
@@ -803,11 +825,11 @@ class BaseSolver:
                         self.handle_email_error(*args)
                         break
                     except:
-                        time.sleep(1)
+                        self.csleep(1)
             elif method == "serverJang":
                 for _ in range(retry_times):
                     try:
                         self.handle_serverJang_error(*args)
                         break
                     except:
-                        time.sleep(1)
+                        self.csleep(1)

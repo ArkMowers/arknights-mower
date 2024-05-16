@@ -20,10 +20,27 @@ const togglePlanAndStage = (plan, day) => {
       .flat()
   })
 }
+
 const togglePlan = (plan) => {
+  let kai = 0
+  let guan = 0
   daysOfWeek.forEach((day) => {
-    plan[day] = plan[day] === 1 ? 2 : 1
+    if (plan[day] === 1) {
+      guan = guan + 1
+    } else if (plan[day] === 2) {
+      kai = kai + 1
+    }
   })
+  daysOfWeek.forEach((day) => {
+    if (plan[day] > 0) {
+      if (kai > guan) {
+        plan[day] = 1
+      } else {
+        plan[day] = 2
+      }
+    }
+  })
+
   maa_weekly_plan.value.slice(0, daysOfWeek.length).forEach((p, i) => {
     p.stage = maa_weekly_plan1.value
       .filter((item) => item[daysOfWeek[i]] === 2)

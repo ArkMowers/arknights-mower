@@ -195,6 +195,12 @@ const new_scale = ref(webview.value.scale)
               <n-checkbox v-model:checked="start_automatically">启动后自动开始任务</n-checkbox>
             </n-form-item>
             <n-form-item label="截图数量">
+              <template #label>
+                <span>截图数量</span>
+                <help-text>
+                  <div><code>screenshot</code>下每个文件夹中最多保存的截图数量</div>
+                </help-text>
+              </template>
               <n-input-number v-model:value="screenshot">
                 <template #suffix>张</template>
               </n-input-number>

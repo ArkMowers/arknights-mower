@@ -50,6 +50,10 @@ class Recognizer(object):
         raise RuntimeError("init Recognizer failed")
 
     def update(self, screencap: bytes = None) -> None:
+        from arknights_mower.utils.solver import MowerExit
+
+        if config.stop_mower.is_set():
+            raise MowerExit
         self.start(screencap)
 
     def color(self, x: int, y: int) -> tp.Pixel:
@@ -556,10 +560,6 @@ class Recognizer(object):
 
         :return ret: 若匹配成功，则返回元素在游戏界面中出现的位置，否则返回 None
         """
-        from arknights_mower.utils.solver import MowerExit
-        if config.stop_mower.is_set():
-            print("mowerexit find")
-            raise MowerExit
         logger.debug(f"find: {res}")
 
         dpi_aware = res in [

@@ -15,7 +15,7 @@ import requests
 
 # 借用__main__.py里的时间计算器
 from arknights_mower.__main__ import format_time
-from arknights_mower.solvers import ReportSolver, MailSolver, RecruitSolver
+from arknights_mower.solvers import ReportSolver, MailSolver, RecruitSolver, DepotSolver
 from arknights_mower.solvers.base_mixin import BaseMixin
 from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
 from arknights_mower.solvers.sign_in import update_sign_in_solver
@@ -2516,7 +2516,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             )
             if wait_confirm > 0:
                 logger.info(f"等待跑单 {str(wait_confirm)} 秒")
-                time.sleep(wait_confirm)
+                self.csleep(wait_confirm)
         self.tap_element("confirm_blue", detected=True, judge=False, interval=3)
         if self.get_infra_scene() == Scene.INFRA_ARRANGE_CONFIRM:
             _x0 = self.recog.w // 3 * 2  # double confirm
@@ -3463,12 +3463,12 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         self.MAA.stop()
                         hard_stop = True
                     else:
-                        time.sleep(5)
+                        self.csleep(5)
                 if hard_stop:
                     hard_stop_msg = "Maa任务未完成，等待3分钟关闭游戏"
                     logger.info(hard_stop_msg)
                     self.send_message(hard_stop_msg)
-                    time.sleep(180)
+                    self.csleep(180)
                     self.device.exit()
                     if self.device.check_current_focus():
                         self.recog.update()
@@ -3573,7 +3573,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                             self.MAA.stop()
                             break
                         else:
-                            time.sleep(5)
+                            self.csleep(5)
                     self.device.exit()
                     if self.device.check_current_focus():
                         self.recog.update()
@@ -3626,7 +3626,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 logger.info(
                     f"休息 {format_time(remaining_time)}，到{self.tasks[0].time.strftime('%H:%M:%S')}开始工作"
                 )
-                time.sleep(remaining_time)
+                self.csleep(remaining_time)
             if self.device.check_current_focus():
                 self.recog.update()
 

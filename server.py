@@ -136,7 +136,7 @@ def read_depot():
 
 @app.route("/running")
 def running():
-    return "false" if mower_thread is None or config.stop_mower.is_set() else "true"
+    return "true" if mower_thread and mower_thread.is_alive() else "false"
 
 
 @app.route("/start")
@@ -145,8 +145,8 @@ def start():
     global mower_thread
     global log_lines
 
-    if mower_thread is not None and not config.stop_mower.is_set():
-        return "Mower is already running."
+    if mower_thread and mower_thread.is_alive():
+        return "false"
 
     # 创建 tmp 文件夹
     tmp_dir = get_path("@app/tmp")
@@ -163,7 +163,7 @@ def start():
 
     log_lines = []
 
-    return "Mower started."
+    return "true"
 
 
 @app.route("/stop")
@@ -172,12 +172,18 @@ def stop():
     global mower_thread
 
     if mower_thread is None:
-        return "Mower is not running."
+        return "true"
 
     config.stop_mower.set()
-    mower_thread = None
 
-    return "Mower stopped."
+    mower_thread.join(10)
+    if mower_thread.is_alive():
+        logger.error("Mower线程仍在运行")
+        return "false"
+    else:
+        logger.info("成功停止mower线程")
+        mower_thread = None
+        return "true"
 
 
 @sock.route("/log")
@@ -426,7 +432,7 @@ def get_orundum_data():
                 if 0 < i < len(data) - 15:
                     data.pop(i)
                 else:
-                    logger.info("合成玉{}".format(data[i]["合成玉"]))
+                    logger.debug("合成玉{}".format(data[i]["合成玉"]))
                     if data[i]["合成玉"] > 0:
                         begin_make_orundum = str2date(data[i]["Unnamed: 0"])
         else:
