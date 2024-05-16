@@ -38,7 +38,7 @@ class RecruitSolver:
         self.recruit_config = {}
 
         self.recruit_pos = -1
-
+        self.tag_template = {}
         self.priority = None
         self.recruiting = 0
         self.has_ticket = True  # 默认含有招募票
@@ -360,7 +360,6 @@ class RecruitSolver:
 
         sorted_list = sorted(combined_agent.items(), key=lambda x: index_dict[x[1][0]['star']])
 
-
         result_dict = {}
         for item in sorted_list:
             result_dict[item[0]] = []
@@ -381,7 +380,7 @@ class RecruitSolver:
                 if max_star < 6 and agent['star'] == 6:
                     continue
                 result_dict[item[0]].append(agent)
-                logger.debug(item[0],agent)
+                logger.debug(item[0], agent)
 
             try:
                 for key in list(result_dict.keys()):
@@ -417,20 +416,87 @@ class RecruitSolver:
                 logger.info("{}:{}".format(item, result[item]))
         return result
 
+    def get_recruit_tag(self, img):
+        for i in pathlib.Path(
+                "D:\\Git_Repositories\\Pycharm_Project\\Mower\\arknights-mower\\arknights_mower\\resources\\recruit_tags").glob(
+            "*.png"):
+            tag = i.__str__().replace(
+                "D:\\Git_Repositories\\Pycharm_Project\\Mower\\arknights-mower\\arknights_mower\\resources\\recruit_tags\\",
+                "").replace(".png", "")
+
+            self.tag_template[tag] = loadimg(i.__str__())
+        max_v = -1
+        tag_res = None
+        for key in self.tag_template:
+            res = cv2.matchTemplate(
+                img,
+                self.tag_template[key],
+                cv2.TM_CCORR_NORMED,
+            )
+
+            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+            if max_val > max_v:
+                tag_res = {
+                    "tag": key,
+                    "val": max_val
+                }
+                max_v = max_val
+        return tag_res
+
+    def split_tags(self, img):
+        tag_img = []
+        h, w, _ = img.shape
+        ori_img = img
+        tag_h, tag_w = int(h / 2), int(w / 3)
+        for i in range(0, 2):
+            for j in range(0, 3):
+                if i * j == 2:
+                    continue
+                tag_img.append(
+                    img[0:tag_h, 0:tag_w]
+                )
+                img = img[0:h, tag_w:w]
+            img = ori_img[tag_h:h, 0:w]
+
+        return tag_img
+
 
 if __name__ == '__main__':
+
     recruit_ = RecruitSolver()
-    recruit_.recruit_config = {
-        "recruitment_time": {
-            "3": 460,
-            "4": 540,
-            "5": 540,
-            "6": 540
-        },
-        "recruit_robot": True,
-        "permit_target": 30,
-        "recruit_auto_5": 2,
-        "recruit_auto_only5": True,
-        "recruit_email_enable": True,
-    }
-    print(recruit_.recruit_tags(['重装干员', '先锋干员', '高级资深干员', '支援', '支援机械']))
+    needs = [349, 592], [486, 677]
+    avail_level = [1294, 234], [1495, 272]
+    up = needs[0][1] - 80
+    down = needs[1][1] + 60
+    left = needs[1][0] + 50
+    right = avail_level[0][0]
+    for i in pathlib.Path("D:\\Git_Repositories\\Pycharm_Project\\Mower\\test").glob("*.png"):
+
+        img = cv2.imread(i.__str__())
+        img = img[up:down, left:right]
+        tags_img = recruit_.split_tags(img)
+        tags = []
+        h,w,_=img.shape
+        for index, value in enumerate(tags_img):
+            res=recruit_.get_recruit_tag(value)
+            tag_pos=(left+(index%3)*int(w/3)+30,up+int(index/3)*int(h/2)+30)
+
+            print(res['tag'],tag_pos,int(index/3))
+        print("                             ")
+        cv2.imshow("1",img)
+        cv2.waitKey()
+
+    # recruit_.recruit_config = {
+    #     "recruitment_time": {
+    #         "3": 460,
+    #         "4": 540,
+    #         "5": 540,
+    #         "6": 540
+    #     },
+    #     "recruit_robot": True,
+    #     "permit_target": 30,
+    #     "recruit_auto_5": 2,
+    #     "recruit_auto_only5": True,
+    #     "recruit_email_enable": True,
+    # }
+    # print(recruit_.recruit_tags(['重装干员', '先锋干员', '高级资深干员', '支援', '支援机械']))

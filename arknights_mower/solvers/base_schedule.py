@@ -15,7 +15,7 @@ import requests
 
 # 借用__main__.py里的时间计算器
 from arknights_mower.__main__ import format_time
-from arknights_mower.solvers import ReportSolver
+from arknights_mower.solvers import ReportSolver, MailSolver, RecruitSolver
 from arknights_mower.solvers.base_mixin import BaseMixin
 from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
 from arknights_mower.solvers.sign_in import update_sign_in_solver
@@ -62,7 +62,8 @@ def depotscan(device: Device = None):
     """
     仓库扫描
     """
-    DepotSolver(device).run()
+    pass
+    #DepotSolver(device).run()
 
 
 def mail(device: Device = None):

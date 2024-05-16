@@ -2,19 +2,20 @@ from __future__ import annotations
 
 import os
 import pathlib
+import time
 from itertools import combinations
 from typing import Tuple, Dict, Any
 import re
 import cv2
 import numpy as np
-
+from PIL import Image, ImageFont, ImageDraw
 from ..data import recruit_agent, agent_with_tags, recruit_tag, result_template_list
 from ..utils import segment, rapidocr
 from .. import __rootdir__
 from ..utils.device import Device
 from ..utils.digit_reader import DigitReader
 from ..utils.email import recruit_template, recruit_rarity
-from ..utils.image import cropimg, loadres
+from ..utils.image import cropimg, loadres, loadimg
 from ..utils.log import logger
 from ..utils.recognize import RecognizeError, Recognizer, Scene
 from ..utils.solver import BaseSolver
@@ -65,7 +66,21 @@ class RecruitSolver(BaseSolver):
 
         self.result_agent = {}
         self.agent_choose = {}
+        self.tag_template = {}
+        self.font=ImageFont.truetype("{}/fonts/SourceHanSansCN-Medium.otf".format(__rootdir__), 30)
+        for tag in recruit_tag:
+            im = Image.new(mode="RGBA", color=(49, 49, 49), size=(215, 70))
+            # im=Image.open("D:\\Git_Repositories\\Pycharm_Project\\Mower\\screenshot_tags\\{}.png".format(tag))
+            W, H = im.size
+            draw = ImageDraw.Draw(im)
+            _, _, w, h = draw.textbbox((0, 0), tag, font=self.font)
+            # text_color=(255,255,255)
+            # if tag =="高级资深干员" or tag =="资深干员":
+            #     text_color=(255,235,4)
 
+            draw.text(((W - w) / 2, (H - h) / 2 - 5), tag, font=self.font)
+
+            self.tag_template[tag]= cv2.cvtColor(np.array(im.crop(im.getbbox())), cv2.COLOR_RGB2BGR)
         # logger.info(f'目标干员：{priority if priority else "无，高稀有度优先"}')\
         try:
             super().run()
@@ -231,23 +246,26 @@ class RecruitSolver(BaseSolver):
         budget = self.find('recruit_budget')
         up = needs[0][1] - 80
         down = needs[1][1] + 60
-        left = needs[1][0]
+        left = needs[1][0] + 50
         right = avail_level[0][0]
 
         while True:
             # ocr the recruitment tags and rectify
             img = self.recog.img[up:down, left:right]
-            ocr = ocrhandle.predict(img)
-            for x in ocr:
-                if x[1] not in recruit_tag:
-                    x[1] = ocr_rectify(img, x, recruit_tag, '公招标签')
+            tags_img = self.split_tags(img)
+            tags = {}
+            h, w, _ = img.shape
+            for index, value in enumerate(tags_img):
+                res = self.get_recruit_tag(value)
+                tag_pos = (int(left + (index % 3) * int(w / 3) + 30), int(up + int(index/3) * int(h / 2) + 30))
+                tags[res['tag']] = tag_pos
 
-            # recruitment tags
-            tags = [x[1] for x in ocr]
+                logger.info("tag识别结果{} {}".format(res, tag_pos))
+
             logger.info(f'第{self.recruit_pos + 1}个位置上的公招标签：{tags}')
 
             # 计算招募标签组合结果
-            recruit_cal_result = self.recruit_cal(tags)
+            recruit_cal_result = self.recruit_cal(list(tags.keys()))
             logger.debug("筛选结果:{}".format(recruit_cal_result))
             recruit_result_level = -1
 
@@ -262,7 +280,8 @@ class RecruitSolver(BaseSolver):
 
             if self.recruit_order.index(recruit_result_level) <= self.recruit_index:
                 if self.recruit_config['recruit_email_enable']:
-                    self.send_message(recruit_rarity.render(recruit_results=recruit_cal_result[recruit_result_level], title_text="稀有tag通知"),
+                    self.send_message(recruit_rarity.render(recruit_results=recruit_cal_result[recruit_result_level],
+                                                            title_text="稀有tag通知"),
                                       "出稀有标签辣",
                                       "html")
                     logger.info('稀有tag,发送邮件')
@@ -282,7 +301,8 @@ class RecruitSolver(BaseSolver):
                     return
                 # 手动选择且单五星词条自动,但词条不止一种
                 if (self.recruit_config['recruit_auto_5'] == 2 and
-                        len(recruit_cal_result[recruit_result_level]) > 1 and self.recruit_config['recruit_auto_only5']):
+                        len(recruit_cal_result[recruit_result_level]) > 1 and self.recruit_config[
+                            'recruit_auto_only5']):
                     logger.debug('手动选择且单五星词条自动,但词条不止一种')
                     self.back()
                     return
@@ -307,7 +327,6 @@ class RecruitSolver(BaseSolver):
             self.back()
             return
 
-
         # best为空说明这次大概率三星
         # 券数量少于预期值，仅招募四星或者停止招募，只刷新标签
         if self.permit_count <= self.recruit_config["permit_target"] and recruit_result_level == 3:
@@ -320,14 +339,11 @@ class RecruitSolver(BaseSolver):
             choose = recruit_cal_result[recruit_result_level][0]['tag']
 
         # tap selected tags
-        logger.info(f'选择标签：{list(choose)}')
-        for x in ocr:
-            color = self.recog.img[up + x[2][0][1] - 5, left + x[2][0][0] - 5]
-            if (color[2] < 100) != (x[1] not in choose):
-                # 存在choose为空但是进行标签选择的情况
-                logger.debug(f"tap{x}")
-                self.device.tap((left + x[2][0][0] - 5, up + x[2][0][1] - 5))
-
+        logger.info(f'选择标签：{list(choose)} ')
+        for x in choose:
+            # 存在choose为空但是进行标签选择的情况
+            logger.debug(f"tap{x}:{tags[x]}")
+            self.device.tap(tags[x])
         # 9h为True 3h50min为False
         logger.debug("开始选择时长")
         recruit_time_choose = self.recruit_config["recruitment_time"]["3"]
@@ -364,7 +380,8 @@ class RecruitSolver(BaseSolver):
                 "tags": choose,
                 "result": recruit_cal_result[recruit_result_level][0]['result']
             }
-            logger.info('第{}个位置上的公招预测结果：{}'.format(self.recruit_pos + 1,recruit_cal_result[recruit_result_level][0]['result']))
+            logger.info('第{}个位置上的公招预测结果：{}'.format(self.recruit_pos + 1,
+                                                               recruit_cal_result[recruit_result_level][0]['result']))
         else:
             self.agent_choose[str(self.recruit_pos + 1)] = {
                 "tags": choose,
@@ -466,7 +483,7 @@ class RecruitSolver(BaseSolver):
                 logger.debug(item[0], agent)
             try:
                 for key in list(result_dict.keys()):
-                    if len(result_dict[key])==0:
+                    if len(result_dict[key]) == 0:
                         result_dict.pop(key)
 
                 result_dict[item[0]] = sorted(result_dict[item[0]], key=lambda x: x['star'], reverse=True)
@@ -497,3 +514,39 @@ class RecruitSolver(BaseSolver):
             if result[item]:
                 logger.info("{}:{}".format(item, result[item]))
         return result
+
+    def get_recruit_tag(self, img):
+        max_v = -1
+        tag_res = None
+        for key in self.tag_template:
+            res = cv2.matchTemplate(
+                img,
+                self.tag_template[key],
+                cv2.TM_CCORR_NORMED,
+            )
+
+            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+            if max_val > max_v:
+                tag_res = {
+                    "tag": key,
+                    "val": max_val
+                }
+                max_v = max_val
+        return tag_res
+
+    def split_tags(self, img):
+        tag_img = []
+        h, w, _ = img.shape
+        ori_img = img
+        tag_h, tag_w = int(h / 2), int(w / 3)
+        for i in range(0, 2):
+            for j in range(0, 3):
+                if i * j == 2:
+                    continue
+                tag_img.append(
+                    img[0:tag_h, 0:tag_w]
+                )
+                img = img[0:h, tag_w:w]
+            img = ori_img[tag_h:h, 0:w]
+
+        return tag_img
