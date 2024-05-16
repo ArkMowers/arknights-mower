@@ -4,7 +4,6 @@ import atexit
 import json
 import os
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
-from arknights_mower.strategy import Solver
 from arknights_mower.utils.device import Device
 from arknights_mower.utils.email import task_template
 from arknights_mower.utils.log import logger, init_fhlr
@@ -114,7 +113,8 @@ simulator = {
     # 多开编号，在模拟器助手最左侧的数字
     "index": 0,
     # 用于执行模拟器命令
-    "simulator_folder": "D:\\Program Files\\Netease\\MuMuPlayer-12.0\\shell\\"
+    "simulator_folder": "D:\\Program Files\\Netease\\MuMuPlayer-12.0\\shell\\",
+    "wait_time":25
 }
 
 # --->>下面是配置信息
@@ -197,7 +197,7 @@ def savelog():
     config.TAP_TO_LAUNCH["x"], config.TAP_TO_LAUNCH["y"] = 0, 0
     #  com.hypergryph.arknights.bilibili   # Bilibili 服
     config.ADB_BINARY = ['F:\\MAA-v4.20.0-win-x64\\adb\\platform-tools\\adb.exe']
-    config.FEATURE_MATCHER = "flann"
+    config.log_queue = None
     init_fhlr()
 
 
