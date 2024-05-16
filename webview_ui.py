@@ -7,12 +7,10 @@ width = None
 height = None
 
 
-def start_tray(queue: mp.Queue):
+def start_tray(queue: mp.Queue, global_space, port, tray_img):
     from pystray import Icon, Menu, MenuItem
 
-    title = (
-        f"mower@{port}({path.global_space})" if path.global_space else f"mower@{port}"
-    )
+    title = f"mower@{port}({global_space})" if global_space else f"mower@{port}"
 
     icon = Icon(
         name="arknights-mower",
@@ -86,8 +84,9 @@ if __name__ == "__main__":
 
     splash.show_text("加载图标")
 
-    from arknights_mower.utils.path import get_path
     from PIL import Image, ImageTk
+
+    from arknights_mower.utils.path import get_path
 
     logo_path = get_path("@internal/logo.png")
     tray_img = Image.open(logo_path)
@@ -145,7 +144,7 @@ if __name__ == "__main__":
 
     splash.show_text("启动Flask网页服务器")
 
-    from threading import Thread, Event
+    from threading import Event, Thread
     from time import sleep
 
     app.token = token
@@ -166,7 +165,16 @@ if __name__ == "__main__":
     if conf["webview"]["tray"]:
         splash.show_text("加载托盘图标")
         tray_queue = mp.Queue()
-        tray_process = mp.Process(target=start_tray, args=(tray_queue,), daemon=True)
+        tray_process = mp.Process(
+            target=start_tray,
+            args=(
+                tray_queue,
+                path.global_space,
+                port,
+                tray_img,
+            ),
+            daemon=True,
+        )
         tray_process.start()
 
         def tray_events():
@@ -191,6 +199,7 @@ if __name__ == "__main__":
     splash.show_text("准备主窗口")
 
     import webview
+
     from arknights_mower.__init__ import __version__
 
     def create_window():
