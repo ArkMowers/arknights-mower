@@ -194,7 +194,7 @@ const new_scale = ref(webview.value.scale)
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="start_automatically">启动后自动开始任务</n-checkbox>
             </n-form-item>
-            <n-form-item label="截图数量">
+            <n-form-item>
               <template #label>
                 <span>截图数量</span>
                 <help-text>
@@ -221,6 +221,12 @@ const new_scale = ref(webview.value.scale)
               >
                 应用
               </n-button>
+            </n-form-item>
+            <n-form-item :show-label="false">
+              <n-checkbox v-model:checked="webview.tray">
+                使用托盘图标
+                <help-text>重启生效</help-text>
+              </n-checkbox>
             </n-form-item>
             <n-form-item label="显示主题">
               <n-radio-group v-model:value="theme">

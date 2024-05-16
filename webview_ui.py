@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
-import multiprocessing
+import multiprocessing as mp
+
+window = None
+tray_process = None
+width = None
+height = None
 
 if __name__ == "__main__":
-    multiprocessing.freeze_support()
+    mp.freeze_support()
 
     import tkinter as tk
     from tkinter.font import Font
@@ -54,44 +59,12 @@ if __name__ == "__main__":
 
     splash.show_text("加载图标")
 
-    from PIL import Image, ImageTk
-
     from arknights_mower.utils.path import get_path
+    from PIL import Image, ImageTk
 
     logo_path = get_path("@internal/logo.png")
     tray_img = Image.open(logo_path)
     splash.load_img(tray_img)
-
-    splash.show_text("加载依赖")
-
-    quit_app = False
-    display = True
-    window = None
-
-    def on_resized(w, h):
-        global width
-        global height
-
-        width = w
-        height = h
-
-    def toggle_window():
-        global window
-        global display
-        window.hide() if display else window.show()
-        display = not display
-
-    def on_closing():
-        if quit_app:
-            return True
-        Thread(target=toggle_window).start()
-        return False
-
-    def destroy_window():
-        global quit_app
-        global window
-        quit_app = True
-        window.destroy()
 
     splash.show_text("加载配置文件")
 
@@ -108,10 +81,6 @@ if __name__ == "__main__":
 
     token = conf["webview"]["token"]
     host = "0.0.0.0" if token else "127.0.0.1"
-
-    global width
-    global height
-
     width = conf["webview"]["width"]
     height = conf["webview"]["height"]
 
@@ -130,7 +99,6 @@ if __name__ == "__main__":
         if is_port_in_use(port):
             splash.hide()
 
-            import sys
             from tkinter import messagebox
 
             messagebox.showerror(
@@ -150,80 +118,111 @@ if __name__ == "__main__":
 
     splash.show_text("启动Flask网页服务器")
 
-    from threading import Thread
+    from threading import Thread, Event
+    from time import sleep
 
     app.token = token
-    app.global_space = path.global_space
     Thread(
         target=app.run,
         kwargs={"host": host, "port": port},
         daemon=True,
     ).start()
 
-    splash.show_text("加载托盘图标")
-
-    from pystray import Icon, Menu, MenuItem
-
-    title = (
-        f"mower@{port}({path.global_space})" if path.global_space else f"mower@{port}"
-    )
-
-    icon = Icon(
-        name="arknights-mower",
-        icon=tray_img,
-        menu=Menu(
-            MenuItem(
-                text="显示/隐藏窗口",
-                action=toggle_window,
-                default=True,
-            ),
-            MenuItem(
-                text="退出",
-                action=destroy_window,
-            ),
-        ),
-        title=title,
-    )
-    icon.run_detached()
-
-    splash.show_text("准备主窗口")
-
-    import platform
-
-    import webview
-
-    from arknights_mower.__init__ import __version__
-
-    is_win = platform.system() == "Windows"
-
-    window = webview.create_window(
-        f"arknights-mower {__version__} (http://{host}:{port})",
-        f"http://127.0.0.1:{port}?token={token}",
-        width=width,
-        height=height,
-        text_select=True,
-        hidden=is_win,
-    )
-
-    window.events.resized += on_resized
-    window.events.closing += on_closing
-
-    from time import sleep
-
     while not is_port_in_use(port):
         sleep(0.1)
 
+    show_window = Event()
+    show_window.set()
+    running = Event()
+    running.set()
+
+    if conf["webview"]["tray"]:
+
+        def start_tray(queue: mp.Queue):
+            from pystray import Icon, Menu, MenuItem
+
+            title = (
+                f"mower@{port}({path.global_space})"
+                if path.global_space
+                else f"mower@{port}"
+            )
+
+            icon = Icon(
+                name="arknights-mower",
+                icon=tray_img,
+                menu=Menu(
+                    MenuItem(
+                        text="打开/关闭窗口",
+                        action=lambda: queue.put("toggle"),
+                        default=True,
+                    ),
+                    MenuItem(
+                        text="退出",
+                        action=lambda: queue.put("exit"),
+                    ),
+                ),
+                title=title,
+            )
+            icon.run()
+
+        splash.show_text("加载托盘图标")
+        tray_queue = mp.Queue()
+        tray_process = mp.Process(target=start_tray, args=(tray_queue,), daemon=True)
+        tray_process.start()
+
+        def tray_events():
+            global window
+            while True:
+                msg = tray_queue.get()
+                if msg == "toggle":
+                    if show_window.is_set():
+                        show_window.clear()
+                        if window:
+                            window.destroy()
+                            window = None
+                    else:
+                        show_window.set()
+                elif msg == "exit":
+                    running.clear()
+                    if window:
+                        window.destroy()
+
+        Thread(target=tray_events, daemon=True).start()
+
+    splash.show_text("准备主窗口")
+
+    import webview
+    from arknights_mower.__init__ import __version__
+
+    def create_window():
+        global window
+
+        def window_size(w, h):
+            global width
+            global height
+            width = w
+            height = h
+
+        window = webview.create_window(
+            f"arknights-mower {__version__} (http://{host}:{port})",
+            f"http://127.0.0.1:{port}?token={token}",
+            text_select=True,
+            confirm_close=not conf["webview"]["tray"],
+            width=width,
+            height=height,
+        )
+        window.events.resized += window_size
+
     splash.stop()
 
-    def win_show(window):
-        if is_win:
-            window.show()
-
-    webview.start(win_show, window)
-
-    window = None
-
-    icon.stop()
+    while running.is_set():
+        if show_window.wait(1):
+            create_window()
+            webview.start()
+            show_window.clear()
+            window = None
+            if not conf["webview"]["tray"]:
+                running.clear()
 
     conf = load_conf()
     conf["webview"]["width"] = width
