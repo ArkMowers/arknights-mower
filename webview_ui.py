@@ -6,6 +6,33 @@ tray_process = None
 width = None
 height = None
 
+
+def start_tray(queue: mp.Queue):
+    from pystray import Icon, Menu, MenuItem
+
+    title = (
+        f"mower@{port}({path.global_space})" if path.global_space else f"mower@{port}"
+    )
+
+    icon = Icon(
+        name="arknights-mower",
+        icon=tray_img,
+        menu=Menu(
+            MenuItem(
+                text="打开/关闭窗口",
+                action=lambda: queue.put("toggle"),
+                default=True,
+            ),
+            MenuItem(
+                text="退出",
+                action=lambda: queue.put("exit"),
+            ),
+        ),
+        title=title,
+    )
+    icon.run()
+
+
 if __name__ == "__main__":
     mp.freeze_support()
 
@@ -137,34 +164,6 @@ if __name__ == "__main__":
     running.set()
 
     if conf["webview"]["tray"]:
-
-        def start_tray(queue: mp.Queue):
-            from pystray import Icon, Menu, MenuItem
-
-            title = (
-                f"mower@{port}({path.global_space})"
-                if path.global_space
-                else f"mower@{port}"
-            )
-
-            icon = Icon(
-                name="arknights-mower",
-                icon=tray_img,
-                menu=Menu(
-                    MenuItem(
-                        text="打开/关闭窗口",
-                        action=lambda: queue.put("toggle"),
-                        default=True,
-                    ),
-                    MenuItem(
-                        text="退出",
-                        action=lambda: queue.put("exit"),
-                    ),
-                ),
-                title=title,
-            )
-            icon.run()
-
         splash.show_text("加载托盘图标")
         tray_queue = mp.Queue()
         tray_process = mp.Process(target=start_tray, args=(tray_queue,), daemon=True)
