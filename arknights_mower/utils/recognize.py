@@ -362,7 +362,7 @@ class Recognizer(object):
             announcement = e.submit(self.check_announcement)
             skip = submit("skip")
             upgrade = submit("upgrade")
-            detector_confirm = e.submit(lambda: detector_confirm(self.img))
+            detector_confirm = e.submit(lambda: detector.confirm(self.img))
             login_verify = submit("login_verify")
             login_captcha = submit("login_captcha")
             login_connecting = submit("login_connecting")
