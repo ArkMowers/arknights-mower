@@ -521,7 +521,6 @@ def simulate():
             base_scheduler.run()
             reconnect_tries = 0
         except MowerExit:
-            print("MowerExit")
             return
         except (ConnectionError, ConnectionAbortedError, AttributeError) as e:
             reconnect_tries += 1

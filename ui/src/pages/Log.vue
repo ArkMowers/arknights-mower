@@ -5,7 +5,7 @@ import { onMounted, inject, nextTick, watch, ref } from 'vue'
 
 const mower_store = useMowerStore()
 
-const { log, running, log_lines, task_list } = storeToRefs(mower_store)
+const { log, running, log_lines, task_list, waiting } = storeToRefs(mower_store)
 const axios = inject('axios')
 
 const auto_scroll = ref(true)
@@ -39,8 +39,11 @@ function start() {
 }
 
 function stop() {
-  running.value = false
-  axios.get(`${import.meta.env.VITE_HTTP_URL}/stop`)
+  waiting.value = true
+  axios.get(`${import.meta.env.VITE_HTTP_URL}/stop`).then((response) => {
+    running.value = response.data == 'false'
+    waiting.value = false
+  })
 }
 
 function refresh() {
@@ -88,7 +91,7 @@ const bg_opacity = computed(() => {
     </n-table>
     <n-log class="log" :log="log" language="mower" style="user-select: text" />
     <div class="action-container">
-      <n-button type="error" @click="stop" v-if="running">
+      <n-button type="error" @click="stop" v-if="running" :loading="waiting" :disabled="waiting">
         <template #icon>
           <n-icon>
             <stop-icon />
@@ -96,7 +99,7 @@ const bg_opacity = computed(() => {
         </template>
         立即停止
       </n-button>
-      <n-button type="primary" @click="start" v-else>
+      <n-button type="primary" @click="start" v-else :loading="waiting" :disabled="waiting">
         <template #icon>
           <n-icon>
             <play-icon />
