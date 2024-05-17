@@ -3318,5 +3318,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             return True
 
     def 仓库扫描(self):
-        depotscan(self.device)
+        try:
+            depotscan(self.device)
+        except Exception as e:
+            logger.info(f"先不运行 出bug了 : {e}")
+            return False
         return True
