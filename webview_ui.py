@@ -7,10 +7,15 @@ width = None
 height = None
 
 
-def start_tray(queue: mp.Queue, global_space, port, tray_img):
+def start_tray(queue: mp.Queue, global_space, port, tray_img, url):
     from pystray import Icon, Menu, MenuItem
 
     title = f"mower@{port}({global_space})" if global_space else f"mower@{port}"
+
+    def open_browser():
+        import webbrowser
+
+        webbrowser.open(url)
 
     icon = Icon(
         name="arknights-mower",
@@ -20,6 +25,10 @@ def start_tray(queue: mp.Queue, global_space, port, tray_img):
                 text="打开/关闭窗口",
                 action=lambda: queue.put("toggle"),
                 default=True,
+            ),
+            MenuItem(
+                text="在浏览器中打开网页面板",
+                action=open_browser,
             ),
             MenuItem(
                 text="退出",
@@ -162,6 +171,10 @@ if __name__ == "__main__":
     running = Event()
     running.set()
 
+    url = f"http://127.0.0.1:{port}"
+    if token:
+        url += f"?token={token}"
+
     if conf["webview"]["tray"]:
         splash.show_text("加载托盘图标")
         tray_queue = mp.Queue()
@@ -172,6 +185,7 @@ if __name__ == "__main__":
                 path.global_space,
                 port,
                 tray_img,
+                url,
             ),
             daemon=True,
         )
@@ -213,7 +227,7 @@ if __name__ == "__main__":
 
         window = webview.create_window(
             f"arknights-mower {__version__} (http://{host}:{port})",
-            f"http://127.0.0.1:{port}?token={token}",
+            url,
             text_select=True,
             confirm_close=not conf["webview"]["tray"],
             width=width,
