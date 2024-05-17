@@ -48,7 +48,8 @@ def main():
     config.ADB_CONTROL_CLIENT = conf["touch_method"]
     config.FEATURE_MATCHER = conf["feature_matcher"]
     config.get_scene = conf["get_scene"]
-    config.droidcast = {"enable": True, "session": requests.Session(), "rotate": True}
+    config.droidcast = conf["droidcast"]
+    config.droidcast["session"] = requests.Session()
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("localhost", 0))
         config.droidcast["port"] = s.getsockname()[1]
