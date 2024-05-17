@@ -2431,7 +2431,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             self.sleep(1)
         length = len(self.op_data.plan[room])
         if length > 3:
-            while self.get_color((1800, 138))[0] != 49:
+            while self.get_color((1800, 138))[0] > 51:
                 self.swipe(
                     (self.recog.w * 0.8, self.recog.h * 0.5),
                     (0, self.recog.h * 0.45),
@@ -2454,7 +2454,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         self.recog.save_screencap("get_agent_from_room")
         for i in range(0, length):
             if i >= 3 and not swiped:
-                while self.get_color((1800, 930))[0] != 49:
+                while self.get_color((1800, 930))[0] > 51:
                     self.swipe(
                         (self.recog.w * 0.8, self.recog.h * 0.5),
                         (0, -self.recog.h * 0.45),
