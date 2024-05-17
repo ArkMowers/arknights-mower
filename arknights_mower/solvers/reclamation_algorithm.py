@@ -577,6 +577,7 @@ class ReclamationAlgorithm(BaseSolver):
                     self.device.exit()
                     if self.device.check_current_focus():
                         self.recog.update()
+                    self.task_queue = None
         else:
             self.unknown_time = None
 
