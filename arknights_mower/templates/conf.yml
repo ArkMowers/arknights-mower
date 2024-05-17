@@ -274,5 +274,8 @@ feature_matcher: "flann"
 sign_in:
   enable: true
 get_scene:
-  concurrent: true
+  concurrent: false
   max_workers: 4
+droidcast:
+  enable: true
+  rotate: false

@@ -1,8 +1,10 @@
 import json
 import os
+import socket
 from copy import deepcopy
 from datetime import datetime, timedelta
 
+import requests
 from evalidate import Expr
 
 from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
@@ -46,6 +48,11 @@ def main():
     config.ADB_CONTROL_CLIENT = conf["touch_method"]
     config.FEATURE_MATCHER = conf["feature_matcher"]
     config.get_scene = conf["get_scene"]
+    config.droidcast = {"enable": True, "session": requests.Session(), "rotate": True}
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("localhost", 0))
+        config.droidcast["port"] = s.getsockname()[1]
+
     if config.wh is None:
         init_fhlr()
     logger.info("开始运行Mower")

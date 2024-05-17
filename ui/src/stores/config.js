@@ -75,6 +75,7 @@ export const useConfigStore = defineStore('config', () => {
   const feature_matcher = ref('flann')
   const sign_in = ref({ enable: true })
   const get_scene = ref({})
+  const droidcast = ref({})
 
   async function load_shop() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/shop`)
@@ -166,6 +167,7 @@ export const useConfigStore = defineStore('config', () => {
     feature_matcher.value = response.data.feature_matcher
     sign_in.value = response.data.sign_in
     get_scene.value = response.data.get_scene
+    droidcast.value = response.data.droidcast
   }
 
   function build_config() {
@@ -247,7 +249,8 @@ export const useConfigStore = defineStore('config', () => {
       free_room: free_room.value,
       feature_matcher: feature_matcher.value,
       sign_in: sign_in.value,
-      get_scene: get_scene.value
+      get_scene: get_scene.value,
+      droidcast: droidcast.value
     }
   }
 
@@ -333,6 +336,7 @@ export const useConfigStore = defineStore('config', () => {
     free_room,
     feature_matcher,
     sign_in,
-    get_scene
+    get_scene,
+    droidcast
   }
 })

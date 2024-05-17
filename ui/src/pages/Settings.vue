@@ -36,7 +36,8 @@ const {
   touch_method,
   free_room,
   feature_matcher,
-  get_scene
+  get_scene,
+  droidcast
 } = storeToRefs(config_store)
 
 const { operators } = storeToRefs(plan_store)
@@ -207,6 +208,26 @@ const new_scale = ref(webview.value.scale)
             </n-form-item>
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="start_automatically">启动后自动开始任务</n-checkbox>
+            </n-form-item>
+            <n-form-item label="截图方案">
+              <n-radio-group v-model:value="droidcast.enable">
+                <n-flex>
+                  <n-radio :value="false">
+                    ADB+Gzip<help-text>无损压缩，兼容性好</help-text>
+                  </n-radio>
+                  <n-radio :value="true">
+                    DroidCast<help-text>有损压缩，速度更快</help-text>
+                  </n-radio>
+                </n-flex>
+              </n-radio-group>
+            </n-form-item>
+            <n-form-item label="旋转截图" v-if="droidcast.enable">
+              <n-radio-group v-model:value="droidcast.rotate">
+                <n-flex>
+                  <n-radio :value="false">不旋转</n-radio>
+                  <n-radio :value="true">旋转180度</n-radio>
+                </n-flex>
+              </n-radio-group>
             </n-form-item>
             <n-form-item>
               <template #label>

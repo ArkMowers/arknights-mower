@@ -1,7 +1,15 @@
 from __future__ import annotations
 
+import gzip
+import socket
 import time
 from typing import Optional
+
+import cv2
+import numpy as np
+
+from arknights_mower import __rootdir__
+from arknights_mower.utils.image import bytes2img
 
 from .. import config
 from ..log import logger, save_screenshot
@@ -9,23 +17,21 @@ from .adb_client import ADBClient
 from .maatouch import MaaTouch
 from .scrcpy import Scrcpy
 
-import gzip
-import numpy as np
-import cv2
-
 
 class Device(object):
-    """ Android Device """
+    """Android Device"""
 
     class Control(object):
-        """ Android Device Control """
+        """Android Device Control"""
 
-        def __init__(self, device: Device, client: ADBClient = None, touch_device: str = None) -> None:
+        def __init__(
+            self, device: Device, client: ADBClient = None, touch_device: str = None
+        ) -> None:
             self.device = device
             self.maatouch = None
             self.scrcpy = None
 
-            if config.ADB_CONTROL_CLIENT == 'maatouch':
+            if config.ADB_CONTROL_CLIENT == "maatouch":
                 self.maatouch = MaaTouch(client)
             else:
                 self.scrcpy = Scrcpy(client)
@@ -38,30 +44,49 @@ class Device(object):
             else:
                 raise NotImplementedError
 
-        def swipe(self, start: tuple[int, int], end: tuple[int, int], duration: int) -> None:
+        def swipe(
+            self, start: tuple[int, int], end: tuple[int, int], duration: int
+        ) -> None:
             if self.maatouch:
                 self.maatouch.swipe(
-                    [start, end], self.device.display_frames(), duration=duration)
+                    [start, end], self.device.display_frames(), duration=duration
+                )
             elif self.scrcpy:
-                self.scrcpy.swipe(
-                    start[0], start[1], end[0], end[1], duration / 1000)
+                self.scrcpy.swipe(start[0], start[1], end[0], end[1], duration / 1000)
             else:
                 raise NotImplementedError
 
-        def swipe_ext(self, points: list[tuple[int, int]], durations: list[int], up_wait: int) -> None:
+        def swipe_ext(
+            self, points: list[tuple[int, int]], durations: list[int], up_wait: int
+        ) -> None:
             if self.maatouch:
                 self.maatouch.swipe(
-                    points, self.device.display_frames(), duration=durations, up_wait=up_wait)
+                    points,
+                    self.device.display_frames(),
+                    duration=durations,
+                    up_wait=up_wait,
+                )
             elif self.scrcpy:
                 total = len(durations)
-                for idx, (S, E, D) in enumerate(zip(points[:-1], points[1:], durations)):
-                    self.scrcpy.swipe(S[0], S[1], E[0], E[1], D / 1000,
-                                      up_wait / 1000 if idx == total-1 else 0,
-                                      fall=idx == 0, lift=idx == total-1)
+                for idx, (S, E, D) in enumerate(
+                    zip(points[:-1], points[1:], durations)
+                ):
+                    self.scrcpy.swipe(
+                        S[0],
+                        S[1],
+                        E[0],
+                        E[1],
+                        D / 1000,
+                        up_wait / 1000 if idx == total - 1 else 0,
+                        fall=idx == 0,
+                        lift=idx == total - 1,
+                    )
             else:
                 raise NotImplementedError
 
-    def __init__(self, device_id: str = None, connect: str = None, touch_device: str = None) -> None:
+    def __init__(
+        self, device_id: str = None, connect: str = None, touch_device: str = None
+    ) -> None:
         self.device_id = device_id
         self.connect = connect
         self.touch_device = touch_device
@@ -77,7 +102,7 @@ class Device(object):
         return self.client.run(cmd)
 
     def launch(self) -> None:
-        """ launch the application """
+        """launch the application"""
         logger.info("明日方舟，启动！")
 
         tap = config.TAP_TO_LAUNCH["enable"]
@@ -85,76 +110,127 @@ class Device(object):
         y = config.TAP_TO_LAUNCH["y"]
 
         if tap:
-            self.run(f'input tap {x} {y}')
+            self.run(f"input tap {x} {y}")
         else:
-            self.run(f'am start -n {config.APPNAME}/{config.APP_ACTIVITY_NAME}')
+            self.run(f"am start -n {config.APPNAME}/{config.APP_ACTIVITY_NAME}")
 
     def exit(self) -> None:
-        """ exit the application """
+        """exit the application"""
         logger.info("退出游戏")
-        self.run(f'am force-stop {config.APPNAME}')
+        self.run(f"am force-stop {config.APPNAME}")
 
     def send_keyevent(self, keycode: int) -> None:
-        """ send a key event """
-        logger.debug(f'keyevent: {keycode}')
-        command = f'input keyevent {keycode}'
+        """send a key event"""
+        logger.debug(f"keyevent: {keycode}")
+        command = f"input keyevent {keycode}"
         self.run(command)
 
     def send_text(self, text: str) -> None:
-        """ send a text """
-        logger.debug(f'text: {repr(text)}')
+        """send a text"""
+        logger.debug(f"text: {repr(text)}")
         text = text.replace('"', '\\"')
         command = f'input text "{text}"'
         self.run(command)
 
     def screencap(self, save: bool = False) -> bytes:
-        """ get a screencap """
-        command = 'screencap 2>/dev/null | gzip -1'
-        data = gzip.decompress(self.run(command))
-        array = np.frombuffer(data[-1920 * 1080 * 4:], np.uint8).reshape(1080, 1920, 4)
-        img = cv2.cvtColor(array, cv2.COLOR_RGBA2RGB)
-        gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-        screencap = cv2.imencode('.png', cv2.cvtColor(img, cv2.COLOR_RGB2BGR))[1]
+        """get a screencap"""
+        if config.droidcast["enable"]:
+            port = config.droidcast["port"]
+            session = config.droidcast["session"]
+            while True:
+                try:
+                    r = session.get(f"http://127.0.0.1:{port}/screenshot")
+                    img = bytes2img(r.content)
+                    gray = bytes2img(r.content, True)
+                    if config.droidcast["rotate"]:
+                        img = cv2.rotate(img, cv2.ROTATE_180)
+                        gray = cv2.rotate(gray, cv2.ROTATE_180)
+                    break
+                except Exception:
+                    logger.info("启动DroidCast")
+                    apk_path = (
+                        f"{__rootdir__}/vendor/droidcast/DroidCast-debug-1.2.1.apk"
+                    )
+                    self.client.cmd(f"install {apk_path}")
+                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                        s.bind(("localhost", 0))
+                        port = s.getsockname()[1]
+                    config.droidcast["port"] = port
+                    self.client.cmd(f"forward tcp:{port} tcp:{port}")
+                    out = self.client.cmd_shell("pm path com.rayworks.droidcast")
+                    out = str(out)
+                    prefix = "package:"
+                    postfix = ".apk"
+                    beg = out.index(prefix, 0)
+                    end = out.rfind(postfix)
+                    class_path = (
+                        "CLASSPATH="
+                        + out[beg + len(prefix) : (end + len(postfix))].strip()
+                    )
+                    self.client.process(
+                        class_path,
+                        [
+                            "app_process",
+                            "/",
+                            "com.rayworks.droidcast.Main",
+                            f"--port={port}",
+                        ],
+                    )
+                    time.sleep(2)
+        else:
+            command = "screencap 2>/dev/null | gzip -1"
+            data = gzip.decompress(self.run(command))
+            array = np.frombuffer(data[-1920 * 1080 * 4 :], np.uint8).reshape(
+                1080, 1920, 4
+            )
+            img = cv2.cvtColor(array, cv2.COLOR_RGBA2RGB)
+            gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 
+        screencap = cv2.imencode(".png", cv2.cvtColor(img, cv2.COLOR_RGB2BGR))[1]
         if save:
             save_screenshot(screencap)
         return screencap, img, gray
 
     def current_focus(self) -> str:
-        """ detect current focus app """
-        command = 'dumpsys window | grep mCurrentFocus'
-        line = self.run(command).decode('utf8')
-        return line.strip()[:-1].split(' ')[-1]
+        """detect current focus app"""
+        command = "dumpsys window | grep mCurrentFocus"
+        line = self.run(command).decode("utf8")
+        return line.strip()[:-1].split(" ")[-1]
 
     def display_frames(self) -> tuple[int, int, int]:
-        """ get display frames if in compatibility mode"""
+        """get display frames if in compatibility mode"""
         if not config.MNT_COMPATIBILITY_MODE:
             return None
 
-        command = 'dumpsys window | grep DisplayFrames'
-        line = self.run(command).decode('utf8')
+        command = "dumpsys window | grep DisplayFrames"
+        line = self.run(command).decode("utf8")
         """ eg. DisplayFrames w=1920 h=1080 r=3 """
-        res = line.strip().replace('=', ' ').split(' ')
+        res = line.strip().replace("=", " ").split(" ")
         return int(res[2]), int(res[4]), int(res[6])
 
     def tap(self, point: tuple[int, int]) -> None:
-        """ tap """
-        logger.debug(f'tap: {point}')
+        """tap"""
+        logger.debug(f"tap: {point}")
         self.control.tap(point)
 
-    def swipe(self, start: tuple[int, int], end: tuple[int, int], duration: int = 100) -> None:
-        """ swipe """
-        logger.debug(f'swipe: {start} -> {end}, duration={duration}')
+    def swipe(
+        self, start: tuple[int, int], end: tuple[int, int], duration: int = 100
+    ) -> None:
+        """swipe"""
+        logger.debug(f"swipe: {start} -> {end}, duration={duration}")
         self.control.swipe(start, end, duration)
 
-    def swipe_ext(self, points: list[tuple[int, int]], durations: list[int], up_wait: int = 500) -> None:
-        """ swipe_ext """
+    def swipe_ext(
+        self, points: list[tuple[int, int]], durations: list[int], up_wait: int = 500
+    ) -> None:
+        """swipe_ext"""
         logger.debug(
-            f'swipe_ext: points={points}, durations={durations}, up_wait={up_wait}')
+            f"swipe_ext: points={points}, durations={durations}, up_wait={up_wait}"
+        )
         self.control.swipe_ext(points, durations, up_wait)
 
     def check_current_focus(self) -> bool:
-        """ check if the application is in the foreground """
+        """check if the application is in the foreground"""
         if self.current_focus() != f"{config.APPNAME}/{config.APP_ACTIVITY_NAME}":
             self.launch()
             # wait for app to finish launching
