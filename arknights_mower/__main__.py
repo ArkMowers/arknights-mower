@@ -227,7 +227,8 @@ def initialize(tasks, scheduler=None):
     # 干员宿舍回复阈值
     # 高效组心情低于 UpperLimit  * 阈值 (向下取整)的时候才会会安排休息
     base_scheduler.last_room = ""
-    logger.info("宿舍黑名单：" + str(plan_config.free_blacklist))
+    # logger.info("宿舍黑名单：" + str(plan_config.free_blacklist))
+    #估计没用了
     base_scheduler.MAA = None
     base_scheduler.send_message_config = {
         "email_config": {
