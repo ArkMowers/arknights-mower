@@ -290,7 +290,9 @@ class BaseMixin:
     def detect_product_complete(self):
         for product in ["gold", "exp", "lmd", "ori", "oru", "trust"]:
             if pos := self.find(
-                f"infra_{product}_complete", scope=((1230, 0), (1920, 1080))
+                f"infra_{product}_complete",
+                scope=((1230, 0), (1920, 1080)),
+                score=0.1,
             ):
                 return pos
 
