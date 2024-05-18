@@ -1,9 +1,11 @@
 import json
 import os
 import pandas as pd
-from typing import Dict, List, Union
+
+# from typing import Dict, List, Union
 from .path import get_path
-from .log import logger
+
+# from .log import logger
 from arknights_mower.data import key_mapping
 from datetime import datetime
 
@@ -208,5 +210,4 @@ def 创建csv():
         json.dumps({"空": ""}, ensure_ascii=False),
     ]
     depotinfo = pd.DataFrame([result], columns=["Timestamp", "Data", "json"])
-    depotinfo.to_csv(path, mode="a", index=False,
-                     header=True, encoding="utf-8")
+    depotinfo.to_csv(path, mode="a", index=False, header=True, encoding="utf-8")
