@@ -118,6 +118,7 @@ function create_sub_plan() {
       operator: '',
       right: ''
     },
+    trigger_timing: 'AFTER_PLANNING',
     task: {}
   })
   sub_plan.value = backup_plans.value.length - 1
