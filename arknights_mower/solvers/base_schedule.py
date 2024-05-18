@@ -1699,7 +1699,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     else:
                         ctm.complete("place")
                 elif ctm.task == "give_away":
-                    self.ctap((1799, 578), max_seconds=10)
+                    self.ctap((1799, 578))
                 elif ctm.task == "party_time":
                     self.back()
 

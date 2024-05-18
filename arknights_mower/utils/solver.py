@@ -172,7 +172,7 @@ class BaseSolver:
         if interval > 0:
             self.sleep(interval)
 
-    def ctap(self, pos: tp.Location, max_seconds: int = 5):
+    def ctap(self, pos: tp.Location, max_seconds: int = 10):
         caller = getframeinfo(stack()[1][0])
         id = f"{caller.filename}:{caller.lineno}"
         logger.debug(id)
@@ -217,7 +217,7 @@ class BaseSolver:
             "warehouse": (1788, 973),  # 仓库
             "headhunting": (1749, 783),  # 干员寻访
         }
-        self.tap(pos[name], interval=2)
+        self.ctap(pos[name])
 
     def template_match(
         self,
