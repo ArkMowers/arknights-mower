@@ -92,10 +92,10 @@ class Recognizer(object):
         img = cropimg(self.gray, ((960, 0), (1920, 540)))
         tpl = loadres("announcement_close", True)
         msk = thres2(tpl, 1)
-        result = cv2.matchTemplate(img, tpl, cv2.TM_CCORR_NORMED, None, msk)
+        result = cv2.matchTemplate(img, tpl, cv2.TM_SQDIFF_NORMED, None, msk)
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-        if max_val > 0.99:
-            return (max_loc[0] + 960 + 42, max_loc[1] + 42)
+        if min_val < 0.02:
+            return (min_loc[0] + 960 + 42, min_loc[1] + 42)
         if self.find("ann5_special_access"):
             return (1605, 240)
 
