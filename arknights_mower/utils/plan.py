@@ -3,6 +3,16 @@ from enum import Enum
 from arknights_mower.utils import config
 
 
+def set_timing_enum(value):
+    if value is None:
+        return value
+    else:
+        try:
+            return PlanTriggerTiming[value.upper()]
+        except KeyError:
+            return PlanTriggerTiming.AFTER_PLANNING
+
+
 class Plan(object):
 
     def __init__(self, plan, config, trigger=None, task=None, trigger_timing=None):
@@ -14,10 +24,7 @@ class Plan(object):
         self.trigger = trigger
         # 触发备用plan 的时间生成的任务 (选填）
         self.task = task
-        if trigger_timing is None:
-            self.trigger_timing = PlanTriggerTiming.AFTER_PLANNING
-        else:
-            self.trigger_timing = trigger_timing
+        self.trigger_timing = set_timing_enum(trigger_timing)
 
 
 class PlanTriggerTiming(Enum):

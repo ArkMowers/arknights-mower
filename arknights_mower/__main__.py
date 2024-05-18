@@ -213,8 +213,9 @@ def initialize(tasks, scheduler=None):
         )
         backup_trigger = get_logic_exp(i["trigger"]) if "trigger" in i else None
         backup_task = i["task"] if "task" in i else None
+        backup_trigger_timing = i["trigger_timing"] if "trigger_timing" in i else None
         backup_plans.append(
-            Plan(backup_plan, backup_config, trigger=backup_trigger, task=backup_task)
+            Plan(backup_plan, backup_config, trigger=backup_trigger, task=backup_task, trigger_timing=backup_trigger_timing)
         )
     plan["backup_plans"] = backup_plans
 
