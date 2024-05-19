@@ -121,12 +121,7 @@ if __name__ == "__main__":
 
     splash.show_text("检测端口占用")
 
-    import socket
-
-    def is_port_in_use(port):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(0.1)
-            return s.connect_ex(("localhost", port)) == 0
+    from arknights_mower.utils.network import is_port_in_use, get_new_port
 
     if token:
         port = conf["webview"]["port"]
@@ -143,9 +138,7 @@ if __name__ == "__main__":
             splash.stop()
             sys.exit()
     else:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.bind(("localhost", 0))
-            port = s.getsockname()[1]
+        port = get_new_port()
 
     splash.show_text("加载Flask依赖")
 

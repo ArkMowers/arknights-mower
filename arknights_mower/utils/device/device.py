@@ -10,6 +10,7 @@ import numpy as np
 
 from arknights_mower import __rootdir__
 from arknights_mower.utils.image import bytes2img
+from arknights_mower.utils.network import is_port_in_use, get_new_port
 
 from .. import config
 from ..log import logger, save_screenshot
@@ -132,13 +133,66 @@ class Device(object):
         command = f'input text "{text}"'
         self.run(command)
 
+    def get_droidcast_classpath(self) -> str | None:
+        # TODO: 退出时（并非结束mower线程时）关闭DroidCast进程、取消ADB转发
+        out = self.client.cmd_shell("pm path com.rayworks.droidcast", decode=True)
+        prefix = "package:"
+        if prefix not in out:
+            logger.error(f"无法获取CLASSPATH：{out}")
+            return None
+        postfix = ".apk"
+        beg = out.index(prefix, 0)
+        end = out.rfind(postfix)
+        class_path = out[beg + len(prefix) : (end + len(postfix))].strip()
+        class_path = "CLASSPATH=" + class_path
+        logger.info(f"成功获取CLASSPATH：{class_path}")
+        return class_path
+
+    def start_droidcast(self) -> bool:
+        class_path = self.get_droidcast_classpath()
+        if not class_path:
+            logger.info("安装DroidCast")
+            apk_path = f"{__rootdir__}/vendor/droidcast/DroidCast-debug-1.2.1.apk"
+            out = self.client.cmd(["install", apk_path], decode=True)
+            if "Success" in out:
+                logger.info("DroidCast安装完成，获取CLASSPATH")
+            else:
+                logger.error(f"DroidCast安装失败：{out}")
+                return False
+            class_path = self.get_droidcast_classpath()
+            if not class_path:
+                logger.error(f"无法获取CLASSPATH：{out}")
+                return False
+        port = config.droidcast["port"]
+        if port == 0 or is_port_in_use(port):
+            if port != 0:
+                self.client.cmd(f"forward --remove tcp:{port}")
+            port = get_new_port()
+            config.droidcast["port"] = port
+            logger.info(f"更新DroidCast端口为{port}")
+        else:
+            logger.info(f"保持DroidCast端口为{port}")
+        self.client.cmd(f"forward tcp:{port} tcp:{port}")
+        logger.info("ADB端口转发成功，启动DroidCast")
+        process = self.client.process(
+            class_path,
+            [
+                "app_process",
+                "/",
+                "com.rayworks.droidcast.Main",
+                f"--port={port}",
+            ],
+        )
+        config.droidcast["process"] = process
+        return True
+
     def screencap(self, save: bool = False) -> bytes:
         """get a screencap"""
         if config.droidcast["enable"]:
-            port = config.droidcast["port"]
             session = config.droidcast["session"]
             while True:
                 try:
+                    port = config.droidcast["port"]
                     r = session.get(f"http://127.0.0.1:{port}/screenshot")
                     img = bytes2img(r.content)
                     gray = bytes2img(r.content, True)
@@ -147,36 +201,8 @@ class Device(object):
                         gray = cv2.rotate(gray, cv2.ROTATE_180)
                     break
                 except Exception:
-                    logger.info("启动DroidCast")
-                    apk_path = (
-                        f"{__rootdir__}/vendor/droidcast/DroidCast-debug-1.2.1.apk"
-                    )
-                    self.client.cmd(f"install {apk_path}")
-                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                        s.bind(("localhost", 0))
-                        port = s.getsockname()[1]
-                    config.droidcast["port"] = port
-                    self.client.cmd(f"forward tcp:{port} tcp:{port}")
-                    out = self.client.cmd_shell("pm path com.rayworks.droidcast")
-                    out = str(out)
-                    prefix = "package:"
-                    postfix = ".apk"
-                    beg = out.index(prefix, 0)
-                    end = out.rfind(postfix)
-                    class_path = (
-                        "CLASSPATH="
-                        + out[beg + len(prefix) : (end + len(postfix))].strip()
-                    )
-                    self.client.process(
-                        class_path,
-                        [
-                            "app_process",
-                            "/",
-                            "com.rayworks.droidcast.Main",
-                            f"--port={port}",
-                        ],
-                    )
-                    time.sleep(2)
+                    self.start_droidcast()
+                    time.sleep(3)
         else:
             command = "screencap 2>/dev/null | gzip -1"
             data = gzip.decompress(self.run(command))

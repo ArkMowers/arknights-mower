@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import platform
 import subprocess
 
+from arknights_mower import __system__
 from arknights_mower.utils.device.adb_client import ADBClient
 
 from ...log import logger
@@ -24,9 +24,7 @@ class Session(object):
             stdout=subprocess.PIPE,
             stdin=subprocess.PIPE,
             text=True,
-            creationflags=subprocess.CREATE_NO_WINDOW
-            if platform.system() == "Windows"
-            else 0,
+            creationflags=subprocess.CREATE_NO_WINDOW if __system__ == "windows" else 0,
         )
 
         # ^ <max-contacts> <max-x> <max-y> <max-pressure>

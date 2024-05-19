@@ -48,11 +48,14 @@ def main():
     config.ADB_CONTROL_CLIENT = conf["touch_method"]
     config.FEATURE_MATCHER = conf["feature_matcher"]
     config.get_scene = conf["get_scene"]
-    config.droidcast = conf["droidcast"]
-    config.droidcast["session"] = requests.Session()
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("localhost", 0))
-        config.droidcast["port"] = s.getsockname()[1]
+    if hasattr(config, "droidcast"):
+        conf["droidcast"].update(config.droidcast)
+        config.droidcast = conf["droidcast"]
+    else:
+        config.droidcast = conf["droidcast"]
+        config.droidcast["session"] = requests.Session()
+        config.droidcast["port"] = 0
+        config.droidcast["process"] = None
 
     if config.wh is None:
         init_fhlr()
@@ -215,7 +218,13 @@ def initialize(tasks, scheduler=None):
         backup_task = i["task"] if "task" in i else None
         backup_trigger_timing = i["trigger_timing"] if "trigger_timing" in i else None
         backup_plans.append(
-            Plan(backup_plan, backup_config, trigger=backup_trigger, task=backup_task, trigger_timing=backup_trigger_timing)
+            Plan(
+                backup_plan,
+                backup_config,
+                trigger=backup_trigger,
+                task=backup_task,
+                trigger_timing=backup_trigger_timing,
+            )
         )
     plan["backup_plans"] = backup_plans
 
@@ -229,7 +238,7 @@ def initialize(tasks, scheduler=None):
     # 高效组心情低于 UpperLimit  * 阈值 (向下取整)的时候才会会安排休息
     base_scheduler.last_room = ""
     # logger.info("宿舍黑名单：" + str(plan_config.free_blacklist))
-    #估计没用了
+    # 估计没用了
     base_scheduler.MAA = None
     base_scheduler.send_message_config = {
         "email_config": {
