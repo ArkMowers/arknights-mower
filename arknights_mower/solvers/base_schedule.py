@@ -1748,13 +1748,14 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         self.tap(exit_pos)
                     continue
                 if self.get_color((1328 + 77 * cl, 114))[0] < 150:
+                    # 右上角 1-7
                     self.tap(clue_scope[cl])
                     continue
                 receive = st in ["available", "self"]
                 filter_receive = (1900, 45)
                 filter_self = (1610, 70)
                 filter_pos = filter_receive if receive else filter_self
-                if all(self.get_color(filter_pos) > [252] * 3):
+                if not all(self.get_color(filter_pos) > [252] * 3):
                     self.tap(filter_pos)
                     continue
                 clue_pos = ((1305, 208), (1305, 503), (1305, 797))
