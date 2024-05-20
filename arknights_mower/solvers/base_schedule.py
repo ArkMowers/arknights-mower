@@ -1547,7 +1547,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         def tl2p(top_left):
             return top_left, va(top_left, clue_size)
 
-        orange_dot = (255, 104, 1)
+        def is_orange(dot):
+            orange_dot = (255, 104, 1)
+            return all([abs(dot[i] - orange_dot[i]) < 3 for i in range(3)])
 
         clue_scope = {}
         for index, top_left in clue_top_left.items():
@@ -1614,7 +1616,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             if unlock_pos is None:
                 return None
             color = self.get_color(self.get_pos(unlock_pos))
-            if all(color == [255] * 3):
+            if all(color > [252] * 3):
                 return unlock_pos
             return None
 
@@ -1684,7 +1686,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         self.tap(unlock_pos)
                         continue
                     for i in range(1, 8):
-                        if all(self.get_color(main_dots[i]) == orange_dot):
+                        if is_orange(self.get_color(main_dots[i])):
                             clue_status[i] = "available"
                         elif clue_cls(i):
                             hsv = cv2.cvtColor(self.recog.img, cv2.COLOR_RGB2HSV)
@@ -1752,7 +1754,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 filter_receive = (1900, 45)
                 filter_self = (1610, 70)
                 filter_pos = filter_receive if receive else filter_self
-                if all(self.get_color(filter_pos) != [255] * 3):
+                if all(self.get_color(filter_pos) > [252] * 3):
                     self.tap(filter_pos)
                     continue
                 clue_pos = ((1305, 208), (1305, 503), (1305, 797))
@@ -2402,7 +2404,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         error_count = 0
         while True:
             if pos := self.find("room_detail"):
-                if self.get_color(pos[0])[0] == 255:
+                if self.get_color(pos[0])[0] > 252:
                     return
                 else:
                     logger.info("等待动画")
