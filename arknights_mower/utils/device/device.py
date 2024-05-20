@@ -135,11 +135,12 @@ class Device(object):
 
     def get_droidcast_classpath(self) -> str | None:
         # TODO: 退出时（并非结束mower线程时）关闭DroidCast进程、取消ADB转发
-        out = self.client.cmd_shell("pm path com.rayworks.droidcast", decode=True)
-        prefix = "package:"
-        if prefix not in out:
-            logger.error(f"无法获取CLASSPATH：{out}")
+        try:
+            out = self.client.cmd_shell("pm path com.rayworks.droidcast", decode=True)
+        except Exception:
+            logger.error("无法获取CLASSPATH")
             return None
+        prefix = "package:"
         postfix = ".apk"
         beg = out.index(prefix, 0)
         end = out.rfind(postfix)
