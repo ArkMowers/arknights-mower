@@ -1514,7 +1514,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 if tap_times > 5:
                     break
         if not tapped:
-            self.tap((self.recog.w * 0.05, self.recog.h * 0.95))
+            # 点击右上角的通知图标
+            # 可能被产物收取提示挡住，所以直接点位置
+            self.tap((1840, 140))
             self.todo_task = True
 
     def clue_new(self):
