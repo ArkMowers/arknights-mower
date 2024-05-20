@@ -41,7 +41,7 @@ function start() {
 function stop() {
   waiting.value = true
   axios.get(`${import.meta.env.VITE_HTTP_URL}/stop`).then((response) => {
-    running.value = response.data == 'false'
+    running.value = !response.data
     waiting.value = false
   })
 }
