@@ -3108,13 +3108,14 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         self.credit_fight = get_server_weekday()
                         logger.info("记录首次信用作战")
                     logger.debug(stage_drop)
-                    # 有掉落东西再发
                     if stage_drop["details"]:
                         self.send_message(
                             maa_template.render(stage_drop=stage_drop),
                             "Maa停止",
                             "html",
                         )
+                    else:
+                        self.send_message("Maa停止")
 
                 else:
                     self.send_message("Maa单次任务停止")
