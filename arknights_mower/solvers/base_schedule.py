@@ -2143,9 +2143,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             )
             if wait_confirm > 0:
                 logger.info(f"等待跑单 {str(wait_confirm)} 秒")
-                self.csleep(wait_confirm)
-        self.tap_element("confirm_blue", detected=True, judge=False, interval=3)
-        if self.get_infra_scene() == Scene.INFRA_ARRANGE_CONFIRM:
+                self.sleep(wait_confirm)
+        self.tap_element("confirm_blue")
+        if self.find("arrange_confirm"):
             _x0 = self.recog.w // 3 * 2  # double confirm
             _y0 = self.recog.h - 10
             self.tap((_x0, _y0))
@@ -2402,30 +2402,26 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 self.op_data.operators[_operator].time_stamp = None
 
     def turn_on_room_detail(self, room):
-        error_count = 0
-        while True:
-            if pos := self.find("room_detail"):
-                if self.get_color(pos[0])[0] > 252:
-                    return
-                else:
+        for enter_time in range(3):
+            for retry_times in range(10):
+                if pos := self.find("room_detail"):
+                    if all(self.get_color((1233, 1)) > [252] * 3):
+                        return
                     logger.info("等待动画")
-                    error_count += 1
                     self.sleep(interval=0.5)
-                    continue
-            if error_count > 3:
-                self.reset_room_time(room)
-                raise Exception("未成功进入房间")
-            if pos := self.find("arrange_check_in"):
-                self.tap(pos, interval=0.7)
-            else:
-                back_count = 0
-                while self.find("control_central") is None and back_count < 2:
-                    self.back()
-                    back_count += 1
-                if self.find("control_central") is None:
-                    self.back_to_infrastructure()
-                self.enter_room(room)
-            error_count += 1
+                elif pos := self.find("arrange_check_in"):
+                    self.tap(pos, interval=0.7)
+                else:
+                    self.sleep()
+            for back_time in range(3):
+                if pos := self.find("control_central"):
+                    break
+                self.back()
+            if not pos:
+                self.back_to_infrastructure()
+            self.enter_room(room)
+        self.reset_room_time(room)
+        raise Exception("未成功进入房间")
 
     def get_agent_from_room(self, room, read_time_index=None):
         if read_time_index is None:
@@ -3258,7 +3254,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 logger.info(
                     f"休息 {format_time(remaining_time)}，到{self.tasks[0].time.strftime('%H:%M:%S')}开始工作"
                 )
-                self.csleep(remaining_time)
+                self.sleep(remaining_time)
             if self.device.check_current_focus():
                 self.recog.update()
 
