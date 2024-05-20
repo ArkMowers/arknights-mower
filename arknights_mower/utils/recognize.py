@@ -833,6 +833,7 @@ class Recognizer(object):
             "login_bilibili_entry",
             "login_bilibili_privacy_accept",
             "login_captcha",
+            "control_central",
         ]
 
         if scope is None and score == 0.0:
