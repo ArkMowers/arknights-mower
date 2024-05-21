@@ -18,13 +18,7 @@ const { check_mail_enable, report_enable, send_report, sign_in, visit_friend } =
       </n-checkbox>
       <n-divider />
       <n-checkbox v-model:checked="visit_friend">
-        <div class="item">
-          访问好友
-          <help-text>
-            <div>Maa进行信用商店购物时也会尝试访问好友。</div>
-            <div>如果Maa访问好友出现故障，可打开此功能。</div>
-          </help-text>
-        </div>
+        <div class="item">访问好友</div>
       </n-checkbox>
       <n-divider />
       <n-flex size="large">

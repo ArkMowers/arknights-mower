@@ -279,4 +279,4 @@ get_scene:
 droidcast:
   enable: true
   rotate: false
-visit_friend: false
+visit_friend: true

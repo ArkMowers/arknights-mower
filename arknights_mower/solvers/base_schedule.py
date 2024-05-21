@@ -3027,6 +3027,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             self.MAA.append_task(
                 "Mall",
                 {
+                    "visit_friends": False,
                     "shopping": True,
                     "buy_first": self.maa_config["buy_first"].split(","),
                     "blacklist": self.maa_config["blacklist"].split(","),
