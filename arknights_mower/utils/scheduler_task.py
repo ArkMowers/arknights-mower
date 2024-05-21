@@ -22,6 +22,7 @@ class TaskTypes(Enum):
     RE_ORDER = ("宿舍排序", "宿舍排序", 2)
     RELEASE_DORM = ("释放宿舍空位", "释放宿舍空位", 2)
     REFRESH_ORDER_TIME = ("强制刷新跑单时间", "刷新跑单时间", 2)
+    SKILL_UPGRADE = ("技能专精", "技能专精", 2)
     DEPOT = ("仓库扫描", "仓库扫描", 2)  # 但是我不会写剩下的
 
     def __new__(cls, value, display_value, priority):
@@ -181,9 +182,22 @@ def check_dorm_ordering(tasks, op_data):
                 extra_plan[k] = v
             logger.info("新增排序任务任务")
             task = SchedulerTask(task_plan=extra_plan, time=tasks[0].time - timedelta(seconds=1),
-                                          task_type=TaskTypes.RE_ORDER)
+                                 task_type=TaskTypes.RE_ORDER)
             tasks.insert(0, task)
             logger.debug(str(task))
+
+
+def set_type_enum(value):
+    if value is None:
+        return TaskTypes.NOT_SPECIFIC
+    else:
+        try:
+            for task_type in TaskTypes:
+                if value.upper() == task_type.display_value.upper():
+                    return task_type
+                raise KeyError()
+        except KeyError:
+            return TaskTypes.NOT_SPECIFIC
 
 
 class SchedulerTask:
@@ -198,10 +212,7 @@ class SchedulerTask:
         else:
             self.time = time
         self.plan = task_plan
-        if task_type == "":
-            self.type = TaskTypes.NOT_SPECIFIC
-        else:
-            self.type = task_type
+        self.type = set_type_enum(task_type)
         self.meta_data = meta_data
 
     def format(self, time_offset=0):

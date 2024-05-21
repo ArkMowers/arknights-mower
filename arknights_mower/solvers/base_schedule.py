@@ -142,6 +142,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         self.skland_config = {}
         self.recruit_time = None
         self.last_clue = None
+        self.sleeping = False
 
         self.sign_in = (datetime.now() - timedelta(days=1, hours=4)).date()
         self.daily_report = (datetime.now() - timedelta(days=1, hours=4)).date()
@@ -699,6 +700,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 elif self.task.type == TaskTypes.REFRESH_ORDER_TIME:
                     self.plan_run_order(self.task.meta_data)
                     self.skip(["planned", "todo_task", "collect_notification"])
+                elif self.task.type == TaskTypes.SKILL_UPGRADE:
+                    self.skill_upgrade(self.task.meta_data)
                 del self.tasks[0]
                 if self.tasks and self.tasks[0].type in [TaskTypes.SHIFT_ON]:
                     self.backup_plan_solver(PlanTriggerTiming.AFTER_PLANNING)
@@ -1008,6 +1011,92 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     logger.info(f"纠错任务为-->{fix_plan}")
                     return "self_correction"
 
+    def skill_upgrade(self, skill):
+        try:
+            self.enter_room('train')
+            completed = self.find('training_completed')
+            check_in = None
+            error = False
+            tap_count = 0
+            if completed is not None:
+                logger.debug("训练完成")
+                self.tap(completed)
+                while check_in is None:
+                    if self.get_infra_scene() == Scene.CONNECTING:
+                        self.sleep(1)
+                        continue
+                    self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=2)
+                    tap_count += 1
+                    # 等待完成
+                    check_in = self.find("arrange_check_in")
+                    if tap_count > 5:
+                        error = True
+                        break
+            else:
+                execute_time = self.double_read_time(((236, 978), (380, 1020),), use_digit_reader=True)
+                if execute_time > datetime.now():
+                    self.tasks.append(SchedulerTask(time=execute_time, task_type=TaskTypes.SKILL_UPGRADE, meta_data=skill))
+                    return
+            if error:
+                raise Exception("收取专精技能失败")
+            logger.debug("收取技能升级完毕")
+            skill_level_up = self.find("skill_level_up")
+            tap_count = 0
+            while skill_level_up is None:
+                self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=0)
+                self.recog.update()
+                skill_level_up = self.recog.find("skill_level_up")
+                tap_count += 1
+                if tap_count > 5:
+                    error = True
+                    break
+            if error:
+                raise Exception("进入继续专精界面失败")
+            logger.debug("进入继续专精界面")
+            height = (int(skill) - 1) * 0.3 + 0.32
+            self.tap((self.recog.w * 0.33, self.recog.h * height), interval=0.5)
+            logger.debug(f"选择专精{skill}技能")
+            finish_time = self.double_read_time(((94, 998), (223, 1048),), use_digit_reader=True)
+            hours = (finish_time - datetime.now()).total_seconds() / 3600
+            level = 1
+            if hours > 23:
+                level = 3
+            elif hours > 15:
+                level = 2
+            logger.info(f"本次专精将提升{skill}技能至{level}")
+            # confirm
+            self.tap((self.recog.w * 0.87, self.recog.h * 0.9), interval=0.5)
+            logger.debug(f"开始专精")
+            self.back()
+            self.back()
+            self.recog.update()
+            execute_time = self.double_read_time(((236, 978), (380, 1020)), use_digit_reader=True)
+            if execute_time < (datetime.now() + timedelta(hours=2)):
+                raise Exception("未获取专精时间倒计时，请确认技能专精材料充足")
+            if len(self.op_data.skill_upgrade_supports) > 0:
+                support = next((e for e in self.op_data.skill_upgrade_supports if e.level == level), None)
+                h = self.op_data.calculate_switch_time(support)
+                if support is not None:
+                    self.tasks.append(SchedulerTask(task_plan={'train': [support.name, 'Current']}))
+                    # 提前10分钟换人，确保触发技能
+                    # 3 级不需要换人
+                    if level != 3:
+                        self.tasks.append(
+                            SchedulerTask(time=datetime.now() + timedelta(hours=h) - timedelta(minutes=10),
+                                          task_plan={'train': [support.swap_name, 'Current']}))
+                        # 默认 5小时
+                        self.tasks.append(
+                            SchedulerTask(time=datetime.now() + timedelta(hours=h + 5) + timedelta(minutes=15),
+                                          task_plan={}, task_type=TaskTypes.SKILL_UPGRADE, meta_data=skill))
+                else:
+                    self.tasks.append(
+                        SchedulerTask(time=execute_time,task_plan={}, task_type=TaskTypes.SKILL_UPGRADE, meta_data=skill))
+            self.back()
+        except Exception as e:
+            logger.error("专精任务失败")
+            self.send_message("专精任务失败")
+            logger.error(e)
+
     def plan_run_order(self, room):
         plan = self.op_data.plan
         if (
@@ -1117,7 +1206,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 if op.name in self.op_data.workaholic_agent:
                     continue
                 # 忽略掉正在休息的
-                if op.is_resting() or op.current_room in ["factory", "train"]:
+                if op.is_resting() or op.current_room in ["factory", "train"] or op.room in ["factory", "train"]:
                     continue
                 # 忽略掉心情值没低于上限的的
                 if op.current_mood() > int(

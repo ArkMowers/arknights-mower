@@ -6,6 +6,51 @@ import copy
 from evalidate import Expr, base_eval_model
 
 
+class SkillUpgradeSupport(object):
+    support_class = None
+    level = 1
+    efficiency = 0
+    half_off = False
+    add_on = False
+    match = False
+    use_booster = True
+    name = ''
+    swap_name = ''
+
+    def __init__(self, name, skill_level, efficiency, match, swap_name='艾丽妮'):
+        self.name = name
+        self.level = skill_level
+        self.efficiency = efficiency
+        self.match = match
+        if self.level > 1:
+            self.half_off = True
+        self.swap_name = swap_name
+
+
+def calculate_switch_time(support: SkillUpgradeSupport):
+    hour = 0
+    half_off = support.half_off
+    level = support.level
+    match = support.match
+    efficiency = support.efficiency
+    if level == 1:
+        half_off = False
+    # if left_minutes > 0 or left_hours > 0:
+    #     hour = left_minutes / 60 + left_hours
+    # 基本5%
+    basic = 5
+    if support.add_on:
+        # 阿斯卡伦
+        basic += 5
+    if hour == 0:
+        hour = level * 8
+    if half_off:
+        hour = hour / 2
+    left = 5 * (100 + basic + (30 if match else 0)) / 100
+    left = hour - left
+    return left * 100 / (100 + efficiency + basic)
+
+
 class Operators(object):
     config = None
     operators = None
@@ -20,6 +65,7 @@ class Operators(object):
     shadow_copy = {}
     current_room_changed_callback = None
     first_init = True
+    skill_upgrade_supports = []
 
     def __init__(self, plan):
         self.operators = {}
@@ -358,6 +404,13 @@ class Operators(object):
                 if not (dorm.position[0] == op.current_room and dorm.position[1] == op.current_index):
                     self.dorm[idx].name = ""
                     self.dorm[idx].time = None
+        # 事实更新黑名单确保训练不会被中断
+        for name in self.operators.keys():
+            agent = self.operators[name]
+            if agent.current_room == 'train' and agent.current_index == 0:
+                if name not in self.operators.free_blacklist:
+                    self.config.free_blacklist.append(name)
+                    logger(f"检测到{name}正在协助训练，自动加入黑名单")
 
     def get_refresh_index(self, room, plan):
         ret = []
@@ -565,6 +618,8 @@ class Operator(object):
             return True
 
     def not_valid(self):
+        if self.room == "train":
+            return False
         if self.workaholic:
             return self.current_room != self.room or self.index != self.current_index
         if self.operator_type == 'high':

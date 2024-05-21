@@ -847,6 +847,9 @@ class Recognizer(object):
                 score = 0.15
             elif res == "materiel_ico":
                 scope = ((860, 60), (1072, 217))
+            elif res == "training_completed":
+                scope = ((550, 900), (800, 1080))
+                score = 0.45
 
         if thres is not None:
             # 对图像二值化处理

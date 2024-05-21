@@ -10,14 +10,17 @@ from functools import wraps
 from queue import Queue
 from threading import Event, Thread
 
+from arknights_mower.data import agent_list
 from arknights_mower.utils import config
 from arknights_mower.utils.conf import load_conf, load_plan, save_conf, write_plan
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.operators import SkillUpgradeSupport
 from arknights_mower.utils.path import get_path
 from flask import Flask, abort, request, send_from_directory
 from flask_cors import CORS
 from flask_sock import Sock
 from werkzeug.exceptions import NotFound
+from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes, find_next_task
 
 mimetypes.add_type("text/html", ".html")
 mimetypes.add_type("text/css", ".css")
@@ -545,3 +548,42 @@ def test_skland():
     from arknights_mower.solvers.skland import SKLand
 
     return SKLand(conf["skland_info"]).test_connect()
+
+
+@app.route('/task', methods=["POST"])
+def get_count():
+    from arknights_mower.__main__ import base_scheduler
+    try:
+        if request.method == "POST":
+            req = request.json
+            task = req['task']
+            logger.debug(f"收到新增任务请求：{req}")
+            if base_scheduler and mower_thread.is_alive():
+                # if not base_scheduler.sleeping:
+                #     raise Exception("只能在休息时间添加")
+                if task:
+                    task_time = datetime.datetime.strptime(task['time'], '%m/%d/%Y, %I:%M:%S %p')
+                    new_task = SchedulerTask(time=task_time, task_plan=task['plan'], task_type=task['task_type'],
+                                             meta_data=task['meta_data'])
+                    next_task = find_next_task(base_scheduler.tasks, compare_time=task_time ,compare_type = '=')
+                    if next_task is not None:
+                        raise Exception("找到同时间任务请勿重复添加")
+                    if new_task.type == TaskTypes.SKILL_UPGRADE:
+                        supports = []
+                        for s in req['upgrade_support']:
+                            if s['name'] not in agent_list or s['swap_name'] not in agent_list:
+                                raise Exception("干员名不正确")
+                            supports.append(SkillUpgradeSupport(name=s['name'], skill_level=s['skill_level'],
+                                                                efficiency=s['efficiency'], match=s['match'],
+                                                                swap_name=s['swap_name']))
+                        if len(supports) == 0:
+                            raise Exception("请添加专精工具人")
+                        base_scheduler.op_data.skill_upgrade_supports = supports
+                        logger.error(f"更新专精工具人完毕")
+                    base_scheduler.tasks.append(new_task)
+                    logger.debug(f"成功：{str(new_task)}")
+                    return "添加任务成功！"
+            raise Exception("添加任务失败！！")
+    except Exception as e:
+        logger.error(f"添加任务失败：{str(e)}")
+        return str(e)

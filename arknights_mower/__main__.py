@@ -21,13 +21,15 @@ from arknights_mower.utils.solver import MowerExit
 maa_config = {}
 recruit_config = {}
 skland_config = {}
-
+global base_scheduler
+base_scheduler = None
 
 # 执行自动排班
 def main():
     global conf
     global plan
     global operators
+    global base_scheduler
     conf = deepcopy(config.conf)
     plan = deepcopy(config.plan)
     operators = deepcopy(config.operators)
@@ -474,7 +476,9 @@ def simulate():
                                 base_scheduler=base_scheduler,
                             )
                             base_scheduler.send_message(body, subject, "html")
+                            base_scheduler.sleeping = True
                             base_scheduler.sleep(remaining_time)
+                            base_scheduler.sleeping = False
                             if base_scheduler.close_simulator_when_idle:
                                 restart_simulator(base_scheduler.simulator, stop=False)
                             if base_scheduler.device.check_current_focus():
@@ -531,7 +535,9 @@ def simulate():
                         base_scheduler=base_scheduler,
                     )
                     base_scheduler.send_message(body, subject, "html")
+                    base_scheduler.sleeping = True
                     base_scheduler.sleep(remaining_time)
+                    base_scheduler.sleeping = False
                     if conf["close_simulator_when_idle"]:
                         restart_simulator(conf["simulator"], stop=False)
                     if base_scheduler.device.check_current_focus():
