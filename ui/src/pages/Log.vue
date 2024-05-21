@@ -52,12 +52,16 @@ function refresh() {
 
 import PlayIcon from '@vicons/ionicons5/Play'
 import StopIcon from '@vicons/ionicons5/Stop'
+import AddIcon from '@vicons/ionicons5/Add'
 import ReloadIcon from '@vicons/ionicons5/Reload'
 import CollapseIcon from '@vicons/fluent/PanelTopContract20Regular'
 import ExpandIcon from '@vicons/fluent/PanelTopExpand20Regular'
 
 const show_task_table = ref(true)
-
+const show_task = ref(false)
+const add_task = ref(true)
+provide('show_task', show_task)
+provide('add_task', add_task)
 import { useConfigStore } from '@/stores/config'
 const config_store = useConfigStore()
 const { theme } = storeToRefs(config_store)
@@ -107,6 +111,15 @@ const bg_opacity = computed(() => {
         </template>
         开始执行
       </n-button>
+      <task-dialog />
+      <n-button type="warning" @click="show_task = true">
+        <template #icon>
+          <n-icon>
+            <add-icon />
+          </n-icon>
+        </template>
+        新增任务
+      </n-button>
       <div class="expand"></div>
       <n-button @click="refresh" size="small">
         <template #icon>
@@ -121,12 +134,8 @@ const bg_opacity = computed(() => {
         <span class="scroll-label">自动滚动</span>
       </div>
     </div>
-    <n-button
-      class="toggle-table-collapse-btn"
-      size="small"
-      @click="show_task_table = !show_task_table"
-      :focusable="false"
-    >
+    <n-button class="toggle-table-collapse-btn" size="small" @click="show_task_table = !show_task_table"
+      :focusable="false">
       <template #icon>
         <n-icon>
           <collapse-icon v-if="show_task_table" />
