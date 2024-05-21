@@ -15,7 +15,13 @@ import requests
 
 # 借用__main__.py里的时间计算器
 from arknights_mower.__main__ import format_time
-from arknights_mower.solvers import ReportSolver, MailSolver, RecruitSolver, DepotSolver
+from arknights_mower.solvers import (
+    ReportSolver,
+    MailSolver,
+    RecruitSolver,
+    DepotSolver,
+    CreditSolver,
+)
 from arknights_mower.solvers.base_mixin import BaseMixin
 from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
 from arknights_mower.solvers.sign_in import update_sign_in_solver
@@ -56,6 +62,11 @@ def daily_report(
     device: Device = None, send_message_config={}, send_report: bool = False
 ):
     return ReportSolver(device, None, send_message_config, send_report).run()
+
+
+def daily_visit_friend(device: Device = None):
+    """访问好友"""
+    CreditSolver(device).run()
 
 
 def depotscan(device: Device = None):
@@ -136,10 +147,12 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         self.daily_report = (datetime.now() - timedelta(days=1, hours=4)).date()
         self.daily_skland = (datetime.now() - timedelta(days=1, hours=4)).date()
         self.daily_mail = (datetime.now() - timedelta(days=1, hours=8)).date()
+        self.daily_visit_friend = (datetime.now() - timedelta(days=1, hours=4)).date()
 
         self.sign_in_enable = True
         self.check_mail_enable = True
         self.report_enable = True
+        self.visit_friend_enable = True
 
     @property
     def party_time(self):
@@ -2983,7 +2996,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             raise Exception("MAA 连接失败")
 
     def append_maa_task(self, type):
-        if type in ["StartUp", "Visit", "Award"]:
+        if type in ["StartUp", "Award"]:
             self.MAA.append_task(type)
         elif type == "Fight":
             _plan = self.maa_config["weekly_plan"][get_server_weekday()]
@@ -3052,9 +3065,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 # 任务及参数请参考 docs/集成文档.md
                 self.initialize_maa()
                 if tasks == "All":
-                    tasks = ["StartUp", "Fight", "Visit", "Mall", "Award"]
-                    # tasks = ['StartUp', 'Fight', 'Visit', 'Mall', 'Award', 'Depot']
-                    # tasks = ['StartUp', 'Fight', 'Recruit', 'Visit', 'Mall', 'Award']
+                    tasks = ["StartUp", "Fight", "Mall", "Award"]
                 for maa_task in tasks:
                     if maa_task == "Recruit":
                         continue
@@ -3303,6 +3314,10 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
     def report_plan_solver(self, send_report=False):
         if self.report_enable:
             return daily_report(self.device, self.send_message_config, send_report)
+
+    def visit_friend_plan_solver(self):
+        if self.visit_friend_enable:
+            return daily_visit_friend(self.device)
 
     def sign_in_plan_solver(self):
         if not self.sign_in_enable:

@@ -261,6 +261,7 @@ def initialize(tasks, scheduler=None):
     base_scheduler.check_mail_enable = conf["check_mail_enable"]
     base_scheduler.report_enable = conf["report_enable"]
     base_scheduler.sign_in_enable = conf["sign_in"]["enable"]
+    base_scheduler.visit_friend_enable = conf["visit_friend"]
 
     set_maa_options(base_scheduler, conf)
     set_recruit_options(base_scheduler, conf)
@@ -363,6 +364,15 @@ def simulate():
                     ):
                         if base_scheduler.sign_in_plan_solver():
                             base_scheduler.sign_in = (
+                                datetime.now() - timedelta(hours=4)
+                            ).date()
+
+                    if (
+                        base_scheduler.daily_visit_friend
+                        < (datetime.now() - timedelta(hours=4)).date()
+                    ):
+                        if base_scheduler.visit_friend_plan_solver():
+                            base_scheduler.daily_visit_friend = (
                                 datetime.now() - timedelta(hours=4)
                             ).date()
 
