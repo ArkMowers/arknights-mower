@@ -190,14 +190,13 @@ def check_dorm_ordering(tasks, op_data):
 def set_type_enum(value):
     if value is None:
         return TaskTypes.NOT_SPECIFIC
-    else:
-        try:
-            for task_type in TaskTypes:
-                if value.upper() == task_type.display_value.upper():
-                    return task_type
-                raise KeyError()
-        except KeyError:
-            return TaskTypes.NOT_SPECIFIC
+    if isinstance(value, TaskTypes):
+        return value
+    if isinstance(value, str):
+        for task_type in TaskTypes:
+            if value.upper() == task_type.display_value.upper():
+                return task_type
+    return TaskTypes.NOT_SPECIFIC
 
 
 class SchedulerTask:
