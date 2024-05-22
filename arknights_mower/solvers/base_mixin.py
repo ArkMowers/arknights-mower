@@ -52,7 +52,9 @@ class BaseMixin:
     def scan_agent(self, agent: list[str], error_count=0, max_agent_count=-1):
         try:
             # 识别干员
-            self.recog.update()
+            while self.find("connecting"):
+                logger.info("等待网络连接")
+                self.sleep()
             # 返回的顺序是从左往右从上往下
             ret = operator_list(self.recog.img)
             # 提取识别出来的干员的名字
@@ -82,7 +84,9 @@ class BaseMixin:
     def verify_agent(self, agent: list[str], error_count=0, max_agent_count=-1):
         try:
             # 识别干员
-            self.recog.update()
+            while self.find("connecting"):
+                logger.info("等待网络连接")
+                self.sleep()
             ret = operator_list(self.recog.img)  # 返回的顺序是从左往右从上往下
             # 提取识别出来的干员的名字
             select_name = []
