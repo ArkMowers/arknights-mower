@@ -1067,9 +1067,16 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             # confirm
             self.tap((self.recog.w * 0.87, self.recog.h * 0.9), interval=0.5)
             logger.debug(f"开始专精")
-            self.back()
-            self.back()
-            self.recog.update()
+            tap_count = 0
+            while self.find('training_support') is None:
+                if self.get_infra_scene() == Scene.CONNECTING:
+                    self.sleep(1)
+                    continue
+                self.back(0.5)
+                tap_count += 1
+                if tap_count > 5:
+                    raise Exception("返回失败")
+            self.back(0.5)
             execute_time = self.double_read_time(((236, 978), (380, 1020)), use_digit_reader=True)
             if execute_time < (datetime.now() + timedelta(hours=2)):
                 raise Exception("未获取专精时间倒计时，请确认技能专精材料充足")
