@@ -2,20 +2,20 @@ from __future__ import annotations
 
 import os
 import pathlib
+import time
 from itertools import combinations
 from typing import Tuple, Dict, Any
 import re
 import cv2
 import numpy as np
-
+from PIL import Image, ImageFont, ImageDraw
 from ..data import recruit_agent, agent_with_tags, recruit_tag, result_template_list
-from ..ocr import ocr_rectify, ocrhandle
 from ..utils import segment, rapidocr
 from .. import __rootdir__
 from ..utils.device import Device
 from ..utils.digit_reader import DigitReader
 from ..utils.email import recruit_template, recruit_rarity
-from ..utils.image import cropimg, bytes2img, loadimg
+from ..utils.image import cropimg, loadres
 from ..utils.log import logger
 from ..utils.recognize import RecognizeError, Recognizer, Scene
 from ..utils.solver import BaseSolver
@@ -66,9 +66,25 @@ class RecruitSolver(BaseSolver):
 
         self.result_agent = {}
         self.agent_choose = {}
+        self.tag_template = {}
+        self.font = ImageFont.truetype("{}/fonts/SourceHanSansCN-Medium.otf".format(__rootdir__), 30)
+        for tag in recruit_tag:
+            im = Image.new(mode="RGBA", color=(49, 49, 49), size=(215, 70))
+            # im=Image.open("D:\\Git_Repositories\\Pycharm_Project\\Mower\\screenshot_tags\\{}.png".format(tag))
+            W, H = im.size
+            draw = ImageDraw.Draw(im)
+            _, _, w, h = draw.textbbox((0, 0), tag, font=self.font)
+            # text_color=(255,255,255)
+            # if tag =="高级资深干员" or tag =="资深干员":
+            #     text_color=(255,235,4)
 
+            draw.text(((W - w) / 2, (H - h) / 2 - 5), tag, font=self.font)
+
+            self.tag_template[tag] = cv2.cvtColor(np.array(im.crop(im.getbbox())), cv2.COLOR_RGB2BGR)
         # logger.info(f'目标干员：{priority if priority else "无，高稀有度优先"}')\
         try:
+            if len(self.tag_template) < len(recruit_tag):
+                raise "tag生成失败{}".format(self.tag_template)
             super().run()
         except Exception as e:
             logger.error(e)
@@ -145,7 +161,7 @@ class RecruitSolver(BaseSolver):
 
             try:
                 # 招募前读取数量
-                template_ticket = loadimg(f"{__rootdir__}/resources/recruit_ticket.png")
+                template_ticket = loadres("recruit_ticket")
                 img = self.recog.img
                 res = cv2.matchTemplate(img, template_ticket, cv2.TM_CCOEFF_NORMED)
                 min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
@@ -153,7 +169,7 @@ class RecruitSolver(BaseSolver):
                 p0 = max_loc
                 p1 = (p0[0] + w, p0[1] + h)
 
-                template_stone = loadimg(f"{__rootdir__}/resources/stone.png")
+                template_stone = loadres("stone")
                 res = cv2.matchTemplate(img, template_stone, cv2.TM_CCOEFF_NORMED)
                 min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
                 p2 = max_loc
@@ -206,7 +222,7 @@ class RecruitSolver(BaseSolver):
         elif scene == Scene.RECRUIT_AGENT:
             return self.recruit_result()
         elif scene == Scene.MATERIEL:
-            self.tap_element('materiel_ico', score=0.2)
+            self.tap_element('materiel_ico')
         elif scene == Scene.LOADING:
             self.sleep(3)
         elif scene == Scene.CONNECTING:
@@ -227,37 +243,54 @@ class RecruitSolver(BaseSolver):
         if self.find('recruit_no_lmb') is not None:
             self.enough_lmb = False
 
-        needs = self.find('career_needs', judge=False)
-        avail_level = self.find('available_level', judge=False)
-        budget = self.find('recruit_budget', judge=False)
+        needs = self.find('career_needs')
+        avail_level = self.find('available_level')
+        budget = self.find('recruit_budget')
         up = needs[0][1] - 80
         down = needs[1][1] + 60
-        left = needs[1][0]
+        left = needs[1][0] + 50
         right = avail_level[0][0]
 
         while True:
             # ocr the recruitment tags and rectify
             img = self.recog.img[up:down, left:right]
-            ocr = ocrhandle.predict(img)
-            for x in ocr:
-                if x[1] not in recruit_tag:
-                    x[1] = ocr_rectify(img, x, recruit_tag, '公招标签')
+            tags_img = self.split_tags(img)
+            tags = {}
+            h, w, _ = img.shape
+            for index, value in enumerate(tags_img):
+                res = self.get_recruit_tag(value)
+                tag_pos = (int(left + (index % 3) * int(w / 3) + 30), int(up + int(index / 3) * int(h / 2) + 30))
+                tags[res['tag']] = tag_pos
 
-            # recruitment tags
-            tags = [x[1] for x in ocr]
+                logger.info("tag识别结果{} {}".format(res, tag_pos))
+
+            if len(tags) != 5:
+                raise "标签识别失败 tag={}".format(tags)
+
             logger.info(f'第{self.recruit_pos + 1}个位置上的公招标签：{tags}')
 
             # 计算招募标签组合结果
-            recruit_cal_result = self.recruit_cal(tags)
-            recruit_result_level = recruit_cal_result[0][1][0]['star']
-            logger.debug(f"recruit_index:{self.recruit_index}")
-            logger.debug(f"recruit_order:{self.recruit_order.index(recruit_result_level)}")
+            recruit_cal_result = self.recruit_cal(list(tags.keys()))
+            logger.debug("筛选结果:{}".format(recruit_cal_result))
+            recruit_result_level = -1
+
+            for index in self.recruit_order:
+                if recruit_cal_result[index]:
+                    recruit_result_level = index
+                    break
+            if recruit_result_level == -1:
+                logger.error("筛选结果为 {}".format(recruit_cal_result))
+                raise "筛选tag失败"
+            logger.info("recruit_result_level={}".format(recruit_result_level))
+
             if self.recruit_order.index(recruit_result_level) <= self.recruit_index:
                 if self.recruit_config['recruit_email_enable']:
-                    self.send_message(recruit_rarity.render(recruit_results=recruit_cal_result, title_text="稀有tag通知"),
+                    self.send_message(recruit_rarity.render(recruit_results=recruit_cal_result[recruit_result_level],
+                                                            title_text="稀有tag通知"),
                                       "出稀有标签辣",
                                       "html")
                     logger.info('稀有tag,发送邮件')
+
                 if recruit_result_level == 6:
                     logger.debug('六星tag')
                     self.back()
@@ -273,16 +306,18 @@ class RecruitSolver(BaseSolver):
                     return
                 # 手动选择且单五星词条自动,但词条不止一种
                 if (self.recruit_config['recruit_auto_5'] == 2 and
-                        len(recruit_cal_result) > 1 and self.recruit_config['recruit_auto_only5']):
+                        len(recruit_cal_result[recruit_result_level]) > 1 and self.recruit_config[
+                            'recruit_auto_only5']):
                     logger.debug('手动选择且单五星词条自动,但词条不止一种')
                     self.back()
                     return
 
-            if recruit_cal_result[0][1][0]['star'] == 3:
+            if recruit_result_level == 3:
                 # refresh
-                if self.tap_element('recruit_refresh', detected=True):
-                    self.tap_element('double_confirm', 0.8,
-                                     interval=3, judge=False)
+                recruit_refresh_pos = (1455, 610)
+                if self.get_color(recruit_refresh_pos)[2] > 200:
+                    self.tap(recruit_refresh_pos)
+                    self.tap_element('double_confirm', 0.8, interval=3)
                     logger.info("刷新标签")
                     continue
             break
@@ -297,7 +332,6 @@ class RecruitSolver(BaseSolver):
             self.back()
             return
 
-
         # best为空说明这次大概率三星
         # 券数量少于预期值，仅招募四星或者停止招募，只刷新标签
         if self.permit_count <= self.recruit_config["permit_target"] and recruit_result_level == 3:
@@ -307,17 +341,14 @@ class RecruitSolver(BaseSolver):
 
         choose = []
         if recruit_result_level > 3:
-            choose = list(recruit_cal_result[0][0])
+            choose = recruit_cal_result[recruit_result_level][0]['tag']
 
         # tap selected tags
-        logger.info(f'选择标签：{list(choose)}')
-        for x in ocr:
-            color = self.recog.img[up + x[2][0][1] - 5, left + x[2][0][0] - 5]
-            if (color[2] < 100) != (x[1] not in choose):
-                # 存在choose为空但是进行标签选择的情况
-                logger.debug(f"tap{x}")
-                self.device.tap((left + x[2][0][0] - 5, up + x[2][0][1] - 5))
-
+        logger.info(f'选择标签：{list(choose)} ')
+        for x in choose:
+            # 存在choose为空但是进行标签选择的情况
+            logger.debug(f"tap{x}:{tags[x]}")
+            self.device.tap(tags[x])
         # 9h为True 3h50min为False
         logger.debug("开始选择时长")
         recruit_time_choose = self.recruit_config["recruitment_time"]["3"]
@@ -352,9 +383,10 @@ class RecruitSolver(BaseSolver):
         if recruit_result_level > 3:
             self.agent_choose[str(self.recruit_pos + 1)] = {
                 "tags": choose,
-                "result": recruit_cal_result[0][1]
+                "result": recruit_cal_result[recruit_result_level][0]['result']
             }
-            logger.info(f'第{self.recruit_pos + 1}个位置上的公招预测结果：{recruit_cal_result[0][1]}')
+            logger.info('第{}个位置上的公招预测结果：{}'.format(self.recruit_pos + 1,
+                                                               recruit_cal_result[recruit_result_level][0]['result']))
         else:
             self.agent_choose[str(self.recruit_pos + 1)] = {
                 "tags": choose,
@@ -410,21 +442,14 @@ class RecruitSolver(BaseSolver):
             tags.remove('新手')
         for item in combinations(tags, 1):
             tmp = agent_with_tags[item[0]]
-            if "支援机械" not in item:
-                tmp = [x for x in tmp if x['star'] >= 3]
-            if "高级资深干员" not in item:
-                tmp = [x for x in tmp if x['star'] < 6]
+
             if len(tmp) == 0:
                 continue
-            tmp.sort(key=lambda k: k['star'])
+            tmp.sort(key=lambda k: k['star'], reverse=True)
             combined_agent[item] = tmp
         for item in combinations(tags, 2):
             tmp = [j for j in agent_with_tags[item[0]] if j in agent_with_tags[item[1]]]
 
-            if "支援机械" not in item:
-                tmp = [x for x in tmp if x['star'] >= 3]
-            if "高级资深干员" not in item:
-                tmp = [x for x in tmp if x['star'] < 6]
             if len(tmp) == 0:
                 continue
             tmp.sort(key=lambda k: k['star'])
@@ -433,38 +458,100 @@ class RecruitSolver(BaseSolver):
             tmp1 = [j for j in agent_with_tags[item[0]] if j in agent_with_tags[item[1]]]
             tmp = [j for j in tmp1 if j in agent_with_tags[item[2]]]
 
-            if "支援机械" not in item:
-                tmp = [x for x in tmp if x['star'] >= 3]
-            if "高级资深干员" not in item:
-                tmp = [x for x in tmp if x['star'] < 6]
             if len(tmp) == 0:
                 continue
-            tmp.sort(key=lambda k: k['star'])
+            tmp.sort(key=lambda k: k['star'], reverse=True)
             combined_agent[item] = tmp
 
         sorted_list = sorted(combined_agent.items(), key=lambda x: index_dict[x[1][0]['star']])
 
         result_dict = {}
         for item in sorted_list:
-            if item[1][0]['star'] == sorted_list[0][1][0]['star']:
-                result_dict[item[0]] = item[1]
-
-        sorted_list = sorted(result_dict.items(), key=lambda x: len(x[1]), reverse=True)
-        logger.debug(f"before sort{sorted_list}")
-        if 3 <= sorted_list[0][1][0]['star'] <= 5:
-            for res in sorted_list[1:]:
-                if len(res[1]) != len(sorted_list[0][1]) and sorted_list[0][1][0]['star'] > 4:
+            result_dict[item[0]] = []
+            max_star = -1
+            min_star = 7
+            for agent in item[1]:
+                if "高级资深干员" not in item[0] and agent['star'] == 6:
                     continue
-                contain_all = True
-                for value in res[1]:
-                    if value not in sorted_list[0][1]:
-                        contain_all = False
-                if contain_all:
-                    sorted_list.remove(res)
+                if agent['star'] > max_star:
+                    max_star = agent['star']
+                if agent['star'] < min_star:
+                    min_star = agent['star']
+            for agent in item[1]:
+                if max_star > 1 and agent['star'] == 2:
+                    continue
+                if max_star > 1 and agent['star'] == 1:
+                    continue
+                if max_star < 6 and agent['star'] == 6:
+                    continue
+                result_dict[item[0]].append(agent)
+                logger.debug(item[0], agent)
+            try:
+                for key in list(result_dict.keys()):
+                    if len(result_dict[key]) == 0:
+                        result_dict.pop(key)
 
-        logger.debug(f"recruit_cal result:{sorted_list}")
-        return sorted_list
-        # if len(sorted_list) > 1 and sorted_list[0][1][0]['star'] >= 5:
-        #     print("do nothing")
-        # for item in sorted_list:
-        #     print(item)
+                result_dict[item[0]] = sorted(result_dict[item[0]], key=lambda x: x['star'], reverse=True)
+                min_star = result_dict[item[0]][-1]['star']
+                for res in result_dict[item[0]][:]:
+                    if res['star'] > min_star:
+                        result_dict[item[0]].remove(res)
+            except KeyError as e:
+                logger.debug("Recruit Cal Key Error :{}".format(result_dict))
+                continue
+        result = {
+            6: [],
+            5: [],
+            4: [],
+            3: [],
+            2: [],
+            1: [],
+
+        }
+        for tag in result_dict:
+            result[result_dict[tag][0]['star']].append(
+                {
+                    'tag': tag,
+                    'result': result_dict[tag]
+                }
+            )
+        for item in result:
+            if result[item]:
+                logger.info("{}:{}".format(item, result[item]))
+        return result
+
+    def get_recruit_tag(self, img):
+        max_v = -1
+        tag_res = None
+        for key in self.tag_template:
+            res = cv2.matchTemplate(
+                img,
+                self.tag_template[key],
+                cv2.TM_CCORR_NORMED,
+            )
+
+            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+            if max_val > max_v:
+                tag_res = {
+                    "tag": key,
+                    "val": max_val
+                }
+                max_v = max_val
+        return tag_res
+
+    def split_tags(self, img):
+        tag_img = []
+        h, w, _ = img.shape
+        ori_img = img
+        tag_h, tag_w = int(h / 2), int(w / 3)
+        for i in range(0, 2):
+            for j in range(0, 3):
+                if i * j == 2:
+                    continue
+                tag_img.append(
+                    img[0:tag_h, 0:tag_w]
+                )
+                img = img[0:h, tag_w:w]
+            img = ori_img[tag_h:h, 0:w]
+
+        return tag_img

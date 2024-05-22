@@ -13,6 +13,7 @@ export const useMowerStore = defineStore('mower', () => {
 
   const ws = ref(null)
   const running = ref(false)
+  const waiting = ref(false)
 
   const first_load = ref(true)
 
@@ -77,6 +78,7 @@ export const useMowerStore = defineStore('mower', () => {
     log_lines,
     ws,
     running,
+    waiting,
     listen_ws,
     get_running,
     first_load,

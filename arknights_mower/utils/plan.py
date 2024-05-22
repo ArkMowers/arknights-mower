@@ -1,8 +1,21 @@
+import copy
+from enum import Enum
 from arknights_mower.utils import config
+
+
+def set_timing_enum(value):
+    if value is None:
+        return value
+    else:
+        try:
+            return PlanTriggerTiming[value.upper()]
+        except KeyError:
+            return PlanTriggerTiming.AFTER_PLANNING
+
 
 class Plan(object):
 
-    def __init__(self, plan, config, trigger=None, task=None):
+    def __init__(self, plan, config, trigger=None, task=None, trigger_timing=None):
         # 基建计划 or 触发备用plan 的排班表，只需要填和默认不一样的部分
         self.plan = plan
         # 基建计划相关配置，必须填写全部配置
@@ -11,6 +24,14 @@ class Plan(object):
         self.trigger = trigger
         # 触发备用plan 的时间生成的任务 (选填）
         self.task = task
+        self.trigger_timing = set_timing_enum(trigger_timing)
+
+
+class PlanTriggerTiming(Enum):
+    BEGINNING = 0
+    BEFORE_PLANNING = 300
+    AFTER_PLANNING = 600
+    END = 999
 
 
 class Room(object):
@@ -77,3 +98,32 @@ class PlanConfig(object):
                     return [True, []]
             else:
                 return [False, []]
+
+    def merge_config(self, target):
+        n = copy.deepcopy(self)
+
+        rest_in_full_dict = set(n.rest_in_full)
+        target_rest_in_full = set(target.rest_in_full)
+        n.rest_in_full = list(rest_in_full_dict.union(target_rest_in_full))
+
+        exhaust_require_dict = set(n.exhaust_require)
+        target_exhaust_require = set(target.exhaust_require)
+        n.exhaust_require = list(exhaust_require_dict.union(target_exhaust_require))
+
+        workaholic_dict = set(n.workaholic)
+        target_workaholic = set(target.workaholic)
+        n.workaholic = list(workaholic_dict.union(target_workaholic))
+
+        resting_priority_dict = set(n.resting_priority)
+        target_resting_priority = set(target.resting_priority)
+        n.resting_priority = list(resting_priority_dict.union(target_resting_priority))
+
+        free_blacklist_dict = set(n.free_blacklist)
+        target_free_blacklist = set(target.free_blacklist)
+        n.free_blacklist = list(free_blacklist_dict.union(target_free_blacklist))
+
+        refresh_trading_config_dict = set(n.refresh_trading_config)
+        target_refresh_trading_config = set(target.refresh_trading_config)
+        n.refresh_trading_config = list(refresh_trading_config_dict.union(target_refresh_trading_config))
+
+        return n

@@ -5,7 +5,7 @@ import { usePlanStore } from '@/stores/plan'
 import { ref, computed, nextTick, watch, inject } from 'vue'
 const config_store = useConfigStore()
 const plan_store = usePlanStore()
-const { operators, groups, current_plan: plan } = storeToRefs(plan_store)
+const { operators, groups, current_plan: plan, workaholic } = storeToRefs(plan_store)
 const { facility_operator_limit } = plan_store
 const { theme } = storeToRefs(config_store)
 
@@ -88,6 +88,8 @@ const right_side_facility_name = computed(() => {
     return '会客室'
   } else if (facility.value == 'factory') {
     return '加工站'
+  } else if (facility.value == 'train') {
+    return '训练室（仅可安排协助位）'
   } else {
     return '未知'
   }
@@ -137,6 +139,63 @@ defineExpose({
 
 import { render_op_label, render_op_tag } from '@/utils/op_select'
 import { match } from 'pinyin-pro'
+
+function fill_with_free() {
+  for (let i = 0; i < operator_limit.value; ++i) {
+    if (plan.value[facility.value].plans[i].agent == '') {
+      plan.value[facility.value].plans[i].agent = 'Free'
+    }
+  }
+}
+
+const trading_products = [
+  { label: '赤金订单', value: 'lmd' },
+  { label: '合成玉订单', value: 'orundum' }
+]
+
+const factory_products = [
+  { label: '赤金', value: 'gold' },
+  { label: '中级作战记录', value: 'exp3' },
+  { label: '源石碎片', value: 'orirock' }
+]
+
+import { NAvatar } from 'naive-ui'
+
+const render_product = (option) => {
+  return h(
+    'div',
+    {
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px'
+      }
+    },
+    [
+      h(NAvatar, {
+        src: '/product/' + option.value + '.png',
+        round: true,
+        size: 'small'
+      }),
+      option.label
+    ]
+  )
+}
+
+const product_bg_opacity = computed(() => {
+  return theme.value == 'light' ? 0.6 : 0.7
+})
+
+const fia_list = computed(() => {
+  for (let i = 1; i <= 4; ++i) {
+    for (let j = 0; j < 5; ++j) {
+      if (plan.value[`dormitory_${i}`].plans[j].agent == '菲亚梅塔') {
+        return plan.value[`dormitory_${i}`].plans[j].replacement
+      }
+    }
+  }
+  return []
+})
 </script>
 
 <template>
@@ -152,6 +211,13 @@ import { match } from 'pinyin-pro'
             :class="[button_type[plan[r].name], r === facility ? 'true' : 'false']"
           >
             <div
+              class="product-bg"
+              v-if="['制造站', '贸易站'].includes(plan[r].name)"
+              :style="{
+                'background-image': `url(/product/${plan[r].product}.png)`
+              }"
+            ></div>
+            <div
               v-show="plan[r].name"
               draggable="true"
               @dragstart="drag_facility(r, $event)"
@@ -164,14 +230,21 @@ import { match } from 'pinyin-pro'
                 {{ plan[r].name }}
               </div>
               <div class="avatars">
-                <img
-                  v-for="i in plan[r].plans"
-                  :src="`avatar/${i.agent}.png`"
-                  width="45"
-                  height="45"
-                  :style="{ 'border-bottom': color_map[i.group] }"
-                  draggable="false"
-                />
+                <template v-for="i in plan[r].plans">
+                  <div class="avatar-wrapper" v-if="i.agent">
+                    <img
+                      :src="`avatar/${i.agent}.webp`"
+                      width="45"
+                      height="45"
+                      :style="{ 'border-bottom': color_map[i.group] }"
+                      draggable="false"
+                    />
+                    <div
+                      class="workaholic"
+                      v-if="workaholic.includes(i.agent) && !fia_list.includes(i.agent)"
+                    ></div>
+                  </div>
+                </template>
               </div>
             </div>
             <div v-show="!plan[r].name" class="waiting">
@@ -193,7 +266,7 @@ import { match } from 'pinyin-pro'
               <div class="avatars">
                 <img
                   v-for="i in plan.central.plans"
-                  :src="`avatar/${i.agent}.png`"
+                  :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
                   :style="{ 'border-bottom': color_map[i.group] }"
@@ -213,7 +286,7 @@ import { match } from 'pinyin-pro'
               <div class="avatars">
                 <img
                   v-for="i in plan.dormitory_1.plans"
-                  :src="`avatar/${i.agent}.png`"
+                  :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
                   :style="{ 'border-bottom': color_map[i.group] }"
@@ -233,7 +306,7 @@ import { match } from 'pinyin-pro'
               <div class="avatars">
                 <img
                   v-for="i in plan.dormitory_2.plans"
-                  :src="`avatar/${i.agent}.png`"
+                  :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
                   :style="{ 'border-bottom': color_map[i.group] }"
@@ -253,7 +326,7 @@ import { match } from 'pinyin-pro'
               <div class="avatars">
                 <img
                   v-for="i in plan.dormitory_3.plans"
-                  :src="`avatar/${i.agent}.png`"
+                  :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
                   :style="{ 'border-bottom': color_map[i.group] }"
@@ -273,7 +346,7 @@ import { match } from 'pinyin-pro'
               <div class="avatars">
                 <img
                   v-for="i in plan.dormitory_4.plans"
-                  :src="`avatar/${i.agent}.png`"
+                  :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
                   :style="{ 'border-bottom': color_map[i.group] }"
@@ -296,7 +369,7 @@ import { match } from 'pinyin-pro'
               <div class="avatars">
                 <img
                   v-for="i in plan.meeting.plans"
-                  :src="`avatar/${i.agent}.png`"
+                  :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
                   :style="{ 'border-bottom': color_map[i.group] }"
@@ -316,7 +389,7 @@ import { match } from 'pinyin-pro'
               <div class="avatars">
                 <img
                   v-for="i in plan.factory.plans"
-                  :src="`avatar/${i.agent}.png`"
+                  :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
                   :style="{ 'border-bottom': color_map[i.group] }"
@@ -336,7 +409,7 @@ import { match } from 'pinyin-pro'
               <div class="avatars">
                 <img
                   v-for="i in plan.contact.plans"
-                  :src="`avatar/${i.agent}.png`"
+                  :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
                   :style="{ 'border-bottom': color_map[i.group] }"
@@ -345,7 +418,26 @@ import { match } from 'pinyin-pro'
             </div>
           </n-button>
         </div>
-        <div class="right_contain"><n-button disabled class="facility-2">训练室</n-button></div>
+        <!-- <div class="right_contain"><n-button disabled class="facility-2">训练室</n-button></div> -->
+        <div class="right_contain">
+          <n-button :secondary="facility != 'train'" class="facility-2" @click="facility = 'train'">
+            <div>
+              <div class="facility-name">
+                <div>协助位</div>
+                <div>训练位</div>
+              </div>
+              <div class="avatars">
+                <img
+                  v-for="i in plan.train.plans"
+                  :src="`avatar/${i.agent}.webp`"
+                  width="45"
+                  height="45"
+                  :style="{ 'border-bottom': color_map[i.group] }"
+                />
+              </div>
+            </div>
+          </n-button>
+        </div>
       </div>
     </div>
     <n-space justify="center" v-if="facility">
@@ -361,6 +453,27 @@ import { match } from 'pinyin-pro'
             />
             <span v-else class="type-select">{{ right_side_facility_name }}</span>
           </td>
+          <template v-if="['制造站', '贸易站'].includes(plan[facility].name)">
+            <td>产物<help-text>切产物功能暂未实装</help-text></td>
+            <td>
+              <n-select
+                v-model:value="plan[facility].product"
+                :options="plan[facility].name == '制造站' ? factory_products : trading_products"
+                class="product-select"
+                :render-label="render_product"
+              />
+            </td>
+          </template>
+          <td>
+            <n-button
+              ghost
+              type="primary"
+              @click="fill_with_free"
+              v-if="facility.startsWith('dorm')"
+            >
+              此宿舍内空位填充Free
+            </n-button>
+          </td>
           <td>
             <n-button ghost type="error" @click="clear" :disabled="facility_empty">
               清空此设施内干员
@@ -372,7 +485,11 @@ import { match } from 'pinyin-pro'
     <n-space justify="center">
       <table>
         <tr v-for="i in operator_limit" :key="i">
-          <td class="select-label">干员：</td>
+          <td class="select-label">
+            <template v-if="facility == 'train' && i == 1">协助位</template>
+            <template v-else-if="facility == 'train' && i == 2">训练位</template>
+            <template v-else>干员：</template>
+          </td>
           <td class="table-space">
             <n-select
               filterable
@@ -381,6 +498,7 @@ import { match } from 'pinyin-pro'
               v-model:value="plan[facility].plans[i - 1].agent"
               :filter="(p, o) => match(o.label, p)"
               :render-label="render_op_label"
+              :disabled="facility == 'train' && i == 2"
             />
           </td>
           <td class="select-label">
@@ -388,12 +506,15 @@ import { match } from 'pinyin-pro'
             <help-text>可以将有联动基建技能的干员或者心情掉率相等的干员编入同组</help-text>
           </td>
           <td class="table-space group">
-            <n-input v-model:value="plan[facility].plans[i - 1].group" />
+            <n-input
+              v-model:value="plan[facility].plans[i - 1].group"
+              :disabled="facility == 'train' && i == 2"
+            />
           </td>
           <td class="select-label">替换：</td>
           <td>
             <n-select
-              :disabled="!plan[facility].plans[i - 1].agent"
+              :disabled="!plan[facility].plans[i - 1].agent || (facility == 'train' && i == 2)"
               multiple
               filterable
               :options="operators_with_none"
@@ -417,6 +538,11 @@ import { match } from 'pinyin-pro'
 
 .type-select {
   width: 100px;
+  margin-right: 8px;
+}
+
+.product-select {
+  width: 180px;
   margin-right: 8px;
 }
 
@@ -461,18 +587,22 @@ import { match } from 'pinyin-pro'
 .avatars {
   display: flex;
   gap: 6px;
+  z-index: 5;
+
+  & img {
+    box-sizing: content-box;
+    border-radius: 2px;
+    background: v-bind(avatar_bg);
+  }
 }
 
 .facility-name {
   margin-bottom: 4px;
   text-align: center;
   line-height: 1;
-}
-
-.avatars > img {
-  box-sizing: content-box;
-  border-radius: 2px;
-  background: v-bind(avatar_bg);
+  display: flex;
+  justify-content: space-around;
+  z-index: 5;
 }
 
 .outer {
@@ -504,14 +634,17 @@ import { match } from 'pinyin-pro'
       border-radius: 3px;
       border: 1px solid transparent;
       transition: all 0.3s;
+      position: relative;
 
       &:hover {
         background-color: rgba(32, 128, 240, 0.22);
       }
+
       &.true {
         background-color: var(--n-color);
         border: 1px solid rgb(32, 128, 240);
       }
+
       .facility-name {
         color: #2080f0;
       }
@@ -522,6 +655,7 @@ import { match } from 'pinyin-pro'
       border-radius: 3px;
       border: 1px solid transparent;
       transition: all 0.3s;
+      position: relative;
 
       &:hover {
         background-color: rgba(240, 160, 32, 0.22);
@@ -594,6 +728,37 @@ import { match } from 'pinyin-pro'
   flex-direction: column;
   align-items: center;
   justify-content: center;
+}
+
+.product-bg {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 173px;
+  height: 74px;
+  opacity: v-bind(product_bg_opacity);
+  background-repeat: no-repeat;
+  background-size: 100%;
+  background-position: 110px -20px;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.avatar-wrapper {
+  position: relative;
+}
+
+.workaholic {
+  position: absolute;
+  content: '';
+  top: 0;
+  left: 0;
+  width: 45px;
+  height: 45px;
+  opacity: 0.35;
+  background-color: red;
+  pointer-events: none;
 }
 </style>
 

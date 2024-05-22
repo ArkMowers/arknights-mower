@@ -6,11 +6,12 @@ import cv2
 import numpy as np
 
 from arknights_mower import __rootdir__
-from arknights_mower.utils import character_recognize, segment
+from arknights_mower.utils import segment
+from arknights_mower.utils.character_recognize import operator_list
 from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.solver import BaseSolver
 from arknights_mower.utils.scene import Scene
+from arknights_mower.utils.solver import BaseSolver
 
 with lzma.open(f"{__rootdir__}/models/operator_room.model", "rb") as f:
     OP_ROOM = pickle.loads(f.read())
@@ -19,17 +20,14 @@ kernel = np.ones((12, 12), np.uint8)
 
 
 class AreneSolver(BaseSolver):
-    def run(self, plan):
+    def run(self, origin, plan, restore=False):
         logger.info("Start: 一键芳汀")
-        self.current = {
-            "dormitory_1": None,
-            "dormitory_2": None,
-            "dormitory_3": None,
-            "dormitory_4": None,
-        }
+        self.current = {}
+        self.origin = origin
         self.plan = plan
-        self.origin = {}
+        self.restore = restore
         self.room = None
+        self.task = self.origin if self.restore else self.plan
         self.recog.update()
         super().run()
 
@@ -49,13 +47,13 @@ class AreneSolver(BaseSolver):
         return (pos := self.find("room_detail")) and self.get_color(pos[0])[0] == 255
 
     def turn_on_room_detail(self):
-        if pos := self.find("arrange_check_in", score=0.5):
+        if pos := self.find("arrange_check_in"):
             self.tap(pos, interval=0.7)
 
     def detect_product_complete(self):
-        for product in ["gold", "exp", "lmd", "ori"]:
+        for product in ["gold", "exp", "lmd", "ori", "oru", "trust"]:
             if pos := self.find(
-                f"infra_{product}_complete", score=0.1, scope=((1230, 0), (1920, 1080))
+                f"infra_{product}_complete", scope=((1230, 0), (1920, 1080))
             ):
                 return pos
 
@@ -91,7 +89,6 @@ class AreneSolver(BaseSolver):
                 (0, self.recog.h * 0.45),
                 duration=500,
                 interval=1,
-                rebuild=True,
             )
         name_x = (1288, 1869)
         name_y = [(135, 326), (344, 535), (553, 744), (532, 723), (741, 932)]
@@ -106,7 +103,6 @@ class AreneSolver(BaseSolver):
                         (0, -self.recog.h * 0.45),
                         duration=500,
                         interval=1,
-                        rebuild=True,
                     )
                 swiped = True
             if self.find("infra_no_operator", scope=name_p[i]):
@@ -157,7 +153,7 @@ class AreneSolver(BaseSolver):
         for label, pos in label_pos_map.items():
             current_state = self.get_color(pos)[2] > 100
             if target_state[label] != current_state:
-                self.tap(pos, interval=0.1, rebuild=False)
+                self.tap(pos, interval=0.1)
 
         self.recog.update()
         confirm_pos = (self.recog.w * 0.8, self.recog.h * 0.8)
@@ -166,7 +162,7 @@ class AreneSolver(BaseSolver):
             self.tap(confirm_pos)
 
     def scan_agent(self, agent):
-        ret = character_recognize.operator_list(self.recog.img)
+        ret = operator_list(self.recog.img)
         selected = []
         for name, scope in ret:
             if name in agent:
@@ -238,8 +234,8 @@ class AreneSolver(BaseSolver):
             i = selected.index(op)
             x = w * position[i][0]
             y = h * position[i][1]
-            self.tap((x, y), interval=0, rebuild=False)
-            self.tap((x, y), interval=0, rebuild=False)
+            self.tap((x, y), interval=0)
+            self.tap((x, y), interval=0)
 
         self.recog.update()
         self.tap_element("confirm_blue")
@@ -247,14 +243,16 @@ class AreneSolver(BaseSolver):
     def transition(self):
         if (scene := self.get_infra_scene()) == Scene.INFRA_MAIN:
             self.room = None
-            for room, operators in self.plan.items():
-                if self.current[room] != operators:
+            for room in self.plan:
+                if room not in self.current:
+                    self.room = room
+                    break
+                if self.current[room] != self.task[room]:
                     self.room = room
                     break
             if self.room:
                 self.enter_room(room)
             else:
-                logger.info(self.origin)
                 return True
         elif scene == Scene.INFRA_DETAILS:
             if not self.room:
@@ -264,17 +262,17 @@ class AreneSolver(BaseSolver):
                 self.turn_on_room_detail()
                 return
             self.current[self.room] = self.get_agent_from_room()
-            if self.room not in self.origin:
+            if not self.restore and self.room not in self.origin:
                 self.origin[self.room] = self.current[self.room]
-            if self.current[self.room] != self.plan[self.room]:
+            if self.task[self.room] != self.current[self.room]:
                 self.tap((1600, 230))
             else:
+                self.room = None
                 self.back()
         elif scene == Scene.INFRA_ARRANGE_ORDER:
             if not self.room:
                 self.back()
-                return
-            self.choose_agent(self.plan[self.room])
-            self.room = None
+            else:
+                self.choose_agent(self.task[self.room])
         else:
-            self.sleep(1)
+            self.sleep()

@@ -1,20 +1,30 @@
-import os
 import json
 from pathlib import Path
-from ruamel import yaml
+
+import yaml
 from flatten_dict import flatten, unflatten
+from yamlcore import CoreDumper, CoreLoader
+
 from .. import __rootdir__
-from .path import app_dir, get_path
+from .path import app_dir
+
 
 def __get_temp_conf():
-    with Path(f'{__rootdir__}/templates/conf.yml').open('r', encoding='utf8') as f:
-        return yaml.load(f,Loader=yaml.Loader)
+    with Path(f"{__rootdir__}/templates/conf.yml").open("r", encoding="utf8") as f:
+        return yaml.load(f, Loader=CoreLoader)
 
 
 def save_conf(conf, path="./conf.yml"):
     path = app_dir / path
-    with path.open('w', encoding='utf8') as f:
-        yaml.dump(conf, f, allow_unicode=True)
+    with path.open("w", encoding="utf8") as f:
+        yaml.dump(
+            conf,
+            f,
+            Dumper=CoreDumper,
+            encoding="utf-8",
+            default_flow_style=False,
+            allow_unicode=True,
+        )
 
 
 def load_conf(path="./conf.yml"):
@@ -22,14 +32,19 @@ def load_conf(path="./conf.yml"):
     path = app_dir / path
     if not path.is_file():
         path.parent.mkdir(exist_ok=True)
-        open(path, 'w')  # 创建空配置文件
+        open(path, "w")  # 创建空配置文件
         save_conf(temp_conf, path)
         return temp_conf
     else:
-        with path.open('r', encoding='utf8') as c:
-            conf = yaml.load(c, Loader=yaml.Loader)
+        with path.open("r", encoding="utf8") as c:
+            conf = yaml.load(c, Loader=CoreLoader)
             if conf is None:
                 conf = {}
+            for key in ["maa_rg_sleep_max", "maa_rg_sleep_min"]:
+                if isinstance(conf[key], int):
+                    hours = conf[key] // 60
+                    minutes = conf[key] - hours * 60
+                    conf[key] = f"{hours}:{minutes:02}"
             flat_temp = flatten(temp_conf)
             flat_conf = flatten(conf)
             flat_temp.update(flat_conf)
@@ -38,7 +53,7 @@ def load_conf(path="./conf.yml"):
 
 
 def __get_temp_plan():
-    with open(f'{__rootdir__}/templates/plan.json', 'r') as f:
+    with open(f"{__rootdir__}/templates/plan.json", "r") as f:
         return json.loads(f.read())
 
 
@@ -47,22 +62,22 @@ def load_plan(path="./plan.json"):
     path = app_dir / path
     if not path.is_file():
         path.parent.mkdir(exist_ok=True)
-        with open(path, 'w') as f:
+        with open(path, "w") as f:
             json.dump(temp_plan, f)  # 创建空json文件
         return temp_plan
-    with open(path, 'r', encoding='utf8') as fp:
+    with open(path, "r", encoding="utf8") as fp:
         plan = json.loads(fp.read())
-        if 'conf' not in plan.keys():  # 兼容旧版本
-            temp_plan['plan1'] = plan
+        if "conf" not in plan.keys():  # 兼容旧版本
+            temp_plan["plan1"] = plan
             return temp_plan
         # 获取新版本的
-        tmp = temp_plan['conf']
-        tmp.update(plan['conf'])
-        plan['conf'] = tmp
+        tmp = temp_plan["conf"]
+        tmp.update(plan["conf"])
+        plan["conf"] = tmp
         return plan
 
 
 def write_plan(plan, path="./plan.json"):
     path = app_dir / path
-    with path.open('w', encoding='utf8') as c:
+    with path.open("w", encoding="utf8") as c:
         json.dump(plan, c, ensure_ascii=False)

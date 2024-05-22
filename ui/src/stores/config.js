@@ -65,12 +65,18 @@ export const useConfigStore = defineStore('config', () => {
   const send_report = ref(true)
   const recruit_gap = ref(false)
   const recruit_auto_5 = ref('hand')
-  const webview = ref({})
+  const webview = ref({ scale: 1.0 })
   const shop_collect_enable = ref(true)
   const meeting_level = ref(3)
   const fix_mumu12_adb_disconnect = ref(false)
   const ra_timeout = ref(30)
   const touch_method = ref('scrcpy')
+  const free_room = ref(false)
+  const feature_matcher = ref('flann')
+  const sign_in = ref({ enable: true })
+  const get_scene = ref({})
+  const droidcast = ref({})
+  const visit_friend = ref(true)
 
   async function load_shop() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/shop`)
@@ -158,6 +164,12 @@ export const useConfigStore = defineStore('config', () => {
     fix_mumu12_adb_disconnect.value = response.data.fix_mumu12_adb_disconnect
     ra_timeout.value = response.data.reclamation_algorithm.timeout
     touch_method.value = response.data.touch_method
+    free_room.value = response.data.free_room
+    feature_matcher.value = response.data.feature_matcher
+    sign_in.value = response.data.sign_in
+    get_scene.value = response.data.get_scene
+    droidcast.value = response.data.droidcast
+    visit_friend.value = response.data.visit_friend
   }
 
   function build_config() {
@@ -235,7 +247,13 @@ export const useConfigStore = defineStore('config', () => {
       reclamation_algorithm: {
         timeout: ra_timeout.value
       },
-      touch_method: touch_method.value
+      touch_method: touch_method.value,
+      free_room: free_room.value,
+      feature_matcher: feature_matcher.value,
+      sign_in: sign_in.value,
+      get_scene: get_scene.value,
+      droidcast: droidcast.value,
+      visit_friend: visit_friend.value
     }
   }
 
@@ -317,6 +335,12 @@ export const useConfigStore = defineStore('config', () => {
     meeting_level,
     fix_mumu12_adb_disconnect,
     ra_timeout,
-    touch_method
+    touch_method,
+    free_room,
+    feature_matcher,
+    sign_in,
+    get_scene,
+    droidcast,
+    visit_friend
   }
 })

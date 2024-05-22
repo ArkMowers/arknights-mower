@@ -7,8 +7,9 @@ exhaust_require: ''
 workaholic: ''
 simulator:
   name: ''
-  index: -1
+  index: '-1'
   simulator_folder: ''
+  wait_time: 30
 free_blacklist: ''
 ling_xi: 1
 check_mail_enable: true
@@ -20,6 +21,7 @@ maa_rg_enable: 0
 maa_long_task_type: rogue
 maa_path: D:\MAA-v4.13.0-win-x64
 maa_expiring_medicine: true
+maa_eat_stone: false
 maa_weekly_plan:
   - medicine: 0
     stage: ['']
@@ -216,6 +218,7 @@ webview:
   height: 1000
   token: ''
   scale: 1.0
+  tray: true
 tap_to_launch_game:
   enable: false
   x: 0
@@ -266,3 +269,14 @@ fix_mumu12_adb_disconnect: false
 reclamation_algorithm:
   timeout: 30
 touch_method: scrcpy
+free_room: false
+feature_matcher: "flann"
+sign_in:
+  enable: true
+get_scene:
+  concurrent: false
+  max_workers: 4
+droidcast:
+  enable: true
+  rotate: false
+visit_friend: true

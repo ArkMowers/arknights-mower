@@ -25,6 +25,8 @@ for v in yaml_paths:
 
 add_data = list(set(yaml_add_data + onnx_add_data))
 
+excludes = ["matplotib"]
+
 
 mower_a = Analysis(
     ["webview_ui.py"],
@@ -36,25 +38,21 @@ mower_a = Analysis(
         ("arknights_mower/templates", "arknights_mower/__init__/templates"),
         ("arknights_mower/resources", "arknights_mower/__init__/resources"),
         ("arknights_mower/data", "arknights_mower/__init__/data"),
-        ("arknights_mower/ocr", "arknights_mower/__init__/ocr"),
         ("arknights_mower/vendor", "arknights_mower/__init__/vendor"),
-        ("arknights_mower/solvers", "arknights_mower/__init__/solvers"),
         (
             "venv/Lib/site-packages/onnxruntime/capi/onnxruntime_providers_shared.dll",
             "onnxruntime/capi/",
         ),
-        ("venv/Lib/site-packages/shapely/DLLs/geos.dll", "."),
-        ("venv/Lib/site-packages/shapely/DLLs/geos_c.dll", "."),
         ("logo.png", "."),
         ("venv/Lib/site-packages/pyzbar/libzbar-64.dll", "."),
         ("venv/Lib/site-packages/pyzbar/libiconv.dll", "."),
     ]
     + add_data,
-    hiddenimports=["imghdr", "imgaug", "scipy.io", "lmdb"],
+    hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=excludes,
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -96,7 +94,7 @@ manager_a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=excludes,
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -138,7 +136,7 @@ toolbox_a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=excludes,
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,

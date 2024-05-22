@@ -32,13 +32,19 @@ async function test_maa() {
       <n-checkbox v-model:checked="skland_enable">
         <div class="card-title">森空岛签到</div>
         <help-text>
-          <p>若账号密码正确但是连接失败，用手机登录查看是否需要人机验证</p>
+          <p>连接失败时，请检查：</p>
+          <ol>
+            <li>同步系统时间后再试；</li>
+            <li>账号密码是否正确；</li>
+            <li>关闭代理软件或设置分流规则；</li>
+            <li>登录森空岛App，查看是否需要人机验证。</li>
+          </ol>
         </help-text>
       </n-checkbox>
     </template>
     <div v-if="skland_enable">
       <n-dynamic-input v-model:value="skland_info" :on-create="add_account">
-        <template #create-button-default> 添加森空岛账号 </template>
+        <template #create-button-default>添加森空岛账号</template>
         <template #default="{ value }">
           <div style="display: flex; align-items: center; width: 100%">
             <n-checkbox v-model:checked="value.isCheck" style="margin-right: 12px" />
@@ -48,7 +54,6 @@ async function test_maa() {
               type="text"
               placeholder="账号"
             />
-
             <n-input
               v-model:value="value.password"
               type="password"

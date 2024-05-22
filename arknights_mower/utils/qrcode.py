@@ -7,14 +7,14 @@ from PIL import Image, ImageChops
 from pyzbar import pyzbar
 from qrcode.main import QRCode
 
-QRCODE_SIZE = 700
-GAP_SIZE = 28
+QRCODE_SIZE = 210
+GAP_SIZE = 16
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
-GREY = (128, 128, 128)
+TOP = 1000
 
 
-def encode(data: str, n: int = 4, theme: str = "light") -> List[Image.Image]:
+def encode(data: str, n: int = 9, theme: str = "light") -> List[Image.Image]:
     data = b45encode(compress(data.encode("utf-8"), level=9))
     length = len(data)
     split: List[bytes] = []
@@ -24,7 +24,7 @@ def encode(data: str, n: int = 4, theme: str = "light") -> List[Image.Image]:
         split.append(data[start:end])
     result: List[Image.Image] = []
     qr = QRCode()
-    fg, bg = (GREY, WHITE) if theme == "light" else (GREY, BLACK)
+    fg, bg = (BLACK, WHITE) if theme == "light" else (WHITE, BLACK)
     for i in split:
         qr.add_data(i)
         img: Image.Image = qr.make_image(fill_color=fg, back_color=bg)
@@ -41,16 +41,12 @@ def trim(img: Image.Image) -> Image.Image:
     return img
 
 
-def export(plan: Dict, upper: Image.Image, theme: str = "light") -> Image.Image:
-    img = Image.new(
-        upper.mode,
-        (upper.width, upper.height + GAP_SIZE + QRCODE_SIZE),
-        WHITE if theme == "light" else BLACK,
-    )
-    img.paste(upper)
+def export(plan: Dict, img: Image.Image, theme: str = "light") -> Image.Image:
     qrcode_list = encode(json.dumps(plan), theme=theme)
-    for idx, i in enumerate(qrcode_list):
-        img.paste(i, (GAP_SIZE + idx * (GAP_SIZE + QRCODE_SIZE), upper.height))
+    for idx, i in enumerate(qrcode_list[:7]):
+        img.paste(i, (75 + idx * (GAP_SIZE + QRCODE_SIZE), TOP))
+    for idx, i in enumerate(qrcode_list[7:]):
+        img.paste(i, (2520 + idx * (GAP_SIZE + QRCODE_SIZE), TOP))
     return img
 
 

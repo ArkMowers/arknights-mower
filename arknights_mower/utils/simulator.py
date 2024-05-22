@@ -12,6 +12,7 @@ class Simulator_Type(Enum):
     MuMu12 = "MuMu12"
     Leidian9 = "雷电9"
     Waydroid = "Waydroid"
+    ReDroid = "ReDroid"
 
 
 def restart_simulator(data, stop=True, start=True):
@@ -24,25 +25,28 @@ def restart_simulator(data, stop=True, start=True):
         Simulator_Type.MuMu12.value,
         Simulator_Type.Leidian9.value,
         Simulator_Type.Waydroid.value,
+        Simulator_Type.ReDroid.value,
     ]:
         if simulator_type == Simulator_Type.Nox.value:
             cmd = "Nox.exe"
-            if index >= 0:
+            if int(index) >= 0:
                 cmd += f' -clone:Nox_{data["index"]}'
             cmd += " -quit"
         elif simulator_type == Simulator_Type.MuMu12.value:
             cmd = "MuMuManager.exe api -v "
-            if index >= 0:
+            if int(index) >= 0:
                 cmd += f'{data["index"]} '
             cmd += "shutdown_player"
         elif simulator_type == Simulator_Type.Waydroid.value:
             cmd = "waydroid session stop"
         elif simulator_type == Simulator_Type.Leidian9.value:
             cmd = "ldconsole.exe quit --index "
-            if index >= 0:
+            if int(index) >= 0:
                 cmd += f'{data["index"]} '
             else:
                 cmd += "0"
+        elif simulator_type == Simulator_Type.ReDroid.value:
+            cmd = f"docker stop {data['index']} -t 0"
         if stop:
             exec_cmd(cmd, data["simulator_folder"])
             logger.info(f"关闭{simulator_type}模拟器")
@@ -58,10 +62,12 @@ def restart_simulator(data, stop=True, start=True):
             cmd = "waydroid show-full-ui"
         elif simulator_type == Simulator_Type.Leidian9.value:
             cmd = cmd.replace("quit", "launch")
+        elif simulator_type == Simulator_Type.ReDroid.value:
+            cmd = f"docker start {data['index']}"
         if start:
             exec_cmd(cmd, data["simulator_folder"])
-            logger.info(f"开始启动{simulator_type}模拟器，等待25秒钟")
-            time.sleep(25)
+            logger.info(f"开始启动{simulator_type}模拟器，等待{data['wait_time']}秒")
+            time.sleep(data["wait_time"])
     else:
         logger.warning(f"尚未支持{simulator_type}重启/自动启动")
 

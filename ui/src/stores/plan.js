@@ -20,7 +20,13 @@ export const usePlanStore = defineStore('plan', () => {
 
   const left_side_facility = []
 
-  const facility_operator_limit = { central: 5, meeting: 2, factory: 1, contact: 1 }
+  const facility_operator_limit = {
+    central: 5,
+    meeting: 2,
+    factory: 1,
+    contact: 1,
+    train: 2
+  }
   for (let i = 1; i <= 3; ++i) {
     for (let j = 1; j <= 3; ++j) {
       const facility_name = `room_${i}_${j}`
@@ -29,7 +35,7 @@ export const usePlanStore = defineStore('plan', () => {
       left_side_facility.push({ label: display_name, value: facility_name })
     }
   }
-  for (let i = 0; i <= 4; ++i) {
+  for (let i = 1; i <= 4; ++i) {
     facility_operator_limit[`dormitory_${i}`] = 5
   }
 
@@ -60,6 +66,14 @@ export const usePlanStore = defineStore('plan', () => {
         let limit = facility_operator_limit[i]
         if (full_plan[i].name == '发电站') {
           limit = 1
+        } else if (full_plan[i].name == '贸易站') {
+          if (!['lmd', 'orundum'].includes(full_plan[i].product)) {
+            full_plan[i].product = 'lmd'
+          }
+        } else if (full_plan[i].name == '制造站') {
+          if (!['gold', 'exp3', 'orirock'].includes(full_plan[i].product)) {
+            full_plan[i].product = 'gold'
+          }
         }
         if (full_plan[i].plans.length < limit) {
           count = limit - full_plan[i].plans.length
@@ -76,6 +90,9 @@ export const usePlanStore = defineStore('plan', () => {
     const result = {
       name: input.name,
       plans: []
+    }
+    if (['贸易站', '制造站'].includes(input.name)) {
+      result.product = input.product
     }
     for (const i of input.plans) {
       if (i.agent) {

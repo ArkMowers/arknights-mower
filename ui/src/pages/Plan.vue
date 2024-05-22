@@ -49,11 +49,13 @@ const generating_image = ref(false)
 
 const message = useMessage()
 
-import html2canvas from 'html2canvas'
+import { toBlob } from 'html-to-image'
 import { sleep } from '@/utils/sleep'
 import { useLoadingBar } from 'naive-ui'
 
 const loading_bar = useLoadingBar()
+
+import Bowser from 'bowser'
 
 async function save() {
   generating_image.value = true
@@ -62,14 +64,19 @@ async function save() {
     facility.value = ''
     await sleep(500)
   }
-  const canvas = await html2canvas(plan_editor.value.outer, {
-    scale: 3,
-    backgroundColor: theme.value == 'light' ? '#ffffff' : '#000000'
+  const browser = Bowser.getParser(window.navigator.userAgent)
+  let blob
+  if (browser.getEngine().name == 'WebKit') {
+    blob = await toBlob(plan_editor.value.outer)
+  }
+  blob = await toBlob(plan_editor.value.outer, {
+    pixelRatio: 3,
+    backgroundColor: theme.value == 'light' ? '#ffffff' : '#000000',
+    style: { margin: 0, padding: '8px 0' }
   })
   generating_image.value = false
   loading_bar.finish()
   const form_data = new FormData()
-  const blob = await new Promise((resolve) => canvas.toBlob(resolve))
   form_data.append('img', blob)
   const { data } = await axios.post(`${import.meta.env.VITE_HTTP_URL}/dialog/save/img`, form_data)
   message.info(data)
@@ -111,6 +118,7 @@ function create_sub_plan() {
       operator: '',
       right: ''
     },
+    trigger_timing: 'AFTER_PLANNING',
     task: {}
   })
   sub_plan.value = backup_plans.value.length - 1
@@ -278,15 +286,13 @@ async function import_plan() {
       </n-radio-group>
     </n-form-item>
     <n-form-item>
-      <template #label>
-        <span>最大组人数</span><help-text><div>请查阅文档</div></help-text>
-      </template>
-      <n-input-number v-model:value="current_conf.max_resting_count" />
+      <template #label><span>最大组人数</span><help-text>请查阅文档</help-text></template>
+      <n-input-number v-model:value="current_conf.max_resting_count">
+        <template #suffix>人</template>
+      </n-input-number>
     </n-form-item>
     <n-form-item>
-      <template #label>
-        <span>需要回满心情的干员</span><help-text><div>请查阅文档</div></help-text>
-      </template>
+      <template #label><span>需要回满心情的干员</span><help-text>请查阅文档</help-text></template>
       <n-select
         multiple
         filterable
@@ -299,8 +305,7 @@ async function import_plan() {
     </n-form-item>
     <n-form-item>
       <template #label>
-        <span>需要用尽心情的干员</span
-        ><help-text><div>仅推荐写入具有暖机技能的干员</div></help-text>
+        <span>需要用尽心情的干员</span><help-text>仅推荐写入具有暖机技能的干员</help-text>
       </template>
       <n-select
         multiple
@@ -314,7 +319,7 @@ async function import_plan() {
     </n-form-item>
     <n-form-item>
       <template #label>
-        <span>0心情工作的干员</span><help-text><div>心情涣散状态仍能触发技能的干员</div></help-text>
+        <span>0心情工作的干员</span><help-text>心情涣散状态仍能触发技能的干员</help-text>
       </template>
       <n-select
         multiple
@@ -327,9 +332,7 @@ async function import_plan() {
       />
     </n-form-item>
     <n-form-item>
-      <template #label>
-        <span>宿舍低优先级干员</span><help-text><div>请查阅文档</div></help-text>
-      </template>
+      <template #label><span>宿舍低优先级干员</span><help-text>请查阅文档</help-text></template>
       <n-select
         multiple
         filterable
@@ -364,9 +367,7 @@ async function import_plan() {
     <n-form-item v-if="sub_plan != 'main'">
       <template #label>
         <span>宿舍黑名单</span>
-        <help-text>
-          <div>不希望进行填充宿舍的干员</div>
-        </help-text>
+        <help-text>不希望进行填充宿舍的干员</help-text>
       </template>
       <n-select
         multiple

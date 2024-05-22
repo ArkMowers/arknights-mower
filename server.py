@@ -2,19 +2,20 @@
 import datetime
 import json
 import mimetypes
-import multiprocessing
 import os
 import pathlib
 import sys
 import time
 from functools import wraps
-from threading import Thread
+from queue import Queue
+from threading import Event, Thread
 
 from flask import Flask, abort, request, send_from_directory
 from flask_cors import CORS
 from flask_sock import Sock
 from werkzeug.exceptions import NotFound
 
+from arknights_mower.utils import config
 from arknights_mower.utils.conf import load_conf, load_plan, save_conf, write_plan
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
@@ -29,11 +30,30 @@ CORS(app)
 
 conf = {}
 plan = {}
-mower_process = None
-read = None
 operators = {}
+config.stop_mower = Event()
+config.log_queue = Queue()
+config.wh = None
+
+mower_thread = None
 log_lines = []
 ws_connections = []
+
+
+def read_log():
+    global log_lines
+    global ws_connections
+
+    while True:
+        msg = config.log_queue.get()
+        new_line = time.strftime("%m-%d %H:%M:%S ") + msg
+        log_lines.append(new_line)
+        log_lines = log_lines[-500:]
+        for ws in ws_connections:
+            ws.send(new_line)
+
+
+Thread(target=read_log, daemon=True).start()
 
 
 def require_token(f):
@@ -85,7 +105,7 @@ def load_plan_from_json():
         try:
             plan = load_plan(conf["planFile"])
         except PermissionError as e:
-            logger.error("plan.json路径错误,重置为plan.json")
+            logger.error(f"plan.json路径错误{e}，重置为plan.json")
             plan = load_plan()
         return plan
     else:
@@ -108,30 +128,6 @@ def shop_list():
     return list(shop_items.keys())
 
 
-def read_log(conn):
-    global operators
-    global mower_process
-    global log_lines
-    global ws_connections
-
-    try:
-        while True:
-            msg = conn.recv()
-            if msg["type"] == "log":
-                new_line = time.strftime("%m-%d %H:%M:%S ") + msg["data"]
-                log_lines.append(new_line)
-                log_lines = log_lines[-500:]
-                for ws in ws_connections:
-                    ws.send(new_line)
-            elif msg["type"] == "operators":
-                operators = msg["data"]
-            elif msg["type"] == "update_conf":
-                global conf
-                conn.send(conf)
-    except EOFError:
-        conn.close()
-
-
 @app.route("/depot/readdepot")
 def read_depot():
     from arknights_mower.utils import depot
@@ -141,21 +137,17 @@ def read_depot():
 
 @app.route("/running")
 def running():
-    global mower_process
-    return "false" if mower_process is None else "true"
+    return "true" if mower_thread and mower_thread.is_alive() else "false"
 
 
 @app.route("/start")
 @require_token
 def start():
-    global conf
-    global plan
-    global mower_process
-    global operators
+    global mower_thread
     global log_lines
 
-    if mower_process is not None:
-        return "Mower is already running."
+    if mower_thread and mower_thread.is_alive():
+        return "false"
 
     # 创建 tmp 文件夹
     tmp_dir = get_path("@app/tmp")
@@ -163,39 +155,36 @@ def start():
 
     from arknights_mower.__main__ import main
 
-    read, write = multiprocessing.Pipe()
-    mower_process = multiprocessing.Process(
-        target=main,
-        args=(
-            conf,
-            plan,
-            operators,
-            write,
-            app.global_space,
-        ),
-        daemon=False,
-    )
-    mower_process.start()
-
-    Thread(target=read_log, args=(read,)).start()
+    config.stop_mower.clear()
+    config.conf = conf
+    config.plan = plan
+    config.operators = {}
+    mower_thread = Thread(target=main, daemon=True)
+    mower_thread.start()
 
     log_lines = []
 
-    return "Mower started."
+    return "true"
 
 
 @app.route("/stop")
 @require_token
 def stop():
-    global mower_process
+    global mower_thread
 
-    if mower_process is None:
-        return "Mower is not running."
+    if mower_thread is None:
+        return "true"
 
-    mower_process.terminate()
-    mower_process = None
+    config.stop_mower.set()
 
-    return "Mower stopped."
+    mower_thread.join(10)
+    if mower_thread.is_alive():
+        logger.error("Mower线程仍在运行")
+        return "false"
+    else:
+        logger.info("成功停止mower线程")
+        mower_thread = None
+        return "true"
 
 
 @sock.route("/log")
@@ -446,7 +435,7 @@ def get_orundum_data():
                 if 0 < i < len(data) - 15:
                     data.pop(i)
                 else:
-                    logger.info("合成玉{}".format(data[i]["合成玉"]))
+                    logger.debug("合成玉{}".format(data[i]["合成玉"]))
                     if data[i]["合成玉"] > 0:
                         begin_make_orundum = str2date(data[i]["Unnamed: 0"])
         else:
@@ -559,3 +548,67 @@ def test_skland():
     from arknights_mower.solvers.skland import SKLand
 
     return SKLand(conf["skland_info"]).test_connect()
+
+
+@app.route("/task", methods=["POST"])
+def get_count():
+    from arknights_mower.__main__ import base_scheduler
+    from arknights_mower.data import agent_list
+    from arknights_mower.utils.operators import SkillUpgradeSupport
+    from arknights_mower.utils.scheduler_task import (
+        SchedulerTask,
+        TaskTypes,
+        find_next_task,
+    )
+
+    try:
+        if request.method == "POST":
+            req = request.json
+            task = req["task"]
+            logger.debug(f"收到新增任务请求：{req}")
+            if base_scheduler and mower_thread.is_alive():
+                # if not base_scheduler.sleeping:
+                #     raise Exception("只能在休息时间添加")
+                if task:
+                    task_time = datetime.datetime.strptime(
+                        task["time"], "%m/%d/%Y, %I:%M:%S %p"
+                    )
+                    new_task = SchedulerTask(
+                        time=task_time,
+                        task_plan=task["plan"],
+                        task_type=task["task_type"],
+                        meta_data=task["meta_data"],
+                    )
+                    next_task = find_next_task(
+                        base_scheduler.tasks, compare_time=task_time, compare_type="="
+                    )
+                    if next_task is not None:
+                        raise Exception("找到同时间任务请勿重复添加")
+                    if new_task.type == TaskTypes.SKILL_UPGRADE:
+                        supports = []
+                        for s in req["upgrade_support"]:
+                            if (
+                                s["name"] not in agent_list
+                                or s["swap_name"] not in agent_list
+                            ):
+                                raise Exception("干员名不正确")
+                            supports.append(
+                                SkillUpgradeSupport(
+                                    name=s["name"],
+                                    skill_level=s["skill_level"],
+                                    efficiency=s["efficiency"],
+                                    match=s["match"],
+                                    swap_name=s["swap_name"],
+                                )
+                            )
+                        if len(supports) == 0:
+                            raise Exception("请添加专精工具人")
+                        base_scheduler.op_data.skill_upgrade_supports = supports
+                        logger.error("更新专精工具人完毕")
+                    base_scheduler.tasks.append(new_task)
+                    logger.debug(f"成功：{str(new_task)}")
+                    return "添加任务成功！"
+            raise Exception("添加任务失败！！")
+    except Exception as e:
+        logger.error(f"添加任务失败：{str(e)}")
+        return str(e)

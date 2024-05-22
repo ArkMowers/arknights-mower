@@ -21,6 +21,43 @@ const togglePlanAndStage = (plan, day) => {
   })
 }
 
+const togglePlan = (plan) => {
+  let kai = 0
+  let guan = 0
+  daysOfWeek.forEach((day) => {
+    if (plan[day] === 1) {
+      guan = guan + 1
+    } else if (plan[day] === 2) {
+      kai = kai + 1
+    }
+  })
+  daysOfWeek.forEach((day) => {
+    if (plan[day] > 0) {
+      if (kai > guan) {
+        plan[day] = 1
+      } else {
+        plan[day] = 2
+      }
+    }
+  })
+
+  maa_weekly_plan.value.slice(0, daysOfWeek.length).forEach((p, i) => {
+    p.stage = maa_weekly_plan1.value
+      .filter((item) => item[daysOfWeek[i]] === 2)
+      .map((item) => item.stage)
+      .flat()
+  })
+}
+const changestage = (plan, newstage) => {
+  plan['stage'] = newstage
+  console.log(plan['stage'])
+  maa_weekly_plan.value.slice(0, daysOfWeek.length).forEach((p, i) => {
+    p.stage = maa_weekly_plan1.value
+      .filter((item) => item[daysOfWeek[i]] === 2)
+      .map((item) => item.stage)
+      .flat()
+  })
+}
 const showstage = (stage) => {
   const valueMapping = {
     '1-7': '1-7',
@@ -344,6 +381,7 @@ function clear() {
       <table size="small" :single-column="true" :single-line="true">
         <thead>
           <tr>
+            <th>全选</th>
             <th>关卡</th>
             <th
               v-for="(day, index) in dayOfWeek"
@@ -354,6 +392,7 @@ function clear() {
             </th>
           </tr>
           <tr>
+            <th></th>
             <th>药</th>
             <th v-for="(day, index) in daysOfWeek" :key="index">
               <n-input-number
@@ -368,6 +407,15 @@ function clear() {
         <tbody>
           <tr v-for="(plan, index) in maa_weekly_plan1" :key="plan.weekday1">
             <td>
+              <n-button
+                :v-model="plan"
+                @click="() => togglePlan(plan)"
+                quaternary
+                style="width: 100%; height: 100%"
+                class="class1"
+              ></n-button>
+            </td>
+            <td>
               <n-select
                 v-if="index > 1 && index < 5"
                 v-model:value="plan.stage"
@@ -378,18 +426,18 @@ function clear() {
                 :show-arrow="false"
                 :render-tag="render_tag"
                 :on-create="create_tag"
+                @update:value="(value) => changestage(plan, value)"
               />
               <span v-else>{{ showstage(plan.stage) }}</span>
             </td>
-            <td
-              v-for="day in daysOfWeek"
-              :class="{ class2: plan[day] === 2, class1: plan[day] === 1 }"
-            >
+            <td v-for="day in daysOfWeek">
               <template v-if="plan[day] !== 0">
                 <n-button
                   :v-model="plan[day]"
                   @click="() => togglePlanAndStage(plan, day)"
                   quaternary
+                  style="width: 100%; height: 100%"
+                  :class="{ class2: plan[day] === 2, class1: plan[day] === 1 }"
                 >
                   <span v-if="plan[day] === 2">打</span>
                   <span v-if="plan[day] === 1"></span>
@@ -414,8 +462,16 @@ function clear() {
     border-collapse: collapse;
   }
 
-  .tasktable td {
-    width: 12.5%;
+  .tasktable td:first-child {
+    width: 10%;
+  }
+
+  .tasktable td:nth-child(2) {
+    width: 18%;
+  }
+
+  .tasktable td:not(:first-child):not(:nth-child(2)) {
+    width: calc(72% / 7);
   }
 
   .tasktable thead {
@@ -435,8 +491,16 @@ function clear() {
     border-collapse: collapse;
   }
 
-  .tasktable td {
-    width: 12.5%;
+  .tasktable td:first-child {
+    width: 10%;
+  }
+
+  .tasktable td:nth-child(2) {
+    width: 18%;
+  }
+
+  .tasktable td:not(:first-child):not(:nth-child(2)) {
+    width: calc(72% / 7);
   }
 
   .tasktable thead {

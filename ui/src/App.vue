@@ -136,7 +136,8 @@ import HelpCircle from '@vicons/ionicons5/HelpCircle'
 import Storefront from '@vicons/ionicons5/Storefront'
 import ReaderOutline from '@vicons/ionicons5/ReaderOutline'
 import Bag from '@vicons/ionicons5/Bag'
-
+import Wrench from '@vicons/fa/Wrench'
+import WikipediaW from '@vicons/fa/WikipediaW'
 function renderIcon(icon) {
   return () => h(NIcon, null, { default: () => h(icon) })
 }
@@ -202,6 +203,34 @@ const menuOptions = computed(() => [
     label: () => h(RouterLink, { to: { path: '/readme' } }, { default: () => '其他资源' }),
     icon: renderIcon(Bag),
     key: 'readme'
+  },
+  {
+    label: () =>
+      h(
+        'a',
+        {
+          href: 'https://arkntools.app/ ',
+          target: '_blank',
+          rel: 'noopenner noreferrer'
+        },
+        '明日方舟工具箱'
+      ),
+    key: 'toolbox',
+    icon: renderIcon(Wrench)
+  },
+  {
+    label: () =>
+      h(
+        'a',
+        {
+          href: 'https://prts.wiki/w/%E9%A6%96%E9%A1%B5',
+          target: '_blank',
+          rel: 'noopenner noreferrer'
+        },
+        '明日方舟PRTS'
+      ),
+    key: 'wiki',
+    icon: renderIcon(WikipediaW)
   }
 ])
 import { zhCN, dateZhCN, darkTheme } from 'naive-ui'
@@ -224,7 +253,7 @@ const watermarkData = ref('mower')
 
 const config_store = useConfigStore()
 const { load_config, load_shop } = config_store
-const { start_automatically, theme } = storeToRefs(config_store)
+const { start_automatically, theme, webview } = storeToRefs(config_store)
 
 const plan_store = usePlanStore()
 const { operators } = storeToRefs(plan_store)
@@ -243,9 +272,15 @@ function start() {
 }
 
 function actions_on_resize() {
-  const vh = window.innerHeight * 0.01
-  document.documentElement.style.setProperty('--vh', `${vh}px`)
-  mobile.value = window.innerWidth < 800
+  document.documentElement.style.setProperty(
+    '--app-height',
+    `${window.innerHeight / webview.value.scale}px`
+  )
+  document.documentElement.style.setProperty(
+    '--app-width',
+    `${window.innerWidth / webview.value.scale}px`
+  )
+  mobile.value = window.innerWidth < 800 * webview.value.scale
 }
 
 const mobile = ref(true)
@@ -305,6 +340,15 @@ onMounted(async () => {
     start()
   }
 })
+
+watch(
+  () => webview.value.scale,
+  (scale) => {
+    const ele = document.querySelector('#app')
+    ele.style.transform = `scale(${webview.value.scale})`
+    actions_on_resize()
+  }
+)
 </script>
 
 <style scoped>
@@ -323,8 +367,9 @@ onMounted(async () => {
 
 <style lang="scss">
 #app {
-  height: calc(var(--vh, 1vh) * 100);
-  width: 100%;
+  height: var(--app-height, 100vh);
+  width: var(--app-width, 100vw);
+  transform-origin: 0 0;
 }
 
 .n-tab-pane {
@@ -420,5 +465,6 @@ td {
   gap: 8px;
   width: calc(100% - 24px);
   height: calc(100% - 24px);
+  position: relative;
 }
 </style>

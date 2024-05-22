@@ -12,6 +12,7 @@ class TaskTypes(Enum):
     FIAMMETTA = ("菲亚梅塔", "肥鸭", 2)
     SHIFT_OFF = ("shifit_off", "下班", 2)
     SHIFT_ON = ("shifit_on", "上班", 2)
+    EXHAUST_OFF = ("exhaust_on", "用尽下班", 2)
     SELF_CORRECTION = ("self_correction", "纠错", 2)
     CLUE_PARTY = ("Impart", "趴体", 2)
     MAA_MALL = ("maa_Mall", "MAA信用购物", 2)
@@ -20,7 +21,9 @@ class TaskTypes(Enum):
     SKLAND = ("skland", "森空岛签到", 2)
     RE_ORDER = ("宿舍排序", "宿舍排序", 2)
     RELEASE_DORM = ("释放宿舍空位", "释放宿舍空位", 2)
-    DEPOT=("仓库扫描","仓库扫描",2) #但是我不会写剩下的
+    REFRESH_ORDER_TIME = ("强制刷新跑单时间", "刷新跑单时间", 2)
+    SKILL_UPGRADE = ("技能专精", "技能专精", 2)
+    DEPOT = ("仓库扫描", "仓库扫描", 2)  # 但是我不会写剩下的
 
     def __new__(cls, value, display_value, priority):
         obj = object.__new__(cls)
@@ -109,6 +112,30 @@ def scheduling(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
         tasks.sort(key=lambda x: x.time)
 
 
+def try_add_release_dorm(plan, time, op_data, tasks):
+    if not op_data.config.free_room:
+        return
+    for k, v in plan.items():
+        for name in v:
+            if name != "Current":
+                _idx, __dorm = op_data.get_dorm_by_name(name)
+                if __dorm and __dorm.time < time:
+                    add_release_dorm(tasks, op_data, name)
+
+
+def add_release_dorm(tasks, op_data, name):
+    _idx, __dorm = op_data.get_dorm_by_name(name)
+    if __dorm.time > datetime.now() and find_next_task(tasks, task_type=TaskTypes.RELEASE_DORM, meta_data=name) is None:
+        _free = op_data.operators[name]
+        if _free.current_room.startswith('dorm'):
+            __plan = {_free.current_room: ['Current'] * 5}
+            __plan[_free.current_room][_free.current_index] = "Free"
+            task = SchedulerTask(time=__dorm.time, task_type=TaskTypes.RELEASE_DORM, task_plan=__plan, meta_data=name)
+            tasks.append(task)
+            logger.info(name + " 新增释放宿舍任务")
+            logger.debug(str(task))
+
+
 def check_dorm_ordering(tasks, op_data):
     # 仅当下班的时候才触发宿舍排序任务
     plan = op_data.plan
@@ -117,6 +144,10 @@ def check_dorm_ordering(tasks, op_data):
     if tasks[0].type == TaskTypes.SHIFT_OFF and tasks[0].meta_data == "":
         extra_plan = {}
         other_plan = {}
+        working_agent = []
+        for room, v in tasks[0].plan.items():
+            if not room.startswith('dorm'):
+                working_agent.extend(v)
         for room, v in tasks[0].plan.items():
             # 非宿舍则不需要清空
             if room.startswith('dorm'):
@@ -131,8 +162,11 @@ def check_dorm_ordering(tasks, op_data):
                         current = next((obj for obj in op_data.operators.values() if
                                         obj.current_room == room and obj.current_index == idx), None)
                         if current:
-                            if current.is_high():
+                            if current.name not in working_agent:
                                 v[idx] = current.name
+                            else:
+                                logger.debug(f"检测到干员{current.name}已经上班")
+                                v[idx] = "Free"
                         if room not in extra_plan:
                             extra_plan[room] = copy.deepcopy(v)
                         # 新生成移除任务 --> 换成移除
@@ -146,8 +180,23 @@ def check_dorm_ordering(tasks, op_data):
             for k, v in other_plan.items():
                 del tasks[0].plan[k]
                 extra_plan[k] = v
-            tasks.insert(0, SchedulerTask(task_plan=extra_plan, time=tasks[0].time - timedelta(seconds=1),
-                                          task_type=TaskTypes.RE_ORDER))
+            logger.info("新增排序任务任务")
+            task = SchedulerTask(task_plan=extra_plan, time=tasks[0].time - timedelta(seconds=1),
+                                 task_type=TaskTypes.RE_ORDER)
+            tasks.insert(0, task)
+            logger.debug(str(task))
+
+
+def set_type_enum(value):
+    if value is None:
+        return TaskTypes.NOT_SPECIFIC
+    if isinstance(value, TaskTypes):
+        return value
+    if isinstance(value, str):
+        for task_type in TaskTypes:
+            if value.upper() == task_type.display_value.upper():
+                return task_type
+    return TaskTypes.NOT_SPECIFIC
 
 
 class SchedulerTask:
@@ -162,10 +211,7 @@ class SchedulerTask:
         else:
             self.time = time
         self.plan = task_plan
-        if task_type == "":
-            self.type = TaskTypes.NOT_SPECIFIC
-        else:
-            self.type = task_type
+        self.type = set_type_enum(task_type)
         self.meta_data = meta_data
 
     def format(self, time_offset=0):

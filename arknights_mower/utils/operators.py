@@ -6,6 +6,51 @@ import copy
 from evalidate import Expr, base_eval_model
 
 
+class SkillUpgradeSupport(object):
+    support_class = None
+    level = 1
+    efficiency = 0
+    half_off = False
+    add_on = False
+    match = False
+    use_booster = True
+    name = ''
+    swap_name = ''
+
+    def __init__(self, name, skill_level, efficiency, match, swap_name='艾丽妮'):
+        self.name = name
+        self.level = skill_level
+        self.efficiency = efficiency
+        self.match = match
+        if self.level > 1:
+            self.half_off = True
+        self.swap_name = swap_name
+
+
+def calculate_switch_time(support: SkillUpgradeSupport):
+    hour = 0
+    half_off = support.half_off
+    level = support.level
+    match = support.match
+    efficiency = support.efficiency
+    if level == 1:
+        half_off = False
+    # if left_minutes > 0 or left_hours > 0:
+    #     hour = left_minutes / 60 + left_hours
+    # 基本5%
+    basic = 5
+    if support.add_on:
+        # 阿斯卡伦
+        basic += 5
+    if hour == 0:
+        hour = level * 8
+    if half_off:
+        hour = hour / 2
+    left = 5 * (100 + basic + (30 if match else 0)) / 100
+    left = hour - left
+    return left * 100 / (100 + efficiency + basic)
+
+
 class Operators(object):
     config = None
     operators = None
@@ -16,10 +61,11 @@ class Operators(object):
     plan = None
 
     global_plan = None
-    plan_name = ""
+    plan_condition = []
     shadow_copy = {}
     current_room_changed_callback = None
     first_init = True
+    skill_upgrade_supports = []
 
     def __init__(self, plan):
         self.operators = {}
@@ -32,7 +78,7 @@ class Operators(object):
         self.global_plan = plan
         self.backup_plans = plan["backup_plans"]
         # 切换默认排班
-        self.swap_plan()
+        self.swap_plan([False] * (len(self.backup_plans)))
         self.run_order_rooms = {}
         self.clues = []
         self.current_room_changed_callback = None
@@ -46,19 +92,13 @@ class Operators(object):
     def __repr__(self):
         return f'Operators(operators={self.operators})'
 
-    def swap_plan(self, idx=-1, refresh=False):
-        # -1 则使用默认排班方案
-        logger.info("启动超级变换形态")
-        if idx == -1:
-            self.plan = copy.deepcopy(self.global_plan["default_plan"].plan)
-            self.plan_name = "default_plan"
-            self.config = copy.deepcopy(self.global_plan["default_plan"].config)
-            logger.info("切换成常态模式")
-        else:
-            self.plan, self.config = self.merge_plan(idx)
-            self.plan_name = idx
-            logger.info("切换成自定义模式")
-        logger.info(("" if self.config.run_order_buffer_time > 0 else "不") + "启动葛朗台跑单")
+    def swap_plan(self, condition, refresh=False):
+        self.plan = copy.deepcopy(self.global_plan["default_plan"].plan)
+        self.config = copy.deepcopy(self.global_plan["default_plan"].config)
+        for index, success in enumerate(condition):
+            if success:
+                self.plan, self.config = self.merge_plan(index, self.config, self.plan)
+        self.plan_condition = condition
         if refresh:
             self.first_init = True
             error = self.init_and_validate(True)
@@ -66,14 +106,28 @@ class Operators(object):
             if error:
                 return error
 
-    def merge_plan(self, idx):
-        default_plan = copy.deepcopy(self.global_plan["default_plan"].plan)
+    def merge_plan(self, idx, ext_config, default_plan=None):
+        if default_plan is None:
+            default_plan = copy.deepcopy(self.global_plan["default_plan"].plan)
         plan = copy.deepcopy(self.global_plan["backup_plans"][idx])
         # 更新切换排班表
         for key, value in plan.plan.items():
             if key in default_plan:
-                default_plan[key] = value
-        return default_plan, copy.deepcopy(self.global_plan["backup_plans"][idx].config)
+                for idx, operator in enumerate(value):
+                    if operator.agent != "Current":
+                        default_plan[key][idx] = operator
+        return default_plan, ext_config.merge_config(plan.config)
+
+    def generate_conditions(self, n):
+        if n == 1:
+            return [[True], [False]]
+        else:
+            prev_conditions = self.generate_conditions(n - 1)
+            conditions = []
+            for condition in prev_conditions:
+                conditions.append(condition + [True])
+                conditions.append(condition + [False])
+            return conditions
 
     def init_and_validate(self, update=False):
         self.groups = {}
@@ -125,16 +179,10 @@ class Operators(object):
                         if _replacement not in self.operators:
                             return f'菲亚梅塔替换不在高效组列: 房间->{room}, 干员->{_replacement}'
                         if _replacement in self.operators and not self.operators[_replacement].is_high():
-                            return f'菲亚梅塔替换只能高效组干员: 房间->{room}, 干员->{_replacement}'
-                        if _replacement in self.operators and self.operators[_replacement].group != '':
-                            return f'菲亚梅塔替换不可分组: 房间->{room}, 干员->{_replacement}'
+                            return f'菲亚梅塔替换只能为高效组干员: 房间->{room}, 干员->{_replacement}'
         # 判定替换缺失
         if "菲亚梅塔" in missing_replacements:
             return f'菲亚梅塔替换缺失'
-        if '菲亚梅塔' in self.operators:
-            for _agent in missing_replacements[:]:
-                if _agent in self.operators['菲亚梅塔'].replacement[:-1]:
-                    missing_replacements.remove(_agent)
         if len(missing_replacements):
             return f'以下干员替换组缺失：{",".join(missing_replacements)}'
         dorm_names = [k for k in self.plan.keys() if k.startswith("dorm")]
@@ -357,8 +405,17 @@ class Operators(object):
                     self.dorm[idx].name = ""
                     self.dorm[idx].time = None
 
+    def get_train_support(self):
+        for name in self.operators.keys():
+            agent = self.operators[name]
+            if agent.current_room == 'train' and agent.current_index == 0:
+                return agent.name
+        return None
+
     def get_refresh_index(self, room, plan):
         ret = []
+        if room.startswith("dorm") and self.config.free_room:
+            return [i for i, x in enumerate(self.plan[room]) if x == "Free"]
         for idx, dorm in enumerate(self.dorm):
             # Filter out resting priority low
             if idx >= self.config.max_resting_count:
@@ -373,7 +430,7 @@ class Operators(object):
                             _name].room.startswith('dorm'):
                             ret.append(i)
                     elif not self.operators[
-                            _name].room.startswith('dorm'):
+                        _name].room.startswith('dorm'):
                         ret.append(i)
                 break
         return ret
@@ -472,6 +529,12 @@ class Operators(object):
         _room.name = name
         return _room
 
+    def get_current_operator(self, room, index):
+        for key, value in self.operators.items():
+            if value.current_room == room and value.current_index == index:
+                return value
+        return None
+
     def print(self):
         ret = "{"
         op = []
@@ -555,8 +618,10 @@ class Operator(object):
             return True
 
     def not_valid(self):
-        if self.workaholic:
+        if self.room == "train":
             return False
+        if self.workaholic:
+            return self.current_room != self.room or self.index != self.current_index
         if self.operator_type == 'high':
             if not self.room.startswith("dorm") and self.current_room.startswith("dorm"):
                 if self.mood == -1 or self.mood == 24:

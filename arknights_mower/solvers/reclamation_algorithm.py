@@ -1,4 +1,5 @@
 import math
+import time
 from datetime import datetime, timedelta
 from threading import Event, Thread
 from typing import Optional
@@ -6,14 +7,13 @@ from typing import Optional
 import cv2
 import numpy as np
 
-from arknights_mower import __rootdir__
 from arknights_mower.utils import rapidocr
 from arknights_mower.utils import typealias as tp
-from arknights_mower.utils.image import cropimg, loadimg, thres2
+from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.matcher import Matcher
 from arknights_mower.utils.scene import Scene
-from arknights_mower.utils.solver import BaseSolver
+from arknights_mower.utils.solver import BaseSolver, MowerExit
 
 
 class Map:
@@ -31,13 +31,10 @@ class Map:
         y = np.dot(self.rev_mat, x)
         return (round(y[0][0] / y[2][0]), round(y[1][0] / y[2][0]))
 
-    def find(
-        self, res: str, scope: Optional[tp.Scope] = None, score: float = 0.0
-    ) -> Optional[tp.Scope]:
+    def find(self, res: str) -> Optional[tp.Scope]:
         logger.debug(f"find: {res}")
-        res = f"{__rootdir__}/resources/ra/map/{res}.png"
-        res_img = loadimg(res, True)
-        return self.matcher.match(res_img, scope=scope, prescore=score)
+        res_img = loadres(f"ra/map/{res}", True)
+        return self.matcher.match(res_img, scope=((250, 0), (1620, 900)), prescore=0.5)
 
 
 class ReclamationAlgorithm(BaseSolver):
@@ -72,8 +69,9 @@ class ReclamationAlgorithm(BaseSolver):
         self.event = Event()
         self.unknown_time = None
 
+        self.battle_task = None
         self.task_queue = None
-        self.in_adventure = False
+        self.in_adventure = None
         self.ap = None
         self.vp = None
 
@@ -102,11 +100,11 @@ class ReclamationAlgorithm(BaseSolver):
         adventures = [i for i in self.places if i.startswith("奇遇")]
         scores = []
         img = cropimg(
-            map, ((pos[0][0] + 140, pos[0][1] + 25), (pos[1][0], pos[1][1] - 15))
+            map, ((pos[0][0] + 140, pos[0][1] + 25), (pos[1][0] + 10, pos[1][1] - 15))
         )
         img = thres2(img, 180)
         for i in adventures:
-            template = loadimg(f"{__rootdir__}/resources/ra/map/{i}.png", True)
+            template = loadres(f"ra/map/{i}", True)
             template = cropimg(template, ((151, 36), (254, 62)))
             template = thres2(template, 180)
             result = cv2.matchTemplate(img, template, cv2.TM_CCOEFF)
@@ -153,7 +151,7 @@ class ReclamationAlgorithm(BaseSolver):
     def drag(
         self, res: str, position: tp.Coordinate = (960, 500), update_vp: bool = True
     ) -> bool:
-        res_img = loadimg(f"{__rootdir__}/resources/ra/map/{res}.png", True)
+        res_img = loadres(f"ra/map/{res}", True)
         top_left = (
             position[0] - round(res_img.shape[1] / 2),
             position[1] - round(res_img.shape[0] / 2),
@@ -188,8 +186,9 @@ class ReclamationAlgorithm(BaseSolver):
             self.device.swipe_ext(
                 (start_point, end_point, end_point), durations=[500, 200]
             )
-            self.sleep(interval=0.1, rebuild=False)
+            time.sleep(0.1)
         self.recog.update()
+        self.recog.save_screencap("ra_drag_map")
         return True
 
     def plan_task(self):
@@ -286,7 +285,7 @@ class ReclamationAlgorithm(BaseSolver):
         self.tap(pos)
 
     def detect_score(self, scope=None, find_max=True):
-        if find_max and self.find("ra/max", scope=scope, score=0.2):
+        if find_max and self.find("ra/max", scope=scope):
             return "已达上限"
         score = rapidocr.engine(
             thres2(cropimg(self.recog.gray, scope), 127),
@@ -295,6 +294,32 @@ class ReclamationAlgorithm(BaseSolver):
             use_rec=True,
         )[0][0][0]
         return score or "识别失败"
+
+    def map_select_place(self, pos, place):
+        if popup := self.find("ra/popup"):
+            if (
+                popup[0][0] > pos[1][0]
+                or popup[1][0] < pos[0][0]
+                or popup[0][1] > pos[1][1]
+                or popup[1][1] < pos[0][1]
+            ):
+                x = int((pos[0][0] + pos[1][0]) / 2)
+            else:
+                logger.info(f"{place}被虫子挡住了！")
+                if popup[0][0] < pos[1][0] < popup[1][0]:
+                    x = int((pos[0][0] + popup[0][0]) / 2)
+                elif popup[0][0] < pos[0][0] < popup[1][0]:
+                    x = int((popup[1][0] + pos[1][0]) / 2)
+                else:
+                    ll = popup[0][0] - pos[0][0]
+                    lr = pos[1][0] - popup[1][0]
+                    if ll > lr:
+                        x = int(pos[0][0] + ll / 2)
+                    else:
+                        x = int(popup[1][0] + lr / 2)
+        else:
+            x = int((pos[0][0] + pos[1][0]) / 2)
+        self.tap((x, int((pos[0][1] + pos[1][1]) / 2)), interval=0.5)
 
     def move_forward(self, scene):
         # 从首页进入生息演算主页
@@ -315,7 +340,8 @@ class ReclamationAlgorithm(BaseSolver):
 
         # 剧情
         elif scene == Scene.RA_GUIDE_ENTRANCE:
-            self.tap_element("ra/guide_entrance", interval=0.5)
+            pos = self.find("ra/guide_entrance", scope=((810, 270), (1320, 610)))
+            self.tap(pos, interval=0.5)
         elif scene == Scene.RA_GUIDE_BATTLE_ENTRANCE:
             self.battle_wait = 3
             self.tap_element("ra/start_action", interval=5)
@@ -325,6 +351,9 @@ class ReclamationAlgorithm(BaseSolver):
 
         # 进入与退出战斗
         elif scene == Scene.RA_BATTLE_ENTRANCE:
+            if self.battle_task in self.task_queue:
+                self.task_queue.remove(self.battle_task)
+                self.ap -= 1
             self.tap_element("ra/start_action", interval=1.5)
         elif scene == Scene.RA_BATTLE:
             if self.battle_wait > 0:
@@ -360,7 +389,7 @@ class ReclamationAlgorithm(BaseSolver):
         # 存档操作
         elif scene == Scene.RA_DELETE_SAVE_DIALOG:
             if pos := self.find("ra/delete_save_confirm_dialog_ok_button"):
-                self.tap(pos, rebuild=False, interval=0.5)
+                self.tap(pos, interval=0.5)
                 self.tap(pos)
                 self.task_queue = None
                 self.ap = None
@@ -378,7 +407,7 @@ class ReclamationAlgorithm(BaseSolver):
                         self.task_queue.remove("奇遇_崎岖窄路")
                 self.map_back()
             else:
-                tpl = loadimg(f"{__rootdir__}/resources/ra/ap-1.png", True)
+                tpl = loadres("ra/ap-1", True)
                 tpl = thres2(tpl, 127)
                 w, h = tpl.shape[::-1]
                 scope = ((1640, 400), (1900, 900))
@@ -392,14 +421,14 @@ class ReclamationAlgorithm(BaseSolver):
                     ((a + x, b + y), (a + x + w, b + y + h)) for a, b in zip(*loc[::-1])
                 )
                 if scope:
-                    self.tap(scope[-1], interval=0.5, rebuild=False)
+                    self.tap(scope[-1], interval=0.5)
                     self.tap(scope[-1])
                 elif pos := self.find("ra/adventure_ok"):
                     if self.in_adventure in self.task_queue:
                         self.task_queue.remove(self.in_adventure)
                         self.ap -= 1
                     pos = (1740, round((pos[0][1] + pos[1][1]) / 2))
-                    self.tap(pos, interval=0.5, rebuild=False)
+                    self.tap(pos, interval=0.5)
                     self.tap(pos)
                 else:
                     self.tap((428, 411), interval=0.5)
@@ -453,20 +482,19 @@ class ReclamationAlgorithm(BaseSolver):
                 return
             logger.info(self.task_queue)
             place = self.task_queue[0]
-            if (pos := self.find_place(place)) is None:
+            pos = self.find_place(place)
+            if pos is None:
                 if self.drag(place):
                     pos = self.find_place(place)
                 else:
                     # 返回首页重新进入，使基地位于屏幕中央
                     self.map_back()
                     return
-            self.tap(pos, rebuild=False, interval=0.5)
+            self.map_select_place(pos, place)
             if place.startswith("奇遇"):
                 self.tap((428, 411), interval=0.5)
             else:
-                if place in self.task_queue:
-                    self.task_queue.remove(place)
-                    self.ap -= 1
+                self.battle_task = place
                 self.recog.update()
         elif scene == Scene.RA_DAY_DETAIL:
             self.tap_element("ra/waste_time_button", interval=0.5)
@@ -502,13 +530,11 @@ class ReclamationAlgorithm(BaseSolver):
         elif scene == Scene.RA_GET_ITEM:
             if pos := self.find("ra/click_to_continue"):
                 self.tap(pos, interval=0.5)
-                if pos := self.find("ra/return_from_kitchen"):
-                    # 烹饪台合成
-                    self.tap(pos, x_rate=0.07)
-                else:
-                    # 奇遇
-                    self.sleep(0.5, rebuild=False)
+                if self.in_adventure:
+                    self.sleep(0.5)
                     self.tap((428, 411), interval=0.5)
+                else:
+                    self.tap_element("ra/return_from_kitchen", x_rate=0.07)
             else:
                 self.recog.update()
         elif scene == Scene.CONNECTING:
@@ -545,8 +571,13 @@ class ReclamationAlgorithm(BaseSolver):
                 logger.warning("连续识别到未知场景")
                 try:
                     super().back_to_index()
+                except MowerExit:
+                    raise
                 except Exception:
                     self.device.exit()
+                    if self.device.check_current_focus():
+                        self.recog.update()
+                    self.task_queue = None
         else:
             self.unknown_time = None
 

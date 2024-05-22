@@ -22,12 +22,14 @@ user_data_dir = Path(platformdirs.user_data_dir(appname, appauthor))
 # define _app_dir
 if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
     _internal_dir = Path(sys._MEIPASS).resolve()
+    _install_dir = _internal_dir.parent.resolve()
     _app_dir = _internal_dir.parent
 else:
     _app_dir = find_git_root(Path(os.getcwd()).resolve())
     if not _app_dir:
         _app_dir = Path(os.getcwd()).resolve()
     _internal_dir = _app_dir
+    _install_dir = _internal_dir
 
 
 def _get_path(base_path, path, space) -> Path:
@@ -44,11 +46,12 @@ def get_app_path(path, space=None) -> Path:
     return _get_path(_app_dir, path, space)
 
 
-def get_internal_path(path, space=None) -> Path:
-    global global_space
-    if space is None:
-        space = global_space
-    return _get_path(_internal_dir, path, space)
+def get_internal_path(path) -> Path:
+    return _get_path(_internal_dir, path, None)
+
+
+def get_install_path(path) -> Path:
+    return _get_path(_install_dir, path, None)
 
 
 def get_user_path(path, space=None) -> Path:
@@ -64,6 +67,7 @@ def get_path(path: str, space=None) -> Path:
     @user: 用户数据文件夹, 例如 get_path('@user/config.json')
     @app: mower数据文件夹, 例如 get_path('@app/logs/runtime.log')
     @internal: mower内部文件夹, 在开发时为 .git 所在目录, 打包时为 @app/_internal
+    @install: mower 安装文件夹，在开发时与 @internal 相同，打包时为 mower 的安装目录
 
     指定space来区分配置文件空间，如space为None(默认值)，则使用global_space
 
@@ -84,7 +88,9 @@ def get_path(path: str, space=None) -> Path:
         elif special_dir_name == "app":
             return get_app_path(relative_path, space)
         elif special_dir_name == "internal":
-            return get_internal_path(relative_path, space)
+            return get_internal_path(relative_path)
+        elif special_dir_name == "install":
+            return get_install_path(relative_path)
         else:
             raise ValueError(
                 "{}: {} 不是一个有效的特殊目录别名".format(path, special_dir_name)

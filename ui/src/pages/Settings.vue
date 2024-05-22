@@ -33,7 +33,11 @@ const {
   run_order_grandet_mode,
   webview,
   fix_mumu12_adb_disconnect,
-  touch_method
+  touch_method,
+  free_room,
+  feature_matcher,
+  get_scene,
+  droidcast
 } = storeToRefs(config_store)
 
 const { operators } = storeToRefs(plan_store)
@@ -49,6 +53,7 @@ const simulator_types = [
   { label: 'MuMu模拟器12', value: 'MuMu12' },
   { label: 'Waydroid', value: 'Waydroid' },
   { label: '雷电模拟器9', value: '雷电9' },
+  { label: 'ReDroid', value: 'ReDroid' },
   { label: '其它', value: '' }
 ]
 
@@ -65,6 +70,14 @@ async function select_simulator_folder() {
 }
 
 import { render_op_label, render_op_tag } from '@/utils/op_select'
+
+const scale_marks = {}
+const display_marks = [0.5, 1.0, 1.5, 2.0, 3.0]
+for (let i = 0.5; i <= 3.0; i += 0.25) {
+  scale_marks[i] = display_marks.includes(i) ? `${i * 100}%` : ''
+}
+
+const new_scale = ref(webview.value.scale)
 </script>
 
 <template>
@@ -104,17 +117,33 @@ import { render_op_label, render_op_tag } from '@/utils/op_select'
                 </n-space>
               </n-radio-group>
             </n-form-item>
+            <n-form-item label="特征点匹配算法">
+              <n-radio-group v-model:value="feature_matcher">
+                <n-space>
+                  <n-radio value="bf">
+                    BFMatcher<help-text>结果更精确，可以多核并行</help-text>
+                  </n-radio>
+                  <n-radio value="flann">
+                    FlannBasedMatcher<help-text>计算量更小</help-text>
+                  </n-radio>
+                </n-space>
+              </n-radio-group>
+            </n-form-item>
+            <n-form-item :show-label="false">
+              <n-flex>
+                <n-checkbox v-model:checked="get_scene.concurrent">场景并行分类</n-checkbox>
+                <n-input-number
+                  v-model:value="get_scene.max_workers"
+                  :disabled="!get_scene.concurrent"
+                  :min="2"
+                  :max="64"
+                >
+                  <template #suffix>线程</template>
+                </n-input-number>
+              </n-flex>
+            </n-form-item>
             <n-form-item label="模拟器">
               <n-select v-model:value="simulator.name" :options="simulator_types" />
-            </n-form-item>
-            <n-form-item v-if="simulator.name">
-              <template #label>
-                <span>多开编号</span>
-                <help-text>
-                  <div>除夜神单开选择-1以外，其他的按照改模拟器多开器中的序号。</div>
-                </help-text>
-              </template>
-              <n-input-number v-model:value="simulator.index"></n-input-number>
             </n-form-item>
             <n-form-item v-if="simulator.name">
               <template #label>
@@ -126,6 +155,20 @@ import { render_op_label, render_op_tag } from '@/utils/op_select'
               </template>
               <n-input v-model:value="simulator.simulator_folder" />
               <n-button @click="select_simulator_folder" class="dialog-btn">...</n-button>
+            </n-form-item>
+            <n-form-item v-if="simulator.name">
+              <template #label>
+                <span>多开编号</span>
+                <help-text>
+                  <div>除夜神单开选择-1以外，其他的按照改模拟器多开器中的序号。</div>
+                </help-text>
+              </template>
+              <n-input v-model:value="simulator.index" />
+            </n-form-item>
+            <n-form-item label="模拟器启动时间">
+              <n-input-number v-model:value="simulator.wait_time">
+                <template #suffix>秒</template>
+              </n-input-number>
             </n-form-item>
             <n-form-item label="启动游戏">
               <n-select v-model:value="tap_to_launch_game.enable" :options="launch_options" />
@@ -166,22 +209,59 @@ import { render_op_label, render_op_tag } from '@/utils/op_select'
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="start_automatically">启动后自动开始任务</n-checkbox>
             </n-form-item>
-            <n-form-item label="截图数量">
-              <n-input-number v-model:value="screenshot" />
+            <n-form-item label="截图方案">
+              <n-radio-group v-model:value="droidcast.enable">
+                <n-flex>
+                  <n-radio :value="false">
+                    ADB+Gzip<help-text>无损压缩，兼容性好</help-text>
+                  </n-radio>
+                  <n-radio :value="true">
+                    DroidCast<help-text>有损压缩，速度更快</help-text>
+                  </n-radio>
+                </n-flex>
+              </n-radio-group>
+            </n-form-item>
+            <n-form-item label="旋转截图" v-if="droidcast.enable">
+              <n-radio-group v-model:value="droidcast.rotate">
+                <n-flex>
+                  <n-radio :value="false">不旋转</n-radio>
+                  <n-radio :value="true">旋转180度</n-radio>
+                </n-flex>
+              </n-radio-group>
             </n-form-item>
             <n-form-item>
               <template #label>
-                <span>界面缩放</span>
-                <help-text>重启生效</help-text>
+                <span>截图数量</span>
+                <help-text>
+                  <div><code>screenshot</code>下每个文件夹中最多保存的截图数量</div>
+                </help-text>
               </template>
+              <n-input-number v-model:value="screenshot">
+                <template #suffix>张</template>
+              </n-input-number>
+            </n-form-item>
+            <n-form-item label="界面缩放">
               <n-slider
-                v-model:value="webview.scale"
+                v-model:value="new_scale"
                 :step="0.25"
                 :min="0.5"
                 :max="3.0"
+                :marks="scale_marks"
                 :format-tooltip="(x) => `${x * 100}%`"
               />
-              <div class="scale">{{ webview.scale * 100 }}%</div>
+              <n-button
+                class="scale-apply"
+                :disabled="new_scale == webview.scale"
+                @click="webview.scale = new_scale"
+              >
+                应用
+              </n-button>
+            </n-form-item>
+            <n-form-item :show-label="false">
+              <n-checkbox v-model:checked="webview.tray">
+                使用托盘图标
+                <help-text>重启生效</help-text>
+              </n-checkbox>
             </n-form-item>
             <n-form-item label="显示主题">
               <n-radio-group v-model:value="theme">
@@ -237,10 +317,11 @@ import { render_op_label, render_op_tag } from '@/utils/op_select'
                 <help-text>
                   <div>推荐范围5-10</div>
                   <div>可填小数</div>
-                  <div>单位：分钟</div>
                 </help-text>
               </template>
-              <n-input-number v-model:value="run_order_delay" />
+              <n-input-number v-model:value="run_order_delay">
+                <template #suffix>分钟</template>
+              </n-input-number>
             </n-form-item>
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="run_order_grandet_mode.enable">葛朗台跑单</n-checkbox>
@@ -248,12 +329,11 @@ import { render_op_label, render_op_tag } from '@/utils/op_select'
             <n-form-item v-if="run_order_grandet_mode.enable">
               <template #label>
                 <span>葛朗台缓冲时间</span>
-                <help-text>
-                  <div>推荐范围：15-30</div>
-                  <div>单位：秒</div>
-                </help-text>
+                <help-text>推荐范围：15-30</help-text>
               </template>
-              <n-input-number v-model:value="run_order_grandet_mode.buffer_time" />
+              <n-input-number v-model:value="run_order_grandet_mode.buffer_time">
+                <template #suffix>秒</template>
+              </n-input-number>
             </n-form-item>
             <n-form-item v-if="run_order_grandet_mode.enable" :show-label="false">
               <n-checkbox v-model:checked="run_order_grandet_mode.back_to_index">
@@ -287,11 +367,12 @@ import { render_op_label, render_op_tag } from '@/utils/op_select'
               <template #label>
                 <span>无人机加速间隔</span>
                 <help-text>
-                  <div>单位：小时</div>
                   <div>可填小数</div>
                 </help-text>
               </template>
-              <n-input-number v-model:value="drone_interval" />
+              <n-input-number v-model:value="drone_interval">
+                <template #suffix>小时</template>
+              </n-input-number>
             </n-form-item>
             <n-form-item label="搓玉补货房间">
               <n-select
@@ -323,6 +404,12 @@ import { render_op_label, render_op_tag } from '@/utils/op_select'
                   <template #suffix>%</template>
                 </n-input-number>
               </div>
+            </n-form-item>
+            <n-form-item :show-label="false">
+              <n-checkbox v-model:checked="free_room">
+                宿舍不养闲人
+                <help-text>干员心情回满后，立即释放宿舍空位</help-text>
+              </n-checkbox>
             </n-form-item>
           </n-form>
         </n-card>
@@ -426,6 +513,10 @@ ul {
 .scale {
   width: 60px;
   text-align: right;
+}
+
+.scale-apply {
+  margin-left: 24px;
 }
 </style>
 
