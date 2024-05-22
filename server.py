@@ -10,17 +10,15 @@ from functools import wraps
 from queue import Queue
 from threading import Event, Thread
 
-from arknights_mower.data import agent_list
-from arknights_mower.utils import config
-from arknights_mower.utils.conf import load_conf, load_plan, save_conf, write_plan
-from arknights_mower.utils.log import logger
-from arknights_mower.utils.operators import SkillUpgradeSupport
-from arknights_mower.utils.path import get_path
 from flask import Flask, abort, request, send_from_directory
 from flask_cors import CORS
 from flask_sock import Sock
 from werkzeug.exceptions import NotFound
-from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes, find_next_task
+
+from arknights_mower.utils import config
+from arknights_mower.utils.conf import load_conf, load_plan, save_conf, write_plan
+from arknights_mower.utils.log import logger
+from arknights_mower.utils.path import get_path
 
 mimetypes.add_type("text/html", ".html")
 mimetypes.add_type("text/css", ".css")
@@ -40,6 +38,22 @@ config.wh = None
 mower_thread = None
 log_lines = []
 ws_connections = []
+
+
+def read_log():
+    global log_lines
+    global ws_connections
+
+    while True:
+        msg = config.log_queue.get()
+        new_line = time.strftime("%m-%d %H:%M:%S ") + msg
+        log_lines.append(new_line)
+        log_lines = log_lines[-500:]
+        for ws in ws_connections:
+            ws.send(new_line)
+
+
+Thread(target=read_log, daemon=True).start()
 
 
 def require_token(f):
@@ -112,22 +126,6 @@ def shop_list():
     from arknights_mower.data import shop_items
 
     return list(shop_items.keys())
-
-
-def read_log():
-    global log_lines
-    global ws_connections
-
-    while True:
-        msg = config.log_queue.get()
-        new_line = time.strftime("%m-%d %H:%M:%S ") + msg
-        log_lines.append(new_line)
-        log_lines = log_lines[-500:]
-        for ws in ws_connections:
-            ws.send(new_line)
-
-
-Thread(target=read_log, daemon=True).start()
 
 
 @app.route("/depot/readdepot")
@@ -254,8 +252,9 @@ def import_from_image():
         return "No file selected."
     img_path = file_path[0]
 
-    from arknights_mower.utils import qrcode
     from PIL import Image
+
+    from arknights_mower.utils import qrcode
 
     img = Image.open(img_path)
     global plan
@@ -274,8 +273,9 @@ def save_file_dialog():
     if not img:
         return "图片未上传"
 
-    from arknights_mower.utils import qrcode
     from PIL import Image
+
+    from arknights_mower.utils import qrcode
 
     upper = Image.open(img)
 
@@ -550,36 +550,61 @@ def test_skland():
     return SKLand(conf["skland_info"]).test_connect()
 
 
-@app.route('/task', methods=["POST"])
+@app.route("/task", methods=["POST"])
 def get_count():
     from arknights_mower.__main__ import base_scheduler
+    from arknights_mower.data import agent_list
+    from arknights_mower.utils.operators import SkillUpgradeSupport
+    from arknights_mower.utils.scheduler_task import (
+        SchedulerTask,
+        TaskTypes,
+        find_next_task,
+    )
+
     try:
         if request.method == "POST":
             req = request.json
-            task = req['task']
+            task = req["task"]
             logger.debug(f"收到新增任务请求：{req}")
             if base_scheduler and mower_thread.is_alive():
                 # if not base_scheduler.sleeping:
                 #     raise Exception("只能在休息时间添加")
                 if task:
-                    task_time = datetime.datetime.strptime(task['time'], '%m/%d/%Y, %I:%M:%S %p')
-                    new_task = SchedulerTask(time=task_time, task_plan=task['plan'], task_type=task['task_type'],
-                                             meta_data=task['meta_data'])
-                    next_task = find_next_task(base_scheduler.tasks, compare_time=task_time ,compare_type = '=')
+                    task_time = datetime.datetime.strptime(
+                        task["time"], "%m/%d/%Y, %I:%M:%S %p"
+                    )
+                    new_task = SchedulerTask(
+                        time=task_time,
+                        task_plan=task["plan"],
+                        task_type=task["task_type"],
+                        meta_data=task["meta_data"],
+                    )
+                    next_task = find_next_task(
+                        base_scheduler.tasks, compare_time=task_time, compare_type="="
+                    )
                     if next_task is not None:
                         raise Exception("找到同时间任务请勿重复添加")
                     if new_task.type == TaskTypes.SKILL_UPGRADE:
                         supports = []
-                        for s in req['upgrade_support']:
-                            if s['name'] not in agent_list or s['swap_name'] not in agent_list:
+                        for s in req["upgrade_support"]:
+                            if (
+                                s["name"] not in agent_list
+                                or s["swap_name"] not in agent_list
+                            ):
                                 raise Exception("干员名不正确")
-                            supports.append(SkillUpgradeSupport(name=s['name'], skill_level=s['skill_level'],
-                                                                efficiency=s['efficiency'], match=s['match'],
-                                                                swap_name=s['swap_name']))
+                            supports.append(
+                                SkillUpgradeSupport(
+                                    name=s["name"],
+                                    skill_level=s["skill_level"],
+                                    efficiency=s["efficiency"],
+                                    match=s["match"],
+                                    swap_name=s["swap_name"],
+                                )
+                            )
                         if len(supports) == 0:
                             raise Exception("请添加专精工具人")
                         base_scheduler.op_data.skill_upgrade_supports = supports
-                        logger.error(f"更新专精工具人完毕")
+                        logger.error("更新专精工具人完毕")
                     base_scheduler.tasks.append(new_task)
                     logger.debug(f"成功：{str(new_task)}")
                     return "添加任务成功！"
