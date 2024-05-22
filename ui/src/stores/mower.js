@@ -17,6 +17,7 @@ export const useMowerStore = defineStore('mower', () => {
 
   const first_load = ref(true)
 
+  const get_task_id = ref(0)
   const task_list = ref([])
 
   function listen_ws() {
@@ -30,47 +31,18 @@ export const useMowerStore = defineStore('mower', () => {
     ws.value = new ReconnectingWebSocket(ws_url)
     ws.value.onmessage = (event) => {
       log_lines.value = log_lines.value.concat(event.data.split('\n')).slice(-500)
-      let task_line
-      for (let i = log_lines.value.length - 1; i >= 0; --i) {
-        task_line = log_lines.value[i].substring(15)
-        if (task_line.startsWith('SchedulerTask')) {
-          break
-        }
-      }
-      if (!task_line.startsWith('SchedulerTask')) {
-        return
-      }
-      const scheduler_task = task_line.split('||')
-      const date_time_re = /time='[0-9]+-[0-9]+-[0-9]+ ([0-9]+:[0-9]+:[0-9]+)/
-      const plan_re = /task_plan={(.*?)}/
-      const meta_re = /meta_data='(.*?)'/
-      const type_re = /task_type=TaskTypes\.(.*?),/
-      let task_text
-      task_list.value = scheduler_task.map((x) => {
-        const plan_text = plan_re.exec(x)[1].replace(/'/g, '"')
-        if (plan_text) {
-          task_text = Object.entries(JSON.parse('{' + plan_text + '}')).map(
-            (x) => `${x[0]}: ${x[1].join(', ')}`
-          )
-        } else {
-          const meta_text = meta_re.exec(x)[1]
-          if (meta_text) {
-            task_text = [meta_text]
-          } else {
-            task_text = [type_re.exec(x)[1]]
-          }
-        }
-        return {
-          time: date_time_re.exec(x)[1],
-          task: task_text
-        }
-      })
     }
   }
 
   async function get_running() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/running`)
     running.value = response.data
+  }
+
+  async function get_tasks() {
+    const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/task`)
+    task_list.value = response.data
+    get_task_id.value = setTimeout(get_tasks, 3000)
   }
 
   return {
@@ -82,6 +54,8 @@ export const useMowerStore = defineStore('mower', () => {
     listen_ws,
     get_running,
     first_load,
-    task_list
+    task_list,
+    get_task_id,
+    get_tasks
   }
 })

@@ -1,11 +1,11 @@
 <script setup>
-import { useMowerStore } from '@/stores/mower'
 import { storeToRefs } from 'pinia'
-import { onMounted, inject, nextTick, watch, ref } from 'vue'
+import { onMounted, onUnmounted, inject, nextTick, watch, ref } from 'vue'
 
+import { useMowerStore } from '@/stores/mower'
 const mower_store = useMowerStore()
-
-const { log, running, log_lines, task_list, waiting } = storeToRefs(mower_store)
+const { log, running, log_lines, task_list, waiting, get_task_id } = storeToRefs(mower_store)
+const { get_tasks } = mower_store
 const axios = inject('axios')
 const mobile = inject('mobile')
 
@@ -31,6 +31,11 @@ watch(log, () => {
 
 onMounted(() => {
   scroll_last_line()
+  get_tasks()
+})
+
+onUnmounted(() => {
+  clearTimeout(get_task_id.value)
 })
 
 function start() {
@@ -79,17 +84,28 @@ const bg_opacity = computed(() => {
       <thead>
         <tr>
           <th>时间</th>
-          <th>任务</th>
+          <th :colspan="2">任务</th>
         </tr>
       </thead>
       <tbody v-show="!mobile || show_task_table">
         <template v-for="task in task_list">
-          <tr>
-            <td :rowspan="task.task.length">{{ task.time }}</td>
-            <td>{{ task.task[0] }}</td>
-          </tr>
-          <tr v-for="i in task.task.length - 1">
-            <td>{{ task.task[i] }}</td>
+          <template v-if="Object.keys(task.plan).length">
+            <tr v-for="(value, key, idx) in task.plan">
+              <!-- <td :rowspan="Object.entries(task.plan).length">{{ task.time }}</td> -->
+              <td v-if="idx == 0" :rowspan="Object.keys(task.plan).length">
+                {{ task.time.split('T')[1].split('.')[0] }}
+              </td>
+              <td>{{ key }}</td>
+              <td>{{ value.join(', ') }}</td>
+            </tr>
+          </template>
+          <tr v-else>
+            <td>
+              {{ task.time.split('T')[1].split('.')[0] }}
+            </td>
+            <td :colspan="2">
+              {{ task.type.display_value }}
+            </td>
           </tr>
         </template>
       </tbody>
@@ -125,13 +141,12 @@ const bg_opacity = computed(() => {
         <div>目前只糊了一个勉强能用的版本，其他功能敬请期待</div>
         <div>只开放了空任务/专精任务</div>
         <div>只能增，不能删！！谨慎填写任务</div>
-        <div>如果Mower休息到 00:30,新增的00:15的任务是不会被执行的,因为此时在休息</div>
-        <div>所以最好在00:00 Mowery运行的时候添加00:15的任务了,考验手速的时候到了</div>
-        <div>空任务,请确保任务房间名字，干员数量正确（没有判定）</div>
-        <div>专精任务,UI有详细说明</div>
-        <div>新增完毕,UI上面的表是不会实时反馈的（新建文件夹）</div>
+        <div>如果 mower 休息到 00:30，新增的 00:15 的任务是不会被执行的，因为此时在休息</div>
+        <div>所以最好在 00:00 mower运行的时候添加 00:15 的任务了，考验手速的时候到了</div>
+        <div>空任务，请确保任务房间名字，干员数量正确（没有判定）</div>
+        <div>专精任务，UI有详细说明；新增完毕，UI上面的表会实时反馈</div>
         <div>以下为房间名:</div>
-        <div>contact（办公室）,meeting（会议室）,train（训练室）,central（中枢）</div>
+        <div>contact（办公室），meeting（会议室），train（训练室），central（中枢）</div>
         <div>在Q群或者频道提以上问题，看心情踢人</div>
       </help-text>
       <div class="expand"></div>
@@ -230,6 +245,8 @@ const bg_opacity = computed(() => {
 <style>
 .n-log pre {
   word-break: break-all;
+  font-family: 'Cascadia Mono', Consolas, 'Microsoft YaHei', 'SF Mono', 'Menlo', 'PingFang SC',
+    monospace;
 }
 
 .hljs-date {

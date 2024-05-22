@@ -550,7 +550,7 @@ def test_skland():
     return SKLand(conf["skland_info"]).test_connect()
 
 
-@app.route("/task", methods=["POST"])
+@app.route("/task", methods=["GET", "POST"])
 def get_count():
     from arknights_mower.__main__ import base_scheduler
     from arknights_mower.data import agent_list
@@ -561,8 +561,8 @@ def get_count():
         find_next_task,
     )
 
-    try:
-        if request.method == "POST":
+    if request.method == "POST":
+        try:
             req = request.json
             task = req["task"]
             logger.debug(f"收到新增任务请求：{req}")
@@ -609,6 +609,21 @@ def get_count():
                     logger.debug(f"成功：{str(new_task)}")
                     return "添加任务成功！"
             raise Exception("添加任务失败！！")
-    except Exception as e:
-        logger.error(f"添加任务失败：{str(e)}")
-        return str(e)
+        except Exception as e:
+            logger.error(f"添加任务失败：{str(e)}")
+            return str(e)
+    else:
+        if base_scheduler and mower_thread.is_alive():
+            from jsonpickle import encode
+
+            return [
+                json.loads(
+                    encode(
+                        i,
+                        unpicklable=False,
+                    )
+                )
+                for i in base_scheduler.tasks
+            ]
+        else:
+            return []

@@ -9,6 +9,11 @@ import axios from 'axios'
 const plan_store = usePlanStore()
 const { sub_plan, backup_plans, operators } = storeToRefs(plan_store)
 
+import { useMowerStore } from '@/stores/mower'
+const mower_store = useMowerStore()
+const { get_task_id } = storeToRefs(mower_store)
+const { get_tasks } = mower_store
+
 const task_list = ref([])
 const task_time = ref(new Date().getTime())
 const task_type = ref('空任务')
@@ -77,7 +82,11 @@ async function saveTasks() {
   msg.value = (await axios.post(`${import.meta.env.VITE_HTTP_URL}/task`, req)).data
   if (msg.value != '添加任务成功！') {
     error.value = true
-  } else error.value = false
+  } else {
+    error.value = false
+    clearTimeout(get_task_id.value)
+    get_tasks()
+  }
 }
 
 watch(
