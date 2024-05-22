@@ -66,7 +66,7 @@ def daily_report(
 
 def daily_visit_friend(device: Device = None):
     """访问好友"""
-    CreditSolver(device).run()
+    return CreditSolver(device).run()
 
 
 def depotscan(device: Device = None):
