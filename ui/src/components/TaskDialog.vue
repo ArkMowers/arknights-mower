@@ -28,15 +28,12 @@ const taskTypeOptions = [
 ]
 
 function update_tasks() {
-  if (sub_plan.value != 'main' && !isLogPage) {
+  if (sub_plan.value != 'main' && !isLogPage.value) {
     const result = []
     Object.entries(backup_plans.value[sub_plan.value].task).forEach(([room, operators]) => {
       result.push({ room, operators })
     })
     task_list.value = result
-  }
-  if (isLogPage) {
-    task_list.value = []
   }
 }
 
@@ -91,12 +88,12 @@ async function saveTasks() {
 
 watch(
   task_list,
-  async () => {
+  () => {
     const result = {}
     for (const i of task_list.value) {
       result[i.room] = i.operators
     }
-    if (!isLogPage) {
+    if (!isLogPage.value) {
       backup_plans.value[sub_plan.value].task = result
     }
   },
