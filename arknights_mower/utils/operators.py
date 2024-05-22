@@ -404,13 +404,13 @@ class Operators(object):
                 if not (dorm.position[0] == op.current_room and dorm.position[1] == op.current_index):
                     self.dorm[idx].name = ""
                     self.dorm[idx].time = None
-        # 事实更新黑名单确保训练不会被中断
+
+    def get_train_support(self):
         for name in self.operators.keys():
             agent = self.operators[name]
             if agent.current_room == 'train' and agent.current_index == 0:
-                if name not in self.operators.free_blacklist:
-                    self.config.free_blacklist.append(name)
-                    logger(f"检测到{name}正在协助训练，自动加入黑名单")
+                return agent.name
+        return None
 
     def get_refresh_index(self, room, plan):
         ret = []

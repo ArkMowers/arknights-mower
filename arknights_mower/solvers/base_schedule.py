@@ -2449,7 +2449,10 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     if _name not in self.op_data.operators.keys()
                 ]
             )
+            train_support = self.op_data.get_train_support()
             free_list = list(set(free_list) - set(self.op_data.config.free_blacklist))
+            if train_support in free_list:
+                free_list.remove(train_support)
             while free_num:
                 selected_name, ret = self.scan_agent(
                     free_list, max_agent_count=free_num
