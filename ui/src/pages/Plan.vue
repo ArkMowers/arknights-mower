@@ -173,7 +173,9 @@ const show_trigger_editor = ref(false)
 provide('show_trigger_editor', show_trigger_editor)
 
 const show_task = ref(false)
+const add_task = ref(false)
 provide('show_task', show_task)
+provide('add_task', add_task)
 
 import IosArrowBack from '@vicons/ionicons4/IosArrowBack'
 import IosArrowForward from '@vicons/ionicons4/IosArrowForward'
