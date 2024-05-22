@@ -123,9 +123,11 @@ import { render_op_label } from '@/utils/op_select'
       <label v-if="task_type == '技能专精'">说明</label>
       <help-text v-if="task_type == '技能专精'">
         <div>工具人等级不可重复，效率得手动输入</div>
-        <div>没有的话，请设定和工具人相同</div>
+        <div>任务开启前，请手动把专精干员放入训练室（Mower暂时不支持训练室换人）</div>
+        <div>排班表是要填写协助位和训练位的，最好写从来没用的工具人。</div>
+        <div>训练室排班表纠错暂时关闭，有需要纠错的朋友，请绑大组</div>
         <div>自动计算时暂时默认2，3专精获得小鸟/狗剩增益效果</div>
-        <div>如果开启专精时未获得减半增益，可手动计算时间以添加艾丽妮替换任务</div>
+        <div>如果开启专精时未获得减半增益，本次专精可手动计算时间以添加艾丽妮替换任务</div>
         <div>攻略：https://www.skland.com/article?id=1915250</div>
       </help-text>
       <label>任务触发时间</label>
