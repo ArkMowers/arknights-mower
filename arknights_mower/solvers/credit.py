@@ -1,10 +1,11 @@
 import cv2
 
-from ..utils import detector
-from ..utils.device import Device
-from ..utils.log import logger
-from ..utils.recognize import RecognizeError, Recognizer, Scene
-from ..utils.solver import BaseSolver
+from arknights_mower.utils import detector
+from arknights_mower.utils.device import Device
+from arknights_mower.utils.image import cropimg, loadres, thres2
+from arknights_mower.utils.log import logger
+from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
+from arknights_mower.utils.solver import BaseSolver
 
 
 class CreditSolver(BaseSolver):
@@ -25,12 +26,22 @@ class CreditSolver(BaseSolver):
         elif scene == Scene.FRIEND_LIST_OFF:
             self.tap_element("friend_list")
         elif scene == Scene.FRIEND_LIST_ON:
-            score, pos = self.template_match(
-                "friend_visit",
-                scope=((1460, 220), (1800, 1000)),
-                method=cv2.TM_SQDIFF_NORMED,
+            left, top = 1460, 220
+            img = cropimg(self.recog.gray, ((left, top), (1800, 1000)))
+            img = thres2(img, 254)
+            tpl = loadres("friend_visit", True)
+            result = cv2.matchTemplate(img, tpl, cv2.TM_SQDIFF_NORMED)
+            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+            h, w = tpl.shape
+            pos = (
+                (min_loc[0] + left, min_loc[1] + top),
+                (min_loc[0] + left + w, min_loc[1] + top + h),
             )
-            self.tap(pos)
+            logger.debug(f"{min_val=}, {pos=}")
+            if min_val < 0.1:
+                self.tap(pos)
+            else:
+                self.sleep()
         elif scene == Scene.FRIEND_VISITING:
             if self.find("visit_limit"):
                 return True
@@ -38,10 +49,8 @@ class CreditSolver(BaseSolver):
                 self.tap(visit_next)
             else:
                 return True
-        elif scene == Scene.LOADING:
-            self.sleep(3)
-        elif scene == Scene.CONNECTING:
-            self.sleep(3)
+        elif scene in [Scene.LOADING, Scene.CONNECTING]:
+            self.sleep()
         elif self.get_navigation():
             self.tap_element("nav_social")
         elif scene != Scene.UNKNOWN:
