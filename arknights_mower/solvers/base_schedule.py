@@ -2358,9 +2358,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 raise Exception("到达最大尝试次数 1次")
             if right_swipe > max_swipe:
                 # 到底了则返回再来一次
-                for _ in range(right_swipe):
-                    self.swipe_only((w // 2, h // 2), (w // 2, 0), interval=0.5)
-                right_swipe = 0
+                right_swipe = self.swipe_left(right_swipe)
                 max_swipe = 50
                 retry_count += 1
                 self.detail_filter()
