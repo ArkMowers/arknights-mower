@@ -7,6 +7,7 @@ const mower_store = useMowerStore()
 
 const { log, running, log_lines, task_list, waiting } = storeToRefs(mower_store)
 const axios = inject('axios')
+const mobile = inject('mobile')
 
 const auto_scroll = ref(true)
 
@@ -81,7 +82,7 @@ const bg_opacity = computed(() => {
           <th>任务</th>
         </tr>
       </thead>
-      <tbody v-show="show_task_table">
+      <tbody v-show="!mobile || show_task_table">
         <template v-for="task in task_list">
           <tr>
             <td :rowspan="task.task.length">{{ task.time }}</td>
@@ -101,7 +102,7 @@ const bg_opacity = computed(() => {
             <stop-icon />
           </n-icon>
         </template>
-        立即停止
+        <template v-if="!mobile">立即停止</template>
       </n-button>
       <n-button type="primary" @click="start" v-else :loading="waiting" :disabled="waiting">
         <template #icon>
@@ -109,7 +110,7 @@ const bg_opacity = computed(() => {
             <play-icon />
           </n-icon>
         </template>
-        开始执行
+        <template v-if="!mobile">开始执行</template>
       </n-button>
       <task-dialog />
       <n-button type="warning" @click="show_task = true">
@@ -118,9 +119,9 @@ const bg_opacity = computed(() => {
             <add-icon />
           </n-icon>
         </template>
-        新增任务
+        <template v-if="!mobile">新增任务</template>
       </n-button>
-      <help-text>
+      <help-text v-if="!mobile">
         <div>目前只糊了一个勉强能用的版本，其他功能敬请期待</div>
         <div>只开放了空任务/专精任务</div>
         <div>只能增，不能删！！谨慎填写任务</div>
@@ -138,15 +139,20 @@ const bg_opacity = computed(() => {
             <reload-icon />
           </n-icon>
         </template>
-        刷新
+        <template v-if="!mobile">刷新</template>
       </n-button>
       <div class="scroll-container">
         <n-switch v-model:value="auto_scroll" />
-        <span class="scroll-label">自动滚动</span>
+        <span class="scroll-label" v-if="!mobile">自动滚动</span>
       </div>
     </div>
-    <n-button class="toggle-table-collapse-btn" size="small" @click="show_task_table = !show_task_table"
-      :focusable="false">
+    <n-button
+      class="toggle-table-collapse-btn"
+      size="small"
+      @click="show_task_table = !show_task_table"
+      :focusable="false"
+      v-if="mobile"
+    >
       <template #icon>
         <n-icon>
           <collapse-icon v-if="show_task_table" />
