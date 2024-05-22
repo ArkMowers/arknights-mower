@@ -17,7 +17,7 @@ class CreditSolver(BaseSolver):
 
     def run(self) -> None:
         logger.info("Start: 信用")
-        super().run()
+        return super().run()
 
     def transition(self) -> bool:
         if (scene := self.scene()) == Scene.INDEX:
