@@ -10,6 +10,8 @@ from functools import wraps
 from queue import Queue
 from threading import Event, Thread
 
+import pytz
+from tzlocal import get_localzone
 from flask import Flask, abort, request, send_from_directory
 from flask_cors import CORS
 from flask_sock import Sock
@@ -570,9 +572,8 @@ def get_count():
                 # if not base_scheduler.sleeping:
                 #     raise Exception("只能在休息时间添加")
                 if task:
-                    task_time = datetime.datetime.strptime(
-                        task["time"], "%m/%d/%Y, %I:%M:%S %p"
-                    )
+                    utc_time = datetime.datetime.strptime(task["time"], "%Y-%m-%dT%H:%M:%S.%f%z")
+                    task_time = utc_time.replace(tzinfo=pytz.utc).astimezone(get_localzone()).replace(tzinfo=None)
                     new_task = SchedulerTask(
                         time=task_time,
                         task_plan=task["plan"],

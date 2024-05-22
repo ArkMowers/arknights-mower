@@ -70,7 +70,7 @@ async function saveTasks() {
     plan[i.room] = i.operators
   }
   const task = {
-    time: new Date(task_time.value).toLocaleString(),
+    time: new Date(task_time.value),
     plan,
     task_type: task_type.value,
     meta_data: ''
