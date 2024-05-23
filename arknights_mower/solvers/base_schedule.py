@@ -1082,19 +1082,24 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 raise Exception("未获取专精时间倒计时，请确认技能专精材料充足")
             if len(self.op_data.skill_upgrade_supports) > 0:
                 support = next((e for e in self.op_data.skill_upgrade_supports if e.level == level), None)
-                h = self.op_data.calculate_switch_time(support)
                 if support is not None:
+                    h = self.op_data.calculate_switch_time(support)
                     self.tasks.append(SchedulerTask(task_plan={'train': [support.name, 'Current']}))
                     # 提前10分钟换人，确保触发技能
                     # 3 级不需要换人
-                    if level != 3:
+                    if support.name != support.swap_name:
                         self.tasks.append(
                             SchedulerTask(time=datetime.now() + timedelta(hours=h) - timedelta(minutes=10),
                                           task_plan={'train': [support.swap_name, 'Current']}))
-                        # 默认 5小时
-                        self.tasks.append(
-                            SchedulerTask(time=datetime.now() + timedelta(hours=h + 5) + timedelta(minutes=15),
-                                          task_plan={}, task_type=TaskTypes.SKILL_UPGRADE, meta_data=skill))
+                        if level != 3:
+                            self.tasks.append(
+                                SchedulerTask(time=datetime.now() + timedelta(hours=h + 5) + timedelta(minutes=15),
+                                              task_plan={}, task_type=TaskTypes.SKILL_UPGRADE, meta_data=skill))
+                    else:
+                        if level != 3:
+                            self.tasks.append(
+                                SchedulerTask(time=datetime.now() + timedelta(hours=h),
+                                              task_plan={}, task_type=TaskTypes.SKILL_UPGRADE, meta_data=skill))
                 else:
                     self.tasks.append(
                         SchedulerTask(time=execute_time,task_plan={}, task_type=TaskTypes.SKILL_UPGRADE, meta_data=skill))

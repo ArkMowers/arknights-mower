@@ -33,6 +33,7 @@ def calculate_switch_time(support: SkillUpgradeSupport):
     level = support.level
     match = support.match
     efficiency = support.efficiency
+    same = support.name == support.swap_name
     if level == 1:
         half_off = False
     # if left_minutes > 0 or left_hours > 0:
@@ -46,8 +47,12 @@ def calculate_switch_time(support: SkillUpgradeSupport):
         hour = level * 8
     if half_off:
         hour = hour / 2
-    left = 5 * (100 + basic + (30 if match else 0)) / 100
-    left = hour - left
+    left = 0
+    if not same:
+        left = 5 * (100 + basic + (30 if match else 0)) / 100
+        left = hour - left
+    else:
+        left = hour
     return left * 100 / (100 + efficiency + basic)
 
 
