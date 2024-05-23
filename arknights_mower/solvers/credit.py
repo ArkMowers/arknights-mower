@@ -38,7 +38,7 @@ class CreditSolver(BaseSolver):
                 (min_loc[0] + left + w, min_loc[1] + top + h),
             )
             logger.debug(f"{min_val=}, {pos=}")
-            if min_val < 0.1:
+            if min_val < 0.5:
                 self.tap(pos)
             else:
                 self.sleep()
