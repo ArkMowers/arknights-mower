@@ -498,7 +498,6 @@ const fia_list = computed(() => {
               v-model:value="plan[facility].plans[i - 1].agent"
               :filter="(p, o) => match(o.label, p)"
               :render-label="render_op_label"
-              :disabled="facility == 'train' && i == 2"
             />
           </td>
           <td class="select-label">

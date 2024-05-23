@@ -572,8 +572,14 @@ def get_count():
                 # if not base_scheduler.sleeping:
                 #     raise Exception("只能在休息时间添加")
                 if task:
-                    utc_time = datetime.datetime.strptime(task["time"], "%Y-%m-%dT%H:%M:%S.%f%z")
-                    task_time = utc_time.replace(tzinfo=pytz.utc).astimezone(get_localzone()).replace(tzinfo=None)
+                    utc_time = datetime.datetime.strptime(
+                        task["time"], "%Y-%m-%dT%H:%M:%S.%f%z"
+                    )
+                    task_time = (
+                        utc_time.replace(tzinfo=pytz.utc)
+                        .astimezone(get_localzone())
+                        .replace(tzinfo=None)
+                    )
                     new_task = SchedulerTask(
                         time=task_time,
                         task_plan=task["plan"],

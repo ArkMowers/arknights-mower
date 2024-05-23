@@ -145,8 +145,6 @@ const bg_opacity = computed(() => {
         <div>所以最好在 00:00 mower运行的时候添加 00:15 的任务了，考验手速的时候到了</div>
         <div>空任务，请确保任务房间名字，干员数量正确（没有判定）</div>
         <div>专精任务，UI有详细说明；新增完毕，UI上面的表会实时反馈</div>
-        <div>以下为房间名:</div>
-        <div>contact（办公室），meeting（会议室），train（训练室），central（中枢）</div>
         <div>在Q群或者频道提以上问题，看心情踢人</div>
       </help-text>
       <div class="expand"></div>
