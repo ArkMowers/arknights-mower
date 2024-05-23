@@ -242,12 +242,6 @@ const bg_opacity = computed(() => {
 </style>
 
 <style>
-.n-log pre {
-  word-break: break-all;
-  font-family: 'Cascadia Mono', Consolas, 'Microsoft YaHei', 'SF Mono', 'Menlo', 'PingFang SC',
-    monospace;
-}
-
 .hljs-date {
   color: #f0a020 !important;
   font-weight: bold;

@@ -471,4 +471,10 @@ td {
   height: calc(100% - 24px);
   position: relative;
 }
+
+pre {
+  word-break: break-all !important;
+  font-family: 'Cascadia Mono', Consolas, 'Microsoft YaHei', 'SF Mono', 'Menlo', 'PingFang SC',
+    monospace !important;
+}
 </style>
