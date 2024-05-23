@@ -42,6 +42,7 @@ function start() {
   running.value = true
   log_lines.value = []
   axios.get(`${import.meta.env.VITE_HTTP_URL}/start`)
+  get_tasks()
 }
 
 function stop() {
