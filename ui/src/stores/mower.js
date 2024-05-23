@@ -40,9 +40,13 @@ export const useMowerStore = defineStore('mower', () => {
   }
 
   async function get_tasks() {
-    const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/task`)
-    task_list.value = response.data
-    get_task_id.value = setTimeout(get_tasks, 3000)
+    if (running.value) {
+      const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/task`)
+      task_list.value = response.data
+      get_task_id.value = setTimeout(get_tasks, 3000)
+    } else {
+      task_list.value = []
+    }
   }
 
   return {

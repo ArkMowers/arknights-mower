@@ -620,7 +620,7 @@ def get_count():
             logger.error(f"添加任务失败：{str(e)}")
             return str(e)
     else:
-        if base_scheduler and mower_thread.is_alive():
+        if base_scheduler and mower_thread and mower_thread.is_alive():
             from jsonpickle import encode
 
             return [
