@@ -96,16 +96,16 @@ const bg_opacity = computed(() => {
                 {{ task.time.split('T')[1].split('.')[0] }}
               </td>
               <td>{{ key }}</td>
-              <td>{{ value.join(', ') }}</td>
+              <td>
+                {{ value.map((x) => x || '_').join(', ') }}
+              </td>
             </tr>
           </template>
           <tr v-else>
             <td>
               {{ task.time.split('T')[1].split('.')[0] }}
             </td>
-            <td :colspan="2">
-              {{ task.type.display_value }}
-            </td>
+            <td :colspan="2">{{ task.meta_data }}{{ task.type.display_value }}</td>
           </tr>
         </template>
       </tbody>
@@ -191,16 +191,15 @@ const bg_opacity = computed(() => {
 
   th {
     padding: 2px 16px;
-
-    &:first-child {
-      box-sizing: border-box;
-      width: 74px;
-    }
   }
 
   td {
     height: 24px;
     padding: 2px 8px;
+
+    &:last-child {
+      width: 100%;
+    }
   }
 }
 
