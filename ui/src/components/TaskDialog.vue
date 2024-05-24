@@ -224,7 +224,7 @@ const swap_30 = [
               <div>训练室：train</div>
               <div>控制中枢：central</div>
             </help-text>
-            <n-dynamic-tags v-model:value="value.operators" :max="3" size="large">
+            <n-dynamic-tags v-model:value="value.operators" :max="5" size="large">
               <template #input="{ submit, deactivate }">
                 <n-select
                   v-model:value="value.operators"
