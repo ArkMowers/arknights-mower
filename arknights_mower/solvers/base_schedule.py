@@ -1013,100 +1013,107 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
 
     def skill_upgrade(self, skill):
         try:
-            self.enter_room('train')
-            completed = self.find('training_completed')
-            check_in = None
-            error = False
-            tap_count = 0
-            if completed is not None:
-                logger.debug("训练完成")
-                self.tap(completed)
-                while check_in is None:
-                    if self.get_infra_scene() == Scene.CONNECTING:
-                        self.sleep(1)
-                        continue
-                    self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=2)
-                    tap_count += 1
-                    # 等待完成
-                    check_in = self.find("arrange_check_in")
-                    if tap_count > 5:
-                        error = True
-                        break
-            else:
-                execute_time = self.double_read_time(((236, 978), (380, 1020),), use_digit_reader=True)
-                if execute_time > datetime.now():
-                    self.tasks.append(SchedulerTask(time=execute_time, task_type=TaskTypes.SKILL_UPGRADE, meta_data=skill))
-                    return
-            if error:
-                raise Exception("收取专精技能失败")
-            logger.debug("收取技能升级完毕")
-            skill_level_up = self.find("skill_level_up")
-            tap_count = 0
-            while skill_level_up is None:
-                self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=0)
-                self.recog.update()
-                skill_level_up = self.recog.find("skill_level_up")
-                tap_count += 1
-                if tap_count > 5:
-                    error = True
-                    break
-            if error:
-                raise Exception("进入继续专精界面失败")
-            logger.debug("进入继续专精界面")
-            height = (int(skill) - 1) * 0.3 + 0.32
-            self.tap((self.recog.w * 0.33, self.recog.h * height), interval=0.5)
-            logger.debug(f"选择专精{skill}技能")
-            finish_time = self.double_read_time(((94, 998), (223, 1048),), use_digit_reader=True)
-            hours = (finish_time - datetime.now()).total_seconds() / 3600
+            unknown_cnt = 0
+            tasks = ['collect','upgrade','confirm']
+            execute_time = None
             level = 1
-            if hours > 23:
-                level = 3
-            elif hours > 15:
-                level = 2
-            logger.info(f"本次专精将提升{skill}技能至{level}")
-            # confirm
-            self.tap((self.recog.w * 0.87, self.recog.h * 0.9), interval=0.5)
-            logger.debug(f"开始专精")
-            tap_count = 0
-            while self.find('training_support') is None:
-                if self.get_infra_scene() == Scene.CONNECTING:
-                    self.sleep(1)
+            while tasks:
+                scene = self.train_scene()
+                if scene == Scene.UNKNOWN:
+                    unknown_cnt += 1
+                    if unknown_cnt > 5:
+                        unknown_cnt = 0
+                        self.back_to_infrastructure()
+                        self.enter_room("train")
+                    else:
+                        self.back()
                     continue
-                self.back(0.5)
-                tap_count += 1
-                if tap_count > 5:
-                    raise Exception("返回失败")
-            self.back(0.5)
-            execute_time = self.double_read_time(((236, 978), (380, 1020)), use_digit_reader=True)
-            if execute_time < (datetime.now() + timedelta(hours=2)):
-                raise Exception("未获取专精时间倒计时，请确认技能专精材料充足")
+                if scene == Scene.CONNECTING:
+                    self.sleep(1)
+                if scene == Scene.INFRA_MAIN:
+                    self.enter_room("train")
+                if scene == Scene.TRAIN_FINISH:
+                    self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=0.5)
+                if scene == Scene.TRAIN_MAIN:
+                    if tasks[0] == "collect":
+                        completed = self.find('training_completed')
+                        if completed is not None:
+                            logger.debug("训练完成")
+                            self.tap(completed)
+                            # 等待动画
+                            self.sleep(2)
+                            del tasks[0]
+                        else:
+                            logger.info("检测到专精未完成,刷新任务时间")
+                            execute_time = self.double_read_time(((236, 978), (380, 1020),), use_digit_reader=True)
+                            if execute_time > datetime.now():
+                                self.tasks.append(
+                                    SchedulerTask(time=execute_time, task_type=TaskTypes.SKILL_UPGRADE,
+                                                  meta_data=skill))
+                                return
+                            else:
+                                del tasks[0]
+                    if tasks[0] == "upgrade":
+                        # 进入技能选择界面
+                        self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=0.5)
+                    if tasks[0] == "confirm":
+                        # 读取专精倒计时 如果没有，判定专精失败
+                        execute_time = self.double_read_time(((236, 978), (380, 1020)), use_digit_reader=True)
+                        if execute_time < (datetime.now() + timedelta(hours=2)):
+                            raise Exception("未获取专精时间倒计时，请确认技能专精材料充足")
+                        else:
+                            del tasks[0]
+                if scene == Scene.TRAIN_SKILL_SELECT:
+                    if tasks[0] == "upgrade":
+                        # 点击技能
+                        height = (int(skill) - 1) * 0.3 + 0.32
+                        self.tap((self.recog.w * 0.33, self.recog.h * height), interval=0.25)
+                    else:
+                        self.back()
+                if scene == Scene.TRAIN_SKILL_UPGRADE:
+                    if tasks[0] == "upgrade":
+                        # 根据剩余时间判定专精技能等级
+                        finish_time = self.double_read_time(((94, 998), (223, 1048),), use_digit_reader=True)
+                        hours = (finish_time - datetime.now()).total_seconds() / 3600
+                        if hours > 23:
+                            level = 3
+                        elif hours > 15:
+                            level = 2
+                        logger.info(f"本次专精将提升{skill}技能至{level}")
+                        # 点击确认开始专精
+                        self.tap((self.recog.w * 0.87, self.recog.h * 0.9), interval=1)
+                        del tasks[0]
+                    else:
+                        self.back()
+                if scene == Scene.TRAIN_SKILL_UPGRADE_ERROR:
+                    # 如果材料不满足则会出现错误
+                    if tasks[0] =="confirm":
+                        raise Exception("专精材料不足")
+                    else:
+                        self.back()
             if len(self.op_data.skill_upgrade_supports) > 0:
                 support = next((e for e in self.op_data.skill_upgrade_supports if e.level == level), None)
+                h = self.op_data.calculate_switch_time(support)
                 if support is not None:
-                    h = self.op_data.calculate_switch_time(support)
                     self.tasks.append(SchedulerTask(task_plan={'train': [support.name, 'Current']}))
                     # 提前10分钟换人，确保触发技能
                     # 3 级不需要换人
-                    if support.name != support.swap_name:
+                    if level != 3:
                         self.tasks.append(
                             SchedulerTask(time=datetime.now() + timedelta(hours=h) - timedelta(minutes=10),
                                           task_plan={'train': [support.swap_name, 'Current']}))
-                        if level != 3:
-                            self.tasks.append(
-                                SchedulerTask(time=datetime.now() + timedelta(hours=h + 5) + timedelta(minutes=15),
-                                              task_plan={}, task_type=TaskTypes.SKILL_UPGRADE, meta_data=skill))
-                    else:
-                        if level != 3:
-                            self.tasks.append(
-                                SchedulerTask(time=datetime.now() + timedelta(hours=h),
-                                              task_plan={}, task_type=TaskTypes.SKILL_UPGRADE, meta_data=skill))
+                        # 默认 5小时
+                        self.tasks.append(
+                            SchedulerTask(time=datetime.now() + timedelta(hours=h + 5) + timedelta(minutes=15),
+                                          task_plan={}, task_type=TaskTypes.SKILL_UPGRADE, meta_data=skill))
                 else:
                     self.tasks.append(
-                        SchedulerTask(time=execute_time,task_plan={}, task_type=TaskTypes.SKILL_UPGRADE, meta_data=skill))
+                        SchedulerTask(time=execute_time, task_plan={}, task_type=TaskTypes.SKILL_UPGRADE,
+                                      meta_data=skill))
             self.back()
         except Exception as e:
-            logger.error("专精任务失败")
-            self.send_message("专精任务失败")
+            logger.error(e)
+            self.send_message("专精任务失败"+ str(e))
             logger.error(e)
 
     def plan_run_order(self, room):

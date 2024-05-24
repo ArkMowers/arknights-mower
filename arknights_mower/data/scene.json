@@ -167,6 +167,26 @@
         "label": "CLUE_PLACE",
         "comment": "放置线索"
     },
+    "216": {
+        "label": "TRAIN_SKILL_UPGRADE",
+        "comment": "技能升级"
+    },
+    "217": {
+        "label": "TRAIN_MAIN",
+        "comment": "训练室主界面"
+    },
+    "218": {
+        "label": "TRAIN_SKILL_UPGRADE_ERROR",
+        "comment": "技能升级失败"
+    },
+    "219": {
+        "label": "TRAIN_SKILL_SELECT",
+        "comment": "选择技能"
+    },
+    "220": {
+        "label": "TRAIN_FINISH",
+        "comment": "技能升级结算"
+    },
     "301": {
         "label": "FRIEND_LIST_OFF",
         "comment": "好友列表（未选中）"

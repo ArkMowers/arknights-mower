@@ -331,6 +331,12 @@ class BaseSolver:
         """
         return self.recog.get_clue_scene()
 
+    def train_scene(self) -> int:
+        """
+        训练室景识别
+        """
+        return self.recog.get_train_scene()
+
     def is_login(self):
         """check if you are logged in"""
         return not (

@@ -792,6 +792,42 @@ class Recognizer(object):
 
         return self.scene
 
+    def get_train_scene(self) -> int:
+        """
+        训练室场景识别
+        """
+        # 场景缓存
+        if self.scene != Scene.UNDEFINED:
+            return self.scene
+        # 连接中，优先级最高
+        if self.find("connecting"):
+            self.scene = Scene.CONNECTING
+        elif self.find("infra_overview", scope=((20, 120), (360, 245))) is not None:
+            self.scene = Scene.INFRA_MAIN
+        elif self.find("train_main"):
+            self.scene = Scene.TRAIN_MAIN
+        elif self.find("skill_collect_confirm", scope=((1142, 831), (1282, 932))):
+            self.scene = Scene.TRAIN_FINISH
+        elif self.find("training_support"):
+            self.scene = Scene.TRAIN_SKILL_SELECT
+        elif self.find("upgrade_failure"):
+            self.scene = Scene.TRAIN_SKILL_UPGRADE_ERROR
+        elif self.find("skill_confirm"):
+            self.scene = Scene.TRAIN_SKILL_UPGRADE
+        else:
+            self.scene = Scene.UNKNOWN
+            if self.device.check_current_focus():
+                self.update()
+
+        # save screencap to analyse
+        if config.SCREENSHOT_PATH is not None:
+            self.save_screencap(self.scene)
+        logger.info(f"Scene: {self.scene}: {SceneComment[self.scene]}")
+
+        self.check_loading_time()
+
+        return self.scene
+
     def is_black(self) -> None:
         """check if the current scene is all black"""
         return np.max(self.gray[:, 105:-105]) < 16
