@@ -108,7 +108,7 @@ class BaseMixin:
             else:
                 raise e
 
-    def swipe_left(self, right_swipe, w, h):
+    def swipe_left(self, right_swipe):
         if right_swipe > 3:
             self.detail_filter(控制中枢=True)
             self.detail_filter(控制中枢=False)

@@ -2462,7 +2462,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     # 滑倒最左边
                     self.sleep(interval=0.5)
                     if not siege:
-                        right_swipe = self.swipe_left(right_swipe, w, h)
+                        right_swipe = self.swipe_left(right_swipe)
                     pre_order = arrange_type
             first_time = False
 
@@ -2499,7 +2499,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             if not first_time:
                 # 滑动到最左边
                 self.sleep(interval=0.5)
-                right_swipe = self.swipe_left(right_swipe, w, h)
+                right_swipe = self.swipe_left(right_swipe)
             self.detail_filter(未进驻=True)
             self.switch_arrange_order(3, "true")
             # 只选择在列表里面的
@@ -2541,7 +2541,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         # 排序
         if len(agents) != 1:
             # 左移
-            right_swipe = self.swipe_left(right_swipe, w, h)
+            right_swipe = self.swipe_left(right_swipe)
             self.switch_arrange_order("技能")
             not_match = False
             exists.extend(selected)
@@ -2564,7 +2564,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         interval=0,
                     )
         logger.debug("验证干员选择..")
-        self.swipe_left(right_swipe, w, h)
+        self.swipe_left(right_swipe)
         self.switch_arrange_order(2)
         if not self.verify_agent(agents):
             raise Exception("检测到干员选择错误，重新选择")
