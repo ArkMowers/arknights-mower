@@ -26,36 +26,6 @@ class SkillUpgradeSupport(object):
             self.half_off = True
         self.swap_name = swap_name
 
-
-def calculate_switch_time(support: SkillUpgradeSupport):
-    hour = 0
-    half_off = support.half_off
-    level = support.level
-    match = support.match
-    efficiency = support.efficiency
-    same = support.name == support.swap_name
-    if level == 1:
-        half_off = False
-    # if left_minutes > 0 or left_hours > 0:
-    #     hour = left_minutes / 60 + left_hours
-    # 基本5%
-    basic = 5
-    if support.add_on:
-        # 阿斯卡伦
-        basic += 5
-    if hour == 0:
-        hour = level * 8
-    if half_off:
-        hour = hour / 2
-    left = 0
-    if not same:
-        left = 5 * (100 + basic + (30 if match else 0)) / 100
-        left = hour - left
-    else:
-        left = hour
-    return left * 100 / (100 + efficiency + basic)
-
-
 class Operators(object):
     config = None
     operators = None
@@ -96,6 +66,34 @@ class Operators(object):
 
     def __repr__(self):
         return f'Operators(operators={self.operators})'
+
+    def calculate_switch_time(self, support: SkillUpgradeSupport):
+        hour = 0
+        half_off = support.half_off
+        level = support.level
+        match = support.match
+        efficiency = support.efficiency
+        same = support.name == support.swap_name
+        if level == 1:
+            half_off = False
+        # if left_minutes > 0 or left_hours > 0:
+        #     hour = left_minutes / 60 + left_hours
+        # 基本5%
+        basic = 5
+        if support.add_on:
+            # 阿斯卡伦
+            basic += 5
+        if hour == 0:
+            hour = level * 8
+        if half_off:
+            hour = hour / 2
+        left = 0
+        if not same:
+            left = 5 * (100 + basic + (30 if match else 0)) / 100
+            left = hour - left
+        else:
+            left = hour
+        return left * 100 / (100 + efficiency + basic)
 
     def swap_plan(self, condition, refresh=False):
         self.plan = copy.deepcopy(self.global_plan["default_plan"].plan)
