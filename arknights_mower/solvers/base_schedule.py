@@ -1081,8 +1081,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     if tasks[0] == "upgrade":
                         # 点击技能
                         height = (int(skill) - 1) * 0.3 + 0.32
-                        self.tap(
-                            (self.recog.w * 0.33, self.recog.h * height), interval=1
+                        self.ctap(
+                            (self.recog.w * 0.33, self.recog.h * height)
                         )
                     else:
                         self.back()
