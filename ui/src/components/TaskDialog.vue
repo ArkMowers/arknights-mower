@@ -77,6 +77,7 @@ async function saveTasks() {
   }
   if (task_type.value == '技能专精') {
     task.meta_data = skill_level.value + ''
+    task.plan = {}
   }
   const data = deepcopy(upgrade_support.value)
   for (const value of data) {
