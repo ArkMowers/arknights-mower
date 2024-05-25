@@ -12,6 +12,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from inspect import getframeinfo, stack
 from io import BytesIO
+from threading import Thread
 from typing import Optional, Tuple
 
 import cv2
@@ -19,13 +20,12 @@ import numpy as np
 import requests
 from bs4 import BeautifulSoup
 
+from arknights_mower.utils import config, detector
+from arknights_mower.utils import typealias as tp
+from arknights_mower.utils.device import Device, KeyCode
 from arknights_mower.utils.image import cropimg, thres2
-
-from ..utils import typealias as tp
-from . import config, detector
-from .device import Device, KeyCode
-from .log import logger
-from .recognize import RecognizeError, Recognizer, Scene
+from arknights_mower.utils.log import logger
+from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
 
 
 class StrategyError(Exception):
@@ -752,8 +752,25 @@ class BaseSolver:
                 logger.exception(e)
                 self.csleep(delay)
 
-    # 消息发送 原Email发送 EightyDollars
     def send_message(
+        self,
+        body="",
+        subject="",
+        subtype="plain",
+        retry_times=3,
+        attach_image: Optional[tp.Image] = None,
+        use_thread=True,
+    ):
+        if use_thread:
+            Thread(
+                target=self.send_message_old,
+                args=(body, subject, subtype, retry_times, attach_image),
+            ).start()
+        else:
+            self.send_message_old(body, subject, subtype, retry_times, attach_image)
+
+    # 消息发送 原Email发送 EightyDollars
+    def send_message_old(
         self,
         body="",
         subject="",
