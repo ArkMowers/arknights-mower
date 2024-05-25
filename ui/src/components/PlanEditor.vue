@@ -507,13 +507,13 @@ const fia_list = computed(() => {
           <td class="table-space group">
             <n-input
               v-model:value="plan[facility].plans[i - 1].group"
-              :disabled="facility == 'train' && i == 2"
+              :disabled="!plan[facility].plans[i - 1].agent"
             />
           </td>
           <td class="select-label">替换：</td>
           <td>
             <n-select
-              :disabled="!plan[facility].plans[i - 1].agent || (facility == 'train' && i == 2)"
+              :disabled="!plan[facility].plans[i - 1].agent"
               multiple
               filterable
               :options="operators_with_none"
