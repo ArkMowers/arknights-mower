@@ -3254,8 +3254,6 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 if tasks == "All":
                     tasks = ["Fight", "Mall", "Award"]
                 for maa_task in tasks:
-                    if maa_task == "Recruit":
-                        continue
                     self.append_maa_task(maa_task)
                 # asst.append_task('Copilot', {
                 #     'stage_name': '千层蛋糕',
@@ -3441,6 +3439,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     self.recog.update()
             self.MAA = None
         except MowerExit:
+            if self.MAA is not None:
+                self.MAA.stop()
+                logger.info("停止maa")
             raise
         except Exception as e:
             logger.exception(e)
