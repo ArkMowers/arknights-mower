@@ -40,11 +40,7 @@
               />
             </n-layout-sider>
             <n-layout-content class="layout-content-container">
-              <router-view v-if="loaded" v-slot="{ Component, route }">
-                <transition name="fade">
-                  <component :is="Component" />
-                </transition>
-              </router-view>
+              <router-view v-if="loaded" />
             </n-layout-content>
             <n-layout-footer v-if="mobile">
               <n-tabs type="line" justify-content="space-evenly" size="small">

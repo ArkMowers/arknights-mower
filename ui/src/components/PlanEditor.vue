@@ -5,7 +5,7 @@ import { usePlanStore } from '@/stores/plan'
 import { ref, computed, nextTick, watch, inject } from 'vue'
 const config_store = useConfigStore()
 const plan_store = usePlanStore()
-const { operators, groups, current_plan: plan, workaholic } = storeToRefs(plan_store)
+const { operators, groups, current_plan: plan, workaholic, sub_plan } = storeToRefs(plan_store)
 const { facility_operator_limit } = plan_store
 const { theme } = storeToRefs(config_store)
 
@@ -74,8 +74,30 @@ const operators_with_none = computed(() => {
 })
 
 const operators_with_free = computed(() => {
+  return [{ value: 'Free', label: 'Free' }].concat(operators.value)
+})
+
+const operators_with_none_free = computed(() => {
   return [{ value: 'Free', label: 'Free' }].concat(operators_with_none.value)
 })
+
+const operators_with_none_current = computed(() => {
+  return [{ value: 'Current', label: 'Current' }].concat(operators_with_none.value)
+})
+
+const operators_with_none_free_current = computed(() => {
+  return [{ value: 'Current', label: 'Current' }].concat(operators_with_none_free.value)
+})
+
+function operator_options(facility) {
+  if (sub_plan.value == 'main') {
+    return facility.startsWith('dorm') ? operators_with_none_free.value : operators_with_none.value
+  } else {
+    return facility.startsWith('dorm')
+      ? operators_with_none_free_current.value
+      : operators_with_none_current.value
+  }
+}
 
 const right_side_facility_name = computed(() => {
   if (facility.value.startsWith('dormitory')) {
@@ -493,7 +515,7 @@ const fia_list = computed(() => {
           <td class="table-space">
             <n-select
               filterable
-              :options="facility.startsWith('dorm') ? operators_with_free : operators_with_none"
+              :options="operator_options(facility)"
               class="operator-select"
               v-model:value="plan[facility].plans[i - 1].agent"
               :filter="(p, o) => match(o.label, p)"
