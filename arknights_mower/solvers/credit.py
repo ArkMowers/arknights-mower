@@ -4,7 +4,7 @@ from arknights_mower.utils import detector
 from arknights_mower.utils.device import Device
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
+from arknights_mower.utils.recognize import Recognizer, Scene
 from arknights_mower.utils.solver import BaseSolver
 
 
@@ -42,9 +42,9 @@ class CreditSolver(BaseSolver):
                 self.tap(pos)
             else:
                 self.sleep()
+        elif self.find("visit_limit"):
+            return True
         elif scene == Scene.FRIEND_VISITING:
-            if self.find("visit_limit"):
-                return True
             if visit_next := detector.visit_next(self.recog.img):
                 self.tap(visit_next)
             else:
@@ -56,4 +56,4 @@ class CreditSolver(BaseSolver):
         elif scene != Scene.UNKNOWN:
             self.back_to_index()
         else:
-            raise RecognizeError("Unknown scene")
+            self.sleep()
