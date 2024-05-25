@@ -10,22 +10,20 @@ from ctypes import CFUNCTYPE, c_char_p, c_int, c_void_p
 from datetime import datetime, timedelta
 
 import cv2
-import numpy as np
 import requests
 
 # 借用__main__.py里的时间计算器
 from arknights_mower.__main__ import format_time
 from arknights_mower.solvers import (
-    ReportSolver,
+    CreditSolver,
+    DepotSolver,
     MailSolver,
     RecruitSolver,
-    DepotSolver,
-    CreditSolver,
+    ReportSolver,
 )
 from arknights_mower.solvers.base_mixin import BaseMixin
 from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
-from arknights_mower.solvers.sign_in import update_sign_in_solver
-from arknights_mower.utils import config, rapidocr
+from arknights_mower.utils import config, hot_update, rapidocr
 from arknights_mower.utils.email import maa_template
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.matcher import Matcher
@@ -34,7 +32,7 @@ from arknights_mower.utils.simulator import restart_simulator
 from arknights_mower.utils.solver import MowerExit
 
 from ..data import agent_list, base_room_list
-from ..utils import detector, segment
+from ..utils import detector
 from ..utils import typealias as tp
 from ..utils.datetime import get_server_weekday
 from ..utils.device import Device
@@ -3157,11 +3155,38 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             raise Exception("MAA 连接失败")
 
     def append_maa_task(self, type):
-        if type in ["StartUp", "Award"]:
+        if type == "Award":
             self.MAA.append_task(type)
         elif type == "Fight":
             _plan = self.maa_config["weekly_plan"][get_server_weekday()]
             logger.info(f"现在服务器是{_plan['weekday']}")
+            hot_update.update()
+            if (
+                len(_plan["stage"]) == 1
+                and _plan["stage"][0] in hot_update.navigation.NavigationSolver.location
+            ):
+                name = _plan["stage"][0]
+                logger.info(f"导航至{name}")
+                hot_update.navigation.NavigationSolver(self.device).run(name)
+                self.stages.append(name)
+                self.MAA.append_task(
+                    "Fight",
+                    {
+                        "stage": "",
+                        "medicine": _plan["medicine"],
+                        "stone": 999 if self.maa_config["eat_stone"] else 0,
+                        "times": 999,
+                        "report_to_penguin": True,
+                        "client_type": "",
+                        "penguin_id": "",
+                        "DrGrandet": False,
+                        "server": "CN",
+                        "expiring_medicine": 999
+                        if self.maa_config["expiring_medicine"]
+                        else 0,
+                    },
+                )
+                return
             for stage in _plan["stage"]:
                 logger.info(f"添加关卡:{stage}")
                 self.MAA.append_task(
@@ -3227,7 +3252,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 # 任务及参数请参考 docs/集成文档.md
                 self.initialize_maa()
                 if tasks == "All":
-                    tasks = ["StartUp", "Fight", "Mall", "Award"]
+                    tasks = ["Fight", "Mall", "Award"]
                 for maa_task in tasks:
                     if maa_task == "Recruit":
                         continue
@@ -3484,11 +3509,11 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
     def sign_in_plan_solver(self):
         if not self.sign_in_enable:
             return
-        SignInSolver = update_sign_in_solver()
-        if SignInSolver is None:
-            return True
+        hot_update.update()
         try:
-            sign_in_solver = SignInSolver()
+            import sign_in
+
+            sign_in_solver = sign_in.SignInSolver(self.device)
             sign_in_solver.send_message_config = self.send_message_config
             return sign_in_solver.run()
         except MowerExit:
