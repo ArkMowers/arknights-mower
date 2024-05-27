@@ -438,7 +438,7 @@ class BaseSolver:
                     # 应对两种情况：
                     # 1. 点击左上角“网络检测”后出现“您即将进行一次网络拨测，该操作将采集您的网络状态并上报，点击确认继续”，点x
                     # 2. 点击左上角“清除缓存”之后取消
-                    self.tap((665, 741), 3)
+                    self.tap((665, 741))
                 elif scene == Scene.LOGIN_NEW:
                     self.tap_element("login_new")
                 elif scene == Scene.LOGIN_BILIBILI:
