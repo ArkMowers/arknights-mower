@@ -30,6 +30,7 @@ class Recognizer(object):
             self.clear()
         else:
             self.start(screencap)
+            self.matcher = None
             self.scene = Scene.UNDEFINED
         self.loading_time = 0
         self.LOADING_TIME_LIMIT = 5

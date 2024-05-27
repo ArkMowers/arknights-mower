@@ -172,7 +172,7 @@ class Matcher(object):
                 result = cv2.drawMatches(
                     bordered, qry_kp, self.origin, ori_kp, good, None
                 )
-                plt.imshow(result, "gray")
+                plt.imshow(result, cmap="gray", vmin=0, vmax=255)
                 plt.show()
             # if the number of good matches no more than 4
             if len(good) <= 4:
@@ -182,16 +182,11 @@ class Matcher(object):
                 return None
 
             # get the coordinates of good matches
-            qry_pts = np.float32([qry_kp[m.queryIdx].pt for m in good]).reshape(
-                -1, 1, 2
-            )
-            ori_pts = np.float32([ori_kp[m.trainIdx].pt for m in good]).reshape(
-                -1, 1, 2
-            )
+            qry_pts = np.int32([qry_kp[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)
+            ori_pts = np.int32([ori_kp[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
 
             # calculated transformation matrix and the mask
-            M, mask = cv2.findHomography(qry_pts, ori_pts, cv2.RANSAC, 5.0)
-            matchesMask = mask.ravel().tolist()
+            M, mask = cv2.estimateAffine2D(qry_pts, ori_pts, None, cv2.LMEDS)
 
             # if transformation matrix is None
             if M is None:
@@ -200,15 +195,15 @@ class Matcher(object):
 
             # calc the location of the query image
             # quad = np.float32([[[0, 0]], [[0, h-1]], [[w-1, h-1]], [[w-1, 0]]])
-            quad = np.float32(
-                [[[31, 31]], [[31, h + 30]], [[w + 30, h + 30]], [[w + 30, 31]]]
-            )
-            quad = cv2.perspectiveTransform(quad, M)  # quadrangle
-            quad_points = qp = np.int32(quad).reshape(4, 2).tolist()
+            quad = np.int32([[[31, 31]], [[w + 30, h + 30]]])
+            quad = cv2.transform(quad, M)  # quadrangle
+            rect = quad.reshape(2, 2).tolist()
 
             # draw the result, for debug
             if draw or MATCHER_DEBUG:
-                cv2.polylines(self.origin, [np.int32(quad)], True, 0, 2, cv2.LINE_AA)
+                matchesMask = mask.ravel().tolist()
+                origin_copy = self.origin.copy()
+                cv2.rectangle(origin_copy, rect[0], rect[1], (0,), 3)
                 draw_params = dict(
                     matchColor=(0, 255, 0),
                     singlePointColor=None,
@@ -216,29 +211,10 @@ class Matcher(object):
                     flags=2,
                 )
                 result = cv2.drawMatches(
-                    bordered, qry_kp, self.origin, ori_kp, good, None, **draw_params
+                    bordered, qry_kp, origin_copy, ori_kp, good, None, **draw_params
                 )
-                plt.imshow(result, "gray")
+                plt.imshow(result, cmap="gray", vmin=0, vmax=255)
                 plt.show()
-
-            # if quadrangle is not rectangle
-            if (
-                max(
-                    abs(qp[0][0] - qp[1][0]),
-                    abs(qp[2][0] - qp[3][0]),
-                    abs(qp[0][1] - qp[3][1]),
-                    abs(qp[1][1] - qp[2][1]),
-                )
-                > 30
-            ):
-                logger.debug(f"square is not rectangle: {qp}")
-                return None
-
-            # make quadrangle rectangle
-            rect = [
-                (np.min(quad[:, 0, 0]), np.min(quad[:, 0, 1])),
-                (np.max(quad[:, 0, 0]), np.max(quad[:, 0, 1])),
-            ]
 
             min_width = max(10, 0 if dpi_aware else w * 0.8)
             min_height = max(10, 0 if dpi_aware else h * 0.8)

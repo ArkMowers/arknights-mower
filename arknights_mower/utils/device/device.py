@@ -196,8 +196,8 @@ class Device(object):
                 try:
                     port = config.droidcast["port"]
                     url = f"http://127.0.0.1:{port}/screenshot"
-                    r = session.get(url)
                     logger.debug(f"GET {url}")
+                    r = session.get(url)
                     img = bytes2img(r.content)
                     gray = bytes2img(r.content, True)
                     if config.droidcast["rotate"]:
