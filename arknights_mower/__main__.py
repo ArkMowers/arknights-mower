@@ -1,6 +1,5 @@
 import json
 import os
-import socket
 from copy import deepcopy
 from datetime import datetime, timedelta
 
@@ -10,6 +9,7 @@ from evalidate import Expr
 from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
 from arknights_mower.utils import config, path, rapidocr
 from arknights_mower.utils.depot import 创建csv
+from arknights_mower.utils.device.adb_client.session import Session
 from arknights_mower.utils.email import task_template
 from arknights_mower.utils.log import init_fhlr, logger
 from arknights_mower.utils.logic_expression import LogicExpression
@@ -309,6 +309,10 @@ def simulate():
             if reconnect_tries < 3:
                 logger.exception(E)
                 restart_simulator()
+                base_scheduler.device.client.check_server_alive()
+                Session().connect(config.ADB_DEVICE[0])
+                if config.droidcast["enable"]:
+                    base_scheduler.device.start_droidcast()
                 continue
             else:
                 raise E
@@ -564,6 +568,10 @@ def simulate():
                     except Exception as ce:
                         logger.error(ce)
                         restart_simulator()
+                        base_scheduler.device.client.check_server_alive()
+                        Session().connect(config.ADB_DEVICE[0])
+                        if config.droidcast["enable"]:
+                            base_scheduler.device.start_droidcast()
                         continue
                 continue
             else:
@@ -571,6 +579,10 @@ def simulate():
         except RuntimeError as re:
             logger.exception(f"程序出错-尝试重启模拟器->{re}")
             restart_simulator()
+            base_scheduler.device.client.check_server_alive()
+            Session().connect(config.ADB_DEVICE[0])
+            if config.droidcast["enable"]:
+                base_scheduler.device.start_droidcast()
         except Exception as E:
             logger.exception(f"程序出错--->{E}")
 

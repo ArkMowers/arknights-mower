@@ -20,12 +20,14 @@ import numpy as np
 import requests
 from bs4 import BeautifulSoup
 
-from arknights_mower.utils import config, detector
+from arknights_mower.utils import config
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.device import Device, KeyCode
 from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
+from arknights_mower.utils.simulator import restart_simulator
+from arknights_mower.utils.device.adb_client.session import Session
 
 
 class StrategyError(Exception):
@@ -45,7 +47,20 @@ class BaseSolver:
         # self.device = device if device is not None else (recog.device if recog is not None else Device())
         if device is None and recog is not None:
             raise RuntimeError
-        self.device = device if device is not None else Device()
+        if device is not None:
+            self.device = device
+        else:
+            while True:
+                try:
+                    self.device = Device()
+                    self.device.client.check_server_alive()
+                    Session().connect(config.ADB_DEVICE[0])
+                    if config.droidcast["enable"]:
+                        self.device.start_droidcast()
+                    break
+                except Exception:
+                    restart_simulator()
+
         self.recog = recog if recog is not None else Recognizer(self.device)
         if self.device.check_current_focus():
             self.recog.update()
