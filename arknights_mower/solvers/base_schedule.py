@@ -2136,12 +2136,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             # 如果不是全部all in
             if all_in > 0:
                 tap_times = drone_count - self.drone_count_limit  # 修改为无人机阈值
-                _count = 0
-                while _count < tap_times:
-                    self.device.tap((self.recog.w * 0.7, self.recog.h * 0.5))
-                    time.sleep(0.1)
-                    _count += 1
-                self.recog.update()
+                for _count in range(tap_times):
+                    self.tap((self.recog.w * 0.7, self.recog.h * 0.5), interval=0.1)
             else:
                 self.tap_element("all_in")
             self.tap(accelerate, y_rate=1)

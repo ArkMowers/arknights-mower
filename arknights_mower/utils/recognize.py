@@ -24,9 +24,40 @@ class RecognizeError(Exception):
 class Recognizer(object):
     def __init__(self, device: Device, screencap: bytes = None) -> None:
         self.device = device
-        self.start(screencap)
+        self.w = 1920
+        self.h = 1080
+        if screencap is None:
+            self.clear()
+        else:
+            self.start(screencap)
+            self.scene = Scene.UNDEFINED
         self.loading_time = 0
         self.LOADING_TIME_LIMIT = 5
+
+    def clear(self):
+        self._screencap = None
+        self._img = None
+        self._gray = None
+        self.matcher = None
+        self.scene = Scene.UNDEFINED
+
+    @property
+    def screencap(self):
+        if self._screencap is None:
+            self.start()
+        return self._screencap
+
+    @property
+    def img(self):
+        if self._img is None:
+            self.start()
+        return self._img
+
+    @property
+    def gray(self):
+        if self._gray is None:
+            self.start()
+        return self._gray
 
     def start(self, screencap: bytes = None) -> None:
         """init with screencap"""
@@ -34,14 +65,11 @@ class Recognizer(object):
         while retry_times > 0:
             try:
                 if screencap is not None:
-                    self.screencap = screencap
-                    self.img = bytes2img(screencap)
-                    self.gray = bytes2img(screencap, True)
+                    self._screencap = screencap
+                    self._img = bytes2img(screencap)
+                    self._gray = bytes2img(screencap, True)
                 else:
-                    self.screencap, self.img, self.gray = self.device.screencap()
-                self.h, self.w, _ = self.img.shape
-                self.matcher = None
-                self.scene = Scene.UNDEFINED
+                    self._screencap, self._img, self._gray = self.device.screencap()
                 return
             except cv2.error as e:
                 logger.warning(e)
@@ -50,12 +78,12 @@ class Recognizer(object):
                 continue
         raise RuntimeError("init Recognizer failed")
 
-    def update(self, screencap: bytes = None) -> None:
+    def update(self) -> None:
         from arknights_mower.utils.solver import MowerExit
 
         if config.stop_mower.is_set():
             raise MowerExit
-        self.start(screencap)
+        self.clear()
 
     def color(self, x: int, y: int) -> tp.Pixel:
         """get the color of the pixel"""
