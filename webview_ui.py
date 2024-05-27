@@ -109,7 +109,9 @@ def start_tray(queue: mp.Queue, global_space, port, url):
     icon.run()
 
 
-def webview_window(queue, global_space, host, port, token, url, width, height, tray):
+def webview_window(
+    child_conn, global_space, host, port, token, url, width, height, tray
+):
     import sys
     from threading import Thread
 
@@ -143,9 +145,34 @@ def webview_window(queue, global_space, host, port, token, url, width, height, t
     window.events.resized += window_size
 
     def recv_msg():
-        queue.get()
-        window.confirm_close = False
-        window.destroy()
+        while True:
+            msg = child_conn.recv()
+            if msg == "exit":
+                window.confirm_close = False
+                window.destroy()
+                return
+            if msg == "file":
+                result = window.create_file_dialog(
+                    dialog_type=webview.OPEN_DIALOG,
+                )
+            elif msg == "folder":
+                result = window.create_file_dialog(
+                    dialog_type=webview.FOLDER_DIALOG,
+                )
+            elif msg == "save":
+                result = window.create_file_dialog(
+                    dialog_type=webview.SAVE_DIALOG,
+                    save_filename="plan.png",
+                    file_types=("PNG图片 (*.png)",),
+                )
+            if result is None:
+                result = ""
+            elif not isinstance(result, str):
+                if len(result) == 0:
+                    result = ""
+                else:
+                    result = result[0]
+            child_conn.send(result)
 
     Thread(target=recv_msg, daemon=True).start()
     webview.start()
@@ -237,11 +264,11 @@ if __name__ == "__main__":
 
     splash_queue.put({"type": "text", "data": "创建主窗口"})
 
-    webview_queue = mp.Queue()
+    parent_conn, child_conn = mp.Pipe()
     webview_process = mp.Process(
         target=webview_window,
         args=(
-            webview_queue,
+            child_conn,
             path.global_space,
             host,
             port,
@@ -255,6 +282,11 @@ if __name__ == "__main__":
     )
     webview_process.start()
 
+    from arknights_mower.utils import config
+
+    config.parent_conn = parent_conn
+    config.webview_process = webview_process
+
     splash_queue.put({"type": "exit"})
     splash_process.join()
 
@@ -263,14 +295,14 @@ if __name__ == "__main__":
             msg = tray_queue.get()
             if msg == "toggle":
                 if webview_process.is_alive():
-                    webview_queue.put("exit")
+                    parent_conn.send("exit")
                     webview_process.join()
                 else:
-                    webview_queue = mp.Queue()
+                    parent_conn, child_conn = mp.Pipe()
                     webview_process = mp.Process(
                         target=webview_window,
                         args=(
-                            webview_queue,
+                            child_conn,
                             path.global_space,
                             host,
                             port,
@@ -283,8 +315,10 @@ if __name__ == "__main__":
                         daemon=True,
                     )
                     webview_process.start()
+                    config.parent_conn = parent_conn
+                    config.webview_process = webview_process
             elif msg == "exit":
-                webview_queue.put("exit")
+                parent_conn.send("exit")
                 webview_process.join()
                 break
     else:

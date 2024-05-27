@@ -11,10 +11,10 @@ from queue import Queue
 from threading import Event, Thread
 
 import pytz
-from tzlocal import get_localzone
 from flask import Flask, abort, request, send_from_directory
 from flask_cors import CORS
 from flask_sock import Sock
+from tzlocal import get_localzone
 from werkzeug.exceptions import NotFound
 
 from arknights_mower.utils import config
@@ -206,53 +206,35 @@ def log(ws):
         ws_connections.remove(ws)
 
 
+def conn_send(text):
+    from arknights_mower.utils import config
+
+    if not config.webview_process.is_alive():
+        return ""
+
+    config.parent_conn.send(text)
+    return config.parent_conn.recv()
+
+
 @app.route("/dialog/file")
 @require_token
 def open_file_dialog():
-    import webview
-
-    window = webview.windows[0]
-    file_path = window.create_file_dialog(dialog_type=webview.OPEN_DIALOG)
-    if file_path:
-        return file_path[0]
-    else:
-        return ""
+    return conn_send("file")
 
 
 @app.route("/dialog/folder")
 @require_token
 def open_folder_dialog():
-    import webview
-
-    window = webview.windows[0]
-    folder_path = window.create_file_dialog(dialog_type=webview.FOLDER_DIALOG)
-    if folder_path:
-        return folder_path[0]
-    else:
-        return ""
-
-
-@app.route("/scale/<float:factor>")
-@app.route("/scale/<int:factor>")
-@require_token
-def scale_interface(factor):
-    import webview
-
-    window = webview.windows[0]
-    window.evaluate_js(f"document.documentElement.style.zoom = '{factor}';")
-    return "OK"
+    return conn_send("folder")
 
 
 @app.route("/import")
 @require_token
 def import_from_image():
-    import webview
+    img_path = conn_send("file")
 
-    window = webview.windows[0]
-    file_path = window.create_file_dialog(dialog_type=webview.OPEN_DIALOG)
-    if not file_path:
+    if not img_path:
         return "No file selected."
-    img_path = file_path[0]
 
     from PIL import Image
 
@@ -269,8 +251,6 @@ def import_from_image():
 @app.route("/dialog/save/img", methods=["POST"])
 @require_token
 def save_file_dialog():
-    import webview
-
     img = request.files["img"]
     if not img:
         return "图片未上传"
@@ -286,18 +266,12 @@ def save_file_dialog():
 
     img = qrcode.export(plan, upper, conf["theme"])
 
-    window = webview.windows[0]
-    img_path = window.create_file_dialog(
-        dialog_type=webview.SAVE_DIALOG,
-        save_filename="plan.png",
-        file_types=("PNG图片 (*.png)",),
-    )
-    if not img_path:
+    img_path = conn_send("save")
+    if img_path == "":
         return "保存已取消"
-    if not isinstance(img_path, str):
-        img_path = img_path[0]
-    img.save(img_path)
-    return f"图片已导出至{img_path}"
+    else:
+        img.save(img_path)
+        return f"图片已导出至{img_path}"
 
 
 @app.route("/check-maa")
