@@ -312,9 +312,6 @@ def simulate():
                 continue
             else:
                 raise E
-    if base_scheduler.recog.h != 1080 or base_scheduler.recog.w != 1920:
-        logger.error("模拟器分辨率不为1920x1080")
-        return
     # base_scheduler.仓库扫描() #别删了 方便我找
     validation_msg = base_scheduler.initialize_operators()
     if validation_msg is not None:
@@ -478,8 +475,6 @@ def simulate():
                             base_scheduler.sleeping = True
                             base_scheduler.sleep(remaining_time)
                             base_scheduler.sleeping = False
-                            if base_scheduler.close_simulator_when_idle:
-                                restart_simulator(stop=False)
                             if base_scheduler.device.check_current_focus():
                                 base_scheduler.recog.update()
 
@@ -537,8 +532,6 @@ def simulate():
                     base_scheduler.sleeping = True
                     base_scheduler.sleep(remaining_time)
                     base_scheduler.sleeping = False
-                    if conf["close_simulator_when_idle"]:
-                        restart_simulator(stop=False)
                     if base_scheduler.device.check_current_focus():
                         base_scheduler.recog.update()
             if (

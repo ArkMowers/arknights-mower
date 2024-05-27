@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 
 from arknights_mower import __rootdir__
+from arknights_mower.utils.device.adb_client.session import Session
 from arknights_mower.utils.image import bytes2img
 from arknights_mower.utils.network import get_new_port, is_port_in_use
 from arknights_mower.utils.simulator import restart_simulator
@@ -194,7 +195,9 @@ class Device(object):
             while True:
                 try:
                     port = config.droidcast["port"]
-                    r = session.get(f"http://127.0.0.1:{port}/screenshot")
+                    url = f"http://127.0.0.1:{port}/screenshot"
+                    r = session.get(url)
+                    logger.debug(f"GET {url}")
                     img = bytes2img(r.content)
                     gray = bytes2img(r.content, True)
                     if config.droidcast["rotate"]:
@@ -202,11 +205,10 @@ class Device(object):
                         gray = cv2.rotate(gray, cv2.ROTATE_180)
                     break
                 except Exception:
-                    if self.client.check_server_alive():
-                        self.start_droidcast()
-                        time.sleep(3)
-                    else:
-                        restart_simulator()
+                    restart_simulator()
+                    self.client.check_server_alive()
+                    Session().connect(config.ADB_DEVICE[0])
+                    self.start_droidcast()
         else:
             command = "screencap 2>/dev/null | gzip -1"
             while True:
@@ -215,6 +217,8 @@ class Device(object):
                     break
                 except Exception:
                     restart_simulator()
+                    self.client.check_server_alive()
+                    Session().connect(config.ADB_DEVICE[0])
             data = gzip.decompress(resp)
             array = np.frombuffer(data[-1920 * 1080 * 4 :], np.uint8).reshape(
                 1080, 1920, 4
@@ -267,9 +271,18 @@ class Device(object):
 
     def check_current_focus(self) -> bool:
         """check if the application is in the foreground"""
-        if self.current_focus() != f"{config.APPNAME}/{config.APP_ACTIVITY_NAME}":
-            self.launch()
-            # wait for app to finish launching
-            time.sleep(10)
-            return True
+        while True:
+            try:
+                focus = self.current_focus()
+                if focus != f"{config.APPNAME}/{config.APP_ACTIVITY_NAME}":
+                    self.launch()
+                    # wait for app to finish launching
+                    time.sleep(10)
+                    return True
+            except Exception:
+                restart_simulator()
+                self.client.check_server_alive()
+                Session().connect(config.ADB_DEVICE[0])
+                if config.droidcast["enable"]:
+                    self.start_droidcast()
         return False
