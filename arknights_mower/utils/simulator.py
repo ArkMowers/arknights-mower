@@ -15,7 +15,8 @@ class Simulator_Type(Enum):
     ReDroid = "ReDroid"
 
 
-def restart_simulator(data, stop=True, start=True):
+def restart_simulator(stop=True, start=True):
+    data = config.conf["simulator"]
     index = data["index"]
     simulator_type = data["name"]
     cmd = ""

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import gzip
-import socket
 import time
 from typing import Optional
 
@@ -10,7 +9,8 @@ import numpy as np
 
 from arknights_mower import __rootdir__
 from arknights_mower.utils.image import bytes2img
-from arknights_mower.utils.network import is_port_in_use, get_new_port
+from arknights_mower.utils.network import get_new_port, is_port_in_use
+from arknights_mower.utils.simulator import restart_simulator
 
 from .. import config
 from ..log import logger, save_screenshot
@@ -202,11 +202,20 @@ class Device(object):
                         gray = cv2.rotate(gray, cv2.ROTATE_180)
                     break
                 except Exception:
-                    self.start_droidcast()
-                    time.sleep(3)
+                    if self.client.check_server_alive():
+                        self.start_droidcast()
+                        time.sleep(3)
+                    else:
+                        restart_simulator()
         else:
             command = "screencap 2>/dev/null | gzip -1"
-            data = gzip.decompress(self.run(command))
+            while True:
+                try:
+                    resp = self.run(command)
+                    break
+                except Exception:
+                    restart_simulator()
+            data = gzip.decompress(resp)
             array = np.frombuffer(data[-1920 * 1080 * 4 :], np.uint8).reshape(
                 1080, 1920, 4
             )

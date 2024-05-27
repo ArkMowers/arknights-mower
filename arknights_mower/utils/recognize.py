@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import time
-from typing import List, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor
+from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
 
 from .. import __rootdir__
-from . import config, detector
+from . import config
 from . import typealias as tp
 from .device import Device
 from .image import bytes2img, cropimg, loadres, thres2

@@ -1079,9 +1079,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     if tasks[0] == "upgrade":
                         # 点击技能
                         height = (int(skill) - 1) * 0.3 + 0.32
-                        self.ctap(
-                            (self.recog.w * 0.33, self.recog.h * height)
-                        )
+                        self.ctap((self.recog.w * 0.33, self.recog.h * height))
                     else:
                         self.back()
                 elif scene == Scene.TRAIN_SKILL_UPGRADE:
@@ -2061,7 +2059,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             if self.get_infra_scene() == Scene.CONNECTING:
                 if not self.waiting_solver(Scene.CONNECTING, sleep_time=2):
                     return
-            self.device.tap((self.recog.w * 1320 // 1920, self.recog.h * 502 // 1080))
+            self.tap((self.recog.w * 1320 // 1920, self.recog.h * 502 // 1080))
             if self.get_infra_scene() == Scene.CONNECTING:
                 if not self.waiting_solver(Scene.CONNECTING, sleep_time=2):
                     return
@@ -3425,12 +3423,12 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             if remaining_time > 0:
                 if remaining_time > 300:
                     if self.close_simulator_when_idle:
-                        restart_simulator(self.simulator, start=False)
+                        restart_simulator(start=False)
                     elif self.exit_game_when_idle:
                         self.device.exit()
                 self.sleep(remaining_time)
                 if self.close_simulator_when_idle:
-                    restart_simulator(self.simulator, stop=False)
+                    restart_simulator(stop=False)
                 if self.device.check_current_focus():
                     self.recog.update()
             self.MAA = None

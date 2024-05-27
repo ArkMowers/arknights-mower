@@ -24,6 +24,7 @@ skland_config = {}
 global base_scheduler
 base_scheduler = None
 
+
 # 执行自动排班
 def main():
     global conf
@@ -307,7 +308,7 @@ def simulate():
             reconnect_tries += 1
             if reconnect_tries < 3:
                 logger.exception(E)
-                restart_simulator(conf["simulator"])
+                restart_simulator()
                 continue
             else:
                 raise E
@@ -463,9 +464,7 @@ def simulate():
                         if remaining_time > 0:
                             if remaining_time > 300:
                                 if base_scheduler.close_simulator_when_idle:
-                                    restart_simulator(
-                                        base_scheduler.simulator, start=False
-                                    )
+                                    restart_simulator(start=False)
                                 elif base_scheduler.exit_game_when_idle:
                                     base_scheduler.device.exit()
                             body = task_template.render(
@@ -480,7 +479,7 @@ def simulate():
                             base_scheduler.sleep(remaining_time)
                             base_scheduler.sleeping = False
                             if base_scheduler.close_simulator_when_idle:
-                                restart_simulator(base_scheduler.simulator, stop=False)
+                                restart_simulator(stop=False)
                             if base_scheduler.device.check_current_focus():
                                 base_scheduler.recog.update()
 
@@ -525,7 +524,7 @@ def simulate():
                     logger.info(f"第{base_scheduler.task_count}次任务结束")
                     if remaining_time > 300:
                         if conf["close_simulator_when_idle"]:
-                            restart_simulator(conf["simulator"], start=False)
+                            restart_simulator(start=False)
                         elif conf["exit_game_when_idle"]:
                             base_scheduler.device.exit()
                     body = task_template.render(
@@ -539,7 +538,7 @@ def simulate():
                     base_scheduler.sleep(remaining_time)
                     base_scheduler.sleeping = False
                     if conf["close_simulator_when_idle"]:
-                        restart_simulator(conf["simulator"], stop=False)
+                        restart_simulator(stop=False)
                     if base_scheduler.device.check_current_focus():
                         base_scheduler.recog.update()
             if (
@@ -571,14 +570,14 @@ def simulate():
                         raise
                     except Exception as ce:
                         logger.error(ce)
-                        restart_simulator(conf["simulator"])
+                        restart_simulator()
                         continue
                 continue
             else:
                 raise e
         except RuntimeError as re:
             logger.exception(f"程序出错-尝试重启模拟器->{re}")
-            restart_simulator(conf["simulator"])
+            restart_simulator()
         except Exception as E:
             logger.exception(f"程序出错--->{E}")
 
