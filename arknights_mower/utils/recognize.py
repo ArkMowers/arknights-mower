@@ -242,7 +242,7 @@ class Recognizer(object):
             self.scene = Scene.SKIP
         elif self.find("upgrade") is not None:
             self.scene = Scene.UPGRADE
-        elif detector.confirm(self.img) is not None:
+        elif self.find("confirm"):
             self.scene = Scene.CONFIRM
         elif self.find("login_verify") is not None:
             self.scene = Scene.LOGIN_INPUT
@@ -362,7 +362,7 @@ class Recognizer(object):
             announcement = e.submit(self.check_announcement)
             skip = submit("skip")
             upgrade = submit("upgrade")
-            detector_confirm = e.submit(lambda: detector.confirm(self.img))
+            detector_confirm = e.submit("confirm")
             login_verify = submit("login_verify")
             login_captcha = submit("login_captcha")
             login_connecting = submit("login_connecting")

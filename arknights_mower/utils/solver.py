@@ -481,7 +481,7 @@ class BaseSolver:
                 elif scene == Scene.CONNECTING:
                     self.waiting_solver(Scene.CONNECTING)
                 elif scene == Scene.CONFIRM:
-                    self.tap(detector.confirm(self.recog.img))
+                    self.tap((960, 740))
                 elif scene == Scene.LOGIN_MAIN_NOENTRY:
                     self.waiting_solver(Scene.LOGIN_MAIN_NOENTRY)
                 elif scene == Scene.LOGIN_CADPA_DETAIL:
@@ -547,7 +547,7 @@ class BaseSolver:
                 elif scene // 100 == 1:
                     self.login()
                 elif scene == Scene.CONFIRM:
-                    self.tap(detector.confirm(self.recog.img))
+                    self.tap((960, 740))
                 elif scene == Scene.LOADING:
                     self.waiting_solver(Scene.LOADING)
                 elif scene == Scene.CONNECTING:
