@@ -45,8 +45,13 @@ class CreditSolver(BaseSolver):
         elif self.find("visit_limit"):
             return True
         elif scene == Scene.FRIEND_VISITING:
-            if visit_next := detector.visit_next(self.recog.img):
-                self.tap(visit_next)
+            for _ in range(5):
+                if clue_next := self.find("clue_next"):
+                    break
+                else:
+                    self.sleep()
+            if clue_next:
+                self.tap(clue_next)
             else:
                 return True
         elif scene in [Scene.LOADING, Scene.CONNECTING]:
