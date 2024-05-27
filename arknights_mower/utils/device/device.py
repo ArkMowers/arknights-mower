@@ -271,6 +271,7 @@ class Device(object):
 
     def check_current_focus(self) -> bool:
         """check if the application is in the foreground"""
+        update = False
         while True:
             try:
                 focus = self.current_focus()
@@ -278,11 +279,12 @@ class Device(object):
                     self.launch()
                     # wait for app to finish launching
                     time.sleep(10)
-                    return True
+                    update = True
+                return update
             except Exception:
                 restart_simulator()
                 self.client.check_server_alive()
                 Session().connect(config.ADB_DEVICE[0])
                 if config.droidcast["enable"]:
                     self.start_droidcast()
-        return False
+                update = True
