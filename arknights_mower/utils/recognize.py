@@ -560,6 +560,7 @@ class Recognizer(object):
                 self.scene = Scene.UNKNOWN
                 if self.device.check_current_focus():
                     self.update()
+            e.shutdown(wait=False, cancel_futures=True)
 
         # save screencap to analyse
         if config.SCREENSHOT_PATH is not None:
