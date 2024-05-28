@@ -1859,7 +1859,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                             clue_status[i] = "available"
                         elif clue_cls(i):
                             hsv = cv2.cvtColor(self.recog.img, cv2.COLOR_RGB2HSV)
-                            if 165 < hsv[main_time[i][1]][main_time[i][0]][0] < 175:
+                            if 160 < hsv[main_time[i][1]][main_time[i][0]][0] < 180:
                                 clue_status[i] = "friend"
                             else:
                                 clue_status[i] = "self"
