@@ -391,7 +391,7 @@ class Recognizer(object):
             announcement = e.submit(self.check_announcement)
             skip = submit("skip")
             upgrade = submit("upgrade")
-            detector_confirm = e.submit("confirm")
+            detector_confirm = submit("confirm")
             login_verify = submit("login_verify")
             login_captcha = submit("login_captcha")
             login_connecting = submit("login_connecting")
