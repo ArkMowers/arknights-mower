@@ -42,12 +42,17 @@ class CreditSolver(BaseSolver):
                 self.tap(pos)
             else:
                 self.sleep()
+        if self.find("visit_limit"):
+            return True
         elif scene == Scene.FRIEND_VISITING:
-            if self.find("visit_limit"):
-                return True
-            elif clue_next := self.find("clue_next"):
-                self.wait_times = 5
-                self.tap(clue_next)
+            if clue_next := self.find("clue_next"):
+                x, y = self.get_pos(clue_next, x_rate=0.5, y_rate=0.85)
+                hsv = cv2.cvtColor(self.recog.img, cv2.COLOR_RGB2HSV)
+                if hsv[y][x][0] < 70:
+                    self.wait_times = 5
+                    self.tap(clue_next)
+                else:
+                    return True
             else:
                 if self.wait_times > 0:
                     self.wait_times -= 1
