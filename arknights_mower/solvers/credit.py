@@ -42,7 +42,7 @@ class CreditSolver(BaseSolver):
                 self.tap(pos)
             else:
                 self.sleep()
-        if self.find("visit_limit"):
+        elif self.find("visit_limit"):
             return True
         elif scene == Scene.FRIEND_VISITING:
             if clue_next := self.find("clue_next"):
