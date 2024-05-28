@@ -1,6 +1,5 @@
 import cv2
 
-from arknights_mower.utils import detector
 from arknights_mower.utils.device import Device
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
@@ -18,6 +17,7 @@ class CreditSolver(BaseSolver):
 
     def run(self) -> None:
         logger.info("Start: 信用")
+        self.wait_times = 5
         return super().run()
 
     def transition(self) -> bool:
@@ -42,18 +42,18 @@ class CreditSolver(BaseSolver):
                 self.tap(pos)
             else:
                 self.sleep()
-        elif self.find("visit_limit"):
-            return True
         elif scene == Scene.FRIEND_VISITING:
-            for _ in range(5):
-                if clue_next := self.find("clue_next"):
-                    break
-                else:
-                    self.sleep()
-            if clue_next:
+            if self.find("visit_limit"):
+                return True
+            elif clue_next := self.find("clue_next"):
+                self.wait_times = 5
                 self.tap(clue_next)
             else:
-                return True
+                if self.wait_times > 0:
+                    self.wait_times -= 1
+                    self.sleep()
+                else:
+                    return True
         elif scene in [Scene.LOADING, Scene.CONNECTING]:
             self.sleep()
         elif self.get_navigation():
