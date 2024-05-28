@@ -10,6 +10,7 @@ from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
 from arknights_mower.utils import config, path, rapidocr
 from arknights_mower.utils.depot import 创建csv
 from arknights_mower.utils.device.adb_client.session import Session
+from arknights_mower.utils.device.scrcpy import Scrcpy
 from arknights_mower.utils.email import task_template
 from arknights_mower.utils.log import init_fhlr, logger
 from arknights_mower.utils.logic_expression import LogicExpression
@@ -313,6 +314,10 @@ def simulate():
                 Session().connect(config.ADB_DEVICE[0])
                 if config.droidcast["enable"]:
                     base_scheduler.device.start_droidcast()
+                if config.ADB_CONTROL_CLIENT == "scrcpy":
+                    base_scheduler.device.control.scrcpy = Scrcpy(
+                        base_scheduler.device.client
+                    )
                 continue
             else:
                 raise E
@@ -572,6 +577,10 @@ def simulate():
                         Session().connect(config.ADB_DEVICE[0])
                         if config.droidcast["enable"]:
                             base_scheduler.device.start_droidcast()
+                        if config.ADB_CONTROL_CLIENT == "scrcpy":
+                            base_scheduler.device.control.scrcpy = Scrcpy(
+                                base_scheduler.device.client
+                            )
                         continue
                 continue
             else:
@@ -583,6 +592,10 @@ def simulate():
             Session().connect(config.ADB_DEVICE[0])
             if config.droidcast["enable"]:
                 base_scheduler.device.start_droidcast()
+            if config.ADB_CONTROL_CLIENT == "scrcpy":
+                base_scheduler.device.control.scrcpy = Scrcpy(
+                    base_scheduler.device.client
+                )
         except Exception as E:
             logger.exception(f"程序出错--->{E}")
 

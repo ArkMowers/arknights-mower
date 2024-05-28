@@ -209,6 +209,8 @@ class Device(object):
                     self.client.check_server_alive()
                     Session().connect(config.ADB_DEVICE[0])
                     self.start_droidcast()
+                    if config.ADB_CONTROL_CLIENT == "scrcpy":
+                        self.control.scrcpy = Scrcpy(self.client)
         else:
             command = "screencap 2>/dev/null | gzip -1"
             while True:
@@ -219,6 +221,8 @@ class Device(object):
                     restart_simulator()
                     self.client.check_server_alive()
                     Session().connect(config.ADB_DEVICE[0])
+                    if config.ADB_CONTROL_CLIENT == "scrcpy":
+                        self.control.scrcpy = Scrcpy(self.client)
             data = gzip.decompress(resp)
             array = np.frombuffer(data[-1920 * 1080 * 4 :], np.uint8).reshape(
                 1080, 1920, 4
@@ -287,4 +291,6 @@ class Device(object):
                 Session().connect(config.ADB_DEVICE[0])
                 if config.droidcast["enable"]:
                     self.start_droidcast()
+                if config.ADB_CONTROL_CLIENT == "scrcpy":
+                    self.control.scrcpy = Scrcpy(self.client)
                 update = True
