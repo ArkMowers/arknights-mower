@@ -240,41 +240,25 @@ class BaseMixin:
             logger.debug("办公室B205")
         return room
 
-    def enter_room(self, room: str) -> tp.Rectangle:
-        """获取房间的位置并进入"""
-        success = False
-        retry = 3
-        while not success:
-            try:
-                # 获取基建各个房间的位置
-                base_room = segment.base(
-                    self.recog.img, self.find("control_central", strict=True)
-                )
-                # 将画面外的部分删去
-                _room = base_room[room]
-
-                for i in range(4):
-                    _room[i, 0] = max(_room[i, 0], 0)
-                    _room[i, 0] = min(_room[i, 0], self.recog.w)
-                    _room[i, 1] = max(_room[i, 1], 0)
-                    _room[i, 1] = min(_room[i, 1], self.recog.h)
-
-                # 点击进入
-                self.tap(_room[0], interval=1.1)
-                while self.find("control_central") is not None:
-                    self.tap(_room[0], interval=1.1)
-                if self.detect_room() == room:
-                    success = True
+    def enter_room(self, room):
+        """从基建首页进入房间"""
+        for enter_times in range(3):
+            for retry_times in range(10):
+                if pos := self.find("control_central"):
+                    _room = segment.base(self.recog.img, pos)[room]
+                    for i in range(4):
+                        _room[i, 0] = max(_room[i, 0], 0)
+                        _room[i, 0] = min(_room[i, 0], self.recog.w)
+                        _room[i, 1] = max(_room[i, 1], 0)
+                        _room[i, 1] = min(_room[i, 1], self.recog.h)
+                    self.tap(_room)
+                elif self.detect_room() == room:
+                    return
                 else:
-                    self.back()
-            except MowerExit:
-                raise
-            except Exception as e:
-                retry -= 1
+                    self.sleep()
+            if not pos:
                 self.back_to_infrastructure()
-                self.wait_for_scene(Scene.INFRA_MAIN, "get_infra_scene")
-                if retry <= 0:
-                    raise e
+        raise Exception("未成功进入房间")
 
     def double_read_time(self, cord, upperLimit=None, use_digit_reader=False):
         self.recog.update()

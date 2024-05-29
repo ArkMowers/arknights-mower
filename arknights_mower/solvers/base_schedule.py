@@ -2568,7 +2568,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 self.op_data.operators[_operator].time_stamp = None
 
     def turn_on_room_detail(self, room):
-        for enter_time in range(3):
+        for enter_times in range(3):
             for retry_times in range(10):
                 if pos := self.find("room_detail"):
                     if all(self.get_color((1233, 1)) > [252] * 3):
