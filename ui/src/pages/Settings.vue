@@ -37,7 +37,8 @@ const {
   free_room,
   feature_matcher,
   get_scene,
-  droidcast
+  droidcast,
+  maa_adb_path
 } = storeToRefs(config_store)
 
 const { operators } = storeToRefs(plan_store)
@@ -78,6 +79,15 @@ for (let i = 0.5; i <= 3.0; i += 0.25) {
 }
 
 const new_scale = ref(webview.value.scale)
+
+import { file_dialog } from '@/utils/dialog'
+
+async function select_maa_adb_path() {
+  const file_path = await file_dialog()
+  if (file_path) {
+    maa_adb_path.value = file_path
+  }
+}
 </script>
 
 <template>
@@ -98,6 +108,10 @@ const new_scale = ref(webview.value.scale)
                   <n-radio value="bilibili">BiliBili服</n-radio>
                 </n-space>
               </n-radio-group>
+            </n-form-item>
+            <n-form-item label="ADB路径">
+              <n-input type="textarea" :autosize="true" v-model:value="maa_adb_path" />
+              <n-button @click="select_maa_adb_path" class="dialog-btn">...</n-button>
             </n-form-item>
             <n-form-item>
               <template #label>

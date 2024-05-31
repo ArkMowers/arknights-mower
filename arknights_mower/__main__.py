@@ -60,6 +60,7 @@ def main():
         config.droidcast["session"] = requests.Session()
         config.droidcast["port"] = 0
         config.droidcast["process"] = None
+    config.ADB_BINARY = [conf["maa_adb_path"]]
 
     if config.wh is None:
         init_fhlr()

@@ -8,16 +8,9 @@ import { useConfigStore } from '@/stores/config'
 const store = useConfigStore()
 
 import { storeToRefs } from 'pinia'
-const { maa_path, maa_adb_path, maa_gap, maa_conn_preset, maa_touch_option } = storeToRefs(store)
+const { maa_path, maa_gap, maa_conn_preset, maa_touch_option } = storeToRefs(store)
 
-import { file_dialog, folder_dialog } from '@/utils/dialog'
-
-async function select_maa_adb_path() {
-  const file_path = await file_dialog()
-  if (file_path) {
-    maa_adb_path.value = file_path
-  }
-}
+import { folder_dialog } from '@/utils/dialog'
 
 async function select_maa_dir() {
   const folder_path = await folder_dialog()
@@ -60,10 +53,6 @@ const maa_touch_options = ['maatouch', 'minitouch', 'adb'].map((x) => {
       <n-form-item label="Maa目录">
         <n-input type="textarea" :autosize="true" v-model:value="maa_path" />
         <n-button @click="select_maa_dir" class="dialog-btn">...</n-button>
-      </n-form-item>
-      <n-form-item label="ADB路径">
-        <n-input type="textarea" :autosize="true" v-model:value="maa_adb_path" />
-        <n-button @click="select_maa_adb_path" class="dialog-btn">...</n-button>
       </n-form-item>
       <n-form-item label="连接配置">
         <n-select :options="maa_conn_presets" v-model:value="maa_conn_preset" />
