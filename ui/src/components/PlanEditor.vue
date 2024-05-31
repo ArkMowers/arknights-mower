@@ -2,10 +2,11 @@
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
+import { swap } from '@/utils/common'
 import { ref, computed, nextTick, watch, inject } from 'vue'
 const config_store = useConfigStore()
 const plan_store = usePlanStore()
-const { operators, groups, current_plan: plan, workaholic, sub_plan } = storeToRefs(plan_store)
+const { operators, groups, current_plan: plan, workaholic, sub_plan, backup_plans } = storeToRefs(plan_store)
 const { facility_operator_limit } = plan_store
 const { theme } = storeToRefs(config_store)
 
@@ -145,9 +146,14 @@ function drag_facility(room, event) {
 
 function drop_facility(target, event) {
   const source = event.dataTransfer.getData('text/plain')
-  const source_plan = plan.value[source]
-  plan.value[source] = plan.value[target]
-  plan.value[target] = source_plan
+  swap(source, target, plan.value)
+
+  // 移动主表设施时, 同步移动副表对应设施
+  if (sub_plan.value == 'main') {
+    backup_plans.value.forEach((item) => {
+      swap(source, target, item.plan)
+    })
+  }
   event.preventDefault()
 }
 
