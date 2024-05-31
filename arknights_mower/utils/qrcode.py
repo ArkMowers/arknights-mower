@@ -6,6 +6,7 @@ from base45 import b45decode, b45encode
 from PIL import Image, ImageChops, ImageDraw
 from pyzbar import pyzbar
 from qrcode.main import QRCode
+from qrcode.constants import ERROR_CORRECT_L
 
 QRCODE_SIZE = 215
 GAP_SIZE = 16
@@ -25,7 +26,7 @@ def encode(data: str, n: int = 16, theme: str = "light") -> List[Image.Image]:
         end = length if i == n - 1 else length // n * (i + 1)
         split.append(data[start:end])
     result: List[Image.Image] = []
-    qr = QRCode()
+    qr = QRCode(error_correction=ERROR_CORRECT_L)
     fg, bg = (BLACK, WHITE) if theme == "light" else (WHITE, BLACK)
     for i in split:
         qr.add_data(i)
@@ -63,13 +64,15 @@ def decode(img: Image.Image) -> Optional[Dict]:
     while len(data := pyzbar.decode(img)):
         img1 = ImageDraw.Draw(img)
         for d in data:
+            if d.quality > 1:
+                continue
             left = d.rect.left - 2
             top = d.rect.top - 2
             right = left + d.rect.width + 5
             bottom = top + d.rect.height + 5
             scope = ((left, top), (right, bottom))
             img1.rectangle(scope, fill=WHITE)
-        result += data
+            result.append(d)
     try:
         result.sort(key=lambda i: (i.rect.top * 2 > img.size[1], i.rect.left))
         result = b45decode(b"".join([i.data for i in result]))
