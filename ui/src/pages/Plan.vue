@@ -194,6 +194,9 @@ async function import_plan() {
   if (response.data == '排班已加载') {
     await load_plan()
     sub_plan.value = 'main'
+    message.success('成功导入排班表！')
+  } else {
+    message.error('排班表导入失败！')
   }
 }
 </script>

@@ -162,8 +162,8 @@ def webview_window(
             elif msg == "save":
                 result = window.create_file_dialog(
                     dialog_type=webview.SAVE_DIALOG,
-                    save_filename="plan.png",
-                    file_types=("PNG图片 (*.png)",),
+                    save_filename="plan.jpg",
+                    file_types=("JPG图片 (*.jpg)",),
                 )
             if result is None:
                 result = ""

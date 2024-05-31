@@ -244,8 +244,10 @@ def import_from_image():
     global plan
     global conf
     plan = qrcode.decode(img)
-    write_plan(plan, conf["planFile"])
-    return "排班已加载"
+    if plan:
+        write_plan(plan, conf["planFile"])
+        return "排班已加载"
+    return "排班表导入失败！"
 
 
 @app.route("/dialog/save/img", methods=["POST"])
