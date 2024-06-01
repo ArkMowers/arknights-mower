@@ -53,8 +53,7 @@ def main():
     config.FEATURE_MATCHER = conf["feature_matcher"]
     config.get_scene = conf["get_scene"]
     if hasattr(config, "droidcast"):
-        conf["droidcast"].update(config.droidcast)
-        config.droidcast = conf["droidcast"]
+        config.droidcast.update(conf["droidcast"])
     else:
         config.droidcast = conf["droidcast"]
         config.droidcast["session"] = requests.Session()
