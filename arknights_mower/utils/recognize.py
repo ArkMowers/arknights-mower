@@ -798,7 +798,10 @@ class Recognizer(object):
             self.scene = Scene.INFRA_CONFIDENTIAL
         elif self.find("clue/daily"):
             self.scene = Scene.CLUE_DAILY
-        elif self.find("clue/receive", scope=((1280, 0), (1600, 90))):
+        elif (
+            self.find("clue/receive", scope=((1280, 0), (1600, 90)))
+            and self.color(1275, 0)[0] > 144
+        ):
             self.scene = Scene.CLUE_RECEIVE
         elif (
             self.find("clue/filter", scope=((0, 80), (650, 180)), score=0.5)
