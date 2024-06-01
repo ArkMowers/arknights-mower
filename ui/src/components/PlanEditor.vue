@@ -6,7 +6,14 @@ import { swap } from '@/utils/common'
 import { ref, computed, nextTick, watch, inject } from 'vue'
 const config_store = useConfigStore()
 const plan_store = usePlanStore()
-const { operators, groups, current_plan: plan, workaholic, sub_plan, backup_plans } = storeToRefs(plan_store)
+const {
+  operators,
+  groups,
+  current_plan: plan,
+  workaholic,
+  sub_plan,
+  backup_plans
+} = storeToRefs(plan_store)
 const { facility_operator_limit } = plan_store
 const { theme } = storeToRefs(config_store)
 
@@ -224,6 +231,14 @@ const fia_list = computed(() => {
   }
   return []
 })
+
+function set_facility(e) {
+  if (facility.value == e) {
+    facility.value = ''
+  } else {
+    facility.value = e
+  }
+}
 </script>
 
 <template>
@@ -235,7 +250,7 @@ const fia_list = computed(() => {
           <div
             v-for="r in [`room_${row}_1`, `room_${row}_2`, `room_${row}_3`]"
             :key="r"
-            @click="facility = r"
+            @click="set_facility(r)"
             :class="[button_type[plan[r].name], r === facility ? 'true' : 'false']"
           >
             <div
@@ -287,7 +302,7 @@ const fia_list = computed(() => {
           <n-button
             :secondary="facility != 'central'"
             class="facility-5"
-            @click="facility = 'central'"
+            @click="set_facility('central')"
           >
             <div>
               <div class="facility-name">控制中枢</div>
@@ -307,7 +322,7 @@ const fia_list = computed(() => {
           <n-button
             :secondary="facility != 'dormitory_1'"
             class="facility-5"
-            @click="facility = 'dormitory_1'"
+            @click="set_facility('dormitory_1')"
           >
             <div>
               <div class="facility-name">宿舍1</div>
@@ -327,7 +342,7 @@ const fia_list = computed(() => {
           <n-button
             :secondary="facility != 'dormitory_2'"
             class="facility-5"
-            @click="facility = 'dormitory_2'"
+            @click="set_facility('dormitory_2')"
           >
             <div>
               <div class="facility-name">宿舍2</div>
@@ -347,7 +362,7 @@ const fia_list = computed(() => {
           <n-button
             :secondary="facility != 'dormitory_3'"
             class="facility-5"
-            @click="facility = 'dormitory_3'"
+            @click="set_facility('dormitory_3')"
           >
             <div>
               <div class="facility-name">宿舍3</div>
@@ -367,7 +382,7 @@ const fia_list = computed(() => {
           <n-button
             :secondary="facility != 'dormitory_4'"
             class="facility-5"
-            @click="facility = 'dormitory_4'"
+            @click="set_facility('dormitory_4')"
           >
             <div>
               <div class="facility-name">宿舍4</div>
@@ -390,7 +405,7 @@ const fia_list = computed(() => {
           <n-button
             :secondary="facility != 'meeting'"
             class="facility-2"
-            @click="facility = 'meeting'"
+            @click="set_facility('meeting')"
           >
             <div>
               <div class="facility-name">会客室</div>
@@ -410,7 +425,7 @@ const fia_list = computed(() => {
           <n-button
             :secondary="facility != 'factory'"
             class="facility-2"
-            @click="facility = 'factory'"
+            @click="set_facility('factory')"
           >
             <div>
               <div class="facility-name">加工站</div>
@@ -430,7 +445,7 @@ const fia_list = computed(() => {
           <n-button
             :secondary="facility != 'contact'"
             class="facility-2"
-            @click="facility = 'contact'"
+            @click="set_facility('contact')"
           >
             <div>
               <div class="facility-name">办公室</div>
@@ -448,7 +463,11 @@ const fia_list = computed(() => {
         </div>
         <!-- <div class="right_contain"><n-button disabled class="facility-2">训练室</n-button></div> -->
         <div class="right_contain">
-          <n-button :secondary="facility != 'train'" class="facility-2" @click="facility = 'train'">
+          <n-button
+            :secondary="facility != 'train'"
+            class="facility-2"
+            @click="set_facility('train')"
+          >
             <div>
               <div class="facility-name">
                 <div>协助位</div>

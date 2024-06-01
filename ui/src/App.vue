@@ -121,7 +121,7 @@
 </template>
 
 <script setup>
-import { onMounted, inject, provide, h, computed, ref } from 'vue'
+import { onMounted, inject, provide, h, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 
 const showModal = ref(false)
@@ -143,7 +143,7 @@ function renderIcon(icon) {
 }
 
 import { RouterLink } from 'vue-router'
-const menuOptions = computed(() => [
+const menuOptions = [
   {
     label: () => h(RouterLink, { to: { path: '/' } }, { default: () => '运行日志' }),
     icon: renderIcon(BookOutline),
@@ -232,7 +232,8 @@ const menuOptions = computed(() => [
     key: 'wiki',
     icon: renderIcon(WikipediaW)
   }
-])
+]
+
 import { zhCN, dateZhCN, darkTheme } from 'naive-ui'
 
 import hljs from 'highlight.js/lib/core'

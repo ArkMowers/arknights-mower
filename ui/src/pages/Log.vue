@@ -18,19 +18,20 @@ function scroll_last_line() {
 }
 
 function scroll_log() {
-  const container = document.querySelector('.n-scrollbar-container')
-  const content = document.querySelector('.n-scrollbar-content')
   if (auto_scroll.value) {
     scroll_last_line()
   }
 }
 
-watch(log, () => {
-  scroll_log()
-})
+watch(
+  () => [log, task_list],
+  () => {
+    scroll_log()
+  },
+  { deep: true }
+)
 
 onMounted(() => {
-  scroll_last_line()
   get_tasks()
 })
 
@@ -53,14 +54,9 @@ function stop() {
   })
 }
 
-function refresh() {
-  location.reload()
-}
-
 import PlayIcon from '@vicons/ionicons5/Play'
 import StopIcon from '@vicons/ionicons5/Stop'
 import AddIcon from '@vicons/ionicons5/Add'
-import ReloadIcon from '@vicons/ionicons5/Reload'
 import CollapseIcon from '@vicons/fluent/PanelTopContract20Regular'
 import ExpandIcon from '@vicons/fluent/PanelTopExpand20Regular'
 
@@ -92,7 +88,6 @@ const bg_opacity = computed(() => {
         <template v-for="task in task_list">
           <template v-if="Object.keys(task.plan).length">
             <tr v-for="(value, key, idx) in task.plan">
-              <!-- <td :rowspan="Object.entries(task.plan).length">{{ task.time }}</td> -->
               <td v-if="idx == 0" :rowspan="Object.keys(task.plan).length">
                 {{ task.time.split('T')[1].split('.')[0] }}
               </td>
@@ -149,14 +144,6 @@ const bg_opacity = computed(() => {
         <div>在Q群或者频道提以上问题，看心情踢人</div>
       </help-text>
       <div class="expand"></div>
-      <n-button @click="refresh" size="small">
-        <template #icon>
-          <n-icon>
-            <reload-icon />
-          </n-icon>
-        </template>
-        <template v-if="!mobile">刷新</template>
-      </n-button>
       <div class="scroll-container">
         <n-switch v-model:value="auto_scroll" />
         <span class="scroll-label" v-if="!mobile">自动滚动</span>
