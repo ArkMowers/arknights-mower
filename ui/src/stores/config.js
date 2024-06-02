@@ -72,7 +72,6 @@ export const useConfigStore = defineStore('config', () => {
   const ra_timeout = ref(30)
   const touch_method = ref('scrcpy')
   const free_room = ref(false)
-  const feature_matcher = ref('flann')
   const sign_in = ref({ enable: true })
   const get_scene = ref({})
   const droidcast = ref({})
@@ -165,7 +164,6 @@ export const useConfigStore = defineStore('config', () => {
     ra_timeout.value = response.data.reclamation_algorithm.timeout
     touch_method.value = response.data.touch_method
     free_room.value = response.data.free_room
-    feature_matcher.value = response.data.feature_matcher
     sign_in.value = response.data.sign_in
     get_scene.value = response.data.get_scene
     droidcast.value = response.data.droidcast
@@ -249,7 +247,6 @@ export const useConfigStore = defineStore('config', () => {
       },
       touch_method: touch_method.value,
       free_room: free_room.value,
-      feature_matcher: feature_matcher.value,
       sign_in: sign_in.value,
       get_scene: get_scene.value,
       droidcast: droidcast.value,
@@ -337,7 +334,6 @@ export const useConfigStore = defineStore('config', () => {
     ra_timeout,
     touch_method,
     free_room,
-    feature_matcher,
     sign_in,
     get_scene,
     droidcast,

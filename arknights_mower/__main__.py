@@ -47,7 +47,6 @@ def main():
     config.fix_mumu12_adb_disconnect = conf["fix_mumu12_adb_disconnect"]
     config.grandet_back_to_index = conf["run_order_grandet_mode"]["back_to_index"]
     config.ADB_CONTROL_CLIENT = conf["touch_method"]
-    config.FEATURE_MATCHER = conf["feature_matcher"]
     config.get_scene = conf["get_scene"]
     if hasattr(config, "droidcast"):
         config.droidcast.update(conf["droidcast"])
