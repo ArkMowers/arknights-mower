@@ -19,9 +19,6 @@ from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.simulator import restart_simulator
 from arknights_mower.utils.solver import MowerExit
 
-maa_config = {}
-recruit_config = {}
-skland_config = {}
 global base_scheduler
 base_scheduler = None
 
@@ -82,79 +79,6 @@ def format_time(seconds):
         return f"{rest_hours} 小时"
     else:
         return f"{rest_hours} 小时 {rest_minutes} 分钟"
-
-
-def hide_password(conf):
-    hpconf = deepcopy(conf)
-    hpconf["pass_code"] = "*" * len(conf["pass_code"])
-    hpconf["sendKey"] = "*" * len(conf["sendKey"])
-    for item in hpconf["skland_info"]:
-        item["password"] = "*" * len(item["password"])
-    return hpconf
-
-
-def set_maa_options(base_scheduler, conf):
-    maa_config["maa_enable"] = conf["maa_enable"]
-    maa_config["maa_path"] = conf["maa_path"]
-    maa_config["maa_adb_path"] = conf["maa_adb_path"]
-    maa_config["maa_adb"] = conf["adb"]
-    maa_config["expiring_medicine"] = conf["maa_expiring_medicine"]
-    maa_config["eat_stone"] = conf["maa_eat_stone"]
-    maa_config["weekly_plan"] = conf["maa_weekly_plan"]
-    maa_config["roguelike"] = (
-        conf["maa_rg_enable"] == 1 and conf["maa_long_task_type"] == "rogue"
-    )
-    maa_config["rogue_theme"] = conf["maa_rg_theme"]
-    maa_config["sleep_min"] = conf["maa_rg_sleep_min"]
-    maa_config["sleep_max"] = conf["maa_rg_sleep_max"]
-    maa_config["maa_execution_gap"] = conf["maa_gap"]
-    maa_config["buy_first"] = conf["maa_mall_buy"]
-    maa_config["blacklist"] = conf["maa_mall_blacklist"]
-    maa_config["conn_preset"] = conf["maa_conn_preset"]
-    maa_config["touch_option"] = conf["maa_touch_option"]
-    maa_config["mall_ignore_when_full"] = conf["maa_mall_ignore_blacklist_when_full"]
-    maa_config["credit_fight"] = conf["maa_credit_fight"]
-    maa_config["maa_depot_enable"] = conf["maa_depot_enable"]
-    maa_config["rogue"] = conf["rogue"]
-    maa_config["stationary_security_service"] = (
-        conf["maa_rg_enable"] == 1 and conf["maa_long_task_type"] == "sss"
-    )
-    maa_config["sss_type"] = conf["sss"]["type"]
-    maa_config["ec_type"] = conf["sss"]["ec"]
-    maa_config["copilot_file_location"] = conf["sss"]["copilot"]
-    maa_config["copilot_loop_times"] = conf["sss"]["loop"]
-    maa_config["reclamation_algorithm"] = (
-        conf["maa_rg_enable"] == 1 and conf["maa_long_task_type"] == "ra"
-    )
-    maa_config["ra_timeout"] = timedelta(
-        seconds=conf["reclamation_algorithm"]["timeout"]
-    )
-    base_scheduler.maa_config = maa_config
-
-    logger.debug(f"更新Maa设置：{base_scheduler.maa_config}")
-
-
-def set_recruit_options(base_scheduler, conf):
-    recruit_config["recruit_enable"] = conf["recruit_enable"]
-    recruit_config["permit_target"] = conf["recruitment_permit"]
-    recruit_config["recruit_robot"] = conf["recruit_robot"]
-    recruit_config["recruitment_time"] = conf["recruitment_time"]
-    recruit_config["recruit_execution_gap"] = conf["recruit_gap"]
-    recruit_config["recruit_auto_5"] = conf["recruit_auto_5"]
-    recruit_config["recruit_auto_only5"] = conf["recruit_auto_only5"]
-    recruit_config["recruit_email_enable"] = conf["recruit_email_enable"]
-    base_scheduler.recruit_config = recruit_config
-    logger.debug(f"更新公招设置：{base_scheduler.recruit_config}")
-
-
-def set_skland_options(base_scheduler, conf):
-    skland_config["skland_enable"] = conf["skland_enable"]
-    skland_config["skland_info"] = conf["skland_info"]
-    base_scheduler.skland_config = skland_config
-    temp_str = deepcopy(base_scheduler.skland_config)
-    for item in temp_str["skland_info"]:
-        item["password"] = "*" * len(item["password"])
-    logger.debug(f"更新森空岛设置：{temp_str}")
 
 
 def get_logic_exp(trigger):
@@ -267,10 +191,6 @@ def initialize(tasks, scheduler=None):
     base_scheduler.sign_in_enable = conf["sign_in"]["enable"]
     base_scheduler.visit_friend_enable = conf["visit_friend"]
 
-    set_maa_options(base_scheduler, conf)
-    set_recruit_options(base_scheduler, conf)
-    set_skland_options(base_scheduler, conf)
-
     base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
     base_scheduler.error = False
     base_scheduler.drone_room = None if conf["drone_room"] == "" else conf["drone_room"]
@@ -361,10 +281,6 @@ def simulate():
                     base_scheduler.tasks[0].time - datetime.now()
                 ).total_seconds()
 
-                set_maa_options(base_scheduler, conf)
-                set_recruit_options(base_scheduler, conf)
-                set_skland_options(base_scheduler, conf)
-
                 if remaining_time > 540:
                     # 刷新时间以鹰历为准
                     if (
@@ -430,18 +346,18 @@ def simulate():
                             logger.info(f"{path} 不存在,新建一个存储仓库物品的csv")
                             now_time = (
                                 int(datetime.now().timestamp())
-                                - maa_config["maa_execution_gap"] * 3600
+                                - base_scheduler.maa_config["maa_execution_gap"] * 3600
                             )
                             创建csv()
                             return now_time
 
                     if conf["maa_depot_enable"]:
                         dt = int(datetime.now().timestamp()) - _is_depotscan()
-                        if dt >= maa_config["maa_execution_gap"] * 3600:
+                        if dt >= base_scheduler.maa_config["maa_execution_gap"] * 3600:
                             base_scheduler.仓库扫描()
                         else:
                             logger.info(
-                                f"仓库扫描未到时间，将在 {maa_config['maa_execution_gap']-dt//3600}小时之内开始扫描"
+                                f"仓库扫描未到时间，将在 {base_scheduler.maa_config['maa_execution_gap']-dt//3600}小时之内开始扫描"
                             )
                     if base_scheduler.maa_config["maa_enable"] == 1:
                         subject = f"下次任务在{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}"

@@ -5,7 +5,7 @@ import json
 import os
 import pathlib
 import sys
-import time
+from copy import deepcopy
 from ctypes import CFUNCTYPE, c_char_p, c_int, c_void_p
 from datetime import datetime, timedelta
 
@@ -128,7 +128,6 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         self.error = False
         self.clue_count = 0
         self.tasks = []
-        self.maa_config = {}
         self.free_clue = None
         self.credit_fight = None
         self.task_count = 0
@@ -136,8 +135,6 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         self.simulator = None
         self.close_simulator_when_idle = False
         self.refresh_connecting = False
-        self.recruit_config = {}
-        self.skland_config = {}
         self.recruit_time = None
         self.last_clue = None
         self.sleeping = False
@@ -162,6 +159,71 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         self._party_time = value
         if self.op_data is not None:
             self.op_data.party_time = value
+
+    @property
+    def maa_config(self):
+        conf = deepcopy(config.conf)
+        maa_config = {}
+        maa_config["maa_enable"] = conf["maa_enable"]
+        maa_config["maa_path"] = conf["maa_path"]
+        maa_config["maa_adb_path"] = conf["maa_adb_path"]
+        maa_config["maa_adb"] = conf["adb"]
+        maa_config["expiring_medicine"] = conf["maa_expiring_medicine"]
+        maa_config["eat_stone"] = conf["maa_eat_stone"]
+        maa_config["weekly_plan"] = conf["maa_weekly_plan"]
+        maa_config["roguelike"] = (
+            conf["maa_rg_enable"] == 1 and conf["maa_long_task_type"] == "rogue"
+        )
+        maa_config["rogue_theme"] = conf["maa_rg_theme"]
+        maa_config["sleep_min"] = conf["maa_rg_sleep_min"]
+        maa_config["sleep_max"] = conf["maa_rg_sleep_max"]
+        maa_config["maa_execution_gap"] = conf["maa_gap"]
+        maa_config["buy_first"] = conf["maa_mall_buy"]
+        maa_config["blacklist"] = conf["maa_mall_blacklist"]
+        maa_config["conn_preset"] = conf["maa_conn_preset"]
+        maa_config["touch_option"] = conf["maa_touch_option"]
+        maa_config["mall_ignore_when_full"] = conf[
+            "maa_mall_ignore_blacklist_when_full"
+        ]
+        maa_config["credit_fight"] = conf["maa_credit_fight"]
+        maa_config["maa_depot_enable"] = conf["maa_depot_enable"]
+        maa_config["rogue"] = conf["rogue"]
+        maa_config["stationary_security_service"] = (
+            conf["maa_rg_enable"] == 1 and conf["maa_long_task_type"] == "sss"
+        )
+        maa_config["sss_type"] = conf["sss"]["type"]
+        maa_config["ec_type"] = conf["sss"]["ec"]
+        maa_config["copilot_file_location"] = conf["sss"]["copilot"]
+        maa_config["copilot_loop_times"] = conf["sss"]["loop"]
+        maa_config["reclamation_algorithm"] = (
+            conf["maa_rg_enable"] == 1 and conf["maa_long_task_type"] == "ra"
+        )
+        maa_config["ra_timeout"] = timedelta(
+            seconds=conf["reclamation_algorithm"]["timeout"]
+        )
+        return maa_config
+
+    @property
+    def recruit_config(self):
+        conf = deepcopy(config.conf)
+        recruit_config = {}
+        recruit_config["recruit_enable"] = conf["recruit_enable"]
+        recruit_config["permit_target"] = conf["recruitment_permit"]
+        recruit_config["recruit_robot"] = conf["recruit_robot"]
+        recruit_config["recruitment_time"] = conf["recruitment_time"]
+        recruit_config["recruit_execution_gap"] = conf["recruit_gap"]
+        recruit_config["recruit_auto_5"] = conf["recruit_auto_5"]
+        recruit_config["recruit_auto_only5"] = conf["recruit_auto_only5"]
+        recruit_config["recruit_email_enable"] = conf["recruit_email_enable"]
+        return recruit_config
+
+    @property
+    def skland_config(self):
+        conf = deepcopy(config.conf)
+        skland_config = {}
+        skland_config["skland_enable"] = conf["skland_enable"]
+        skland_config["skland_info"] = conf["skland_info"]
+        return skland_config
 
     def run(self) -> None:
         """
