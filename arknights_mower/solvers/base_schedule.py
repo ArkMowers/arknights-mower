@@ -3354,9 +3354,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     if self.device.check_current_focus():
                         self.recog.update()
                 elif not one_time:
-                    logger.info("记录MAA 本次执行时间")
                     self.last_execution["maa"] = datetime.now()
-                    logger.info(self.last_execution["maa"])
                     if "Mall" in tasks and self.credit_fight is None:
                         self.credit_fight = get_server_weekday()
                         logger.info("记录首次信用作战")
@@ -3535,13 +3533,15 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         return (datetime.now() - timedelta(hours=4)).date()
 
     def recruit_plan_solver(self):
-        if self.last_execution["recruit"] is None or self.last_execution["recruit"] <= (
-            datetime.now() - timedelta(hours=self.last_execution["recruit"])
+        if self.last_execution[
+            "recruit"
+        ] is None or datetime.now() < self.last_execution["recruit"] + timedelta(
+            hours=self.recruit_config["recruit_execution_gap"]
         ):
             recruit([], self.send_message_config, self.recruit_config, self.device)
             self.last_execution["recruit"] = datetime.now()
             logger.info(
-                f"下一次公开招募执行时间在{self.last_execution['recruit']}小时之后"
+                f"下一次公开招募执行时间在{self.recruit_config['recruit_execution_gap']}小时之后"
             )
 
     def mail_plan_solver(self):
