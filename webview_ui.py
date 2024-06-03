@@ -54,8 +54,6 @@ def splash_screen(queue: mp.Queue):
                 root.withdraw()
                 messagebox.showerror("arknights-mower", msg["data"])
                 root.destroy()
-            elif msg["type"] == "exit":
-                root.destroy()
         except Exception:
             pass
 
@@ -287,8 +285,7 @@ if __name__ == "__main__":
     config.parent_conn = parent_conn
     config.webview_process = webview_process
 
-    splash_queue.put({"type": "exit"})
-    splash_process.join()
+    splash_process.terminate()
 
     if tray:
         while True:
