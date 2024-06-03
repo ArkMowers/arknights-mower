@@ -125,8 +125,6 @@ class Recognizer(object):
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
         if min_val < 0.02:
             return (min_loc[0] + 960 + 42, min_loc[1] + 42)
-        if self.find("ann5_special_access"):
-            return (1605, 240)
 
     def get_scene(self) -> int:
         """get the current scene in the game"""
