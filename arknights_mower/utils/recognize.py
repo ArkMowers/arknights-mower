@@ -677,7 +677,9 @@ class Recognizer(object):
         # 结算界面
         elif self.find("ra/day_complete", scope=((800, 330), (1130, 410))):
             self.scene = Scene.RA_DAY_COMPLETE
-        elif self.find("ra/period_complete", scope=((800, 190), (1120, 265))):
+        elif self.find(
+            "ra/period_complete", scope=((800, 190), (1120, 265))
+        ) and self.find("ra/click_anywhere", scope=((830, 990), (1090, 1040))):
             self.scene = Scene.RA_PERIOD_COMPLETE
 
         # 森蚺图耶对话

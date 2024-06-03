@@ -204,26 +204,26 @@ class ReclamationAlgorithm(BaseSolver):
             self.map_back()
             return
         if self.find_place("冲突区_丢失的订单"):
-            logger.info("奇遇_风啸峡谷已完成")
+            logger.debug("奇遇_风啸峡谷已完成")
         else:
-            logger.info("添加任务：奇遇_风啸峡谷")
+            logger.debug("添加任务：奇遇_风啸峡谷")
             self.task_queue.append("奇遇_风啸峡谷")
         self.drag("资源区_射程以内", update_vp=False)
         if self.find_place("要塞_征税的选择"):
-            logger.info("左侧区域任务已完成")
+            logger.debug("左侧区域任务已完成")
         elif self.find_place("奇遇_崎岖窄路"):
-            logger.info("添加任务：奇遇_崎岖窄路")
+            logger.debug("添加任务：奇遇_崎岖窄路")
             self.task_queue.append("奇遇_崎岖窄路")
         elif self.find_place("资源区_射程以内"):
-            logger.info("添加任务：资源区_射程以内、奇遇_崎岖窄路")
+            logger.debug("添加任务：资源区_射程以内、奇遇_崎岖窄路")
             self.task_queue += ["资源区_射程以内", "奇遇_崎岖窄路"]
         elif self.find_place("奇遇_砾沙平原"):
-            logger.info("添加任务：奇遇_砾沙平原，资源区_射程以内，奇遇_崎岖窄路")
+            logger.debug("添加任务：奇遇_砾沙平原，资源区_射程以内，奇遇_崎岖窄路")
             self.task_queue += ["奇遇_砾沙平原", "资源区_射程以内", "奇遇_崎岖窄路"]
         else:
             self.drag("资源区_林中寻宝", update_vp=False)
             if self.find_place("资源区_林中寻宝"):
-                logger.info(
+                logger.debug(
                     "添加任务：资源区_林中寻宝，奇遇_砾沙平原，资源区_射程以内，奇遇_崎岖窄路"
                 )
                 self.task_queue += [
@@ -233,7 +233,7 @@ class ReclamationAlgorithm(BaseSolver):
                     "奇遇_崎岖窄路",
                 ]
             else:
-                logger.info(
+                logger.debug(
                     "添加任务：捕猎区_聚羽之地，资源区_林中寻宝，奇遇_砾沙平原，资源区_射程以内，奇遇_崎岖窄路"
                 )
                 self.task_queue += [
@@ -291,7 +291,7 @@ class ReclamationAlgorithm(BaseSolver):
         self.tap_element("ra/map_back", thres=200)
 
     def detect_score(self, scope=None, find_max=True):
-        if find_max and self.find("ra/max", scope=scope):
+        if find_max and self.find("ra/max", scope=scope, score=0.7):
             return "已达上限"
         score = rapidocr.engine(
             thres2(cropimg(self.recog.gray, scope), 127),
@@ -362,7 +362,7 @@ class ReclamationAlgorithm(BaseSolver):
             if self.battle_task in self.task_queue:
                 self.task_queue.remove(self.battle_task)
                 self.ap -= 1
-            self.tap_element("ra/start_action", interval=1.5)
+            self.tap_element("ra/start_action")
         elif scene == Scene.RA_BATTLE:
             if self.battle_wait > 0:
                 self.battle_wait -= 1
@@ -407,7 +407,7 @@ class ReclamationAlgorithm(BaseSolver):
             if not self.in_adventure:
                 self.in_adventure = self.task_queue[0]
             if self.find("ra/no_enough_resources"):
-                logger.info("所需资源不足")
+                logger.debug("所需资源不足")
                 if self.in_adventure in self.task_queue:
                     self.task_queue.remove(self.in_adventure)
                     if self.in_adventure == "奇遇_砾沙平原":
@@ -467,7 +467,7 @@ class ReclamationAlgorithm(BaseSolver):
             self.print_ap()
             if self.task_queue is None:
                 if day == 1 and self.ap == 2:
-                    logger.info("初始化任务列表")
+                    logger.debug("初始化任务列表")
                     self.task_queue = [
                         "奇遇_风啸峡谷",
                         "捕猎区_聚羽之地",
@@ -488,7 +488,7 @@ class ReclamationAlgorithm(BaseSolver):
             if self.ap == 1 and len(self.task_queue) + 1 == remain_ap:
                 self.map_skip_day("当日无任务")
                 return
-            logger.info(self.task_queue)
+            logger.debug(self.task_queue)
             place = self.task_queue[0]
             pos = self.find_place(place)
             if pos is None:
@@ -522,18 +522,18 @@ class ReclamationAlgorithm(BaseSolver):
         # 烹饪台
         elif scene == Scene.RA_KITCHEN:
             if self.left_kitchen:
-                self.tap_element("ra/cook_button", interval=0.5)
+                self.tap_element("ra/return_from_kitchen", x_rate=0.07)
                 return
             last_drink = self.detect_prepared()
             while last_drink < 2:
                 self.tap_element("ra/auto+1", interval=0.5)
                 drink = self.detect_prepared()
                 if drink == last_drink:
-                    logger.info("饮料无法合成，返回地图，清空任务列表")
+                    logger.debug("饮料无法合成，返回地图，清空任务列表")
+                    self.task_queue = []
                     self.tap_element("ra/return_from_kitchen", x_rate=0.07)
                     self.tap_element("ra/squad_back")
                     self.map_back()
-                    self.task_queue = []
                     return
                 last_drink = drink
             self.tap_element("ra/cook_button", interval=0.5)
@@ -583,6 +583,7 @@ class ReclamationAlgorithm(BaseSolver):
             elif now - self.unknown_time > self.timeout:
                 logger.warning("连续识别到未知场景")
                 try:
+                    self.task_queue = None
                     super().back_to_index()
                 except MowerExit:
                     raise
@@ -590,7 +591,6 @@ class ReclamationAlgorithm(BaseSolver):
                     self.device.exit()
                     if self.device.check_current_focus():
                         self.recog.update()
-                    self.task_queue = None
         else:
             self.unknown_time = None
 
