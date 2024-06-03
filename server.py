@@ -30,7 +30,6 @@ app = Flask(__name__, static_folder="dist", static_url_path="")
 sock = Sock(app)
 CORS(app)
 
-conf = {}
 plan = {}
 operators = {}
 config.stop_mower = Event()
@@ -86,14 +85,12 @@ def not_found(e):
 @app.route("/conf", methods=["GET", "POST"])
 @require_token
 def load_config():
-    global conf
-
     if request.method == "GET":
-        conf = load_conf()
-        return conf
+        config.conf = load_conf()
+        return config.conf
     else:
-        conf.update(request.json)
-        save_conf(conf)
+        config.conf.update(request.json)
+        save_conf(config.conf)
         return "New config saved!"
 
 
@@ -103,17 +100,16 @@ def load_plan_from_json():
     global plan
 
     if request.method == "GET":
-        global conf
         try:
-            plan = load_plan(conf["planFile"])
+            plan = load_plan(config.conf["planFile"])
         except PermissionError as e:
             logger.error(f"plan.json路径错误{e}，重置为plan.json")
             plan = load_plan()
         return plan
     else:
         plan = request.json
-        write_plan(plan, conf["planFile"])
-        return f"New plan saved at {conf['planFile']}"
+        write_plan(plan, config.conf["planFile"])
+        return f"New plan saved at {config.conf['planFile']}"
 
 
 @app.route("/operator")
@@ -158,7 +154,6 @@ def start():
     from arknights_mower.__main__ import main
 
     config.stop_mower.clear()
-    config.conf = conf
     config.plan = plan
     config.operators = {}
     mower_thread = Thread(target=main, daemon=True)
@@ -264,9 +259,7 @@ def save_file_dialog():
     upper = Image.open(img)
 
     global plan
-    global conf
-
-    img = qrcode.export(plan, upper, conf["theme"])
+    img = qrcode.export(plan, upper, config.conf["theme"])
 
     img_path = conn_send("save")
     if img_path == "":
@@ -280,16 +273,18 @@ def save_file_dialog():
 @require_token
 def get_maa_adb_version():
     try:
-        asst_path = os.path.dirname(pathlib.Path(conf["maa_path"]) / "Python" / "asst")
+        asst_path = os.path.dirname(
+            pathlib.Path(config.conf["maa_path"]) / "Python" / "asst"
+        )
         if asst_path not in sys.path:
             sys.path.append(asst_path)
         from asst.asst import Asst
 
-        Asst.load(conf["maa_path"])
+        Asst.load(config.conf["maa_path"])
         asst = Asst()
         version = asst.get_version()
-        asst.set_instance_option(2, conf["maa_touch_option"])
-        if asst.connect(conf["maa_adb_path"], conf["adb"]):
+        asst.set_instance_option(2, config.conf["maa_touch_option"])
+        if asst.connect(config.conf["maa_adb_path"], config.conf["adb"]):
             maa_msg = f"Maa {version} 加载成功"
         else:
             maa_msg = "连接失败，请检查Maa日志！"
@@ -303,7 +298,7 @@ def get_maa_adb_version():
 def get_maa_conn_presets():
     try:
         with open(
-            os.path.join(conf["maa_path"], "resource", "config.json"),
+            os.path.join(config.conf["maa_path"], "resource", "config.json"),
             "r",
             encoding="utf-8",
         ) as f:
@@ -467,16 +462,16 @@ def test_email():
 
     msg = MIMEMultipart()
     msg.attach(MIMEText("arknights-mower测试邮件", "plain"))
-    msg["Subject"] = conf["mail_subject"] + "测试邮件"
-    recipients = conf["recipient"] or [conf["account"]]
+    msg["Subject"] = config.conf["mail_subject"] + "测试邮件"
+    recipients = config.conf["recipient"] or [config.conf["account"]]
     msg["To"] = ", ".join(recipients)
-    msg["From"] = conf["account"]
+    msg["From"] = config.conf["account"]
     # 根据conf字典中的custom_smtp_server设置SMTP服务器和端口
-    smtp_server = conf["custom_smtp_server"]["server"]
-    ssl_port = conf["custom_smtp_server"]["ssl_port"]
-    use_qq_mail = not conf["custom_smtp_server"]["enable"]
+    smtp_server = config.conf["custom_smtp_server"]["server"]
+    ssl_port = config.conf["custom_smtp_server"]["ssl_port"]
+    use_qq_mail = not config.conf["custom_smtp_server"]["enable"]
     # 根据encryption键的值选择加密方法
-    encryption = conf["custom_smtp_server"]["encryption"]
+    encryption = config.conf["custom_smtp_server"]["encryption"]
     try:
         if use_qq_mail:
             # 如果不用自定义用qq邮箱就使用TLS加密
@@ -489,9 +484,9 @@ def test_email():
             # 如果encryption键的值不是starttls，则使用默认的TLS加密
             s = smtplib.SMTP_SSL(smtp_server, ssl_port, timeout=10.0)
         # 登录SMTP服务器
-        s.login(conf["account"], conf["pass_code"])
+        s.login(config.conf["account"], config.conf["pass_code"])
         # 发送邮件
-        s.sendmail(conf["account"], recipients, msg.as_string())
+        s.sendmail(config.conf["account"], recipients, msg.as_string())
         s.close()
     except Exception as e:
         return "邮件发送失败！\n" + str(e)
@@ -505,7 +500,7 @@ def test_serverJang_push():
 
     try:
         response = requests.get(
-            f"https://sctapi.ftqq.com/{conf['sendKey']}.send",
+            f"https://sctapi.ftqq.com/{config.conf['sendKey']}.send",
             params={
                 "title": "arknights-mower推送测试",
                 "desp": "arknights-mower推送测试",
@@ -525,7 +520,7 @@ def test_serverJang_push():
 def test_skland():
     from arknights_mower.solvers.skland import SKLand
 
-    return SKLand(conf["skland_info"]).test_connect()
+    return SKLand(config.conf["skland_info"]).test_connect()
 
 
 @app.route("/task", methods=["GET", "POST"])
