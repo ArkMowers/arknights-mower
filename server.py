@@ -237,10 +237,9 @@ def import_from_image():
 
     img = Image.open(img_path)
     global plan
-    global conf
     plan = qrcode.decode(img)
     if plan:
-        write_plan(plan, conf["planFile"])
+        write_plan(plan, config.conf["planFile"])
         return "排班已加载"
     return "排班表导入失败！"
 
