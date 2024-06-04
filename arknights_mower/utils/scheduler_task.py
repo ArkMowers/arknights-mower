@@ -21,7 +21,7 @@ class TaskTypes(Enum):
     SKLAND = ("skland", "森空岛签到", 2)
     RE_ORDER = ("宿舍排序", "宿舍排序", 2)
     RELEASE_DORM = ("释放宿舍空位", "释放宿舍空位", 2)
-    REFRESH_ORDER_TIME = ("强制刷新跑单时间", "刷新跑单时间", 2)
+    REFRESH_TIME = ("强制刷新任务时间", "强制刷新任务时间", 2)
     SKILL_UPGRADE = ("技能专精", "技能专精", 2)
     DEPOT = ("仓库扫描", "仓库扫描", 2)  # 但是我不会写剩下的
 

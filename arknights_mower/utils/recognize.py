@@ -82,7 +82,7 @@ class Recognizer(object):
     def update(self) -> None:
         from arknights_mower.utils.solver import MowerExit
 
-        if config.stop_mower.is_set():
+        if config.stop_mower is not None and config.stop_mower.is_set():
             raise MowerExit
         self.clear()
 

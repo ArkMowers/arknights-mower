@@ -762,8 +762,16 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     self.party_time = None
                     self.last_clue = None
                     self.skip(["planned", "collect_notification"])
-                elif self.task.type == TaskTypes.REFRESH_ORDER_TIME:
-                    self.plan_run_order(self.task.meta_data)
+                elif self.task.type == TaskTypes.REFRESH_TIME:
+                    if self.task.meta_data == 'train':
+                        upgrade = find_next_task(
+                                            self.tasks,
+                                            task_type=TaskTypes.SKILL_UPGRADE
+                        )
+                        if upgrade is not None:
+                            self.refresh_skill_time(upgrade)
+                    else:
+                        self.plan_run_order(self.task.meta_data)
                     self.skip(["planned", "todo_task", "collect_notification"])
                 elif self.task.type == TaskTypes.SKILL_UPGRADE:
                     self.skill_upgrade(self.task.meta_data)
@@ -1076,6 +1084,42 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     logger.info(f"纠错任务为-->{fix_plan}")
                     return "self_correction"
 
+    def refresh_skill_time(self, task):
+        try:
+            unknown_cnt = 0
+            tasks = ['refresh']
+            while tasks:
+                scene = self.train_scene()
+                if scene == Scene.UNKNOWN:
+                    unknown_cnt += 1
+                    if unknown_cnt > 5:
+                        unknown_cnt = 0
+                        self.back_to_infrastructure()
+                        self.enter_room("train")
+                    else:
+                        self.sleep()
+                    continue
+                if scene == Scene.CONNECTING:
+                    self.sleep(1)
+                if scene == Scene.INFRA_MAIN:
+                    self.enter_room("train")
+                if scene == Scene.TRAIN_MAIN:
+                    task.time = self.double_read_time(
+                                (
+                                    (236, 978),
+                                    (380, 1020),
+                                ),
+                                use_digit_reader=True
+                    )
+                    del tasks[0]
+                if scene == Scene.TRAIN_SKILL_SELECT:
+                    self.back()
+                if scene == Scene.TRAIN_SKILL_UPGRADE:
+                    self.back()
+            self.back()
+        except Exception as e:
+            logger.error(e)
+
     def skill_upgrade(self, skill):
         try:
             unknown_cnt = 0
@@ -1193,12 +1237,19 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     # 提前10分钟换人，确保触发技能
                     # 3 级不需要换人
                     if level != 3:
+                        swap_time = datetime.now() + timedelta(hours=h) - timedelta(minutes=10)
                         self.tasks.append(
                             SchedulerTask(
-                                time=datetime.now()
-                                + timedelta(hours=h)
-                                - timedelta(minutes=10),
+                                time=swap_time,
                                 task_plan={"train": [support.swap_name, "Current"]},
+                            )
+                        )
+                        self.tasks.append(
+                            SchedulerTask(
+                                time=swap_time
+                                + timedelta(seconds=1),
+                                task_plan={},
+                                task_type=TaskTypes.REFRESH_TIME,
                             )
                         )
                         # 默认 5小时
@@ -2840,7 +2891,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     SchedulerTask(
                         time=task_time,
                         task_plan={},
-                        task_type=TaskTypes.REFRESH_ORDER_TIME,
+                        task_type=TaskTypes.REFRESH_TIME,
                         meta_data=room,
                     )
                 )

@@ -138,7 +138,7 @@ class BaseSolver:
         """check and sleep"""
         stop_time = datetime.now() + timedelta(seconds=interval)
         while True:
-            if config.stop_mower.is_set():
+            if config.stop_mower is not None and config.stop_mower.is_set():
                 raise MowerExit
             remaining = stop_time - datetime.now()
             if remaining > timedelta(seconds=1):
@@ -183,7 +183,7 @@ class BaseSolver:
         interval: float = 1,
     ) -> None:
         """tap"""
-        if config.stop_mower.is_set():
+        if config.stop_mower is not None and config.stop_mower.is_set():
             raise MowerExit
         pos = self.get_pos(poly, x_rate, y_rate)
         self.device.tap(pos)
@@ -253,7 +253,7 @@ class BaseSolver:
         interval: float = 1,
     ) -> None:
         """swipe"""
-        if config.stop_mower.is_set():
+        if config.stop_mower is not None and config.stop_mower.is_set():
             raise MowerExit
         end = (start[0] + movement[0], start[1] + movement[1])
         self.device.swipe(start, end, duration=duration)
@@ -268,7 +268,7 @@ class BaseSolver:
         interval: float = 1,
     ) -> None:
         """swipe only, no rebuild and recapture"""
-        if config.stop_mower.is_set():
+        if config.stop_mower is not None and config.stop_mower.is_set():
             raise MowerExit
         end = (start[0] + movement[0], start[1] + movement[1])
         self.device.swipe(start, end, duration=duration)
@@ -298,7 +298,7 @@ class BaseSolver:
         interval: float = 0.2,
     ) -> None:
         """swipe with no inertia (movement should be vertical)"""
-        if config.stop_mower.is_set():
+        if config.stop_mower is not None and config.stop_mower.is_set():
             raise MowerExit
         points = [start]
         if movement[0] == 0:

@@ -4,13 +4,10 @@ from arknights_mower.utils import config
 
 
 def set_timing_enum(value):
-    if value is None:
-        return value
-    else:
-        try:
-            return PlanTriggerTiming[value.upper()]
-        except KeyError:
-            return PlanTriggerTiming.AFTER_PLANNING
+    try:
+        return PlanTriggerTiming[value.upper()]
+    except Exception:
+        return PlanTriggerTiming.AFTER_PLANNING
 
 
 class Plan(object):
