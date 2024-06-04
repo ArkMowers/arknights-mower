@@ -155,3 +155,5 @@ def init_adb_buildin() -> Path:
 
 
 init_config()
+
+conf = {}

@@ -1,5 +1,4 @@
 import math
-import time
 from datetime import datetime, timedelta
 from threading import Event, Thread
 from typing import Optional
@@ -16,23 +15,26 @@ from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.solver import BaseSolver, MowerExit
 
 
+src_pts = np.float32([[0, 97], [1920, 97], [-400, 1080], [2320, 1080]])
+dst_pts = np.float32([[0, 0], [1920, 0], [0, 1000], [1920, 1000]])
+trans_mat = cv2.getPerspectiveTransform(src_pts, dst_pts)
+rev_mat = np.linalg.inv(trans_mat)
+
+
 class Map:
     def __init__(self, img: tp.GrayImage):
-        src_pts = np.float32([[0, 97], [1920, 97], [-400, 1080], [2320, 1080]])
-        dst_pts = np.float32([[0, 0], [1920, 0], [0, 1000], [1920, 1000]])
-        self.trans_mat = cv2.getPerspectiveTransform(src_pts, dst_pts)
-        self.rev_mat = np.linalg.inv(self.trans_mat)
-
-        self.map = cv2.warpPerspective(img, self.trans_mat, (1920, 1000))
-        self.matcher = Matcher(self.map)
+        self.map = cv2.warpPerspective(img, trans_mat, (1920, 1000))
+        self.matcher = None
 
     def map2scrn(self, point: tp.Coordinate) -> tp.Coordinate:
         x = np.array([[point[0]], [point[1]], [1]])
-        y = np.dot(self.rev_mat, x)
+        y = np.dot(rev_mat, x)
         return (round(y[0][0] / y[2][0]), round(y[1][0] / y[2][0]))
 
     def find(self, res: str) -> Optional[tp.Scope]:
         logger.debug(f"find: {res}")
+        if self.matcher is None:
+            self.matcher = Matcher(self.map)
         res_img = loadres(f"ra/map/{res}", True)
         return self.matcher.match(res_img, scope=((250, 0), (1620, 900)), prescore=0.5)
 
@@ -75,6 +77,8 @@ class ReclamationAlgorithm(BaseSolver):
         self.ap = None
         self.vp = None
 
+        self.left_kitchen = False
+
         super().run()
 
     def tap_loop(self, pos):
@@ -100,7 +104,11 @@ class ReclamationAlgorithm(BaseSolver):
         adventures = [i for i in self.places if i.startswith("奇遇")]
         scores = []
         img = cropimg(
-            map, ((pos[0][0] + 140, pos[0][1] + 25), (pos[1][0] + 10, pos[1][1] - 15))
+            map,
+            (
+                (pos[0][0] + 140, pos[0][1] + 25),
+                (pos[1][0] + 10, pos[1][1] - 15),
+            ),
         )
         img = thres2(img, 180)
         for i in adventures:
@@ -119,22 +127,22 @@ class ReclamationAlgorithm(BaseSolver):
                 if pos := map.find(place):
                     break
             if pos is None:
-                logger.info("在当前地图中没有找到任何地点")
+                logger.debug("在当前地图中没有找到任何地点")
                 return None, None
             if place.startswith("奇遇"):
                 place = self.detect_adventure(map.map, pos)
             pos = map.map2scrn(pos[0]), map.map2scrn(pos[1])
-            logger.info(f"在区域{pos}识别到任意地点{place}")
+            logger.debug(f"在区域{pos}识别到任意地点{place}")
             return pos, place
         elif place.startswith("奇遇"):
             while True:
                 pos = map.find(place)
                 if pos is None:
-                    logger.info(f"没有找到地点{place}")
+                    logger.debug(f"没有找到地点{place}")
                     return None
                 if place == self.detect_adventure(map.map, pos):
                     pos = map.map2scrn(pos[0]), map.map2scrn(pos[1])
-                    logger.info(f"在区域{pos}识别到指定地点{place}")
+                    logger.debug(f"在区域{pos}识别到指定地点{place}")
                     return pos
                 else:
                     cv2.rectangle(map.map, pos[0], pos[1], (255,), -1)
@@ -142,10 +150,10 @@ class ReclamationAlgorithm(BaseSolver):
         else:
             pos = map.find(place)
             if pos is None:
-                logger.info(f"没有找到地点{place}")
+                logger.debug(f"没有找到地点{place}")
                 return None
             pos = map.map2scrn(pos[0]), map.map2scrn(pos[1])
-            logger.info(f"在区域{pos}识别到指定地点{place}")
+            logger.debug(f"在区域{pos}识别到指定地点{place}")
             return pos
 
     def drag(
@@ -186,8 +194,7 @@ class ReclamationAlgorithm(BaseSolver):
             self.device.swipe_ext(
                 (start_point, end_point, end_point), durations=[500, 200]
             )
-            time.sleep(0.1)
-        self.recog.update()
+            self.sleep(0.1)
         self.recog.save_screencap("ra_drag_map")
         return True
 
@@ -197,26 +204,26 @@ class ReclamationAlgorithm(BaseSolver):
             self.map_back()
             return
         if self.find_place("冲突区_丢失的订单"):
-            logger.info("奇遇_风啸峡谷已完成")
+            logger.debug("奇遇_风啸峡谷已完成")
         else:
-            logger.info("添加任务：奇遇_风啸峡谷")
+            logger.debug("添加任务：奇遇_风啸峡谷")
             self.task_queue.append("奇遇_风啸峡谷")
         self.drag("资源区_射程以内", update_vp=False)
         if self.find_place("要塞_征税的选择"):
-            logger.info("左侧区域任务已完成")
+            logger.debug("左侧区域任务已完成")
         elif self.find_place("奇遇_崎岖窄路"):
-            logger.info("添加任务：奇遇_崎岖窄路")
+            logger.debug("添加任务：奇遇_崎岖窄路")
             self.task_queue.append("奇遇_崎岖窄路")
         elif self.find_place("资源区_射程以内"):
-            logger.info("添加任务：资源区_射程以内、奇遇_崎岖窄路")
+            logger.debug("添加任务：资源区_射程以内、奇遇_崎岖窄路")
             self.task_queue += ["资源区_射程以内", "奇遇_崎岖窄路"]
         elif self.find_place("奇遇_砾沙平原"):
-            logger.info("添加任务：奇遇_砾沙平原，资源区_射程以内，奇遇_崎岖窄路")
+            logger.debug("添加任务：奇遇_砾沙平原，资源区_射程以内，奇遇_崎岖窄路")
             self.task_queue += ["奇遇_砾沙平原", "资源区_射程以内", "奇遇_崎岖窄路"]
         else:
             self.drag("资源区_林中寻宝", update_vp=False)
             if self.find_place("资源区_林中寻宝"):
-                logger.info(
+                logger.debug(
                     "添加任务：资源区_林中寻宝，奇遇_砾沙平原，资源区_射程以内，奇遇_崎岖窄路"
                 )
                 self.task_queue += [
@@ -226,7 +233,7 @@ class ReclamationAlgorithm(BaseSolver):
                     "奇遇_崎岖窄路",
                 ]
             else:
-                logger.info(
+                logger.debug(
                     "添加任务：捕猎区_聚羽之地，资源区_林中寻宝，奇遇_砾沙平原，资源区_射程以内，奇遇_崎岖窄路"
                 )
                 self.task_queue += [
@@ -243,7 +250,7 @@ class ReclamationAlgorithm(BaseSolver):
             self.template_match(i, ((510, 820), (700, 900)))[0] for i in templates
         ]
         result = scores.index(max(scores))
-        logger.info(f"已准备 {result}")
+        logger.debug(f"已准备 {result}")
         return result
 
     def detect_day(self) -> int:
@@ -252,7 +259,7 @@ class ReclamationAlgorithm(BaseSolver):
             self.template_match(i, ((1730, 110), (1805, 175)))[0] for i in templates
         ]
         result = scores.index(max(scores))
-        logger.info(f"第{result}天" if result > 0 else "进入下一天")
+        logger.debug(f"第{result}天" if result > 0 else "进入下一天")
         return result
 
     def detect_ap(self) -> int:
@@ -261,7 +268,7 @@ class ReclamationAlgorithm(BaseSolver):
             ap += 1
         if self.get_color((1774, 182))[0] > 175:
             ap += 1
-        logger.info(f"决断次数：{ap}")
+        logger.debug(f"决断次数：{ap}")
         return ap
 
     def detect_drink(self) -> int:
@@ -270,22 +277,21 @@ class ReclamationAlgorithm(BaseSolver):
             self.template_match(i, ((1448, 1004), (1465, 1028)))[0] for i in templates
         ]
         result = scores.index(max(scores)) * 2
-        logger.info(f"饮料数量：{result}")
+        logger.debug(f"饮料数量：{result}")
         return result
 
     def map_skip_day(self, reason: str):
-        logger.info(f"{reason}，跳过行动，进入下一天")
+        logger.debug(f"{reason}，跳过行动，进入下一天")
         self.tap((1764, 134), interval=0.5)
 
     def print_ap(self):
-        logger.info(f"剩余决断次数：{self.ap}")
+        logger.debug(f"剩余决断次数：{self.ap}")
 
     def map_back(self):
-        pos = self.find("ra/map_back", thres=200)
-        self.tap(pos)
+        self.tap_element("ra/map_back", thres=200)
 
     def detect_score(self, scope=None, find_max=True):
-        if find_max and self.find("ra/max", scope=scope):
+        if find_max and self.find("ra/max", scope=scope, score=0.7):
             return "已达上限"
         score = rapidocr.engine(
             thres2(cropimg(self.recog.gray, scope), 127),
@@ -323,7 +329,9 @@ class ReclamationAlgorithm(BaseSolver):
 
     def move_forward(self, scene):
         # 从首页进入生息演算主页
-        if scene == Scene.INDEX:
+        if scene == Scene.CONNECTING:
+            self.sleep()
+        elif scene == Scene.INDEX:
             self.tap_index_element("terminal")
         elif scene == Scene.TERMINAL_MAIN:
             self.tap_element("terminal_button_longterm")
@@ -354,7 +362,7 @@ class ReclamationAlgorithm(BaseSolver):
             if self.battle_task in self.task_queue:
                 self.task_queue.remove(self.battle_task)
                 self.ap -= 1
-            self.tap_element("ra/start_action", interval=1.5)
+            self.tap_element("ra/start_action")
         elif scene == Scene.RA_BATTLE:
             if self.battle_wait > 0:
                 self.battle_wait -= 1
@@ -399,7 +407,7 @@ class ReclamationAlgorithm(BaseSolver):
             if not self.in_adventure:
                 self.in_adventure = self.task_queue[0]
             if self.find("ra/no_enough_resources"):
-                logger.info("所需资源不足")
+                logger.debug("所需资源不足")
                 if self.in_adventure in self.task_queue:
                     self.task_queue.remove(self.in_adventure)
                     if self.in_adventure == "奇遇_砾沙平原":
@@ -459,7 +467,7 @@ class ReclamationAlgorithm(BaseSolver):
             self.print_ap()
             if self.task_queue is None:
                 if day == 1 and self.ap == 2:
-                    logger.info("初始化任务列表")
+                    logger.debug("初始化任务列表")
                     self.task_queue = [
                         "奇遇_风啸峡谷",
                         "捕猎区_聚羽之地",
@@ -480,7 +488,7 @@ class ReclamationAlgorithm(BaseSolver):
             if self.ap == 1 and len(self.task_queue) + 1 == remain_ap:
                 self.map_skip_day("当日无任务")
                 return
-            logger.info(self.task_queue)
+            logger.debug(self.task_queue)
             place = self.task_queue[0]
             pos = self.find_place(place)
             if pos is None:
@@ -504,6 +512,7 @@ class ReclamationAlgorithm(BaseSolver):
         # 作战编队
         elif scene == Scene.RA_SQUAD_EDIT:
             if self.detect_drink() == 0:
+                self.left_kitchen = False
                 self.tap((1430, 1015), interval=0.5)
             else:
                 self.tap_element("ra/squad_edit_start_button", interval=0.5)
@@ -512,16 +521,19 @@ class ReclamationAlgorithm(BaseSolver):
 
         # 烹饪台
         elif scene == Scene.RA_KITCHEN:
+            if self.left_kitchen:
+                self.tap_element("ra/return_from_kitchen", x_rate=0.07)
+                return
             last_drink = self.detect_prepared()
             while last_drink < 2:
                 self.tap_element("ra/auto+1", interval=0.5)
                 drink = self.detect_prepared()
                 if drink == last_drink:
-                    logger.info("饮料无法合成，返回地图，清空任务列表")
+                    logger.debug("饮料无法合成，返回地图，清空任务列表")
+                    self.task_queue = []
                     self.tap_element("ra/return_from_kitchen", x_rate=0.07)
                     self.tap_element("ra/squad_back")
                     self.map_back()
-                    self.task_queue = []
                     return
                 last_drink = drink
             self.tap_element("ra/cook_button", interval=0.5)
@@ -534,16 +546,17 @@ class ReclamationAlgorithm(BaseSolver):
                     self.sleep(0.5)
                     self.tap((428, 411), interval=0.5)
                 else:
+                    self.left_kitchen = True
                     self.tap_element("ra/return_from_kitchen", x_rate=0.07)
             else:
-                self.recog.update()
-        elif scene == Scene.CONNECTING:
-            self.sleep(1)
+                self.sleep(0.5)
         else:
-            self.sleep(0.5)
+            self.sleep()
 
     def back_to_index(self, scene):
-        if scene in [Scene.RA_MAIN, Scene.TERMINAL_LONGTERM, Scene.TERMINAL_MAIN]:
+        if scene == Scene.CONNECTING:
+            self.sleep()
+        elif scene in [Scene.RA_MAIN, Scene.TERMINAL_LONGTERM, Scene.TERMINAL_MAIN]:
             self.tap_element("nav_button", x_rate=0.21)
         elif scene in [Scene.RA_MAP, Scene.RA_DAY_DETAIL, Scene.RA_BATTLE_ENTRANCE]:
             self.map_back()
@@ -570,6 +583,7 @@ class ReclamationAlgorithm(BaseSolver):
             elif now - self.unknown_time > self.timeout:
                 logger.warning("连续识别到未知场景")
                 try:
+                    self.task_queue = None
                     super().back_to_index()
                 except MowerExit:
                     raise
@@ -577,7 +591,6 @@ class ReclamationAlgorithm(BaseSolver):
                     self.device.exit()
                     if self.device.check_current_focus():
                         self.recog.update()
-                    self.task_queue = None
         else:
             self.unknown_time = None
 

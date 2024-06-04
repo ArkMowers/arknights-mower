@@ -187,6 +187,11 @@ class Matcher(object):
             if M is None:
                 logger.debug("calculated transformation matrix failed")
                 return None
+            else:
+                logger.debug(f"transform matrix: {M}")
+
+            M[0][1] = 0
+            M[1][0] = 0
 
             # calc the location of the query image
             # quad = np.float32([[[0, 0]], [[0, h-1]], [[w-1, h-1]], [[w-1, 0]]])

@@ -265,7 +265,7 @@ class Device(object):
         self.control.swipe(start, end, duration)
 
     def swipe_ext(
-        self, points: list[tuple[int, int]], durations: list[int], up_wait: int = 500
+        self, points: list[tuple[int, int]], durations: list[int], up_wait: int = 200
     ) -> None:
         """swipe_ext"""
         logger.debug(

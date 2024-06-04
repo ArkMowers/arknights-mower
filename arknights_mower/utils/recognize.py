@@ -125,8 +125,6 @@ class Recognizer(object):
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
         if min_val < 0.02:
             return (min_loc[0] + 960 + 42, min_loc[1] + 42)
-        if self.find("ann5_special_access"):
-            return (1605, 240)
 
     def get_scene(self) -> int:
         """get the current scene in the game"""
@@ -679,7 +677,9 @@ class Recognizer(object):
         # 结算界面
         elif self.find("ra/day_complete", scope=((800, 330), (1130, 410))):
             self.scene = Scene.RA_DAY_COMPLETE
-        elif self.find("ra/period_complete", scope=((800, 190), (1120, 265))):
+        elif self.find(
+            "ra/period_complete", scope=((800, 190), (1120, 265))
+        ) and self.find("ra/click_anywhere", scope=((830, 990), (1090, 1040))):
             self.scene = Scene.RA_PERIOD_COMPLETE
 
         # 森蚺图耶对话
@@ -697,10 +697,7 @@ class Recognizer(object):
             self.scene = Scene.RA_DAY_DETAIL
         elif self.find("ra/waste_time_dialog", scope=((585, 345), (1070, 440))):
             self.scene = Scene.RA_WASTE_TIME_DIALOG
-        elif (
-            self.find("ra/notice", scope=((1780, 300), (1850, 380)))
-            and self.color(1817, 333)[0] > 252
-        ):
+        elif self.find("ra/map_back", thres=200) and self.color(1817, 333)[0] > 250:
             self.scene = Scene.RA_MAP
 
         # 从首页选择终端进入生息演算主页
