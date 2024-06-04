@@ -198,14 +198,21 @@ def savelog():
     #  com.hypergryph.arknights.bilibili   # Bilibili 服
     config.ADB_BINARY = ['F:\\MAA-v4.20.0-win-x64\\adb\\platform-tools\\adb.exe']
     config.log_queue = None
+    config.stop_mower = None
+    config.get_scene={"concurrent":False,"max_workers":99}
+    config.conf = {"simulator": simulator}
+    config.droidcast= {"enable":False}
     init_fhlr()
 
 
-def inialize(tasks, scheduler=None):
-    device = Device()
-    cli = Solver(device)
+def initialize(tasks, scheduler=None):
+    if scheduler is not None:
+        scheduler.handle_error(True)
+        return scheduler
+    from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+
     if scheduler is None:
-        base_scheduler = BaseSchedulerSolver(cli.device, cli.recog)
+        base_scheduler = BaseSchedulerSolver()
         base_scheduler.package_name = config.APPNAME
         base_scheduler.operators = {}
         base_scheduler.global_plan = plan
@@ -216,6 +223,7 @@ def inialize(tasks, scheduler=None):
         base_scheduler.MAA = None
         base_scheduler.send_message_config = send_message_config
         base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
+        # 以下赋值需要本地修改源码 base_schedule
         base_scheduler.maa_config = maa_config
         base_scheduler.recruit_config = recruit_config
         base_scheduler.error = False
@@ -225,11 +233,6 @@ def inialize(tasks, scheduler=None):
         base_scheduler.run_order_delay = run_order_delay  # 跑单提前10分钟运行
         base_scheduler.reload_room = reload_room
         return base_scheduler
-    else:
-        scheduler.device = cli.device
-        scheduler.recog = cli.recog
-        scheduler.handle_error(True)
-        return scheduler
 
 
 def save_state():
@@ -271,10 +274,11 @@ def simulate():
     success = False
     while not success:
         try:
-            base_scheduler = inialize(tasks)
+            base_scheduler = initialize(tasks)
             success = True
         except Exception as E:
             reconnect_tries += 1
+            logger.exception(E)
             if reconnect_tries < 3:
                 restart_simulator(simulator)
                 continue
@@ -340,7 +344,7 @@ def simulate():
                 connected = False
                 while not connected:
                     try:
-                        base_scheduler = inialize([], base_scheduler)
+                        base_scheduler = initialize([], base_scheduler)
                         break
                     except Exception as ce:
                         logger.error(ce)
