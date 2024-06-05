@@ -45,47 +45,68 @@ class Arknights数据处理器:
             return json.load(f)
 
     def 获得干员名与基建描述(self):
+        buff描述 = self.基建表["buffs"]
         buff_table = {}
-        for 角色名, 相关buff in self.基建表["buffs"].items():
-            buff_table[角色名] = 相关buff["description"]
-        buff2_table = {}
-        for 角色名 in self.基建表["chars"]:
-            buff2_table[self.干员表[角色名]["name"]] = {}
-            技能数 = 1
-            for item in self.基建表["chars"][角色名]["buffChar"]:
-                buff2_table[self.干员表[角色名]["name"]][技能数] = {}
-                for thing in item["buffData"]:
-                    buff2_table[self.干员表[角色名]["name"]][技能数][
-                        str((thing["cond"]["phase"], thing["cond"]["level"]))
-                    ] = buff_table[thing["buffId"]]
-                技能数 += 1
-        buff3_table = {}
-        for 角色名, 技能序号字典 in buff2_table.items():
-            buff3_table[角色名] = {}
-            for 技能序号, 字典 in 技能序号字典.items():
-                技能列表 = []
-                for 角色等级, 技能描述 in 字典.items():
-                    技能列表.append([角色等级, 技能序号, 技能描述])
-                for [角色等级, 技能序号, 技能描述] in 技能列表:
-                    buff3_table[角色名].setdefault(角色等级, {})[技能序号] = {}
-                    buff3_table[角色名][角色等级][技能序号] = 技能描述
-        buff4_table = {}
-        for 角色名, 角色等级字典 in buff3_table.items():
-            print(角色名, 角色等级字典)
-            buff4_table[角色名] = {}
-            角色等级列表 = []
-            for 角色等级 in sorted(角色等级字典):
-                buff4_table[角色名][角色等级] = {}
-                角色等级列表.append(角色等级)
-            merged_value = {}
-            for item in 角色等级列表:
-                merged_value = {**merged_value, **角色等级字典[item]}
-                buff4_table[角色名][item] = merged_value
-            print(merged_value)
+        for buff名称, 相关buff in buff描述.items():
+            buff_table[buff名称] = {相关buff["buffName"]: [相关buff["description"],相关buff["roomType"],相关buff["buffCategory"],相关buff["skillIcon"]]}
+        干员技能列表 = {}
+        for 角色名, 相关buff in self.基建表["chars"].items():
+            buffId = {}
+            for item in 相关buff["buffChar"]:
+                if item["buffData"] != []:
+                    buffId[
+                        精英化翻译(
+                            item["buffData"][0]["cond"]["phase"],
+                            item["buffData"][0]["cond"]["level"],
+                        )
+                    ] = [item["buffData"][0]["buffId"]]
+            a=merge_values(buffId,buff_table)
 
-        with open("./skill.json", "w", encoding="utf-8") as f:
-            json.dump(buff4_table, f, ensure_ascii=False, indent=4)
+                    
+            # new_dict = {}
+            # prev_value = None
+            # for key, value in buffId.items():
+            #     if prev_value is not None:
+            #         value.update(prev_value)
+            #     new_dict[key] = value
+            #     prev_value = value
+            # prev_value = None
+            # print(new_dict)
+            干员技能列表[self.干员表[角色名]["name"]] = a
+        
+        with open(r".\ui\src\pages\skill.json", "w", encoding="utf-8") as f:
+            json.dump(dict(reversed(干员技能列表.items())), f, ensure_ascii=False, indent=4)
 
 
+def 精英化翻译(精英化, 等级):
+    return f"精{精英化} {等级}级"
+
+def merge_values(dictionary,translations):
+    for key in dictionary:
+        # 检查是否存在前一个键
+        if key != list(dictionary.keys())[0]:
+            previous_key = list(dictionary.keys())[list(dictionary.keys()).index(key) - 1]
+            previous_value = dictionary[previous_key]
+            current_value = dictionary[key]
+            # 将当前键的值与前一个键的值相加
+            dictionary[key] = previous_value + current_value
+    for key, value in dictionary.items():
+        if isinstance(value, list):
+            for i in range(len(value)):
+                if value[i] in translations:
+                    dictionary[key][i] = translations[value[i]]
+        elif isinstance(value, dict):
+            translate_values(value, translations)
+    return dictionary
+
+def translate_values(dictionary, translations):
+    for key, value in dictionary.items():
+        if isinstance(value, list):
+            for i in range(len(value)):
+                if value[i] in translations:
+                    dictionary[key][i] = translations[value[i]]
+        elif isinstance(value, dict):
+            translate_values(value, translations)
+    return dictionary
 数据处理器 = Arknights数据处理器()
 数据处理器.获得干员名与基建描述()
