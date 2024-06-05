@@ -83,7 +83,6 @@ class Arknights数据处理器:
 
         self.物品_名称对 = {}
         from PIL import Image
-
         if not os.path.exists("./ui/public/depot/EXP.webp"):
             png_image = Image.open("./ArknightsGameResource/item/EXP_PLAYER.png")
             png_image.save("./ui/public/depot/EXP.webp", "WEBP")
@@ -139,6 +138,7 @@ class Arknights数据处理器:
         print()
 
     def 读取卡池(self):
+
         抽卡 = self.抽卡表.get("gachaPoolClient", [])
         卡池类型映射 = {
             "SINGLE": "单人池",
@@ -202,8 +202,9 @@ class Arknights数据处理器:
             关卡掉落表 = self.关卡表["stages"][键]["stageDropInfo"]["displayRewards"]
             关卡掉落 = {"普通掉落": []}
             for item in 关卡掉落表:
-                if "side_token" not in self.物品表["items"][item["id"]]["iconId"]:
-                    if item["dropType"] != 8:
+                if not "side_token" in self.物品表["items"][item["id"]]["iconId"]:
+                    if not item["dropType"] == 8:
+
                         关卡掉落["普通掉落"].append(
                             self.物品表["items"][item["id"]]["name"]
                         )
@@ -235,7 +236,7 @@ class Arknights数据处理器:
         }
         # for 干员代码, 干员数据 in self.干员表.items():
         #     print(干员代码,干员数据)
-        recruit_list = self.抽卡表["recruitDetail"].replace("\\n<@rc.eml>", "")
+        recruit_list = self.抽卡表['recruitDetail'].replace("\\n<@rc.eml>", "")
         recruit_list = recruit_list.replace("\\n", "")
         recruit_list = recruit_list.replace("\r", "")
         recruit_list = recruit_list.replace("★", "")
@@ -246,17 +247,13 @@ class Arknights数据处理器:
         recruit_list = recruit_list.replace("--------------------", "")
         recruit_list = recruit_list.replace("<@rc.title>公开招募说明", "")
         recruit_list = recruit_list.replace("<@rc.em>※稀有职业需求招募说明※", "")
+        recruit_list = recruit_list.replace("<@rc.em>当职业需求包含高级资深干员，且招募时限为9小时时，招募必得6星干员",
+                                            "")
         recruit_list = recruit_list.replace(
-            "<@rc.em>当职业需求包含高级资深干员，且招募时限为9小时时，招募必得6星干员",
-            "",
-        )
-        recruit_list = recruit_list.replace(
-            "<@rc.em>当职业需求包含资深干员同时不包含高级资深干员，且招募时限为9小时，则该次招募必得5星干员",
-            "",
-        )
+            "<@rc.em>当职业需求包含资深干员同时不包含高级资深干员，且招募时限为9小时，则该次招募必得5星干员", "")
         recruit_list = recruit_list.replace("<@rc.subtitle>※全部可能出现的干员※", "")
         recruit_list = recruit_list.replace("绿色高亮的不可寻访干员，可以在此招募", "")
-        recruit_list = recruit_list.split("\n")
+        recruit_list = recruit_list.split('\n')
 
         profession = {
             "MEDIC": "医疗干员",
@@ -266,60 +263,57 @@ class Arknights数据处理器:
             "CASTER": "术师干员",
             "TANK": "重装干员",
             "SUPPORT": "辅助干员",
-            "PIONEER": "先锋干员",
+            "PIONEER": "先锋干员"
         }
 
         for 干员代码, 干员数据 in self.干员表.items():
             干员名 = 干员数据["name"]
 
-            if 干员数据["profession"] not in profession:
+            if 干员数据['profession'] not in profession:
                 continue
 
             if 干员名 in recruit_list:
-                tag = 干员数据["tagList"]
+                tag = 干员数据['tagList']
                 # 数据中稀有度从0-5
-                干员数据["rarity"] = 干员数据["rarity"] + 1
+                干员数据['rarity'] = 干员数据['rarity'] + 1
                 if len(干员名) <= 4:
                     recruit_result_data[len(干员名)].append(干员代码)
                 else:
                     recruit_result_data[-1].append(干员代码)
-                if 干员数据["rarity"] == 5:
+                if 干员数据['rarity'] == 5:
                     tag.append("资深干员")
-                elif 干员数据["rarity"] == 6:
+                elif 干员数据['rarity'] == 6:
                     tag.append("高级资深干员")
 
-                if 干员数据["position"] == "MELEE":
+                if 干员数据['position'] == "MELEE":
                     tag.append("近战位")
-                elif 干员数据["position"] == "RANGED":
+                elif 干员数据['position'] == "RANGED":
                     tag.append("远程位")
 
-                tag.append(profession[干员数据["profession"]])
+                tag.append(profession[干员数据['profession']])
 
                 recruit_data[干员代码] = {
                     "name": 干员名,
-                    "stars": 干员数据["rarity"],
-                    "tags": 干员数据["tagList"],
+                    "stars": 干员数据['rarity'],
+                    "tags": 干员数据['tagList']
                 }
-                print(
-                    "{} stars：{} tags:{}".format(
-                        干员名, 干员数据["rarity"], 干员数据["tagList"]
-                    )
-                )
+                print("{} stars：{} tags:{}".format(干员名, 干员数据['rarity'], 干员数据['tagList']))
         print("载入公招干员数据{}个".format(len(recruit_data)))
         with open("./arknights_mower/data/recruit.json", "w", encoding="utf-8") as f:
-            json.dump(recruit_data, f, ensure_ascii=False, indent=4)
+            json.dump(recruit_data, f, ensure_ascii=False,indent=4)
 
-        with open(
-            "./arknights_mower/data/recruit_result.json", "w", encoding="utf-8"
-        ) as f:
-            json.dump(recruit_result_data, f, ensure_ascii=False, indent=4)
+        with open("./arknights_mower/data/recruit_result.json", "w", encoding="utf-8") as f:
+            json.dump(recruit_result_data, f, ensure_ascii=False,indent=4)
 
     def load_recruit_template(self):
         # !/usr/bin/env python3
-        with open("./arknights_mower/data/recruit.json", "r", encoding="utf-8") as f:
+        with open(
+                "./arknights_mower/data/recruit.json", "r",
+                encoding='utf-8') as f:
             recruit_operators = json.load(f)
 
-        font = ImageFont.truetype("FZDYSK.TTF", 120)
+        font = ImageFont.truetype(
+            "FZDYSK.TTF", 120)
         print(len(recruit_operators))
         for operator in recruit_operators:
             im = Image.new(mode="RGBA", size=(1920, 1080))
@@ -338,14 +332,14 @@ class Arknights数据处理器:
                 cells_per_block=(2, 2),
                 block_norm="L2-Hys",
                 transform_sqrt=True,
-                channel_axis=2,
+                channel_axis=-1,
             )
             return hog_features
 
         def 加载图片特征点_标签(模板类型):
             特征点列表 = []
             标签列表 = []
-            for [目标文件路径, 源文件路径] in self.装仓库物品的字典[模板类型]:
+            for [目标文件路径, 源文件路径] in (self.装仓库物品的字典[模板类型]):
                 模板 = cv2.imread(源文件路径)
                 模板 = cv2.resize(模板, (213, 213))
                 特征点 = 提取特征点(模板)
@@ -369,14 +363,20 @@ class Arknights数据处理器:
         保存knn模型(knn模型, 模型保存路径)
 
     def 批量训练并保存扫仓库模型(self):
-        self.训练仓库的knn模型("NORMAL", "./arknights_mower/models/NORMAL.pkl")
-        self.训练仓库的knn模型("CONSUME", "./arknights_mower/models/CONSUME.pkl")
-        self.训练仓库的knn模型("MATERIAL", "./arknights_mower/models/MATERIAL.pkl")
+        self.训练仓库的knn模型(
+            "NORMAL", "./arknights_mower/models/NORMAL.pkl"
+        )
+        self.训练仓库的knn模型(
+            "CONSUME", "./arknights_mower/models/CONSUME.pkl"
+        )
+        self.训练仓库的knn模型(
+            "MATERIAL", "./arknights_mower/models/MATERIAL.pkl"
+        )
 
     def 训练在房间内的干员名的模型(self):
+
         font = ImageFont.truetype(
-            "arknights_mower/fonts/SourceHanSansCN-Medium.otf", 37
-        )
+            "arknights_mower/fonts/SourceHanSansCN-Medium.otf", 37)
 
         data = {}
 
@@ -390,11 +390,10 @@ class Arknights数据处理器:
             img = thres2(img, 200)
             dilation = cv2.dilate(img, kernel, iterations=1)
             contours, _ = cv2.findContours(
-                dilation, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
-            )
+                dilation, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
             rect = map(lambda c: cv2.boundingRect(c), contours)
             x, y, w, h = sorted(rect, key=lambda c: c[0])[0]
-            img = img[y : y + h, x : x + w]
+            img = img[y: y + h, x: x + w]
             tpl = np.zeros((46, 265), dtype=np.uint8)
             tpl[: img.shape[0], : img.shape[1]] = img
             # cv2.imwrite(f"/home/zhao/Desktop/data/{operator}.png", tpl)
@@ -405,14 +404,11 @@ class Arknights数据处理器:
 
     def 训练选中的干员名的模型(self):
         font31 = ImageFont.truetype(
-            "arknights_mower/fonts/SourceHanSansCN-Medium.otf", 31
-        )
+            "arknights_mower/fonts/SourceHanSansCN-Medium.otf", 31)
         font30 = ImageFont.truetype(
-            "arknights_mower/fonts/SourceHanSansCN-Medium.otf", 30
-        )
+            "arknights_mower/fonts/SourceHanSansCN-Medium.otf", 30)
         font25 = ImageFont.truetype(
-            "arknights_mower/fonts/SourceHanSansCN-Medium.otf", 25
-        )
+            "arknights_mower/fonts/SourceHanSansCN-Medium.otf", 25)
 
         data = {}
 
@@ -432,11 +428,10 @@ class Arknights数据处理器:
             img = thres2(img, 140)
             dilation = cv2.dilate(img, kernel, iterations=1)
             contours, _ = cv2.findContours(
-                dilation, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
-            )
+                dilation, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
             rect = map(lambda c: cv2.boundingRect(c), contours)
             x, y, w, h = sorted(rect, key=lambda c: c[0])[0]
-            img = img[y : y + h, x : x + w]
+            img = img[y: y + h, x: x + w]
             tpl = np.zeros((42, 200), dtype=np.uint8)
             tpl[: img.shape[0], : img.shape[1]] = img
             # cv2.imwrite(f"/home/zhao/Desktop/data/{operator}.png", tpl)
@@ -455,6 +450,8 @@ class Arknights数据处理器:
 数据处理器.读取卡池()
 数据处理器.读取活动关卡()
 
+数据处理器.load_recruit_data()
+数据处理器.load_recruit_template()
 
 数据处理器.批量训练并保存扫仓库模型()
 print("批量训练并保存扫仓库模型,完成")
@@ -464,7 +461,3 @@ print("批量训练并保存扫仓库模型,完成")
 print("训练在房间内的干员名的模型,完成")
 数据处理器.训练选中的干员名的模型()
 print("训练选中的干员名的模型,完成")
-
-
-数据处理器.load_recruit_data()
-数据处理器.load_recruit_template()

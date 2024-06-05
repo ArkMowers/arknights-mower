@@ -10,6 +10,7 @@ import { h, ref } from 'vue'
 
 const currentDay = ref(new Date().getDay())
 const daysOfWeek = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+const dayOfWeek = ['一', '二', '三', '四', '五', '六', '日']
 const togglePlanAndStage = (plan, day) => {
   plan[day] = plan[day] === 1 ? 2 : 1
   maa_weekly_plan.value.slice(0, daysOfWeek.length).forEach((p, i) => {
@@ -144,7 +145,7 @@ function create_tag(label) {
     }
   }
 }
-const 默认 = [
+const aaabbbccc = [
   {
     stage: 'Annihilation',
     周一: 1,
@@ -337,7 +338,7 @@ const 默认 = [
   }
 ]
 function clear() {
-  maa_weekly_plan1.value = 默认
+  maa_weekly_plan1.value = aaabbbccc
 }
 </script>
 
@@ -382,8 +383,12 @@ function clear() {
           <tr>
             <th>全选</th>
             <th>关卡</th>
-            <th v-for="(day, index) in daysOfWeek" :key="index">
-              {{ day[1] }}{{ currentDay === (index + 1) % 7 ? ' (今天)' : '' }}
+            <th
+              v-for="(day, index) in dayOfWeek"
+              :key="index"
+              :class="{ today: currentDay === index }"
+            >
+              {{ day }}{{ currentDay === (index + 1) % 7 ? ' (今天)' : '' }}
             </th>
           </tr>
           <tr>
@@ -425,16 +430,14 @@ function clear() {
               />
               <span v-else>{{ showstage(plan.stage) }}</span>
             </td>
-            <td
-              v-for="day in daysOfWeek"
-              :class="{ class2: plan[day] === 2, class1: plan[day] === 1 }"
-            >
+            <td v-for="day in daysOfWeek">
               <template v-if="plan[day] !== 0">
                 <n-button
                   :v-model="plan[day]"
                   @click="() => togglePlanAndStage(plan, day)"
                   quaternary
                   style="width: 100%; height: 100%"
+                  :class="{ class2: plan[day] === 2, class1: plan[day] === 1 }"
                 >
                   <span v-if="plan[day] === 2">打</span>
                   <span v-if="plan[day] === 1"></span>
