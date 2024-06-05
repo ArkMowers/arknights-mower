@@ -2576,15 +2576,20 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     pre_order = arrange_type
             first_time = False
 
-            if not siege and agent == ["推进之王"] and not is_dorm:
+            if not siege and not is_dorm and agent and agent[0] in ["推进之王", "安哲拉", "斯卡蒂", "幽灵鲨", "乌尔比安"]:
                 siege = True
                 right_swipe = 0
-                self.detail_filter(恢复类后勤=True)
+                if agent[0] in ["推进之王", "安哲拉", "斯卡蒂", "幽灵鲨"]:
+                    self.detail_filter(恢复类后勤=True)
+                else:
+                    self.detail_filter(功能类后勤=True)
+                self.switch_arrange_order(3, "true")
             changed, ret = self.scan_agent(agent)
             if changed:
                 selected.extend(changed)
                 # 如果找到了
                 index_change = True
+                siege = False
             else:
                 # 如果没找到 而且右移次数大于5
                 if ret[0][0] == first_name and right_swipe > 5:
