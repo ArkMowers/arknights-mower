@@ -23,6 +23,7 @@ from arknights_mower.solvers import (
 )
 from arknights_mower.solvers.base_mixin import BaseMixin
 from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
+from arknights_mower.solvers.secret_front import SecretFront
 from arknights_mower.utils import config, hot_update, rapidocr
 from arknights_mower.utils.email import maa_template
 from arknights_mower.utils.image import cropimg, loadres, thres2
@@ -206,6 +207,10 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         maa_config["ra_timeout"] = timedelta(
             seconds=conf["reclamation_algorithm"]["timeout"]
         )
+        maa_config["secret_front"] = (
+            conf["maa_rg_enable"] == 1 and conf["maa_long_task_type"] == "sf"
+        )
+        maa_config["sf_target"] = conf["secret_front"]["target"]
         return maa_config
 
     @property
@@ -763,10 +768,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     self.last_clue = None
                     self.skip(["planned", "collect_notification"])
                 elif self.task.type == TaskTypes.REFRESH_TIME:
-                    if self.task.meta_data == 'train':
+                    if self.task.meta_data == "train":
                         upgrade = find_next_task(
-                                            self.tasks,
-                                            task_type=TaskTypes.SKILL_UPGRADE
+                            self.tasks, task_type=TaskTypes.SKILL_UPGRADE
                         )
                         if upgrade is not None:
                             self.refresh_skill_time(upgrade)
@@ -1087,7 +1091,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
     def refresh_skill_time(self, task):
         try:
             unknown_cnt = 0
-            tasks = ['refresh']
+            tasks = ["refresh"]
             while tasks:
                 scene = self.train_scene()
                 if scene == Scene.UNKNOWN:
@@ -1105,11 +1109,11 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     self.enter_room("train")
                 if scene == Scene.TRAIN_MAIN:
                     task.time = self.double_read_time(
-                                (
-                                    (236, 978),
-                                    (380, 1020),
-                                ),
-                                use_digit_reader=True
+                        (
+                            (236, 978),
+                            (380, 1020),
+                        ),
+                        use_digit_reader=True,
                     )
                     del tasks[0]
                 if scene == Scene.TRAIN_SKILL_SELECT:
@@ -1237,7 +1241,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     # 提前10分钟换人，确保触发技能
                     # 3 级不需要换人
                     if level != 3:
-                        swap_time = datetime.now() + timedelta(hours=h) - timedelta(minutes=10)
+                        swap_time = (
+                            datetime.now() + timedelta(hours=h) - timedelta(minutes=10)
+                        )
                         self.tasks.append(
                             SchedulerTask(
                                 time=swap_time,
@@ -1246,8 +1252,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         )
                         self.tasks.append(
                             SchedulerTask(
-                                time=swap_time
-                                + timedelta(seconds=1),
+                                time=swap_time + timedelta(seconds=1),
                                 task_plan={},
                                 task_type=TaskTypes.REFRESH_TIME,
                             )
@@ -2576,7 +2581,15 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     pre_order = arrange_type
             first_time = False
 
-            if not siege and not is_dorm and agent and all(element in ["推进之王", "安哲拉", "斯卡蒂", "幽灵鲨", "乌尔比安"] for element in agent):
+            if (
+                not siege
+                and not is_dorm
+                and agent
+                and all(
+                    element in ["推进之王", "安哲拉", "斯卡蒂", "幽灵鲨", "乌尔比安"]
+                    for element in agent
+                )
+            ):
                 siege = True
                 right_swipe = 0
                 if agent[0] in ["推进之王", "安哲拉", "斯卡蒂", "幽灵鲨"]:
@@ -3514,13 +3527,24 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     if self.device.check_current_focus():
                         self.recog.update()
 
-            elif not rg_sleep and self.maa_config["reclamation_algorithm"]:
-                self.recog.update()
-                self.back_to_index()
-                ra_solver = ReclamationAlgorithm(self.device, self.recog)
-                ra_solver.run(
-                    self.tasks[0].time - datetime.now(), self.maa_config["ra_timeout"]
-                )
+            elif not rg_sleep:
+                if self.maa_config["reclamation_algorithm"]:
+                    self.recog.update()
+                    self.back_to_index()
+                    ra_solver = ReclamationAlgorithm(self.device, self.recog)
+                    ra_solver.run(
+                        self.tasks[0].time - datetime.now(),
+                        self.maa_config["ra_timeout"],
+                    )
+                elif self.maa_config["secret_front"]:
+                    self.recog.update()
+                    self.back_to_index()
+                    sf_solver = SecretFront(self.device, self.recog)
+                    sf_solver.run(
+                        self.tasks[0].time - datetime.now(),
+                        self.maa_config["ra_timeout"],
+                        self.maa_config["sf_target"],
+                    )
 
             if one_time:
                 if len(self.tasks) > 0:

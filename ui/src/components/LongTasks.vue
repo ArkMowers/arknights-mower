@@ -7,6 +7,13 @@ const { maa_rg_enable, maa_long_task_type, maa_rg_sleep_min, maa_rg_sleep_max } 
   storeToRefs(config_store)
 
 const mobile = inject('mobile')
+
+const maa_long_task_options = [
+  { label: '集成战略 (Maa)', value: 'rogue' },
+  { label: '保全派驻 (Maa)', value: 'sss' },
+  { label: '生息演算', value: 'ra' },
+  { label: '隐秘战线', value: 'sf' }
+]
 </script>
 
 <template>
@@ -26,7 +33,11 @@ const mobile = inject('mobile')
         </div>
       </n-checkbox>
     </template>
-    <n-form :label-placement="mobile ? 'top' : 'left'" :show-feedback="false">
+    <n-form
+      :label-placement="mobile ? 'top' : 'left'"
+      :show-feedback="false"
+      style="margin-bottom: 12px"
+    >
       <n-grid cols="2">
         <n-form-item-gi label="开始时间">
           <n-time-picker format="H:mm" v-model:formatted-value="maa_rg_sleep_max" />
@@ -35,26 +46,14 @@ const mobile = inject('mobile')
           <n-time-picker format="H:mm" v-model:formatted-value="maa_rg_sleep_min" />
         </n-form-item-gi>
       </n-grid>
+      <n-form-item :show-label="false">
+        <n-select v-model:value="maa_long_task_type" :options="maa_long_task_options" />
+      </n-form-item>
     </n-form>
-    <n-tabs
-      type="line"
-      :value="maa_long_task_type"
-      :on-update:value="
-        (v) => {
-          maa_long_task_type = v
-        }
-      "
-    >
-      <n-tab-pane name="rogue" tab="集成战略 (Maa)">
-        <maa-rogue />
-      </n-tab-pane>
-      <n-tab-pane name="sss" tab="保全派驻 (Maa)">
-        <maa-sss />
-      </n-tab-pane>
-      <n-tab-pane name="ra" tab="生息演算">
-        <reclamation-algorithm />
-      </n-tab-pane>
-    </n-tabs>
+    <maa-rogue v-if="maa_long_task_type == 'rogue'" />
+    <maa-sss v-else-if="maa_long_task_type == 'sss'" />
+    <reclamation-algorithm v-else-if="maa_long_task_type == 'ra'" />
+    <secret-front v-else-if="maa_long_task_type == 'sf'" />
   </n-card>
 </template>
 

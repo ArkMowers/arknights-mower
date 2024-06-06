@@ -345,6 +345,12 @@ class BaseSolver:
         """
         return self.recog.get_ra_scene()
 
+    def sf_scene(self) -> int:
+        """
+        隐秘战线场景识别
+        """
+        return self.recog.get_sf_scene()
+
     def sss_scene(self) -> int:
         """
         保全导航场景识别

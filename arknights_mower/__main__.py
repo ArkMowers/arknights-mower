@@ -7,6 +7,7 @@ import requests
 from evalidate import Expr
 
 from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
+from arknights_mower.solvers.secret_front import SecretFront
 from arknights_mower.utils import config, path, rapidocr
 from arknights_mower.utils.depot import 创建csv
 from arknights_mower.utils.device.adb_client.session import Session
@@ -418,22 +419,34 @@ def simulate():
                     except ValueError:
                         rg_sleep = False
 
-                    if (
-                        not rg_sleep
-                        and base_scheduler.maa_config["reclamation_algorithm"]
-                    ):
-                        base_scheduler.recog.update()
-                        base_scheduler.back_to_index()
-                        ra_solver = ReclamationAlgorithm(
-                            base_scheduler.device, base_scheduler.recog
-                        )
-                        ra_solver.run(
-                            base_scheduler.tasks[0].time - datetime.now(),
-                            base_scheduler.maa_config["ra_timeout"],
-                        )
-                        remaining_time = (
-                            base_scheduler.tasks[0].time - datetime.now()
-                        ).total_seconds()
+                    if not rg_sleep:
+                        if base_scheduler.maa_config["reclamation_algorithm"]:
+                            base_scheduler.recog.update()
+                            base_scheduler.back_to_index()
+                            ra_solver = ReclamationAlgorithm(
+                                base_scheduler.device, base_scheduler.recog
+                            )
+                            ra_solver.run(
+                                base_scheduler.tasks[0].time - datetime.now(),
+                                base_scheduler.maa_config["ra_timeout"],
+                            )
+                            remaining_time = (
+                                base_scheduler.tasks[0].time - datetime.now()
+                            ).total_seconds()
+                        elif base_scheduler.maa_config["secret_front"]:
+                            base_scheduler.recog.update()
+                            base_scheduler.back_to_index()
+                            sf_solver = SecretFront(
+                                base_scheduler.device, base_scheduler.recog
+                            )
+                            sf_solver.run(
+                                base_scheduler.tasks[0].time - datetime.now(),
+                                base_scheduler.maa_config["ra_timeout"],
+                                base_scheduler.maa_config["sf_target"],
+                            )
+                            remaining_time = (
+                                base_scheduler.tasks[0].time - datetime.now()
+                            ).total_seconds()
 
                     subject = f"休息 {format_time(remaining_time)}，到{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}开始工作"
                     context = f"下一次任务:{base_scheduler.tasks[0].plan}"

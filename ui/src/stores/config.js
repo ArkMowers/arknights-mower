@@ -70,6 +70,7 @@ export const useConfigStore = defineStore('config', () => {
   const meeting_level = ref(3)
   const fix_mumu12_adb_disconnect = ref(false)
   const ra_timeout = ref(30)
+  const sf_target = ref('结局A')
   const touch_method = ref('scrcpy')
   const free_room = ref(false)
   const sign_in = ref({ enable: true })
@@ -162,6 +163,7 @@ export const useConfigStore = defineStore('config', () => {
     meeting_level.value = response.data.meeting_level
     fix_mumu12_adb_disconnect.value = response.data.fix_mumu12_adb_disconnect
     ra_timeout.value = response.data.reclamation_algorithm.timeout
+    sf_target.value = response.data.secret_front.target
     touch_method.value = response.data.touch_method
     free_room.value = response.data.free_room
     sign_in.value = response.data.sign_in
@@ -244,6 +246,9 @@ export const useConfigStore = defineStore('config', () => {
       fix_mumu12_adb_disconnect: fix_mumu12_adb_disconnect.value,
       reclamation_algorithm: {
         timeout: ra_timeout.value
+      },
+      secret_front: {
+        target: sf_target.value
       },
       touch_method: touch_method.value,
       free_room: free_room.value,
@@ -332,6 +337,7 @@ export const useConfigStore = defineStore('config', () => {
     meeting_level,
     fix_mumu12_adb_disconnect,
     ra_timeout,
+    sf_target,
     touch_method,
     free_room,
     sign_in,

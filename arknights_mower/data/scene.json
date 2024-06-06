@@ -431,6 +431,54 @@
         "label": "SSS_GUIDE",
         "comment": "保全教程"
     },
+    "1101": {
+        "label": "SF_ENTRANCE",
+        "comment": "隐秘战线入口"
+    },
+    "1102": {
+        "label": "SF_INFO",
+        "comment": "隐秘战线详细说明"
+    },
+    "1103": {
+        "label": "SF_SELECT_TEAM",
+        "comment": "选择小队"
+    },
+    "1104": {
+        "label": "SF_CONTINUE",
+        "comment": "继续前进"
+    },
+    "1105": {
+        "label": "SF_SELECT",
+        "comment": "选择路线"
+    },
+    "1106": {
+        "label": "SF_ACTIONS",
+        "comment": "行动选项"
+    },
+    "1107": {
+        "label": "SF_RESULT",
+        "comment": "行动结果"
+    },
+    "1108": {
+        "label": "SF_EVENT",
+        "comment": "应对危机事件"
+    },
+    "1109": {
+        "label": "SF_TEAM_PASS",
+        "comment": "小队通过危机事件"
+    },
+    "1110": {
+        "label": "SF_CLICK_ANYWHERE",
+        "comment": "点击任意处继续"
+    },
+    "1111": {
+        "label": "SF_END",
+        "comment": "抵达终点"
+    },
+    "1112": {
+        "label": "SF_EXIT",
+        "comment": "暂离行动"
+    },
     "9998": {
         "label": "LOADING",
         "comment": "场景跳转时的等待界面"

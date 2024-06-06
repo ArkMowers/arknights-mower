@@ -727,6 +727,73 @@ class Recognizer(object):
 
         return self.scene
 
+    def get_sf_scene(self) -> int:
+        """
+        隐秘战线场景识别
+        """
+        # 场景缓存
+        if self.scene != Scene.UNDEFINED:
+            return self.scene
+
+        # 连接中，优先级最高
+        if self.find("connecting"):
+            self.scene = Scene.CONNECTING
+
+        elif self.find("sf/success") or self.find("sf/failure"):
+            self.scene = Scene.SF_RESULT
+        elif self.find("sf/continue"):
+            self.scene = Scene.SF_CONTINUE
+        elif self.find("sf/select"):
+            self.scene = Scene.SF_SELECT
+        elif self.find("sf/continue_event"):
+            self.scene = Scene.SF_EVENT
+        elif self.find("sf/team_pass"):
+            self.scene = Scene.SF_TEAM_PASS
+
+        elif self.find("sf/inheritance", scope=((1490, 0), (1920, 100))):
+            self.scene = Scene.SF_SELECT_TEAM
+
+        # 从首页进入隐秘战线
+        elif self.detect_index_scene():
+            self.scene = Scene.INDEX
+        elif self.find("terminal_pre"):
+            self.scene = Scene.TERMINAL_MAIN
+        elif self.find("main_theme"):
+            self.scene = Scene.TERMINAL_MAIN_THEME
+        elif self.find("sf/entrance"):
+            self.scene = Scene.SF_ENTRANCE
+        elif self.find("sf/info"):
+            self.scene = Scene.SF_INFO
+
+        elif self.find("sf/click_anywhere"):
+            self.scene = Scene.SF_CLICK_ANYWHERE
+        elif self.find("sf/end"):
+            self.scene = Scene.SF_END
+        elif self.find("sf/exit"):
+            self.scene = Scene.SF_EXIT
+
+        # 模板匹配，优先级最低
+        elif self.template_match("sf/circle", None, cv2.TM_SQDIFF_NORMED)[0] < 0.25:
+            self.scene = Scene.SF_ACTIONS
+
+        else:
+            self.scene = Scene.UNKNOWN
+            if self.device.check_current_focus():
+                self.update()
+
+        # save screencap to analyse
+        if config.SCREENSHOT_PATH is not None:
+            self.save_screencap(self.scene)
+        log_msg = f"Scene: {self.scene}: {SceneComment[self.scene]}"
+        if self.scene == Scene.UNKNOWN:
+            logger.debug(log_msg)
+        else:
+            logger.info(log_msg)
+
+        self.check_loading_time()
+
+        return self.scene
+
     def get_sss_scene(self) -> int:
         """
         保全导航场景识别

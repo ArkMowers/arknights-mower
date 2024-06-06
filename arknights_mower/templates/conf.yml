@@ -268,6 +268,8 @@ recruit_email_enable: true
 fix_mumu12_adb_disconnect: false
 reclamation_algorithm:
   timeout: 30
+secret_front:
+  target: 结局A
 touch_method: scrcpy
 free_room: false
 sign_in:
