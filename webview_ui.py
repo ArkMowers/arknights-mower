@@ -107,9 +107,7 @@ def start_tray(queue: mp.Queue, global_space, port, url):
     icon.run()
 
 
-def webview_window(
-    child_conn, global_space, host, port, token, url, width, height, tray
-):
+def webview_window(child_conn, global_space, host, port, token, url, tray):
     import sys
     from threading import Thread
 
@@ -121,24 +119,26 @@ def webview_window(
 
     path.global_space = global_space
 
-    global _width
-    global _height
-    _width = width
-    _height = height
+    global width
+    global height
+
+    conf = load_conf()
+    width = conf["webview"]["width"]
+    height = conf["webview"]["height"]
 
     def window_size(w, h):
-        global _width
-        global _height
-        _width = w
-        _height = h
+        global width
+        global height
+        width = w
+        height = h
 
     window = webview.create_window(
         f"arknights-mower {__version__} (http://{host}:{port})",
         url,
         text_select=True,
         confirm_close=not tray,
-        width=_width,
-        height=_height,
+        width=width,
+        height=height,
     )
     window.events.resized += window_size
 
@@ -176,8 +176,8 @@ def webview_window(
     webview.start()
 
     conf = load_conf()
-    conf["webview"]["width"] = _width
-    conf["webview"]["height"] = _height
+    conf["webview"]["width"] = width
+    conf["webview"]["height"] = height
     save_conf(conf)
     sys.exit()
 
@@ -202,8 +202,6 @@ if __name__ == "__main__":
 
     conf = load_conf()
     tray = conf["webview"]["tray"]
-    width = conf["webview"]["width"]
-    height = conf["webview"]["height"]
     token = conf["webview"]["token"]
     host = "0.0.0.0" if token else "127.0.0.1"
 
@@ -265,17 +263,7 @@ if __name__ == "__main__":
     parent_conn, child_conn = mp.Pipe()
     webview_process = mp.Process(
         target=webview_window,
-        args=(
-            child_conn,
-            path.global_space,
-            host,
-            port,
-            token,
-            url,
-            width,
-            height,
-            tray,
-        ),
+        args=(child_conn, path.global_space, host, port, token, url, tray),
         daemon=True,
     )
     webview_process.start()
@@ -305,8 +293,6 @@ if __name__ == "__main__":
                             port,
                             token,
                             url,
-                            width,
-                            height,
                             tray,
                         ),
                         daemon=True,
