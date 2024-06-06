@@ -3591,7 +3591,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
     def recruit_plan_solver(self):
         if self.last_execution[
             "recruit"
-        ] is None or datetime.now() < self.last_execution["recruit"] + timedelta(
+        ] is None or datetime.now() > self.last_execution["recruit"] + timedelta(
             hours=self.recruit_config["recruit_execution_gap"]
         ):
             recruit([], self.send_message_config, self.recruit_config, self.device)
