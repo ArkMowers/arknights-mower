@@ -390,7 +390,7 @@ class SecretFront(BaseSolver):
         if scene in [Scene.TERMINAL_MAIN, Scene.TERMINAL_MAIN_THEME, Scene.SF_ENTRANCE]:
             self.back()
         elif scene == Scene.SF_EXIT:
-            self.move_forward()
+            self.move_forward(scene)
         else:
             self.exit = "exit"
             self.tap_element("sf/exit_button")
