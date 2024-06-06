@@ -2576,7 +2576,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     pre_order = arrange_type
             first_time = False
 
-            if not siege and not is_dorm and agent and agent[0] in ["推进之王", "安哲拉", "斯卡蒂", "幽灵鲨", "乌尔比安"]:
+            if not siege and not is_dorm and agent and all(element in ["推进之王", "安哲拉", "斯卡蒂", "幽灵鲨", "乌尔比安"] for element in agent):
                 siege = True
                 right_swipe = 0
                 if agent[0] in ["推进之王", "安哲拉", "斯卡蒂", "幽灵鲨"]:
