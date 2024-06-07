@@ -6,6 +6,7 @@ from typing import Optional
 import cv2
 
 from arknights_mower import __rootdir__
+from arknights_mower.utils import config
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.log import logger
@@ -52,20 +53,24 @@ class SecretFront(BaseSolver):
         "结局E": "medicine",
     }
 
+    @property
+    def route(self):
+        return self.routes[config.conf["secret_front"]["target"]]
+
+    @property
+    def team(self):
+        return self.teams[config.conf["secret_front"]["target"]]
+
     def run(
         self,
         duration: Optional[timedelta] = None,
         timeout: timedelta = timedelta(seconds=30),
-        target="结局A",
     ):
         logger.info("Start: 隐秘战线")
 
         self.timeout = timeout
         self.deadline = datetime.now() + duration - timeout if duration else None
         self.unknown_time = None
-
-        self.route = self.routes[target]
-        self.team = self.teams[target]
 
         self.properties = None
         self.route_matcher = None

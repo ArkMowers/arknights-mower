@@ -210,7 +210,6 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         maa_config["secret_front"] = (
             conf["maa_rg_enable"] == 1 and conf["maa_long_task_type"] == "sf"
         )
-        maa_config["sf_target"] = conf["secret_front"]["target"]
         return maa_config
 
     @property
@@ -3543,7 +3542,6 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     sf_solver.run(
                         self.tasks[0].time - datetime.now(),
                         self.maa_config["ra_timeout"],
-                        self.maa_config["sf_target"],
                     )
 
             if one_time:

@@ -442,7 +442,6 @@ def simulate():
                             sf_solver.run(
                                 base_scheduler.tasks[0].time - datetime.now(),
                                 base_scheduler.maa_config["ra_timeout"],
-                                base_scheduler.maa_config["sf_target"],
                             )
                             remaining_time = (
                                 base_scheduler.tasks[0].time - datetime.now()
