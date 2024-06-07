@@ -13,6 +13,7 @@ class Simulator_Type(Enum):
     Leidian9 = "雷电9"
     Waydroid = "Waydroid"
     ReDroid = "ReDroid"
+    MuMuPro = "MuMuPro"
 
 
 def restart_simulator(stop=True, start=True):
@@ -27,6 +28,7 @@ def restart_simulator(stop=True, start=True):
         Simulator_Type.Leidian9.value,
         Simulator_Type.Waydroid.value,
         Simulator_Type.ReDroid.value,
+        Simulator_Type.MuMuPro.value,
     ]:
         if simulator_type == Simulator_Type.Nox.value:
             cmd = "Nox.exe"
@@ -48,6 +50,8 @@ def restart_simulator(stop=True, start=True):
                 cmd += "0"
         elif simulator_type == Simulator_Type.ReDroid.value:
             cmd = f"docker stop {data['index']} -t 0"
+        elif simulator_type == Simulator_Type.MuMuPro.value:
+            cmd = f"Contents/MacOS/mumutool close {data['index']}"
         if stop:
             exec_cmd(cmd, data["simulator_folder"])
             logger.info(f"关闭{simulator_type}模拟器")
@@ -65,6 +69,8 @@ def restart_simulator(stop=True, start=True):
             cmd = cmd.replace("quit", "launch")
         elif simulator_type == Simulator_Type.ReDroid.value:
             cmd = f"docker start {data['index']}"
+        elif simulator_type == Simulator_Type.MuMuPro.value:
+            cmd = cmd.replace("close", "open")
         if start:
             exec_cmd(cmd, data["simulator_folder"])
             logger.info(f"开始启动{simulator_type}模拟器，等待{data['wait_time']}秒")
