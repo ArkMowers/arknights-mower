@@ -20,18 +20,17 @@ const maa_long_task_options = [
   <n-card>
     <template #header>
       <n-checkbox v-model:checked="maa_rg_enable">
-        <div class="card-title">
-          大型任务
-          <help-text>
-            <div>开始与结束时间设置为相同值时全天开启。</div>
-            <div>若结束时间早于开始时间，则表示开启至次日。例如：</div>
-            <ul>
-              <li>23:00开始、8:00结束：表示从23:00至次日8:00执行大型任务；</li>
-              <li>10:00开始、14:00结束：表示从10:00至当日14:00执行大型任务。</li>
-            </ul>
-          </help-text>
-        </div>
+        <div class="card-title">大型任务</div>
       </n-checkbox>
+      <n-select v-model:value="maa_long_task_type" :options="maa_long_task_options" />
+      <help-text>
+        <div>开始与结束时间设置为相同值时全天开启。</div>
+        <div>若结束时间早于开始时间，则表示开启至次日。例如：</div>
+        <ul>
+          <li>23:00开始、8:00结束：表示从23:00至次日8:00执行大型任务；</li>
+          <li>10:00开始、14:00结束：表示从10:00至当日14:00执行大型任务。</li>
+        </ul>
+      </help-text>
     </template>
     <n-form
       :label-placement="mobile ? 'top' : 'left'"
@@ -46,9 +45,6 @@ const maa_long_task_options = [
           <n-time-picker format="H:mm" v-model:formatted-value="maa_rg_sleep_min" />
         </n-form-item-gi>
       </n-grid>
-      <n-form-item :show-label="false">
-        <n-select v-model:value="maa_long_task_type" :options="maa_long_task_options" />
-      </n-form-item>
     </n-form>
     <maa-rogue v-if="maa_long_task_type == 'rogue'" />
     <maa-sss v-else-if="maa_long_task_type == 'sss'" />
@@ -61,5 +57,6 @@ const maa_long_task_options = [
 .card-title {
   font-weight: 500;
   font-size: 18px;
+  width: 80px;
 }
 </style>
