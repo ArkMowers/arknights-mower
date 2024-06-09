@@ -1254,6 +1254,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                                 time=swap_time + timedelta(seconds=1),
                                 task_plan={},
                                 task_type=TaskTypes.REFRESH_TIME,
+                                meta_data='train'
                             )
                         )
                         # 默认 5小时
@@ -2538,6 +2539,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         if self.detect_arrange_order()[0] == "信赖值":
             self.switch_arrange_order("工作状态")
         siege = False  # 推进之王
+        last_special_filter = ""
         while len(agent) > 0:
             if retry_count > 1:
                 raise Exception("到达最大尝试次数 1次")
@@ -2590,11 +2592,17 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 )
             ):
                 siege = True
-                right_swipe = 0
+
                 if agent[0] in ["推进之王", "安哲拉", "斯卡蒂", "幽灵鲨"]:
                     self.detail_filter(恢复类后勤=True)
+                    if last_special_filter != "恢复类后勤":
+                        right_swipe = 0
+                    last_special_filter = "恢复类后勤"
                 else:
                     self.detail_filter(功能类后勤=True)
+                    if last_special_filter != "功能类后勤":
+                        right_swipe = 0
+                    last_special_filter = "功能类后勤"
                 self.switch_arrange_order(3, "true")
             changed, ret = self.scan_agent(agent)
             if changed:
