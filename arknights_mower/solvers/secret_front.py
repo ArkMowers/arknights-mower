@@ -24,6 +24,14 @@ def exp(card):
     return [i * p for i in data]
 
 
+def va(a, b):
+    return [a[0] + b[0], a[1] + b[1]]
+
+
+def sa(scope, vector):
+    return [va(scope[0], vector), va(scope[1], vector)]
+
+
 class SecretFront(BaseSolver):
     target = {
         "1A": [20, 20, 20],
@@ -113,39 +121,36 @@ class SecretFront(BaseSolver):
 
         return value
 
-    def card(self, total, idx, stage=False):
-        def va(a, b):
-            return [a[0] + b[0], a[1] + b[1]]
-
-        def sa(scope, vector):
-            return [va(scope[0], vector), va(scope[1], vector)]
-
+    def card_pos(self, total, idx):
         if total == 3:
-            pos = [(301, 466), (830, 466), (1360, 466)][idx]
+            return [(301, 466), (830, 466), (1360, 466)][idx]
         elif total == 2:
-            pos = [(565, 466), (1095, 466)][idx]
+            return [(565, 466), (1095, 466)][idx]
         else:
-            pos = (830, 466)
+            return (830, 466)
 
-        if stage:
-            scope = sa(((10, 380), (140, 430)), pos)
-            img = cropimg(self.recog.gray, scope)
-            img = cv2.copyMakeBorder(
-                img, 10, 10, 10, 10, cv2.BORDER_CONSTANT, None, (0,)
-            )
-            score = []
-            for i in self.target:
-                result = cv2.matchTemplate(img, templates[i], cv2.TM_SQDIFF_NORMED)
-                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-                score.append(min_val)
-            name = list(self.target)[score.index(min(score))]
+    def stage_card(self, total, idx):
+        pos = self.card_pos(total, idx)
 
-            x, y = va(pos, (350, 460))
-            hsv = cv2.cvtColor(self.recog.img, cv2.COLOR_RGB2HSV)
-            hue = hsv[y][x][0]
+        scope = sa(((10, 380), (140, 430)), pos)
+        img = cropimg(self.recog.gray, scope)
+        img = cv2.copyMakeBorder(img, 10, 10, 10, 10, cv2.BORDER_CONSTANT, None, (0,))
+        score = []
+        for i in self.target:
+            result = cv2.matchTemplate(img, templates[i], cv2.TM_SQDIFF_NORMED)
+            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+            score.append(min_val)
+        name = list(self.target)[score.index(min(score))]
 
-            logger.debug(f"{name=} {hue=}")
-            return name, hue > 18
+        x, y = va(pos, (350, 460))
+        hsv = cv2.cvtColor(self.recog.img, cv2.COLOR_RGB2HSV)
+        hue = hsv[y][x][0]
+
+        logger.debug(f"{name=} {hue=}")
+        return name, hue > 18
+
+    def card(self, total, idx):
+        pos = self.card_pos(total, idx)
 
         materiel = sa(((84, 70), (180, 102)), pos)
         intelligence = sa(((249, 70), (343, 102)), pos)
@@ -184,11 +189,21 @@ class SecretFront(BaseSolver):
         return page_number
 
     def card_total(self):
-        circle_3 = ((710, 800), (830, 920))
-        circle_2 = ((980, 800), (1090, 920))
-        if self.template_match("sf/circle", circle_3, cv2.TM_SQDIFF_NORMED)[0] < 0.25:
+        p3 = self.card_pos(3, 0)
+        p2 = self.card_pos(2, 0)
+        up_scope = ((0, 0), (473, 120))
+        down_scope = ((0, 432), (150, 474))
+        s3u = sa(up_scope, p3)
+        s3d = sa(down_scope, p3)
+        s2u = sa(up_scope, p2)
+        s2d = sa(down_scope, p2)
+        if (pos := self.find("sf/card", scope=s3u)) and pos[0][0] < 350:
             total = 3
-        elif self.template_match("sf/circle", circle_2, cv2.TM_SQDIFF_NORMED)[0] < 0.25:
+        elif self.find("sf/available", scope=s3d):
+            total = 3
+        elif (pos := self.find("sf/card", scope=s2u)) and pos[0][0] < 610:
+            total = 2
+        elif self.find("sf/available", scope=s2d):
             total = 2
         else:
             total = 1
@@ -300,7 +315,7 @@ class SecretFront(BaseSolver):
             total = self.card_total()
 
             if self.event:
-                name_list = [self.card(total, i, True) for i in range(total)]
+                name_list = [self.stage_card(total, i) for i in range(total)]
                 for idx, data in enumerate(name_list):
                     name, available = data
                     if name in self.route:
@@ -371,6 +386,11 @@ class SecretFront(BaseSolver):
         elif scene in [Scene.SF_TEAM_PASS, Scene.SF_CLICK_ANYWHERE, Scene.SF_END]:
             self.tap((960, 980), interval=2)
 
+            if scene == Scene.SF_END and hasattr(self, "send_message_config"):
+                self.send_message(
+                    f'隐秘战线成功完成{config.conf["secret_front"]["target"]}'
+                )
+
         # 关闭说明
         elif scene == Scene.SF_INFO:
             self.tap_element("sf/info", x_rate=0.17, y_rate=0.46)
@@ -381,10 +401,10 @@ class SecretFront(BaseSolver):
                 self.route_matcher = None
                 self.event = False
 
-                self.tap((960, 590))
-                self.tap((1200, 590))
+                self.tap_element("sf/restart")
+                self.tap_element("sf/confirm")
             elif self.exit == "exit":
-                self.tap((1440, 590))
+                self.tap_element("sf/confirm")
             else:
                 self.tap((480, 590))
 

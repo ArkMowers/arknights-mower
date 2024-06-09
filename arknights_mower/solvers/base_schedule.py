@@ -3567,6 +3567,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     self.recog.update()
                     self.back_to_index()
                     sf_solver = SecretFront(self.device, self.recog)
+                    sf_solver.send_message_config = self.send_message_config
                     sf_solver.run(
                         self.tasks[0].time - datetime.now(),
                         self.maa_config["ra_timeout"],

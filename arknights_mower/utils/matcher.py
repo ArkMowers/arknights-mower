@@ -192,6 +192,9 @@ class Matcher(object):
 
             M[0][1] = 0
             M[1][0] = 0
+            avg = (M[0][0] + M[1][1]) / 2
+            M[0][0] = avg
+            M[1][1] = avg
 
             # calc the location of the query image
             # quad = np.float32([[[0, 0]], [[0, h-1]], [[w-1, h-1]], [[w-1, 0]]])

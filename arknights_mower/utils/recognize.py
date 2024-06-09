@@ -745,6 +745,8 @@ class Recognizer(object):
             self.scene = Scene.SF_CONTINUE
         elif self.find("sf/select"):
             self.scene = Scene.SF_SELECT
+        elif self.find("sf/properties"):
+            self.scene = Scene.SF_ACTIONS
         elif self.find("sf/continue_event"):
             self.scene = Scene.SF_EVENT
         elif self.find("sf/team_pass"):
@@ -771,10 +773,6 @@ class Recognizer(object):
             self.scene = Scene.SF_END
         elif self.find("sf/exit"):
             self.scene = Scene.SF_EXIT
-
-        # 模板匹配，优先级最低
-        elif self.template_match("sf/circle", None, cv2.TM_SQDIFF_NORMED)[0] < 0.25:
-            self.scene = Scene.SF_ACTIONS
 
         else:
             self.scene = Scene.UNKNOWN
