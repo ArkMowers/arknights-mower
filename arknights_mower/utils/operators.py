@@ -395,9 +395,10 @@ class Operators(object):
                         dorm.time = _agent.time_stamp + timedelta(seconds=sec_remaining)
                     else:
                         dorm.time = agent['time']
-                else:
-                    dorm.name = ''
-                    dorm.time = None
+                elif _name in agent_list:
+                    self.add(Operator(_name, ""))
+                    dorm.name = _name
+                    dorm.time = agent['time']
                 break
 
     def correct_dorm(self):
