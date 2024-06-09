@@ -439,6 +439,7 @@ def simulate():
                             sf_solver = SecretFront(
                                 base_scheduler.device, base_scheduler.recog
                             )
+                            sf_solver.send_message_config = base_scheduler.send_message_config
                             sf_solver.run(
                                 base_scheduler.tasks[0].time - datetime.now(),
                                 base_scheduler.maa_config["ra_timeout"],
