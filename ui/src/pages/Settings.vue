@@ -4,7 +4,7 @@ import { usePlanStore } from '@/stores/plan'
 import { storeToRefs } from 'pinia'
 import { computed, inject } from 'vue'
 
-import { match } from 'pinyin-pro'
+import { pinyin_match } from '@/utils/common'
 
 import { folder_dialog } from '@/utils/dialog'
 
@@ -300,7 +300,7 @@ async function select_maa_adb_path() {
                 v-model:value="free_blacklist"
                 :render-source-label="(o) => render_op_label(o.option)"
                 :render-target-label="(o) => render_op_label(o.option)"
-                :filter="(p, o) => (p ? match(o.label, p) : true)"
+                :filter="(p, o) => (p ? pinyin_match(o.label, p) : true)"
               />
               <n-select
                 v-else
@@ -310,7 +310,7 @@ async function select_maa_adb_path() {
                 :render-label="render_op_label"
                 :render-tag="render_op_tag"
                 v-model:value="free_blacklist"
-                :filter="(p, o) => match(o.label, p)"
+                :filter="(p, o) => pinyin_match(o.label, p)"
               />
             </n-form-item>
             <n-form-item>

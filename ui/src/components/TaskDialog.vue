@@ -125,7 +125,7 @@ const operators_with_free_current = computed(() => {
   ].concat(operators.value)
 })
 
-import { match } from 'pinyin-pro'
+import { pinyin_match } from '@/utils/common'
 import { render_op_label } from '@/utils/op_select'
 
 const skill_list = [
@@ -236,7 +236,7 @@ const swap_30 = [
                     }
                   "
                   :on-blur="deactivate"
-                  :filter="(p, o) => match(o.label, p)"
+                  :filter="(p, o) => pinyin_match(o.label, p)"
                   :render-label="render_op_label"
                 />
               </template>
@@ -270,7 +270,7 @@ const swap_30 = [
                     v-model:value="value.name"
                     filterable
                     :options="operators"
-                    :filter="(p, o) => match(o.label, p)"
+                    :filter="(p, o) => pinyin_match(o.label, p)"
                     :render-label="render_op_label"
                     style="width: 178px"
                   />
