@@ -138,6 +138,7 @@ import ReaderOutline from '@vicons/ionicons5/ReaderOutline'
 import Bag from '@vicons/ionicons5/Bag'
 import Wrench from '@vicons/fa/Wrench'
 import WikipediaW from '@vicons/fa/WikipediaW'
+import SkillLevelAdvanced from '@vicons/carbon/SkillLevelAdvanced'
 function renderIcon(icon) {
   return () => h(NIcon, null, { default: () => h(icon) })
 }
@@ -203,6 +204,11 @@ const menuOptions = [
     label: () => h(RouterLink, { to: { path: '/readme' } }, { default: () => '其他资源' }),
     icon: renderIcon(Bag),
     key: 'readme'
+  },
+  {
+    label: () => h(RouterLink, { to: { path: '/BasementSkill' } }, { default: () => '基建技能' }),
+    icon: renderIcon(SkillLevelAdvanced),
+    key: 'BasementSkill'
   },
   {
     label: () =>

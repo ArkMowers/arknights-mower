@@ -1,7 +1,7 @@
 import json
 import shutil
 import os
-
+import re
 import cv2
 import numpy as np
 import pickle
@@ -48,65 +48,96 @@ class Arknights数据处理器:
         buff描述 = self.基建表["buffs"]
         buff_table = {}
         for buff名称, 相关buff in buff描述.items():
-            buff_table[buff名称] = {相关buff["buffName"]: [相关buff["description"],相关buff["roomType"],相关buff["buffCategory"],相关buff["skillIcon"]]}
-        干员技能列表 = {}
-        for 角色名, 相关buff in self.基建表["chars"].items():
-            buffId = {}
+            buff_table[buff名称] = [
+                相关buff["buffName"],
+                相关buff["description"],
+                相关buff["roomType"],
+                相关buff["buffCategory"],
+                相关buff["skillIcon"],
+                相关buff["buffColor"],
+                相关buff["textColor"],
+            ]
+
+        干员技能列表 = []
+
+        key = 0
+        for 角色id, 相关buff in self.基建表["chars"].items():
+            干员技能字典 = {
+                "key": 0,
+                "name": "",
+                "phase_level": "",
+                "skillname": "",
+                "des": "",
+                "roomType": "",
+                "buffCategory": "",
+                "skillIcon": "",
+                "buffColor": "",
+                "textColor": "",
+            }
+
+            干员技能字典["name"] = self.干员表[角色id]["name"]
             for item in 相关buff["buffChar"]:
                 if item["buffData"] != []:
-                    buffId[
-                        精英化翻译(
-                            item["buffData"][0]["cond"]["phase"],
-                            item["buffData"][0]["cond"]["level"],
+                    for item2 in item["buffData"]:
+                        干员技能字典["key"] = key
+                        key += 1
+                        干员技能字典["phase_level"] = (
+                            f"精{item2["cond"]["phase"]} {item2["cond"]["level"]}级"
                         )
-                    ] = [item["buffData"][0]["buffId"]]
-            a=merge_values(buffId,buff_table)
+                        干员技能字典["skillname"] = buff_table[item2["buffId"]][0]
+                        text=buff_table[item2["buffId"]][1]
+                        for pattern, replacement in replacement_dict.items():
+                            text = re.sub(pattern, replacement, text)
+                        干员技能字典["des"] = text
+                        干员技能字典["roomType"] = roomType[
+                            buff_table[item2["buffId"]][2]
+                        ]
+                        干员技能字典["buffCategory"] = buff_table[item2["buffId"]][3]
+                        干员技能字典["skillIcon"] = buff_table[item2["buffId"]][4]
+                        干员技能字典["buffColor"] = buff_table[item2["buffId"]][5]
+                        干员技能字典["textColor"] = buff_table[item2["buffId"]][6]
+                        干员技能列表.append(干员技能字典.copy())
 
-                    
-            # new_dict = {}
-            # prev_value = None
-            # for key, value in buffId.items():
-            #     if prev_value is not None:
-            #         value.update(prev_value)
-            #     new_dict[key] = value
-            #     prev_value = value
-            # prev_value = None
-            # print(new_dict)
-            干员技能列表[self.干员表[角色名]["name"]] = a
-        
+        # print(干员技能列表)
         with open(r".\ui\src\pages\skill.json", "w", encoding="utf-8") as f:
-            json.dump(dict(reversed(干员技能列表.items())), f, ensure_ascii=False, indent=4)
+            json.dump(干员技能列表, f, ensure_ascii=False, indent=4)
 
 
-def 精英化翻译(精英化, 等级):
-    return f"精{精英化} {等级}级"
+roomType = {
+    "POWER": "发电站",
+    "DORMITORY": "宿舍",
+    "MANUFACTURE": "制造站",
+    "MEETING": "会客室",
+    "WORKSHOP": "加工站",
+    "TRADING": "贸易站",
+    "HIRE": "人力办公室",
+    "TRAINING": "训练室",
+    "CONTROL": "中枢",
+}
 
-def merge_values(dictionary,translations):
-    for key in dictionary:
-        # 检查是否存在前一个键
-        if key != list(dictionary.keys())[0]:
-            previous_key = list(dictionary.keys())[list(dictionary.keys()).index(key) - 1]
-            previous_value = dictionary[previous_key]
-            current_value = dictionary[key]
-            # 将当前键的值与前一个键的值相加
-            dictionary[key] = previous_value + current_value
-    for key, value in dictionary.items():
-        if isinstance(value, list):
-            for i in range(len(value)):
-                if value[i] in translations:
-                    dictionary[key][i] = translations[value[i]]
-        elif isinstance(value, dict):
-            translate_values(value, translations)
-    return dictionary
-
-def translate_values(dictionary, translations):
-    for key, value in dictionary.items():
-        if isinstance(value, list):
-            for i in range(len(value)):
-                if value[i] in translations:
-                    dictionary[key][i] = translations[value[i]]
-        elif isinstance(value, dict):
-            translate_values(value, translations)
-    return dictionary
+replacement_dict = {
+    r"<@cc.vup>(.*?)<\/>": r"<span style='color:#0098DC'>\1</span>",
+    r"<@cc.vdown>(.*?)<\/>": r"<span style='color:#FF6237'>\1</span>",
+    r"<@cc.rem>(.*?)<\/>": r"<span style='color:#F49800'>\1</span>",
+    r"<@cc.kw>(.*?)<\/>": r"<span style='color:#00B0FF'>\1</span>"
+}
 数据处理器 = Arknights数据处理器()
 数据处理器.获得干员名与基建描述()
+
+
+
+
+# 定义要匹配的字符串
+text = "这是一个示例字符串 <@cc.vup>{0}</>，<@cc.vdown>{1}</>，<@cc.rem>{2}</>，<@cc.kw>{3}</>，其中包含了一些其他的文本"
+
+# 定义替换规则字典
+
+
+# 遍历替换规则字典，逐个替换字符串
+for pattern, replacement in replacement_dict.items():
+    text = re.sub(pattern, replacement, text)
+
+# 输出替换后的字符串
+print(text)
+
+
