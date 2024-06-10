@@ -109,7 +109,7 @@ function update_type(type) {
   build_data(op_data.value.operator, type)
 }
 
-import { match } from 'pinyin-pro'
+import { pinyin_match } from '@/utils/common'
 import { render_op_label } from '@/utils/op_select'
 
 const custom_tips = ['True', 'False', 'None']
@@ -135,7 +135,7 @@ const custom_tips = ['True', 'False', 'None']
       filterable
       :options="operators"
       :on-update:value="update_op"
-      :filter="(p, o) => match(o.label, p)"
+      :filter="(p, o) => pinyin_match(o.label, p)"
       :render-label="render_op_label"
       style="min-width: 220px"
     />

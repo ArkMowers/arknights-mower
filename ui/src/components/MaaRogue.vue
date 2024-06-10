@@ -13,7 +13,7 @@ const { maa_rg_theme, rogue } = storeToRefs(config_store)
 const plan_store = usePlanStore()
 const { operators } = storeToRefs(plan_store)
 
-import { match } from 'pinyin-pro'
+import { pinyin_match } from '@/utils/common'
 import { render_op_label } from '@/utils/op_select'
 
 const rogue_themes = [
@@ -97,7 +97,7 @@ const roles = [
         filterable
         :options="operators"
         v-model:value="rogue.core_char"
-        :filter="(p, o) => match(o.label, p)"
+        :filter="(p, o) => pinyin_match(o.label, p)"
         :render-label="render_op_label"
       />
     </n-form-item>

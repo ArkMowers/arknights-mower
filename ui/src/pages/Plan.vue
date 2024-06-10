@@ -187,7 +187,7 @@ import DocumentImport from '@vicons/carbon/DocumentImport'
 import DocumentExport from '@vicons/carbon/DocumentExport'
 
 import { render_op_label, render_op_tag } from '@/utils/op_select'
-import { match } from 'pinyin-pro'
+import { pinyin_match } from '@/utils/common'
 
 async function import_plan() {
   const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/import`)
@@ -303,7 +303,7 @@ async function import_plan() {
         filterable
         :options="operators"
         v-model:value="current_conf.rest_in_full"
-        :filter="(p, o) => match(o.label, p)"
+        :filter="(p, o) => pinyin_match(o.label, p)"
         :render-label="render_op_label"
         :render-tag="render_op_tag"
       />
@@ -317,7 +317,7 @@ async function import_plan() {
         filterable
         :options="operators"
         v-model:value="current_conf.exhaust_require"
-        :filter="(p, o) => match(o.label, p)"
+        :filter="(p, o) => pinyin_match(o.label, p)"
         :render-label="render_op_label"
         :render-tag="render_op_tag"
       />
@@ -331,7 +331,7 @@ async function import_plan() {
         filterable
         :options="operators"
         v-model:value="current_conf.workaholic"
-        :filter="(p, o) => match(o.label, p)"
+        :filter="(p, o) => pinyin_match(o.label, p)"
         :render-label="render_op_label"
         :render-tag="render_op_tag"
       />
@@ -343,7 +343,7 @@ async function import_plan() {
         filterable
         :options="operators"
         v-model:value="current_conf.resting_priority"
-        :filter="(p, o) => match(o.label, p)"
+        :filter="(p, o) => pinyin_match(o.label, p)"
         :render-label="render_op_label"
         :render-tag="render_op_tag"
       />
@@ -364,7 +364,7 @@ async function import_plan() {
         filterable
         :options="operators"
         v-model:value="current_conf.refresh_trading"
-        :filter="(p, o) => match(o.label, p)"
+        :filter="(p, o) => pinyin_match(o.label, p)"
         :render-label="render_op_label"
         :render-tag="render_op_tag"
       />
@@ -379,7 +379,7 @@ async function import_plan() {
         filterable
         :options="operators"
         v-model:value="current_conf.free_blacklist"
-        :filter="(p, o) => match(o.label, p)"
+        :filter="(p, o) => pinyin_match(o.label, p)"
         :render-label="render_op_label"
         :render-tag="render_op_tag"
       />

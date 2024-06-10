@@ -173,7 +173,7 @@ defineExpose({
 })
 
 import { render_op_label, render_op_tag } from '@/utils/op_select'
-import { match } from 'pinyin-pro'
+import { pinyin_match } from '@/utils/common'
 
 function fill_with_free() {
   for (let i = 0; i < operator_limit.value; ++i) {
@@ -543,7 +543,7 @@ function set_facility(e) {
               :options="operator_options(facility)"
               class="operator-select"
               v-model:value="plan[facility].plans[i - 1].agent"
-              :filter="(p, o) => match(o.label, p)"
+              :filter="(p, o) => pinyin_match(o.label, p)"
               :render-label="render_op_label"
             />
           </td>
@@ -566,7 +566,7 @@ function set_facility(e) {
               :options="operators_with_none"
               class="replacement-select"
               v-model:value="plan[facility].plans[i - 1].replacement"
-              :filter="(p, o) => match(o.label, p)"
+              :filter="(p, o) => pinyin_match(o.label, p)"
               :render-label="render_op_label"
               :render-tag="render_op_tag"
             />
