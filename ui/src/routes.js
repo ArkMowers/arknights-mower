@@ -39,6 +39,12 @@ export const routes = [
         name: 'doc'
       },
       {
+        path: 'BasementSkill',
+        component: () => import('@/pages/BasementSkill.vue'),
+        meta: { title: '基建技能' },
+        name: 'BasementSkill'
+      },
+      {
         path: 'record',
         children: [
           {
