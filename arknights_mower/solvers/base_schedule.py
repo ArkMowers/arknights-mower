@@ -2807,11 +2807,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     self.op_data.add(Operator(_name, ""))
                 update_time = False
                 agent = self.op_data.operators[_name]
-                if self.op_data.operators[_name].need_to_refresh(r=room) or (
-                    agent.is_resting()
-                    and not room.startswith("dorm")
-                    and agent.is_high()
-                ):
+                if self.op_data.operators[_name].need_to_refresh(r=room):
                     _mood = self.read_accurate_mood(cropimg(self.recog.gray, mood_p[i]))
                     update_time = True
                 else:
@@ -2829,7 +2825,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 _mood = -1
             data["agent"] = _name
             data["mood"] = _mood
-            if i in read_time_index:
+            if i in read_time_index and _name != "":
                 if _mood == 24 or room in ["central", "meeting", "factory"]:
                     data["time"] = datetime.now()
                 else:
