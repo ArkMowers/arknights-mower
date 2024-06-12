@@ -10,7 +10,6 @@ from ctypes import CFUNCTYPE, c_char_p, c_int, c_void_p
 from datetime import datetime, timedelta
 
 import cv2
-import requests
 
 # 借用__main__.py里的时间计算器
 from arknights_mower.__main__ import format_time
@@ -22,6 +21,8 @@ from arknights_mower.solvers import (
     ReportSolver,
 )
 from arknights_mower.solvers.base_mixin import BaseMixin
+from arknights_mower.solvers.mission import MissionSolver
+from arknights_mower.solvers.operation import OperationSolver
 from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
 from arknights_mower.solvers.secret_front import SecretFront
 from arknights_mower.utils import config, hot_update, rapidocr
@@ -1275,7 +1276,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                                 time=swap_time + timedelta(seconds=1),
                                 task_plan={},
                                 task_type=TaskTypes.REFRESH_TIME,
-                                meta_data='train'
+                                meta_data="train",
                             )
                         )
                         # 默认 5小时
@@ -3286,20 +3287,6 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             logger.error(f"Maa Python模块导入失败：{str(e)}")
             raise Exception("Maa Python模块导入失败")
 
-        try:
-            logger.debug("开始更新Maa活动关卡导航……")
-            ota_tasks_url = (
-                "https://ota.maa.plus/MaaAssistantArknights/api/resource/tasks.json"
-            )
-            ota_tasks_path = path / "cache" / "resource" / "tasks.json"
-            ota_tasks_path.parent.mkdir(parents=True, exist_ok=True)
-            r = requests.get(ota_tasks_url)
-            with open(ota_tasks_path, "w", encoding="utf-8") as f:
-                f.write(r.text)
-            logger.info("Maa活动关卡导航更新成功")
-        except Exception as e:
-            logger.error(f"Maa活动关卡导航更新失败：{str(e)}")
-
         Asst.load(path=path, incremental_path=path / "cache")
 
         self.MAA = Asst(callback=self.log_maa)
@@ -3332,46 +3319,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 logger.info(f"导航至{name}")
                 hot_update.navigation.NavigationSolver(self.device).run(name)
                 self.stages.append(name)
-                self.MAA.append_task(
-                    "Fight",
-                    {
-                        "stage": "",
-                        "medicine": _plan["medicine"],
-                        "stone": 999 if self.maa_config["eat_stone"] else 0,
-                        "times": 999,
-                        "report_to_penguin": True,
-                        "client_type": "",
-                        "penguin_id": "",
-                        "DrGrandet": False,
-                        "server": "CN",
-                        "expiring_medicine": 999
-                        if self.maa_config["expiring_medicine"]
-                        else 0,
-                    },
-                )
                 return
-            for stage in _plan["stage"]:
-                logger.info(f"添加关卡:{stage}")
-                self.MAA.append_task(
-                    "Fight",
-                    {
-                        # 空值表示上一次
-                        # 'stage': '',
-                        "stage": stage,
-                        "medicine": _plan["medicine"],
-                        "stone": 999 if self.maa_config["eat_stone"] else 0,
-                        "times": 999,
-                        "report_to_penguin": True,
-                        "client_type": "",
-                        "penguin_id": "",
-                        "DrGrandet": False,
-                        "server": "CN",
-                        "expiring_medicine": 999
-                        if self.maa_config["expiring_medicine"]
-                        else 0,
-                    },
-                )
-                self.stages.append(stage)
         elif type == "Mall":
             self.MAA.append_task(
                 "Mall",
@@ -3414,7 +3362,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 # 任务及参数请参考 docs/集成文档.md
                 self.initialize_maa()
                 if tasks == "All":
-                    tasks = ["Fight", "Mall", "Award"]
+                    tasks = ["Mall"]
                 for maa_task in tasks:
                     self.append_maa_task(maa_task)
                 # asst.append_task('Copilot', {
@@ -3472,6 +3420,15 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
 
                 else:
                     self.send_message("Maa单次任务停止")
+
+                mission_solver = MissionSolver(self.device)
+                mission_solver.run()
+
+                self.append_maa_task("Fight")
+                ope_solver = OperationSolver(self.device)
+                ope_solver.run(self.tasks[0].time)
+                self.send_message("刷理智结束")
+
             now_time = datetime.now().time()
             try:
                 min_time = datetime.strptime(

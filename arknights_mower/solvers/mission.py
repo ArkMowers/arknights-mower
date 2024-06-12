@@ -21,7 +21,7 @@ class MissionSolver(BaseSolver):
 
     def transition(self) -> bool:
         if (scene := self.scene()) == Scene.INDEX:
-            self.tap_element('index_mission')
+            self.tap_index_element("mission")
         elif scene == Scene.MISSION_TRAINEE:
             if self.checked & 1 == 0:
                 self.tap_element('mission_daily')

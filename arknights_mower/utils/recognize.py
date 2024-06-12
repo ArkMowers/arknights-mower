@@ -170,7 +170,7 @@ class Recognizer(object):
             self.scene = Scene.OPERATOR_ELIMINATE_FINISH
         elif self.find("ope_finish") is not None:
             self.scene = Scene.OPERATOR_FINISH
-        elif self.find("ope_recover_potion_on") is not None:
+        elif self.find("ope_recover_potion_on", scope=((1040, 125), (1300, 185))):
             self.scene = Scene.OPERATOR_RECOVER_POTION
         elif (
             self.find("ope_recover_originite_on", scope=((1530, 120), (1850, 190)))
@@ -336,7 +336,9 @@ class Recognizer(object):
             ope_agency_going = submit("ope_agency_going", ((470, 915), (755, 1045)))
             ope_elimi_finished = submit("ope_elimi_finished")
             ope_finish = submit("ope_finish")
-            ope_recover_potion_on = submit("ope_recover_potion_on")
+            ope_recover_potion_on = submit(
+                "ope_recover_potion_on", ((1040, 125), (1300, 185))
+            )
             ope_recover_originite_on = submit(
                 "ope_recover_originite_on", ((1530, 120), (1850, 190))
             )
