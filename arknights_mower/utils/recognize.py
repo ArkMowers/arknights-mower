@@ -812,18 +812,16 @@ class Recognizer(object):
             self.scene = Scene.TERMINAL_REGULAR
         elif self.find("sss/main"):
             self.scene = Scene.SSS_MAIN
-        elif self.find("sss/start_button"):
+        elif self.find("sss/start_button", scope=((1545, 921), (1920, 1080))):
             self.scene = Scene.SSS_START
-        elif self.find("sss/ec_button"):
+        elif self.find("sss/ec_button", scope=((1545, 921), (1920, 1080))):
             self.scene = Scene.SSS_EC
-        elif self.find("sss/device_button"):
-            self.scene = Scene.SSS_DEVICE
-        elif self.find("sss/squad_button"):
-            self.scene = Scene.SSS_SQUAD
-        elif self.find("sss/deploy_button"):
+        elif self.find("sss/deploy_button", scope=((1412, 0), (1876, 140))):
             self.scene = Scene.SSS_DEPLOY
-        elif self.find("sss/redeploy_button"):
-            self.scene = Scene.SSS_REDEPLOY
+        elif self.find("sss/squad_button", scope=((1412, 0), (1876, 140))):
+            self.scene = Scene.SSS_SQUAD
+        elif self.find("sss/device_button", scope=((1545, 921), (1920, 1080)), score=0.5):
+            self.scene = Scene.SSS_DEVICE
         elif self.find("sss/loading"):
             self.scene = Scene.SSS_LOADING
         elif self.find("sss/close_button"):
