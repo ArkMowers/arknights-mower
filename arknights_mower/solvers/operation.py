@@ -15,7 +15,9 @@ class OperationSolver(BaseSolver):
     def run(self, stop_time: datetime):
         logger.info("Start: 代理作战")
         self.stop_time = stop_time - timedelta(minutes=5)
+        self.sanity_drain = False
         super().run()
+        return self.sanity_drain
 
     def number(self, scope: tp.Scope, height: Optional[int] = None):
         img = cropimg(self.recog.gray, scope)
@@ -52,10 +54,12 @@ class OperationSolver(BaseSolver):
         if (scene := self.scene()) == Scene.OPERATOR_BEFORE:
             if self.recog.gray[907][1600] < 127:
                 self.tap((1776, 908))
+                return
             repeat = self.number(((1520, 890), (1545, 930)), 28)
             if repeat > 1:
                 self.tap((1500, 910))
                 self.tap((1500, 801))
+                return
             self.tap_element("ope_start", interval=2)
         elif scene == Scene.OPERATOR_SELECT:
             self.tap((1655, 781))
@@ -64,14 +68,11 @@ class OperationSolver(BaseSolver):
         elif scene == Scene.OPERATOR_ONGOING:
             self.sleep(10)
         elif scene == Scene.OPERATOR_RECOVER_POTION:
+            self.sanity_drain = True
             return True
         elif scene == Scene.OPERATOR_RECOVER_ORIGINITE:
+            self.sanity_drain = True
             return True
 
-        # 刷上次关卡
-        elif scene == Scene.INDEX:
-            self.tap_index_element("terminal")
-        elif scene == Scene.TERMINAL_MAIN:
-            self.tap_element("terminal_pre")
         else:
             self.sleep()
