@@ -396,7 +396,6 @@ class Operators(object):
                     else:
                         dorm.time = agent['time']
                 elif _name in agent_list:
-                    self.add(Operator(_name, ""))
                     dorm.name = _name
                     dorm.time = agent['time']
                 break
