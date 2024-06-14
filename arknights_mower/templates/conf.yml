@@ -3,6 +3,7 @@ drone_count_limit: 92
 drone_room: ''
 drone_interval: 4
 enable_party: 1
+leifeng_mode: 1
 exhaust_require: ''
 workaholic: ''
 simulator:
