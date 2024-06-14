@@ -624,7 +624,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             ):
                 # 释放满心情其他干员
                 add_release_dorm(self.tasks, self.op_data, _name)
-            else:
+            elif self.op_data.operators[_name].is_high():
                 if dorm.time is not None and dorm.time < _time:
                     logger.debug(f"更新任务时间{dorm.time}")
                     _time = dorm.time
