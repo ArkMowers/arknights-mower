@@ -125,6 +125,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         self.run_order_delay = 10
         self.clue_count_limit = 9
         self.enable_party = True
+        self.leifeng_mode = False
         self.digit_reader = DigitReader()
         self.error = False
         self.clue_count = 0
@@ -2143,7 +2144,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         clue_status[cl] = None
 
             elif scene == Scene.CLUE_GIVE_AWAY:
-                if c := clue_cls("give_away"):
+                give_away_true = self.leifeng_mode or (not self.leifeng_mode and self.clue_count > self.clue_count_limit)
+                if c := clue_cls("give_away") and give_away_true:
                     if not friend_clue:
                         if self.find(
                             "clue/icon_notification", scope=((1400, 0), (1920, 400))
@@ -2179,6 +2181,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     friend = friend or 0
                     logger.info(f"给{friend_clue[friend]['name']}送一张线索{c}")
                     self.tap(clue_scope["give_away"])
+                    self.clue_count -= 1
                     self.tap((1790, 200 + friend * 222))
                 else:
                     ctm.complete("give_away")
@@ -2751,6 +2754,13 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
     def get_agent_from_room(self, room, read_time_index=None):
         if read_time_index is None:
             read_time_index = []
+        if room == 'meeting' and not self.leifeng_mode:
+            self.sleep(0.5)
+            self.recog.update()
+            clue_res = self.read_screen(self.recog.img, limit=10, cord=((645, 977), (755, 1018)))
+            if clue_res != 11:
+                self.clue_count = clue_res
+                logger.info(f'当前拥有线索数量为{self.clue_count}')
         self.turn_on_room_detail(room)
         # 如果是宿舍则全读取
         if room.startswith("dorm"):

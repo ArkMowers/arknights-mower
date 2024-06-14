@@ -162,6 +162,8 @@ def initialize(tasks, scheduler=None):
     base_scheduler.drone_count_limit = conf["drone_count_limit"]
     base_scheduler.tasks = tasks
     base_scheduler.enable_party = conf["enable_party"] == 1  # 是否使用线索
+    base_scheduler.leifeng_mode = conf["leifeng_mode"] == 1  # 是否有额外线索就送出
+    logger.info(base_scheduler.leifeng_mode,"雷锋模式开关")
     # 干员宿舍回复阈值
     # 高效组心情低于 UpperLimit  * 阈值 (向下取整)的时候才会会安排休息
     base_scheduler.last_room = ""

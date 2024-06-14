@@ -8,6 +8,7 @@ export const useConfigStore = defineStore('config', () => {
   const drone_room = ref('')
   const drone_interval = ref(4)
   const enable_party = ref(true)
+  const leifeng_mode = ref(true)
   const free_blacklist = ref([])
   const maa_adb_path = ref('')
   const maa_enable = ref(false)
@@ -97,6 +98,7 @@ export const useConfigStore = defineStore('config', () => {
     drone_room.value = response.data.drone_room
     drone_interval.value = response.data.drone_interval
     enable_party.value = response.data.enable_party != 0
+    leifeng_mode.value = response.data.leifeng_mode != 0
     free_blacklist.value =
       response.data.free_blacklist == '' ? [] : response.data.free_blacklist.split(',')
     maa_adb_path.value = response.data.maa_adb_path
@@ -180,6 +182,7 @@ export const useConfigStore = defineStore('config', () => {
       drone_room: drone_room.value,
       drone_interval: drone_interval.value,
       enable_party: enable_party.value ? 1 : 0,
+      leifeng_mode: leifeng_mode.value ? 1 : 0,
       free_blacklist: free_blacklist.value.join(','),
       maa_adb_path: maa_adb_path.value,
       maa_enable: maa_enable.value ? 1 : 0,
@@ -273,6 +276,7 @@ export const useConfigStore = defineStore('config', () => {
     drone_room,
     drone_interval,
     enable_party,
+    leifeng_mode,
     free_blacklist,
     maa_adb_path,
     maa_enable,
