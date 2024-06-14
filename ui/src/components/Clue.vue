@@ -51,11 +51,13 @@ function render_label(option) {
   <n-card title="线索收集与信用">
     <n-space vertical>
       <n-checkbox v-model:checked="enable_party">线索收集</n-checkbox>
-      <n-checkbox v-model:checked="leifeng_mode">雷锋模式<help-text>关闭则超过9个线索才送好友</help-text></n-checkbox>
-      <n-checkbox v-model:checked="maa_credit_fight">信用作战（OF-1）</n-checkbox>
+      <n-checkbox v-model:checked="leifeng_mode">
+        雷锋模式 <help-text>关闭则超过9个线索才送好友</help-text>
+      </n-checkbox>
+      <n-checkbox v-model:checked="maa_credit_fight" disabled>信用作战（OF-1）</n-checkbox>
     </n-space>
     <n-divider />
-    <n-checkbox v-model:checked="maa_enable" class="maa-shop">Maa信用商店购物</n-checkbox>
+    <n-checkbox v-model:checked="maa_enable" class="maa-shop">信用商店购物</n-checkbox>
     <help-text>
       <span>性价比参考：</span>
       <n-button

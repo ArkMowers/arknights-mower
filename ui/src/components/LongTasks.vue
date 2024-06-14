@@ -22,7 +22,6 @@ const maa_long_task_options = [
       <n-checkbox v-model:checked="maa_rg_enable">
         <div class="card-title">大型任务</div>
       </n-checkbox>
-      <n-select v-model:value="maa_long_task_type" :options="maa_long_task_options" />
       <help-text>
         <div>开始与结束时间设置为相同值时全天开启。</div>
         <div>若结束时间早于开始时间，则表示开启至次日。例如：</div>
@@ -31,6 +30,7 @@ const maa_long_task_options = [
           <li>10:00开始、14:00结束：表示从10:00至当日14:00执行大型任务。</li>
         </ul>
       </help-text>
+      <n-select v-model:value="maa_long_task_type" :options="maa_long_task_options" />
     </template>
     <n-form
       :label-placement="mobile ? 'top' : 'left'"

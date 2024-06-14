@@ -418,7 +418,6 @@ async function select_maa_adb_path() {
       </div>
       <div><Depotswitch /></div>
       <div><DailyMission /></div>
-      <div><maa-basic /></div>
       <div><SKLand /></div>
       <div><email /></div>
       <div><ServerJang /></div>
@@ -426,10 +425,10 @@ async function select_maa_adb_path() {
 
     <div class="grid-right">
       <div><clue /></div>
-
       <div><Recruit /></div>
       <div><maa-weekly /></div>
       <div><maa-weekly-new /></div>
+      <div><maa-basic /></div>
       <div><long-tasks /></div>
     </div>
   </div>

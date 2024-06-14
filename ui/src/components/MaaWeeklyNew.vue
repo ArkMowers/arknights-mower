@@ -343,7 +343,7 @@ function clear() {
 
 <template>
   <n-card>
-    <n-checkbox v-model:checked="maa_enable" class="card-title"> Maa周计划-新 </n-checkbox>
+    <n-checkbox v-model:checked="maa_enable" class="card-title">刷理智周计划·新</n-checkbox>
 
     有问题先看问号，2023年12月6日更新了 请点击下方按钮
     <help-text>
