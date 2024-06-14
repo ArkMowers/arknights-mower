@@ -91,7 +91,7 @@ class CreditShop(BaseSolver):
         return value
 
     def credit_remain(self):
-        credits = self.number(((1722, 39), (1800, 75)), "riic_base")
+        credits = self.number(((1700, 39), (1800, 75)), "riic_base", thres=180)
         logger.debug(f"{credits=}")
         return credits
 
@@ -140,7 +140,7 @@ class CreditShop(BaseSolver):
                     "price": price,
                 }
             )
-            logger.debug(self.products)
+        logger.debug(self.products)
 
     def transition(self):
         if (scene := self.scene()) == Scene.INDEX:
@@ -178,6 +178,7 @@ class CreditShop(BaseSolver):
         elif scene == Scene.SHOP_CREDIT_CONFIRM:
             if self.find("shop_credit_not_enough"):
                 self.back()
+                return True
             else:
                 self.tap_element("shop_cart")
         elif scene == Scene.SHOP_ASSIST:
