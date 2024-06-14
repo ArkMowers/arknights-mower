@@ -1,299 +1,188 @@
-from __future__ import annotations
-
-import os
+import lzma
+import pickle
 
 import cv2
-import numpy as np
 
-from ..data import shop_items
-from ..ocr import ocr_rectify, ocrhandle
-from ..utils import segment, rapidocr
-from ..utils.device import Device
-from ..utils.digit_reader import DigitReader
-from ..utils.image import scope2slice, loadimg
-from ..utils.log import logger
-from ..utils.path import get_path
-from ..utils.recognize import RecognizeError, Scene
-from ..utils.solver import BaseSolver, Recognizer
-from .. import __rootdir__
+from arknights_mower import __rootdir__
+from arknights_mower.utils import config
+from arknights_mower.utils import typealias as tp
+from arknights_mower.utils.image import cropimg, thres2
+from arknights_mower.utils.log import logger
+from arknights_mower.utils.scene import Scene
+from arknights_mower.utils.solver import BaseSolver
+
+with lzma.open(f"{__rootdir__}/models/riic_base_digits.pkl", "rb") as f:
+    base_templates = pickle.load(f)
+with lzma.open(f"{__rootdir__}/models/noto_sans.pkl", "rb") as f:
+    noto_templates = pickle.load(f)
+with lzma.open(f"{__rootdir__}/models/shop.pkl", "rb") as f:
+    shop_templates = pickle.load(f)
 
 
-class ShopSolver(BaseSolver):
-    """
-    自动使用信用点购买物资
-    """
+def va(a, b):
+    return [a[0] + b[0], a[1] + b[1]]
 
-    def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
-        super().__init__(device, recog)
-        self.item_list = {}
-        rapidocr.initialize_ocr()
-        self.sold_template = loadimg(f"{__rootdir__}/resources/sold_out.png")
-        self.credit_icon = loadimg(f"{__rootdir__}/resources/credit_icon.png")
-        self.spent_credit = loadimg(f"{__rootdir__}/resources/spent_credit.png")
 
-        self.item_credit_icon = loadimg(f"{__rootdir__}/resources/item_credit_icon.png")
-        self.sold_credit_icon = loadimg(f"{__rootdir__}/resources/sold_credit_icon.png")
+def sa(scope, vector):
+    return [va(scope[0], vector), va(scope[1], vector)]
 
-        self.digitReader = DigitReader()
-        self.discount = {}
-        self.discount_sold = {}
-        for item in os.listdir(f"{__rootdir__}//resources/shop_discount"):
-            self.discount[item.replace(".png", "")] = loadimg(f"{__rootdir__}/resources/shop_discount/{item}")
-        for item in os.listdir(f"{__rootdir__}//resources/shop_discount"):
-            self.discount_sold[item.replace(".png", "")] = loadimg(f"{__rootdir__}/resources/shop_discount_sold/{item}")
 
-        self.sold_price_number = {}
-        for item in os.listdir(f"{__rootdir__}//resources/sold_price_number"):
-            self.sold_price_number[item.replace(".png", "")] = loadimg(
-                f"{__rootdir__}/resources/sold_price_number/{item}")
+card_w, card_h = 352, 354
+top, left = 222, 25
+gap = 28
 
-        self.left_credit_template = {}
-        for item in os.listdir(f"{__rootdir__}//resources/recruit_ticket"):
-            self.left_credit_template[item.replace(".png", "")] = loadimg(
-                f"{__rootdir__}/resources/recruit_ticket/{item}")
+card_list = []
+for i in range(2):
+    for j in range(5):
+        card_list.append((left + j * (card_w + gap), top + i * (card_h + gap)))
 
-        self.shop_data = {}
 
-    def run(self, priority: list[str] = None) -> None:
-        """
-        :param priority: list[str], 使用信用点购买东西的优先级, 若无指定则默认购买第一件可购买的物品
-        """
-        self.priority = priority
-        self.buying = None
-        logger.info('Start: 商店')
-        logger.info('购买期望：%s' % priority if priority else '无，购买到信用点用完为止')
+class CreditShop(BaseSolver):
+    def run(self):
+        logger.info("Start: 信用商店购物")
         super().run()
 
-    def transition(self) -> bool:
+    def number(
+        self,
+        scope: tp.Scope,
+        font: str = "noto",
+        height: int | None = None,
+        thres: int | None = 127,
+    ):
+        """基于模板匹配的数字识别
+
+        Args:
+            scope: 识别区域
+            font: 数字字体
+            height: 高度
+        """
+        img = cropimg(self.recog.gray, scope)
+
+        if font == "riic_base":
+            templates = base_templates
+            default_height = 28
+        else:
+            templates = noto_templates
+            default_height = 29
+
+        if height and height != default_height:
+            scale = default_height / height
+            img = cv2.resize(img, None, None, scale, scale)
+        img = thres2(img, thres)
+        contours, _ = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        rect = [cv2.boundingRect(c) for c in contours]
+        rect.sort(key=lambda c: c[0])
+
+        value = 0
+
+        for x, y, w, h in rect:
+            digit = cropimg(img, ((x, y), (x + w, y + h)))
+            digit = cv2.copyMakeBorder(
+                digit, 10, 10, 10, 10, cv2.BORDER_CONSTANT, None, (0,)
+            )
+            score = []
+            for i in range(10):
+                im = templates[i]
+                result = cv2.matchTemplate(digit, im, cv2.TM_SQDIFF_NORMED)
+                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+                score.append(min_val)
+            value = value * 10 + score.index(min(score))
+
+        return value
+
+    def credit_remain(self):
+        credits = self.number(((1722, 39), (1800, 75)), "riic_base")
+        logger.debug(f"{credits=}")
+        return credits
+
+    def product_info(self):
+        self.products = []
+        for idx in range(10):
+            pos = card_list[idx]
+            x, y = va(pos, (30, 30))
+            if self.recog.gray[y][x] > 110:
+                self.products.append(None)
+                continue
+            touch_scope = (pos, va(pos, (card_w, card_h)))
+            x, y = va(pos, (6, 60))
+            discount = 0
+            if self.recog.gray[y][x] < 150:
+                discount_scope = sa(((27, 65), (66, 95)), pos)
+                discount = self.number(discount_scope, "riic_base")
+            price_scope = sa(((15, 300), (340, 333)), pos)
+            price = self.number(price_scope, thres=180)
+
+            score = 1
+            item_name = None
+            name_scope = sa(((60, 11), (320, 45)), pos)
+            target = cropimg(self.recog.gray, name_scope)
+            target = cv2.copyMakeBorder(
+                target, 10, 10, 30, 10, cv2.BORDER_CONSTANT, None, (0,)
+            )
+            target = thres2(target, 127)
+            for name, img in shop_templates.items():
+                result = cv2.matchTemplate(target, img, cv2.TM_SQDIFF_NORMED)
+                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+                if min_val < score:
+                    score = min_val
+                    item_name = name
+            if item_name == "技巧概要":
+                if self.number(sa(((252, 14), (270, 40)), pos)) == 1:
+                    item_name += "·卷1"
+                else:
+                    item_name += "·卷2"
+
+            self.products.append(
+                {
+                    "name": item_name,
+                    "touch": touch_scope,
+                    "discount": discount,
+                    "price": price,
+                }
+            )
+            logger.debug(self.products)
+
+    def transition(self):
         if (scene := self.scene()) == Scene.INDEX:
-            self.tap_element('index_shop')
+            self.tap_index_element("shop")
         elif scene == Scene.SHOP_OTHERS:
-            self.tap_element('shop_credit_2')
-        elif scene == Scene.SHOP_UNLOCK_SCHEDULE:
-            return self.get_spent_credits()
+            self.tap_element("shop_credit_2")
         elif scene == Scene.SHOP_CREDIT:
-            collect = self.find('shop_collect')
-            if collect is not None:
-                self.tap(collect)
-            else:
-                return self.shop_credit()
+            if pos := self.find("shop_collect"):
+                self.tap(pos)
+                return
+            remain = self.credit_remain()
+            self.product_info()
+            for product in self.products:
+                if (
+                    product
+                    and product["name"] in config.conf["maa_mall_buy"]
+                    and remain > product["price"]
+                ):
+                    self.tap(product["touch"])
+                    return
+            for product in self.products:
+                if (
+                    product
+                    and product["name"] not in config.conf["maa_mall_blacklist"]
+                    and remain > product["price"]
+                ):
+                    self.tap(product["touch"])
+                    return
+            if config.conf["maa_mall_ignore_blacklist_when_full"]:
+                for product in self.products:
+                    if product and remain > product["price"]:
+                        self.tap(product["touch"])
+                        return
+            return True
         elif scene == Scene.SHOP_CREDIT_CONFIRM:
-            if self.find('shop_credit_not_enough') is None:
-                self.tap_element('shop_cart')
-            elif len(self.priority) > 0:
-                # 移除优先级中买不起的物品
-                self.priority.remove(self.buying)
-                logger.info('信用点不足，放弃购买%s，看看别的...' % self.buying)
+            if self.find("shop_credit_not_enough"):
                 self.back()
             else:
-                return True
+                self.tap_element("shop_cart")
         elif scene == Scene.SHOP_ASSIST:
             self.back()
         elif scene == Scene.MATERIEL:
-            self.tap_element('materiel_ico')
-        elif scene == Scene.LOADING:
-            self.sleep(3)
-        elif scene == Scene.CONNECTING:
-            self.sleep(3)
-        elif self.get_navigation():
-            self.tap_element('nav_shop')
-        elif scene != Scene.UNKNOWN:
-            self.back_to_index()
+            self.tap_element("materiel_ico")
         else:
-            raise RecognizeError('Unknown scene')
-
-    def shop_credit(self) -> bool:
-        segments = segment.credit(self.recog.img)
-        self.shop_data["credit"] = self.get_credits()
-        for i in range(len(segments)):
-            scope = (
-                segments[i][0], (segments[i][1][0], segments[i][0][1] + (segments[i][1][1] - segments[i][0][1]) // 5))
-            ocr = ocrhandle.predict(self.recog.img[scope2slice(scope)])
-            # cv2.imshow("ocr",self.recog.img[scope2slice(scope)])
-            # cv2.waitKey()
-            if len(ocr) == 0:
-                raise RecognizeError
-            ocr = ocr[0]
-
-            if ocr[1] not in list(shop_items.keys()):
-                rapid_res = rapidocr.engine(self.recog.img[scope2slice(scope)], use_det=False, use_cls=False, use_rec=True)[0][0][0]
-                if rapid_res in list(shop_items.keys()):
-                    ocr[1] = rapid_res
-                else:
-                    ocr[1] = ocr_rectify(self.recog.img[scope2slice(scope)], ocr, shop_items, '物品名称')
-
-            shop_sold, discount = self.get_discount(
-                self.recog.img[segments[i][0][1]:segments[i][1][1], segments[i][0][0]:segments[i][1][0]])
-
-            item_name = ocr[1]
-            if item_name == '龙门币':
-                price = self.get_item_price(
-                    self.recog.img[segments[i][0][1]:segments[i][1][1], segments[i][0][0]:segments[i][1][0]], shop_sold)
-                price = round(price / (1 - discount * 0.01), 0)
-                if price == 200:
-                    item_name = "龙门币(大)"
-                elif price == 100:
-                    item_name = "龙门币(小)"
-            elif item_name == '家具零件':
-                price = self.get_item_price(
-                    self.recog.img[segments[i][0][1]:segments[i][1][1], segments[i][0][0]:segments[i][1][0]], shop_sold)
-                price = round(price / (1 - discount * 0.01), 0)
-                if price == 200:
-                    item_name = "家具零件(大)"
-                elif price == 160:
-                    item_name = "家具零件(小)"
-            self.item_list[i] = {
-                'index': i,
-                'name': item_name,
-                'discount': discount,
-                'shop_sold': shop_sold,
-                'position': segments[i],
-                'price': round(float(shop_items[item_name]) / (1 - discount * 0.01), 0)
-            }
-        self.shop_data["item"] = sorted(self.item_list.values(), key=lambda x: x['price'], reverse=True)
-        logger.info("购买顺序:{}".format([f"{item['index'] + 1}:{item['name']}" for item in self.shop_data["item"]]))
-        return True
-
-    def get_discount(self, item_img: np.ndarray):
-        if self.is_sold(item_img):
-            for key in self.discount:
-                res = cv2.matchTemplate(item_img,
-                                        self.discount_sold[key], cv2.TM_CCOEFF_NORMED)
-                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
-                if max_val > 0.85:
-                    return True, int(key)
-            return True, 0
-        else:
-            for key in self.discount:
-                res = cv2.matchTemplate(item_img,
-                                        self.discount[key], cv2.TM_CCOEFF_NORMED)
-
-                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
-
-                if max_val > 0.8:
-                    return False, int(key)
-            return False, 0
-
-    def is_sold(self, item_img: np.ndarray):
-        res = cv2.matchTemplate(item_img,
-                                self.sold_template, cv2.TM_CCOEFF_NORMED)
-
-        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
-        if max_val > 0.8:
-            return True
-
-    def get_credits(self):
-        res = cv2.matchTemplate(self.recog.img, self.credit_icon, cv2.TM_CCOEFF_NORMED)
-        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
-        h, w = self.credit_icon.shape[:-1]
-        p0 = [max_loc[0] + w, max_loc[1]]
-        p1 = [p0[0] + 120, p0[1] + 50]
-
-        res = self.digitReader.get_recruit_ticket(self.recog.img[p0[1]:p1[1], p0[0]:p1[0]])
-        cv2.putText(self.recog.img,
-                    "{}".format(self.digitReader.get_recruit_ticket(self.recog.img[p0[1]:p1[1], p0[0]:p1[0]])),
-                    (p0[0], p0[1]), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-        return res
-
-    def get_spent_credits(self):
-        res = cv2.matchTemplate(self.recog.img, self.spent_credit, cv2.TM_CCOEFF_NORMED)
-        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
-        h, w = self.spent_credit.shape[:-1]
-        p0 = [max_loc[0] + w, max_loc[1]]
-        p1 = [p0[0] + 200, p0[1] + 60]
-        self.shop_data["spent_credits"] = self.digitReader.get_credict_number(self.recog.img[p0[1]:p1[1], p0[0]:p1[0]])
-        return True
-
-    def get_item_price(self, item_img: np.ndarray, is_sold: False):
-        if is_sold:
-            res = cv2.matchTemplate(item_img, self.sold_credit_icon, cv2.TM_CCOEFF_NORMED)
-            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
-
-            h, w = self.item_credit_icon.shape[:-1]
-            p0 = [max_loc[0] + w, max_loc[1]]
-            p1 = [p0[0] + 140, p0[1] + 40]
-
-            return self.get_sold_number(item_img[p0[1]:p1[1], p0[0]:p1[0]])
-        else:
-            res = cv2.matchTemplate(item_img, self.item_credit_icon, cv2.TM_CCOEFF_NORMED)
-            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
-            h, w = self.item_credit_icon.shape[:-1]
-            p0 = [max_loc[0] + w, max_loc[1]]
-            p1 = [p0[0] + 140, p0[1] + 40]
-            return self.digitReader.get_credict_number(item_img[p0[1]:p1[1], p0[0]:p1[0]])
-
-    def get_sold_number(self, digit_part: np.ndarray):
-        result = {}
-        for j in self.sold_price_number.keys():
-            res = cv2.matchTemplate(
-                digit_part,
-                self.sold_price_number[j],
-                cv2.TM_CCOEFF_NORMED,
-            )
-            threshold = 0.9
-            loc = np.where(res >= threshold)
-            for i in range(len(loc[0])):
-                x = loc[1][i]
-                accept = True
-                for o in result:
-                    if abs(o - x) < 5:
-                        accept = False
-                        break
-                if accept:
-                    result[loc[1][i]] = j
-
-        l = [str(result[k]) for k in sorted(result)]
-
-        return int("".join(l))
-
-    def get_left_credit(self, digit_part):
-        result = {}
-        digit_part = cv2.cvtColor(digit_part, cv2.COLOR_RGB2GRAY)
-
-        for j in range(10):
-            res = cv2.matchTemplate(
-                digit_part,
-                self.left_credit_template[j],
-                cv2.TM_CCORR_NORMED,
-            )
-            threshold = 0.94
-            loc = np.where(res >= threshold)
-            for i in range(len(loc[0])):
-                x = loc[1][i]
-                accept = True
-                for o in result:
-                    if abs(o - x) < 5:
-                        accept = False
-                        break
-                if accept:
-                    result[loc[1][i]] = j
-
-        l = [str(result[k]) for k in sorted(result)]
-        return int("".join(l))
-    # def shop_credit(self) -> bool:
-    #     """ 购买物品逻辑 """
-    #     segments = segment.credit(self.recog.img)
-    #     valid = []
-    #     for seg in segments:
-    #         if self.find('shop_sold', scope=seg) is None:
-    #             scope = (seg[0], (seg[1][0], seg[0][1] + (seg[1][1]-seg[0][1])//4))
-    #             img = self.recog.img[scope2slice(scope)]
-    #             ocr = ocrhandle.predict(img)
-    #             if len(ocr) == 0:
-    #                 raise RecognizeError
-    #             ocr = ocr[0]
-    #             if ocr[1] not in shop_items:
-    #                 ocr[1] = ocr_rectify(img, ocr, shop_items, '物品名称')
-    #             valid.append((seg, ocr[1]))
-    #     logger.info(f'商店内可购买的物品：{[x[1] for x in valid]}')
-    #     if len(valid) == 0:
-    #         return True
-    #     priority = self.priority
-    #     if priority is not None:
-    #         valid.sort(
-    #             key=lambda x: 9999 if x[1] not in priority else priority.index(x[1]))
-    #         if valid[0][1] not in priority:
-    #             return True
-    #     logger.info(f'实际购买顺序：{[x[1] for x in valid]}')
-    #     self.buying = valid[0][1]
-    #     self.tap(valid[0][0], interval=3)
+            self.sleep()

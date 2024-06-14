@@ -22,6 +22,7 @@ from arknights_mower.solvers import (
 )
 from arknights_mower.solvers.base_mixin import BaseMixin
 from arknights_mower.solvers.mission import MissionSolver
+from arknights_mower.solvers.shop import CreditShop
 from arknights_mower.solvers.operation import OperationSolver
 from arknights_mower.solvers.navigation import NavigationSolver
 from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
@@ -3319,47 +3320,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 logger.info(f"间隔未超过设定时间，将在{delta}后启动Maa")
             else:
                 self.back_to_index()
-                self.send_message("启动MAA")
-                self.initialize_maa()
-                self.append_maa_task("Mall")
-
-                # 单次任务默认5分钟
-                stop_time = None
-                if one_time:
-                    stop_time = datetime.now() + timedelta(minutes=5)
-
-                logger.info("MAA 启动")
-                self.MAA.start()
-
-                hard_stop = False
-                while self.MAA.running():
-                    if one_time and stop_time < datetime.now():
-                        self.MAA.stop()
-                        hard_stop = True
-                    # 5分钟之前就停止
-                    elif (
-                        not one_time
-                        and (self.tasks[0].time - datetime.now()).total_seconds() < 300
-                    ):
-                        self.MAA.stop()
-                        hard_stop = True
-                    else:
-                        self.csleep(5)
-                if hard_stop:
-                    hard_stop_msg = "Maa任务未完成，等待3分钟关闭游戏"
-                    logger.info(hard_stop_msg)
-                    self.send_message(hard_stop_msg)
-                    self.csleep(180)
-                    self.device.exit()
-                    if self.device.check_current_focus():
-                        self.recog.update()
-                elif not one_time:
-                    if self.credit_fight is None:
-                        self.credit_fight = get_server_weekday()
-                        logger.info("记录首次信用作战")
-                    self.send_message("Maa停止")
-                else:
-                    self.send_message("Maa单次任务停止")
+                shop_solver = CreditShop(self.device)
+                shop_solver.run()
 
                 if not one_time:
                     plan_today = self.maa_config["weekly_plan"][get_server_weekday()]
