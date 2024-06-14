@@ -10,6 +10,7 @@ from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.solver import BaseSolver
+from arknights_mower.utils.vector import sa, va
 
 with lzma.open(f"{__rootdir__}/models/riic_base_digits.pkl", "rb") as f:
     base_templates = pickle.load(f)
@@ -17,14 +18,6 @@ with lzma.open(f"{__rootdir__}/models/noto_sans.pkl", "rb") as f:
     noto_templates = pickle.load(f)
 with lzma.open(f"{__rootdir__}/models/shop.pkl", "rb") as f:
     shop_templates = pickle.load(f)
-
-
-def va(a, b):
-    return [a[0] + b[0], a[1] + b[1]]
-
-
-def sa(scope, vector):
-    return [va(scope[0], vector), va(scope[1], vector)]
 
 
 card_w, card_h = 352, 354

@@ -239,6 +239,10 @@
         "label": "TERMINAL_LONGTERM",
         "comment": "长期探索"
     },
+    "601": {
+        "label": "OPERATOR_CHOOSE_LEVEL",
+        "comment": "作战前，关卡未选定"
+    },
     "602": {
         "label": "OPERATOR_BEFORE",
         "comment": "作战前，关卡已选定"

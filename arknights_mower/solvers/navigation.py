@@ -1,13 +1,16 @@
-from arknights_mower.utils import hot_update
-import cv2
 import lzma
 import pickle
+
+import cv2
+
+from arknights_mower import __rootdir__
+from arknights_mower.utils import hot_update
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.solver import BaseSolver
-from arknights_mower import __rootdir__
+from arknights_mower.utils.vector import va, vs
 
-main = {
+location = {
     1: {
         "1-1": (0, 0),
         "1-2": (428, -1),
@@ -21,7 +24,17 @@ main = {
         "1-10": (4635, 167),
         "1-11": (4965, -9),
         "1-12": (5436, -10),
-    }
+    },
+    "OF": {
+        "OF-1": (0, 0),
+        "OF-2": (738, 144),
+        "OF-3": (1122, 299),
+        "OF-4": (1475, 135),
+        "OF-5": (2288, -45),
+        "OF-6": (2737, -45),
+        "OF-7": (3550, 135),
+        "OF-8": (3899, 299),
+    },
 }
 
 
@@ -30,32 +43,56 @@ with lzma.open(f"{__rootdir__}/models/navigation.pkl", "rb") as f:
 
 
 class NavigationSolver(BaseSolver):
-    def run(self, name):
+    def run(self, name: str):
         logger.info("Start: 关卡导航")
-
         self.success = False
         self.back_to_index()
+
         hot_update.update()
         if name in hot_update.navigation.NavigationSolver.location:
             hot_update.navigation.NavigationSolver(self.device, self.recog).run(name)
             return True
-        if name == "1-7":
-            self.name = name
-            logger.info(f'常驻关卡导航："{name}"')
-            super().run()
-            return True
-        logger.error(f"暂不支持{name}")
-        return False
+
+        self.name = name
+        prefix = name.split("-")[0]
+        self.prefix = prefix
+
+        if prefix.isdigit():
+            prefix = int(prefix)
+            self.prefix = prefix
+            if prefix in location and name in location[prefix]:
+                logger.info(f"主线关卡导航：{name}")
+                if prefix < 4:
+                    act = 0
+                elif prefix < 9:
+                    act = 1
+                else:
+                    act = 2
+                self.act = act
+            else:
+                logger.error(f"暂不支持{name}")
+                return False
+        elif prefix in ["OF"]:
+            logger.info(f'别传关卡导航："{name}"')
+        else:
+            logger.error(f"暂不支持{name}")
+            return False
+
+        super().run()
+        return True
 
     def transition(self):
         if (scene := self.scene()) == Scene.INDEX:
             self.tap_index_element("terminal")
         elif scene == Scene.TERMINAL_MAIN:
-            self.tap_element("main_theme_small")
+            if isinstance(self.prefix, int):
+                self.tap_element("main_theme_small")
+            elif self.prefix in ["OF"]:
+                self.tap_element("biography_small")
         elif scene == Scene.TERMINAL_MAIN_THEME:
             act_scope = ((300, 315), (400, 370))
             if self.find("navigation/act/0", scope=act_scope):
-                if pos := self.find("navigation/main/1"):
+                if pos := self.find(f"navigation/main/{self.prefix}"):
                     self.tap(pos)
                 else:
                     self.device.swipe_ext(
@@ -63,36 +100,33 @@ class NavigationSolver(BaseSolver):
                     )
                     self.recog.update()
             else:
-                self.device.swipe_ext(
-                    ((235, 177), (235, 343), (235, 343)), durations=[300, 100]
-                )
-                self.recog.update()
-        elif self.find("navigation/episode"):
+                self.tap((230, 175))
+        elif scene == Scene.TERMINAL_BIOGRAPHY:
+            if self.find(f"navigation/biography/{self.prefix}_banner"):
+                self.tap_element("navigation/entry")
+                return
+            self.tap_element(f"navigation/biography/{self.prefix}_entry")
+        elif scene == Scene.OPERATOR_CHOOSE_LEVEL:
             name, val, loc = "", 1, None
-            for i in range(1, len(main[1]) + 1):
+            prefix = self.prefix
+            for i in location[prefix]:
                 result = cv2.matchTemplate(
-                    self.recog.gray, templates[f"1-{i}"], cv2.TM_SQDIFF_NORMED
+                    self.recog.gray, templates[i], cv2.TM_SQDIFF_NORMED
                 )
                 min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
                 if min_val < val:
                     val = min_val
                     loc = min_loc
-                    name = f"1-{i}"
+                    name = i
 
-            def va(a, b):
-                return a[0] + b[0], a[1] + b[1]
-
-            def vm(a, b):
-                return a[0] - b[0], a[1] - b[1]
-
-            target = va(vm(loc, main[1][name]), main[1][self.name])
+            target = va(vs(loc, location[prefix][name]), location[prefix][self.name])
             if target[0] + 200 > 1920:
                 self.swipe_noinertia((1400, 540), (-800, 0))
             elif target[0] < 0:
                 self.swipe_noinertia((400, 540), (800, 0))
             else:
                 self.success = True
-                self.tap((target[0] + 60, target[1] + 20))
+                self.tap(va(target, (60, 20)))
         elif scene == Scene.OPERATOR_BEFORE:
             if self.success:
                 return True

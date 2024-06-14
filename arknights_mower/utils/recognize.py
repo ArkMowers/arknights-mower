@@ -160,6 +160,10 @@ class Recognizer(object):
             self.scene = Scene.LOADING
         elif self.is_black():
             self.scene = Scene.LOADING
+        elif self.find("navigation/episode") or self.find(
+            "navigation/record_restoration"
+        ):
+            self.scene = Scene.OPERATOR_CHOOSE_LEVEL
         elif self.find("ope_plan") is not None:
             self.scene = Scene.OPERATOR_BEFORE
         elif self.find("ope_select_start") is not None:
@@ -331,6 +335,8 @@ class Recognizer(object):
             loading3 = submit("loading3")
             loading4 = submit("loading4")
             black = e.submit(self.is_black)
+            navi_episode = submit("navigation/episode")
+            navi_record_restoration = submit("navigation/record_restoration")
             ope_plan = submit("ope_plan")
             ope_select_start = submit("ope_select_start")
             ope_agency_going = submit("ope_agency_going", ((470, 915), (755, 1045)))
@@ -433,6 +439,8 @@ class Recognizer(object):
                 self.scene = Scene.LOADING
             elif black.result():
                 self.scene = Scene.LOADING
+            elif navi_episode.result() or navi_record_restoration.result():
+                self.scene = Scene.OPERATOR_CHOOSE_LEVEL
             elif ope_plan.result():
                 self.scene = Scene.OPERATOR_BEFORE
             elif ope_select_start.result():
@@ -822,7 +830,9 @@ class Recognizer(object):
             self.scene = Scene.SSS_DEPLOY
         elif self.find("sss/squad_button", scope=((1412, 0), (1876, 140))):
             self.scene = Scene.SSS_SQUAD
-        elif self.find("sss/device_button", scope=((1545, 921), (1920, 1080)), score=0.5):
+        elif self.find(
+            "sss/device_button", scope=((1545, 921), (1920, 1080)), score=0.5
+        ):
             self.scene = Scene.SSS_DEVICE
         elif self.find("sss/loading"):
             self.scene = Scene.SSS_LOADING
