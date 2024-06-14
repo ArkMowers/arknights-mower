@@ -623,9 +623,9 @@ class Operator(object):
     def not_valid(self):
         if self.room == "train":
             return False
-        if self.workaholic:
-            return self.current_room != self.room or self.index != self.current_index
         if self.operator_type == 'high':
+            if self.workaholic:
+                return self.current_room != self.room or self.index != self.current_index
             if not self.room.startswith("dorm") and self.current_room.startswith("dorm"):
                 if self.mood == -1 or self.mood == 24:
                     return True

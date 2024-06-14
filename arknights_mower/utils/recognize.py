@@ -824,10 +824,10 @@ class Recognizer(object):
             self.scene = Scene.SSS_MAIN
         elif self.find("sss/start_button", scope=((1545, 921), (1920, 1080))):
             self.scene = Scene.SSS_START
-        elif self.find("sss/ec_button", scope=((1545, 921), (1920, 1080))):
-            self.scene = Scene.SSS_EC
         elif self.find("sss/deploy_button", scope=((1412, 0), (1876, 140))):
             self.scene = Scene.SSS_DEPLOY
+        elif self.find("sss/ec_button", scope=((1545, 921), (1920, 1080))):
+            self.scene = Scene.SSS_EC
         elif self.find("sss/squad_button", scope=((1412, 0), (1876, 140))):
             self.scene = Scene.SSS_SQUAD
         elif self.find(
