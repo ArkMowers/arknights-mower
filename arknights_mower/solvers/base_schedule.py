@@ -1970,10 +1970,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                             ((1768, 438), (1902, 480))
                         )
                         logger.info(f"线索交流结束时间：{self.party_time}")
-                        # 如果启用MAA，则在线索交流结束后购物
                         if not find_next_task(
                             self.tasks,
-                            task_type=TaskTypes.MAA_MALL,
+                            task_type=TaskTypes.CLUE_PARTY,
                         ):
                             self.tasks.append(
                                 SchedulerTask(
