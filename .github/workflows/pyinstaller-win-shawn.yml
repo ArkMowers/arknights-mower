@@ -41,6 +41,10 @@ jobs:
         with:
           repository: ArkMowers/arknights-mower
           ref: doc-pages
+          fetch-depth: 0
+
+      - name: restore timestamps
+        uses: chetan/git-restore-mtime-action@v2
 
       - name: setup ruby
         uses: ruby/setup-ruby@v1
