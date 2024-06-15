@@ -566,10 +566,6 @@ class BaseSolver:
             try:
                 if self.get_navigation():
                     self.tap_element("nav_index")
-                elif scene == Scene.CLOSE_MINE:
-                    self.tap_element("close_mine")
-                elif scene == Scene.CHECK_IN:
-                    self.tap_element("check_in")
                 elif scene == Scene.RIIC_REPORT:
                     self.tap((100, 60))
                 elif scene == Scene.ANNOUNCEMENT:

@@ -3,6 +3,7 @@ from typing import Union
 
 import cv2
 import numpy as np
+from matplotlib import pyplot as plt
 
 from arknights_mower import __rootdir__
 from arknights_mower.utils.path import get_path
@@ -109,3 +110,26 @@ def saveimg_depot(img, filename, folder="depot"):
         subdir=f"{folder}/",
         filename=filename,
     )
+
+
+def cmatch(
+    img1: tp.Image, img2: tp.Image, thresh: int = 10, draw: bool = False
+) -> tp.Scope | None:
+    """比较平均色"""
+    h, w, _ = img1.shape
+    ca = cv2.mean(img1)[:3]
+    cb = cv2.mean(img2)[:3]
+    diff = np.array(ca).astype(int) - np.array(cb).astype(int)
+    diff = np.max(np.maximum(diff, 0)) - np.min(np.minimum(diff, 0))
+    logger.debug(f"{ca=} {cb=} {diff=}")
+
+    if draw:
+        board = np.zeros([h + 5, w * 2, 3], dtype=np.uint8)
+        board[:h, :w, :] = img1
+        board[h:, :w, :] = ca
+        board[:h, w:, :] = img2
+        board[h:, w:, :] = cb
+        plt.imshow(board)
+        plt.show()
+
+    return diff <= thresh

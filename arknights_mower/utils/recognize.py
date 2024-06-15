@@ -6,12 +6,15 @@ from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
+from skimage.metrics import structural_similarity
+
+from arknights_mower.utils.vector import va
 
 from .. import __rootdir__
 from . import config
 from . import typealias as tp
 from .device import Device
-from .image import bytes2img, cropimg, loadres, thres2
+from .image import bytes2img, cmatch, cropimg, loadres, thres2
 from .log import logger, save_screenshot
 from .matcher import Matcher
 from .scene import Scene, SceneComment
@@ -142,10 +145,6 @@ class Recognizer(object):
             self.scene = Scene.LOGIN_BILIBILI
         elif self.find("login_bilibili_privacy"):
             self.scene = Scene.LOGIN_BILIBILI_PRIVACY
-        elif self.find("close_mine") is not None:
-            self.scene = Scene.CLOSE_MINE
-        elif self.find("check_in") is not None:
-            self.scene = Scene.CHECK_IN
         elif self.find("materiel_ico") is not None:
             self.scene = Scene.MATERIEL
         elif self.find("mail") is not None:
@@ -200,7 +199,7 @@ class Recognizer(object):
             self.scene = Scene.FRIEND_LIST_ON
         elif self.find("credit_visiting") is not None:
             self.scene = Scene.FRIEND_VISITING
-        elif self.find("riic_report_title", scope=((1700, 0), (1920, 100))):
+        elif self.find("riic_report_title"):
             self.scene = Scene.RIIC_REPORT
         elif self.find("control_central_assistants") is not None:
             self.scene = Scene.CTRLCENTER_ASSISTANT
@@ -227,7 +226,7 @@ class Recognizer(object):
             self.scene = Scene.MISSION_DAILY
         elif self.find("mission_weekly_on", scope=((670, 0), (1920, 120))) is not None:
             self.scene = Scene.MISSION_WEEKLY
-        elif self.find("terminal_pre") is not None:
+        elif self.find("terminal_main") is not None:
             self.scene = Scene.TERMINAL_MAIN
         elif self.find("open_recruitment") is not None:
             self.scene = Scene.RECRUIT_MAIN
@@ -252,21 +251,12 @@ class Recognizer(object):
                 self.scene = Scene.LOGIN_QUICKLY
             elif self.find("login_account") is not None:
                 self.scene = Scene.LOGIN_MAIN
-            elif self.find("login_iknow") is not None:
-                self.scene = Scene.LOGIN_ANNOUNCE
             else:
                 self.scene = Scene.LOGIN_MAIN_NOENTRY
-        elif self.find("register") is not None:
-            self.scene = Scene.LOGIN_REGISTER
         elif self.find("login_loading") is not None:
             self.scene = Scene.LOGIN_LOADING
-        elif self.find("login_iknow") is not None:
-            self.scene = Scene.LOGIN_ANNOUNCE
         elif self.find("12cadpa") is not None:
-            if self.find("cadpa_detail") is not None:
-                self.scene = Scene.LOGIN_CADPA_DETAIL
-            else:
-                self.scene = Scene.LOGIN_START
+            self.scene = Scene.LOGIN_START
         elif self.check_announcement():
             self.scene = Scene.ANNOUNCEMENT
         elif self.find("skip") is not None:
@@ -275,8 +265,6 @@ class Recognizer(object):
             self.scene = Scene.UPGRADE
         elif self.find("confirm"):
             self.scene = Scene.CONFIRM
-        elif self.find("login_verify") is not None:
-            self.scene = Scene.LOGIN_INPUT
         elif self.find("login_captcha") is not None:
             self.scene = Scene.LOGIN_CAPTCHA
         elif self.find("login_connecting") is not None:
@@ -326,8 +314,6 @@ class Recognizer(object):
             login_new = submit("login_new")
             login_bilibili = submit("login_bilibili")
             login_bilibili_privacy = submit("login_bilibili_privacy")
-            close_mine = submit("close_mine")
-            check_in = submit("check_in")
             materiel_ico = submit("materiel_ico")
             mail = submit("mail")
             loading = submit("loading")
@@ -357,7 +343,7 @@ class Recognizer(object):
             ope_failed = submit("ope_failed")
             friend_list_on = submit("friend_list_on")
             credit_visiting = submit("credit_visiting")
-            riic_report_title = submit("riic_report_title", ((1700, 0), (1920, 100)))
+            riic_report_title = submit("riic_report_title")
             control_central_assistants = submit("control_central_assistants")
             infra_overview = submit("infra_overview", ((20, 120), (360, 245)))
             infra_todo = submit("infra_todo")
@@ -370,7 +356,7 @@ class Recognizer(object):
             mission_trainee_on = submit("mission_trainee_on", ((670, 0), (1920, 120)))
             mission_daily_on = submit("mission_daily_on", ((670, 0), (1920, 120)))
             mission_weekly_on = submit("mission_weekly_on", ((670, 0), (1920, 120)))
-            terminal_pre = submit("terminal_pre")
+            terminal_pre2 = submit("terminal_pre2")
             open_recruitment = submit("open_recruitment")
             recruiting_instructions = submit("recruiting_instructions")
             agent_token = e.submit(
@@ -389,16 +375,12 @@ class Recognizer(object):
             hypergryph = submit("hypergryph")
             login_awake = submit("login_awake")
             login_account = submit("login_account")
-            login_iknow = submit("login_iknow")
-            register = submit("register")
             login_loading = submit("login_loading")
             cadpa12 = submit("12cadpa")
-            cadpa_detail = submit("cadpa_detail")
             announcement = e.submit(self.check_announcement)
             skip = submit("skip")
             upgrade = submit("upgrade")
             detector_confirm = submit("confirm")
-            login_verify = submit("login_verify")
             login_captcha = submit("login_captcha")
             login_connecting = submit("login_connecting")
             main_theme = submit("main_theme")
@@ -421,10 +403,6 @@ class Recognizer(object):
                 self.scene = Scene.LOGIN_BILIBILI
             elif login_bilibili_privacy.result():
                 self.scene = Scene.LOGIN_BILIBILI_PRIVACY
-            elif close_mine.result():
-                self.scene = Scene.CLOSE_MINE
-            elif check_in.result():
-                self.scene = Scene.CHECK_IN
             elif materiel_ico.result():
                 self.scene = Scene.MATERIEL
             elif mail.result():
@@ -498,7 +476,7 @@ class Recognizer(object):
                 self.scene = Scene.MISSION_DAILY
             elif mission_weekly_on.result():
                 self.scene = Scene.MISSION_WEEKLY
-            elif terminal_pre.result():
+            elif terminal_pre2.result():
                 self.scene = Scene.TERMINAL_MAIN
             elif open_recruitment.result():
                 self.scene = Scene.RECRUIT_MAIN
@@ -521,21 +499,12 @@ class Recognizer(object):
                     self.scene = Scene.LOGIN_QUICKLY
                 elif login_account.result():
                     self.scene = Scene.LOGIN_MAIN
-                elif login_iknow.result():
-                    self.scene = Scene.LOGIN_ANNOUNCE
                 else:
                     self.scene = Scene.LOGIN_MAIN_NOENTRY
-            elif register.result():
-                self.scene = Scene.LOGIN_REGISTER
             elif login_loading.result():
                 self.scene = Scene.LOGIN_LOADING
-            elif login_iknow.result():
-                self.scene = Scene.LOGIN_ANNOUNCE
             elif cadpa12.result():
-                if cadpa_detail.result():
-                    self.scene = Scene.LOGIN_CADPA_DETAIL
-                else:
-                    self.scene = Scene.LOGIN_START
+                self.scene = Scene.LOGIN_START
             elif announcement.result():
                 self.scene = Scene.ANNOUNCEMENT
             elif skip.result():
@@ -544,8 +513,6 @@ class Recognizer(object):
                 self.scene = Scene.UPGRADE
             elif detector_confirm.result() is not None:
                 self.scene = Scene.CONFIRM
-            elif login_verify.result():
-                self.scene = Scene.LOGIN_INPUT
             elif login_captcha.result():
                 self.scene = Scene.LOGIN_CAPTCHA
             elif login_connecting.result():
@@ -968,6 +935,60 @@ class Recognizer(object):
         :return ret: 若匹配成功，则返回元素在游戏界面中出现的位置，否则返回 None
         """
         logger.debug(f"find: {res}")
+
+        color = {
+            "terminal_pre2": (1459, 797),
+            "mail": (307, 39),
+            "loading": (682, 310),
+            "loading2": (620, 247),
+            "navigation/record_restoration": (274, 970),
+            "ope_plan": (1278, 24),
+            "ope_agency_going": (510, 941),
+            "network_check": (432, 433),
+            "ope_eliminate": (1332, 938),
+            "riic_report_title": (1712, 25),
+            "control_central_assistants": (39, 560),
+            "infra_overview": (54, 135),
+            "infra_todo": (13, 1013),
+            "clue": (1740, 855),
+            "infra_overview_in": (64, 705),
+            "arrange_confirm": (755, 903),
+            "terminal_main": (73, 959),
+            "open_recruitment": (192, 143),
+            "recruiting_instructions": (343, 179),
+            "agent_unlock": (91, 1013),
+            "shop_credit_2": (1657, 135),
+            "shop_cart": (1252, 842),
+            "login_logo": (601, 332),
+            "hypergryph": (0, 961),
+            "login_awake": (888, 743),
+            "login_account": (622, 703),
+            "login_loading": (920, 388),
+            "12cadpa": (1810, 21),
+            "skip": (1803, 32),
+            "confirm": (0, 683),
+            "login_connecting": (760, 881),
+            "main_theme": (283, 945),
+            "episode": (535, 937),
+            "biography": (768, 934),
+            "arrange_order_options": (1652, 23),
+            "arrange_order_options_scene": (369, 199),
+        }
+
+        if res in color:
+            pos = color[res]
+            res = loadres(res)
+            h, w, _ = res.shape
+            scope = pos, va(pos, (w, h))
+            img = cropimg(self.img, scope)
+            if cmatch(img, res, draw=draw):
+                gray = cropimg(self.gray, scope)
+                res = cv2.cvtColor(res, cv2.COLOR_RGB2GRAY)
+                ssim = structural_similarity(gray, res)
+                logger.debug(f"{ssim=}")
+                if ssim >= 0.9:
+                    return scope
+            return None
 
         dpi_aware = res in [
             "login_bilibili",
