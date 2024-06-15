@@ -942,7 +942,6 @@ class Recognizer(object):
             "loading": (682, 310),
             "loading2": (620, 247),
             "navigation/record_restoration": (274, 970),
-            "ope_plan": (1278, 24),
             "ope_agency_going": (510, 941),
             "network_check": (432, 433),
             "ope_eliminate": (1332, 938),
