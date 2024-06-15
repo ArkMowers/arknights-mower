@@ -91,7 +91,7 @@ class Recognizer(object):
         return self.img[y][x]
 
     def save_screencap(self, folder):
-        save_screenshot(self.screencap, subdir=f"{folder}/{self.h}x{self.w}")
+        save_screenshot(self.screencap, subdir=str(folder))
 
     def detect_index_scene(self) -> bool:
         return (
