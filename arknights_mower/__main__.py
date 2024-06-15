@@ -474,15 +474,6 @@ def simulate():
                     base_scheduler.sleeping = False
                     if base_scheduler.device.check_current_focus():
                         base_scheduler.recog.update()
-            if (
-                len(base_scheduler.tasks) > 0
-                and base_scheduler.tasks[0].type.value.split("_")[0] == "maa"
-            ):
-                logger.info(
-                    f"开始执行 MAA {base_scheduler.tasks[0].type.value.split('_')[1]} 任务"
-                )
-                base_scheduler.maa_plan_solver(one_time=True)
-                continue
 
             base_scheduler.run()
             reconnect_tries = 0

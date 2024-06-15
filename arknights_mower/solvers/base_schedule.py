@@ -22,13 +22,12 @@ from arknights_mower.solvers import (
 )
 from arknights_mower.solvers.base_mixin import BaseMixin
 from arknights_mower.solvers.mission import MissionSolver
-from arknights_mower.solvers.shop import CreditShop
-from arknights_mower.solvers.operation import OperationSolver
 from arknights_mower.solvers.navigation import NavigationSolver
+from arknights_mower.solvers.operation import OperationSolver
 from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
 from arknights_mower.solvers.secret_front import SecretFront
+from arknights_mower.solvers.shop import CreditShop
 from arknights_mower.utils import config, hot_update, rapidocr
-from arknights_mower.utils.email import maa_template
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.matcher import Matcher
 from arknights_mower.utils.news import get_update_time
@@ -696,6 +695,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 self.error = True
         # 最后再做不养闲人刷新
         if self.op_data.config.free_room:
+
             def should_keep(task):
                 if task.type != TaskTypes.RELEASE_DORM:
                     return True
@@ -704,8 +704,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     logger.info(f"检测到{task.meta_data}不在宿舍，移除相关任务")
                     return False
                 return True
-            self.tasks = [t for t in self.tasks if should_keep(t)]
 
+            self.tasks = [t for t in self.tasks if should_keep(t)]
 
     def infra_main(self):
         """位于基建首页"""
@@ -765,7 +765,12 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     self.agent_arrange(self.task.plan, get_time)
                     if get_time:
                         self.backup_plan_solver(PlanTriggerTiming.BEFORE_PLANNING)
-                        if find_next_task(self.tasks, datetime.now() + timedelta(seconds=15)) is None:
+                        if (
+                            find_next_task(
+                                self.tasks, datetime.now() + timedelta(seconds=15)
+                            )
+                            is None
+                        ):
                             self.plan_metadata()
                         else:
                             logger.info("检测到15秒内有额外任务，跳过plan")
@@ -919,9 +924,18 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         for room in need_read:
             error_count = 0
             # 由于训练室不纠错，如果训练室有干员且时间读取过就跳过
-            if room == 'train':
-                first = next(((value) for key, value in self.op_data.operators.items() if value.current_room =='train'), None)
-                if first is not None and first.time_stamp > datetime.now() - timedelta(hours=2.5):
+            if room == "train":
+                first = next(
+                    (
+                        (value)
+                        for key, value in self.op_data.operators.items()
+                        if value.current_room == "train"
+                    ),
+                    None,
+                )
+                if first is not None and first.time_stamp > datetime.now() - timedelta(
+                    hours=2.5
+                ):
                     continue
             while True:
                 try:
@@ -1957,24 +1971,16 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         )
                         logger.info(f"线索交流结束时间：{self.party_time}")
                         # 如果启用MAA，则在线索交流结束后购物
-                        if self.maa_config["maa_enable"]:
-                            if not find_next_task(
-                                self.tasks,
-                                task_type=TaskTypes.MAA_MALL,
-                            ):
-                                self.tasks.append(
-                                    SchedulerTask(
-                                        time=self.party_time
-                                        - timedelta(milliseconds=1),
-                                        task_type=TaskTypes.CLUE_PARTY,
-                                    )
+                        if not find_next_task(
+                            self.tasks,
+                            task_type=TaskTypes.MAA_MALL,
+                        ):
+                            self.tasks.append(
+                                SchedulerTask(
+                                    time=self.party_time - timedelta(milliseconds=1),
+                                    task_type=TaskTypes.CLUE_PARTY,
                                 )
-                                self.tasks.append(
-                                    SchedulerTask(
-                                        time=self.party_time,
-                                        task_type=TaskTypes.MAA_MALL,
-                                    )
-                                )
+                            )
                     else:
                         self.party_time = None
                         logger.info("线索交流未开启")
@@ -2147,7 +2153,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         clue_status[cl] = None
 
             elif scene == Scene.CLUE_GIVE_AWAY:
-                give_away_true = self.leifeng_mode or (not self.leifeng_mode and self.clue_count > self.clue_count_limit)
+                give_away_true = self.leifeng_mode or (
+                    not self.leifeng_mode and self.clue_count > self.clue_count_limit
+                )
                 if c := clue_cls("give_away") and give_away_true:
                     if not friend_clue:
                         if self.find(
@@ -2196,7 +2204,17 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             else:
                 self.sleep()
 
-        self.back()
+        if self.get_navigation():
+            self.tap_element("nav_shop")
+        else:
+            self.back_to_index()
+        shop_solver = CreditShop(self.device, self.recog)
+        shop_solver.run()
+        if self.get_navigation():
+            self.tap_element("nav_infrastructure")
+            self.back()
+        else:
+            self.back_to_infrastructure()
 
     def adjust_order_time(self, accelerate, room):
         error_count = 0
@@ -2514,8 +2532,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     if self.op_data.config.free_room:
                         current_free = self.op_data.get_current_operator(room, idx)
                         if (
-                                current_free
-                                and current_free.mood < current_free.upper_limit
+                            current_free
+                            and current_free.mood < current_free.upper_limit
                         ):
                             agents[idx] = current_free.name
         agent = copy.deepcopy(agents)
@@ -2757,18 +2775,23 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
     def get_agent_from_room(self, room, read_time_index=None):
         if read_time_index is None:
             read_time_index = []
-        if room == 'meeting' and not self.leifeng_mode:
+        if room == "meeting" and not self.leifeng_mode:
             self.sleep(0.5)
             self.recog.update()
-            clue_res = self.read_screen(self.recog.img, limit=10, cord=((645, 977), (755, 1018)))
+            clue_res = self.read_screen(
+                self.recog.img, limit=10, cord=((645, 977), (755, 1018))
+            )
             if clue_res != 11:
                 self.clue_count = clue_res
-                logger.info(f'当前拥有线索数量为{self.clue_count}')
+                logger.info(f"当前拥有线索数量为{self.clue_count}")
         self.turn_on_room_detail(room)
         # 如果是宿舍则全读取
         if room.startswith("dorm"):
-            read_time_index = [i for i, obj in enumerate(self.op_data.plan[room]) if
-                               obj.agent == 'Free' or obj.agent == '菲亚梅塔']
+            read_time_index = [
+                i
+                for i, obj in enumerate(self.op_data.plan[room])
+                if obj.agent == "Free" or obj.agent == "菲亚梅塔"
+            ]
         while self.detect_product_complete():
             logger.info("检测到产物收取提示")
             self.sleep(1)
@@ -3296,18 +3319,11 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             },
         )
 
-    def maa_plan_solver(self, one_time=False):
-        """清日常
-
-        原先调用maa做日常，现在除信用商店以外全部换成了mower的实现
-
-        Args:
-            one_time: 为True时只进行信用商店购物，为False时额外进行刷理智等。
-        """
+    def maa_plan_solver(self):
+        """清日常"""
         try:
             if (
-                not one_time
-                and self.last_execution["maa"] is not None
+                self.last_execution["maa"] is not None
                 and (
                     delta := (
                         timedelta(hours=self.maa_config["maa_execution_gap"])
@@ -3319,27 +3335,22 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             ):
                 logger.info(f"间隔未超过设定时间，将在{delta}后启动Maa")
             else:
-                self.back_to_index()
-                shop_solver = CreditShop(self.device)
-                shop_solver.run()
-
-                if not one_time:
-                    plan_today = self.maa_config["weekly_plan"][get_server_weekday()]
-                    stage_today = plan_today["stage"]
-                    for name in stage_today:
-                        if self.tasks[0].time - datetime.now() < timedelta(minutes=5):
-                            break
-                        nav_solver = NavigationSolver(self.device)
-                        if nav_solver.run(name):
-                            ope_solver = OperationSolver(self.device)
-                            drain = ope_solver.run(self.tasks[0].time)
-                    mission_solver = MissionSolver(self.device)
-                    mission_solver.run()
-                    if drain:
-                        self.last_execution["maa"] = datetime.now()
-                        self.send_message("刷理智结束")
-                    else:
-                        self.send_message("理智没有刷完")
+                plan_today = self.maa_config["weekly_plan"][get_server_weekday()]
+                stage_today = plan_today["stage"]
+                for name in stage_today:
+                    if self.tasks[0].time - datetime.now() < timedelta(minutes=5):
+                        break
+                    nav_solver = NavigationSolver(self.device)
+                    if nav_solver.run(name):
+                        ope_solver = OperationSolver(self.device)
+                        drain = ope_solver.run(self.tasks[0].time)
+                mission_solver = MissionSolver(self.device)
+                mission_solver.run()
+                if drain:
+                    self.last_execution["maa"] = datetime.now()
+                    self.send_message("刷理智结束")
+                else:
+                    self.send_message("理智没有刷完")
 
             now_time = datetime.now().time()
             try:
@@ -3448,17 +3459,6 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                         self.maa_config["ra_timeout"],
                     )
 
-            if one_time:
-                if len(self.tasks) > 0:
-                    del self.tasks[0]
-                self.MAA = None
-                if (
-                    find_next_task(self.tasks, datetime.now() + timedelta(seconds=900))
-                    is None
-                ):
-                    # 未来10分钟没有任务就新建
-                    self.tasks.append(SchedulerTask())
-                return
             remaining_time = (self.tasks[0].time - datetime.now()).total_seconds()
             subject = f"休息 {format_time(remaining_time)}，到{self.tasks[0].time.strftime('%H:%M:%S')}开始工作"
             context = f"下一次任务:{self.tasks[0].plan if len(self.tasks[0].plan) != 0 else '空任务' if self.tasks[0].type == '' else self.tasks[0].type}"
