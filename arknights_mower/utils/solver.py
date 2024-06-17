@@ -459,6 +459,16 @@ class BaseSolver:
             ],
         )
 
+    def bilibili(self):
+        """B服登录/隐私政策界面点击确认/同意"""
+        img = cv2.cvtColor(self.recog.img, cv2.COLOR_RGB2HSV)
+        img = cv2.inRange(img, (96, 150, 0), (100, 255, 255))
+        contours, _ = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        rect = [cv2.boundingRect(c) for c in contours]
+        rect.sort(key=lambda c: c[2], reverse=True)
+        x, y, w, h = rect[0]
+        self.tap(((x, y), (x + w, y + h)))
+
     def login(self):
         """
         登录进游戏
@@ -474,9 +484,9 @@ class BaseSolver:
                 elif scene == Scene.LOGIN_NEW:
                     self.tap_element("login_new")
                 elif scene == Scene.LOGIN_BILIBILI:
-                    self.tap_element("login_bilibili_entry")
+                    self.bilibili()
                 elif scene == Scene.LOGIN_BILIBILI_PRIVACY:
-                    self.tap_element("login_bilibili_privacy_accept")
+                    self.bilibili()
                 elif scene == Scene.LOGIN_QUICKLY:
                     self.tap_element("login_awake")
                 elif scene == Scene.LOGIN_MAIN:
