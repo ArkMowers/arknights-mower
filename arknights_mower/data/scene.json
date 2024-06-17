@@ -291,6 +291,10 @@
         "label": "OPERATOR_ELIMINATE_AGENCY",
         "comment": "剿灭代理卡使用确认"
     },
+    "615": {
+        "label": "OPERATOR_SUPPORT",
+        "comment": "借助战"
+    },
     "701": {
         "label": "SHOP_OTHERS",
         "comment": "商店除了信用兑换处以外的界面"

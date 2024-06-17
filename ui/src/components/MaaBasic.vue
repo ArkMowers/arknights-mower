@@ -8,7 +8,7 @@ import { useConfigStore } from '@/stores/config'
 const store = useConfigStore()
 
 import { storeToRefs } from 'pinia'
-const { maa_path, maa_gap, maa_conn_preset, maa_touch_option } = storeToRefs(store)
+const { maa_path, maa_conn_preset, maa_touch_option } = storeToRefs(store)
 
 import { folder_dialog } from '@/utils/dialog'
 
@@ -60,15 +60,6 @@ const maa_touch_options = ['maatouch', 'minitouch', 'adb'].map((x) => {
       </n-form-item>
       <n-form-item label="触控模式">
         <n-select v-model:value="maa_touch_option" :options="maa_touch_options" />
-      </n-form-item>
-      <n-form-item>
-        <template #label>
-          <span>启动间隔</span>
-          <help-text>可填小数</help-text>
-        </template>
-        <n-input-number v-model:value="maa_gap">
-          <template #suffix>小时</template>
-        </n-input-number>
       </n-form-item>
     </n-form>
     <n-divider />

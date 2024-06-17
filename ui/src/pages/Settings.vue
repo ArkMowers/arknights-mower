@@ -37,7 +37,8 @@ const {
   free_room,
   get_scene,
   droidcast,
-  maa_adb_path
+  maa_adb_path,
+  maa_gap
 } = storeToRefs(config_store)
 
 const { operators } = storeToRefs(plan_store)
@@ -272,6 +273,18 @@ async function select_maa_adb_path() {
                   <n-radio value="dark">暗色</n-radio>
                 </n-space>
               </n-radio-group>
+            </n-form-item>
+            <n-form-item>
+              <template #label>
+                <span>日常任务间隔</span>
+                <help-text>
+                  <div>可填小数</div>
+                  <div>清理智、日常/周常任务领取、借助战打OF-1</div>
+                </help-text>
+              </template>
+              <n-input-number v-model:value="maa_gap">
+                <template #suffix>小时</template>
+              </n-input-number>
             </n-form-item>
           </n-form>
         </n-card>

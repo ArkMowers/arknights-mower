@@ -1,8 +1,9 @@
 <script setup>
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
+import { usePlanStore } from '@/stores/plan'
 
-const store = useConfigStore()
+const config_store = useConfigStore()
 const {
   enable_party,
   shop_list,
@@ -11,8 +12,12 @@ const {
   maa_mall_ignore_blacklist_when_full,
   maa_enable,
   maa_credit_fight,
-  leifeng_mode
-} = storeToRefs(store)
+  leifeng_mode,
+  credit_fight
+} = storeToRefs(config_store)
+
+const plan_store = usePlanStore()
+const { operators } = storeToRefs(plan_store)
 
 import { h, inject } from 'vue'
 
@@ -45,6 +50,16 @@ function render_label(option) {
     [h(NAvatar, { src: `/shop/${option.label}.png` }), option.label]
   )
 }
+
+import { pinyin_match } from '@/utils/common'
+import { render_op_label } from '@/utils/op_select'
+
+const deploy_directions = [
+  { label: '向上', value: 'Up' },
+  { label: '向下', value: 'Down' },
+  { label: '向左', value: 'Left' },
+  { label: '向右', value: 'Right' }
+]
 </script>
 
 <template>
@@ -54,8 +69,33 @@ function render_label(option) {
       <n-checkbox v-model:checked="leifeng_mode">
         雷锋模式 <help-text>关闭则超过9个线索才送好友</help-text>
       </n-checkbox>
-      <n-checkbox v-model:checked="maa_credit_fight" disabled>信用作战（OF-1）</n-checkbox>
     </n-space>
+    <n-divider />
+    <n-form :label-placement="mobile ? 'top' : 'left'" :show-feedback="false" class="rogue">
+      <n-form-item :show-label="false">
+        <n-checkbox v-model:checked="maa_credit_fight">信用作战（OF-1）</n-checkbox>
+      </n-form-item>
+      <n-form-item label="干员">
+        <n-select
+          filterable
+          :options="operators"
+          v-model:value="credit_fight.operator"
+          :filter="(p, o) => pinyin_match(o.label, p)"
+          :render-label="render_op_label"
+        />
+      </n-form-item>
+      <n-form-item label="部署">
+        <div style="width: 40px; text-align: right">X</div>
+        <n-input-number style="margin: 0 8px" v-model:value="credit_fight.x" :show-button="false" />
+        <div style="width: 40px; text-align: right">Y</div>
+        <n-input-number style="margin: 0 8px" v-model:value="credit_fight.y" :show-button="false" />
+        <n-select
+          style="width: 200px"
+          :options="deploy_directions"
+          v-model:value="credit_fight.direction"
+        />
+      </n-form-item>
+    </n-form>
     <n-divider />
     <n-checkbox v-model:checked="maa_enable" class="maa-shop">信用商店购物</n-checkbox>
     <help-text>

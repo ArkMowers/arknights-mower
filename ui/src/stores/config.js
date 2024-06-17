@@ -78,6 +78,7 @@ export const useConfigStore = defineStore('config', () => {
   const get_scene = ref({})
   const droidcast = ref({})
   const visit_friend = ref(true)
+  const credit_fight = ref({})
 
   async function load_shop() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/shop`)
@@ -172,6 +173,7 @@ export const useConfigStore = defineStore('config', () => {
     get_scene.value = response.data.get_scene
     droidcast.value = response.data.droidcast
     visit_friend.value = response.data.visit_friend
+    credit_fight.value = response.data.credit_fight
   }
 
   function build_config() {
@@ -258,7 +260,8 @@ export const useConfigStore = defineStore('config', () => {
       sign_in: sign_in.value,
       get_scene: get_scene.value,
       droidcast: droidcast.value,
-      visit_friend: visit_friend.value
+      visit_friend: visit_friend.value,
+      credit_fight: credit_fight.value
     }
   }
 
@@ -347,6 +350,7 @@ export const useConfigStore = defineStore('config', () => {
     sign_in,
     get_scene,
     droidcast,
-    visit_friend
+    visit_friend,
+    credit_fight
   }
 })

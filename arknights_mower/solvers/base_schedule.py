@@ -21,6 +21,7 @@ from arknights_mower.solvers import (
     ReportSolver,
 )
 from arknights_mower.solvers.base_mixin import BaseMixin
+from arknights_mower.solvers.credit_fight import CreditFight
 from arknights_mower.solvers.mission import MissionSolver
 from arknights_mower.solvers.navigation import NavigationSolver
 from arknights_mower.solvers.operation import OperationSolver
@@ -63,31 +64,12 @@ def daily_report(
     return ReportSolver(device, None, send_message_config, send_report).run()
 
 
-def daily_visit_friend(device: Device = None):
-    """访问好友"""
-    return CreditSolver(device).run()
-
-
-def depotscan(device: Device = None):
-    """
-    仓库扫描
-    """
-    DepotSolver(device).run()
-
-
-def mail(device: Device = None):
-    """
-    mail
-        自动收取邮件
-    """
-    MailSolver(device).run()
-
-
 def recruit(
     args: list[str] = [],
     send_message_config={},
     recruit_config={},
     device: Device = None,
+    recog=None,
 ):
     """
     recruit [agents ...]
@@ -97,7 +79,7 @@ def recruit(
     choose = {}
     result = {}
     if len(args) == 0:
-        choose, result = RecruitSolver(device).run(
+        choose, result = RecruitSolver(device, recog).run(
             config.RECRUIT_PRIORITY, send_message_config, recruit_config
         )
     else:
@@ -192,7 +174,6 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         maa_config["mall_ignore_when_full"] = conf[
             "maa_mall_ignore_blacklist_when_full"
         ]
-        maa_config["credit_fight"] = conf["maa_credit_fight"]
         maa_config["maa_depot_enable"] = conf["maa_depot_enable"]
         maa_config["rogue"] = conf["rogue"]
         maa_config["stationary_security_service"] = (
@@ -3300,24 +3281,6 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             logger.info("MAA 连接失败")
             raise Exception("MAA 连接失败")
 
-    def append_maa_task(self, type):
-        if type != "Mall":
-            return
-        self.MAA.append_task(
-            "Mall",
-            {
-                "visit_friends": False,
-                "shopping": True,
-                "buy_first": self.maa_config["buy_first"].split(","),
-                "blacklist": self.maa_config["blacklist"].split(","),
-                "credit_fight": self.maa_config["credit_fight"]
-                and self.credit_fight is None,
-                "force_shopping_if_credit_full": self.maa_config[
-                    "mall_ignore_when_full"
-                ],
-            },
-        )
-
     def maa_plan_solver(self):
         """清日常"""
         try:
@@ -3332,19 +3295,29 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 )
                 > timedelta()
             ):
-                logger.info(f"间隔未超过设定时间，将在{delta}后启动Maa")
+                logger.info(f"{format_time(delta.total_seconds())}后开始做日常任务")
             else:
                 plan_today = self.maa_config["weekly_plan"][get_server_weekday()]
                 stage_today = plan_today["stage"]
                 for name in stage_today:
                     if self.tasks[0].time - datetime.now() < timedelta(minutes=5):
                         break
-                    nav_solver = NavigationSolver(self.device)
+                    nav_solver = NavigationSolver(self.device, self.recog)
                     if nav_solver.run(name):
-                        ope_solver = OperationSolver(self.device)
+                        ope_solver = OperationSolver(self.device, self.recog)
                         drain = ope_solver.run(self.tasks[0].time)
-                mission_solver = MissionSolver(self.device)
+                mission_solver = MissionSolver(self.device, self.recog)
                 mission_solver.run()
+                if (
+                    config.conf["maa_credit_fight"]
+                    and "" not in stage_today
+                    and self.credit_fight is None
+                    and self.tasks[0].time - datetime.now() > timedelta(minutes=3)
+                ):
+                    self.back_to_index()
+                    credit_fight = CreditFight(self.device, self.recog)
+                    credit_fight.run()
+                    self.credit_fight = get_server_weekday()
                 if drain:
                     self.last_execution["maa"] = datetime.now()
                     self.send_message("刷理智结束")
@@ -3519,7 +3492,13 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         ] is None or datetime.now() > self.last_execution["recruit"] + timedelta(
             hours=self.recruit_config["recruit_execution_gap"]
         ):
-            recruit([], self.send_message_config, self.recruit_config, self.device)
+            recruit(
+                [],
+                self.send_message_config,
+                self.recruit_config,
+                self.device,
+                self.recog,
+            )
             self.last_execution["recruit"] = datetime.now()
             logger.info(
                 f"下一次公开招募执行时间在{self.recruit_config['recruit_execution_gap']}小时之后"
@@ -3527,16 +3506,18 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
 
     def mail_plan_solver(self):
         if self.check_mail_enable:
-            mail(self.device)
+            MailSolver(self.device, self.recog).run()
         return True
 
     def report_plan_solver(self, send_report=False):
         if self.report_enable:
-            return daily_report(self.device, self.send_message_config, send_report)
+            return ReportSolver(
+                self.device, self.recog, self.send_message_config, send_report
+            ).run()
 
     def visit_friend_plan_solver(self):
         if self.visit_friend_enable:
-            return daily_visit_friend(self.device)
+            return CreditSolver(self.device, self.recog).run()
 
     def sign_in_plan_solver(self):
         if not self.sign_in_enable:
@@ -3545,7 +3526,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         try:
             import sign_in
 
-            sign_in_solver = sign_in.SignInSolver(self.device)
+            sign_in_solver = sign_in.SignInSolver(self.device, self.recog)
             sign_in_solver.send_message_config = self.send_message_config
             return sign_in_solver.run()
         except MowerExit:
@@ -3555,7 +3536,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
 
     def 仓库扫描(self):
         try:
-            depotscan(self.device)
+            DepotSolver(self.device, self.recog).run()
         except Exception as e:
             logger.info(f"先不运行 出bug了 : {e}")
             return False

@@ -282,3 +282,8 @@ droidcast:
   enable: true
   rotate: false
 visit_friend: true
+credit_fight:
+  operator: 风笛
+  x: 5
+  y: 3
+  direction: Right

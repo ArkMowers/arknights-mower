@@ -167,6 +167,8 @@ class Recognizer(object):
             self.scene = Scene.OPERATOR_BEFORE
         elif self.find("ope_select_start") is not None:
             self.scene = Scene.OPERATOR_SELECT
+        elif self.find("fight/refresh"):
+            self.scene = Scene.OPERATOR_SUPPORT
         elif self.find("ope_agency_going", scope=((470, 915), (755, 1045))) is not None:
             self.scene = Scene.OPERATOR_ONGOING
         elif self.find("ope_elimi_finished") is not None:
@@ -325,6 +327,7 @@ class Recognizer(object):
             navi_record_restoration = submit("navigation/record_restoration")
             ope_plan = submit("ope_plan")
             ope_select_start = submit("ope_select_start")
+            fight_refresh = submit("fight/refresh")
             ope_agency_going = submit("ope_agency_going", ((470, 915), (755, 1045)))
             ope_elimi_finished = submit("ope_elimi_finished")
             ope_finish = submit("ope_finish")
@@ -423,6 +426,8 @@ class Recognizer(object):
                 self.scene = Scene.OPERATOR_BEFORE
             elif ope_select_start.result():
                 self.scene = Scene.OPERATOR_SELECT
+            elif fight_refresh.result():
+                self.scene = Scene.OPERATOR_SUPPORT
             elif ope_agency_going.result():
                 self.scene = Scene.OPERATOR_ONGOING
             elif ope_elimi_finished.result():
@@ -939,10 +944,8 @@ class Recognizer(object):
         color = {
             "terminal_pre2": (1459, 797),
             "mail": (307, 39),
-            "loading": (682, 310),
             "loading2": (620, 247),
             "navigation/record_restoration": (274, 970),
-            "ope_agency_going": (510, 941),
             "network_check": (432, 433),
             "ope_eliminate": (1332, 938),
             "riic_report_title": (1712, 25),
@@ -967,11 +970,10 @@ class Recognizer(object):
             "skip": (1803, 32),
             "confirm": (0, 683),
             "login_connecting": (760, 881),
-            "main_theme": (283, 945),
-            "episode": (535, 937),
-            "biography": (768, 934),
             "arrange_order_options": (1652, 23),
             "arrange_order_options_scene": (369, 199),
+            "fight/refresh": (1639, 22),
+            "fight/use": (858, 864),
         }
 
         if res in color:
