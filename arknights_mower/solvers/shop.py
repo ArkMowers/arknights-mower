@@ -162,7 +162,7 @@ class CreditShop(BaseSolver):
                 ):
                     self.tap(product["touch"])
                     return
-            if config.conf["maa_mall_ignore_blacklist_when_full"]:
+            if remain > 300 and config.conf["maa_mall_ignore_blacklist_when_full"]:
                 for product in self.products:
                     if product and remain > product["price"]:
                         self.tap(product["touch"])
