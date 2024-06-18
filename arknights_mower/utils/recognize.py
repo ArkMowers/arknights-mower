@@ -135,6 +135,12 @@ class Recognizer(object):
             return self.scene
         if self.find("connecting"):
             self.scene = Scene.CONNECTING
+        elif self.find("order_label"):
+            self.scene = Scene.ORDER_LIST
+        elif self.find("drone"):
+            self.scene = Scene.DRONE_ACCELERATE
+        elif self.find("fight/use"):
+            self.scene = Scene.OPERATOR_STRANGER_SUPPORT
         elif self.detect_index_scene():
             self.scene = Scene.INDEX
         elif self.find("nav_index") is not None:
@@ -311,6 +317,9 @@ class Recognizer(object):
                 return e.submit(lambda: self.find(res, scope=scope))
 
             connecting = submit("connecting")
+            order_label = submit("order_label")
+            drone = submit("drone")
+            fight_use = submit("fight/use")
             index = e.submit(self.detect_index_scene)
             nav_index = submit("nav_index")
             login_new = submit("login_new")
@@ -396,6 +405,12 @@ class Recognizer(object):
 
             if connecting.result():
                 self.scene = Scene.CONNECTING
+            elif order_label.result():
+                self.scene = Scene.ORDER_LIST
+            elif drone.result():
+                self.scene = Scene.DRONE_ACCELERATE
+            elif fight_use.result():
+                self.scene = Scene.OPERATOR_STRANGER_SUPPORT
             elif index.result():
                 self.scene = Scene.INDEX
             elif nav_index.result():
@@ -974,6 +989,8 @@ class Recognizer(object):
             "arrange_order_options_scene": (369, 199),
             "fight/refresh": (1639, 22),
             "fight/use": (858, 864),
+            "order_label": (404, 137),
+            "drone": (274, 437),
         }
 
         if res in color:

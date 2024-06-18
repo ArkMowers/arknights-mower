@@ -187,6 +187,14 @@
         "label": "TRAIN_FINISH",
         "comment": "技能升级结算"
     },
+    "221": {
+        "label": "ORDER_LIST",
+        "comment": "贸易站订单列表"
+    },
+    "222": {
+        "label": "DRONE_ACCELERATE",
+        "comment": "无人机加速对话框"
+    },
     "301": {
         "label": "FRIEND_LIST_OFF",
         "comment": "好友列表（未选中）"
@@ -294,6 +302,10 @@
     "615": {
         "label": "OPERATOR_SUPPORT",
         "comment": "借助战"
+    },
+    "616": {
+        "label": "OPERATOR_STRANGER_SUPPORT",
+        "comment": "使用非好友助战"
     },
     "701": {
         "label": "SHOP_OTHERS",

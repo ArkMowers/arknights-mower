@@ -54,9 +54,9 @@ class CreditFight(BaseSolver):
                 self.ctap((1660, 315))
         elif scene == Scene.OPERATOR_SUPPORT:
             self.tap(self.choose_support())
-            if pos := self.find("fight/use"):
-                self.tap(pos)
             self.support = True
+        elif scene == Scene.OPERATOR_STRANGER_SUPPORT:
+            self.tap_element("fight/use")
         elif scene == Scene.OPERATOR_FINISH:
             return True
         else:

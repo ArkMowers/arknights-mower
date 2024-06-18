@@ -126,8 +126,7 @@ class AutoFight(BaseSolver):
             cost_scope = sa(((-13, 19), (30, 44)), (x, y))
             cost = self.number(cost_scope, 25, 80)
             self.operators[name] = {"scope": scope, "cost": cost}
-        for name, data in self.operators.items():
-            logger.info(f"{name}：{data['cost']}费")
+            logger.info(f"{name}：{cost}费")
         self.toggle_play()
 
     @property
