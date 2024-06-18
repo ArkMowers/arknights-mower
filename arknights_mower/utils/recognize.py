@@ -571,6 +571,10 @@ class Recognizer(object):
             return self.scene
         if self.find("connecting"):
             self.scene = Scene.CONNECTING
+        elif self.find("order_label"):
+            self.scene = Scene.ORDER_LIST
+        elif self.find("drone"):
+            self.scene = Scene.DRONE_ACCELERATE
         elif self.find("double_confirm") is not None:
             if self.find("network_check") is not None:
                 self.scene = Scene.NETWORK_CHECK
