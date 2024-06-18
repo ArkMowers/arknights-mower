@@ -42,6 +42,7 @@ class AutoFight(BaseSolver):
         self.loading = True
         self.play = True
         self.operators = {}
+        self.initial_cost = None
         super().run()
 
     def number(self, scope: tp.Scope, height: int, thres: int):
@@ -75,6 +76,9 @@ class AutoFight(BaseSolver):
     def cost(self):
         """获取部署费用，耗时1ms左右"""
         cost = self.number(((1800, 745), (1920, 805)), 52, 200)
+        img = cropimg(self.recog.gray, ((1740, 813), (1920, 814)))
+        img = thres2(img, 200)
+        cost += cv2.countNonZero(img) / 180
         logger.debug(cost)
         return cost
 
@@ -86,7 +90,8 @@ class AutoFight(BaseSolver):
         tpl = loadres("fight/enemy", True)
         result = cv2.matchTemplate(img, tpl, cv2.TM_SQDIFF_NORMED)
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-        return min_val < 0.1
+        logger.debug(min_val)
+        return min_val < 0.4 and self.recog.gray[776][1780] > 240
 
     def complete(self):
         img = cropimg(self.recog.gray, ((87, 268), (529, 383)))
@@ -94,14 +99,15 @@ class AutoFight(BaseSolver):
         tpl = loadres("fight/complete", True)
         result = cv2.matchTemplate(img, tpl, cv2.TM_SQDIFF_NORMED)
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-        return min_val < 0.1
+        return min_val < 0.4
 
     def update_operators(self):
         """识别下方干员，耗时数秒"""
-        self.toggle_play()
+        if self.play:
+            self.toggle_play()
         y = 887
         img = cropimg(self.recog.gray, ((0, y), (1920, 905)))
-        threshold = 0.8
+        threshold = 0.7
         c = loadres("fight/c", True)
         mask = loadres("fight/c_mask", True)
         result = cv2.matchTemplate(img, c, cv2.TM_CCOEFF_NORMED, None, mask)[0]
@@ -141,14 +147,10 @@ class AutoFight(BaseSolver):
     def wait_for_start(self):
         while True:
             self.recog.update()
-            img = cropimg(self.recog.gray, ((1770, 58), (1830, 103)))
-            img = thres2(img, 240)
-            tpl = loadres("fight/pause", True)
-            result = cv2.matchTemplate(img, tpl, cv2.TM_SQDIFF_NORMED)
-            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-            if min_val < 0.1:
+            if self.cost() > self.initial_cost:
+                self.toggle_play()
+                self.loading = False
                 break
-        self.loading = False
 
     def toggle_play(self):
         logger.info("暂停" if self.play else "继续")
@@ -158,19 +160,9 @@ class AutoFight(BaseSolver):
     def toggle_speed(self):
         target = 1 if self.speed == 2 else 2
         logger.info(f"切换至{target}倍速")
-        while True:
-            self.device.tap((1650, 80))
-            sleep(0.1)
-            self.recog.update()
-            img = cropimg(self.recog.gray, ((1608, 43), (1644, 84)))
-            img = thres2(img, 240)
-            tpl = loadres(f"fight/speed{target}", True)
-            result = cv2.matchTemplate(img, tpl, cv2.TM_SQDIFF_NORMED)
-            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-            if min_val < 0.1:
-                self.speed = target
-                self.complete_action()
-                break
+        self.device.tap((1650, 80))
+        self.speed = target
+        self.complete_action()
 
     def deploy(self):
         name = self.action["name"]
@@ -182,6 +174,7 @@ class AutoFight(BaseSolver):
         pos = self.calc.get_character_screen_pos(x, y, True, False)
         pos = int(pos.x), int(pos.y)
         direction = self.action["direction"]
+        logger.info(f"在({x}, {y})部署{name}，方向为{direction}")
         if direction in ["Left"]:
             dir = (-200, 0)
         elif direction in ["Right"]:
@@ -198,7 +191,6 @@ class AutoFight(BaseSolver):
         self.device.swipe_ext([pos, dir], [200])
         self.operators = {}
         self.complete_action()
-        logger.info(f"在({x}, {y})部署{name}，方向为{direction}")
 
     def transition(self):
         self.recog.update()
@@ -212,6 +204,8 @@ class AutoFight(BaseSolver):
             self.sleep(10)
             return
         if self.loading:
+            if self.initial_cost is None:
+                self.initial_cost = self.cost()
             self.wait_for_start()
         elif not self.operators:
             self.update_operators()
