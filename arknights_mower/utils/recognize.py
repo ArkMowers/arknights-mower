@@ -139,6 +139,8 @@ class Recognizer(object):
             self.scene = Scene.ORDER_LIST
         elif self.find("drone"):
             self.scene = Scene.DRONE_ACCELERATE
+        elif self.find("factory_collect"):
+            self.scene = Scene.FACTORY_ROOMS
         elif self.find("fight/use"):
             self.scene = Scene.OPERATOR_STRANGER_SUPPORT
         elif self.detect_index_scene():
@@ -319,6 +321,7 @@ class Recognizer(object):
             connecting = submit("connecting")
             order_label = submit("order_label")
             drone = submit("drone")
+            factory_collect = submit("factory_collect")
             fight_use = submit("fight/use")
             index = e.submit(self.detect_index_scene)
             nav_index = submit("nav_index")
@@ -409,6 +412,8 @@ class Recognizer(object):
                 self.scene = Scene.ORDER_LIST
             elif drone.result():
                 self.scene = Scene.DRONE_ACCELERATE
+            elif factory_collect.result():
+                self.scene = Scene.FACTORY_ROOMS
             elif fight_use.result():
                 self.scene = Scene.OPERATOR_STRANGER_SUPPORT
             elif index.result():
@@ -575,6 +580,8 @@ class Recognizer(object):
             self.scene = Scene.ORDER_LIST
         elif self.find("drone"):
             self.scene = Scene.DRONE_ACCELERATE
+        elif self.find("factory_collect"):
+            self.scene = Scene.FACTORY_ROOMS
         elif self.find("double_confirm") is not None:
             if self.find("network_check") is not None:
                 self.scene = Scene.NETWORK_CHECK
@@ -995,6 +1002,7 @@ class Recognizer(object):
             "fight/use": (858, 864),
             "order_label": (404, 137),
             "drone": (274, 437),
+            "factory_collect": (1542, 886),
         }
 
         if res in color:
