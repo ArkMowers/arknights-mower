@@ -492,6 +492,30 @@ def test_email():
     return "邮件发送成功！"
 
 
+@app.route("/test-custom-screenshot")
+@require_token
+def test_custom_screenshot():
+    import cv2
+    import numpy as np
+    import subprocess
+    import base64
+
+    command = config.conf["custom_screenshot"]["command"]
+
+    start = time.time()
+    data = subprocess.check_output(command, shell=True)
+    end = time.time()
+    elapsed = int((end - start) * 1000)
+
+    data = np.frombuffer(data, np.uint8)
+    data = cv2.imdecode(data, cv2.IMREAD_COLOR)
+    _, data = cv2.imencode(".jpg", data, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
+    data = base64.b64encode(data)
+    data = data.decode("ascii")
+
+    return {"elapsed": elapsed, "screenshot": data}
+
+
 @app.route("/test-serverJang-push")
 @require_token
 def test_serverJang_push():

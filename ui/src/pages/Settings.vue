@@ -38,7 +38,8 @@ const {
   get_scene,
   droidcast,
   maa_adb_path,
-  maa_gap
+  maa_gap,
+  custom_screenshot
 } = storeToRefs(config_store)
 
 const { operators } = storeToRefs(plan_store)
@@ -87,6 +88,46 @@ async function select_maa_adb_path() {
   const file_path = await file_dialog()
   if (file_path) {
     maa_adb_path.value = file_path
+  }
+}
+
+const screenshot_method = computed({
+  get() {
+    let result = 'adb_gzip'
+    if (droidcast.value.enable) {
+      result = 'droidcast'
+    } else if (custom_screenshot.value.enable) {
+      result = 'custom'
+    }
+    return result
+  },
+  set(value) {
+    droidcast.value.enable = false
+    custom_screenshot.value.enable = false
+    if (value == 'droidcast') {
+      droidcast.value.enable = true
+    } else if (value == 'custom') {
+      custom_screenshot.value.enable = true
+    }
+  }
+})
+
+const tested = ref(false)
+const image = ref('')
+const elapsed = ref(0)
+const loading = ref(false)
+const axios = inject('axios')
+
+async function test_screenshot() {
+  loading.value = true
+  tested.value = false
+  try {
+    const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/test-custom-screenshot`)
+    image.value = response.data.screenshot
+    elapsed.value = response.data.elapsed
+  } finally {
+    loading.value = false
+    tested.value = true
   }
 }
 </script>
@@ -156,7 +197,11 @@ async function select_maa_adb_path() {
                   <div>MuMu12: 写到shell文件夹</div>
                 </help-text>
               </template>
-              <n-input v-model:value="simulator.simulator_folder" />
+              <n-input
+                v-model:value="simulator.simulator_folder"
+                type="textarea"
+                :autosize="true"
+              />
               <n-button @click="select_simulator_folder" class="dialog-btn">...</n-button>
             </n-form-item>
             <n-form-item v-if="simulator.name">
@@ -213,13 +258,16 @@ async function select_maa_adb_path() {
               <n-checkbox v-model:checked="start_automatically">启动后自动开始任务</n-checkbox>
             </n-form-item>
             <n-form-item label="截图方案">
-              <n-radio-group v-model:value="droidcast.enable">
+              <n-radio-group v-model:value="screenshot_method">
                 <n-flex>
-                  <n-radio :value="false">
+                  <n-radio value="adb_gzip">
                     ADB+Gzip<help-text>无损压缩，兼容性好</help-text>
                   </n-radio>
-                  <n-radio :value="true">
+                  <n-radio value="droidcast">
                     DroidCast<help-text>有损压缩，速度更快</help-text>
+                  </n-radio>
+                  <n-radio value="custom">
+                    自定义命令<help-text>向<code>STDOUT</code>打印图像</help-text>
                   </n-radio>
                 </n-flex>
               </n-radio-group>
@@ -231,6 +279,18 @@ async function select_maa_adb_path() {
                   <n-radio :value="true">旋转180度</n-radio>
                 </n-flex>
               </n-radio-group>
+            </n-form-item>
+            <n-form-item label="截图命令" v-if="custom_screenshot.enable">
+              <n-input v-model:value="custom_screenshot.command" type="textarea" :autosize="true" />
+              <n-button class="dialog-btn" @click="test_screenshot" :loading="loading">
+                测试
+              </n-button>
+            </n-form-item>
+            <n-form-item v-if="custom_screenshot.enable && tested" :show-label="false">
+              <n-flex vertical>
+                <n-image :src="'data:image/jpeg;base64,' + image" width="100%" />
+                <div>（截图用时{{ elapsed }}ms）</div>
+              </n-flex>
             </n-form-item>
             <n-form-item>
               <template #label>

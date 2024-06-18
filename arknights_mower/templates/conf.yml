@@ -287,3 +287,6 @@ credit_fight:
   x: 5
   y: 3
   direction: Right
+custom_screenshot:
+  enable: False
+  command: adb -s 127.0.0.1:5555 shell screencap -p 2>/dev/null

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gzip
+import subprocess
 import time
 from typing import Optional
 
@@ -199,10 +200,9 @@ class Device(object):
                     logger.debug(f"GET {url}")
                     r = session.get(url)
                     img = bytes2img(r.content)
-                    gray = bytes2img(r.content, True)
                     if config.droidcast["rotate"]:
                         img = cv2.rotate(img, cv2.ROTATE_180)
-                        gray = cv2.rotate(gray, cv2.ROTATE_180)
+                    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
                     break
                 except Exception:
                     restart_simulator()
@@ -211,6 +211,20 @@ class Device(object):
                     self.start_droidcast()
                     if config.ADB_CONTROL_CLIENT == "scrcpy":
                         self.control.scrcpy = Scrcpy(self.client)
+        elif config.conf["custom_screenshot"]["enable"]:
+            command = config.conf["custom_screenshot"]["command"]
+            while True:
+                try:
+                    data = subprocess.check_output(command, shell=True)
+                    break
+                except Exception:
+                    restart_simulator()
+                    self.client.check_server_alive()
+                    Session().connect(config.ADB_DEVICE[0])
+                    if config.ADB_CONTROL_CLIENT == "scrcpy":
+                        self.control.scrcpy = Scrcpy(self.client)
+            img = bytes2img(data)
+            gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
         else:
             command = "screencap 2>/dev/null | gzip -1"
             while True:
