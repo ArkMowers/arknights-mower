@@ -1003,6 +1003,10 @@ class Recognizer(object):
             "order_label": (404, 137),
             "drone": (274, 437),
             "factory_collect": (1542, 886),
+            "ope_agency_lock": (1565, 856),
+            "ope_elimi_agency_panel": (1409, 612),
+            "ope_elimi_agency_confirm": (1554, 941),
+            "1800": (158, 958),
         }
 
         if res in color:

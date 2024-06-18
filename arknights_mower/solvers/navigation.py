@@ -57,7 +57,9 @@ class NavigationSolver(BaseSolver):
         prefix = name.split("-")[0]
         self.prefix = prefix
 
-        if prefix.isdigit():
+        if name == "Annihilation":
+            logger.info("剿灭导航")
+        elif prefix.isdigit():
             prefix = int(prefix)
             self.prefix = prefix
             if prefix in location and name in location[prefix]:
@@ -79,17 +81,32 @@ class NavigationSolver(BaseSolver):
             return False
 
         super().run()
-        return True
+        return self.success
 
     def transition(self):
         if (scene := self.scene()) == Scene.INDEX:
             self.tap_index_element("terminal")
         elif scene == Scene.TERMINAL_MAIN:
-            if isinstance(self.prefix, int):
+            if self.name == "Annihilation":
+                if pos := self.find("terminal_eliminate"):
+                    self.tap(pos)
+                else:
+                    logger.info("本周剿灭已完成")
+                    return True
+            elif isinstance(self.prefix, int):
                 self.tap_element("main_theme_small")
             elif self.prefix in ["OF"]:
                 self.tap_element("biography_small")
+        elif scene == Scene.OPERATOR_ELIMINATE:
+            if self.name != "Annihilation":
+                self.back()
+                return
+            self.success = True
+            return True
         elif scene == Scene.TERMINAL_MAIN_THEME:
+            if not isinstance(self.prefix, int):
+                self.back()
+                return
             act_scope = ((300, 315), (400, 370))
             if self.find("navigation/act/0", scope=act_scope):
                 if pos := self.find(f"navigation/main/{self.prefix}"):
@@ -102,6 +119,9 @@ class NavigationSolver(BaseSolver):
             else:
                 self.tap((230, 175))
         elif scene == Scene.TERMINAL_BIOGRAPHY:
+            if self.prefix not in ["OF"]:
+                self.back()
+                return
             if self.find(f"navigation/biography/{self.prefix}_banner"):
                 self.tap_element("navigation/entry")
                 return

@@ -3299,12 +3299,12 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             else:
                 plan_today = self.maa_config["weekly_plan"][get_server_weekday()]
                 stage_today = plan_today["stage"]
+                nav_solver = NavigationSolver(self.device, self.recog)
+                ope_solver = OperationSolver(self.device, self.recog)
                 for name in stage_today:
                     if self.tasks[0].time - datetime.now() < timedelta(minutes=5):
                         break
-                    nav_solver = NavigationSolver(self.device, self.recog)
                     if nav_solver.run(name):
-                        ope_solver = OperationSolver(self.device, self.recog)
                         drain = ope_solver.run(self.tasks[0].time)
                 mission_solver = MissionSolver(self.device, self.recog)
                 mission_solver.run()

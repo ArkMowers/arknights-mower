@@ -73,6 +73,21 @@ class OperationSolver(BaseSolver):
         elif scene == Scene.OPERATOR_RECOVER_ORIGINITE:
             self.sanity_drain = True
             return True
+        elif scene == Scene.OPERATOR_ELIMINATE:
+            if self.find("ope_agency_lock"):
+                logger.error("无法代理当期剿灭")
+                self.sanity_drain = True
+                return True
+            if self.find("1800"):
+                logger.info("本周剿灭已完成")
+                self.sanity_drain = True
+                return True
+            if pos := self.find("ope_elimi_agency"):
+                self.tap(pos)
+                return
+            self.tap_element("ope_start", interval=2)
+        elif scene == Scene.OPERATOR_ELIMINATE_AGENCY:
+            self.tap_element("ope_elimi_agency_confirm", interval=2)
 
         else:
             self.sleep()
