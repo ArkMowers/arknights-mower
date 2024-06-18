@@ -60,6 +60,13 @@ const deploy_directions = [
   { label: '向左', value: 'Left' },
   { label: '向右', value: 'Right' }
 ]
+
+const squads = [
+  { label: '第一编队', value: 1 },
+  { label: '第二编队', value: 2 },
+  { label: '第三编队', value: 3 },
+  { label: '第四编队', value: 4 }
+]
 </script>
 
 <template>
@@ -74,6 +81,9 @@ const deploy_directions = [
     <n-form :label-placement="mobile ? 'top' : 'left'" :show-feedback="false" class="rogue">
       <n-form-item :show-label="false">
         <n-checkbox v-model:checked="maa_credit_fight">信用作战（OF-1）</n-checkbox>
+      </n-form-item>
+      <n-form-item label="编队">
+        <n-select :options="squads" v-model:value="credit_fight.squad" />
       </n-form-item>
       <n-form-item label="干员">
         <n-select

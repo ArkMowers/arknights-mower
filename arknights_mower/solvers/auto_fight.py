@@ -105,6 +105,8 @@ class AutoFight(BaseSolver):
         """识别下方干员，耗时数秒"""
         if self.play:
             self.toggle_play()
+        self.recog.update()
+        self.recog.save_screencap("auto_fight")
         y = 887
         img = cropimg(self.recog.gray, ((0, y), (1920, 905)))
         threshold = 0.7
