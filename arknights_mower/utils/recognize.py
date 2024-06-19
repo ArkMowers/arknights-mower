@@ -987,7 +987,6 @@ class Recognizer(object):
             "agent_unlock": (91, 1013),
             "shop_credit_2": (1657, 135),
             "shop_cart": (1252, 842),
-            "login_logo": (601, 332),
             "hypergryph": (0, 961),
             "login_awake": (888, 743),
             "login_account": (622, 703),
