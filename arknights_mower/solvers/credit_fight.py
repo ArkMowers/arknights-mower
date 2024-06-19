@@ -76,5 +76,7 @@ class CreditFight(BaseSolver):
             self.tap_element("fight/use")
         elif scene == Scene.OPERATOR_FINISH:
             return True
+        elif scene == Scene.CONFIRM:
+            self.back_to_index()
         else:
             self.sleep()

@@ -135,6 +135,8 @@ class Recognizer(object):
             return self.scene
         if self.find("connecting"):
             self.scene = Scene.CONNECTING
+        elif self.find("confirm"):
+            self.scene = Scene.CONFIRM
         elif self.find("order_label"):
             self.scene = Scene.ORDER_LIST
         elif self.find("drone"):
@@ -273,8 +275,6 @@ class Recognizer(object):
             self.scene = Scene.SKIP
         elif self.find("upgrade") is not None:
             self.scene = Scene.UPGRADE
-        elif self.find("confirm"):
-            self.scene = Scene.CONFIRM
         elif self.find("login_captcha") is not None:
             self.scene = Scene.LOGIN_CAPTCHA
         elif self.find("login_connecting") is not None:
@@ -319,6 +319,7 @@ class Recognizer(object):
                 return e.submit(lambda: self.find(res, scope=scope))
 
             connecting = submit("connecting")
+            detector_confirm = submit("confirm")
             order_label = submit("order_label")
             drone = submit("drone")
             factory_collect = submit("factory_collect")
@@ -395,7 +396,6 @@ class Recognizer(object):
             announcement = e.submit(self.check_announcement)
             skip = submit("skip")
             upgrade = submit("upgrade")
-            detector_confirm = submit("confirm")
             login_captcha = submit("login_captcha")
             login_connecting = submit("login_connecting")
             main_theme = submit("main_theme")
@@ -408,6 +408,8 @@ class Recognizer(object):
 
             if connecting.result():
                 self.scene = Scene.CONNECTING
+            elif detector_confirm.result() is not None:
+                self.scene = Scene.CONFIRM
             elif order_label.result():
                 self.scene = Scene.ORDER_LIST
             elif drone.result():
@@ -536,8 +538,6 @@ class Recognizer(object):
                 self.scene = Scene.SKIP
             elif upgrade.result():
                 self.scene = Scene.UPGRADE
-            elif detector_confirm.result() is not None:
-                self.scene = Scene.CONFIRM
             elif login_captcha.result():
                 self.scene = Scene.LOGIN_CAPTCHA
             elif login_connecting.result():

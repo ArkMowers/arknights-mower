@@ -178,5 +178,7 @@ class CreditShop(BaseSolver):
             self.back()
         elif scene == Scene.MATERIEL:
             self.tap_element("materiel_ico")
+        elif scene == Scene.CONFIRM:
+            self.back_to_index()
         else:
             self.sleep()

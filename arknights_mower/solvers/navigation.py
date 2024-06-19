@@ -154,5 +154,8 @@ class NavigationSolver(BaseSolver):
                 self.back()
         elif self.get_navigation():
             self.tap_element("nav_terminal")
+        elif scene == Scene.CONFIRM:
+            self.success = False
+            self.back_to_index()
         else:
             self.sleep()
