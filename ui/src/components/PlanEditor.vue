@@ -559,17 +559,13 @@ function set_facility(e) {
           </td>
           <td class="select-label">替换：</td>
           <td>
-            <n-select
-              :disabled="!plan[facility].plans[i - 1].agent"
-              multiple
-              filterable
-              :options="operators_with_none"
-              class="replacement-select"
-              v-model:value="plan[facility].plans[i - 1].replacement"
-              :filter="(p, o) => pinyin_match(o.label, p)"
-              :render-label="render_op_label"
-              :render-tag="render_op_tag"
-            />
+            <n-form-item :show-label="false" :show-feedback="false">
+              <slick-operator-select
+                  :disabled="!plan[facility].plans[i - 1].agent"
+                  v-model="plan[facility].plans[i - 1].replacement"
+                  class="replacement-select"
+              />
+            </n-form-item>
           </td>
         </tr>
       </table>
