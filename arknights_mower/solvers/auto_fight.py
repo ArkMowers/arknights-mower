@@ -4,16 +4,17 @@ from time import sleep
 
 import cv2
 from scipy.signal import argrelmax
+from skimage.metrics import structural_similarity
 
 from arknights_mower import __rootdir__
 from arknights_mower.solvers.secret_front import templates
+from arknights_mower.utils import config
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.solver import BaseSolver
 from arknights_mower.utils.tile_pos import Calc, find_level
 from arknights_mower.utils.vector import sa, va
-from arknights_mower.utils import config
 
 with lzma.open(f"{__rootdir__}/models/avatar.pkl", "rb") as f:
     avatar = pickle.load(f)
@@ -40,9 +41,8 @@ class AutoFight(BaseSolver):
         ]
         self.speed = 1
         self.loading = True
-        self.play = True
+        self.playing = True
         self.operators = {}
-        self.initial_cost = None
         super().run()
 
     def number(self, scope: tp.Scope, height: int, thres: int):
@@ -76,9 +76,6 @@ class AutoFight(BaseSolver):
     def cost(self):
         """获取部署费用，耗时1ms左右"""
         cost = self.number(((1800, 745), (1920, 805)), 52, 200)
-        img = cropimg(self.recog.gray, ((1740, 813), (1920, 814)))
-        img = thres2(img, 200)
-        cost += cv2.countNonZero(img) / 180
         logger.debug(cost)
         return cost
 
@@ -91,7 +88,7 @@ class AutoFight(BaseSolver):
         result = cv2.matchTemplate(img, tpl, cv2.TM_SQDIFF_NORMED)
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
         logger.debug(min_val)
-        return min_val < 0.4 and self.recog.gray[776][1780] > 240
+        return min_val < 0.4
 
     def complete(self):
         img = cropimg(self.recog.gray, ((87, 268), (529, 383)))
@@ -103,8 +100,7 @@ class AutoFight(BaseSolver):
 
     def update_operators(self):
         """识别下方干员，耗时数秒"""
-        if self.play:
-            self.toggle_play()
+        self.pause()
         self.recog.update()
         self.recog.save_screencap("auto_fight")
         y = 887
@@ -135,7 +131,7 @@ class AutoFight(BaseSolver):
             cost = self.number(cost_scope, 25, 80)
             self.operators[name] = {"scope": scope, "cost": cost}
             logger.info(f"{name}：{cost}费")
-        self.toggle_play()
+        self.play()
 
     @property
     def action(self):
@@ -146,18 +142,24 @@ class AutoFight(BaseSolver):
     def complete_action(self):
         self.actions.pop(0)
 
-    def wait_for_start(self):
-        while True:
-            self.recog.update()
-            if self.cost() > self.initial_cost:
-                self.toggle_play()
-                self.loading = False
-                break
-
     def toggle_play(self):
-        logger.info("暂停" if self.play else "继续")
         self.device.tap((1800, 80))
-        self.play = not self.play
+        sleep(0.1)
+        self.recog.update()
+        img = cropimg(self.recog.gray, ((740, 480), (1180, 665)))
+        img = thres2(img, 250)
+        res = loadres("fight/pause", True)
+        self.playing = structural_similarity(img, res) < 0.9
+
+    def play(self):
+        logger.info("继续")
+        while not self.playing:
+            self.toggle_play()
+
+    def pause(self):
+        logger.info("暂停")
+        while self.playing:
+            self.toggle_play()
 
     def toggle_speed(self):
         target = 1 if self.speed == 2 else 2
@@ -201,14 +203,14 @@ class AutoFight(BaseSolver):
                 logger.info("行动结束")
                 return True
             else:
+                sleep(1)
                 return
         if self.action is None:
             self.sleep(10)
             return
         if self.loading:
-            if self.initial_cost is None:
-                self.initial_cost = self.cost()
-            self.wait_for_start()
+            self.pause()
+            self.loading = False
         elif not self.operators:
             self.update_operators()
         elif self.action["type"] == "SpeedUp":
