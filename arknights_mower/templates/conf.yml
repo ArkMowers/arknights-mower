@@ -275,9 +275,6 @@ touch_method: scrcpy
 free_room: false
 sign_in:
   enable: true
-get_scene:
-  concurrent: false
-  max_workers: 4
 droidcast:
   enable: true
   rotate: false

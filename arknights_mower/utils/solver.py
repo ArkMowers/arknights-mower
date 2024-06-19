@@ -249,7 +249,7 @@ class BaseSolver:
         self,
         res: str,
         scope: Optional[tp.Scope] = None,
-        method: int = cv2.TM_CCOEFF,
+        method: int = cv2.TM_CCOEFF_NORMED,
     ) -> Tuple[float, tp.Scope]:
         return self.recog.template_match(res, scope, method)
 
@@ -330,10 +330,7 @@ class BaseSolver:
 
     def scene(self) -> int:
         """get the current scene in the game"""
-        if config.get_scene["concurrent"]:
-            return self.recog.get_scene_concurrent()
-        else:
-            return self.recog.get_scene()
+        return self.recog.get_scene()
 
     def get_infra_scene(self) -> int:
         """get the current scene in the infra"""

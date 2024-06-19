@@ -144,7 +144,7 @@
         "comment": "控制中枢界面"
     },
     "210": {
-        "label": "OPERATOR_SELECT",
+        "label": "RIIC_OPERATOR_SELECT",
         "comment": "干员选择界面"
     },
     "211": {
