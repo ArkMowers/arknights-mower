@@ -293,7 +293,10 @@ class Device(object):
         while True:
             try:
                 focus = self.current_focus()
-                if focus != f"{config.APPNAME}/{config.APP_ACTIVITY_NAME}":
+                if focus not in [
+                    f"{config.APPNAME}/{config.APP_ACTIVITY_NAME}",
+                    "com.hypergryph.arknights.bilibili/com.gsc.welcome.WelcomeActivity",
+                ]:
                     self.launch()
                     # wait for app to finish launching
                     time.sleep(10)

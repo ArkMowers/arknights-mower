@@ -275,14 +275,12 @@ touch_method: scrcpy
 free_room: false
 sign_in:
   enable: true
-get_scene:
-  concurrent: false
-  max_workers: 4
 droidcast:
   enable: true
   rotate: false
 visit_friend: true
 credit_fight:
+  squad: 1
   operator: 风笛
   x: 5
   y: 3

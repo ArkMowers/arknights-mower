@@ -88,6 +88,8 @@ class OperationSolver(BaseSolver):
             self.tap_element("ope_start", interval=2)
         elif scene == Scene.OPERATOR_ELIMINATE_AGENCY:
             self.tap_element("ope_elimi_agency_confirm", interval=2)
-
+        elif scene == Scene.CONFIRM:
+            self.sanity_drain = False
+            self.back_to_index()
         else:
             self.sleep()

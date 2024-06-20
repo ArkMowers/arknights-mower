@@ -3,6 +3,7 @@ from scipy.signal import argrelmin
 
 from arknights_mower.solvers.auto_fight import AutoFight
 from arknights_mower.solvers.navigation import NavigationSolver
+from arknights_mower.utils import config
 from arknights_mower.utils.image import cropimg, loadres
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.recognize import Scene
@@ -33,6 +34,17 @@ class CreditFight(BaseSolver):
         x = match[0]
         return (x, 908), (x + 194, 983)
 
+    def current_squad(self):
+        count = []
+        for i in range(4):
+            img = cropimg(
+                self.recog.img, ((153 + i * 411, 990), (550 + i * 411, (1080)))
+            )
+            hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
+            mask = cv2.inRange(hsv, (97, 0, 0), (101, 255, 255))
+            count.append(cv2.countNonZero(mask))
+        return count.index(max(count)) + 1
+
     def transition(self):
         if (scene := self.scene()) == Scene.INDEX:
             navi_solver = NavigationSolver(self.device, self.recog)
@@ -44,6 +56,11 @@ class CreditFight(BaseSolver):
                 return
             self.tap_element("ope_start", interval=2)
         elif scene == Scene.OPERATOR_SELECT:
+            squad = self.current_squad()
+            target = config.conf["credit_fight"]["squad"]
+            if squad != target:
+                self.tap((target * 411 - 99, 1040))
+                return
             if self.support:
                 # 开始行动
                 self.tap((1655, 781))
@@ -59,5 +76,7 @@ class CreditFight(BaseSolver):
             self.tap_element("fight/use")
         elif scene == Scene.OPERATOR_FINISH:
             return True
+        elif scene == Scene.CONFIRM:
+            self.back_to_index()
         else:
             self.sleep()

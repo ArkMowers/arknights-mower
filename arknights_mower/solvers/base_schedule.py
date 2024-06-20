@@ -254,7 +254,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         return super().run()
 
     def transition(self) -> None:
-        if (scene := self.get_infra_scene()) == Scene.INDEX:
+        if (scene := self.scene()) == Scene.INDEX:
             self.tap_index_element("infrastructure")
         elif scene == Scene.INFRA_MAIN:
             return self.infra_main()
@@ -2203,15 +2203,15 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             action_required_task is not None and action_required_task.meta_data == room
         ):
             self.tap(accelerate)
-            if self.get_infra_scene() == Scene.CONNECTING:
+            if self.scene() == Scene.CONNECTING:
                 if not self.waiting_solver(Scene.CONNECTING, sleep_time=2):
                     return
             self.tap((self.recog.w * 1320 // 1920, self.recog.h * 502 // 1080))
-            if self.get_infra_scene() == Scene.CONNECTING:
+            if self.scene() == Scene.CONNECTING:
                 if not self.waiting_solver(Scene.CONNECTING, sleep_time=2):
                     return
             self.tap((self.recog.w * 3 // 4, self.recog.h * 4 // 5))
-            if self.get_infra_scene() == Scene.CONNECTING:
+            if self.scene() == Scene.CONNECTING:
                 if not self.waiting_solver(Scene.CONNECTING, sleep_time=2):
                     return
             while self.find("bill_accelerate") is None:
@@ -2293,7 +2293,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 self.tap(accelerate)
                 self.tap_element("all_in")
                 self.tap((self.recog.w * 0.75, self.recog.h * 0.8))
-                if self.get_infra_scene() == Scene.CONNECTING:
+                if self.scene() == Scene.CONNECTING:
                     if not self.waiting_solver(Scene.CONNECTING, sleep_time=2):
                         return
                 self.recog.update()
@@ -3067,7 +3067,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 # 如果完成则移除该任务
                 del plan[room]
                 # back to 基地主界面
-                if self.get_infra_scene() == Scene.CONNECTING:
+                if self.scene() == Scene.CONNECTING:
                     if not self.waiting_solver(Scene.CONNECTING, sleep_time=3):
                         return
             except MowerExit:
@@ -3085,7 +3085,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     skip_enter = True
                     continue
                 back_count = 0
-                while self.get_infra_scene() != Scene.INFRA_MAIN:
+                while self.scene() != Scene.INFRA_MAIN:
                     self.back(interval=0.5)
                     back_count += 1
                     if back_count > 3:
@@ -3141,7 +3141,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     logger.info(f"停止{wait_time}秒等待订单完成")
                     self.sleep(wait_time)
                     # 等待服务器交互
-                    if self.get_infra_scene() == Scene.CONNECTING:
+                    if self.scene() == Scene.CONNECTING:
                         if not self.waiting_solver(Scene.CONNECTING, sleep_time=1):
                             return
                 self.recog.update()
@@ -3223,7 +3223,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 # 补货
                 self.tap((self.recog.w * 0.75, self.recog.h * 0.3), interval=0.5)
                 self.tap((self.recog.w * 0.75, self.recog.h * 0.9), interval=0.5)
-                if self.get_infra_scene() == Scene.CONNECTING:
+                if self.scene() == Scene.CONNECTING:
                     if not self.waiting_solver(Scene.CONNECTING, sleep_time=2):
                         return
                 self.back()
@@ -3235,7 +3235,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 error = True
                 self.recog.update()
                 back_count = 0
-                while self.get_infra_scene() != Scene.INFRA_MAIN:
+                while self.scene() != Scene.INFRA_MAIN:
                     self.back()
                     self.recog.update()
                     back_count += 1

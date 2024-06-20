@@ -75,7 +75,6 @@ export const useConfigStore = defineStore('config', () => {
   const touch_method = ref('scrcpy')
   const free_room = ref(false)
   const sign_in = ref({ enable: true })
-  const get_scene = ref({})
   const droidcast = ref({})
   const visit_friend = ref(true)
   const credit_fight = ref({})
@@ -171,7 +170,6 @@ export const useConfigStore = defineStore('config', () => {
     touch_method.value = response.data.touch_method
     free_room.value = response.data.free_room
     sign_in.value = response.data.sign_in
-    get_scene.value = response.data.get_scene
     droidcast.value = response.data.droidcast
     visit_friend.value = response.data.visit_friend
     credit_fight.value = response.data.credit_fight
@@ -260,7 +258,6 @@ export const useConfigStore = defineStore('config', () => {
       touch_method: touch_method.value,
       free_room: free_room.value,
       sign_in: sign_in.value,
-      get_scene: get_scene.value,
       droidcast: droidcast.value,
       visit_friend: visit_friend.value,
       credit_fight: credit_fight.value,
@@ -351,7 +348,6 @@ export const useConfigStore = defineStore('config', () => {
     touch_method,
     free_room,
     sign_in,
-    get_scene,
     droidcast,
     visit_friend,
     credit_fight,
