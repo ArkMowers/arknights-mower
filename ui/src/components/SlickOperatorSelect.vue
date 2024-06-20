@@ -1,7 +1,7 @@
 <template>
   <slick-list
     v-model:list="operatorValue"
-    axis="x"
+    axis="xy"
     appendTo=".n-select"
     distance="5"
     class="width100"
