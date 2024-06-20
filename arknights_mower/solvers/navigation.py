@@ -179,19 +179,20 @@ class NavigationSolver(BaseSolver):
             if self.prefix not in ["AP", "LS", "CE", "PR-A", "PR-C"]:
                 self.back()
                 return
-            if self.find(f"navigation/collection/{self.prefix}_entry") is not None:
+            if pos := self.find(f"navigation/collection/{self.prefix}_entry"):
+                self.tap(pos)
+            else:
                 if self.prefix in ["AP", "CE"]:
                     self.swipe_noinertia((900, 500), (600, 0))
                 if self.prefix in ["PR-A", "PR-C"]:
                     self.swipe_noinertia((900, 500), (-600, 0))
-            self.tap_element(f"navigation/collection/{self.prefix}_entry")
+            self.recog.update()
         elif scene == Scene.OPERATOR_CHOOSE_LEVEL:
             name, val, loc = "", 1, None
             prefix = self.prefix
             # 资源收集关直接按坐标点击
             if prefix in collection_prefixs:
-                pos = self.find(f"{self.prefix}-1")
-                if pos:
+                if pos := self.find(f"{self.prefix}-1"):
                     self.success = True
                     self.tap(va(pos[0], location[prefix][self.name]))
                 return
