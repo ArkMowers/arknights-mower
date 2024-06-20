@@ -74,6 +74,8 @@ location = {
 
 }
 
+collection_prefixs = ["AP", "LS", "CE", "PR-A", "PR-C", "SK", "CA"]
+
 with lzma.open(f"{__rootdir__}/models/navigation.pkl", "rb") as f:
     templates = pickle.load(f)
 
@@ -140,7 +142,7 @@ class NavigationSolver(BaseSolver):
                 self.tap_element("main_theme_small")
             elif self.prefix in ["OF"]:
                 self.tap_element("biography_small")
-            elif self.prefix in ["AP", "LS", "CE", "PR-A", "PR-C", "SK", "CA"]:
+            elif self.prefix in collection_prefixs:
                 self.tap_element("collection_small")
         elif scene == Scene.OPERATOR_ELIMINATE:
             if self.name != "Annihilation":
@@ -182,11 +184,17 @@ class NavigationSolver(BaseSolver):
                     self.swipe_noinertia((900, 500), (600, 0))
                 if self.prefix in ["PR-A", "PR-C"]:
                     self.swipe_noinertia((900, 500), (-600, 0))
-            return
-
         elif scene == Scene.OPERATOR_CHOOSE_LEVEL:
             name, val, loc = "", 1, None
             prefix = self.prefix
+            # 资源收集关直接按坐标点击
+            if prefix in collection_prefixs:
+                pos = self.find(f"{self.prefix}-1")
+                if pos:
+                    self.success = True
+                    self.tap(va(pos[0], location[prefix][self.name]))
+                return
+            # 其余关
             for i in location[prefix]:
                 result = cv2.matchTemplate(
                     self.recog.gray, templates[i], cv2.TM_SQDIFF_NORMED
