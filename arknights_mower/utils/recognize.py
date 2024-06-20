@@ -203,6 +203,8 @@ class Recognizer(object):
             self.scene = Scene.SKIP
         elif self.find("login_connecting"):
             self.scene = Scene.LOGIN_LOADING
+        elif self.find("arrange_order_options"):
+            self.scene = Scene.INFRA_ARRANGE_ORDER
         elif self.find("arrange_order_options_scene"):
             self.scene = Scene.INFRA_ARRANGE_ORDER
         elif self.find("ope_recover_potion_on"):
@@ -214,6 +216,13 @@ class Recognizer(object):
                 self.scene = Scene.NETWORK_CHECK
             else:
                 self.scene = Scene.DOUBLE_CONFIRM
+        elif self.find("mission_trainee_on"):
+            self.scene = Scene.MISSION_TRAINEE
+        elif self.find("spent_credit"):
+            self.scene = Scene.SHOP_UNLOCK_SCHEDULE
+        elif self.find("loading7"):
+            self.scene = Scene.LOADING
+
         elif self.is_black():
             self.scene = Scene.LOADING
 
@@ -246,44 +255,14 @@ class Recognizer(object):
             self.scene = Scene.FRIEND_VISITING
         elif self.find("arrange_check_in") or self.find("arrange_check_in_on"):
             self.scene = Scene.INFRA_DETAILS
-
-        # 特征匹配
-        elif self.find("login_new"):
-            self.scene = Scene.LOGIN_NEW
-        elif self.find("login_bilibili"):
-            self.scene = Scene.LOGIN_BILIBILI
-        elif self.find("login_bilibili_privacy"):
-            self.scene = Scene.LOGIN_BILIBILI_PRIVACY
-
-        # 没弄完的
-        elif self.find("ope_elimi_finished"):
-            # TODO: 改成平均色匹配
-            self.scene = Scene.OPERATOR_ELIMINATE_FINISH
-        elif self.find("ope_giveup"):
-            self.scene = Scene.OPERATOR_GIVEUP
         elif self.find("ope_failed"):
-            # TODO: 改成模板匹配
             self.scene = Scene.OPERATOR_FAILED
-        elif self.find("mission_trainee_on", scope=((670, 0), (1920, 120))):
-            self.scene = Scene.MISSION_TRAINEE
-        elif self.find("mission_daily_on", scope=((670, 0), (1920, 120))):
+        elif self.find("mission_daily_on"):
             self.scene = Scene.MISSION_DAILY
-        elif self.find("mission_weekly_on", scope=((670, 0), (1920, 120))):
+        elif self.find("mission_weekly_on"):
             self.scene = Scene.MISSION_WEEKLY
-        elif self.find("agent_token", scope=((1735, 745), (1855, 820)), threshold=0.1):
+        elif self.find("agent_token"):
             self.scene = Scene.RECRUIT_AGENT
-        elif self.find("shop_assist"):
-            # TODO: 改成平均色匹配
-            self.scene = Scene.SHOP_ASSIST
-        elif self.find("spent_credit"):
-            # TODO: 改成平均色匹配
-            self.scene = Scene.SHOP_UNLOCK_SCHEDULE
-        elif self.check_announcement():
-            self.scene = Scene.ANNOUNCEMENT
-        elif self.find("upgrade"):
-            self.scene = Scene.UPGRADE
-        elif self.find("login_captcha"):
-            self.scene = Scene.LOGIN_CAPTCHA
         elif self.find("main_theme"):
             self.scene = Scene.TERMINAL_MAIN_THEME
         elif self.find("episode"):
@@ -292,78 +271,40 @@ class Recognizer(object):
             self.scene = Scene.TERMINAL_BIOGRAPHY
         elif self.find("collection"):
             self.scene = Scene.TERMINAL_COLLECTION
-        elif self.find("loading7"):
-            self.scene = Scene.LOADING
 
-        # 进度
+        elif self.check_announcement():
+            self.scene = Scene.ANNOUNCEMENT
+
+        # 特征匹配
+        # elif self.find("login_new"):
+        #     self.scene = Scene.LOGIN_NEW
+        elif self.find("login_bilibili"):
+            self.scene = Scene.LOGIN_BILIBILI
+        elif self.find("login_bilibili_privacy"):
+            self.scene = Scene.LOGIN_BILIBILI_PRIVACY
+        elif self.find("login_captcha"):
+            self.scene = Scene.LOGIN_CAPTCHA
+
+        # 没弄完的
+        # elif self.find("ope_elimi_finished"):
+        #     self.scene = Scene.OPERATOR_ELIMINATE_FINISH
+        # elif self.find("ope_giveup"):
+        #     self.scene = Scene.OPERATOR_GIVEUP
+        # elif self.find("shop_assist"):
+        #     self.scene = Scene.SHOP_ASSIST
+        # elif self.find("upgrade"):
+        #     self.scene = Scene.UPGRADE
+
         else:
             self.scene = Scene.UNKNOWN
-            if self.device.check_current_focus():
-                self.update()
         # save screencap to analyse
         if config.SCREENSHOT_PATH:
             self.save_screencap(self.scene)
         logger.info(f"Scene: {self.scene}: {SceneComment[self.scene]}")
 
-        self.check_loading_time()
-
-        return self.scene
-
-    def get_infra_scene(self) -> int:
-        if self.scene != Scene.UNDEFINED:
-            return self.scene
-        if self.find("connecting"):
-            self.scene = Scene.CONNECTING
-        elif self.find("order_label"):
-            self.scene = Scene.ORDER_LIST
-        elif self.find("drone"):
-            self.scene = Scene.DRONE_ACCELERATE
-        elif self.find("factory_collect"):
-            self.scene = Scene.FACTORY_ROOMS
-        elif self.find("double_confirm") is not None:
-            if self.find("network_check") is not None:
-                self.scene = Scene.NETWORK_CHECK
-            else:
-                self.scene = Scene.DOUBLE_CONFIRM
-        elif self.find("infra_overview", scope=((20, 120), (360, 245))) is not None:
-            self.scene = Scene.INFRA_MAIN
-        elif self.find("infra_todo") is not None:
-            self.scene = Scene.INFRA_TODOLIST
-        elif self.find("clue") is not None:
-            self.scene = Scene.INFRA_CONFIDENTIAL
-        elif (
-            self.find("arrange_check_in")
-            or self.find("arrange_check_in_on") is not None
-        ):
-            self.scene = Scene.INFRA_DETAILS
-        elif self.find("infra_overview_in", scope=((50, 690), (430, 770))) is not None:
-            self.scene = Scene.INFRA_ARRANGE
-        elif self.find("arrange_order_options"):
-            self.scene = Scene.INFRA_ARRANGE_ORDER
-        elif self.find("arrange_confirm") is not None:
-            self.scene = Scene.INFRA_ARRANGE_CONFIRM
-        elif self.find("arrange_order_options_scene") is not None:
-            self.scene = Scene.INFRA_ARRANGE_ORDER
-        elif self.find("loading") is not None:
-            self.scene = Scene.LOADING
-        elif self.find("loading2") is not None:
-            self.scene = Scene.LOADING
-        elif self.find("loading3") is not None:
-            self.scene = Scene.LOADING
-        elif self.find("loading4") is not None:
-            self.scene = Scene.LOADING
-        elif self.detect_index_scene():
-            self.scene = Scene.INDEX
-        elif self.is_black():
-            self.scene = Scene.LOADING
-        else:
-            self.scene = Scene.UNKNOWN
+        if self.scene == Scene.UNKNOWN:
             if self.device.check_current_focus():
                 self.update()
-        # save screencap to analyse
-        if config.SCREENSHOT_PATH is not None:
-            self.save_screencap(self.scene)
-        logger.info(f"Scene: {self.scene}: {SceneComment[self.scene]}")
 
         self.check_loading_time()
 
@@ -725,12 +666,14 @@ class Recognizer(object):
             "infra_overview_in": (64, 705),
             "infra_todo": (13, 1013),
             "loading2": (620, 247),
+            "loading7": (106, 635),
             "login_account": (622, 703),
             "login_awake": (888, 743),
             "login_connecting": (760, 881),
             "login_loading": (920, 388),
             "login_logo": (601, 332),
             "mail": (307, 39),
+            "mission_trainee_on": (690, 17),
             "nav_bar": (655, 0),
             "navigation/record_restoration": (274, 970),
             "network_check": (432, 433),
@@ -745,6 +688,7 @@ class Recognizer(object):
             "order_label": (404, 137),
             "recruiting_instructions": (343, 179),
             "riic_report_title": (1712, 25),
+            "spent_credit": (332, 264),
             "shop_cart": (1252, 842),
             "shop_credit_2": (1657, 135),
             "skip": (1803, 32),
@@ -768,9 +712,13 @@ class Recognizer(object):
             return None
 
         template_matching = {
+            "agent_token": ((1740, 765), (1920, 805)),
             "arrange_check_in": ((30, 300), (175, 700)),
             "arrange_check_in_on": ((30, 300), (175, 700)),
+            "biography": (768, 934),
+            "collection": (1005, 943),
             "connecting": (1087, 978),
+            "episode": (535, 937),
             "friend_list": (57, 301),
             "friend_list_on": (56, 298),
             "credit_visiting": (78, 220),
@@ -778,9 +726,13 @@ class Recognizer(object):
             "loading2": (620, 247),
             "loading3": (1681, 1000),
             "loading4": (828, 429),
+            "main_theme": (283, 945),
             "materiel_ico": (892, 61),
+            "mission_daily_on": ((685, 15), (1910, 100)),
+            "mission_weekly_on": ((685, 15), (1910, 100)),
             "navigation/episode": (1560, 944),
             "ope_agency_going": (510, 941),
+            "ope_failed": (183, 465),
             "ope_finish": (87, 265),
             "ope_plan": (1278, 24),
         }

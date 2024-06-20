@@ -332,10 +332,6 @@ class BaseSolver:
         """get the current scene in the game"""
         return self.recog.get_scene()
 
-    def get_infra_scene(self) -> int:
-        """get the current scene in the infra"""
-        return self.recog.get_infra_scene()
-
     def ra_scene(self) -> int:
         """
         生息演算场景识别
@@ -670,7 +666,7 @@ class BaseSolver:
         """需要等待的页面解决方法。触发超时重启会返回False"""
         while wait_count > 0:
             self.sleep(sleep_time)
-            if self.scene() != scenes and self.get_infra_scene() != scenes:
+            if self.scene() != scenes:
                 return True
             wait_count -= 1
         logger.warning("同一等待界面等待超时，重启方舟。")
@@ -679,19 +675,6 @@ class BaseSolver:
         if self.device.check_current_focus():
             self.recog.update()
         return False
-
-    def wait_for_scene(self, scene, method, wait_count=10, sleep_time=1):
-        """等待某个页面载入"""
-        while wait_count > 0:
-            self.sleep(sleep_time)
-            if method == "get_infra_scene":
-                if self.get_infra_scene() == scene:
-                    return True
-            elif method == "scene":
-                if self.scene() == scene:
-                    return True
-            wait_count -= 1
-        raise Exception("等待超时")
 
     # 将html表单转化为通用markdown格式（为了避免修改之前email内容，采用基于之前数据格式进行加工的方案）
     def html_to_markdown(self, html_content):
