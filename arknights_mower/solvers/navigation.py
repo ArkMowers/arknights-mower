@@ -74,7 +74,6 @@ location = {
 
 }
 
-
 with lzma.open(f"{__rootdir__}/models/navigation.pkl", "rb") as f:
     templates = pickle.load(f)
 
@@ -93,7 +92,7 @@ class NavigationSolver(BaseSolver):
         self.name = name
         prefix = name.split("-")[0]
         if prefix == "PR":
-            prefix += "-"+name.split("-")[1]
+            prefix += "-" + name.split("-")[1]
         self.prefix = prefix
 
         if name == "Annihilation":
@@ -141,7 +140,7 @@ class NavigationSolver(BaseSolver):
                 self.tap_element("main_theme_small")
             elif self.prefix in ["OF"]:
                 self.tap_element("biography_small")
-            elif self.prefix in ["AP", "LS", "CE", "PR-A", "PR-C","SK","CA"]:
+            elif self.prefix in ["AP", "LS", "CE", "PR-A", "PR-C", "SK", "CA"]:
                 self.tap_element("collection_small")
         elif scene == Scene.OPERATOR_ELIMINATE:
             if self.name != "Annihilation":
@@ -154,6 +153,7 @@ class NavigationSolver(BaseSolver):
                 self.back()
                 return
             act_scope = ((300, 315), (400, 370))
+
             if self.find("navigation/act/0", scope=act_scope):
                 if pos := self.find(f"navigation/main/{self.prefix}"):
                     self.tap(pos)
@@ -177,17 +177,11 @@ class NavigationSolver(BaseSolver):
             if self.prefix not in ["AP", "LS", "CE", "PR-A", "PR-C"]:
                 self.back()
                 return
-            if self.prefix in ["AP", "CE"]:
-                self.swipe_noinertia((900, 500), (600, 0))
-            if self.prefix in ["PR-A", "PR-C"]:
-                self.swipe_noinertia((900, 500), (-600, 0))
-            self.tap_element(f"navigation/collection/{self.prefix}_entry")
-            self.recog.update()
-            pos=self.find(f"{self.prefix}-1")
-            if pos:
-                self.success = True
-                self.tap(va(pos[0],location[prefix][self.name]))
-
+            if not self.tap_element(f"navigation/collection/{self.prefix}_entry"):
+                if self.prefix in ["AP", "CE"]:
+                    self.swipe_noinertia((900, 500), (600, 0))
+                if self.prefix in ["PR-A", "PR-C"]:
+                    self.swipe_noinertia((900, 500), (-600, 0))
             return
 
         elif scene == Scene.OPERATOR_CHOOSE_LEVEL:

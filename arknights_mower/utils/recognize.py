@@ -243,6 +243,16 @@ class Recognizer(object):
             self.scene = Scene.OPERATOR_BEFORE
         elif self.find("navigation/episode"):
             self.scene = Scene.OPERATOR_CHOOSE_LEVEL
+        elif self.find("AP-1"):
+            self.scene = Scene.OPERATOR_CHOOSE_LEVEL
+        elif self.find("LS-1"):
+            self.scene = Scene.OPERATOR_CHOOSE_LEVEL
+        elif self.find("CE-1"):
+            self.scene = Scene.OPERATOR_CHOOSE_LEVEL
+        elif self.find("PR-A-1"):
+            self.scene = Scene.OPERATOR_CHOOSE_LEVEL
+        elif self.find("PR-C-1"):
+            self.scene = Scene.OPERATOR_CHOOSE_LEVEL
         elif self.find("ope_agency_going"):
             self.scene = Scene.OPERATOR_ONGOING
         elif self.find("ope_finish"):
@@ -271,7 +281,6 @@ class Recognizer(object):
             self.scene = Scene.TERMINAL_BIOGRAPHY
         elif self.find("collection"):
             self.scene = Scene.TERMINAL_COLLECTION
-
         elif self.check_announcement():
             self.scene = Scene.ANNOUNCEMENT
 
