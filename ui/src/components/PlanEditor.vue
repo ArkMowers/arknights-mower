@@ -561,9 +561,9 @@ function set_facility(e) {
           <td>
             <n-form-item :show-label="false" :show-feedback="false">
               <slick-operator-select
-                  :disabled="!plan[facility].plans[i - 1].agent"
-                  v-model="plan[facility].plans[i - 1].replacement"
-                  class="replacement-select"
+                :disabled="!plan[facility].plans[i - 1].agent"
+                v-model="plan[facility].plans[i - 1].replacement"
+                class="replacement-select"
               />
             </n-form-item>
           </td>
