@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import time
-from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional, Tuple
 
 import cv2
@@ -97,14 +96,14 @@ class Recognizer(object):
         save_screenshot(self.screencap, subdir=str(folder))
 
     def detect_index_scene(self) -> bool:
-        return (
-            self.find(
-                "index_nav",
-                thres=250,
-                scope=((0, 0), (100 + self.w // 4, self.h // 10)),
-            )
-            is not None
-        )
+        res = loadres("index_nav", True)
+        h, w = res.shape
+        img = cropimg(self.gray, ((25, 17), (25 + w, 17 + h)))
+        img = thres2(img, 250)
+        result = cv2.matchTemplate(img, res, cv2.TM_SQDIFF_NORMED)
+        result = result[0][0]
+        logger.debug(result)
+        return result < 0.1
 
     def check_loading_time(self):
         if self.scene == Scene.CONNECTING:
@@ -133,8 +132,12 @@ class Recognizer(object):
         """get the current scene in the game"""
         if self.scene != Scene.UNDEFINED:
             return self.scene
+
+        # 连接中，优先级最高
         if self.find("connecting"):
             self.scene = Scene.CONNECTING
+
+        # 平均色匹配
         elif self.find("confirm"):
             self.scene = Scene.CONFIRM
         elif self.find("order_label"):
@@ -145,487 +148,163 @@ class Recognizer(object):
             self.scene = Scene.FACTORY_ROOMS
         elif self.find("fight/use"):
             self.scene = Scene.OPERATOR_STRANGER_SUPPORT
-        elif self.detect_index_scene():
-            self.scene = Scene.INDEX
-        elif self.find("nav_index") is not None:
+        elif self.find("nav_bar"):
             self.scene = Scene.NAVIGATION_BAR
-        elif self.find("login_new") is not None:
-            self.scene = Scene.LOGIN_NEW
-        elif self.find("login_bilibili"):  # 会被识别成公告，优先级应当比公告高
-            self.scene = Scene.LOGIN_BILIBILI
-        elif self.find("login_bilibili_privacy"):
-            self.scene = Scene.LOGIN_BILIBILI_PRIVACY
-        elif self.find("materiel_ico") is not None:
-            self.scene = Scene.MATERIEL
-        elif self.find("mail") is not None:
+        elif self.find("mail"):
             self.scene = Scene.MAIL
-        elif self.find("loading") is not None:
-            self.scene = Scene.LOADING
-        elif self.find("loading2") is not None:
-            self.scene = Scene.LOADING
-        elif self.find("loading3") is not None:
-            self.scene = Scene.LOADING
-        elif self.find("loading4") is not None:
-            self.scene = Scene.LOADING
-        elif self.is_black():
-            self.scene = Scene.LOADING
-        elif self.find("navigation/episode") or self.find(
-            "navigation/record_restoration"
-        ):
+        elif self.find("navigation/record_restoration"):
             self.scene = Scene.OPERATOR_CHOOSE_LEVEL
-        elif self.find("ope_plan") is not None:
-            self.scene = Scene.OPERATOR_BEFORE
-        elif self.find("ope_select_start") is not None:
-            self.scene = Scene.OPERATOR_SELECT
         elif self.find("fight/refresh"):
             self.scene = Scene.OPERATOR_SUPPORT
-        elif self.find("ope_agency_going", scope=((470, 915), (755, 1045))) is not None:
-            self.scene = Scene.OPERATOR_ONGOING
-        elif self.find("ope_elimi_finished") is not None:
-            self.scene = Scene.OPERATOR_ELIMINATE_FINISH
-        elif self.find("ope_finish") is not None:
-            self.scene = Scene.OPERATOR_FINISH
-        elif self.find("ope_recover_potion_on", scope=((1040, 125), (1300, 185))):
-            self.scene = Scene.OPERATOR_RECOVER_POTION
-        elif (
-            self.find("ope_recover_originite_on", scope=((1530, 120), (1850, 190)))
-            is not None
-        ):
-            self.scene = Scene.OPERATOR_RECOVER_ORIGINITE
-        elif self.find("double_confirm") is not None:
-            if self.find("network_check") is not None:
-                self.scene = Scene.NETWORK_CHECK
-            else:
-                self.scene = Scene.DOUBLE_CONFIRM
-        elif self.find("ope_firstdrop") is not None:
-            self.scene = Scene.OPERATOR_DROP
-        elif self.find("ope_eliminate") is not None:
+        elif self.find("ope_select_start"):
+            self.scene = Scene.OPERATOR_SELECT
+        elif self.find("ope_eliminate"):
             self.scene = Scene.OPERATOR_ELIMINATE
-        elif self.find("ope_elimi_agency_panel") is not None:
+        elif self.find("ope_elimi_agency_panel"):
             self.scene = Scene.OPERATOR_ELIMINATE_AGENCY
-        elif self.find("ope_giveup") is not None:
-            self.scene = Scene.OPERATOR_GIVEUP
-        elif self.find("ope_failed") is not None:
-            self.scene = Scene.OPERATOR_FAILED
-        elif self.find("friend_list_on") is not None:
-            self.scene = Scene.FRIEND_LIST_ON
-        elif self.find("credit_visiting") is not None:
-            self.scene = Scene.FRIEND_VISITING
         elif self.find("riic_report_title"):
             self.scene = Scene.RIIC_REPORT
-        elif self.find("control_central_assistants") is not None:
+        elif self.find("control_central_assistants"):
             self.scene = Scene.CTRLCENTER_ASSISTANT
-        elif self.find("infra_overview", scope=((20, 120), (360, 245))) is not None:
+        elif self.find("infra_overview"):
             self.scene = Scene.INFRA_MAIN
-        elif self.find("infra_todo") is not None:
+        elif self.find("infra_todo"):
             self.scene = Scene.INFRA_TODOLIST
-        elif self.find("clue") is not None:
+        elif self.find("clue"):
             self.scene = Scene.INFRA_CONFIDENTIAL
-        elif (
-            self.find("arrange_check_in")
-            or self.find("arrange_check_in_on") is not None
-        ):
-            self.scene = Scene.INFRA_DETAILS
-        elif self.find("infra_overview_in", scope=((50, 690), (430, 770))) is not None:
+        elif self.find("infra_overview_in"):
             self.scene = Scene.INFRA_ARRANGE
-        elif self.find("arrange_confirm") is not None:
+        elif self.find("arrange_confirm"):
             self.scene = Scene.INFRA_ARRANGE_CONFIRM
-        elif self.find("friend_list") is not None:
-            self.scene = Scene.FRIEND_LIST_OFF
-        elif self.find("mission_trainee_on", scope=((670, 0), (1920, 120))) is not None:
-            self.scene = Scene.MISSION_TRAINEE
-        elif self.find("mission_daily_on", scope=((670, 0), (1920, 120))) is not None:
-            self.scene = Scene.MISSION_DAILY
-        elif self.find("mission_weekly_on", scope=((670, 0), (1920, 120))) is not None:
-            self.scene = Scene.MISSION_WEEKLY
-        elif self.find("terminal_main") is not None:
+        elif self.find("terminal_main"):
             self.scene = Scene.TERMINAL_MAIN
-        elif self.find("open_recruitment") is not None:
+        elif self.find("open_recruitment"):
             self.scene = Scene.RECRUIT_MAIN
-        elif self.find("recruiting_instructions") is not None:
+        elif self.find("recruiting_instructions"):
             self.scene = Scene.RECRUIT_TAGS
-        elif self.find("agent_token", scope=((1735, 745), (1855, 820)), score=0.1):
-            self.scene = Scene.RECRUIT_AGENT
-        elif self.find("agent_unlock") is not None:
+        elif self.find("agent_unlock"):
             self.scene = Scene.SHOP_CREDIT
-        elif self.find("shop_credit_2") is not None:
+        elif self.find("shop_credit_2"):
             self.scene = Scene.SHOP_OTHERS
-        elif self.find("shop_cart") is not None:
+        elif self.find("shop_cart"):
             self.scene = Scene.SHOP_CREDIT_CONFIRM
-        elif self.find("shop_assist") is not None:
-            self.scene = Scene.SHOP_ASSIST
-        elif self.find("spent_credit") is not None:
-            self.scene = Scene.SHOP_UNLOCK_SCHEDULE
-        elif (
-            self.find("login_logo") is not None and self.find("hypergryph") is not None
-        ):
-            if self.find("login_awake") is not None:
+        elif self.find("login_logo") and self.find("hypergryph"):
+            if self.find("login_awake"):
                 self.scene = Scene.LOGIN_QUICKLY
-            elif self.find("login_account") is not None:
+            elif self.find("login_account"):
                 self.scene = Scene.LOGIN_MAIN
             else:
                 self.scene = Scene.LOGIN_MAIN_NOENTRY
-        elif self.find("login_loading") is not None:
+        elif self.find("login_loading"):
             self.scene = Scene.LOGIN_LOADING
-        elif self.find("12cadpa") is not None:
+        elif self.find("12cadpa"):
             self.scene = Scene.LOGIN_START
-        elif self.check_announcement():
-            self.scene = Scene.ANNOUNCEMENT
-        elif self.find("skip") is not None:
+        elif self.find("skip"):
             self.scene = Scene.SKIP
-        elif self.find("upgrade") is not None:
-            self.scene = Scene.UPGRADE
-        elif self.find("login_captcha") is not None:
-            self.scene = Scene.LOGIN_CAPTCHA
-        elif self.find("login_connecting") is not None:
+        elif self.find("login_connecting"):
             self.scene = Scene.LOGIN_LOADING
-        elif self.find("main_theme") is not None:
-            self.scene = Scene.TERMINAL_MAIN_THEME
-        elif self.find("episode") is not None:
-            self.scene = Scene.TERMINAL_EPISODE
-        elif self.find("biography") is not None:
-            self.scene = Scene.TERMINAL_BIOGRAPHY
-        elif self.find("collection") is not None:
-            self.scene = Scene.TERMINAL_COLLECTION
-        elif self.find("loading6") is not None:
-            self.scene = Scene.LOADING
-        elif self.find("loading7") is not None:
-            self.scene = Scene.LOADING
-        elif self.find("arrange_order_options_scene") is not None:
+        elif self.find("arrange_order_options"):
             self.scene = Scene.INFRA_ARRANGE_ORDER
-        else:
-            self.scene = Scene.UNKNOWN
-            if self.device.check_current_focus():
-                self.update()
-        # save screencap to analyse
-        if config.SCREENSHOT_PATH is not None:
-            self.save_screencap(self.scene)
-        logger.info(f"Scene: {self.scene}: {SceneComment[self.scene]}")
-
-        self.check_loading_time()
-
-        return self.scene
-
-    def get_scene_concurrent(self) -> int:
-        if self.scene != Scene.UNDEFINED:
-            return self.scene
-
-        if self.matcher is None:
-            self.matcher = Matcher(self.gray)
-
-        with ThreadPoolExecutor(max_workers=config.get_scene["max_workers"]) as e:
-
-            def submit(res, scope=None):
-                return e.submit(lambda: self.find(res, scope=scope))
-
-            connecting = submit("connecting")
-            detector_confirm = submit("confirm")
-            order_label = submit("order_label")
-            drone = submit("drone")
-            factory_collect = submit("factory_collect")
-            fight_use = submit("fight/use")
-            index = e.submit(self.detect_index_scene)
-            nav_index = submit("nav_index")
-            login_new = submit("login_new")
-            login_bilibili = submit("login_bilibili")
-            login_bilibili_privacy = submit("login_bilibili_privacy")
-            materiel_ico = submit("materiel_ico")
-            mail = submit("mail")
-            loading = submit("loading")
-            loading2 = submit("loading2")
-            loading3 = submit("loading3")
-            loading4 = submit("loading4")
-            black = e.submit(self.is_black)
-            navi_episode = submit("navigation/episode")
-            navi_record_restoration = submit("navigation/record_restoration")
-            ope_plan = submit("ope_plan")
-            ope_select_start = submit("ope_select_start")
-            fight_refresh = submit("fight/refresh")
-            ope_agency_going = submit("ope_agency_going", ((470, 915), (755, 1045)))
-            ope_elimi_finished = submit("ope_elimi_finished")
-            ope_finish = submit("ope_finish")
-            ope_recover_potion_on = submit(
-                "ope_recover_potion_on", ((1040, 125), (1300, 185))
-            )
-            ope_recover_originite_on = submit(
-                "ope_recover_originite_on", ((1530, 120), (1850, 190))
-            )
-            double_confirm = submit("double_confirm")
-            network_check = submit("network_check")
-            ope_firstdrop = submit("ope_firstdrop")
-            ope_eliminate = submit("ope_eliminate")
-            ope_elimi_agency_panel = submit("ope_elimi_agency_panel")
-            ope_giveup = submit("ope_giveup")
-            ope_failed = submit("ope_failed")
-            friend_list_on = submit("friend_list_on")
-            credit_visiting = submit("credit_visiting")
-            riic_report_title = submit("riic_report_title")
-            control_central_assistants = submit("control_central_assistants")
-            infra_overview = submit("infra_overview", ((20, 120), (360, 245)))
-            infra_todo = submit("infra_todo")
-            clue = submit("clue")
-            arrange_check_in = submit("arrange_check_in")
-            arrange_check_in_on = submit("arrange_check_in_on")
-            infra_overview_in = submit("infra_overview_in", ((50, 690), (430, 770)))
-            arrange_confirm = submit("arrange_confirm")
-            friend_list = submit("friend_list")
-            mission_trainee_on = submit("mission_trainee_on", ((670, 0), (1920, 120)))
-            mission_daily_on = submit("mission_daily_on", ((670, 0), (1920, 120)))
-            mission_weekly_on = submit("mission_weekly_on", ((670, 0), (1920, 120)))
-            terminal_pre2 = submit("terminal_pre2")
-            open_recruitment = submit("open_recruitment")
-            recruiting_instructions = submit("recruiting_instructions")
-            agent_token = e.submit(
-                lambda: self.find(
-                    "agent_token",
-                    scope=((1735, 745), (1855, 820)),
-                    score=0.1,
-                ),
-            )
-            agent_unlock = submit("agent_unlock")
-            shop_credit_2 = submit("shop_credit_2")
-            shop_cart = submit("shop_cart")
-            shop_assist = submit("shop_assist")
-            spent_credit = submit("spent_credit")
-            login_logo = submit("login_logo")
-            hypergryph = submit("hypergryph")
-            login_awake = submit("login_awake")
-            login_account = submit("login_account")
-            login_loading = submit("login_loading")
-            cadpa12 = submit("12cadpa")
-            announcement = e.submit(self.check_announcement)
-            skip = submit("skip")
-            upgrade = submit("upgrade")
-            login_captcha = submit("login_captcha")
-            login_connecting = submit("login_connecting")
-            main_theme = submit("main_theme")
-            episode = submit("episode")
-            biography = submit("biography")
-            collection = submit("collection")
-            loading6 = submit("loading6")
-            loading7 = submit("loading7")
-            arrange_order_options_scene = submit("arrange_order_options_scene")
-
-            if connecting.result():
-                self.scene = Scene.CONNECTING
-            elif detector_confirm.result() is not None:
-                self.scene = Scene.CONFIRM
-            elif order_label.result():
-                self.scene = Scene.ORDER_LIST
-            elif drone.result():
-                self.scene = Scene.DRONE_ACCELERATE
-            elif factory_collect.result():
-                self.scene = Scene.FACTORY_ROOMS
-            elif fight_use.result():
-                self.scene = Scene.OPERATOR_STRANGER_SUPPORT
-            elif index.result():
-                self.scene = Scene.INDEX
-            elif nav_index.result():
-                self.scene = Scene.NAVIGATION_BAR
-            elif login_new.result():
-                self.scene = Scene.LOGIN_NEW
-            elif login_bilibili.result():  # 会被识别成公告，优先级应当比公告高
-                self.scene = Scene.LOGIN_BILIBILI
-            elif login_bilibili_privacy.result():
-                self.scene = Scene.LOGIN_BILIBILI_PRIVACY
-            elif materiel_ico.result():
-                self.scene = Scene.MATERIEL
-            elif mail.result():
-                self.scene = Scene.MAIL
-            elif loading.result():
-                self.scene = Scene.LOADING
-            elif loading2.result():
-                self.scene = Scene.LOADING
-            elif loading3.result():
-                self.scene = Scene.LOADING
-            elif loading4.result():
-                self.scene = Scene.LOADING
-            elif black.result():
-                self.scene = Scene.LOADING
-            elif navi_episode.result() or navi_record_restoration.result():
-                self.scene = Scene.OPERATOR_CHOOSE_LEVEL
-            elif ope_plan.result():
-                self.scene = Scene.OPERATOR_BEFORE
-            elif ope_select_start.result():
-                self.scene = Scene.OPERATOR_SELECT
-            elif fight_refresh.result():
-                self.scene = Scene.OPERATOR_SUPPORT
-            elif ope_agency_going.result():
-                self.scene = Scene.OPERATOR_ONGOING
-            elif ope_elimi_finished.result():
-                self.scene = Scene.OPERATOR_ELIMINATE_FINISH
-            elif ope_finish.result():
-                self.scene = Scene.OPERATOR_FINISH
-            elif ope_recover_potion_on.result():
-                self.scene = Scene.OPERATOR_RECOVER_POTION
-            elif ope_recover_originite_on.result():
-                self.scene = Scene.OPERATOR_RECOVER_ORIGINITE
-            elif double_confirm.result():
-                if network_check.result():
-                    self.scene = Scene.NETWORK_CHECK
-                else:
-                    self.scene = Scene.DOUBLE_CONFIRM
-            elif ope_firstdrop.result():
-                self.scene = Scene.OPERATOR_DROP
-            elif ope_eliminate.result():
-                self.scene = Scene.OPERATOR_ELIMINATE
-            elif ope_elimi_agency_panel.result():
-                self.scene = Scene.OPERATOR_ELIMINATE_AGENCY
-            elif ope_giveup.result():
-                self.scene = Scene.OPERATOR_GIVEUP
-            elif ope_failed.result():
-                self.scene = Scene.OPERATOR_FAILED
-            elif friend_list_on.result():
-                self.scene = Scene.FRIEND_LIST_ON
-            elif credit_visiting.result():
-                self.scene = Scene.FRIEND_VISITING
-            elif riic_report_title.result():
-                self.scene = Scene.RIIC_REPORT
-            elif control_central_assistants.result():
-                self.scene = Scene.CTRLCENTER_ASSISTANT
-            elif infra_overview.result():
-                self.scene = Scene.INFRA_MAIN
-            elif infra_todo.result():
-                self.scene = Scene.INFRA_TODOLIST
-            elif clue.result():
-                self.scene = Scene.INFRA_CONFIDENTIAL
-            elif arrange_check_in.result() or arrange_check_in_on.result():
-                self.scene = Scene.INFRA_DETAILS
-            elif infra_overview_in.result():
-                self.scene = Scene.INFRA_ARRANGE
-            elif arrange_confirm.result():
-                self.scene = Scene.INFRA_ARRANGE_CONFIRM
-            elif friend_list.result():
-                self.scene = Scene.FRIEND_LIST_OFF
-            elif mission_trainee_on.result():
-                self.scene = Scene.MISSION_TRAINEE
-            elif mission_daily_on.result():
-                self.scene = Scene.MISSION_DAILY
-            elif mission_weekly_on.result():
-                self.scene = Scene.MISSION_WEEKLY
-            elif terminal_pre2.result():
-                self.scene = Scene.TERMINAL_MAIN
-            elif open_recruitment.result():
-                self.scene = Scene.RECRUIT_MAIN
-            elif recruiting_instructions.result():
-                self.scene = Scene.RECRUIT_TAGS
-            elif agent_token.result():
-                self.scene = Scene.RECRUIT_AGENT
-            elif agent_unlock.result():
-                self.scene = Scene.SHOP_CREDIT
-            elif shop_credit_2.result():
-                self.scene = Scene.SHOP_OTHERS
-            elif shop_cart.result():
-                self.scene = Scene.SHOP_CREDIT_CONFIRM
-            elif shop_assist.result():
-                self.scene = Scene.SHOP_ASSIST
-            elif spent_credit.result():
-                self.scene = Scene.SHOP_UNLOCK_SCHEDULE
-            elif login_logo.result() and hypergryph.result():
-                if login_awake.result():
-                    self.scene = Scene.LOGIN_QUICKLY
-                elif login_account.result():
-                    self.scene = Scene.LOGIN_MAIN
-                else:
-                    self.scene = Scene.LOGIN_MAIN_NOENTRY
-            elif login_loading.result():
-                self.scene = Scene.LOGIN_LOADING
-            elif cadpa12.result():
-                self.scene = Scene.LOGIN_START
-            elif announcement.result():
-                self.scene = Scene.ANNOUNCEMENT
-            elif skip.result():
-                self.scene = Scene.SKIP
-            elif upgrade.result():
-                self.scene = Scene.UPGRADE
-            elif login_captcha.result():
-                self.scene = Scene.LOGIN_CAPTCHA
-            elif login_connecting.result():
-                self.scene = Scene.LOGIN_LOADING
-            elif main_theme.result():
-                self.scene = Scene.TERMINAL_MAIN_THEME
-            elif episode.result():
-                self.scene = Scene.TERMINAL_EPISODE
-            elif biography.result():
-                self.scene = Scene.TERMINAL_BIOGRAPHY
-            elif collection.result():
-                self.scene = Scene.TERMINAL_COLLECTION
-            elif loading6.result():
-                self.scene = Scene.LOADING
-            elif loading7.result():
-                self.scene = Scene.LOADING
-            elif arrange_order_options_scene.result():
-                self.scene = Scene.INFRA_ARRANGE_ORDER
-            else:
-                self.scene = Scene.UNKNOWN
-                if self.device.check_current_focus():
-                    self.update()
-            e.shutdown(wait=False, cancel_futures=True)
-
-        # save screencap to analyse
-        if config.SCREENSHOT_PATH is not None:
-            self.save_screencap(self.scene)
-        logger.info(f"Scene: {self.scene}: {SceneComment[self.scene]}")
-
-        self.check_loading_time()
-
-        return self.scene
-
-    def get_infra_scene(self) -> int:
-        if self.scene != Scene.UNDEFINED:
-            return self.scene
-        if self.find("connecting"):
-            self.scene = Scene.CONNECTING
-        elif self.find("order_label"):
-            self.scene = Scene.ORDER_LIST
-        elif self.find("drone"):
-            self.scene = Scene.DRONE_ACCELERATE
-        elif self.find("factory_collect"):
-            self.scene = Scene.FACTORY_ROOMS
-        elif self.find("double_confirm") is not None:
-            if self.find("network_check") is not None:
+        elif self.find("arrange_order_options_scene"):
+            self.scene = Scene.INFRA_ARRANGE_ORDER
+        elif self.find("ope_recover_potion_on"):
+            self.scene = Scene.OPERATOR_RECOVER_POTION
+        elif self.find("ope_recover_originite_on", scope=((1530, 120), (1850, 190))):
+            self.scene = Scene.OPERATOR_RECOVER_ORIGINITE
+        elif self.find("double_confirm"):
+            if self.find("network_check"):
                 self.scene = Scene.NETWORK_CHECK
             else:
                 self.scene = Scene.DOUBLE_CONFIRM
-        elif self.find("infra_overview", scope=((20, 120), (360, 245))) is not None:
-            self.scene = Scene.INFRA_MAIN
-        elif self.find("infra_todo") is not None:
-            self.scene = Scene.INFRA_TODOLIST
-        elif self.find("clue") is not None:
-            self.scene = Scene.INFRA_CONFIDENTIAL
-        elif (
-            self.find("arrange_check_in")
-            or self.find("arrange_check_in_on") is not None
-        ):
-            self.scene = Scene.INFRA_DETAILS
-        elif self.find("infra_overview_in", scope=((50, 690), (430, 770))) is not None:
-            self.scene = Scene.INFRA_ARRANGE
-        elif self.find("arrange_order_options"):
-            self.scene = Scene.INFRA_ARRANGE_ORDER
-        elif self.find("arrange_confirm") is not None:
-            self.scene = Scene.INFRA_ARRANGE_CONFIRM
-        elif self.find("arrange_order_options_scene") is not None:
-            self.scene = Scene.INFRA_ARRANGE_ORDER
-        elif self.find("loading") is not None:
+        elif self.find("mission_trainee_on"):
+            self.scene = Scene.MISSION_TRAINEE
+        elif self.find("spent_credit"):
+            self.scene = Scene.SHOP_UNLOCK_SCHEDULE
+        elif self.find("loading7"):
             self.scene = Scene.LOADING
-        elif self.find("loading2") is not None:
-            self.scene = Scene.LOADING
-        elif self.find("loading3") is not None:
-            self.scene = Scene.LOADING
-        elif self.find("loading4") is not None:
-            self.scene = Scene.LOADING
-        elif self.detect_index_scene():
-            self.scene = Scene.INDEX
+
         elif self.is_black():
             self.scene = Scene.LOADING
+
+        # 模板匹配
+        elif self.detect_index_scene():
+            self.scene = Scene.INDEX
+        elif self.find("materiel_ico"):
+            self.scene = Scene.MATERIEL
+        elif self.find("loading"):
+            self.scene = Scene.LOADING
+        elif self.find("loading2"):
+            self.scene = Scene.LOADING
+        elif self.find("loading3"):
+            self.scene = Scene.LOADING
+        elif self.find("loading4"):
+            self.scene = Scene.LOADING
+        elif self.find("ope_plan"):
+            self.scene = Scene.OPERATOR_BEFORE
+        elif self.find("navigation/episode"):
+            self.scene = Scene.OPERATOR_CHOOSE_LEVEL
+        elif self.find("ope_agency_going"):
+            self.scene = Scene.OPERATOR_ONGOING
+        elif self.find("ope_finish"):
+            self.scene = Scene.OPERATOR_FINISH
+        elif self.find("friend_list"):
+            self.scene = Scene.FRIEND_LIST_OFF
+        elif self.find("friend_list_on"):
+            self.scene = Scene.FRIEND_LIST_ON
+        elif self.find("credit_visiting"):
+            self.scene = Scene.FRIEND_VISITING
+        elif self.find("arrange_check_in") or self.find("arrange_check_in_on"):
+            self.scene = Scene.INFRA_DETAILS
+        elif self.find("ope_failed"):
+            self.scene = Scene.OPERATOR_FAILED
+        elif self.find("mission_daily_on"):
+            self.scene = Scene.MISSION_DAILY
+        elif self.find("mission_weekly_on"):
+            self.scene = Scene.MISSION_WEEKLY
+        elif self.find("agent_token"):
+            self.scene = Scene.RECRUIT_AGENT
+        elif self.find("main_theme"):
+            self.scene = Scene.TERMINAL_MAIN_THEME
+        elif self.find("episode"):
+            self.scene = Scene.TERMINAL_EPISODE
+        elif self.find("biography"):
+            self.scene = Scene.TERMINAL_BIOGRAPHY
+        elif self.find("collection"):
+            self.scene = Scene.TERMINAL_COLLECTION
+
+        elif self.check_announcement():
+            self.scene = Scene.ANNOUNCEMENT
+
+        # 特征匹配
+        # elif self.find("login_new"):
+        #     self.scene = Scene.LOGIN_NEW
+        elif self.find("login_bilibili"):
+            self.scene = Scene.LOGIN_BILIBILI
+        elif self.find("login_bilibili_privacy"):
+            self.scene = Scene.LOGIN_BILIBILI_PRIVACY
+        elif self.find("login_captcha"):
+            self.scene = Scene.LOGIN_CAPTCHA
+
+        # 没弄完的
+        # elif self.find("ope_elimi_finished"):
+        #     self.scene = Scene.OPERATOR_ELIMINATE_FINISH
+        # elif self.find("ope_giveup"):
+        #     self.scene = Scene.OPERATOR_GIVEUP
+        # elif self.find("shop_assist"):
+        #     self.scene = Scene.SHOP_ASSIST
+        # elif self.find("upgrade"):
+        #     self.scene = Scene.UPGRADE
+
         else:
             self.scene = Scene.UNKNOWN
-            if self.device.check_current_focus():
-                self.update()
         # save screencap to analyse
-        if config.SCREENSHOT_PATH is not None:
+        if config.SCREENSHOT_PATH:
             self.save_screencap(self.scene)
         logger.info(f"Scene: {self.scene}: {SceneComment[self.scene]}")
+
+        if self.scene == Scene.UNKNOWN:
+            if self.device.check_current_focus():
+                self.update()
 
         self.check_loading_time()
 
@@ -814,7 +493,7 @@ class Recognizer(object):
 
         elif self.detect_index_scene():
             self.scene = Scene.INDEX
-        elif self.find("terminal_pre", score=0.3) is not None:
+        elif self.find("terminal_pre", threshold=0.3) is not None:
             self.scene = Scene.TERMINAL_MAIN
         elif self.find("terminal_regular"):
             self.scene = Scene.TERMINAL_REGULAR
@@ -829,7 +508,7 @@ class Recognizer(object):
         elif self.find("sss/squad_button", scope=((1412, 0), (1876, 140))):
             self.scene = Scene.SSS_SQUAD
         elif self.find(
-            "sss/device_button", scope=((1545, 921), (1920, 1080)), score=0.5
+            "sss/device_button", scope=((1545, 921), (1920, 1080)), threshold=0.5
         ):
             self.scene = Scene.SSS_DEVICE
         elif self.find("sss/loading"):
@@ -874,13 +553,13 @@ class Recognizer(object):
         ):
             self.scene = Scene.CLUE_RECEIVE
         elif (
-            self.find("clue/filter", scope=((0, 80), (650, 180)), score=0.5)
+            self.find("clue/filter", scope=((0, 80), (650, 180)), threshold=0.5)
             and self.color(53, 113)[0] > 250
         ):
             self.scene = Scene.CLUE_GIVE_AWAY
         elif self.find("clue/summary", scope=((30, 120), (350, 370))):
             self.scene = Scene.CLUE_SUMMARY
-        elif self.find("clue/filter", scope=((1280, 80), (1920, 180)), score=0.5):
+        elif self.find("clue/filter", scope=((1280, 80), (1920, 180)), threshold=0.5):
             self.scene = Scene.CLUE_PLACE
         else:
             self.scene = Scene.UNKNOWN
@@ -950,7 +629,7 @@ class Recognizer(object):
         thres: int = None,
         judge: bool = True,
         strict: bool = False,
-        score=0.0,
+        threshold=0.0,
     ) -> tp.Scope:
         """
         查找元素是否出现在画面中
@@ -968,44 +647,53 @@ class Recognizer(object):
         logger.debug(f"find: {res}")
 
         color = {
-            "terminal_pre2": (1459, 797),
-            "mail": (307, 39),
-            "loading2": (620, 247),
-            "navigation/record_restoration": (274, 970),
-            "network_check": (432, 433),
-            "ope_eliminate": (1332, 938),
-            "riic_report_title": (1712, 25),
-            "control_central_assistants": (39, 560),
-            "infra_overview": (54, 135),
-            "infra_todo": (13, 1013),
-            "clue": (1740, 855),
-            "infra_overview_in": (64, 705),
-            "arrange_confirm": (755, 903),
-            "terminal_main": (73, 959),
-            "open_recruitment": (192, 143),
-            "recruiting_instructions": (343, 179),
-            "agent_unlock": (91, 1013),
-            "shop_credit_2": (1657, 135),
-            "shop_cart": (1252, 842),
-            "hypergryph": (0, 961),
-            "login_awake": (888, 743),
-            "login_account": (622, 703),
-            "login_loading": (920, 388),
+            "1800": (158, 958),
             "12cadpa": (1810, 21),
-            "skip": (1803, 32),
-            "confirm": (0, 683),
-            "login_connecting": (760, 881),
+            "agent_unlock": (91, 1013),
+            "arrange_confirm": (755, 903),
             "arrange_order_options": (1652, 23),
             "arrange_order_options_scene": (369, 199),
-            "fight/refresh": (1639, 22),
-            "fight/use": (858, 864),
-            "order_label": (404, 137),
+            "clue": (1740, 855),
+            "confirm": (0, 683),
+            "control_central_assistants": (39, 560),
+            "double_confirm": (0, 683),
             "drone": (274, 437),
             "factory_collect": (1542, 886),
+            "fight/refresh": (1639, 22),
+            "fight/use": (858, 864),
+            "hypergryph": (0, 961),
+            "infra_overview": (54, 135),
+            "infra_overview_in": (64, 705),
+            "infra_todo": (13, 1013),
+            "loading2": (620, 247),
+            "loading7": (106, 635),
+            "login_account": (622, 703),
+            "login_awake": (888, 743),
+            "login_connecting": (760, 881),
+            "login_loading": (920, 388),
+            "login_logo": (601, 332),
+            "mail": (307, 39),
+            "mission_trainee_on": (690, 17),
+            "nav_bar": (655, 0),
+            "navigation/record_restoration": (274, 970),
+            "network_check": (432, 433),
             "ope_agency_lock": (1565, 856),
-            "ope_elimi_agency_panel": (1409, 612),
             "ope_elimi_agency_confirm": (1554, 941),
-            "1800": (158, 958),
+            "ope_elimi_agency_panel": (1409, 612),
+            "ope_eliminate": (1332, 938),
+            "ope_recover_originite_on": (1514, 124),
+            "ope_recover_potion_on": (1046, 127),
+            "ope_select_start": (1579, 701),
+            "open_recruitment": (192, 143),
+            "order_label": (404, 137),
+            "recruiting_instructions": (343, 179),
+            "riic_report_title": (1712, 25),
+            "spent_credit": (332, 264),
+            "shop_cart": (1252, 842),
+            "shop_credit_2": (1657, 135),
+            "skip": (1803, 32),
+            "terminal_main": (73, 959),
+            "terminal_pre2": (1459, 797),
         }
 
         if res in color:
@@ -1023,6 +711,59 @@ class Recognizer(object):
                     return scope
             return None
 
+        template_matching = {
+            "agent_token": ((1740, 765), (1920, 805)),
+            "arrange_check_in": ((30, 300), (175, 700)),
+            "arrange_check_in_on": ((30, 300), (175, 700)),
+            "biography": (768, 934),
+            "collection": (1005, 943),
+            "connecting": (1087, 978),
+            "episode": (535, 937),
+            "friend_list": (57, 301),
+            "friend_list_on": (56, 298),
+            "credit_visiting": (78, 220),
+            "loading": (736, 333),
+            "loading2": (620, 247),
+            "loading3": (1681, 1000),
+            "loading4": (828, 429),
+            "main_theme": (283, 945),
+            "materiel_ico": (892, 61),
+            "mission_daily_on": ((685, 15), (1910, 100)),
+            "mission_weekly_on": ((685, 15), (1910, 100)),
+            "navigation/episode": (1560, 944),
+            "ope_agency_going": (510, 941),
+            "ope_failed": (183, 465),
+            "ope_finish": (87, 265),
+            "ope_plan": (1278, 24),
+        }
+
+        template_matching_score = {
+            "connecting": 0.7,
+        }
+
+        if res in template_matching:
+            threshold = 0.9
+            if res in template_matching_score:
+                threshold = template_matching_score[res]
+
+            pos = template_matching[res]
+            res = loadres(res, True)
+            h, w = res.shape
+
+            if isinstance(pos[0], tuple):
+                scope = pos
+            else:
+                scope = pos, va(pos, (w, h))
+
+            img = cropimg(self.gray, scope)
+            result = cv2.matchTemplate(img, res, cv2.TM_CCOEFF_NORMED)
+            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+            top_left = va(max_loc, scope[0])
+            logger.debug(f"{top_left=} {max_val=}")
+            if max_val >= threshold:
+                return top_left, va(top_left, (w, h))
+            return None
+
         dpi_aware = res in [
             "login_bilibili",
             "login_bilibili_privacy",
@@ -1032,20 +773,20 @@ class Recognizer(object):
             "control_central",
         ]
 
-        if scope is None and score == 0.0:
+        if scope is None and threshold == 0.0:
             if res == "arrange_check_in":
                 scope = ((0, 350), (200, 530))
-                score = 0.55
+                threshold = 0.55
             elif res == "arrange_check_in_on":
                 scope = ((0, 350), (200, 530))
             elif res == "connecting":
                 scope = ((1087, 978), (1430, 1017))
-                score = 0.15
+                threshold = 0.15
             elif res == "materiel_ico":
                 scope = ((860, 60), (1072, 217))
             elif res == "training_completed":
                 scope = ((550, 900), (800, 1080))
-                score = 0.45
+                threshold = 0.45
 
         if thres is not None:
             # 对图像二值化处理
@@ -1056,7 +797,7 @@ class Recognizer(object):
                 draw=draw,
                 scope=scope,
                 judge=judge,
-                prescore=score,
+                prescore=threshold,
                 dpi_aware=dpi_aware,
             )
         else:
@@ -1069,7 +810,7 @@ class Recognizer(object):
                 draw=draw,
                 scope=scope,
                 judge=judge,
-                prescore=score,
+                prescore=threshold,
                 dpi_aware=dpi_aware,
             )
         if strict and ret is None:
@@ -1105,7 +846,10 @@ class Recognizer(object):
         return score
 
     def template_match(
-        self, res: str, scope: Optional[tp.Scope] = None, method: int = cv2.TM_CCOEFF
+        self,
+        res: str,
+        scope: Optional[tp.Scope] = None,
+        method: int = cv2.TM_CCOEFF_NORMED,
     ) -> Tuple[float, tp.Scope]:
         logger.debug(f"template_match: {res}")
 
