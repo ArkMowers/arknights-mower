@@ -1007,6 +1007,11 @@ class Recognizer(object):
             "ope_elimi_agency_panel": (1409, 612),
             "ope_elimi_agency_confirm": (1554, 941),
             "1800": (158, 958),
+            "LS-1": (240, 822),
+            "CE-1":(243, 822),
+            "AP-1": (203, 821),
+            "PR-A-1": (550, 629),
+            "PR-C-1": (487, 586),
         }
 
         if res in color:

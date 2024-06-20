@@ -35,6 +35,43 @@ location = {
         "OF-7": (3550, 135),
         "OF-8": (3899, 299),
     },
+    "AP":
+        {
+            'AP-1': (0, 0),
+            'AP-2': (416, -74),
+            'AP-3': (716, -247),
+            'AP-4': (964, -417),
+            'AP-5': (1116, -589)
+        },
+    "LS":
+        {
+            'LS-1': (0, 0),
+            'LS-2': (385, -34),
+            'LS-3': (710, -130),
+            'LS-4': (970, -257),
+            'LS-5': (1138, -421),
+            'LS-6': (1213, -600)
+        },
+    "CE":
+        {
+            'CE-1': (0, 0),
+            'CE-2': (382, -33),
+            'CE-3': (709, -128),
+            'CE-4': (970, -259),
+            'CE-5': (1136, -420),
+            'CE-6': (1210, -597)
+        },
+    "PR-A":
+        {
+            'PR-A-1': (0, 0),
+            'PR-A-2': (604, -283)
+        },
+    "PR-C":
+        {
+            'PR-C-1': (0, 0),
+            'PR-C-2': (667, -231)
+        }
+
 }
 
 
@@ -55,6 +92,8 @@ class NavigationSolver(BaseSolver):
 
         self.name = name
         prefix = name.split("-")[0]
+        if prefix == "PR":
+            prefix += "-"+name.split("-")[1]
         self.prefix = prefix
 
         if name == "Annihilation":
@@ -76,6 +115,11 @@ class NavigationSolver(BaseSolver):
                 return False
         elif prefix in ["OF"]:
             logger.info(f'别传关卡导航："{name}"')
+        elif prefix in ["AP", "LS", "CE"]:
+            logger.info(f'资源收集关卡导航："{name}"')
+        elif prefix.split("-")[0] in ["PR"]:
+            logger.info(f'芯片关卡导航："{name}"')
+
         else:
             logger.error(f"暂不支持{name}")
             return False
@@ -97,6 +141,8 @@ class NavigationSolver(BaseSolver):
                 self.tap_element("main_theme_small")
             elif self.prefix in ["OF"]:
                 self.tap_element("biography_small")
+            elif self.prefix in ["AP", "LS", "CE", "PR-A", "PR-C","SK","CA"]:
+                self.tap_element("collection_small")
         elif scene == Scene.OPERATOR_ELIMINATE:
             if self.name != "Annihilation":
                 self.back()
@@ -126,6 +172,24 @@ class NavigationSolver(BaseSolver):
                 self.tap_element("navigation/entry")
                 return
             self.tap_element(f"navigation/biography/{self.prefix}_entry")
+        elif scene == Scene.TERMINAL_COLLECTION:
+            prefix = self.prefix
+            if self.prefix not in ["AP", "LS", "CE", "PR-A", "PR-C"]:
+                self.back()
+                return
+            if self.prefix in ["AP", "CE"]:
+                self.swipe_noinertia((900, 500), (600, 0))
+            if self.prefix in ["PR-A", "PR-C"]:
+                self.swipe_noinertia((900, 500), (-600, 0))
+            self.tap_element(f"navigation/collection/{self.prefix}_entry")
+            self.recog.update()
+            pos=self.find(f"{self.prefix}-1")
+            if pos:
+                self.success = True
+                self.tap(va(pos[0],location[prefix][self.name]))
+
+            return
+
         elif scene == Scene.OPERATOR_CHOOSE_LEVEL:
             name, val, loc = "", 1, None
             prefix = self.prefix
