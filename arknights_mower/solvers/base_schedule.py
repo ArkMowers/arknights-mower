@@ -1406,7 +1406,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             _plan = {}
             for op in self.total_agent:
                 # 忽略掉菲亚梅塔充能的干员
-                if high_free == 0 or low_free == 0:
+                if high_free == 0 and low_free == 0:
                     break
                 if op.name in self.op_data.workaholic_agent:
                     continue
