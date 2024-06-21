@@ -15,7 +15,6 @@ const {
   resting_priority,
   exhaust_require,
   rest_in_full,
-  operators,
   workaholic,
   backup_plans,
   sub_plan,
@@ -186,9 +185,6 @@ import AddTaskRound from '@vicons/material/AddTaskRound'
 import DocumentImport from '@vicons/carbon/DocumentImport'
 import DocumentExport from '@vicons/carbon/DocumentExport'
 
-import { render_op_label, render_op_tag } from '@/utils/op_select'
-import { pinyin_match } from '@/utils/common'
-
 async function import_plan() {
   const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/import`)
   if (response.data == '排班已加载') {
@@ -298,55 +294,23 @@ async function import_plan() {
     </n-form-item>
     <n-form-item>
       <template #label><span>需要回满心情的干员</span><help-text>请查阅文档</help-text></template>
-      <n-select
-        multiple
-        filterable
-        :options="operators"
-        v-model:value="current_conf.rest_in_full"
-        :filter="(p, o) => pinyin_match(o.label, p)"
-        :render-label="render_op_label"
-        :render-tag="render_op_tag"
-      />
+      <slick-operator-select v-model="current_conf.rest_in_full"></slick-operator-select>
     </n-form-item>
     <n-form-item>
       <template #label>
         <span>需要用尽心情的干员</span><help-text>仅推荐写入具有暖机技能的干员</help-text>
       </template>
-      <n-select
-        multiple
-        filterable
-        :options="operators"
-        v-model:value="current_conf.exhaust_require"
-        :filter="(p, o) => pinyin_match(o.label, p)"
-        :render-label="render_op_label"
-        :render-tag="render_op_tag"
-      />
+      <slick-operator-select v-model="current_conf.exhaust_require"></slick-operator-select>
     </n-form-item>
     <n-form-item>
       <template #label>
         <span>0心情工作的干员</span><help-text>心情涣散状态仍能触发技能的干员</help-text>
       </template>
-      <n-select
-        multiple
-        filterable
-        :options="operators"
-        v-model:value="current_conf.workaholic"
-        :filter="(p, o) => pinyin_match(o.label, p)"
-        :render-label="render_op_label"
-        :render-tag="render_op_tag"
-      />
+      <slick-operator-select v-model="current_conf.workaholic"></slick-operator-select>
     </n-form-item>
     <n-form-item>
       <template #label><span>宿舍低优先级干员</span><help-text>请查阅文档</help-text></template>
-      <n-select
-        multiple
-        filterable
-        :options="operators"
-        v-model:value="current_conf.resting_priority"
-        :filter="(p, o) => pinyin_match(o.label, p)"
-        :render-label="render_op_label"
-        :render-tag="render_op_tag"
-      />
+      <slick-operator-select v-model="current_conf.resting_priority"></slick-operator-select>
     </n-form-item>
     <n-form-item>
       <template #label>
@@ -359,30 +323,14 @@ async function import_plan() {
           </p>
         </help-text>
       </template>
-      <n-select
-        multiple
-        filterable
-        :options="operators"
-        v-model:value="current_conf.refresh_trading"
-        :filter="(p, o) => pinyin_match(o.label, p)"
-        :render-label="render_op_label"
-        :render-tag="render_op_tag"
-      />
+      <slick-operator-select v-model="current_conf.refresh_trading"></slick-operator-select>
     </n-form-item>
     <n-form-item v-if="sub_plan != 'main'">
       <template #label>
         <span>宿舍黑名单</span>
         <help-text>不希望进行填充宿舍的干员</help-text>
       </template>
-      <n-select
-        multiple
-        filterable
-        :options="operators"
-        v-model:value="current_conf.free_blacklist"
-        :filter="(p, o) => pinyin_match(o.label, p)"
-        :render-label="render_op_label"
-        :render-tag="render_op_tag"
-      />
+      <slick-operator-select v-model="current_conf.free_blacklist"></slick-operator-select>
     </n-form-item>
   </n-form>
 </template>

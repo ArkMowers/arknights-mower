@@ -146,8 +146,6 @@ class Recognizer(object):
             self.scene = Scene.DRONE_ACCELERATE
         elif self.find("factory_collect"):
             self.scene = Scene.FACTORY_ROOMS
-        elif self.find("fight/use"):
-            self.scene = Scene.OPERATOR_STRANGER_SUPPORT
         elif self.find("nav_bar"):
             self.scene = Scene.NAVIGATION_BAR
         elif self.find("mail"):
@@ -257,6 +255,8 @@ class Recognizer(object):
             self.scene = Scene.OPERATOR_ONGOING
         elif self.find("ope_finish"):
             self.scene = Scene.OPERATOR_FINISH
+        elif self.find("fight/use"):
+            self.scene = Scene.OPERATOR_STRANGER_SUPPORT
         elif self.find("friend_list"):
             self.scene = Scene.FRIEND_LIST_OFF
         elif self.find("friend_list_on"):
@@ -669,7 +669,6 @@ class Recognizer(object):
             "drone": (274, 437),
             "factory_collect": (1542, 886),
             "fight/refresh": (1639, 22),
-            "fight/use": (858, 864),
             "hypergryph": (0, 961),
             "infra_overview": (54, 135),
             "infra_overview_in": (64, 705),
@@ -734,6 +733,7 @@ class Recognizer(object):
             "collection": (1005, 943),
             "connecting": (1087, 978),
             "episode": (535, 937),
+            "fight/use": (858, 864),
             "friend_list": (57, 301),
             "friend_list_on": (56, 298),
             "credit_visiting": (78, 220),

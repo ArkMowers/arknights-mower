@@ -3301,11 +3301,13 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 stage_today = plan_today["stage"]
                 nav_solver = NavigationSolver(self.device, self.recog)
                 ope_solver = OperationSolver(self.device, self.recog)
+                drain = True
                 for name in stage_today:
                     if self.tasks[0].time - datetime.now() < timedelta(minutes=5):
+                        drain = False
                         break
                     if nav_solver.run(name):
-                        drain = ope_solver.run(self.tasks[0].time)
+                        drain = drain and ope_solver.run(self.tasks[0].time)
                 mission_solver = MissionSolver(self.device, self.recog)
                 mission_solver.run()
                 if (
