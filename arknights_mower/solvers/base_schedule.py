@@ -2505,7 +2505,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         for idx, n in enumerate(agents):
             if room.startswith("dorm") and n in self.op_data.operators.keys():
                 __agent = self.op_data.operators[n]
-                if not __agent.is_high() and __agent.mood == __agent.upper_limit:
+                if __agent.mood == __agent.upper_limit and not __agent.room.startswith("dorm"):
                     agents[idx] = "Free"
                     logger.info("检测满心情释放休息位")
                 elif agents[idx] == "Free" and self.task.type != TaskTypes.RE_ORDER:
