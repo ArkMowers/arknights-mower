@@ -144,12 +144,15 @@ class AutoFight(BaseSolver):
 
     def toggle_play(self):
         self.device.tap((1800, 80))
-        sleep(0.1)
+        sleep(1)
         self.recog.update()
+        self.recog.save_screencap("auto_fight_pause")
         img = cropimg(self.recog.gray, ((740, 480), (1180, 665)))
         img = thres2(img, 250)
         res = loadres("fight/pause", True)
-        self.playing = structural_similarity(img, res) < 0.9
+        ssim = structural_similarity(img, res)
+        logger.debug(ssim)
+        self.playing = ssim <= 0.9
 
     def play(self):
         logger.info("继续")
