@@ -52,6 +52,9 @@ class OperationSolver(BaseSolver):
             return True
 
         if (scene := self.scene()) == Scene.OPERATOR_BEFORE:
+            if self.recog.gray[65][1333] < 200:
+                self.sleep()
+                return
             if self.recog.gray[907][1600] < 127:
                 self.tap((1776, 908))
                 return
