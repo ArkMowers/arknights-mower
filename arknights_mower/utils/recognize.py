@@ -241,15 +241,21 @@ class Recognizer(object):
             self.scene = Scene.OPERATOR_BEFORE
         elif self.find("navigation/episode"):
             self.scene = Scene.OPERATOR_CHOOSE_LEVEL
-        elif self.find("AP-1"):
+        elif self.find("navigation/collection/AP-1"):
             self.scene = Scene.OPERATOR_CHOOSE_LEVEL
-        elif self.find("LS-1"):
+        elif self.find("navigation/collection/LS-1"):
             self.scene = Scene.OPERATOR_CHOOSE_LEVEL
-        elif self.find("CE-1"):
+        elif self.find("navigation/collection/CA-1"):
             self.scene = Scene.OPERATOR_CHOOSE_LEVEL
-        elif self.find("PR-A-1"):
+        elif self.find("navigation/collection/CE-1"):
             self.scene = Scene.OPERATOR_CHOOSE_LEVEL
-        elif self.find("PR-C-1"):
+        elif self.find("navigation/collection/SK-1"):
+            self.scene = Scene.OPERATOR_CHOOSE_LEVEL
+        elif self.find("navigation/collection/PR-A-1"):
+            self.scene = Scene.OPERATOR_CHOOSE_LEVEL
+        elif self.find("navigation/collection/PR-B-1"):
+            self.scene = Scene.OPERATOR_CHOOSE_LEVEL
+        elif self.find("navigation/collection/PR-C-1"):
             self.scene = Scene.OPERATOR_CHOOSE_LEVEL
         elif self.find("ope_agency_going"):
             self.scene = Scene.OPERATOR_ONGOING
@@ -683,6 +689,14 @@ class Recognizer(object):
             "mail": (307, 39),
             "mission_trainee_on": (690, 17),
             "nav_bar": (655, 0),
+            "navigation/collection/AP-1": (203, 821),
+            "navigation/collection/CA-1": (203, 821),
+            "navigation/collection/CE-1": (243, 822),
+            "navigation/collection/LS-1": (240, 822),
+            "navigation/collection/SK-1": (204, 821),
+            "navigation/collection/PR-A-1": (550, 629),
+            "navigation/collection/PR-B-1": (496, 629),
+            "navigation/collection/PR-C-1": (487, 586),
             "navigation/record_restoration": (274, 970),
             "network_check": (432, 433),
             "ope_agency_lock": (1565, 856),
@@ -702,11 +716,7 @@ class Recognizer(object):
             "skip": (1803, 32),
             "terminal_main": (73, 959),
             "terminal_pre2": (1459, 797),
-            "LS-1": (240, 822),
-            "CE-1":(243, 822),
-            "AP-1": (203, 821),
-            "PR-A-1": (550, 629),
-            "PR-C-1": (487, 586),
+
 
         }
 
