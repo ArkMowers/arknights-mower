@@ -102,7 +102,7 @@ def load_plan_from_json():
     if request.method == "GET":
         try:
             plan = load_plan(config.conf["planFile"])
-        except PermissionError as e:
+        except Exception as e:
             logger.error(f"plan.json路径错误{e}，重置为plan.json")
             plan = load_plan()
         return plan
