@@ -475,9 +475,9 @@ async function test_screenshot() {
           </n-form>
         </n-card>
       </div>
+      <div><SKLand /></div>
       <div><Depotswitch /></div>
       <div><DailyMission /></div>
-      <div><SKLand /></div>
       <div><email /></div>
       <div><ServerJang /></div>
     </div>

@@ -36,6 +36,7 @@ class Arknights数据处理器:
             "./ArknightsGameResource/gamedata/excel/activity_table.json"
         )
         self.装仓库物品的字典 = {"NORMAL": [], "CONSUME": [], "MATERIAL": []}
+        self.常驻关卡 = self.加载json("arknights_mower\data\stage_data.json")
 
     def 加载json(self, file_path):
         with open(file_path, "r", encoding="utf-8") as f:
@@ -102,6 +103,13 @@ class Arknights数据处理器:
                     if not os.path.exists(目标文件路径):
                         png_image = Image.open(源文件路径)
                         png_image.save(目标文件路径, "WEBP")
+                    self.物品_名称对[物品代码] = [
+                        物品代码,
+                        图标代码,
+                        中文名称,
+                        分类类型,
+                        排序代码,
+                    ]
                     self.物品_名称对[中文名称] = [
                         物品代码,
                         图标代码,
@@ -184,7 +192,6 @@ class Arknights数据处理器:
                 print()
 
     def 读取活动关卡(self):
-        可以刷的活动关卡 = []
         关卡 = self.关卡表["stageValidInfo"]
         还未结束的非常驻关卡 = {
             键: 值
@@ -208,21 +215,31 @@ class Arknights数据处理器:
                             self.物品表["items"][item["id"]]["name"]
                         )
             if 关卡掉落["普通掉落"] != []:
-                可以刷的活动关卡.append(
+                self.常驻关卡.append(
                     {
                         "id": 关卡代码,
                         "name": 关卡名称,
                         "drop": 关卡掉落,
                         "end": 关卡结束时间戳,
+                        "周一": 1,
+                        "周二": 1,
+                        "周三": 1,
+                        "周四": 1,
+                        "周五": 1,
+                        "周六": 1,
+                        "周日": 1,
                     }
                 )
             # print(关卡代码, 关卡名称, 关卡掉落, 关卡结束时间)
-
+        unkey = 0
+        for item in self.常驻关卡:
+            item["key"] = unkey
+            unkey += 1
         with open(
             "./ui/src/pages/stage_data/event_data.json", "w", encoding="utf-8"
         ) as f:
-            json.dump(可以刷的活动关卡, f, ensure_ascii=False)
-        print(可以刷的活动关卡)
+            json.dump(self.常驻关卡, f, ensure_ascii=False)
+        # print(self.常驻关卡)
 
     def load_recruit_data(self):
         recruit_data = {}
@@ -340,6 +357,7 @@ class Arknights数据处理器:
                 transform_sqrt=True,
                 channel_axis=2,
             )
+
             return hog_features
 
         def 加载图片特征点_标签(模板类型):
@@ -371,7 +389,7 @@ class Arknights数据处理器:
     def 批量训练并保存扫仓库模型(self):
         self.训练仓库的knn模型("NORMAL", "./arknights_mower/models/NORMAL.pkl")
         self.训练仓库的knn模型("CONSUME", "./arknights_mower/models/CONSUME.pkl")
-        self.训练仓库的knn模型("MATERIAL", "./arknights_mower/models/MATERIAL.pkl")
+        # self.训练仓库的knn模型("MATERIAL", "./arknights_mower/models/MATERIAL.pkl")
 
     def 训练在房间内的干员名的模型(self):
         font = ImageFont.truetype(

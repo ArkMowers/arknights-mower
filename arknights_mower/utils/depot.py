@@ -3,40 +3,36 @@ import os
 import pandas as pd
 
 # from typing import Dict, List, Union
-from .path import get_path
+from arknights_mower.utils.path import get_path
 
 # from .log import logger
 from arknights_mower.data import key_mapping
 from datetime import datetime
 
-# depot_file = get_path('@app/tmp/itemlist.csv')
-
-# def process_itemlist(d):
-#     itemlist = {"时间": datetime.datetime.now(), "data": {key: 0 for key in key_mapping.keys()}}
-
-#     itemlist["data"] = json.loads(d["details"]["lolicon"]["data"])
-
-#     # Check if file exists, if not, create the file
-#     if not os.path.exists(depot_file):
-#         with open(depot_file, "w", newline="", encoding="utf-8") as csvfile:
-#             fieldnames = ["时间", "data"]
-#             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-#             writer.writeheader()
-#             writer.writerow({"时间": datetime.datetime.now(), "data": '{"空":0}'})
-
-#         # Append data to the CSV file
-#     with open(depot_file, "a", newline="", encoding="utf-8") as csvfile:
-#         fieldnames = itemlist.keys()
-#         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-#         writer.writerow(itemlist)
-
 
 def 读取仓库():
-    path = get_path("@app/tmp/depotresult.csv")
-    if not os.path.exists(path):
+    
+    path = get_path("@app/tmp/cultivate.json")
+    with open(path, "r", encoding="utf-8") as f:
+        depotinfo = json.load(f)
+    物品数量 = depotinfo["data"]["items"]
+    新物品1 = {
+        key_mapping[item["id"]][2]: int(item["count"])
+        for item in 物品数量 if int(item["count"]) != 0
+    }
+
+    csv_path = get_path("@app/tmp/depotresult.csv")
+    if not os.path.exists(csv_path):
         创建csv()
-    depotinfo = pd.read_csv(path)
-    新物品 = json.loads(depotinfo.iloc[-1, 1])
+
+    # 读取CSV文件
+    depotinfo = pd.read_csv(csv_path)
+    
+    # 取出最后一行数据中的物品信息并进行合并
+    最后一行物品 = json.loads(depotinfo.iloc[-1, 1])
+    新物品 = {**最后一行物品, **新物品1}  # 合并字典
+
+    print(新物品)
     time = depotinfo.iloc[-1, 0]
     新物品json = depotinfo.iloc[-1, 2]
     sort = {
@@ -170,6 +166,7 @@ def 读取仓库():
     )
     源石数量 = classified_data["A常用"].get("至纯源石", {"number": 0})["number"]
     源石碎片 = classified_data["K未分类"].get("源石碎片", {"number": 0})["number"]
+
     土 = classified_data["F稀有度2"].get("固源岩", {"number": 0})["number"]
     classified_data["A常用"]["玉+卷"] = {
         "number": round(合成玉数量 / 600 + 寻访凭证数量, 1),
@@ -211,3 +208,5 @@ def 创建csv():
     ]
     depotinfo = pd.DataFrame([result], columns=["Timestamp", "Data", "json"])
     depotinfo.to_csv(path, mode="a", index=False, header=True, encoding="utf-8")
+
+读取仓库()
