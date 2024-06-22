@@ -11,14 +11,16 @@ from datetime import datetime
 
 
 def 读取仓库():
-    
     path = get_path("@app/tmp/cultivate.json")
+    if not os.path.exists(path):
+        创建json()
     with open(path, "r", encoding="utf-8") as f:
         depotinfo = json.load(f)
     物品数量 = depotinfo["data"]["items"]
     新物品1 = {
         key_mapping[item["id"]][2]: int(item["count"])
-        for item in 物品数量 if int(item["count"]) != 0
+        for item in 物品数量
+        if int(item["count"]) != 0
     }
 
     csv_path = get_path("@app/tmp/depotresult.csv")
@@ -27,7 +29,7 @@ def 读取仓库():
 
     # 读取CSV文件
     depotinfo = pd.read_csv(csv_path)
-    
+
     # 取出最后一行数据中的物品信息并进行合并
     最后一行物品 = json.loads(depotinfo.iloc[-1, 1])
     新物品 = {**最后一行物品, **新物品1}  # 合并字典
@@ -209,4 +211,14 @@ def 创建csv():
     depotinfo = pd.DataFrame([result], columns=["Timestamp", "Data", "json"])
     depotinfo.to_csv(path, mode="a", index=False, header=True, encoding="utf-8")
 
-读取仓库()
+
+def 创建json():
+    path = get_path("@app/tmp/cultivate.json")
+    a = {
+        "code": 0,
+        "message": "OK",
+        "timestamp": "1719065002",
+        "data": {"items": [{"id": "31063", "count": "0"}]},
+    }
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(a, f)
