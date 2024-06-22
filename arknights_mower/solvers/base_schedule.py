@@ -19,6 +19,7 @@ from arknights_mower.solvers import (
     MailSolver,
     RecruitSolver,
     ReportSolver,
+    cultivateDepotSolver,
 )
 from arknights_mower.solvers.base_mixin import BaseMixin
 from arknights_mower.solvers.credit_fight import CreditFight
@@ -3538,6 +3539,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
 
     def 仓库扫描(self):
         try:
+            cultivateDepotSolver(self.skland_config["skland_info"]).start()
             DepotSolver(self.device, self.recog).run()
         except Exception as e:
             logger.info(f"先不运行 出bug了 : {e}")

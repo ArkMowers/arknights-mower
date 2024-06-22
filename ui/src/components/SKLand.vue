@@ -13,7 +13,10 @@ function add_account() {
   return {
     isCheck: true,
     account: '',
-    password: ''
+    password: '',
+    sign_in_official: true,
+    sign_in_bilibili: true,
+    cultivate_select: true
   }
 }
 
@@ -30,7 +33,7 @@ async function test_maa() {
   <n-card>
     <template #header>
       <n-checkbox v-model:checked="skland_enable">
-        <div class="card-title">森空岛签到</div>
+        <div class="card-title">森空岛账号</div>
         <help-text>
           <p>连接失败时，请检查：</p>
           <ol>
@@ -43,8 +46,7 @@ async function test_maa() {
       </n-checkbox>
     </template>
     <div v-if="skland_enable">
-      <n-dynamic-input v-model:value="skland_info" :on-create="add_account">
-        <template #create-button-default>添加森空岛账号</template>
+      <n-dynamic-input v-model:value="skland_info" :on-create="add_account" show-sort-button>
         <template #default="{ value }">
           <div style="display: flex; align-items: center; width: 100%">
             <n-checkbox v-model:checked="value.isCheck" style="margin-right: 12px" />

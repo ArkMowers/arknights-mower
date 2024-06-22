@@ -41,6 +41,9 @@ class SKLand:
                 'account': item['account'],
                 'isCheck': item['isCheck'],
                 'password': item['password'],
+                "sign_in_official":item['sign_in_official'],
+                "sign_in_bilibili":item['sign_in_bilibili'],
+                "cultivate_select":item['cultivate_select']
             })
 
         self.header = {
