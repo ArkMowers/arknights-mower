@@ -266,16 +266,14 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             self.waiting_solver(Scene.LOADING)
         elif scene == Scene.CONNECTING:
             self.waiting_solver(Scene.CONNECTING)
-        elif self.get_navigation():
-            self.tap_element("nav_infrastructure")
         elif scene == Scene.INFRA_ARRANGE_ORDER:
             self.tap_element("arrange_blue_yes", x_rate=0.66)
-        elif scene == Scene.UNKNOWN or self.scene() != Scene.UNKNOWN:
+        elif self.get_navigation():
+            self.tap_element("nav_infrastructure")
+        else:
             self.back_to_index()
             self.last_room = ""
             logger.info("重设上次房间为空")
-        else:
-            raise RecognizeError("Unknown scene")
 
     def overtake_room(self):
         candidates = self.task.meta_data.split(",")
