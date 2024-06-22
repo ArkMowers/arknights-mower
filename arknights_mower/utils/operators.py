@@ -407,6 +407,11 @@ class Operators(object):
                 if not (dorm.position[0] == op.current_room and dorm.position[1] == op.current_index):
                     self.dorm[idx].name = ""
                     self.dorm[idx].time = None
+                else:
+                    if self.dorm[idx].time is not None and self.dorm[idx].time < datetime.now():
+                        op.mood = op.upper_limit
+                        op.time_stamp = self.dorm[idx].time
+                        logger.debug(f"检测到{op.name}心情恢复满，设置心情至{op.upper_limit}")
 
     def get_train_support(self):
         for name in self.operators.keys():
@@ -490,7 +495,6 @@ class Operators(object):
                 elif dorm.time is not None and dorm.time < datetime.now():
                     logger.info(f"检测到房间休息完毕，释放{dorm.name}宿舍位")
                     freeName.append(dorm.name)
-                    dorm.name = ''
                     ret += 1
                 if idx == self.config.max_resting_count - 1:
                     break
@@ -503,17 +507,15 @@ class Operators(object):
                 # 释放满休息位
                 # TODO 高效组且低优先可以相互替换
                 if dorm.name == '' or (dorm.name in self.operators.keys() and not self.operators[dorm.name].is_high()):
-                    dorm.name = ''
                     ret += 1
                 elif dorm.time is not None and dorm.time < datetime.now():
                     logger.info(f"检测到房间休息完毕，释放{dorm.name}宿舍位")
                     freeName.append(dorm.name)
-                    dorm.name = ''
                     ret += 1
         if len(freeName) > 0:
             for name in freeName:
                 if name in agent_list:
-                    self.operators[name].mood = 24
+                    self.operators[name].mood = self.operators[name].upper_limit
                     self.operators[name].depletion_rate = 0
                     self.operators[name].time_stamp = datetime.now()
         return ret
@@ -526,7 +528,8 @@ class Operators(object):
         else:
             _room = None
             for i in range(self.config.max_resting_count, len(self.dorm)):
-                if self.dorm[i].name == '':
+                _name = self.dorm[i].name
+                if _name == '' or not self.operators[_name].is_high():
                     _room = self.dorm[i]
                     break
         _room.name = name

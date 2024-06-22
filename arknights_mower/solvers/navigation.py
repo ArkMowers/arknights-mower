@@ -117,7 +117,7 @@ class NavigationSolver(BaseSolver):
                     )
                     self.recog.update()
             else:
-                self.tap((230, 175))
+                self.tap((230, 175), interval=2)
         elif scene == Scene.TERMINAL_BIOGRAPHY:
             if self.prefix not in ["OF"]:
                 self.back()

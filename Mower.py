@@ -241,10 +241,10 @@ def save_state():
             json.dump(vars(base_scheduler.op_data), f, default=str)
 
 
-def load_state():
+def load_state(base_scheduler):
     try:
         if not os.path.exists(state_file_name):
-            return None
+            return
         with open(state_file_name, 'r') as f:
             state = json.load(f)
         operators = {k: eval(v) for k, v in state['operators'].items()}
@@ -253,9 +253,27 @@ def load_state():
                 v.time_stamp = datetime.strptime(v.time_stamp, '%Y-%m-%d %H:%M:%S.%f')
             else:
                 v.time_stamp = None
-        return operators
-    except Exception:
-        return None
+        for k, v in operators.items():
+            if k in base_scheduler.op_data.operators:
+                # 只复制心情数据
+                base_scheduler.op_data.operators[k].mood = v.mood
+                base_scheduler.op_data.operators[k].time_stamp = v.time_stamp
+                base_scheduler.op_data.operators[k].depletion_rate = v.depletion_rate
+                base_scheduler.op_data.operators[k].current_room = v.current_room
+                base_scheduler.op_data.operators[k].current_index = v.current_index
+        # 复制缓存的宿舍数据
+        dorms = [eval(v) for v in state['dorm']]
+        for v in dorms:
+            if not v.time == 'None':
+                v.time = datetime.strptime(v.time, '%Y-%m-%d %H:%M:%S.%f')
+            else:
+                v.time = None
+        base_scheduler.op_data.dorm = dorms
+        # 复制缓存的派对数据
+        if state['party_time'] is not None:
+            base_scheduler.party_time = datetime.strptime(state['party_time'], '%Y-%m-%d %H:%M:%S.%f')
+    except Exception as ex :
+        logger.error(ex)
 
 
 
@@ -291,17 +309,6 @@ def simulate():
     if validation_msg is not None:
         logger.error(validation_msg)
         return
-    _loaded_operators = load_state()
-    if _loaded_operators is not None:
-        for k, v in _loaded_operators.items():
-            if k in base_scheduler.op_data.operators and not base_scheduler.op_data.operators[k].room.startswith(
-                    "dorm"):
-                # 只复制心情数据
-                base_scheduler.op_data.operators[k].mood = v.mood
-                base_scheduler.op_data.operators[k].time_stamp = v.time_stamp
-                base_scheduler.op_data.operators[k].depletion_rate = v.depletion_rate
-                base_scheduler.op_data.operators[k].current_room = v.current_room
-                base_scheduler.op_data.operators[k].current_index = v.current_index
     base_scheduler.op_data.first_init = False
     if len(base_scheduler.op_data.backup_plans) > 0:
         conditions = base_scheduler.op_data.generate_conditions(len(base_scheduler.op_data.backup_plans))
@@ -311,6 +318,10 @@ def simulate():
                 logger.error(f"替换排班验证错误：{validation_msg}, 附表条件为 {con}")
                 return
         base_scheduler.op_data.swap_plan([False] * len(base_scheduler.op_data.backup_plans), True)
+    # 验证完排班表以后载入缓存数据加入
+    load_state(base_scheduler)
+    # 根据现有的缓存数据切换至对应附表
+    base_scheduler.backup_plan_solver()
     while True:
         try:
             if len(base_scheduler.tasks) > 0:
