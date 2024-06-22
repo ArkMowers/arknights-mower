@@ -9,7 +9,7 @@ from evalidate import Expr
 from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
 from arknights_mower.solvers.secret_front import SecretFront
 from arknights_mower.utils import config, path, rapidocr
-from arknights_mower.utils.depot import 创建csv
+from arknights_mower.utils.depot import 创建csv,创建json
 from arknights_mower.utils.device.adb_client.session import Session
 from arknights_mower.utils.device.scrcpy import Scrcpy
 from arknights_mower.utils.email import task_template
@@ -349,6 +349,7 @@ def simulate():
                                 - base_scheduler.maa_config["maa_execution_gap"] * 3600
                             )
                             创建csv()
+                            创建json()
                             return now_time
 
                     if conf["maa_depot_enable"]:
