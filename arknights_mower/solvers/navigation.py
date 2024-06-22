@@ -75,6 +75,7 @@ location = {
     "PR-A": {"PR-A-1": (0, 0), "PR-A-2": (604, -283)},
     "PR-B": {"PR-B-1": (0, 0), "PR-B-2": (684, -296)},
     "PR-C": {"PR-C-1": (0, 0), "PR-C-2": (667, -231)},
+    "PR-D": {'PR-D-1': (0, 0), 'PR-D-2': (639, -260)}
 }
 
 collection_prefixs = [
@@ -192,6 +193,10 @@ class NavigationSolver(BaseSolver):
 
             if self.prefix == "PR":
                 prefix = self.prefix + "-" + self.pr_prefix
+            if self.prefix not in ["LS"]:
+                if self.find(f"navigation/collection/{prefix}_not_available"):
+                    logger.info(f"{self.name}未开放")
+                    return True
             if pos := self.find(f"navigation/collection/{prefix}_entry"):
                 self.tap(pos)
             else:

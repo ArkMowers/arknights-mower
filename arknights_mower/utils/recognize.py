@@ -257,6 +257,8 @@ class Recognizer(object):
             self.scene = Scene.OPERATOR_CHOOSE_LEVEL
         elif self.find("navigation/collection/PR-C-1"):
             self.scene = Scene.OPERATOR_CHOOSE_LEVEL
+        elif self.find("navigation/collection/PR-D-1"):
+            self.scene = Scene.OPERATOR_CHOOSE_LEVEL
         elif self.find("ope_agency_going"):
             self.scene = Scene.OPERATOR_ONGOING
         elif self.find("ope_finish"):
@@ -697,6 +699,8 @@ class Recognizer(object):
             "navigation/collection/PR-A-1": (550, 629),
             "navigation/collection/PR-B-1": (496, 629),
             "navigation/collection/PR-C-1": (487, 586),
+            "navigation/collection/PR-D-1": (516, 619),
+            "navigation/collection/not_available": (1448, 131),
             "navigation/record_restoration": (274, 970),
             "network_check": (432, 433),
             "ope_agency_lock": (1565, 856),
