@@ -4,6 +4,7 @@ from typing import Optional
 import cv2
 
 from arknights_mower.solvers.secret_front import templates
+from arknights_mower.utils import config
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.log import logger
@@ -52,6 +53,9 @@ class OperationSolver(BaseSolver):
             return True
 
         if (scene := self.scene()) == Scene.OPERATOR_BEFORE:
+            if self.recog.gray[65][1333] < 200:
+                self.sleep()
+                return
             if self.recog.gray[907][1600] < 127:
                 self.tap((1776, 908))
                 return
@@ -68,6 +72,16 @@ class OperationSolver(BaseSolver):
         elif scene == Scene.OPERATOR_ONGOING:
             self.sleep(10)
         elif scene == Scene.OPERATOR_RECOVER_POTION:
+            if config.conf["maa_expiring_medicine"]:
+                img = cropimg(self.recog.img, ((1015, 515), (1170, 560)))
+                img = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
+                img = cv2.inRange(img, (170, 0, 0), (174, 255, 255))
+                count = cv2.countNonZero(img)
+                logger.debug(count)
+                if count > 3000:
+                    logger.info("使用即将过期的理智药")
+                    self.tap((1635, 865))
+                    return
             self.sanity_drain = True
             return True
         elif scene == Scene.OPERATOR_RECOVER_ORIGINITE:
