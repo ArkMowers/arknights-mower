@@ -5,7 +5,6 @@ import cv2
 
 from arknights_mower import __rootdir__
 from arknights_mower.utils import hot_update
-from arknights_mower.utils.image import loadimg
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.solver import BaseSolver
@@ -198,11 +197,8 @@ class NavigationSolver(BaseSolver):
                 if self.find(f"navigation/collection/{prefix}_not_available"):
                     logger.info(f"{self.name}未开放")
                     return True
-            entry_template=loadimg(f"arknights_mower/resources/navigation/collection/{prefix}_entry.png")
-            result = cv2.matchTemplate(self.recog.img, entry_template, cv2.TM_CCOEFF_NORMED)
-            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-            if max_val>val:
-                self.tap(max_loc)
+            if pos:=self.find(f"navigation/collection/{prefix}_entry"):
+                self.tap(pos)
             else:
                 if self.prefix in ["AP", "CA", "CE", "SK"]:
                     self.swipe_noinertia((900, 500), (600, 0))
