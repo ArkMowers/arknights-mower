@@ -241,6 +241,24 @@ class Recognizer(object):
             self.scene = Scene.OPERATOR_BEFORE
         elif self.find("navigation/episode"):
             self.scene = Scene.OPERATOR_CHOOSE_LEVEL
+        elif self.find("navigation/collection/AP-1"):
+            self.scene = Scene.OPERATOR_CHOOSE_LEVEL
+        elif self.find("navigation/collection/LS-1"):
+            self.scene = Scene.OPERATOR_CHOOSE_LEVEL
+        elif self.find("navigation/collection/CA-1"):
+            self.scene = Scene.OPERATOR_CHOOSE_LEVEL
+        elif self.find("navigation/collection/CE-1"):
+            self.scene = Scene.OPERATOR_CHOOSE_LEVEL
+        elif self.find("navigation/collection/SK-1"):
+            self.scene = Scene.OPERATOR_CHOOSE_LEVEL
+        elif self.find("navigation/collection/PR-A-1"):
+            self.scene = Scene.OPERATOR_CHOOSE_LEVEL
+        elif self.find("navigation/collection/PR-B-1"):
+            self.scene = Scene.OPERATOR_CHOOSE_LEVEL
+        elif self.find("navigation/collection/PR-C-1"):
+            self.scene = Scene.OPERATOR_CHOOSE_LEVEL
+        elif self.find("navigation/collection/PR-D-1"):
+            self.scene = Scene.OPERATOR_CHOOSE_LEVEL
         elif self.find("ope_agency_going"):
             self.scene = Scene.OPERATOR_ONGOING
         elif self.find("ope_finish"):
@@ -271,7 +289,6 @@ class Recognizer(object):
             self.scene = Scene.TERMINAL_BIOGRAPHY
         elif self.find("collection"):
             self.scene = Scene.TERMINAL_COLLECTION
-
         elif self.check_announcement():
             self.scene = Scene.ANNOUNCEMENT
 
@@ -674,6 +691,15 @@ class Recognizer(object):
             "mail": (307, 39),
             "mission_trainee_on": (690, 17),
             "nav_bar": (655, 0),
+            "navigation/collection/AP-1": (203, 821),
+            "navigation/collection/CA-1": (203, 821),
+            "navigation/collection/CE-1": (243, 822),
+            "navigation/collection/LS-1": (240, 822),
+            "navigation/collection/SK-1": (204, 821),
+            "navigation/collection/PR-A-1": (550, 629),
+            "navigation/collection/PR-B-1": (496, 629),
+            "navigation/collection/PR-C-1": (487, 586),
+            "navigation/collection/PR-D-1": (516, 619),
             "navigation/record_restoration": (274, 970),
             "network_check": (432, 433),
             "ope_agency_lock": (1565, 856),
@@ -693,6 +719,8 @@ class Recognizer(object):
             "skip": (1803, 32),
             "terminal_main": (73, 959),
             "terminal_pre2": (1459, 797),
+
+
         }
 
         if res in color:
@@ -730,6 +758,15 @@ class Recognizer(object):
             "materiel_ico": (892, 61),
             "mission_daily_on": ((685, 15), (1910, 100)),
             "mission_weekly_on": ((685, 15), (1910, 100)),
+            "navigation/collection/AP_entry": ((0, 170), (1920, 870)),
+            "navigation/collection/CA_entry": ((0, 170), (1920, 870)),
+            "navigation/collection/CE_entry": ((0, 170), (1920, 870)),
+            "navigation/collection/LS_entry": ((0, 170), (1920, 870)),
+            "navigation/collection/SK_entry": ((0, 170), (1920, 870)),
+            "navigation/collection/PR-A_entry": ((0, 170), (1920, 870)),
+            "navigation/collection/PR-B_entry": ((0, 170), (1920, 870)),
+            "navigation/collection/PR-C_entry": ((0, 170), (1920, 870)),
+            "navigation/collection/PR-D_entry": ((0, 170), (1920, 870)),
             "navigation/episode": (1560, 944),
             "ope_agency_going": (510, 941),
             "ope_failed": (183, 465),
