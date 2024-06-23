@@ -361,16 +361,7 @@ async function test_screenshot() {
                 :render-target-label="(o) => render_op_label(o.option)"
                 :filter="(p, o) => (p ? pinyin_match(o.label, p) : true)"
               />
-              <n-select
-                v-else
-                multiple
-                filterable
-                :options="operators"
-                :render-label="render_op_label"
-                :render-tag="render_op_tag"
-                v-model:value="free_blacklist"
-                :filter="(p, o) => pinyin_match(o.label, p)"
-              />
+              <slick-operator-select v-else v-model="free_blacklist" />
             </n-form-item>
             <n-form-item>
               <template #label>

@@ -3,7 +3,7 @@ import { useConfigStore } from '@/stores/config'
 import { storeToRefs } from 'pinia'
 const store = useConfigStore()
 
-import { ref, inject } from 'vue'
+import { inject, ref } from 'vue'
 
 const axios = inject('axios')
 
@@ -19,11 +19,6 @@ async function test_email() {
   const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/test-email`)
   test_result.value = response.data
 }
-
-const email_options = [
-  { label: 'QQ邮箱', value: false },
-  { label: '自定义邮箱', value: true }
-]
 </script>
 
 <template>
@@ -57,8 +52,10 @@ const email_options = [
         </n-form-item>
         <n-form-item label="加密方式" v-if="custom_smtp_server.enable">
           <n-radio-group v-model:value="custom_smtp_server.encryption">
-            <n-radio value="tls" label="SSL/TLS" />
-            <n-radio value="starttls" label="STARTTLS" />
+            <n-flex>
+              <n-radio value="tls" label="SSL/TLS" />
+              <n-radio value="starttls" label="STARTTLS" />
+            </n-flex>
           </n-radio-group>
         </n-form-item>
         <n-form-item label="端口号" v-if="custom_smtp_server.enable">

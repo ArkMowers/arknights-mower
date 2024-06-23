@@ -77,8 +77,10 @@ function create_tag(label) {
     <template #header>
       <n-checkbox v-model:checked="maa_enable">
         <div class="card-title">刷理智周计划</div>
-        <help-text>暂时只支持活动关和1-7；暂不支持吃药。</help-text>
       </n-checkbox>
+      <help-text>
+        当前常驻关卡仅支持第一章主线（包括1-7）和全部资源收集关卡（包括红票、钱本、经验本、碳本、技能书本、芯片本）
+      </help-text>
     </template>
     <n-form
       :label-placement="mobile ? 'top' : 'left'"
@@ -87,7 +89,7 @@ function create_tag(label) {
       label-align="left"
     >
       <n-form-item :show-label="false">
-        <n-checkbox v-model:checked="maa_expiring_medicine" disabled>
+        <n-checkbox v-model:checked="maa_expiring_medicine">
           自动使用48小时内过期的理智药
         </n-checkbox>
       </n-form-item>

@@ -1,7 +1,7 @@
 <script setup>
-import { ref, inject } from 'vue'
 import { useConfigStore } from '@/stores/config'
 import { storeToRefs } from 'pinia'
+import { inject, ref } from 'vue'
 
 const store = useConfigStore()
 const axios = inject('axios')
@@ -36,7 +36,6 @@ async function test_push() {
 
     <template #default>
       <n-form
-        v-if="server_push_enable"
         :label-placement="mobile ? 'top' : 'left'"
         :show-feedback="false"
         label-width="96"

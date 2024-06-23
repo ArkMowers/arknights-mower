@@ -1,7 +1,7 @@
 <script setup>
-import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
+import { storeToRefs } from 'pinia'
 
 const config_store = useConfigStore()
 const {
@@ -19,11 +19,11 @@ const {
 const plan_store = usePlanStore()
 const { operators } = storeToRefs(plan_store)
 
-import { h, inject } from 'vue'
+import { h, inject, ref } from 'vue'
 
 const mobile = inject('mobile')
 
-import { NTag, NAvatar } from 'naive-ui'
+import { NAvatar, NTag } from 'naive-ui'
 
 function render_tag({ option, handleClose }) {
   return h(
@@ -67,20 +67,28 @@ const squads = [
   { label: '第三编队', value: 3 },
   { label: '第四编队', value: 4 }
 ]
+
+const show_map = ref(false)
 </script>
 
 <template>
   <n-card title="线索收集与信用">
-    <n-space vertical>
-      <n-checkbox v-model:checked="enable_party">线索收集</n-checkbox>
+    <n-flex>
+      <n-checkbox v-model:checked="enable_party"><div class="item">线索收集</div></n-checkbox>
       <n-checkbox v-model:checked="leifeng_mode">
-        雷锋模式 <help-text>关闭则超过9个线索才送好友</help-text>
+        雷锋模式
+        <help-text>
+          <div>开启时，向好友赠送多余的线索；</div>
+          <div>关闭则超过9个线索才送好友。</div>
+        </help-text>
       </n-checkbox>
-    </n-space>
+    </n-flex>
     <n-divider />
     <n-form :label-placement="mobile ? 'top' : 'left'" :show-feedback="false" class="rogue">
       <n-form-item :show-label="false">
-        <n-checkbox v-model:checked="maa_credit_fight">信用作战（OF-1）</n-checkbox>
+        <n-checkbox v-model:checked="maa_credit_fight">
+          <div class="item">信用作战（OF-1）</div>
+        </n-checkbox>
       </n-form-item>
       <n-form-item label="编队">
         <n-select :options="squads" v-model:value="credit_fight.squad" />
@@ -100,14 +108,20 @@ const squads = [
         <div style="width: 40px; text-align: right">Y</div>
         <n-input-number style="margin: 0 8px" v-model:value="credit_fight.y" :show-button="false" />
         <n-select
-          style="width: 200px"
+          style="width: 250px; margin-right: 8px"
           :options="deploy_directions"
           v-model:value="credit_fight.direction"
         />
+        <n-button @click="show_map = !show_map">{{ show_map ? '隐藏' : '显示' }}OF-1地图</n-button>
+      </n-form-item>
+      <n-form-item :show-label="false" v-if="show_map">
+        <n-image src="/map-OF-1.webp" width="100%" />
       </n-form-item>
     </n-form>
     <n-divider />
-    <n-checkbox v-model:checked="maa_enable" class="maa-shop">信用商店购物</n-checkbox>
+    <n-checkbox v-model:checked="maa_enable" class="maa-shop">
+      <div class="item">信用商店购物</div>
+    </n-checkbox>
     <help-text>
       <span>性价比参考：</span>
       <n-button
@@ -205,5 +219,10 @@ td {
 
 .maa-shop {
   margin: 8px 0;
+}
+
+.item {
+  font-weight: 500;
+  font-size: 16px;
 }
 </style>
