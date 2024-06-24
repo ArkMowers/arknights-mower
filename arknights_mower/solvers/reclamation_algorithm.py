@@ -583,6 +583,7 @@ class ReclamationAlgorithm(BaseSolver):
                 logger.warning("连续识别到未知场景")
                 try:
                     self.task_queue = None
+                    self.in_adventure = False
                     super().back_to_index()
                 except MowerExit:
                     raise
