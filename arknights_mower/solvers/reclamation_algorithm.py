@@ -14,7 +14,6 @@ from arknights_mower.utils.matcher import Matcher
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.solver import BaseSolver, MowerExit
 
-
 src_pts = np.float32([[0, 97], [1920, 97], [-400, 1080], [2320, 1080]])
 dst_pts = np.float32([[0, 0], [1920, 0], [0, 1000], [1920, 1000]])
 trans_mat = cv2.getPerspectiveTransform(src_pts, dst_pts)
@@ -457,7 +456,7 @@ class ReclamationAlgorithm(BaseSolver):
                 score, pos = self.template_match(
                     "ra/delete_save", scope=((1610, 820), (1785, 940))
                 )
-                if score > 5000000:
+                if score > 0.9:
                     self.tap(pos, interval=0.5)
                 else:
                     self.tap((1540, 1010), interval=1.5)
