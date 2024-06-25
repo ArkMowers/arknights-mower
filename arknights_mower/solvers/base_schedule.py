@@ -1931,7 +1931,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             return None
 
         while ctm.task:
-            scene = self.clue_scene()
+            scene = self.scene()
 
             if scene == Scene.UNKNOWN:
                 unknown_cnt += 1

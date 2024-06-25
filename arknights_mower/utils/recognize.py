@@ -220,6 +220,16 @@ class Recognizer(object):
             self.scene = Scene.SHOP_UNLOCK_SCHEDULE
         elif self.find("loading7"):
             self.scene = Scene.LOADING
+        elif self.find("clue/daily"):
+            self.scene = Scene.CLUE_DAILY
+        elif self.find("clue/receive"):
+            self.scene = Scene.CLUE_RECEIVE
+        elif self.find("clue/give_away"):
+            self.scene = Scene.CLUE_GIVE_AWAY
+        elif self.find("clue/summary"):
+            self.scene = Scene.CLUE_SUMMARY
+        elif self.find("clue/filter_all"):
+            self.scene = Scene.CLUE_PLACE
 
         elif self.is_black():
             self.scene = Scene.LOADING
@@ -546,52 +556,6 @@ class Recognizer(object):
 
         return self.scene
 
-    def get_clue_scene(self) -> int:
-        """
-        线索场景识别
-        """
-        # 场景缓存
-        if self.scene != Scene.UNDEFINED:
-            return self.scene
-
-        # 连接中，优先级最高
-        if self.find("connecting"):
-            self.scene = Scene.CONNECTING
-
-        elif self.find("arrange_check_in") or self.find("arrange_check_in_on"):
-            self.scene = Scene.INFRA_DETAILS
-        elif self.find("clue/main", scope=((1740, 850), (1860, 1050))):
-            self.scene = Scene.INFRA_CONFIDENTIAL
-        elif self.find("clue/daily"):
-            self.scene = Scene.CLUE_DAILY
-        elif (
-            self.find("clue/receive", scope=((1280, 0), (1600, 90)))
-            and self.color(1275, 0)[0] > 144
-        ):
-            self.scene = Scene.CLUE_RECEIVE
-        elif (
-            self.find("clue/filter", scope=((0, 80), (650, 180)), threshold=0.5)
-            and self.color(53, 113)[0] > 250
-        ):
-            self.scene = Scene.CLUE_GIVE_AWAY
-        elif self.find("clue/summary", scope=((30, 120), (350, 370))):
-            self.scene = Scene.CLUE_SUMMARY
-        elif self.find("clue/filter", scope=((1280, 80), (1920, 180)), threshold=0.5):
-            self.scene = Scene.CLUE_PLACE
-        else:
-            self.scene = Scene.UNKNOWN
-            if self.device.check_current_focus():
-                self.update()
-
-        # save screencap to analyse
-        if config.SCREENSHOT_PATH is not None:
-            self.save_screencap(self.scene)
-        logger.info(f"Scene: {self.scene}: {SceneComment[self.scene]}")
-
-        self.check_loading_time()
-
-        return self.scene
-
     def get_train_scene(self) -> int:
         """
         训练室场景识别
@@ -671,6 +635,11 @@ class Recognizer(object):
             "arrange_order_options": (1652, 23),
             "arrange_order_options_scene": (369, 199),
             "clue": (1740, 855),
+            "clue/daily": (526, 623),
+            "clue/filter_all": (1297, 99),
+            "clue/give_away": (25, 18),
+            "clue/receive": (1295, 15),
+            "clue/summary": (52, 149),
             "confirm": (0, 683),
             "control_central_assistants": (39, 560),
             "double_confirm": (0, 683),
@@ -719,8 +688,6 @@ class Recognizer(object):
             "skip": (1803, 32),
             "terminal_main": (73, 959),
             "terminal_pre2": (1459, 797),
-
-
         }
 
         if res in color:

@@ -350,12 +350,6 @@ class BaseSolver:
         """
         return self.recog.get_sss_scene()
 
-    def clue_scene(self) -> int:
-        """
-        线索场景识别
-        """
-        return self.recog.get_clue_scene()
-
     def train_scene(self) -> int:
         """
         训练室景识别
