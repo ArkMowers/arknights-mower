@@ -3296,6 +3296,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             ):
                 logger.info(f"{format_time(delta.total_seconds())}后开始做日常任务")
             else:
+                self.send_message("开始刷理智")
                 plan_today = self.maa_config["weekly_plan"][get_server_weekday()]
                 stage_today = plan_today["stage"]
                 nav_solver = NavigationSolver(self.device, self.recog)
