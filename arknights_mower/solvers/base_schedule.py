@@ -2135,7 +2135,7 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                 give_away_true = self.leifeng_mode or (
                     not self.leifeng_mode and self.clue_count > self.clue_count_limit
                 )
-                if c := clue_cls("give_away") and give_away_true:
+                if (c := clue_cls("give_away")) and give_away_true:
                     if not friend_clue:
                         if self.find(
                             "clue/icon_notification", scope=((1400, 0), (1920, 400))
@@ -2504,7 +2504,9 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         for idx, n in enumerate(agents):
             if room.startswith("dorm") and n in self.op_data.operators.keys():
                 __agent = self.op_data.operators[n]
-                if __agent.mood == __agent.upper_limit and not __agent.room.startswith("dorm"):
+                if __agent.mood == __agent.upper_limit and not __agent.room.startswith(
+                    "dorm"
+                ):
                     agents[idx] = "Free"
                     logger.info("检测满心情释放休息位")
                 elif agents[idx] == "Free" and self.task.type != TaskTypes.RE_ORDER:
