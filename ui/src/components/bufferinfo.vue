@@ -1,6 +1,6 @@
 <template>
   <span v-html="des" @click="showModal = true"></span>
-  <n-modal v-model:show="showModal">
+  <n-modal v-model:show="showModal" v-if="props.isbuffer">
     <n-card
       style="width: 600px"
       title="特殊效果"
