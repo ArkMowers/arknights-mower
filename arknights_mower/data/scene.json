@@ -251,6 +251,10 @@
         "label": "TERMINAL_LONGTERM",
         "comment": "长期探索"
     },
+    "508": {
+        "label": "TERMINAL_PERIODIC",
+        "comment": "周期挑战"
+    },
     "601": {
         "label": "OPERATOR_CHOOSE_LEVEL",
         "comment": "作战前，关卡未选定"

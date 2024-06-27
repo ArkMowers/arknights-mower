@@ -202,7 +202,7 @@ class Recognizer(object):
         elif self.find("login_connecting"):
             self.scene = Scene.LOGIN_LOADING
         elif self.find("arrange_order_options"):
-            self.scene = Scene.INFRA_ARRANGE_ORDER
+            self.scene = Scene.RIIC_OPERATOR_SELECT
         elif self.find("arrange_order_options_scene"):
             self.scene = Scene.INFRA_ARRANGE_ORDER
         elif self.find("ope_recover_potion_on"):

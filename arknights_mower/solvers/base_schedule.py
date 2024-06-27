@@ -269,6 +269,8 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
             self.waiting_solver(Scene.CONNECTING)
         elif scene == Scene.INFRA_ARRANGE_ORDER:
             self.tap_element("arrange_blue_yes", x_rate=0.66)
+        elif scene == Scene.RIIC_OPERATOR_SELECT:
+            self.tap_element("confirm_blue")
         elif self.get_navigation():
             self.tap_element("nav_infrastructure")
         else:
