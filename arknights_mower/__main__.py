@@ -480,6 +480,7 @@ def simulate():
         except MowerExit:
             return
         except (ConnectionError, ConnectionAbortedError, AttributeError) as e:
+            logger.exception(e)
             reconnect_tries += 1
             if reconnect_tries < reconnect_max_tries:
                 logger.warning("出现错误.尝试重启Mower")
