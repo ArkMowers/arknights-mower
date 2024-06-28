@@ -519,6 +519,7 @@ def simulate():
                 )
         except Exception as E:
             logger.exception(f"程序出错--->{E}")
+            base_scheduler.recog.update()
 
 
 def save_state(op_data, file="state.json"):
