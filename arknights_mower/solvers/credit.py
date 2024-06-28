@@ -49,6 +49,6 @@ class CreditSolver(SceneGraphSolver):
                 else:
                     return True
         elif scene in [Scene.UNKNOWN, Scene.LOADING, Scene.CONNECTING]:
-            self.sleep()
+            self.waiting_solver(scene, sleep_time=1)
         else:
             self.scene_graph_navigation(Scene.FRIEND_LIST_ON)

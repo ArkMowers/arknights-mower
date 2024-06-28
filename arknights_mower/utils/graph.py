@@ -83,6 +83,11 @@ def index_to_depot(solver: BaseSolver):
     solver.tap_index_element("warehouse")
 
 
+@edge(Scene.INDEX, Scene.MAIL)
+def index_to_mail(solver: BaseSolver):
+    solver.tap_index_element("mail")
+
+
 # 导航栏
 
 
@@ -178,7 +183,7 @@ def friend_list_on(solver: BaseSolver):
     solver.tap_element("friend_list")
 
 
-@edge(Scene.FRIEND_VISITING, Scene.DOUBLE_CONFIRM)
+@edge(Scene.FRIEND_VISITING, Scene.FRIEND_LIST_OFF)
 def friend_visiting_back(solver: BaseSolver):
     solver.back()
 
@@ -340,17 +345,17 @@ class SceneGraphSolver(BaseSolver):
 
         while (current := self.scene()) != scene:
             if current in [Scene.CONNECTING, Scene.UNKNOWN]:
-                self.sleep(1)
+                self.waiting_solver(current, sleep_time=1)
                 continue
             elif current in [
                 Scene.LOADING,
                 Scene.LOGIN_LOADING,
                 Scene.LOGIN_MAIN_NOENTRY,
             ]:
-                self.sleep(2)
+                self.waiting_solver(current, wait_count=10, sleep_time=2)
                 continue
             elif current == Scene.OPERATOR_ONGOING:
-                self.sleep(10)
+                self.waiting_solver(current, wait_count=30, sleep_time=10)
                 continue
 
             if current not in DG.nodes:
@@ -361,6 +366,7 @@ class SceneGraphSolver(BaseSolver):
                 sp = nx.shortest_path(DG, current, scene)
             except Exception as e:
                 logger.exception(f"场景图路径计算异常：{e}")
+                self.sleep(3)
                 return False
 
             logger.debug(sp)
@@ -372,6 +378,7 @@ class SceneGraphSolver(BaseSolver):
                 transition(self)
             except Exception as e:
                 logger.exception(f"场景转移异常：{e}")
+                self.sleep(3)
                 return False
         return True
 

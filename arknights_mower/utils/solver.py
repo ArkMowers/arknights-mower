@@ -242,6 +242,7 @@ class BaseSolver:
             "terminal": (1458, 297),  # 终端
             "warehouse": (1788, 973),  # 仓库
             "headhunting": (1749, 783),  # 干员寻访
+            "mail": (292, 62),  # 邮件
         }
         self.ctap(pos[name])
 

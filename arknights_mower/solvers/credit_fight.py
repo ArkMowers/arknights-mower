@@ -78,5 +78,8 @@ class CreditFight(SceneGraphSolver):
             self.tap_element("fight/use")
         elif scene == Scene.OPERATOR_FINISH:
             return True
+        elif scene in [Scene.UNKNOWN, Scene.LOADING, Scene.CONNECTING]:
+            self.waiting_solver(scene, sleep_time=1)
         else:
-            self.sleep()
+            navi_solver = NavigationSolver(self.device, self.recog)
+            navi_solver.run("OF-1")

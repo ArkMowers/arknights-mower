@@ -229,8 +229,8 @@ class RecruitSolver(SceneGraphSolver):
             return self.recruit_tags()
         elif scene == Scene.RECRUIT_AGENT:
             return self.recruit_result()
-        elif scene == Scene.UNKNOWN:
-            self.sleep()
+        elif scene in [Scene.UNKNOWN, Scene.LOADING, Scene.CONNECTING]:
+            self.waiting_solver(scene, sleep_time=1)
         else:
             self.scene_graph_navigation(Scene.RECRUIT_MAIN)
 

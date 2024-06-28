@@ -259,8 +259,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             return self.todo_list()
         elif scene == Scene.RIIC_OPERATOR_SELECT:
             self.tap_element("confirm_blue")
-        elif scene == Scene.UNKNOWN:
-            self.sleep()
+        elif scene in [Scene.UNKNOWN, Scene.LOADING, Scene.CONNECTING]:
+            self.waiting_solver(scene, sleep_time=1)
         else:
             self.scene_graph_navigation(Scene.INFRA_MAIN)
             self.last_room = ""

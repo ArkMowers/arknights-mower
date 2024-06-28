@@ -76,8 +76,8 @@ class ReportSolver(SceneGraphSolver):
             if self.reload_time > 4:
                 raise RuntimeError("基报不存在")
             return self.read_report()
-        elif scene == Scene.UNKNOWN:
-            self.sleep()
+        elif scene in [Scene.UNKNOWN, Scene.LOADING, Scene.CONNECTING]:
+            self.waiting_solver(scene, sleep_time=1)
         else:
             self.scene_graph_navigation(Scene.RIIC_REPORT)
 
