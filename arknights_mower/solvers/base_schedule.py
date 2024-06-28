@@ -2022,6 +2022,11 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
                     self.tap((1484, 152))
 
             elif scene == Scene.CLUE_RECEIVE:
+                if self.find(
+                    "infra_trust_complete", scope=((1230, 0), (1920, 1080)), score=0.1
+                ):
+                    self.sleep()
+                    continue
                 if clue := clue_cls("receive"):
                     name_scope = ((1580, 220), (1880, 255))
                     name_img = cropimg(self.recog.gray, name_scope)
