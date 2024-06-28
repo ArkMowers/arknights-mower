@@ -503,6 +503,10 @@
         "label": "SF_EXIT",
         "comment": "暂离行动"
     },
+    "1301": {
+        "label": "DEPOT",
+        "comment": "仓库"
+    },
     "9998": {
         "label": "LOADING",
         "comment": "场景跳转时的等待界面"

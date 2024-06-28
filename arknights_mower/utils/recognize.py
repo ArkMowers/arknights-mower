@@ -232,6 +232,8 @@ class Recognizer(object):
             self.scene = Scene.CLUE_PLACE
         elif self.find("upgrade"):
             self.scene = Scene.UPGRADE
+        elif self.find("depot"):
+            self.scene = Scene.DEPOT
 
         elif self.is_black():
             self.scene = Scene.LOADING
@@ -642,6 +644,7 @@ class Recognizer(object):
             "clue/summary": (52, 149),
             "confirm": (0, 683),
             "control_central_assistants": (39, 560),
+            "depot": (0, 955),
             "double_confirm": (0, 683),
             "drone": (274, 437),
             "factory_collect": (1542, 886),
