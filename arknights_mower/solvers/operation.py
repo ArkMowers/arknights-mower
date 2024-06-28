@@ -105,5 +105,7 @@ class OperationSolver(BaseSolver):
         elif scene == Scene.CONFIRM:
             self.sanity_drain = False
             self.back_to_index()
+        elif scene == Scene.UPGRADE:
+            self.tap((960, 540))
         else:
             self.sleep()

@@ -230,6 +230,8 @@ class Recognizer(object):
             self.scene = Scene.CLUE_SUMMARY
         elif self.find("clue/filter_all"):
             self.scene = Scene.CLUE_PLACE
+        elif self.find("upgrade"):
+            self.scene = Scene.UPGRADE
 
         elif self.is_black():
             self.scene = Scene.LOADING
@@ -319,8 +321,6 @@ class Recognizer(object):
         #     self.scene = Scene.OPERATOR_GIVEUP
         # elif self.find("shop_assist"):
         #     self.scene = Scene.SHOP_ASSIST
-        # elif self.find("upgrade"):
-        #     self.scene = Scene.UPGRADE
 
         else:
             self.scene = Scene.UNKNOWN
@@ -688,6 +688,7 @@ class Recognizer(object):
             "skip": (1803, 32),
             "terminal_main": (73, 959),
             "terminal_pre2": (1459, 797),
+            "upgrade": (997, 501),
         }
 
         if res in color:
