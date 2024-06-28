@@ -1,13 +1,13 @@
 import cv2
 
 from arknights_mower.utils.device import Device
+from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.recognize import Recognizer, Scene
-from arknights_mower.utils.solver import BaseSolver
 
 
-class CreditSolver(BaseSolver):
+class CreditSolver(SceneGraphSolver):
     """
     通过线索交换自动收集信用
     """

@@ -1,17 +1,17 @@
-import cv2
 import json
-import numpy as np
+import lzma
 import os
-import pandas as pd
 import pickle
 import re
-
 from datetime import datetime
 
-
-import lzma
-from sklearn.cluster import KMeans
+import cv2
+import numpy as np
+import pandas as pd
 from skimage.feature import hog
+from sklearn.cluster import KMeans
+
+from arknights_mower.utils.graph import SceneGraphSolver
 
 from .. import __rootdir__
 from ..data import key_mapping
@@ -20,7 +20,6 @@ from ..utils.image import loadimg, saveimg_depot
 from ..utils.log import logger
 from ..utils.path import get_path
 from ..utils.recognize import Recognizer, Scene
-from ..utils.solver import BaseSolver
 
 # 向下x变大 = 0
 # 向右y变大 = 0
@@ -93,7 +92,7 @@ def 切图(圆心x坐标, 圆心y坐标, 拼接结果, 正方形边长=130):
     return 图片
 
 
-class depotREC(BaseSolver):
+class depotREC(SceneGraphSolver):
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
         super().__init__(device, recog)
 

@@ -4,13 +4,13 @@ from scipy.signal import argrelmin
 from arknights_mower.solvers.auto_fight import AutoFight
 from arknights_mower.solvers.navigation import NavigationSolver
 from arknights_mower.utils import config
+from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, loadres
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.recognize import Scene
-from arknights_mower.utils.solver import BaseSolver
 
 
-class CreditFight(BaseSolver):
+class CreditFight(SceneGraphSolver):
     """信用作战
 
     从首页导航至OF-1，借助战并自动战斗

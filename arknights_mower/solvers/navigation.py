@@ -5,9 +5,9 @@ import cv2
 
 from arknights_mower import __rootdir__
 from arknights_mower.utils import hot_update
+from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.scene import Scene
-from arknights_mower.utils.solver import BaseSolver
 from arknights_mower.utils.vector import va, vs
 
 location = {
@@ -75,7 +75,7 @@ location = {
     "PR-A": {"PR-A-1": (0, 0), "PR-A-2": (604, -283)},
     "PR-B": {"PR-B-1": (0, 0), "PR-B-2": (684, -296)},
     "PR-C": {"PR-C-1": (0, 0), "PR-C-2": (667, -231)},
-    "PR-D": {'PR-D-1': (0, 0), 'PR-D-2': (639, -260)}
+    "PR-D": {"PR-D-1": (0, 0), "PR-D-2": (639, -260)},
 }
 
 collection_prefixs = [
@@ -91,7 +91,7 @@ with lzma.open(f"{__rootdir__}/models/navigation.pkl", "rb") as f:
     templates = pickle.load(f)
 
 
-class NavigationSolver(BaseSolver):
+class NavigationSolver(SceneGraphSolver):
     def run(self, name: str):
         logger.info("Start: 关卡导航")
         self.success = False
@@ -173,7 +173,9 @@ class NavigationSolver(BaseSolver):
                 if pos := self.find(f"navigation/main/{self.prefix}"):
                     self.tap(pos)
                 else:
-                    self.device.swipe_ext(((932, 554), (1425, 554), (1425, 554)), durations=[300, 100])
+                    self.device.swipe_ext(
+                        ((932, 554), (1425, 554), (1425, 554)), durations=[300, 100]
+                    )
                     self.recog.update()
             else:
                 self.tap((230, 175), interval=2)
@@ -187,7 +189,7 @@ class NavigationSolver(BaseSolver):
             self.tap_element(f"navigation/biography/{self.prefix}_entry")
         elif scene == Scene.TERMINAL_COLLECTION:
             prefix = self.prefix
-            val=0.9
+            val = 0.9
             if self.prefix not in collection_prefixs:
                 self.back()
                 return
@@ -197,7 +199,7 @@ class NavigationSolver(BaseSolver):
                 if self.find(f"navigation/collection/{prefix}_not_available"):
                     logger.info(f"{self.name}未开放")
                     return True
-            if pos:=self.find(f"navigation/collection/{prefix}_entry"):
+            if pos := self.find(f"navigation/collection/{prefix}_entry"):
                 self.tap(pos)
             else:
                 if self.prefix in ["AP", "CA", "CE", "SK"]:
@@ -217,7 +219,9 @@ class NavigationSolver(BaseSolver):
                 return True
             # 其余关
             for i in location[prefix]:
-                result = cv2.matchTemplate(self.recog.gray, templates[i], cv2.TM_SQDIFF_NORMED)
+                result = cv2.matchTemplate(
+                    self.recog.gray, templates[i], cv2.TM_SQDIFF_NORMED
+                )
                 min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
                 if min_val < val:
                     val = min_val

@@ -2,7 +2,8 @@ import functools
 
 import networkx as nx
 
-from arknights_mower.utils.scene import Scene
+from arknights_mower.utils.log import logger
+from arknights_mower.utils.scene import Scene, SceneComment
 from arknights_mower.utils.solver import BaseSolver
 
 DG = nx.DiGraph()
@@ -304,3 +305,55 @@ def confirm(solver: BaseSolver):
 @edge(Scene.LOGIN_BILIBILI_PRIVACY, Scene.INDEX)
 def login_bilibili(solver: BaseSolver):
     solver.bilibili()
+
+
+class SceneGraphSolver(BaseSolver):
+    def scene_graph_navigation(self, scene: int):
+        if scene not in DG.nodes:
+            logger.error(f"{SceneComment[scene]}不在场景图中")
+            return False
+
+        while (current := self.scene()) != scene:
+            if current in [Scene.CONNECTING, Scene.UNKNOWN]:
+                self.sleep(1)
+                continue
+            elif current in [
+                Scene.LOADING,
+                Scene.LOGIN_LOADING,
+                Scene.LOGIN_MAIN_NOENTRY,
+            ]:
+                self.sleep(2)
+                continue
+            elif current == Scene.OPERATOR_ONGOING:
+                self.sleep(10)
+                continue
+
+            if current not in DG.nodes:
+                logger.debug(f"{SceneComment[current]}不在场景图中")
+                self.sleep()
+
+            try:
+                sp = nx.shortest_path(DG, current, scene)
+            except Exception as e:
+                logger.exception(f"场景图路径计算异常：{e}")
+                return False
+
+            logger.debug(sp)
+
+            next_scene = sp[1]
+            transition = DG.edges[current, next_scene]["transition"]
+
+            try:
+                transition(self)
+            except Exception as e:
+                logger.exception(f"场景转移异常：{e}")
+                return False
+        return True
+
+    def back_to_index(self):
+        logger.info("场景图导航：back_to_index")
+        self.scene_graph_navigation(Scene.INDEX)
+
+    def back_to_infrastructure(self):
+        logger.info("场景图导航：back_to_infrastructure")
+        self.scene_graph_navigation(Scene.INFRA_MAIN)

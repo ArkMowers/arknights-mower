@@ -13,6 +13,7 @@ import cv2
 
 # 借用__main__.py里的时间计算器
 from arknights_mower.__main__ import format_time
+from arknights_mower.data import agent_list, base_room_list
 from arknights_mower.solvers import (
     CreditSolver,
     DepotSolver,
@@ -29,24 +30,21 @@ from arknights_mower.solvers.operation import OperationSolver
 from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
 from arknights_mower.solvers.secret_front import SecretFront
 from arknights_mower.solvers.shop import CreditShop
-from arknights_mower.utils import config, hot_update, rapidocr
+from arknights_mower.solvers.skland import SKLand
+from arknights_mower.utils import config, detector, hot_update, rapidocr
+from arknights_mower.utils import typealias as tp
+from arknights_mower.utils.datetime import get_server_weekday
+from arknights_mower.utils.device import Device
+from arknights_mower.utils.digit_reader import DigitReader
+from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, loadres, thres2
+from arknights_mower.utils.log import logger
 from arknights_mower.utils.matcher import Matcher
 from arknights_mower.utils.news import get_update_time
-from arknights_mower.utils.simulator import restart_simulator
-from arknights_mower.utils.solver import MowerExit
-
-from ..data import agent_list, base_room_list
-from ..utils import detector
-from ..utils import typealias as tp
-from ..utils.datetime import get_server_weekday
-from ..utils.device import Device
-from ..utils.digit_reader import DigitReader
-from ..utils.log import logger
-from ..utils.operators import Operator, Operators
-from ..utils.plan import PlanTriggerTiming
-from ..utils.recognize import RecognizeError, Recognizer, Scene
-from ..utils.scheduler_task import (
+from arknights_mower.utils.operators import Operator, Operators
+from arknights_mower.utils.plan import PlanTriggerTiming
+from arknights_mower.utils.recognize import Recognizer, Scene
+from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     TaskTypes,
     add_release_dorm,
@@ -55,8 +53,8 @@ from ..utils.scheduler_task import (
     scheduling,
     try_add_release_dorm,
 )
-from ..utils.solver import BaseSolver
-from .skland import SKLand
+from arknights_mower.utils.simulator import restart_simulator
+from arknights_mower.utils.solver import MowerExit
 
 
 def daily_report(
@@ -91,7 +89,7 @@ def recruit(
     return choose, result
 
 
-class BaseSchedulerSolver(BaseSolver, BaseMixin):
+class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     """
     收集基建的产物：物资、赤金、信赖
     """

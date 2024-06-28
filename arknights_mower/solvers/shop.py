@@ -6,10 +6,10 @@ import cv2
 from arknights_mower import __rootdir__
 from arknights_mower.utils import config
 from arknights_mower.utils import typealias as tp
+from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.scene import Scene
-from arknights_mower.utils.solver import BaseSolver
 from arknights_mower.utils.vector import sa, va
 
 with lzma.open(f"{__rootdir__}/models/riic_base_digits.pkl", "rb") as f:
@@ -30,7 +30,7 @@ for i in range(2):
         card_list.append((left + j * (card_w + gap), top + i * (card_h + gap)))
 
 
-class CreditShop(BaseSolver):
+class CreditShop(SceneGraphSolver):
     def run(self):
         logger.info("Start: 信用商店购物")
         super().run()

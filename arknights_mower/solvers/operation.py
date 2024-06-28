@@ -6,13 +6,13 @@ import cv2
 from arknights_mower.solvers.secret_front import templates
 from arknights_mower.utils import config
 from arknights_mower.utils import typealias as tp
+from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.recognize import Scene
-from arknights_mower.utils.solver import BaseSolver
 
 
-class OperationSolver(BaseSolver):
+class OperationSolver(SceneGraphSolver):
     def run(self, stop_time: datetime):
         logger.info("Start: 代理作战")
         self.stop_time = stop_time - timedelta(minutes=5)
