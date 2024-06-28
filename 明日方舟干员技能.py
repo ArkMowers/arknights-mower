@@ -38,7 +38,12 @@ class Arknights数据处理器:
         self.基建表 = self.加载json(
             "./ArknightsGameResource/gamedata/excel/building_data.json"
         )
+        self.游戏变量 = self.加载json(
+            "./ArknightsGameResource/gamedata/excel/gamedata_const.json"
+        )
         self.装仓库物品的字典 = {"NORMAL": [], "CONSUME": [], "MATERIAL": []}
+
+        self.所有buff = []
 
     def 加载json(self, file_path):
         with open(file_path, "r", encoding="utf-8") as f:
@@ -60,47 +65,85 @@ class Arknights数据处理器:
 
         干员技能列表 = []
 
-        key = 0
+        name_key = 0
         for 角色id, 相关buff in self.基建表["chars"].items():
             干员技能字典 = {
                 "key": 0,
                 "name": "",
-                "phase_level": "",
-                "skillname": "",
-                "des": "",
-                "roomType": "",
-                "buffCategory": "",
-                "skillIcon": "",
-                "buffColor": "",
-                "textColor": "",
+                "span":0,
+                "child_skill": [],
             }
 
             干员技能字典["name"] = self.干员表[角色id]["name"]
+
+            skill_key = 0
+            name_key += 1
+            干员技能字典["key"] = name_key
             for item in 相关buff["buffChar"]:
+                skill_level = 0
+
                 if item["buffData"] != []:
                     for item2 in item["buffData"]:
-                        干员技能字典["key"] = key
-                        key += 1
-                        干员技能字典["phase_level"] = (
+                        干员技能详情 = {}
+
+                        干员技能详情["skill_key"] = skill_key
+                        干员技能详情["skill_level"] = skill_level
+                        skill_level += 1
+                        干员技能详情["phase_level"] = (
                             f"精{item2["cond"]["phase"]} {item2["cond"]["level"]}级"
                         )
-                        干员技能字典["skillname"] = buff_table[item2["buffId"]][0]
-                        text=buff_table[item2["buffId"]][1]
-                        for pattern, replacement in replacement_dict.items():
-                            text = re.sub(pattern, replacement, text)
-                        干员技能字典["des"] = text
-                        干员技能字典["roomType"] = roomType[
+                        干员技能详情["skillname"] = buff_table[item2["buffId"]][0]
+                        text = buff_table[item2["buffId"]][1]
+                        pattern = r"<\$(.*?)>"
+                        matches = re.findall(pattern, text)
+                        ex_string = []
+                        干员技能详情["buffer"] = False
+                        干员技能详情["buffer_des"] = []
+                        if matches:
+                            干员技能详情["buffer"] = True
+                            ex_string = list(
+                                set([match.replace(".", "_") for match in matches])
+                            )
+                            干员技能详情["buffer_des"] = ex_string
+                            self.所有buff.extend(ex_string)
+                        干员技能详情["des"] = text
+                        干员技能详情["roomType"] = roomType[
                             buff_table[item2["buffId"]][2]
                         ]
-                        干员技能字典["buffCategory"] = buff_table[item2["buffId"]][3]
-                        干员技能字典["skillIcon"] = buff_table[item2["buffId"]][4]
-                        干员技能字典["buffColor"] = buff_table[item2["buffId"]][5]
-                        干员技能字典["textColor"] = buff_table[item2["buffId"]][6]
-                        干员技能列表.append(干员技能字典.copy())
-
+                        干员技能详情["buffCategory"] = buff_table[item2["buffId"]][3]
+                        干员技能详情["skillIcon"] = buff_table[item2["buffId"]][4]
+                        干员技能详情["buffColor"] = buff_table[item2["buffId"]][5]
+                        干员技能详情["textColor"] = buff_table[item2["buffId"]][6]
+                        干员技能字典["child_skill"].append(干员技能详情)
+                        
+                        干员技能详情 = []
+                    干员技能字典["span"]=len(干员技能字典["child_skill"])
+                skill_key += 1
+            干员技能列表.append(干员技能字典.copy())
+        干员技能列表 = sorted(
+            干员技能列表, key=lambda x: (-x["key"])
+        )
         # print(干员技能列表)
         with open(r".\ui\src\pages\skill.json", "w", encoding="utf-8") as f:
             json.dump(干员技能列表, f, ensure_ascii=False, indent=4)
+
+    def buff转换(self):
+        buff_table = {}
+        pattern = r"<\$(.*?)>"
+
+        for item in self.游戏变量["termDescriptionDict"]:
+            matches = re.findall(
+                pattern, self.游戏变量["termDescriptionDict"][item]["description"]
+            )
+            matches = [match.replace(".", "_") for match in matches]
+            dict1 = self.游戏变量["termDescriptionDict"][item]
+            dict1["buffer"] = []
+            if item.startswith("cc") and matches:
+                dict1["buffer"] = matches
+            buff_table[item.replace(".", "_")] = dict1
+
+        with open(r".\ui\src\pages\buffer.json", "w", encoding="utf-8") as f:
+            json.dump(buff_table, f, ensure_ascii=False, indent=4)
 
 
 roomType = {
@@ -115,29 +158,7 @@ roomType = {
     "CONTROL": "中枢",
 }
 
-replacement_dict = {
-    r"<@cc.vup>(.*?)<\/>": r"<span style='color:#0098DC'>\1</span>",
-    r"<@cc.vdown>(.*?)<\/>": r"<span style='color:#FF6237'>\1</span>",
-    r"<@cc.rem>(.*?)<\/>": r"<span style='color:#F49800'>\1</span>",
-    r"<@cc.kw>(.*?)<\/>": r"<span style='color:#00B0FF'>\1</span>"
-}
+
 数据处理器 = Arknights数据处理器()
 数据处理器.获得干员名与基建描述()
-
-
-
-
-# 定义要匹配的字符串
-text = "这是一个示例字符串 <@cc.vup>{0}</>，<@cc.vdown>{1}</>，<@cc.rem>{2}</>，<@cc.kw>{3}</>，其中包含了一些其他的文本"
-
-# 定义替换规则字典
-
-
-# 遍历替换规则字典，逐个替换字符串
-for pattern, replacement in replacement_dict.items():
-    text = re.sub(pattern, replacement, text)
-
-# 输出替换后的字符串
-print(text)
-
-
+数据处理器.buff转换()
