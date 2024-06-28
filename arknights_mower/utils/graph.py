@@ -290,18 +290,17 @@ def login_start(solver: BaseSolver):
     solver.tap((665, 741))
 
 
+@edge(Scene.LOGIN_CAPTCHA, Scene.INDEX)
+def login_captcha(solver: BaseSolver):
+    solver.solve_captcha()
+
+
 @edge(Scene.CONFIRM, Scene.LOGIN_START)
 def confirm(solver: BaseSolver):
     solver.tap_element("confirm")
 
 
 @edge(Scene.LOGIN_BILIBILI, Scene.INDEX)
-@edge(Scene.LOGIN_BILIBILI_PRIVACY, Scene.INDEX)
-def login_bilibili(solver: BaseSolver):
-    solver.bilibili()
-
-
-@edge(Scene.CONFIRM, Scene.INDEX)
 @edge(Scene.LOGIN_BILIBILI_PRIVACY, Scene.INDEX)
 def login_bilibili(solver: BaseSolver):
     solver.bilibili()
