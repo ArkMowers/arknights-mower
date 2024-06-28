@@ -1,6 +1,6 @@
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from importlib import reload
 from io import BytesIO
 from shutil import rmtree
@@ -18,8 +18,32 @@ extract_path = get_path("@install/tmp/hot_update")
 sign_in = None
 navigation = None
 
+last_update = None
+
+
+def load_module(download_update):
+    global sign_in
+    global navigation
+    if "sign_in" in sys.modules and "navigation" in sys.modules:
+        if download_update:
+            loadimg.cache_clear()
+            reload(sign_in)
+            reload(navigation)
+    else:
+        if extract_path not in sys.path:
+            sys.path.append(str(extract_path))
+        import navigation
+        import sign_in
+
 
 def update():
+    global last_update
+
+    if last_update - datetime.now() < timedelta(minutes=30):
+        logger.info("跳过热更新检查")
+        load_module(False)
+        return
+
     logger.info("检查热更新资源")
     mirror = "https://mower.zhaozuohong.vip"
     filename = "hot_update.zip"
@@ -50,15 +74,5 @@ def update():
     else:
         logger.info("本地资源已是最新")
 
-    global sign_in
-    global navigation
-    if "sign_in" in sys.modules and "navigation" in sys.modules:
-        if download_update:
-            loadimg.cache_clear()
-            reload(sign_in)
-            reload(navigation)
-    else:
-        if extract_path not in sys.path:
-            sys.path.append(str(extract_path))
-        import navigation
-        import sign_in
+    last_update = datetime.now()
+    load_module(download_update)
