@@ -42,6 +42,7 @@ def edge(v_from: int, v_to: int, interval: int = 1):
 @edge(Scene.TERMINAL_REGULAR, Scene.INDEX)
 @edge(Scene.TERMINAL_LONGTERM, Scene.INDEX)
 @edge(Scene.TERMINAL_REGULAR, Scene.INDEX)
+@edge(Scene.DEPOT, Scene.INDEX)
 def back_to_index(solver: BaseSolver):
     solver.back()
 
@@ -75,6 +76,11 @@ def index_to_shop(solver: BaseSolver):
 @edge(Scene.INDEX, Scene.TERMINAL_MAIN)
 def index_to_terminal(solver: BaseSolver):
     solver.tap_index_element("terminal")
+
+
+@edge(Scene.INDEX, Scene.DEPOT)
+def index_to_depot(solver: BaseSolver):
+    solver.tap_index_element("warehouse")
 
 
 # 导航栏
@@ -111,6 +117,8 @@ def index_to_terminal(solver: BaseSolver):
 @edge(Scene.CLUE_PLACE, Scene.NAVIGATION_BAR)
 @edge(Scene.ORDER_LIST, Scene.NAVIGATION_BAR)
 @edge(Scene.FACTORY_ROOMS, Scene.NAVIGATION_BAR)
+@edge(Scene.OPERATOR_ELIMINATE, Scene.NAVIGATION_BAR)
+@edge(Scene.DEPOT, Scene.NAVIGATION_BAR)
 def index_nav(solver: BaseSolver):
     solver.tap_element("nav_button")
 
@@ -198,6 +206,7 @@ def terminal_to_biography(solver: BaseSolver):
 @edge(Scene.OPERATOR_CHOOSE_LEVEL, Scene.TERMINAL_COLLECTION)
 @edge(Scene.OPERATOR_SUPPORT, Scene.OPERATOR_SELECT)
 @edge(Scene.OPERATOR_STRANGER_SUPPORT, Scene.OPERATOR_SUPPORT)
+@edge(Scene.OPERATOR_ELIMINATE_AGENCY, Scene.OPERATOR_ELIMINATE)
 def operation_back(solver: BaseSolver):
     solver.back()
 
@@ -245,6 +254,16 @@ def infra_arrange_order(solver: BaseSolver):
 @edge(Scene.RIIC_REPORT, Scene.CTRLCENTER_ASSISTANT)
 def riic_back(solver: BaseSolver):
     solver.tap((30, 55))
+
+
+@edge(Scene.CTRLCENTER_ASSISTANT, Scene.RIIC_REPORT)
+def riic(solver: BaseSolver):
+    solver.tap_element("control_central_assistants")
+
+
+@edge(Scene.INFRA_MAIN, Scene.CTRLCENTER_ASSISTANT)
+def control_central(solver: BaseSolver):
+    solver.tap_element("control_central")
 
 
 # 其它场景

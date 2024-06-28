@@ -19,6 +19,8 @@ class CreditFight(SceneGraphSolver):
     def run(self):
         logger.info("Start: 信用作战")
         self.support = False
+        navi_solver = NavigationSolver(self.device, self.recog)
+        navi_solver.run("OF-1")
         super().run()
 
     def choose_support(self):
@@ -46,10 +48,7 @@ class CreditFight(SceneGraphSolver):
         return count.index(max(count)) + 1
 
     def transition(self):
-        if (scene := self.scene()) == Scene.INDEX:
-            navi_solver = NavigationSolver(self.device, self.recog)
-            navi_solver.run("OF-1")
-        elif scene == Scene.OPERATOR_BEFORE:
+        if (scene := self.scene()) == Scene.OPERATOR_BEFORE:
             if self.recog.gray[65][1333] < 200:
                 self.sleep()
                 return
@@ -79,7 +78,5 @@ class CreditFight(SceneGraphSolver):
             self.tap_element("fight/use")
         elif scene == Scene.OPERATOR_FINISH:
             return True
-        elif scene == Scene.CONFIRM:
-            self.back_to_index()
         else:
             self.sleep()

@@ -15,7 +15,7 @@ from arknights_mower.utils.email import report_template
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
-from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
+from arknights_mower.utils.recognize import Recognizer, Scene
 
 
 def remove_blank(target: str):
@@ -71,31 +71,15 @@ class ReportSolver(SceneGraphSolver):
         return False
 
     def transition(self) -> bool:
-        if (scene := self.scene()) == Scene.INDEX:
-            self.tap_index_element("infrastructure")
-        elif scene == Scene.SKIP:
-            self.tap_element("skip")
-        elif scene == Scene.INFRA_MAIN:
-            self.tap_element("control_central")
-        elif scene == Scene.INFRA_DETAILS:
-            self.back()
-        elif scene == Scene.CTRLCENTER_ASSISTANT:
-            self.tap_element("control_central_assistants")
-        elif scene == Scene.RIIC_REPORT:
+        if (scene := self.scene()) == Scene.RIIC_REPORT:
             logger.info("看到基报辣")
             if self.reload_time > 4:
                 raise RuntimeError("基报不存在")
             return self.read_report()
-        elif scene == Scene.LOADING:
-            self.sleep(3)
-        elif scene == Scene.CONNECTING:
-            self.sleep(3)
-        elif self.get_navigation():
-            self.tap_element("nav_infrastructure")
-        elif scene != Scene.UNKNOWN:
-            self.back_to_index()
+        elif scene == Scene.UNKNOWN:
+            self.sleep()
         else:
-            raise RecognizeError("Unknown scene")
+            self.scene_graph_navigation(Scene.RIIC_REPORT)
 
     def read_report(self):
         if not self.locate_report(

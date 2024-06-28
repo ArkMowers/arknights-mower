@@ -1,31 +1,19 @@
 import cv2
 
-from arknights_mower.utils.device import Device
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.recognize import Recognizer, Scene
+from arknights_mower.utils.recognize import Scene
 
 
 class CreditSolver(SceneGraphSolver):
-    """
-    通过线索交换自动收集信用
-    """
-
-    def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
-        super().__init__(device, recog)
-
     def run(self) -> None:
-        logger.info("Start: 信用")
+        logger.info("Start: 访问好友")
         self.wait_times = 5
         return super().run()
 
     def transition(self) -> bool:
-        if (scene := self.scene()) == Scene.INDEX:
-            self.tap_index_element("friend")
-        elif scene == Scene.FRIEND_LIST_OFF:
-            self.tap_element("friend_list")
-        elif scene == Scene.FRIEND_LIST_ON:
+        if (scene := self.scene()) == Scene.FRIEND_LIST_ON:
             left, top = 1460, 220
             img = cropimg(self.recog.gray, ((left, top), (1800, 1000)))
             img = thres2(img, 254)
@@ -59,11 +47,7 @@ class CreditSolver(SceneGraphSolver):
                     self.sleep()
                 else:
                     return True
-        elif scene in [Scene.LOADING, Scene.CONNECTING]:
+        elif scene == Scene.UNKNOWN:
             self.sleep()
-        elif self.get_navigation():
-            self.tap_element("nav_social")
-        elif scene != Scene.UNKNOWN:
-            self.back_to_index()
         else:
-            self.sleep()
+            self.scene_graph_navigation(Scene.FRIEND_LIST_ON)

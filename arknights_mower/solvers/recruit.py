@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import os
 from itertools import combinations
 
@@ -7,23 +5,24 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-from .. import __rootdir__
-from ..data import agent_with_tags, recruit_agent, recruit_tag, result_template_list
-from ..utils import rapidocr, segment
-from ..utils.device import Device
-from ..utils.digit_reader import DigitReader
-from ..utils.email import recruit_rarity, recruit_template
-from ..utils.graph import SceneGraphSolver
-from ..utils.image import cropimg, loadres
-from ..utils.log import logger
-from ..utils.recognize import RecognizeError, Recognizer, Scene
+from arknights_mower import __rootdir__
+from arknights_mower.data import (
+    agent_with_tags,
+    recruit_agent,
+    recruit_tag,
+    result_template_list,
+)
+from arknights_mower.utils import rapidocr, segment
+from arknights_mower.utils.device import Device
+from arknights_mower.utils.digit_reader import DigitReader
+from arknights_mower.utils.email import recruit_rarity, recruit_template
+from arknights_mower.utils.graph import SceneGraphSolver
+from arknights_mower.utils.image import cropimg, loadres
+from arknights_mower.utils.log import logger
+from arknights_mower.utils.recognize import Recognizer, Scene
 
 
 class RecruitSolver(SceneGraphSolver):
-    """
-    自动进行公招
-    """
-
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
         super().__init__(device, recog)
 
@@ -147,9 +146,7 @@ class RecruitSolver(SceneGraphSolver):
             self.recruit_index = 1
 
     def transition(self) -> bool:
-        if (scene := self.scene()) == Scene.INDEX:
-            self.tap_index_element("recruit")
-        elif scene == Scene.RECRUIT_MAIN:
+        if (scene := self.scene()) == Scene.RECRUIT_MAIN:
             segments = segment.recruit(self.recog.img)
 
             if self.can_refresh is None:
@@ -230,22 +227,12 @@ class RecruitSolver(SceneGraphSolver):
                 return True
         elif scene == Scene.RECRUIT_TAGS:
             return self.recruit_tags()
-        elif scene == Scene.SKIP:
-            self.tap_element("skip")
         elif scene == Scene.RECRUIT_AGENT:
             return self.recruit_result()
-        elif scene == Scene.MATERIEL:
-            self.tap_element("materiel_ico")
-        elif scene == Scene.LOADING:
-            self.sleep(3)
-        elif scene == Scene.CONNECTING:
-            self.sleep(3)
-        elif self.get_navigation():
-            self.tap_element("nav_recruit")
-        elif scene == Scene.UNKNOWN or self.scene() != Scene.UNKNOWN:
-            self.back_to_index()
+        elif scene == Scene.UNKNOWN:
+            self.sleep()
         else:
-            raise RecognizeError("Unknown scene")
+            self.scene_graph_navigation(Scene.RECRUIT_MAIN)
 
     def recruit_tags(self):
         """识别公招标签的逻辑"""

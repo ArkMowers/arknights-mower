@@ -95,7 +95,6 @@ class NavigationSolver(SceneGraphSolver):
     def run(self, name: str):
         logger.info("Start: 关卡导航")
         self.success = False
-        self.back_to_index()
 
         hot_update.update()
         if name in hot_update.navigation.NavigationSolver.location:
@@ -142,9 +141,7 @@ class NavigationSolver(SceneGraphSolver):
         return self.success
 
     def transition(self):
-        if (scene := self.scene()) == Scene.INDEX:
-            self.tap_index_element("terminal")
-        elif scene == Scene.TERMINAL_MAIN:
+        if (scene := self.scene()) == Scene.TERMINAL_MAIN:
             if self.name == "Annihilation":
                 if pos := self.find("terminal_eliminate"):
                     self.tap(pos)
@@ -241,10 +238,7 @@ class NavigationSolver(SceneGraphSolver):
                 return True
             else:
                 self.back()
-        elif self.get_navigation():
-            self.tap_element("nav_terminal")
-        elif scene == Scene.CONFIRM:
-            self.success = False
-            self.back_to_index()
-        else:
+        elif scene == Scene.UNKNOWN:
             self.sleep()
+        else:
+            self.scene_graph_navigation(Scene.TERMINAL_MAIN)

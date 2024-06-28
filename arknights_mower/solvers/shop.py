@@ -136,11 +136,7 @@ class CreditShop(SceneGraphSolver):
         logger.debug(self.products)
 
     def transition(self):
-        if (scene := self.scene()) == Scene.INDEX:
-            self.tap_index_element("shop")
-        elif scene == Scene.SHOP_OTHERS:
-            self.tap_element("shop_credit_2")
-        elif scene == Scene.SHOP_CREDIT:
+        if (scene := self.scene()) == Scene.SHOP_CREDIT:
             if pos := self.find("shop_collect"):
                 self.tap(pos)
                 return
@@ -174,11 +170,7 @@ class CreditShop(SceneGraphSolver):
                 return True
             else:
                 self.tap_element("shop_cart")
-        elif scene == Scene.SHOP_ASSIST:
-            self.back()
-        elif scene == Scene.MATERIEL:
-            self.tap_element("materiel_ico")
-        elif scene == Scene.CONFIRM:
-            self.back_to_index()
-        else:
+        elif scene == Scene.UNKNOWN:
             self.sleep()
+        else:
+            self.scene_graph_navigation(Scene.SHOP_CREDIT)

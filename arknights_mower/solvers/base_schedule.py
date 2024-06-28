@@ -253,26 +253,16 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         return super().run()
 
     def transition(self) -> None:
-        if (scene := self.scene()) == Scene.INDEX:
-            self.tap_index_element("infrastructure")
-        elif scene == Scene.INFRA_MAIN:
+        if (scene := self.scene()) == Scene.INFRA_MAIN:
             return self.infra_main()
         elif scene == Scene.INFRA_TODOLIST:
             return self.todo_list()
-        elif scene == Scene.INFRA_DETAILS:
-            self.back()
-        elif scene == Scene.LOADING:
-            self.waiting_solver(Scene.LOADING)
-        elif scene == Scene.CONNECTING:
-            self.waiting_solver(Scene.CONNECTING)
-        elif scene == Scene.INFRA_ARRANGE_ORDER:
-            self.tap_element("arrange_blue_yes", x_rate=0.66)
         elif scene == Scene.RIIC_OPERATOR_SELECT:
             self.tap_element("confirm_blue")
-        elif self.get_navigation():
-            self.tap_element("nav_infrastructure")
+        elif scene == Scene.UNKNOWN:
+            self.sleep()
         else:
-            self.back_to_index()
+            self.scene_graph_navigation(Scene.INFRA_MAIN)
             self.last_room = ""
             logger.info("重设上次房间为空")
 
@@ -1831,6 +1821,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
     def clue_new(self):
         logger.info("基建：线索")
+        self.scene_graph_navigation(Scene.INFRA_MAIN)
         self.enter_room("meeting")
 
         clue_size = (162, 216)
@@ -2188,17 +2179,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             else:
                 self.sleep()
 
-        if self.get_navigation():
-            self.tap_element("nav_shop")
-        else:
-            self.back_to_index()
         shop_solver = CreditShop(self.device, self.recog)
         shop_solver.run()
         if self.get_navigation():
             self.tap_element("nav_infrastructure")
-            self.back()
-        else:
-            self.back_to_infrastructure()
+        self.back_to_infrastructure()
 
     def adjust_order_time(self, accelerate, room):
         error_count = 0

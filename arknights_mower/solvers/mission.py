@@ -1,16 +1,10 @@
-from ..utils.device import Device
-from ..utils.graph import SceneGraphSolver
-from ..utils.log import logger
-from ..utils.recognize import RecognizeError, Recognizer, Scene
+from arknights_mower.utils.graph import SceneGraphSolver
+from arknights_mower.utils.log import logger
+from arknights_mower.utils.recognize import Scene
 
 
 class MissionSolver(SceneGraphSolver):
-    """
-    点击确认完成每日任务和每周任务
-    """
-
-    def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
-        super().__init__(device, recog)
+    """每日任务与每周任务"""
 
     def run(self) -> None:
         # status of mission completion, 1: daily, 2: weekly
@@ -20,9 +14,7 @@ class MissionSolver(SceneGraphSolver):
         super().run()
 
     def transition(self) -> bool:
-        if (scene := self.scene()) == Scene.INDEX:
-            self.tap_index_element("mission")
-        elif scene == Scene.MISSION_TRAINEE:
+        if (scene := self.scene()) == Scene.MISSION_TRAINEE:
             if self.checked & 1 == 0:
                 self.tap_element("mission_daily")
             elif self.checked & 2 == 0:
@@ -55,15 +47,9 @@ class MissionSolver(SceneGraphSolver):
                 self.tap_element("mission_daily")
             else:
                 return True
-        elif scene == Scene.MATERIEL:
-            self.tap_element("materiel_ico")
-        elif scene == Scene.LOADING:
-            self.sleep(3)
-        elif scene == Scene.CONNECTING:
-            self.sleep(3)
         elif self.get_navigation():
             self.tap_element("nav_mission")
-        elif scene != Scene.UNKNOWN:
-            self.back_to_index()
+        elif scene == Scene.UNKNOWN:
+            self.sleep()
         else:
-            raise RecognizeError("Unknown scene")
+            self.scene_graph_navigation(Scene.MISSION_DAILY)

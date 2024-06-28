@@ -48,11 +48,9 @@ class OperationSolver(SceneGraphSolver):
         return value
 
     def transition(self):
-        if datetime.now() > self.stop_time:
-            self.back_to_index()
-            return True
-
         if (scene := self.scene()) == Scene.OPERATOR_BEFORE:
+            if datetime.now() > self.stop_time:
+                return True
             if self.recog.gray[65][1333] < 200:
                 self.sleep()
                 return
@@ -68,6 +66,7 @@ class OperationSolver(SceneGraphSolver):
         elif scene == Scene.OPERATOR_SELECT:
             self.tap((1655, 781))
         elif scene == Scene.OPERATOR_FINISH:
+            # TODO: 掉落识别
             self.tap((310, 330))
         elif scene == Scene.OPERATOR_ONGOING:
             self.sleep(10)
@@ -102,10 +101,8 @@ class OperationSolver(SceneGraphSolver):
             self.tap_element("ope_start", interval=2)
         elif scene == Scene.OPERATOR_ELIMINATE_AGENCY:
             self.tap_element("ope_elimi_agency_confirm", interval=2)
-        elif scene == Scene.CONFIRM:
-            self.sanity_drain = False
-            self.back_to_index()
-        elif scene == Scene.UPGRADE:
-            self.tap((960, 540))
-        else:
+        elif scene == Scene.UNKNOWN:
             self.sleep()
+        else:
+            self.sanity_drain = False
+            return True
