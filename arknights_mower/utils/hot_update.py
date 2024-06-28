@@ -39,7 +39,7 @@ def load_module(download_update):
 def update():
     global last_update
 
-    if last_update - datetime.now() < timedelta(minutes=30):
+    if last_update and last_update - datetime.now() < timedelta(minutes=30):
         logger.info("跳过热更新检查")
         load_module(False)
         return
