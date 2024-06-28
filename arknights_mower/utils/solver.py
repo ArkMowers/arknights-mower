@@ -452,6 +452,9 @@ class BaseSolver:
         img = cv2.inRange(img, (96, 150, 0), (100, 255, 255))
         contours, _ = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         rect = [cv2.boundingRect(c) for c in contours]
+        if len(rect) == 0:
+            self.sleep()
+            return
         rect.sort(key=lambda c: c[2], reverse=True)
         x, y, w, h = rect[0]
         self.tap(((x, y), (x + w, y + h)))
