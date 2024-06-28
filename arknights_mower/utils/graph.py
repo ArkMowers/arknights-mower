@@ -119,6 +119,7 @@ def index_to_depot(solver: BaseSolver):
 @edge(Scene.FACTORY_ROOMS, Scene.NAVIGATION_BAR)
 @edge(Scene.OPERATOR_ELIMINATE, Scene.NAVIGATION_BAR)
 @edge(Scene.DEPOT, Scene.NAVIGATION_BAR)
+@edge(Scene.FRIEND_VISITING, Scene.NAVIGATION_BAR)
 def index_nav(solver: BaseSolver):
     solver.tap_element("nav_button")
 
@@ -175,6 +176,11 @@ def shop_to_credit(solver: BaseSolver):
 @edge(Scene.FRIEND_LIST_OFF, Scene.FRIEND_LIST_ON)
 def friend_list_on(solver: BaseSolver):
     solver.tap_element("friend_list")
+
+
+@edge(Scene.FRIEND_VISITING, Scene.DOUBLE_CONFIRM)
+def friend_visiting_back(solver: BaseSolver):
+    solver.back()
 
 
 # 作战

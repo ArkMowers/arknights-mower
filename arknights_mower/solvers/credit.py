@@ -31,6 +31,7 @@ class CreditSolver(SceneGraphSolver):
             else:
                 self.sleep()
         elif self.find("visit_limit"):
+            logger.info("今日参与交流已达上限")
             return True
         elif scene == Scene.FRIEND_VISITING:
             if clue_next := self.find("clue_next"):
@@ -47,7 +48,7 @@ class CreditSolver(SceneGraphSolver):
                     self.sleep()
                 else:
                     return True
-        elif scene == Scene.UNKNOWN:
+        elif scene in [Scene.UNKNOWN, Scene.LOADING, Scene.CONNECTING]:
             self.sleep()
         else:
             self.scene_graph_navigation(Scene.FRIEND_LIST_ON)
