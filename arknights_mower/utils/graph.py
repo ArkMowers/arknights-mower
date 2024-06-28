@@ -24,46 +24,54 @@ def edge(v_from: int, v_to: int, interval: int = 1):
 # 首页
 
 
-@edge(Scene.INFRA_MAIN, Scene.INDEX, interval=3)
-@edge(Scene.MISSION_DAILY, Scene.INDEX, interval=3)
-@edge(Scene.MISSION_WEEKLY, Scene.INDEX, interval=3)
-@edge(Scene.MISSION_TRAINEE, Scene.INDEX, interval=3)
-@edge(Scene.FRIEND_LIST_OFF, Scene.INDEX, interval=3)
-@edge(Scene.FRIEND_LIST_ON, Scene.INDEX, interval=3)
-@edge(Scene.RECRUIT_MAIN, Scene.INDEX, interval=3)
-@edge(Scene.SHOP_OTHERS, Scene.INDEX, interval=3)
-@edge(Scene.SHOP_CREDIT, Scene.INDEX, interval=3)
+@edge(Scene.INFRA_MAIN, Scene.INDEX)
+@edge(Scene.MISSION_DAILY, Scene.INDEX)
+@edge(Scene.MISSION_WEEKLY, Scene.INDEX)
+@edge(Scene.MISSION_TRAINEE, Scene.INDEX)
+@edge(Scene.FRIEND_LIST_OFF, Scene.INDEX)
+@edge(Scene.FRIEND_LIST_ON, Scene.INDEX)
+@edge(Scene.RECRUIT_MAIN, Scene.INDEX)
+@edge(Scene.SHOP_OTHERS, Scene.INDEX)
+@edge(Scene.SHOP_CREDIT, Scene.INDEX)
+@edge(Scene.TERMINAL_MAIN, Scene.INDEX)
+@edge(Scene.TERMINAL_MAIN_THEME, Scene.INDEX)
+@edge(Scene.TERMINAL_EPISODE, Scene.INDEX)
+@edge(Scene.TERMINAL_BIOGRAPHY, Scene.INDEX)
+@edge(Scene.TERMINAL_COLLECTION, Scene.INDEX)
+@edge(Scene.TERMINAL_REGULAR, Scene.INDEX)
+@edge(Scene.TERMINAL_LONGTERM, Scene.INDEX)
+@edge(Scene.TERMINAL_REGULAR, Scene.INDEX)
 def back_to_index(solver: BaseSolver):
     solver.back()
 
 
-@edge(Scene.INDEX, Scene.INFRA_MAIN, interval=3)
+@edge(Scene.INDEX, Scene.INFRA_MAIN)
 def index_to_infra(solver: BaseSolver):
     solver.tap_index_element("infrastructure")
 
 
-@edge(Scene.INDEX, Scene.FRIEND_LIST_OFF, interval=3)
+@edge(Scene.INDEX, Scene.FRIEND_LIST_OFF)
 def index_to_friend(solver: BaseSolver):
     solver.tap_index_element("friend")
 
 
-@edge(Scene.INDEX, Scene.MISSION_DAILY, interval=3)
-@edge(Scene.INDEX, Scene.MISSION_TRAINEE, interval=3)
+@edge(Scene.INDEX, Scene.MISSION_DAILY)
+@edge(Scene.INDEX, Scene.MISSION_TRAINEE)
 def index_to_mission(solver: BaseSolver):
     solver.tap_index_element("mission")
 
 
-@edge(Scene.INDEX, Scene.RECRUIT_MAIN, interval=3)
+@edge(Scene.INDEX, Scene.RECRUIT_MAIN)
 def index_to_recruit(solver: BaseSolver):
     solver.tap_index_element("recruit")
 
 
-@edge(Scene.INDEX, Scene.SHOP_OTHERS, interval=3)
+@edge(Scene.INDEX, Scene.SHOP_OTHERS)
 def index_to_shop(solver: BaseSolver):
     solver.tap_index_element("shop")
 
 
-@edge(Scene.INDEX, Scene.TERMINAL_MAIN, interval=3)
+@edge(Scene.INDEX, Scene.TERMINAL_MAIN)
 def index_to_terminal(solver: BaseSolver):
     solver.tap_index_element("terminal")
 
@@ -80,8 +88,33 @@ def index_to_terminal(solver: BaseSolver):
 @edge(Scene.FRIEND_LIST_ON, Scene.NAVIGATION_BAR)
 @edge(Scene.SHOP_OTHERS, Scene.NAVIGATION_BAR)
 @edge(Scene.SHOP_CREDIT, Scene.NAVIGATION_BAR)
+@edge(Scene.TERMINAL_MAIN, Scene.NAVIGATION_BAR)
+@edge(Scene.TERMINAL_MAIN_THEME, Scene.NAVIGATION_BAR)
+@edge(Scene.TERMINAL_EPISODE, Scene.NAVIGATION_BAR)
+@edge(Scene.TERMINAL_BIOGRAPHY, Scene.NAVIGATION_BAR)
+@edge(Scene.TERMINAL_COLLECTION, Scene.NAVIGATION_BAR)
+@edge(Scene.TERMINAL_REGULAR, Scene.NAVIGATION_BAR)
+@edge(Scene.TERMINAL_LONGTERM, Scene.NAVIGATION_BAR)
+@edge(Scene.TERMINAL_PERIODIC, Scene.NAVIGATION_BAR)
+@edge(Scene.OPERATOR_CHOOSE_LEVEL, Scene.NAVIGATION_BAR)
+@edge(Scene.OPERATOR_BEFORE, Scene.NAVIGATION_BAR)
+@edge(Scene.OPERATOR_SELECT, Scene.NAVIGATION_BAR)
+@edge(Scene.OPERATOR_SUPPORT, Scene.NAVIGATION_BAR)
+@edge(Scene.INFRA_TODOLIST, Scene.NAVIGATION_BAR)
+@edge(Scene.INFRA_CONFIDENTIAL, Scene.NAVIGATION_BAR)
+@edge(Scene.INFRA_ARRANGE, Scene.NAVIGATION_BAR)
+@edge(Scene.INFRA_DETAILS, Scene.NAVIGATION_BAR)
+@edge(Scene.CTRLCENTER_ASSISTANT, Scene.NAVIGATION_BAR)
+@edge(Scene.CLUE_DAILY, Scene.NAVIGATION_BAR)
+@edge(Scene.CLUE_RECEIVE, Scene.NAVIGATION_BAR)
+@edge(Scene.CLUE_PLACE, Scene.NAVIGATION_BAR)
+@edge(Scene.ORDER_LIST, Scene.NAVIGATION_BAR)
+@edge(Scene.FACTORY_ROOMS, Scene.NAVIGATION_BAR)
 def index_nav(solver: BaseSolver):
     solver.tap_element("nav_button")
+
+
+# 不加从导航栏到基建首页的边，防止在基建内循环
 
 
 @edge(Scene.NAVIGATION_BAR, Scene.MISSION_DAILY)
@@ -110,11 +143,6 @@ def nav_shop(solver: BaseSolver):
     solver.tap_element("nav_shop")
 
 
-@edge(Scene.NAVIGATION_BAR, Scene.INFRA_MAIN)
-def nav_infrastructure(solver: BaseSolver):
-    solver.tap_element("nav_infrastructure")
-
-
 # 任务
 
 
@@ -138,3 +166,142 @@ def shop_to_credit(solver: BaseSolver):
 @edge(Scene.FRIEND_LIST_OFF, Scene.FRIEND_LIST_ON)
 def friend_list_on(solver: BaseSolver):
     solver.tap_element("friend_list")
+
+
+# 作战
+
+
+@edge(Scene.TERMINAL_MAIN, Scene.TERMINAL_MAIN_THEME)
+@edge(Scene.TERMINAL_COLLECTION, Scene.TERMINAL_MAIN_THEME)
+@edge(Scene.TERMINAL_REGULAR, Scene.TERMINAL_MAIN_THEME)
+@edge(Scene.TERMINAL_LONGTERM, Scene.TERMINAL_MAIN_THEME)
+@edge(Scene.TERMINAL_PERIODIC, Scene.TERMINAL_MAIN_THEME)
+def terminal_to_main_theme(solver: BaseSolver):
+    solver.tap_element("main_theme_small")
+
+
+@edge(Scene.TERMINAL_MAIN, Scene.TERMINAL_BIOGRAPHY)
+@edge(Scene.TERMINAL_COLLECTION, Scene.TERMINAL_BIOGRAPHY)
+@edge(Scene.TERMINAL_REGULAR, Scene.TERMINAL_BIOGRAPHY)
+@edge(Scene.TERMINAL_LONGTERM, Scene.TERMINAL_BIOGRAPHY)
+@edge(Scene.TERMINAL_PERIODIC, Scene.TERMINAL_BIOGRAPHY)
+def terminal_to_biography(solver: BaseSolver):
+    solver.tap_element("biography_small")
+
+
+@edge(Scene.OPERATOR_RECOVER_POTION, Scene.OPERATOR_BEFORE)
+@edge(Scene.OPERATOR_RECOVER_ORIGINITE, Scene.OPERATOR_BEFORE)
+@edge(Scene.OPERATOR_BEFORE, Scene.OPERATOR_CHOOSE_LEVEL)
+@edge(Scene.OPERATOR_CHOOSE_LEVEL, Scene.TERMINAL_MAIN_THEME)
+@edge(Scene.OPERATOR_CHOOSE_LEVEL, Scene.TERMINAL_BIOGRAPHY)
+@edge(Scene.OPERATOR_CHOOSE_LEVEL, Scene.TERMINAL_COLLECTION)
+@edge(Scene.OPERATOR_SUPPORT, Scene.OPERATOR_SELECT)
+@edge(Scene.OPERATOR_STRANGER_SUPPORT, Scene.OPERATOR_SUPPORT)
+def operation_back(solver: BaseSolver):
+    solver.back()
+
+
+@edge(Scene.OPERATOR_FINISH, Scene.OPERATOR_BEFORE)
+def operation_finish(solver: BaseSolver):
+    solver.tap((310, 330))
+
+
+# 基建
+
+
+@edge(Scene.INFRA_TODOLIST, Scene.INFRA_MAIN)
+def todo_complete(solver: BaseSolver):
+    solver.tap((1840, 140))
+
+
+@edge(Scene.INFRA_CONFIDENTIAL, Scene.INFRA_MAIN)
+@edge(Scene.INFRA_ARRANGE, Scene.INFRA_MAIN)
+@edge(Scene.INFRA_DETAILS, Scene.INFRA_MAIN)
+@edge(Scene.CTRLCENTER_ASSISTANT, Scene.INFRA_MAIN)
+@edge(Scene.RIIC_OPERATOR_SELECT, Scene.INFRA_DETAILS)
+@edge(Scene.CLUE_DAILY, Scene.INFRA_CONFIDENTIAL)
+@edge(Scene.CLUE_RECEIVE, Scene.INFRA_CONFIDENTIAL)
+@edge(Scene.CLUE_GIVE_AWAY, Scene.INFRA_CONFIDENTIAL)
+@edge(Scene.CLUE_SUMMARY, Scene.INFRA_CONFIDENTIAL)
+@edge(Scene.CLUE_PLACE, Scene.INFRA_CONFIDENTIAL)
+@edge(Scene.ORDER_LIST, Scene.INFRA_DETAILS)
+@edge(Scene.FACTORY_ROOMS, Scene.INFRA_DETAILS)
+@edge(Scene.DRONE_ACCELERATE, Scene.ORDER_LIST)
+def infra_back(solver: BaseSolver):
+    solver.back()
+
+
+@edge(Scene.INFRA_ARRANGE_CONFIRM, Scene.INFRA_DETAILS)
+def infra_arrange_confirm(solver: BaseSolver):
+    solver.tap((1452, 1029))
+
+
+@edge(Scene.INFRA_ARRANGE_ORDER, Scene.INFRA_DETAILS)
+def infra_arrange_order(solver: BaseSolver):
+    solver.tap_element("arrange_blue_yes", x_rate=0.66)
+
+
+@edge(Scene.RIIC_REPORT, Scene.CTRLCENTER_ASSISTANT)
+def riic_back(solver: BaseSolver):
+    solver.tap((30, 55))
+
+
+# 其它场景
+
+
+@edge(Scene.MATERIEL, Scene.INDEX)
+def materiel(solver: BaseSolver):
+    solver.tap((960, 960))
+
+
+@edge(Scene.ANNOUNCEMENT, Scene.INDEX)
+def announcement(solver: BaseSolver):
+    solver.tap(solver.recog.check_announcement())
+
+
+@edge(Scene.MAIL, Scene.INDEX)
+def mail(solver: BaseSolver):
+    solver.back()
+
+
+@edge(Scene.UPGRADE, Scene.OPERATOR_FINISH)
+@edge(Scene.RECRUIT_AGENT, Scene.RECRUIT_MAIN)
+def upgrade(solver: BaseSolver):
+    solver.tap((960, 540))
+
+
+@edge(Scene.SKIP, Scene.RECRUIT_AGENT)
+def skip(solver: BaseSolver):
+    solver.tap_element("skip")
+
+
+@edge(Scene.DOUBLE_CONFIRM, Scene.FRIEND_LIST_OFF)
+def double_confirm(solver: BaseSolver):
+    solver.tap_element("double_confirm", x_rate=0.75)
+
+
+@edge(Scene.LOGIN_QUICKLY, Scene.INDEX)
+def login_quickly(solver: BaseSolver):
+    solver.tap_element("login_awake")
+
+
+@edge(Scene.LOGIN_START, Scene.LOGIN_QUICKLY)
+def login_start(solver: BaseSolver):
+    solver.tap((665, 741))
+
+
+@edge(Scene.CONFIRM, Scene.LOGIN_START)
+def confirm(solver: BaseSolver):
+    solver.tap_element("confirm")
+
+
+@edge(Scene.LOGIN_BILIBILI, Scene.INDEX)
+@edge(Scene.LOGIN_BILIBILI_PRIVACY, Scene.INDEX)
+def login_bilibili(solver: BaseSolver):
+    solver.bilibili()
+
+
+@edge(Scene.CONFIRM, Scene.INDEX)
+@edge(Scene.LOGIN_BILIBILI_PRIVACY, Scene.INDEX)
+def login_bilibili(solver: BaseSolver):
+    solver.bilibili()
