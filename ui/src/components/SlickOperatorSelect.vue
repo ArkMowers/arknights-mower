@@ -5,6 +5,9 @@
     appendTo=".n-select"
     distance="5"
     class="width100"
+    group="operator"
+    :accept="!props.disabled"
+    @update:list="deleteRepeat"
   >
     <n-select
       :disabled="props.disabled"
@@ -43,10 +46,20 @@ const render_op_slick_tag = ({ option, handleClose }) => {
       key: option.value,
       index: operatorValue.value.findIndex((value) => value == option.value),
       disabled: props.disabled,
-      style: 'z-index:999'
+      style: 'z-index: 999;display: inline;'
     },
     render_op_tag({ option, handleClose })
   )
+}
+
+const deleteRepeat = function (operatorList) {
+  for (var i = 0; i < operatorList.length; i++) {
+    for (var j = i + 1; j < operatorList.length; j++) {
+      if (operatorList[i] == operatorList[j]) {
+        operatorList.splice(j--, 1)
+      }
+    }
+  }
 }
 </script>
 
