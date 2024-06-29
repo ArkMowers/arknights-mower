@@ -233,7 +233,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if self.task is not None and datetime.now() < self.task.time:
             reschedule_time = (self.task.time - datetime.now()).total_seconds()
             if reschedule_time > 0:
-                logger.debug(
+                logger.info(
                     f"出现任务调度情况休息{reschedule_time}秒等待下一个任务开始"
                 )
                 self.sleep(reschedule_time)
