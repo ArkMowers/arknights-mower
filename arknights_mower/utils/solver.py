@@ -216,17 +216,9 @@ class BaseSolver:
         thres: Optional[int] = None,
     ) -> bool:
         """tap element"""
-        if element_name == "nav_button":
-            element = self.recog.nav_button()
-        else:
-            element = self.find(
-                element_name,
-                draw,
-                scope,
-                judge=judge,
-                score=score,
-                thres=thres,
-            )
+        element = self.find(
+            element_name, draw, scope, judge=judge, score=score, thres=thres
+        )
         if detected and element is None:
             return False
         self.tap(element, x_rate, y_rate, interval)

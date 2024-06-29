@@ -598,12 +598,6 @@ class Recognizer(object):
         """check if the current scene is all black"""
         return np.max(self.gray[:, 105:-105]) < 16
 
-    def nav_button(self):
-        """find navigation button"""
-        return self.find(
-            "nav_button", thres=128, scope=((0, 0), (100 + self.w // 4, self.h // 10))
-        )
-
     def find(
         self,
         res: str,
@@ -663,6 +657,7 @@ class Recognizer(object):
             "mail": (307, 39),
             "mission_trainee_on": (690, 17),
             "nav_bar": (655, 0),
+            "nav_button": (26, 20),
             "navigation/collection/AP-1": (203, 821),
             "navigation/collection/CA-1": (203, 821),
             "navigation/collection/CE-1": (243, 822),
