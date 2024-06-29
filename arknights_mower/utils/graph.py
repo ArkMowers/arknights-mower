@@ -135,27 +135,27 @@ def index_nav(solver: BaseSolver):
 @edge(Scene.NAVIGATION_BAR, Scene.MISSION_DAILY)
 @edge(Scene.NAVIGATION_BAR, Scene.MISSION_TRAINEE)
 def nav_mission(solver: BaseSolver):
-    solver.tap_element("nav_mission")
+    solver.tap_nav_element("mission")
 
 
 @edge(Scene.NAVIGATION_BAR, Scene.INDEX)
 def nav_index(solver: BaseSolver):
-    solver.tap_element("nav_index")
+    solver.tap_nav_element("index")
 
 
 @edge(Scene.NAVIGATION_BAR, Scene.TERMINAL_MAIN)
 def nav_terminal(solver: BaseSolver):
-    solver.tap_element("nav_terminal")
+    solver.tap_nav_element("terminal")
 
 
 @edge(Scene.NAVIGATION_BAR, Scene.RECRUIT_MAIN)
 def nav_recruit(solver: BaseSolver):
-    solver.tap_element("nav_recruit")
+    solver.tap_nav_element("recruit")
 
 
 @edge(Scene.NAVIGATION_BAR, Scene.SHOP_OTHERS)
 def nav_shop(solver: BaseSolver):
-    solver.tap_element("nav_shop")
+    solver.tap_nav_element("shop")
 
 
 # 任务

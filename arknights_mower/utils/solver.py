@@ -246,6 +246,31 @@ class BaseSolver:
         }
         self.ctap(pos[name])
 
+    def tap_nav_element(
+        self,
+        name: Literal[
+            "index",
+            "terminal",
+            "infrastructure",
+            "recruit",
+            "headhunting",
+            "shop",
+            "mission",
+            "friend",
+        ],
+    ):
+        pos = {
+            "index": (140, 365),  # 首页
+            "terminal": (793, 163),  # 终端
+            "infrastructure": (1030, 163),  # 基建
+            "recruit": (1435, 365),  # 公开招募
+            "headhunting": (1623, 364),  # 干员寻访
+            "shop": (1804, 362),  # 采购中心
+            "mission": (1631, 53),  # 任务
+            "friend": (1801, 53),  # 好友
+        }
+        self.ctap(pos[name])
+
     def template_match(
         self,
         res: str,
@@ -566,7 +591,7 @@ class BaseSolver:
         while retry_times and (scene := self.scene()) != Scene.INDEX:
             try:
                 if self.get_navigation():
-                    self.tap_element("nav_index")
+                    self.tap_nav_element("index")
                 elif scene == Scene.RIIC_REPORT:
                     self.tap((100, 60))
                 elif scene == Scene.ANNOUNCEMENT:
