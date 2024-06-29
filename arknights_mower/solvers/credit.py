@@ -16,7 +16,7 @@ class CreditSolver(SceneGraphSolver):
         if (scene := self.scene()) == Scene.FRIEND_LIST_ON:
             left, top = 1460, 220
             img = cropimg(self.recog.gray, ((left, top), (1800, 1000)))
-            img = thres2(img, 254)
+            img = thres2(img, 245)
             tpl = loadres("friend_visit", True)
             result = cv2.matchTemplate(img, tpl, cv2.TM_SQDIFF_NORMED)
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
