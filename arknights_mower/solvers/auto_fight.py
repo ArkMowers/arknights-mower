@@ -79,6 +79,18 @@ class AutoFight(BaseSolver):
         logger.debug(cost)
         return cost
 
+    def kills(self):
+        """获取击杀数"""
+        img = cropimg(self.recog.gray, ((800, 30), (950, 60)))
+        img = thres2(img, 127)
+        sep = loadres("fight/kills_separator", True)
+        result = cv2.matchTemplate(img, sep, cv2.TM_SQDIFF_NORMED)
+        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+        x = min_loc[0] + 799
+        kills = self.number(((800, 30), (x, 60)), 28, 127)
+        logger.debug(kills)
+        return kills
+
     def in_fight(self):
         """识别是否在战斗中，耗时1ms左右"""
         img = cropimg(self.recog.img, ((725, 16), (797, 76)))
