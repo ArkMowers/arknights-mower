@@ -13,7 +13,7 @@ from email.mime.text import MIMEText
 from inspect import getframeinfo, stack
 from io import BytesIO
 from threading import Thread
-from typing import Optional, Tuple
+from typing import Literal, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -224,7 +224,20 @@ class BaseSolver:
         self.tap(element, x_rate, y_rate, interval)
         return True
 
-    def tap_index_element(self, name):
+    def tap_index_element(
+        self,
+        name: Literal[
+            "friend",
+            "infrastructure",
+            "mission",
+            "recruit",
+            "shop",
+            "terminal",
+            "warehouse",
+            "headhunting",
+            "mail",
+        ],
+    ):
         pos = {
             "friend": (544, 862),  # 好友
             "infrastructure": (1545, 948),  # 基建
