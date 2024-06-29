@@ -2181,8 +2181,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
         shop_solver = CreditShop(self.device, self.recog)
         shop_solver.run()
-        if self.get_navigation():
-            self.tap_element("nav_infrastructure")
         self.back_to_infrastructure()
 
     def adjust_order_time(self, accelerate, room):
@@ -2310,9 +2308,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self.adjust_order_time(accelerate, room)
         if not_return:
             return
-        logger.info("返回基建主界面")
-        self.back(interval=2)
-        self.back(interval=2)
+        self.scene_graph_navigation(Scene.INFRA_MAIN)
 
     # 用于制造站切换产物，请注意在调用该函数前有足够的无人机，并补足相应制造站产物，目前仅支持中级作战记录与赤金之间的切换
     # def 制造站切换产物(self, room: str, 目标产物: str, not_customize=False, not_return=False):
@@ -3308,7 +3304,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     and self.credit_fight is None
                     and self.tasks[0].time - datetime.now() > timedelta(minutes=3)
                 ):
-                    self.back_to_index()
                     credit_fight = CreditFight(self.device, self.recog)
                     credit_fight.run()
                     self.credit_fight = get_server_weekday()

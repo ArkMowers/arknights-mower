@@ -47,8 +47,6 @@ class MissionSolver(SceneGraphSolver):
                 self.tap_element("mission_daily")
             else:
                 return True
-        elif self.get_navigation():
-            self.tap_element("nav_mission")
         elif scene in [Scene.UNKNOWN, Scene.LOADING, Scene.CONNECTING]:
             self.waiting_solver(scene, sleep_time=1)
         else:

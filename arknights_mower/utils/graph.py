@@ -183,7 +183,7 @@ def friend_list_on(solver: BaseSolver):
     solver.tap_element("friend_list")
 
 
-@edge(Scene.FRIEND_VISITING, Scene.FRIEND_LIST_OFF)
+@edge(Scene.FRIEND_VISITING, Scene.FRIEND_LIST_OFF, interval=3)
 def friend_visiting_back(solver: BaseSolver):
     solver.back()
 
@@ -363,7 +363,7 @@ class SceneGraphSolver(BaseSolver):
                 self.sleep()
 
             try:
-                sp = nx.shortest_path(DG, current, scene)
+                sp = nx.shortest_path(DG, current, scene, weight="weight")
             except Exception as e:
                 logger.exception(f"场景图路径计算异常：{e}")
                 self.sleep(3)
