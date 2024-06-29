@@ -44,6 +44,8 @@ class MowerExit(Exception):
 class BaseSolver:
     """Base class, provide basic operation"""
 
+    tap_info = None, None
+
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
         # self.device = device if device is not None else (recog.device if recog is not None else Device())
         if device is None and recog is not None:
@@ -69,7 +71,6 @@ class BaseSolver:
             self.recog.update()
 
     def run(self) -> None:
-        self.tap_info = None, None
         retry_times = config.MAX_RETRYTIME
         result = None
         while retry_times > 0:
