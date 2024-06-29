@@ -243,6 +243,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.free_clue = None
         if self.credit_fight is not None and self.credit_fight != get_server_weekday():
             self.credit_fight = None
+        logger.debug(self.credit_fight)
         self.todo_task = False
         self.collect_notification = False
         self.planned = False
@@ -3298,6 +3299,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         drain = drain and ope_solver.run(self.tasks[0].time)
                 mission_solver = MissionSolver(self.device, self.recog)
                 mission_solver.run()
+                logger.debug(self.credit_fight)
                 if (
                     config.conf["maa_credit_fight"]
                     and "" not in stage_today
@@ -3307,6 +3309,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     credit_fight = CreditFight(self.device, self.recog)
                     credit_fight.run()
                     self.credit_fight = get_server_weekday()
+                    logger.debug(self.credit_fight)
                 if drain:
                     self.last_execution["maa"] = datetime.now()
                     self.send_message("刷理智结束")
