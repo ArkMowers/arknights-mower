@@ -58,7 +58,6 @@ def index_to_friend(solver: BaseSolver):
 
 
 @edge(Scene.INDEX, Scene.MISSION_DAILY)
-@edge(Scene.INDEX, Scene.MISSION_TRAINEE)
 def index_to_mission(solver: BaseSolver):
     solver.tap_index_element("mission")
 
@@ -133,7 +132,6 @@ def index_nav(solver: BaseSolver):
 
 
 @edge(Scene.NAVIGATION_BAR, Scene.MISSION_DAILY)
-@edge(Scene.NAVIGATION_BAR, Scene.MISSION_TRAINEE)
 def nav_mission(solver: BaseSolver):
     solver.tap_nav_element("mission")
 
@@ -165,6 +163,11 @@ def nav_shop(solver: BaseSolver):
 @edge(Scene.MISSION_TRAINEE, Scene.MISSION_WEEKLY)
 def mission_to_weekly(solver: BaseSolver):
     solver.tap_element("mission_weekly")
+
+
+@edge(Scene.MISSION_TRAINEE, Scene.MISSION_DAILY)
+def mission_trainee_to_daily(solver: BaseSolver):
+    solver.tap_element("mission_daily")
 
 
 # 商店

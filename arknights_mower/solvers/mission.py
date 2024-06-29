@@ -14,14 +14,7 @@ class MissionSolver(SceneGraphSolver):
         super().run()
 
     def transition(self) -> bool:
-        if (scene := self.scene()) == Scene.MISSION_TRAINEE:
-            if self.checked & 1 == 0:
-                self.tap_element("mission_daily")
-            elif self.checked & 2 == 0:
-                self.tap_element("mission_weekly")
-            else:
-                return True
-        elif scene == Scene.MISSION_DAILY:
+        if (scene := self.scene()) == Scene.MISSION_DAILY:
             self.checked |= 1
             collect = self.find("mission_collect")
             if collect is None:
