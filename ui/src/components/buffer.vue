@@ -60,13 +60,12 @@ const openInNewTab = () => {
 }
 const extendedBufferDes = (bufferDes, buffer) => {
   let result = [...bufferDes]
-  let tent = []
+  let temp = []
   bufferDes.forEach((thing) => {
-    tent = buffer[thing]['buffer']
-    console.log(tent)
+    temp = buffer[thing]['buffer']
   })
 
-  return result.concat(tent)
+  return result.concat(temp)
 }
 </script>
 

@@ -59,11 +59,7 @@ def 识别空物品(物品灰):
     白像素个数 = cv2.countNonZero(二值图)
     所有像素个数 = 二值图.shape[0] * 二值图.shape[1]
     白像素比值 = int((白像素个数 / 所有像素个数) * 100)
-    # saveimg_depot(
-    #     cv2.hconcat([物品灰, 二值图]),
-    #     f"{白像素比值}_{datetime.now().timestamp()}.png",
-    #     "depot_3_empty",
-    # )
+
     if 白像素比值 > 99:
         logger.info("仓库扫描: 删除一次空物品")
 
@@ -87,8 +83,6 @@ def 切图(圆心x坐标, 圆心y坐标, 拼接结果, 正方形边长=130):
                 id = str(datetime.now().timestamp())
                 正方形切 = 正方形[26:239, 26:239]
                 图片.append([正方形切, 正方形灰, id])
-                # saveimg_depot(正方形切, id + ".png", "depot_4_name")
-                # saveimg_depot(正方形灰, id + ".png", "depot_4_num")
     return 图片
 
 
@@ -110,11 +104,9 @@ class depotREC(SceneGraphSolver):
             self.knn模型_CONSUME = pickle.load(pkl)
         with lzma.open(f"{__rootdir__}/models/NORMAL.pkl", "rb") as pkl:
             self.knn模型_NORMAL = pickle.load(pkl)
-        # self.时间模板 = self.导入_时间模板()
         self.物品数字 = 导入_数字模板()
 
         self.结果字典 = {}
-        self.明日方舟工具箱json = {}
 
         logger.info(f"仓库扫描: 吟唱用时{datetime.now() - start_time}")
 
@@ -180,7 +172,7 @@ class depotREC(SceneGraphSolver):
             for 任务 in 任务组:
                 self.tap((任务[0], 70))
                 if not self.find("depot_empty"):
-                    self.分类扫描(任务[1], 任务[2])
+                    self.分类扫描(任务[1])
                     logger.info(
                         f"仓库扫描: {任务[2]}识别，识别用时{datetime.now() - time}"
                     )
@@ -190,7 +182,7 @@ class depotREC(SceneGraphSolver):
             result = [
                 int(datetime.now().timestamp()),
                 json.dumps(self.结果字典, ensure_ascii=False),
-                json.dumps(self.明日方舟工具箱json, ensure_ascii=False),
+                {"森空岛输出仅占位": ""},
             ]
             depotinfo = pd.DataFrame([result], columns=["Timestamp", "Data", "json"])
             depotinfo.to_csv(
@@ -209,30 +201,17 @@ class depotREC(SceneGraphSolver):
         similarity = len(matches) / max(len(descriptors1), len(descriptors2))
         return similarity * 100
 
-    def 分类扫描(self, 模型名称, 分类名称):
+    def 分类扫描(self, 模型名称):
         截图列表 = []
         旧的截图 = self.recog.img
         旧的截图 = 旧的截图[140:1000, :]
         截图列表.append(旧的截图)
-        # saveimg(旧的截图, "depot_1_screenshot")
         self.recog.update()
-
         拼接好的图片 = 截图列表[0]
-        # saveimg(拼接好的图片, "depot_2_stitcher")
-
         切图列表 = self.切图主程序(拼接好的图片)
-
         logger.info(f"仓库扫描: 需要识别{len(切图列表)}个物品")
 
         for [物品, 物品灰, id] in 切图列表:
             [物品名称, 物品数字] = self.匹配物品一次(物品, 物品灰, 模型名称)
-            # saveimg_depot(
-            #     物品,
-            #     f"{id}_{物品名称}_{物品数字}.png",
-            #     "depot_5_result",
-            # )
             logger.debug([物品名称, 物品数字])
             self.结果字典[物品名称] = self.结果字典.get(物品名称, 0) + 物品数字
-            self.明日方舟工具箱json[key_mapping[物品名称][0]] = (
-                self.明日方舟工具箱json.get(key_mapping[物品名称][0], 0) + 物品数字
-            )
