@@ -67,7 +67,20 @@ class CreditFight(SceneGraphSolver):
                 # 开始行动
                 self.tap((1655, 781))
                 fight_solver = AutoFight(self.device, self.recog)
-                fight_solver.run("OF-1")
+                conf = config.conf["credit_fight"]
+                actions = [
+                    {"type": "SpeedUp"},
+                    {
+                        "type": "Deploy",
+                        "name": conf["operator"],
+                        "location": [
+                            conf["x"],
+                            conf["y"],
+                        ],
+                        "direction": conf["direction"],
+                    },
+                ]
+                fight_solver.run("OF-1", [], actions)
             else:
                 # 借助战
                 self.ctap((1660, 315))

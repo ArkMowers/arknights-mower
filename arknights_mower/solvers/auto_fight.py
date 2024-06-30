@@ -8,7 +8,6 @@ from skimage.metrics import structural_similarity
 
 from arknights_mower import __rootdir__
 from arknights_mower.solvers.secret_front import templates
-from arknights_mower.utils import config
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
@@ -21,24 +20,14 @@ with lzma.open(f"{__rootdir__}/models/avatar.pkl", "rb") as f:
 
 
 class AutoFight(BaseSolver):
-    def run(self, level_name):
+    def run(self, level_name, opers, actions):
         logger.info("Start: 自动战斗")
         logger.info("地图坐标计算：https://github.com/yuanyan3060/Arknights-Tile-Pos")
         level = find_level(level_name, None)
         self.calc = Calc(1920, 1080, level)
-        conf = config.conf["credit_fight"]
-        self.actions = [
-            {"type": "SpeedUp"},
-            {
-                "type": "Deploy",
-                "name": conf["operator"],
-                "location": [
-                    conf["x"],
-                    conf["y"],
-                ],
-                "direction": conf["direction"],
-            },
-        ]
+        self.opers = opers
+        self.actions = actions
+        self.actions = actions
         self.speed = 1
         self.loading = True
         self.playing = True
