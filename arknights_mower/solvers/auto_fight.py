@@ -91,6 +91,17 @@ class AutoFight(BaseSolver):
         logger.debug(kills)
         return kills
 
+    def skill_ready(self, x, y):
+        skill_ready = loadres("fight/skill_ready")
+        h, w, _ = skill_ready.shape
+        pos = self.calc.get_character_screen_pos(x, y, False, False)
+        pos = int(pos.x), int(pos.y)
+        img = cropimg(self.recog.img, sa(((-15, -168), (15, -138)), pos))
+        result = cv2.matchTemplate(img, skill_ready, cv2.TM_SQDIFF_NORMED)
+        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+        logger.debug(f"{min_val=} {min_loc=}")
+        return min_val <= 0.2
+
     def in_fight(self):
         """识别是否在战斗中，耗时1ms左右"""
         img = cropimg(self.recog.img, ((725, 16), (797, 76)))
