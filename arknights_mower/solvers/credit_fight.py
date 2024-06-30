@@ -79,6 +79,7 @@ class CreditFight(SceneGraphSolver):
                         ],
                         "direction": conf["direction"],
                     },
+                    {"type": "SkillDaemon"},
                 ]
                 fight_solver.run("OF-1", [], actions)
             else:
