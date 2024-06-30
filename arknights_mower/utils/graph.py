@@ -269,7 +269,9 @@ def infra_arrange_order(solver: BaseSolver):
 def riic_back(solver: BaseSolver):
     solver.tap((30, 55))
 
-
+@edge(Scene.RIIC_REPORT_LOADING, Scene.CTRLCENTER_ASSISTANT)
+def riic_back(solver: BaseSolver):
+    solver.tap((30, 55))
 @edge(Scene.CTRLCENTER_ASSISTANT, Scene.RIIC_REPORT)
 def riic(solver: BaseSolver):
     solver.tap_element("control_central_assistants")

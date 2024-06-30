@@ -161,7 +161,10 @@ class Recognizer(object):
         elif self.find("ope_elimi_agency_panel"):
             self.scene = Scene.OPERATOR_ELIMINATE_AGENCY
         elif self.find("riic_report_title"):
-            self.scene = Scene.RIIC_REPORT
+            if self.find("riic_manufacture"):
+                self.scene = Scene.RIIC_REPORT
+            else:
+                self.scene = Scene.RIIC_REPORT_LOADING
         elif self.find("control_central_assistants"):
             self.scene = Scene.CTRLCENTER_ASSISTANT
         elif self.find("infra_overview"):
