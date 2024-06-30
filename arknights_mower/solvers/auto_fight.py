@@ -127,6 +127,15 @@ class AutoFight(BaseSolver):
                 op.append(i)
         self.operators = {}
         for x in op:
+            # 看最下方条的颜色判断是否正在转CD
+            bar_scope = sa(((-20, 187), (10, 190)), (x, y))
+            img = cropimg(self.recog.gray, bar_scope)
+            img = thres2(img, 200)
+            count = cv2.countNonZero(img)
+            logger.debug(count)
+            if count < 50:
+                continue
+
             scope = sa(((-58, 53), (42, 153)), (x, y))
             tpl = cropimg(self.recog.gray, scope)
             tpl = cv2.resize(tpl, None, None, 0.5, 0.5)
@@ -142,7 +151,7 @@ class AutoFight(BaseSolver):
             cost_scope = sa(((-13, 19), (30, 44)), (x, y))
             cost = self.number(cost_scope, 25, 80)
             self.operators[name] = {"scope": scope, "cost": cost}
-            logger.info(f"{name}：{cost}费")
+        logger.debug(self.operators)
         self.play()
 
     @property
