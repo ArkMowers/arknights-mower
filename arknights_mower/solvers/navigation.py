@@ -143,6 +143,14 @@ class NavigationSolver(SceneGraphSolver):
     def transition(self):
         if (scene := self.scene()) == Scene.TERMINAL_MAIN:
             if self.name == "Annihilation":
+                pos_list = [(943, 130), (1491, 130), (1665, 815), (1875, 815)]
+                for pos in pos_list:
+                    loaded = self.recog.gray[pos[1]][pos[0]] < 55
+                    if loaded:
+                        break
+                if not loaded:
+                    self.sleep()
+                    return
                 if pos := self.find("terminal_eliminate"):
                     self.tap(pos)
                 else:
