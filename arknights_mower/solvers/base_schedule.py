@@ -1788,9 +1788,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         )
         execute_time = execute_time - timedelta(seconds=(60 * self.run_order_delay))
         logger.info("下一次进行插拔的时间为：" + execute_time.strftime("%H:%M:%S"))
-        logger.info("返回基建主界面")
-        self.back(interval=2)
-        self.back(interval=2)
+        self.scene_graph_navigation(Scene.INFRA_MAIN)
         return execute_time
 
     def todo_list(self) -> None:
