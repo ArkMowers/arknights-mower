@@ -1900,8 +1900,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
         friend_clue = []
 
-        unknown_cnt = 0
-
         clue_status = {}
 
         def place_index():
@@ -1921,16 +1919,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
         while ctm.task:
             scene = self.scene()
-
-            if scene == Scene.UNKNOWN:
-                unknown_cnt += 1
-                if unknown_cnt > 5:
-                    unknown_cnt = 0
-                    self.back_to_infrastructure()
-                    self.enter_room("meeting")
-                else:
-                    self.sleep()
-                continue
 
             if scene == Scene.INFRA_DETAILS:
                 if ctm.task == "party_time":
@@ -2174,12 +2162,16 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             elif scene == Scene.CLUE_SUMMARY:
                 self.back()
 
+            elif scene in [Scene.UNKNOWN, Scene.LOADING, Scene.CONNECTING]:
+                self.waiting_solver(scene, sleep_time=1)
+
             else:
-                self.sleep()
+                self.scene_graph_navigation(Scene.INFRA_MAIN)
+                self.enter_room("meeting")
 
         shop_solver = CreditShop(self.device, self.recog)
         shop_solver.run()
-        self.back_to_infrastructure()
+        self.scene_graph_navigation(Scene.INFRA_MAIN)
 
     def adjust_order_time(self, accelerate, room):
         error_count = 0

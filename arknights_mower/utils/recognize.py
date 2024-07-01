@@ -339,8 +339,6 @@ class Recognizer(object):
         if self.scene == Scene.UNKNOWN:
             self.check_current_focus()
 
-        self.check_loading_time()
-
         return self.scene
 
     def find_ra_battle_exit(self) -> bool:
