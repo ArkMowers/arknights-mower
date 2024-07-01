@@ -60,7 +60,7 @@ class ReportSolver(SceneGraphSolver):
             "合成玉": None,
             "合成玉订单数量": None,
         }
-        self.reload_time = 1
+        self.reload_time = 0
 
     def run(self):
         if self.has_record():
@@ -85,20 +85,26 @@ class ReportSolver(SceneGraphSolver):
             self.scene_graph_navigation(Scene.RIIC_REPORT)
 
     def read_report(self):
-        try:
-            self.manu_pt = self.recog.find("riic_manufacture")
-            self.trade_pt = self.recog.find("riic_trade")
-            self.assist_pt = self.recog.find("riic_assistants")
+        if self.find("riic/manufacture"):
+            try:
+                self.manu_pt = self.find("riic/manufacture")
+                self.trade_pt = self.find("riic/trade")
+                self.assist_pt = self.find("riic/assistants")
 
-            self.crop_report("riic_iron")
-
-            self.crop_report("riic_exp")
-            self.crop_report("riic_iron_order")
-            self.crop_report("riic_orundum")
-            self.record_report()
-        except Exception as e:
-            logger.info("基报读取失败:{}".format(e))
-        return True
+                self.crop_report("iron")
+                self.crop_report("exp")
+                self.crop_report("iron_order")
+                self.crop_report("orundum")
+                self.record_report()
+            except Exception as e:
+                logger.info("基报读取失败:{}".format(e))
+            return True
+        else:
+            if self.reload_time > 3:
+                return True
+            self.reload_time += 1
+            self.csleep(1)
+            return
 
     def record_report(self):
         logger.info(f"存入{self.date}的数据{self.report_res}")
@@ -145,21 +151,23 @@ class ReportSolver(SceneGraphSolver):
 
     def crop_report(self, type: str):
         area = {
-            "riic_iron_order": [[self.trade_pt[1][0], self.trade_pt[1][1]], [1920, int(self.assist_pt[0][1] - 50)]],
-            "riic_orundum": [[self.trade_pt[1][0], self.trade_pt[1][1] + 45], [1920, int(self.assist_pt[0][1])]],
+            "iron_order": [[self.trade_pt[1][0], self.trade_pt[1][1]], [1920, int(self.assist_pt[0][1] - 50)]],
+            "orundum": [[self.trade_pt[1][0], self.trade_pt[1][1] + 45], [1920, int(self.assist_pt[0][1])]],
         }
-        if type in ["riic_iron", "riic_exp"]:
-            pt_0 = self.recog.find(type)
-            pt_1 = self.recog.find(f"{type}_text")
+        if type in ["iron", "exp"]:
+            pt_0 = self.find(f"riic/{type}")
+            pt_1 = self.find(f"riic/{type}_text")
             scope = [[pt_0[1][0], pt_0[0][1]], [pt_1[0][0], pt_1[1][1]]]
-            if type in ["riic_iron"]:
+            if type in ["iron"]:
                 self.report_res["赤金"] = self.get_number(cropimg(self.recog.gray, scope))
-            elif type in ["riic_exp"]:
+            elif type in ["exp"]:
                 self.report_res["作战录像"] = self.get_number(cropimg(self.recog.gray, scope))
-        elif type in ["riic_iron_order", "riic_orundum"]:
-            pt_0 = self.recog.find(type)
+        elif type in ["iron_order", "orundum"]:
+            logger.debug(f"{type} reading")
+            pt_0 = self.find(f"riic/{type}")
+
             pt_order = []
-            res_order = loadres("riic_order", True)
+            res_order = loadres("riic/order", True)
             w, h = res_order.shape
             img = cropimg(self.recog.gray, area[type])
             result = cv2.matchTemplate(img, res_order, cv2.TM_CCOEFF_NORMED)
@@ -168,18 +176,17 @@ class ReportSolver(SceneGraphSolver):
             print(f"{top_left=} {max_val=}")
             if max_val >= 0.7:
                 pt_order = [top_left, va(top_left, (w, h + 5))]
-
+            logger.debug(f"pt_order value:{pt_order} ")
             scope_1 = [[pt_0[1][0], pt_0[0][1]], [pt_order[0][0], pt_0[1][1]]]
             scope_2 = [[pt_order[1][0], pt_order[0][1]], [1900, pt_order[1][1]]]
 
-            if type in ["riic_iron_order"]:
+            if type in ["iron_order"]:
                 self.report_res["龙门币订单"] = self.get_number(cropimg(self.recog.gray, scope_1))
                 self.report_res["龙门币订单数"] = self.get_number(cropimg(self.recog.gray, scope_2))
-            elif type in ["riic_orundum"]:
+            elif type in ["orundum"]:
                 self.report_res["合成玉"] = self.get_number(cropimg(self.recog.gray, scope_1))
                 self.report_res["合成玉订单数量"] = self.get_number(cropimg(self.recog.gray, scope_2))
-
-        logger.info(f"{type}读取完成")
+        # #return cropimg(recog.gray,area[type])
 
     def get_number(self, img):
         thres = 100

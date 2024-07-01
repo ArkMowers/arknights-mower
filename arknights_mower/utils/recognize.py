@@ -160,11 +160,8 @@ class Recognizer(object):
             self.scene = Scene.OPERATOR_ELIMINATE
         elif self.find("ope_elimi_agency_panel"):
             self.scene = Scene.OPERATOR_ELIMINATE_AGENCY
-        elif self.find("riic_report_title"):
-            if self.find("riic_manufacture"):
-                self.scene = Scene.RIIC_REPORT
-            else:
-                self.scene = Scene.RIIC_REPORT_LOADING
+        elif self.find("riic/report_title"):
+            self.scene = Scene.RIIC_REPORT
         elif self.find("control_central_assistants"):
             self.scene = Scene.CTRLCENTER_ASSISTANT
         elif self.find("infra_overview"):
@@ -205,7 +202,7 @@ class Recognizer(object):
         elif self.find("login_connecting"):
             self.scene = Scene.LOGIN_LOADING
         elif self.find("arrange_order_options"):
-            self.scene = Scene.RIIC_OPERATOR_SELECT
+            self.scene = Scene.INFRA_ARRANGE_ORDER
         elif self.find("arrange_order_options_scene"):
             self.scene = Scene.INFRA_ARRANGE_ORDER
         elif self.find("ope_recover_potion_on"):
@@ -223,20 +220,6 @@ class Recognizer(object):
             self.scene = Scene.SHOP_UNLOCK_SCHEDULE
         elif self.find("loading7"):
             self.scene = Scene.LOADING
-        elif self.find("clue/daily"):
-            self.scene = Scene.CLUE_DAILY
-        elif self.find("clue/receive"):
-            self.scene = Scene.CLUE_RECEIVE
-        elif self.find("clue/give_away"):
-            self.scene = Scene.CLUE_GIVE_AWAY
-        elif self.find("clue/summary"):
-            self.scene = Scene.CLUE_SUMMARY
-        elif self.find("clue/filter_all"):
-            self.scene = Scene.CLUE_PLACE
-        elif self.find("upgrade"):
-            self.scene = Scene.UPGRADE
-        elif self.find("depot"):
-            self.scene = Scene.DEPOT
 
         elif self.is_black():
             self.scene = Scene.LOADING
@@ -326,6 +309,8 @@ class Recognizer(object):
         #     self.scene = Scene.OPERATOR_GIVEUP
         # elif self.find("shop_assist"):
         #     self.scene = Scene.SHOP_ASSIST
+        # elif self.find("upgrade"):
+        #     self.scene = Scene.UPGRADE
 
         else:
             self.scene = Scene.UNKNOWN
@@ -345,9 +330,7 @@ class Recognizer(object):
     def find_ra_battle_exit(self) -> bool:
         im = cv2.cvtColor(self.img, cv2.COLOR_RGB2HSV)
         im = cv2.inRange(im, (29, 0, 0), (31, 255, 255))
-        score, scope = self.template_match(
-            "ra/battle_exit", ((75, 47), (165, 126)), cv2.TM_CCOEFF_NORMED
-        )
+        score, scope = self.template_match("ra/battle_exit", ((75, 47), (165, 126)), cv2.TM_CCOEFF_NORMED)
         return scope if score > 0.8 else None
 
     def get_ra_scene(self) -> int:
@@ -539,9 +522,7 @@ class Recognizer(object):
             self.scene = Scene.SSS_EC
         elif self.find("sss/squad_button", scope=((1412, 0), (1876, 140))):
             self.scene = Scene.SSS_SQUAD
-        elif self.find(
-            "sss/device_button", scope=((1545, 921), (1920, 1080)), threshold=0.5
-        ):
+        elif self.find("sss/device_button", scope=((1545, 921), (1920, 1080)), threshold=0.5):
             self.scene = Scene.SSS_DEVICE
         elif self.find("sss/loading"):
             self.scene = Scene.SSS_LOADING
@@ -682,7 +663,8 @@ class Recognizer(object):
             "open_recruitment": (192, 143),
             "order_label": (404, 137),
             "recruiting_instructions": (343, 179),
-            "riic_report_title": (1712, 25),
+            "riic/manufacture": (1328, 126),
+            "riic/report_title": (1712, 25),
             "spent_credit": (332, 264),
             "shop_cart": (1252, 842),
             "shop_credit_2": (1657, 135),
@@ -741,6 +723,14 @@ class Recognizer(object):
             "ope_failed": (183, 465),
             "ope_finish": (87, 265),
             "ope_plan": (1278, 24),
+            "riic/trade": ((1320, 250), (1600, 500)),
+            "riic/assistants": ((1320, 400), (1600, 650)),
+            "riic/exp": ((1500, 180), (1800, 400)),
+            "riic/exp_text": ((1500, 180), (1800, 400)),
+            "riic/iron": ((1500, 180), (1800, 400)),
+            "riic/iron_text": ((1500, 180), (1800, 400)),
+            "riic/iron_order": ((1500, 320), (1800, 550)),
+            "riic/orundum": ((1500, 320), (1800, 550)),
         }
 
         template_matching_score = {
@@ -823,9 +813,7 @@ class Recognizer(object):
             raise RecognizeError(f"Can't find '{res}'")
         return ret
 
-    def score(
-        self, res: str, draw: bool = False, scope: tp.Scope = None, thres: int = None
-    ) -> Optional[List[float]]:
+    def score(self, res: str, draw: bool = False, scope: tp.Scope = None, thres: int = None) -> Optional[List[float]]:
         """
         查找元素是否出现在画面中，并返回分数
 
