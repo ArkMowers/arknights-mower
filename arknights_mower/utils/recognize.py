@@ -237,6 +237,8 @@ class Recognizer(object):
             self.scene = Scene.UPGRADE
         elif self.find("depot"):
             self.scene = Scene.DEPOT
+        elif self.find("pull_once"):
+            self.scene = Scene.HEADHUNTING
 
         elif self.is_black():
             self.scene = Scene.LOADING
@@ -676,6 +678,7 @@ class Recognizer(object):
             "ope_select_start": (1579, 701),
             "open_recruitment": (192, 143),
             "order_label": (404, 137),
+            "pull_once": (1260, 950),
             "recruiting_instructions": (343, 179),
             "riic_report_title": (1712, 25),
             "spent_credit": (332, 264),
