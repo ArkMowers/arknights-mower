@@ -297,6 +297,7 @@ class Device(object):
                     f"{config.APPNAME}/{config.APP_ACTIVITY_NAME}",
                     "com.hypergryph.arknights.bilibili/com.gsc.welcome.WelcomeActivity",
                 ]:
+                    self.exit()  # 防止应用卡死
                     self.launch()
                     # wait for app to finish launching
                     time.sleep(10)

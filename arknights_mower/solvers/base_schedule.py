@@ -406,8 +406,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     def handle_error(self, force=False):
         if self.scene() == Scene.UNKNOWN:
             self.device.exit()
-            if self.device.check_current_focus():
-                self.recog.update()
+            self.check_current_focus()
         if self.error or force:
             # 如果没有任何时间小于当前时间的任务才生成空任务
             if find_next_task(self.tasks, datetime.now()) is None:
@@ -3401,8 +3400,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         else:
                             self.csleep(5)
                     self.device.exit()
-                    if self.device.check_current_focus():
-                        self.recog.update()
+                    self.check_current_focus()
 
             elif not rg_sleep:
                 if self.maa_config["reclamation_algorithm"]:
@@ -3437,8 +3435,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     elif self.exit_game_when_idle:
                         self.device.exit()
                 self.sleep(remaining_time)
-                if self.device.check_current_focus():
-                    self.recog.update()
+                self.check_current_focus()
             self.MAA = None
         except MowerExit:
             if self.MAA is not None:
@@ -3456,8 +3453,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     f"休息 {format_time(remaining_time)}，到{self.tasks[0].time.strftime('%H:%M:%S')}开始工作"
                 )
                 self.sleep(remaining_time)
-            if self.device.check_current_focus():
-                self.recog.update()
+            self.check_current_focus()
 
     def skland_plan_solover(self):
         try:

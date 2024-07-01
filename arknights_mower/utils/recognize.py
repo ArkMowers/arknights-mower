@@ -105,6 +105,10 @@ class Recognizer(object):
         logger.debug(result)
         return result < 0.1
 
+    def check_current_focus(self):
+        if self.device.check_current_focus():
+            self.update()
+
     def check_loading_time(self):
         if self.scene == Scene.CONNECTING:
             self.loading_time += 1
@@ -116,8 +120,7 @@ class Recognizer(object):
             logger.info(f"检测到连续等待{self.loading_time}次")
             self.device.exit()
             time.sleep(3)
-            if self.device.check_current_focus():
-                self.update()
+            self.check_current_focus()
 
     def check_announcement(self):
         img = cropimg(self.gray, ((960, 0), (1920, 540)))
@@ -329,11 +332,10 @@ class Recognizer(object):
         # save screencap to analyse
         if config.SCREENSHOT_PATH:
             self.save_screencap(self.scene)
-        logger.info(f"Scene: {self.scene}: {SceneComment[self.scene]}")
+        logger.info(f"Scene {self.scene}: {SceneComment[self.scene]}")
 
         if self.scene == Scene.UNKNOWN:
-            if self.device.check_current_focus():
-                self.update()
+            self.check_current_focus()
 
         self.check_loading_time()
 
@@ -427,8 +429,7 @@ class Recognizer(object):
             self.scene = Scene.TERMINAL_MAIN
         else:
             self.scene = Scene.UNKNOWN
-            if self.device.check_current_focus():
-                self.update()
+            self.check_current_focus()
 
         # save screencap to analyse
         if config.SCREENSHOT_PATH is not None:
@@ -492,8 +493,7 @@ class Recognizer(object):
 
         else:
             self.scene = Scene.UNKNOWN
-            if self.device.check_current_focus():
-                self.update()
+            self.check_current_focus()
 
         # save screencap to analyse
         if config.SCREENSHOT_PATH is not None:
@@ -546,8 +546,7 @@ class Recognizer(object):
             self.scene = Scene.SSS_GUIDE
         else:
             self.scene = Scene.UNKNOWN
-            if self.device.check_current_focus():
-                self.update()
+            self.check_current_focus()
 
         # save screencap to analyse
         if config.SCREENSHOT_PATH is not None:
@@ -582,8 +581,7 @@ class Recognizer(object):
             self.scene = Scene.TRAIN_SKILL_UPGRADE
         else:
             self.scene = Scene.UNKNOWN
-            if self.device.check_current_focus():
-                self.update()
+            self.check_current_focus()
 
         # save screencap to analyse
         if config.SCREENSHOT_PATH is not None:

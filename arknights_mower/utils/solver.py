@@ -67,8 +67,7 @@ class BaseSolver:
                     restart_simulator()
 
         self.recog = recog if recog is not None else Recognizer(self.device)
-        if self.device.check_current_focus():
-            self.recog.update()
+        self.check_current_focus()
 
     def run(self) -> None:
         retry_times = config.MAX_RETRYTIME
@@ -202,6 +201,9 @@ class BaseSolver:
             self.tap(pos)
         else:
             self.sleep()
+
+    def check_current_focus(self):
+        self.recog.check_current_focus()
 
     def tap_element(
         self,
@@ -701,8 +703,7 @@ class BaseSolver:
         logger.warning("同一等待界面等待超时，重启方舟。")
         self.device.exit()
         self.csleep(3)
-        if self.device.check_current_focus():
-            self.recog.update()
+        self.check_current_focus()
         return False
 
     # 将html表单转化为通用markdown格式（为了避免修改之前email内容，采用基于之前数据格式进行加工的方案）
