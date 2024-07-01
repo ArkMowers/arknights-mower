@@ -355,18 +355,8 @@ class SceneGraphSolver(BaseSolver):
             return False
 
         while (current := self.scene()) != scene:
-            if current in [Scene.CONNECTING, Scene.UNKNOWN]:
-                self.waiting_solver(current, sleep_time=1)
-                continue
-            elif current in [
-                Scene.LOADING,
-                Scene.LOGIN_LOADING,
-                Scene.LOGIN_MAIN_NOENTRY,
-            ]:
-                self.waiting_solver(current, wait_count=10, sleep_time=2)
-                continue
-            elif current == Scene.OPERATOR_ONGOING:
-                self.waiting_solver(current, wait_count=30, sleep_time=10)
+            if current in self.waiting_scene:
+                self.waiting_solver()
                 continue
 
             if current not in DG.nodes:

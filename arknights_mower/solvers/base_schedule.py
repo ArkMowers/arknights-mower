@@ -260,8 +260,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             return self.todo_list()
         elif scene == Scene.RIIC_OPERATOR_SELECT:
             self.tap_element("confirm_blue")
-        elif scene in [Scene.UNKNOWN, Scene.LOADING, Scene.CONNECTING]:
-            self.waiting_solver(scene, sleep_time=1)
+        elif scene in self.waiting_scene:
+            self.waiting_solver()
         else:
             self.scene_graph_navigation(Scene.INFRA_MAIN)
             self.last_room = ""
@@ -2162,8 +2162,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             elif scene == Scene.CLUE_SUMMARY:
                 self.back()
 
-            elif scene in [Scene.UNKNOWN, Scene.LOADING, Scene.CONNECTING]:
-                self.waiting_solver(scene, sleep_time=1)
+            elif scene in self.waiting_scene:
+                self.waiting_solver()
 
             else:
                 self.scene_graph_navigation(Scene.INFRA_MAIN)
@@ -2180,16 +2180,16 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             action_required_task is not None and action_required_task.meta_data == room
         ):
             self.tap(accelerate)
-            if self.scene() == Scene.CONNECTING:
-                if not self.waiting_solver(Scene.CONNECTING, sleep_time=2):
+            if self.scene() in self.waiting_scene:
+                if not self.waiting_solver():
                     return
             self.tap((self.recog.w * 1320 // 1920, self.recog.h * 502 // 1080))
-            if self.scene() == Scene.CONNECTING:
-                if not self.waiting_solver(Scene.CONNECTING, sleep_time=2):
+            if self.scene() in self.waiting_scene:
+                if not self.waiting_solver():
                     return
             self.tap((self.recog.w * 3 // 4, self.recog.h * 4 // 5))
-            if self.scene() == Scene.CONNECTING:
-                if not self.waiting_solver(Scene.CONNECTING, sleep_time=2):
+            if self.scene() in self.waiting_scene:
+                if not self.waiting_solver():
                     return
             while self.find("bill_accelerate") is None:
                 if error_count > 5:
@@ -2270,8 +2270,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self.tap(accelerate)
                 self.tap_element("all_in")
                 self.tap((self.recog.w * 0.75, self.recog.h * 0.8))
-                if self.scene() == Scene.CONNECTING:
-                    if not self.waiting_solver(Scene.CONNECTING, sleep_time=2):
+                if self.scene() in self.waiting_scene:
+                    if not self.waiting_solver():
                         return
                 self.recog.update()
                 self.recog.save_screencap("run_order")
@@ -3044,8 +3044,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 # 如果完成则移除该任务
                 del plan[room]
                 # back to 基地主界面
-                if self.scene() == Scene.CONNECTING:
-                    if not self.waiting_solver(Scene.CONNECTING, sleep_time=3):
+                if self.scene() in self.waiting_scene:
+                    if not self.waiting_solver():
                         return
             except MowerExit:
                 raise
@@ -3118,8 +3118,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     logger.info(f"停止{wait_time}秒等待订单完成")
                     self.sleep(wait_time)
                     # 等待服务器交互
-                    if self.scene() == Scene.CONNECTING:
-                        if not self.waiting_solver(Scene.CONNECTING, sleep_time=1):
+                    if self.scene() in self.waiting_scene:
+                        if not self.waiting_solver():
                             return
                 self.recog.update()
                 self.recog.save_screencap("run_order")
@@ -3200,11 +3200,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 # 补货
                 self.tap((self.recog.w * 0.75, self.recog.h * 0.3), interval=0.5)
                 self.tap((self.recog.w * 0.75, self.recog.h * 0.9), interval=0.5)
-                if self.scene() == Scene.CONNECTING:
-                    if not self.waiting_solver(Scene.CONNECTING, sleep_time=2):
+                if self.scene() in self.waiting_scene:
+                    if not self.waiting_solver():
                         return
-                self.back()
-                self.back()
+                self.scene_graph_navigation(Scene.INFRA_MAIN)
             except MowerExit:
                 raise
             except Exception as e:
@@ -3214,7 +3213,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 back_count = 0
                 while self.scene() != Scene.INFRA_MAIN:
                     self.back()
-                    self.recog.update()
                     back_count += 1
                     if back_count > 3:
                         raise e
