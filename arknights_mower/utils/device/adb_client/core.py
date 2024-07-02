@@ -91,7 +91,11 @@ class Client(object):
         logger.debug(f"client.__exec: {cmd}")
         if adb_bin is None:
             adb_bin = self.adb_bin
-        subprocess.run([adb_bin, cmd], check=True)
+        subprocess.run(
+            [adb_bin, cmd],
+            check=True,
+            creationflags=subprocess.CREATE_NO_WINDOW if __system__ == "windows" else 0,
+        )
 
     def __run(self, cmd: str, restart: bool = True) -> Optional[bytes]:
         """run command with Session"""

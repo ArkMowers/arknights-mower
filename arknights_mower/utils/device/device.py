@@ -8,7 +8,7 @@ from typing import Optional
 import cv2
 import numpy as np
 
-from arknights_mower import __rootdir__
+from arknights_mower import __rootdir__, __system__
 from arknights_mower.utils.device.adb_client.session import Session
 from arknights_mower.utils.image import bytes2img
 from arknights_mower.utils.network import get_new_port, is_port_in_use
@@ -215,7 +215,13 @@ class Device(object):
             command = config.conf["custom_screenshot"]["command"]
             while True:
                 try:
-                    data = subprocess.check_output(command, shell=True)
+                    data = subprocess.check_output(
+                        command,
+                        shell=True,
+                        creationflags=subprocess.CREATE_NO_WINDOW
+                        if __system__ == "windows"
+                        else 0,
+                    )
                     break
                 except Exception:
                     restart_simulator()

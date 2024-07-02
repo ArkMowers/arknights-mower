@@ -17,6 +17,7 @@ from flask_sock import Sock
 from tzlocal import get_localzone
 from werkzeug.exceptions import NotFound
 
+from arknights_mower import __system__
 from arknights_mower.utils import config
 from arknights_mower.utils.conf import load_conf, load_plan, save_conf, write_plan
 from arknights_mower.utils.log import logger
@@ -495,15 +496,20 @@ def test_email():
 @app.route("/test-custom-screenshot")
 @require_token
 def test_custom_screenshot():
+    import base64
+    import subprocess
+
     import cv2
     import numpy as np
-    import subprocess
-    import base64
 
     command = config.conf["custom_screenshot"]["command"]
 
     start = time.time()
-    data = subprocess.check_output(command, shell=True)
+    data = subprocess.check_output(
+        command,
+        shell=True,
+        creationflags=subprocess.CREATE_NO_WINDOW if __system__ == "windows" else 0,
+    )
     end = time.time()
     elapsed = int((end - start) * 1000)
 
