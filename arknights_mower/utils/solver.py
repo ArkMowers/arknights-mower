@@ -554,8 +554,6 @@ class BaseSolver:
                     self.tap((960, 740))
                 elif scene == Scene.LOGIN_CADPA_DETAIL:
                     self.back(2)
-                elif scene == Scene.NETWORK_CHECK:
-                    self.tap_element("double_confirm", 0.2)
                 elif scene == Scene.UNKNOWN:
                     raise RecognizeError("Unknown scene")
                 else:
@@ -622,10 +620,15 @@ class BaseSolver:
                     self.tap((self.recog.w // 2, 10))
                 elif scene == Scene.OPERATOR_ELIMINATE_FINISH:
                     self.tap((self.recog.w // 2, 10))
-                elif scene == Scene.DOUBLE_CONFIRM:
-                    self.tap_element("double_confirm", 0.8)
-                elif scene == Scene.NETWORK_CHECK:
-                    self.tap_element("double_confirm", 0.2)
+                elif scene in [
+                    Scene.DOUBLE_CONFIRM,
+                    Scene.EXIT_GAME,
+                    Scene.BACK_TO_FRIEND_LIST,
+                    Scene.OPERATOR_GIVEUP,
+                    Scene.LEAVE_INFRASTRUCTURE,
+                    Scene.REFRESH_TAGS,
+                ]:
+                    self.tap_element("double_confirm/main", x_rate=1)
                 elif scene == Scene.RECRUIT_AGENT:
                     self.tap((self.recog.w // 2, self.recog.h // 2))
                 elif scene == Scene.MAIL:

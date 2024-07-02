@@ -49,6 +49,43 @@ def back_to_index(solver: BaseSolver):
     solver.back()
 
 
+@edge(Scene.LEAVE_INFRASTRUCTURE, Scene.INDEX)
+def leave_infrastructure(solver: BaseSolver):
+    solver.tap_element("double_confirm/main", x_rate=1)
+
+
+@edge(Scene.LOGIN_QUICKLY, Scene.INDEX)
+def login_quickly(solver: BaseSolver):
+    solver.tap_element("login_awake")
+
+
+@edge(Scene.LOGIN_CAPTCHA, Scene.INDEX)
+def login_captcha(solver: BaseSolver):
+    solver.solve_captcha()
+    solver.sleep(5)
+
+
+@edge(Scene.LOGIN_BILIBILI, Scene.INDEX)
+@edge(Scene.LOGIN_BILIBILI_PRIVACY, Scene.INDEX)
+def login_bilibili(solver: BaseSolver):
+    solver.bilibili()
+
+
+@edge(Scene.EXIT_GAME, Scene.INDEX)
+def exit_cancel(solver: BaseSolver):
+    solver.tap_element("double_confirm/main", x_rate=0)
+
+
+@edge(Scene.MATERIEL, Scene.INDEX)
+def materiel(solver: BaseSolver):
+    solver.tap((960, 960))
+
+
+@edge(Scene.ANNOUNCEMENT, Scene.INDEX)
+def announcement(solver: BaseSolver):
+    solver.tap(solver.recog.check_announcement())
+
+
 @edge(Scene.INDEX, Scene.INFRA_MAIN)
 def index_to_infra(solver: BaseSolver):
     solver.tap_index_element("infrastructure")
@@ -99,6 +136,7 @@ def index_to_headhunting(solver: BaseSolver):
 
 @edge(Scene.INFRA_MAIN, Scene.NAVIGATION_BAR)
 @edge(Scene.RECRUIT_MAIN, Scene.NAVIGATION_BAR)
+@edge(Scene.RECRUIT_TAGS, Scene.NAVIGATION_BAR)
 @edge(Scene.MISSION_DAILY, Scene.NAVIGATION_BAR)
 @edge(Scene.MISSION_WEEKLY, Scene.NAVIGATION_BAR)
 @edge(Scene.MISSION_TRAINEE, Scene.NAVIGATION_BAR)
@@ -199,9 +237,14 @@ def friend_list_on(solver: BaseSolver):
     solver.tap_element("friend_list")
 
 
-@edge(Scene.FRIEND_VISITING, Scene.FRIEND_LIST_OFF, interval=3)
+@edge(Scene.FRIEND_VISITING, Scene.BACK_TO_FRIEND_LIST)
 def friend_visiting_back(solver: BaseSolver):
     solver.back()
+
+
+@edge(Scene.BACK_TO_FRIEND_LIST, Scene.FRIEND_LIST_OFF)
+def back_to_friend_confirm(solver: BaseSolver):
+    solver.tap_element("double_confirm/main", x_rate=1)
 
 
 # 作战
@@ -238,9 +281,20 @@ def operation_back(solver: BaseSolver):
     solver.back()
 
 
+@edge(Scene.OPERATOR_GIVEUP, Scene.OPERATOR_FAILED)
+def operation_give_up(solver: BaseSolver):
+    solver.tap_element("double_confirm/main", x_rate=1)
+
+
 @edge(Scene.OPERATOR_FINISH, Scene.OPERATOR_BEFORE)
+@edge(Scene.OPERATOR_FAILED, Scene.OPERATOR_BEFORE)
 def operation_finish(solver: BaseSolver):
     solver.tap((310, 330))
+
+
+@edge(Scene.UPGRADE, Scene.OPERATOR_FINISH)
+def upgrade(solver: BaseSolver):
+    solver.tap((960, 540))
 
 
 # 基建
@@ -293,23 +347,22 @@ def control_central(solver: BaseSolver):
     solver.tap_element("control_central")
 
 
-# 其它场景
+# 公招
 
 
-@edge(Scene.MATERIEL, Scene.INDEX)
-def materiel(solver: BaseSolver):
-    solver.tap((960, 960))
-
-
-@edge(Scene.ANNOUNCEMENT, Scene.INDEX)
-def announcement(solver: BaseSolver):
-    solver.tap(solver.recog.check_announcement())
-
-
-@edge(Scene.UPGRADE, Scene.OPERATOR_FINISH)
 @edge(Scene.RECRUIT_AGENT, Scene.RECRUIT_MAIN)
-def upgrade(solver: BaseSolver):
+def recruit_result(solver: BaseSolver):
     solver.tap((960, 540))
+
+
+@edge(Scene.REFRESH_TAGS, Scene.RECRUIT_TAGS)
+def refresh_cancel(solver: BaseSolver):
+    solver.tap_element("double_confirm/main", x_rate=0)
+
+
+@edge(Scene.RECRUIT_TAGS, Scene.RECRUIT_MAIN)
+def recruit_back(solver: BaseSolver):
+    solver.back()
 
 
 @edge(Scene.SKIP, Scene.RECRUIT_AGENT)
@@ -317,14 +370,7 @@ def skip(solver: BaseSolver):
     solver.tap_element("skip")
 
 
-@edge(Scene.DOUBLE_CONFIRM, Scene.FRIEND_LIST_OFF)
-def double_confirm(solver: BaseSolver):
-    solver.tap_element("double_confirm", x_rate=0.75)
-
-
-@edge(Scene.LOGIN_QUICKLY, Scene.INDEX)
-def login_quickly(solver: BaseSolver):
-    solver.tap_element("login_awake")
+# 其它场景
 
 
 @edge(Scene.LOGIN_START, Scene.LOGIN_QUICKLY)
@@ -332,21 +378,14 @@ def login_start(solver: BaseSolver):
     solver.tap((665, 741))
 
 
-@edge(Scene.LOGIN_CAPTCHA, Scene.INDEX)
-def login_captcha(solver: BaseSolver):
-    solver.solve_captcha()
-    solver.sleep(5)
-
-
 @edge(Scene.CONFIRM, Scene.LOGIN_START)
 def confirm(solver: BaseSolver):
     solver.tap_element("confirm")
 
 
-@edge(Scene.LOGIN_BILIBILI, Scene.INDEX)
-@edge(Scene.LOGIN_BILIBILI_PRIVACY, Scene.INDEX)
-def login_bilibili(solver: BaseSolver):
-    solver.bilibili()
+@edge(Scene.NETWORK_CHECK, Scene.LOGIN_START)
+def network_check_cancel(solver: BaseSolver):
+    solver.tap_element("confirm")
 
 
 class SceneGraphSolver(BaseSolver):

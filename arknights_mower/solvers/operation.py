@@ -68,8 +68,15 @@ class OperationSolver(SceneGraphSolver):
         elif scene == Scene.OPERATOR_FINISH:
             # TODO: 掉落识别
             self.tap((310, 330))
+        elif scene == Scene.OPERATOR_FAILED:
+            self.tap((310, 330))
         elif scene == Scene.OPERATOR_ONGOING:
-            self.sleep(10)
+            if self.find("ope_agency_fail"):
+                self.tap((121, 79))
+            else:
+                self.sleep(10)
+        elif scene == Scene.OPERATOR_GIVEUP:
+            self.tap_element("double_confirm/main", x_rate=1)
         elif scene == Scene.OPERATOR_RECOVER_POTION:
             if config.conf["maa_expiring_medicine"]:
                 img = cropimg(self.recog.img, ((1015, 515), (1170, 560)))
