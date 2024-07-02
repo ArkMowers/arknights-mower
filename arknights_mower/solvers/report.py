@@ -18,11 +18,11 @@ from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
-from arknights_mower.utils.recognize import Recognizer, Scene
+from arknights_mower.utils.recognize import Recognizer, Scene, tp
 from arknights_mower.utils.vector import va
 
 number = {}
-with lzma.open(f"{__rootdir__}/models/report.pkl", "rb") as f:
+with lzma.open(f"{__rootdir__}/models/noto_sans.pkl", "rb") as f:
     number = pickle.load(f)
 
 
@@ -79,7 +79,7 @@ class ReportSolver(SceneGraphSolver):
     def transition(self) -> bool:
         if (scene := self.scene()) == Scene.RIIC_REPORT:
             return self.read_report()
-        elif scene in [Scene.UNKNOWN, Scene.LOADING, Scene.CONNECTING, Scene.RIIC_REPORT_LOADING]:
+        elif scene in [Scene.UNKNOWN, Scene.LOADING, Scene.CONNECTING]:
             self.waiting_solver(scene, sleep_time=1)
         else:
             self.scene_graph_navigation(Scene.RIIC_REPORT)
@@ -87,15 +87,9 @@ class ReportSolver(SceneGraphSolver):
     def read_report(self):
         if self.find("riic/manufacture"):
             try:
-                self.manu_pt = self.find("riic/manufacture")
-                self.trade_pt = self.find("riic/trade")
-                self.assist_pt = self.find("riic/assistants")
-
-                self.crop_report("iron")
-                self.crop_report("exp")
-                self.crop_report("iron_order")
-                self.crop_report("orundum")
-                self.record_report()
+                self.crop_report()
+                logger.info(self.report_res)
+                # self.record_report()
             except Exception as e:
                 logger.info("基报读取失败:{}".format(e))
             return True
@@ -149,57 +143,52 @@ class ReportSolver(SceneGraphSolver):
         except pd.errors.EmptyDataError:
             return False
 
-    def crop_report(self, type: str):
+    def crop_report(self):
+        exp_area = [[1625, 200], [1800, 230]]
+        iron_pos = self.find("riic/iron")
+        iron_area = [
+            [iron_pos[1][0], iron_pos[0][1]],
+            [1800, iron_pos[1][1]],
+        ]
+        trade_pt = self.find("riic/trade")
+        assist_pt = self.find("riic/assistants")
         area = {
-            "iron_order": [[self.trade_pt[1][0], self.trade_pt[1][1]], [1920, int(self.assist_pt[0][1] - 50)]],
-            "orundum": [[self.trade_pt[1][0], self.trade_pt[1][1] + 45], [1920, int(self.assist_pt[0][1])]],
+            "iron_order": [[1620, trade_pt[1][1] + 10], [1740, int(assist_pt[0][1] - 50)]],
+            "iron_order_number": [[1820, trade_pt[1][1] + 10], [1870, int(assist_pt[0][1] - 65)]],
+            "orundum": [[1620, trade_pt[1][1] + 45], [1870, int(assist_pt[0][1])]],
+            "orundum_number": [[1820, trade_pt[1][1] + 55], [1860, int(assist_pt[0][1] - 20)]],
         }
-        if type in ["iron", "exp"]:
-            pt_0 = self.find(f"riic/{type}")
-            pt_1 = self.find(f"riic/{type}_text")
-            scope = [[pt_0[1][0], pt_0[0][1]], [pt_1[0][0], pt_1[1][1]]]
-            if type in ["iron"]:
-                self.report_res["赤金"] = self.get_number(cropimg(self.recog.gray, scope))
-            elif type in ["exp"]:
-                self.report_res["作战录像"] = self.get_number(cropimg(self.recog.gray, scope))
-        elif type in ["iron_order", "orundum"]:
-            logger.debug(f"{type} reading")
-            pt_0 = self.find(f"riic/{type}")
 
-            pt_order = []
-            res_order = loadres("riic/order", True)
-            w, h = res_order.shape
-            img = cropimg(self.recog.gray, area[type])
-            result = cv2.matchTemplate(img, res_order, cv2.TM_CCOEFF_NORMED)
-            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-            top_left = va(max_loc, area[type][0])
-            print(f"{top_left=} {max_val=}")
-            if max_val >= 0.7:
-                pt_order = [top_left, va(top_left, (w, h + 5))]
-            logger.debug(f"pt_order value:{pt_order} ")
-            scope_1 = [[pt_0[1][0], pt_0[0][1]], [pt_order[0][0], pt_0[1][1]]]
-            scope_2 = [[pt_order[1][0], pt_order[0][1]], [1900, pt_order[1][1]]]
+        img = cv2.cvtColor(self.recog.img, cv2.COLOR_RGB2HSV)
+        img = cv2.inRange(img, (98, 0, 150), (102, 255, 255))
+        self.report_res["作战录像"] = self.get_number(img, exp_area, height=19)
+        self.report_res["赤金"] = self.get_number(img, iron_area, height=19)
+        self.report_res["龙门币订单"] = self.get_number(img, area["iron_order"], height=19)
+        self.report_res["合成玉"] = self.get_number(img, area["orundum"], height=19)
+        logger.info("蓝字读取完成")
 
-            if type in ["iron_order"]:
-                self.report_res["龙门币订单"] = self.get_number(cropimg(self.recog.gray, scope_1))
-                self.report_res["龙门币订单数"] = self.get_number(cropimg(self.recog.gray, scope_2))
-            elif type in ["orundum"]:
-                self.report_res["合成玉"] = self.get_number(cropimg(self.recog.gray, scope_1))
-                self.report_res["合成玉订单数量"] = self.get_number(cropimg(self.recog.gray, scope_2))
-        # #return cropimg(recog.gray,area[type])
+        img = cv2.cvtColor(self.recog.img, cv2.COLOR_RGB2HSV)
+        img = cv2.inRange(img, (0, 0, 50), (100, 100, 170))
+        self.report_res["龙门币订单数"] = self.get_number(img, area["iron_order_number"], height=19, thres=200)
+        self.report_res["合成玉订单数量"] = self.get_number(img, area["orundum_number"], height=19, thres=200)
+        logger.info("订单数读取完成")
 
-    def get_number(self, img):
-        thres = 100
+    def get_number(self, img, scope: tp.Scope, height: int | None = 18, thres: int | None = 100):
+        img = cropimg(img, scope)
+
+        default_height = 29
+        if height and height != default_height:
+            scale = default_height / height
+            img = cv2.resize(img, None, None, scale, scale)
         img = thres2(img, thres)
         contours, _ = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         rect = [cv2.boundingRect(c) for c in contours]
         rect.sort(key=lambda c: c[0])
-
         value = 0
-
         for x, y, w, h in rect:
             digit = cropimg(img, ((x, y), (x + w, y + h)))
             digit = cv2.copyMakeBorder(digit, 10, 10, 10, 10, cv2.BORDER_CONSTANT, None, (0,))
+
             score = []
             for i in range(10):
                 im = number[i]
@@ -207,6 +196,7 @@ class ReportSolver(SceneGraphSolver):
                 min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
                 score.append(min_val)
             value = value * 10 + score.index(min(score))
+
         return value
 
 

@@ -663,6 +663,7 @@ class Recognizer(object):
             "open_recruitment": (192, 143),
             "order_label": (404, 137),
             "recruiting_instructions": (343, 179),
+            "riic/exp": (1385, 239),
             "riic/manufacture": (1328, 126),
             "riic/report_title": (1712, 25),
             "spent_credit": (332, 264),
@@ -725,11 +726,7 @@ class Recognizer(object):
             "ope_plan": (1278, 24),
             "riic/trade": ((1320, 250), (1600, 500)),
             "riic/assistants": ((1320, 400), (1600, 650)),
-            "riic/exp": ((1500, 180), (1800, 400)),
-            "riic/exp_text": ((1500, 180), (1800, 400)),
-            "riic/iron": ((1500, 180), (1800, 400)),
-            "riic/iron_text": ((1500, 180), (1800, 400)),
-            "riic/iron_order": ((1500, 320), (1800, 550)),
+            "riic/iron": ((1570, 230), (1630, 340)),
             "riic/orundum": ((1500, 320), (1800, 550)),
         }
 
