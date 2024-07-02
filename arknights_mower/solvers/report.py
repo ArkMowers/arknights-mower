@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import datetime
+import lzma
 import os
+import pickle
 import time
 
 import cv2
@@ -13,9 +15,15 @@ from arknights_mower.utils.device import Device
 from arknights_mower.utils.digit_reader import DigitReader
 from arknights_mower.utils.email import report_template
 from arknights_mower.utils.graph import SceneGraphSolver
+from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
-from arknights_mower.utils.recognize import Recognizer, Scene
+from arknights_mower.utils.recognize import Recognizer, Scene, tp
+from arknights_mower.utils.vector import va
+
+number = {}
+with lzma.open(f"{__rootdir__}/models/noto_sans.pkl", "rb") as f:
+    number = pickle.load(f)
 
 
 def remove_blank(target: str):
@@ -40,9 +48,7 @@ class ReportSolver(SceneGraphSolver):
         self.record_path = get_path("@app/tmp/report.csv")
         self.low_range_gray = (100, 100, 100)
         self.high_range_gray = (255, 255, 255)
-        self.date = (
-            (datetime.datetime.now() - datetime.timedelta(hours=4)).date().__str__()
-        )
+        self.date = (datetime.datetime.now() - datetime.timedelta(hours=4)).date().__str__()
         self.digitReader = DigitReader()
         self.send_message_config = send_message_config
         self.send_report = send_report
@@ -54,7 +60,7 @@ class ReportSolver(SceneGraphSolver):
             "合成玉": None,
             "合成玉订单数量": None,
         }
-        self.reload_time = 1
+        self.reload_time = 0
 
     def run(self):
         if self.has_record():
@@ -72,9 +78,6 @@ class ReportSolver(SceneGraphSolver):
 
     def transition(self) -> bool:
         if (scene := self.scene()) == Scene.RIIC_REPORT:
-            logger.info("看到基报辣")
-            if self.reload_time > 4:
-                raise RuntimeError("基报不存在")
             return self.read_report()
         elif scene in self.waiting_scene:
             self.waiting_solver()
@@ -82,75 +85,21 @@ class ReportSolver(SceneGraphSolver):
             self.scene_graph_navigation(Scene.RIIC_REPORT)
 
     def read_report(self):
-        if not self.locate_report(
-            self.recog.img[0:1080, 1280:1920], "riic_manufacture"
-        ):
-            logger.info("基报未加载完全")
-            time.sleep(self.reload_time)
-            self.reload_time = self.reload_time + 1
-            return False
-        try:
-            img = cv2.cvtColor(self.recog.img[0:1080, 1280:1920], cv2.COLOR_BGR2RGB)
-            p0, p1 = self.locate_report(img, "riic_exp")
-            p2, p3 = self.locate_report(img, "riic_exp_text")
-            self.report_res["作战录像"] = self.digitReader.get_report_number(
-                img[p2[1] : p1[1], p1[0] : p2[0]]
-            )
-
-            p0, p1 = self.locate_report(img, "riic_iron")
-            p2, p3 = self.locate_report(img, "riic_iron_text")
-            self.report_res["赤金"] = self.digitReader.get_report_number(
-                img[p2[1] : p1[1], p1[0] : p2[0]]
-            )
-
-            p0, p1 = self.locate_report(img, "riic_iron_order")
-            p2, p3 = self.locate_report(img, "riic_order")
-            self.report_res["龙门币订单"] = self.digitReader.get_report_number(
-                img[p2[1] : p1[1], p1[0] : p2[0]]
-            )
-            self.report_res["龙门币订单数"] = self.digitReader.get_report_number_white(
-                img[p2[1] : p3[1], p3[0] : img.shape[1] - 20]
-            )
-
-            img = img[p3[1] : img.shape[0], 0 : img.shape[1] - 20]
-            p0, p1 = self.locate_report(img, "riic_orundum")
-            p2, p3 = self.locate_report(img, "riic_order")
-            self.report_res["合成玉"] = self.digitReader.get_report_number(
-                img[p2[1] : p1[1], p1[0] : p2[0]]
-            )
-            self.report_res["合成玉订单数量"] = (
-                self.digitReader.get_report_number_white(
-                    img[p2[1] : p3[1], p3[0] : img.shape[1]]
-                )
-            )
-
-            self.record_report()
-        except Exception as e:
-            logger.info("基报读取失败:{}".format(e))
-        return True
-
-    def locate_report(self, img, template_name):
-        try:
-            template_path = "{}/resources/{}.png".format(__rootdir__, template_name)
-            logger.debug(
-                "待匹配模板图片{}的路径为{}".format(template_name, template_path)
-            )
-            template = cv2.imdecode(
-                np.fromfile(template_path.__str__(), dtype=np.uint8), cv2.IMREAD_COLOR
-            )
-            logger.debug("待匹配模板图片{}读取成功".format(template_name))
-            res = cv2.matchTemplate(img, template, cv2.TM_CCOEFF_NORMED)
-            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
-            h, w = template.shape[:-1]
-            top_left = max_loc
-            logger.debug("{}的max_val:{}".format(template_name, max_val))
-            bottom_right = (top_left[0] + w, top_left[1] + h)
-            if max_val > 0.7:
-                return top_left, bottom_right
-
-            raise RuntimeError("{}匹配失败".format(template_name))
-        except Exception as e:
-            logger.error("{}匹配失败:{}".format(template_name, e))
+        if self.find("riic/manufacture"):
+            try:
+                self.crop_report()
+                logger.info(self.report_res)
+                self.record_report()
+            except Exception as e:
+                logger.info("基报读取失败:{}".format(e))
+            return True
+        else:
+            if self.reload_time > 3:
+                logger.info("未加载出基报")
+                return True
+            self.reload_time += 1
+            self.sleep(1)
+            return
 
     def record_report(self):
         logger.info(f"存入{self.date}的数据{self.report_res}")
@@ -194,6 +143,62 @@ class ReportSolver(SceneGraphSolver):
             logger.info("report.csv正在被占用")
         except pd.errors.EmptyDataError:
             return False
+
+    def crop_report(self):
+        exp_area = [[1625, 200], [1800, 230]]
+        iron_pos = self.find("riic/iron")
+        iron_area = [
+            [iron_pos[1][0], iron_pos[0][1]],
+            [1800, iron_pos[1][1]],
+        ]
+        trade_pt = self.find("riic/trade")
+        assist_pt = self.find("riic/assistants")
+        area = {
+            "iron_order": [[1620, trade_pt[1][1] + 10], [1740, assist_pt[0][1] - 50]],
+            "iron_order_number": [[1820, trade_pt[1][1] + 10], [1870, assist_pt[0][1] - 65]],
+            "orundum": [[1620, trade_pt[1][1] + 45], [1870, assist_pt[0][1]]],
+            "orundum_number": [[1820, trade_pt[1][1] + 55], [1860, assist_pt[0][1] - 20]],
+        }
+
+        img = cv2.cvtColor(self.recog.img, cv2.COLOR_RGB2HSV)
+        img = cv2.inRange(img, (98, 0, 150), (102, 255, 255))
+        self.report_res["作战录像"] = self.get_number(img, exp_area, height=19)
+        self.report_res["赤金"] = self.get_number(img, iron_area, height=19)
+        self.report_res["龙门币订单"] = self.get_number(img, area["iron_order"], height=19)
+        self.report_res["合成玉"] = self.get_number(img, area["orundum"], height=19)
+        logger.info("蓝字读取完成")
+
+        img = cv2.cvtColor(self.recog.img, cv2.COLOR_RGB2HSV)
+        img = cv2.inRange(img, (0, 0, 50), (100, 100, 170))
+        self.report_res["龙门币订单数"] = self.get_number(img, area["iron_order_number"], height=19, thres=200)
+        self.report_res["合成玉订单数量"] = self.get_number(img, area["orundum_number"], height=19, thres=200)
+        logger.info("订单数读取完成")
+
+    def get_number(self, img, scope: tp.Scope, height: int | None = 18, thres: int | None = 100):
+        img = cropimg(img, scope)
+
+        default_height = 29
+        if height and height != default_height:
+            scale = default_height / height
+            img = cv2.resize(img, None, None, scale, scale)
+        img = thres2(img, thres)
+        contours, _ = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        rect = [cv2.boundingRect(c) for c in contours]
+        rect.sort(key=lambda c: c[0])
+        value = 0
+        for x, y, w, h in rect:
+            digit = cropimg(img, ((x, y), (x + w, y + h)))
+            digit = cv2.copyMakeBorder(digit, 10, 10, 10, 10, cv2.BORDER_CONSTANT, None, (0,))
+
+            score = []
+            for i in range(10):
+                im = number[i]
+                result = cv2.matchTemplate(digit, im, cv2.TM_SQDIFF_NORMED)
+                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+                score.append(min_val)
+            value = value * 10 + score.index(min(score))
+
+        return value
 
 
 def get_report_data():
