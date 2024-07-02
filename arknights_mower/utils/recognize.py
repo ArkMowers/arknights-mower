@@ -212,8 +212,18 @@ class Recognizer(object):
             self.scene = Scene.OPERATOR_RECOVER_POTION
         elif self.find("ope_recover_originite_on", scope=((1530, 120), (1850, 190))):
             self.scene = Scene.OPERATOR_RECOVER_ORIGINITE
-        elif self.find("double_confirm"):
-            if self.find("network_check"):
+        elif self.find("double_confirm/main"):
+            if self.find("double_confirm/exit"):
+                self.scene = Scene.EXIT_GAME
+            elif self.find("double_confirm/friend"):
+                self.scene = Scene.BACK_TO_FRIEND_LIST
+            elif self.find("double_confirm/give_up"):
+                self.scene = Scene.OPERATOR_GIVEUP
+            elif self.find("double_confirm/infrastructure"):
+                self.scene = Scene.LEAVE_INFRASTRUCTURE
+            elif self.find("double_confirm/recruit"):
+                self.scene = Scene.REFRESH_TAGS
+            elif self.find("double_confirm/network"):
                 self.scene = Scene.NETWORK_CHECK
             else:
                 self.scene = Scene.DOUBLE_CONFIRM
@@ -324,8 +334,6 @@ class Recognizer(object):
         # 没弄完的
         # elif self.find("ope_elimi_finished"):
         #     self.scene = Scene.OPERATOR_ELIMINATE_FINISH
-        # elif self.find("ope_giveup"):
-        #     self.scene = Scene.OPERATOR_GIVEUP
         # elif self.find("shop_assist"):
         #     self.scene = Scene.SHOP_ASSIST
 
@@ -637,7 +645,13 @@ class Recognizer(object):
             "confirm": (0, 683),
             "control_central_assistants": (39, 560),
             "depot": (0, 955),
-            "double_confirm": (0, 683),
+            "double_confirm/exit": (940, 464),
+            "double_confirm/friend": (978, 465),
+            "double_confirm/give_up": (574, 716),
+            "double_confirm/infrastructure": (1077, 435),
+            "double_confirm/main": (835, 683),
+            "double_confirm/network": (708, 435),
+            "double_confirm/recruit": (981, 464),
             "drone": (274, 437),
             "factory_collect": (1542, 886),
             "fight/refresh": (1639, 22),
@@ -666,7 +680,6 @@ class Recognizer(object):
             "navigation/collection/PR-C-1": (487, 586),
             "navigation/collection/PR-D-1": (516, 619),
             "navigation/record_restoration": (274, 970),
-            "network_check": (432, 433),
             "ope_agency_lock": (1565, 856),
             "ope_elimi_agency_confirm": (1554, 941),
             "ope_elimi_agency_panel": (1409, 612),

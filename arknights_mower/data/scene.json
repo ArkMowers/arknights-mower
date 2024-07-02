@@ -37,7 +37,7 @@
     },
     "8": {
         "label": "DOUBLE_CONFIRM",
-        "comment": "二次确认"
+        "comment": "二次确认（未知）"
     },
     "9": {
         "label": "CONNECTING",
@@ -46,6 +46,10 @@
     "10": {
         "label": "NETWORK_CHECK",
         "comment": "网络拨测"
+    },
+    "11": {
+        "label": "EXIT_GAME",
+        "comment": "退出游戏"
     },
     "101": {
         "label": "LOGIN_MAIN",
@@ -199,6 +203,10 @@
         "label": "FACTORY_ROOMS",
         "comment": "制造站设施列表"
     },
+    "224": {
+        "label": "LEAVE_INFRASTRUCTURE",
+        "comment": "离开基建"
+    },
     "301": {
         "label": "FRIEND_LIST_OFF",
         "comment": "好友列表（未选中）"
@@ -210,6 +218,10 @@
     "303": {
         "label": "FRIEND_VISITING",
         "comment": "基建内访问好友"
+    },
+    "304": {
+        "label": "BACK_TO_FRIEND_LIST",
+        "comment": "返回好友列表"
     },
     "401": {
         "label": "MISSION_DAILY",
@@ -297,7 +309,7 @@
     },
     "612": {
         "label": "OPERATOR_GIVEUP",
-        "comment": "代理失误"
+        "comment": "放弃行动"
     },
     "613": {
         "label": "OPERATOR_FAILED",
@@ -346,6 +358,10 @@
     "803": {
         "label": "RECRUIT_AGENT",
         "comment": "开包干员展示"
+    },
+    "804": {
+        "label": "REFRESH_TAGS",
+        "comment": "刷新词条"
     },
     "901": {
         "label": "RA_MAIN",
