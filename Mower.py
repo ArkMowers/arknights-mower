@@ -11,43 +11,42 @@ from arknights_mower.utils import config, rapidocr
 from arknights_mower.utils.simulator import restart_simulator
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.logic_expression import LogicExpression
+
 # 下面不能删除
 from arknights_mower.utils.operators import Operators, Operator, Dormitory
-from arknights_mower.utils.scheduler_task import SchedulerTask,TaskTypes
+from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
-send_message_config= {
+send_message_config = {
     # QQ邮箱通知配置
-    "email_config":{
+    "email_config": {
         # 发信账户
-        'account':"xxx@qq.com",
+        "account": "xxx@qq.com",
         # 在QQ邮箱“帐户设置-账户-开启SMTP服务”中，按照指示开启服务获得授权码
-        'pass_code':'xxx',
+        "pass_code": "xxx",
         # 收件人邮箱
-        'recipients':['任何邮箱'],
+        "recipients": ["任何邮箱"],
         # 是否启用邮件提醒
-        'mail_enable':False,
+        "mail_enable": False,
         # 邮件主题
-        'subject': '任务数据',
-        'custom_smtp_server':{
-            "enable":False
-        }
+        "subject": "任务数据",
+        "custom_smtp_server": {"enable": False},
     },
     # Server酱通知配置
-    "serverJang_push_config":{
+    "serverJang_push_config": {
         # 是否启用Server酱提示
         "server_push_enable": False,
         # Key值
-        "sendKey":'xxx'
-    }
+        "sendKey": "xxx",
+    },
 }
 maa_config = {
     "maa_enable": True,
     # 请设置为存放 dll 文件及资源的路径
-    "maa_path": 'F:\\MAA-v4.20.0-win-x64',
+    "maa_path": "F:\\MAA-v4.20.0-win-x64",
     # 请设置为存放 dll 文件及资源的路径
     "maa_adb_path": "F:\\MAA-v4.20.0-win-x64\\adb\\platform-tools\\adb.exe",
     # adb 地址
-    "maa_adb": ['127.0.0.1:16384'],
+    "maa_adb": ["127.0.0.1:16384"],
     # maa 运行的时间间隔，以小时计
     "maa_execution_gap": 4,
     # 以下配置，第一个设置为true的首先生效
@@ -70,7 +69,7 @@ maa_config = {
     "recruitment_permit": 30,
     "credit_fight": True,
     "recruitment_time": None,
-    'mall_ignore_when_full': True,
+    "mall_ignore_when_full": True,
     "touch_option": "maatouch",
     "conn_preset": "General",
     "rogue": {
@@ -82,19 +81,21 @@ maa_config = {
         "mode": 0,
         "investment_enabled": True,
         "stop_when_investment_full": False,
-        "refresh_trader_with_dice": True
+        "refresh_trader_with_dice": True,
     },
     "sleep_min": "",
     "sleep_max": "",
     "expiring_medicine": True,
-    "weekly_plan": [{"weekday": "周一", "stage": ['PR-A-2'], "medicine": 0},
-                    {"weekday": "周二", "stage": ['Annihilation', 'PR-B-2'], "medicine": 0},
-                    {"weekday": "周三", "stage": ['Annihilation', 'PR-D-2'], "medicine": 0},
-                    {"weekday": "周四", "stage": ['AP-5'], "medicine": 0},
-                    {"weekday": "周五", "stage": ['Annihilation', '1-7'], "medicine": 0},
-                    {"weekday": "周六", "stage": ['AP-5'], "medicine": 0},
-                    {"weekday": "周日", "stage": ['AP-5'], "medicine": 0}],
-    "eat_stone": False
+    "weekly_plan": [
+        {"weekday": "周一", "stage": ["PR-A-2"], "medicine": 0},
+        {"weekday": "周二", "stage": ["Annihilation", "PR-B-2"], "medicine": 0},
+        {"weekday": "周三", "stage": ["Annihilation", "PR-D-2"], "medicine": 0},
+        {"weekday": "周四", "stage": ["AP-5"], "medicine": 0},
+        {"weekday": "周五", "stage": ["Annihilation", "1-7"], "medicine": 0},
+        {"weekday": "周六", "stage": ["AP-5"], "medicine": 0},
+        {"weekday": "周日", "stage": ["AP-5"], "medicine": 0},
+    ],
+    "eat_stone": False,
 }
 recruit_config = {
     "recruit_enable": True,
@@ -114,7 +115,7 @@ simulator = {
     "index": 0,
     # 用于执行模拟器命令
     "simulator_folder": "D:\\Program Files\\Netease\\MuMuPlayer-12.0\\shell\\",
-    "wait_time":25
+    "wait_time": 25,
 }
 
 # --->>下面是配置信息
@@ -127,7 +128,7 @@ resting_threshold = 0.5
 
 # 跑单如果all in 贸易站则 不需要修改设置
 # 如果需要无人机加速其他房间则可以修改成房间名字如 'room_1_1'
-drone_room = 'room_1_2'
+drone_room = "room_1_2"
 
 # 设置成0，则不启动葛朗台跑单 设置成数字，单位为秒推荐10s
 run_order_buffer_time = 10
@@ -142,7 +143,7 @@ run_order_delay = 3.5
 reload_room = []
 
 # 基地数据json文件保存名
-state_file_name = 'state.json'
+state_file_name = "state.json"
 
 # 邮件时差调整
 timezone_offset = 0
@@ -160,7 +161,7 @@ plan_config = PlanConfig(
     free_blacklist=free_blacklist,
     resting_threshold=resting_threshold,
     run_order_buffer_time=run_order_buffer_time,
-    refresh_trading_config=plan["conf"]["refresh_trading"]
+    refresh_trading_config=plan["conf"]["refresh_trading"],
 )
 for room, obj in plan[plan["default"]].items():
     plan1[room] = [
@@ -173,35 +174,36 @@ plan["backup_plans"] = plan["backup_plans"]
 
 logger.debug(plan)
 
+
 def debuglog():
-    '''
+    """
     在屏幕上输出调试信息，方便调试和报错
-    '''
-    logger.handlers[0].setLevel('DEBUG')
+    """
+    logger.handlers[0].setLevel("DEBUG")
 
 
 def savelog():
-    '''
+    """
     指定日志和截屏的保存位置，方便调试和报错
     调试信息和截图默认保存在代码所在的目录下
-    '''
-    config.LOGFILE_PATH = './log1'
-    config.SCREENSHOT_PATH = './screenshot1'
+    """
+    config.LOGFILE_PATH = "./log1"
+    config.SCREENSHOT_PATH = "./screenshot1"
     config.SCREENSHOT_MAXNUM = 200
-    config.ADB_DEVICE = maa_config['maa_adb']
-    config.ADB_CONNECT = maa_config['maa_adb']
+    config.ADB_DEVICE = maa_config["maa_adb"]
+    config.ADB_CONNECT = maa_config["maa_adb"]
     config.MAX_RETRYTIME = 3
-    config.PASSWORD = '你的密码'
-    config.APPNAME = 'com.hypergryph.arknights'  # 官服
+    config.PASSWORD = "你的密码"
+    config.APPNAME = "com.hypergryph.arknights"  # 官服
     config.TAP_TO_LAUNCH["enable"] = False
     config.TAP_TO_LAUNCH["x"], config.TAP_TO_LAUNCH["y"] = 0, 0
     #  com.hypergryph.arknights.bilibili   # Bilibili 服
-    config.ADB_BINARY = ['F:\\MAA-v4.20.0-win-x64\\adb\\platform-tools\\adb.exe']
+    config.ADB_BINARY = ["F:\\MAA-v4.20.0-win-x64\\adb\\platform-tools\\adb.exe"]
     config.log_queue = None
     config.stop_mower = None
-    config.get_scene={"concurrent":False,"max_workers":99}
+    config.get_scene = {"concurrent": False, "max_workers": 99}
     config.conf = {"simulator": simulator}
-    config.droidcast= {"enable":False}
+    config.droidcast = {"enable": False}
     init_fhlr()
 
 
@@ -219,7 +221,7 @@ def initialize(tasks, scheduler=None):
         base_scheduler.current_base = {}
         base_scheduler.resting = []
         base_scheduler.tasks = tasks
-        base_scheduler.last_room = ''
+        base_scheduler.last_room = ""
         base_scheduler.MAA = None
         base_scheduler.send_message_config = send_message_config
         base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
@@ -236,7 +238,7 @@ def initialize(tasks, scheduler=None):
 
 
 def save_state():
-    with open(state_file_name, 'w') as f:
+    with open(state_file_name, "w") as f:
         if base_scheduler is not None and base_scheduler.op_data is not None:
             json.dump(vars(base_scheduler.op_data), f, default=str)
 
@@ -245,12 +247,12 @@ def load_state(base_scheduler):
     try:
         if not os.path.exists(state_file_name):
             return
-        with open(state_file_name, 'r') as f:
+        with open(state_file_name, "r") as f:
             state = json.load(f)
-        operators = {k: eval(v) for k, v in state['operators'].items()}
+        operators = {k: eval(v) for k, v in state["operators"].items()}
         for k, v in operators.items():
-            if not v.time_stamp == 'None':
-                v.time_stamp = datetime.strptime(v.time_stamp, '%Y-%m-%d %H:%M:%S.%f')
+            if not v.time_stamp == "None":
+                v.time_stamp = datetime.strptime(v.time_stamp, "%Y-%m-%d %H:%M:%S.%f")
             else:
                 v.time_stamp = None
         for k, v in operators.items():
@@ -262,31 +264,32 @@ def load_state(base_scheduler):
                 base_scheduler.op_data.operators[k].current_room = v.current_room
                 base_scheduler.op_data.operators[k].current_index = v.current_index
         # 复制缓存的宿舍数据
-        dorms = [eval(v) for v in state['dorm']]
+        dorms = [eval(v) for v in state["dorm"]]
         for v in dorms:
-            if not v.time == 'None':
-                v.time = datetime.strptime(v.time, '%Y-%m-%d %H:%M:%S.%f')
+            if not v.time == "None":
+                v.time = datetime.strptime(v.time, "%Y-%m-%d %H:%M:%S.%f")
             else:
                 v.time = None
         base_scheduler.op_data.dorm = dorms
         # 复制缓存的派对数据
-        if state['party_time'] is not None:
-            base_scheduler.party_time = datetime.strptime(state['party_time'], '%Y-%m-%d %H:%M:%S.%f')
-    except Exception as ex :
+        if state["party_time"] is not None:
+            base_scheduler.party_time = datetime.strptime(
+                state["party_time"], "%Y-%m-%d %H:%M:%S.%f"
+            )
+    except Exception as ex:
         logger.error(ex)
 
 
-
 def simulate():
-    '''
+    """
     具体调用方法可见各个函数的参数说明
-    '''
+    """
     global ope_list, base_scheduler
     # 第一次执行任务
     taskstr = "SchedulerTask(time='2023-09-12 21:35:43.278494',task_plan={},task_type=TaskTypes.MAA_MALL,meta_data='')"
     tasks = [eval(t) for t in taskstr.split("||")]
     for t in tasks:
-        t.time = datetime.strptime(t.time, '%Y-%m-%d %H:%M:%S.%f')
+        t.time = datetime.strptime(t.time, "%Y-%m-%d %H:%M:%S.%f")
     reconnect_max_tries = 10
     reconnect_tries = 0
     success = False
@@ -311,13 +314,17 @@ def simulate():
         return
     base_scheduler.op_data.first_init = False
     if len(base_scheduler.op_data.backup_plans) > 0:
-        conditions = base_scheduler.op_data.generate_conditions(len(base_scheduler.op_data.backup_plans))
+        conditions = base_scheduler.op_data.generate_conditions(
+            len(base_scheduler.op_data.backup_plans)
+        )
         for con in conditions:
             validation_msg = base_scheduler.op_data.swap_plan(con, True)
             if validation_msg is not None:
                 logger.error(f"替换排班验证错误：{validation_msg}, 附表条件为 {con}")
                 return
-        base_scheduler.op_data.swap_plan([False] * len(base_scheduler.op_data.backup_plans), True)
+        base_scheduler.op_data.swap_plan(
+            [False] * len(base_scheduler.op_data.backup_plans), True
+        )
     # 验证完排班表以后载入缓存数据加入
     load_state(base_scheduler)
     # 根据现有的缓存数据切换至对应附表
@@ -326,32 +333,42 @@ def simulate():
         try:
             if len(base_scheduler.tasks) > 0:
                 (base_scheduler.tasks.sort(key=lambda x: x.time, reverse=False))
-                sleep_time = (base_scheduler.tasks[0].time - datetime.now()).total_seconds()
-                logger.info('||'.join([str(t) for t in base_scheduler.tasks]))
+                sleep_time = (
+                    base_scheduler.tasks[0].time - datetime.now()
+                ).total_seconds()
+                logger.info("||".join([str(t) for t in base_scheduler.tasks]))
                 body = task_template.render(
-                    tasks=[
-                        obj.format(timezone_offset) for obj in base_scheduler.tasks
-                    ],
-                    base_scheduler=base_scheduler
+                    tasks=[obj.format(timezone_offset) for obj in base_scheduler.tasks],
+                    base_scheduler=base_scheduler,
                 )
                 base_scheduler.send_message(body, "", "html")
                 # 如果任务间隔时间超过9分钟则启动MAA
                 if sleep_time > 540:
-                    if base_scheduler.recruit_config['recruit_enable'] == 1:
+                    if base_scheduler.recruit_config["recruit_enable"] == 1:
                         base_scheduler.recruit_plan_solver()
                     base_scheduler.maa_plan_solver()
                 elif sleep_time > 0:
                     time.sleep(sleep_time)
-            if len(base_scheduler.tasks) > 0 and base_scheduler.tasks[0].type.value.split('_')[0] == 'maa':
-                base_scheduler.maa_plan_solver((base_scheduler.tasks[0].type.value.split('_')[1]).split(','),
-                                               one_time=True)
+            if (
+                len(base_scheduler.tasks) > 0
+                and base_scheduler.tasks[0].type.value.split("_")[0] == "maa"
+            ):
+                base_scheduler.maa_plan_solver(
+                    (base_scheduler.tasks[0].type.value.split("_")[1]).split(","),
+                    one_time=True,
+                )
                 continue
             base_scheduler.run()
             reconnect_tries = 0
-        except (ConnectionError, ConnectionAbortedError, AttributeError,RuntimeError) as e:
+        except (
+            ConnectionError,
+            ConnectionAbortedError,
+            AttributeError,
+            RuntimeError,
+        ) as e:
             reconnect_tries += 1
             if reconnect_tries < reconnect_max_tries:
-                logger.warning(f'连接端口断开....正在重连....')
+                logger.warning(f"连接端口断开....正在重连....")
                 connected = False
                 while not connected:
                     try:

@@ -17,7 +17,7 @@ from ..adb_client.socket import Socket
 from . import const
 from .control import ControlSender
 
-SCR_PATH = '/data/local/tmp/minitouch'
+SCR_PATH = "/data/local/tmp/minitouch"
 
 
 class Client:
@@ -81,23 +81,28 @@ class Client:
         """
         Start server and get the connection
         """
-        cmdline = f'CLASSPATH={SCR_PATH} app_process /data/local/tmp com.genymobile.scrcpy.Server 1.21 log_level=verbose control=true tunnel_forward=true'
+        cmdline = f"CLASSPATH={SCR_PATH} app_process /data/local/tmp com.genymobile.scrcpy.Server 1.21 log_level=verbose control=true tunnel_forward=true"
         if self.displayid is not None:
-            cmdline += f' display_id={self.displayid}'
+            cmdline += f" display_id={self.displayid}"
         self.__server_stream: Socket = self.client.stream_shell(cmdline)
         # Wait for server to start
         response = self.__server_stream.recv(100)
         logger.debug(response)
-        if b'[server]' not in response:
+        if b"[server]" not in response:
             raise ConnectionError(
-                'Failed to start scrcpy-server: ' + response.decode('utf-8', 'ignore'))
+                "Failed to start scrcpy-server: " + response.decode("utf-8", "ignore")
+            )
 
     def __deploy_server(self) -> None:
         """
         Deploy server to android device
         """
-        server_file_path = __rootdir__ / 'vendor' / \
-            'scrcpy-server-novideo' / 'scrcpy-server-novideo.jar'
+        server_file_path = (
+            __rootdir__
+            / "vendor"
+            / "scrcpy-server-novideo"
+            / "scrcpy-server-novideo.jar"
+        )
         server_buf = server_file_path.read_bytes()
         self.client.push(SCR_PATH, server_buf)
         self.__start_server()
@@ -108,26 +113,26 @@ class Client:
         This method will set: video_socket, control_socket, resolution variables
         """
         try:
-            self.__video_socket = self.client.stream('localabstract:scrcpy')
+            self.__video_socket = self.client.stream("localabstract:scrcpy")
         except socket.timeout:
-            raise ConnectionError('Failed to connect scrcpy-server')
+            raise ConnectionError("Failed to connect scrcpy-server")
 
         dummy_byte = self.__video_socket.recv(1)
-        if not len(dummy_byte) or dummy_byte != b'\x00':
-            raise ConnectionError('Did not receive Dummy Byte!')
+        if not len(dummy_byte) or dummy_byte != b"\x00":
+            raise ConnectionError("Did not receive Dummy Byte!")
 
         try:
-            self.control_socket = self.client.stream('localabstract:scrcpy')
+            self.control_socket = self.client.stream("localabstract:scrcpy")
         except socket.timeout:
-            raise ConnectionError('Failed to connect scrcpy-server')
+            raise ConnectionError("Failed to connect scrcpy-server")
 
-        self.device_name = self.__video_socket.recv(64).decode('utf-8')
-        self.device_name = self.device_name.rstrip('\x00')
+        self.device_name = self.__video_socket.recv(64).decode("utf-8")
+        self.device_name = self.device_name.rstrip("\x00")
         if not len(self.device_name):
-            raise ConnectionError('Did not receive Device Name!')
+            raise ConnectionError("Did not receive Device Name!")
 
         res = self.__video_socket.recv(4)
-        self.resolution = struct.unpack('>HH', res)
+        self.resolution = struct.unpack(">HH", res)
         # self.__video_socket.setblocking(False)
 
     def start(self) -> None:
@@ -143,13 +148,13 @@ class Client:
                 break
             except ConnectionError:
                 logger.debug(traceback.format_exc())
-                logger.warning('Failed to connect scrcpy-server.')
+                logger.warning("Failed to connect scrcpy-server.")
                 self.stop()
-                logger.warning('Try again in 10 seconds...')
+                logger.warning("Try again in 10 seconds...")
                 time.sleep(10)
                 try_count += 1
         else:
-            raise RuntimeError('Failed to connect scrcpy-server.')
+            raise RuntimeError("Failed to connect scrcpy-server.")
 
     def stop(self) -> None:
         """
@@ -166,7 +171,7 @@ class Client:
             self.__video_socket = None
 
     def check_adb_alive(self) -> bool:
-        """ check if adb server alive """
+        """check if adb server alive"""
         return self.client.check_server_alive()
 
     def stable(f):
@@ -184,7 +189,8 @@ class Client:
                     self.start()
                     try_count += 1
             else:
-                raise RuntimeError('Failed to start scrcpy-server.')
+                raise RuntimeError("Failed to start scrcpy-server.")
+
         return inner
 
     @stable
@@ -192,7 +198,17 @@ class Client:
         self.control.tap(x, y)
 
     @stable
-    def swipe(self, x0, y0, x1, y1, move_duraion: float = 1, hold_before_release: float = 0, fall: bool = True, lift: bool = True):
+    def swipe(
+        self,
+        x0,
+        y0,
+        x1,
+        y1,
+        move_duraion: float = 1,
+        hold_before_release: float = 0,
+        fall: bool = True,
+        lift: bool = True,
+    ):
         frame_time = 1 / 60
 
         start_time = time.perf_counter()
@@ -208,8 +224,11 @@ class Client:
                 break
             time_progress = (t0 - start_time) / move_duraion
             path_progress = time_progress
-            self.control.touch(int(x0 + (x1 - x0) * path_progress),
-                               int(y0 + (y1 - y0) * path_progress), const.ACTION_MOVE)
+            self.control.touch(
+                int(x0 + (x1 - x0) * path_progress),
+                int(y0 + (y1 - y0) * path_progress),
+                const.ACTION_MOVE,
+            )
             t1 = time.perf_counter()
             step_time = t1 - t0
             if step_time < frame_time:

@@ -4,7 +4,7 @@ import traceback
 from arknights_mower.__main__ import main
 from arknights_mower import __cli__
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     try:
         main(module=False)
     except Exception:
@@ -13,4 +13,4 @@ if __name__ == '__main__':
         pass
     finally:
         if not __cli__:
-            os.system('pause')
+            os.system("pause")

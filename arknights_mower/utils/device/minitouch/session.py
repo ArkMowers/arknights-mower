@@ -4,11 +4,11 @@ import socket
 
 from ...log import logger
 
-DEFAULT_HOST = '127.0.0.1'
+DEFAULT_HOST = "127.0.0.1"
 
 
 class Session(object):
-    """ manage socket connections between PC and Android """
+    """manage socket connections between PC and Android"""
 
     def __init__(self, port: int, buf_size: int = 0) -> None:
         self.port = port
@@ -23,20 +23,21 @@ class Session(object):
 
         # ^ <max-contacts> <max-x> <max-y> <max-pressure>
         _, max_contacts, max_x, max_y, max_pressure, *_ = (
-            socket_out.readline().strip().split(' '))
+            socket_out.readline().strip().split(" ")
+        )
         self.max_contacts = max_contacts
         self.max_x = max_x
         self.max_y = max_y
         self.max_pressure = max_pressure
 
         # $ <pid>
-        _, pid = socket_out.readline().strip().split(' ')
+        _, pid = socket_out.readline().strip().split(" ")
         self.pid = pid
 
+        logger.debug(f"minitouch running on port: {self.port}, pid: {self.pid}")
         logger.debug(
-            f'minitouch running on port: {self.port}, pid: {self.pid}')
-        logger.debug(
-            f'max_contact: {max_contacts}; max_x: {max_x}; max_y: {max_y}; max_pressure: {max_pressure}')
+            f"max_contact: {max_contacts}; max_x: {max_x}; max_y: {max_y}; max_pressure: {max_pressure}"
+        )
 
     def __enter__(self) -> Session:
         return self
@@ -48,11 +49,11 @@ class Session(object):
         self.close()
 
     def close(self) -> None:
-        """ cancel connection """
+        """cancel connection"""
         self.sock and self.sock.close()
         self.sock = None
 
     def send(self, content: str) -> bytes:
-        content = content.encode('utf8')
+        content = content.encode("utf8")
         self.sock.sendall(content)
         return self.sock.recv(self.buf_size)

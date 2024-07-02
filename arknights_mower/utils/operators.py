@@ -14,10 +14,10 @@ class SkillUpgradeSupport(object):
     add_on = False
     match = False
     use_booster = True
-    name = ''
-    swap_name = ''
+    name = ""
+    swap_name = ""
 
-    def __init__(self, name, skill_level, efficiency, match, swap_name='艾丽妮'):
+    def __init__(self, name, skill_level, efficiency, match, swap_name="艾丽妮"):
         self.name = name
         self.level = skill_level
         self.efficiency = efficiency
@@ -25,6 +25,7 @@ class SkillUpgradeSupport(object):
         if self.level > 1:
             self.half_off = True
         self.swap_name = swap_name
+
 
 class Operators(object):
     config = None
@@ -62,10 +63,18 @@ class Operators(object):
         self.eval_model = base_eval_model.clone()
         self.eval_model.nodes.extend(["Call", "Attribute"])
         self.eval_model.attributes.extend(
-            ["operators", "party_time", "is_working", "is_resting", "current_mood", "current_room"])
+            [
+                "operators",
+                "party_time",
+                "is_working",
+                "is_resting",
+                "current_mood",
+                "current_room",
+            ]
+        )
 
     def __repr__(self):
-        return f'Operators(operators={self.operators})'
+        return f"Operators(operators={self.operators})"
 
     def calculate_switch_time(self, support: SkillUpgradeSupport):
         hour = 0
@@ -141,51 +150,69 @@ class Operators(object):
         self.operators = {}
         for room in self.plan.keys():
             for idx, data in enumerate(self.plan[room]):
-                if data.agent not in agent_list and data.agent != 'Free':
-                    return f'干员名输入错误: 房间->{room}, 干员->{data.agent}'
-                if data.agent in ['龙舌兰', '但书']:
-                    return f'高效组不可用龙舌兰，但书 房间->{room}, 干员->{data.agent}'
-                if data.agent == '菲亚梅塔' and idx == 1:
-                    return f'菲亚梅塔不能安排在2号位置 房间->{room}, 干员->{data.agent}'
-                if data.agent == '菲亚梅塔' and not room.startswith('dorm'):
-                    return f'菲亚梅塔必须安排在宿舍'
-                if data.agent == 'Free' and not room.startswith('dorm'):
-                    return f'Free只能安排在宿舍 房间->{room}, 干员->{data.agent}'
+                if data.agent not in agent_list and data.agent != "Free":
+                    return f"干员名输入错误: 房间->{room}, 干员->{data.agent}"
+                if data.agent in ["龙舌兰", "但书"]:
+                    return f"高效组不可用龙舌兰，但书 房间->{room}, 干员->{data.agent}"
+                if data.agent == "菲亚梅塔" and idx == 1:
+                    return f"菲亚梅塔不能安排在2号位置 房间->{room}, 干员->{data.agent}"
+                if data.agent == "菲亚梅塔" and not room.startswith("dorm"):
+                    return f"菲亚梅塔必须安排在宿舍"
+                if data.agent == "Free" and not room.startswith("dorm"):
+                    return f"Free只能安排在宿舍 房间->{room}, 干员->{data.agent}"
                 if data.agent in self.operators and data.agent != "Free":
-                    return f'高效组干员不可重复 房间->{room},{self.operators[data.agent].room}, 干员->{data.agent}'
-                self.add(Operator(data.agent, room, idx, data.group, data.replacement, 'high',
-                                  operator_type="high"))
+                    return f"高效组干员不可重复 房间->{room},{self.operators[data.agent].room}, 干员->{data.agent}"
+                self.add(
+                    Operator(
+                        data.agent,
+                        room,
+                        idx,
+                        data.group,
+                        data.replacement,
+                        "high",
+                        operator_type="high",
+                    )
+                )
         missing_replacements = []
         for room in self.plan.keys():
             if room.startswith("dorm") and len(self.plan[room]) != 5:
-                return f'宿舍 {room} 人数少于5人'
+                return f"宿舍 {room} 人数少于5人"
             for idx, data in enumerate(self.plan[room]):
                 # 菲亚梅塔替换组做特例判断
                 if "龙舌兰" in data.replacement and "但书" in data.replacement:
-                    return f'替换组不可同时安排龙舌兰和但书 房间->{room}, 干员->{data.agent}'
+                    return f"替换组不可同时安排龙舌兰和但书 房间->{room}, 干员->{data.agent}"
                 if "菲亚梅塔" in data.replacement:
-                    return f'替换组不可安排菲亚梅塔 房间->{room}, 干员->{data.agent}'
+                    return f"替换组不可安排菲亚梅塔 房间->{room}, 干员->{data.agent}"
                 r_count = len(data.replacement)
                 if "龙舌兰" in data.replacement or "但书" in data.replacement:
                     r_count -= 1
-                if r_count <= 0 and ((data.agent != 'Free' and (not room.startswith("dorm"))) or data.agent == "菲亚梅塔"):
+                if r_count <= 0 and (
+                    (data.agent != "Free" and (not room.startswith("dorm")))
+                    or data.agent == "菲亚梅塔"
+                ):
                     missing_replacements.append(data.agent)
                 for _replacement in data.replacement:
-                    if _replacement not in agent_list and data.agent != 'Free':
-                        return f'干员名输入错误: 房间->{room}, 干员->{_replacement}'
-                    if data.agent != '菲亚梅塔':
+                    if _replacement not in agent_list and data.agent != "Free":
+                        return f"干员名输入错误: 房间->{room}, 干员->{_replacement}"
+                    if data.agent != "菲亚梅塔":
                         # 普通替换
-                        if _replacement in self.operators and self.operators[_replacement].is_high():
-                            return f'替换组不可用高效组干员: 房间->{room}, 干员->{_replacement}'
+                        if (
+                            _replacement in self.operators
+                            and self.operators[_replacement].is_high()
+                        ):
+                            return f"替换组不可用高效组干员: 房间->{room}, 干员->{_replacement}"
                         self.add(Operator(_replacement, ""))
                     else:
                         if _replacement not in self.operators:
-                            return f'菲亚梅塔替换不在高效组列: 房间->{room}, 干员->{_replacement}'
-                        if _replacement in self.operators and not self.operators[_replacement].is_high():
-                            return f'菲亚梅塔替换只能为高效组干员: 房间->{room}, 干员->{_replacement}'
+                            return f"菲亚梅塔替换不在高效组列: 房间->{room}, 干员->{_replacement}"
+                        if (
+                            _replacement in self.operators
+                            and not self.operators[_replacement].is_high()
+                        ):
+                            return f"菲亚梅塔替换只能为高效组干员: 房间->{room}, 干员->{_replacement}"
         # 判定替换缺失
         if "菲亚梅塔" in missing_replacements:
-            return f'菲亚梅塔替换缺失'
+            return f"菲亚梅塔替换缺失"
         if len(missing_replacements):
             return f'以下干员替换组缺失：{",".join(missing_replacements)}'
         dorm_names = [k for k in self.plan.keys() if k.startswith("dorm")]
@@ -196,23 +223,27 @@ class Operators(object):
             for dorm in dorm_names:
                 free_found = False
                 for _idx, _dorm in enumerate(self.plan[dorm]):
-                    if _dorm.agent == 'Free' and _idx <= 1:
+                    if _dorm.agent == "Free" and _idx <= 1:
                         if "波登可" not in [_agent.agent for _agent in self.plan[dorm]]:
-                            return f'宿舍必须安排2个宿管'
-                    if _dorm.agent != 'Free' and free_found:
-                        return f'Free必须连续且安排在宿管后'
-                    if _dorm.agent == 'Free' and not free_found and (dorm + str(_idx)) not in added and len(
-                            added) < self.config.max_resting_count:
+                            return f"宿舍必须安排2个宿管"
+                    if _dorm.agent != "Free" and free_found:
+                        return f"Free必须连续且安排在宿管后"
+                    if (
+                        _dorm.agent == "Free"
+                        and not free_found
+                        and (dorm + str(_idx)) not in added
+                        and len(added) < self.config.max_resting_count
+                    ):
                         self.dorm.append(Dormitory((dorm, _idx)))
                         added.append(dorm + str(_idx))
                         free_found = True
                         continue
                 if not free_found:
-                    return f'宿舍必须安排至少一个Free'
+                    return f"宿舍必须安排至少一个Free"
             # VIP休息位用完后横向遍历
             for dorm in dorm_names:
                 for _idx, _dorm in enumerate(self.plan[dorm]):
-                    if _dorm.agent == 'Free' and (dorm + str(_idx)) not in added:
+                    if _dorm.agent == "Free" and (dorm + str(_idx)) not in added:
                         self.dorm.append(Dormitory((dorm, _idx)))
                         added.append(dorm + str(_idx))
         else:
@@ -220,11 +251,14 @@ class Operators(object):
                 if key not in self.operators:
                     self.add(Operator(key, ""))
         if len(self.dorm) < self.config.max_resting_count:
-            return f'宿舍Free总数 {len(self.dorm)}小于最大分组数 {self.config.max_resting_count}'
+            return f"宿舍Free总数 {len(self.dorm)}小于最大分组数 {self.config.max_resting_count}"
         # 跑单
         for x, y in self.plan.items():
-            if not x.startswith('room'): continue
-            if any(('但书' in obj.replacement or '龙舌兰' in obj.replacement) for obj in y):
+            if not x.startswith("room"):
+                continue
+            if any(
+                ("但书" in obj.replacement or "龙舌兰" in obj.replacement) for obj in y
+            ):
                 self.run_order_rooms[x] = {}
         # 判定分组排班可能性
         current_high = self.config.max_resting_count
@@ -235,25 +269,31 @@ class Operators(object):
             _replacement = []
             for name in self.groups[key]:
                 _candidate = next(
-                    (r for r in self.operators[name].replacement if r not in _replacement and r not in ['龙舌兰', '但书']),
-                    None)
+                    (
+                        r
+                        for r in self.operators[name].replacement
+                        if r not in _replacement and r not in ["龙舌兰", "但书"]
+                    ),
+                    None,
+                )
                 if _candidate is None:
-                    return f'{key} 分组无法排班,替换组数量不够'
+                    return f"{key} 分组无法排班,替换组数量不够"
                 else:
                     _replacement.append(_candidate)
-                if self.operators[name].workaholic: continue
-                if self.operators[name].resting_priority == 'high':
+                if self.operators[name].workaholic:
+                    continue
+                if self.operators[name].resting_priority == "high":
                     high_count += 1
                 else:
                     low_count += 1
             if high_count > current_high or low_count > current_low:
-                return f'{key} 分组无法排班,宿舍可用高优先{current_high},低优先{current_low}->分组需要高优先{high_count},低优先{low_count}'
+                return f"{key} 分组无法排班,宿舍可用高优先{current_high},低优先{current_low}->分组需要高优先{high_count},低优先{low_count}"
         # 设定令夕模式的心情阈值
         self.init_mood_limit()
         for name in self.workaholic_agent:
             if name not in self.config.free_blacklist:
                 self.config.free_blacklist.append(name)
-        logger.info('宿舍黑名单：' + str(self.config.free_blacklist))
+        logger.info("宿舍黑名单：" + str(self.config.free_blacklist))
 
     def set_mood_limit(self, name, upper_limit=24, lower_limit=0):
         if name in self.operators:
@@ -264,19 +304,22 @@ class Operators(object):
     def init_mood_limit(self):
         # 设置心情阈值 for 夕，令，
         if self.config.ling_xi == 1:
-            self.set_mood_limit('令', upper_limit=12)
-            self.set_mood_limit('夕', lower_limit=12)
+            self.set_mood_limit("令", upper_limit=12)
+            self.set_mood_limit("夕", lower_limit=12)
         elif self.config.ling_xi == 2:
-            self.set_mood_limit('夕', upper_limit=12)
-            self.set_mood_limit('令', lower_limit=12)
+            self.set_mood_limit("夕", upper_limit=12)
+            self.set_mood_limit("令", lower_limit=12)
         elif self.config.ling_xi == 0:
-            self.set_mood_limit('夕')
-            self.set_mood_limit('令')
+            self.set_mood_limit("夕")
+            self.set_mood_limit("令")
         # 设置同组心情阈值
         finished = []
         for name in ["夕", "令"]:
-            if name in self.operators and self.operators[name].group != "" and self.operators[
-                name].group not in finished:
+            if (
+                name in self.operators
+                and self.operators[name].group != ""
+                and self.operators[name].group not in finished
+            ):
                 for group_name in self.groups[self.operators[name].group]:
                     if group_name not in ["夕", "令"]:
                         if self.config.ling_xi in [1, 2]:
@@ -293,8 +336,11 @@ class Operators(object):
         TOTTER = "铅踝"
         VERMEIL = "红云"
         if TOTTER in self.operators and self.operators[TOTTER].operator_type == "high":
-            if VERMEIL in self.operators and self.operators[VERMEIL].operator_type == "high" and self.operators[
-                VERMEIL].room == self.operators[TOTTER].room:
+            if (
+                VERMEIL in self.operators
+                and self.operators[VERMEIL].operator_type == "high"
+                and self.operators[VERMEIL].room == self.operators[TOTTER].room
+            ):
                 self.set_mood_limit(TOTTER, upper_limit=12, lower_limit=8)
             else:
                 self.set_mood_limit(TOTTER, upper_limit=24, lower_limit=20)
@@ -308,14 +354,18 @@ class Operators(object):
             return None
 
     def get_current_room(self, room, bypass=False, current_index=None):
-        room_data = {v.current_index: v for k, v in self.operators.items() if v.current_room == room}
+        room_data = {
+            v.current_index: v
+            for k, v in self.operators.items()
+            if v.current_room == room
+        }
         res = [obj.agent for obj in self.plan[room]]
         not_found = False
         for idx, op in enumerate(res):
             if idx in room_data:
                 res[idx] = room_data[idx].name
             else:
-                res[idx] = ''
+                res[idx] = ""
                 if current_index is not None and idx not in current_index:
                     continue
                 not_found = True
@@ -332,7 +382,10 @@ class Operators(object):
                 return False
         if recover_hours >= hours or 0 < recover_hours < 1:
             return True
-        operators.sort(key=lambda x: (x.mood - x.lower_limit) / (x.upper_limit - x.lower_limit), reverse=False)
+        operators.sort(
+            key=lambda x: (x.mood - x.lower_limit) / (x.upper_limit - x.lower_limit),
+            reverse=False,
+        )
         fia_mood = operators[0].mood
         operators[0].mood = 24
         return self.predict_fia(operators, fia_mood, hours - recover_hours)
@@ -348,33 +401,52 @@ class Operators(object):
         agent = self.operators[name]
         if update_time:
             if agent.time_stamp is not None and agent.mood > mood:
-                agent.depletion_rate = (agent.mood - mood) * 3600 / (
-                    (datetime.now() - agent.time_stamp).total_seconds())
+                agent.depletion_rate = (
+                    (agent.mood - mood)
+                    * 3600
+                    / ((datetime.now() - agent.time_stamp).total_seconds())
+                )
             agent.time_stamp = datetime.now()
         # 如果移出宿舍，则清除对应宿舍数据 且重新记录高效组心情（如果有备用班，则跳过高效组判定）
-        if agent.current_room.startswith('dorm') and not current_room.startswith('dorm') and (
-                agent.is_high() or self.backup_plans):
-            self.refresh_dorm_time(agent.current_room, agent.current_index, {'agent': ''})
+        if (
+            agent.current_room.startswith("dorm")
+            and not current_room.startswith("dorm")
+            and (agent.is_high() or self.backup_plans)
+        ):
+            self.refresh_dorm_time(
+                agent.current_room, agent.current_index, {"agent": ""}
+            )
             if update_time:
                 self.time_stamp = datetime.now()
             else:
                 self.time_stamp = None
             agent.depletion_rate = 0
-        if self.get_dorm_by_name(name)[0] is not None and not current_room.startswith('dorm') and (
-                agent.is_high() or self.backup_plans):
+        if (
+            self.get_dorm_by_name(name)[0] is not None
+            and not current_room.startswith("dorm")
+            and (agent.is_high() or self.backup_plans)
+        ):
             _dorm = self.get_dorm_by_name(name)[1]
-            _dorm.name = ''
+            _dorm.name = ""
             _dorm.time = None
         agent.current_room = current_room
         agent.current_index = current_index
         agent.mood = mood
         # 如果是高效组且没有记录时间，则返还index
-        if agent.current_room.startswith('dorm') and (agent.is_high() or self.backup_plans):
+        if agent.current_room.startswith("dorm") and (
+            agent.is_high() or self.backup_plans
+        ):
             for dorm in self.dorm:
-                if dorm.position[0] == current_room and dorm.position[1] == current_index and dorm.time is None:
+                if (
+                    dorm.position[0] == current_room
+                    and dorm.position[1] == current_index
+                    and dorm.time is None
+                ):
                     return current_index
         if agent.name == "菲亚梅塔" and (
-                self.operators["菲亚梅塔"].time_stamp is None or self.operators["菲亚梅塔"].time_stamp < datetime.now()):
+            self.operators["菲亚梅塔"].time_stamp is None
+            or self.operators["菲亚梅塔"].time_stamp < datetime.now()
+        ):
             return current_index
 
     def refresh_dorm_time(self, room, index, agent):
@@ -385,38 +457,51 @@ class Operators(object):
             if dorm.position[0] == room and dorm.position[1] == index:
                 # 如果人为高效组，则记录时间
                 _name = agent["agent"]
-                if _name in self.operators.keys() and (self.operators[_name].is_high() or self.config.free_room):
+                if _name in self.operators.keys() and (
+                    self.operators[_name].is_high() or self.config.free_room
+                ):
                     dorm.name = _name
                     _agent = self.operators[_name]
                     # 如果干员有心情上限，则按比例修改休息时间
                     if _agent.mood != 24:
-                        sec_remaining = (_agent.upper_limit - _agent.mood) * (
-                            (agent['time'] - _agent.time_stamp).total_seconds()) / (24 - _agent.mood)
+                        sec_remaining = (
+                            (_agent.upper_limit - _agent.mood)
+                            * ((agent["time"] - _agent.time_stamp).total_seconds())
+                            / (24 - _agent.mood)
+                        )
                         dorm.time = _agent.time_stamp + timedelta(seconds=sec_remaining)
                     else:
-                        dorm.time = agent['time']
+                        dorm.time = agent["time"]
                 elif _name in agent_list:
                     dorm.name = _name
-                    dorm.time = agent['time']
+                    dorm.time = agent["time"]
                 break
 
     def correct_dorm(self):
         for idx, dorm in enumerate(self.dorm):
             if dorm.name != "" and dorm.name in self.operators.keys():
                 op = self.operators[dorm.name]
-                if not (dorm.position[0] == op.current_room and dorm.position[1] == op.current_index):
+                if not (
+                    dorm.position[0] == op.current_room
+                    and dorm.position[1] == op.current_index
+                ):
                     self.dorm[idx].name = ""
                     self.dorm[idx].time = None
                 else:
-                    if self.dorm[idx].time is not None and self.dorm[idx].time < datetime.now():
+                    if (
+                        self.dorm[idx].time is not None
+                        and self.dorm[idx].time < datetime.now()
+                    ):
                         op.mood = op.upper_limit
                         op.time_stamp = self.dorm[idx].time
-                        logger.debug(f"检测到{op.name}心情恢复满，设置心情至{op.upper_limit}")
+                        logger.debug(
+                            f"检测到{op.name}心情恢复满，设置心情至{op.upper_limit}"
+                        )
 
     def get_train_support(self):
         for name in self.operators.keys():
             agent = self.operators[name]
-            if agent.current_room == 'train' and agent.current_index == 0:
+            if agent.current_room == "train" and agent.current_index == 0:
                 return agent.name
         return None
 
@@ -435,10 +520,10 @@ class Operators(object):
                         self.add(Operator(_name, ""))
                     if not self.config.free_room:
                         if self.operators[_name].is_high() and not self.operators[
-                            _name].room.startswith('dorm'):
+                            _name
+                        ].room.startswith("dorm"):
                             ret.append(i)
-                    elif not self.operators[
-                        _name].room.startswith('dorm'):
+                    elif not self.operators[_name].room.startswith("dorm"):
                         ret.append(i)
                 break
         return ret
@@ -470,10 +555,11 @@ class Operators(object):
             operator.current_index = exist.current_index
         self.operators[operator.name] = operator
         # 需要用尽心情干员逻辑
-        if (operator.exhaust_require or operator.group in self.exhaust_group) \
-                and operator.name not in self.exhaust_agent:
+        if (
+            operator.exhaust_require or operator.group in self.exhaust_group
+        ) and operator.name not in self.exhaust_agent:
             self.exhaust_agent.append(operator.name)
-            if operator.group != '':
+            if operator.group != "":
                 self.exhaust_group.append(operator.group)
         # 干员分组逻辑
         if operator.group != "":
@@ -484,13 +570,16 @@ class Operators(object):
         if operator.workaholic and operator.name not in self.workaholic_agent:
             self.workaholic_agent.append(operator.name)
 
-    def available_free(self, free_type='high'):
+    def available_free(self, free_type="high"):
         ret = 0
         freeName = []
-        if free_type == 'high':
+        if free_type == "high":
             idx = 0
             for dorm in self.dorm:
-                if dorm.name == '' or (dorm.name in self.operators.keys() and not self.operators[dorm.name].is_high()):
+                if dorm.name == "" or (
+                    dorm.name in self.operators.keys()
+                    and not self.operators[dorm.name].is_high()
+                ):
                     ret += 1
                 elif dorm.time is not None and dorm.time < datetime.now():
                     logger.info(f"检测到房间休息完毕，释放{dorm.name}宿舍位")
@@ -506,7 +595,10 @@ class Operators(object):
                 dorm = self.dorm[i]
                 # 释放满休息位
                 # TODO 高效组且低优先可以相互替换
-                if dorm.name == '' or (dorm.name in self.operators.keys() and not self.operators[dorm.name].is_high()):
+                if dorm.name == "" or (
+                    dorm.name in self.operators.keys()
+                    and not self.operators[dorm.name].is_high()
+                ):
                     ret += 1
                 elif dorm.time is not None and dorm.time < datetime.now():
                     logger.info(f"检测到房间休息完毕，释放{dorm.name}宿舍位")
@@ -521,15 +613,19 @@ class Operators(object):
         return ret
 
     def assign_dorm(self, name):
-        is_high = self.operators[name].resting_priority == 'high'
+        is_high = self.operators[name].resting_priority == "high"
         if is_high:
-            _room = next(obj for obj in self.dorm if
-                         obj.name not in self.operators.keys() or not self.operators[obj.name].is_high())
+            _room = next(
+                obj
+                for obj in self.dorm
+                if obj.name not in self.operators.keys()
+                or not self.operators[obj.name].is_high()
+            )
         else:
             _room = None
             for i in range(self.config.max_resting_count, len(self.dorm)):
                 _name = self.dorm[i].name
-                if _name == '' or not self.operators[_name].is_high():
+                if _name == "" or not self.operators[_name].is_high():
                     _room = self.dorm[i]
                     break
         _room.name = name
@@ -547,22 +643,23 @@ class Operators(object):
         dorm = []
         for k, v in self.operators.items():
             op.append("'" + k + "': " + str(vars(v)))
-        ret += "'operators': {" + ','.join(op) + "},"
+        ret += "'operators': {" + ",".join(op) + "},"
         for v in self.dorm:
             dorm.append(str(vars(v)))
-        ret += "'dorms': [" + ','.join(dorm) + "]}"
+        ret += "'dorms': [" + ",".join(dorm) + "]}"
         return ret
 
 
 class Dormitory(object):
-
-    def __init__(self, position, name='', time=None):
+    def __init__(self, position, name="", time=None):
         self.position = position
         self.name = name
         self.time = time
 
     def __repr__(self):
-        return f"Dormitory(position={self.position},name='{self.name}',time='{self.time}')"
+        return (
+            f"Dormitory(position={self.position},name='{self.name}',time='{self.time}')"
+        )
 
 
 class Operator(object):
@@ -571,10 +668,26 @@ class Operator(object):
     workaholic = False
     arrange_order = [2, "false"]
 
-    def __init__(self, name, room, index=-1, group='', replacement=[], resting_priority='low', current_room='',
-                 exhaust_require=False,
-                 mood=24, upper_limit=24, rest_in_full=False, current_index=-1, lower_limit=0, operator_type="low",
-                 depletion_rate=0, time_stamp=None, refresh_order_room=None):
+    def __init__(
+        self,
+        name,
+        room,
+        index=-1,
+        group="",
+        replacement=[],
+        resting_priority="low",
+        current_room="",
+        exhaust_require=False,
+        mood=24,
+        upper_limit=24,
+        rest_in_full=False,
+        current_index=-1,
+        lower_limit=0,
+        operator_type="low",
+        depletion_rate=0,
+        time_stamp=None,
+        refresh_order_room=None,
+    ):
         if refresh_order_room is not None:
             self.refresh_order_room = refresh_order_room
         self.refresh_order_room = [False, []]
@@ -608,7 +721,7 @@ class Operator(object):
                 Operators.current_room_changed_callback(self)
 
     def is_high(self):
-        return self.operator_type == 'high'
+        return self.operator_type == "high"
 
     def is_resting(self):
         return self.current_room.startswith("dorm")
@@ -618,29 +731,47 @@ class Operator(object):
 
     def need_to_refresh(self, h=2, r=""):
         # 是否需要读取心情
-        if self.time_stamp is None or (
-                self.time_stamp is not None and self.time_stamp + timedelta(hours=h) < datetime.now()) or (
-                r.startswith("dorm") and not self.room.startswith("dorm")):
+        if (
+            self.time_stamp is None
+            or (
+                self.time_stamp is not None
+                and self.time_stamp + timedelta(hours=h) < datetime.now()
+            )
+            or (r.startswith("dorm") and not self.room.startswith("dorm"))
+        ):
             return True
 
     def not_valid(self):
         if self.room == "train":
             return False
-        if self.operator_type == 'high':
+        if self.operator_type == "high":
             if self.workaholic:
-                return self.current_room != self.room or self.index != self.current_index
-            if not self.room.startswith("dorm") and self.current_room.startswith("dorm"):
+                return (
+                    self.current_room != self.room or self.index != self.current_index
+                )
+            if not self.room.startswith("dorm") and self.current_room.startswith(
+                "dorm"
+            ):
                 if self.mood == -1 or self.mood == 24:
                     return True
                 else:
                     return False
-            return self.need_to_refresh(2.5) or self.current_room != self.room or self.index != self.current_index
+            return (
+                self.need_to_refresh(2.5)
+                or self.current_room != self.room
+                or self.index != self.current_index
+            )
         return False
 
     def current_mood(self):
         predict = self.mood
         if self.time_stamp is not None:
-            predict = self.mood - self.depletion_rate * (datetime.now() - self.time_stamp).total_seconds() / 3600
+            predict = (
+                self.mood
+                - self.depletion_rate
+                * (datetime.now() - self.time_stamp).total_seconds()
+                / 3600
+            )
         if 0 <= predict <= 24:
             return predict
         else:

@@ -70,7 +70,7 @@ class Arknights数据处理器:
             干员技能字典 = {
                 "key": 0,
                 "name": "",
-                "span":0,
+                "span": 0,
                 "child_skill": [],
             }
 
@@ -115,14 +115,12 @@ class Arknights数据处理器:
                         干员技能详情["buffColor"] = buff_table[item2["buffId"]][5]
                         干员技能详情["textColor"] = buff_table[item2["buffId"]][6]
                         干员技能字典["child_skill"].append(干员技能详情)
-                        
+
                         干员技能详情 = []
-                    干员技能字典["span"]=len(干员技能字典["child_skill"])
+                    干员技能字典["span"] = len(干员技能字典["child_skill"])
                 skill_key += 1
             干员技能列表.append(干员技能字典.copy())
-        干员技能列表 = sorted(
-            干员技能列表, key=lambda x: (-x["key"])
-        )
+        干员技能列表 = sorted(干员技能列表, key=lambda x: (-x["key"]))
         # print(干员技能列表)
         with open(r".\ui\src\pages\skill.json", "w", encoding="utf-8") as f:
             json.dump(干员技能列表, f, ensure_ascii=False, indent=4)

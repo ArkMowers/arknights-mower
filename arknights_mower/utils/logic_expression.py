@@ -4,8 +4,7 @@ from arknights_mower.utils.datetime import the_same_time
 
 
 class LogicExpression:
-
-    def __init__(self, left=None, operator=None,right=None):
+    def __init__(self, left=None, operator=None, right=None):
         self.operator = operator
         self.left = left
         self.right = right

@@ -33,19 +33,42 @@ class TaskTypes(Enum):
         return obj
 
 
-def find_next_task(tasks, compare_time=None, task_type='', compare_type='<', meta_data=''):
-    if compare_type == '=':
-        return next((e for e in tasks if the_same_time(e.time, compare_time) and (
-            True if task_type == '' else task_type == e.type) and (
-                         True if meta_data == '' else meta_data in e.meta_data)), None)
-    elif compare_type == '>':
-        return next((e for e in tasks if (True if compare_time is None else e.time > compare_time) and (
-            True if task_type == '' else task_type == e.type) and (
-                         True if meta_data == '' else meta_data in e.meta_data)), None)
+def find_next_task(
+    tasks, compare_time=None, task_type="", compare_type="<", meta_data=""
+):
+    if compare_type == "=":
+        return next(
+            (
+                e
+                for e in tasks
+                if the_same_time(e.time, compare_time)
+                and (True if task_type == "" else task_type == e.type)
+                and (True if meta_data == "" else meta_data in e.meta_data)
+            ),
+            None,
+        )
+    elif compare_type == ">":
+        return next(
+            (
+                e
+                for e in tasks
+                if (True if compare_time is None else e.time > compare_time)
+                and (True if task_type == "" else task_type == e.type)
+                and (True if meta_data == "" else meta_data in e.meta_data)
+            ),
+            None,
+        )
     else:
-        return next((e for e in tasks if (True if compare_time is None else e.time < compare_time) and (
-            True if task_type == '' else task_type == e.type) and (
-                         True if meta_data == '' else meta_data in e.meta_data)), None)
+        return next(
+            (
+                e
+                for e in tasks
+                if (True if compare_time is None else e.time < compare_time)
+                and (True if task_type == "" else task_type == e.type)
+                and (True if meta_data == "" else meta_data in e.meta_data)
+            ),
+            None,
+        )
 
 
 def scheduling(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
@@ -72,7 +95,11 @@ def scheduling(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
             if task.type.priority == 1:
                 if last_priority_0_task is not None:
                     time_difference = task.time - last_priority_0_task.time
-                    if config.grandet_mode and time_difference < min_time_interval and time_now < last_priority_0_task.time:
+                    if (
+                        config.grandet_mode
+                        and time_difference < min_time_interval
+                        and time_now < last_priority_0_task.time
+                    ):
                         logger.info("检测到跑单任务过于接近，准备修正跑单时间")
                         return last_priority_0_task
                 # 更新上一个优先级0任务和总执行时间
@@ -89,25 +116,43 @@ def scheduling(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
                 if next_priority_0_index > -1:
                     for j in range(i, next_priority_0_index):
                         # 菲亚充能/派对内置3分钟，线索购物内置1分钟
-                        task_time = 0 if len(tasks[j].plan) > 0 and tasks[j].type not in [TaskTypes.FIAMMETTA,
-                                                                                          TaskTypes.CLUE_PARTY] else (
-                            3 if tasks[j].type in [TaskTypes.FIAMMETTA, TaskTypes.CLUE_PARTY] else 1)
+                        task_time = (
+                            0
+                            if len(tasks[j].plan) > 0
+                            and tasks[j].type
+                            not in [TaskTypes.FIAMMETTA, TaskTypes.CLUE_PARTY]
+                            else (
+                                3
+                                if tasks[j].type
+                                in [TaskTypes.FIAMMETTA, TaskTypes.CLUE_PARTY]
+                                else 1
+                            )
+                        )
                         # 其他任务按照 每个房间*预设执行时间算 默认 45秒
-                        estimate_time = len(tasks[j].plan) * execution_time if task_time == 0 else task_time
-                        if timedelta(minutes=total_execution_time + estimate_time) + time_now < \
-                                tasks[
-                                    j].time:
+                        estimate_time = (
+                            len(tasks[j].plan) * execution_time
+                            if task_time == 0
+                            else task_time
+                        )
+                        if (
+                            timedelta(minutes=total_execution_time + estimate_time)
+                            + time_now
+                            < tasks[j].time
+                        ):
                             total_execution_time = 0
                         else:
                             total_execution_time += estimate_time
-                    if timedelta(minutes=total_execution_time) + time_now > tasks[next_priority_0_index].time:
+                    if (
+                        timedelta(minutes=total_execution_time) + time_now
+                        > tasks[next_priority_0_index].time
+                    ):
                         logger.info("检测到任务可能影响到下次跑单修改任务至跑单之后")
-                        logger.debug('||'.join([str(t) for t in tasks]))
+                        logger.debug("||".join([str(t) for t in tasks]))
                         next_priority_0_time = tasks[next_priority_0_index].time
                         for j in range(i, next_priority_0_index):
                             tasks[j].time = next_priority_0_time + timedelta(seconds=1)
                             next_priority_0_time = tasks[j].time
-                        logger.debug('||'.join([str(t) for t in tasks]))
+                        logger.debug("||".join([str(t) for t in tasks]))
                         break
         tasks.sort(key=lambda x: x.time)
 
@@ -125,12 +170,21 @@ def try_add_release_dorm(plan, time, op_data, tasks):
 
 def add_release_dorm(tasks, op_data, name):
     _idx, __dorm = op_data.get_dorm_by_name(name)
-    if __dorm.time > datetime.now() and find_next_task(tasks, task_type=TaskTypes.RELEASE_DORM, meta_data=name) is None:
+    if (
+        __dorm.time > datetime.now()
+        and find_next_task(tasks, task_type=TaskTypes.RELEASE_DORM, meta_data=name)
+        is None
+    ):
         _free = op_data.operators[name]
-        if _free.current_room.startswith('dorm'):
-            __plan = {_free.current_room: ['Current'] * 5}
+        if _free.current_room.startswith("dorm"):
+            __plan = {_free.current_room: ["Current"] * 5}
             __plan[_free.current_room][_free.current_index] = "Free"
-            task = SchedulerTask(time=__dorm.time, task_type=TaskTypes.RELEASE_DORM, task_plan=__plan, meta_data=name)
+            task = SchedulerTask(
+                time=__dorm.time,
+                task_type=TaskTypes.RELEASE_DORM,
+                task_plan=__plan,
+                meta_data=name,
+            )
             tasks.append(task)
             logger.info(name + " 新增释放宿舍任务")
             logger.debug(str(task))
@@ -146,11 +200,11 @@ def check_dorm_ordering(tasks, op_data):
         other_plan = {}
         working_agent = []
         for room, v in tasks[0].plan.items():
-            if not room.startswith('dorm'):
+            if not room.startswith("dorm"):
                 working_agent.extend(v)
         for room, v in tasks[0].plan.items():
             # 非宿舍则不需要清空
-            if room.startswith('dorm'):
+            if room.startswith("dorm"):
                 # 是否检查过vip位置
                 pass_first_free = False
                 for idx, agent in enumerate(v):
@@ -159,8 +213,14 @@ def check_dorm_ordering(tasks, op_data):
                         # 如果高优先不变，则跳过逻辑判定
                         if not pass_first_free:
                             continue
-                        current = next((obj for obj in op_data.operators.values() if
-                                        obj.current_room == room and obj.current_index == idx), None)
+                        current = next(
+                            (
+                                obj
+                                for obj in op_data.operators.values()
+                                if obj.current_room == room and obj.current_index == idx
+                            ),
+                            None,
+                        )
                         if current:
                             if current.name not in working_agent:
                                 v[idx] = current.name
@@ -181,8 +241,11 @@ def check_dorm_ordering(tasks, op_data):
                 del tasks[0].plan[k]
                 extra_plan[k] = v
             logger.info("新增排序任务任务")
-            task = SchedulerTask(task_plan=extra_plan, time=tasks[0].time - timedelta(seconds=1),
-                                 task_type=TaskTypes.RE_ORDER)
+            task = SchedulerTask(
+                task_plan=extra_plan,
+                time=tasks[0].time - timedelta(seconds=1),
+                task_type=TaskTypes.RE_ORDER,
+            )
             tasks.insert(0, task)
             logger.debug(str(task))
 
@@ -201,11 +264,11 @@ def set_type_enum(value):
 
 class SchedulerTask:
     time = None
-    type = ''
+    type = ""
     plan = {}
-    meta_data = ''
+    meta_data = ""
 
-    def __init__(self, time=None, task_plan={}, task_type='', meta_data=""):
+    def __init__(self, time=None, task_plan={}, task_type="", meta_data=""):
         if time is None:
             self.time = datetime.now()
         else:
@@ -227,6 +290,9 @@ class SchedulerTask:
 
     def __eq__(self, other):
         if isinstance(other, SchedulerTask):
-            return self.type == other.type and self.plan == other.plan and the_same_time(self.time,
-                                                                                         other.time)
+            return (
+                self.type == other.type
+                and self.plan == other.plan
+                and the_same_time(self.time, other.time)
+            )
         return False
