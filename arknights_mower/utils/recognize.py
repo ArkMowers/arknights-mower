@@ -633,7 +633,7 @@ class Recognizer(object):
             "clue/filter_all": (1297, 99),
             "clue/give_away": (25, 18),
             "clue/receive": (1295, 15),
-            "clue/summary": (52, 149),
+            "clue/summary": (59, 153),
             "confirm": (0, 683),
             "control_central_assistants": (39, 560),
             "depot": (0, 955),
