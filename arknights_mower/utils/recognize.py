@@ -733,7 +733,7 @@ class Recognizer(object):
             "navigation/collection/PR-C_entry": ((0, 170), (1920, 870)),
             "navigation/collection/PR-D_entry": ((0, 170), (1920, 870)),
             "navigation/episode": (1560, 944),
-            "ope_agency_going": (510, 941),
+            "ope_agency_going": ((508, 941), (715, 1021)),
             "ope_failed": (183, 465),
             "ope_finish": (87, 265),
             "ope_plan": (1278, 24),
