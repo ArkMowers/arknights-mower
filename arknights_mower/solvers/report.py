@@ -89,7 +89,7 @@ class ReportSolver(SceneGraphSolver):
             try:
                 self.crop_report()
                 logger.info(self.report_res)
-                # self.record_report()
+                self.record_report()
             except Exception as e:
                 logger.info("基报读取失败:{}".format(e))
             return True
