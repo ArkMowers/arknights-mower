@@ -143,6 +143,10 @@ jobs:
           key: mower-${{ github.sha }}
           path: mower/mower
 
+      - name: delete unused files
+        working-directory: mower/mower/_internal
+        run: rm -fr matplotlib* cv2/opencv_videoio_ffmpeg490_64.dll
+
       - name: merge files
         run: |
           mv ui/dist mower/mower/_internal/
