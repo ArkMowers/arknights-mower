@@ -142,9 +142,6 @@ GEM
       octokit (>= 4, < 7, != 4.4.0)
     jekyll-include-cache (0.2.1)
       jekyll (>= 3.7, < 5.0)
-    jekyll-last-commit (0.0.3)
-      jekyll (>= 3.7, < 5.0)
-      rugged (~> 1.1)
     jekyll-mentions (1.6.0)
       html-pipeline (~> 2.3)
       jekyll (>= 3.7, < 5.0)
@@ -260,7 +257,6 @@ GEM
       strscan
     rouge (3.30.0)
     rubyzip (2.3.2)
-    rugged (1.7.2)
     safe_yaml (1.0.5)
     sass (3.7.4)
       sass-listen (~> 4.0.0)
@@ -298,7 +294,6 @@ PLATFORMS
 
 DEPENDENCIES
   github-pages
-  jekyll-last-commit
   jekyll-remote-theme
 
 BUNDLED WITH
