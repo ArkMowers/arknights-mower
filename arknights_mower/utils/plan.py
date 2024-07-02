@@ -11,7 +11,6 @@ def set_timing_enum(value):
 
 
 class Plan(object):
-
     def __init__(self, plan, config, trigger=None, task=None, trigger_timing=None):
         # 基建计划 or 触发备用plan 的排班表，只需要填和默认不一样的部分
         self.plan = plan
@@ -32,7 +31,6 @@ class PlanTriggerTiming(Enum):
 
 
 class Room(object):
-
     def __init__(self, agent, group, replacement):
         # 固定高效组干员
         self.agent = agent
@@ -43,17 +41,29 @@ class Room(object):
 
 
 def to_list(str_data):
-    lst = str_data.replace('，', ',').split(',')
+    lst = str_data.replace("，", ",").split(",")
     return [x.strip() for x in lst]
 
 
 class PlanConfig(object):
-    # run_order_buffer_time: 
+    # run_order_buffer_time:
     #   >  0 时是葛朗台跑单
     #   <= 0 时是无人机跑单
-    def __init__(self, rest_in_full, exhaust_require, resting_priority, ling_xi=0, workaholic="", max_resting_count=4,
-                 free_blacklist="", skip_validation=False, run_order_buffer_time=30,
-                 resting_threshold=0.5, refresh_trading_config='', free_room=False):
+    def __init__(
+        self,
+        rest_in_full,
+        exhaust_require,
+        resting_priority,
+        ling_xi=0,
+        workaholic="",
+        max_resting_count=4,
+        free_blacklist="",
+        skip_validation=False,
+        run_order_buffer_time=30,
+        resting_threshold=0.5,
+        refresh_trading_config="",
+        free_room=False,
+    ):
         self.rest_in_full = to_list(rest_in_full)
         self.exhaust_require = to_list(exhaust_require)
         self.workaholic = to_list(workaholic)
@@ -73,7 +83,9 @@ class PlanConfig(object):
         # 不指定房间则默认全跑单站
         # example： 阿米娅,夕,令
         #           夕(room_3_1,room_1_3),令(room_3_1)
-        self.refresh_trading_config = [e.strip() for e in refresh_trading_config.split(',')]
+        self.refresh_trading_config = [
+            e.strip() for e in refresh_trading_config.split(",")
+        ]
 
     def get_config(self, agent_name, config_type):
         if config_type == 0:
@@ -87,10 +99,13 @@ class PlanConfig(object):
         elif config_type == 4:
             return agent_name in self.free_blacklist
         elif config_type == 5:
-            match = next((e for e in self.refresh_trading_config if agent_name in e.lower()), None)
+            match = next(
+                (e for e in self.refresh_trading_config if agent_name in e.lower()),
+                None,
+            )
             if match is not None:
-                if match.replace(agent_name, '') != '':
-                    return [True, match.replace(agent_name, '').split(',')]
+                if match.replace(agent_name, "") != "":
+                    return [True, match.replace(agent_name, "").split(",")]
                 else:
                     return [True, []]
             else:
@@ -121,6 +136,8 @@ class PlanConfig(object):
 
         refresh_trading_config_dict = set(n.refresh_trading_config)
         target_refresh_trading_config = set(target.refresh_trading_config)
-        n.refresh_trading_config = list(refresh_trading_config_dict.union(target_refresh_trading_config))
+        n.refresh_trading_config = list(
+            refresh_trading_config_dict.union(target_refresh_trading_config)
+        )
 
         return n

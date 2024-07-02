@@ -15,4 +15,4 @@ def the_same_time(a: datetime = None, b: datetime = None) -> bool:
 
 
 def get_server_weekday():
-    return datetime.now(pytz.timezone('Asia/Dubai')).weekday()
+    return datetime.now(pytz.timezone("Asia/Dubai")).weekday()
