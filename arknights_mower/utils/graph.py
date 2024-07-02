@@ -335,6 +335,7 @@ def login_start(solver: BaseSolver):
 @edge(Scene.LOGIN_CAPTCHA, Scene.INDEX)
 def login_captcha(solver: BaseSolver):
     solver.solve_captcha()
+    solver.sleep(5)
 
 
 @edge(Scene.CONFIRM, Scene.LOGIN_START)
