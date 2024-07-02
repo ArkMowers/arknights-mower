@@ -281,7 +281,7 @@
     },
     "604": {
         "label": "OPERATOR_ONGOING",
-        "comment": "作战中"
+        "comment": "代理作战"
     },
     "605": {
         "label": "OPERATOR_FINISH",

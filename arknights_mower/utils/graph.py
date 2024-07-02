@@ -281,7 +281,13 @@ def operation_back(solver: BaseSolver):
     solver.back()
 
 
+@edge(Scene.OPERATOR_GIVEUP, Scene.OPERATOR_FAILED)
+def operation_give_up(solver: BaseSolver):
+    solver.tap_element("double_confirm/main", x_rate=1)
+
+
 @edge(Scene.OPERATOR_FINISH, Scene.OPERATOR_BEFORE)
+@edge(Scene.OPERATOR_FAILED, Scene.OPERATOR_BEFORE)
 def operation_finish(solver: BaseSolver):
     solver.tap((310, 330))
 

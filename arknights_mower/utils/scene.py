@@ -140,7 +140,7 @@ class Scene:
     OPERATOR_SELECT = 603
     "作战前，正在编队"
     OPERATOR_ONGOING = 604
-    "作战中"
+    "代理作战"
     OPERATOR_FINISH = 605
     "作战结束"
     OPERATOR_RECOVER_POTION = 607
@@ -340,7 +340,7 @@ SceneComment = {
     601: "作战前，关卡未选定",
     602: "作战前，关卡已选定",
     603: "作战前，正在编队",
-    604: "作战中",
+    604: "代理作战",
     605: "作战结束",
     607: "恢复理智（药剂）",
     608: "恢复理智（源石）",
