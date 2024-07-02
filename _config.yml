@@ -2,7 +2,7 @@ title: arknigths-mower
 lang: en
 description: 7*24 小时不间断长草，让你忘掉这个游戏！
 
-remote_theme: rundocs/jekyll-rtd-theme
+theme: just-the-docs
 
 readme_index:
   with_frontmatter: true
