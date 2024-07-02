@@ -205,7 +205,7 @@ class Recognizer(object):
         elif self.find("login_connecting"):
             self.scene = Scene.LOGIN_LOADING
         elif self.find("arrange_order_options"):
-            self.scene = Scene.INFRA_ARRANGE_ORDER
+            self.scene = Scene.RIIC_OPERATOR_SELECT
         elif self.find("arrange_order_options_scene"):
             self.scene = Scene.INFRA_ARRANGE_ORDER
         elif self.find("ope_recover_potion_on"):
@@ -335,8 +335,6 @@ class Recognizer(object):
         #     self.scene = Scene.OPERATOR_ELIMINATE_FINISH
         # elif self.find("shop_assist"):
         #     self.scene = Scene.SHOP_ASSIST
-        # elif self.find("upgrade"):
-        #     self.scene = Scene.UPGRADE
 
         else:
             self.scene = Scene.UNKNOWN
@@ -750,10 +748,11 @@ class Recognizer(object):
             "ope_failed": (183, 465),
             "ope_finish": (87, 265),
             "ope_plan": (1278, 24),
-            "riic/trade": ((1320, 250), (1600, 500)),
             "riic/assistants": ((1320, 400), (1600, 650)),
             "riic/iron": ((1570, 230), (1630, 340)),
             "riic/orundum": ((1500, 320), (1800, 550)),
+            "riic/trade": ((1320, 250), (1600, 500)),
+
         }
 
         template_matching_score = {

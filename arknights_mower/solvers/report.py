@@ -95,9 +95,10 @@ class ReportSolver(SceneGraphSolver):
             return True
         else:
             if self.reload_time > 3:
+                logger.info("未加载出基报")
                 return True
             self.reload_time += 1
-            self.csleep(1)
+            self.sleep(1)
             return
 
     def record_report(self):
@@ -153,10 +154,10 @@ class ReportSolver(SceneGraphSolver):
         trade_pt = self.find("riic/trade")
         assist_pt = self.find("riic/assistants")
         area = {
-            "iron_order": [[1620, trade_pt[1][1] + 10], [1740, int(assist_pt[0][1] - 50)]],
-            "iron_order_number": [[1820, trade_pt[1][1] + 10], [1870, int(assist_pt[0][1] - 65)]],
-            "orundum": [[1620, trade_pt[1][1] + 45], [1870, int(assist_pt[0][1])]],
-            "orundum_number": [[1820, trade_pt[1][1] + 55], [1860, int(assist_pt[0][1] - 20)]],
+            "iron_order": [[1620, trade_pt[1][1] + 10], [1740, assist_pt[0][1] - 50]],
+            "iron_order_number": [[1820, trade_pt[1][1] + 10], [1870, assist_pt[0][1] - 65]],
+            "orundum": [[1620, trade_pt[1][1] + 45], [1870, assist_pt[0][1]]],
+            "orundum_number": [[1820, trade_pt[1][1] + 55], [1860, assist_pt[0][1] - 20]],
         }
 
         img = cv2.cvtColor(self.recog.img, cv2.COLOR_RGB2HSV)
