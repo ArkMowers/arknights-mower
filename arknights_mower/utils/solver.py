@@ -45,6 +45,14 @@ class BaseSolver:
     """Base class, provide basic operation"""
 
     tap_info = None, None
+    waiting_scene = {
+        Scene.CONNECTING: (1, 10),
+        Scene.UNKNOWN: (1, 10),
+        Scene.LOADING: (2, 15),
+        Scene.LOGIN_LOADING: (3, 10),
+        Scene.LOGIN_MAIN_NOENTRY: (3, 10),
+        Scene.OPERATOR_ONGOING: (10, 30),
+    }
 
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
         # self.device = device if device is not None else (recog.device if recog is not None else Device())
@@ -67,8 +75,7 @@ class BaseSolver:
                     restart_simulator()
 
         self.recog = recog if recog is not None else Recognizer(self.device)
-        if self.device.check_current_focus():
-            self.recog.update()
+        self.check_current_focus()
 
     def run(self) -> None:
         retry_times = config.MAX_RETRYTIME
@@ -202,6 +209,9 @@ class BaseSolver:
             self.tap(pos)
         else:
             self.sleep()
+
+    def check_current_focus(self):
+        self.recog.check_current_focus()
 
     def tap_element(
         self,
@@ -538,16 +548,10 @@ class BaseSolver:
                     self.tap_element("login_button")
                 elif scene == Scene.LOGIN_ANNOUNCE:
                     self.tap_element("login_iknow")
-                elif scene == Scene.LOGIN_LOADING:
-                    self.waiting_solver(Scene.LOGIN_LOADING)
-                elif scene == Scene.LOADING:
-                    self.waiting_solver(Scene.LOADING)
-                elif scene == Scene.CONNECTING:
-                    self.waiting_solver(Scene.CONNECTING)
+                elif scene in self.waiting_scene:
+                    self.waiting_solver()
                 elif scene == Scene.CONFIRM:
                     self.tap((960, 740))
-                elif scene == Scene.LOGIN_MAIN_NOENTRY:
-                    self.waiting_solver(Scene.LOGIN_MAIN_NOENTRY)
                 elif scene == Scene.LOGIN_CADPA_DETAIL:
                     self.back(2)
                 elif scene == Scene.NETWORK_CHECK:
@@ -608,10 +612,8 @@ class BaseSolver:
                     self.login()
                 elif scene == Scene.CONFIRM:
                     self.tap((960, 740))
-                elif scene == Scene.LOADING:
-                    self.waiting_solver(Scene.LOADING)
-                elif scene == Scene.CONNECTING:
-                    self.waiting_solver(Scene.CONNECTING)
+                elif scene in self.waiting_scene:
+                    self.waiting_solver()
                 elif scene == Scene.SKIP:
                     self.tap_element("skip")
                 elif scene == Scene.OPERATOR_ONGOING:
@@ -691,18 +693,18 @@ class BaseSolver:
             f"保全导航成功，用时{(datetime.now() - start_time).total_seconds():.0f}秒"
         )
 
-    def waiting_solver(self, scenes, wait_count=20, sleep_time=3):
+    def waiting_solver(self):
         """需要等待的页面解决方法。触发超时重启会返回False"""
-        while wait_count > 0:
+        scene = self.scene()
+        sleep_time, wait_count = self.waiting_scene[scene]
+        for _ in range(wait_count):
             self.sleep(sleep_time)
-            if self.scene() != scenes:
+            if self.scene() != scene:
                 return True
-            wait_count -= 1
-        logger.warning("同一等待界面等待超时，重启方舟。")
+        logger.warning("相同场景等待超时")
         self.device.exit()
         self.csleep(3)
-        if self.device.check_current_focus():
-            self.recog.update()
+        self.check_current_focus()
         return False
 
     # 将html表单转化为通用markdown格式（为了避免修改之前email内容，采用基于之前数据格式进行加工的方案）

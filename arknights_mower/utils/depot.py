@@ -33,10 +33,11 @@ def 读取仓库():
     # 取出最后一行数据中的物品信息并进行合并
     最后一行物品 = json.loads(depotinfo.iloc[-1, 1])
     新物品 = {**最后一行物品, **新物品1}  # 合并字典
-
-    print(新物品)
+    新物品json={}
+    for item in 新物品:
+        新物品json[key_mapping[item][0]]=新物品[item]
     time = depotinfo.iloc[-1, 0]
-    新物品json = depotinfo.iloc[-1, 2]
+
     sort = {
         "A常用": [
             "至纯源石",
@@ -197,7 +198,7 @@ def 读取仓库():
         "sort": 9999999,
         "icon": "寻访凭证",
     }
-    return [classified_data, 新物品json, str(datetime.fromtimestamp(int(time)))]
+    return [classified_data, json.dumps(新物品json), str(datetime.fromtimestamp(int(time)))]
 
 
 def 创建csv():

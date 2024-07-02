@@ -8,7 +8,7 @@ export const richText2HTML = (text) => {
         return `{{span class="riic-rt ${getClassName(key)}"}}${value}{{/span}}`
       }
       if (key.startsWith('$cc.')) {
-        return `{{span class="riic-term" @click="handleClick" data-id="${getTermId(key)}"}}${value}{{/span}}`
+        return `{{span class="riic-term" data-id="${getTermId(key)}"}}${value}{{/span}}`
       }
     })
     .replace(/\n/g, '<br />')

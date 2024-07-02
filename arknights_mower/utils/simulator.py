@@ -3,6 +3,7 @@ import time
 from enum import Enum
 from os import system
 
+from arknights_mower import __system__
 from arknights_mower.utils import config
 from arknights_mower.utils.log import logger
 
@@ -88,6 +89,7 @@ def exec_cmd(cmd, folder_path):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             universal_newlines=True,
+            creationflags=subprocess.CREATE_NO_WINDOW if __system__ == "windows" else 0,
         )
         process.communicate(timeout=2)
     except subprocess.TimeoutExpired:

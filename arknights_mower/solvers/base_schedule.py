@@ -260,8 +260,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             return self.todo_list()
         elif scene == Scene.RIIC_OPERATOR_SELECT:
             self.tap_element("confirm_blue")
-        elif scene in [Scene.UNKNOWN, Scene.LOADING, Scene.CONNECTING]:
-            self.waiting_solver(scene, sleep_time=1)
+        elif scene in self.waiting_scene:
+            self.waiting_solver()
         else:
             self.scene_graph_navigation(Scene.INFRA_MAIN)
             self.last_room = ""
@@ -406,8 +406,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     def handle_error(self, force=False):
         if self.scene() == Scene.UNKNOWN:
             self.device.exit()
-            if self.device.check_current_focus():
-                self.recog.update()
+            self.check_current_focus()
         if self.error or force:
             # 如果没有任何时间小于当前时间的任务才生成空任务
             if find_next_task(self.tasks, datetime.now()) is None:
@@ -1789,9 +1788,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         )
         execute_time = execute_time - timedelta(seconds=(60 * self.run_order_delay))
         logger.info("下一次进行插拔的时间为：" + execute_time.strftime("%H:%M:%S"))
-        logger.info("返回基建主界面")
-        self.back(interval=2)
-        self.back(interval=2)
+        self.scene_graph_navigation(Scene.INFRA_MAIN)
         return execute_time
 
     def todo_list(self) -> None:
@@ -1903,8 +1900,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
         friend_clue = []
 
-        unknown_cnt = 0
-
         clue_status = {}
 
         def place_index():
@@ -1924,16 +1919,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
         while ctm.task:
             scene = self.scene()
-
-            if scene == Scene.UNKNOWN:
-                unknown_cnt += 1
-                if unknown_cnt > 5:
-                    unknown_cnt = 0
-                    self.back_to_infrastructure()
-                    self.enter_room("meeting")
-                else:
-                    self.sleep()
-                continue
 
             if scene == Scene.INFRA_DETAILS:
                 if ctm.task == "party_time":
@@ -2177,12 +2162,16 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             elif scene == Scene.CLUE_SUMMARY:
                 self.back()
 
+            elif scene in self.waiting_scene:
+                self.waiting_solver()
+
             else:
-                self.sleep()
+                self.scene_graph_navigation(Scene.INFRA_MAIN)
+                self.enter_room("meeting")
 
         shop_solver = CreditShop(self.device, self.recog)
         shop_solver.run()
-        self.back_to_infrastructure()
+        self.scene_graph_navigation(Scene.INFRA_MAIN)
 
     def adjust_order_time(self, accelerate, room):
         error_count = 0
@@ -2191,16 +2180,16 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             action_required_task is not None and action_required_task.meta_data == room
         ):
             self.tap(accelerate)
-            if self.scene() == Scene.CONNECTING:
-                if not self.waiting_solver(Scene.CONNECTING, sleep_time=2):
+            if self.scene() in self.waiting_scene:
+                if not self.waiting_solver():
                     return
             self.tap((self.recog.w * 1320 // 1920, self.recog.h * 502 // 1080))
-            if self.scene() == Scene.CONNECTING:
-                if not self.waiting_solver(Scene.CONNECTING, sleep_time=2):
+            if self.scene() in self.waiting_scene:
+                if not self.waiting_solver():
                     return
             self.tap((self.recog.w * 3 // 4, self.recog.h * 4 // 5))
-            if self.scene() == Scene.CONNECTING:
-                if not self.waiting_solver(Scene.CONNECTING, sleep_time=2):
+            if self.scene() in self.waiting_scene:
+                if not self.waiting_solver():
                     return
             while self.find("bill_accelerate") is None:
                 if error_count > 5:
@@ -2281,8 +2270,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self.tap(accelerate)
                 self.tap_element("all_in")
                 self.tap((self.recog.w * 0.75, self.recog.h * 0.8))
-                if self.scene() == Scene.CONNECTING:
-                    if not self.waiting_solver(Scene.CONNECTING, sleep_time=2):
+                if self.scene() in self.waiting_scene:
+                    if not self.waiting_solver():
                         return
                 self.recog.update()
                 self.recog.save_screencap("run_order")
@@ -3055,8 +3044,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 # 如果完成则移除该任务
                 del plan[room]
                 # back to 基地主界面
-                if self.scene() == Scene.CONNECTING:
-                    if not self.waiting_solver(Scene.CONNECTING, sleep_time=3):
+                if self.scene() in self.waiting_scene:
+                    if not self.waiting_solver():
                         return
             except MowerExit:
                 raise
@@ -3129,8 +3118,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     logger.info(f"停止{wait_time}秒等待订单完成")
                     self.sleep(wait_time)
                     # 等待服务器交互
-                    if self.scene() == Scene.CONNECTING:
-                        if not self.waiting_solver(Scene.CONNECTING, sleep_time=1):
+                    if self.scene() in self.waiting_scene:
+                        if not self.waiting_solver():
                             return
                 self.recog.update()
                 self.recog.save_screencap("run_order")
@@ -3211,11 +3200,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 # 补货
                 self.tap((self.recog.w * 0.75, self.recog.h * 0.3), interval=0.5)
                 self.tap((self.recog.w * 0.75, self.recog.h * 0.9), interval=0.5)
-                if self.scene() == Scene.CONNECTING:
-                    if not self.waiting_solver(Scene.CONNECTING, sleep_time=2):
+                if self.scene() in self.waiting_scene:
+                    if not self.waiting_solver():
                         return
-                self.back()
-                self.back()
+                self.scene_graph_navigation(Scene.INFRA_MAIN)
             except MowerExit:
                 raise
             except Exception as e:
@@ -3225,7 +3213,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 back_count = 0
                 while self.scene() != Scene.INFRA_MAIN:
                     self.back()
-                    self.recog.update()
                     back_count += 1
                     if back_count > 3:
                         raise e
@@ -3401,8 +3388,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         else:
                             self.csleep(5)
                     self.device.exit()
-                    if self.device.check_current_focus():
-                        self.recog.update()
+                    self.check_current_focus()
 
             elif not rg_sleep:
                 if self.maa_config["reclamation_algorithm"]:
@@ -3437,8 +3423,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     elif self.exit_game_when_idle:
                         self.device.exit()
                 self.sleep(remaining_time)
-                if self.device.check_current_focus():
-                    self.recog.update()
+                self.check_current_focus()
             self.MAA = None
         except MowerExit:
             if self.MAA is not None:
@@ -3456,8 +3441,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     f"休息 {format_time(remaining_time)}，到{self.tasks[0].time.strftime('%H:%M:%S')}开始工作"
                 )
                 self.sleep(remaining_time)
-            if self.device.check_current_focus():
-                self.recog.update()
+            self.check_current_focus()
 
     def skland_plan_solover(self):
         try:

@@ -105,6 +105,10 @@ class Recognizer(object):
         logger.debug(result)
         return result < 0.1
 
+    def check_current_focus(self):
+        if self.device.check_current_focus():
+            self.update()
+
     def check_loading_time(self):
         if self.scene == Scene.CONNECTING:
             self.loading_time += 1
@@ -116,8 +120,7 @@ class Recognizer(object):
             logger.info(f"检测到连续等待{self.loading_time}次")
             self.device.exit()
             time.sleep(3)
-            if self.device.check_current_focus():
-                self.update()
+            self.check_current_focus()
 
     def check_announcement(self):
         img = cropimg(self.gray, ((960, 0), (1920, 540)))
@@ -220,7 +223,22 @@ class Recognizer(object):
             self.scene = Scene.SHOP_UNLOCK_SCHEDULE
         elif self.find("loading7"):
             self.scene = Scene.LOADING
-
+        elif self.find("clue/daily"):
+            self.scene = Scene.CLUE_DAILY
+        elif self.find("clue/receive"):
+            self.scene = Scene.CLUE_RECEIVE
+        elif self.find("clue/give_away"):
+            self.scene = Scene.CLUE_GIVE_AWAY
+        elif self.find("clue/summary"):
+            self.scene = Scene.CLUE_SUMMARY
+        elif self.find("clue/filter_all"):
+            self.scene = Scene.CLUE_PLACE
+        elif self.find("upgrade"):
+            self.scene = Scene.UPGRADE
+        elif self.find("depot"):
+            self.scene = Scene.DEPOT
+        elif self.find("pull_once"):
+            self.scene = Scene.HEADHUNTING
         elif self.is_black():
             self.scene = Scene.LOADING
 
@@ -317,13 +335,10 @@ class Recognizer(object):
         # save screencap to analyse
         if config.SCREENSHOT_PATH:
             self.save_screencap(self.scene)
-        logger.info(f"Scene: {self.scene}: {SceneComment[self.scene]}")
+        logger.info(f"Scene {self.scene}: {SceneComment[self.scene]}")
 
         if self.scene == Scene.UNKNOWN:
-            if self.device.check_current_focus():
-                self.update()
-
-        self.check_loading_time()
+            self.check_current_focus()
 
         return self.scene
 
@@ -413,8 +428,7 @@ class Recognizer(object):
             self.scene = Scene.TERMINAL_MAIN
         else:
             self.scene = Scene.UNKNOWN
-            if self.device.check_current_focus():
-                self.update()
+            self.check_current_focus()
 
         # save screencap to analyse
         if config.SCREENSHOT_PATH is not None:
@@ -478,8 +492,7 @@ class Recognizer(object):
 
         else:
             self.scene = Scene.UNKNOWN
-            if self.device.check_current_focus():
-                self.update()
+            self.check_current_focus()
 
         # save screencap to analyse
         if config.SCREENSHOT_PATH is not None:
@@ -530,8 +543,7 @@ class Recognizer(object):
             self.scene = Scene.SSS_GUIDE
         else:
             self.scene = Scene.UNKNOWN
-            if self.device.check_current_focus():
-                self.update()
+            self.check_current_focus()
 
         # save screencap to analyse
         if config.SCREENSHOT_PATH is not None:
@@ -566,8 +578,7 @@ class Recognizer(object):
             self.scene = Scene.TRAIN_SKILL_UPGRADE
         else:
             self.scene = Scene.UNKNOWN
-            if self.device.check_current_focus():
-                self.update()
+            self.check_current_focus()
 
         # save screencap to analyse
         if config.SCREENSHOT_PATH is not None:
@@ -619,7 +630,7 @@ class Recognizer(object):
             "clue/filter_all": (1297, 99),
             "clue/give_away": (25, 18),
             "clue/receive": (1295, 15),
-            "clue/summary": (52, 149),
+            "clue/summary": (59, 153),
             "confirm": (0, 683),
             "control_central_assistants": (39, 560),
             "depot": (0, 955),
@@ -662,6 +673,7 @@ class Recognizer(object):
             "ope_select_start": (1579, 701),
             "open_recruitment": (192, 143),
             "order_label": (404, 137),
+            "pull_once": (1260, 950),
             "recruiting_instructions": (343, 179),
             "riic/exp": (1385, 239),
             "riic/manufacture": (1328, 126),
@@ -720,7 +732,7 @@ class Recognizer(object):
             "navigation/collection/PR-C_entry": ((0, 170), (1920, 870)),
             "navigation/collection/PR-D_entry": ((0, 170), (1920, 870)),
             "navigation/episode": (1560, 944),
-            "ope_agency_going": (510, 941),
+            "ope_agency_going": ((508, 941), (715, 1021)),
             "ope_failed": (183, 465),
             "ope_finish": (87, 265),
             "ope_plan": (1278, 24),

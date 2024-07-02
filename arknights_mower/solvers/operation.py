@@ -101,8 +101,8 @@ class OperationSolver(SceneGraphSolver):
             self.tap_element("ope_start", interval=2)
         elif scene == Scene.OPERATOR_ELIMINATE_AGENCY:
             self.tap_element("ope_elimi_agency_confirm", interval=2)
-        elif scene in [Scene.UNKNOWN, Scene.LOADING, Scene.CONNECTING]:
-            self.waiting_solver(scene, sleep_time=1)
+        elif scene in self.waiting_scene:
+            self.waiting_solver()
         else:
             self.sanity_drain = False
             return True

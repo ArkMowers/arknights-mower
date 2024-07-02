@@ -401,8 +401,7 @@ def simulate():
                             base_scheduler.sleeping = True
                             base_scheduler.sleep(remaining_time)
                             base_scheduler.sleeping = False
-                            if base_scheduler.device.check_current_focus():
-                                base_scheduler.recog.update()
+                            base_scheduler.check_current_focus()
 
                 elif remaining_time > 0:
                     now_time = datetime.now().time()
@@ -472,8 +471,7 @@ def simulate():
                     base_scheduler.sleeping = True
                     base_scheduler.sleep(remaining_time)
                     base_scheduler.sleeping = False
-                    if base_scheduler.device.check_current_focus():
-                        base_scheduler.recog.update()
+                    base_scheduler.check_current_focus()
 
             base_scheduler.run()
             reconnect_tries = 0

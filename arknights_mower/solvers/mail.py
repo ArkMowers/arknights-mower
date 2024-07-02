@@ -16,7 +16,7 @@ class MailSolver(SceneGraphSolver):
                 return True
             self.touched = True
             self.tap_element("read_mail")
-        elif scene in [Scene.UNKNOWN, Scene.LOADING, Scene.CONNECTING]:
-            self.waiting_solver(scene, sleep_time=1)
+        elif scene in self.waiting_scene:
+            self.waiting_solver()
         else:
             self.scene_graph_navigation(Scene.MAIL)

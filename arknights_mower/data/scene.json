@@ -503,6 +503,10 @@
         "label": "SF_EXIT",
         "comment": "暂离行动"
     },
+    "1201": {
+        "label": "HEADHUNTING",
+        "comment": "干员寻访"
+    },
     "1301": {
         "label": "DEPOT",
         "comment": "仓库"

@@ -43,6 +43,8 @@ def edge(v_from: int, v_to: int, interval: int = 1):
 @edge(Scene.TERMINAL_LONGTERM, Scene.INDEX)
 @edge(Scene.TERMINAL_REGULAR, Scene.INDEX)
 @edge(Scene.DEPOT, Scene.INDEX)
+@edge(Scene.HEADHUNTING, Scene.INDEX)
+@edge(Scene.MAIL, Scene.INDEX)
 def back_to_index(solver: BaseSolver):
     solver.back()
 
@@ -87,6 +89,11 @@ def index_to_mail(solver: BaseSolver):
     solver.tap_index_element("mail")
 
 
+@edge(Scene.INDEX, Scene.HEADHUNTING)
+def index_to_headhunting(solver: BaseSolver):
+    solver.tap_index_element("headhunting")
+
+
 # 导航栏
 
 
@@ -124,6 +131,7 @@ def index_to_mail(solver: BaseSolver):
 @edge(Scene.OPERATOR_ELIMINATE, Scene.NAVIGATION_BAR)
 @edge(Scene.DEPOT, Scene.NAVIGATION_BAR)
 @edge(Scene.FRIEND_VISITING, Scene.NAVIGATION_BAR)
+@edge(Scene.HEADHUNTING, Scene.NAVIGATION_BAR)
 def index_nav(solver: BaseSolver):
     solver.tap_element("nav_button")
 
@@ -154,6 +162,11 @@ def nav_recruit(solver: BaseSolver):
 @edge(Scene.NAVIGATION_BAR, Scene.SHOP_OTHERS)
 def nav_shop(solver: BaseSolver):
     solver.tap_nav_element("shop")
+
+
+@edge(Scene.NAVIGATION_BAR, Scene.HEADHUNTING)
+def nav_headhunting(solver: BaseSolver):
+    solver.tap_nav_element("headhunting")
 
 
 # 任务
@@ -293,11 +306,6 @@ def announcement(solver: BaseSolver):
     solver.tap(solver.recog.check_announcement())
 
 
-@edge(Scene.MAIL, Scene.INDEX)
-def mail(solver: BaseSolver):
-    solver.back()
-
-
 @edge(Scene.UPGRADE, Scene.OPERATOR_FINISH)
 @edge(Scene.RECRUIT_AGENT, Scene.RECRUIT_MAIN)
 def upgrade(solver: BaseSolver):
@@ -327,6 +335,7 @@ def login_start(solver: BaseSolver):
 @edge(Scene.LOGIN_CAPTCHA, Scene.INDEX)
 def login_captcha(solver: BaseSolver):
     solver.solve_captcha()
+    solver.sleep(5)
 
 
 @edge(Scene.CONFIRM, Scene.LOGIN_START)
@@ -347,18 +356,8 @@ class SceneGraphSolver(BaseSolver):
             return False
 
         while (current := self.scene()) != scene:
-            if current in [Scene.CONNECTING, Scene.UNKNOWN]:
-                self.waiting_solver(current, sleep_time=1)
-                continue
-            elif current in [
-                Scene.LOADING,
-                Scene.LOGIN_LOADING,
-                Scene.LOGIN_MAIN_NOENTRY,
-            ]:
-                self.waiting_solver(current, wait_count=10, sleep_time=2)
-                continue
-            elif current == Scene.OPERATOR_ONGOING:
-                self.waiting_solver(current, wait_count=30, sleep_time=10)
+            if current in self.waiting_scene:
+                self.waiting_solver()
                 continue
 
             if current not in DG.nodes:

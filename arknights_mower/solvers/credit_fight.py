@@ -67,7 +67,21 @@ class CreditFight(SceneGraphSolver):
                 # 开始行动
                 self.tap((1655, 781))
                 fight_solver = AutoFight(self.device, self.recog)
-                fight_solver.run("OF-1")
+                conf = config.conf["credit_fight"]
+                actions = [
+                    {"type": "SpeedUp"},
+                    {
+                        "type": "Deploy",
+                        "name": conf["operator"],
+                        "location": [
+                            conf["x"],
+                            conf["y"],
+                        ],
+                        "direction": conf["direction"],
+                    },
+                    {"type": "SkillDaemon"},
+                ]
+                fight_solver.run("OF-1", [], actions)
             else:
                 # 借助战
                 self.ctap((1660, 315))
@@ -78,8 +92,8 @@ class CreditFight(SceneGraphSolver):
             self.tap_element("fight/use")
         elif scene == Scene.OPERATOR_FINISH:
             return True
-        elif scene in [Scene.UNKNOWN, Scene.LOADING, Scene.CONNECTING]:
-            self.waiting_solver(scene, sleep_time=1)
+        elif scene in self.waiting_scene:
+            self.waiting_solver()
         else:
             navi_solver = NavigationSolver(self.device, self.recog)
             navi_solver.run("OF-1")
