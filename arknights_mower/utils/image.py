@@ -3,7 +3,6 @@ from typing import Union
 
 import cv2
 import numpy as np
-from matplotlib import pyplot as plt
 
 from arknights_mower import __rootdir__
 from arknights_mower.utils.path import get_path
@@ -129,6 +128,9 @@ def cmatch(
         board[h:, :w, :] = ca
         board[:h, w:, :] = img2
         board[h:, w:, :] = cb
+
+        from matplotlib import pyplot as plt
+
         plt.imshow(board)
         plt.show()
 

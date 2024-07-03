@@ -10,7 +10,6 @@ import numpy as np
 import sklearn.pipeline
 import sklearn.svm
 import sklearn.preprocessing
-from matplotlib import pyplot as plt
 from skimage.metrics import structural_similarity as compare_ssim
 
 from .. import __rootdir__
@@ -163,10 +162,13 @@ class Matcher(object):
             good_matches_rate = len(good) / len(qry_des)
 
             # draw all the good matches, for debug
-            if draw:
+            if draw or MATCHER_DEBUG:
                 result = cv2.drawMatches(
                     bordered, qry_kp, self.origin, ori_kp, good, None
                 )
+
+                from matplotlib import pyplot as plt
+
                 plt.imshow(result, cmap="gray", vmin=0, vmax=255)
                 plt.show()
             # if the number of good matches no more than 4

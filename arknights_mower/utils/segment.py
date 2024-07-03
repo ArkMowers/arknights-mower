@@ -4,7 +4,6 @@ import traceback
 
 import cv2
 import numpy as np
-from matplotlib import pyplot as plt
 
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.log import logger
@@ -88,6 +87,9 @@ def credit(img: tp.Image, draw: bool = False) -> list[tp.Scope]:
                     cv2.polylines(
                         img, [get_poly(x1, x2, y1, y2)], True, 0, 10, cv2.LINE_AA
                     )
+
+            from matplotlib import pyplot as plt
+
             plt.imshow(img)
             plt.show()
 
@@ -172,6 +174,9 @@ def recruit(img: tp.Image, draw: bool = False) -> list[tp.Scope]:
                     cv2.polylines(
                         img, [get_poly(x1, x2, y1, y2)], True, 0, 10, cv2.LINE_AA
                     )
+
+            from matplotlib import pyplot as plt
+
             plt.imshow(img)
             plt.show()
 
@@ -258,6 +263,9 @@ def base(
         if draw:
             polys = list(ret.values())
             cv2.polylines(img, polys, True, (255, 0, 0), 10, cv2.LINE_AA)
+
+            from matplotlib import pyplot as plt
+
             plt.imshow(img)
             plt.show()
 

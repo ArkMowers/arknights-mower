@@ -3,7 +3,6 @@ import pickle
 
 import cv2
 import numpy as np
-from matplotlib import pyplot as plt
 
 from arknights_mower import __rootdir__
 from arknights_mower.utils.image import cropimg, thres2
@@ -74,6 +73,9 @@ def operator_list(img, draw=False):
         display = img.copy()
         for p in name_p:
             cv2.rectangle(display, p[0], p[1], (255, 0, 0), 3)
+
+        from matplotlib import pyplot as plt
+
         plt.imshow(display)
         plt.show()
 
