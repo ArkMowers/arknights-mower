@@ -10,13 +10,13 @@ Mower 是为长期运行设计的、开源的明日方舟脚本。
 
 初次使用，建议阅读《[Mower 简明教程](https://blog.zhaozuohong.vip/2024/05/10/mower-guide/tutorial/)》；提出建议、反馈 Bug 或交流基建知识，欢迎加入 QQ 频道 [ArkMower（频道号：2r118jwue4）](https://pd.qq.com/s/5t91c3gx9)。
 
-## [安装](./start/download/)
+## [安装](./start/download)
 
 Mower 支持 Windows、macOS 与 Linux 平台。Windows 用户推荐使用[更新器](./start/download/#updater)下载运行；macOS 与 Linux 用户请参考《[从源码运行 arknights-mower](https://blog.zhaozuohong.vip/2023/08/02/run-arknights-mower-from-source/)》。
 
 ## 功能介绍
 
-- [基建](./start/riic/)：跑单、按心情动态换班；
+- [基建](./start/riic)：跑单、按心情动态换班；
 - 森空岛：签到、仓库读取；
 - 日常：公招、邮件、线索、清理智；
 - 大型任务：生息演算、隐秘战线；
