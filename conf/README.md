@@ -1,5 +1,5 @@
 ---
-sort: 2
+sort: 3
 ---
 # 配置指南
 - [设置](./1.setting.html)

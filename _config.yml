@@ -10,6 +10,11 @@ remote_theme: ZhaoZuohong/jekyll-rtd-theme
 readme_index:
   with_frontmatter: true
 
+markdown: CommonMarkGhPages
+commonmark:
+  options: ["UNSAFE", "SMART", "FOOTNOTES"]
+  extensions: ["strikethrough", "autolink", "table", "tagfilter"]
+
 exclude:
   - Makefile
   - CNAME

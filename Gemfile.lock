@@ -23,6 +23,7 @@ GEM
     commonmarker (0.23.10)
     concurrent-ruby (1.3.3)
     connection_pool (2.4.1)
+    csv (3.3.0)
     dnsruby (1.72.1)
       simpleidn (~> 0.2.1)
     drb (2.2.1)
@@ -276,6 +277,7 @@ GEM
       concurrent-ruby (~> 1.0)
     unicode-display_width (1.8.0)
     uri (0.13.0)
+    webrick (1.8.1)
 
 PLATFORMS
   aarch64-linux
@@ -293,8 +295,11 @@ PLATFORMS
   x86_64-linux-musl
 
 DEPENDENCIES
+  csv
   github-pages
+  jekyll-commonmark-ghpages
   jekyll-remote-theme
+  webrick
 
 BUNDLED WITH
    2.5.11
