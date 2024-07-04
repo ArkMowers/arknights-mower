@@ -229,6 +229,8 @@ class RecruitSolver(SceneGraphSolver):
             return self.recruit_tags()
         elif scene == Scene.RECRUIT_AGENT:
             return self.recruit_result()
+        elif scene == Scene.SKIP:
+            self.tap_element("skip")
         elif scene in self.waiting_scene:
             self.waiting_solver()
         else:
