@@ -1,8 +1,8 @@
 <template>
-  <span v-html="des" @click="showModal = true"></span>
+  <span v-html="des" @click="handleTermClick($event)"></span>
   <n-modal v-model:show="showModal" v-if="props.isbuffer">
     <n-card
-      style="width: 600px"
+      style="width: 600px; user-select: none"
       title="特殊效果"
       :bordered="false"
       size="huge"
@@ -20,7 +20,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import { richText2HTML } from '@/stores/richText2HTML'
+import { richText2HTML, findTerm } from '@/stores/richText2HTML'
 import buffer1 from '@/pages/buffer.json'
 const showModal = ref(false)
 const props = defineProps({
@@ -28,6 +28,12 @@ const props = defineProps({
   isbuffer: Boolean,
   buffer: Array
 })
+const handleTermClick = (event) => {
+  const clickedTermElement = findTerm(event)
+  if (clickedTermElement) {
+    showModal.value = true // 设置 showModal 为 true，显示模态框
+  }
+}
 </script>
 
 <style>
