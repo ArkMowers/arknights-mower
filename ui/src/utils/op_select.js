@@ -31,8 +31,7 @@ export const render_op_tag = ({ option, handleClose }) => {
               round: true,
               size: 22,
               style: {
-                marginRight: '4px',
-                pointerEvents: 'none'
+                marginRight: '4px'
               }
             }),
             option.label

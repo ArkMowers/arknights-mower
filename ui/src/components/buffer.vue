@@ -9,13 +9,7 @@
       style="width: 5%; text-align: center; vertical-align: middle"
     >
       <div @click="openInNewTab()">
-        <n-avatar
-          lazy
-          :src="`avatar/${props.avatar}.webp`"
-          :size="40"
-          round
-          style="pointer-events: none"
-        />
+        <n-avatar lazy :src="`avatar/${props.avatar}.webp`" :size="100" round />
         <br />
         <n-button text tag="a" target="_blank" type="primary" v-text="props.avatar"> </n-button>
       </div>
@@ -32,7 +26,7 @@
           <n-avatar
             :src="`building_skill/${item.skillIcon}.png`"
             round
-            style="background-color: transparent; pointer-events: none"
+            style="background-color: transparent"
           />
         </template>
         {{ item.skillname }}
@@ -91,7 +85,6 @@ const extendedBufferDes = (bufferDes, buffer) => {
 .cc-kw {
   color: #00b0ff;
 }
-
 .riic-term {
   text-decoration: underline;
 }

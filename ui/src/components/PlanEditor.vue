@@ -210,8 +210,7 @@ const render_product = (option) => {
       h(NAvatar, {
         src: '/product/' + option.value + '.png',
         round: true,
-        size: 'small',
-        style: { pointerEvents: 'none' }
+        size: 'small'
       }),
       option.label
     ]
@@ -313,7 +312,7 @@ function set_facility(e) {
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
-                  :style="{ 'border-bottom': color_map[i.group], pointerEvents: 'none' }"
+                  :style="{ 'border-bottom': color_map[i.group] }"
                 />
               </div>
             </div>
@@ -333,7 +332,7 @@ function set_facility(e) {
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
-                  :style="{ 'border-bottom': color_map[i.group], pointerEvents: 'none' }"
+                  :style="{ 'border-bottom': color_map[i.group] }"
                 />
               </div>
             </div>
@@ -353,7 +352,7 @@ function set_facility(e) {
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
-                  :style="{ 'border-bottom': color_map[i.group], pointerEvents: 'none' }"
+                  :style="{ 'border-bottom': color_map[i.group] }"
                 />
               </div>
             </div>
@@ -373,7 +372,7 @@ function set_facility(e) {
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
-                  :style="{ 'border-bottom': color_map[i.group], pointerEvents: 'none' }"
+                  :style="{ 'border-bottom': color_map[i.group] }"
                 />
               </div>
             </div>
@@ -393,7 +392,7 @@ function set_facility(e) {
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
-                  :style="{ 'border-bottom': color_map[i.group], pointerEvents: 'none' }"
+                  :style="{ 'border-bottom': color_map[i.group] }"
                 />
               </div>
             </div>
@@ -436,7 +435,7 @@ function set_facility(e) {
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
-                  :style="{ 'border-bottom': color_map[i.group], pointerEvents: 'none' }"
+                  :style="{ 'border-bottom': color_map[i.group] }"
                 />
               </div>
             </div>
@@ -456,7 +455,7 @@ function set_facility(e) {
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
-                  :style="{ 'border-bottom': color_map[i.group], pointerEvents: 'none' }"
+                  :style="{ 'border-bottom': color_map[i.group] }"
                 />
               </div>
             </div>
@@ -480,7 +479,7 @@ function set_facility(e) {
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
-                  :style="{ 'border-bottom': color_map[i.group], pointerEvents: 'none' }"
+                  :style="{ 'border-bottom': color_map[i.group] }"
                 />
               </div>
             </div>

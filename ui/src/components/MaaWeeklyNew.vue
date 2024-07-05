@@ -425,14 +425,16 @@ function clear() {
               />
               <span v-else>{{ showstage(plan.stage) }}</span>
             </td>
-            <td v-for="day in daysOfWeek">
+            <td
+              v-for="day in daysOfWeek"
+              :class="{ class2: plan[day] === 2, class1: plan[day] === 1 }"
+            >
               <template v-if="plan[day] !== 0">
                 <n-button
                   :v-model="plan[day]"
                   @click="() => togglePlanAndStage(plan, day)"
                   quaternary
                   style="width: 100%; height: 100%"
-                  :class="{ class2: plan[day] === 2, class1: plan[day] === 1 }"
                 >
                   <span v-if="plan[day] === 2">打</span>
                   <span v-if="plan[day] === 1"></span>
