@@ -12,7 +12,7 @@ Mower 是为长期运行设计的、开源的明日方舟脚本。
 
 ## [安装](./start/download)
 
-Mower 支持 Windows、macOS 与 Linux 平台。Windows 用户推荐使用[更新器](./start/download/#updater)下载运行；macOS 与 Linux 用户请参考《[从源码运行 arknights-mower](https://blog.zhaozuohong.vip/2023/08/02/run-arknights-mower-from-source/)》。
+Mower 支持 Windows、macOS 与 Linux 平台。Windows 用户推荐使用[更新器](./start/download#updater)下载运行；macOS 与 Linux 用户请参考《[从源码运行 arknights-mower](https://blog.zhaozuohong.vip/2023/08/02/run-arknights-mower-from-source/)》。
 
 ## 功能介绍
 
