@@ -163,7 +163,7 @@ class Recognizer(object):
             self.scene = Scene.OPERATOR_ELIMINATE
         elif self.find("ope_elimi_agency_panel"):
             self.scene = Scene.OPERATOR_ELIMINATE_AGENCY
-        elif self.find("riic_report_title"):
+        elif self.find("riic/report_title"):
             self.scene = Scene.RIIC_REPORT
         elif self.find("control_central_assistants"):
             self.scene = Scene.CTRLCENTER_ASSISTANT
@@ -249,7 +249,6 @@ class Recognizer(object):
             self.scene = Scene.DEPOT
         elif self.find("pull_once"):
             self.scene = Scene.HEADHUNTING
-
         elif self.is_black():
             self.scene = Scene.LOADING
 
@@ -691,7 +690,9 @@ class Recognizer(object):
             "order_label": (404, 137),
             "pull_once": (1260, 950),
             "recruiting_instructions": (343, 179),
-            "riic_report_title": (1712, 25),
+            "riic/exp": (1385, 239),
+            "riic/manufacture": (1328, 126),
+            "riic/report_title": (1712, 25),
             "spent_credit": (332, 264),
             "shop_cart": (1252, 842),
             "shop_credit_2": (1657, 135),
@@ -751,6 +752,11 @@ class Recognizer(object):
             "ope_failed": (183, 465),
             "ope_finish": (87, 265),
             "ope_plan": (1278, 24),
+            "riic/assistants": ((1320, 400), (1600, 650)),
+            "riic/iron": ((1570, 230), (1630, 340)),
+            "riic/orundum": ((1500, 320), (1800, 550)),
+            "riic/trade": ((1320, 250), (1600, 500)),
+
         }
 
         template_matching_score = {
