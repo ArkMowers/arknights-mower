@@ -351,7 +351,9 @@ class Recognizer(object):
     def find_ra_battle_exit(self) -> bool:
         im = cv2.cvtColor(self.img, cv2.COLOR_RGB2HSV)
         im = cv2.inRange(im, (29, 0, 0), (31, 255, 255))
-        score, scope = self.template_match("ra/battle_exit", ((75, 47), (165, 126)), cv2.TM_CCOEFF_NORMED)
+        score, scope = self.template_match(
+            "ra/battle_exit", ((75, 47), (165, 126)), cv2.TM_CCOEFF_NORMED
+        )
         return scope if score > 0.8 else None
 
     def get_ra_scene(self) -> int:
@@ -541,7 +543,9 @@ class Recognizer(object):
             self.scene = Scene.SSS_EC
         elif self.find("sss/squad_button", scope=((1412, 0), (1876, 140))):
             self.scene = Scene.SSS_SQUAD
-        elif self.find("sss/device_button", scope=((1545, 921), (1920, 1080)), threshold=0.5):
+        elif self.find(
+            "sss/device_button", scope=((1545, 921), (1920, 1080)), threshold=0.5
+        ):
             self.scene = Scene.SSS_DEVICE
         elif self.find("sss/loading"):
             self.scene = Scene.SSS_LOADING
@@ -835,7 +839,9 @@ class Recognizer(object):
             raise RecognizeError(f"Can't find '{res}'")
         return ret
 
-    def score(self, res: str, draw: bool = False, scope: tp.Scope = None, thres: int = None) -> Optional[List[float]]:
+    def score(
+        self, res: str, draw: bool = False, scope: tp.Scope = None, thres: int = None
+    ) -> Optional[List[float]]:
         """
         查找元素是否出现在画面中，并返回分数
 
