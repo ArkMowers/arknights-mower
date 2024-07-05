@@ -358,6 +358,15 @@ watch(
 )
 </script>
 
+<style>
+.n-avatar {
+  pointer-events: none !important;
+}
+.img{
+  pointer-events: none !important;
+}
+</style>
+
 <style scoped>
 .tabs {
   height: 100%;
