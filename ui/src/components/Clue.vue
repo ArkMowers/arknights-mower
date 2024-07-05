@@ -87,8 +87,12 @@ const show_map = ref(false)
     <n-form :label-placement="mobile ? 'top' : 'left'" :show-feedback="false" class="rogue">
       <n-form-item :show-label="false">
         <n-checkbox v-model:checked="maa_credit_fight">
-          <div class="item">信用作战（OF-1）</div>
+          <div class="item">信用作战</div>
         </n-checkbox>
+        <help-text>
+          <div>借助战打OF-1</div>
+          <div>使用指定编队中的指定干员</div>
+        </help-text>
       </n-form-item>
       <n-form-item label="编队">
         <n-select :options="squads" v-model:value="credit_fight.squad" />
