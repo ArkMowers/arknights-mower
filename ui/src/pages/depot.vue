@@ -22,12 +22,7 @@
           <n-gi v-for="itemData in categoryItems" :key="itemData">
             <n-thing>
               <template #avatar>
-                <n-avatar
-                  color="000"
-                  size="large"
-                  :src="'/depot/' + itemData['icon'] + '.webp'"
-                  style="pointer-events: none"
-                />
+                <n-avatar color="000" size="large" :src="'/depot/' + itemData['icon'] + '.webp'" />
               </template>
               <template #header>{{ itemData['key'] }}</template>
               <template #description>拥有：{{ itemData['number'] }}</template>
