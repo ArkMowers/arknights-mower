@@ -1,11 +1,11 @@
 title: arknights-mower
 lang: zh-Hans
-description: 7*24 小时不间断长草，让你忘掉这个游戏！
+description: 《明日方舟》长草助手
 
 plugins:
   - jekyll-remote-theme
 
-remote_theme: ZhaoZuohong/jekyll-rtd-theme
+remote_theme: ArkMowers/jekyll-rtd-theme
 
 readme_index:
   with_frontmatter: true
