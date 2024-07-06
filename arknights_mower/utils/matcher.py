@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-import pickle
 import lzma
+import pickle
 import traceback
 from typing import Optional, Tuple
 
 import cv2
 import numpy as np
 import sklearn.pipeline
-import sklearn.svm
 import sklearn.preprocessing
+import sklearn.svm
 from skimage.metrics import structural_similarity as compare_ssim
 
 from .. import __rootdir__
@@ -21,7 +21,7 @@ MATCHER_DEBUG = False
 # FLANN_INDEX_KDTREE = 1
 FLANN_INDEX_LSH = 6
 GOOD_DISTANCE_LIMIT = 0.7
-ORB = cv2.ORB_create(nfeatures=100000)
+ORB = cv2.ORB_create(nfeatures=100000, edgeThreshold=0)
 with lzma.open(f"{__rootdir__}/models/svm.model", "rb") as f:
     SVC = pickle.loads(f.read())
 
@@ -39,8 +39,8 @@ def hammingDistance(hash1: tp.Hash, hash2: tp.Hash) -> int:
 
 def aHash(img1: tp.GrayImage, img2: tp.GrayImage) -> int:
     """calc image hash"""
-    data1 = cv2.resize(img1, (8, 8)).flatten()
-    data2 = cv2.resize(img2, (8, 8)).flatten()
+    data1 = cv2.resize(img1, (8, 4)).flatten()
+    data2 = cv2.resize(img2, (8, 4)).flatten()
     hash1 = getHash(data1)
     hash2 = getHash(data2)
     return hammingDistance(hash1, hash2)
@@ -134,10 +134,8 @@ class Matcher(object):
             # the height & width of query image
             h, w = query.shape
 
-            bordered = cv2.copyMakeBorder(query, 31, 31, 31, 31, cv2.BORDER_REPLICATE)
-
             # the feature point of query image
-            qry_kp, qry_des = ORB.detectAndCompute(bordered, None)
+            qry_kp, qry_des = ORB.detectAndCompute(query, None)
 
             # build FlannBasedMatcher
             index_params = dict(
@@ -163,9 +161,7 @@ class Matcher(object):
 
             # draw all the good matches, for debug
             if draw or MATCHER_DEBUG:
-                result = cv2.drawMatches(
-                    bordered, qry_kp, self.origin, ori_kp, good, None
-                )
+                result = cv2.drawMatches(query, qry_kp, self.origin, ori_kp, good, None)
 
                 from matplotlib import pyplot as plt
 
@@ -183,14 +179,14 @@ class Matcher(object):
             ori_pts = np.int32([ori_kp[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
 
             # calculated transformation matrix and the mask
-            M, mask = cv2.estimateAffine2D(qry_pts, ori_pts, None, cv2.LMEDS)
+            M, mask = cv2.estimateAffine2D(qry_pts, ori_pts, None, cv2.RANSAC)
 
             # if transformation matrix is None
             if M is None:
                 logger.debug("calculated transformation matrix failed")
                 return None
             else:
-                logger.debug(f"transform matrix: {M}")
+                logger.debug(f"transform matrix: {M.tolist()}")
 
             M[0][1] = 0
             M[1][0] = 0
@@ -200,7 +196,7 @@ class Matcher(object):
 
             # calc the location of the query image
             # quad = np.float32([[[0, 0]], [[0, h-1]], [[w-1, h-1]], [[w-1, 0]]])
-            quad = np.int32([[[31, 31]], [[w + 30, h + 30]]])
+            quad = np.int32([[[0, 0]], [[w, h]]])
             quad = cv2.transform(quad, M)  # quadrangle
             rect = quad.reshape(2, 2).tolist()
 
@@ -216,7 +212,7 @@ class Matcher(object):
                     flags=2,
                 )
                 result = cv2.drawMatches(
-                    bordered, qry_kp, origin_copy, ori_kp, good, None, **draw_params
+                    query, qry_kp, origin_copy, ori_kp, good, None, **draw_params
                 )
                 plt.imshow(result, cmap="gray", vmin=0, vmax=255)
                 plt.show()
@@ -265,7 +261,7 @@ class Matcher(object):
                 plt.show()
 
             # calc aHash between query image and rect_img
-            hash = 1 - (aHash(query, rect_img) / 32)
+            hash = 1 - (aHash(query, rect_img) / 16)
 
             # calc ssim between query image and rect_img
             ssim = compare_ssim(query, rect_img, multichannel=True)

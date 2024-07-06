@@ -39,7 +39,6 @@ from arknights_mower.utils.digit_reader import DigitReader
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.matcher import Matcher
 from arknights_mower.utils.news import get_update_time
 from arknights_mower.utils.operators import Operator, Operators
 from arknights_mower.utils.plan import PlanTriggerTiming
@@ -1794,20 +1793,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     def todo_list(self) -> None:
         """处理基建 Todo 列表"""
         tapped = False
-        img = cropimg(self.recog.gray, ((200, 900), (1500, 1080)))
-        img = cv2.copyMakeBorder(img, 31, 31, 31, 31, cv2.BORDER_REPLICATE)
-        matcher = Matcher(img)
-        for res in ["bill", "factory", "trust"]:
-            res_img = loadres(f"infra_collect_{res}", True)
+        collect = {"bill": "订单", "factory": "制造站产物", "trust": "信赖"}
+        for res, name in collect.items():
             tap_times = 0
-            while scope := matcher.match(res_img):
-                logger.info(f"基建产物/信赖收取：{res}")
-                x, y = self.get_pos(scope)
-                self.tap((x + 200 - 31, y + 900 - 31))
+            while pos := self.find(f"infra_collect_{res}"):
+                logger.info(f"收取{name}")
+                self.tap(pos)
                 tapped = True
-                img = cropimg(self.recog.gray, ((200, 900), (1500, 1080)))
-                img = cv2.copyMakeBorder(img, 31, 31, 31, 31, cv2.BORDER_REPLICATE)
-                matcher = Matcher(img)
                 tap_times += 1
                 if tap_times > 5:
                     break
