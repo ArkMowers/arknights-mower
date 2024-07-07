@@ -157,3 +157,6 @@ def init_adb_buildin() -> Path:
 init_config()
 
 conf = {}
+droidcast = {"enable": False}
+TAP_TO_LAUNCH = {"enable": False, "x": 0, "y": 0}
+stop_mower = None
