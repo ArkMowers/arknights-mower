@@ -67,7 +67,7 @@ jobs:
         if: github.event.head_commit.message != '发版'
         shell: bash
         run: |
-          sed -i 's/__version__ = "\(.*\)"/__version__ = "\1+${GITHUB_SHA::7}"/g' ./arknights_mower/__init__.py
+          sed -i "s/__version__ = \"\(.*\)\"/__version__ = \"\1+${GITHUB_SHA::7}\"/g" ./arknights_mower/__init__.py
 
       - name: install python 3.12
         uses: actions/setup-python@v5
