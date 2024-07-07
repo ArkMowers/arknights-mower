@@ -354,6 +354,9 @@ def control_central(solver: BaseSolver):
 def recruit_result(solver: BaseSolver):
     solver.tap((960, 540))
 
+@edge(Scene.DOUBLE_CONFIRM, Scene.RECRUIT_MAIN)
+def recruit_accelerate(solver: BaseSolver):
+    solver.tap_element("recruit_continue")
 
 @edge(Scene.REFRESH_TAGS, Scene.RECRUIT_TAGS)
 def refresh_cancel(solver: BaseSolver):
