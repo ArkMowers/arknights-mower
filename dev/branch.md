@@ -4,7 +4,7 @@ sort: 2
 
 # 版本与分支
 
-Mower 同时维护两个分支：测试版与稳定版。新功能的开发以及 bug 修复都测试分支上进行。然而，对代码的改动可能引入新的 bug，功能的变动也需要用户不断地学习和适应，使用测试版可能不时遇到新的 bug。对于没有精力跟踪 mower 开发进度，或希望获得稳定体验的用户，稳定版也是必不可少的。
+Mower 同时维护两个分支：测试版与稳定版。新功能的开发以及 bug 修复在测试分支上进行。然而，对代码的改动可能引入新的 bug，功能的变动也需要用户不断地学习和适应，使用测试版可能不时遇到新的 bug。对于没有精力跟踪 mower 开发进度，或希望获得稳定体验的用户，稳定版也是必不可少的。
 
 ## 版本号
 
@@ -22,12 +22,12 @@ Mower 使用 GitHub Actions 自动为 Windows 平台打包。打包过程中，�
   if: github.event.head_commit.message != '发版'
   shell: bash
   run: |
-    sed -i 's/__version__ = "\(.*\)"/__version__ = "\1+${GITHUB_SHA::7}"/g' ./arknights_mower/__init__.py
+    sed -i "s/__version__ = \"\(.*\)\"/__version__ = \"\1+${GITHUB_SHA::7}\"/g" ./arknights_mower/__init__.py
 ```
 
 当提交信息是“发版”时，CI 不会修改版本号；反之，CI 会把 commit id 的前 7 位附加到版本号后面，使用加号分隔。
 
-- 测试版使用滚动更新，版本号格式为 `YYYY.MM+<commit id>`，其中 `YYYY` 为四位年份，`MM` 为两位月份，`<commit id>` 为 commit id 的前 7 位。测试版代码的 `__version__` 中只写 `YYYY.MM` 的部分，靠 CI 自动添加 commit id。
+- 测试版使用滚动更新，版本号格式为 `YYYY.MM+<commit id>`，其中 `YYYY` 为四位年份，`MM` 为两位月份，`<commit id>` 为 commit id 的前 7 位。测试版代码的 `__version__` 中只写 `YYYY.MM` 的部分，由 CI 自动添加 commit id。
 - 稳定版使用定点更新，版本号格式为 `YYYY.MM.X`，其中 `X` 为小版本号。创建分支时 `X` 为 1，以后每次发版时，需手动增加 `X`，并将提交信息设为“发版”。
 
 ## 日志页背景

@@ -6,7 +6,7 @@ sort: 2
 
 基建是 mower 的核心功能。然而，用 mower ≠ 产出高，玩家只有提高自身的基建理解，才能充分发挥 mower 的作用，取得更高的收益。因此，本篇文档先讲解必要的基建知识，然后说明 mower 的各项基建功能对于提高产出的作用。
 
-新手建议阅读《[Mower 简明教程](https://blog.zhaozuohong.vip/2024/05/10/mower-guide/tutorial/)》，加入 QQ 频道 [ArkMower（频道号：2r118jwue4）](https://pd.qq.com/s/5t91c3gx9)交流基建心得。
+新手建议阅读《[Mower 简明教程](https://blog.zhaozuohong.vip/2024/05/10/mower-guide/tutorial/)》，加入 QQ 频道 [ArkMower（频道号：2r118jwue4）](https://pd.qq.com/s/5t91c3gx9)交流基建。
 
 ## 产出计算教程
 
