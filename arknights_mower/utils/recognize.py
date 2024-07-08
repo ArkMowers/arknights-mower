@@ -629,92 +629,96 @@ class Recognizer(object):
         logger.debug(f"find: {res}")
 
         color = {
-            "1800": (158, 958),
-            "12cadpa": (1810, 21),
-            "agent_unlock": (91, 1013),
-            "arrange_confirm": (755, 903),
-            "arrange_order_options": (1652, 23),
-            "arrange_order_options_scene": (369, 199),
-            "clue": (1740, 855),
-            "clue/daily": (526, 623),
-            "clue/filter_all": (1297, 99),
-            "clue/give_away": (25, 18),
-            "clue/receive": (1295, 15),
-            "clue/summary": (59, 153),
-            "confirm": (0, 683),
-            "control_central_assistants": (39, 560),
-            "depot": (0, 955),
-            "double_confirm/exit": (940, 464),
-            "double_confirm/friend": (978, 465),
-            "double_confirm/give_up": (574, 716),
-            "double_confirm/infrastructure": (1077, 435),
-            "double_confirm/main": (835, 683),
-            "double_confirm/network": (708, 435),
-            "double_confirm/recruit": (981, 464),
-            "drone": (274, 437),
-            "factory_collect": (1542, 886),
-            "fight/refresh": (1639, 22),
-            "hypergryph": (0, 961),
-            "infra_overview": (54, 135),
-            "infra_overview_in": (64, 705),
-            "infra_todo": (13, 1013),
-            "loading2": (620, 247),
-            "loading7": (106, 635),
-            "login_account": (622, 703),
-            "login_awake": (888, 743),
-            "login_connecting": (760, 881),
-            "login_loading": (920, 388),
-            "login_logo": (601, 332),
-            "mail": (307, 39),
-            "mission_trainee_on": (690, 17),
-            "nav_bar": (655, 0),
-            "nav_button": (26, 20),
-            "navigation/collection/AP-1": (203, 821),
-            "navigation/collection/CA-1": (203, 821),
-            "navigation/collection/CE-1": (243, 822),
-            "navigation/collection/LS-1": (240, 822),
-            "navigation/collection/SK-1": (204, 821),
-            "navigation/collection/PR-A-1": (550, 629),
-            "navigation/collection/PR-B-1": (496, 629),
-            "navigation/collection/PR-C-1": (487, 586),
-            "navigation/collection/PR-D-1": (516, 619),
-            "navigation/record_restoration": (274, 970),
-            "ope_agency_lock": (1565, 856),
-            "ope_elimi_agency_confirm": (1554, 941),
-            "ope_elimi_agency_panel": (1409, 612),
-            "ope_eliminate": (1332, 938),
-            "ope_recover_originite_on": (1514, 124),
-            "ope_recover_potion_on": (1046, 127),
-            "ope_select_start": (1579, 701),
-            "open_recruitment": (192, 143),
-            "order_label": (404, 137),
-            "pull_once": (1260, 950),
-            "recruiting_instructions": (343, 179),
-            "riic/exp": (1385, 239),
-            "riic/manufacture": (1328, 126),
-            "riic/report_title": (1712, 25),
-            "spent_credit": (332, 264),
-            "shop_cart": (1252, 842),
-            "shop_credit_2": (1657, 135),
-            "skip": (1803, 32),
-            "terminal_main": (73, 959),
-            "terminal_pre2": (1459, 797),
-            "upgrade": (997, 501),
+            "1800": [(158, 958)],
+            "12cadpa": [(1810, 21)],
+            "agent_unlock": [(91, 1013)],
+            "arrange_confirm": [(755, 903)],
+            "arrange_order_options": [(1652, 23)],
+            "arrange_order_options_scene": [(369, 199)],
+            "clue": [(1740, 855)],
+            "clue/daily": [(526, 623)],
+            "clue/filter_all": [(1297, 99)],
+            "clue/give_away": [(25, 18)],
+            "clue/receive": [(1295, 15)],
+            "clue/summary": [(59, 153)],
+            "confirm": [(0, 683)],
+            "control_central_assistants": [(39, 560)],
+            "depot": [(0, 955)],
+            "double_confirm/exit": [(940, 464)],
+            "double_confirm/friend": [(978, 465)],
+            "double_confirm/give_up": [(574, 716)],
+            "double_confirm/infrastructure": [(1077, 435)],
+            "double_confirm/main": [(835, 683)],
+            "double_confirm/network": [(708, 435)],
+            "double_confirm/recruit": [(981, 464)],
+            "drone": [(274, 437)],
+            "factory_collect": [(1542, 886)],
+            "fight/refresh": [(1639, 22)],
+            "hypergryph": [(0, 961)],
+            "infra_overview": [(54, 135)],
+            "infra_overview_in": [(64, 705)],
+            "infra_todo": [(13, 1013)],
+            "loading2": [(620, 247)],
+            "loading7": [(106, 635)],
+            "login_account": [(622, 703)],
+            "login_awake": [(888, 743)],
+            "login_connecting": [(760, 881)],
+            "login_loading": [(920, 388)],
+            "login_logo": [(601, 332)],
+            "mail": [(307, 39)],
+            "mission_trainee_on": [(690, 17)],
+            "nav_bar": [(655, 0)],
+            "nav_button": [(26, 20)],
+            "navigation/collection/AP-1": [(203, 821)],
+            "navigation/collection/CA-1": [(203, 821)],
+            "navigation/collection/CE-1": [(243, 822)],
+            "navigation/collection/LS-1": [(240, 822)],
+            "navigation/collection/SK-1": [(204, 821)],
+            "navigation/collection/PR-A-1": [(550, 629)],
+            "navigation/collection/PR-B-1": [(496, 629)],
+            "navigation/collection/PR-C-1": [(487, 586)],
+            "navigation/collection/PR-D-1": [(516, 619)],
+            "navigation/ope_hard_small": [(819, 937)],
+            "navigation/ope_normal_small": [(494, 930)],
+            "navigation/record_restoration": [(274, 970)],
+            "ope_agency_lock": [(1565, 856), (1565, 875)],
+            "ope_elimi_agency_confirm": [(1554, 941)],
+            "ope_elimi_agency_panel": [(1409, 612)],
+            "ope_eliminate": [(1332, 938)],
+            "ope_recover_originite_on": [(1514, 124)],
+            "ope_recover_potion_on": [(1046, 127)],
+            "ope_select_start": [(1579, 701)],
+            "open_recruitment": [(192, 143)],
+            "order_label": [(404, 137)],
+            "pull_once": [(1260, 950)],
+            "recruiting_instructions": [(343, 179)],
+            "riic/exp": [(1385, 239)],
+            "riic/manufacture": [(1328, 126)],
+            "riic/report_title": [(1712, 25)],
+            "spent_credit": [(332, 264)],
+            "shop_cart": [(1252, 842)],
+            "shop_credit_2": [(1657, 135)],
+            "skip": [(1803, 32)],
+            "terminal_main": [(73, 959)],
+            "terminal_pre2": [(1459, 797)],
+            "upgrade": [(997, 501)],
         }
 
         if res in color:
-            pos = color[res]
-            res = loadres(res)
-            h, w, _ = res.shape
-            scope = pos, va(pos, (w, h))
-            img = cropimg(self.img, scope)
-            if cmatch(img, res, draw=draw):
-                gray = cropimg(self.gray, scope)
-                res = cv2.cvtColor(res, cv2.COLOR_RGB2GRAY)
-                ssim = structural_similarity(gray, res)
-                logger.debug(f"{ssim=}")
-                if ssim >= 0.9:
-                    return scope
+            res_img = loadres(res)
+            h, w, _ = res_img.shape
+
+            for pos in color[res]:
+                scope = pos, va(pos, (w, h))
+                img = cropimg(self.img, scope)
+                if cmatch(img, res_img, draw=draw):
+                    gray = cropimg(self.gray, scope)
+                    res_img = cv2.cvtColor(res_img, cv2.COLOR_RGB2GRAY)
+                    ssim = structural_similarity(gray, res_img)
+                    logger.debug(f"{ssim=}")
+                    if ssim >= 0.9:
+                        return scope
+
             return None
 
         template_matching = {
@@ -723,6 +727,7 @@ class Recognizer(object):
             "arrange_check_in_on": ((30, 300), (175, 700)),
             "biography": (768, 934),
             "collection": (1005, 943),
+            "collection_small": (1053, 982),
             "connecting": (1087, 978),
             "episode": (535, 937),
             "fight/use": (858, 864),
@@ -747,6 +752,11 @@ class Recognizer(object):
             "navigation/collection/PR-C_entry": ((0, 170), (1920, 870)),
             "navigation/collection/PR-D_entry": ((0, 170), (1920, 870)),
             "navigation/episode": (1560, 944),
+            "navigation/ope_difficulty": [(0, 920), (120, 1080)],
+            "navigation/ope_normal": (172, 950),
+            "navigation/ope_normal_small": (494, 930),
+            "navigation/ope_hard": (172, 950),
+            "navigation/ope_hard_small": (819, 937),
             "ope_agency_going": ((508, 941), (715, 1021)),
             "ope_agency_fail": (809, 959),
             "ope_failed": (183, 465),
@@ -756,11 +766,14 @@ class Recognizer(object):
             "riic/iron": ((1570, 230), (1630, 340)),
             "riic/orundum": ((1500, 320), (1800, 550)),
             "riic/trade": ((1320, 250), (1600, 500)),
-
         }
 
         template_matching_score = {
             "connecting": 0.7,
+            "navigation/ope_hard": 0.7,
+            "navigation/ope_hard_small": 0.7,
+            "navigation/ope_normal": 0.7,
+            "navigation/ope_normal_small": 0.7,
         }
 
         if res in template_matching:

@@ -25,6 +25,29 @@ location = {
         "1-11": (4965, -9),
         "1-12": (5436, -10),
     },
+    12: {
+        "12-1": (0, 0),
+        "12-2": (342, 292),
+        "12-3": (701, 292),
+        "12-4": (894, 121),
+        "12-5": (1122, 292),
+        "12-6": (1364, 121),
+        "12-7": (1515, 292),
+        "12-8": (2109, 290),
+        "12-9": (2468, 290),
+        "12-10": (2670, 125),
+        "12-11": (2980, 422),
+        "12-12": (3218, 125),
+        "12-13": (3456, 294),
+        "12-14": (3694, 123),
+        "12-15": (4020, 123),
+        "12-16": (4348, -14),
+        "12-17": (4673, -14),
+        "12-18": (4673, 210),
+        "12-19": (5175, 210),
+        "12-20": (5700, 210),
+        "12-21": (6377, 210),
+    },
     "OF": {
         "OF-1": (0, 0),
         "OF-2": (738, 144),
@@ -87,6 +110,11 @@ collection_prefixs = [
     "SK",
 ]
 
+difficulty_str = [
+    "normal",
+    "hard",
+]
+
 with lzma.open(f"{__rootdir__}/models/navigation.pkl", "rb") as f:
     templates = pickle.load(f)
 
@@ -108,7 +136,8 @@ class NavigationSolver(SceneGraphSolver):
             pr_prefix = name.split("-")[1]
         self.prefix = prefix
         self.pr_prefix = pr_prefix
-
+        self.now_difficulty = None
+        self.change_to = None
         if name == "Annihilation":
             logger.info("剿灭导航")
         elif prefix.isdigit():
@@ -174,7 +203,7 @@ class NavigationSolver(SceneGraphSolver):
                 return
             act_scope = ((300, 315), (400, 370))
 
-            if self.find("navigation/act/0", scope=act_scope):
+            if self.find(f"navigation/act/{self.act}", scope=act_scope):
                 if pos := self.find(f"navigation/main/{self.prefix}"):
                     self.tap(pos)
                 else:
@@ -223,6 +252,26 @@ class NavigationSolver(SceneGraphSolver):
                     self.tap(va(pos[0], location[prefix][self.name]))
                 return True
             # 其余关
+            if self.act == 2:
+                if self.now_difficulty is None:
+                    if self.find("navigation/ope_normal"):
+                        self.now_difficulty = 0
+                    elif self.find("navigation/ope_hard"):
+                        self.now_difficulty = 1
+                    logger.info(f"当前难度{difficulty_str[self.now_difficulty]}")
+
+                if self.change_to is not None and self.now_difficulty != self.change_to:
+                    self.recog.update()
+                    if self.find("navigation/ope_difficulty"):
+                        self.tap_element(
+                            f"navigation/ope_{difficulty_str[self.change_to]}_small"
+                        )
+                        self.now_difficulty = None
+                    else:
+                        self.tap_element(
+                            f"navigation/ope_{difficulty_str[self.now_difficulty]}"
+                        )
+                        return
             for i in location[prefix]:
                 result = cv2.matchTemplate(
                     self.recog.gray, templates[i], cv2.TM_SQDIFF_NORMED
@@ -242,6 +291,19 @@ class NavigationSolver(SceneGraphSolver):
                 self.success = True
                 self.tap(va(target, (60, 20)))
         elif scene == Scene.OPERATOR_BEFORE:
+            if self.act == 2:
+                if self.change_to is not None:
+                    logger.info(f"{self.name} 无法代理")
+                    self.success = False
+                    self.back_to_index()
+                    return True
+                if self.find("ope_agency_lock"):
+                    self.change_to = self.now_difficulty ^ 1
+                    logger.info(
+                        f"{self.name} {difficulty_str[self.now_difficulty]} 无法代理，切难度尝试"
+                    )
+                    self.back()
+                    return
             if self.success:
                 return True
             else:
