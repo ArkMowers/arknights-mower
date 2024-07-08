@@ -15,6 +15,7 @@ from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 
 extract_path = get_path("@install/tmp/hot_update")
+mirror = "https://mower.zhaozuohong.vip"
 sign_in = None
 navigation = None
 
@@ -36,6 +37,11 @@ def load_module(download_update):
         import sign_in
 
 
+def get_listing():
+    cwd, listing = fetch_listing(mirror)
+    return listing
+
+
 def update():
     global last_update
 
@@ -45,9 +51,8 @@ def update():
         return
 
     logger.info("检查热更新资源")
-    mirror = "https://mower.zhaozuohong.vip"
+    listing = get_listing()
     filename = "hot_update.zip"
-    cwd, listing = fetch_listing(mirror)
     entry = next(i for i in listing if i.name == filename)
     remote_time = datetime.fromtimestamp(mktime(entry.modified))
     download_update = True

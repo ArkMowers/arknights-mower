@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 import requests
 from evalidate import Expr
 
+from arknights_mower import __version__
 from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
 from arknights_mower.solvers.secret_front import SecretFront
 from arknights_mower.utils import config, path, rapidocr
@@ -13,6 +14,7 @@ from arknights_mower.utils.depot import 创建csv, 创建json
 from arknights_mower.utils.device.adb_client.session import Session
 from arknights_mower.utils.device.scrcpy import Scrcpy
 from arknights_mower.utils.email import task_template
+from arknights_mower.utils.hot_update import get_listing
 from arknights_mower.utils.log import init_fhlr, logger
 from arknights_mower.utils.logic_expression import LogicExpression
 from arknights_mower.utils.path import get_path
@@ -282,6 +284,14 @@ def simulate():
                 ).total_seconds()
 
                 if remaining_time > 540:
+                    logger.info("检查版本更新")
+                    listing = get_listing()
+                    version = __version__.replace("+", "-")
+                    if not any(i.name.startswith(version) for i in listing):
+                        msg = "版本过旧，请更新至受支持的版本"
+                        logger.error(msg)
+                        base_scheduler.send_message(msg)
+
                     # 刷新时间以鹰历为准
                     if (
                         base_scheduler.sign_in
