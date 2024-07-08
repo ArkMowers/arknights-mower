@@ -165,6 +165,9 @@ class NavigationSolver(SceneGraphSolver):
         else:
             logger.error(f"暂不支持{name}")
             return False
+        
+        if not isinstance(self.prefix,int):
+            self.act=None
 
         super().run()
         return self.success
