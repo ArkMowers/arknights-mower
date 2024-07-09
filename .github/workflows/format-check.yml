@@ -1,0 +1,23 @@
+# https://arkmowers.github.io/arknights-mower/dev/environment.html#auto-formatting
+
+name: 代码格式检查
+on:
+  - push
+  - pull_request
+
+jobs:
+  ruff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: chartboost/ruff-action@v1
+
+  prettier:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: creyD/prettier_action@v4.3
+        with:
+          dry: True
+          working_directory: ui/
+          prettier_options: "--check **/*.js **/*.vue"
