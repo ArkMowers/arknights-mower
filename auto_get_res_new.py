@@ -1,20 +1,17 @@
 import json
-import shutil
+import lzma
 import os
+import pickle
+from datetime import datetime
 
 import cv2
 import numpy as np
-import pickle
-import lzma
-
-from datetime import datetime
-
-from sklearn.neighbors import KNeighborsClassifier
-from skimage.feature import hog
-
 from PIL import Image, ImageDraw, ImageFont
+from skimage.feature import hog
+from sklearn.neighbors import KNeighborsClassifier
+
 from arknights_mower.data import agent_list
-from arknights_mower.utils.image import thres2
+from arknights_mower.utils.image import loadimg, thres2
 
 
 class Arknights数据处理器:
@@ -36,6 +33,7 @@ class Arknights数据处理器:
             "./ArknightsGameResource/gamedata/excel/activity_table.json"
         )
         self.装仓库物品的字典 = {"NORMAL": [], "CONSUME": [], "MATERIAL": []}
+        self.常驻关卡 = self.加载json("arknights_mower/data/stage_data.json")
 
     def 加载json(self, file_path):
         with open(file_path, "r", encoding="utf-8") as f:
@@ -445,6 +443,32 @@ class Arknights数据处理器:
         with lzma.open("arknights_mower/models/operator_select.model", "wb") as f:
             pickle.dump(data, f)
 
+    def auto_fight_avatar(self):
+        with open(
+            "./ArknightsGameResource/gamedata/excel/character_table.json",
+            encoding="utf-8",
+        ) as f:
+            mmm = json.load(f)
+        avatar_mapping = {}  # char_285_medic2 -> Lancet-2
+        for name, data in mmm.items():
+            avatar_mapping[name] = data["name"]
+        avatar = {}  # Lancet-2 -> List[avatar image]
+        avatar_path = "./ArknightsGameResource/avatar"
+        for i in os.listdir(avatar_path):
+            # i: char_285_medic2.png
+            for j, k in avatar_mapping.items():
+                # j: char_285_medic2
+                # k: Lancet-2
+                if i.startswith(j):
+                    img = loadimg(os.path.join(avatar_path, i), True)
+                    img = cv2.resize(img, None, None, 0.5, 0.5)
+                    if k not in avatar:
+                        avatar[k] = []
+                    avatar[k].append(img)
+                    break
+        with lzma.open("./arknights_mower/models/avatar.pkl", "wb") as f:
+            pickle.dump(avatar, f)
+
 
 数据处理器 = Arknights数据处理器()
 
@@ -453,7 +477,8 @@ class Arknights数据处理器:
 数据处理器.添加干员()
 
 数据处理器.读取卡池()
-数据处理器.读取活动关卡()
+# TODO: 修复活动关卡读取
+# 数据处理器.读取活动关卡()
 
 
 数据处理器.批量训练并保存扫仓库模型()
@@ -468,3 +493,5 @@ print("训练选中的干员名的模型,完成")
 
 数据处理器.load_recruit_data()
 数据处理器.load_recruit_template()
+
+数据处理器.auto_fight_avatar()
