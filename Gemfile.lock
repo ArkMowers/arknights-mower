@@ -300,7 +300,6 @@ DEPENDENCIES
   csv
   github-pages
   jekyll-commonmark-ghpages
-  jekyll-remote-theme
   webrick
 
 BUNDLED WITH
