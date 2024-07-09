@@ -19,5 +19,4 @@ jobs:
       - uses: creyD/prettier_action@v4.3
         with:
           dry: True
-          working_directory: ui/
-          prettier_options: "--check **/*.js **/*.vue"
+          prettier_options: "--check ui/**/*.js ui/**/*.vue"
