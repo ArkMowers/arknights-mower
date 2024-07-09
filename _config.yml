@@ -3,9 +3,9 @@ lang: zh-Hans
 description: 《明日方舟》长草助手
 
 plugins:
-  - jekyll-remote-theme
-
-remote_theme: ArkMowers/jekyll-rtd-theme
+  - jemoji
+  - jekyll-avatar
+  - jekyll-mentions
 
 readme_index:
   with_frontmatter: true

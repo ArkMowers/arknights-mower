@@ -6,7 +6,33 @@ sort: 4
 
 Mower 使用 OpenCV 处理图像，颜色通道顺序为 RGB。
 
-## 加载与显示图像
+## 坐标与区域
+
+### 类型
+
+`arknights_mower/utils/typealias.py` 中定义了坐标与区域的类型：
+
+```python
+Coordinate = Tuple[int, int]
+Scope = Tuple[Coordinate, Coordinate]
+```
+
+`Coordinate` 元组的两个元素分别是横坐标和纵坐标；`Scope` 元组的两个元素分别是区域左上角与右下角的坐标。
+
+### `get_pos()`
+
+`arknights_mower/utils/solver` 中，为 `BaseSolver` 定义了方法 `get_pos()`。`get_pos()` 接受三个参数，第一个参数既可以是坐标，也可以是区域。当第一个参数是坐标时，`get_pos()` 直接返回此坐标；当第一个参数是区域时，根据第二、第三个参数 `x_rate` 和 `y_rate` 获取区域中指定比例的坐标。默认值 `x_rate=0.5`，`y_rate=0.5`，也就是获取区域中央的坐标。
+
+### `va()`、`vs()` 和 `sa()`
+
+`arknights_mower/utils/vector.py` 提供了坐标的加减法与区域的偏移函数。`va()` 将两个坐标相加，`vs()` 将两个坐标相减，`sa()` 进行区域偏移。
+
+<details>
+<summary>使用示例</summary>
+{% include coordinate.html %}
+</details>
+
+## 加载图像
 
 ### `loadimg()`
 
@@ -36,4 +62,13 @@ Mower 用于识别的图像素材全部位于 `arknights_mower/resources` 以及
 <details>
 <summary>使用示例</summary>
 {% include loadimg.html %}
+</details>
+
+## 裁切图像
+
+`arknights_mower/utils/image.py` 中提供 `cropimg()` 方法，接受两个参数：第一个参数 `img` 可以是灰度或彩色图像；第二个参数 `scope` 是裁切的区域。函数返回裁切后的图像。注意 `cropimg()` 返回的图像没有经过复制，如果要修改裁切后的图像，并且不想修改原图像，需要自己复制一次。
+
+<details>
+<summary>使用示例</summary>
+{% include cropimg.html %}
 </details>
