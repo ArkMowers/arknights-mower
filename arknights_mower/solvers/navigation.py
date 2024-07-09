@@ -123,6 +123,7 @@ class NavigationSolver(SceneGraphSolver):
     def run(self, name: str):
         logger.info("Start: 关卡导航")
         self.success = False
+        self.act=None
 
         hot_update.update()
         if name in hot_update.navigation.NavigationSolver.location:
@@ -165,7 +166,7 @@ class NavigationSolver(SceneGraphSolver):
         else:
             logger.error(f"暂不支持{name}")
             return False
-
+        
         super().run()
         return self.success
 
