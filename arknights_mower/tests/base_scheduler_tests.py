@@ -6,7 +6,7 @@ from arknights_mower.utils.logic_expression import LogicExpression
 from arknights_mower.utils.plan import Room, PlanConfig, Plan
 
 with patch.dict("sys.modules", {"RecruitSolver": MagicMock()}):
-    from ..solvers import RecruitSolver
+    pass
 
 
 class TestBaseScheduler(unittest.TestCase):

@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-import http
-import socket
 import tempfile
 
 import requests
 
-from ... import __system__
 from ..log import logger
 
 

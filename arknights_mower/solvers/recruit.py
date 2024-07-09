@@ -456,7 +456,7 @@ class RecruitSolver(SceneGraphSolver):
         except cv2.Error as e:
             logger.error(f"公招开包异常{e}")
             self.send_message(f"公招开包异常{e}")
-        except:
+        except Exception:
             pass
 
         self.tap((self.recog.w // 2, self.recog.h // 2))
@@ -530,7 +530,7 @@ class RecruitSolver(SceneGraphSolver):
                 for res in result_dict[item[0]][:]:
                     if res["star"] > min_star:
                         result_dict[item[0]].remove(res)
-            except KeyError as e:
+            except KeyError:
                 logger.debug("Recruit Cal Key Error :{}".format(result_dict))
                 continue
         result = {

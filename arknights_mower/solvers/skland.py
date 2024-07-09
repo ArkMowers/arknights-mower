@@ -1,7 +1,6 @@
 import hashlib
 import hmac
 import json
-import csv
 import datetime
 import os
 import time
@@ -157,7 +156,7 @@ class SKLand:
         if resp["code"] != 0:
             print(f"请求角色列表出现问题：{resp['message']}")
             if resp.get("message") == "用户未登录":
-                print(f"用户登录可能失效了，请重新运行此程序！")
+                print("用户登录可能失效了，请重新运行此程序！")
                 return []
         for i in resp["data"]["list"]:
             if i.get("appCode") != "arknights":
@@ -215,7 +214,7 @@ class SKLand:
             for item in self.reward:
                 res_df = pd.DataFrame(item, index=[date_str])
                 res_df.to_csv(self.record_path, mode="a", header=False, encoding="gbk")
-        except:
+        except Exception:
             pass
 
         return True

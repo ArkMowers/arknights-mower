@@ -1,11 +1,9 @@
 # 用于记录Mower操作行为
 import sqlite3
-import os
-from collections import defaultdict
 
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.log import logger
-from datetime import datetime, timezone
+from datetime import datetime
 
 
 # 记录干员进出站以及心情数据，将记录信息存入agent_action表里
@@ -102,7 +100,7 @@ def get_work_rest_ratios():
         data = cursor.fetchall()
         # 关闭数据库连接
         conn.close()
-    except sqlite3.Error as e:
+    except sqlite3.Error:
         data = []
     processed_data = {}
     grouped_data = {}
@@ -173,7 +171,7 @@ def get_mood_ratios():
         data = cursor.fetchall()
         # 关闭数据库连接
         conn.close()
-    except sqlite3.Error as e:
+    except sqlite3.Error:
         data = []
 
     work_rest_data_ratios = get_work_rest_ratios()

@@ -4,7 +4,6 @@ import pickle
 from dataclasses import dataclass
 from typing import Any, List, Optional, Tuple
 
-import cv2
 import numpy as np
 import numpy.typing as npt
 

@@ -157,7 +157,7 @@ class Operators(object):
                 if data.agent == "菲亚梅塔" and idx == 1:
                     return f"菲亚梅塔不能安排在2号位置 房间->{room}, 干员->{data.agent}"
                 if data.agent == "菲亚梅塔" and not room.startswith("dorm"):
-                    return f"菲亚梅塔必须安排在宿舍"
+                    return "菲亚梅塔必须安排在宿舍"
                 if data.agent == "Free" and not room.startswith("dorm"):
                     return f"Free只能安排在宿舍 房间->{room}, 干员->{data.agent}"
                 if data.agent in self.operators and data.agent != "Free":
@@ -212,7 +212,7 @@ class Operators(object):
                             return f"菲亚梅塔替换只能为高效组干员: 房间->{room}, 干员->{_replacement}"
         # 判定替换缺失
         if "菲亚梅塔" in missing_replacements:
-            return f"菲亚梅塔替换缺失"
+            return "菲亚梅塔替换缺失"
         if len(missing_replacements):
             return f'以下干员替换组缺失：{",".join(missing_replacements)}'
         dorm_names = [k for k in self.plan.keys() if k.startswith("dorm")]
@@ -225,9 +225,9 @@ class Operators(object):
                 for _idx, _dorm in enumerate(self.plan[dorm]):
                     if _dorm.agent == "Free" and _idx <= 1:
                         if "波登可" not in [_agent.agent for _agent in self.plan[dorm]]:
-                            return f"宿舍必须安排2个宿管"
+                            return "宿舍必须安排2个宿管"
                     if _dorm.agent != "Free" and free_found:
-                        return f"Free必须连续且安排在宿管后"
+                        return "Free必须连续且安排在宿管后"
                     if (
                         _dorm.agent == "Free"
                         and not free_found
@@ -239,7 +239,7 @@ class Operators(object):
                         free_found = True
                         continue
                 if not free_found:
-                    return f"宿舍必须安排至少一个Free"
+                    return "宿舍必须安排至少一个Free"
             # VIP休息位用完后横向遍历
             for dorm in dorm_names:
                 for _idx, _dorm in enumerate(self.plan[dorm]):

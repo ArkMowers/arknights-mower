@@ -4,10 +4,8 @@ import datetime
 import lzma
 import os
 import pickle
-import time
 
 import cv2
-import numpy as np
 import pandas as pd
 
 from arknights_mower.data import __rootdir__
@@ -15,11 +13,10 @@ from arknights_mower.utils.device import Device
 from arknights_mower.utils.digit_reader import DigitReader
 from arknights_mower.utils.email import report_template
 from arknights_mower.utils.graph import SceneGraphSolver
-from arknights_mower.utils.image import cropimg, loadres, thres2
+from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.recognize import Recognizer, Scene, tp
-from arknights_mower.utils.vector import va
 
 number = {}
 with lzma.open(f"{__rootdir__}/models/noto_sans.pkl", "rb") as f:

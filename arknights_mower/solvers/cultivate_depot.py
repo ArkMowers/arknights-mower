@@ -1,11 +1,9 @@
 import hashlib
 import hmac
 import json
-import datetime
 import time
 from urllib import parse
 
-import pandas as pd
 import requests
 
 from arknights_mower.utils.log import logger

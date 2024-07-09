@@ -1,20 +1,9 @@
 import json
-import shutil
-import os
 import re
-import cv2
-import numpy as np
-import pickle
-import lzma
 
 from datetime import datetime
 
-from sklearn.neighbors import KNeighborsClassifier
-from skimage.feature import hog
 
-from PIL import Image, ImageDraw, ImageFont
-from arknights_mower.data import agent_list
-from arknights_mower.utils.image import thres2
 
 
 class Arknights数据处理器:

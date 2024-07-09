@@ -7,9 +7,9 @@ from typing import Optional, Tuple
 
 import cv2
 import numpy as np
-import sklearn.pipeline
+import sklearn.pipeline  # noqa
 import sklearn.preprocessing
-import sklearn.svm
+import sklearn.svm  # noqa
 from skimage.metrics import structural_similarity as compare_ssim
 
 from .. import __rootdir__

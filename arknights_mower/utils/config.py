@@ -46,7 +46,7 @@ def __dig_mapping(path: str):
 def __get(path: str, default: Any = None):
     try:
         current_map, k = __dig_mapping(path)
-    except (KeyError, TypeError) as e:
+    except (KeyError, TypeError):
         return default
     if current_map is None or k not in current_map or current_map[k] is None:
         return default

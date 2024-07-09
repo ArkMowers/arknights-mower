@@ -4,17 +4,13 @@ import atexit
 import json
 import os
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
-from arknights_mower.utils.device import Device
 from arknights_mower.utils.email import task_template
 from arknights_mower.utils.log import logger, init_fhlr
 from arknights_mower.utils import config, rapidocr
 from arknights_mower.utils.simulator import restart_simulator
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
-from arknights_mower.utils.logic_expression import LogicExpression
 
 # 下面不能删除
-from arknights_mower.utils.operators import Operators, Operator, Dormitory
-from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 send_message_config = {
     # QQ邮箱通知配置
@@ -211,7 +207,6 @@ def initialize(tasks, scheduler=None):
     if scheduler is not None:
         scheduler.handle_error(True)
         return scheduler
-    from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
 
     if scheduler is None:
         base_scheduler = BaseSchedulerSolver()
@@ -365,10 +360,10 @@ def simulate():
             ConnectionAbortedError,
             AttributeError,
             RuntimeError,
-        ) as e:
+        ):
             reconnect_tries += 1
             if reconnect_tries < reconnect_max_tries:
-                logger.warning(f"连接端口断开....正在重连....")
+                logger.warning("连接端口断开....正在重连....")
                 connected = False
                 while not connected:
                     try:
@@ -380,7 +375,7 @@ def simulate():
                         continue
                 continue
             continue
-        except RuntimeError as re:
+        except RuntimeError:
             restart_simulator(simulator)
         except Exception as E:
             logger.exception(f"程序出错--->{E}")

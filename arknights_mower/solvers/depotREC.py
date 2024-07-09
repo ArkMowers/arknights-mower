@@ -9,14 +9,12 @@ import cv2
 import numpy as np
 import pandas as pd
 from skimage.feature import hog
-from sklearn.cluster import KMeans
 
 from arknights_mower.utils.graph import SceneGraphSolver
 
 from .. import __rootdir__
-from ..data import key_mapping
 from ..utils.device import Device
-from ..utils.image import loadimg, saveimg_depot
+from ..utils.image import loadimg
 from ..utils.log import logger
 from ..utils.path import get_path
 from ..utils.recognize import Recognizer, Scene

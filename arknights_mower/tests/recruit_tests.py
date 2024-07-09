@@ -3,10 +3,7 @@ from __future__ import annotations
 
 import os
 import pathlib
-import sys
 from itertools import combinations
-from typing import Tuple, Dict, Any
-import re
 import cv2
 import numpy as np
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -14,17 +11,15 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from arknights_mower.data import (
     recruit_agent,
     agent_with_tags,
-    recruit_tag,
     result_template_list,
 )
 
 from arknights_mower.utils import segment, rapidocr
 from arknights_mower.__init__ import __rootdir__
 from arknights_mower.utils.digit_reader import DigitReader
-from arknights_mower.utils.image import cropimg, bytes2img, loadimg
+from arknights_mower.utils.image import cropimg, loadimg
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
-from arknights_mower.utils.solver import BaseSolver
+from arknights_mower.utils.recognize import RecognizeError, Scene
 
 env = Environment(
     loader=FileSystemLoader(
@@ -429,7 +424,7 @@ class RecruitSolver:
                 for res in result_dict[item[0]][:]:
                     if res["star"] > min_star:
                         result_dict[item[0]].remove(res)
-            except KeyError as e:
+            except KeyError:
                 logger.debug("Recruit Cal Key Error :{}".format(result_dict))
                 continue
 

@@ -1,5 +1,4 @@
 import json
-import shutil
 import os
 
 import cv2
@@ -205,7 +204,7 @@ class Arknights数据处理器:
                 关卡代码 += " 突袭"
             关卡名称 = self.关卡表["stages"][键]["name"]
             关卡结束时间戳 = 还未结束的非常驻关卡[键]["endTs"]
-            关卡结束时间 = datetime.fromtimestamp(还未结束的非常驻关卡[键]["endTs"] + 1)
+            # 关卡结束时间 = datetime.fromtimestamp(还未结束的非常驻关卡[键]["endTs"] + 1)
             关卡掉落表 = self.关卡表["stages"][键]["stageDropInfo"]["displayRewards"]
             关卡掉落 = {"普通掉落": []}
             for item in 关卡掉落表:

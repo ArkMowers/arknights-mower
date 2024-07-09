@@ -13,7 +13,7 @@ from arknights_mower.utils.scheduler_task import (
 from ..utils.operators import Operators
 
 with patch.dict("sys.modules", {"save_action_to_sqlite_decorator": MagicMock()}):
-    from ..solvers.record import save_action_to_sqlite_decorator
+    pass
 
 
 class TestScheduling(unittest.TestCase):
@@ -69,7 +69,7 @@ class TestScheduling(unittest.TestCase):
             task_plan={"task": "Task 5"},
         )
         tasks = [task1, task2, task4, task5]
-        res = scheduling(
+        scheduling(
             tasks, time_now=datetime.strptime("2023-09-19 10:00", "%Y-%m-%d %H:%M")
         )
         # 跑单任务被提前

@@ -87,7 +87,6 @@ class BaseMixin:
                 self.sleep()
             ret = operator_list(self.recog.img)  # 返回的顺序是从左往右从上往下
             # 提取识别出来的干员的名字
-            select_name = []
             index = 0
             for name, scope in ret:
                 if index >= len(agent):

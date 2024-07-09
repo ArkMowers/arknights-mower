@@ -3,7 +3,6 @@ import numpy as np
 from pathlib import Path
 import os
 from .image import loadres
-from .. import __rootdir__
 
 
 class DigitReader:
@@ -51,8 +50,8 @@ class DigitReader:
                         break
                 if accept:
                     result[loc[1][i]] = j
-        l = [str(result[k]) for k in sorted(result)]
-        return int("".join(l))
+        ch = [str(result[k]) for k in sorted(result)]
+        return int("".join(ch))
 
     def get_time(self, img_grey, h, w):
         digit_part = img_grey[h * 510 // 1080 : h * 543 // 1080, w * 499 // 1920 : w]
@@ -80,8 +79,8 @@ class DigitReader:
                         for m in range(len(loc[1])):
                             loc[1][m] -= offset
                     result[loc[1][i]] = j
-        l = [str(result[k]) for k in sorted(result)]
-        return f"{l[0]}{l[1]}:{l[2]}{l[3]}:{l[4]}{l[5]}"
+        ch = [str(result[k]) for k in sorted(result)]
+        return f"{ch[0]}{ch[1]}:{ch[2]}{ch[3]}:{ch[4]}{ch[5]}"
 
     def get_report_number(self, digit_part):
         result = {}
@@ -107,8 +106,8 @@ class DigitReader:
                 if accept:
                     result[loc[1][i]] = j
 
-        l = [str(result[k]) for k in sorted(result)]
-        return int("".join(l))
+        ch = [str(result[k]) for k in sorted(result)]
+        return int("".join(ch))
 
     def get_report_number_white(self, digit_part):
         result = {}
@@ -133,8 +132,8 @@ class DigitReader:
                 if accept:
                     result[loc[1][i]] = j
 
-        l = [str(result[k]) for k in sorted(result)]
-        return int("".join(l))
+        ch = [str(result[k]) for k in sorted(result)]
+        return int("".join(ch))
 
     def get_recruit_ticket(self, digit_part):
         result = {}
@@ -158,8 +157,8 @@ class DigitReader:
                 if accept:
                     result[loc[1][i]] = j
 
-        l = [str(result[k]) for k in sorted(result)]
-        return int("".join(l))
+        ch = [str(result[k]) for k in sorted(result)]
+        return int("".join(ch))
 
     def get_credict_number(self, digit_part):
         result = {}
@@ -183,9 +182,9 @@ class DigitReader:
                 if accept:
                     result[loc[1][i]] = j
 
-        l = [str(result[k]) for k in sorted(result)]
+        ch = [str(result[k]) for k in sorted(result)]
 
-        return int("".join(l))
+        return int("".join(ch))
 
     def 识别制造加速总剩余时间(self, img_grey, h, w):
         时间部分 = img_grey[
@@ -212,13 +211,13 @@ class DigitReader:
                         break
                 if accept:
                     result[loc[1][i]] = j
-        l = [str(result[k]) for k in sorted(result)]
-        print(l)
-        if len(l) == 6:
-            return (int(f"{l[0]}{l[1]}"), int(f"{l[2]}{l[3]}"), int(f"{l[4]}{l[5]}"))
+        ch = [str(result[k]) for k in sorted(result)]
+        print(ch)
+        if len(ch) == 6:
+            return (int(f"{ch[0]}{ch[1]}"), int(f"{ch[2]}{ch[3]}"), int(f"{ch[4]}{ch[5]}"))
         else:
             return (
-                int(f"{l[0]}{l[1]}{l[2]}"),
-                int(f"{l[3]}{l[4]}"),
-                int(f"{l[5]}{l[6]}"),
+                int(f"{ch[0]}{ch[1]}{ch[2]}"),
+                int(f"{ch[3]}{ch[4]}"),
+                int(f"{ch[5]}{ch[6]}"),
             )

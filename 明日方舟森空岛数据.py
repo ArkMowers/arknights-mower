@@ -1,13 +1,9 @@
 import hashlib
 import hmac
 import json
-import csv
-import datetime
-import os
 import time
 from urllib import parse
 
-import pandas as pd
 import requests
 
 
@@ -125,7 +121,7 @@ class SKLand:
         if resp["code"] != 0:
             print(f"请求角色列表出现问题：{resp['message']}")
             if resp.get("message") == "用户未登录":
-                print(f"用户登录可能失效了，请重新运行此程序！")
+                print("用户登录可能失效了，请重新运行此程序！")
                 return []
         for i in resp["data"]["list"]:
             if i.get("appCode") != "arknights":

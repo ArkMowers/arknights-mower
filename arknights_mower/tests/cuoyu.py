@@ -78,7 +78,7 @@ class Calculator:
             for val1, val2 in zip(list2, self.练度列表排序[0]):
                 print(f"{val1}: {val2}")
 
-        except:
+        except Exception:
             print("出问题了")
             练度列表排序 = sorted(self.练度列表_离谱, key=lambda x: x[0])
             for val1, val2 in zip(list2, 练度列表排序[0]):

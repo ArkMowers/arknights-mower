@@ -875,7 +875,7 @@ class BaseSolver:
 
             try:
                 self.handle_email_error(email_config, msg)  # 第一次尝试
-            except Exception as e:
+            except Exception:
                 failed_methods.append(("email", email_config, msg))
 
         # Server酱通知部分
@@ -892,7 +892,7 @@ class BaseSolver:
 
             try:
                 self.handle_serverJang_error(url, data)  # 第一次尝试
-            except Exception as e:
+            except Exception:
                 failed_methods.append(("serverJang", url, data))
 
         # 处理失败的方法
@@ -902,12 +902,12 @@ class BaseSolver:
                     try:
                         self.handle_email_error(*args)
                         break
-                    except:
+                    except Exception:
                         self.csleep(1)
             elif method == "serverJang":
                 for _ in range(retry_times):
                     try:
                         self.handle_serverJang_error(*args)
                         break
-                    except:
+                    except Exception:
                         self.csleep(1)

@@ -2512,7 +2512,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         logger.info(f"安排干员 ：{agent}")
         # 若不是空房间，则清空工作中的干员
         is_dorm = room.startswith("dorm")
-        h, w = self.recog.h, self.recog.w
         first_time = True
         # 在 agent 中 'Free' 表示任意空闲干员
         free_num = agent.count("Free")
