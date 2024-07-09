@@ -227,10 +227,22 @@
     "description": "被阻挡后无法进行普通攻击",
     "buffer": []
   },
+  "ba_fear": {
+    "termId": "ba.fear",
+    "termName": "恐惧",
+    "description": "无法被阻挡并四散逃跑",
+    "buffer": []
+  },
   "ba_dt_burning2": {
     "termId": "ba.dt.burning2",
     "termName": "灼燃损伤·我方",
     "description": "累计满时爆发（普通、精英敌人1000点、领袖2000点累计值），敌人立即受到7000点元素伤害且期间法术抗性-20。10秒冷却",
+    "buffer": []
+  },
+  "ba_addash": {
+    "termId": "ba.addash",
+    "termName": "移动",
+    "description": "不退场，以当前血量在目标位置部署",
     "buffer": []
   },
   "cc_bd_A_1": {
