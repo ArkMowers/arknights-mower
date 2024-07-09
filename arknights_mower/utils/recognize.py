@@ -739,6 +739,7 @@ class Recognizer(object):
             "loading3": (1681, 1000),
             "loading4": (828, 429),
             "main_theme": (283, 945),
+            "main_theme_small": (321, 973),
             "materiel_ico": (892, 61),
             "mission_daily_on": ((685, 15), (1910, 100)),
             "mission_weekly_on": ((685, 15), (1910, 100)),
