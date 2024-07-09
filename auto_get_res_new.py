@@ -569,7 +569,7 @@ class Arknights数据处理器:
         干员技能列表 = sorted(干员技能列表, key=lambda x: (-x["key"]))
         # print(干员技能列表)
         with open(r".\ui\src\pages\skill.json", "w", encoding="utf-8") as f:
-            json.dump(干员技能列表, f, ensure_ascii=False, indent=4)
+            json.dump(干员技能列表, f, ensure_ascii=False, indent=2)
 
     def buff转换(self):
         buff_table = {}
@@ -588,6 +588,31 @@ class Arknights数据处理器:
 
         with open(r".\ui\src\pages\buffer.json", "w", encoding="utf-8") as f:
             json.dump(buff_table, f, ensure_ascii=False, indent=2)
+
+    def 基建技能图标(self):
+        # 源目录和目标目录
+        source_dir = r".\ArknightsGameResource\building_skill"
+        destination_dir = r".\ui\public\building_skill"
+
+        # 创建目标目录（如果不存在）
+        os.makedirs(destination_dir, exist_ok=True)
+        # 遍历源目录中的所有文件
+        for root, dirs, files in os.walk(source_dir):
+            for file in files:
+                if file.endswith('.png'):
+                    src_file_path = os.path.join(root, file)
+                    # 修改文件扩展名为 .webp
+                    dest_file_name = os.path.splitext(file)[0] + '.webp'
+                    dest_file_path = os.path.join(destination_dir, dest_file_name)
+
+                    # 如果目标文件不存在，转换并保存文件
+                    if not os.path.exists(dest_file_path):
+                        with Image.open(src_file_path) as img:
+                            img.save(dest_file_path, 'webp')
+                        print(f'转换: {src_file_path} 到 {dest_file_path}')
+                    else:
+                        print(f'跳过: {dest_file_path} 已存在')
+
 
 
 roomType = {
@@ -628,8 +653,8 @@ print("训练选中的干员名的模型,完成")
 数据处理器.auto_fight_avatar()
 
 数据处理器.获得干员名与基建描述()
-数据处理器.buff转换()
-
+数据处理器.buff转换() # 所有buff描述
+数据处理器.基建技能图标()
 
 数据处理器.load_recruit_data()
 数据处理器.load_recruit_template()
