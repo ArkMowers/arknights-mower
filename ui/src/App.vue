@@ -362,7 +362,7 @@ watch(
 .n-avatar {
   pointer-events: none !important;
 }
-.img{
+.img {
   pointer-events: none !important;
 }
 </style>
