@@ -41,34 +41,33 @@ class Arknights数据处理器:
             "./ArknightsGameResource/gamedata/excel/gamedata_const.json"
         )
         self.装仓库物品的字典 = {"NORMAL": [], "CONSUME": [], "MATERIAL": []}
+
         self.常驻关卡 = self.加载json("arknights_mower/data/stage_data.json")
+
         self.所有buff = []
+
+        self.限定十连 = self.抽卡表["limitTenGachaItem"]
+        self.联动十连 = self.抽卡表["linkageTenGachaItem"]
+        self.普通十连 = self.抽卡表["normalGachaItem"]
+        self.所有卡池 = self.限定十连 + self.联动十连 + self.普通十连
 
     def 加载json(self, file_path):
         with open(file_path, "r", encoding="utf-8") as f:
             return json.load(f)
 
     def 添加物品(self):
-        def 检查图标代码匹配(目标图标代码):
-            限定十连 = self.抽卡表["limitTenGachaItem"]
-            联动十连 = self.抽卡表["linkageTenGachaItem"]
+        def 检查图标代码匹配(目标图标代码, 物品类型):
             匹配结果 = False
-            for 限定池子 in 限定十连:
-                if 限定池子["itemId"] == 目标图标代码:
-                    if self.当前时间戳 > 限定池子["endTime"]:
-                        匹配结果 = True
+            for 池子限时物品 in self.所有卡池:
+                if (
+                    池子限时物品["itemId"] == 目标图标代码
+                    and self.当前时间戳 > 池子限时物品["endTime"]
+                ):
+                    匹配结果 = True
                     break
-
-            for 联动池子 in 联动十连:
-                if 联动池子["itemId"] == 目标图标代码:
-                    if self.当前时间戳 > 联动池子["endTime"]:
-                        匹配结果 = True
-                    break
-
             分割部分 = 目标图标代码.split("_")
             if len(分割部分) == 2 and 分割部分[0].endswith("recruitment10"):
                 匹配结果 = True
-
             if len(分割部分) == 6 and int(分割部分[5]) < 2023:
                 匹配结果 = True
 
@@ -79,7 +78,6 @@ class Arknights数据处理器:
                 匹配结果 = True
             if 目标图标代码 == "ap_supply_lt_60":
                 匹配结果 = True
-
             抽卡 = self.抽卡表.get("gachaPoolClient", [])
             for 卡池 in 抽卡:
                 if 卡池["LMTGSID"] == 目标图标代码 and self.当前时间戳 > int(
@@ -89,47 +87,38 @@ class Arknights数据处理器:
             return 匹配结果
 
         self.物品_名称对 = {}
-        from PIL import Image
 
         if not os.path.exists("./ui/public/depot/EXP.webp"):
             png_image = Image.open("./ArknightsGameResource/item/EXP_PLAYER.png")
             png_image.save("./ui/public/depot/EXP.webp", "WEBP")
         for 物品代码, 物品数据 in self.物品表["items"].items():
-            图标代码 = 物品数据["iconId"]
-            排序代码 = 物品数据["sortId"]
-            中文名称 = 物品数据["name"]
-            分类类型 = 物品数据["classifyType"]
+            中文名称 = 物品数据.get("name", "")
+            图标代码 = 物品数据.get("iconId", "")
+            排序代码 = 物品数据.get("sortId", "")
+
+            分类类型 = 物品数据.get("classifyType", "")
+            物品类型 = 物品数据.get("itemType", "")
+
             源文件路径 = f"./ArknightsGameResource/item/{图标代码}.png"
-            if 分类类型 != "NONE" and 排序代码 > 0:
-                排除开关 = False
-                排除开关 = 检查图标代码匹配(图标代码)
-                if os.path.exists(源文件路径) and not 排除开关:
+            排除开关 = False
+            排除开关 = 检查图标代码匹配(图标代码, 物品类型)
+            if 分类类型 != "NONE" and 排序代码 > 0 and not 排除开关:
+                if os.path.exists(源文件路径):
                     目标文件路径 = f"./ui/public/depot/{中文名称}.webp"
                     self.装仓库物品的字典[分类类型].append([目标文件路径, 源文件路径])
                     if not os.path.exists(目标文件路径):
                         png_image = Image.open(源文件路径)
                         png_image.save(目标文件路径, "WEBP")
-                    self.物品_名称对[物品代码] = [
-                        物品代码,
-                        图标代码,
-                        中文名称,
-                        分类类型,
-                        排序代码,
-                    ]
-                    self.物品_名称对[中文名称] = [
-                        物品代码,
-                        图标代码,
-                        中文名称,
-                        分类类型,
-                        排序代码,
-                    ]
+                    templist = [物品代码, 图标代码, 中文名称, 分类类型, 排序代码]
+                    self.物品_名称对[物品代码] = templist
+                    self.物品_名称对[中文名称] = templist
                     print(f"复制 {源文件路径} 到 {目标文件路径}")
                 else:
                     print(f"可以复制，但是未找到: {源文件路径}")
         with open(
             "./arknights_mower/data/key_mapping.json", "w", encoding="utf8"
         ) as json_file:
-            json.dump(self.物品_名称对, json_file, ensure_ascii=False)
+            json.dump(self.物品_名称对, json_file, ensure_ascii=False, indent=4)
         print()
 
     def 添加干员(self):
@@ -212,31 +201,59 @@ class Arknights数据处理器:
             关卡名称 = self.关卡表["stages"][键]["name"]
             关卡结束时间戳 = 还未结束的非常驻关卡[键]["endTs"]
             # 关卡结束时间 = datetime.fromtimestamp(还未结束的非常驻关卡[键]["endTs"] + 1)
-            关卡掉落表 = self.关卡表["stages"][键]["stageDropInfo"]["displayRewards"]
-            关卡掉落 = {"普通掉落": []}
-            for item in 关卡掉落表:
-                if "side_token" not in self.物品表["items"][item["id"]]["iconId"]:
-                    if item["dropType"] != 8:
-                        关卡掉落["普通掉落"].append(
-                            self.物品表["items"][item["id"]]["name"]
-                        )
-            if 关卡掉落["普通掉落"] != []:
-                self.常驻关卡.append(
-                    {
-                        "id": 关卡代码,
-                        "name": 关卡名称,
-                        "drop": 关卡掉落,
-                        "end": 关卡结束时间戳,
-                        "周一": 1,
-                        "周二": 1,
-                        "周三": 1,
-                        "周四": 1,
-                        "周五": 1,
-                        "周六": 1,
-                        "周日": 1,
-                    }
-                )
-            # print(关卡代码, 关卡名称, 关卡掉落, 关卡结束时间)
+            关卡掉落表 = self.关卡表["stages"][键]["stageDropInfo"][
+                "displayDetailRewards"
+            ]
+
+            关卡掉落 = {}
+            突袭首次掉落 = [
+                self.物品表.get("items", {}).get(item["id"], {}).get("name", item["id"])
+                for item in 关卡掉落表
+                if item["dropType"] == 1
+            ]
+            常规掉落 = [
+                self.物品表.get("items", {}).get(item["id"], {}).get("name", item["id"])
+                for item in 关卡掉落表
+                if item["dropType"] == 2
+            ]
+            特殊掉落 = [
+                self.物品表.get("items", {}).get(item["id"], {}).get("name", item["id"])
+                for item in 关卡掉落表
+                if item["dropType"] == 3
+            ]
+            额外物资 = [
+                self.物品表.get("items", {}).get(item["id"], {}).get("name", item["id"])
+                for item in 关卡掉落表
+                if item["dropType"] == 4
+            ]
+            首次掉落 = [
+                self.物品表.get("items", {}).get(item["id"], {}).get("name", item["id"])
+                for item in 关卡掉落表
+                if item["dropType"] == 8
+            ]
+            关卡掉落 = {
+                "突袭首次掉落": 突袭首次掉落,
+                "常规掉落": 常规掉落,
+                "首次掉落": 首次掉落,
+                "特殊掉落": 特殊掉落,
+                "额外物资": 额外物资,
+            }
+
+            self.常驻关卡.append(
+                {
+                    "id": 关卡代码,
+                    "name": 关卡名称,
+                    "drop": 关卡掉落,
+                    "end": 关卡结束时间戳,
+                    "周一": 1,
+                    "周二": 1,
+                    "周三": 1,
+                    "周四": 1,
+                    "周五": 1,
+                    "周六": 1,
+                    "周日": 1,
+                }
+            )
         unkey = 0
         for item in self.常驻关卡:
             item["key"] = unkey
@@ -244,8 +261,7 @@ class Arknights数据处理器:
         with open(
             "./ui/src/pages/stage_data/event_data.json", "w", encoding="utf-8"
         ) as f:
-            json.dump(self.常驻关卡, f, ensure_ascii=False)
-        # print(self.常驻关卡)
+            json.dump(self.常驻关卡, f, ensure_ascii=False, indent=2)
 
     def load_recruit_data(self):
         recruit_data = {}
@@ -470,13 +486,8 @@ class Arknights数据处理器:
             pickle.dump(data, f)
 
     def auto_fight_avatar(self):
-        with open(
-            "./ArknightsGameResource/gamedata/excel/character_table.json",
-            encoding="utf-8",
-        ) as f:
-            mmm = json.load(f)
         avatar_mapping = {}  # char_285_medic2 -> Lancet-2
-        for name, data in mmm.items():
+        for name, data in self.干员表.items():
             avatar_mapping[name] = data["name"]
         avatar = {}  # Lancet-2 -> List[avatar image]
         avatar_path = "./ArknightsGameResource/avatar"
@@ -495,7 +506,7 @@ class Arknights数据处理器:
         with lzma.open("./arknights_mower/models/avatar.pkl", "wb") as f:
             pickle.dump(avatar, f)
 
-    def 获得干员名与基建描述(self):
+    def 获得干员基建描述(self):
         buff描述 = self.基建表["buffs"]
         buff_table = {}
         for buff名称, 相关buff in buff描述.items():
@@ -552,6 +563,7 @@ class Arknights数据处理器:
                             )
                             干员技能详情["buffer_des"] = ex_string
                             self.所有buff.extend(ex_string)
+                            
                         干员技能详情["des"] = text
                         干员技能详情["roomType"] = roomType[
                             buff_table[item2["buffId"]][2]
@@ -560,6 +572,7 @@ class Arknights数据处理器:
                         干员技能详情["skillIcon"] = buff_table[item2["buffId"]][4]
                         干员技能详情["buffColor"] = buff_table[item2["buffId"]][5]
                         干员技能详情["textColor"] = buff_table[item2["buffId"]][6]
+
                         干员技能字典["child_skill"].append(干员技能详情)
 
                         干员技能详情 = []
@@ -589,7 +602,7 @@ class Arknights数据处理器:
         with open(r".\ui\src\pages\buffer.json", "w", encoding="utf-8") as f:
             json.dump(buff_table, f, ensure_ascii=False, indent=2)
 
-    def 基建技能图标(self):
+    def 添加基建技能图标(self):
         # 源目录和目标目录
         source_dir = r".\ArknightsGameResource\building_skill"
         destination_dir = r".\ui\public\building_skill"
@@ -599,20 +612,17 @@ class Arknights数据处理器:
         # 遍历源目录中的所有文件
         for root, dirs, files in os.walk(source_dir):
             for file in files:
-                if file.endswith('.png'):
+                if file.endswith(".png"):
                     src_file_path = os.path.join(root, file)
                     # 修改文件扩展名为 .webp
-                    dest_file_name = os.path.splitext(file)[0] + '.webp'
+                    dest_file_name = os.path.splitext(file)[0] + ".webp"
                     dest_file_path = os.path.join(destination_dir, dest_file_name)
-
-                    # 如果目标文件不存在，转换并保存文件
                     if not os.path.exists(dest_file_path):
                         with Image.open(src_file_path) as img:
-                            img.save(dest_file_path, 'webp')
-                        print(f'转换: {src_file_path} 到 {dest_file_path}')
+                            img.save(dest_file_path, "webp")
+                        print(f"转换: {src_file_path} 到 {dest_file_path}")
                     else:
-                        print(f'跳过: {dest_file_path} 已存在')
-
+                        print(f"跳过: {dest_file_path} 已存在")
 
 
 roomType = {
@@ -631,30 +641,33 @@ roomType = {
 数据处理器 = Arknights数据处理器()
 
 
-数据处理器.添加物品()
+数据处理器.添加物品() #显示在仓库里的东西
 
 数据处理器.添加干员()
 
 数据处理器.读取卡池()
-# TODO: 修复活动关卡读取
-# 数据处理器.读取活动关卡()
 
+数据处理器.读取活动关卡()
 
+#和 数据处理器.添加物品() 有联动 ， 添加物品提供了分类的图片位置
 数据处理器.批量训练并保存扫仓库模型()
 print("批量训练并保存扫仓库模型,完成")
-# 批量训练并保存扫仓库模型 和 添加物品 有联动 ， 添加物品提供了分类的图片位置
+
 
 数据处理器.训练在房间内的干员名的模型()
 print("训练在房间内的干员名的模型,完成")
+
 数据处理器.训练选中的干员名的模型()
 print("训练选中的干员名的模型,完成")
 
 
 数据处理器.auto_fight_avatar()
 
-数据处理器.获得干员名与基建描述()
-数据处理器.buff转换() # 所有buff描述
-数据处理器.基建技能图标()
+数据处理器.获得干员基建描述()
+
+数据处理器.buff转换()  # 所有buff描述,包括其他buff
+
+数据处理器.添加基建技能图标()
 
 数据处理器.load_recruit_data()
 数据处理器.load_recruit_template()
