@@ -432,7 +432,7 @@ class Recognizer(object):
             self.scene = Scene.RA_MAIN
         elif self.detect_index_scene():
             self.scene = Scene.INDEX
-        elif self.find("terminal_pre") is not None:
+        elif self.find("terminal_main"):
             self.scene = Scene.TERMINAL_MAIN
         else:
             self.scene = Scene.UNKNOWN
@@ -482,7 +482,7 @@ class Recognizer(object):
         # 从首页进入隐秘战线
         elif self.detect_index_scene():
             self.scene = Scene.INDEX
-        elif self.find("terminal_pre"):
+        elif self.find("terminal_main"):
             self.scene = Scene.TERMINAL_MAIN
         elif self.find("main_theme"):
             self.scene = Scene.TERMINAL_MAIN_THEME
@@ -529,7 +529,7 @@ class Recognizer(object):
 
         elif self.detect_index_scene():
             self.scene = Scene.INDEX
-        elif self.find("terminal_pre", threshold=0.3) is not None:
+        elif self.find("terminal_main") is not None:
             self.scene = Scene.TERMINAL_MAIN
         elif self.find("terminal_regular"):
             self.scene = Scene.TERMINAL_REGULAR
