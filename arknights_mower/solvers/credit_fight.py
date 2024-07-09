@@ -92,6 +92,9 @@ class CreditFight(SceneGraphSolver):
             self.tap_element("fight/use")
         elif scene == Scene.OPERATOR_FINISH:
             return True
+        elif scene == Scene.OPERATOR_FAILED:
+            logger.info("OF-1失败，请检查干员，*今天*不会继续进行信用作战")
+            return True
         elif scene in self.waiting_scene:
             self.waiting_solver()
         else:

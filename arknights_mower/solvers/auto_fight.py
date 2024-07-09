@@ -113,7 +113,7 @@ class AutoFight(BaseSolver):
         tpl = loadres("fight/enemy", True)
         result = cv2.matchTemplate(img, tpl, cv2.TM_SQDIFF_NORMED)
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-        logger.debug(min_val)
+        logger.debug(f"是否在战斗：{min_val}")
         return min_val < 0.4
 
     def battle_complete(self) -> bool:
@@ -123,7 +123,17 @@ class AutoFight(BaseSolver):
         tpl = loadres("fight/complete", True)
         result = cv2.matchTemplate(img, tpl, cv2.TM_SQDIFF_NORMED)
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+        logger.debug(f"行动结束：{min_val}")
         return min_val < 0.4
+
+    def battle_fail(self) -> bool:
+        "识别行动是否失败"
+        img = cropimg(self.recog.gray, ((1129, 455), (1626, 531)))
+        tpl = loadres("fight/failed_text", True)
+        result = cv2.matchTemplate(img, tpl, cv2.TM_SQDIFF_NORMED)
+        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+        logger.debug(f"行动失败：{min_val}")
+        return min_val < 0.05  # 测试时数值很低，基本为0，或有其他方法
 
     def update_operators(self):
         "识别可部署的干员"
@@ -277,7 +287,10 @@ class AutoFight(BaseSolver):
         self.recog.update()
 
         if not self.in_fight():
-            if self.battle_complete():
+            if self.battle_fail():
+                logger.info("行动失败，请检查干员/练度")
+                return True
+            elif self.battle_complete():
                 logger.info("行动结束")
                 return True
             else:
