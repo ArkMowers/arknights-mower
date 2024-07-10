@@ -19,6 +19,7 @@ mirror = "https://mower.zhaozuohong.vip"
 sign_in = None
 navigation = None
 
+last_listing = None, []
 last_update = None
 
 
@@ -38,7 +39,12 @@ def load_module(download_update):
 
 
 def get_listing():
+    global last_listing
+    last_time, listing = last_listing
+    if last_time and last_time - datetime.now() < timedelta(minutes=10):
+        return listing
     cwd, listing = fetch_listing(mirror)
+    last_listing = datetime.now(), listing
     return listing
 
 
