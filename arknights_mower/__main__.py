@@ -281,7 +281,7 @@ def simulate():
                     listing = get_listing()
                     version = __version__.replace("+", "-")
                     if not any(i.name.startswith(version) for i in listing):
-                        msg = "版本过旧，请更新至受支持的版本"
+                        msg = "Mower版本过旧，请更新至受支持的版本"
                         logger.error(msg)
                         base_scheduler.send_message(msg)
 
