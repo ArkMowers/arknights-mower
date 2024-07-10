@@ -167,9 +167,23 @@ class Device(object):
                 logger.error(f"无法获取CLASSPATH：{out}")
                 return False
         port = config.droidcast["port"]
-        if port == 0 or is_port_in_use(port):
-            if port != 0:
-                self.client.cmd(f"forward --remove tcp:{port}")
+        if port != 0 and is_port_in_use(port):
+            try:
+                occupied_by_adb_forward = False
+                forward_list = self.client.cmd("forward --list", True).strip().split()
+                for host, pc_port, android_port in forward_list:
+                    # 127.0.0.1:5555 tcp:60579 tcp:60579
+                    if pc_port != android_port:
+                        # 不是咱转发的，别乱动
+                        continue
+                    if pc_port == f"tcp:{port}":
+                        occupied_by_adb_forward = True
+                        break
+                if not occupied_by_adb_forward:
+                    port = 0
+            except Exception:
+                pass
+        if port == 0:
             port = get_new_port()
             config.droidcast["port"] = port
             logger.info(f"更新DroidCast端口为{port}")
@@ -177,6 +191,8 @@ class Device(object):
             logger.info(f"保持DroidCast端口为{port}")
         self.client.cmd(f"forward tcp:{port} tcp:{port}")
         logger.info("ADB端口转发成功，启动DroidCast")
+        if config.droidcast["process"] is not None:
+            config.droidcast["process"].terminate()
         process = self.client.process(
             class_path,
             [

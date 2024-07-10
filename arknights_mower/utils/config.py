@@ -3,6 +3,8 @@ from __future__ import annotations
 import shutil
 import sys
 
+import requests
+
 try:
     from collections.abc import Mapping
 except ImportError:
@@ -157,6 +159,6 @@ def init_adb_buildin() -> Path:
 init_config()
 
 conf = {}
-droidcast = {"enable": False}
+droidcast = {"enable": False, "session": requests.Session(), "port": 0, "process": None}
 TAP_TO_LAUNCH = {"enable": False, "x": 0, "y": 0}
 stop_mower = None

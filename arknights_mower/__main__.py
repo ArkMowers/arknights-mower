@@ -3,7 +3,6 @@ import os
 from copy import deepcopy
 from datetime import datetime, timedelta
 
-import requests
 from evalidate import Expr
 
 from arknights_mower import __version__
@@ -50,13 +49,7 @@ def main():
     config.fix_mumu12_adb_disconnect = conf["fix_mumu12_adb_disconnect"]
     config.grandet_back_to_index = conf["run_order_grandet_mode"]["back_to_index"]
     config.ADB_CONTROL_CLIENT = conf["touch_method"]
-    if hasattr(config, "droidcast"):
-        config.droidcast.update(conf["droidcast"])
-    else:
-        config.droidcast = conf["droidcast"]
-        config.droidcast["session"] = requests.Session()
-        config.droidcast["port"] = 0
-        config.droidcast["process"] = None
+    config.droidcast.update(conf["droidcast"])
     config.ADB_BINARY = [conf["maa_adb_path"]]
 
     if config.wh is None:
