@@ -24,7 +24,7 @@
       <n-tag :color="{ color: item.buffColor, textColor: item.textColor }">
         <template #avatar>
           <n-avatar
-            :src="`building_skill/${item.skillIcon}.png`"
+            :src="`building_skill/${item.skillIcon}.webp`"
             round
             style="background-color: transparent"
           />
