@@ -1,5 +1,3 @@
-
-
 class LogicExpression:
     def __init__(self, left=None, operator=None, right=None):
         self.operator = operator
