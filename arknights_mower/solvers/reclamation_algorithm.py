@@ -400,6 +400,8 @@ class ReclamationAlgorithm(BaseSolver):
                 self.tap(pos)
                 self.task_queue = None
                 self.ap = None
+            else:
+                self.sleep()
 
         # 奇遇
         elif scene == Scene.RA_ADVENTURE:
