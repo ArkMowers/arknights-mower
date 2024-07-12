@@ -110,11 +110,9 @@ class BaseSolver:
         """get the color of the pixel"""
         return self.recog.color(pos[0], pos[1])
 
+    @staticmethod
     def get_pos(
-        self,
-        poly: tp.Location,
-        x_rate: float = 0.5,
-        y_rate: float = 0.5,
+        poly: tp.Location, x_rate: float = 0.5, y_rate: float = 0.5
     ) -> tp.Coordinate:
         """get the pos form tp.Location"""
         if poly is None:
