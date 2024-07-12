@@ -13,7 +13,6 @@ from arknights_mower.utils.log import logger
 from arknights_mower.utils.matcher import Matcher
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.solver import BaseSolver, MowerExit
-from arknights_mower.utils.vector import va
 
 src_pts = np.float32([[0, 97], [1920, 97], [-400, 1080], [2320, 1080]])
 dst_pts = np.float32([[0, 0], [1920, 0], [0, 1000], [1920, 1000]])
