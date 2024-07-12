@@ -600,12 +600,13 @@ class ReclamationAlgorithm(BaseSolver):
                 try:
                     self.task_queue = None
                     self.in_adventure = False
-                    super().back_to_index()
+                    if self.scene() != Scene.UNKNOWN:
+                        super().back_to_index()
+                    else:
+                        self.device.exit()
+                        self.check_current_focus()
                 except MowerExit:
                     raise
-                except Exception:
-                    self.device.exit()
-                    self.check_current_focus()
         else:
             self.unknown_time = None
 
