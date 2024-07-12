@@ -574,7 +574,7 @@ class Recognizer(object):
         # 连接中，优先级最高
         if self.find("connecting"):
             self.scene = Scene.CONNECTING
-        elif self.find("infra_overview", scope=((20, 120), (360, 245))) is not None:
+        elif self.find("infra_overview"):
             self.scene = Scene.INFRA_MAIN
         elif self.find("train_main"):
             self.scene = Scene.TRAIN_MAIN
