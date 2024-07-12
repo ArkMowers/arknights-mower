@@ -439,6 +439,10 @@
         "label": "RA_ADVENTURE",
         "comment": "奇遇"
     },
+    "920": {
+        "label": "RA_NOTICE",
+        "comment": "一张便条"
+    },
     "1001": {
         "label": "SSS_MAIN",
         "comment": "保全作战首页"

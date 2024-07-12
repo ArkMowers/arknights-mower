@@ -559,6 +559,12 @@ class ReclamationAlgorithm(BaseSolver):
                     self.tap_element("ra/return_from_kitchen", x_rate=0.07)
             else:
                 self.sleep(0.5)
+
+        # 一张便条
+        elif scene == Scene.RA_NOTICE:
+            self.tap((1366, 620), interval=0.5)
+            self.tap((1366, 620))
+
         else:
             self.sleep()
 

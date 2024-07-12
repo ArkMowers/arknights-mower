@@ -425,6 +425,10 @@ class Recognizer(object):
         elif self.find("ra/map_back", thres=200) and self.color(1817, 333)[0] > 250:
             self.scene = Scene.RA_MAP
 
+        # 一张便条
+        elif self.find("ra/notice"):
+            self.scene = Scene.RA_NOTICE
+
         # 从首页选择终端进入生息演算主页
         elif self.find("terminal_longterm"):
             self.scene = Scene.TERMINAL_LONGTERM
