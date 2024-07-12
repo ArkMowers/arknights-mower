@@ -13,6 +13,7 @@ from arknights_mower.utils.log import logger
 from arknights_mower.utils.matcher import Matcher
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.solver import BaseSolver, MowerExit
+from arknights_mower.utils.vector import va
 
 src_pts = np.float32([[0, 97], [1920, 97], [-400, 1080], [2320, 1080]])
 dst_pts = np.float32([[0, 0], [1920, 0], [0, 1000], [1920, 1000]])
@@ -348,7 +349,7 @@ class ReclamationAlgorithm(BaseSolver):
         # 剧情
         elif scene == Scene.RA_GUIDE_ENTRANCE:
             pos = self.find("ra/guide_entrance", scope=((810, 270), (1320, 610)))
-            self.tap(pos, interval=0.5)
+            self.tap(pos, x_rate=2, y_rate=1.5, interval=0.5)
         elif scene == Scene.RA_GUIDE_BATTLE_ENTRANCE:
             self.battle_wait = 3
             self.tap_element("ra/start_action", interval=5)
