@@ -334,3 +334,28 @@ class Device(object):
                 if config.ADB_CONTROL_CLIENT == "scrcpy":
                     self.control.scrcpy = Scrcpy(self.client)
                 update = True
+
+    def check_resolution(self):
+        """检查分辨率"""
+
+        good_resolution = "1920x1080"
+
+        def show_warning(resolution):
+            logger.warning(
+                f"Mower仅支持{good_resolution}分辨率，模拟器分辨率为{resolution}"
+            )
+
+        def extract_resolution(output_str):
+            return output_str.partition("size:")[2].strip()
+
+        output = self.client.cmd_shell("wm size", True)
+        logger.debug(output.strip())
+
+        physical_str, _, override_str = output.partition("Override size: ")
+        if override_str:
+            if good_resolution not in override_str:
+                show_warning(resolution=extract_resolution(override_str))
+            return
+        if good_resolution in physical_str:
+            return
+        show_warning(resolution=extract_resolution(physical_str))
