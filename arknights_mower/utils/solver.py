@@ -75,9 +75,9 @@ class BaseSolver:
                     restart_simulator()
 
         self.recog = recog if recog is not None else Recognizer(self.device)
-        self.check_current_focus()
 
     def run(self) -> None:
+        self.check_current_focus()
         retry_times = config.MAX_RETRYTIME
         result = None
         while retry_times > 0:
