@@ -405,8 +405,16 @@ class ReclamationAlgorithm(BaseSolver):
         elif scene == Scene.RA_ADVENTURE:
             if not self.in_adventure:
                 self.in_adventure = self.task_queue[0]
+
+            leave_adventure = False
             if self.find("ra/no_enough_resources"):
+                leave_adventure = True
                 logger.debug("所需资源不足")
+            elif self.find("ra/spring"):
+                leave_adventure = True
+                logger.debug("特殊处理涌泉奇遇")
+
+            if leave_adventure:
                 if self.in_adventure in self.task_queue:
                     self.task_queue.remove(self.in_adventure)
                     if self.in_adventure == "奇遇_砾沙平原":
