@@ -2639,6 +2639,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     _name
                     for _name in agent_list
                     if _name not in self.op_data.operators.keys()
+                    and _name not in agents
                 ]
             )
             train_support = self.op_data.get_train_support()
@@ -2791,7 +2792,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.op_data.add(Operator(_name, ""))
                 update_time = False
                 agent = self.op_data.operators[_name]
-                if self.op_data.operators[_name].need_to_refresh(r=room):
+                if self.op_data.operators[_name].need_to_refresh(r=room) or (
+                    self.tasks and self.tasks[0].type == TaskTypes.SHIFT_ON
+                ):
                     _mood = self.read_accurate_mood(cropimg(self.recog.gray, mood_p[i]))
                     update_time = True
                 else:
@@ -3024,10 +3027,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     current = self.get_agent_from_room(room, read_time_index)
                     for idx, name in enumerate(plan[room]):
                         if current[idx]["agent"] != name and name != "Free":
-                            logger.error(
-                                f'检测到的干员{current[idx]["agent"]},需要安排的干员{name}'
-                            )
-                            raise Exception("检测到安排干员未成功")
+                            if not (room == "train" and idx == 1):
+                                logger.error(
+                                    f'检测到的干员{current[idx]["agent"]},需要安排的干员{name}'
+                                )
+                                raise Exception("检测到安排干员未成功")
                 else:
                     logger.info(f"任务与当前房间相同，跳过安排{room}人员")
                 finished = True
