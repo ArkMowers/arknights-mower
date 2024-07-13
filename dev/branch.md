@@ -27,7 +27,7 @@ Mower 使用 GitHub Actions 自动为 Windows 平台打包。打包过程中，�
 
 当提交信息是“发版”时，CI 不会修改版本号；反之，CI 会把 commit id 的前 7 位附加到版本号后面，使用加号分隔。
 
-- 测试版使用滚动更新，版本号格式为 `YYYY.MM+<commit id>`，其中 `YYYY` 为四位年份，`MM` 为两位月份，`<commit id>` 为 commit id 的前 7 位。测试版代码的 `__version__` 中只写 `YYYY.MM` 的部分，由 CI 自动添加 commit id。
+- 测试版使用滚动更新，版本号格式为 `YYYY.MM+<commit id>`，其中 `YYYY` 为四位年份，`MM` 为两位月份，`<commit id>` 为 commit id 的前 7 位。测试版代码的 `__version__` 中只写 `YYYY.MM` 的部分。如果从源码运行 mower，在启动时利用 `arknights_mower/utils/git_rev` 获得 commit id；在打包时，由 CI 自动添加 commit id。
 - 稳定版使用定点更新，版本号格式为 `YYYY.MM.X`，其中 `X` 为小版本号。创建分支时 `X` 为 1，以后每次发版时，需手动增加 `X`，并将提交信息设为“发版”。
 
 ## 日志页背景
