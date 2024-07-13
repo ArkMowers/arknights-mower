@@ -228,6 +228,12 @@ class Matcher(object):
                 logger.debug(f"rectangle is too small: {rect}")
                 return None
 
+            if not dpi_aware:
+                max_width = w * 1.25
+                if rect[1][0] - rect[0][0] > max_width:
+                    logger.debug(f"rectangle is too big: {rect}")
+                    return None
+
             # measure the rate of good match within the rectangle (x-axis)
             better = filter(
                 lambda m: rect[0][0] < ori_kp[m.trainIdx].pt[0] < rect[1][0]
