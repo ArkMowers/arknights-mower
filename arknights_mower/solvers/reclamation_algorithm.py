@@ -415,6 +415,9 @@ class ReclamationAlgorithm(BaseSolver):
             elif self.find("ra/spring"):
                 leave_adventure = True
                 logger.debug("特殊处理涌泉奇遇")
+            elif self.find("ra/shop"):
+                leave_adventure = True
+                logger.debug("特殊处理巡回杂货铺奇遇")
 
             if leave_adventure:
                 if self.in_adventure in self.task_queue:
