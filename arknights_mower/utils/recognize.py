@@ -32,7 +32,7 @@ class Recognizer(object):
             self.clear()
         else:
             self.start(screencap)
-            self.matcher = None
+            self._matcher = None
             self.scene = Scene.UNDEFINED
         self.loading_time = 0
         self.LOADING_TIME_LIMIT = 5
@@ -41,7 +41,7 @@ class Recognizer(object):
         self._screencap = None
         self._img = None
         self._gray = None
-        self.matcher = None
+        self._matcher = None
         self.scene = Scene.UNDEFINED
 
     @property
@@ -61,6 +61,12 @@ class Recognizer(object):
         if self._gray is None:
             self.start()
         return self._gray
+
+    @property
+    def matcher(self):
+        if self._matcher is None:
+            self._matcher = Matcher(self.gray)
+        return self._matcher
 
     def start(self, screencap: bytes = None) -> None:
         """init with screencap"""
@@ -622,11 +628,11 @@ class Recognizer(object):
         self,
         res: str,
         draw: bool = False,
-        scope: tp.Scope = None,
-        thres: int = None,
+        scope: tp.Scope | None = None,
+        thres: int | None = None,
         judge: bool = True,
         strict: bool = False,
-        threshold=0.0,
+        threshold: float = 0.0,
     ) -> tp.Scope:
         """
         查找元素是否出现在画面中
@@ -839,37 +845,31 @@ class Recognizer(object):
                 scope = ((550, 900), (800, 1080))
                 threshold = 0.45
 
+        res_img = loadres(res, True)
         if thres is not None:
             # 对图像二值化处理
-            res_img = thres2(loadres(res, True), thres)
+            res_img = thres2(res_img, thres)
             matcher = Matcher(thres2(self.gray, thres))
-            ret = matcher.match(
-                res_img,
-                draw=draw,
-                scope=scope,
-                judge=judge,
-                prescore=threshold,
-                dpi_aware=dpi_aware,
-            )
         else:
-            res_img = loadres(res, True)
-            if self.matcher is None:
-                self.matcher = Matcher(self.gray)
             matcher = self.matcher
-            ret = matcher.match(
-                res_img,
-                draw=draw,
-                scope=scope,
-                judge=judge,
-                prescore=threshold,
-                dpi_aware=dpi_aware,
-            )
+        ret = matcher.match(
+            res_img,
+            draw=draw,
+            scope=scope,
+            judge=judge,
+            prescore=threshold,
+            dpi_aware=dpi_aware,
+        )
         if strict and ret is None:
             raise RecognizeError(f"Can't find '{res}'")
         return ret
 
     def score(
-        self, res: str, draw: bool = False, scope: tp.Scope = None, thres: int = None
+        self,
+        res: str,
+        draw: bool = False,
+        scope: tp.Scope = None,
+        thres: int | None = None,
     ) -> Optional[List[float]]:
         """
         查找元素是否出现在画面中，并返回分数
@@ -884,16 +884,15 @@ class Recognizer(object):
         logger.debug(f"find: {res}")
         res = f"{__rootdir__}/resources/{res}.png"
 
+        res_img = loadres(res, True)
         if thres is not None:
             # 对图像二值化处理
-            res_img = thres2(loadres(res, True), thres)
+            res_img = thres2(res_img, thres)
             gray_img = cropimg(self.gray, scope)
             matcher = Matcher(thres2(gray_img, thres))
-            score = matcher.score(res_img, draw=draw, only_score=True)
         else:
-            res_img = loadres(res, True)
             matcher = self.matcher
-            score = matcher.score(res_img, draw=draw, scope=scope, only_score=True)
+        score = matcher.score(res_img, draw=draw, scope=scope, only_score=True)
         return score
 
     def template_match(
