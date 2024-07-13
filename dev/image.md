@@ -21,7 +21,9 @@ Scope = Tuple[Coordinate, Coordinate]
 
 ### `get_pos()`
 
-`arknights_mower/utils/solver` 中，为 `BaseSolver` 定义了方法 `get_pos()`。`get_pos()` 接受三个参数，第一个参数既可以是坐标，也可以是区域。当第一个参数是坐标时，`get_pos()` 直接返回此坐标；当第一个参数是区域时，根据第二、第三个参数 `x_rate` 和 `y_rate` 获取区域中指定比例的坐标。默认值 `x_rate=0.5`，`y_rate=0.5`，也就是获取区域中央的坐标。
+`arknights_mower/utils/solver` 中 `BaseSolver` 类有静态方法 `get_pos()`。`get_pos()` 接受三个参数，第一个参数既可以是坐标，也可以是区域。当第一个参数是坐标时，`get_pos()` 直接返回此坐标；当第一个参数是区域时，根据第二、第三个参数 `x_rate` 和 `y_rate` 获取区域中指定比例的坐标。默认值 `x_rate=0.5`，`y_rate=0.5`，也就是获取区域中央的坐标。
+
+当 `get_pos()` 接受的第一个参数为区域时，若 `x_rate` 或 `y_rate` 超过 1 或小于 0，可得到位于区域外的坐标。
 
 ### `va()`、`vs()` 和 `sa()`
 
@@ -71,4 +73,13 @@ Mower 用于识别的图像素材全部位于 `arknights_mower/resources` 以及
 <details>
 <summary>使用示例</summary>
 {% include cropimg.html %}
+</details>
+
+## 二值化
+
+`arknights_mower/utils/image.py` 中 `thres2()` 方法用于将灰度图像二值化，接受两个参数：第一个参数 `img` 为灰度图像；第二个参数 `thresh` 为阈值。函数返回二值化后的图像。
+
+<details>
+<summary>使用示例</summary>
+{% include thres2.html %}
 </details>

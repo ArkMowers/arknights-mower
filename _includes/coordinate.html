@@ -3,8 +3,7 @@
 <div class="prompt input_prompt">In [1]:</div>
 <div class="inner_cell">
 <div class="input_area">
-<div class="highlight hl-ipython3"><pre><span></span><span class="kn">from</span> <span class="nn">arknights_mower.utils</span> <span class="kn">import</span> <span class="n">config</span>
-<span class="kn">from</span> <span class="nn">arknights_mower.utils.solver</span> <span class="kn">import</span> <span class="n">BaseSolver</span>
+<div class="highlight hl-ipython3"><pre><span></span><span class="kn">from</span> <span class="nn">arknights_mower.utils.solver</span> <span class="kn">import</span> <span class="n">BaseSolver</span>
 </pre></div>
 </div>
 </div>
@@ -13,65 +12,6 @@
 <div class="cell border-box-sizing code_cell rendered">
 <div class="input">
 <div class="prompt input_prompt">In [2]:</div>
-<div class="inner_cell">
-<div class="input_area">
-<div class="highlight hl-ipython3"><pre><span></span><span class="n">config</span><span class="o">.</span><span class="n">ADB_DEVICE</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"127.0.0.1:5555"</span><span class="p">]</span>
-<span class="n">solver</span> <span class="o">=</span> <span class="n">BaseSolver</span><span class="p">()</span>
-</pre></div>
-</div>
-</div>
-</div>
-<div class="output_wrapper">
-<div class="output">
-<div class="output_area">
-<div class="prompt"></div>
-<div class="output_subarea output_stream output_stdout output_text">
-<pre><span class="ansi-white-fg">2024-07-07 19:37:55,327 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/core.py:34 - __init_adb - try adb binary: /usr/bin/adb</span>
-<span class="ansi-white-fg">2024-07-07 19:37:55,329 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/core.py:91 - __exec - client.__exec: start-server</span>
-<span class="ansi-white-fg">2024-07-07 19:37:55,342 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/socket.py:12 - __init__ - server: ('127.0.0.1', 5037), timeout: 5</span>
-<span class="ansi-white-fg">2024-07-07 19:37:56,346 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/socket.py:12 - __init__ - server: ('127.0.0.1', 5037), timeout: 5</span>
-<span class="ansi-white-fg">2024-07-07 19:37:56,348 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/session.py:104 - devices_list - [('127.0.0.1:5555', 'device'), ('emulator-5554', 'device')]</span>
-<span class="ansi-white-fg">2024-07-07 19:37:56,349 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/socket.py:12 - __init__ - server: ('127.0.0.1', 5037), timeout: 5</span>
-<span class="ansi-white-fg">2024-07-07 19:37:56,351 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/session.py:89 - connect - adb connect 127.0.0.1:5555: b'already connected to 127.0.0.1:5555'</span>
-<span class="ansi-white-fg">2024-07-07 19:37:56,353 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/socket.py:12 - __init__ - server: ('127.0.0.1', 5037), timeout: 5</span>
-<span class="ansi-white-fg">2024-07-07 19:37:56,354 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/session.py:104 - devices_list - [('127.0.0.1:5555', 'device'), ('emulator-5554', 'device')]</span>
-<span class="ansi-green-fg">2024-07-07 19:37:56,356 - INFO - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/core.py:68 - __init_device - ['127.0.0.1:5555', 'emulator-5554']</span>
-<span class="ansi-white-fg">2024-07-07 19:37:56,357 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/socket.py:12 - __init__ - server: ('127.0.0.1', 5037), timeout: 5</span>
-<span class="ansi-white-fg">2024-07-07 19:37:56,359 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/session.py:104 - devices_list - [('127.0.0.1:5555', 'device'), ('emulator-5554', 'device')]</span>
-<span class="ansi-white-fg">2024-07-07 19:37:56,361 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/socket.py:12 - __init__ - server: ('127.0.0.1', 5037), timeout: 5</span>
-<span class="ansi-white-fg">2024-07-07 19:37:56,364 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/socket.py:12 - __init__ - server: ('127.0.0.1', 5037), timeout: 5</span>
-<span class="ansi-white-fg">2024-07-07 19:37:56,383 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/socket.py:12 - __init__ - server: ('127.0.0.1', 5037), timeout: 5</span>
-<span class="ansi-white-fg">2024-07-07 19:37:56,385 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/socket.py:12 - __init__ - server: ('127.0.0.1', 5037), timeout: 5</span>
-<span class="ansi-white-fg">2024-07-07 19:37:56,632 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/scrcpy/core.py:90 - __start_server - b'[server] INFO: Device: redroid redroid11_x86_64 (Android 11)\n'</span>
-<span class="ansi-white-fg">2024-07-07 19:37:57,134 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/socket.py:12 - __init__ - server: ('127.0.0.1', 5037), timeout: 5</span>
-<span class="ansi-white-fg">2024-07-07 19:37:57,137 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/socket.py:12 - __init__ - server: ('127.0.0.1', 5037), timeout: 5</span>
-<span class="ansi-white-fg">2024-07-07 19:37:57,180 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/socket.py:12 - __init__ - server: ('127.0.0.1', 5037), timeout: 5</span>
-<span class="ansi-white-fg">2024-07-07 19:37:57,182 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/socket.py:12 - __init__ - server: ('127.0.0.1', 5037), timeout: 5</span>
-<span class="ansi-white-fg">2024-07-07 19:37:57,185 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/socket.py:12 - __init__ - server: ('127.0.0.1', 5037), timeout: 5</span>
-<span class="ansi-white-fg">2024-07-07 19:37:57,187 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/socket.py:12 - __init__ - server: ('127.0.0.1', 5037), timeout: 5</span>
-<span class="ansi-white-fg">2024-07-07 19:37:57,189 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/session.py:89 - connect - adb connect 127.0.0.1:5555: b'already connected to 127.0.0.1:5555'</span>
-<span class="ansi-white-fg">2024-07-07 19:37:57,191 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/socket.py:12 - __init__ - server: ('127.0.0.1', 5037), timeout: 5</span>
-<span class="ansi-white-fg">2024-07-07 19:37:57,193 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/socket.py:12 - __init__ - server: ('127.0.0.1', 5037), timeout: 5</span>
-<span class="ansi-white-fg">2024-07-07 19:37:57,197 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/socket.py:12 - __init__ - server: ('127.0.0.1', 5037), timeout: 5</span>
-<span class="ansi-white-fg">2024-07-07 19:37:57,200 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/socket.py:12 - __init__ - server: ('127.0.0.1', 5037), timeout: 5</span>
-<span class="ansi-white-fg">2024-07-07 19:37:57,443 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/scrcpy/core.py:90 - __start_server - b'[server] INFO: Device: redroid redroid11_x86_64 (Android 11)\n'</span>
-<span class="ansi-white-fg">2024-07-07 19:37:57,945 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/socket.py:12 - __init__ - server: ('127.0.0.1', 5037), timeout: 5</span>
-<span class="ansi-white-fg">2024-07-07 19:37:57,947 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/socket.py:12 - __init__ - server: ('127.0.0.1', 5037), timeout: 5</span>
-<span class="ansi-white-fg">2024-07-07 19:37:57,990 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/socket.py:12 - __init__ - server: ('127.0.0.1', 5037), timeout: 5</span>
-<span class="ansi-white-fg">2024-07-07 19:37:57,992 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/socket.py:12 - __init__ - server: ('127.0.0.1', 5037), timeout: 5</span>
-<span class="ansi-white-fg">2024-07-07 19:37:57,997 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/core.py:143 - run - command: dumpsys window | grep mCurrentFocus</span>
-<span class="ansi-white-fg">2024-07-07 19:37:57,998 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/socket.py:12 - __init__ - server: ('127.0.0.1', 5037), timeout: 5</span>
-<span class="ansi-white-fg">2024-07-07 19:37:58,000 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/socket.py:12 - __init__ - server: ('127.0.0.1', 5037), timeout: 5</span>
-<span class="ansi-white-fg">2024-07-07 19:37:58,049 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/device/adb_client/core.py:159 - run - response: b'  mCurrentFocus=Window{aa300cb u0 com.hypergryph.arknights/com.u8.sdk.U8UnityContext}\n'</span>
-</pre>
-</div>
-</div>
-</div>
-</div>
-</div>
-<div class="cell border-box-sizing code_cell rendered">
-<div class="input">
-<div class="prompt input_prompt">In [3]:</div>
 <div class="inner_cell">
 <div class="input_area">
 <div class="highlight hl-ipython3"><pre><span></span><span class="n">pos1</span> <span class="o">=</span> <span class="p">(</span><span class="mi">50</span><span class="p">,</span> <span class="mi">30</span><span class="p">)</span>
@@ -84,10 +24,31 @@
 </div>
 <div class="cell border-box-sizing code_cell rendered">
 <div class="input">
+<div class="prompt input_prompt">In [3]:</div>
+<div class="inner_cell">
+<div class="input_area">
+<div class="highlight hl-ipython3"><pre><span></span><span class="n">BaseSolver</span><span class="o">.</span><span class="n">get_pos</span><span class="p">(</span><span class="n">scope</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+<div class="output_wrapper">
+<div class="output">
+<div class="output_area">
+<div class="prompt output_prompt">Out[3]:</div>
+<div class="output_text output_subarea output_execute_result">
+<pre>(65, 45)</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
 <div class="prompt input_prompt">In [4]:</div>
 <div class="inner_cell">
 <div class="input_area">
-<div class="highlight hl-ipython3"><pre><span></span><span class="n">solver</span><span class="o">.</span><span class="n">get_pos</span><span class="p">(</span><span class="n">scope</span><span class="p">)</span>
+<div class="highlight hl-ipython3"><pre><span></span><span class="n">BaseSolver</span><span class="o">.</span><span class="n">get_pos</span><span class="p">(</span><span class="n">scope</span><span class="p">,</span> <span class="n">x_rate</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,</span> <span class="n">y_rate</span><span class="o">=</span><span class="mf">0.8</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>
@@ -97,7 +58,7 @@
 <div class="output_area">
 <div class="prompt output_prompt">Out[4]:</div>
 <div class="output_text output_subarea output_execute_result">
-<pre>(65, 45)</pre>
+<pre>(56, 54)</pre>
 </div>
 </div>
 </div>
@@ -108,27 +69,6 @@
 <div class="prompt input_prompt">In [5]:</div>
 <div class="inner_cell">
 <div class="input_area">
-<div class="highlight hl-ipython3"><pre><span></span><span class="n">solver</span><span class="o">.</span><span class="n">get_pos</span><span class="p">(</span><span class="n">scope</span><span class="p">,</span> <span class="n">x_rate</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,</span> <span class="n">y_rate</span><span class="o">=</span><span class="mf">0.8</span><span class="p">)</span>
-</pre></div>
-</div>
-</div>
-</div>
-<div class="output_wrapper">
-<div class="output">
-<div class="output_area">
-<div class="prompt output_prompt">Out[5]:</div>
-<div class="output_text output_subarea output_execute_result">
-<pre>(56, 54)</pre>
-</div>
-</div>
-</div>
-</div>
-</div>
-<div class="cell border-box-sizing code_cell rendered">
-<div class="input">
-<div class="prompt input_prompt">In [6]:</div>
-<div class="inner_cell">
-<div class="input_area">
 <div class="highlight hl-ipython3"><pre><span></span><span class="kn">from</span> <span class="nn">arknights_mower.utils.vector</span> <span class="kn">import</span> <span class="n">va</span><span class="p">,</span> <span class="n">vs</span><span class="p">,</span> <span class="n">sa</span>
 </pre></div>
 </div>
@@ -137,7 +77,7 @@
 </div>
 <div class="cell border-box-sizing code_cell rendered">
 <div class="input">
-<div class="prompt input_prompt">In [7]:</div>
+<div class="prompt input_prompt">In [6]:</div>
 <div class="inner_cell">
 <div class="input_area">
 <div class="highlight hl-ipython3"><pre><span></span><span class="n">va</span><span class="p">(</span><span class="n">pos1</span><span class="p">,</span> <span class="n">pos2</span><span class="p">)</span>
@@ -148,7 +88,7 @@
 <div class="output_wrapper">
 <div class="output">
 <div class="output_area">
-<div class="prompt output_prompt">Out[7]:</div>
+<div class="prompt output_prompt">Out[6]:</div>
 <div class="output_text output_subarea output_execute_result">
 <pre>(130, 90)</pre>
 </div>
@@ -158,7 +98,7 @@
 </div>
 <div class="cell border-box-sizing code_cell rendered">
 <div class="input">
-<div class="prompt input_prompt">In [8]:</div>
+<div class="prompt input_prompt">In [7]:</div>
 <div class="inner_cell">
 <div class="input_area">
 <div class="highlight hl-ipython3"><pre><span></span><span class="n">vs</span><span class="p">(</span><span class="n">pos1</span><span class="p">,</span> <span class="n">pos2</span><span class="p">)</span>
@@ -169,7 +109,7 @@
 <div class="output_wrapper">
 <div class="output">
 <div class="output_area">
-<div class="prompt output_prompt">Out[8]:</div>
+<div class="prompt output_prompt">Out[7]:</div>
 <div class="output_text output_subarea output_execute_result">
 <pre>(-30, -30)</pre>
 </div>
@@ -179,7 +119,7 @@
 </div>
 <div class="cell border-box-sizing code_cell rendered">
 <div class="input">
-<div class="prompt input_prompt">In [9]:</div>
+<div class="prompt input_prompt">In [8]:</div>
 <div class="inner_cell">
 <div class="input_area">
 <div class="highlight hl-ipython3"><pre><span></span><span class="n">pos3</span> <span class="o">=</span> <span class="p">(</span><span class="mi">90</span><span class="p">,</span> <span class="mi">40</span><span class="p">)</span>
@@ -191,7 +131,7 @@
 <div class="output_wrapper">
 <div class="output">
 <div class="output_area">
-<div class="prompt output_prompt">Out[9]:</div>
+<div class="prompt output_prompt">Out[8]:</div>
 <div class="output_text output_subarea output_execute_result">
 <pre>((140, 70), (170, 100))</pre>
 </div>
