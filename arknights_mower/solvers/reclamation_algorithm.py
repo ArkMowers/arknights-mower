@@ -391,7 +391,7 @@ class ReclamationAlgorithm(BaseSolver):
             for scope, title, find_max in scope_list:
                 score = self.detect_score(scope=scope, find_max=find_max)
                 logger.info(f"{title}：{score}")
-            self.tap_element("ra/period_complete")
+            self.tap((960, 230))
 
         # 存档操作
         elif scene == Scene.RA_DELETE_SAVE_DIALOG:
