@@ -356,6 +356,15 @@ class Recognizer(object):
         )
         return scope if score > 0.8 else None
 
+    def detect_ra_adventure(self) -> bool:
+        img = cropimg(self.gray, ((385, 365), (475, 465)))
+        img = thres2(img, 250)
+        res = loadres("ra/adventure", True)
+        result = cv2.matchTemplate(img, res, cv2.TM_CCOEFF_NORMED)
+        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+        logger.debug(f"{max_val=} {max_loc=}")
+        return max_val >= 0.9
+
     def get_ra_scene(self) -> int:
         """
         生息演算场景识别
@@ -369,58 +378,56 @@ class Recognizer(object):
             self.scene = Scene.CONNECTING
 
         # 奇遇
-        elif self.find("ra/adventure", scope=((380, 360), (470, 460)), thres=250):
+        elif self.detect_ra_adventure():
             self.scene = Scene.RA_ADVENTURE
 
         # 快速跳过剧情对话
-        elif self.find("ra/guide_dialog", scope=((0, 0), (160, 110))):
+        elif self.find("ra/guide_dialog"):
             self.scene = Scene.RA_GUIDE_DIALOG
 
         # 快速退出作战
         elif self.find_ra_battle_exit():
             self.scene = Scene.RA_BATTLE
-        elif self.find("ra/battle_exit_dialog", scope=((600, 360), (970, 430))):
+        elif self.find("ra/battle_exit_dialog"):
             self.scene = Scene.RA_BATTLE_EXIT_CONFIRM
 
         # 作战与分队
-        elif self.find("ra/start_action", scope=((1410, 790), (1900, 935))):
-            if self.find("ra/action_points", scope=((1660, 55), (1820, 110))):
+        elif self.find("ra/squad_edit"):
+            self.scene = Scene.RA_SQUAD_EDIT
+        elif self.find("ra/start_action"):
+            if self.find("ra/action_points"):
                 self.scene = Scene.RA_BATTLE_ENTRANCE
             else:
                 self.scene = Scene.RA_GUIDE_BATTLE_ENTRANCE
-        elif self.find("ra/squad_edit", scope=((1090, 0), (1910, 105))):
-            self.scene = Scene.RA_SQUAD_EDIT
-        elif self.find("ra/get_item", scope=((875, 360), (1055, 420))):
+        elif self.find("ra/get_item"):
             self.scene = Scene.RA_GET_ITEM
-        elif self.find("ra/return_from_kitchen", scope=((0, 0), (300, 105))):
+        elif self.find("ra/return_from_kitchen"):
             self.scene = Scene.RA_KITCHEN
-        elif self.find("ra/squad_edit_confirm_dialog", scope=((585, 345), (1485, 440))):
+        elif self.find("ra/squad_edit_confirm_dialog"):
             self.scene = Scene.RA_SQUAD_EDIT_DIALOG
-        elif self.find("ra/battle_complete", scope=((70, 310), (580, 500))):
+        elif self.find("ra/enter_battle_confirm_dialog"):
+            self.scene = Scene.RA_SQUAD_ABNORMAL
+        elif self.find("ra/battle_complete"):
             self.scene = Scene.RA_BATTLE_COMPLETE
 
         # 结算界面
-        elif self.find("ra/day_complete", scope=((800, 330), (1130, 410))):
+        elif self.find("ra/day_complete"):
             self.scene = Scene.RA_DAY_COMPLETE
-        elif self.find(
-            "ra/period_complete", scope=((800, 190), (1120, 265))
-        ) and self.find("ra/click_anywhere", scope=((830, 990), (1090, 1040))):
+        elif self.find("ra/period_complete") and self.find("ra/click_anywhere"):
             self.scene = Scene.RA_PERIOD_COMPLETE
 
         # 森蚺图耶对话
-        elif self.find("ra/guide_entrance", scope=((810, 270), (1320, 610))):
+        elif self.find("ra/guide_entrance"):
             self.scene = Scene.RA_GUIDE_ENTRANCE
 
         # 存档操作
-        elif self.find(
-            "ra/delete_save_confirm_dialog", scope=((585, 345), (1020, 440))
-        ):
+        elif self.find("ra/delete_save_confirm_dialog"):
             self.scene = Scene.RA_DELETE_SAVE_DIALOG
 
         # 地图识别
-        elif self.find("ra/waste_time_button", scope=((1665, 220), (1855, 290))):
+        elif self.find("ra/waste_time_button"):
             self.scene = Scene.RA_DAY_DETAIL
-        elif self.find("ra/waste_time_dialog", scope=((585, 345), (1070, 440))):
+        elif self.find("ra/waste_time_dialog"):
             self.scene = Scene.RA_WASTE_TIME_DIALOG
         elif self.find("ra/map_back", thres=200) and self.color(1817, 333)[0] > 250:
             self.scene = Scene.RA_MAP
@@ -428,6 +435,10 @@ class Recognizer(object):
         # 一张便条
         elif self.find("ra/notice"):
             self.scene = Scene.RA_NOTICE
+
+        # 一张便条
+        elif self.find("ra/no_enough_drink"):
+            self.scene = Scene.RA_INSUFFICIENT_DRINK
 
         # 从首页选择终端进入生息演算主页
         elif self.find("terminal_longterm"):

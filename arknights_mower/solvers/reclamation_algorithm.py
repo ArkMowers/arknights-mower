@@ -347,7 +347,7 @@ class ReclamationAlgorithm(BaseSolver):
 
         # 剧情
         elif scene == Scene.RA_GUIDE_ENTRANCE:
-            pos = self.find("ra/guide_entrance", scope=((810, 270), (1320, 610)))
+            pos = self.find("ra/guide_entrance")
             self.tap(pos, x_rate=2, y_rate=1.5, interval=0.5)
         elif scene == Scene.RA_GUIDE_BATTLE_ENTRANCE:
             self.battle_wait = 3
@@ -372,7 +372,7 @@ class ReclamationAlgorithm(BaseSolver):
                 else:
                     self.recog.update()
         elif scene == Scene.RA_BATTLE_EXIT_CONFIRM:
-            self.tap_element("ra/battle_exit_confirm", interval=0.5)
+            self.tap_element("ra/confirm_green", interval=0.5)
         elif scene == Scene.RA_BATTLE_COMPLETE:
             self.tap_element("ra/battle_complete", interval=0.5)
 
@@ -516,7 +516,7 @@ class ReclamationAlgorithm(BaseSolver):
         elif scene == Scene.RA_DAY_DETAIL:
             self.tap_element("ra/waste_time_button", interval=0.5)
         elif scene == Scene.RA_WASTE_TIME_DIALOG:
-            self.tap_element("ra/waste_time_dialog_confirm_button")
+            self.tap_element("ra/confirm_green")
 
         # 作战编队
         elif scene == Scene.RA_SQUAD_EDIT:
@@ -526,7 +526,9 @@ class ReclamationAlgorithm(BaseSolver):
             else:
                 self.tap_element("ra/squad_edit_start_button", interval=0.5)
         elif scene == Scene.RA_SQUAD_EDIT_DIALOG:
-            self.tap_element("ra/squad_edit_confirm_dialog_ok_button", interval=6)
+            self.tap_element("ra/confirm_red", interval=6)
+        elif scene == Scene.RA_SQUAD_ABNORMAL:
+            self.tap_element("ra/confirm_red", interval=6)
 
         # 烹饪台
         elif scene == Scene.RA_KITCHEN:
@@ -546,6 +548,10 @@ class ReclamationAlgorithm(BaseSolver):
                     return
                 last_drink = drink
             self.tap_element("ra/cook_button", interval=0.5)
+
+        # 能量饮料不足
+        elif scene == Scene.RA_INSUFFICIENT_DRINK:
+            self.tap_element("ra/dialog_cancel")
 
         # 获得物资
         elif scene == Scene.RA_GET_ITEM:
@@ -600,6 +606,7 @@ class ReclamationAlgorithm(BaseSolver):
                 try:
                     self.task_queue = None
                     self.in_adventure = False
+                    self.recog.scene = Scene.UNDEFINED
                     if self.scene() != Scene.UNKNOWN:
                         super().back_to_index()
                     else:

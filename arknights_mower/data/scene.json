@@ -443,6 +443,14 @@
         "label": "RA_NOTICE",
         "comment": "一张便条"
     },
+    "921": {
+        "label": "RA_INSUFFICIENT_DRINK",
+        "comment": "能量饮料不足"
+    },
+    "922": {
+        "label": "RA_SQUAD_ABNORMAL",
+        "comment": "当前编队中存在异常情况"
+    },
     "1001": {
         "label": "SSS_MAIN",
         "comment": "保全作战首页"
