@@ -18,12 +18,25 @@ from .image import cropimg
 from .log import logger
 
 MATCHER_DEBUG = False
-# FLANN_INDEX_KDTREE = 1
-FLANN_INDEX_LSH = 6
 GOOD_DISTANCE_LIMIT = 0.7
 ORB = cv2.ORB_create(nfeatures=100000, edgeThreshold=0)
 with lzma.open(f"{__rootdir__}/models/svm.model", "rb") as f:
     SVC = pickle.loads(f.read())
+
+
+# build FlannBasedMatcher
+
+# FLANN_INDEX_KDTREE = 1
+FLANN_INDEX_LSH = 6
+
+index_params = dict(
+    algorithm=FLANN_INDEX_LSH,
+    table_number=6,  # 12
+    key_size=12,  # 20
+    multi_probe_level=0,  # 2
+)
+search_params = dict(checks=50)  # 100
+flann = cv2.FlannBasedMatcher(index_params, search_params)
 
 
 def getHash(data: list[float]) -> tp.Hash:
@@ -137,15 +150,6 @@ class Matcher(object):
             # the feature point of query image
             qry_kp, qry_des = ORB.detectAndCompute(query, None)
 
-            # build FlannBasedMatcher
-            index_params = dict(
-                algorithm=FLANN_INDEX_LSH,
-                table_number=6,  # 12
-                key_size=12,  # 20
-                multi_probe_level=0,  # 2
-            )
-            search_params = dict(checks=50)  # 100
-            flann = cv2.FlannBasedMatcher(index_params, search_params)
             matches = flann.knnMatch(qry_des, ori_des, k=2)
 
             # store all the good matches as per Lowe's ratio test
