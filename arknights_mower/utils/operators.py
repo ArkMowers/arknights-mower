@@ -1,9 +1,11 @@
+import copy
 from datetime import datetime, timedelta
-from ..data import agent_list, agent_arrange_order, base_room_list
+
+from evalidate import Expr, base_eval_model
+
+from ..data import agent_arrange_order, agent_list, base_room_list
 from ..solvers.record import save_action_to_sqlite_decorator
 from ..utils.log import logger
-import copy
-from evalidate import Expr, base_eval_model
 
 
 class SkillUpgradeSupport(object):

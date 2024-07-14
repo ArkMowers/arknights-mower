@@ -5,8 +5,8 @@ from zlib import compress, decompress
 from base45 import b45decode, b45encode
 from PIL import Image, ImageChops, ImageDraw
 from pyzbar import pyzbar
-from qrcode.main import QRCode
 from qrcode.constants import ERROR_CORRECT_L
+from qrcode.main import QRCode
 
 QRCODE_SIZE = 215
 GAP_SIZE = 16

@@ -1,6 +1,8 @@
 import os
 import zipfile
+
 import requests
+
 from .. import __version__
 
 

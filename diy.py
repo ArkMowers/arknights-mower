@@ -1,9 +1,10 @@
 import time
-import schedule
-from arknights_mower.strategy import Solver
-from arknights_mower.utils.log import logger, init_fhlr
-from arknights_mower.utils import config
 
+import schedule
+
+from arknights_mower.strategy import Solver
+from arknights_mower.utils import config
+from arknights_mower.utils.log import init_fhlr, logger
 
 # 指定无人机加速第三层第三个房间的制造或贸易订单
 drone_room = "room_3_3"

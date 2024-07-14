@@ -1,8 +1,9 @@
 import lzma
 import pickle
+import re
 
 import cv2
-import re
+
 from arknights_mower import __rootdir__
 from arknights_mower.utils import hot_update
 from arknights_mower.utils.graph import SceneGraphSolver

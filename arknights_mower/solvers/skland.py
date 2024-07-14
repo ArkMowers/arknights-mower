@@ -1,7 +1,7 @@
+import datetime
 import hashlib
 import hmac
 import json
-import datetime
 import os
 import time
 from urllib import parse

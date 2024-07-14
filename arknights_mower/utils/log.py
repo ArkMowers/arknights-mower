@@ -1,5 +1,3 @@
-from typing import Optional
-
 import logging
 import os
 import sys
@@ -7,8 +5,10 @@ import threading
 import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from typing import Optional
 
 import colorlog
+
 from . import config
 
 BASIC_FORMAT = (

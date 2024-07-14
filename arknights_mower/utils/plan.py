@@ -1,5 +1,6 @@
 import copy
 from enum import Enum
+
 from arknights_mower.utils import config
 
 

@@ -1,9 +1,10 @@
 import unittest
 from datetime import datetime
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
 from arknights_mower.utils.logic_expression import LogicExpression
-from arknights_mower.utils.plan import Room, PlanConfig, Plan
+from arknights_mower.utils.plan import Plan, PlanConfig, Room
 
 with patch.dict("sys.modules", {"RecruitSolver": MagicMock()}):
     pass

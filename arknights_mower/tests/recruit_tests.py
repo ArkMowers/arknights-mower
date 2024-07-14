@@ -4,18 +4,18 @@ from __future__ import annotations
 import os
 import pathlib
 from itertools import combinations
+
 import cv2
 import numpy as np
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from arknights_mower.__init__ import __rootdir__
 from arknights_mower.data import (
-    recruit_agent,
     agent_with_tags,
+    recruit_agent,
     result_template_list,
 )
-
-from arknights_mower.utils import segment, rapidocr
-from arknights_mower.__init__ import __rootdir__
+from arknights_mower.utils import rapidocr, segment
 from arknights_mower.utils.digit_reader import DigitReader
 from arknights_mower.utils.image import cropimg, loadimg
 from arknights_mower.utils.log import logger
