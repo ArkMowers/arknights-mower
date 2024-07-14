@@ -54,7 +54,11 @@ class BaseSolver:
         Scene.OPERATOR_ONGOING: (10, 30),
     }
 
-    def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
+    def __init__(
+        self,
+        device: Device | None = None,
+        recog: Recognizer | None = None,
+    ) -> None:
         # self.device = device if device is not None else (recog.device if recog is not None else Device())
         if device is None and recog is not None:
             raise RuntimeError
