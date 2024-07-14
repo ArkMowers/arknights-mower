@@ -77,8 +77,8 @@ class Matcher(object):
         draw: bool = False,
         scope: tp.Scope = None,
         dpi_aware: bool = False,
+        prescore: float = 0.0,
         judge: bool = True,
-        prescore=0.0,
     ) -> Optional[tp.Scope]:
         """check if the image can be matched"""
         rect_score = self.score(
@@ -93,19 +93,18 @@ class Matcher(object):
         else:
             rect, score = rect_score
 
-        if prescore != 0.0 and score[3] >= prescore:
-            logger.debug(f"match success: {rect_score}")
-            return rect
-        # use SVC to determine if the score falls within the legal range
-        if judge and not SVC.predict([score])[0]:  # numpy.bool_
-            logger.debug(f"match fail: {rect_score}")
-            return None  # failed in matching
-        else:
-            if prescore > 0 and score[3] < prescore:
+        if prescore > 0:
+            if score[3] >= prescore:
+                logger.debug(f"match success: {rect_score}")
+                return rect
+            else:
                 logger.debug(f"score is not greater than {prescore}: {rect_score}")
                 return None
-            logger.debug(f"match success: {rect_score}")
-            return rect  # success in matching
+        if judge and not SVC.predict([score])[0]:
+            logger.debug(f"match fail: {rect_score}")
+            return None
+        logger.debug(f"match success: {rect_score}")
+        return rect
 
     def score(
         self,
