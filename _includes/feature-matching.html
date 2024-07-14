@@ -6,7 +6,7 @@
 <div class="highlight hl-ipython3"><pre><span></span><span class="kn">import</span> <span class="nn">cv2</span>
 <span class="kn">from</span> <span class="nn">matplotlib</span> <span class="kn">import</span> <span class="n">pyplot</span> <span class="k">as</span> <span class="n">plt</span>
 <span class="kn">from</span> <span class="nn">arknights_mower.utils.image</span> <span class="kn">import</span> <span class="n">loadimg</span>
-<span class="kn">from</span> <span class="nn">arknights_mower.utils.matcher</span> <span class="kn">import</span> <span class="n">ORB</span><span class="p">,</span> <span class="n">flann</span>
+<span class="kn">from</span> <span class="nn">arknights_mower.utils.matcher</span> <span class="kn">import</span> <span class="n">GOOD_DISTANCE_LIMIT</span><span class="p">,</span> <span class="n">ORB</span><span class="p">,</span> <span class="n">flann</span>
 </pre></div>
 </div>
 </div>
@@ -33,7 +33,7 @@
 <div class="output_area">
 <div class="prompt"></div>
 <div class="output_subarea output_stream output_stdout output_text">
-<pre><span class="ansi-white-fg">2024-07-13 19:59:06,194 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/image.py:44 - loadimg - /home/zhao/Documents/hot_update/hortus/terminal.jpg</span>
+<pre><span class="ansi-white-fg">2024-07-14 11:28:16,539 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/image.py:44 - loadimg - /home/zhao/Documents/hot_update/hortus/terminal.jpg</span>
 </pre>
 </div>
 </div>
@@ -73,7 +73,7 @@
 <div class="output_area">
 <div class="prompt"></div>
 <div class="output_subarea output_stream output_stdout output_text">
-<pre><span class="ansi-white-fg">2024-07-13 19:59:06,644 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/image.py:44 - loadimg - /home/zhao/Documents/mower-profile/screenshot/501/20240705031952.png</span>
+<pre><span class="ansi-white-fg">2024-07-14 11:28:16,986 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/image.py:44 - loadimg - /home/zhao/Documents/mower-profile/screenshot/501/20240705031952.png</span>
 </pre>
 </div>
 </div>
@@ -98,7 +98,6 @@
 <div class="inner_cell">
 <div class="input_area">
 <div class="highlight hl-ipython3"><pre><span></span><span class="n">matches</span> <span class="o">=</span> <span class="n">flann</span><span class="o">.</span><span class="n">knnMatch</span><span class="p">(</span><span class="n">des1</span><span class="p">,</span> <span class="n">des2</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
-<span class="n">GOOD_DISTANCE_LIMIT</span> <span class="o">=</span> <span class="mf">0.7</span>
 <span class="n">good</span> <span class="o">=</span> <span class="p">[]</span>
 <span class="k">for</span> <span class="n">pair</span> <span class="ow">in</span> <span class="n">matches</span><span class="p">:</span>
     <span class="k">if</span> <span class="p">(</span><span class="n">len_pair</span> <span class="o">:=</span> <span class="nb">len</span><span class="p">(</span><span class="n">pair</span><span class="p">))</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
@@ -189,7 +188,7 @@
 <div class="output_area">
 <div class="prompt"></div>
 <div class="output_subarea output_stream output_stdout output_text">
-<pre><span class="ansi-white-fg">2024-07-13 19:59:08,194 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/image.py:44 - loadimg - /home/zhao/Documents/mower-profile/screenshot/501/20240705071219.png</span>
+<pre><span class="ansi-white-fg">2024-07-14 11:28:18,374 - DEBUG - /home/zhao/Documents/arknights-mower/arknights_mower/utils/image.py:44 - loadimg - /home/zhao/Documents/mower-profile/screenshot/501/20240705071219.png</span>
 </pre>
 </div>
 </div>
@@ -214,7 +213,6 @@
 <div class="inner_cell">
 <div class="input_area">
 <div class="highlight hl-ipython3"><pre><span></span><span class="n">matches</span> <span class="o">=</span> <span class="n">flann</span><span class="o">.</span><span class="n">knnMatch</span><span class="p">(</span><span class="n">des1</span><span class="p">,</span> <span class="n">des2</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
-<span class="n">GOOD_DISTANCE_LIMIT</span> <span class="o">=</span> <span class="mf">0.7</span>
 <span class="n">good</span> <span class="o">=</span> <span class="p">[]</span>
 <span class="k">for</span> <span class="n">pair</span> <span class="ow">in</span> <span class="n">matches</span><span class="p">:</span>
     <span class="k">if</span> <span class="p">(</span><span class="n">len_pair</span> <span class="o">:=</span> <span class="nb">len</span><span class="p">(</span><span class="n">pair</span><span class="p">))</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
