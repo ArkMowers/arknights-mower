@@ -382,6 +382,10 @@ class Recognizer(object):
         # 连接中，优先级最高
         if self.find("connecting"):
             self.scene = Scene.CONNECTING
+        elif self.find("loading"):
+            self.scene = Scene.UNKNOWN
+        elif self.find("loading4"):
+            self.scene = Scene.UNKNOWN
 
         # 奇遇
         elif self.detect_ra_adventure():

@@ -452,6 +452,7 @@ class ReclamationAlgorithm(BaseSolver):
                     self.tap(pos)
                 else:
                     self.tap((428, 411), interval=0.5)
+                    self.tap((428, 411))
 
         # 地图页操作
         elif scene == Scene.RA_MAP:
@@ -472,7 +473,7 @@ class ReclamationAlgorithm(BaseSolver):
                 if score > 0.9:
                     self.tap(pos, interval=0.5)
                 else:
-                    self.tap((1540, 1010), interval=1.5)
+                    self.ctap((1540, 1010), max_seconds=5)
                 return
             if self.ap is None:
                 self.ap = self.detect_ap()
