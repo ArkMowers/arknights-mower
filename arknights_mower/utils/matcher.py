@@ -17,8 +17,6 @@ from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.image import cropimg
 from arknights_mower.utils.log import logger
 
-MATCHER_DEBUG = False
-
 GOOD_DISTANCE_LIMIT = 0.7
 
 ORB = cv2.ORB_create(nfeatures=100000, edgeThreshold=0)
@@ -175,12 +173,12 @@ class Matcher(object):
             good_matches_rate = len(good) / len(qry_des)
 
             # draw all the good matches, for debug
-            if draw or MATCHER_DEBUG:
+            if draw:
                 result = cv2.drawMatches(query, qry_kp, self.origin, ori_kp, good, None)
 
                 from matplotlib import pyplot as plt
 
-                plt.imshow(result, cmap="gray", vmin=0, vmax=255)
+                plt.imshow(result)
                 plt.show()
             # if the number of good matches no more than 4
             if len(good) <= 4:
@@ -216,10 +214,10 @@ class Matcher(object):
             rect = quad.reshape(2, 2).tolist()
 
             # draw the result, for debug
-            if draw or MATCHER_DEBUG:
+            if draw:
                 matchesMask = mask.ravel().tolist()
-                origin_copy = self.origin.copy()
-                cv2.rectangle(origin_copy, rect[0], rect[1], (0,), 3)
+                origin_copy = cv2.cvtColor(self.origin, cv2.COLOR_GRAY2RGB)
+                cv2.rectangle(origin_copy, rect[0], rect[1], (255, 0, 0), 3)
                 draw_params = dict(
                     matchColor=(0, 255, 0),
                     singlePointColor=None,
@@ -229,7 +227,7 @@ class Matcher(object):
                 result = cv2.drawMatches(
                     query, qry_kp, origin_copy, ori_kp, good, None, **draw_params
                 )
-                plt.imshow(result, cmap="gray", vmin=0, vmax=255)
+                plt.imshow(result)
                 plt.show()
 
             min_width = max(10, 0 if dpi_aware else w * 0.8)
@@ -274,11 +272,11 @@ class Matcher(object):
             rect_img = cv2.resize(rect_img, query.shape[::-1])
 
             # draw the result
-            if draw or MATCHER_DEBUG:
+            if draw:
                 plt.subplot(1, 2, 1)
-                plt.imshow(query, "gray")
+                plt.imshow(query, cmap="gray", vmin=0, vmax=255)
                 plt.subplot(1, 2, 2)
-                plt.imshow(rect_img, "gray")
+                plt.imshow(rect_img, cmap="gray", vmin=0, vmax=255)
                 plt.show()
 
             # calc aHash between query image and rect_img
