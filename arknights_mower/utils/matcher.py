@@ -12,14 +12,27 @@ import sklearn.preprocessing
 import sklearn.svm  # noqa
 from skimage.metrics import structural_similarity as compare_ssim
 
-from .. import __rootdir__
-from . import typealias as tp
-from .image import cropimg
-from .log import logger
+from arknights_mower import __rootdir__
+from arknights_mower.utils import typealias as tp
+from arknights_mower.utils.image import cropimg
+from arknights_mower.utils.log import logger
 
 MATCHER_DEBUG = False
+
 GOOD_DISTANCE_LIMIT = 0.7
+
 ORB = cv2.ORB_create(nfeatures=100000, edgeThreshold=0)
+ORB_no_pyramid = cv2.ORB_create(nfeatures=100000, edgeThreshold=0, nlevels=1)
+
+
+def keypoints_scale_invariant(img: tp.GrayImage):
+    return ORB.detectAndCompute(img, None)
+
+
+def keypoints(img: tp.GrayImage):
+    return ORB_no_pyramid.detectAndCompute(img, None)
+
+
 with lzma.open(f"{__rootdir__}/models/svm.model", "rb") as f:
     SVC = pickle.loads(f.read())
 
@@ -65,11 +78,7 @@ class Matcher(object):
     def __init__(self, origin: tp.GrayImage) -> None:
         logger.debug(f"Matcher init: shape ({origin.shape})")
         self.origin = origin
-        self.init_orb()
-
-    def init_orb(self) -> None:
-        """get ORB feature points"""
-        self.kp, self.des = ORB.detectAndCompute(self.origin, None)
+        self.kp, self.des = keypoints(self.origin)
 
     def match(
         self,
@@ -147,7 +156,10 @@ class Matcher(object):
             h, w = query.shape
 
             # the feature point of query image
-            qry_kp, qry_des = ORB.detectAndCompute(query, None)
+            if dpi_aware:
+                qry_kp, qry_des = keypoints_scale_invariant(query)
+            else:
+                qry_kp, qry_des = keypoints(query)
 
             matches = flann.knnMatch(qry_des, ori_des, k=2)
 
