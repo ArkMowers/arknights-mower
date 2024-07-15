@@ -70,11 +70,15 @@ class BaseSolver:
                     self.device = Device()
                     self.device.client.check_server_alive()
                     Session().connect(config.ADB_DEVICE[0])
+                    if not self.device.check_resolution():
+                        raise MowerExit
                     if config.droidcast["enable"]:
                         self.device.start_droidcast()
                     if config.ADB_CONTROL_CLIENT == "scrcpy":
                         self.device.control.scrcpy = Scrcpy(self.device.client)
                     break
+                except MowerExit:
+                    raise
                 except Exception:
                     restart_simulator()
 

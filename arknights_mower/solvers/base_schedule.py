@@ -137,8 +137,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.report_enable = True
         self.visit_friend_enable = True
 
-        self.device.check_resolution()
-
     @property
     def party_time(self):
         return self._party_time

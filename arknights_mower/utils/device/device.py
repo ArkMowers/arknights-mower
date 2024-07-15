@@ -335,15 +335,16 @@ class Device(object):
                     self.control.scrcpy = Scrcpy(self.client)
                 update = True
 
-    def check_resolution(self):
+    def check_resolution(self) -> bool:
         """检查分辨率"""
 
-        good_resolution = "1920x1080"
+        good_resolution = ["1920x1080", "1080x1920"]
 
-        def show_warning(resolution):
-            logger.warning(
-                f"Mower仅支持{good_resolution}分辨率，模拟器分辨率为{resolution}"
-            )
+        def match_resolution(resolution):
+            return any(g in resolution for g in good_resolution)
+
+        def show_error(resolution):
+            logger.error(f"Mower仅支持1920x1080分辨率，模拟器分辨率为{resolution}")
 
         def extract_resolution(output_str):
             return output_str.partition("size:")[2].strip()
@@ -351,11 +352,14 @@ class Device(object):
         output = self.client.cmd_shell("wm size", True)
         logger.debug(output.strip())
 
-        physical_str, _, override_str = output.partition("Override size: ")
+        physical_str, _, override_str = output.partition("Override")
+
         if override_str:
-            if good_resolution not in override_str:
-                show_warning(resolution=extract_resolution(override_str))
-            return
-        if good_resolution in physical_str:
-            return
-        show_warning(resolution=extract_resolution(physical_str))
+            if match_resolution(override_str):
+                return True
+            show_error(extract_resolution(override_str))
+            return False
+        if match_resolution(physical_str):
+            return True
+        show_error(extract_resolution(physical_str))
+        return False
