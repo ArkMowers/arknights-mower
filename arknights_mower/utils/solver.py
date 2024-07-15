@@ -144,7 +144,8 @@ class BaseSolver:
             x, y = poly
         return (int(x), int(y))
 
-    def csleep(self, interval: float = 1):
+    @staticmethod
+    def csleep(interval: float = 1):
         """check and sleep"""
         stop_time = datetime.now() + timedelta(seconds=interval)
         while True:
