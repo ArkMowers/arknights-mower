@@ -6425,6 +6425,20 @@
         "MATERIAL",
         700148
     ],
+    "p_char_4151_tinman": [
+        "p_char_4151_tinman",
+        "p_char_4151_tinman",
+        "锡人的信物",
+        "MATERIAL",
+        700149
+    ],
+    "锡人的信物": [
+        "p_char_4151_tinman",
+        "p_char_4151_tinman",
+        "锡人的信物",
+        "MATERIAL",
+        700149
+    ],
     "p_char_103_angel": [
         "p_char_103_angel",
         "p_char_103_angel",

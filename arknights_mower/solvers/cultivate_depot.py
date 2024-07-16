@@ -6,7 +6,7 @@ from urllib import parse
 
 import requests
 
-from arknights_mower.utils.log import logger
+# from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 
 app_code = "4ca99fa6b56cc2ba"
@@ -66,8 +66,6 @@ class cultivate:
             if item["isCheck"]:
                 self.save_param(self.get_cred_by_token(self.log(item)))
                 for i in self.get_binding_list():
-                    logger.info(item)
-                    logger.info(i)
                     if item["cultivate_select"] == i.get("isOfficial"):
                         body = {"gameId": 1, "uid": i.get("uid")}
                         ingame = f"https://zonai.skland.com/api/v1/game/cultivate/player?uid={i.get('uid')}"
