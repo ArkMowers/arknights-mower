@@ -208,12 +208,12 @@
         "comment": "离开基建"
     },
     "301": {
-        "label": "FRIEND_LIST_OFF",
-        "comment": "好友列表（未选中）"
+        "label": "BUSINESS_CARD",
+        "comment": "个人名片"
     },
     "302": {
-        "label": "FRIEND_LIST_ON",
-        "comment": "好友列表（选中）"
+        "label": "FRIEND_LIST",
+        "comment": "好友列表"
     },
     "303": {
         "label": "FRIEND_VISITING",

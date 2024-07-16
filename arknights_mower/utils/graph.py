@@ -29,8 +29,8 @@ def edge(v_from: int, v_to: int, interval: int = 1):
 @edge(Scene.MISSION_DAILY, Scene.INDEX)
 @edge(Scene.MISSION_WEEKLY, Scene.INDEX)
 @edge(Scene.MISSION_TRAINEE, Scene.INDEX)
-@edge(Scene.FRIEND_LIST_OFF, Scene.INDEX)
-@edge(Scene.FRIEND_LIST_ON, Scene.INDEX)
+@edge(Scene.BUSINESS_CARD, Scene.INDEX)
+@edge(Scene.FRIEND_LIST, Scene.INDEX)
 @edge(Scene.RECRUIT_MAIN, Scene.INDEX)
 @edge(Scene.SHOP_OTHERS, Scene.INDEX)
 @edge(Scene.SHOP_CREDIT, Scene.INDEX)
@@ -91,7 +91,7 @@ def index_to_infra(solver: BaseSolver):
     solver.tap_index_element("infrastructure")
 
 
-@edge(Scene.INDEX, Scene.FRIEND_LIST_OFF)
+@edge(Scene.INDEX, Scene.BUSINESS_CARD)
 def index_to_friend(solver: BaseSolver):
     solver.tap_index_element("friend")
 
@@ -140,8 +140,8 @@ def index_to_headhunting(solver: BaseSolver):
 @edge(Scene.MISSION_DAILY, Scene.NAVIGATION_BAR)
 @edge(Scene.MISSION_WEEKLY, Scene.NAVIGATION_BAR)
 @edge(Scene.MISSION_TRAINEE, Scene.NAVIGATION_BAR)
-@edge(Scene.FRIEND_LIST_OFF, Scene.NAVIGATION_BAR)
-@edge(Scene.FRIEND_LIST_ON, Scene.NAVIGATION_BAR)
+@edge(Scene.BUSINESS_CARD, Scene.NAVIGATION_BAR)
+@edge(Scene.FRIEND_LIST, Scene.NAVIGATION_BAR)
 @edge(Scene.SHOP_OTHERS, Scene.NAVIGATION_BAR)
 @edge(Scene.SHOP_CREDIT, Scene.NAVIGATION_BAR)
 @edge(Scene.TERMINAL_MAIN, Scene.NAVIGATION_BAR)
@@ -207,6 +207,11 @@ def nav_headhunting(solver: BaseSolver):
     solver.tap_nav_element("headhunting")
 
 
+@edge(Scene.NAVIGATION_BAR, Scene.BUSINESS_CARD)
+def nav_friend(solver: BaseSolver):
+    solver.tap_nav_element("friend")
+
+
 # 任务
 
 
@@ -232,9 +237,14 @@ def shop_to_credit(solver: BaseSolver):
 # 好友
 
 
-@edge(Scene.FRIEND_LIST_OFF, Scene.FRIEND_LIST_ON)
-def friend_list_on(solver: BaseSolver):
-    solver.tap_element("friend_list")
+@edge(Scene.BUSINESS_CARD, Scene.FRIEND_LIST)
+def friend_list(solver: BaseSolver):
+    solver.tap((194, 333))
+
+
+@edge(Scene.FRIEND_LIST, Scene.BUSINESS_CARD)
+def business_card(solver: BaseSolver):
+    solver.tap((188, 198))
 
 
 @edge(Scene.FRIEND_VISITING, Scene.BACK_TO_FRIEND_LIST)
@@ -242,7 +252,7 @@ def friend_visiting_back(solver: BaseSolver):
     solver.back()
 
 
-@edge(Scene.BACK_TO_FRIEND_LIST, Scene.FRIEND_LIST_OFF)
+@edge(Scene.BACK_TO_FRIEND_LIST, Scene.BUSINESS_CARD)
 def back_to_friend_confirm(solver: BaseSolver):
     solver.tap_element("double_confirm/main", x_rate=1)
 

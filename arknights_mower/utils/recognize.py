@@ -299,10 +299,10 @@ class Recognizer(object):
             self.scene = Scene.OPERATOR_FINISH
         elif self.find("fight/use"):
             self.scene = Scene.OPERATOR_STRANGER_SUPPORT
+        elif self.find("business_card"):
+            self.scene = Scene.BUSINESS_CARD
         elif self.find("friend_list"):
-            self.scene = Scene.FRIEND_LIST_OFF
-        elif self.find("friend_list_on"):
-            self.scene = Scene.FRIEND_LIST_ON
+            self.scene = Scene.FRIEND_LIST
         elif self.find("credit_visiting"):
             self.scene = Scene.FRIEND_VISITING
         elif self.find("arrange_check_in") or self.find("arrange_check_in_on"):
@@ -751,13 +751,13 @@ class Recognizer(object):
             "arrange_check_in": ((30, 300), (175, 700)),
             "arrange_check_in_on": ((30, 300), (175, 700)),
             "biography": (768, 934),
+            "business_card": (55, 165),
             "collection": (1005, 943),
             "collection_small": (1053, 982),
             "connecting": (1087, 978),
             "episode": (535, 937),
             "fight/use": (858, 864),
-            "friend_list": (57, 301),
-            "friend_list_on": (56, 298),
+            "friend_list": (61, 306),
             "credit_visiting": (78, 220),
             "loading": (736, 333),
             "loading2": (620, 247),
