@@ -66,8 +66,6 @@ class cultivate:
             if item["isCheck"]:
                 self.save_param(self.get_cred_by_token(self.log(item)))
                 for i in self.get_binding_list():
-                    logger.info(item)
-                    logger.info(i)
                     if item["cultivate_select"] == i.get("isOfficial"):
                         body = {"gameId": 1, "uid": i.get("uid")}
                         ingame = f"https://zonai.skland.com/api/v1/game/cultivate/player?uid={i.get('uid')}"
