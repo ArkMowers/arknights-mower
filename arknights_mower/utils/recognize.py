@@ -189,8 +189,12 @@ class Recognizer(object):
             self.scene = Scene.RECRUIT_MAIN
         elif self.find("recruiting_instructions"):
             self.scene = Scene.RECRUIT_TAGS
-        elif self.find("agent_unlock"):
-            self.scene = Scene.SHOP_CREDIT
+        elif self.find("credit_shop_countdown"):
+            hsv = cv2.cvtColor(self.img, cv2.COLOR_RGB2HSV)
+            if 9 < hsv[870][1530][0] < 19:
+                self.scene = Scene.UNKNOWN
+            else:
+                self.scene = Scene.SHOP_CREDIT
         elif self.find("shop_credit_2"):
             self.scene = Scene.SHOP_OTHERS
         elif self.find("shop_cart"):
@@ -656,7 +660,6 @@ class Recognizer(object):
         color = {
             "1800": [(158, 958)],
             "12cadpa": [(1810, 21)],
-            "agent_unlock": [(91, 1013)],
             "arrange_confirm": [(755, 903)],
             "arrange_order_options": [(1652, 23)],
             "arrange_order_options_scene": [(369, 199)],
@@ -668,6 +671,7 @@ class Recognizer(object):
             "clue/summary": [(59, 153)],
             "confirm": [(0, 683)],
             "control_central_assistants": [(39, 560)],
+            "credit_shop_countdown": [(1511, 1017)],
             "depot": [(0, 955)],
             "double_confirm/exit": [(940, 464)],
             "double_confirm/friend": [(978, 465)],
