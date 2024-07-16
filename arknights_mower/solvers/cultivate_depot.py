@@ -6,7 +6,7 @@ from urllib import parse
 
 import requests
 
-from arknights_mower.utils.log import logger
+# from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 
 app_code = "4ca99fa6b56cc2ba"
