@@ -234,6 +234,11 @@ def shop_to_credit(solver: BaseSolver):
     solver.tap_element("shop_credit_2")
 
 
+@edge(Scene.SHOP_CREDIT_CONFIRM, Scene.SHOP_CREDIT)
+def shop_confirm(solver: BaseSolver):
+    solver.back()
+
+
 # 好友
 
 
