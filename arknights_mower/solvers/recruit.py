@@ -1,28 +1,21 @@
 import lzma
-import os
 from itertools import combinations
 import pickle
 import traceback
 
 import cv2
-import numpy as np
-from PIL import Image, ImageDraw, ImageFont
 
 from arknights_mower import __rootdir__
 from arknights_mower.data import (
     agent_with_tags,
     recruit_agent,
-    recruit_tag,
-    result_template_list,
 )
-from arknights_mower.utils import segment
 from arknights_mower.utils.device import Device
-from arknights_mower.utils.digit_reader import DigitReader
 from arknights_mower.utils.email import recruit_rarity, recruit_template
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.recognize import Recognizer, Scene, tp
+from arknights_mower.utils.recognize import Recognizer, Scene
 from arknights_mower.utils.vector import va
 
 with lzma.open(f"{__rootdir__}/models/riic_base_digits.pkl", "rb") as f:
@@ -31,16 +24,18 @@ with lzma.open(f"{__rootdir__}/models/recruit_result.pkl", "rb") as f:
     recruit_res_template = pickle.load(f)
 with lzma.open(f"{__rootdir__}/models/recruit.pkl", "rb") as f:
     tag_template = pickle.load(f)
-job_list=[
-                    "recruit/riic_res/CASTER",
-                    "recruit/riic_res/MEDIC",
-                    "recruit/riic_res/PIONEER",
-                    "recruit/riic_res/SPECIAL",
-                    "recruit/riic_res/SNIPER",
-                    "recruit/riic_res/SUPPORT",
-                    "recruit/riic_res/TANK",
-                    "recruit/riic_res/WARRIOR",
-            ]
+job_list = [
+    "recruit/riic_res/CASTER",
+    "recruit/riic_res/MEDIC",
+    "recruit/riic_res/PIONEER",
+    "recruit/riic_res/SPECIAL",
+    "recruit/riic_res/SNIPER",
+    "recruit/riic_res/SUPPORT",
+    "recruit/riic_res/TANK",
+    "recruit/riic_res/WARRIOR",
+]
+
+
 class RecruitSolver(SceneGraphSolver):
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
         super().__init__(device, recog)
@@ -50,7 +45,6 @@ class RecruitSolver(SceneGraphSolver):
             "recruit/recruit_done": [(300, 250), (600, 340)],
             "recruit/recruit_lock": [(400, 120), (540, 220)],
         }
-        
 
         up = 270
         down = 1060
@@ -63,9 +57,9 @@ class RecruitSolver(SceneGraphSolver):
             3: [(left, 690), (950, 650)],
             4: [(970, 690), (right, down)],
         }
-        self.agent_choose={}
+        self.agent_choose = {}
         self.recruit_index = 1
-        self.recruit_order_index=2
+        self.recruit_order_index = 2
         self.recruit_order = [6, 5, 1, 4, 3, 2]
         self.result_agent = {}
         self.ticket_number = None
@@ -75,9 +69,9 @@ class RecruitSolver(SceneGraphSolver):
     ):
         self.add_recruit_param(recruit_config)
         super().run()
-        self.send_message_config=send_message_config
+        self.send_message_config = send_message_config
         logger.info(self.result_agent)
-        
+
         if self.agent_choose:
             for pos in self.agent_choose:
                 agent = []
@@ -100,7 +94,6 @@ class RecruitSolver(SceneGraphSolver):
                     "公招汇总通知",
                     "html",
                 )
-                
 
         return self.agent_choose, self.result_agent
 
@@ -108,7 +101,7 @@ class RecruitSolver(SceneGraphSolver):
         if (scene := self.scene()) == Scene.RECRUIT_MAIN:
             if self.recruit_index > 4:
                 logger.info("结束公招")
-                return True      
+                return True
             job_requirements_scope = [
                 va(
                     self.segments[self.recruit_index][0],
@@ -171,7 +164,7 @@ class RecruitSolver(SceneGraphSolver):
                 return
 
         elif scene == Scene.RECRUIT_TAGS:
-            self.ticket_number=self.get_ticket_number()
+            self.ticket_number = self.get_ticket_number()
             return self.recruit_tags()
         elif scene == Scene.REFRESH_TAGS:
             self.tap_element("recruit/refresh_comfirm")
@@ -186,27 +179,29 @@ class RecruitSolver(SceneGraphSolver):
 
     def recruit_result(self):
         try:
-            # 存在读完一次没退完再读一次 
+            # 存在读完一次没退完再读一次
             if str(self.recruit_index) in self.result_agent.keys():
-                self.tap((950,150))
+                self.tap((950, 150))
                 return
-                
-            job_pt=None
-            for i in job_list:
-                if job_pt:=self.find(i):
-                    break
-            
-            img = cropimg(self.recog.gray,((job_pt[1][0],730),(1800,860)))
-            img=cv2.threshold(img, 220, 255, cv2.THRESH_BINARY)[1]
 
-            score={}
+            job_pt = None
+            for i in job_list:
+                if job_pt := self.find(i):
+                    break
+
+            img = cropimg(self.recog.gray, ((job_pt[1][0], 730), (1800, 860)))
+            img = cv2.threshold(img, 220, 255, cv2.THRESH_BINARY)[1]
+
+            score = {}
             for id in recruit_res_template:
-                res=recruit_res_template[id]
-                result=cv2.matchTemplate(img,res,cv2.TM_CCORR_NORMED,res)
-                _,max_val,_,_=cv2.minMaxLoc(result)
-                score[id]=max_val
-            self.result_agent[self.recruit_index]= recruit_agent[max(score,key=score.get)]['name']
-            
+                res = recruit_res_template[id]
+                result = cv2.matchTemplate(img, res, cv2.TM_CCORR_NORMED, res)
+                _, max_val, _, _ = cv2.minMaxLoc(result)
+                score[id] = max_val
+            self.result_agent[self.recruit_index] = recruit_agent[
+                max(score, key=score.get)
+            ]["name"]
+
         except Exception as e:
             logger.error(f"公招开包异常:{e}")
             logger.debug(traceback.format_exc())
@@ -236,7 +231,7 @@ class RecruitSolver(SceneGraphSolver):
             recruit_cal_result = tem_res[recruit_result_level]
         logger.debug(recruit_cal_result)
         if recruit_result_level == 3:
-            if pos:=self.find("recruit/refresh"):
+            if pos := self.find("recruit/refresh"):
                 self.tap(pos)
                 return
 
@@ -268,19 +263,21 @@ class RecruitSolver(SceneGraphSolver):
                         self.recruit_index = self.recruit_index + 1
                         self.back()
                         return
-                    
-        if self.ticket_number==0:
+
+        if self.ticket_number == 0:
             self.recruit_index = self.recruit_index + 1
             self.back()
             return
-        
-        if self.ticket_number < self.recruit_config["permit_target"] and recruit_result_level==3:
+
+        if (
+            self.ticket_number < self.recruit_config["permit_target"]
+            and recruit_result_level == 3
+        ):
             self.recruit_index = self.recruit_index + 1
             logger.info("没券 返回")
             self.back()
             return
-            
-            
+
         choose = []
         if recruit_result_level > 3:
             choose = recruit_cal_result[0]["tag"]
@@ -291,7 +288,7 @@ class RecruitSolver(SceneGraphSolver):
             # 存在choose为空但是进行标签选择的情况
             logger.debug(f"tap{x}:{tags[x]}")
             self.tap(tags[x])
-            
+
         # 9h为True 3h50min为False
         logger.debug("开始选择时长")
         recruit_time_choose = self.recruit_config["recruitment_time"]["3"]
@@ -320,17 +317,16 @@ class RecruitSolver(SceneGraphSolver):
 
         # start recruit
         self.tap_element("recruit/start_recruit")
-        self.ticket_number=self.ticket_number-1
-        
+        self.ticket_number = self.ticket_number - 1
 
         if recruit_result_level > 3:
             self.agent_choose[str(self.recruit_index)] = {
                 "tags": list(choose),
                 "result": list(recruit_cal_result[0]["result"]),
             }
-            tmp_res_list=[]
+            tmp_res_list = []
             for i in list(recruit_cal_result[0]["result"]):
-                tmp_res_list.append(i['name'])
+                tmp_res_list.append(i["name"])
             logger.info(
                 "第{}个位置上的公招预测结果：{}".format(
                     self.recruit_index,
@@ -345,7 +341,7 @@ class RecruitSolver(SceneGraphSolver):
             logger.info(
                 f'第{self.recruit_index}个位置上的公招预测结果：{"随机三星干员"}'
             )
-        self.recruit_index=self.recruit_index+1
+        self.recruit_index = self.recruit_index + 1
         return
 
     def all_same_res(self, recruit_cal_res, index):
@@ -517,7 +513,7 @@ class RecruitSolver(SceneGraphSolver):
             score = []
             for i in range(10):
                 im = number[i]
-                if digit.shape[0]<im.shape[0] or digit.shape[1]<im.shape[1]:
+                if digit.shape[0] < im.shape[0] or digit.shape[1] < im.shape[1]:
                     continue
                 result = cv2.matchTemplate(digit, im, cv2.TM_SQDIFF_NORMED)
                 min_val, _, _, _ = cv2.minMaxLoc(result)
@@ -545,4 +541,4 @@ class RecruitSolver(SceneGraphSolver):
 
         if not self.recruit_config["recruit_robot"]:
             self.recruit_order = [6, 5, 4, 3, 2, 1]
-            self.recruit_order_index=1
+            self.recruit_order_index = 1
