@@ -307,7 +307,7 @@ class Recognizer(object):
             self.scene = Scene.MISSION_DAILY
         elif self.find("mission_weekly_on"):
             self.scene = Scene.MISSION_WEEKLY
-        elif self.find("agent_token"):
+        elif self.find("recruit/agent_token") or self.find("recruit/agent_token_first"):
             self.scene = Scene.RECRUIT_AGENT
         elif self.find("main_theme"):
             self.scene = Scene.TERMINAL_MAIN_THEME
@@ -722,7 +722,6 @@ class Recognizer(object):
             return None
 
         template_matching = {
-            "agent_token": ((1740, 765), (1920, 805)),
             "arrange_check_in": ((30, 300), (175, 700)),
             "arrange_check_in_on": ((30, 300), (175, 700)),
             "biography": (768, 934),
@@ -762,6 +761,29 @@ class Recognizer(object):
             "ope_failed": (183, 465),
             "ope_finish": (87, 265),
             "ope_plan": (1278, 24),
+            "recruit/agent_token": ((1740, 765), (1920, 805)),
+            "recruit/agent_token_first": ((1700, 760), (1920, 810)),
+            "recruit/available_level": (1294, 234),
+            "recruit/begin_recruit":scope,
+            "recruit/career_needs": (350, 593),
+            "recruit/lmb": (945, 27),
+            "recruit/recruit_done":scope,
+            "recruit/recruit_lock":scope,
+            'recruit/job_requirements':scope,
+            "recruit/ticket": ((900, 0),(1920, 120)),
+            "recruit/time": (1304, 112),
+            "recruit/refresh": (1366, 560),
+            "recruit/refresh_comfirm": (1237, 714),
+            "recruit/riic_res/CASTER":((750, 730), (1920, 860)),
+            "recruit/riic_res/MEDIC":((750, 730), (1920, 860)),
+            "recruit/riic_res/PIONEER":((750, 730), (1920, 860)),
+            "recruit/riic_res/SPECIAL":((750, 730), (1920, 860)),
+            "recruit/riic_res/SNIPER":((750, 730), (1920, 860)),
+            "recruit/riic_res/SUPPORT":((750, 730), (1920, 860)),
+            "recruit/riic_res/TANK":((750, 730), (1920, 860)),
+            "recruit/riic_res/WARRIOR":((750, 730), (1920, 860)),
+            "recruit/start_recruit": (1438, 849),
+            "recruit/stone": ((900, 0),(1920, 120)),
             "riic/assistants": ((1320, 400), (1600, 650)),
             "riic/iron": ((1570, 230), (1630, 340)),
             "riic/orundum": ((1500, 320), (1800, 550)),
@@ -774,6 +796,20 @@ class Recognizer(object):
             "navigation/ope_hard_small": 0.7,
             "navigation/ope_normal": 0.7,
             "navigation/ope_normal_small": 0.7,
+            "recruit/agent_token":0.8,
+            "recruit/agent_token_first":0.8,
+            "recruit/lmb":0.7,
+            "recruit/riic_res/CASTER":0.7,
+            "recruit/riic_res/MEDIC":0.7,
+            "recruit/riic_res/PIONEER":0.7,
+            "recruit/riic_res/SPECIAL":0.7,
+            "recruit/riic_res/SNIPER":0.7,
+            "recruit/riic_res/SUPPORT":0.7,
+            "recruit/riic_res/TANK":0.7,
+            "recruit/riic_res/WARRIOR":0.7,
+            "recruit/time":0.8,
+            "recruit/stone":0.7
+            
         }
 
         if res in template_matching:

@@ -332,6 +332,7 @@ class Arknights数据处理器:
 
     def load_recruit_template(self):
         # !/usr/bin/env python3
+        template={}
         with open("./arknights_mower/data/recruit.json", "r", encoding="utf-8") as f:
             recruit_operators = json.load(f)
 
@@ -342,7 +343,11 @@ class Arknights数据处理器:
             draw = ImageDraw.Draw(im)
             draw.text((0, 0), recruit_operators[operator]["name"], font=font)
             im = im.crop(im.getbbox())
-            im.save(f"./arknights_mower/resources/agent_name/{operator}.png")
+            im = cv2.cvtColor(np.asarray(im),cv2.COLOR_RGB2GRAY)
+            template[operator]=im
+
+        with lzma.open("arknights_mower/models/recruit_result.pkl", "wb") as f:
+            pickle.dump(template, f)
 
     def 训练仓库的knn模型(self, 模板文件夹, 模型保存路径):
         def 提取特征点(模板):
