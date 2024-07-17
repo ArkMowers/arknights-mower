@@ -1,17 +1,15 @@
 import json
+import lzma
 import os
+import pickle
+from datetime import datetime
 
 import cv2
 import numpy as np
-import pickle
-import lzma
-
-from datetime import datetime
-
-from sklearn.neighbors import KNeighborsClassifier
-from skimage.feature import hog
-
 from PIL import Image, ImageDraw, ImageFont
+from skimage.feature import hog
+from sklearn.neighbors import KNeighborsClassifier
+
 from arknights_mower.data import agent_list
 from arknights_mower.utils.image import thres2
 
@@ -332,7 +330,7 @@ class Arknights数据处理器:
 
     def load_recruit_template(self):
         # !/usr/bin/env python3
-        template={}
+        template = {}
         with open("./arknights_mower/data/recruit.json", "r", encoding="utf-8") as f:
             recruit_operators = json.load(f)
 
@@ -343,8 +341,8 @@ class Arknights数据处理器:
             draw = ImageDraw.Draw(im)
             draw.text((0, 0), recruit_operators[operator]["name"], font=font)
             im = im.crop(im.getbbox())
-            im = cv2.cvtColor(np.asarray(im),cv2.COLOR_RGB2GRAY)
-            template[operator]=im
+            im = cv2.cvtColor(np.asarray(im), cv2.COLOR_RGB2GRAY)
+            template[operator] = im
 
         with lzma.open("arknights_mower/models/recruit_result.pkl", "wb") as f:
             pickle.dump(template, f)
