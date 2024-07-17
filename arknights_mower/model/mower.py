@@ -3,7 +3,6 @@ from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
-from ..utils.log import logger
 from .types import PackageEnum, ThemeEnum, TouchMethodEnum
 
 
@@ -33,7 +32,8 @@ class SimulatorConfig(BaseModel):
                 return None
             value = Path(value)
         if not value.exists():
-            logger.warning("指定的模拟器文件夹不存在")
+            pass
+            # logger.warning("指定的模拟器文件夹不存在")
         return value
 
 

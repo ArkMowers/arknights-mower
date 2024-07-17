@@ -129,3 +129,6 @@ class Config(BaseModel):
             {k: v for k, v in update_json.items() if k in MOWER_MIGRATION_CONFS}
         )
         return conf
+
+
+config = Config.load_conf()
