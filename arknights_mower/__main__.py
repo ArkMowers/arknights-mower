@@ -180,6 +180,10 @@ def initialize(tasks, scheduler=None):
             "server_push_enable": conf["server_push_enable"],
             "sendKey": conf["sendKey"],
         },
+        "pushplus_push_config": {
+            "pushplus_push_enable": conf["pushplus_push_enable"],
+            "pushplus_token": conf["pushplus_token"],
+        }
     }
     base_scheduler.check_mail_enable = conf["check_mail_enable"]
     base_scheduler.report_enable = conf["report_enable"]

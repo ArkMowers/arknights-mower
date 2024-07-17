@@ -262,6 +262,8 @@ run_order_grandet_mode:
   back_to_index: false
 server_push_enable: false
 sendKey: ''
+pushplus_enable: false
+pushplus_token: ''
 recruit_gap: 9
 recruit_auto_5: 1
 recruit_auto_only5: false

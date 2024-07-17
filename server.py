@@ -544,6 +544,31 @@ def test_serverJang_push():
         return "发送失败 : " + str(e)
 
 
+@app.route("/test-pushplus-push")
+@require_token
+def test_pushplus_push():
+    import requests
+
+    try:
+        print(config.conf)
+        response = requests.post(
+            r"http://www.pushplus.plus/send",
+            params={
+                "token": config.conf["pushplus_token"],
+                "title": "arknights-mower推送测试",
+                "content": "arknights-mower推送测试",
+            },
+        )
+
+        if response.status_code == 200 and response.json().get("code") == 200:
+            return "发送成功"
+        else:
+            return "发送失败 : " + response.json().get("message", "")
+    except Exception as e:
+        print(type(e))
+        return "发送失败 : " + str(e)
+
+
 @app.route("/check-skland")
 @require_token
 def test_skland():
