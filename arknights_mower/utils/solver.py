@@ -811,6 +811,25 @@ class BaseSolver:
                 logger.exception(e)
                 self.csleep(delay)
 
+    # PushPlus异常处理
+    def handle_pushplus_error(self, data):
+        for delay in self.exponential_backoff():
+            try:
+                response = requests.post(r"http://www.pushplus.plus/send", json=data)
+                json_data = response.json()
+                if json_data.get("code") == 200:
+                    logger.info("PushPlus通知发送成功")
+                    break
+                else:
+                    logger.error(
+                        f"PushPlus通知发送失败，错误信息：{json_data.get('msg')}"
+                    )
+                    self.csleep(delay)
+            except Exception as e:
+                logger.error("PushPlus通知发送失败")
+                logger.exception(e)
+                self.csleep(delay)
+
     def send_message(
         self,
         body="",
@@ -858,7 +877,7 @@ class BaseSolver:
         # 获取Server酱配置
         serverJang_push_config = send_message_config.get("serverJang_push_config")
         # 获取PushPlus配置
-        pushPlus_config = send_message_config.get("pushPlus_config")
+        pushplus_config = send_message_config.get("pushplus_config")
 
         # 邮件通知部分
         if email_config and email_config.get("mail_enable", 0):
@@ -905,13 +924,13 @@ class BaseSolver:
                 failed_methods.append(("serverJang", url, data))
 
         # PushPlus通知部分
-        if pushPlus_config and pushPlus_config.get("pushplus_enable", False):
-            token = pushPlus_config.get("pushplus_token")
+        if pushplus_config and pushplus_config.get("pushplus_enable", False):
+            token = pushplus_config.get("pushplus_token")
             if not token:
                 logger.error("PushPlus的token未配置")
                 return
 
-            url = r"http://pushplus.hxtrip.com/send"
+            url = r"http://www.pushplus.plus/send"
             data = {
                 "token": token,
                 "title": "Mower通知",
@@ -931,6 +950,7 @@ class BaseSolver:
             except Exception as e:
                 logger.error("PushPlus通知发送失败")
                 logger.exception(e)
+                failed_methods.append(("pushplus", data))
 
         # 处理失败的方法
         for method, *args in failed_methods:
@@ -945,6 +965,14 @@ class BaseSolver:
                 for _ in range(retry_times):
                     try:
                         self.handle_serverJang_error(*args)
+                        break
+                    except Exception:
+                        self.csleep(1)
+
+            elif method == "pushplus":
+                for _ in range(retry_times):
+                    try:
+                        self.handle_pushplus_error(*args)
                         break
                     except Exception:
                         self.csleep(1)
