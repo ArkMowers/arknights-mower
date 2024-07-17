@@ -2,7 +2,9 @@ import lzma
 import pickle
 import traceback
 from itertools import combinations
+
 import cv2
+
 from arknights_mower import __rootdir__
 from arknights_mower.data import (
     agent_with_tags,
