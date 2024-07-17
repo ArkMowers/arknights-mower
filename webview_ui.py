@@ -114,15 +114,16 @@ def webview_window(child_conn, global_space, host, port, token, url, tray):
     import webview
 
     from arknights_mower.__init__ import __version__
+    from arknights_mower.model import Config
     from arknights_mower.utils import path
-    from arknights_mower.utils.conf import load_conf, save_conf
+    from arknights_mower.utils.conf import save_conf
 
     path.global_space = global_space
 
     global width
     global height
 
-    conf = load_conf()
+    conf = Config.load_conf()
     width = conf["webview"]["width"]
     height = conf["webview"]["height"]
 
@@ -175,10 +176,11 @@ def webview_window(child_conn, global_space, host, port, token, url, tray):
     Thread(target=recv_msg, daemon=True).start()
     webview.start()
 
-    conf = load_conf()
+    conf = Config.load_conf()
     conf["webview"]["width"] = width
     conf["webview"]["height"] = height
-    save_conf(conf)
+    conf.save_conf("./conf.yml", old=True)
+    conf.save_conf("./conf.upgraded.yml", old=False)
     sys.exit()
 
 
@@ -198,9 +200,9 @@ if __name__ == "__main__":
     if len(sys.argv) == 2:
         path.global_space = sys.argv[1]
 
-    from arknights_mower.utils.conf import load_conf
+    from arknights_mower.model.conf import Config
 
-    conf = load_conf()
+    conf = Config.load_conf()
     tray = conf["webview"]["tray"]
     token = conf["webview"]["token"]
     host = "0.0.0.0" if token else "127.0.0.1"

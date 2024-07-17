@@ -1,0 +1,18 @@
+MOWER_MIGRATION_CONFS = [
+    "package_type",
+    "adb",
+    "maa_adb_path",
+    "touch_method",
+    "simulator",
+    "tap_to_launch_game",
+    "start_automatically",
+    "exit_game_when_idle",
+    "close_simulator_when_idle",
+    "fix_mumu12_adb_disconnect",
+    "droidcast",
+    "custom_screenshot",
+    "screenshot",
+    "webview",
+    "theme",
+    "maa_gap",
+]

@@ -18,6 +18,7 @@ from tzlocal import get_localzone
 from werkzeug.exceptions import NotFound
 
 from arknights_mower import __system__
+from arknights_mower.model import Config
 from arknights_mower.utils import config
 from arknights_mower.utils.conf import load_conf, load_plan, save_conf, write_plan
 from arknights_mower.utils.log import logger
@@ -87,11 +88,14 @@ def not_found(e):
 @require_token
 def load_config():
     if request.method == "GET":
-        config.conf = load_conf()
-        return config.conf
+        config.conf = Config.load_conf()
+        return config.conf.model_dump_json()
     else:
-        config.conf.update(request.json)
-        save_conf(config.conf)
+        config.conf = config.conf.my_copy(request.json)
+        print(config.conf.mower.adb)
+        config.conf.save_conf("./conf.yml", old=True)
+        config.conf.save_conf("./conf.upgraded.yml", old=False)
+
         return "New config saved!"
 
 
