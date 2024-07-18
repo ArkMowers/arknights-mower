@@ -19,6 +19,7 @@ mirror = "https://mower.zhaozuohong.vip"
 sign_in = None
 navigation = None
 
+last_listing = None, []
 last_update = None
 
 
@@ -38,14 +39,19 @@ def load_module(download_update):
 
 
 def get_listing():
+    global last_listing
+    last_time, listing = last_listing
+    if last_time and datetime.now() - last_time < timedelta(minutes=10):
+        return listing
     cwd, listing = fetch_listing(mirror)
+    last_listing = datetime.now(), listing
     return listing
 
 
 def update():
     global last_update
 
-    if last_update and last_update - datetime.now() < timedelta(minutes=30):
+    if last_update and datetime.now() - last_update < timedelta(minutes=30):
         logger.info("跳过热更新检查")
         load_module(False)
         return

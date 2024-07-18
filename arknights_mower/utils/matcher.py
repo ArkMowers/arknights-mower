@@ -12,18 +12,42 @@ import sklearn.preprocessing
 import sklearn.svm  # noqa
 from skimage.metrics import structural_similarity as compare_ssim
 
-from .. import __rootdir__
-from . import typealias as tp
-from .image import cropimg
-from .log import logger
+from arknights_mower import __rootdir__
+from arknights_mower.utils import typealias as tp
+from arknights_mower.utils.image import cropimg
+from arknights_mower.utils.log import logger
 
-MATCHER_DEBUG = False
-# FLANN_INDEX_KDTREE = 1
-FLANN_INDEX_LSH = 6
 GOOD_DISTANCE_LIMIT = 0.7
+
 ORB = cv2.ORB_create(nfeatures=100000, edgeThreshold=0)
+ORB_no_pyramid = cv2.ORB_create(nfeatures=100000, edgeThreshold=0, nlevels=1)
+
+
+def keypoints_scale_invariant(img: tp.GrayImage):
+    return ORB.detectAndCompute(img, None)
+
+
+def keypoints(img: tp.GrayImage):
+    return ORB_no_pyramid.detectAndCompute(img, None)
+
+
 with lzma.open(f"{__rootdir__}/models/svm.model", "rb") as f:
     SVC = pickle.loads(f.read())
+
+
+# build FlannBasedMatcher
+
+# FLANN_INDEX_KDTREE = 1
+FLANN_INDEX_LSH = 6
+
+index_params = dict(
+    algorithm=FLANN_INDEX_LSH,
+    table_number=6,  # 12
+    key_size=12,  # 20
+    multi_probe_level=0,  # 2
+)
+search_params = dict(checks=50)  # 100
+flann = cv2.FlannBasedMatcher(index_params, search_params)
 
 
 def getHash(data: list[float]) -> tp.Hash:
@@ -52,11 +76,7 @@ class Matcher(object):
     def __init__(self, origin: tp.GrayImage) -> None:
         logger.debug(f"Matcher init: shape ({origin.shape})")
         self.origin = origin
-        self.init_orb()
-
-    def init_orb(self) -> None:
-        """get ORB feature points"""
-        self.kp, self.des = ORB.detectAndCompute(self.origin, None)
+        self.kp, self.des = keypoints(self.origin)
 
     def match(
         self,
@@ -64,8 +84,8 @@ class Matcher(object):
         draw: bool = False,
         scope: tp.Scope = None,
         dpi_aware: bool = False,
+        prescore: float = 0.0,
         judge: bool = True,
-        prescore=0.0,
     ) -> Optional[tp.Scope]:
         """check if the image can be matched"""
         rect_score = self.score(
@@ -80,19 +100,18 @@ class Matcher(object):
         else:
             rect, score = rect_score
 
-        if prescore != 0.0 and score[3] >= prescore:
-            logger.debug(f"match success: {rect_score}")
-            return rect
-        # use SVC to determine if the score falls within the legal range
-        if judge and not SVC.predict([score])[0]:  # numpy.bool_
-            logger.debug(f"match fail: {rect_score}")
-            return None  # failed in matching
-        else:
-            if prescore > 0 and score[3] < prescore:
+        if prescore > 0:
+            if score[3] >= prescore:
+                logger.debug(f"match success: {rect_score}")
+                return rect
+            else:
                 logger.debug(f"score is not greater than {prescore}: {rect_score}")
                 return None
-            logger.debug(f"match success: {rect_score}")
-            return rect  # success in matching
+        if judge and not SVC.predict([score])[0]:
+            logger.debug(f"match fail: {rect_score}")
+            return None
+        logger.debug(f"match success: {rect_score}")
+        return rect
 
     def score(
         self,
@@ -135,17 +154,11 @@ class Matcher(object):
             h, w = query.shape
 
             # the feature point of query image
-            qry_kp, qry_des = ORB.detectAndCompute(query, None)
+            if dpi_aware:
+                qry_kp, qry_des = keypoints_scale_invariant(query)
+            else:
+                qry_kp, qry_des = keypoints(query)
 
-            # build FlannBasedMatcher
-            index_params = dict(
-                algorithm=FLANN_INDEX_LSH,
-                table_number=6,  # 12
-                key_size=12,  # 20
-                multi_probe_level=0,  # 2
-            )
-            search_params = dict(checks=50)  # 100
-            flann = cv2.FlannBasedMatcher(index_params, search_params)
             matches = flann.knnMatch(qry_des, ori_des, k=2)
 
             # store all the good matches as per Lowe's ratio test
@@ -160,12 +173,12 @@ class Matcher(object):
             good_matches_rate = len(good) / len(qry_des)
 
             # draw all the good matches, for debug
-            if draw or MATCHER_DEBUG:
+            if draw:
                 result = cv2.drawMatches(query, qry_kp, self.origin, ori_kp, good, None)
 
                 from matplotlib import pyplot as plt
 
-                plt.imshow(result, cmap="gray", vmin=0, vmax=255)
+                plt.imshow(result)
                 plt.show()
             # if the number of good matches no more than 4
             if len(good) <= 4:
@@ -201,10 +214,10 @@ class Matcher(object):
             rect = quad.reshape(2, 2).tolist()
 
             # draw the result, for debug
-            if draw or MATCHER_DEBUG:
+            if draw:
                 matchesMask = mask.ravel().tolist()
-                origin_copy = self.origin.copy()
-                cv2.rectangle(origin_copy, rect[0], rect[1], (0,), 3)
+                origin_copy = cv2.cvtColor(self.origin, cv2.COLOR_GRAY2RGB)
+                cv2.rectangle(origin_copy, rect[0], rect[1], (255, 0, 0), 3)
                 draw_params = dict(
                     matchColor=(0, 255, 0),
                     singlePointColor=None,
@@ -214,7 +227,7 @@ class Matcher(object):
                 result = cv2.drawMatches(
                     query, qry_kp, origin_copy, ori_kp, good, None, **draw_params
                 )
-                plt.imshow(result, cmap="gray", vmin=0, vmax=255)
+                plt.imshow(result)
                 plt.show()
 
             min_width = max(10, 0 if dpi_aware else w * 0.8)
@@ -227,6 +240,12 @@ class Matcher(object):
             ):
                 logger.debug(f"rectangle is too small: {rect}")
                 return None
+
+            if not dpi_aware:
+                max_width = w * 1.25
+                if rect[1][0] - rect[0][0] > max_width:
+                    logger.debug(f"rectangle is too big: {rect}")
+                    return None
 
             # measure the rate of good match within the rectangle (x-axis)
             better = filter(
@@ -253,11 +272,11 @@ class Matcher(object):
             rect_img = cv2.resize(rect_img, query.shape[::-1])
 
             # draw the result
-            if draw or MATCHER_DEBUG:
+            if draw:
                 plt.subplot(1, 2, 1)
-                plt.imshow(query, "gray")
+                plt.imshow(query, cmap="gray", vmin=0, vmax=255)
                 plt.subplot(1, 2, 2)
-                plt.imshow(rect_img, "gray")
+                plt.imshow(rect_img, cmap="gray", vmin=0, vmax=255)
                 plt.show()
 
             # calc aHash between query image and rect_img

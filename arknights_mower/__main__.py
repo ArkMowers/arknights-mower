@@ -3,7 +3,6 @@ import os
 from copy import deepcopy
 from datetime import datetime, timedelta
 
-import requests
 from evalidate import Expr
 
 from arknights_mower import __version__
@@ -50,13 +49,7 @@ def main():
     config.fix_mumu12_adb_disconnect = conf["fix_mumu12_adb_disconnect"]
     config.grandet_back_to_index = conf["run_order_grandet_mode"]["back_to_index"]
     config.ADB_CONTROL_CLIENT = conf["touch_method"]
-    if hasattr(config, "droidcast"):
-        config.droidcast.update(conf["droidcast"])
-    else:
-        config.droidcast = conf["droidcast"]
-        config.droidcast["session"] = requests.Session()
-        config.droidcast["port"] = 0
-        config.droidcast["process"] = None
+    config.droidcast.update(conf["droidcast"])
     config.ADB_BINARY = [conf["maa_adb_path"]]
 
     if config.wh is None:
@@ -187,6 +180,7 @@ def initialize(tasks, scheduler=None):
             "server_push_enable": conf["server_push_enable"],
             "sendKey": conf["sendKey"],
         },
+        "pushplus_config": conf["pushplus"],
     }
     base_scheduler.check_mail_enable = conf["check_mail_enable"]
     base_scheduler.report_enable = conf["report_enable"]
@@ -288,7 +282,7 @@ def simulate():
                     listing = get_listing()
                     version = __version__.replace("+", "-")
                     if not any(i.name.startswith(version) for i in listing):
-                        msg = "版本过旧，请更新至受支持的版本"
+                        msg = "Mower版本过旧，请更新至受支持的版本"
                         logger.error(msg)
                         base_scheduler.send_message(msg)
 

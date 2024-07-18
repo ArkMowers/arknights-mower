@@ -227,10 +227,22 @@
     "description": "被阻挡后无法进行普通攻击",
     "buffer": []
   },
+  "ba_fear": {
+    "termId": "ba.fear",
+    "termName": "恐惧",
+    "description": "无法被阻挡并四散逃跑",
+    "buffer": []
+  },
   "ba_dt_burning2": {
     "termId": "ba.dt.burning2",
     "termName": "灼燃损伤·我方",
     "description": "累计满时爆发（普通、精英敌人1000点、领袖2000点累计值），敌人立即受到7000点元素伤害且期间法术抗性-20。10秒冷却",
+    "buffer": []
+  },
+  "ba_addash": {
+    "termId": "ba.addash",
+    "termName": "移动",
+    "description": "不退场，以当前血量在目标位置部署",
     "buffer": []
   },
   "cc_bd_A_1": {
@@ -267,13 +279,20 @@
     "termId": "cc.bd_A",
     "termName": "思维链环",
     "description": "可影响<$cc.bd_A_1><@cc.rem>念力</></>、<$cc.bd_A_2><@cc.rem>意识实体</></>相关技能\n由以下干员的基建技能提供\n迷迭香",
-    "buffer": ["cc_bd_A_1", "cc_bd_A_2"]
+    "buffer": [
+      "cc_bd_A_1",
+      "cc_bd_A_2"
+    ]
   },
   "cc_bd_B": {
     "termId": "cc.bd_B",
     "termName": "无声共鸣",
     "description": "可影响<$cc.bd_B_1><@cc.rem>徘徊旋律</></>、<$cc.bd_B_2><@cc.rem>怅惘和声</></>、<$cc.bd_B_3><@cc.rem>无词颂歌</></>相关技能\n由以下干员的基建技能提供\n黑键、塑心、深律",
-    "buffer": ["cc_bd_B_1", "cc_bd_B_2", "cc_bd_B_3"]
+    "buffer": [
+      "cc_bd_B_1",
+      "cc_bd_B_2",
+      "cc_bd_B_3"
+    ]
   },
   "cc_bd_C": {
     "termId": "cc.bd_C",
@@ -285,13 +304,18 @@
     "termId": "cc.bd_a1",
     "termName": "感知信息",
     "description": "可影响<$cc.bd_A><@cc.rem>思维链环</></>、<$cc.bd_B><@cc.rem>无声共鸣</></>相关变量\n由以下干员的基建技能提供\n迷迭香、黑键、夕、令、絮雨、爱丽丝、车尔尼",
-    "buffer": ["cc_bd_A", "cc_bd_B"]
+    "buffer": [
+      "cc_bd_A",
+      "cc_bd_B"
+    ]
   },
   "cc_bd_b1": {
     "termId": "cc.bd_b1",
     "termName": "人间烟火",
     "description": "可影响<$cc.bd_C><@cc.rem>巫术结晶</></>相关技能\n由以下干员的基建技能提供\n夕、令、重岳、乌有、桑葚",
-    "buffer": ["cc_bd_C"]
+    "buffer": [
+      "cc_bd_C"
+    ]
   },
   "cc_bd_ash": {
     "termId": "cc.bd_ash",
@@ -315,19 +339,25 @@
     "termId": "cc.bd_a1_a1",
     "termName": "记忆碎片",
     "description": "可影响<$cc.bd_a1><@cc.rem>感知信息</></>相关变量\n由以下干员的基建技能提供\n絮雨",
-    "buffer": ["cc_bd_a1"]
+    "buffer": [
+      "cc_bd_a1"
+    ]
   },
   "cc_bd_a1_a2": {
     "termId": "cc.bd_a1_a2",
     "termName": "梦境",
     "description": "可影响<$cc.bd_a1><@cc.rem>感知信息</></>相关变量\n由以下干员的基建技能提供\n爱丽丝",
-    "buffer": ["cc_bd_a1"]
+    "buffer": [
+      "cc_bd_a1"
+    ]
   },
   "cc_bd_a1_a3": {
     "termId": "cc.bd_a1_a3",
     "termName": "小节",
     "description": "可影响<$cc.bd_a1><@cc.rem>感知信息</></>相关变量\n由以下干员的基建技能提供\n车尔尼",
-    "buffer": ["cc_bd_a1"]
+    "buffer": [
+      "cc_bd_a1"
+    ]
   },
   "cc_bd_costdrop": {
     "termId": "cc.bd.costdrop",
@@ -339,7 +369,10 @@
     "termId": "cc.bd_felyne",
     "termName": "木天蓼",
     "description": "可影响<$cc.bd_felyne_1><@cc.rem>可爱的艾露猫</></>、<$cc.bd_felyne_2><@cc.rem>可靠的随从们</></>相关技能\n由以下干员的基建技能提供\n火龙S黑角、麒麟R夜刀",
-    "buffer": ["cc_bd_felyne_1", "cc_bd_felyne_2"]
+    "buffer": [
+      "cc_bd_felyne_1",
+      "cc_bd_felyne_2"
+    ]
   },
   "cc_bd_felyne_1": {
     "termId": "cc.bd_felyne_1",
@@ -477,19 +510,30 @@
     "termId": "cc.c.abyssal2_1",
     "termName": "特殊加成",
     "description": "每有1个<$cc.g.abyssal><@cc.kw>深海猎人</></>干员进驻制造站，则控制中枢给每个进驻<$cc.g.abyssal><@cc.kw>深海猎人</></>的制造站提供<@cc.vup>5%</>生产力，最多给单个制造站提供<@cc.vup>45%</>生产力",
-    "buffer": ["cc_g_abyssal", "cc_g_abyssal"]
+    "buffer": [
+      "cc_g_abyssal",
+      "cc_g_abyssal"
+    ]
   },
   "cc_c_abyssal2_2": {
     "termId": "cc.c.abyssal2_2",
     "termName": "特殊加成",
     "description": "每有1个<$cc.g.abyssal><@cc.kw>深海猎人</></>干员进驻制造站，则控制中枢给每个进驻<$cc.g.abyssal><@cc.kw>深海猎人</></>的制造站提供<@cc.vup>10%</>生产力，最多给单个制造站提供<@cc.vup>90%</>生产力",
-    "buffer": ["cc_g_abyssal", "cc_g_abyssal"]
+    "buffer": [
+      "cc_g_abyssal",
+      "cc_g_abyssal"
+    ]
   },
   "cc_c_abyssal2_3": {
     "termId": "cc.c.abyssal2_3",
     "termName": "特殊叠加规则",
     "description": "无法与<$cc.m.var2><@cc.rem>配合意识</></>进行叠加，且优先生效\n无法与<$cc.m.pow1><@cc.rem>自动化·α</></>、<$cc.m.pow2><@cc.rem>自动化·β</></>、<$cc.m.pow3><@cc.rem>仿生海龙</></>进行叠加，且清零效果优先生效",
-    "buffer": ["cc_m_var2", "cc_m_pow1", "cc_m_pow2", "cc_m_pow3"]
+    "buffer": [
+      "cc_m_var2",
+      "cc_m_pow1",
+      "cc_m_pow2",
+      "cc_m_pow3"
+    ]
   },
   "cc_c_room1": {
     "termId": "cc.c.room1",
@@ -519,13 +563,20 @@
     "termId": "cc.t.strong2",
     "termName": "特殊叠加规则",
     "description": "无法单独与<$cc.t.snsant1><@cc.rem>天道酬勤·α</></>、<$cc.t.snsant2><@cc.rem>天道酬勤·β</></>进行叠加，且优先生效\n当<$cc.t.snsant1><@cc.rem>天道酬勤·α</></>、<$cc.t.snsant2><@cc.rem>天道酬勤·β</></>与其他技能进行叠加时，该技能会对此叠加效果进行叠加",
-    "buffer": ["cc_t_snsant1", "cc_t_snsant2", "cc_t_snsant1", "cc_t_snsant2"]
+    "buffer": [
+      "cc_t_snsant1",
+      "cc_t_snsant2",
+      "cc_t_snsant1",
+      "cc_t_snsant2"
+    ]
   },
   "cc_c_sui2_1": {
     "termId": "cc.c.sui2_1",
     "termName": "特殊比较规则",
     "description": "在<@cc.kw>公事公办</>，<@cc.kw>孤光共照</>，<@cc.kw>巴别塔之帜</>提供的<$cc.c.room2><@cc.kw>其他设施</></>每小时心情恢复值中取最高生效",
-    "buffer": ["cc_c_room2"]
+    "buffer": [
+      "cc_c_room2"
+    ]
   },
   "cc_m_pow1": {
     "termId": "cc.m.pow1",

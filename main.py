@@ -1,8 +1,8 @@
 import os
 import traceback
 
-from arknights_mower.__main__ import main
 from arknights_mower import __cli__
+from arknights_mower.__main__ import main
 
 if __name__ == "__main__":
     try:

@@ -1,13 +1,14 @@
 import json
 import os
-import pandas as pd
+from datetime import datetime
 
-# from typing import Dict, List, Union
-from arknights_mower.utils.path import get_path
+import pandas as pd
 
 # from .log import logger
 from arknights_mower.data import key_mapping
-from datetime import datetime
+
+# from typing import Dict, List, Union
+from arknights_mower.utils.path import get_path
 
 
 def 读取仓库():
@@ -189,9 +190,10 @@ def 读取仓库():
         "sort": 9999999,
         "icon": "寻访凭证",
     }
+    待定碎片 = int(土 / 2)
     classified_data["A常用"]["额外+碎片+土"] = {
         "number": round(
-            (合成玉数量 + 源石数量 * 180 + int(源石碎片 / 2 + int(土 / 2)) * 20) / 600
+            (合成玉数量 + 源石数量 * 180 + int((源石碎片 + 待定碎片) / 2) * 20) / 600
             + 寻访凭证数量,
             1,
         ),

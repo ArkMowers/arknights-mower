@@ -13,7 +13,7 @@ class CreditSolver(SceneGraphSolver):
         return super().run()
 
     def transition(self) -> bool:
-        if (scene := self.scene()) == Scene.FRIEND_LIST_ON:
+        if (scene := self.scene()) == Scene.FRIEND_LIST:
             left, top = 1460, 220
             img = cropimg(self.recog.gray, ((left, top), (1800, 1000)))
             img = thres2(img, 245)
@@ -51,4 +51,4 @@ class CreditSolver(SceneGraphSolver):
         elif scene in self.waiting_scene:
             self.waiting_solver()
         else:
-            self.scene_graph_navigation(Scene.FRIEND_LIST_ON)
+            self.scene_graph_navigation(Scene.FRIEND_LIST)

@@ -1,14 +1,15 @@
-import time
-from datetime import datetime
 import atexit
 import json
 import os
+import time
+from datetime import datetime
+
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
-from arknights_mower.utils.email import task_template
-from arknights_mower.utils.log import logger, init_fhlr
 from arknights_mower.utils import config, rapidocr
-from arknights_mower.utils.simulator import restart_simulator
+from arknights_mower.utils.email import task_template
+from arknights_mower.utils.log import init_fhlr, logger
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
+from arknights_mower.utils.simulator import restart_simulator
 
 # 下面不能删除
 

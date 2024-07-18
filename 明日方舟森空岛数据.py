@@ -6,7 +6,6 @@ from urllib import parse
 
 import requests
 
-
 app_code = "4ca99fa6b56cc2ba"
 
 # 签到url

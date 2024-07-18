@@ -51,6 +51,10 @@
         "label": "EXIT_GAME",
         "comment": "退出游戏"
     },
+    "12": {
+        "label": "DOWNLOAD_VOICE_RESOURCES",
+        "comment": "检测到有未下载的语音资源"
+    },
     "101": {
         "label": "LOGIN_MAIN",
         "comment": "登录页面"
@@ -208,12 +212,12 @@
         "comment": "离开基建"
     },
     "301": {
-        "label": "FRIEND_LIST_OFF",
-        "comment": "好友列表（未选中）"
+        "label": "BUSINESS_CARD",
+        "comment": "个人名片"
     },
     "302": {
-        "label": "FRIEND_LIST_ON",
-        "comment": "好友列表（选中）"
+        "label": "FRIEND_LIST",
+        "comment": "好友列表"
     },
     "303": {
         "label": "FRIEND_VISITING",
@@ -438,6 +442,18 @@
     "919": {
         "label": "RA_ADVENTURE",
         "comment": "奇遇"
+    },
+    "920": {
+        "label": "RA_NOTICE",
+        "comment": "一张便条"
+    },
+    "921": {
+        "label": "RA_INSUFFICIENT_DRINK",
+        "comment": "能量饮料不足"
+    },
+    "922": {
+        "label": "RA_SQUAD_ABNORMAL",
+        "comment": "当前编队中存在异常情况"
     },
     "1001": {
         "label": "SSS_MAIN",

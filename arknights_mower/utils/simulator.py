@@ -1,5 +1,4 @@
 import subprocess
-import time
 from enum import Enum
 from os import system
 
@@ -15,9 +14,12 @@ class Simulator_Type(Enum):
     Waydroid = "Waydroid"
     ReDroid = "ReDroid"
     MuMuPro = "MuMuPro"
+    Genymotion = "GenyMotion"
 
 
 def restart_simulator(stop=True, start=True):
+    from arknights_mower.utils.solver import BaseSolver
+
     data = config.conf["simulator"]
     index = data["index"]
     simulator_type = data["name"]
@@ -30,6 +32,7 @@ def restart_simulator(stop=True, start=True):
         Simulator_Type.Waydroid.value,
         Simulator_Type.ReDroid.value,
         Simulator_Type.MuMuPro.value,
+        Simulator_Type.Genymotion.value,
     ]:
         if simulator_type == Simulator_Type.Nox.value:
             cmd = "Nox.exe"
@@ -53,13 +56,15 @@ def restart_simulator(stop=True, start=True):
             cmd = f"docker stop {data['index']} -t 0"
         elif simulator_type == Simulator_Type.MuMuPro.value:
             cmd = f"Contents/MacOS/mumutool close {data['index']}"
+        elif simulator_type == Simulator_Type.Genymotion.value:
+            cmd = f"gmtool admin start {data['index']}"
         if stop:
             exec_cmd(cmd, data["simulator_folder"])
             logger.info(f"关闭{simulator_type}模拟器")
             if data["name"] == "MuMu12" and config.fix_mumu12_adb_disconnect:
                 system("taskkill /f /t /im adb.exe")
                 logger.info("结束adb进程")
-            time.sleep(2)
+            BaseSolver.csleep(2)
         if simulator_type == Simulator_Type.Nox.value:
             cmd = cmd.replace(" -quit", "")
         elif simulator_type == Simulator_Type.MuMu12.value:
@@ -72,12 +77,15 @@ def restart_simulator(stop=True, start=True):
             cmd = f"docker start {data['index']}"
         elif simulator_type == Simulator_Type.MuMuPro.value:
             cmd = cmd.replace("close", "open")
+        elif simulator_type == Simulator_Type.Genymotion.value:
+            cmd = f"gmtool admin stop {data['index']}"
         if start:
             exec_cmd(cmd, data["simulator_folder"])
             logger.info(f"开始启动{simulator_type}模拟器，等待{data['wait_time']}秒")
-            time.sleep(data["wait_time"])
+            BaseSolver.csleep(data["wait_time"])
     else:
         logger.warning(f"尚未支持{simulator_type}重启/自动启动")
+        BaseSolver.csleep()
 
 
 def exec_cmd(cmd, folder_path):

@@ -32,7 +32,7 @@ class Recognizer(object):
             self.clear()
         else:
             self.start(screencap)
-            self.matcher = None
+            self._matcher = None
             self.scene = Scene.UNDEFINED
         self.loading_time = 0
         self.LOADING_TIME_LIMIT = 5
@@ -41,7 +41,7 @@ class Recognizer(object):
         self._screencap = None
         self._img = None
         self._gray = None
-        self.matcher = None
+        self._matcher = None
         self.scene = Scene.UNDEFINED
 
     @property
@@ -61,6 +61,12 @@ class Recognizer(object):
         if self._gray is None:
             self.start()
         return self._gray
+
+    @property
+    def matcher(self):
+        if self._matcher is None:
+            self._matcher = Matcher(self.gray)
+        return self._matcher
 
     def start(self, screencap: bytes = None) -> None:
         """init with screencap"""
@@ -183,8 +189,12 @@ class Recognizer(object):
             self.scene = Scene.RECRUIT_MAIN
         elif self.find("recruiting_instructions"):
             self.scene = Scene.RECRUIT_TAGS
-        elif self.find("agent_unlock"):
-            self.scene = Scene.SHOP_CREDIT
+        elif self.find("credit_shop_countdown"):
+            hsv = cv2.cvtColor(self.img, cv2.COLOR_RGB2HSV)
+            if 9 < hsv[870][1530][0] < 19:
+                self.scene = Scene.UNKNOWN
+            else:
+                self.scene = Scene.SHOP_CREDIT
         elif self.find("shop_credit_2"):
             self.scene = Scene.SHOP_OTHERS
         elif self.find("shop_cart"):
@@ -225,6 +235,8 @@ class Recognizer(object):
                 self.scene = Scene.REFRESH_TAGS
             elif self.find("double_confirm/network"):
                 self.scene = Scene.NETWORK_CHECK
+            elif self.find("double_confirm/voice"):
+                self.scene = Scene.DOWNLOAD_VOICE_RESOURCES
             else:
                 self.scene = Scene.DOUBLE_CONFIRM
         elif self.find("mission_trainee_on"):
@@ -293,10 +305,10 @@ class Recognizer(object):
             self.scene = Scene.OPERATOR_FINISH
         elif self.find("fight/use"):
             self.scene = Scene.OPERATOR_STRANGER_SUPPORT
+        elif self.find("business_card"):
+            self.scene = Scene.BUSINESS_CARD
         elif self.find("friend_list"):
-            self.scene = Scene.FRIEND_LIST_OFF
-        elif self.find("friend_list_on"):
-            self.scene = Scene.FRIEND_LIST_ON
+            self.scene = Scene.FRIEND_LIST
         elif self.find("credit_visiting"):
             self.scene = Scene.FRIEND_VISITING
         elif self.find("arrange_check_in") or self.find("arrange_check_in_on"):
@@ -356,6 +368,15 @@ class Recognizer(object):
         )
         return scope if score > 0.8 else None
 
+    def detect_ra_adventure(self) -> bool:
+        img = cropimg(self.gray, ((385, 365), (475, 465)))
+        img = thres2(img, 250)
+        res = loadres("ra/adventure", True)
+        result = cv2.matchTemplate(img, res, cv2.TM_CCOEFF_NORMED)
+        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+        logger.debug(f"{max_val=} {max_loc=}")
+        return max_val >= 0.9
+
     def get_ra_scene(self) -> int:
         """
         生息演算场景识别
@@ -367,63 +388,73 @@ class Recognizer(object):
         # 连接中，优先级最高
         if self.find("connecting"):
             self.scene = Scene.CONNECTING
+        elif self.find("loading"):
+            self.scene = Scene.UNKNOWN
+        elif self.find("loading4"):
+            self.scene = Scene.UNKNOWN
 
         # 奇遇
-        elif self.find("ra/adventure", scope=((380, 360), (470, 460)), thres=250):
+        elif self.detect_ra_adventure():
             self.scene = Scene.RA_ADVENTURE
 
         # 快速跳过剧情对话
-        elif self.find("ra/guide_dialog", scope=((0, 0), (160, 110))):
+        elif self.find("ra/guide_dialog"):
             self.scene = Scene.RA_GUIDE_DIALOG
 
         # 快速退出作战
         elif self.find_ra_battle_exit():
             self.scene = Scene.RA_BATTLE
-        elif self.find("ra/battle_exit_dialog", scope=((600, 360), (970, 430))):
+        elif self.find("ra/battle_exit_dialog"):
             self.scene = Scene.RA_BATTLE_EXIT_CONFIRM
 
         # 作战与分队
-        elif self.find("ra/start_action", scope=((1410, 790), (1900, 935))):
-            if self.find("ra/action_points", scope=((1660, 55), (1820, 110))):
+        elif self.find("ra/squad_edit"):
+            self.scene = Scene.RA_SQUAD_EDIT
+        elif self.find("ra/start_action"):
+            if self.find("ra/action_points"):
                 self.scene = Scene.RA_BATTLE_ENTRANCE
             else:
                 self.scene = Scene.RA_GUIDE_BATTLE_ENTRANCE
-        elif self.find("ra/squad_edit", scope=((1090, 0), (1910, 105))):
-            self.scene = Scene.RA_SQUAD_EDIT
-        elif self.find("ra/get_item", scope=((875, 360), (1055, 420))):
+        elif self.find("ra/get_item"):
             self.scene = Scene.RA_GET_ITEM
-        elif self.find("ra/return_from_kitchen", scope=((0, 0), (300, 105))):
+        elif self.find("ra/return_from_kitchen"):
             self.scene = Scene.RA_KITCHEN
-        elif self.find("ra/squad_edit_confirm_dialog", scope=((585, 345), (1485, 440))):
+        elif self.find("ra/squad_edit_confirm_dialog"):
             self.scene = Scene.RA_SQUAD_EDIT_DIALOG
-        elif self.find("ra/battle_complete", scope=((70, 310), (580, 500))):
+        elif self.find("ra/enter_battle_confirm_dialog"):
+            self.scene = Scene.RA_SQUAD_ABNORMAL
+        elif self.find("ra/battle_complete"):
             self.scene = Scene.RA_BATTLE_COMPLETE
 
         # 结算界面
-        elif self.find("ra/day_complete", scope=((800, 330), (1130, 410))):
+        elif self.find("ra/day_complete"):
             self.scene = Scene.RA_DAY_COMPLETE
-        elif self.find(
-            "ra/period_complete", scope=((800, 190), (1120, 265))
-        ) and self.find("ra/click_anywhere", scope=((830, 990), (1090, 1040))):
+        elif self.find("ra/period_complete") and self.find("ra/click_anywhere"):
             self.scene = Scene.RA_PERIOD_COMPLETE
 
         # 森蚺图耶对话
-        elif self.find("ra/guide_entrance", scope=((810, 270), (1320, 610))):
+        elif self.find("ra/guide_entrance"):
             self.scene = Scene.RA_GUIDE_ENTRANCE
 
         # 存档操作
-        elif self.find(
-            "ra/delete_save_confirm_dialog", scope=((585, 345), (1020, 440))
-        ):
+        elif self.find("ra/delete_save_confirm_dialog"):
             self.scene = Scene.RA_DELETE_SAVE_DIALOG
 
         # 地图识别
-        elif self.find("ra/waste_time_button", scope=((1665, 220), (1855, 290))):
+        elif self.find("ra/waste_time_button"):
             self.scene = Scene.RA_DAY_DETAIL
-        elif self.find("ra/waste_time_dialog", scope=((585, 345), (1070, 440))):
+        elif self.find("ra/waste_time_dialog"):
             self.scene = Scene.RA_WASTE_TIME_DIALOG
         elif self.find("ra/map_back", thres=200) and self.color(1817, 333)[0] > 250:
             self.scene = Scene.RA_MAP
+
+        # 一张便条
+        elif self.find("ra/notice"):
+            self.scene = Scene.RA_NOTICE
+
+        # 一张便条
+        elif self.find("ra/no_enough_drink"):
+            self.scene = Scene.RA_INSUFFICIENT_DRINK
 
         # 从首页选择终端进入生息演算主页
         elif self.find("terminal_longterm"):
@@ -432,7 +463,7 @@ class Recognizer(object):
             self.scene = Scene.RA_MAIN
         elif self.detect_index_scene():
             self.scene = Scene.INDEX
-        elif self.find("terminal_pre") is not None:
+        elif self.find("terminal_main"):
             self.scene = Scene.TERMINAL_MAIN
         else:
             self.scene = Scene.UNKNOWN
@@ -482,7 +513,7 @@ class Recognizer(object):
         # 从首页进入隐秘战线
         elif self.detect_index_scene():
             self.scene = Scene.INDEX
-        elif self.find("terminal_pre"):
+        elif self.find("terminal_main"):
             self.scene = Scene.TERMINAL_MAIN
         elif self.find("main_theme"):
             self.scene = Scene.TERMINAL_MAIN_THEME
@@ -529,7 +560,7 @@ class Recognizer(object):
 
         elif self.detect_index_scene():
             self.scene = Scene.INDEX
-        elif self.find("terminal_pre", threshold=0.3) is not None:
+        elif self.find("terminal_main") is not None:
             self.scene = Scene.TERMINAL_MAIN
         elif self.find("terminal_regular"):
             self.scene = Scene.TERMINAL_REGULAR
@@ -574,7 +605,7 @@ class Recognizer(object):
         # 连接中，优先级最高
         if self.find("connecting"):
             self.scene = Scene.CONNECTING
-        elif self.find("infra_overview", scope=((20, 120), (360, 245))) is not None:
+        elif self.find("infra_overview"):
             self.scene = Scene.INFRA_MAIN
         elif self.find("train_main"):
             self.scene = Scene.TRAIN_MAIN
@@ -607,11 +638,11 @@ class Recognizer(object):
         self,
         res: str,
         draw: bool = False,
-        scope: tp.Scope = None,
-        thres: int = None,
+        scope: tp.Scope | None = None,
+        thres: int | None = None,
         judge: bool = True,
         strict: bool = False,
-        threshold=0.0,
+        threshold: float = 0.0,
     ) -> tp.Scope:
         """
         查找元素是否出现在画面中
@@ -631,7 +662,6 @@ class Recognizer(object):
         color = {
             "1800": [(158, 958)],
             "12cadpa": [(1810, 21)],
-            "agent_unlock": [(91, 1013)],
             "arrange_confirm": [(755, 903)],
             "arrange_order_options": [(1652, 23)],
             "arrange_order_options_scene": [(369, 199)],
@@ -643,6 +673,7 @@ class Recognizer(object):
             "clue/summary": [(59, 153)],
             "confirm": [(0, 683)],
             "control_central_assistants": [(39, 560)],
+            "credit_shop_countdown": [(1511, 1017)],
             "depot": [(0, 955)],
             "double_confirm/exit": [(940, 464)],
             "double_confirm/friend": [(978, 465)],
@@ -651,6 +682,7 @@ class Recognizer(object):
             "double_confirm/main": [(835, 683)],
             "double_confirm/network": [(708, 435)],
             "double_confirm/recruit": [(981, 464)],
+            "double_confirm/voice": [(745, 435)],
             "drone": [(274, 437)],
             "factory_collect": [(1542, 886)],
             "fight/refresh": [(1639, 22)],
@@ -725,19 +757,20 @@ class Recognizer(object):
             "arrange_check_in": ((30, 300), (175, 700)),
             "arrange_check_in_on": ((30, 300), (175, 700)),
             "biography": (768, 934),
+            "business_card": (55, 165),
             "collection": (1005, 943),
             "collection_small": (1053, 982),
             "connecting": (1087, 978),
             "episode": (535, 937),
             "fight/use": (858, 864),
-            "friend_list": (57, 301),
-            "friend_list_on": (56, 298),
+            "friend_list": (61, 306),
             "credit_visiting": (78, 220),
             "loading": (736, 333),
             "loading2": (620, 247),
             "loading3": (1681, 1000),
             "loading4": (828, 429),
             "main_theme": (283, 945),
+            "main_theme_small": (321, 973),
             "materiel_ico": (892, 61),
             "mission_daily_on": ((685, 15), (1910, 100)),
             "mission_weekly_on": ((685, 15), (1910, 100)),
@@ -858,37 +891,31 @@ class Recognizer(object):
                 scope = ((550, 900), (800, 1080))
                 threshold = 0.45
 
+        res_img = loadres(res, True)
         if thres is not None:
             # 对图像二值化处理
-            res_img = thres2(loadres(res, True), thres)
+            res_img = thres2(res_img, thres)
             matcher = Matcher(thres2(self.gray, thres))
-            ret = matcher.match(
-                res_img,
-                draw=draw,
-                scope=scope,
-                judge=judge,
-                prescore=threshold,
-                dpi_aware=dpi_aware,
-            )
         else:
-            res_img = loadres(res, True)
-            if self.matcher is None:
-                self.matcher = Matcher(self.gray)
             matcher = self.matcher
-            ret = matcher.match(
-                res_img,
-                draw=draw,
-                scope=scope,
-                judge=judge,
-                prescore=threshold,
-                dpi_aware=dpi_aware,
-            )
+        ret = matcher.match(
+            res_img,
+            draw=draw,
+            scope=scope,
+            judge=judge,
+            prescore=threshold,
+            dpi_aware=dpi_aware,
+        )
         if strict and ret is None:
             raise RecognizeError(f"Can't find '{res}'")
         return ret
 
     def score(
-        self, res: str, draw: bool = False, scope: tp.Scope = None, thres: int = None
+        self,
+        res: str,
+        draw: bool = False,
+        scope: tp.Scope = None,
+        thres: int | None = None,
     ) -> Optional[List[float]]:
         """
         查找元素是否出现在画面中，并返回分数
@@ -903,16 +930,15 @@ class Recognizer(object):
         logger.debug(f"find: {res}")
         res = f"{__rootdir__}/resources/{res}.png"
 
+        res_img = loadres(res, True)
         if thres is not None:
             # 对图像二值化处理
-            res_img = thres2(loadres(res, True), thres)
+            res_img = thres2(res_img, thres)
             gray_img = cropimg(self.gray, scope)
             matcher = Matcher(thres2(gray_img, thres))
-            score = matcher.score(res_img, draw=draw, only_score=True)
         else:
-            res_img = loadres(res, True)
             matcher = self.matcher
-            score = matcher.score(res_img, draw=draw, scope=scope, only_score=True)
+        score = matcher.score(res_img, draw=draw, scope=scope, only_score=True)
         return score
 
     def template_match(

@@ -1,7 +1,7 @@
-from jinja2 import Environment, FileSystemLoader, select_autoescape
 import os
 import sys
 
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
     template_dir = os.path.join(

@@ -1,5 +1,6 @@
 import lzma
 import pickle
+import re
 
 import cv2
 
@@ -24,6 +25,34 @@ location = {
         "1-10": (4635, 167),
         "1-11": (4965, -9),
         "1-12": (5436, -10),
+    },
+    8: {
+        "R8-1": (0, 0),
+        "R8-2": (471, 0),
+        "R8-3": (864, 0),
+        "R8-4": (1259, 0),
+        "R8-5": (1651, -4),
+        "R8-6": (2045, -4),
+        "R8-7": (2228, -124),
+        "R8-8": (2437, -4),
+        "R8-9": (2951, -4),
+        "R8-10": (3284, -4),
+        "R8-11": (3617, -4),
+        "M8-1": (6, 339),
+        "M8-2": (865, 339),
+        "M8-3": (1259, 339),
+        "M8-4": (1651, 339),
+        "M8-5": (2045, 339),
+        "M8-6": (2439, 340),
+        "M8-7": (2952, 340),
+        "M8-8": (3617, 339),
+        "JT8-1": (4092, 171),
+        "JT8-2": (4545, 171),
+        "JT8-3": (5022, 171),
+        "H8-1": (5556, -24),
+        "H8-2": (5759, 354),
+        "H8-3": (5999, -24),
+        "H8-4": (6192, 354),
     },
     12: {
         "12-1": (0, 0),
@@ -123,7 +152,7 @@ class NavigationSolver(SceneGraphSolver):
     def run(self, name: str):
         logger.info("Start: 关卡导航")
         self.success = False
-        self.act=None
+        self.act = None
 
         hot_update.update()
         if name in hot_update.navigation.NavigationSolver.location:
@@ -139,9 +168,12 @@ class NavigationSolver(SceneGraphSolver):
         self.pr_prefix = pr_prefix
         self.now_difficulty = None
         self.change_to = None
+        self.patten = r"^(R|JT|H|M)(\d{1,2})$"
         if name == "Annihilation":
             logger.info("剿灭导航")
-        elif prefix.isdigit():
+        elif prefix.isdigit() or re.match(self.patten, prefix):
+            if match := re.search(self.patten, prefix):
+                prefix = match.group(2)
             prefix = int(prefix)
             self.prefix = prefix
             if prefix in location and name in location[prefix]:
@@ -166,7 +198,7 @@ class NavigationSolver(SceneGraphSolver):
         else:
             logger.error(f"暂不支持{name}")
             return False
-        
+
         super().run()
         return self.success
 

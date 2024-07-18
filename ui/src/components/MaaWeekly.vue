@@ -90,7 +90,7 @@ function create_tag(label) {
     >
       <n-form-item :show-label="false">
         <n-checkbox v-model:checked="maa_expiring_medicine">
-          自动使用48小时内过期的理智药
+          自动使用60小时内过期的理智药
         </n-checkbox>
       </n-form-item>
     </n-form>

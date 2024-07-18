@@ -54,7 +54,11 @@ class BaseSolver:
         Scene.OPERATOR_ONGOING: (10, 30),
     }
 
-    def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
+    def __init__(
+        self,
+        device: Device | None = None,
+        recog: Recognizer | None = None,
+    ) -> None:
         # self.device = device if device is not None else (recog.device if recog is not None else Device())
         if device is None and recog is not None:
             raise RuntimeError
@@ -66,18 +70,22 @@ class BaseSolver:
                     self.device = Device()
                     self.device.client.check_server_alive()
                     Session().connect(config.ADB_DEVICE[0])
+                    if not self.device.check_resolution():
+                        raise MowerExit
                     if config.droidcast["enable"]:
                         self.device.start_droidcast()
                     if config.ADB_CONTROL_CLIENT == "scrcpy":
                         self.device.control.scrcpy = Scrcpy(self.device.client)
                     break
+                except MowerExit:
+                    raise
                 except Exception:
                     restart_simulator()
 
         self.recog = recog if recog is not None else Recognizer(self.device)
-        self.check_current_focus()
 
     def run(self) -> None:
+        self.check_current_focus()
         retry_times = config.MAX_RETRYTIME
         result = None
         while retry_times > 0:
@@ -110,11 +118,9 @@ class BaseSolver:
         """get the color of the pixel"""
         return self.recog.color(pos[0], pos[1])
 
+    @staticmethod
     def get_pos(
-        self,
-        poly: tp.Location,
-        x_rate: float = 0.5,
-        y_rate: float = 0.5,
+        poly: tp.Location, x_rate: float = 0.5, y_rate: float = 0.5
     ) -> tp.Coordinate:
         """get the pos form tp.Location"""
         if poly is None:
@@ -142,7 +148,8 @@ class BaseSolver:
             x, y = poly
         return (int(x), int(y))
 
-    def csleep(self, interval: float = 1):
+    @staticmethod
+    def csleep(interval: float = 1):
         """check and sleep"""
         stop_time = datetime.now() + timedelta(seconds=interval)
         while True:
@@ -804,6 +811,25 @@ class BaseSolver:
                 logger.exception(e)
                 self.csleep(delay)
 
+    # PushPlus异常处理
+    def handle_pushplus_error(self, data):
+        for delay in self.exponential_backoff():
+            try:
+                response = requests.post(r"http://www.pushplus.plus/send", json=data)
+                json_data = response.json()
+                if json_data.get("code") == 200:
+                    logger.info("PushPlus通知发送成功")
+                    break
+                else:
+                    logger.error(
+                        f"PushPlus通知发送失败，错误信息：{json_data.get('msg')}"
+                    )
+                    self.csleep(delay)
+            except Exception as e:
+                logger.error("PushPlus通知发送失败")
+                logger.exception(e)
+                self.csleep(delay)
+
     def send_message(
         self,
         body="",
@@ -850,6 +876,8 @@ class BaseSolver:
         email_config = send_message_config.get("email_config")
         # 获取Server酱配置
         serverJang_push_config = send_message_config.get("serverJang_push_config")
+        # 获取PushPlus配置
+        pushplus_config = send_message_config.get("pushplus_config")
 
         # 邮件通知部分
         if email_config and email_config.get("mail_enable", 0):
@@ -895,6 +923,53 @@ class BaseSolver:
             except Exception:
                 failed_methods.append(("serverJang", url, data))
 
+        # PushPlus通知部分
+        if pushplus_config and pushplus_config.get("enable", False):
+            token = pushplus_config.get("token")
+            if not token:
+                logger.error("PushPlus的token未配置")
+                return
+
+            # img 嵌入 html
+            # if attach_image is not None:
+            #     img = cv2.cvtColor(attach_image, cv2.COLOR_RGB2BGR)
+            #     _, attachment = cv2.imencode(
+            #         ".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), 75]
+            #     )
+            #     img_base64 = base64.b64encode(attachment)
+            #     img_url = f"data:image/jpeg;base64,{img_base64.decode('utf-8')}"
+            #     img_tag = f'<img src="{img_url}" />'
+
+            #     # 查找 </body> 标签的位置
+            #     body_close_tag = '</body>'
+            #     insert_position = body.find(body_close_tag)
+
+            #     # 在 </body> 标签前插入 <img> 标签
+            #     if insert_position != -1:
+            #         body = body[:insert_position] + img_tag + body[insert_position:]
+
+            url = r"http://www.pushplus.plus/send"
+            data = {
+                "token": token,
+                "title": "Mower通知",
+                "content": body,
+                "template": "markdown",
+            }
+
+            try:
+                response = requests.post(url, json=data)
+                json_data = response.json()
+                if json_data.get("code") == 200:
+                    logger.info("PushPlus通知发送成功")
+                else:
+                    logger.error(
+                        f"PushPlus通知发送失败，错误信息：{json_data.get('msg')}"
+                    )
+            except Exception as e:
+                logger.error("PushPlus通知发送失败")
+                logger.exception(e)
+                failed_methods.append(("pushplus", data))
+
         # 处理失败的方法
         for method, *args in failed_methods:
             if method == "email":
@@ -908,6 +983,14 @@ class BaseSolver:
                 for _ in range(retry_times):
                     try:
                         self.handle_serverJang_error(*args)
+                        break
+                    except Exception:
+                        self.csleep(1)
+
+            elif method == "pushplus":
+                for _ in range(retry_times):
+                    try:
+                        self.handle_pushplus_error(*args)
                         break
                     except Exception:
                         self.csleep(1)

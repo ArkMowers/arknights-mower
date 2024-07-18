@@ -1,3 +1,5 @@
+FZDYSK.TTF
+
 !main.spec
 *.yaml
 !arknights_mower/templates/*.yaml
@@ -27,6 +29,9 @@ cute.json
 __pycache__/
 *.py[cod]
 *$py.class
+
+# Nodejs Version Manager
+.nvmrc
 
 # C extensions
 *.so

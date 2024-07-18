@@ -1,7 +1,9 @@
+import os
+from pathlib import Path
+
 import cv2
 import numpy as np
-from pathlib import Path
-import os
+
 from .image import loadres
 
 
@@ -214,7 +216,11 @@ class DigitReader:
         ch = [str(result[k]) for k in sorted(result)]
         print(ch)
         if len(ch) == 6:
-            return (int(f"{ch[0]}{ch[1]}"), int(f"{ch[2]}{ch[3]}"), int(f"{ch[4]}{ch[5]}"))
+            return (
+                int(f"{ch[0]}{ch[1]}"),
+                int(f"{ch[2]}{ch[3]}"),
+                int(f"{ch[4]}{ch[5]}"),
+            )
         else:
             return (
                 int(f"{ch[0]}{ch[1]}{ch[2]}"),

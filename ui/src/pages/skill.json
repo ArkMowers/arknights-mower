@@ -1,5 +1,124 @@
 [
   {
+    "key": 334,
+    "name": "渡桥",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "懂行",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻贸易站时，<@cc.kw>小幅提升</>当前贸易站<@cc.kw>高品质贵金属订单</>的出现概率（工作时长影响概率），心情每小时消耗<@cc.vup>-0.25</>",
+        "roomType": "贸易站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "bskill_tra_wt&cost1",
+        "buffColor": "#0075a9",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "天生的顾问",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻贸易站时，订单获取效率<@cc.vup>+15%</>，会客室每级额外提供<@cc.vup>5%</>获取效率，最多提供<@cc.vup>30%</>效率",
+        "roomType": "贸易站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "bskill_tra_spd&meet",
+        "buffColor": "#0075a9",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 333,
+    "name": "锡人",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "梅兰德侦探·α",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻人力办公室时，人脉资源的联络速度<@cc.vup>+5%</>，每间宿舍每级额外<@cc.vup>+1%</>人脉资源的联络速度",
+        "roomType": "人力办公室",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_hire_spd&dorm1",
+        "buffColor": "#565656",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 0,
+        "skill_level": 1,
+        "phase_level": "精2 1级",
+        "skillname": "梅兰德侦探·β",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻人力办公室时，人脉资源的联络速度<@cc.vup>+5%</>，每间宿舍每级额外<@cc.vup>+2%</>人脉资源的联络速度",
+        "roomType": "人力办公室",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_hire_spd&dorm2",
+        "buffColor": "#565656",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 332,
+    "name": "妮芙",
+    "span": 3,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "静心仪式·α",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻宿舍时，该宿舍内所有干员的心情每小时恢复<@cc.vup>+0.15</>（同种效果取最高）",
+        "roomType": "宿舍",
+        "buffCategory": "RECOVERY",
+        "skillIcon": "bskill_dorm_all2",
+        "buffColor": "#21cdcb",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 0,
+        "skill_level": 1,
+        "phase_level": "精2 1级",
+        "skillname": "静心仪式·β",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻宿舍时，该宿舍内所有干员的心情每小时恢复<@cc.vup>+0.2</>（同种效果取最高）",
+        "roomType": "宿舍",
+        "buffCategory": "RECOVERY",
+        "skillIcon": "bskill_dorm_all3",
+        "buffColor": "#21cdcb",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "巡心",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻控制中枢时，所有宿舍内所有干员的心情每小时恢复<@cc.vup>+0.05</>（同种效果取最高）",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_leader",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
     "key": 331,
     "name": "乌尔比安",
     "span": 2,
@@ -24,7 +143,9 @@
         "phase_level": "精2 1级",
         "skillname": "“手段应当有效”",
         "buffer": true,
-        "buffer_des": ["cc_g_abyssal"],
+        "buffer_des": [
+          "cc_g_abyssal"
+        ],
         "des": "进驻训练室协助位时，心情每小时消耗<@cc.vdown>+1</>，基建内（不包含副手）每名<$cc.g.abyssal><@cc.kw>深海猎人</></>干员为当前干员的专精技能训练速度<@cc.vup>+10%</>（最多生效<@cc.kw>5</>名）",
         "roomType": "训练室",
         "buffCategory": "FUNCTION",
@@ -164,7 +285,9 @@
         "phase_level": "精2 1级",
         "skillname": "重聚时光",
         "buffer": true,
-        "buffer_des": ["cc_g_A1"],
+        "buffer_des": [
+          "cc_g_A1"
+        ],
         "des": "进驻制造站时，当前制造站内每个<$cc.g.A1><@cc.kw>A1小队</></>干员为自身<@cc.vup>+10%</>的生产力",
         "roomType": "制造站",
         "buffCategory": "OUTPUT",
@@ -297,7 +420,10 @@
         "phase_level": "精2 1级",
         "skillname": "巴别塔之帜",
         "buffer": true,
-        "buffer_des": ["cc_c_sui2_1", "cc_c_room2"],
+        "buffer_des": [
+          "cc_c_sui2_1",
+          "cc_c_room2"
+        ],
         "des": "进驻控制中枢时，<$cc.c.room2><@cc.kw>其他设施</></>内处于工作状态的干员心情每小时恢复<@cc.vup>+0.1</>，当<@cc.kw>魔王</>进驻中枢时额外<@cc.vup>+0.1</>（与控制中枢加成有<$cc.c.sui2_1><@cc.rem>特殊比较规则</></>）",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
@@ -472,7 +598,9 @@
         "phase_level": "精0 1级",
         "skillname": "战术指导·进攻",
         "buffer": true,
-        "buffer_des": ["cc_g_Attack"],
+        "buffer_des": [
+          "cc_g_Attack"
+        ],
         "des": "进驻训练室协助位时，基建内（不包含副手）每名<$cc.g.Attack><@cc.kw>进攻方</></>干员为当前干员的专精技能训练速度<@cc.vup>+10%</>（最多生效<@cc.kw>4</>名）",
         "roomType": "训练室",
         "buffCategory": "FUNCTION",
@@ -486,7 +614,9 @@
         "phase_level": "精2 1级",
         "skillname": "实干的寡言者",
         "buffer": true,
-        "buffer_des": ["cc_bd_tachanka"],
+        "buffer_des": [
+          "cc_bd_tachanka"
+        ],
         "des": "进驻制造站时，生产力<@cc.vup>+20%</>，每有<@cc.vup>1</>瓶<$cc.bd_tachanka><@cc.rem>乌萨斯特饮</></>，则仓库容量上限<@cc.vup>+2</>",
         "roomType": "制造站",
         "buffCategory": "OUTPUT",
@@ -507,7 +637,9 @@
         "phase_level": "精0 1级",
         "skillname": "战术指导·防守",
         "buffer": true,
-        "buffer_des": ["cc_g_Defence"],
+        "buffer_des": [
+          "cc_g_Defence"
+        ],
         "des": "进驻训练室协助位时，基建内（不包含副手）每名<$cc.g.Defence><@cc.kw>防守方</></>干员为当前干员的专精技能训练速度<@cc.vup>+10%</>（最多生效<@cc.kw>4</>名）",
         "roomType": "训练室",
         "buffCategory": "FUNCTION",
@@ -542,7 +674,9 @@
         "phase_level": "精0 1级",
         "skillname": "战术指导·进攻",
         "buffer": true,
-        "buffer_des": ["cc_g_Attack"],
+        "buffer_des": [
+          "cc_g_Attack"
+        ],
         "des": "进驻训练室协助位时，基建内（不包含副手）每名<$cc.g.Attack><@cc.kw>进攻方</></>干员为当前干员的专精技能训练速度<@cc.vup>+10%</>（最多生效<@cc.kw>4</>名）",
         "roomType": "训练室",
         "buffCategory": "FUNCTION",
@@ -556,7 +690,9 @@
         "phase_level": "精2 1级",
         "skillname": "情报专家",
         "buffer": true,
-        "buffer_des": ["cc_bd_ash"],
+        "buffer_des": [
+          "cc_bd_ash"
+        ],
         "des": "进驻会客室时，线索搜集速度提升<@cc.vup>5%</>，同时每<@cc.vup>1</>点<$cc.bd_ash><@cc.rem>情报储备</></>额外提升<@cc.vup>5%</>",
         "roomType": "会客室",
         "buffCategory": "FUNCTION",
@@ -577,7 +713,9 @@
         "phase_level": "精0 1级",
         "skillname": "战术指导·防守",
         "buffer": true,
-        "buffer_des": ["cc_g_Defence"],
+        "buffer_des": [
+          "cc_g_Defence"
+        ],
         "des": "进驻训练室协助位时，基建内（不包含副手）每名<$cc.g.Defence><@cc.kw>防守方</></>干员为当前干员的专精技能训练速度<@cc.vup>+10%</>（最多生效<@cc.kw>4</>名）",
         "roomType": "训练室",
         "buffCategory": "FUNCTION",
@@ -731,7 +869,9 @@
         "phase_level": "精2 1级",
         "skillname": "思而后行",
         "buffer": true,
-        "buffer_des": ["cc_t_accmuguard1"],
+        "buffer_des": [
+          "cc_t_accmuguard1"
+        ],
         "des": "进驻训练室协助位时，每完整协助完成1次专精训练，累计一定<$cc.t.accmuguard1><@cc.rem>武道</></>。<$cc.t.accmuguard1><@cc.rem>武道</></>达到上限时，下一次开始协助<@cc.kw>近卫</>干员训练专精技能至<@cc.kw>1</>级将立即完成，并消耗已有<$cc.t.accmuguard1><@cc.rem>武道</></>",
         "roomType": "训练室",
         "buffCategory": "FUNCTION",
@@ -766,7 +906,9 @@
         "phase_level": "精2 1级",
         "skillname": "稻禾厚，顺秋收",
         "buffer": true,
-        "buffer_des": ["cc_bd_b1"],
+        "buffer_des": [
+          "cc_bd_b1"
+        ],
         "des": "进驻制造站时，每<@cc.vup>3</>点<$cc.bd_b1><@cc.rem>人间烟火</></><@cc.vup>+1%</>生产力",
         "roomType": "制造站",
         "buffCategory": "OUTPUT",
@@ -1067,7 +1209,9 @@
         "phase_level": "精2 1级",
         "skillname": "心声图绘",
         "buffer": true,
-        "buffer_des": ["cc_bd_B"],
+        "buffer_des": [
+          "cc_bd_B"
+        ],
         "des": "进驻人力办公室时，每个招募位（不包含初始招募位）<@cc.vup>+15</>点<$cc.bd_B><@cc.rem>无声共鸣</></>",
         "roomType": "人力办公室",
         "buffCategory": "FUNCTION",
@@ -1186,7 +1330,9 @@
         "phase_level": "精2 1级",
         "skillname": "烛骑士微光",
         "buffer": true,
-        "buffer_des": ["cc_tag_knight"],
+        "buffer_des": [
+          "cc_tag_knight"
+        ],
         "des": "进驻控制中枢时，每个进驻在制造站的<$cc.tag.knight><@cc.kw>骑士</></>干员生产力<@cc.vup>+7%</>",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
@@ -1207,7 +1353,9 @@
         "phase_level": "精0 1级",
         "skillname": "无声共鸣",
         "buffer": true,
-        "buffer_des": ["cc_bd_B"],
+        "buffer_des": [
+          "cc_bd_B"
+        ],
         "des": "进驻宿舍时，该宿舍内每有<@cc.vup>1</>名干员，<$cc.bd_B><@cc.rem>无声共鸣</></><@cc.vup>+1</>",
         "roomType": "宿舍",
         "buffCategory": "FUNCTION",
@@ -1221,7 +1369,9 @@
         "phase_level": "精2 1级",
         "skillname": "无词颂歌",
         "buffer": true,
-        "buffer_des": ["cc_bd_B"],
+        "buffer_des": [
+          "cc_bd_B"
+        ],
         "des": "进驻宿舍时，该宿舍内所有干员的心情每小时恢复<@cc.vup>+0.2</>，每有<@cc.vup>5</>点<$cc.bd_B><@cc.rem>无声共鸣</></>，该宿舍内所有干员的心情每小时恢复额外<@cc.vup>+0.01</>（同种效果取最高）",
         "roomType": "宿舍",
         "buffCategory": "RECOVERY",
@@ -1312,7 +1462,9 @@
         "phase_level": "精0 1级",
         "skillname": "旧识新交",
         "buffer": true,
-        "buffer_des": ["cc_g_glasgow"],
+        "buffer_des": [
+          "cc_g_glasgow"
+        ],
         "des": "进驻人力办公室时，人脉资源的联络速度<@cc.vup>+20%</>，每产生<@cc.vup>1</>次联络次数，增加<$cc.g.glasgow><@cc.kw>格拉斯哥帮</></>线索的概率（工作时长和招募位影响概率）",
         "roomType": "人力办公室",
         "buffCategory": "FUNCTION",
@@ -1326,7 +1478,9 @@
         "phase_level": "精2 1级",
         "skillname": "运筹好手",
         "buffer": true,
-        "buffer_des": ["cc_g_glasgow"],
+        "buffer_des": [
+          "cc_g_glasgow"
+        ],
         "des": "进驻控制中枢时，同一贸易站中，每有<@cc.vup>1</>名<$cc.g.glasgow><@cc.kw>格拉斯哥帮</></>干员，订单获取效率<@cc.vup>+10%</>",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
@@ -1347,7 +1501,9 @@
         "phase_level": "精0 1级",
         "skillname": "白手起家·α",
         "buffer": true,
-        "buffer_des": ["cc_c_room3"],
+        "buffer_des": [
+          "cc_c_room3"
+        ],
         "des": "进驻贸易站时，订单获取效率<@cc.vup>+25%</>；当<@cc.kw>伊内丝</>入驻<$cc.c.room3><@cc.kw>工作场所</></>时（不包含副手），订单获取效率额外<@cc.vup>+5%</>",
         "roomType": "贸易站",
         "buffCategory": "OUTPUT",
@@ -1361,7 +1517,9 @@
         "phase_level": "精2 1级",
         "skillname": "白手起家·β",
         "buffer": true,
-        "buffer_des": ["cc_c_room3"],
+        "buffer_des": [
+          "cc_c_room3"
+        ],
         "des": "进驻贸易站时，订单获取效率<@cc.vup>+30%</>；当<@cc.kw>伊内丝</>、<@cc.kw>W</>入驻<$cc.c.room3><@cc.kw>工作场所</></>时（不包含副手），订单获取效率分别额外<@cc.vup>+5%</>",
         "roomType": "贸易站",
         "buffCategory": "OUTPUT",
@@ -1431,7 +1589,9 @@
         "phase_level": "精2 1级",
         "skillname": "挑大梁",
         "buffer": true,
-        "buffer_des": ["cc_g_bs"],
+        "buffer_des": [
+          "cc_g_bs"
+        ],
         "des": "进驻制造站时，基建内（不包含副手）每有1名<$cc.g.bs><@cc.kw>黑钢国际</></>干员（最多<@cc.kw>3</>名），<@cc.kw>贵金属</>类配方的生产力<@cc.vup>+2%</>，心情每小时消耗<@cc.vup>-0.15</>",
         "roomType": "制造站",
         "buffCategory": "OUTPUT",
@@ -1466,7 +1626,9 @@
         "phase_level": "精2 1级",
         "skillname": "老友相聚",
         "buffer": true,
-        "buffer_des": ["cc_g_bs"],
+        "buffer_des": [
+          "cc_g_bs"
+        ],
         "des": "进驻控制中枢时，自身心情每小时消耗<@cc.vdown>+0.5</>；每个进驻在制造站的<$cc.g.bs><@cc.kw>黑钢国际</></>干员，生产力<@cc.vup>+5%</>",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
@@ -1620,7 +1782,9 @@
         "phase_level": "精2 1级",
         "skillname": "打工心得",
         "buffer": true,
-        "buffer_des": ["cc_sk_manu4"],
+        "buffer_des": [
+          "cc_sk_manu4"
+        ],
         "des": "进驻制造站时，当前制造站内每个<$cc.sk.manu4><@cc.kw>金属工艺类技能</></>为自身<@cc.vup>+5%</>的生产力",
         "roomType": "制造站",
         "buffCategory": "OUTPUT",
@@ -1676,7 +1840,9 @@
         "phase_level": "精0 1级",
         "skillname": "降生于冰寒",
         "buffer": true,
-        "buffer_des": ["cc_g_sm"],
+        "buffer_des": [
+          "cc_g_sm"
+        ],
         "des": "进驻宿舍时，使该宿舍内除自身以外心情未满的某个干员每小时恢复<@cc.vup>+0.55</>（同种效果取最高），如果目标是<$cc.g.sm><@cc.kw>萨米</></>干员，则恢复效果额外<@cc.vup>+0.45</>",
         "roomType": "宿舍",
         "buffCategory": "RECOVERY",
@@ -1690,7 +1856,9 @@
         "phase_level": "精2 1级",
         "skillname": "雪祀候补",
         "buffer": true,
-        "buffer_des": ["cc_g_sm"],
+        "buffer_des": [
+          "cc_g_sm"
+        ],
         "des": "进驻训练室协助位时，基建内（不包含副手）每名<$cc.g.sm><@cc.kw>萨米</></>干员为当前干员的专精技能训练速度<@cc.vup>+10%</>（最多生效<@cc.kw>3</>名）",
         "roomType": "训练室",
         "buffCategory": "FUNCTION",
@@ -1711,7 +1879,9 @@
         "phase_level": "精0 1级",
         "skillname": "冰原游弋",
         "buffer": true,
-        "buffer_des": ["cc_g_sm"],
+        "buffer_des": [
+          "cc_g_sm"
+        ],
         "des": "进驻会客室时，线索搜集速度提升<@cc.vup>+10%</>，与其他<$cc.g.sm><@cc.kw>萨米</></>干员进驻会客室一起工作时，线索搜集速度额外提升<@cc.vup>+5%</>，自身心情每小时消耗<@cc.vdown>+0.5</>",
         "roomType": "会客室",
         "buffCategory": "FUNCTION",
@@ -2047,7 +2217,9 @@
         "phase_level": "精2 1级",
         "skillname": "生态科主任",
         "buffer": true,
-        "buffer_des": ["cc_g_rh"],
+        "buffer_des": [
+          "cc_g_rh"
+        ],
         "des": "进驻发电站时，无人机充能速度<@cc.vup>+10%</>，基建内（不包含副手）每有1名除自身以外的<$cc.g.rh><@cc.kw>莱茵生命</></>干员（最多<@cc.kw>5</>名），充能速度额外<@cc.vup>+3%</>",
         "roomType": "发电站",
         "buffCategory": "OUTPUT",
@@ -2103,7 +2275,9 @@
         "phase_level": "精0 1级",
         "skillname": "头号陪练",
         "buffer": true,
-        "buffer_des": ["cc_g_glasgow"],
+        "buffer_des": [
+          "cc_g_glasgow"
+        ],
         "des": "进驻宿舍时，<@cc.kw>推进之王</>对该宿舍中<$cc.g.glasgow><@cc.kw>格拉斯哥帮</></>干员恢复效果额外<@cc.vup>+0.3</>",
         "roomType": "宿舍",
         "buffCategory": "RECOVERY",
@@ -2117,7 +2291,9 @@
         "phase_level": "精2 1级",
         "skillname": "帮派指南针",
         "buffer": true,
-        "buffer_des": ["cc_g_glasgow"],
+        "buffer_des": [
+          "cc_g_glasgow"
+        ],
         "des": "进驻贸易站时，同个贸易站中每有1名<$cc.g.glasgow><@cc.kw>格拉斯哥帮</></>干员，当前贸易站订单获取效率<@cc.vup>+20%</>；当与<@cc.kw>推进之王</>在同一个贸易站时，订单获取效率额外<@cc.vup>+35%</>",
         "roomType": "贸易站",
         "buffCategory": "OUTPUT",
@@ -2243,7 +2419,9 @@
         "phase_level": "精0 1级",
         "skillname": "可爱的艾露猫",
         "buffer": true,
-        "buffer_des": ["cc_bd_felyne"],
+        "buffer_des": [
+          "cc_bd_felyne"
+        ],
         "des": "进驻贸易站时，订单获取效率<@cc.vup>+5%</>，且订单上限<@cc.vup>+2</>，同时每有1个<$cc.bd_felyne><@cc.rem>木天蓼</></>，则订单获取效率<@cc.vup>+3%</>",
         "roomType": "贸易站",
         "buffCategory": "OUTPUT",
@@ -2257,7 +2435,9 @@
         "phase_level": "精0 30级",
         "skillname": "可靠的随从们",
         "buffer": true,
-        "buffer_des": ["cc_bd_felyne"],
+        "buffer_des": [
+          "cc_bd_felyne"
+        ],
         "des": "进驻制造站时，仓库容量上限<@cc.vup>+8</>，生产力<@cc.vup>+5%</>，同时每有1个<$cc.bd_felyne><@cc.rem>木天蓼</></>，则生产力<@cc.vup>+1%</>",
         "roomType": "制造站",
         "buffCategory": "OUTPUT",
@@ -2278,7 +2458,10 @@
         "phase_level": "精0 1级",
         "skillname": "团队合作",
         "buffer": true,
-        "buffer_des": ["cc_bd_felyne", "cc_tag_mh"],
+        "buffer_des": [
+          "cc_tag_mh",
+          "cc_bd_felyne"
+        ],
         "des": "进驻控制中枢时，控制中枢内每有1名<$cc.tag.mh><@cc.kw>怪物猎人小队</></>干员，则<$cc.bd_felyne><@cc.rem>木天蓼</></><@cc.vup>+2</>",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
@@ -2292,7 +2475,9 @@
         "phase_level": "精2 1级",
         "skillname": "秘传交涉术",
         "buffer": true,
-        "buffer_des": ["cc_tag_mh"],
+        "buffer_des": [
+          "cc_tag_mh"
+        ],
         "des": "当与<$cc.tag.mh><@cc.kw>怪物猎人小队</></>干员进驻控制中枢一起工作时，所有贸易站订单效率<@cc.vup>+7%</>（同种效果取最高）",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
@@ -2313,7 +2498,9 @@
         "phase_level": "精0 1级",
         "skillname": "耐力回复",
         "buffer": true,
-        "buffer_des": ["cc_bd_felyne"],
+        "buffer_des": [
+          "cc_bd_felyne"
+        ],
         "des": "进驻控制中枢时，自身心情每小时消耗<@cc.vdown>+0.5</>，<$cc.bd_felyne><@cc.rem>木天蓼</></><@cc.vup>+8</>",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
@@ -2327,7 +2514,9 @@
         "phase_level": "精2 1级",
         "skillname": "以身作则",
         "buffer": true,
-        "buffer_des": ["cc_tag_mh"],
+        "buffer_des": [
+          "cc_tag_mh"
+        ],
         "des": "当与<$cc.tag.mh><@cc.kw>怪物猎人小队</></>干员进驻控制中枢一起工作时，所有制造站生产力<@cc.vup>+2%</>（同种效果取最高）",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
@@ -2348,7 +2537,9 @@
         "phase_level": "精0 1级",
         "skillname": "跋山涉水",
         "buffer": true,
-        "buffer_des": ["cc_bd_b1"],
+        "buffer_des": [
+          "cc_bd_b1"
+        ],
         "des": "进驻贸易站时，贸易站内全体干员每小时心情消耗<@cc.vup>-0.1</>，每有<@cc.vup>10</>点<$cc.bd_b1><@cc.rem>人间烟火</></>，则额外<@cc.vup>-0.01</>",
         "roomType": "贸易站",
         "buffCategory": "OUTPUT",
@@ -2362,7 +2553,9 @@
         "phase_level": "精2 1级",
         "skillname": "万里传书",
         "buffer": true,
-        "buffer_des": ["cc_bd_b1"],
+        "buffer_des": [
+          "cc_bd_b1"
+        ],
         "des": "进驻贸易站时，贸易站内全体干员每小时心情消耗<@cc.vup>-0.1</>，每有<@cc.vup>10</>点<$cc.bd_b1><@cc.rem>人间烟火</></>，则额外<@cc.vup>-0.02</>",
         "roomType": "贸易站",
         "buffCategory": "OUTPUT",
@@ -2418,7 +2611,10 @@
         "phase_level": "精0 1级",
         "skillname": "古老巫术",
         "buffer": true,
-        "buffer_des": ["cc_bd_b1", "cc_bd_C"],
+        "buffer_des": [
+          "cc_bd_b1",
+          "cc_bd_C"
+        ],
         "des": "进驻制造站时，每<@cc.vup>5</>点<$cc.bd_b1><@cc.rem>人间烟火</></>转化为<@cc.vup>1</>点<$cc.bd_C><@cc.rem>巫术结晶</></>",
         "roomType": "制造站",
         "buffCategory": "OUTPUT",
@@ -2432,7 +2628,9 @@
         "phase_level": "精0 1级",
         "skillname": "逐水草",
         "buffer": true,
-        "buffer_des": ["cc_bd_C"],
+        "buffer_des": [
+          "cc_bd_C"
+        ],
         "des": "进驻制造站时，每<@cc.vup>1</>点<$cc.bd_C><@cc.rem>巫术结晶</></><@cc.vup>+1%</>生产力",
         "roomType": "制造站",
         "buffCategory": "OUTPUT",
@@ -2446,7 +2644,9 @@
         "phase_level": "精2 1级",
         "skillname": "问枯荣",
         "buffer": true,
-        "buffer_des": ["cc_bd_C"],
+        "buffer_des": [
+          "cc_bd_C"
+        ],
         "des": "进驻制造站时，每<@cc.vup>1</>点<$cc.bd_C><@cc.rem>巫术结晶</></><@cc.vup>+2%</>生产力",
         "roomType": "制造站",
         "buffCategory": "OUTPUT",
@@ -2500,7 +2700,7 @@
         "skill_key": 0,
         "skill_level": 0,
         "phase_level": "精0 1级",
-        "skillname": "特殊渠道 ",
+        "skillname": "特殊渠道",
         "buffer": false,
         "buffer_des": [],
         "des": "进驻人力办公室时，人脉资源的联络速度<@cc.vup>+20%</>，心情每小时消耗<@cc.vup>-0.25</>",
@@ -2537,7 +2737,10 @@
         "phase_level": "精0 1级",
         "skillname": "知我为我",
         "buffer": true,
-        "buffer_des": ["cc_bd_b1", "cc_g_sui"],
+        "buffer_des": [
+          "cc_bd_b1",
+          "cc_g_sui"
+        ],
         "des": "进驻控制中枢时，自身心情每小时消耗<@cc.vdown>+0.5</>；每个<$cc.g.sui><@cc.kw>岁</></>干员进驻在宿舍以外的设施则<$cc.bd_b1><@cc.rem>人间烟火</></><@cc.vup>+5</>（最多5名）",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
@@ -2551,7 +2754,11 @@
         "phase_level": "精2 1级",
         "skillname": "孤光共照",
         "buffer": true,
-        "buffer_des": ["cc_bd_b1", "cc_c_sui2_1", "cc_c_room2"],
+        "buffer_des": [
+          "cc_c_sui2_1",
+          "cc_bd_b1",
+          "cc_c_room2"
+        ],
         "des": "进驻控制中枢时，<$cc.c.room2><@cc.kw>其他设施</></>内处于工作状态的干员心情每小时恢复<@cc.vup>+0.05</>；同时每有<@cc.vup>20</>点<$cc.bd_b1><@cc.rem>人间烟火</></>，则额外<@cc.vup>+0.05</>，（与控制中枢加成有<$cc.c.sui2_1><@cc.rem>特殊比较规则</></>）",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
@@ -2901,7 +3108,9 @@
         "phase_level": "精0 1级",
         "skillname": "模糊视线",
         "buffer": true,
-        "buffer_des": ["cc_bd_costdrop"],
+        "buffer_des": [
+          "cc_bd_costdrop"
+        ],
         "des": "进驻制造站时，生产力<@cc.vup>+30%</>，自身每有<@cc.kw>4</>点<$cc.bd.costdrop><@cc.kw>心情落差</></>，生产力<@cc.vdown>-5%</>",
         "roomType": "制造站",
         "buffCategory": "OUTPUT",
@@ -2915,7 +3124,9 @@
         "phase_level": "精1 1级",
         "skillname": "窗外雪啸",
         "buffer": true,
-        "buffer_des": ["cc_bd_costdrop"],
+        "buffer_des": [
+          "cc_bd_costdrop"
+        ],
         "des": "进驻制造站时，当自身<$cc.bd.costdrop><@cc.kw>心情落差</></>大于<@cc.kw>12</>时，生产力<@cc.vup>+10%</>，仓库容量<@cc.vup>+6</>",
         "roomType": "制造站",
         "buffCategory": "OUTPUT",
@@ -3090,7 +3301,10 @@
         "phase_level": "精0 1级",
         "skillname": "意识兼容",
         "buffer": true,
-        "buffer_des": ["cc_sk_manu2", "cc_sk_manu3"],
+        "buffer_des": [
+          "cc_sk_manu2",
+          "cc_sk_manu3"
+        ],
         "des": "进驻制造站时，当前制造站内所有<$cc.sk.manu2><@cc.kw>莱茵科技类</></>、<$cc.sk.manu3><@cc.kw>红松骑士团类</></>技能也全都视作<@cc.kw>标准化类</>技能",
         "roomType": "制造站",
         "buffCategory": "OUTPUT",
@@ -3188,7 +3402,11 @@
         "phase_level": "精2 1级",
         "skillname": "公事公办",
         "buffer": true,
-        "buffer_des": ["cc_c_skill", "cc_c_room2", "cc_c_room1"],
+        "buffer_des": [
+          "cc_c_room2",
+          "cc_c_room1",
+          "cc_c_skill"
+        ],
         "des": "进驻控制中枢时，<$cc.c.room1><@cc.kw>部分设施</></>内处于工作状态的干员心情每小时恢复<@cc.vup>+0.1</>；同时控制中枢内<$cc.c.skill><@cc.kw>部分技能</></>可以为<$cc.c.room2><@cc.kw>其他设施</></>内处于工作状态的干员额外提供心情恢复",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
@@ -3209,7 +3427,9 @@
         "phase_level": "精0 1级",
         "skillname": "绘图设计",
         "buffer": true,
-        "buffer_des": ["cc_bd_malist"],
+        "buffer_des": [
+          "cc_bd_malist"
+        ],
         "des": "进驻制造站时，基建内每间设施每级<@cc.vup>+1</>个<@cc.kw><$cc.bd_malist>工程机器人</></>，上限<@cc.vup>64</>个",
         "roomType": "制造站",
         "buffCategory": "OUTPUT",
@@ -3223,7 +3443,9 @@
         "phase_level": "精0 1级",
         "skillname": "机械辅助·α",
         "buffer": true,
-        "buffer_des": ["cc_bd_malist"],
+        "buffer_des": [
+          "cc_bd_malist"
+        ],
         "des": "进驻制造站时，每<@cc.vup>16</>个<@cc.kw><$cc.bd_malist>工程机器人</></><@cc.vup>+5%</>生产力",
         "roomType": "制造站",
         "buffCategory": "OUTPUT",
@@ -3237,7 +3459,9 @@
         "phase_level": "精2 1级",
         "skillname": "机械辅助·β",
         "buffer": true,
-        "buffer_des": ["cc_bd_malist"],
+        "buffer_des": [
+          "cc_bd_malist"
+        ],
         "des": "进驻制造站时，每<@cc.vup>8</>个<@cc.kw><$cc.bd_malist>工程机器人</></><@cc.vup>+5%</>生产力",
         "roomType": "制造站",
         "buffCategory": "OUTPUT",
@@ -3293,7 +3517,9 @@
         "phase_level": "精0 1级",
         "skillname": "销路宣发",
         "buffer": true,
-        "buffer_des": ["cc_t_flow_gold"],
+        "buffer_des": [
+          "cc_t_flow_gold"
+        ],
         "des": "进驻贸易站时，每有<@cc.kw>1</>条<$cc.t.flow_gold><@cc.kw>赤金生产线</></>，则当前贸易站订单获取效率<@cc.vup>+5%</>",
         "roomType": "贸易站",
         "buffCategory": "OUTPUT",
@@ -3307,7 +3533,10 @@
         "phase_level": "精2 1级",
         "skillname": "际崖居民",
         "buffer": true,
-        "buffer_des": ["cc_tag_durin", "cc_t_flow_gold"],
+        "buffer_des": [
+          "cc_t_flow_gold",
+          "cc_tag_durin"
+        ],
         "des": "进驻贸易站时，基建内每<@cc.kw>1</>名<$cc.tag.durin><@cc.kw>杜林族</></>干员（最多<@cc.kw>4</>名）为当前贸易站提供<@cc.kw>1</>条<$cc.t.flow_gold><@cc.kw>赤金生产线</></>",
         "roomType": "贸易站",
         "buffCategory": "OUTPUT",
@@ -3426,7 +3655,9 @@
         "phase_level": "精2 1级",
         "skillname": "晨曦",
         "buffer": true,
-        "buffer_des": ["cc_tag_op"],
+        "buffer_des": [
+          "cc_tag_op"
+        ],
         "des": "进驻发电站时，如果其他<@cc.kw>发电站</>内没有进驻<$cc.tag.op><@cc.kw>作业平台</></>，则<@cc.kw>发电站</>额外<@cc.vup>+1</>(仅影响设施数量)",
         "roomType": "发电站",
         "buffCategory": "OUTPUT",
@@ -3447,7 +3678,9 @@
         "phase_level": "精0 1级",
         "skillname": "源石技艺理论应用",
         "buffer": true,
-        "buffer_des": ["cc_sk_manu2"],
+        "buffer_des": [
+          "cc_sk_manu2"
+        ],
         "des": "进驻制造站时，当前制造站内每个<$cc.sk.manu2><@cc.kw>莱茵科技类技能</></>为自身<@cc.vup>+5%</>的生产力",
         "roomType": "制造站",
         "buffCategory": "OUTPUT",
@@ -3482,7 +3715,9 @@
         "phase_level": "精0 1级",
         "skillname": "慢板行歌",
         "buffer": true,
-        "buffer_des": ["cc_bd_a1_a3"],
+        "buffer_des": [
+          "cc_bd_a1_a3"
+        ],
         "des": "进驻宿舍时，使该宿舍内除自身以外心情未满的某个干员每小时恢复<@cc.vup>+0.65</>（同种效果取最高），同时当前宿舍每级提供<@cc.vup>1</>个<$cc.bd_a1_a3><@cc.rem>小节</></>",
         "roomType": "宿舍",
         "buffCategory": "RECOVERY",
@@ -3496,7 +3731,10 @@
         "phase_level": "精2 1级",
         "skillname": "琴键漫步",
         "buffer": true,
-        "buffer_des": ["cc_bd_a1", "cc_bd_a1_a3"],
+        "buffer_des": [
+          "cc_bd_a1_a3",
+          "cc_bd_a1"
+        ],
         "des": "进驻宿舍时，每<@cc.vup>1</>个<$cc.bd_a1_a3><@cc.rem>小节</></>转化为<@cc.vup>1</>点<$cc.bd_a1><@cc.rem>感知信息</></>",
         "roomType": "宿舍",
         "buffCategory": "RECOVERY",
@@ -3517,7 +3755,9 @@
         "phase_level": "精0 1级",
         "skillname": "异格者",
         "buffer": true,
-        "buffer_des": ["cc_g_sp"],
+        "buffer_des": [
+          "cc_g_sp"
+        ],
         "des": "进驻控制中枢时，控制中枢内每个<$cc.g.sp><@cc.kw>异格</></>干员可使控制中枢内所有干员的心情每小时恢复<@cc.vup>+0.05</>",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
@@ -3552,7 +3792,10 @@
         "phase_level": "精0 1级",
         "skillname": "乐感",
         "buffer": true,
-        "buffer_des": ["cc_bd_B", "cc_bd_a1"],
+        "buffer_des": [
+          "cc_bd_B",
+          "cc_bd_a1"
+        ],
         "des": "进驻贸易站时，宿舍内每有<@cc.kw>1</>名干员则<$cc.bd_a1><@cc.rem>感知信息</></><@cc.vup>+1</>，同时每<@cc.vup>1</>点<$cc.bd_a1><@cc.rem>感知信息</></>转化为<@cc.vup>1</>点<$cc.bd_B><@cc.rem>无声共鸣</></>",
         "roomType": "贸易站",
         "buffCategory": "OUTPUT",
@@ -3566,7 +3809,9 @@
         "phase_level": "精0 1级",
         "skillname": "徘徊旋律",
         "buffer": true,
-        "buffer_des": ["cc_bd_B"],
+        "buffer_des": [
+          "cc_bd_B"
+        ],
         "des": "进驻贸易站时，每<@cc.vup>4</>点<$cc.bd_B><@cc.rem>无声共鸣</></><@cc.vup>+1%</>订单效率",
         "roomType": "贸易站",
         "buffCategory": "OUTPUT",
@@ -3580,7 +3825,9 @@
         "phase_level": "精2 1级",
         "skillname": "怅惘和声",
         "buffer": true,
-        "buffer_des": ["cc_bd_B"],
+        "buffer_des": [
+          "cc_bd_B"
+        ],
         "des": "进驻贸易站时，每<@cc.vup>2</>点<$cc.bd_B><@cc.rem>无声共鸣</></><@cc.vup>+1%</>订单效率",
         "roomType": "贸易站",
         "buffCategory": "OUTPUT",
@@ -4154,7 +4401,9 @@
         "phase_level": "精0 1级",
         "skillname": "异格者",
         "buffer": true,
-        "buffer_des": ["cc_g_sp"],
+        "buffer_des": [
+          "cc_g_sp"
+        ],
         "des": "进驻控制中枢时，控制中枢内每个<$cc.g.sp><@cc.kw>异格</></>干员可使控制中枢内所有干员的心情每小时恢复<@cc.vup>+0.05</>",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
@@ -4224,7 +4473,9 @@
         "phase_level": "精0 1级",
         "skillname": "杯莫停",
         "buffer": true,
-        "buffer_des": ["cc_g_sui"],
+        "buffer_des": [
+          "cc_g_sui"
+        ],
         "des": "进驻控制中枢时，<@cc.kw>消除</>当前控制中枢内所有<$cc.g.sui><@cc.kw>岁</></>干员<@cc.kw>自身</>心情消耗的影响",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
@@ -4238,7 +4489,10 @@
         "phase_level": "精2 1级",
         "skillname": "“山河远阔”",
         "buffer": true,
-        "buffer_des": ["cc_bd_b1", "cc_bd_a1"],
+        "buffer_des": [
+          "cc_bd_b1",
+          "cc_bd_a1"
+        ],
         "des": "进驻控制中枢时，当自身心情大于<@cc.kw>12</>时，<$cc.bd_b1><@cc.rem>人间烟火</></><@cc.vup>+15</>；当自身心情处于<@cc.kw>12</>以下时，<$cc.bd_a1><@cc.rem>感知信息</></><@cc.vup>+10</>",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
@@ -4294,7 +4548,9 @@
         "phase_level": "精0 1级",
         "skillname": "因果",
         "buffer": true,
-        "buffer_des": ["cc_w_ncdeer1"],
+        "buffer_des": [
+          "cc_w_ncdeer1"
+        ],
         "des": "进驻加工站时，累积<@cc.kw>40</>点<$cc.w.ncdeer1><@cc.rem>因果</></>必定产出一次副产品",
         "roomType": "加工站",
         "buffCategory": "FUNCTION",
@@ -4308,7 +4564,9 @@
         "phase_level": "精2 1级",
         "skillname": "业报",
         "buffer": true,
-        "buffer_des": ["cc_w_ncdeer2"],
+        "buffer_des": [
+          "cc_w_ncdeer2"
+        ],
         "des": "进驻加工站时，累积<@cc.kw>80</>点<$cc.w.ncdeer2><@cc.rem>业报</></>必定产出一次副产品",
         "roomType": "加工站",
         "buffCategory": "FUNCTION",
@@ -4413,7 +4671,9 @@
         "phase_level": "精0 1级",
         "skillname": "幕后指挥",
         "buffer": true,
-        "buffer_des": ["cc_g_karlan"],
+        "buffer_des": [
+          "cc_g_karlan"
+        ],
         "des": "进驻控制中枢时，控制中枢内每个<$cc.g.karlan><@cc.kw>喀兰贸易</></>干员可使控制中枢内所有干员的心情每小时恢复<@cc.vup>+0.05</>",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
@@ -4427,7 +4687,9 @@
         "phase_level": "精2 1级",
         "skillname": "精密计算",
         "buffer": true,
-        "buffer_des": ["cc_g_karlan"],
+        "buffer_des": [
+          "cc_g_karlan"
+        ],
         "des": "进驻控制中枢时，每个进驻在贸易站的<$cc.g.karlan><@cc.kw>喀兰贸易</></>干员，订单获取效率<@cc.vdown>-15%</>，订单上限<@cc.vup>+6</>",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
@@ -4511,7 +4773,9 @@
         "phase_level": "精1 1级",
         "skillname": "超频",
         "buffer": true,
-        "buffer_des": ["cc_tag_op"],
+        "buffer_des": [
+          "cc_tag_op"
+        ],
         "des": "进驻控制中枢时，如果有<@cc.kw>2</>台以上<$cc.tag.op><@cc.kw>作业平台</></>进驻在<@cc.kw>发电站</>，则所有制造站生产力<@cc.vup>+2%</>（同种效果取最高）",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
@@ -4665,7 +4929,9 @@
         "phase_level": "精2 1级",
         "skillname": "红松的骑士",
         "buffer": true,
-        "buffer_des": ["cc_g_psk"],
+        "buffer_des": [
+          "cc_g_psk"
+        ],
         "des": "进驻控制中枢时，每个进驻在制造站的<$cc.g.psk><@cc.kw>红松骑士团</></>干员，<@cc.kw>作战记录</>类配方的生产力<@cc.vup>+10%</>，<@cc.kw>贵金属</>类配方的生产力<@cc.vdown>-10%</>",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
@@ -4686,7 +4952,9 @@
         "phase_level": "精0 1级",
         "skillname": "骑士训练",
         "buffer": true,
-        "buffer_des": ["cc_tag_knight"],
+        "buffer_des": [
+          "cc_tag_knight"
+        ],
         "des": "进驻训练室协助位时，基建内（不包含副手）每名<$cc.tag.knight><@cc.kw>骑士</></>干员为当前干员的专精技能训练速度<@cc.vup>+5%</>（最多生效<@cc.kw>5</>名）",
         "roomType": "训练室",
         "buffCategory": "FUNCTION",
@@ -4700,7 +4968,9 @@
         "phase_level": "精2 1级",
         "skillname": "崇高准则",
         "buffer": true,
-        "buffer_des": ["cc_tag_knight"],
+        "buffer_des": [
+          "cc_tag_knight"
+        ],
         "des": "进驻训练室协助位时，基建内（不包含副手）每名<$cc.tag.knight><@cc.kw>骑士</></>干员为当前干员的专精技能训练速度<@cc.vup>+5%</>（最多生效<@cc.kw>8</>名）",
         "roomType": "训练室",
         "buffCategory": "FUNCTION",
@@ -4833,7 +5103,9 @@
         "phase_level": "精2 1级",
         "skillname": "救援队·灾后普查",
         "buffer": true,
-        "buffer_des": ["cc_bd_b1"],
+        "buffer_des": [
+          "cc_bd_b1"
+        ],
         "des": "进驻人力办公室时，每个招募位（不包含初始招募位）<@cc.vup>+10</>点<<$cc.bd_b1><@cc.rem>人间烟火</></>",
         "roomType": "人力办公室",
         "buffCategory": "FUNCTION",
@@ -4994,7 +5266,9 @@
         "phase_level": "精0 1级",
         "skillname": "意识协议",
         "buffer": true,
-        "buffer_des": ["cc_sk_manu1"],
+        "buffer_des": [
+          "cc_sk_manu1"
+        ],
         "des": "进驻制造站时，当前制造站内每个<$cc.sk.manu1><@cc.kw>标准化类技能</></>为自身<@cc.vup>+5%</>的生产力",
         "roomType": "制造站",
         "buffCategory": "OUTPUT",
@@ -5197,7 +5471,9 @@
         "phase_level": "精0 1级",
         "skillname": "订单流可视化·α",
         "buffer": true,
-        "buffer_des": ["cc_t_flow_gold"],
+        "buffer_des": [
+          "cc_t_flow_gold"
+        ],
         "des": "进驻贸易站时，订单获取效率<@cc.vup>+5%</>，每有<@cc.kw>4</>条<$cc.t.flow_gold><@cc.kw>赤金生产线</></>，则为当前贸易站额外提供<@cc.vup>2</>条<$cc.t.flow_gold><@cc.kw>赤金生产线</></>",
         "roomType": "贸易站",
         "buffCategory": "OUTPUT",
@@ -5211,7 +5487,9 @@
         "phase_level": "精2 1级",
         "skillname": "订单流可视化·β",
         "buffer": true,
-        "buffer_des": ["cc_t_flow_gold"],
+        "buffer_des": [
+          "cc_t_flow_gold"
+        ],
         "des": "进驻贸易站时，订单获取效率<@cc.vup>+5%</>，每有<@cc.kw>2</>条<$cc.t.flow_gold><@cc.kw>赤金生产线</></>，则为当前贸易站额外提供<@cc.vup>2</>条<$cc.t.flow_gold><@cc.kw>赤金生产线</></>",
         "roomType": "贸易站",
         "buffCategory": "OUTPUT",
@@ -5302,7 +5580,9 @@
         "phase_level": "精0 1级",
         "skillname": "潮汐守望",
         "buffer": true,
-        "buffer_des": ["cc_g_abyssal"],
+        "buffer_des": [
+          "cc_g_abyssal"
+        ],
         "des": "进驻控制中枢时，每有1个<$cc.g.abyssal><@cc.kw>深海猎人</></>干员进驻在宿舍以外的设施，则自身心情每小时消耗<@cc.vdown>+0.5</>；反之则自身心情每小时恢复<@cc.vup>+0.5</>，如果进驻在宿舍内的<$cc.g.abyssal><@cc.kw>深海猎人</></>干员为满心情，则额外<@cc.vup>+0.5</>",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
@@ -5316,7 +5596,11 @@
         "phase_level": "精0 1级",
         "skillname": "集群狩猎·α",
         "buffer": true,
-        "buffer_des": ["cc_c_abyssal2_1", "cc_c_abyssal2_3", "cc_g_abyssal"],
+        "buffer_des": [
+          "cc_c_abyssal2_3",
+          "cc_g_abyssal",
+          "cc_c_abyssal2_1"
+        ],
         "des": "进驻控制中枢时，控制中枢内所有干员的心情每小时恢复<@cc.vup>+0.05</>；基建内<$cc.g.abyssal><@cc.kw>深海猎人</></>干员获得<$cc.c.abyssal2_1><@cc.rem>特殊加成</></>（与部分技能有<$cc.c.abyssal2_3><@cc.rem>特殊叠加规则</></>）",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
@@ -5330,7 +5614,11 @@
         "phase_level": "精2 1级",
         "skillname": "集群狩猎·β",
         "buffer": true,
-        "buffer_des": ["cc_c_abyssal2_2", "cc_c_abyssal2_3", "cc_g_abyssal"],
+        "buffer_des": [
+          "cc_c_abyssal2_3",
+          "cc_g_abyssal",
+          "cc_c_abyssal2_2"
+        ],
         "des": "进驻控制中枢时，控制中枢内所有干员的心情每小时恢复<@cc.vup>+0.05</>；基建内<$cc.g.abyssal><@cc.kw>深海猎人</></>干员获得<$cc.c.abyssal2_2><@cc.rem>特殊加成</></>（与部分技能有<$cc.c.abyssal2_3><@cc.rem>特殊叠加规则</></>）",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
@@ -5568,7 +5856,9 @@
         "phase_level": "精0 1级",
         "skillname": "彩虹小队",
         "buffer": true,
-        "buffer_des": ["cc_g_R6"],
+        "buffer_des": [
+          "cc_g_R6"
+        ],
         "des": "进驻控制中枢时，控制中枢内每个<$cc.g.R6><@cc.kw>彩虹小队</></>干员可使控制中枢内所有干员的心情每小时恢复<@cc.vup>+0.05</>",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
@@ -5582,7 +5872,10 @@
         "phase_level": "精2 1级",
         "skillname": "乌萨斯特饮",
         "buffer": true,
-        "buffer_des": ["cc_bd_tachanka", "cc_g_ussg"],
+        "buffer_des": [
+          "cc_bd_tachanka",
+          "cc_g_ussg"
+        ],
         "des": "进驻控制中枢时，控制中枢内每有1名<$cc.g.ussg><@cc.kw>乌萨斯学生自治团</></>干员，则<$cc.bd_tachanka><@cc.rem>乌萨斯特饮</></><@cc.vup>+1</>",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
@@ -5603,7 +5896,9 @@
         "phase_level": "精0 1级",
         "skillname": "彩虹小队",
         "buffer": true,
-        "buffer_des": ["cc_g_R6"],
+        "buffer_des": [
+          "cc_g_R6"
+        ],
         "des": "进驻控制中枢时，控制中枢内每个<$cc.g.R6><@cc.kw>彩虹小队</></>干员可使控制中枢内所有干员的心情每小时恢复<@cc.vup>+0.05</>",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
@@ -5617,7 +5912,10 @@
         "phase_level": "精2 1级",
         "skillname": "机械工程",
         "buffer": true,
-        "buffer_des": ["cc_bd_tachanka", "cc_bd_ash"],
+        "buffer_des": [
+          "cc_bd_tachanka",
+          "cc_bd_ash"
+        ],
         "des": "进驻加工站加工<@cc.kw>任意类材料</>时，副产品的产出概率提升<@cc.vup>50%</>，每<@cc.vup>1</>点<$cc.bd_ash><@cc.rem>情报储备</></>额外提升<@cc.vup>5%</>；如果<$cc.bd_tachanka><@cc.rem>乌萨斯特饮</></>达到<@cc.vup>4</>瓶，则额外提升<@cc.vup>15%</>",
         "roomType": "加工站",
         "buffCategory": "FUNCTION",
@@ -5638,7 +5936,9 @@
         "phase_level": "精0 1级",
         "skillname": "彩虹小队",
         "buffer": true,
-        "buffer_des": ["cc_g_R6"],
+        "buffer_des": [
+          "cc_g_R6"
+        ],
         "des": "进驻控制中枢时，控制中枢内每个<$cc.g.R6><@cc.kw>彩虹小队</></>干员可使控制中枢内所有干员的心情每小时恢复<@cc.vup>+0.05</>",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
@@ -5652,7 +5952,10 @@
         "phase_level": "精2 1级",
         "skillname": "语言学",
         "buffer": true,
-        "buffer_des": ["cc_bd_tachanka", "cc_bd_ash"],
+        "buffer_des": [
+          "cc_bd_tachanka",
+          "cc_bd_ash"
+        ],
         "des": "进驻人力办公室时，人脉资源的联络速度<@cc.vup>+20%</>，每<@cc.vup>1</>点<$cc.bd_ash><@cc.rem>情报储备</></>额外<@cc.vup>+5%</>联络速度，每<@cc.vup>1</>瓶<$cc.bd_tachanka><@cc.rem>乌萨斯特饮</></>额外<@cc.vup>+5%</>联络速度",
         "roomType": "人力办公室",
         "buffCategory": "FUNCTION",
@@ -5673,7 +5976,9 @@
         "phase_level": "精0 1级",
         "skillname": "彩虹小队",
         "buffer": true,
-        "buffer_des": ["cc_g_R6"],
+        "buffer_des": [
+          "cc_g_R6"
+        ],
         "des": "进驻控制中枢时，控制中枢内每个<$cc.g.R6><@cc.kw>彩虹小队</></>干员可使控制中枢内所有干员的心情每小时恢复<@cc.vup>+0.05</>",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
@@ -5687,7 +5992,10 @@
         "phase_level": "精2 1级",
         "skillname": "情报储备",
         "buffer": true,
-        "buffer_des": ["cc_bd_ash", "cc_g_R6"],
+        "buffer_des": [
+          "cc_g_R6",
+          "cc_bd_ash"
+        ],
         "des": "进驻控制中枢时，控制中枢内每有1名<$cc.g.R6><@cc.kw>彩虹小队</></>干员，则<$cc.bd_ash><@cc.rem>情报储备</></><@cc.vup>+1</>",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
@@ -5708,7 +6016,9 @@
         "phase_level": "精0 1级",
         "skillname": "物流规划·α",
         "buffer": true,
-        "buffer_des": ["cc_t_flow_gold"],
+        "buffer_des": [
+          "cc_t_flow_gold"
+        ],
         "des": "进驻贸易站时，订单获取效率<@cc.vup>+5%</>，每有<@cc.kw>4</>条<$cc.t.flow_gold><@cc.kw>赤金生产线</></>，则当前贸易站订单获取效率额外<@cc.vup>+15%</>",
         "roomType": "贸易站",
         "buffCategory": "OUTPUT",
@@ -5722,7 +6032,9 @@
         "phase_level": "精2 1级",
         "skillname": "物流规划·β",
         "buffer": true,
-        "buffer_des": ["cc_t_flow_gold"],
+        "buffer_des": [
+          "cc_t_flow_gold"
+        ],
         "des": "进驻贸易站时，订单获取效率<@cc.vup>+5%</>，每有<@cc.kw>2</>条<$cc.t.flow_gold><@cc.kw>赤金生产线</></>，则当前贸易站订单获取效率额外<@cc.vup>+15%</>",
         "roomType": "贸易站",
         "buffCategory": "OUTPUT",
@@ -5743,7 +6055,9 @@
         "phase_level": "精0 1级",
         "skillname": "异格者",
         "buffer": true,
-        "buffer_des": ["cc_g_sp"],
+        "buffer_des": [
+          "cc_g_sp"
+        ],
         "des": "进驻控制中枢时，控制中枢内每个<$cc.g.sp><@cc.kw>异格</></>干员可使控制中枢内所有干员的心情每小时恢复<@cc.vup>+0.05</>",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
@@ -5792,7 +6106,9 @@
         "phase_level": "精2 1级",
         "skillname": "“愿者上钩”",
         "buffer": true,
-        "buffer_des": ["cc_bd_b1"],
+        "buffer_des": [
+          "cc_bd_b1"
+        ],
         "des": "进驻贸易站时，宿舍内每有<@cc.kw>1</>名干员则<$cc.bd_b1><@cc.rem>人间烟火</></><@cc.vup>+1</>，同时每有<@cc.vup>1</>点<$cc.bd_b1><@cc.rem>人间烟火</></>，则订单获取效率<@cc.vup>+1%</>",
         "roomType": "贸易站",
         "buffCategory": "OUTPUT",
@@ -5848,7 +6164,9 @@
         "phase_level": "精0 1级",
         "skillname": "\"不以物喜\"",
         "buffer": true,
-        "buffer_des": ["cc_bd_b1"],
+        "buffer_des": [
+          "cc_bd_b1"
+        ],
         "des": "进驻控制中枢时，控制中枢内所有干员的心情每小时恢复<@cc.vup>+0.05</>；当自身心情处于<@cc.kw>12</>以下时，<$cc.bd_b1><@cc.rem>人间烟火</></><@cc.vup>+15</>",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
@@ -5862,7 +6180,9 @@
         "phase_level": "精0 1级",
         "skillname": "\"不以己悲\"",
         "buffer": true,
-        "buffer_des": ["cc_bd_a1"],
+        "buffer_des": [
+          "cc_bd_a1"
+        ],
         "des": "进驻控制中枢时，自身心情每小时消耗<@cc.vdown>+0.5</>；当自身心情大于<@cc.kw>12</>时，<$cc.bd_a1><@cc.rem>感知信息</></><@cc.vup>+10</>",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
@@ -5918,7 +6238,9 @@
         "phase_level": "精0 1级",
         "skillname": "睡前故事",
         "buffer": true,
-        "buffer_des": ["cc_bd_a1_a2"],
+        "buffer_des": [
+          "cc_bd_a1_a2"
+        ],
         "des": "进驻宿舍时，该宿舍内所有干员的心情每小时恢复<@cc.vup>+0.1</>（同种效果取最高），同时当前宿舍每级提供<@cc.vup>1</>层<$cc.bd_a1_a2><@cc.rem>梦境</></>",
         "roomType": "宿舍",
         "buffCategory": "RECOVERY",
@@ -5932,7 +6254,10 @@
         "phase_level": "精2 1级",
         "skillname": "梦境呓语",
         "buffer": true,
-        "buffer_des": ["cc_bd_a1_a2", "cc_bd_a1"],
+        "buffer_des": [
+          "cc_bd_a1",
+          "cc_bd_a1_a2"
+        ],
         "des": "进驻宿舍时，每<@cc.vup>1</>层<$cc.bd_a1_a2><@cc.rem>梦境</></>转化为<@cc.vup>1</>点<$cc.bd_a1><@cc.rem>感知信息</></>",
         "roomType": "宿舍",
         "buffCategory": "RECOVERY",
@@ -6163,7 +6488,9 @@
         "phase_level": "精0 1级",
         "skillname": "巡游",
         "buffer": true,
-        "buffer_des": ["cc_bd_a1_a1"],
+        "buffer_des": [
+          "cc_bd_a1_a1"
+        ],
         "des": "进驻人力办公室时，人脉资源的联络速度<@cc.vup>+20%</>，同时每个招募位（不包含初始招募位）<@cc.vup>+10</>点<$cc.bd_a1_a1><@cc.rem>记忆碎片</></>",
         "roomType": "人力办公室",
         "buffCategory": "FUNCTION",
@@ -6177,7 +6504,10 @@
         "phase_level": "精2 1级",
         "skillname": "追忆",
         "buffer": true,
-        "buffer_des": ["cc_bd_a1", "cc_bd_a1_a1"],
+        "buffer_des": [
+          "cc_bd_a1_a1",
+          "cc_bd_a1"
+        ],
         "des": "进驻人力办公室时，每<@cc.vup>1</>点<$cc.bd_a1_a1><@cc.rem>记忆碎片</></>转化为<@cc.vup>1</>点<$cc.bd_a1><@cc.rem>感知信息</></>，心情耗尽时清空所有<$cc.bd_a1_a1><@cc.rem>记忆碎片</></>和自身累积的<$cc.bd_a1><@cc.rem>感知信息</></>",
         "roomType": "人力办公室",
         "buffCategory": "FUNCTION",
@@ -6233,7 +6563,10 @@
         "phase_level": "精0 1级",
         "skillname": "超感",
         "buffer": true,
-        "buffer_des": ["cc_bd_A", "cc_bd_a1"],
+        "buffer_des": [
+          "cc_bd_a1",
+          "cc_bd_A"
+        ],
         "des": "进驻制造站时，宿舍内每有<@cc.kw>1</>名干员则<$cc.bd_a1><@cc.rem>感知信息</></><@cc.vup>+1</>，同时每<@cc.vup>1</>点<$cc.bd_a1><@cc.rem>感知信息</></>转化为<@cc.vup>1</>点<$cc.bd_A><@cc.rem>思维链环</></>",
         "roomType": "制造站",
         "buffCategory": "OUTPUT",
@@ -6247,7 +6580,9 @@
         "phase_level": "精0 1级",
         "skillname": "念力",
         "buffer": true,
-        "buffer_des": ["cc_bd_A"],
+        "buffer_des": [
+          "cc_bd_A"
+        ],
         "des": "进驻制造站时，每<@cc.vup>2</>点<$cc.bd_A><@cc.rem>思维链环</></><@cc.vup>+1%</>生产力",
         "roomType": "制造站",
         "buffCategory": "OUTPUT",
@@ -6261,7 +6596,9 @@
         "phase_level": "精2 1级",
         "skillname": "意识实体",
         "buffer": true,
-        "buffer_des": ["cc_bd_A"],
+        "buffer_des": [
+          "cc_bd_A"
+        ],
         "des": "进驻制造站时，每<@cc.vup>1</>点<$cc.bd_A><@cc.rem>思维链环</></><@cc.vup>+1%</>生产力",
         "roomType": "制造站",
         "buffCategory": "OUTPUT",
@@ -6331,7 +6668,9 @@
         "phase_level": "精1 1级",
         "skillname": "大就是好！",
         "buffer": true,
-        "buffer_des": ["cc_m_var1"],
+        "buffer_des": [
+          "cc_m_var1"
+        ],
         "des": "进驻制造站时，当前制造站内干员根据自身提升的仓库容量提供一定的生产力。提升<@cc.vup>16</>格以下的，每格仓库容量提供<@cc.vup>1%</>生产力；提升大于<@cc.vup>16</>格的，每格仓库容量提供<@cc.vup>3%</>生产力（无法与<$cc.m.var1><@cc.rem>回收利用</></>叠加，且优先生效）",
         "roomType": "制造站",
         "buffCategory": "OUTPUT",
@@ -6674,7 +7013,9 @@
         "phase_level": "精0 1级",
         "skillname": "烤肉大师",
         "buffer": true,
-        "buffer_des": ["cc_gvial"],
+        "buffer_des": [
+          "cc_gvial"
+        ],
         "des": "进驻宿舍时，使该宿舍内除自身以外心情未满的某个干员每小时恢复<@cc.vup>+0.55</>（同种效果取最高），如果目标是<@cc.kw><$cc.gvial>嘉维尔</></>，则恢复效果额外<@cc.vup>+0.45</>",
         "roomType": "宿舍",
         "buffCategory": "RECOVERY",
@@ -6772,7 +7113,9 @@
         "phase_level": "精1 1级",
         "skillname": "市井之道",
         "buffer": true,
-        "buffer_des": ["cc_t_strong2"],
+        "buffer_des": [
+          "cc_t_strong2"
+        ],
         "des": "进驻贸易站时，当前贸易站内其他干员提供的每<@cc.vup>10%</>订单获取效率使订单上限<@cc.vdown>-1</>（订单最少为1），同时每有<@cc.vup>1</>笔订单就<@cc.vup>+4%</>订单获取效率（与部分技能有<$cc.t.strong2><@cc.rem>特殊叠加规则</></>）",
         "roomType": "贸易站",
         "buffCategory": "OUTPUT",
@@ -7227,7 +7570,9 @@
         "phase_level": "精0 1级",
         "skillname": "学生会会长",
         "buffer": true,
-        "buffer_des": ["cc_g_ussg"],
+        "buffer_des": [
+          "cc_g_ussg"
+        ],
         "des": "进驻控制中枢时，控制中枢内每个<$cc.g.ussg><@cc.kw>乌萨斯学生自治团</></>干员可使控制中枢内所有干员的心情每小时恢复<@cc.vup>+0.05</>",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
@@ -7955,7 +8300,9 @@
         "phase_level": "精2 1级",
         "skillname": "坚毅随和",
         "buffer": true,
-        "buffer_des": ["cc_g_lda"],
+        "buffer_des": [
+          "cc_g_lda"
+        ],
         "des": "进驻控制中枢时，控制中枢内每个<$cc.g.lda><@cc.kw>鲤氏侦探事务所</></>干员可使该派系干员<@cc.kw>额外恢复心情</>，同时每人可使控制中枢内所有干员的心情每小时恢复<@cc.vup>+0.2</>",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
@@ -9299,7 +9646,9 @@
         "phase_level": "精0 1级",
         "skillname": "德才兼备",
         "buffer": true,
-        "buffer_des": ["cc_g_lgd"],
+        "buffer_des": [
+          "cc_g_lgd"
+        ],
         "des": "进驻控制中枢时，控制中枢内每个<$cc.g.lgd><@cc.kw>龙门近卫局</></>干员可使控制中枢内所有干员的心情每小时恢复<@cc.vup>+0.05</>",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
