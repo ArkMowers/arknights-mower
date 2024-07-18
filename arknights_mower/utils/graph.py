@@ -4,7 +4,7 @@ import networkx as nx
 
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.scene import Scene, SceneComment
-from arknights_mower.utils.solver import BaseSolver
+from arknights_mower.utils.solver import BaseSolver, MowerExit
 
 DG = nx.DiGraph()
 
@@ -432,6 +432,8 @@ class SceneGraphSolver(BaseSolver):
 
             try:
                 transition(self)
+            except MowerExit:
+                raise
             except Exception as e:
                 logger.exception(f"场景转移异常：{e}")
                 self.sleep(3)
