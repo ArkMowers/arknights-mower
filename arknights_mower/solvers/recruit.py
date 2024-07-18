@@ -10,6 +10,7 @@ from arknights_mower.data import (
     agent_with_tags,
     recruit_agent,
 )
+from arknights_mower.utils import config
 from arknights_mower.utils.device import Device
 from arknights_mower.utils.email import recruit_rarity, recruit_template
 from arknights_mower.utils.graph import SceneGraphSolver
@@ -37,6 +38,7 @@ job_list = [
 
 
 class RecruitSolver(SceneGraphSolver):
+    
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
         super().__init__(device, recog)
         self.find_scope = {
@@ -64,10 +66,8 @@ class RecruitSolver(SceneGraphSolver):
         self.result_agent = {}
         self.ticket_number = None
 
-    def run(
-        self, priority: list[str] = None, send_message_config={}, recruit_config={}
-    ):
-        self.add_recruit_param(recruit_config)
+    def run(self,send_message_config={}):
+        self.add_recruit_param()
         super().run()
         self.send_message_config = send_message_config
         logger.info(self.result_agent)
@@ -521,24 +521,21 @@ class RecruitSolver(SceneGraphSolver):
             value = value * 10 + score.index(min(score))
         return value
 
-    def add_recruit_param(self, recruit_config):
-        if not recruit_config:
-            raise Exception("招募设置为空")
-
-        if recruit_config["recruitment_time"]:
+    def add_recruit_param(self):
+        if config.conf["recruitment_time"]:
             recruitment_time = 460
         else:
             recruitment_time = 540
 
         self.recruit_config = {
             "recruitment_time": {"3": recruitment_time, "4": 540, "5": 540, "6": 540},
-            "recruit_robot": recruit_config["recruit_robot"],
-            "permit_target": recruit_config["permit_target"],
-            "recruit_auto_5": recruit_config["recruit_auto_5"],
-            "recruit_auto_only5": recruit_config["recruit_auto_only5"],
-            "recruit_email_enable": recruit_config["recruit_email_enable"],
+            "recruit_robot": config.conf['recruit_robot'] ,
+            "permit_target": config.conf["recruitment_permit"],
+            "recruit_auto_5": config.conf["recruit_auto_5"],
+            "recruit_auto_only5": config.conf["recruit_auto_only5"],
+            "recruit_email_enable": config.conf["recruit_email_enable"],
         }
 
-        if not self.recruit_config["recruit_robot"]:
+        if not config.conf["recruit_robot"]:
             self.recruit_order = [6, 5, 4, 3, 2, 1]
             self.recruit_order_index = 1

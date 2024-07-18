@@ -63,9 +63,7 @@ def daily_report(
 
 
 def recruit(
-    args: list[str] = [],
     send_message_config={},
-    recruit_config={},
     device: Device = None,
     recog=None,
 ):
@@ -76,14 +74,9 @@ def recruit(
     """
     choose = {}
     result = {}
-    if len(args) == 0:
-        choose, result = RecruitSolver(device, recog).run(
-            config.RECRUIT_PRIORITY, send_message_config, recruit_config
-        )
-    else:
-        choose, result = RecruitSolver(device).run(
-            args, send_message_config, recruit_config
-        )
+    
+    choose, result = RecruitSolver(device, recog).run(send_message_config=send_message_config)
+
 
     return choose, result
 
@@ -3460,11 +3453,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             hours=self.recruit_config["recruit_execution_gap"]
         ):
             recruit(
-                [],
-                self.send_message_config,
-                self.recruit_config,
-                self.device,
-                self.recog,
+                send_message_config=self.send_message_config,
+                device=self.device,
+                recog=self.recog,
             )
             self.last_execution["recruit"] = datetime.now()
             logger.info(
