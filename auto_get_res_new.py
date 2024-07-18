@@ -352,7 +352,6 @@ class Arknights数据处理器:
         ) as f:
             json.dump(recruit_result_data, f, ensure_ascii=False, indent=4)
 
-
     def load_recruit_template(self):
         # !/usr/bin/env python3
         template = {}
@@ -398,7 +397,7 @@ class Arknights数据处理器:
             "wb",
         ) as f:
             pickle.dump(recruit_tag_template, f)
-            
+
     def load_recruit_resource(self):
         self.load_recruit_data()
         self.load_recruit_template()
