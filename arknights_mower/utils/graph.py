@@ -4,7 +4,7 @@ import networkx as nx
 
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.scene import Scene, SceneComment
-from arknights_mower.utils.solver import BaseSolver
+from arknights_mower.utils.solver import BaseSolver, MowerExit
 
 DG = nx.DiGraph()
 
@@ -52,6 +52,11 @@ def back_to_index(solver: BaseSolver):
 @edge(Scene.LEAVE_INFRASTRUCTURE, Scene.INDEX)
 def leave_infrastructure(solver: BaseSolver):
     solver.tap_element("double_confirm/main", x_rate=1)
+
+
+@edge(Scene.DOWNLOAD_VOICE_RESOURCES, Scene.INDEX)
+def dont_download_voice(solver: BaseSolver):
+    solver.tap_element("double_confirm/main", x_rate=0)
 
 
 @edge(Scene.LOGIN_QUICKLY, Scene.INDEX)
@@ -432,6 +437,8 @@ class SceneGraphSolver(BaseSolver):
 
             try:
                 transition(self)
+            except MowerExit:
+                raise
             except Exception as e:
                 logger.exception(f"场景转移异常：{e}")
                 self.sleep(3)

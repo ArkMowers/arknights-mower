@@ -79,6 +79,7 @@ declare module 'vue' {
     NVirtualList: typeof import('naive-ui')['NVirtualList']
     NWatermark: typeof import('naive-ui')['NWatermark']
     PlanEditor: typeof import('./src/components/PlanEditor.vue')['default']
+    PushPlus: typeof import('./src/components/PushPlus.vue')['default']
     ReclamationAlgorithm: typeof import('./src/components/ReclamationAlgorithm.vue')['default']
     Recruit: typeof import('./src/components/Recruit.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']

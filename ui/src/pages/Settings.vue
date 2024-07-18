@@ -471,6 +471,7 @@ async function test_screenshot() {
       <div><DailyMission /></div>
       <div><email /></div>
       <div><ServerJang /></div>
+      <div><PushPlus /></div>
     </div>
 
     <div class="grid-right">
