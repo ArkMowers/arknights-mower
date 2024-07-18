@@ -72,7 +72,7 @@ async function select_simulator_folder() {
   }
 }
 
-import { render_op_label, render_op_tag } from '@/utils/op_select'
+import { render_op_label } from '@/utils/op_select'
 
 const scale_marks = {}
 const display_marks = [0.5, 1.0, 1.5, 2.0, 3.0]
@@ -200,7 +200,7 @@ async function test_screenshot() {
               </template>
               <n-input v-model:value="simulator.index" />
             </n-form-item>
-            <n-form-item label="模拟器启动时间">
+            <n-form-item label="模拟器启动时间" v-if="simulator.name">
               <n-input-number v-model:value="simulator.wait_time">
                 <template #suffix>秒</template>
               </n-input-number>
@@ -223,7 +223,7 @@ async function test_screenshot() {
                 <help-text>降低功耗</help-text>
               </n-checkbox>
             </n-form-item>
-            <n-form-item :show-label="false">
+            <n-form-item :show-label="false" v-if="simulator.name">
               <n-checkbox v-model:checked="close_simulator_when_idle">
                 任务结束后关闭模拟器
                 <help-text>减少空闲时的资源占用、避免模拟器长时间运行出现问题</help-text>
