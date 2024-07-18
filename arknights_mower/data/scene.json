@@ -51,6 +51,10 @@
         "label": "EXIT_GAME",
         "comment": "退出游戏"
     },
+    "12": {
+        "label": "DOWNLOAD_VOICE_RESOURCES",
+        "comment": "检测到有未下载的语音资源"
+    },
     "101": {
         "label": "LOGIN_MAIN",
         "comment": "登录页面"

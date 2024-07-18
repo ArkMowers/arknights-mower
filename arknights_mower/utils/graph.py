@@ -54,6 +54,11 @@ def leave_infrastructure(solver: BaseSolver):
     solver.tap_element("double_confirm/main", x_rate=1)
 
 
+@edge(Scene.DOWNLOAD_VOICE_RESOURCES, Scene.INDEX)
+def dont_download_voice(solver: BaseSolver):
+    solver.tap_element("double_confirm/main", x_rate=0)
+
+
 @edge(Scene.LOGIN_QUICKLY, Scene.INDEX)
 def login_quickly(solver: BaseSolver):
     solver.tap_element("login_awake")

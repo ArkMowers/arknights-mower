@@ -235,6 +235,8 @@ class Recognizer(object):
                 self.scene = Scene.REFRESH_TAGS
             elif self.find("double_confirm/network"):
                 self.scene = Scene.NETWORK_CHECK
+            elif self.find("double_confirm/voice"):
+                self.scene = Scene.DOWNLOAD_VOICE_RESOURCES
             else:
                 self.scene = Scene.DOUBLE_CONFIRM
         elif self.find("mission_trainee_on"):
@@ -680,6 +682,7 @@ class Recognizer(object):
             "double_confirm/main": [(835, 683)],
             "double_confirm/network": [(708, 435)],
             "double_confirm/recruit": [(981, 464)],
+            "double_confirm/voice": [(745, 435)],
             "drone": [(274, 437)],
             "factory_collect": [(1542, 886)],
             "fight/refresh": [(1639, 22)],
