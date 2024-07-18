@@ -14,7 +14,7 @@ class Simulator_Type(Enum):
     Waydroid = "Waydroid"
     ReDroid = "ReDroid"
     MuMuPro = "MuMuPro"
-    Genymotion = "GenyMotion"
+    Genymotion = "Genymotion"
 
 
 def restart_simulator(stop=True, start=True):
@@ -57,7 +57,7 @@ def restart_simulator(stop=True, start=True):
         elif simulator_type == Simulator_Type.MuMuPro.value:
             cmd = f"Contents/MacOS/mumutool close {data['index']}"
         elif simulator_type == Simulator_Type.Genymotion.value:
-            cmd = f"gmtool admin start {data['index']}"
+            cmd = f"./gmtool admin stop {index}"
         if stop:
             exec_cmd(cmd, data["simulator_folder"])
             logger.info(f"关闭{simulator_type}模拟器")
@@ -78,7 +78,7 @@ def restart_simulator(stop=True, start=True):
         elif simulator_type == Simulator_Type.MuMuPro.value:
             cmd = cmd.replace("close", "open")
         elif simulator_type == Simulator_Type.Genymotion.value:
-            cmd = f"gmtool admin stop {data['index']}"
+            cmd = f"./gmtool admin start {index}"
         if start:
             exec_cmd(cmd, data["simulator_folder"])
             logger.info(f"开始启动{simulator_type}模拟器，等待{data['wait_time']}秒")
@@ -90,6 +90,7 @@ def restart_simulator(stop=True, start=True):
 
 def exec_cmd(cmd, folder_path):
     try:
+        logger.info(cmd)
         process = subprocess.Popen(
             cmd,
             shell=True,
@@ -99,6 +100,6 @@ def exec_cmd(cmd, folder_path):
             universal_newlines=True,
             creationflags=subprocess.CREATE_NO_WINDOW if __system__ == "windows" else 0,
         )
-        process.communicate(timeout=2)
+        logger.info(process.communicate(timeout=2))
     except subprocess.TimeoutExpired:
         process.kill()
