@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import socket
 
-from ...log import logger
+from arknights_mower.utils.log import logger
 
 
 class Socket(object):

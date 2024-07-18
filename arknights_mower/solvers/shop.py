@@ -1,9 +1,6 @@
-import lzma
-import pickle
-
 import cv2
 
-from arknights_mower import __rootdir__
+from arknights_mower.models import noto_sans, riic_base_digits, shop
 from arknights_mower.utils import config
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.graph import SceneGraphSolver
@@ -11,14 +8,6 @@ from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.vector import sa, va
-
-with lzma.open(f"{__rootdir__}/models/riic_base_digits.pkl", "rb") as f:
-    base_templates = pickle.load(f)
-with lzma.open(f"{__rootdir__}/models/noto_sans.pkl", "rb") as f:
-    noto_templates = pickle.load(f)
-with lzma.open(f"{__rootdir__}/models/shop.pkl", "rb") as f:
-    shop_templates = pickle.load(f)
-
 
 card_w, card_h = 352, 354
 top, left = 222, 25
@@ -52,10 +41,10 @@ class CreditShop(SceneGraphSolver):
         img = cropimg(self.recog.gray, scope)
 
         if font == "riic_base":
-            templates = base_templates
+            templates = riic_base_digits
             default_height = 28
         else:
-            templates = noto_templates
+            templates = noto_sans
             default_height = 29
 
         if height and height != default_height:
@@ -113,7 +102,7 @@ class CreditShop(SceneGraphSolver):
                 target, 10, 10, 30, 10, cv2.BORDER_CONSTANT, None, (0,)
             )
             target = thres2(target, 127)
-            for name, img in shop_templates.items():
+            for name, img in shop.items():
                 result = cv2.matchTemplate(target, img, cv2.TM_SQDIFF_NORMED)
                 min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
                 if min_val < score:

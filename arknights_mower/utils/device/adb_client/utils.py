@@ -1,13 +1,11 @@
-from __future__ import annotations
-
 import shutil
 import subprocess
 from typing import Union
 
-from .... import __system__
-from ... import config
-from ...log import logger
-from ..utils import download_file
+from arknights_mower import __system__
+from arknights_mower.utils import config
+from arknights_mower.utils.device.utils import download_file
+from arknights_mower.utils.log import logger
 
 ADB_BUILDIN_URL = "https://oss.nano.ac/arknights_mower/adb-binaries"
 ADB_BUILDIN_FILELIST = {

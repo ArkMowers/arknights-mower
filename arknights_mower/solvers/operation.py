@@ -3,7 +3,7 @@ from typing import Optional
 
 import cv2
 
-from arknights_mower.solvers.secret_front import templates
+from arknights_mower.models import secret_front
 from arknights_mower.utils import config
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.graph import SceneGraphSolver
@@ -39,7 +39,7 @@ class OperationSolver(SceneGraphSolver):
             )
             score = []
             for i in range(10):
-                im = templates[i]
+                im = secret_front[i]
                 result = cv2.matchTemplate(digit, im, cv2.TM_SQDIFF_NORMED)
                 min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
                 score.append(min_val)

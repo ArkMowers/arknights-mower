@@ -9,7 +9,7 @@ from typing import Optional
 
 import colorlog
 
-from . import config
+from arknights_mower.utils import config
 
 BASIC_FORMAT = (
     "%(asctime)s - %(levelname)s - %(pathname)s:%(lineno)d - %(funcName)s - %(message)s"

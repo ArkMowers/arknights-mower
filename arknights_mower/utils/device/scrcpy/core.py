@@ -10,12 +10,12 @@ from typing import Optional, Tuple
 
 import numpy as np
 
-from .... import __rootdir__
-from ...log import logger
-from ..adb_client import ADBClient
-from ..adb_client.socket import Socket
-from . import const
-from .control import ControlSender
+from arknights_mower import __rootdir__
+from arknights_mower.utils.device.adb_client.core import Client as ADBClient
+from arknights_mower.utils.device.adb_client.socket import Socket
+from arknights_mower.utils.device.scrcpy import const
+from arknights_mower.utils.device.scrcpy.control import ControlSender
+from arknights_mower.utils.log import logger
 
 SCR_PATH = "/data/local/tmp/minitouch"
 

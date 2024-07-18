@@ -13,7 +13,7 @@ from arknights_mower.data import (
     result_template_list,
 )
 from arknights_mower.utils import rapidocr, segment
-from arknights_mower.utils.device import Device
+from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.digit_reader import DigitReader
 from arknights_mower.utils.email import recruit_rarity, recruit_template
 from arknights_mower.utils.graph import SceneGraphSolver

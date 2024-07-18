@@ -5,10 +5,9 @@ import cv2
 import numpy as np
 
 from arknights_mower import __rootdir__
+from arknights_mower.utils import typealias as tp
+from arknights_mower.utils.log import logger, save_screenshot
 from arknights_mower.utils.path import get_path
-
-from . import typealias as tp
-from .log import logger, save_screenshot
 
 
 def bytes2img(data: bytes, gray: bool = False) -> Union[tp.Image, tp.GrayImage]:
