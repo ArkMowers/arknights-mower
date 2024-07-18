@@ -929,7 +929,6 @@ class BaseSolver:
             if not token:
                 logger.error("PushPlus的token未配置")
                 return
-            
 
             # img 嵌入 html
             # if attach_image is not None:
@@ -940,7 +939,7 @@ class BaseSolver:
             #     img_base64 = base64.b64encode(attachment)
             #     img_url = f"data:image/jpeg;base64,{img_base64.decode('utf-8')}"
             #     img_tag = f'<img src="{img_url}" />'
-                
+
             #     # 查找 </body> 标签的位置
             #     body_close_tag = '</body>'
             #     insert_position = body.find(body_close_tag)
@@ -949,7 +948,6 @@ class BaseSolver:
             #     if insert_position != -1:
             #         body = body[:insert_position] + img_tag + body[insert_position:]
 
-
             url = r"http://www.pushplus.plus/send"
             data = {
                 "token": token,
@@ -957,7 +955,6 @@ class BaseSolver:
                 "content": body,
                 "template": "markdown",
             }
-            
 
             try:
                 response = requests.post(url, json=data)
