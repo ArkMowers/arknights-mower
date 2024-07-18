@@ -79,6 +79,7 @@ def restart_simulator(stop=True, start=True):
             BaseSolver.csleep(data["wait_time"])
     else:
         logger.warning(f"尚未支持{simulator_type}重启/自动启动")
+        BaseSolver.csleep()
 
 
 def exec_cmd(cmd, folder_path):
