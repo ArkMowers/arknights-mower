@@ -9,7 +9,7 @@ const mobile = inject('mobile')
 
 const testPushResult = ref('')
 
-const { pushplus_enable, pushplus_token } = storeToRefs(store)
+const { pushplus } = storeToRefs(store)
 
 async function test_push() {
   testPushResult.value = '正在发送……'
@@ -21,7 +21,7 @@ async function test_push() {
 <template>
   <n-card>
     <template #header>
-      <n-checkbox v-model:checked="pushplus_enable" class="serverpush-title">
+      <n-checkbox v-model:checked="pushplus.enable" class="serverpush-title">
         <div class="card-title-wrapper">
           <span class="card-title">PushPlus推送通知</span>
           <help-text class="card-title-tip">
@@ -42,11 +42,11 @@ async function test_push() {
         label-align="left"
       >
         <n-form-item label="Push Plus Token">
-          <n-input v-model:value="pushplus_token" show-password-on="click" type="password" />
+          <n-input v-model:value="pushplus.token" show-password-on="click" type="password" />
         </n-form-item>
       </n-form>
-      <n-divider v-if="pushplus_enable" />
-      <div v-if="pushplus_enable" class="push-test mt-16">
+      <n-divider v-if="pushplus.enable" />
+      <div v-if="pushplus.enable" class="push-test mt-16">
         <n-button @click="test_push">发送测试通知</n-button>
         <div>{{ testPushResult }}</div>
       </div>

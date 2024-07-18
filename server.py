@@ -550,11 +550,10 @@ def test_pushplus_push():
     import requests
 
     try:
-        print(config.conf)
         response = requests.post(
             r"http://www.pushplus.plus/send",
             params={
-                "token": config.conf["pushplus_token"],
+                "token": config.conf["pushplus"]["token"],
                 "title": "arknights-mower推送测试",
                 "content": "arknights-mower推送测试",
             },

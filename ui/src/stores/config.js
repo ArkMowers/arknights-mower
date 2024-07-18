@@ -61,8 +61,7 @@ export const useConfigStore = defineStore('config', () => {
   const run_order_grandet_mode = ref({})
   const server_push_enable = ref(false) // Server酱通知开关
   const sendKey = ref('') // Server酱Key值
-  const pushplus_enable = ref(false) // PushPlus通知开关
-  const pushplus_token = ref('') // PushPlus Token
+  const pushplus = ref({})
   const check_mail_enable = ref(true)
   const report_enable = ref(true)
   const send_report = ref(true)
@@ -159,8 +158,7 @@ export const useConfigStore = defineStore('config', () => {
     server_push_enable.value = response.data.server_push_enable != 0
     sendKey.value = response.data.sendKey
     // 新增：加载PushPlus的配置
-    pushplus_enable.value = response.data.pushplus_enable != 0
-    pushplus_token.value = response.data.pushplus_token
+    pushplus.value = response.data.pushplus
     check_mail_enable.value = response.data.check_mail_enable
     report_enable.value = response.data.report_enable
     send_report.value = response.data.send_report
@@ -246,8 +244,7 @@ export const useConfigStore = defineStore('config', () => {
       server_push_enable: server_push_enable.value ? 1 : 0,
       sendKey: sendKey.value,
       // 新增：PushPlus的配置
-      pushplus_enable: pushplus_enable.value ? 1 : 0,
-      pushplus_token: pushplus_token.value,
+      pushplus: pushplus.value,
       check_mail_enable: check_mail_enable.value,
       report_enable: report_enable.value,
       send_report: send_report.value,
@@ -342,8 +339,7 @@ export const useConfigStore = defineStore('config', () => {
     run_order_grandet_mode,
     server_push_enable,
     sendKey,
-    pushplus_enable,
-    pushplus_token,
+    pushplus,
     check_mail_enable,
     report_enable,
     send_report,

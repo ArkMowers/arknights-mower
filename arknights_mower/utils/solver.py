@@ -924,19 +924,40 @@ class BaseSolver:
                 failed_methods.append(("serverJang", url, data))
 
         # PushPlus通知部分
-        if pushplus_config and pushplus_config.get("pushplus_enable", False):
-            token = pushplus_config.get("pushplus_token")
+        if pushplus_config and pushplus_config.get("enable", False):
+            token = pushplus_config.get("token")
             if not token:
                 logger.error("PushPlus的token未配置")
                 return
+            
+
+            # img 嵌入 html
+            # if attach_image is not None:
+            #     img = cv2.cvtColor(attach_image, cv2.COLOR_RGB2BGR)
+            #     _, attachment = cv2.imencode(
+            #         ".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), 75]
+            #     )
+            #     img_base64 = base64.b64encode(attachment)
+            #     img_url = f"data:image/jpeg;base64,{img_base64.decode('utf-8')}"
+            #     img_tag = f'<img src="{img_url}" />'
+                
+            #     # 查找 </body> 标签的位置
+            #     body_close_tag = '</body>'
+            #     insert_position = body.find(body_close_tag)
+
+            #     # 在 </body> 标签前插入 <img> 标签
+            #     if insert_position != -1:
+            #         body = body[:insert_position] + img_tag + body[insert_position:]
+
 
             url = r"http://www.pushplus.plus/send"
             data = {
                 "token": token,
                 "title": "Mower通知",
-                "content": mkBody,
+                "content": body,
                 "template": "markdown",
             }
+            
 
             try:
                 response = requests.post(url, json=data)
