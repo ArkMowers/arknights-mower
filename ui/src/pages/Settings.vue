@@ -56,6 +56,7 @@ const simulator_types = [
   { label: '雷电模拟器9', value: '雷电9' },
   { label: 'ReDroid', value: 'ReDroid' },
   { label: 'MuMu模拟器Pro', value: 'MuMuPro' },
+  { label: 'Genymotion', value: 'Genymotion' },
   { label: '其它', value: '' }
 ]
 

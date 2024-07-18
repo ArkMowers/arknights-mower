@@ -14,6 +14,7 @@ class Simulator_Type(Enum):
     Waydroid = "Waydroid"
     ReDroid = "ReDroid"
     MuMuPro = "MuMuPro"
+    Genymotion = "GenyMotion"
 
 
 def restart_simulator(stop=True, start=True):
@@ -31,6 +32,7 @@ def restart_simulator(stop=True, start=True):
         Simulator_Type.Waydroid.value,
         Simulator_Type.ReDroid.value,
         Simulator_Type.MuMuPro.value,
+        Simulator_Type.Genymotion.value,
     ]:
         if simulator_type == Simulator_Type.Nox.value:
             cmd = "Nox.exe"
@@ -54,6 +56,8 @@ def restart_simulator(stop=True, start=True):
             cmd = f"docker stop {data['index']} -t 0"
         elif simulator_type == Simulator_Type.MuMuPro.value:
             cmd = f"Contents/MacOS/mumutool close {data['index']}"
+        elif simulator_type == Simulator_Type.Genymotion.value:
+            cmd = f"gmtool admin start {data['index']}"
         if stop:
             exec_cmd(cmd, data["simulator_folder"])
             logger.info(f"关闭{simulator_type}模拟器")
@@ -73,6 +77,8 @@ def restart_simulator(stop=True, start=True):
             cmd = f"docker start {data['index']}"
         elif simulator_type == Simulator_Type.MuMuPro.value:
             cmd = cmd.replace("close", "open")
+        elif simulator_type == Simulator_Type.Genymotion.value:
+            cmd = f"gmtool admin stop {data['index']}"
         if start:
             exec_cmd(cmd, data["simulator_folder"])
             logger.info(f"开始启动{simulator_type}模拟器，等待{data['wait_time']}秒")
