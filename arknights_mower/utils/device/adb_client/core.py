@@ -44,7 +44,9 @@ class Client(object):
 
     def __init_device(self) -> None:
         # wait for the newly started ADB server to probe emulators
-        time.sleep(1)
+        from arknights_mower.utils.solver import BaseSolver
+
+        BaseSolver.csleep(1)
         if self.device_id is None or self.device_id not in config.ADB_DEVICE:
             self.device_id = self.__choose_devices()
         if self.device_id is None:
