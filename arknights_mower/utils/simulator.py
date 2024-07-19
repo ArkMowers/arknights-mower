@@ -22,7 +22,9 @@ def restart_simulator(stop=True, start=True):
     data = config.conf["simulator"]
     index = data["index"]
     simulator_type = data["name"]
+    wait_time = config.conf["simulator"]["wait_time"]
     cmd = ""
+    blocking = False
 
     if simulator_type not in Simulator_Type:
         logger.warning(f"尚未支持{simulator_type}重启/自动启动")
@@ -59,10 +61,11 @@ def restart_simulator(stop=True, start=True):
         else:
             cmd = "./gmtool"
         cmd += f' admin stop "{index}"'
+        blocking = True
 
     if stop:
         logger.info(f"关闭{simulator_type}模拟器")
-        exec_cmd(cmd, data["simulator_folder"])
+        exec_cmd(cmd, data["simulator_folder"], 3, blocking)
         if simulator_type == "MuMu12" and config.fix_mumu12_adb_disconnect:
             logger.info("结束adb进程")
             system("taskkill /f /t /im adb.exe")
@@ -83,13 +86,11 @@ def restart_simulator(stop=True, start=True):
         elif simulator_type == Simulator_Type.Genymotion.value:
             cmd = cmd.replace("stop", "start", 1)
         logger.info(f"启动{simulator_type}模拟器")
-        exec_cmd(cmd, data["simulator_folder"])
+        exec_cmd(cmd, data["simulator_folder"], wait_time, blocking)
 
 
-def exec_cmd(cmd, folder_path):
+def exec_cmd(cmd, folder_path, wait_time, blocking):
     logger.debug(cmd)
-
-    wait_time = config.conf["simulator"]["wait_time"]
     process = subprocess.Popen(
         cmd,
         shell=True,
@@ -99,6 +100,11 @@ def exec_cmd(cmd, folder_path):
         stderr=subprocess.PIPE,
         universal_newlines=True,
     )
+
+    if not blocking:
+        csleep(wait_time)
+        process.terminate()
+        return
     while wait_time > 0:
         try:
             csleep(0)
