@@ -1,22 +1,16 @@
-import lzma
-import pickle
 from time import sleep
 
 import cv2
 from scipy.signal import argrelmax
 from skimage.metrics import structural_similarity
 
-from arknights_mower import __rootdir__
-from arknights_mower.solvers.secret_front import templates
+from arknights_mower.models import avatar, secret_front
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.solver import BaseSolver
 from arknights_mower.utils.tile_pos import Calc, find_level
 from arknights_mower.utils.vector import sa, va
-
-with lzma.open(f"{__rootdir__}/models/avatar.pkl", "rb") as f:
-    avatar = pickle.load(f)
 
 
 class AutoFight(BaseSolver):
@@ -62,7 +56,7 @@ class AutoFight(BaseSolver):
             )
             score = []
             for i in range(10):
-                im = templates[i]
+                im = secret_front[i]
                 result = cv2.matchTemplate(digit, im, cv2.TM_SQDIFF_NORMED)
                 min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
                 score.append(min_val)

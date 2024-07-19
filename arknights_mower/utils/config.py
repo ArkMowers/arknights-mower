@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import shutil
 import sys
 
@@ -10,6 +8,7 @@ try:
 except ImportError:
     from collections import Mapping
 from pathlib import Path
+from threading import Event
 from typing import Any
 
 from .. import __pyinstall__, __system__
@@ -161,4 +160,4 @@ init_config()
 conf = {}
 droidcast = {"enable": False, "session": requests.Session(), "port": 0, "process": None}
 TAP_TO_LAUNCH = {"enable": False, "x": 0, "y": 0}
-stop_mower = None
+stop_mower = Event()

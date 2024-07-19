@@ -2,9 +2,10 @@ import functools
 
 import networkx as nx
 
+from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.scene import Scene, SceneComment
-from arknights_mower.utils.solver import BaseSolver, MowerExit
+from arknights_mower.utils.solver import BaseSolver
 
 DG = nx.DiGraph()
 

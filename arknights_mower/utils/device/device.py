@@ -2,23 +2,22 @@ from __future__ import annotations
 
 import gzip
 import subprocess
-import time
 from typing import Optional
 
 import cv2
 import numpy as np
 
 from arknights_mower import __rootdir__, __system__
+from arknights_mower.utils import config
+from arknights_mower.utils.csleep import csleep
+from arknights_mower.utils.device.adb_client.core import Client as ADBClient
 from arknights_mower.utils.device.adb_client.session import Session
+from arknights_mower.utils.device.maatouch import MaaTouch
+from arknights_mower.utils.device.scrcpy import Scrcpy
 from arknights_mower.utils.image import bytes2img
+from arknights_mower.utils.log import logger, save_screenshot
 from arknights_mower.utils.network import get_new_port, is_port_in_use
 from arknights_mower.utils.simulator import restart_simulator
-
-from .. import config
-from ..log import logger, save_screenshot
-from .adb_client import ADBClient
-from .maatouch import MaaTouch
-from .scrcpy import Scrcpy
 
 
 class Device(object):
@@ -321,8 +320,7 @@ class Device(object):
                 ]:
                     self.exit()  # 防止应用卡死
                     self.launch()
-                    # wait for app to finish launching
-                    time.sleep(10)
+                    csleep(10)
                     update = True
                 return update
             except Exception:

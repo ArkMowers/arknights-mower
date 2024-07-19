@@ -1,14 +1,11 @@
-from __future__ import annotations
-
 from typing import Union
 
 from arknights_mower import __rootdir__
-
-from ... import config
-from ...log import logger
-from ..adb_client import ADBClient
-from .command import CommandBuilder
-from .session import Session
+from arknights_mower.utils import config
+from arknights_mower.utils.device.adb_client.core import Client as ADBClient
+from arknights_mower.utils.device.maatouch.command import CommandBuilder
+from arknights_mower.utils.device.maatouch.session import Session
+from arknights_mower.utils.log import logger
 
 MNT_PATH = "/data/local/tmp/maatouch"
 

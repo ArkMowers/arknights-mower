@@ -4,8 +4,7 @@ from enum import Enum
 
 from arknights_mower.utils import config
 from arknights_mower.utils.datetime import the_same_time
-
-from ..utils.log import logger
+from arknights_mower.utils.log import logger
 
 
 class TaskTypes(Enum):

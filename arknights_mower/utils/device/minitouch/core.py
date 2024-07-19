@@ -1,17 +1,15 @@
-from __future__ import annotations
-
 import os
 import time
 
 # import random
 from typing import Union
 
-from ... import config
-from ...log import log_sync, logger
-from ..adb_client import ADBClient
-from ..utils import download_file
-from .command import CommandBuilder
-from .session import Session
+from arknights_mower.utils import config
+from arknights_mower.utils.device.adb_client.core import Client as ADBClient
+from arknights_mower.utils.device.minitouch.command import CommandBuilder
+from arknights_mower.utils.device.minitouch.session import Session
+from arknights_mower.utils.device.utils import download_file
+from arknights_mower.utils.log import log_sync, logger
 
 # MNT_PREBUILT_URL = 'https://github.com/williamfzc/stf-binaries/raw/master/node_modules/minitouch-prebuilt/prebuilt'
 MNT_PREBUILT_URL = "https://oss.nano.ac/arknights_mower/minitouch"

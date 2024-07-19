@@ -1,10 +1,8 @@
-import lzma
-import pickle
 import re
 
 import cv2
 
-from arknights_mower import __rootdir__
+from arknights_mower.models import navigation
 from arknights_mower.utils import hot_update
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.log import logger
@@ -143,9 +141,6 @@ difficulty_str = [
     "normal",
     "hard",
 ]
-
-with lzma.open(f"{__rootdir__}/models/navigation.pkl", "rb") as f:
-    templates = pickle.load(f)
 
 
 class NavigationSolver(SceneGraphSolver):
@@ -307,7 +302,7 @@ class NavigationSolver(SceneGraphSolver):
                         return
             for i in location[prefix]:
                 result = cv2.matchTemplate(
-                    self.recog.gray, templates[i], cv2.TM_SQDIFF_NORMED
+                    self.recog.gray, navigation[i], cv2.TM_SQDIFF_NORMED
                 )
                 min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
                 if min_val < val:

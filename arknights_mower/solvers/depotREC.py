@@ -13,7 +13,7 @@ from skimage.feature import hog
 from arknights_mower.utils.graph import SceneGraphSolver
 
 from .. import __rootdir__
-from ..utils.device import Device
+from ..utils.device.device import Device
 from ..utils.image import loadimg
 from ..utils.log import logger
 from ..utils.path import get_path

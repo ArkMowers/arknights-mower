@@ -4,9 +4,9 @@ import socket
 import struct
 import time
 
-from ... import config
-from ...log import logger
-from .socket import Socket
+from arknights_mower.utils import config
+from arknights_mower.utils.device.adb_client.socket import Socket
+from arknights_mower.utils.log import logger
 
 
 class Session(object):

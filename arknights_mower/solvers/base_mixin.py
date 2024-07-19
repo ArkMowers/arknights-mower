@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import lzma
 import pickle
 from datetime import datetime, timedelta
@@ -10,9 +8,9 @@ import numpy as np
 from arknights_mower import __rootdir__
 from arknights_mower.utils import rapidocr, segment
 from arknights_mower.utils.character_recognize import operator_list
+from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.solver import MowerExit
 
 with lzma.open(f"{__rootdir__}/models/operator_room.model", "rb") as f:
     OP_ROOM = pickle.loads(f.read())

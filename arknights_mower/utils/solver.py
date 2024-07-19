@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import random
 import smtplib
 import sys
@@ -22,8 +20,10 @@ from bs4 import BeautifulSoup
 
 from arknights_mower.utils import config
 from arknights_mower.utils import typealias as tp
-from arknights_mower.utils.device import Device, KeyCode
+from arknights_mower.utils.csleep import MowerExit, csleep
+from arknights_mower.utils.device.adb_client.const import KeyCode
 from arknights_mower.utils.device.adb_client.session import Session
+from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.device.scrcpy import Scrcpy
 from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.log import logger
@@ -34,10 +34,6 @@ from arknights_mower.utils.simulator import restart_simulator
 class StrategyError(Exception):
     """Strategy Error"""
 
-    pass
-
-
-class MowerExit(Exception):
     pass
 
 
@@ -148,24 +144,9 @@ class BaseSolver:
             x, y = poly
         return (int(x), int(y))
 
-    @staticmethod
-    def csleep(interval: float = 1):
-        """check and sleep"""
-        stop_time = datetime.now() + timedelta(seconds=interval)
-        while True:
-            if config.stop_mower is not None and config.stop_mower.is_set():
-                raise MowerExit
-            remaining = stop_time - datetime.now()
-            if remaining > timedelta(seconds=1):
-                time.sleep(1)
-            elif remaining > timedelta():
-                time.sleep(remaining.total_seconds())
-            else:
-                return
-
     def sleep(self, interval: float = 1) -> None:
         """sleeping for a interval"""
-        self.csleep(interval)
+        csleep(interval)
         self.recog.update()
 
     def input(self, referent: str, input_area: tp.Scope, text: str = None) -> None:
@@ -198,7 +179,7 @@ class BaseSolver:
         interval: float = 1,
     ) -> None:
         """tap"""
-        if config.stop_mower is not None and config.stop_mower.is_set():
+        if config.stop_mower.is_set():
             raise MowerExit
         pos = self.get_pos(poly, x_rate, y_rate)
         self.device.tap(pos)
@@ -310,7 +291,7 @@ class BaseSolver:
         interval: float = 1,
     ) -> None:
         """swipe"""
-        if config.stop_mower is not None and config.stop_mower.is_set():
+        if config.stop_mower.is_set():
             raise MowerExit
         end = (start[0] + movement[0], start[1] + movement[1])
         self.device.swipe(start, end, duration=duration)
@@ -325,12 +306,12 @@ class BaseSolver:
         interval: float = 1,
     ) -> None:
         """swipe only, no rebuild and recapture"""
-        if config.stop_mower is not None and config.stop_mower.is_set():
+        if config.stop_mower.is_set():
             raise MowerExit
         end = (start[0] + movement[0], start[1] + movement[1])
         self.device.swipe(start, end, duration=duration)
         if interval > 0:
-            self.csleep(interval)
+            csleep(interval)
 
     # def swipe_seq(self, points: list[tp.Coordinate], duration: int = 100, interval: float = 1, rebuild: bool = True) -> None:
     #     """ swipe with point sequence """
@@ -355,7 +336,7 @@ class BaseSolver:
         interval: float = 0.2,
     ) -> None:
         """swipe with no inertia (movement should be vertical)"""
-        if config.stop_mower is not None and config.stop_mower.is_set():
+        if config.stop_mower.is_set():
             raise MowerExit
         points = [start]
         if movement[0] == 0:
@@ -713,7 +694,7 @@ class BaseSolver:
                 return True
         logger.warning("相同场景等待超时")
         self.device.exit()
-        self.csleep(3)
+        csleep(3)
         self.check_current_focus()
         return False
 
@@ -790,7 +771,7 @@ class BaseSolver:
             except Exception as e:
                 logger.error("邮件发送失败")
                 logger.exception(e)
-                self.csleep(delay)
+                csleep(delay)
 
     # Server酱异常处理
     def handle_serverJang_error(self, url, data):
@@ -805,11 +786,11 @@ class BaseSolver:
                     logger.error(
                         f"Server酱通知发送失败，错误信息：{json_data.get('message')}"
                     )
-                    self.csleep(delay)
+                    csleep(delay)
             except Exception as e:
                 logger.error("Server酱通知发送失败")
                 logger.exception(e)
-                self.csleep(delay)
+                csleep(delay)
 
     # PushPlus异常处理
     def handle_pushplus_error(self, data):
@@ -824,11 +805,11 @@ class BaseSolver:
                     logger.error(
                         f"PushPlus通知发送失败，错误信息：{json_data.get('msg')}"
                     )
-                    self.csleep(delay)
+                    csleep(delay)
             except Exception as e:
                 logger.error("PushPlus通知发送失败")
                 logger.exception(e)
-                self.csleep(delay)
+                csleep(delay)
 
     def send_message(
         self,
@@ -978,14 +959,14 @@ class BaseSolver:
                         self.handle_email_error(*args)
                         break
                     except Exception:
-                        self.csleep(1)
+                        csleep(1)
             elif method == "serverJang":
                 for _ in range(retry_times):
                     try:
                         self.handle_serverJang_error(*args)
                         break
                     except Exception:
-                        self.csleep(1)
+                        csleep(1)
 
             elif method == "pushplus":
                 for _ in range(retry_times):
@@ -993,4 +974,4 @@ class BaseSolver:
                         self.handle_pushplus_error(*args)
                         break
                     except Exception:
-                        self.csleep(1)
+                        csleep(1)
