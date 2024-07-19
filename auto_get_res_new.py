@@ -560,6 +560,7 @@ class Arknights数据处理器:
                             ex_string = list(
                                 set([match.replace(".", "_") for match in matches])
                             )
+                            ex_string.sort()
                             干员技能详情["buffer_des"] = ex_string
                             self.所有buff.extend(ex_string)
 
@@ -580,7 +581,7 @@ class Arknights数据处理器:
             干员技能列表.append(干员技能字典.copy())
         干员技能列表 = sorted(干员技能列表, key=lambda x: (-x["key"]))
         # print(干员技能列表)
-        with open(r".\ui\src\pages\skill.json", "w", encoding="utf-8") as f:
+        with open(r".\ui\src\pages\basement_skill\skill.json", "w", encoding="utf-8") as f:
             json.dump(干员技能列表, f, ensure_ascii=False, indent=2)
 
     def buff转换(self):
@@ -598,7 +599,7 @@ class Arknights数据处理器:
                 dict1["buffer"] = matches
             buff_table[item.replace(".", "_")] = dict1
 
-        with open(r".\ui\src\pages\buffer.json", "w", encoding="utf-8") as f:
+        with open(r".\ui\src\pages\basement_skill\buffer.json", "w", encoding="utf-8") as f:
             json.dump(buff_table, f, ensure_ascii=False, indent=2)
 
     def 添加基建技能图标(self):
