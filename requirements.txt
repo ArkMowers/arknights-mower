@@ -71,6 +71,8 @@ markupsafe==2.1.5
     # via
     #   jinja2
     #   werkzeug
+mouseinfo==0.1.3
+    # via pyautogui
 mpmath==1.3.0
     # via sympy
 networkx==3.3
@@ -114,16 +116,34 @@ protobuf==5.27.2
     # via onnxruntime
 proxy-tools==0.1.0
     # via pywebview
+pyautogui==0.9.54
+    # via -r requirements.in
 pyclipper==1.3.0.post5
     # via rapidocr-onnxruntime
+pygetwindow==0.0.9
+    # via pyautogui
+pymsgbox==1.0.9
+    # via pyautogui
+pyperclip==1.9.0
+    # via mouseinfo
 pypng==0.20220715.0
     # via qrcode
+pyrect==0.2.0
+    # via pygetwindow
+pyscreeze==0.1.30
+    # via pyautogui
 pystray==0.19.5
     # via -r requirements.in
 python-dateutil==2.9.0.post0
     # via pandas
 python-xlib==0.33
     # via pystray
+python3-xlib==0.15
+    # via
+    #   mouseinfo
+    #   pyautogui
+pytweening==1.2.0
+    # via pyautogui
 pytz==2024.1
     # via
     #   -r requirements.in

@@ -22,7 +22,8 @@ def restart_simulator(stop=True, start=True):
     data = config.conf["simulator"]
     index = data["index"]
     simulator_type = data["name"]
-    wait_time = config.conf["simulator"]["wait_time"]
+    wait_time = data["wait_time"]
+    hotkey = data["hotkey"]
     cmd = ""
     blocking = False
 
@@ -87,6 +88,11 @@ def restart_simulator(stop=True, start=True):
             cmd = cmd.replace("stop", "start", 1)
         logger.info(f"启动{simulator_type}模拟器")
         exec_cmd(cmd, data["simulator_folder"], wait_time, blocking)
+        if hotkey:
+            hotkey = hotkey.split("+")
+            import pyautogui
+
+            pyautogui.hotkey(*hotkey)
 
 
 def exec_cmd(cmd, folder_path, wait_time, blocking):

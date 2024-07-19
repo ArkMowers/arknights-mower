@@ -53,3 +53,6 @@ htmllistparse==0.6.1
 
 # 邮件模板
 Jinja2==3.1.4
+
+# 启动模拟器后按快捷键
+PyAutoGUI==0.9.54
