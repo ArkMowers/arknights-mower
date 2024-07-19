@@ -2,8 +2,6 @@ import os
 import sys
 from pathlib import Path
 
-import platformdirs
-
 appname = "arknights_mower"
 appauthor = "ArkMower"
 global_space = None
@@ -18,7 +16,6 @@ def find_git_root(directory: Path) -> Path:
         return find_git_root(directory.parent)
 
 
-user_data_dir = Path(platformdirs.user_data_dir(appname, appauthor))
 # define _app_dir
 if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
     _internal_dir = Path(sys._MEIPASS).resolve()
@@ -54,17 +51,9 @@ def get_install_path(path) -> Path:
     return _get_path(_install_dir, path, None)
 
 
-def get_user_path(path, space=None) -> Path:
-    global global_space
-    if space is None:
-        space = global_space
-    return _get_path(user_data_dir, path, space)
-
-
 def get_path(path: str, space=None) -> Path:
     """
     使用 '@xxx/' 来表示一些特别的目录
-    @user: 用户数据文件夹, 例如 get_path('@user/config.json')
     @app: mower数据文件夹, 例如 get_path('@app/logs/runtime.log')
     @internal: mower内部文件夹, 在开发时为 .git 所在目录, 打包时为 @app/_internal
     @install: mower 安装文件夹，在开发时与 @internal 相同，打包时为 mower 的安装目录
@@ -83,9 +72,7 @@ def get_path(path: str, space=None) -> Path:
         index = index if index != -1 else len(path)
         special_dir_name = path[1:index]
         relative_path = path[index:].strip("/")
-        if special_dir_name == "user":
-            return get_user_path(relative_path, space)
-        elif special_dir_name == "app":
+        if special_dir_name == "app":
             return get_app_path(relative_path, space)
         elif special_dir_name == "internal":
             return get_internal_path(relative_path)
@@ -111,6 +98,5 @@ class SpecialDir:
         return str(self.method("", None))
 
 
-user_dir = SpecialDir(get_user_path)
 app_dir = SpecialDir(get_app_path)
 internal_dir = SpecialDir(get_internal_path)
