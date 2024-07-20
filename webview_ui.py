@@ -116,7 +116,6 @@ def webview_window(child_conn, global_space, host, port, token, url, tray):
     from arknights_mower.__init__ import __version__
     from arknights_mower.model import Config
     from arknights_mower.utils import path
-    from arknights_mower.utils.conf import save_conf
 
     path.global_space = global_space
 

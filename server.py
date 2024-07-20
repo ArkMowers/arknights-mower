@@ -20,7 +20,7 @@ from werkzeug.exceptions import NotFound
 from arknights_mower import __system__
 from arknights_mower.model import Config
 from arknights_mower.utils import config
-from arknights_mower.utils.conf import load_conf, load_plan, save_conf, write_plan
+from arknights_mower.utils.conf import load_plan, write_plan
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 
@@ -91,8 +91,7 @@ def load_config():
         config.conf = Config.load_conf()
         return config.conf.model_dump_json()
     else:
-        config.conf = config.conf.my_copy(request.json)
-        print(config.conf.mower.adb)
+        config.conf = config.conf.model_copy(update=request.json)
         config.conf.save_conf("./conf.yml", old=True)
         config.conf.save_conf("./conf.upgraded.yml", old=False)
 
@@ -114,7 +113,7 @@ def load_plan_from_json():
     else:
         plan = request.json
         write_plan(plan, config.conf["planFile"])
-        return f"New plan saved at {config.conf['planFile']}"
+        return f"New plan saved at {config.conf["planFile"]}"
 
 
 @app.route("/operator")
@@ -355,20 +354,18 @@ def get_report_data():
         earliest_date = str2date(data[0]["Unnamed: 0"])
 
         for item in data:
-            format_data.append(
-                {
-                    "日期": date2str(
-                        str2date(item["Unnamed: 0"]) - datetime.timedelta(days=1)
-                    ),
-                    "作战录像": item["作战录像"],
-                    "赤金": item["赤金"],
-                    "制造总数": int(item["赤金"] + item["作战录像"]),
-                    "龙门币订单": item["龙门币订单"],
-                    "反向作战录像": -item["作战录像"],
-                    "龙门币订单数": item["龙门币订单数"],
-                    "每单获取龙门币": int(item["龙门币订单"] / item["龙门币订单数"]),
-                }
-            )
+            format_data.append({
+                "日期": date2str(
+                    str2date(item["Unnamed: 0"]) - datetime.timedelta(days=1)
+                ),
+                "作战录像": item["作战录像"],
+                "赤金": item["赤金"],
+                "制造总数": int(item["赤金"] + item["作战录像"]),
+                "龙门币订单": item["龙门币订单"],
+                "反向作战录像": -item["作战录像"],
+                "龙门币订单数": item["龙门币订单数"],
+                "每单获取龙门币": int(item["龙门币订单"] / item["龙门币订单数"]),
+            })
 
         if len(format_data) < 15:
             for i in range(1, 16 - len(format_data)):
@@ -424,17 +421,15 @@ def get_orundum_data():
         total_orundum = 0
         for item in data:
             total_orundum = total_orundum + item["合成玉"]
-            format_data.append(
-                {
-                    "日期": date2str(
-                        str2date(item["Unnamed: 0"]) - datetime.timedelta(days=1)
-                    ),
-                    "合成玉": item["合成玉"],
-                    "合成玉订单数量": item["合成玉订单数量"],
-                    "抽数": round((item["合成玉"] / 600), 1),
-                    "累计制造合成玉": total_orundum,
-                }
-            )
+            format_data.append({
+                "日期": date2str(
+                    str2date(item["Unnamed: 0"]) - datetime.timedelta(days=1)
+                ),
+                "合成玉": item["合成玉"],
+                "合成玉订单数量": item["合成玉订单数量"],
+                "抽数": round((item["合成玉"] / 600), 1),
+                "累计制造合成玉": total_orundum,
+            })
 
         if len(format_data) < 15:
             earliest_date = str2date(data[0]["Unnamed: 0"])
@@ -533,7 +528,7 @@ def test_serverJang_push():
 
     try:
         response = requests.get(
-            f"https://sctapi.ftqq.com/{config.conf['sendKey']}.send",
+            f"https://sctapi.ftqq.com/{config.conf["sendKey"]}.send",
             params={
                 "title": "arknights-mower推送测试",
                 "desp": "arknights-mower推送测试",
