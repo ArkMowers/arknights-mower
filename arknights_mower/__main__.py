@@ -9,6 +9,8 @@ from arknights_mower import __version__
 from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
 from arknights_mower.solvers.secret_front import SecretFront
 from arknights_mower.utils import config, path, rapidocr
+from arknights_mower.utils.csleep import MowerExit
+from arknights_mower.utils.datetime import format_time
 from arknights_mower.utils.depot import 创建csv, 创建json
 from arknights_mower.utils.device.adb_client.session import Session
 from arknights_mower.utils.device.scrcpy import Scrcpy
@@ -19,7 +21,6 @@ from arknights_mower.utils.logic_expression import LogicExpression
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.simulator import restart_simulator
-from arknights_mower.utils.solver import MowerExit
 
 global base_scheduler
 base_scheduler = None
@@ -57,22 +58,6 @@ def main():
     logger.info("开始运行Mower")
     rapidocr.initialize_ocr()
     simulate()
-
-
-# newbing说用这个来定义休息时间省事
-def format_time(seconds):
-    if seconds < 0:  # 权宜之计 配合刷生息演算
-        return f"{0} 分钟"  # 权宜之计 配合刷生息演算
-    # 计算小时和分钟
-    rest_hours = int(seconds / 3600)
-    rest_minutes = int((seconds % 3600) / 60)
-    # 根据小时是否为零来决定是否显示
-    if rest_hours == 0:
-        return f"{rest_minutes} 分钟"
-    elif rest_minutes == 0:
-        return f"{rest_hours} 小时"
-    else:
-        return f"{rest_hours} 小时 {rest_minutes} 分钟"
 
 
 def get_logic_exp(trigger):

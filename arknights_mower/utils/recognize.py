@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import time
 from typing import List, Optional, Tuple
 
@@ -7,16 +5,16 @@ import cv2
 import numpy as np
 from skimage.metrics import structural_similarity
 
+from arknights_mower import __rootdir__
+from arknights_mower.utils import config
+from arknights_mower.utils import typealias as tp
+from arknights_mower.utils.csleep import MowerExit
+from arknights_mower.utils.device.device import Device
+from arknights_mower.utils.image import bytes2img, cmatch, cropimg, loadres, thres2
+from arknights_mower.utils.log import logger, save_screenshot
+from arknights_mower.utils.matcher import Matcher
+from arknights_mower.utils.scene import Scene, SceneComment
 from arknights_mower.utils.vector import va
-
-from .. import __rootdir__
-from . import config
-from . import typealias as tp
-from .device import Device
-from .image import bytes2img, cmatch, cropimg, loadres, thres2
-from .log import logger, save_screenshot
-from .matcher import Matcher
-from .scene import Scene, SceneComment
 
 
 class RecognizeError(Exception):
@@ -88,9 +86,7 @@ class Recognizer(object):
         raise RuntimeError("init Recognizer failed")
 
     def update(self) -> None:
-        from arknights_mower.utils.solver import MowerExit
-
-        if config.stop_mower is not None and config.stop_mower.is_set():
+        if config.stop_mower.is_set():
             raise MowerExit
         self.clear()
 

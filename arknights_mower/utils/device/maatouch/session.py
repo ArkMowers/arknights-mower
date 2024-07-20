@@ -3,9 +3,8 @@ from __future__ import annotations
 import subprocess
 
 from arknights_mower import __system__
-from arknights_mower.utils.device.adb_client import ADBClient
-
-from ...log import logger
+from arknights_mower.utils.device.adb_client.core import Client as ADBClient
+from arknights_mower.utils.log import logger
 
 
 class Session(object):

@@ -1,21 +1,17 @@
-import lzma
-import pickle
 from datetime import datetime, timedelta
 from typing import Optional
 
 import cv2
 
-from arknights_mower import __rootdir__
+from arknights_mower.models import secret_front
 from arknights_mower.utils import config
 from arknights_mower.utils import typealias as tp
+from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.matcher import Matcher
 from arknights_mower.utils.recognize import Scene
-from arknights_mower.utils.solver import BaseSolver, MowerExit
-
-with lzma.open(f"{__rootdir__}/models/secret_front.pkl", "rb") as f:
-    templates = pickle.load(f)
+from arknights_mower.utils.solver import BaseSolver
 
 
 def exp(card):
@@ -113,7 +109,7 @@ class SecretFront(BaseSolver):
             )
             score = []
             for i in range(10):
-                im = templates[i]
+                im = secret_front[i]
                 result = cv2.matchTemplate(digit, im, cv2.TM_SQDIFF_NORMED)
                 min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
                 score.append(min_val)
@@ -137,7 +133,7 @@ class SecretFront(BaseSolver):
         img = cv2.copyMakeBorder(img, 10, 10, 10, 10, cv2.BORDER_CONSTANT, None, (0,))
         score = []
         for i in self.target:
-            result = cv2.matchTemplate(img, templates[i], cv2.TM_SQDIFF_NORMED)
+            result = cv2.matchTemplate(img, secret_front[i], cv2.TM_SQDIFF_NORMED)
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
             score.append(min_val)
         name = list(self.target)[score.index(min(score))]

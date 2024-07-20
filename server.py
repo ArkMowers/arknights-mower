@@ -8,7 +8,7 @@ import sys
 import time
 from functools import wraps
 from queue import Queue
-from threading import Event, Thread
+from threading import Thread
 
 import pytz
 from flask import Flask, abort, request, send_from_directory
@@ -34,7 +34,6 @@ CORS(app)
 
 plan = {}
 operators = {}
-config.stop_mower = Event()
 config.log_queue = Queue()
 config.wh = None
 

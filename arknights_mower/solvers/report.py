@@ -1,15 +1,11 @@
-from __future__ import annotations
-
 import datetime
-import lzma
 import os
-import pickle
 
 import cv2
 import pandas as pd
 
-from arknights_mower.data import __rootdir__
-from arknights_mower.utils.device import Device
+from arknights_mower.models import noto_sans
+from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.digit_reader import DigitReader
 from arknights_mower.utils.email import report_template
 from arknights_mower.utils.graph import SceneGraphSolver
@@ -17,10 +13,6 @@ from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.recognize import Recognizer, Scene, tp
-
-number = {}
-with lzma.open(f"{__rootdir__}/models/noto_sans.pkl", "rb") as f:
-    number = pickle.load(f)
 
 
 def remove_blank(target: str):
@@ -207,7 +199,7 @@ class ReportSolver(SceneGraphSolver):
 
             score = []
             for i in range(10):
-                im = number[i]
+                im = noto_sans[i]
                 result = cv2.matchTemplate(digit, im, cv2.TM_SQDIFF_NORMED)
                 min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
                 score.append(min_val)

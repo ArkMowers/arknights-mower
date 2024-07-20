@@ -1,17 +1,15 @@
-from __future__ import annotations
-
 import socket
 import subprocess
 import time
 from typing import Optional, Union
 
 from arknights_mower import __system__
-
-from ... import config
-from ...log import logger
-from .session import Session
-from .socket import Socket
-from .utils import adb_buildin, run_cmd
+from arknights_mower.utils import config
+from arknights_mower.utils.csleep import csleep
+from arknights_mower.utils.device.adb_client.session import Session
+from arknights_mower.utils.device.adb_client.socket import Socket
+from arknights_mower.utils.device.adb_client.utils import adb_buildin, run_cmd
+from arknights_mower.utils.log import logger
 
 
 class Client(object):
@@ -44,9 +42,7 @@ class Client(object):
 
     def __init_device(self) -> None:
         # wait for the newly started ADB server to probe emulators
-        from arknights_mower.utils.solver import BaseSolver
-
-        BaseSolver.csleep(1)
+        csleep(1)
         if self.device_id is None or self.device_id not in config.ADB_DEVICE:
             self.device_id = self.__choose_devices()
         if self.device_id is None:

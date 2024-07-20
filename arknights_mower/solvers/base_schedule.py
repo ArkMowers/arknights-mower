@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import copy
 import json
 import os
@@ -11,30 +9,27 @@ from datetime import datetime, timedelta
 
 import cv2
 
-# 借用__main__.py里的时间计算器
-from arknights_mower.__main__ import format_time
 from arknights_mower.data import agent_list, base_room_list
-from arknights_mower.solvers import (
-    CreditSolver,
-    DepotSolver,
-    MailSolver,
-    RecruitSolver,
-    ReportSolver,
-    cultivateDepotSolver,
-)
 from arknights_mower.solvers.base_mixin import BaseMixin
+from arknights_mower.solvers.credit import CreditSolver
 from arknights_mower.solvers.credit_fight import CreditFight
+from arknights_mower.solvers.cultivate_depot import cultivate as cultivateDepotSolver
+from arknights_mower.solvers.depotREC import depotREC as DepotSolver
+from arknights_mower.solvers.mail import MailSolver
 from arknights_mower.solvers.mission import MissionSolver
 from arknights_mower.solvers.navigation import NavigationSolver
 from arknights_mower.solvers.operation import OperationSolver
 from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
+from arknights_mower.solvers.recruit import RecruitSolver
+from arknights_mower.solvers.report import ReportSolver
 from arknights_mower.solvers.secret_front import SecretFront
 from arknights_mower.solvers.shop import CreditShop
 from arknights_mower.solvers.skland import SKLand
 from arknights_mower.utils import config, detector, hot_update, rapidocr
 from arknights_mower.utils import typealias as tp
-from arknights_mower.utils.datetime import get_server_weekday
-from arknights_mower.utils.device import Device
+from arknights_mower.utils.csleep import MowerExit, csleep
+from arknights_mower.utils.datetime import format_time, get_server_weekday
+from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.digit_reader import DigitReader
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, loadres, thres2
@@ -52,8 +47,6 @@ from arknights_mower.utils.scheduler_task import (
     scheduling,
     try_add_release_dorm,
 )
-from arknights_mower.utils.simulator import restart_simulator
-from arknights_mower.utils.solver import MowerExit
 
 
 def daily_report(
@@ -3381,7 +3374,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             self.MAA.stop()
                             break
                         else:
-                            self.csleep(5)
+                            csleep(5)
                     self.device.exit()
                     self.check_current_focus()
 
@@ -3414,6 +3407,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if remaining_time > 0:
                 if remaining_time > 300:
                     if self.close_simulator_when_idle:
+                        from arknights_mower.utils.simulator import restart_simulator
+
                         restart_simulator(start=False)
                     elif self.exit_game_when_idle:
                         self.device.exit()

@@ -1,9 +1,7 @@
-from __future__ import annotations
-
 import time
 
-from ...log import logger
-from .session import Session
+from arknights_mower.utils.device.maatouch.session import Session
+from arknights_mower.utils.log import logger
 
 DEFAULT_DELAY = 0.05
 

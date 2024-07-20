@@ -11,6 +11,7 @@ simulator:
   index: '-1'
   simulator_folder: ''
   wait_time: 30
+  hotkey: ''
 free_blacklist: ''
 ling_xi: 1
 check_mail_enable: true

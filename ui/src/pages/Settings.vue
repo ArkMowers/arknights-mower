@@ -56,6 +56,7 @@ const simulator_types = [
   { label: '雷电模拟器9', value: '雷电9' },
   { label: 'ReDroid', value: 'ReDroid' },
   { label: 'MuMu模拟器Pro', value: 'MuMuPro' },
+  { label: 'Genymotion', value: 'Genymotion' },
   { label: '其它', value: '' }
 ]
 
@@ -71,7 +72,7 @@ async function select_simulator_folder() {
   }
 }
 
-import { render_op_label, render_op_tag } from '@/utils/op_select'
+import { render_op_label } from '@/utils/op_select'
 
 const scale_marks = {}
 const display_marks = [0.5, 1.0, 1.5, 2.0, 3.0]
@@ -199,10 +200,33 @@ async function test_screenshot() {
               </template>
               <n-input v-model:value="simulator.index" />
             </n-form-item>
-            <n-form-item label="模拟器启动时间">
+            <n-form-item label="模拟器启动时间" v-if="simulator.name">
               <n-input-number v-model:value="simulator.wait_time">
                 <template #suffix>秒</template>
               </n-input-number>
+            </n-form-item>
+            <n-form-item v-if="simulator.name">
+              <template #label>
+                <span>模拟器老板键</span>
+                <help-text>
+                  <div>启动模拟器后按此快捷键</div>
+                  <div>若不需要此功能，请留空</div>
+                  <div>加号分隔按键，不要空格</div>
+                  <div>
+                    按键名参考
+                    <n-button
+                      text
+                      tag="a"
+                      href="https://pyautogui.readthedocs.io/en/latest/keyboard.html#keyboard-keys"
+                      target="_blank"
+                      type="primary"
+                    >
+                      KEYBOARD_KEYS
+                    </n-button>
+                  </div>
+                </help-text>
+              </template>
+              <n-input v-model:value="simulator.hotkey" />
             </n-form-item>
             <n-form-item label="启动游戏">
               <n-select v-model:value="tap_to_launch_game.enable" :options="launch_options" />
@@ -222,7 +246,7 @@ async function test_screenshot() {
                 <help-text>降低功耗</help-text>
               </n-checkbox>
             </n-form-item>
-            <n-form-item :show-label="false">
+            <n-form-item :show-label="false" v-if="simulator.name">
               <n-checkbox v-model:checked="close_simulator_when_idle">
                 任务结束后关闭模拟器
                 <help-text>减少空闲时的资源占用、避免模拟器长时间运行出现问题</help-text>
