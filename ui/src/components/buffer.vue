@@ -48,7 +48,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { richText2HTML } from '@/stores/richText2HTML'
-import buffer from '@/pages/buffer.json'
+import buffer from '@/pages/basement_skill/buffer.json'
 
 const props = defineProps({
   avatar: String,

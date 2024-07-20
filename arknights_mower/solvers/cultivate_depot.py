@@ -6,7 +6,7 @@ from urllib import parse
 
 import requests
 
-# from arknights_mower.utils.log import logger
+from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 
 app_code = "4ca99fa6b56cc2ba"
@@ -124,9 +124,9 @@ class cultivate:
         ).json()
 
         if resp["code"] != 0:
-            print(f"请求角色列表出现问题：{resp['message']}")
+            logger.warning(f"请求角色列表出现问题：{resp['message']}")
             if resp.get("message") == "用户未登录":
-                print("用户登录可能失效了，请重新运行此程序！")
+                logger.warning("用户登录可能失效了，请重新运行此程序！")
                 return []
         for i in resp["data"]["list"]:
             if i.get("appCode") != "arknights":
