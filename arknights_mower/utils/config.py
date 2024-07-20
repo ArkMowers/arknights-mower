@@ -12,6 +12,7 @@ from threading import Event
 from typing import Any
 
 from .. import __pyinstall__, __system__
+from ..model import Config, config
 from . import typealias as tp
 
 # The lowest version supported
@@ -157,7 +158,7 @@ def init_adb_buildin() -> Path:
 
 init_config()
 
-conf = {}
+conf: Config = config
 droidcast = {"enable": False, "session": requests.Session(), "port": 0, "process": None}
 TAP_TO_LAUNCH = {"enable": False, "x": 0, "y": 0}
 stop_mower = Event()

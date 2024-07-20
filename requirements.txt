@@ -4,6 +4,8 @@
 #
 #    pip-compile requirements.in
 #
+annotated-types==0.7.0
+    # via -r requirements.in
 base45==0.4.4
     # via -r requirements.in
 beautifulsoup4==4.12.3
@@ -201,7 +203,7 @@ tzdata==2024.1
     # via pandas
 tzlocal==5.2
     # via -r requirements.in
-urllib3==2.2.2
+urllib3==2.2.1
     # via requests
 webencodings==0.5.1
     # via html5lib

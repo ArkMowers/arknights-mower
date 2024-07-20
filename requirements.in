@@ -25,6 +25,7 @@ pystray==0.19.5
 PyYAML==6.0.1
 yamlcore==0.0.2
 flatten-dict==0.4.2
+annotated-types==0.7.0
 
 # CSV
 pandas==2.2.2

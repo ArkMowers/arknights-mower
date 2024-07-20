@@ -18,8 +18,9 @@ from tzlocal import get_localzone
 from werkzeug.exceptions import NotFound
 
 from arknights_mower import __system__
+from arknights_mower.model import Config
 from arknights_mower.utils import config
-from arknights_mower.utils.conf import load_conf, load_plan, save_conf, write_plan
+from arknights_mower.utils.conf import load_plan, write_plan
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 
@@ -86,11 +87,13 @@ def not_found(e):
 @require_token
 def load_config():
     if request.method == "GET":
-        config.conf = load_conf()
-        return config.conf
+        config.conf = Config.load_conf()
+        return config.conf.model_dump_json()
     else:
-        config.conf.update(request.json)
-        save_conf(config.conf)
+        config.conf = config.conf.model_copy(update=request.json)
+        config.conf.save_conf("./conf.yml", old=True)
+        config.conf.save_conf("./conf.upgraded.yml", old=False)
+
         return "New config saved!"
 
 
@@ -109,7 +112,7 @@ def load_plan_from_json():
     else:
         plan = request.json
         write_plan(plan, config.conf["planFile"])
-        return f"New plan saved at {config.conf['planFile']}"
+        return f"New plan saved at {config.conf["planFile"]}"
 
 
 @app.route("/operator")
@@ -528,7 +531,7 @@ def test_serverJang_push():
 
     try:
         response = requests.get(
-            f"https://sctapi.ftqq.com/{config.conf['sendKey']}.send",
+            f"https://sctapi.ftqq.com/{config.conf["sendKey"]}.send",
             params={
                 "title": "arknights-mower推送测试",
                 "desp": "arknights-mower推送测试",
