@@ -213,10 +213,12 @@ if __name__ == "__main__":
         port = conf["webview"]["port"]
 
         if is_port_in_use(port):
-            splash_queue.put({
-                "type": "dialog",
-                "data": f"端口{port}已被占用，无法启动！",
-            })
+            splash_queue.put(
+                {
+                    "type": "dialog",
+                    "data": f"端口{port}已被占用，无法启动！",
+                }
+            )
             sys.exit()
     else:
         port = get_new_port()
