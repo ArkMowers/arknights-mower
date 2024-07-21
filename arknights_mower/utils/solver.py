@@ -784,7 +784,7 @@ class BaseSolver:
                     break
                 else:
                     logger.error(
-                        f"Server酱通知发送失败，错误信息：{json_data.get('message')}"
+                        f"Server酱通知发送失败，错误信息：{json_data.get("message")}"
                     )
                     csleep(delay)
             except Exception as e:
@@ -803,7 +803,7 @@ class BaseSolver:
                     break
                 else:
                     logger.error(
-                        f"PushPlus通知发送失败，错误信息：{json_data.get('msg')}"
+                        f"PushPlus通知发送失败，错误信息：{json_data.get("msg")}"
                     )
                     csleep(delay)
             except Exception as e:
@@ -934,7 +934,7 @@ class BaseSolver:
                 "token": token,
                 "title": "Mower通知",
                 "content": body,
-                "template": "markdown",
+                "template": "html",
             }
 
             try:
@@ -944,7 +944,7 @@ class BaseSolver:
                     logger.info("PushPlus通知发送成功")
                 else:
                     logger.error(
-                        f"PushPlus通知发送失败，错误信息：{json_data.get('msg')}"
+                        f"PushPlus通知发送失败，错误信息：{json_data.get("msg")}"
                     )
             except Exception as e:
                 logger.error("PushPlus通知发送失败")
