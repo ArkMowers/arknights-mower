@@ -38,7 +38,6 @@ job_list = [
 
 
 class RecruitSolver(SceneGraphSolver):
-    
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
         super().__init__(device, recog)
         self.find_scope = {
@@ -66,7 +65,7 @@ class RecruitSolver(SceneGraphSolver):
         self.result_agent = {}
         self.ticket_number = None
 
-    def run(self,send_message_config={}):
+    def run(self, send_message_config={}):
         self.add_recruit_param()
         super().run()
         self.send_message_config = send_message_config
@@ -355,7 +354,6 @@ class RecruitSolver(SceneGraphSolver):
     def recruit_cal(self, tags: list[str]):
         logger.debug(f"选择标签{tags}")
         index_dict = {k: i for i, k in enumerate(self.recruit_order)}
-
         combined_agent = {}
         if "新手" in tags:
             tags.remove("新手")
@@ -529,7 +527,7 @@ class RecruitSolver(SceneGraphSolver):
 
         self.recruit_config = {
             "recruitment_time": {"3": recruitment_time, "4": 540, "5": 540, "6": 540},
-            "recruit_robot": config.conf['recruit_robot'] ,
+            "recruit_robot": config.conf["recruit_robot"],
             "permit_target": config.conf["recruitment_permit"],
             "recruit_auto_5": config.conf["recruit_auto_5"],
             "recruit_auto_only5": config.conf["recruit_auto_only5"],
