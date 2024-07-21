@@ -315,7 +315,7 @@ class Recognizer(object):
             self.scene = Scene.MISSION_DAILY
         elif self.find("mission_weekly_on"):
             self.scene = Scene.MISSION_WEEKLY
-        elif self.find("agent_token"):
+        elif self.find("recruit/agent_token") or self.find("recruit/agent_token_first"):
             self.scene = Scene.RECRUIT_AGENT
         elif self.find("main_theme"):
             self.scene = Scene.TERMINAL_MAIN_THEME
