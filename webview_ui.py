@@ -178,8 +178,7 @@ def webview_window(child_conn, global_space, host, port, token, url, tray):
     conf = Config.load_conf()
     conf["webview"]["width"] = width
     conf["webview"]["height"] = height
-    conf.save_conf("./conf.yml", old=True)
-    conf.save_conf("./conf.upgraded.yml", old=False)
+    conf.save_conf("./conf.yml")
     sys.exit()
 
 
@@ -214,9 +213,10 @@ if __name__ == "__main__":
         port = conf["webview"]["port"]
 
         if is_port_in_use(port):
-            splash_queue.put(
-                {"type": "dialog", "data": f"端口{port}已被占用，无法启动！"}
-            )
+            splash_queue.put({
+                "type": "dialog",
+                "data": f"端口{port}已被占用，无法启动！",
+            })
             sys.exit()
     else:
         port = get_new_port()

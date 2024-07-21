@@ -354,6 +354,8 @@ class Config(MaaConfig, EmailConfig, OldPlanConfig, RecruitConfig):
 
     @staticmethod
     def load_conf(file: Path | str = Path("./conf.yml")) -> "Config":
+        if not Path(file).exists():
+            return Config()
         with open(file, "r", encoding="utf-8") as f:
             return Config.model_validate(yaml.load(f, Loader=CoreLoader))
 
