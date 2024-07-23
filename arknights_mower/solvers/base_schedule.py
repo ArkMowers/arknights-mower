@@ -683,36 +683,38 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     if TaskTypes.RELEASE_DORM == self.task.type:
                         # 如果该房间提前已经被移出，则跳过安排避免影响正常排班
                         free_room = list(self.task.plan.keys())[0]
-                        free_index = self.task.plan[free_room].index("Free")
-                        if self.task.meta_data in self.op_data.operators.keys():
-                            free_agent = self.op_data.operators[self.task.meta_data]
-                            if (
-                                free_agent.current_room == free_room
-                                and free_agent.current_index == free_index
-                            ):
-                                get_time = True
-                                # 如果是高优先，还需要把宿舍reference移除
-                                if free_agent.is_high():
-                                    idx, dorm = self.op_data.get_dorm_by_name(
-                                        free_agent.name
-                                    )
-                                    if idx is not None:
-                                        update_task = find_next_task(
-                                            self.tasks,
-                                            task_type=TaskTypes.SHIFT_ON,
-                                            meta_data="dorm" + str(idx),
+                        if "Free" in self.task.plan[free_room]:
+                            free_index = self.task.plan[free_room].index("Free")
+                            if self.task.meta_data in self.op_data.operators.keys():
+                                free_agent = self.op_data.operators[self.task.meta_data]
+                                if (
+                                    free_agent.current_room == free_room
+                                    and free_agent.current_index == free_index
+                                ):
+                                    get_time = True
+                                    # 如果是高优先，还需要把宿舍reference移除
+                                    if free_agent.is_high():
+                                        idx, dorm = self.op_data.get_dorm_by_name(
+                                            free_agent.name
                                         )
-                                        if update_task:
-                                            logger.debug("开始更新宿舍信息")
-                                            dorm_list = update_task.meta_data.split(",")
-                                            dorm_list.remove("dorm" + str(idx))
-                                            update_task.meta_data = ",".join(dorm_list)
-                                            free_agent.mood = free_agent.upper_limit
-                                            free_agent.time_stamp = dorm.time
-                            else:
-                                self.task.plan = {}
-                        else:
-                            self.task.plan = {}
+                                        if idx is not None:
+                                            update_task = find_next_task(
+                                                self.tasks,
+                                                task_type=TaskTypes.SHIFT_ON,
+                                                meta_data="dorm" + str(idx),
+                                            )
+                                            if update_task:
+                                                logger.debug("开始更新宿舍信息")
+                                                dorm_list = update_task.meta_data.split(
+                                                    ","
+                                                )
+                                                dorm_list.remove("dorm" + str(idx))
+                                                update_task.meta_data = ",".join(
+                                                    dorm_list
+                                                )
+                                                free_agent.mood = free_agent.upper_limit
+                                                free_agent.time_stamp = dorm.time
+                        self.task.plan = {}
                     if (
                         config.grandet_back_to_index
                         and TaskTypes.RUN_ORDER == self.task.type
