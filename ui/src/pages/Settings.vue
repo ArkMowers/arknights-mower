@@ -226,7 +226,10 @@ async function test_screenshot() {
                   </div>
                 </help-text>
               </template>
-              <n-input v-model:value="simulator.hotkey" />
+              <n-input
+                v-model:value="simulator.hotkey"
+                placeholder="输入模拟器的老板键，组合键用分号隔开，或留空以停用"
+              />
             </n-form-item>
             <n-form-item label="启动游戏">
               <n-select v-model:value="tap_to_launch_game.enable" :options="launch_options" />
