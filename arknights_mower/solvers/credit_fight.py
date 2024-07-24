@@ -58,6 +58,9 @@ class CreditFight(SceneGraphSolver):
                 return
             self.tap_element("ope_start", interval=2)
         elif scene == Scene.OPERATOR_SELECT:
+            if self.find("ope_select_start_empty"):
+                logger.info("编队内没有编入干员,停止OF-1")
+                return True
             squad = self.current_squad()
             target = config.conf["credit_fight"]["squad"]
             if squad != target:
