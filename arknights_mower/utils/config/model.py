@@ -447,7 +447,7 @@ class RIICPart(ConfModel):
     "排班表路径"
     reload_room: str = ""
     "搓玉补货房间"
-    run_order_delay: int = 3
+    run_order_delay: float = 3
     "跑单前置延时"
     resting_threshold: float = 0.65
     "心情阈值"
@@ -461,7 +461,7 @@ class SimulatorPart(ConfModel):
     class SimulatorConf(ConfModel):
         name: str = ""
         "名称"
-        index: str = "-1"
+        index: str | int = "-1"
         "多开编号"
         simulator_folder: str = ""
         "文件夹"
