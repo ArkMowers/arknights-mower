@@ -144,7 +144,7 @@ jobs:
 
       - name: delete unused files
         working-directory: mower/mower/_internal
-        run: rm -fr matplotlib* cv2/opencv_videoio_ffmpeg490_64.dll
+        run: rm -fr cv2/opencv_videoio_ffmpeg490_64.dll
 
       - name: merge files
         run: |

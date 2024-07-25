@@ -257,6 +257,8 @@ class Recognizer(object):
             self.scene = Scene.DEPOT
         elif self.find("pull_once"):
             self.scene = Scene.HEADHUNTING
+        elif self.find("read_and_agree"):
+            self.scene = Scene.AGREEMENT_UPDATE
         elif self.is_black():
             self.scene = Scene.LOADING
 
@@ -347,8 +349,7 @@ class Recognizer(object):
         else:
             self.scene = Scene.UNKNOWN
         # save screencap to analyse
-        if config.SCREENSHOT_PATH:
-            self.save_screencap(self.scene)
+        self.save_screencap(self.scene)
         logger.info(f"Scene {self.scene}: {SceneComment[self.scene]}")
 
         if self.scene == Scene.UNKNOWN:
@@ -466,8 +467,7 @@ class Recognizer(object):
             self.check_current_focus()
 
         # save screencap to analyse
-        if config.SCREENSHOT_PATH is not None:
-            self.save_screencap(self.scene)
+        self.save_screencap(self.scene)
         log_msg = f"Scene: {self.scene}: {SceneComment[self.scene]}"
         if self.scene == Scene.UNKNOWN:
             logger.debug(log_msg)
@@ -530,8 +530,7 @@ class Recognizer(object):
             self.check_current_focus()
 
         # save screencap to analyse
-        if config.SCREENSHOT_PATH is not None:
-            self.save_screencap(self.scene)
+        self.save_screencap(self.scene)
         log_msg = f"Scene: {self.scene}: {SceneComment[self.scene]}"
         if self.scene == Scene.UNKNOWN:
             logger.debug(log_msg)
@@ -583,8 +582,7 @@ class Recognizer(object):
             self.check_current_focus()
 
         # save screencap to analyse
-        if config.SCREENSHOT_PATH is not None:
-            self.save_screencap(self.scene)
+        self.save_screencap(self.scene)
         logger.info(f"Scene: {self.scene}: {SceneComment[self.scene]}")
 
         self.check_loading_time()
@@ -618,8 +616,7 @@ class Recognizer(object):
             self.check_current_focus()
 
         # save screencap to analyse
-        if config.SCREENSHOT_PATH is not None:
-            self.save_screencap(self.scene)
+        self.save_screencap(self.scene)
         logger.info(f"Scene: {self.scene}: {SceneComment[self.scene]}")
 
         self.check_loading_time()
@@ -656,87 +653,91 @@ class Recognizer(object):
         logger.debug(f"find: {res}")
 
         color = {
-            "1800": [(158, 958)],
-            "12cadpa": [(1810, 21)],
-            "arrange_confirm": [(755, 903)],
-            "arrange_order_options": [(1652, 23)],
-            "arrange_order_options_scene": [(369, 199)],
-            "clue": [(1740, 855)],
-            "clue/daily": [(526, 623)],
-            "clue/filter_all": [(1297, 99)],
-            "clue/give_away": [(25, 18)],
-            "clue/receive": [(1295, 15)],
-            "clue/summary": [(59, 153)],
-            "confirm": [(0, 683)],
-            "control_central_assistants": [(39, 560)],
-            "credit_shop_countdown": [(1511, 1017)],
-            "depot": [(0, 955)],
-            "double_confirm/exit": [(940, 464)],
-            "double_confirm/friend": [(978, 465)],
-            "double_confirm/give_up": [(574, 716)],
-            "double_confirm/infrastructure": [(1077, 435)],
-            "double_confirm/main": [(835, 683)],
-            "double_confirm/network": [(708, 435)],
-            "double_confirm/recruit": [(981, 464)],
-            "double_confirm/voice": [(745, 435)],
-            "drone": [(274, 437)],
-            "factory_collect": [(1542, 886)],
-            "fight/refresh": [(1639, 22)],
-            "hypergryph": [(0, 961)],
-            "infra_overview": [(54, 135)],
-            "infra_overview_in": [(64, 705)],
-            "infra_todo": [(13, 1013)],
-            "loading2": [(620, 247)],
-            "loading7": [(106, 635)],
-            "login_account": [(622, 703)],
-            "login_awake": [(888, 743)],
-            "login_connecting": [(760, 881)],
-            "login_loading": [(920, 388)],
-            "login_logo": [(601, 332)],
-            "mail": [(307, 39)],
-            "mission_trainee_on": [(690, 17)],
-            "nav_bar": [(655, 0)],
-            "nav_button": [(26, 20)],
-            "navigation/collection/AP-1": [(203, 821)],
-            "navigation/collection/CA-1": [(203, 821)],
-            "navigation/collection/CE-1": [(243, 822)],
-            "navigation/collection/LS-1": [(240, 822)],
-            "navigation/collection/SK-1": [(204, 821)],
-            "navigation/collection/PR-A-1": [(550, 629)],
-            "navigation/collection/PR-B-1": [(496, 629)],
-            "navigation/collection/PR-C-1": [(487, 586)],
-            "navigation/collection/PR-D-1": [(516, 619)],
-            "navigation/ope_hard_small": [(819, 937)],
-            "navigation/ope_normal_small": [(494, 930)],
-            "navigation/record_restoration": [(274, 970)],
+            "1800": (158, 958),
+            "12cadpa": (1810, 21),
+            "arrange_confirm": (755, 903),
+            "arrange_order_options": (1652, 23),
+            "arrange_order_options_scene": (369, 199),
+            "clue": (1740, 855),
+            "clue/daily": (526, 623),
+            "clue/filter_all": (1297, 99),
+            "clue/give_away": (25, 18),
+            "clue/receive": (1295, 15),
+            "clue/summary": (59, 153),
+            "confirm": (0, 683),
+            "control_central_assistants": (39, 560),
+            "credit_shop_countdown": (1511, 1017),
+            "depot": (0, 955),
+            "double_confirm/exit": (940, 464),
+            "double_confirm/friend": (978, 465),
+            "double_confirm/give_up": (574, 716),
+            "double_confirm/infrastructure": (1077, 435),
+            "double_confirm/main": (835, 683),
+            "double_confirm/network": (708, 435),
+            "double_confirm/recruit": (981, 464),
+            "double_confirm/voice": (745, 435),
+            "drone": (274, 437),
+            "factory_collect": (1542, 886),
+            "fight/refresh": (1639, 22),
+            "hypergryph": (0, 961),
+            "infra_overview": (54, 135),
+            "infra_overview_in": (64, 705),
+            "infra_todo": (13, 1013),
+            "loading2": (620, 247),
+            "loading7": (106, 635),
+            "login_account": (622, 703),
+            "login_awake": (888, 743),
+            "login_connecting": (760, 881),
+            "login_loading": (920, 388),
+            "login_logo": (601, 332),
+            "mail": (307, 39),
+            "mission_trainee_on": (690, 17),
+            "nav_bar": (655, 0),
+            "nav_button": (26, 20),
+            "navigation/collection/AP-1": (203, 821),
+            "navigation/collection/CA-1": (203, 821),
+            "navigation/collection/CE-1": (243, 822),
+            "navigation/collection/LS-1": (240, 822),
+            "navigation/collection/SK-1": (204, 821),
+            "navigation/collection/PR-A-1": (550, 629),
+            "navigation/collection/PR-B-1": (496, 629),
+            "navigation/collection/PR-C-1": (487, 586),
+            "navigation/collection/PR-D-1": (516, 619),
+            "navigation/ope_hard_small": (819, 937),
+            "navigation/ope_normal_small": (494, 930),
+            "navigation/record_restoration": (274, 970),
             "ope_agency_lock": [(1565, 856), (1565, 875)],
-            "ope_elimi_agency_confirm": [(1554, 941)],
-            "ope_elimi_agency_panel": [(1409, 612)],
-            "ope_eliminate": [(1332, 938)],
-            "ope_recover_originite_on": [(1514, 124)],
-            "ope_recover_potion_on": [(1046, 127)],
-            "ope_select_start": [(1579, 701)],
-            "open_recruitment": [(192, 143)],
-            "order_label": [(404, 137)],
-            "pull_once": [(1260, 950)],
-            "recruiting_instructions": [(343, 179)],
-            "riic/exp": [(1385, 239)],
-            "riic/manufacture": [(1328, 126)],
-            "riic/report_title": [(1712, 25)],
-            "spent_credit": [(332, 264)],
-            "shop_cart": [(1252, 842)],
-            "shop_credit_2": [(1657, 135)],
-            "skip": [(1803, 32)],
-            "terminal_main": [(73, 959)],
-            "terminal_pre2": [(1459, 797)],
-            "upgrade": [(997, 501)],
+            "ope_elimi_agency_confirm": (1554, 941),
+            "ope_elimi_agency_panel": (1409, 612),
+            "ope_eliminate": (1332, 938),
+            "ope_recover_originite_on": (1514, 124),
+            "ope_recover_potion_on": (1046, 127),
+            "ope_select_start": (1579, 701),
+            "open_recruitment": (192, 143),
+            "order_label": (404, 137),
+            "pull_once": (1260, 950),
+            "read_and_agree": (1115, 767),
+            "recruiting_instructions": (343, 179),
+            "riic/exp": (1385, 239),
+            "riic/manufacture": (1328, 126),
+            "riic/report_title": (1712, 25),
+            "spent_credit": (332, 264),
+            "shop_cart": (1252, 842),
+            "shop_credit_2": (1657, 135),
+            "skip": (1803, 32),
+            "terminal_main": (73, 959),
+            "terminal_pre2": (1459, 797),
+            "upgrade": (997, 501),
         }
 
         if res in color:
             res_img = loadres(res)
             h, w, _ = res_img.shape
 
-            for pos in color[res]:
+            pos_list = color[res]
+            if pos_list[0] is not tuple:
+                pos_list = [color[res]]
+            for pos in pos_list:
                 scope = pos, va(pos, (w, h))
                 img = cropimg(self.img, scope)
                 if cmatch(img, res_img, draw=draw):
@@ -790,6 +791,7 @@ class Recognizer(object):
             "ope_failed": (183, 465),
             "ope_finish": (87, 265),
             "ope_plan": (1278, 24),
+            "ope_select_start_empty": ((0, 0), (400, 400)),
             "recruit/agent_token": ((1740, 765), (1920, 805)),
             "recruit/agent_token_first": ((1700, 760), (1920, 810)),
             "recruit/available_level": (1294, 234),

@@ -1,22 +1,14 @@
 import random
-import smtplib
 import sys
 import time
 import traceback
 from abc import abstractmethod
 from datetime import datetime, timedelta
-from email.mime.image import MIMEImage
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 from inspect import getframeinfo, stack
-from io import BytesIO
-from threading import Thread
 from typing import Literal, Optional, Tuple
 
 import cv2
 import numpy as np
-import requests
-from bs4 import BeautifulSoup
 
 from arknights_mower.utils import config
 from arknights_mower.utils import typealias as tp
@@ -25,6 +17,7 @@ from arknights_mower.utils.device.adb_client.const import KeyCode
 from arknights_mower.utils.device.adb_client.session import Session
 from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.device.scrcpy import Scrcpy
+from arknights_mower.utils.email import send_message
 from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
@@ -65,17 +58,18 @@ class BaseSolver:
                 try:
                     self.device = Device()
                     self.device.client.check_server_alive()
-                    Session().connect(config.ADB_DEVICE[0])
+                    Session().connect(config.conf.adb)
                     if not self.device.check_resolution():
                         raise MowerExit
-                    if config.droidcast["enable"]:
+                    if config.conf.droidcast.enable:
                         self.device.start_droidcast()
-                    if config.ADB_CONTROL_CLIENT == "scrcpy":
+                    if config.conf.touch_method == "scrcpy":
                         self.device.control.scrcpy = Scrcpy(self.device.client)
                     break
                 except MowerExit:
                     raise
-                except Exception:
+                except Exception as e:
+                    logger.exception(e)
                     restart_simulator()
 
         self.recog = recog if recog is not None else Recognizer(self.device)
@@ -523,7 +517,7 @@ class BaseSolver:
                         else:
                             break
                     if captcha_times <= 0:
-                        self.send_message("验证码自动滑动失败，退出游戏，停止运行mower")
+                        send_message("验证码自动滑动失败，退出游戏，停止运行mower")
                         self.device.exit()
                         sys.exit()
                 elif scene == Scene.LOGIN_INPUT:
@@ -697,281 +691,3 @@ class BaseSolver:
         csleep(3)
         self.check_current_focus()
         return False
-
-    # 将html表单转化为通用markdown格式（为了避免修改之前email内容，采用基于之前数据格式进行加工的方案）
-    def html_to_markdown(self, html_content):
-        soup = BeautifulSoup(html_content, "html.parser")
-
-        markdown_output = ""
-
-        # 提取标题
-        title = soup.find("title")
-        if title:
-            markdown_output += f"## {title.get_text()}\n\n"
-
-        # 提取表格
-        for table in soup.find_all("table"):
-            rows = table.find_all("tr")
-            header_processed = False  # 标记是否已经处理过列头
-            for row in rows:
-                columns = row.find_all(["td", "th"])
-                line_data = []
-                for col in columns:
-                    colspan = int(col.get("colspan", 1))
-                    content = col.get_text().strip() + " " * (colspan - 1)
-                    line_data.append(content)
-                markdown_output += "| " + " | ".join(line_data) + " |\n"
-
-                # 仅为首个列头添加分隔线
-                if any(cell.name == "th" for cell in columns) and not header_processed:
-                    line_separators = []
-                    for col in columns:
-                        colspan = int(col.get("colspan", 1))
-                        line_separators.extend(["---"] * colspan)
-                    markdown_output += "| " + " | ".join(line_separators) + " |\n"
-                    header_processed = True
-
-        return markdown_output.strip()
-
-    # 指数退避策略逐渐增加等待时间
-    def exponential_backoff(self, initial_delay=1, max_retries=3, factor=2):
-        """Implement exponential backoff for retries."""
-        delay = initial_delay
-        retries = 0
-        while retries < max_retries:
-            yield delay
-            delay *= factor
-            retries += 1
-
-    # QQ邮件异常处理
-    def handle_email_error(self, email_config, msg):
-        for delay in self.exponential_backoff():
-            try:
-                if email_config["custom_smtp_server"]["enable"]:
-                    smtp_server = email_config["custom_smtp_server"]["server"]
-                    ssl_port = email_config["custom_smtp_server"]["ssl_port"]
-                    if email_config["custom_smtp_server"]["encryption"] == "starttls":
-                        # 使用STARTTLS加密
-                        s = smtplib.SMTP(smtp_server, ssl_port, timeout=10.0)
-                        s.starttls()
-                    else:
-                        # 使用TLS加密
-                        s = smtplib.SMTP_SSL(smtp_server, ssl_port, timeout=10.0)
-                else:
-                    s = smtplib.SMTP_SSL("smtp.qq.com", 465, timeout=10.0)
-                s.login(email_config["account"], email_config["pass_code"])
-                s.sendmail(
-                    email_config["account"],
-                    email_config.get("recipients", []),
-                    msg.as_string(),
-                )
-                s.close()
-                logger.info("邮件发送成功")
-                break
-            except Exception as e:
-                logger.error("邮件发送失败")
-                logger.exception(e)
-                csleep(delay)
-
-    # Server酱异常处理
-    def handle_serverJang_error(self, url, data):
-        for delay in self.exponential_backoff():
-            try:
-                response = requests.post(url, data=data)
-                json_data = response.json()
-                if json_data.get("code") == 0:
-                    logger.info("Server酱通知发送成功")
-                    break
-                else:
-                    logger.error(
-                        f"Server酱通知发送失败，错误信息：{json_data.get('message')}"
-                    )
-                    csleep(delay)
-            except Exception as e:
-                logger.error("Server酱通知发送失败")
-                logger.exception(e)
-                csleep(delay)
-
-    # PushPlus异常处理
-    def handle_pushplus_error(self, data):
-        for delay in self.exponential_backoff():
-            try:
-                response = requests.post(r"http://www.pushplus.plus/send", json=data)
-                json_data = response.json()
-                if json_data.get("code") == 200:
-                    logger.info("PushPlus通知发送成功")
-                    break
-                else:
-                    logger.error(
-                        f"PushPlus通知发送失败，错误信息：{json_data.get('msg')}"
-                    )
-                    csleep(delay)
-            except Exception as e:
-                logger.error("PushPlus通知发送失败")
-                logger.exception(e)
-                csleep(delay)
-
-    def send_message(
-        self,
-        body="",
-        subject="",
-        subtype="plain",
-        retry_times=3,
-        attach_image: Optional[tp.Image] = None,
-        use_thread=True,
-    ):
-        if use_thread:
-            Thread(
-                target=self.send_message_old,
-                args=(body, subject, subtype, retry_times, attach_image),
-            ).start()
-        else:
-            self.send_message_old(body, subject, subtype, retry_times, attach_image)
-
-    # 消息发送 原Email发送 EightyDollars
-    def send_message_old(
-        self,
-        body="",
-        subject="",
-        subtype="plain",
-        retry_times=3,
-        attach_image: Optional[tp.Image] = None,
-    ):
-        send_message_config = getattr(self, "send_message_config", None)
-        if not send_message_config:
-            logger.error("send_message_config 未在配置中定义!")
-            return
-
-        failed_methods = []
-
-        if subtype == "plain" and subject == "":
-            subject = body
-
-        # markdown格式的消息体
-        mkBody = body
-        # 如果body是HTML内容，转换为Markdown格式
-        if subtype == "html":
-            mkBody = self.html_to_markdown(body)
-
-        # 获取QQ邮件配置
-        email_config = send_message_config.get("email_config")
-        # 获取Server酱配置
-        serverJang_push_config = send_message_config.get("serverJang_push_config")
-        # 获取PushPlus配置
-        pushplus_config = send_message_config.get("pushplus_config")
-
-        # 邮件通知部分
-        if email_config and email_config.get("mail_enable", 0):
-            msg = MIMEMultipart()
-            msg.attach(MIMEText(body, subtype))
-            msg["Subject"] = email_config.get("subject", "") + subject
-            msg["From"] = email_config.get("account", "")
-            msg["To"] = ", ".join(email_config.get("recipients", []))
-
-            if attach_image is not None:
-                img = cv2.cvtColor(attach_image, cv2.COLOR_RGB2BGR)
-                _, attachment = cv2.imencode(
-                    ".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), 75]
-                )
-                with BytesIO(attachment) as f:
-                    f.seek(0)
-                    image_content = MIMEImage(f.getvalue())
-
-                    image_content.add_header(
-                        "Content-Disposition", "attachment", filename="image.jpg"
-                    )
-                    msg.attach(image_content)
-
-            try:
-                self.handle_email_error(email_config, msg)  # 第一次尝试
-            except Exception:
-                failed_methods.append(("email", email_config, msg))
-
-        # Server酱通知部分
-        if serverJang_push_config and serverJang_push_config.get(
-            "server_push_enable", False
-        ):
-            send_key = serverJang_push_config.get("sendKey")
-            if not send_key:
-                logger.error("Server酱的sendKey未配置")
-                return
-
-            url = f"https://sctapi.ftqq.com/{send_key}.send"
-            data = {"title": "[Mower通知]" + subject, "desp": mkBody}
-
-            try:
-                self.handle_serverJang_error(url, data)  # 第一次尝试
-            except Exception:
-                failed_methods.append(("serverJang", url, data))
-
-        # PushPlus通知部分
-        if pushplus_config and pushplus_config.get("enable", False):
-            token = pushplus_config.get("token")
-            if not token:
-                logger.error("PushPlus的token未配置")
-                return
-
-            # img 嵌入 html
-            # if attach_image is not None:
-            #     img = cv2.cvtColor(attach_image, cv2.COLOR_RGB2BGR)
-            #     _, attachment = cv2.imencode(
-            #         ".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), 75]
-            #     )
-            #     img_base64 = base64.b64encode(attachment)
-            #     img_url = f"data:image/jpeg;base64,{img_base64.decode('utf-8')}"
-            #     img_tag = f'<img src="{img_url}" />'
-
-            #     # 查找 </body> 标签的位置
-            #     body_close_tag = '</body>'
-            #     insert_position = body.find(body_close_tag)
-
-            #     # 在 </body> 标签前插入 <img> 标签
-            #     if insert_position != -1:
-            #         body = body[:insert_position] + img_tag + body[insert_position:]
-
-            url = r"http://www.pushplus.plus/send"
-            data = {
-                "token": token,
-                "title": "Mower通知",
-                "content": body,
-                "template": "markdown",
-            }
-
-            try:
-                response = requests.post(url, json=data)
-                json_data = response.json()
-                if json_data.get("code") == 200:
-                    logger.info("PushPlus通知发送成功")
-                else:
-                    logger.error(
-                        f"PushPlus通知发送失败，错误信息：{json_data.get('msg')}"
-                    )
-            except Exception as e:
-                logger.error("PushPlus通知发送失败")
-                logger.exception(e)
-                failed_methods.append(("pushplus", data))
-
-        # 处理失败的方法
-        for method, *args in failed_methods:
-            if method == "email":
-                for _ in range(retry_times):
-                    try:
-                        self.handle_email_error(*args)
-                        break
-                    except Exception:
-                        csleep(1)
-            elif method == "serverJang":
-                for _ in range(retry_times):
-                    try:
-                        self.handle_serverJang_error(*args)
-                        break
-                    except Exception:
-                        csleep(1)
-
-            elif method == "pushplus":
-                for _ in range(retry_times):
-                    try:
-                        self.handle_pushplus_error(*args)
-                        break
-                    except Exception:
-                        csleep(1)

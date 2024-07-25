@@ -55,6 +55,10 @@
         "label": "DOWNLOAD_VOICE_RESOURCES",
         "comment": "检测到有未下载的语音资源"
     },
+    "13": {
+        "label": "AGREEMENT_UPDATE",
+        "comment": "协议更新"
+    },
     "101": {
         "label": "LOGIN_MAIN",
         "comment": "登录页面"

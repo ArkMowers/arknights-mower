@@ -19,9 +19,7 @@ MNT_PATH = "/data/local/tmp/minitouch"
 class Client(object):
     """Use minitouch to control Android devices easily"""
 
-    def __init__(
-        self, client: ADBClient, touch_device: str = config.MNT_TOUCH_DEVICE
-    ) -> None:
+    def __init__(self, client: ADBClient, touch_device: str = None) -> None:
         self.client = client
         self.touch_device = touch_device
         self.process = None

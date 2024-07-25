@@ -205,6 +205,32 @@ async function test_screenshot() {
                 <template #suffix>秒</template>
               </n-input-number>
             </n-form-item>
+            <n-form-item v-if="simulator.name">
+              <template #label>
+                <span>模拟器老板键</span>
+                <help-text>
+                  <div>启动模拟器后按此快捷键</div>
+                  <div>若不需要此功能，请留空</div>
+                  <div>加号分隔按键，不要空格</div>
+                  <div>
+                    按键名参考
+                    <n-button
+                      text
+                      tag="a"
+                      href="https://pyautogui.readthedocs.io/en/latest/keyboard.html#keyboard-keys"
+                      target="_blank"
+                      type="primary"
+                    >
+                      KEYBOARD_KEYS
+                    </n-button>
+                  </div>
+                </help-text>
+              </template>
+              <n-input
+                v-model:value="simulator.hotkey"
+                placeholder="输入模拟器的老板键，组合键用分号隔开，或留空以停用"
+              />
+            </n-form-item>
             <n-form-item label="启动游戏">
               <n-select v-model:value="tap_to_launch_game.enable" :options="launch_options" />
             </n-form-item>

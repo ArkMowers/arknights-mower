@@ -92,6 +92,11 @@ def announcement(solver: BaseSolver):
     solver.tap(solver.recog.check_announcement())
 
 
+@edge(Scene.AGREEMENT_UPDATE, Scene.INDEX)
+def agreement(solver: BaseSolver):
+    solver.tap_element("read_and_agree")
+
+
 @edge(Scene.INDEX, Scene.INFRA_MAIN)
 def index_to_infra(solver: BaseSolver):
     solver.tap_index_element("infrastructure")

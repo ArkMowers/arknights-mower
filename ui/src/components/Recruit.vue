@@ -5,7 +5,6 @@ import { storeToRefs } from 'pinia'
 const {
   recruit_enable,
   recruitment_permit,
-  recruitment_time,
   recruit_robot,
   recruit_gap,
   recruit_auto_5,
@@ -48,16 +47,8 @@ const mobile = inject('mobile')
           <template #suffix>张</template>
         </n-input-number>
       </n-form-item>
-      <n-form-item label="三星招募时长">
-        <n-radio-group v-model:value="recruitment_time" name="recruitment_time">
-          <n-space justify="start">
-            <n-radio :value="true">7:40</n-radio>
-            <n-radio :value="false">9:00</n-radio>
-          </n-space>
-        </n-radio-group>
-      </n-form-item>
       <n-form-item label="五星招募策略">
-        <n-radio-group v-model:value="recruit_auto_5" name="recruitment_time">
+        <n-radio-group v-model:value="recruit_auto_5">
           <n-space justify="start">
             <n-radio :value="1">自动选择</n-radio>
             <n-radio :value="2">手动选择</n-radio>

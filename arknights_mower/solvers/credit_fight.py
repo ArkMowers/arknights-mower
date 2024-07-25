@@ -58,8 +58,11 @@ class CreditFight(SceneGraphSolver):
                 return
             self.tap_element("ope_start", interval=2)
         elif scene == Scene.OPERATOR_SELECT:
+            if self.find("ope_select_start_empty"):
+                logger.info("编队内没有编入干员,停止OF-1")
+                return True
             squad = self.current_squad()
-            target = config.conf["credit_fight"]["squad"]
+            target = config.conf.credit_fight.squad
             if squad != target:
                 self.tap((target * 411 - 99, 1040))
                 return
@@ -67,17 +70,17 @@ class CreditFight(SceneGraphSolver):
                 # 开始行动
                 self.tap((1655, 781))
                 fight_solver = AutoFight(self.device, self.recog)
-                conf = config.conf["credit_fight"]
+                conf = config.conf.credit_fight
                 actions = [
                     {"type": "SpeedUp"},
                     {
                         "type": "Deploy",
-                        "name": conf["operator"],
+                        "name": conf.operator,
                         "location": [
-                            conf["x"],
-                            conf["y"],
+                            conf.x,
+                            conf.y,
                         ],
-                        "direction": conf["direction"],
+                        "direction": conf.direction,
                     },
                     {"type": "SkillDaemon"},
                 ]

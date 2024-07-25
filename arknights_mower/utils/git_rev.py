@@ -134,8 +134,7 @@ def git_rev(repo):
 
     # Find head file .git/HEAD (e.g. ref: ref/heads/master => .git/ref/heads/master)
     if not head_ref.startswith("ref: "):
-        warn(f"expected 'ref: path/to/head' in {git_head}")
-        return None
+        return head_ref
     head_ref = head_ref[5:].strip()
 
     # Read commit id from head file

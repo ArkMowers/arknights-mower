@@ -114,17 +114,16 @@ def webview_window(child_conn, global_space, host, port, token, url, tray):
     import webview
 
     from arknights_mower.__init__ import __version__
-    from arknights_mower.utils import path
-    from arknights_mower.utils.conf import load_conf, save_conf
+    from arknights_mower.utils import config, path
 
     path.global_space = global_space
 
     global width
     global height
 
-    conf = load_conf()
-    width = conf["webview"]["width"]
-    height = conf["webview"]["height"]
+    conf = config.conf
+    width = conf.webview.width
+    height = conf.webview.height
 
     def window_size(w, h):
         global width
@@ -175,10 +174,10 @@ def webview_window(child_conn, global_space, host, port, token, url, tray):
     Thread(target=recv_msg, daemon=True).start()
     webview.start()
 
-    conf = load_conf()
-    conf["webview"]["width"] = width
-    conf["webview"]["height"] = height
-    save_conf(conf)
+    config.load()
+    conf.webview.width = width
+    conf.webview.height = height
+    config.save()
     sys.exit()
 
 
@@ -193,16 +192,14 @@ if __name__ == "__main__":
 
     import sys
 
-    from arknights_mower.utils import path
+    from arknights_mower.utils import config, path
 
     if len(sys.argv) == 2:
         path.global_space = sys.argv[1]
 
-    from arknights_mower.utils.conf import load_conf
-
-    conf = load_conf()
-    tray = conf["webview"]["tray"]
-    token = conf["webview"]["token"]
+    conf = config.conf
+    tray = conf.webview.tray
+    token = conf.webview.token
     host = "0.0.0.0" if token else "127.0.0.1"
 
     splash_queue.put({"type": "text", "data": "检测端口占用"})
@@ -210,7 +207,7 @@ if __name__ == "__main__":
     from arknights_mower.utils.network import get_new_port, is_port_in_use
 
     if token:
-        port = conf["webview"]["port"]
+        port = conf.webview.port
 
         if is_port_in_use(port):
             splash_queue.put(
@@ -267,8 +264,6 @@ if __name__ == "__main__":
         daemon=True,
     )
     webview_process.start()
-
-    from arknights_mower.utils import config
 
     config.parent_conn = parent_conn
     config.webview_process = webview_process

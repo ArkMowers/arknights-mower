@@ -96,7 +96,7 @@ def scheduling(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
                 if last_priority_0_task is not None:
                     time_difference = task.time - last_priority_0_task.time
                     if (
-                        config.grandet_mode
+                        config.conf.run_order_grandet_mode.enable
                         and time_difference < min_time_interval
                         and time_now < last_priority_0_task.time
                     ):

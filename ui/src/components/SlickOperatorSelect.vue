@@ -14,6 +14,7 @@
       multiple
       filterable
       :options="operators"
+      :placeholder="props.select_placeholder"
       v-model:value="operatorValue"
       :filter="(p, o) => match(o.label, p)"
       :render-label="render_op_label"
@@ -37,6 +38,10 @@ const props = defineProps({
   disabled: {
     type: Boolean,
     default: false
+  },
+  select_placeholder: {
+    type: String,
+    default: ''
   }
 })
 const render_op_slick_tag = ({ option, handleClose }) => {

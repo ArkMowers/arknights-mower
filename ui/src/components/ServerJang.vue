@@ -21,9 +21,9 @@ async function test_push() {
 <template>
   <n-card>
     <template #header>
-      <n-checkbox v-model:checked="server_push_enable" class="serverpush-title">
+      <n-checkbox v-model:checked="server_push_enable" class="serverpush-title" disabled>
         <div class="card-title-wrapper">
-          <span class="card-title">Server酱推送通知</span>
+          <span class="card-title">Server酱推送通知（暂不可用）</span>
           <help-text class="card-title-tip">
             什么是Server酱？参考：
             <n-button text tag="a" href="https://sct.ftqq.com" target="_blank" type="primary">

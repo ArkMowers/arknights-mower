@@ -8,7 +8,7 @@ from arknights_mower.utils import config
 from arknights_mower.utils.csleep import csleep
 from arknights_mower.utils.device.adb_client.session import Session
 from arknights_mower.utils.device.adb_client.socket import Socket
-from arknights_mower.utils.device.adb_client.utils import adb_buildin, run_cmd
+from arknights_mower.utils.device.adb_client.utils import run_cmd
 from arknights_mower.utils.log import logger
 
 
@@ -28,28 +28,21 @@ class Client(object):
     def __init_adb(self) -> None:
         if self.adb_bin is not None:
             return
-        for adb_bin in config.ADB_BINARY:
-            logger.debug(f"try adb binary: {adb_bin}")
-            if self.__check_adb(adb_bin):
-                self.adb_bin = adb_bin
-                return
-        if config.ADB_BUILDIN is None:
-            adb_buildin()
-        if self.__check_adb(config.ADB_BUILDIN):
-            self.adb_bin = config.ADB_BUILDIN
+        adb_bin = config.conf.maa_adb_path
+        logger.debug(f"try adb binary: {adb_bin}")
+        if self.__check_adb(adb_bin):
+            self.adb_bin = adb_bin
             return
         raise RuntimeError("Can't start adb server")
 
     def __init_device(self) -> None:
         # wait for the newly started ADB server to probe emulators
         csleep(1)
-        if self.device_id is None or self.device_id not in config.ADB_DEVICE:
+        if self.device_id is None or self.device_id != config.conf.adb:
             self.device_id = self.__choose_devices()
         if self.device_id is None:
             if self.connect is None:
-                if config.ADB_DEVICE[0] != "":
-                    for connect in config.ADB_CONNECT:
-                        Session().connect(connect)
+                Session().connect(config.conf.adb)
             else:
                 Session().connect(self.connect)
             self.device_id = self.__choose_devices()
@@ -73,10 +66,9 @@ class Client(object):
     def __choose_devices(self) -> Optional[str]:
         """choose available devices"""
         devices = self.__available_devices()
-        for device in config.ADB_DEVICE:
-            if device in devices:
-                return device
-        if len(devices) > 0 and config.ADB_DEVICE[0] == "":
+        if config.conf.adb in devices:
+            return config.conf.adb
+        if len(devices) > 0 and config.conf.adb == "":
             logger.debug(devices[0])
             return devices[0]
 

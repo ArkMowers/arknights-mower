@@ -9,8 +9,11 @@ from urllib import parse
 import pandas as pd
 import requests
 
+from arknights_mower.utils import config
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
+
+conf = config.conf
 
 app_code = "4ca99fa6b56cc2ba"
 
@@ -31,20 +34,8 @@ cred_code_url = "https://zonai.skland.com/api/v1/user/auth/generate_cred_by_code
 
 
 class SKLand:
-    def __init__(self, skland_info):
+    def __init__(self):
         self.record_path = get_path("@app/tmp/skland.csv")
-        self.account_list = []
-        for item in skland_info:
-            self.account_list.append(
-                {
-                    "account": item["account"],
-                    "isCheck": item["isCheck"],
-                    "password": item["password"],
-                    "sign_in_official": item["sign_in_official"],
-                    "sign_in_bilibili": item["sign_in_bilibili"],
-                    "cultivate_select": item["cultivate_select"],
-                }
-            )
 
         self.header = {
             "cred": "",
@@ -66,42 +57,37 @@ class SKLand:
         self.all_recorded = True
 
     def start(self):
-        for item in self.account_list:
-            if item["isCheck"]:
-                if self.has_record(item["account"]):
+        for item in conf.skland_info:
+            if self.has_record(item.account):
+                continue
+            self.all_recorded = False
+            self.save_param(self.get_cred_by_token(self.log(item)))
+            for i in self.get_binding_list():
+                body = {"gameId": 1, "uid": i.get("uid")}
+                # list_awards(1, i.get('uid'))
+                resp = requests.post(
+                    sign_url,
+                    headers=self.get_sign_header(sign_url, "post", body, self.header),
+                    json=body,
+                ).json()
+                if resp["code"] != 0:
+                    self.reward.append(
+                        {"nickName": item.account, "reward": resp.get("message")}
+                    )
+                    logger.info(f'{i.get("nickName")}：{resp.get("message")}')
                     continue
-                self.all_recorded = False
-                self.save_param(self.get_cred_by_token(self.log(item)))
-                for i in self.get_binding_list():
-                    body = {"gameId": 1, "uid": i.get("uid")}
-                    # list_awards(1, i.get('uid'))
-                    resp = requests.post(
-                        sign_url,
-                        headers=self.get_sign_header(
-                            sign_url, "post", body, self.header
-                        ),
-                        json=body,
-                    ).json()
-                    if resp["code"] != 0:
-                        self.reward.append(
-                            {"nickName": item["account"], "reward": resp.get("message")}
-                        )
-                        logger.info(f'{i.get("nickName")}：{resp.get("message")}')
-                        continue
-                    awards = resp["data"]["awards"]
-                    for j in awards:
-                        res = j["resource"]
-                        self.reward.append(
-                            {
-                                "nickName": item["account"],
-                                "reward": "{}×{}".format(
-                                    res["name"], j.get("count") or 1
-                                ),
-                            }
-                        )
-                        logger.info(
-                            f'{i.get("nickName")}获得了{res["name"]}×{j.get("count") or 1}'
-                        )
+                awards = resp["data"]["awards"]
+                for j in awards:
+                    res = j["resource"]
+                    self.reward.append(
+                        {
+                            "nickName": item.account,
+                            "reward": "{}×{}".format(res["name"], j.get("count") or 1),
+                        }
+                    )
+                    logger.info(
+                        f'{i.get("nickName")}获得了{res["name"]}×{j.get("count") or 1}'
+                    )
         if len(self.reward) > 0:
             return self.record_log()
         if self.all_recorded:
@@ -115,7 +101,7 @@ class SKLand:
     def log(self, account):
         r = requests.post(
             token_password_url,
-            json={"phone": account["account"], "password": account["password"]},
+            json={"phone": account.account, "password": account.password},
             headers=self.header_login,
         ).json()
         if r.get("status") != 0:
@@ -240,8 +226,8 @@ class SKLand:
 
     def test_connect(self):
         res = []
-        for item in self.account_list:
-            if item["isCheck"]:
+        for item in conf.skland_info:
+            if item.isCheck:
                 try:
                     self.save_param(self.get_cred_by_token(self.log(item)))
                     for i in self.get_binding_list():
@@ -252,6 +238,5 @@ class SKLand:
                                 )
                             )
                 except Exception as e:
-                    res.append("{}无法连接-{}".format(item["account"], e))
-
+                    res.append("{}无法连接-{}".format(item.account, e))
         return res

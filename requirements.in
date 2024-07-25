@@ -1,0 +1,58 @@
+# 图像处理
+opencv-python==4.9.0.80
+numpy==1.26.4
+scipy==1.13.0
+scikit-image==0.23.2
+scikit-learn==1.4.2
+pillow==10.3.0
+
+# OCR
+rapidocr-onnxruntime==1.3.24
+
+# 二维码
+base45==0.4.4
+pyzbar==0.1.9
+qrcode==7.4.2
+
+# WebUI
+Flask==3.0.3
+Flask-Cors==4.0.1
+flask-sock==0.7.0
+pywebview==5.1
+pystray==0.19.5
+
+# 配置文件
+PyYAML==6.0.1
+yamlcore==0.0.2
+pydantic==2.8.2
+
+# CSV
+pandas==2.2.2
+
+# 日志
+colorlog==6.8.2
+
+# 场景图
+networkx==3.3
+
+# 副表条件
+evalidate==2.0.2
+
+# 任务列表
+jsonpickle==3.0.4
+
+# 时区
+tzlocal==5.2
+pytz==2024.1
+
+# 网络请求、官网公告解析、HTML转Markdown、检查版本
+requests==2.31.0
+beautifulsoup4==4.12.3
+lxml==5.2.2
+htmllistparse==0.6.1
+
+# 邮件模板
+Jinja2==3.1.4
+
+# 启动模拟器后按快捷键
+PyAutoGUI==0.9.54

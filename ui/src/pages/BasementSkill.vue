@@ -30,7 +30,7 @@
 </template>
 
 <script setup>
-import skill from '@/pages/skill.json'
+import skill from '@/pages/basement_skill/skill.json'
 import CustomComponent from '@/components/buffer.vue'
 import { ref, computed } from 'vue'
 const skillData = ref(skill)

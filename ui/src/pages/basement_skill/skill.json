@@ -421,8 +421,8 @@
         "skillname": "巴别塔之帜",
         "buffer": true,
         "buffer_des": [
-          "cc_c_sui2_1",
-          "cc_c_room2"
+          "cc_c_room2",
+          "cc_c_sui2_1"
         ],
         "des": "进驻控制中枢时，<$cc.c.room2><@cc.kw>其他设施</></>内处于工作状态的干员心情每小时恢复<@cc.vup>+0.1</>，当<@cc.kw>魔王</>进驻中枢时额外<@cc.vup>+0.1</>（与控制中枢加成有<$cc.c.sui2_1><@cc.rem>特殊比较规则</></>）",
         "roomType": "中枢",
@@ -2459,8 +2459,8 @@
         "skillname": "团队合作",
         "buffer": true,
         "buffer_des": [
-          "cc_tag_mh",
-          "cc_bd_felyne"
+          "cc_bd_felyne",
+          "cc_tag_mh"
         ],
         "des": "进驻控制中枢时，控制中枢内每有1名<$cc.tag.mh><@cc.kw>怪物猎人小队</></>干员，则<$cc.bd_felyne><@cc.rem>木天蓼</></><@cc.vup>+2</>",
         "roomType": "中枢",
@@ -2612,8 +2612,8 @@
         "skillname": "古老巫术",
         "buffer": true,
         "buffer_des": [
-          "cc_bd_b1",
-          "cc_bd_C"
+          "cc_bd_C",
+          "cc_bd_b1"
         ],
         "des": "进驻制造站时，每<@cc.vup>5</>点<$cc.bd_b1><@cc.rem>人间烟火</></>转化为<@cc.vup>1</>点<$cc.bd_C><@cc.rem>巫术结晶</></>",
         "roomType": "制造站",
@@ -2755,9 +2755,9 @@
         "skillname": "孤光共照",
         "buffer": true,
         "buffer_des": [
-          "cc_c_sui2_1",
           "cc_bd_b1",
-          "cc_c_room2"
+          "cc_c_room2",
+          "cc_c_sui2_1"
         ],
         "des": "进驻控制中枢时，<$cc.c.room2><@cc.kw>其他设施</></>内处于工作状态的干员心情每小时恢复<@cc.vup>+0.05</>；同时每有<@cc.vup>20</>点<$cc.bd_b1><@cc.rem>人间烟火</></>，则额外<@cc.vup>+0.05</>，（与控制中枢加成有<$cc.c.sui2_1><@cc.rem>特殊比较规则</></>）",
         "roomType": "中枢",
@@ -3403,8 +3403,8 @@
         "skillname": "公事公办",
         "buffer": true,
         "buffer_des": [
-          "cc_c_room2",
           "cc_c_room1",
+          "cc_c_room2",
           "cc_c_skill"
         ],
         "des": "进驻控制中枢时，<$cc.c.room1><@cc.kw>部分设施</></>内处于工作状态的干员心情每小时恢复<@cc.vup>+0.1</>；同时控制中枢内<$cc.c.skill><@cc.kw>部分技能</></>可以为<$cc.c.room2><@cc.kw>其他设施</></>内处于工作状态的干员额外提供心情恢复",
@@ -3732,8 +3732,8 @@
         "skillname": "琴键漫步",
         "buffer": true,
         "buffer_des": [
-          "cc_bd_a1_a3",
-          "cc_bd_a1"
+          "cc_bd_a1",
+          "cc_bd_a1_a3"
         ],
         "des": "进驻宿舍时，每<@cc.vup>1</>个<$cc.bd_a1_a3><@cc.rem>小节</></>转化为<@cc.vup>1</>点<$cc.bd_a1><@cc.rem>感知信息</></>",
         "roomType": "宿舍",
@@ -4490,8 +4490,8 @@
         "skillname": "“山河远阔”",
         "buffer": true,
         "buffer_des": [
-          "cc_bd_b1",
-          "cc_bd_a1"
+          "cc_bd_a1",
+          "cc_bd_b1"
         ],
         "des": "进驻控制中枢时，当自身心情大于<@cc.kw>12</>时，<$cc.bd_b1><@cc.rem>人间烟火</></><@cc.vup>+15</>；当自身心情处于<@cc.kw>12</>以下时，<$cc.bd_a1><@cc.rem>感知信息</></><@cc.vup>+10</>",
         "roomType": "中枢",
@@ -5597,9 +5597,9 @@
         "skillname": "集群狩猎·α",
         "buffer": true,
         "buffer_des": [
+          "cc_c_abyssal2_1",
           "cc_c_abyssal2_3",
-          "cc_g_abyssal",
-          "cc_c_abyssal2_1"
+          "cc_g_abyssal"
         ],
         "des": "进驻控制中枢时，控制中枢内所有干员的心情每小时恢复<@cc.vup>+0.05</>；基建内<$cc.g.abyssal><@cc.kw>深海猎人</></>干员获得<$cc.c.abyssal2_1><@cc.rem>特殊加成</></>（与部分技能有<$cc.c.abyssal2_3><@cc.rem>特殊叠加规则</></>）",
         "roomType": "中枢",
@@ -5615,9 +5615,9 @@
         "skillname": "集群狩猎·β",
         "buffer": true,
         "buffer_des": [
+          "cc_c_abyssal2_2",
           "cc_c_abyssal2_3",
-          "cc_g_abyssal",
-          "cc_c_abyssal2_2"
+          "cc_g_abyssal"
         ],
         "des": "进驻控制中枢时，控制中枢内所有干员的心情每小时恢复<@cc.vup>+0.05</>；基建内<$cc.g.abyssal><@cc.kw>深海猎人</></>干员获得<$cc.c.abyssal2_2><@cc.rem>特殊加成</></>（与部分技能有<$cc.c.abyssal2_3><@cc.rem>特殊叠加规则</></>）",
         "roomType": "中枢",
@@ -5913,8 +5913,8 @@
         "skillname": "机械工程",
         "buffer": true,
         "buffer_des": [
-          "cc_bd_tachanka",
-          "cc_bd_ash"
+          "cc_bd_ash",
+          "cc_bd_tachanka"
         ],
         "des": "进驻加工站加工<@cc.kw>任意类材料</>时，副产品的产出概率提升<@cc.vup>50%</>，每<@cc.vup>1</>点<$cc.bd_ash><@cc.rem>情报储备</></>额外提升<@cc.vup>5%</>；如果<$cc.bd_tachanka><@cc.rem>乌萨斯特饮</></>达到<@cc.vup>4</>瓶，则额外提升<@cc.vup>15%</>",
         "roomType": "加工站",
@@ -5953,8 +5953,8 @@
         "skillname": "语言学",
         "buffer": true,
         "buffer_des": [
-          "cc_bd_tachanka",
-          "cc_bd_ash"
+          "cc_bd_ash",
+          "cc_bd_tachanka"
         ],
         "des": "进驻人力办公室时，人脉资源的联络速度<@cc.vup>+20%</>，每<@cc.vup>1</>点<$cc.bd_ash><@cc.rem>情报储备</></>额外<@cc.vup>+5%</>联络速度，每<@cc.vup>1</>瓶<$cc.bd_tachanka><@cc.rem>乌萨斯特饮</></>额外<@cc.vup>+5%</>联络速度",
         "roomType": "人力办公室",
@@ -5993,8 +5993,8 @@
         "skillname": "情报储备",
         "buffer": true,
         "buffer_des": [
-          "cc_g_R6",
-          "cc_bd_ash"
+          "cc_bd_ash",
+          "cc_g_R6"
         ],
         "des": "进驻控制中枢时，控制中枢内每有1名<$cc.g.R6><@cc.kw>彩虹小队</></>干员，则<$cc.bd_ash><@cc.rem>情报储备</></><@cc.vup>+1</>",
         "roomType": "中枢",
@@ -6505,8 +6505,8 @@
         "skillname": "追忆",
         "buffer": true,
         "buffer_des": [
-          "cc_bd_a1_a1",
-          "cc_bd_a1"
+          "cc_bd_a1",
+          "cc_bd_a1_a1"
         ],
         "des": "进驻人力办公室时，每<@cc.vup>1</>点<$cc.bd_a1_a1><@cc.rem>记忆碎片</></>转化为<@cc.vup>1</>点<$cc.bd_a1><@cc.rem>感知信息</></>，心情耗尽时清空所有<$cc.bd_a1_a1><@cc.rem>记忆碎片</></>和自身累积的<$cc.bd_a1><@cc.rem>感知信息</></>",
         "roomType": "人力办公室",
@@ -6564,8 +6564,8 @@
         "skillname": "超感",
         "buffer": true,
         "buffer_des": [
-          "cc_bd_a1",
-          "cc_bd_A"
+          "cc_bd_A",
+          "cc_bd_a1"
         ],
         "des": "进驻制造站时，宿舍内每有<@cc.kw>1</>名干员则<$cc.bd_a1><@cc.rem>感知信息</></><@cc.vup>+1</>，同时每<@cc.vup>1</>点<$cc.bd_a1><@cc.rem>感知信息</></>转化为<@cc.vup>1</>点<$cc.bd_A><@cc.rem>思维链环</></>",
         "roomType": "制造站",
