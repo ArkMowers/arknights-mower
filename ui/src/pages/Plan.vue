@@ -323,7 +323,10 @@ async function import_plan() {
           </p>
         </help-text>
       </template>
-      <slick-operator-select v-model="current_conf.refresh_trading"></slick-operator-select>
+      <slick-operator-select
+        v-model="current_conf.refresh_trading"
+        select_placeholder="填入在贸易站外影响贸易效率的干员"
+      ></slick-operator-select>
     </n-form-item>
     <n-form-item v-if="sub_plan != 'main'">
       <template #label>
