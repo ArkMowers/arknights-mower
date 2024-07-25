@@ -34,7 +34,6 @@ from arknights_mower.utils.email import send_message
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.news import get_update_time
 from arknights_mower.utils.operators import Operator, Operators
 from arknights_mower.utils.plan import PlanTriggerTiming
 from arknights_mower.utils.recognize import Recognizer, Scene
@@ -711,7 +710,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.error = True
             self.planned = True
         elif not self.todo_task:
-            get_update_time()
             if (
                 self.enable_party
                 and (
