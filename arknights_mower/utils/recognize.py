@@ -792,6 +792,7 @@ class Recognizer(object):
             "ope_failed": (183, 465),
             "ope_finish": (87, 265),
             "ope_plan": (1278, 24),
+            "ope_select_start_empty": ((0, 0), (400, 400)),
             "riic/assistants": ((1320, 400), (1600, 650)),
             "riic/iron": ((1570, 230), (1630, 340)),
             "riic/orundum": ((1500, 320), (1800, 550)),
