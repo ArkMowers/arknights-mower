@@ -257,7 +257,7 @@ class Recognizer(object):
             self.scene = Scene.DEPOT
         elif self.find("pull_once"):
             self.scene = Scene.HEADHUNTING
-        elif self.find("read_and_agree"):
+        elif self.find("read_and_agree") or self.find("next_step"):
             self.scene = Scene.AGREEMENT_UPDATE
         elif self.is_black():
             self.scene = Scene.LOADING
@@ -706,6 +706,7 @@ class Recognizer(object):
             "navigation/ope_hard_small": (819, 937),
             "navigation/ope_normal_small": (494, 930),
             "navigation/record_restoration": (274, 970),
+            "next_step": (915, 811),
             "ope_agency_lock": [(1565, 856), (1565, 875)],
             "ope_elimi_agency_confirm": (1554, 941),
             "ope_elimi_agency_panel": (1409, 612),
