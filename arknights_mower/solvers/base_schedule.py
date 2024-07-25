@@ -47,7 +47,9 @@ from arknights_mower.utils.scheduler_task import (
     try_add_release_dorm,
 )
 
+
 conf = config.conf
+
 
 
 class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
@@ -3320,7 +3322,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         ] is None or datetime.now() > self.last_execution["recruit"] + timedelta(
             hours=conf.recruit_gap
         ):
+
             RecruitSolver(self.device, self.recog).run()
+
             self.last_execution["recruit"] = datetime.now()
             logger.info(f"下一次公开招募执行时间在{conf.recruit_gap}小时之后")
 
