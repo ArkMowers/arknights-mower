@@ -192,10 +192,12 @@ if __name__ == "__main__":
 
     import sys
 
-    from arknights_mower.utils import config, path
+    from arknights_mower.utils import path
 
     if len(sys.argv) == 2:
         path.global_space = sys.argv[1]
+
+    from arknights_mower.utils import config
 
     conf = config.conf
     tray = conf.webview.tray

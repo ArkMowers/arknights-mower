@@ -26,7 +26,6 @@ def save():
 def load():
     global conf
     if not conf_path.is_file():
-        conf_path.parent.mkdir(exist_ok=True)
         conf = Conf()
         save()
     with conf_path.open("r", encoding="utf-8") as f:
