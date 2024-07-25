@@ -10,6 +10,7 @@ from typing import Optional
 import colorlog
 
 from arknights_mower.utils import config
+from arknights_mower.utils.path import get_path
 
 BASIC_FORMAT = (
     "%(asctime)s - %(levelname)s - %(pathname)s:%(lineno)d - %(funcName)s - %(message)s"
@@ -56,45 +57,35 @@ logger.addHandler(dhlr)
 
 def init_fhlr() -> None:
     """initialize log file"""
-    if config.LOGFILE_PATH is None:
+    if config.wh:
         return
-    folder = Path(config.LOGFILE_PATH)
+    folder = Path(get_path("@app/log"))
     folder.mkdir(exist_ok=True, parents=True)
     fhlr = RotatingFileHandler(
         folder.joinpath("runtime.log"),
         encoding="utf8",
         maxBytes=10 * 1024 * 1024,
-        backupCount=config.LOGFILE_AMOUNT,
+        backupCount=20,
     )
     fhlr.setFormatter(basic_formatter)
     fhlr.setLevel("DEBUG")
     fhlr.addFilter(PackagePathFilter())
     logger.addHandler(fhlr)
-    if config.log_queue is not None:
-        config.wh = Handler(config.log_queue)
-        config.wh.setLevel(logging.INFO)
-        logger.addHandler(config.wh)
-
-
-def set_debug_mode() -> None:
-    """set debud mode on"""
-    if config.DEBUG_MODE:
-        logger.info(f"Start debug mode, log is stored in {config.LOGFILE_PATH}")
-        init_fhlr()
+    config.wh = Handler(config.log_queue)
+    config.wh.setLevel(logging.INFO)
+    logger.addHandler(config.wh)
 
 
 def save_screenshot(
     img: bytes, filename: Optional[str] = None, subdir: str = ""
 ) -> None:
     """save screenshot"""
-    if config.SCREENSHOT_PATH is None:
-        return
-    folder = Path(config.SCREENSHOT_PATH).joinpath(subdir)
+    folder = Path(get_path("@app/screenshot")).joinpath(subdir)
     folder.mkdir(exist_ok=True, parents=True)
-    if subdir != "-1" and len(list(folder.iterdir())) > config.SCREENSHOT_MAXNUM:
+    if subdir != "-1" and len(list(folder.iterdir())) > config.conf.screenshot:
         screenshots = list(folder.iterdir())
         screenshots = sorted(screenshots, key=lambda x: x.name)
-        for x in screenshots[: -config.SCREENSHOT_MAXNUM]:
+        for x in screenshots[: -config.conf.screenshot]:
             logger.debug(f"remove screenshot: {x.name}")
             x.unlink()
     if filename is None:

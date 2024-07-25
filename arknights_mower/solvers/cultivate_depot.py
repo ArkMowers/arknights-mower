@@ -6,8 +6,11 @@ from urllib import parse
 
 import requests
 
+from arknights_mower.utils import config
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
+
+conf = config.conf
 
 app_code = "4ca99fa6b56cc2ba"
 
@@ -28,21 +31,8 @@ cred_code_url = "https://zonai.skland.com/api/v1/user/auth/generate_cred_by_code
 
 
 class cultivate:
-    def __init__(self, skland_info):
+    def __init__(self):
         self.record_path = get_path("@app/tmp/cultivate.json")
-        self.account_list = []
-        for item in skland_info:
-            self.account_list.append(
-                {
-                    "account": item["account"],
-                    "isCheck": item["isCheck"],
-                    "password": item["password"],
-                    "sign_in_official": item["sign_in_official"],
-                    "sign_in_bilibili": item["sign_in_bilibili"],
-                    "cultivate_select": item["cultivate_select"],
-                }
-            )
-            break
         self.header = {
             "cred": "",
             "User-Agent": "Skland/1.0.1 (com.hypergryph.skland; build:100001014; Android 31; ) Okhttp/4.11.0",
@@ -62,11 +52,11 @@ class cultivate:
         self.all_recorded = True
 
     def start(self):
-        for item in self.account_list:
-            if item["isCheck"]:
+        for item in conf.skland_info:
+            if item.isCheck:
                 self.save_param(self.get_cred_by_token(self.log(item)))
                 for i in self.get_binding_list():
-                    if item["cultivate_select"] == i.get("isOfficial"):
+                    if item.cultivate_select == i.get("isOfficial"):
                         body = {"gameId": 1, "uid": i.get("uid")}
                         ingame = f"https://zonai.skland.com/api/v1/game/cultivate/player?uid={i.get('uid')}"
                         resp = requests.get(
@@ -85,7 +75,7 @@ class cultivate:
     def log(self, account):
         r = requests.post(
             token_password_url,
-            json={"phone": account["account"], "password": account["password"]},
+            json={"phone": account.account, "password": account.password},
             headers=self.header_login,
         ).json()
         if r.get("status") != 0:

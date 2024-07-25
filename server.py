@@ -6,8 +6,8 @@ import os
 import pathlib
 import sys
 import time
+from copy import deepcopy
 from functools import wraps
-from queue import Queue
 from threading import Thread
 
 import pytz
@@ -18,7 +18,6 @@ from tzlocal import get_localzone
 from werkzeug.exceptions import NotFound
 
 from arknights_mower import __system__
-from arknights_mower.model import Config
 from arknights_mower.utils import config
 from arknights_mower.utils.conf import load_plan, write_plan
 from arknights_mower.utils.log import logger
@@ -33,9 +32,6 @@ sock = Sock(app)
 CORS(app)
 
 plan = {}
-operators = {}
-config.log_queue = Queue()
-config.wh = None
 
 mower_thread = None
 log_lines = []
@@ -87,13 +83,11 @@ def not_found(e):
 @require_token
 def load_config():
     if request.method == "GET":
-        config.conf = Config.load_conf()
-        return config.conf.model_dump_json()
+        config.load()
+        return config.conf.model_dump()
     else:
-        config.conf = config.conf.model_copy(update=request.json)
-        config.conf.save_conf("./conf.yml", old=True)
-        config.conf.save_conf("./conf.upgraded.yml", old=False)
-
+        config.conf = config.Conf(**request.json)
+        config.save()
         return "New config saved!"
 
 
@@ -104,15 +98,15 @@ def load_plan_from_json():
 
     if request.method == "GET":
         try:
-            plan = load_plan(config.conf["planFile"])
+            plan = load_plan(config.conf.planFile)
         except Exception as e:
             logger.error(f"plan.json路径错误{e}，重置为plan.json")
             plan = load_plan()
         return plan
     else:
         plan = request.json
-        write_plan(plan, config.conf["planFile"])
-        return f"New plan saved at {config.conf["planFile"]}"
+        write_plan(plan, config.conf.planFile)
+        return f"New plan saved at {config.conf.planFile}"
 
 
 @app.route("/operator")
@@ -154,11 +148,12 @@ def start():
     tmp_dir = get_path("@app/tmp")
     tmp_dir.mkdir(exist_ok=True)
 
+    config.stop_mower.clear()
+    config.plan = deepcopy(plan)
+    config.operators = {}
+
     from arknights_mower.__main__ import main
 
-    config.stop_mower.clear()
-    config.plan = plan
-    config.operators = {}
     mower_thread = Thread(target=main, daemon=True)
     mower_thread.start()
 
@@ -242,7 +237,7 @@ def import_from_image():
     global plan
     plan = qrcode.decode(img)
     if plan:
-        write_plan(plan, config.conf["planFile"])
+        write_plan(plan, config.conf.planFile)
         return "排班已加载"
     return "排班表导入失败！"
 
@@ -261,7 +256,7 @@ def save_file_dialog():
     upper = Image.open(img)
 
     global plan
-    img = qrcode.export(plan, upper, config.conf["theme"])
+    img = qrcode.export(plan, upper, config.conf.theme)
 
     img_path = conn_send("save")
     if img_path == "":
@@ -276,17 +271,17 @@ def save_file_dialog():
 def get_maa_adb_version():
     try:
         asst_path = os.path.dirname(
-            pathlib.Path(config.conf["maa_path"]) / "Python" / "asst"
+            pathlib.Path(config.conf.maa_path) / "Python" / "asst"
         )
         if asst_path not in sys.path:
             sys.path.append(asst_path)
         from asst.asst import Asst
 
-        Asst.load(config.conf["maa_path"])
+        Asst.load(config.conf.maa_path)
         asst = Asst()
         version = asst.get_version()
-        asst.set_instance_option(2, config.conf["maa_touch_option"])
-        if asst.connect(config.conf["maa_adb_path"], config.conf["adb"]):
+        asst.set_instance_option(2, config.conf.maa_touch_option)
+        if asst.connect(config.conf.maa_adb_path, config.conf.adb):
             maa_msg = f"Maa {version} 加载成功"
         else:
             maa_msg = "连接失败，请检查Maa日志！"
@@ -300,7 +295,7 @@ def get_maa_adb_version():
 def get_maa_conn_presets():
     try:
         with open(
-            os.path.join(config.conf["maa_path"], "resource", "config.json"),
+            os.path.join(config.conf.maa_path, "resource", "config.json"),
             "r",
             encoding="utf-8",
         ) as f:
@@ -464,16 +459,16 @@ def test_email():
 
     msg = MIMEMultipart()
     msg.attach(MIMEText("arknights-mower测试邮件", "plain"))
-    msg["Subject"] = config.conf["mail_subject"] + "测试邮件"
-    recipients = config.conf["recipient"] or [config.conf["account"]]
+    msg["Subject"] = config.conf.mail_subject + "测试邮件"
+    recipients = config.conf.recipient or [config.conf.account]
     msg["To"] = ", ".join(recipients)
-    msg["From"] = config.conf["account"]
+    msg["From"] = config.conf.account
     # 根据conf字典中的custom_smtp_server设置SMTP服务器和端口
-    smtp_server = config.conf["custom_smtp_server"]["server"]
-    ssl_port = config.conf["custom_smtp_server"]["ssl_port"]
-    use_qq_mail = not config.conf["custom_smtp_server"]["enable"]
+    smtp_server = config.conf.custom_smtp_server.server
+    ssl_port = config.conf.custom_smtp_server.ssl_port
+    use_qq_mail = not config.conf.custom_smtp_server.enable
     # 根据encryption键的值选择加密方法
-    encryption = config.conf["custom_smtp_server"]["encryption"]
+    encryption = config.conf.custom_smtp_server.encryption
     try:
         if use_qq_mail:
             # 如果不用自定义用qq邮箱就使用TLS加密
@@ -486,9 +481,9 @@ def test_email():
             # 如果encryption键的值不是starttls，则使用默认的TLS加密
             s = smtplib.SMTP_SSL(smtp_server, ssl_port, timeout=10.0)
         # 登录SMTP服务器
-        s.login(config.conf["account"], config.conf["pass_code"])
+        s.login(config.conf.account, config.conf.pass_code)
         # 发送邮件
-        s.sendmail(config.conf["account"], recipients, msg.as_string())
+        s.sendmail(config.conf.account, recipients, msg.as_string())
         s.close()
     except Exception as e:
         return "邮件发送失败！\n" + str(e)
@@ -504,7 +499,7 @@ def test_custom_screenshot():
     import cv2
     import numpy as np
 
-    command = config.conf["custom_screenshot"]["command"]
+    command = config.conf.custom_screenshot.command
 
     start = time.time()
     data = subprocess.check_output(
@@ -531,7 +526,7 @@ def test_serverJang_push():
 
     try:
         response = requests.get(
-            f"https://sctapi.ftqq.com/{config.conf["sendKey"]}.send",
+            f"https://sctapi.ftqq.com/{config.conf.sendKey}.send",
             params={
                 "title": "arknights-mower推送测试",
                 "desp": "arknights-mower推送测试",
@@ -555,7 +550,7 @@ def test_pushplus_push():
         response = requests.post(
             r"http://www.pushplus.plus/send",
             params={
-                "token": config.conf["pushplus"]["token"],
+                "token": config.conf.pushplus.token,
                 "title": "arknights-mower推送测试",
                 "content": "arknights-mower推送测试",
             },
@@ -575,7 +570,7 @@ def test_pushplus_push():
 def test_skland():
     from arknights_mower.solvers.skland import SKLand
 
-    return SKLand(config.conf["skland_info"]).test_connect()
+    return SKLand().test_connect()
 
 
 @app.route("/task", methods=["GET", "POST"])

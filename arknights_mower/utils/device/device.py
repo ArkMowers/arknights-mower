@@ -33,7 +33,7 @@ class Device(object):
             self.maatouch = None
             self.scrcpy = None
 
-            if config.ADB_CONTROL_CLIENT == "maatouch":
+            if config.conf.touch_method == "maatouch":
                 self.maatouch = MaaTouch(client)
             else:
                 self.scrcpy = Scrcpy(client)
@@ -107,9 +107,9 @@ class Device(object):
         """launch the application"""
         logger.info("明日方舟，启动！")
 
-        tap = config.TAP_TO_LAUNCH["enable"]
-        x = config.TAP_TO_LAUNCH["x"]
-        y = config.TAP_TO_LAUNCH["y"]
+        tap = config.conf.tap_to_launch_game.enable
+        x = config.conf.tap_to_launch_game.x
+        y = config.conf.tap_to_launch_game.y
 
         if tap:
             self.run(f"input tap {x} {y}")
@@ -206,7 +206,7 @@ class Device(object):
 
     def screencap(self, save: bool = False) -> bytes:
         """get a screencap"""
-        if config.droidcast["enable"]:
+        if config.conf.droidcast.enable:
             session = config.droidcast["session"]
             while True:
                 try:
@@ -215,19 +215,20 @@ class Device(object):
                     logger.debug(f"GET {url}")
                     r = session.get(url)
                     img = bytes2img(r.content)
-                    if config.droidcast["rotate"]:
+                    if config.conf.droidcast.rotate:
                         img = cv2.rotate(img, cv2.ROTATE_180)
                     gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
                     break
-                except Exception:
+                except Exception as e:
+                    logger.exception(e)
                     restart_simulator()
                     self.client.check_server_alive()
-                    Session().connect(config.ADB_DEVICE[0])
+                    Session().connect(config.conf.adb)
                     self.start_droidcast()
-                    if config.ADB_CONTROL_CLIENT == "scrcpy":
+                    if config.conf.touch_method == "scrcpy":
                         self.control.scrcpy = Scrcpy(self.client)
-        elif config.conf["custom_screenshot"]["enable"]:
-            command = config.conf["custom_screenshot"]["command"]
+        elif config.conf.custom_screenshot.enable:
+            command = config.conf.custom_screenshot.command
             while True:
                 try:
                     data = subprocess.check_output(
@@ -238,11 +239,12 @@ class Device(object):
                         else 0,
                     )
                     break
-                except Exception:
+                except Exception as e:
+                    logger.exception(e)
                     restart_simulator()
                     self.client.check_server_alive()
-                    Session().connect(config.ADB_DEVICE[0])
-                    if config.ADB_CONTROL_CLIENT == "scrcpy":
+                    Session().connect(config.conf.adb)
+                    if config.conf.touch_method == "scrcpy":
                         self.control.scrcpy = Scrcpy(self.client)
             img = bytes2img(data)
             gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
@@ -252,11 +254,12 @@ class Device(object):
                 try:
                     resp = self.run(command)
                     break
-                except Exception:
+                except Exception as e:
+                    logger.exception(e)
                     restart_simulator()
                     self.client.check_server_alive()
-                    Session().connect(config.ADB_DEVICE[0])
-                    if config.ADB_CONTROL_CLIENT == "scrcpy":
+                    Session().connect(config.conf.adb)
+                    if config.conf.touch_method == "scrcpy":
                         self.control.scrcpy = Scrcpy(self.client)
             data = gzip.decompress(resp)
             array = np.frombuffer(data[-1920 * 1080 * 4 :], np.uint8).reshape(
@@ -323,13 +326,14 @@ class Device(object):
                     csleep(10)
                     update = True
                 return update
-            except Exception:
+            except Exception as e:
+                logger.exception(e)
                 restart_simulator()
                 self.client.check_server_alive()
-                Session().connect(config.ADB_DEVICE[0])
-                if config.droidcast["enable"]:
+                Session().connect(config.conf.adb)
+                if config.conf.droidcast.enable:
                     self.start_droidcast()
-                if config.ADB_CONTROL_CLIENT == "scrcpy":
+                if config.conf.touch_method == "scrcpy":
                     self.control.scrcpy = Scrcpy(self.client)
                 update = True
 

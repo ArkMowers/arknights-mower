@@ -24,8 +24,7 @@ pystray==0.19.5
 # 配置文件
 PyYAML==6.0.1
 yamlcore==0.0.2
-flatten-dict==0.4.2
-annotated-types==0.7.0
+pydantic==2.8.2
 
 # CSV
 pandas==2.2.2

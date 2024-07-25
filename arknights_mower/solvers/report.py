@@ -7,7 +7,7 @@ import pandas as pd
 from arknights_mower.models import noto_sans
 from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.digit_reader import DigitReader
-from arknights_mower.utils.email import report_template
+from arknights_mower.utils.email import report_template, send_message
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.log import logger
@@ -30,7 +30,6 @@ class ReportSolver(SceneGraphSolver):
         self,
         device: Device = None,
         recog: Recognizer = None,
-        send_message_config={},
         send_report: bool = False,
     ) -> None:
         super().__init__(device, recog)
@@ -41,7 +40,6 @@ class ReportSolver(SceneGraphSolver):
             (datetime.datetime.now() - datetime.timedelta(hours=4)).date().__str__()
         )
         self.digitReader = DigitReader()
-        self.send_message_config = send_message_config
         self.send_report = send_report
         self.report_res = {
             "作战录像": None,
@@ -107,13 +105,11 @@ class ReportSolver(SceneGraphSolver):
         if self.send_report:
             self.tap((1253, 81), interval=2)
             try:
-                self.send_message(
+                send_message(
                     report_template.render(
-                        report_data=self.report_res,
-                        title_text="基建报告",
+                        report_data=self.report_res, title_text="基建报告"
                     ),
                     "基建报告",
-                    "html",
                     attach_image=self.recog.img,
                 )
             except Exception as e:

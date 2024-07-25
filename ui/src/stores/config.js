@@ -53,7 +53,6 @@ export const useConfigStore = defineStore('config', () => {
   const skland_enable = ref(false)
   const skland_info = ref([])
   const recruit_enable = ref(true)
-  const recruitment_time = ref(false)
   const recruitment_permit = ref(30)
   const recruit_robot = ref(true)
   const recruit_auto_only5 = ref(true)
@@ -148,7 +147,6 @@ export const useConfigStore = defineStore('config', () => {
     skland_enable.value = response.data.skland_enable != 0
     skland_info.value = response.data.skland_info
     recruit_enable.value = response.data.recruit_enable
-    recruitment_time.value = response.data.recruitment_time
     recruitment_permit.value = response.data.recruitment_permit
     recruit_robot.value = response.data.recruit_robot
     recruit_auto_only5.value = response.data.recruit_auto_only5
@@ -234,7 +232,6 @@ export const useConfigStore = defineStore('config', () => {
       skland_enable: skland_enable.value,
       skland_info: skland_info.value,
       recruit_enable: recruit_enable.value,
-      recruitment_time: recruitment_time.value,
       recruitment_permit: recruitment_permit.value,
       recruit_robot: recruit_robot.value,
       recruit_auto_only5: recruit_auto_only5.value,
@@ -329,7 +326,6 @@ export const useConfigStore = defineStore('config', () => {
     screenshot,
     mail_subject,
     recruit_enable,
-    recruitment_time,
     recruitment_permit,
     recruit_robot,
     recruit_auto_only5,

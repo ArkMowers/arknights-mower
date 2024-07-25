@@ -4,7 +4,6 @@ import socket
 import struct
 import time
 
-from arknights_mower.utils import config
 from arknights_mower.utils.device.adb_client.socket import Socket
 from arknights_mower.utils.log import logger
 
@@ -12,13 +11,9 @@ from arknights_mower.utils.log import logger
 class Session(object):
     """Session between ADB client and ADB server"""
 
-    def __init__(self, server: tuple[str, int] = None, timeout: int = None) -> None:
-        if server is None:
-            server = (config.ADB_SERVER_IP, config.ADB_SERVER_PORT)
-        if timeout is None:
-            timeout = config.ADB_SERVER_TIMEOUT
-        self.server = server
-        self.timeout = timeout
+    def __init__(self):
+        self.server = "127.0.0.1", 5037
+        self.timeout = 5
         self.device_id = None
         self.sock = Socket(self.server, self.timeout)
 

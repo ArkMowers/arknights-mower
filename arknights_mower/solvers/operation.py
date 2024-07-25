@@ -78,7 +78,7 @@ class OperationSolver(SceneGraphSolver):
         elif scene == Scene.OPERATOR_GIVEUP:
             self.tap_element("double_confirm/main", x_rate=1)
         elif scene == Scene.OPERATOR_RECOVER_POTION:
-            if config.conf["maa_expiring_medicine"]:
+            if config.conf.maa_expiring_medicine:
                 img = cropimg(self.recog.img, ((1015, 515), (1170, 560)))
                 img = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
                 img = cv2.inRange(img, (170, 0, 0), (174, 255, 255))

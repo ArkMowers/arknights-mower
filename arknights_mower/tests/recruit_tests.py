@@ -44,7 +44,6 @@ class RecruitSolver:
         self.recruiting = 0
         self.has_ticket = True  # 默认含有招募票
         self.can_refresh = True  # 默认可以刷新
-        self.send_message_config = None
         self.permit_count = None
         self.can_refresh = None
         self.enough_lmb = True
@@ -52,16 +51,13 @@ class RecruitSolver:
         self.recruit_order = [6, 5, 1, 4, 3, 2]
         self.recruit_index = 2
 
-    def run(
-        self, priority: list[str] = None, send_message_config={}, recruit_config={}
-    ):
+    def run(self, priority: list[str] = None, recruit_config={}):
         """
         :param priority: list[str], 优先考虑的公招干员，默认为高稀有度优先
         """
         self.priority = priority
         self.recruiting = 0
         self.has_ticket = True  # 默认含有招募票
-        self.send_message_config = send_message_config
         self.permit_count = None
 
         # 调整公招参数

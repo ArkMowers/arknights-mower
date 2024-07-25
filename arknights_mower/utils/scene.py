@@ -27,6 +27,8 @@ class Scene:
     "退出游戏"
     DOWNLOAD_VOICE_RESOURCES = 12
     "检测到有未下载的语音资源"
+    AGREEMENT_UPDATE = 13
+    "协议更新"
     LOGIN_MAIN = 101
     "登录页面"
     LOGIN_INPUT = 102
@@ -292,6 +294,7 @@ SceneComment = {
     10: "网络拨测",
     11: "退出游戏",
     12: "检测到有未下载的语音资源",
+    13: "协议更新",
     101: "登录页面",
     102: "登录页面（输入）",
     103: "登录页面（快速）",

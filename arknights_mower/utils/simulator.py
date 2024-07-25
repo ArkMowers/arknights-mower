@@ -19,11 +19,12 @@ class Simulator_Type(Enum):
 
 
 def restart_simulator(stop=True, start=True):
-    data = config.conf["simulator"]
-    index = data["index"]
-    simulator_type = data["name"]
-    wait_time = data["wait_time"]
-    hotkey = data["hotkey"]
+    data = config.conf.simulator
+    index = data.index
+    simulator_type = data.name
+    simulator_folder = data.simulator_folder
+    wait_time = data.wait_time
+    hotkey = data.hotkey
     cmd = ""
     blocking = False
 
@@ -66,8 +67,8 @@ def restart_simulator(stop=True, start=True):
 
     if stop:
         logger.info(f"关闭{simulator_type}模拟器")
-        exec_cmd(cmd, data["simulator_folder"], 3, blocking)
-        if simulator_type == "MuMu12" and config.fix_mumu12_adb_disconnect:
+        exec_cmd(cmd, simulator_folder, 3, blocking)
+        if simulator_type == "MuMu12" and config.conf.fix_mumu12_adb_disconnect:
             logger.info("结束adb进程")
             system("taskkill /f /t /im adb.exe")
 
@@ -87,7 +88,7 @@ def restart_simulator(stop=True, start=True):
         elif simulator_type == Simulator_Type.Genymotion.value:
             cmd = cmd.replace("stop", "start", 1)
         logger.info(f"启动{simulator_type}模拟器")
-        exec_cmd(cmd, data["simulator_folder"], wait_time, blocking)
+        exec_cmd(cmd, simulator_folder, wait_time, blocking)
         if hotkey:
             hotkey = hotkey.split("+")
             import pyautogui

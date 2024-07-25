@@ -134,7 +134,7 @@ class CreditShop(SceneGraphSolver):
             for product in self.products:
                 if (
                     product
-                    and product["name"] in config.conf["maa_mall_buy"]
+                    and product["name"] in config.conf.maa_mall_buy
                     and remain > product["price"]
                 ):
                     self.tap(product["touch"])
@@ -142,12 +142,12 @@ class CreditShop(SceneGraphSolver):
             for product in self.products:
                 if (
                     product
-                    and product["name"] not in config.conf["maa_mall_blacklist"]
+                    and product["name"] not in config.conf.maa_mall_blacklist
                     and remain > product["price"]
                 ):
                     self.tap(product["touch"])
                     return
-            if remain > 300 and config.conf["maa_mall_ignore_blacklist_when_full"]:
+            if remain > 300 and config.conf.maa_mall_ignore_blacklist_when_full:
                 for product in self.products:
                     if product and remain > product["price"]:
                         self.tap(product["touch"])

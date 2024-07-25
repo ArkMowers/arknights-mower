@@ -1,6 +1,5 @@
 import json
 import os
-from copy import deepcopy
 from datetime import datetime, timedelta
 
 from evalidate import Expr
@@ -14,7 +13,7 @@ from arknights_mower.utils.datetime import format_time
 from arknights_mower.utils.depot import 创建csv, 创建json
 from arknights_mower.utils.device.adb_client.session import Session
 from arknights_mower.utils.device.scrcpy import Scrcpy
-from arknights_mower.utils.email import task_template
+from arknights_mower.utils.email import send_message, task_template
 from arknights_mower.utils.hot_update import get_listing
 from arknights_mower.utils.log import init_fhlr, logger
 from arknights_mower.utils.logic_expression import LogicExpression
@@ -22,39 +21,15 @@ from arknights_mower.utils.path import get_path
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.simulator import restart_simulator
 
-global base_scheduler
 base_scheduler = None
+conf = config.conf
+plan = config.plan
+operators = config.operators
 
 
 # 执行自动排班
 def main():
-    global conf
-    global plan
-    global operators
-    global base_scheduler
-    conf = deepcopy(config.conf)
-    plan = deepcopy(config.plan)
-    operators = deepcopy(config.operators)
-
-    config.LOGFILE_PATH = str(get_path("@app/log"))
-    config.SCREENSHOT_PATH = str(get_path("@app/screenshot"))
-    config.SCREENSHOT_MAXNUM = conf["screenshot"]
-    config.ADB_DEVICE = [conf["adb"]]
-    config.ADB_CONNECT = [conf["adb"]]
-    config.APPNAME = (
-        "com.hypergryph.arknights"
-        if conf["package_type"] == 1
-        else "com.hypergryph.arknights.bilibili"
-    )  # 服务器
-    config.TAP_TO_LAUNCH = conf["tap_to_launch_game"]
-    config.fix_mumu12_adb_disconnect = conf["fix_mumu12_adb_disconnect"]
-    config.grandet_back_to_index = conf["run_order_grandet_mode"]["back_to_index"]
-    config.ADB_CONTROL_CLIENT = conf["touch_method"]
-    config.droidcast.update(conf["droidcast"])
-    config.ADB_BINARY = [conf["maa_adb_path"]]
-
-    if config.wh is None:
-        init_fhlr()
+    init_fhlr()
     logger.info("开始运行Mower")
     rapidocr.initialize_ocr()
     simulate()
@@ -83,13 +58,13 @@ def initialize(tasks, scheduler=None):
         ling_xi=plan["conf"]["ling_xi"],
         workaholic=plan["conf"]["workaholic"],
         max_resting_count=plan["conf"]["max_resting_count"],
-        free_blacklist=conf["free_blacklist"],
-        resting_threshold=conf["resting_threshold"],
-        run_order_buffer_time=conf["run_order_grandet_mode"]["buffer_time"]
-        if conf["run_order_grandet_mode"]["enable"]
+        free_blacklist=conf.free_blacklist,
+        resting_threshold=conf.resting_threshold,
+        run_order_buffer_time=conf.run_order_grandet_mode.buffer_time
+        if conf.run_order_grandet_mode.enable
         else -1,
         refresh_trading_config=plan["conf"]["refresh_trading"],
-        free_room=conf["free_room"],
+        free_room=conf.free_room,
     )
     for room, obj in plan[plan["default"]].items():
         plan1[room] = [
@@ -114,12 +89,12 @@ def initialize(tasks, scheduler=None):
             workaholic=i["conf"]["workaholic"],
             max_resting_count=i["conf"]["max_resting_count"],
             free_blacklist=i["conf"]["free_blacklist"],
-            resting_threshold=conf["resting_threshold"],
-            run_order_buffer_time=conf["run_order_grandet_mode"]["buffer_time"]
-            if conf["run_order_grandet_mode"]["enable"]
+            resting_threshold=conf.resting_threshold,
+            run_order_buffer_time=conf.run_order_grandet_mode.buffer_time
+            if conf.run_order_grandet_mode.enable
             else -1,
             refresh_trading_config=i["conf"]["refresh_trading"],
-            free_room=conf["free_room"],
+            free_room=conf.free_room,
         )
         backup_trigger = get_logic_exp(i["trigger"]) if "trigger" in i else None
         backup_task = i["task"] if "task" in i else None
@@ -138,51 +113,30 @@ def initialize(tasks, scheduler=None):
     logger.debug(plan)
     base_scheduler.package_name = config.APPNAME  # 服务器
     base_scheduler.global_plan = plan
-    base_scheduler.drone_count_limit = conf["drone_count_limit"]
+    base_scheduler.drone_count_limit = conf.drone_count_limit
     base_scheduler.tasks = tasks
-    base_scheduler.enable_party = conf["enable_party"] == 1  # 是否使用线索
-    base_scheduler.leifeng_mode = conf["leifeng_mode"] == 1  # 是否有额外线索就送出
+    base_scheduler.enable_party = conf.enable_party == 1  # 是否使用线索
+    base_scheduler.leifeng_mode = conf.leifeng_mode == 1  # 是否有额外线索就送出
     # 干员宿舍回复阈值
     # 高效组心情低于 UpperLimit  * 阈值 (向下取整)的时候才会会安排休息
     base_scheduler.last_room = ""
     # logger.info("宿舍黑名单：" + str(plan_config.free_blacklist))
     # 估计没用了
     base_scheduler.MAA = None
-    base_scheduler.send_message_config = {
-        "email_config": {
-            "mail_enable": conf["mail_enable"],
-            "subject": conf["mail_subject"],
-            "encryption": conf["custom_smtp_server"][
-                "encryption"
-            ],  # 添加判断starttls的变量
-            "account": conf["account"],
-            "pass_code": conf["pass_code"],
-            "recipients": conf["recipient"] or [conf["account"]],
-            "custom_smtp_server": conf["custom_smtp_server"],
-            "notify": False,
-        },
-        "serverJang_push_config": {
-            "server_push_enable": conf["server_push_enable"],
-            "sendKey": conf["sendKey"],
-        },
-        "pushplus_config": conf["pushplus"],
-    }
-    base_scheduler.check_mail_enable = conf["check_mail_enable"]
-    base_scheduler.report_enable = conf["report_enable"]
-    base_scheduler.sign_in_enable = conf["sign_in"]["enable"]
-    base_scheduler.visit_friend_enable = conf["visit_friend"]
-
-    base_scheduler.ADB_CONNECT = config.ADB_CONNECT[0]
+    base_scheduler.check_mail_enable = conf.check_mail_enable
+    base_scheduler.report_enable = conf.report_enable
+    base_scheduler.sign_in_enable = conf.sign_in.enable
+    base_scheduler.visit_friend_enable = conf.visit_friend
     base_scheduler.error = False
-    base_scheduler.drone_room = None if conf["drone_room"] == "" else conf["drone_room"]
+    base_scheduler.drone_room = None if conf.drone_room == "" else conf.drone_room
     base_scheduler.reload_room = list(
-        filter(None, conf["reload_room"].replace("，", ",").split(","))
+        filter(None, conf.reload_room.replace("，", ",").split(","))
     )
-    base_scheduler.drone_execution_gap = conf["drone_interval"]
-    base_scheduler.run_order_delay = conf["run_order_delay"]
-    base_scheduler.exit_game_when_idle = conf["exit_game_when_idle"]
-    base_scheduler.simulator = conf["simulator"]
-    base_scheduler.close_simulator_when_idle = conf["close_simulator_when_idle"]
+    base_scheduler.drone_execution_gap = conf.drone_interval
+    base_scheduler.run_order_delay = conf.run_order_delay
+    base_scheduler.exit_game_when_idle = conf.exit_game_when_idle
+    base_scheduler.simulator = conf.simulator
+    base_scheduler.close_simulator_when_idle = conf.close_simulator_when_idle
 
     # 关闭游戏次数计数器
     base_scheduler.task_count = 0
@@ -212,10 +166,10 @@ def simulate():
                 logger.exception(E)
                 restart_simulator()
                 base_scheduler.device.client.check_server_alive()
-                Session().connect(config.ADB_DEVICE[0])
-                if config.droidcast["enable"]:
+                Session().connect(config.conf.adb)
+                if config.conf.droidcast.enable:
                     base_scheduler.device.start_droidcast()
-                if config.ADB_CONTROL_CLIENT == "scrcpy":
+                if config.conf.touch_method == "scrcpy":
                     base_scheduler.device.control.scrcpy = Scrcpy(
                         base_scheduler.device.client
                     )
@@ -269,7 +223,7 @@ def simulate():
                     if not any(i.name.startswith(version) for i in listing):
                         msg = "Mower版本过旧，请更新至受支持的版本"
                         logger.error(msg)
-                        base_scheduler.send_message(msg)
+                        send_message(msg)
 
                     # 刷新时间以鹰历为准
                     if (
@@ -294,13 +248,13 @@ def simulate():
                         base_scheduler.daily_report
                         < (datetime.now() - timedelta(hours=4)).date()
                     ):
-                        if base_scheduler.report_plan_solver(conf["send_report"]):
+                        if base_scheduler.report_plan_solver(conf.send_report):
                             base_scheduler.daily_report = (
                                 datetime.now() - timedelta(hours=4)
                             ).date()
 
                     if (
-                        base_scheduler.skland_config["skland_enable"]
+                        conf.skland_enable
                         and base_scheduler.daily_skland
                         < (datetime.now() - timedelta(hours=4)).date()
                     ):
@@ -319,7 +273,7 @@ def simulate():
                                 datetime.now() - timedelta(hours=8)
                             ).date()
 
-                    if base_scheduler.recruit_config["recruit_enable"] == 1:
+                    if conf.recruit_enable:
                         base_scheduler.recruit_plan_solver()
 
                     # 应该在maa任务之后
@@ -334,22 +288,21 @@ def simulate():
                         else:
                             logger.info(f"{path} 不存在,新建一个存储仓库物品的csv")
                             now_time = (
-                                int(datetime.now().timestamp())
-                                - base_scheduler.maa_config["maa_execution_gap"] * 3600
+                                int(datetime.now().timestamp()) - conf.maa_gap * 3600
                             )
                             创建csv()
                             创建json()
                             return now_time
 
-                    if conf["maa_depot_enable"]:
+                    if conf.maa_depot_enable:
                         dt = int(datetime.now().timestamp()) - _is_depotscan()
-                        if dt >= base_scheduler.maa_config["maa_execution_gap"] * 3600:
+                        if dt >= conf.maa_gap * 3600:
                             base_scheduler.仓库扫描()
                         else:
                             logger.info(
-                                f"仓库扫描未到时间，将在 {base_scheduler.maa_config['maa_execution_gap']-dt//3600}小时之内开始扫描"
+                                f"仓库扫描未到时间，将在 {conf.maa_gap - dt // 3600}小时之内开始扫描"
                             )
-                    if base_scheduler.maa_config["maa_enable"] == 1:
+                    if conf.maa_enable == 1:
                         subject = f"下次任务在{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}"
                         context = f"下一次任务:{base_scheduler.tasks[0].plan}"
                         logger.info(context)
@@ -361,7 +314,7 @@ def simulate():
                             ],
                             base_scheduler=base_scheduler,
                         )
-                        base_scheduler.send_message(body, subject, "html")
+                        send_message(body, subject)
                         base_scheduler.maa_plan_solver()
                     else:
                         remaining_time = (
@@ -386,7 +339,7 @@ def simulate():
                                 ],
                                 base_scheduler=base_scheduler,
                             )
-                            base_scheduler.send_message(body, subject, "html")
+                            send_message(body, subject)
                             base_scheduler.sleeping = True
                             base_scheduler.sleep(remaining_time)
                             base_scheduler.sleeping = False
@@ -396,10 +349,10 @@ def simulate():
                     now_time = datetime.now().time()
                     try:
                         min_time = datetime.strptime(
-                            base_scheduler.maa_config["sleep_min"], "%H:%M"
+                            conf.maa_rg_sleep_min, "%H:%M"
                         ).time()
                         max_time = datetime.strptime(
-                            base_scheduler.maa_config["sleep_max"], "%H:%M"
+                            conf.maa_rg_sleep_max, "%H:%M"
                         ).time()
                         if max_time < min_time:
                             rg_sleep = now_time > min_time or now_time < max_time
@@ -409,32 +362,23 @@ def simulate():
                         rg_sleep = False
 
                     if not rg_sleep:
-                        if base_scheduler.maa_config["reclamation_algorithm"]:
+                        if config.ra:
                             base_scheduler.recog.update()
                             base_scheduler.back_to_index()
                             ra_solver = ReclamationAlgorithm(
                                 base_scheduler.device, base_scheduler.recog
                             )
-                            ra_solver.run(
-                                base_scheduler.tasks[0].time - datetime.now(),
-                                base_scheduler.maa_config["ra_timeout"],
-                            )
+                            ra_solver.run(base_scheduler.tasks[0].time - datetime.now())
                             remaining_time = (
                                 base_scheduler.tasks[0].time - datetime.now()
                             ).total_seconds()
-                        elif base_scheduler.maa_config["secret_front"]:
+                        elif config.sf:
                             base_scheduler.recog.update()
                             base_scheduler.back_to_index()
                             sf_solver = SecretFront(
                                 base_scheduler.device, base_scheduler.recog
                             )
-                            sf_solver.send_message_config = (
-                                base_scheduler.send_message_config
-                            )
-                            sf_solver.run(
-                                base_scheduler.tasks[0].time - datetime.now(),
-                                base_scheduler.maa_config["ra_timeout"],
-                            )
+                            sf_solver.run(base_scheduler.tasks[0].time - datetime.now())
                             remaining_time = (
                                 base_scheduler.tasks[0].time - datetime.now()
                             ).total_seconds()
@@ -446,9 +390,9 @@ def simulate():
                     base_scheduler.task_count += 1
                     logger.info(f"第{base_scheduler.task_count}次任务结束")
                     if remaining_time > 300:
-                        if conf["close_simulator_when_idle"]:
+                        if conf.close_simulator_when_idle:
                             restart_simulator(start=False)
-                        elif conf["exit_game_when_idle"]:
+                        elif conf.exit_game_when_idle:
                             base_scheduler.device.exit()
                     body = task_template.render(
                         tasks=[
@@ -456,7 +400,7 @@ def simulate():
                         ],
                         base_scheduler=base_scheduler,
                     )
-                    base_scheduler.send_message(body, subject, "html")
+                    send_message(body, subject)
                     base_scheduler.sleeping = True
                     base_scheduler.sleep(remaining_time)
                     base_scheduler.sleeping = False
@@ -482,10 +426,10 @@ def simulate():
                         logger.error(ce)
                         restart_simulator()
                         base_scheduler.device.client.check_server_alive()
-                        Session().connect(config.ADB_DEVICE[0])
-                        if config.droidcast["enable"]:
+                        Session().connect(config.conf.adb)
+                        if config.conf.droidcast.enable:
                             base_scheduler.device.start_droidcast()
-                        if config.ADB_CONTROL_CLIENT == "scrcpy":
+                        if config.conf.touch_method == "scrcpy":
                             base_scheduler.device.control.scrcpy = Scrcpy(
                                 base_scheduler.device.client
                             )
@@ -497,10 +441,10 @@ def simulate():
             logger.exception(f"程序出错-尝试重启模拟器->{re}")
             restart_simulator()
             base_scheduler.device.client.check_server_alive()
-            Session().connect(config.ADB_DEVICE[0])
-            if config.droidcast["enable"]:
+            Session().connect(config.conf.adb)
+            if config.conf.droidcast.enable:
                 base_scheduler.device.start_droidcast()
-            if config.ADB_CONTROL_CLIENT == "scrcpy":
+            if config.conf.touch_method == "scrcpy":
                 base_scheduler.device.control.scrcpy = Scrcpy(
                     base_scheduler.device.client
                 )

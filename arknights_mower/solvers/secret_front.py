@@ -7,11 +7,14 @@ from arknights_mower.models import secret_front
 from arknights_mower.utils import config
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.csleep import MowerExit
+from arknights_mower.utils.email import send_message
 from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.matcher import Matcher
 from arknights_mower.utils.recognize import Scene
 from arknights_mower.utils.solver import BaseSolver
+
+conf = config.conf
 
 
 def exp(card):
@@ -59,21 +62,20 @@ class SecretFront(BaseSolver):
 
     @property
     def route(self):
-        return self.routes[config.conf["secret_front"]["target"]]
+        return self.routes[config.conf.secret_front.target]
 
     @property
     def team(self):
-        return self.teams[config.conf["secret_front"]["target"]]
+        return self.teams[config.conf.secret_front.target]
 
     def run(
         self,
         duration: Optional[timedelta] = None,
-        timeout: timedelta = timedelta(seconds=30),
     ):
         logger.info("Start: 隐秘战线")
 
-        self.timeout = timeout
-        self.deadline = datetime.now() + duration - timeout if duration else None
+        self.timeout = conf.reclamation_algorithm.timeout
+        self.deadline = datetime.now() + duration - self.timeout if duration else None
         self.unknown_time = None
 
         self.properties = None
@@ -382,10 +384,8 @@ class SecretFront(BaseSolver):
         elif scene in [Scene.SF_TEAM_PASS, Scene.SF_CLICK_ANYWHERE, Scene.SF_END]:
             self.tap((960, 980), interval=2)
 
-            if scene == Scene.SF_END and hasattr(self, "send_message_config"):
-                self.send_message(
-                    f'隐秘战线成功完成{config.conf["secret_front"]["target"]}'
-                )
+            if scene == Scene.SF_END:
+                send_message(f"隐秘战线成功完成{config.conf.secret_front.target}")
 
         # 关闭说明
         elif scene == Scene.SF_INFO:

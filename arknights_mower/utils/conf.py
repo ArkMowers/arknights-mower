@@ -1,55 +1,7 @@
 import json
-from pathlib import Path
-
-import yaml
-from flatten_dict import flatten, unflatten
-from yamlcore import CoreDumper, CoreLoader
 
 from .. import __rootdir__
 from .path import app_dir
-
-
-def __get_temp_conf():
-    with Path(f"{__rootdir__}/templates/conf.yml").open("r", encoding="utf8") as f:
-        return yaml.load(f, Loader=CoreLoader)
-
-
-def save_conf(conf, path="./conf.yml"):
-    path = app_dir / path
-    with path.open("w", encoding="utf8") as f:
-        yaml.dump(
-            conf,
-            f,
-            Dumper=CoreDumper,
-            encoding="utf-8",
-            default_flow_style=False,
-            allow_unicode=True,
-        )
-
-
-def load_conf(path="./conf.yml"):
-    temp_conf = __get_temp_conf()
-    path = app_dir / path
-    if not path.is_file():
-        path.parent.mkdir(exist_ok=True)
-        open(path, "w")  # 创建空配置文件
-        save_conf(temp_conf, path)
-        return temp_conf
-    else:
-        with path.open("r", encoding="utf8") as c:
-            conf = yaml.load(c, Loader=CoreLoader)
-            if conf is None:
-                conf = {}
-            for key in ["maa_rg_sleep_max", "maa_rg_sleep_min"]:
-                if isinstance(conf[key], int):
-                    hours = conf[key] // 60
-                    minutes = conf[key] - hours * 60
-                    conf[key] = f"{hours}:{minutes:02}"
-            flat_temp = flatten(temp_conf)
-            flat_conf = flatten(conf)
-            flat_temp.update(flat_conf)
-            temp_conf = unflatten(flat_temp)
-            return temp_conf
 
 
 def __get_temp_plan():
