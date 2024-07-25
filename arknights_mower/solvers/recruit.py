@@ -10,15 +10,17 @@ from arknights_mower.data import (
     agent_with_tags,
     recruit_agent,
 )
-
 from arknights_mower.utils import config
 from arknights_mower.utils.device.device import Device
-from arknights_mower.utils.email import recruit_rarity, recruit_template
+from arknights_mower.utils.email import recruit_rarity, recruit_template, send_message
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.recognize import Recognizer, Scene
 from arknights_mower.utils.vector import va
+
+conf = config.conf
+
 
 with lzma.open(f"{__rootdir__}/models/riic_base_digits.pkl", "rb") as f:
     number = pickle.load(f)
@@ -37,8 +39,6 @@ job_list = [
     "recruit/riic_res/WARRIOR",
 ]
 
-conf = config.conf
-
 
 class RecruitSolver(SceneGraphSolver):
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
@@ -50,6 +50,7 @@ class RecruitSolver(SceneGraphSolver):
             "recruit/recruit_lock": [(400, 120), (540, 220)],
         }
 
+        # 四个招募栏位的位置 固定1920*1080所以直接写死了
         up = 270
         down = 1060
         left = 25
@@ -62,21 +63,21 @@ class RecruitSolver(SceneGraphSolver):
             4: [(970, 690), (right, down)],
         }
         self.agent_choose = {}
-
         self.recruit_index = 1
+        # 默认要支援机械
         self.recruit_order_index = 2
         self.recruit_order = [6, 5, 1, 4, 3, 2]
+
         self.result_agent = {}
         self.ticket_number = None
 
-
-    def run(self, send_message_config={}):
+    def run(self):
         self.add_recruit_param()
         super().run()
-        self.send_message_config = send_message_config
         logger.info(self.result_agent)
 
         if self.agent_choose:
+            logger.info("开包汇总如下")
             for pos in self.agent_choose:
                 agent = []
                 for item in self.agent_choose[pos]["result"]:
@@ -87,17 +88,17 @@ class RecruitSolver(SceneGraphSolver):
                     + "]:{}".format(",".join(agent))
                 )
         if self.agent_choose or self.result_agent:
+            logger.info("招募汇总如下")
             if conf.recruit_email_enable:
                 send_message(
                     recruit_template.render(
                         recruit_results=self.agent_choose,
                         recruit_get_agent=self.result_agent,
-                        permit_count=self.ticket_number,
+                        permit_count=conf.recruitment_permit,
                         title_text="公招汇总",
                     ),
                     "公招汇总通知",
                 )
-
         return self.agent_choose, self.result_agent
 
     def transition(self) -> bool:
@@ -204,12 +205,12 @@ class RecruitSolver(SceneGraphSolver):
             self.result_agent[self.recruit_index] = recruit_agent[
                 max(score, key=score.get)
             ]["name"]
+
         except Exception as e:
             logger.error(f"公招开包异常:{e}")
             logger.debug(traceback.format_exc())
         finally:
             self.tap((500, 500))
-
 
     def recruit_tags(self):
         tags = self.get_recruit_tag()
@@ -239,14 +240,13 @@ class RecruitSolver(SceneGraphSolver):
                 return
 
         if self.recruit_order.index(recruit_result_level) <= self.recruit_order_index:
-            if self.recruit_config["recruit_email_enable"]:
-                self.send_message(
+            if conf.recruit_email_enable:
+                send_message(
                     recruit_rarity.render(
-                        recruit_results=recruit_cal_result,
+                        recruit_results=recruit_cal_result[recruit_result_level],
                         title_text="稀有tag通知",
                     ),
                     "出稀有标签辣",
-                    "html",
                 )
                 logger.info("稀有tag,发送邮件")
             if recruit_result_level == 6 or recruit_result_level == 1:
@@ -255,11 +255,8 @@ class RecruitSolver(SceneGraphSolver):
                 self.back()
                 return
             elif recruit_result_level == 5:
-                if self.recruit_config["recruit_auto_5"] == 2:
-                    if (
-                        self.recruit_config["recruit_auto_only5"]
-                        and len(recruit_cal_result) > 1
-                    ):
+                if conf.recruit_auto_5 == 2:
+                    if conf.recruit_auto_only5 and len(recruit_cal_result) > 1:
                         logger.debug(
                             f"{recruit_result_level}星稀有tag,但不止一个或纯手动选择"
                         )
@@ -272,11 +269,7 @@ class RecruitSolver(SceneGraphSolver):
             self.back()
             return
 
-
-        if (
-            self.ticket_number < self.recruit_config["permit_target"]
-            and recruit_result_level == 3
-        ):
+        if self.ticket_number < conf.recruitment_permit and recruit_result_level == 3:
             self.recruit_index = self.recruit_index + 1
             logger.info("没券 返回")
             self.back()
@@ -295,10 +288,11 @@ class RecruitSolver(SceneGraphSolver):
 
         # 9h为True 3h50min为False
         logger.debug("开始选择时长")
+        # 默认三星招募时长是9：00
         recruit_time_choose = 540
-        if recruit_result_level >= 3:
-            if recruit_result_level == 1:
-                recruit_time_choose = 230
+        # 默认一星招募时长是3：50
+        if recruit_result_level == 1:
+            recruit_time_choose = 230
 
         if recruit_time_choose == 540:
             # 09:00
@@ -307,9 +301,13 @@ class RecruitSolver(SceneGraphSolver):
         elif recruit_time_choose == 230:
             # 03:50
             logger.debug("时间3h50min")
-            pos = self.find("one_hour")
-            [self.tap(pos, 0.2, 0.2, 0.1) for _ in range(2)]
-            [self.tap(pos, 0.5, 0.2, 0.1) for _ in range(5)]
+            [self.tap_element("one_hour", 0.2, 0.2, 0) for _ in range(2)]
+            [self.tap_element("one_hour", 0.5, 0.2, 0) for _ in range(5)]
+        # elif recruit_time_choose == 460:
+        #     # 07:40
+        #     logger.debug("时间7h40min")
+        #     [self.tap_element("one_hour", 0.2, 0.8, 0) for _ in range(2)]
+        #     [self.tap_element("one_hour", 0.5, 0.8, 0) for _ in range(2)]
 
         # start recruit
         self.tap_element("recruit/start_recruit")
@@ -517,20 +515,6 @@ class RecruitSolver(SceneGraphSolver):
         return value
 
     def add_recruit_param(self):
-        if config.conf["recruitment_time"]:
-            recruitment_time = 460
-        else:
-            recruitment_time = 540
-
-        self.recruit_config = {
-            "recruitment_time": {"3": recruitment_time, "4": 540, "5": 540, "6": 540},
-            "recruit_robot": config.conf["recruit_robot"],
-            "permit_target": config.conf["recruitment_permit"],
-            "recruit_auto_5": config.conf["recruit_auto_5"],
-            "recruit_auto_only5": config.conf["recruit_auto_only5"],
-            "recruit_email_enable": config.conf["recruit_email_enable"],
-        }
-
-        if not config.conf["recruit_robot"]:
+        if not conf.recruit_robot:
             self.recruit_order = [6, 5, 4, 3, 2, 1]
             self.recruit_order_index = 1
