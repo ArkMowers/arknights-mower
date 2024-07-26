@@ -736,7 +736,7 @@ class Recognizer(object):
             h, w, _ = res_img.shape
 
             pos_list = color[res]
-            if pos_list[0] is not tuple:
+            if isinstance(pos_list[0], tuple):
                 pos_list = [color[res]]
             for pos in pos_list:
                 scope = pos, va(pos, (w, h))
