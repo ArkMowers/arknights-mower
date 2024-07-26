@@ -77,7 +77,7 @@ def update():
                 ZipFile(BytesIO(r.content)).extractall(extract_path)
                 break
             except Exception as e:
-                logger.info(f"热更新出错：{e}")
+                logger.exception(f"热更新出错：{e}")
         if i >= retry_times:
             logger.error("热更新失败！")
             return

@@ -813,9 +813,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 except MowerExit:
                     raise
                 except Exception as e:
+                    logger.exception(e)
                     if error_count > 3:
                         raise e
-                    logger.exception(e)
                     error_count += 1
                     self.back()
                     continue
@@ -1021,7 +1021,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.back()
             self.back()
         except Exception as e:
-            logger.error(e)
+            logger.exception(e)
 
     def skill_upgrade(self, skill):
         try:
@@ -1179,9 +1179,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     )
             self.back()
         except Exception as e:
-            logger.error(e)
+            logger.exception(e)
             send_message("专精任务失败" + str(e))
-            logger.error(e)
 
     def plan_run_order(self, room):
         plan = self.op_data.plan
@@ -3095,7 +3094,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             except MowerExit:
                 raise
             except Exception as e:
-                logger.error(e)
+                logger.exception(e)
                 error = True
                 self.recog.update()
                 back_count = 0
@@ -3126,7 +3125,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
             logger.info("Maa Python模块导入成功")
         except Exception as e:
-            logger.error(f"Maa Python模块导入失败：{str(e)}")
+            logger.exception(f"Maa Python模块导入失败：{str(e)}")
             raise Exception("Maa Python模块导入失败")
 
         Asst.load(path=path, incremental_path=path / "cache")
@@ -3310,8 +3309,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         except MowerExit:
             raise
         except Exception as e:
+            logger.exception(f"森空岛签到失败:{e}")
             send_message(f"森空岛签到失败: {e}")
-            logger.warning(f"森空岛签到失败:{e}")
         # 仅尝试一次 不再尝试
         return (datetime.now() - timedelta(hours=4)).date()
 
@@ -3350,7 +3349,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             return sign_in_solver.run()
         except MowerExit:
             raise
-        except Exception:
+        except Exception as e:
+            logger.exception(e)
             return True
 
     def 仓库扫描(self):
@@ -3358,6 +3358,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             cultivateDepotSolver().start()
             DepotSolver(self.device, self.recog).run()
         except Exception as e:
-            logger.info(f"先不运行 出bug了 : {e}")
+            logger.exception(f"先不运行 出bug了 : {e}")
             return False
         return True

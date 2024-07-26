@@ -100,7 +100,7 @@ def load_plan_from_json():
         try:
             plan = load_plan(config.conf.planFile)
         except Exception as e:
-            logger.error(f"plan.json路径错误{e}，重置为plan.json")
+            logger.exception(f"plan.json路径错误{e}，重置为plan.json")
             plan = load_plan()
         return plan
     else:
@@ -287,6 +287,7 @@ def get_maa_adb_version():
             maa_msg = "连接失败，请检查Maa日志！"
     except Exception as e:
         maa_msg = "Maa加载失败：" + str(e)
+        logger.exception(maa_msg)
     return maa_msg
 
 
@@ -300,7 +301,8 @@ def get_maa_conn_presets():
             encoding="utf-8",
         ) as f:
             presets = [i["configName"] for i in json.load(f)["connection"]]
-    except Exception:
+    except Exception as e:
+        logger.exception(e)
         presets = []
     return presets
 
@@ -486,7 +488,9 @@ def test_email():
         s.sendmail(config.conf.account, recipients, msg.as_string())
         s.close()
     except Exception as e:
-        return "邮件发送失败！\n" + str(e)
+        msg = "邮件发送失败！\n" + str(e)
+        logger.exception(msg)
+        return msg
     return "邮件发送成功！"
 
 
@@ -538,7 +542,9 @@ def test_serverJang_push():
         else:
             return "发送失败 : " + response.json().get("message", "")
     except Exception as e:
-        return "发送失败 : " + str(e)
+        msg = "发送失败 : " + str(e)
+        logger.exception(e)
+        return msg
 
 
 @app.route("/test-pushplus-push")
@@ -561,8 +567,9 @@ def test_pushplus_push():
         else:
             return "发送失败 : " + response.json().get("message", "")
     except Exception as e:
-        print(type(e))
-        return "发送失败 : " + str(e)
+        msg = "发送失败 : " + str(e)
+        logger.exception(msg)
+        return msg
 
 
 @app.route("/check-skland")
@@ -638,7 +645,7 @@ def get_count():
                     return "添加任务成功！"
             raise Exception("添加任务失败！！")
         except Exception as e:
-            logger.error(f"添加任务失败：{str(e)}")
+            logger.exception(f"添加任务失败：{str(e)}")
             return str(e)
     else:
         if base_scheduler and mower_thread and mower_thread.is_alive():

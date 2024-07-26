@@ -2,12 +2,14 @@ import copy
 from enum import Enum
 
 from arknights_mower.utils import config
+from arknights_mower.utils.log import logger
 
 
 def set_timing_enum(value):
     try:
         return PlanTriggerTiming[value.upper()]
-    except Exception:
+    except Exception as e:
+        logger.exception(e)
         return PlanTriggerTiming.AFTER_PLANNING
 
 

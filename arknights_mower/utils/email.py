@@ -94,8 +94,7 @@ def send_message_sync(body="", subject="", attach_image=None):
         try:
             email.send()
         except Exception as e:
-            logger.exception(e)
-            logger.error("邮件发送失败：" + str(e))
+            logger.exception("邮件发送失败：" + str(e))
 
     if conf.pushplus.enable:
         url = "http://www.pushplus.plus/send"
@@ -113,7 +112,7 @@ def send_message_sync(body="", subject="", attach_image=None):
             if response["code"] != 200:
                 logger.error(f"PushPlus通知发送失败：{response['msg']}")
         except Exception as e:
-            logger.error("PushPlus通知发送失败：" + str(e))
+            logger.exception("PushPlus通知发送失败：" + str(e))
 
 
 def send_message(body="", subject="", attach_image: Optional[tp.Image] = None):

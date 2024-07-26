@@ -60,9 +60,7 @@ class ReportSolver(SceneGraphSolver):
             super().run()
             return True
         except Exception as e:
-            logger.error(e)
-        except Exception:
-            pass
+            logger.exception(e)
         return False
 
     def transition(self) -> bool:
@@ -80,7 +78,7 @@ class ReportSolver(SceneGraphSolver):
                 logger.info(self.report_res)
                 self.record_report()
             except Exception as e:
-                logger.info("基报读取失败:{}".format(e))
+                logger.exception("基报读取失败:{}".format(e))
             return True
         else:
             if self.reload_time > 3:
@@ -101,7 +99,7 @@ class ReportSolver(SceneGraphSolver):
                 encoding="gbk",
             )
         except Exception as e:
-            logger.error(f"存入数据失败：{e}")
+            logger.exception(f"存入数据失败：{e}")
         if self.send_report:
             self.tap((1253, 81), interval=2)
             try:
@@ -113,7 +111,7 @@ class ReportSolver(SceneGraphSolver):
                     attach_image=self.recog.img,
                 )
             except Exception as e:
-                logger.error(f"基报邮件发送失败：{e}")
+                logger.exception(f"基报邮件发送失败：{e}")
             self.tap((40, 80), interval=2)
 
     def has_record(self):

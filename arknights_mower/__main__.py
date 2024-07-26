@@ -159,10 +159,10 @@ def simulate():
             success = True
         except MowerExit:
             return
-        except Exception as E:
+        except Exception as e:
+            logger.exception(e)
             reconnect_tries += 1
             if reconnect_tries < 3:
-                logger.exception(E)
                 restart_simulator()
                 base_scheduler.device.client.check_server_alive()
                 Session().connect(config.conf.adb)
@@ -174,7 +174,7 @@ def simulate():
                     )
                 continue
             else:
-                raise E
+                raise e
     # base_scheduler.仓库扫描() #别删了 方便我找
     validation_msg = base_scheduler.initialize_operators()
     if validation_msg is not None:
@@ -422,8 +422,8 @@ def simulate():
                         break
                     except MowerExit:
                         raise
-                    except Exception as ce:
-                        logger.error(ce)
+                    except Exception as e:
+                        logger.exception(e)
                         restart_simulator()
                         base_scheduler.device.client.check_server_alive()
                         Session().connect(config.conf.adb)
@@ -448,8 +448,8 @@ def simulate():
                 base_scheduler.device.control.scrcpy = Scrcpy(
                     base_scheduler.device.client
                 )
-        except Exception as E:
-            logger.exception(f"程序出错--->{E}")
+        except Exception as e:
+            logger.exception(f"程序出错--->{e}")
             base_scheduler.recog.update()
 
 

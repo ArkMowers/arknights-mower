@@ -1,6 +1,5 @@
 import lzma
 import pickle
-import traceback
 from itertools import combinations
 
 import cv2
@@ -204,8 +203,7 @@ class RecruitSolver(SceneGraphSolver):
             ]["name"]
 
         except Exception as e:
-            logger.error(f"公招开包异常:{e}")
-            logger.debug(traceback.format_exc())
+            logger.exception(f"公招开包异常:{e}")
         finally:
             self.tap((500, 500))
 

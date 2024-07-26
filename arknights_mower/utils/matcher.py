@@ -1,6 +1,5 @@
 import lzma
 import pickle
-import traceback
 from typing import Optional, Tuple
 
 import cv2
@@ -290,5 +289,4 @@ class Matcher(object):
                 return rect, (good_matches_rate, good_area_rate, hash, ssim)
 
         except Exception as e:
-            logger.error(e)
-            logger.debug(traceback.format_exc())
+            logger.exception(e)

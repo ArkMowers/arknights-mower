@@ -430,7 +430,8 @@ class SecretFront(BaseSolver):
                     super().back_to_index()
                 except MowerExit:
                     raise
-                except Exception:
+                except Exception as e:
+                    logger.exception(e)
                     self.device.exit()
                     self.check_current_focus()
         else:

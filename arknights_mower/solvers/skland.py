@@ -198,8 +198,8 @@ class SKLand:
             for item in self.reward:
                 res_df = pd.DataFrame(item, index=[date_str])
                 res_df.to_csv(self.record_path, mode="a", header=False, encoding="gbk")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.exception(e)
 
         return True
 
@@ -236,5 +236,7 @@ class SKLand:
                                 )
                             )
                 except Exception as e:
-                    res.append("{}无法连接-{}".format(item.account, e))
+                    msg = "{}无法连接-{}".format(item.account, e)
+                    logger.exception(msg)
+                    res.append(msg)
         return res

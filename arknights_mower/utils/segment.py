@@ -1,5 +1,3 @@
-import traceback
-
 import cv2
 import numpy as np
 
@@ -95,7 +93,7 @@ def credit(img: tp.Image, draw: bool = False) -> list[tp.Scope]:
         return ret
 
     except Exception as e:
-        logger.debug(traceback.format_exc())
+        logger.exception(e)
         raise RecognizeError(e)
 
 
@@ -182,7 +180,7 @@ def recruit(img: tp.Image, draw: bool = False) -> list[tp.Scope]:
         return ret
 
     except Exception as e:
-        logger.debug(traceback.format_exc())
+        logger.exception(e)
         raise RecognizeError(e)
 
 
@@ -271,5 +269,5 @@ def base(
         return ret
 
     except Exception as e:
-        logger.debug(traceback.format_exc())
+        logger.exception(e)
         raise RecognizeError(e)

@@ -139,7 +139,7 @@ class Device(object):
         try:
             out = self.client.cmd_shell("pm path com.rayworks.droidcast", decode=True)
         except Exception:
-            logger.error("无法获取CLASSPATH")
+            logger.exception("无法获取CLASSPATH")
             return None
         prefix = "package:"
         postfix = ".apk"
@@ -180,8 +180,8 @@ class Device(object):
                         break
                 if not occupied_by_adb_forward:
                     port = 0
-            except Exception:
-                pass
+            except Exception as e:
+                logger.exception(e)
         if port == 0:
             port = get_new_port()
             config.droidcast["port"] = port

@@ -69,9 +69,9 @@ class BaseMixin:
         except MowerExit:
             raise
         except Exception as e:
+            logger.exception(e)
             error_count += 1
             if error_count < 3:
-                logger.exception(e)
                 self.sleep(3)
                 return self.scan_agent(agent, error_count, max_agent_count)
             else:
@@ -94,10 +94,10 @@ class BaseMixin:
                 index += 1
             return True
         except Exception as e:
+            logger.exception(e)
             error_count += 1
             self.switch_arrange_order("技能")
             if error_count < 3:
-                logger.exception(e)
                 self.sleep(3)
                 return self.verify_agent(agent, error_count, max_agent_count)
             else:
@@ -267,7 +267,8 @@ class BaseMixin:
         try:
             img = thres2(img, 200)
             return cv2.countNonZero(img) * 24 / 310
-        except Exception:
+        except Exception as e:
+            logger.exception(e)
             return 24
 
     def detect_product_complete(self):
@@ -348,11 +349,11 @@ class BaseMixin:
             else:
                 return res
         except Exception:
-            logger.error("读取失败")
             if error_count > 3:
                 logger.exception(f"读取失败{error_count}次超过上限")
                 return None
             else:
+                logger.exception("读取失败")
                 return self.read_time(
                     cord, upperlimit, error_count + 1, use_digit_reader
                 )

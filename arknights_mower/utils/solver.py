@@ -96,6 +96,7 @@ class BaseSolver:
                 logger.debug(traceback.format_exc())
                 return
             except Exception as e:
+                logger.exception(e)
                 raise e
             retry_times = config.MAX_RETRYTIME
 
@@ -549,6 +550,7 @@ class BaseSolver:
                 self.sleep(3)
                 continue
             except Exception as e:
+                logger.exception(e)
                 raise e
             retry_times = config.MAX_RETRYTIME
 
@@ -633,6 +635,7 @@ class BaseSolver:
                 self.sleep(3)
                 continue
             except Exception as e:
+                logger.exception(e)
                 raise e
             retry_times = config.MAX_RETRYTIME
 
