@@ -19,7 +19,8 @@ import { render_op_label } from '@/utils/op_select'
 const rogue_themes = [
   { label: '傀影与猩红孤钻', value: 'Phantom' },
   { label: '水月与深蓝之树', value: 'Mizuki' },
-  { label: '探索者的银凇止境', value: 'Sami' }
+  { label: '探索者的银凇止境', value: 'Sami' },
+  { label: '萨卡兹的无终奇语', value: 'Sarkaz' }
 ]
 
 const squad = {
@@ -55,6 +56,21 @@ const squad = {
     '生活至上',
     '科学主义',
     '特训',
+    '指挥',
+    '集群',
+    '后勤',
+    '矛头',
+    '突击战术',
+    '堡垒战术',
+    '远程战术',
+    '破坏战术',
+    '高规格'
+  ],
+  Sarkaz: [
+    '因地制宜',
+    '魂灵护送',
+    '博闻广记',
+    '蓝图测绘',
     '指挥',
     '集群',
     '后勤',

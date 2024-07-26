@@ -40,11 +40,9 @@ recruit_rarity = env.get_template("recruit_rarity.html")
 report_template = env.get_template("report_template.html")
 
 
-conf = config.conf
-
-
 class Email:
     def __init__(self, body, subject, attach_image):
+        conf = config.conf
         msg = MIMEMultipart()
         msg.attach(MIMEText(body, "html"))
         msg["Subject"] = subject
@@ -78,6 +76,7 @@ class Email:
             s.starttls()
         else:
             s = smtplib.SMTP_SSL(self.smtp_server, self.port, timeout=10)
+        conf = config.conf
         s.login(conf.account, conf.pass_code)
         recipient = conf.recipient or [conf.account]
         s.send_message(self.msg, conf.account, recipient)
@@ -85,6 +84,7 @@ class Email:
 
 
 def send_message_sync(body="", subject="", attach_image=None):
+    conf = config.conf
     if subject == "":
         subject = body.split("\n")[0].strip()
     subject = conf.mail_subject + subject

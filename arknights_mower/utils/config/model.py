@@ -214,10 +214,10 @@ class RegularTaskPart(ConfModel):
     "领取邮件奖励"
     maa_enable: bool = True
     "日常任务"
-    maa_gap: int = 3
+    maa_gap: float = 3
     "日常任务间隔"
     maa_expiring_medicine: bool = True
-    "自动使用60小时内过期的理智药"
+    "自动使用快要过期（约3天）的理智药"
     maa_eat_stone: bool = False
     "无限吃源石"
     maa_weekly_plan: list[MaaDailyPlan] = [
@@ -447,7 +447,7 @@ class RIICPart(ConfModel):
     "排班表路径"
     reload_room: str = ""
     "搓玉补货房间"
-    run_order_delay: int = 3
+    run_order_delay: float = 3
     "跑单前置延时"
     resting_threshold: float = 0.65
     "心情阈值"
@@ -461,7 +461,7 @@ class SimulatorPart(ConfModel):
     class SimulatorConf(ConfModel):
         name: str = ""
         "名称"
-        index: str = "-1"
+        index: str | int = "-1"
         "多开编号"
         simulator_folder: str = ""
         "文件夹"

@@ -121,9 +121,9 @@ def webview_window(child_conn, global_space, host, port, token, url, tray):
     global width
     global height
 
-    conf = config.conf
-    width = conf.webview.width
-    height = conf.webview.height
+    config.load()
+    width = config.conf.webview.width
+    height = config.conf.webview.height
 
     def window_size(w, h):
         global width
@@ -175,8 +175,8 @@ def webview_window(child_conn, global_space, host, port, token, url, tray):
     webview.start()
 
     config.load()
-    conf.webview.width = width
-    conf.webview.height = height
+    config.conf.webview.width = width
+    config.conf.webview.height = height
     config.save()
     sys.exit()
 
@@ -192,10 +192,12 @@ if __name__ == "__main__":
 
     import sys
 
-    from arknights_mower.utils import config, path
+    from arknights_mower.utils import path
 
     if len(sys.argv) == 2:
         path.global_space = sys.argv[1]
+
+    from arknights_mower.utils import config
 
     conf = config.conf
     tray = conf.webview.tray

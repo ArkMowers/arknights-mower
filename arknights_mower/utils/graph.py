@@ -94,7 +94,11 @@ def announcement(solver: BaseSolver):
 
 @edge(Scene.AGREEMENT_UPDATE, Scene.INDEX)
 def agreement(solver: BaseSolver):
-    solver.tap_element("read_and_agree")
+    if pos := solver.find("read_and_agree"):
+        solver.tap(pos)
+    else:
+        solver.tap((791, 728))
+        solver.tap((959, 828))
 
 
 @edge(Scene.INDEX, Scene.INFRA_MAIN)

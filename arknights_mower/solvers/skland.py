@@ -13,8 +13,6 @@ from arknights_mower.utils import config
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 
-conf = config.conf
-
 app_code = "4ca99fa6b56cc2ba"
 
 # 签到url
@@ -57,7 +55,7 @@ class SKLand:
         self.all_recorded = True
 
     def start(self):
-        for item in conf.skland_info:
+        for item in config.conf.skland_info:
             if self.has_record(item.account):
                 continue
             self.all_recorded = False
@@ -226,7 +224,7 @@ class SKLand:
 
     def test_connect(self):
         res = []
-        for item in conf.skland_info:
+        for item in config.conf.skland_info:
             if item.isCheck:
                 try:
                     self.save_param(self.get_cred_by_token(self.log(item)))

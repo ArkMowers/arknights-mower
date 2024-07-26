@@ -15,8 +15,6 @@ from arknights_mower.utils.matcher import Matcher
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.solver import BaseSolver
 
-conf = config.conf
-
 src_pts = np.float32([[0, 97], [1920, 97], [-400, 1080], [2320, 1080]])
 dst_pts = np.float32([[0, 0], [1920, 0], [0, 1000], [1920, 1000]])
 trans_mat = cv2.getPerspectiveTransform(src_pts, dst_pts)
@@ -63,7 +61,7 @@ class ReclamationAlgorithm(BaseSolver):
     ) -> None:
         logger.info("Start: 生息演算")
 
-        self.timeout = conf.reclamation_algorithm.timeout
+        self.timeout = config.conf.reclamation_algorithm.timeout
         self.deadline = datetime.now() + duration - self.timeout if duration else None
 
         self.battle_wait = 0  # 进入战斗后等待剧情出现

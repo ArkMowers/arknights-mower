@@ -22,8 +22,6 @@ from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.simulator import restart_simulator
 
 base_scheduler = None
-conf = config.conf
-plan = config.plan
 operators = config.operators
 
 
@@ -51,6 +49,8 @@ def initialize(tasks, scheduler=None):
     base_scheduler = BaseSchedulerSolver()
     base_scheduler.operators = {}
     plan1 = {}
+    plan = config.plan
+    conf = config.conf
     plan_config = PlanConfig(
         plan["conf"]["rest_in_full"],
         plan["conf"]["exhaust_require"],
@@ -248,13 +248,13 @@ def simulate():
                         base_scheduler.daily_report
                         < (datetime.now() - timedelta(hours=4)).date()
                     ):
-                        if base_scheduler.report_plan_solver(conf.send_report):
+                        if base_scheduler.report_plan_solver():
                             base_scheduler.daily_report = (
                                 datetime.now() - timedelta(hours=4)
                             ).date()
 
                     if (
-                        conf.skland_enable
+                        config.conf.skland_enable
                         and base_scheduler.daily_skland
                         < (datetime.now() - timedelta(hours=4)).date()
                     ):
@@ -273,7 +273,7 @@ def simulate():
                                 datetime.now() - timedelta(hours=8)
                             ).date()
 
-                    if conf.recruit_enable:
+                    if config.conf.recruit_enable:
                         base_scheduler.recruit_plan_solver()
 
                     # 应该在maa任务之后
@@ -288,21 +288,22 @@ def simulate():
                         else:
                             logger.info(f"{path} 不存在,新建一个存储仓库物品的csv")
                             now_time = (
-                                int(datetime.now().timestamp()) - conf.maa_gap * 3600
+                                int(datetime.now().timestamp())
+                                - config.conf.maa_gap * 3600
                             )
                             创建csv()
                             创建json()
                             return now_time
 
-                    if conf.maa_depot_enable:
+                    if config.conf.maa_depot_enable:
                         dt = int(datetime.now().timestamp()) - _is_depotscan()
-                        if dt >= conf.maa_gap * 3600:
+                        if dt >= config.conf.maa_gap * 3600:
                             base_scheduler.仓库扫描()
                         else:
                             logger.info(
-                                f"仓库扫描未到时间，将在 {conf.maa_gap - dt // 3600}小时之内开始扫描"
+                                f"仓库扫描未到时间，将在 {config.conf.maa_gap - dt // 3600}小时之内开始扫描"
                             )
-                    if conf.maa_enable == 1:
+                    if config.conf.maa_enable == 1:
                         subject = f"下次任务在{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}"
                         context = f"下一次任务:{base_scheduler.tasks[0].plan}"
                         logger.info(context)
@@ -349,10 +350,10 @@ def simulate():
                     now_time = datetime.now().time()
                     try:
                         min_time = datetime.strptime(
-                            conf.maa_rg_sleep_min, "%H:%M"
+                            config.conf.maa_rg_sleep_min, "%H:%M"
                         ).time()
                         max_time = datetime.strptime(
-                            conf.maa_rg_sleep_max, "%H:%M"
+                            config.conf.maa_rg_sleep_max, "%H:%M"
                         ).time()
                         if max_time < min_time:
                             rg_sleep = now_time > min_time or now_time < max_time
@@ -390,9 +391,9 @@ def simulate():
                     base_scheduler.task_count += 1
                     logger.info(f"第{base_scheduler.task_count}次任务结束")
                     if remaining_time > 300:
-                        if conf.close_simulator_when_idle:
+                        if config.conf.close_simulator_when_idle:
                             restart_simulator(start=False)
-                        elif conf.exit_game_when_idle:
+                        elif config.conf.exit_game_when_idle:
                             base_scheduler.device.exit()
                     body = task_template.render(
                         tasks=[

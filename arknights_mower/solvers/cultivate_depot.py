@@ -10,8 +10,6 @@ from arknights_mower.utils import config
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 
-conf = config.conf
-
 app_code = "4ca99fa6b56cc2ba"
 
 # 签到url
@@ -52,7 +50,7 @@ class cultivate:
         self.all_recorded = True
 
     def start(self):
-        for item in conf.skland_info:
+        for item in config.conf.skland_info:
             if item.isCheck:
                 self.save_param(self.get_cred_by_token(self.log(item)))
                 for i in self.get_binding_list():
