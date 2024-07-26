@@ -288,7 +288,8 @@ def simulate():
                         else:
                             logger.info(f"{path} 不存在,新建一个存储仓库物品的csv")
                             now_time = (
-                                int(datetime.now().timestamp()) - config.conf.maa_gap * 3600
+                                int(datetime.now().timestamp())
+                                - config.conf.maa_gap * 3600
                             )
                             创建csv()
                             创建json()

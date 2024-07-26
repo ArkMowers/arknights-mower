@@ -224,7 +224,7 @@ class SKLand:
 
     def test_connect(self):
         res = []
-        for item in conf.skland_info:
+        for item in config.conf.skland_info:
             if item.isCheck:
                 try:
                     self.save_param(self.get_cred_by_token(self.log(item)))
