@@ -33,6 +33,8 @@ class OperationSolver(SceneGraphSolver):
         value = 0
 
         for x, y, w, h in rect:
+            if w < 5 or h < 5:
+                continue
             digit = cropimg(img, ((x, y), (x + w, y + h)))
             digit = cv2.copyMakeBorder(
                 digit, 10, 10, 10, 10, cv2.BORDER_CONSTANT, None, (0,)
