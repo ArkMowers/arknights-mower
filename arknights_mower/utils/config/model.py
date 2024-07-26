@@ -214,7 +214,7 @@ class RegularTaskPart(ConfModel):
     "领取邮件奖励"
     maa_enable: bool = True
     "日常任务"
-    maa_gap: int = 3
+    maa_gap: float = 3
     "日常任务间隔"
     maa_expiring_medicine: bool = True
     "自动使用快要过期（约3天）的理智药"
