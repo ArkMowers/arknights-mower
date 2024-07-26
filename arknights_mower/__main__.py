@@ -15,7 +15,7 @@ from arknights_mower.utils.device.adb_client.session import Session
 from arknights_mower.utils.device.scrcpy import Scrcpy
 from arknights_mower.utils.email import send_message, task_template
 from arknights_mower.utils.hot_update import get_listing
-from arknights_mower.utils.log import init_fhlr, logger
+from arknights_mower.utils.log import logger
 from arknights_mower.utils.logic_expression import LogicExpression
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
@@ -27,7 +27,6 @@ operators = config.operators
 
 # 执行自动排班
 def main():
-    init_fhlr()
     logger.info("开始运行Mower")
     rapidocr.initialize_ocr()
     simulate()

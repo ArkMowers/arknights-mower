@@ -55,25 +55,21 @@ logger.setLevel("DEBUG")
 logger.addHandler(dhlr)
 
 
-def init_fhlr() -> None:
-    """initialize log file"""
-    if config.wh:
-        return
-    folder = Path(get_path("@app/log"))
-    folder.mkdir(exist_ok=True, parents=True)
-    fhlr = RotatingFileHandler(
-        folder.joinpath("runtime.log"),
-        encoding="utf8",
-        maxBytes=10 * 1024 * 1024,
-        backupCount=20,
-    )
-    fhlr.setFormatter(basic_formatter)
-    fhlr.setLevel("DEBUG")
-    fhlr.addFilter(PackagePathFilter())
-    logger.addHandler(fhlr)
-    config.wh = Handler(config.log_queue)
-    config.wh.setLevel(logging.INFO)
-    logger.addHandler(config.wh)
+folder = Path(get_path("@app/log"))
+folder.mkdir(exist_ok=True, parents=True)
+fhlr = RotatingFileHandler(
+    folder.joinpath("runtime.log"),
+    encoding="utf8",
+    maxBytes=10 * 1024 * 1024,
+    backupCount=20,
+)
+fhlr.setFormatter(basic_formatter)
+fhlr.setLevel("DEBUG")
+fhlr.addFilter(PackagePathFilter())
+logger.addHandler(fhlr)
+whlr = Handler(config.log_queue)
+whlr.setLevel(logging.INFO)
+logger.addHandler(whlr)
 
 
 def save_screenshot(
