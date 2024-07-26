@@ -5,6 +5,7 @@ import cv2
 import pandas as pd
 
 from arknights_mower.models import noto_sans
+from arknights_mower.utils import config
 from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.digit_reader import DigitReader
 from arknights_mower.utils.email import report_template, send_message
@@ -30,7 +31,6 @@ class ReportSolver(SceneGraphSolver):
         self,
         device: Device = None,
         recog: Recognizer = None,
-        send_report: bool = False,
     ) -> None:
         super().__init__(device, recog)
         self.record_path = get_path("@app/tmp/report.csv")
@@ -40,7 +40,7 @@ class ReportSolver(SceneGraphSolver):
             (datetime.datetime.now() - datetime.timedelta(hours=4)).date().__str__()
         )
         self.digitReader = DigitReader()
-        self.send_report = send_report
+        self.send_report = config.conf.send_report
         self.report_res = {
             "作战录像": None,
             "赤金": None,

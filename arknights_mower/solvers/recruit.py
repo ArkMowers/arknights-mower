@@ -21,8 +21,6 @@ from arknights_mower.utils.image import cropimg, loadres
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.recognize import Recognizer, Scene
 
-conf = config.conf
-
 
 class RecruitSolver(SceneGraphSolver):
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
@@ -100,7 +98,7 @@ class RecruitSolver(SceneGraphSolver):
                     + "]:{}".format(",".join(agent))
                 )
         if self.agent_choose or self.result_agent:
-            if conf.recruit_email_enable:
+            if config.conf.recruit_email_enable:
                 send_message(
                     recruit_template.render(
                         recruit_results=self.agent_choose,
@@ -114,7 +112,7 @@ class RecruitSolver(SceneGraphSolver):
         return self.agent_choose, self.result_agent
 
     def add_recruit_param(self):
-        if not conf.recruit_robot:
+        if not config.conf.recruit_robot:
             self.recruit_order = [6, 5, 4, 3, 2, 1]
             self.recruit_index = 1
 
@@ -260,6 +258,8 @@ class RecruitSolver(SceneGraphSolver):
                 logger.error("筛选结果为 {}".format(recruit_cal_result))
                 raise "筛选tag失败"
             logger.info("recruit_result_level={}".format(recruit_result_level))
+
+            conf = config.conf
 
             if self.recruit_order.index(recruit_result_level) <= self.recruit_index:
                 if conf.recruit_email_enable:

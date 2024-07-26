@@ -14,8 +14,6 @@ from arknights_mower.utils.matcher import Matcher
 from arknights_mower.utils.recognize import Scene
 from arknights_mower.utils.solver import BaseSolver
 
-conf = config.conf
-
 
 def exp(card):
     data = card[:3]
@@ -74,7 +72,7 @@ class SecretFront(BaseSolver):
     ):
         logger.info("Start: 隐秘战线")
 
-        self.timeout = conf.reclamation_algorithm.timeout
+        self.timeout = config.conf.reclamation_algorithm.timeout
         self.deadline = datetime.now() + duration - self.timeout if duration else None
         self.unknown_time = None
 
