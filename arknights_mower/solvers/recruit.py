@@ -19,9 +19,6 @@ from arknights_mower.utils.log import logger
 from arknights_mower.utils.recognize import Recognizer, Scene
 from arknights_mower.utils.vector import va
 
-conf = config.conf
-
-
 with lzma.open(f"{__rootdir__}/models/riic_base_digits.pkl", "rb") as f:
     number = pickle.load(f)
 with lzma.open(f"{__rootdir__}/models/recruit_result.pkl", "rb") as f:
@@ -89,12 +86,12 @@ class RecruitSolver(SceneGraphSolver):
                 )
         if self.agent_choose or self.result_agent:
             logger.info("招募汇总如下")
-            if conf.recruit_email_enable:
+            if config.conf.recruit_email_enable:
                 send_message(
                     recruit_template.render(
                         recruit_results=self.agent_choose,
                         recruit_get_agent=self.result_agent,
-                        permit_count=conf.recruitment_permit,
+                        permit_count=config.conf.recruitment_permit,
                         title_text="公招汇总",
                     ),
                     "公招汇总通知",
@@ -240,7 +237,7 @@ class RecruitSolver(SceneGraphSolver):
                 return
 
         if self.recruit_order.index(recruit_result_level) <= self.recruit_order_index:
-            if conf.recruit_email_enable:
+            if config.conf.recruit_email_enable:
                 send_message(
                     recruit_rarity.render(
                         recruit_results=recruit_cal_result[recruit_result_level],
@@ -255,8 +252,8 @@ class RecruitSolver(SceneGraphSolver):
                 self.back()
                 return
             elif recruit_result_level == 5:
-                if conf.recruit_auto_5 == 2:
-                    if conf.recruit_auto_only5 and len(recruit_cal_result) > 1:
+                if config.conf.recruit_auto_5 == 2:
+                    if config.conf.recruit_auto_only5 and len(recruit_cal_result) > 1:
                         logger.debug(
                             f"{recruit_result_level}星稀有tag,但不止一个或纯手动选择"
                         )
@@ -269,7 +266,10 @@ class RecruitSolver(SceneGraphSolver):
             self.back()
             return
 
-        if self.ticket_number < conf.recruitment_permit and recruit_result_level == 3:
+        if (
+            self.ticket_number < config.conf.recruitment_permit
+            and recruit_result_level == 3
+        ):
             self.recruit_index = self.recruit_index + 1
             logger.info("没券 返回")
             self.back()
@@ -515,6 +515,6 @@ class RecruitSolver(SceneGraphSolver):
         return value
 
     def add_recruit_param(self):
-        if not conf.recruit_robot:
+        if not config.conf.recruit_robot:
             self.recruit_order = [6, 5, 4, 3, 2, 1]
             self.recruit_order_index = 1
