@@ -217,7 +217,7 @@ class RegularTaskPart(ConfModel):
     maa_gap: int = 3
     "日常任务间隔"
     maa_expiring_medicine: bool = True
-    "自动使用60小时内过期的理智药"
+    "自动使用快要过期（约3天）的理智药"
     maa_eat_stone: bool = False
     "无限吃源石"
     maa_weekly_plan: list[MaaDailyPlan] = [
