@@ -23,7 +23,6 @@ from arknights_mower.utils.simulator import restart_simulator
 
 base_scheduler = None
 conf = config.conf
-plan = config.plan
 operators = config.operators
 
 
@@ -51,6 +50,7 @@ def initialize(tasks, scheduler=None):
     base_scheduler = BaseSchedulerSolver()
     base_scheduler.operators = {}
     plan1 = {}
+    plan = config.plan
     plan_config = PlanConfig(
         plan["conf"]["rest_in_full"],
         plan["conf"]["exhaust_require"],
