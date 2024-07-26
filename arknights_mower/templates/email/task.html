@@ -5,11 +5,17 @@
     <meta name="viewport" content="width=device-width" />
     <title>arknights-mower任务列表</title>
     <style>
-      table,
+      table {
+        border-collapse: collapse;
+      }
       th,
       td {
-        border: 1px solid black;
-        border-collapse: collapse;
+        border: 1px solid;
+        padding: 2px 6px;
+      }
+      td:first-child,
+      td:nth-child(2) {
+        white-space: nowrap;
       }
     </style>
   </head>
