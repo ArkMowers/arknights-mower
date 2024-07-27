@@ -1,9 +1,12 @@
 import json
 from queue import Queue
+from subprocess import Popen
 from threading import Event
+from typing import Optional
 
 import requests
 import yaml
+from pydantic import BaseModel
 from yamlcore import CoreDumper, CoreLoader
 
 from arknights_mower.utils.config.conf import Conf
@@ -75,7 +78,14 @@ log_queue = Queue()
 wh = None
 
 
-droidcast = {"session": requests.Session(), "port": 0, "process": None}
+class DroidCast(BaseModel):
+    session = requests.Session()
+    port: int = 0
+    process: Optional[Popen] = None
+
+
+droidcast = DroidCast()
+
 
 # 常量
 APP_ACTIVITY_NAME = "com.u8.sdk.U8UnityContext"

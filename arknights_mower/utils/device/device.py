@@ -165,7 +165,7 @@ class Device(object):
             if not class_path:
                 logger.error(f"无法获取CLASSPATH：{out}")
                 return False
-        port = config.droidcast["port"]
+        port = config.droidcast.port
         if port != 0 and is_port_in_use(port):
             try:
                 occupied_by_adb_forward = False
@@ -184,14 +184,14 @@ class Device(object):
                 logger.exception(e)
         if port == 0:
             port = get_new_port()
-            config.droidcast["port"] = port
+            config.droidcast.port = port
             logger.info(f"更新DroidCast端口为{port}")
         else:
             logger.info(f"保持DroidCast端口为{port}")
         self.client.cmd(f"forward tcp:{port} tcp:{port}")
         logger.info("ADB端口转发成功，启动DroidCast")
-        if config.droidcast["process"] is not None:
-            config.droidcast["process"].terminate()
+        if config.droidcast.process is not None:
+            config.droidcast.process.terminate()
         process = self.client.process(
             class_path,
             [
@@ -201,16 +201,16 @@ class Device(object):
                 f"--port={port}",
             ],
         )
-        config.droidcast["process"] = process
+        config.droidcast.process = process
         return True
 
     def screencap(self, save: bool = False) -> bytes:
         """get a screencap"""
         if config.conf.droidcast.enable:
-            session = config.droidcast["session"]
+            session = config.droidcast.session
             while True:
                 try:
-                    port = config.droidcast["port"]
+                    port = config.droidcast.port
                     url = f"http://127.0.0.1:{port}/screenshot"
                     logger.debug(f"GET {url}")
                     r = session.get(url)
