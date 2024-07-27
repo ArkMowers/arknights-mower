@@ -35,6 +35,6 @@ jobs:
           cache-dependency-path: requirements.txt
       - run: |
           python3.12 -m venv venv
-          ./venv/Scripts/pip install -r requirements.txt
+          ./venv/bin/pip install -r requirements.txt
       - run: |
-          ./venv/Scripts/python3 -m unittest discover -s arknights_mower/tests -p "*_tests.py"
+          ./venv/bin/python3 -m unittest discover -s arknights_mower/tests -p "*_tests.py"
