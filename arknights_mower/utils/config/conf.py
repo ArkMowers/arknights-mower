@@ -550,4 +550,26 @@ class Conf(
     SimulatorPart,
     SKLandPart,
 ):
-    pass
+    @property
+    def APPNAME(self):
+        return (
+            "com.hypergryph.arknights"
+            if self.package_type == 1
+            else "com.hypergryph.arknights.bilibili"
+        )
+
+    @property
+    def RG(self):
+        return self.maa_rg_enable == 1 and self.maa_long_task_type == "rogue"
+
+    @property
+    def SSS(self):
+        return self.maa_rg_enable == 1 and self.maa_long_task_type == "sss"
+
+    @property
+    def RA(self):
+        return self.maa_rg_enable == 1 and self.maa_long_task_type == "ra"
+
+    @property
+    def SF(self):
+        return self.maa_rg_enable == 1 and self.maa_long_task_type == "sf"

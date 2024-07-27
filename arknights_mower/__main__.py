@@ -110,9 +110,7 @@ def initialize(tasks, scheduler=None):
     plan["backup_plans"] = backup_plans
 
     logger.debug(plan)
-    base_scheduler.package_name = config.APPNAME  # 服务器
     base_scheduler.global_plan = plan
-    base_scheduler.drone_count_limit = conf.drone_count_limit
     base_scheduler.tasks = tasks
     base_scheduler.enable_party = conf.enable_party == 1  # 是否使用线索
     base_scheduler.leifeng_mode = conf.leifeng_mode == 1  # 是否有额外线索就送出
@@ -122,20 +120,11 @@ def initialize(tasks, scheduler=None):
     # logger.info("宿舍黑名单：" + str(plan_config.free_blacklist))
     # 估计没用了
     base_scheduler.MAA = None
-    base_scheduler.check_mail_enable = conf.check_mail_enable
-    base_scheduler.report_enable = conf.report_enable
-    base_scheduler.sign_in_enable = conf.sign_in.enable
-    base_scheduler.visit_friend_enable = conf.visit_friend
     base_scheduler.error = False
     base_scheduler.drone_room = None if conf.drone_room == "" else conf.drone_room
     base_scheduler.reload_room = list(
         filter(None, conf.reload_room.replace("，", ",").split(","))
     )
-    base_scheduler.drone_execution_gap = conf.drone_interval
-    base_scheduler.run_order_delay = conf.run_order_delay
-    base_scheduler.exit_game_when_idle = conf.exit_game_when_idle
-    base_scheduler.simulator = conf.simulator
-    base_scheduler.close_simulator_when_idle = conf.close_simulator_when_idle
 
     # 关闭游戏次数计数器
     base_scheduler.task_count = 0
@@ -263,7 +252,7 @@ def simulate():
                             ).date()
 
                     if (
-                        base_scheduler.check_mail_enable
+                        config.conf.check_mail_enable
                         and base_scheduler.daily_mail
                         < (datetime.now() - timedelta(hours=8)).date()
                     ):
@@ -328,9 +317,9 @@ def simulate():
                         logger.info(f"第{base_scheduler.task_count}次任务结束")
                         if remaining_time > 0:
                             if remaining_time > 300:
-                                if base_scheduler.close_simulator_when_idle:
+                                if config.conf.close_simulator_when_idle:
                                     restart_simulator(start=False)
-                                elif base_scheduler.exit_game_when_idle:
+                                elif config.conf.exit_game_when_idle:
                                     base_scheduler.device.exit()
                             body = task_template.render(
                                 tasks=[

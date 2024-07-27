@@ -36,21 +36,6 @@ def load_conf():
     with conf_path.open("r", encoding="utf-8") as f:
         conf = Conf(**yaml.load(f, Loader=CoreLoader))
 
-    global APPNAME
-    APPNAME = (
-        "com.hypergryph.arknights"
-        if conf.package_type == 1
-        else "com.hypergryph.arknights.bilibili"
-    )
-    global rg
-    rg = conf.maa_rg_enable == 1 and conf.maa_long_task_type == "rogue"
-    global sss
-    sss = conf.maa_rg_enable == 1 and conf.maa_long_task_type == "sss"
-    global ra
-    ra = conf.maa_rg_enable == 1 and conf.maa_long_task_type == "ra"
-    global sf
-    sf = conf.maa_rg_enable == 1 and conf.maa_long_task_type == "sf"
-
 
 conf: Conf
 load_conf()

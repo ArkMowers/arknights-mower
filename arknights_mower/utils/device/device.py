@@ -114,12 +114,12 @@ class Device(object):
         if tap:
             self.run(f"input tap {x} {y}")
         else:
-            self.run(f"am start -n {config.APPNAME}/{config.APP_ACTIVITY_NAME}")
+            self.run(f"am start -n {config.conf.APPNAME}/{config.APP_ACTIVITY_NAME}")
 
     def exit(self) -> None:
         """exit the application"""
         logger.info("退出游戏")
-        self.run(f"am force-stop {config.APPNAME}")
+        self.run(f"am force-stop {config.conf.APPNAME}")
 
     def send_keyevent(self, keycode: int) -> None:
         """send a key event"""
@@ -318,7 +318,7 @@ class Device(object):
             try:
                 focus = self.current_focus()
                 if focus not in [
-                    f"{config.APPNAME}/{config.APP_ACTIVITY_NAME}",
+                    f"{config.conf.APPNAME}/{config.APP_ACTIVITY_NAME}",
                     "com.hypergryph.arknights.bilibili/com.gsc.welcome.WelcomeActivity",
                 ]:
                     self.exit()  # 防止应用卡死
