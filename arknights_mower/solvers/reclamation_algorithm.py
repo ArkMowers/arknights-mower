@@ -61,7 +61,7 @@ class ReclamationAlgorithm(BaseSolver):
     ) -> None:
         logger.info("Start: 生息演算")
 
-        self.timeout = config.conf.reclamation_algorithm.timeout
+        self.timeout = timedelta(seconds=config.conf.reclamation_algorithm.timeout)
         self.deadline = datetime.now() + duration - self.timeout if duration else None
 
         self.battle_wait = 0  # 进入战斗后等待剧情出现
