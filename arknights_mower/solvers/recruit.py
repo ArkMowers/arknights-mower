@@ -238,7 +238,7 @@ class RecruitSolver(SceneGraphSolver):
             if config.conf.recruit_email_enable:
                 send_message(
                     recruit_rarity.render(
-                        recruit_results=recruit_cal_result[recruit_result_level],
+                        recruit_results=recruit_cal_result,
                         title_text="稀有tag通知",
                     ),
                     "出稀有标签辣",
