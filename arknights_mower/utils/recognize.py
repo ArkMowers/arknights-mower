@@ -728,7 +728,6 @@ class Recognizer(object):
             "skip": (1803, 32),
             "terminal_main": (73, 959),
             "terminal_pre2": (1459, 797),
-            "upgrade": (997, 501),
         }
 
         if res in color:
@@ -820,6 +819,7 @@ class Recognizer(object):
             "riic/iron": ((1570, 230), (1630, 340)),
             "riic/orundum": ((1500, 320), (1800, 550)),
             "riic/trade": ((1320, 250), (1600, 500)),
+            "upgrade": (997, 501),
         }
 
         template_matching_score = {
