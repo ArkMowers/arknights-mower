@@ -1,3 +1,4 @@
+import json
 from queue import Queue
 from threading import Event
 
@@ -5,13 +6,14 @@ import requests
 import yaml
 from yamlcore import CoreDumper, CoreLoader
 
-from arknights_mower.utils.config.model import Conf
+from arknights_mower.utils.config.conf import Conf
+from arknights_mower.utils.config.plan import Plan
 from arknights_mower.utils.path import get_path
 
 conf_path = get_path("@app/conf.yml")
 
 
-def save():
+def save_conf():
     with conf_path.open("w", encoding="utf8") as f:
         yaml.dump(
             conf.model_dump(),
@@ -23,12 +25,12 @@ def save():
         )
 
 
-def load():
+def load_conf():
     global conf
     if not conf_path.is_file():
         conf_path.parent.mkdir(exist_ok=True)
         conf = Conf()
-        save()
+        save_conf()
     with conf_path.open("r", encoding="utf-8") as f:
         conf = Conf(**yaml.load(f, Loader=CoreLoader))
 
@@ -49,7 +51,18 @@ def load():
 
 
 conf: Conf
-load()
+load_conf()
+
+
+def load_plan() -> Plan:
+    with open(conf.planFile, "r", encoding="utf-8") as f:
+        plan = Plan(**json.load(f))
+    return plan
+
+
+def save_plan(plan: Plan):
+    with open(conf.planFile, "w", encoding="utf-8") as f:
+        json.dump(plan.model_dump(exclude_none=True), f, ensure_ascii=False, indent=2)
 
 
 stop_mower = Event()

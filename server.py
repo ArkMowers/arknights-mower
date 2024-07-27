@@ -19,7 +19,6 @@ from werkzeug.exceptions import NotFound
 
 from arknights_mower import __system__
 from arknights_mower.utils import config
-from arknights_mower.utils.conf import load_plan, write_plan
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 
@@ -83,11 +82,11 @@ def not_found(e):
 @require_token
 def load_config():
     if request.method == "GET":
-        config.load()
+        config.load_conf()
         return config.conf.model_dump()
     else:
         config.conf = config.Conf(**request.json)
-        config.save()
+        config.save_conf()
         return "New config saved!"
 
 
@@ -98,14 +97,15 @@ def load_plan_from_json():
 
     if request.method == "GET":
         try:
-            plan = load_plan(config.conf.planFile)
+            plan = config.load_plan()
         except Exception as e:
             logger.exception(f"plan.json路径错误{e}，重置为plan.json")
-            plan = load_plan()
-        return plan
+            config.conf.planFile = "./plan.json"
+            plan = config.load_plan()
+        return plan.model_dump(exclude_none=True)
     else:
-        plan = request.json
-        write_plan(plan, config.conf.planFile)
+        plan = config.Plan(**request.json)
+        config.save_plan(plan)
         return f"New plan saved at {config.conf.planFile}"
 
 

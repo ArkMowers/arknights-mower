@@ -121,7 +121,7 @@ def webview_window(child_conn, global_space, host, port, token, url, tray):
     global width
     global height
 
-    config.load()
+    config.load_conf()
     width = config.conf.webview.width
     height = config.conf.webview.height
 
@@ -174,10 +174,10 @@ def webview_window(child_conn, global_space, host, port, token, url, tray):
     Thread(target=recv_msg, daemon=True).start()
     webview.start()
 
-    config.load()
+    config.load_conf()
     config.conf.webview.width = width
     config.conf.webview.height = height
-    config.save()
+    config.save_conf()
     sys.exit()
 
 
