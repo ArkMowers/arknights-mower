@@ -9,23 +9,21 @@ from datetime import datetime, timedelta
 import cv2
 
 from arknights_mower.data import agent_list, base_room_list
-from arknights_mower.solvers import (
-    BaseMixin,
-    CreditFight,
-    CreditShop,
-    CreditSolver,
-    DepotSolver,
-    MailSolver,
-    MissionSolver,
-    NavigationSolver,
-    OperationSolver,
-    ReclamationAlgorithm,
-    RecruitSolver,
-    ReportSolver,
-    SecretFront,
-    SKLand,
-    cultivateDepotSolver,
-)
+from arknights_mower.solvers.base_mixin import BaseMixin
+from arknights_mower.solvers.credit import CreditSolver
+from arknights_mower.solvers.credit_fight import CreditFight
+from arknights_mower.solvers.cultivate_depot import cultivate as cultivateDepotSolver
+from arknights_mower.solvers.depotREC import depotREC as DepotSolver
+from arknights_mower.solvers.mail import MailSolver
+from arknights_mower.solvers.mission import MissionSolver
+from arknights_mower.solvers.navigation import NavigationSolver
+from arknights_mower.solvers.operation import OperationSolver
+from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
+from arknights_mower.solvers.recruit import RecruitSolver
+from arknights_mower.solvers.report import ReportSolver
+from arknights_mower.solvers.secret_front import SecretFront
+from arknights_mower.solvers.shop import CreditShop
+from arknights_mower.solvers.skland import SKLand
 from arknights_mower.utils import config, detector, hot_update, rapidocr
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.csleep import MowerExit, csleep
