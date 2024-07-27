@@ -1,8 +1,7 @@
 import json
 from queue import Queue
-from subprocess import Popen
 from threading import Event
-from typing import Optional
+from typing import Any
 
 import requests
 import yaml
@@ -79,9 +78,9 @@ wh = None
 
 
 class DroidCast(BaseModel):
-    session = requests.Session()
+    session: Any = requests.Session()
     port: int = 0
-    process: Optional[Popen] = None
+    process: Any = None
 
 
 droidcast = DroidCast()
