@@ -1666,7 +1666,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             ),
             use_digit_reader=True,
         )
-        execute_time = execute_time - timedelta(seconds=(60 * config.conf.run_order_delay))
+        execute_time = execute_time - timedelta(
+            seconds=(60 * config.conf.run_order_delay)
+        )
         logger.info("下一次进行插拔的时间为：" + execute_time.strftime("%H:%M:%S"))
         self.scene_graph_navigation(Scene.INFRA_MAIN)
         return execute_time
@@ -2130,7 +2132,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             # self.tap_element('all_in')
             # 如果不是全部all in
             if all_in > 0:
-                tap_times = drone_count - config.conf.drone_count_limit  # 修改为无人机阈值
+                tap_times = (
+                    drone_count - config.conf.drone_count_limit
+                )  # 修改为无人机阈值
                 for _count in range(tap_times):
                     self.tap((self.recog.w * 0.7, self.recog.h * 0.5), interval=0.1)
             else:
@@ -2159,8 +2163,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     drone_count = self.digit_reader.get_drone(self.recog.gray)
                     logger.info(f"当前无人机数量为：{drone_count}")
                     # 200 为识别错误
-                    if drone_count < config.conf.drone_count_limit or drone_count == 201:
-                        logger.info(f"无人机数量小于{config.conf.drone_count_limit}->停止")
+                    if (
+                        drone_count < config.conf.drone_count_limit
+                        or drone_count == 201
+                    ):
+                        logger.info(
+                            f"无人机数量小于{config.conf.drone_count_limit}->停止"
+                        )
                         break
                 st = accelerate[1]  # 起点
                 ed = accelerate[0]  # 终点
@@ -2876,7 +2885,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                 self.task.time = (
                                     datetime.now()
                                     + timedelta(seconds=remaining_time)
-                                    - timedelta(minutes=sconfig.conf.run_order_delay)
+                                    - timedelta(minutes=config.conf.run_order_delay)
                                 )
                                 logger.info(f"订单倒计时 {remaining_time}秒")
                                 self.back()
@@ -3010,7 +3019,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     drone_count = self.digit_reader.get_drone(self.recog.gray)
                     logger.info(f"当前无人机数量为：{drone_count}")
                     # 200 为识别错误
-                    if drone_count >= config.conf.drone_count_limit and drone_count != 201:
+                    if (
+                        drone_count >= config.conf.drone_count_limit
+                        and drone_count != 201
+                    ):
                         self.drone(
                             room, not_return=True, not_customize=True, skip_enter=True
                         )
