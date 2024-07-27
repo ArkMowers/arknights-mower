@@ -48,7 +48,7 @@ def initialize(tasks, scheduler=None):
     base_scheduler = BaseSchedulerSolver()
     base_scheduler.operators = {}
     plan1 = {}
-    plan = config.plan
+    plan = config.plan.model_dump(exclude_none=True)
     conf = config.conf
     plan_config = PlanConfig(
         plan["conf"]["rest_in_full"],

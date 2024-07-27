@@ -104,7 +104,7 @@ def load_plan_from_json():
             plan = config.load_plan()
         return plan.model_dump(exclude_none=True)
     else:
-        plan = config.Plan(**request.json)
+        plan = config.PlanModel(**request.json)
         config.save_plan(plan)
         return f"New plan saved at {config.conf.planFile}"
 
@@ -237,7 +237,8 @@ def import_from_image():
     global plan
     plan = qrcode.decode(img)
     if plan:
-        write_plan(plan, config.conf.planFile)
+        plan = config.PlanModel(**plan)
+        config.save_plan(plan)
         return "排班已加载"
     return "排班表导入失败！"
 

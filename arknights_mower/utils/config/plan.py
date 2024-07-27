@@ -105,7 +105,7 @@ class BackupPlan(BaseModel):
     trigger_timing: str = "AFTER_PLANNING"
 
 
-class Plan(BaseModel):
+class PlanModel(BaseModel):
     default: str = "plan1"
     plan1: Plan1 = {}
     conf: PlanConf = {}

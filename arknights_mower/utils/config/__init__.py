@@ -7,7 +7,7 @@ import yaml
 from yamlcore import CoreDumper, CoreLoader
 
 from arknights_mower.utils.config.conf import Conf
-from arknights_mower.utils.config.plan import Plan
+from arknights_mower.utils.config.plan import PlanModel
 from arknights_mower.utils.path import get_path
 
 conf_path = get_path("@app/conf.yml")
@@ -54,13 +54,13 @@ conf: Conf
 load_conf()
 
 
-def load_plan() -> Plan:
+def load_plan() -> PlanModel:
     with open(conf.planFile, "r", encoding="utf-8") as f:
-        plan = Plan(**json.load(f))
+        plan = PlanModel(**json.load(f))
     return plan
 
 
-def save_plan(plan: Plan):
+def save_plan(plan: PlanModel):
     with open(conf.planFile, "w", encoding="utf-8") as f:
         json.dump(plan.model_dump(exclude_none=True), f, ensure_ascii=False, indent=2)
 
