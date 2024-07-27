@@ -576,7 +576,7 @@ def test_pushplus_push():
 @app.route("/check-skland")
 @require_token
 def test_skland():
-    from arknights_mower.solvers.skland import SKLand
+    from arknights_mower.solvers import SKLand
 
     return SKLand().test_connect()
 

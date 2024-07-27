@@ -1,8 +1,7 @@
 import cv2
 from scipy.signal import argrelmin
 
-from arknights_mower.solvers.auto_fight import AutoFight
-from arknights_mower.solvers.navigation import NavigationSolver
+from arknights_mower.solvers import AutoFight, NavigationSolver
 from arknights_mower.utils import config
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, loadres

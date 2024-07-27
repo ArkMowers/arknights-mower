@@ -5,8 +5,7 @@ from datetime import datetime, timedelta
 from evalidate import Expr
 
 from arknights_mower import __version__
-from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
-from arknights_mower.solvers.secret_front import SecretFront
+from arknights_mower.solvers import ReclamationAlgorithm, SecretFront
 from arknights_mower.utils import config, path, rapidocr
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.datetime import format_time
@@ -43,7 +42,7 @@ def initialize(tasks, scheduler=None):
     if scheduler is not None:
         scheduler.handle_error(True)
         return scheduler
-    from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+    from arknights_mower.solvers import BaseSchedulerSolver
 
     base_scheduler = BaseSchedulerSolver()
     base_scheduler.operators = {}
