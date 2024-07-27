@@ -6,7 +6,6 @@ import os
 import pathlib
 import sys
 import time
-from copy import deepcopy
 from functools import wraps
 from threading import Thread
 
@@ -29,8 +28,6 @@ mimetypes.add_type("application/javascript", ".js")
 app = Flask(__name__, static_folder="dist", static_url_path="")
 sock = Sock(app)
 CORS(app)
-
-plan = {}
 
 mower_thread = None
 log_lines = []
@@ -93,19 +90,17 @@ def load_config():
 @app.route("/plan", methods=["GET", "POST"])
 @require_token
 def load_plan_from_json():
-    global plan
-
     if request.method == "GET":
         try:
-            plan = config.load_plan()
+            config.load_plan()
         except Exception as e:
-            logger.exception(f"plan.json路径错误{e}，重置为plan.json")
+            logger.exception(f"排班表文件路径错误{e}，重置为plan.json")
             config.conf.planFile = "./plan.json"
-            plan = config.load_plan()
-        return plan.model_dump(exclude_none=True)
+            config.load_plan()
+        return config.plan.model_dump(exclude_none=True)
     else:
-        plan = config.PlanModel(**request.json)
-        config.save_plan(plan)
+        config.plan = config.PlanModel(**request.json)
+        config.save_plan()
         return f"New plan saved at {config.conf.planFile}"
 
 
@@ -149,7 +144,6 @@ def start():
     tmp_dir.mkdir(exist_ok=True)
 
     config.stop_mower.clear()
-    config.plan = deepcopy(plan)
     config.operators = {}
 
     from arknights_mower.__main__ import main
@@ -234,11 +228,10 @@ def import_from_image():
     from arknights_mower.utils import qrcode
 
     img = Image.open(img_path)
-    global plan
-    plan = qrcode.decode(img)
-    if plan:
-        plan = config.PlanModel(**plan)
-        config.save_plan(plan)
+    data = qrcode.decode(img)
+    if data:
+        config.plan = config.PlanModel(**data)
+        config.save_plan()
         return "排班已加载"
     return "排班表导入失败！"
 
@@ -256,8 +249,9 @@ def save_file_dialog():
 
     upper = Image.open(img)
 
-    global plan
-    img = qrcode.export(plan, upper, config.conf.theme)
+    img = qrcode.export(
+        config.plan.model_dump(exclude_none=True), upper, config.conf.theme
+    )
 
     img_path = conn_send("save")
     if img_path == "":

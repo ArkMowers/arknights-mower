@@ -54,16 +54,19 @@ conf: Conf
 load_conf()
 
 
-def load_plan() -> PlanModel:
+def load_plan():
+    global plan
     with open(conf.planFile, "r", encoding="utf-8") as f:
         plan = PlanModel(**json.load(f))
-    return plan
 
 
-def save_plan(plan: PlanModel):
+def save_plan():
     with open(conf.planFile, "w", encoding="utf-8") as f:
         json.dump(plan.model_dump(exclude_none=True), f, ensure_ascii=False, indent=2)
 
+
+plan: PlanModel
+load_plan()
 
 stop_mower = Event()
 
