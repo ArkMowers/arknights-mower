@@ -1,18 +1,10 @@
-import os
-import sys
-from unittest.mock import patch
-
-sys.path.append(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-)
-
 import unittest
 
 from arknights_mower.solvers.recruit import RecruitSolver
 
 
 class TestRecruitCal(unittest.TestCase):
-    @patch.object(RecruitSolver, "__init__", lambda x: None)
+    @unittest.mock.patch.object(RecruitSolver, "__init__", lambda x: None)
     def setUp(self):
         self.test_class = RecruitSolver()
         self.test_class.recruit_order = [6, 5, 1, 4, 3, 2]

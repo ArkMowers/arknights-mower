@@ -2,6 +2,7 @@ import unittest
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
+from arknights_mower.utils.operators import Operators
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
@@ -10,8 +11,6 @@ from arknights_mower.utils.scheduler_task import (
     find_next_task,
     scheduling,
 )
-
-from ..utils.operators import Operators
 
 with patch.dict("sys.modules", {"save_action_to_sqlite_decorator": MagicMock()}):
     pass
