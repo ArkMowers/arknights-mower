@@ -24,7 +24,6 @@ export const useConfigStore = defineStore('config', () => {
   const recipient = ref('')
   const custom_smtp_server = ref({})
   const package_type = ref('official')
-  const plan_file = ref('')
   const reload_room = ref('')
   const run_order_delay = ref(10)
   const start_automatically = ref(false)
@@ -116,7 +115,6 @@ export const useConfigStore = defineStore('config', () => {
     recipient.value = response.data.recipient
     custom_smtp_server.value = response.data.custom_smtp_server
     package_type.value = response.data.package_type == 1 ? 'official' : 'bilibili'
-    plan_file.value = response.data.planFile
     reload_room.value = response.data.reload_room == '' ? [] : response.data.reload_room.split(',')
     run_order_delay.value = response.data.run_order_delay
     start_automatically.value = response.data.start_automatically
@@ -200,7 +198,6 @@ export const useConfigStore = defineStore('config', () => {
       pass_code: pass_code.value,
       recipient: recipient.value,
       custom_smtp_server: custom_smtp_server.value,
-      planFile: plan_file.value,
       reload_room: reload_room.value.join(','),
       run_order_delay: run_order_delay.value,
       start_automatically: start_automatically.value,
@@ -297,7 +294,6 @@ export const useConfigStore = defineStore('config', () => {
     recipient,
     custom_smtp_server,
     package_type,
-    plan_file,
     reload_room,
     run_order_delay,
     start_automatically,

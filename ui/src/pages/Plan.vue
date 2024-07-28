@@ -1,11 +1,11 @@
 <script setup>
-import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
 import { deepcopy } from '@/utils/deepcopy'
+import { storeToRefs } from 'pinia'
 
 const config_store = useConfigStore()
-const { plan_file, free_blacklist, theme } = storeToRefs(config_store)
+const { free_blacklist, theme } = storeToRefs(config_store)
 const { build_config } = config_store
 
 const plan_store = usePlanStore()
@@ -22,23 +22,11 @@ const {
 } = storeToRefs(plan_store)
 const { load_plan, fill_empty } = plan_store
 
-import { inject, ref, computed, provide, watchEffect } from 'vue'
+import { computed, inject, provide, ref, watchEffect } from 'vue'
 const axios = inject('axios')
 
 const facility = ref('')
 provide('facility', facility)
-
-import { file_dialog } from '@/utils/dialog'
-
-async function open_plan_file() {
-  const file_path = await file_dialog()
-  if (file_path) {
-    plan_file.value = file_path
-    await axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, build_config())
-    await load_plan()
-    sub_plan.value = 'main'
-  }
-}
 
 import { useMessage } from 'naive-ui'
 
@@ -48,8 +36,8 @@ const generating_image = ref(false)
 
 const message = useMessage()
 
-import { toBlob } from 'html-to-image'
 import { sleep } from '@/utils/sleep'
+import { toBlob } from 'html-to-image'
 import { useLoadingBar } from 'naive-ui'
 
 const loading_bar = useLoadingBar()
@@ -176,14 +164,14 @@ const add_task = ref(false)
 provide('show_task', show_task)
 provide('add_task', add_task)
 
+import DocumentExport from '@vicons/carbon/DocumentExport'
+import DocumentImport from '@vicons/carbon/DocumentImport'
 import IosArrowBack from '@vicons/ionicons4/IosArrowBack'
 import IosArrowForward from '@vicons/ionicons4/IosArrowForward'
-import TrashOutline from '@vicons/ionicons5/TrashOutline'
 import CodeSlash from '@vicons/ionicons5/CodeSlash'
-import PlusRound from '@vicons/material/PlusRound'
+import TrashOutline from '@vicons/ionicons5/TrashOutline'
 import AddTaskRound from '@vicons/material/AddTaskRound'
-import DocumentImport from '@vicons/carbon/DocumentImport'
-import DocumentExport from '@vicons/carbon/DocumentExport'
+import PlusRound from '@vicons/material/PlusRound'
 
 async function import_plan() {
   const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/import`)
@@ -201,22 +189,6 @@ async function import_plan() {
   <trigger-dialog />
   <task-dialog />
   <div class="plan-bar w-980 mx-auto mt-12 mw-980">
-    <n-input type="textarea" :autosize="true" v-model:value="plan_file" />
-    <n-button @click="open_plan_file">...</n-button>
-    <n-button @click="import_plan">
-      <template #icon>
-        <n-icon><document-import /></n-icon>
-      </template>
-      从图片导入（覆盖当前排班）
-    </n-button>
-    <n-button @click="save" :loading="generating_image" :disabled="generating_image">
-      <template #icon>
-        <n-icon><document-export /></n-icon>
-      </template>
-      导出图片
-    </n-button>
-  </div>
-  <div class="plan-bar w-980 mx-auto mw-980">
     <n-button
       :disabled="sub_plan == 'main'"
       @click="sub_plan = sub_plan == 0 ? 'main' : sub_plan - 1"
@@ -257,6 +229,19 @@ async function import_plan() {
         <n-icon><trash-outline /></n-icon>
       </template>
       删除此副表
+    </n-button>
+    <n-divider vertical />
+    <n-button @click="import_plan">
+      <template #icon>
+        <n-icon><document-import /></n-icon>
+      </template>
+      导入排班
+    </n-button>
+    <n-button @click="save" :loading="generating_image" :disabled="generating_image">
+      <template #icon>
+        <n-icon><document-export /></n-icon>
+      </template>
+      导出排班
     </n-button>
   </div>
   <plan-editor ref="plan_editor" class="w-980 mx-auto mw-980 px-12" />

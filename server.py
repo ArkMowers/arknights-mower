@@ -91,17 +91,12 @@ def load_config():
 @require_token
 def load_plan_from_json():
     if request.method == "GET":
-        try:
-            config.load_plan()
-        except Exception as e:
-            logger.exception(f"排班表文件路径错误{e}，重置为plan.json")
-            config.conf.planFile = "./plan.json"
-            config.load_plan()
+        config.load_plan()
         return config.plan.model_dump(exclude_none=True)
     else:
         config.plan = config.PlanModel(**request.json)
         config.save_plan()
-        return f"New plan saved at {config.conf.planFile}"
+        return "New plan saved。"
 
 
 @app.route("/operator")

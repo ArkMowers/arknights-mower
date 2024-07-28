@@ -107,6 +107,6 @@ class BackupPlan(BaseModel):
 
 class PlanModel(BaseModel):
     default: str = "plan1"
-    plan1: Plan1 = {}
-    conf: PlanConf = {}
+    plan1: Plan1 = Plan1()
+    conf: PlanConf = PlanConf()
     backup_plans: list[BackupPlan] = []
