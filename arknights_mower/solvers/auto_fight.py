@@ -241,8 +241,6 @@ class AutoFight(BaseSolver):
         else:
             dir = (0, 200)
         dir = va(pos, dir)
-        self.device.tap(start)
-        sleep(0.1)
         self.device.swipe_ext([start, top, pos], [100, 500], up_wait=400)
         sleep(0.1)
         self.device.swipe_ext([pos, dir], [200])
