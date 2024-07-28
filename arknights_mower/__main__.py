@@ -351,7 +351,7 @@ def simulate():
                         rg_sleep = False
 
                     if not rg_sleep:
-                        if config.ra:
+                        if config.conf.RA:
                             base_scheduler.recog.update()
                             base_scheduler.back_to_index()
                             ra_solver = ReclamationAlgorithm(
@@ -361,7 +361,7 @@ def simulate():
                             remaining_time = (
                                 base_scheduler.tasks[0].time - datetime.now()
                             ).total_seconds()
-                        elif config.sf:
+                        elif config.conf.SF:
                             base_scheduler.recog.update()
                             base_scheduler.back_to_index()
                             sf_solver = SecretFront(
