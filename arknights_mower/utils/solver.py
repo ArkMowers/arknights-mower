@@ -648,32 +648,37 @@ class BaseSolver:
         start_time = datetime.now()
 
         while (scene := self.sss_scene()) not in [Scene.SSS_DEPLOY, Scene.SSS_REDEPLOY]:
-            if scene == Scene.INDEX:
-                self.tap_index_element("terminal")
-            elif scene == Scene.TERMINAL_MAIN:
-                self.tap((1317, 1005))
-            elif scene == Scene.TERMINAL_REGULAR:
-                self.tap((1548, 870))
-            elif scene == Scene.SSS_MAIN:
-                self.tap((384, 324) if sss_type == 1 else (768, 648))
-            elif scene == Scene.SSS_START:
-                self.tap_element("sss/start_button")
-            elif scene == Scene.SSS_EC:
-                if ec_type == 1:
-                    ec_x = 576
-                elif ec_type == 2:
-                    ec_x = 960
-                else:
-                    ec_x = 1344
-                self.tap((ec_x, 540))
-                self.tap_element("sss/ec_button")
-            elif scene == Scene.SSS_DEVICE:
-                self.tap_element("sss/device_button")
-            elif scene == Scene.SSS_SQUAD:
-                self.tap_element("sss/squad_button")
-            elif scene == Scene.SSS_GUIDE:
-                self.tap_element("sss/close_button")
-            now = datetime.now()
+            try:
+                if scene == Scene.INDEX:
+                    self.tap_index_element("terminal")
+                elif scene == Scene.TERMINAL_MAIN:
+                    self.tap((1317, 1005))
+                elif scene == Scene.TERMINAL_REGULAR:
+                    self.tap((1548, 870))
+                elif scene == Scene.SSS_MAIN:
+                    self.tap((384, 324) if sss_type == 1 else (768, 648))
+                elif scene == Scene.SSS_START:
+                    self.tap_element("sss/start_button")
+                elif scene == Scene.SSS_EC:
+                    if ec_type == 1:
+                        ec_x = 576
+                    elif ec_type == 2:
+                        ec_x = 960
+                    else:
+                        ec_x = 1344
+                    self.tap((ec_x, 540))
+                    self.tap_element("sss/ec_button")
+                elif scene == Scene.SSS_DEVICE:
+                    self.tap_element("sss/device_button")
+                elif scene == Scene.SSS_SQUAD:
+                    self.tap_element("sss/squad_button")
+                elif scene == Scene.SSS_GUIDE:
+                    self.tap_element("sss/close_button")
+                now = datetime.now()
+            except MowerExit:
+                raise
+            except Exception as e:
+                logger.exception(f"保全导航出错：{e}")
             if now - start_time > timedelta(minutes=1):
                 return "保全导航失败"
             self.sleep()
