@@ -647,7 +647,7 @@ class BaseSolver:
         logger.info("保全导航")
         start_time = datetime.now()
 
-        while (scene := self.sss_scene()) not in [Scene.SSS_DEPLOY]:
+        while (scene := self.sss_scene()) not in [Scene.SSS_DEPLOY, Scene.SSS_REDEPLOY]:
             if scene == Scene.INDEX:
                 self.tap_index_element("terminal")
             elif scene == Scene.TERMINAL_MAIN:
@@ -670,7 +670,7 @@ class BaseSolver:
             elif scene == Scene.SSS_DEVICE:
                 self.tap_element("sss/device_button")
             elif scene == Scene.SSS_SQUAD:
-                self.tap((1875, 1000))
+                self.tap_element("sss/squad_button")
             elif scene == Scene.SSS_GUIDE:
                 self.tap_element("sss/close_button")
             now = datetime.now()

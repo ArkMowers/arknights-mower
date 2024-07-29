@@ -483,6 +483,10 @@
         "label": "SSS_DEPLOY",
         "comment": "开始部署"
     },
+    "1007": {
+        "label": "SSS_REDEPLOY",
+        "comment": "重新部署"
+    },
     "1008": {
         "label": "SSS_LOADING",
         "comment": "正在进入"
