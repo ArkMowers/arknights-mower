@@ -65,8 +65,17 @@ async function save() {
   loading_bar.finish()
   const form_data = new FormData()
   form_data.append('img', blob)
-  const { data } = await axios.post(`${import.meta.env.VITE_HTTP_URL}/dialog/save/img`, form_data)
-  message.info(data)
+  const { data } = await axios.post(`${import.meta.env.VITE_HTTP_URL}/dialog/save/img`, form_data, {
+    responseType: 'blob'
+  })
+  const url = window.URL.createObjectURL(data)
+  const link = document.createElement('a')
+  link.href = url
+  link.setAttribute('download', 'plan.jpg')
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  window.URL.revokeObjectURL(url)
 }
 
 const mobile = inject('mobile')

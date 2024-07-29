@@ -7,10 +7,11 @@ import pathlib
 import sys
 import time
 from functools import wraps
+from io import BytesIO
 from threading import Thread
 
 import pytz
-from flask import Flask, abort, request, send_from_directory
+from flask import Flask, abort, request, send_file, send_from_directory
 from flask_cors import CORS
 from flask_sock import Sock
 from tzlocal import get_localzone
@@ -235,8 +236,6 @@ def import_from_image():
 @require_token
 def save_file_dialog():
     img = request.files["img"]
-    if not img:
-        return "图片未上传"
 
     from PIL import Image
 
@@ -247,13 +246,10 @@ def save_file_dialog():
     img = qrcode.export(
         config.plan.model_dump(exclude_none=True), upper, config.conf.theme
     )
-
-    img_path = conn_send("save")
-    if img_path == "":
-        return "保存已取消"
-    else:
-        img.save(img_path)
-        return f"图片已导出至{img_path}"
+    buffer = BytesIO()
+    img.save(buffer, format="JPEG")
+    buffer.seek(0)
+    return send_file(buffer, "image/jpeg")
 
 
 @app.route("/check-maa")

@@ -113,6 +113,8 @@ def webview_window(child_conn, global_space, host, port, token, url, tray):
 
     import webview
 
+    webview.settings["ALLOW_DOWNLOADS"] = True
+
     from arknights_mower.__init__ import __version__
     from arknights_mower.utils import config, path
 
@@ -155,12 +157,6 @@ def webview_window(child_conn, global_space, host, port, token, url, tray):
             elif msg == "folder":
                 result = window.create_file_dialog(
                     dialog_type=webview.FOLDER_DIALOG,
-                )
-            elif msg == "save":
-                result = window.create_file_dialog(
-                    dialog_type=webview.SAVE_DIALOG,
-                    save_filename="plan.jpg",
-                    file_types=("JPG图片 (*.jpg)",),
                 )
             if result is None:
                 result = ""
