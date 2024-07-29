@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from evalidate import Expr
 
 from arknights_mower import __version__
+from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
 from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
 from arknights_mower.solvers.secret_front import SecretFront
 from arknights_mower.utils import config, path, rapidocr
@@ -39,11 +40,12 @@ def get_logic_exp(trigger):
     return LogicExpression(trigger["left"], trigger["operator"], trigger["right"])
 
 
-def initialize(tasks, scheduler=None):
-    if scheduler is not None:
+def initialize(
+    tasks: list, scheduler: BaseSchedulerSolver | None = None
+) -> BaseSchedulerSolver:
+    if scheduler:
         scheduler.handle_error(True)
         return scheduler
-    from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
 
     base_scheduler = BaseSchedulerSolver()
     base_scheduler.operators = {}

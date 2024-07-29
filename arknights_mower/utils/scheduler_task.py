@@ -1,6 +1,7 @@
 import copy
 from datetime import datetime, timedelta
 from enum import Enum
+from typing import Literal
 
 from arknights_mower.utils import config
 from arknights_mower.utils.datetime import the_same_time
@@ -34,8 +35,18 @@ class TaskTypes(Enum):
 
 
 def find_next_task(
-    tasks, compare_time=None, task_type="", compare_type="<", meta_data=""
+    tasks,
+    compare_time: datetime | None = None,
+    task_type="",
+    compare_type: Literal["<", "=", ">"] = "<",
+    meta_data="",
 ):
+    """找符合条件的下一个任务
+
+    Args:
+        tasks: 任务列表
+        compare_time: 截止时间
+    """
     if compare_type == "=":
         return next(
             (

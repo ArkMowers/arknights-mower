@@ -9,7 +9,7 @@ def the_same_day(a: datetime = None, b: datetime = None) -> bool:
     return a.year == b.year and a.month == b.month and a.day == b.day
 
 
-def the_same_time(a: datetime = None, b: datetime = None) -> bool:
+def the_same_time(a: datetime | None = None, b: datetime | None = None) -> bool:
     if a is None or b is None:
         return False
     return abs(a - b).total_seconds() < 1.5

@@ -580,11 +580,7 @@ def get_count():
     from arknights_mower.__main__ import base_scheduler
     from arknights_mower.data import agent_list
     from arknights_mower.utils.operators import SkillUpgradeSupport
-    from arknights_mower.utils.scheduler_task import (
-        SchedulerTask,
-        TaskTypes,
-        find_next_task,
-    )
+    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
     if request.method == "POST":
         try:
@@ -609,10 +605,9 @@ def get_count():
                         task_type=task["task_type"],
                         meta_data=task["meta_data"],
                     )
-                    next_task = find_next_task(
-                        base_scheduler.tasks, compare_time=task_time, compare_type="="
-                    )
-                    if next_task is not None:
+                    if base_scheduler.find_next_task(
+                        compare_time=task_time, compare_type="="
+                    ):
                         raise Exception("找到同时间任务请勿重复添加")
                     if new_task.type == TaskTypes.SKILL_UPGRADE:
                         supports = []
