@@ -53,18 +53,18 @@ def initialize(
     plan = config.plan.model_dump(exclude_none=True)
     conf = config.conf
     plan_config = PlanConfig(
-        plan["conf"]["rest_in_full"],
-        plan["conf"]["exhaust_require"],
-        plan["conf"]["resting_priority"],
-        ling_xi=plan["conf"]["ling_xi"],
-        workaholic=plan["conf"]["workaholic"],
-        max_resting_count=plan["conf"]["max_resting_count"],
+        rest_in_full=config.plan.conf.rest_in_full,
+        exhaust_require=config.plan.conf.exhaust_require,
+        resting_priority=config.plan.conf.resting_priority,
+        ling_xi=config.plan.conf.ling_xi,
+        workaholic=config.plan.conf.workaholic,
+        max_resting_count=config.plan.conf.max_resting_count,
         free_blacklist=conf.free_blacklist,
         resting_threshold=conf.resting_threshold,
         run_order_buffer_time=conf.run_order_grandet_mode.buffer_time
         if conf.run_order_grandet_mode.enable
         else -1,
-        refresh_trading_config=plan["conf"]["refresh_trading"],
+        refresh_trading_config=config.plan.conf.refresh_trading,
         free_room=conf.free_room,
     )
     for room, obj in plan[plan["default"]].items():

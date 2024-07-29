@@ -54,18 +54,18 @@ class PlanConfig(object):
     #   <= 0 时是无人机跑单
     def __init__(
         self,
-        rest_in_full,
-        exhaust_require,
-        resting_priority,
-        ling_xi=0,
-        workaholic="",
-        max_resting_count=4,
-        free_blacklist="",
-        skip_validation=False,
-        run_order_buffer_time=30,
-        resting_threshold=0.5,
-        refresh_trading_config="",
-        free_room=False,
+        rest_in_full: str,
+        exhaust_require: str,
+        resting_priority: str,
+        ling_xi: int = 0,
+        workaholic: str = "",
+        max_resting_count: int = 4,
+        free_blacklist: str = "",
+        skip_validation: bool = False,
+        run_order_buffer_time: int = 30,
+        resting_threshold: float = 0.5,
+        refresh_trading_config: str = "",
+        free_room: bool = False,
     ):
         self.rest_in_full = to_list(rest_in_full)
         self.exhaust_require = to_list(exhaust_require)
