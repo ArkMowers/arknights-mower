@@ -8,8 +8,6 @@ from pyzbar import pyzbar
 from qrcode.constants import ERROR_CORRECT_L
 from qrcode.main import QRCode
 
-from arknights_mower.utils.log import logger
-
 QRCODE_SIZE = 215
 GAP_SIZE = 16
 BLACK = (0, 0, 0)
@@ -75,10 +73,6 @@ def decode(img: Image.Image) -> Optional[Dict]:
             scope = ((left, top), (right, bottom))
             img1.rectangle(scope, fill=WHITE)
             result.append(d)
-    try:
-        result.sort(key=lambda i: (i.rect.top * 2 > img.size[1], i.rect.left))
-        result = b45decode(b"".join([i.data for i in result]))
-        return json.loads(decompress(result).decode("utf-8"))
-    except Exception as e:
-        logger.exception(e)
-        return None
+    result.sort(key=lambda i: (i.rect.top * 2 > img.size[1], i.rect.left))
+    result = b45decode(b"".join([i.data for i in result]))
+    return json.loads(decompress(result).decode("utf-8"))

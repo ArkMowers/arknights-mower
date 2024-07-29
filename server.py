@@ -80,7 +80,6 @@ def not_found(e):
 @require_token
 def load_config():
     if request.method == "GET":
-        config.load_conf()
         return config.conf.model_dump()
     else:
         config.conf = config.Conf(**request.json)
@@ -92,7 +91,6 @@ def load_config():
 @require_token
 def load_plan_from_json():
     if request.method == "GET":
-        config.load_plan()
         return config.plan.model_dump(exclude_none=True)
     else:
         config.plan = config.PlanModel(**request.json)
@@ -211,25 +209,30 @@ def open_folder_dialog():
     return conn_send("folder")
 
 
-@app.route("/import")
+@app.route("/import", methods=["POST"])
 @require_token
 def import_from_image():
-    img_path = conn_send("file")
+    img = request.files["img"]
+    if img.mimetype == "application/json":
+        data = json.load(img)
+    else:
+        try:
+            from PIL import Image
 
-    if not img_path:
-        return "No file selected."
+            from arknights_mower.utils import qrcode
 
-    from PIL import Image
-
-    from arknights_mower.utils import qrcode
-
-    img = Image.open(img_path)
-    data = qrcode.decode(img)
+            img = Image.open(img)
+            data = qrcode.decode(img)
+        except Exception as e:
+            msg = f"排班表导入失败：{e}"
+            logger.exception(msg)
+            return msg
     if data:
         config.plan = config.PlanModel(**data)
         config.save_plan()
         return "排班已加载"
-    return "排班表导入失败！"
+    else:
+        return "排班表导入失败！"
 
 
 @app.route("/dialog/save/img", methods=["POST"])
@@ -250,6 +253,12 @@ def save_file_dialog():
     img.save(buffer, format="JPEG")
     buffer.seek(0)
     return send_file(buffer, "image/jpeg")
+
+
+@app.route("/export-json")
+@require_token
+def export_json():
+    return send_file(config.plan_path)
 
 
 @app.route("/check-maa")

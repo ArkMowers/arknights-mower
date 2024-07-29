@@ -6,7 +6,6 @@ import { storeToRefs } from 'pinia'
 
 const config_store = useConfigStore()
 const { free_blacklist, theme } = storeToRefs(config_store)
-const { build_config } = config_store
 
 const plan_store = usePlanStore()
 const {
@@ -182,15 +181,42 @@ import TrashOutline from '@vicons/ionicons5/TrashOutline'
 import AddTaskRound from '@vicons/material/AddTaskRound'
 import PlusRound from '@vicons/material/PlusRound'
 
-async function import_plan() {
-  const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/import`)
-  if (response.data == '排班已加载') {
-    await load_plan()
+function import_plan({ event }) {
+  const msg = event.target.response
+  if (msg == '排班已加载') {
     sub_plan.value = 'main'
+    load_plan()
     message.success('成功导入排班表！')
   } else {
-    message.error('排班表导入失败！')
+    message.error(msg)
   }
+}
+
+const import_url = `${import.meta.env.VITE_HTTP_URL}/import`
+
+const params = new URLSearchParams(document.location.search)
+const token = params.get('token')
+
+const export_options = [
+  {
+    label: '导出JSON文件',
+    key: 'json'
+  }
+]
+
+async function export_json() {
+  const { data } = await axios.get(`${import.meta.env.VITE_HTTP_URL}/export-json`, {
+    responseType: 'blob'
+  })
+  console.log(data)
+  const url = window.URL.createObjectURL(data)
+  const link = document.createElement('a')
+  link.href = url
+  link.setAttribute('download', 'plan.json')
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  window.URL.revokeObjectURL(url)
 }
 </script>
 
@@ -239,19 +265,34 @@ async function import_plan() {
       </template>
       删除此副表
     </n-button>
-    <n-divider vertical />
-    <n-button @click="import_plan">
-      <template #icon>
-        <n-icon><document-import /></n-icon>
-      </template>
-      导入排班
-    </n-button>
-    <n-button @click="save" :loading="generating_image" :disabled="generating_image">
-      <template #icon>
-        <n-icon><document-export /></n-icon>
-      </template>
-      导出排班
-    </n-button>
+    <n-upload
+      style="width: auto; margin-left: 8px"
+      :action="import_url"
+      :headers="{ token: token }"
+      :show-file-list="false"
+      name="img"
+      @finish="import_plan"
+    >
+      <n-button>
+        <template #icon>
+          <n-icon><document-import /></n-icon>
+        </template>
+        导入排班
+      </n-button>
+    </n-upload>
+    <n-dropdown
+      trigger="hover"
+      placement="bottom-start"
+      :options="export_options"
+      @select="export_json"
+    >
+      <n-button @click="save" :loading="generating_image" :disabled="generating_image">
+        <template #icon>
+          <n-icon><document-export /></n-icon>
+        </template>
+        导出图片
+      </n-button>
+    </n-dropdown>
   </div>
   <plan-editor ref="plan_editor" class="w-980 mx-auto mw-980 px-12" />
   <n-form
