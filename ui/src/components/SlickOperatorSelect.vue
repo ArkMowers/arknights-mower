@@ -3,7 +3,7 @@
     v-model:list="operatorValue"
     axis="xy"
     appendTo=".n-select"
-    distance="5"
+    :distance="5"
     class="width100"
     group="operator"
     :accept="!props.disabled"
