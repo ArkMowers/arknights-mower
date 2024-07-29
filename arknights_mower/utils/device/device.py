@@ -9,7 +9,7 @@ import numpy as np
 
 from arknights_mower import __rootdir__, __system__
 from arknights_mower.utils import config
-from arknights_mower.utils.csleep import csleep
+from arknights_mower.utils.csleep import MowerExit, csleep
 from arknights_mower.utils.device.adb_client.core import Client as ADBClient
 from arknights_mower.utils.device.adb_client.session import Session
 from arknights_mower.utils.device.maatouch import MaaTouch
@@ -326,6 +326,8 @@ class Device(object):
                     csleep(10)
                     update = True
                 return update
+            except MowerExit:
+                raise
             except Exception as e:
                 logger.exception(e)
                 restart_simulator()
