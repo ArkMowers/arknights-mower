@@ -55,12 +55,6 @@ class EmailPart(ConfModel):
         ssl_port: int = 587
         "端口号"
 
-    class PushPlusConf(ConfModel):
-        enable: bool = False
-        "启用PushPlus"
-        token: str = ""
-        "PushPlus的token"
-
     mail_enable: int = 0
     "邮件提醒"
     account: str = ""
@@ -73,12 +67,6 @@ class EmailPart(ConfModel):
     "自定义邮箱"
     mail_subject: str = "[Mower通知]"
     "标题前缀"
-    server_push_enable: bool = False
-    "Server酱推送通知"
-    sendKey: str = ""
-    "Server酱的SENDKEY"
-    pushplus: PushPlusConf
-    "PushPlus通知设置"
 
 
 class ExtraPart(ConfModel):
