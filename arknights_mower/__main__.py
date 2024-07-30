@@ -208,24 +208,27 @@ def simulate():
                 ).total_seconds()
 
                 if remaining_time > 540:
-                    logger.info("检查版本更新")
-                    listing = get_listing()
-                    version = __version__.replace("+", "-")
-                    if not any(i.name.startswith(version) for i in listing):
-                        stable = []
-                        testing = []
-                        for i in listing:
-                            name = i.name
-                            if re.fullmatch(r"[0-9]{4}\.[0-9]{2}\.[0-9]+/", name):
-                                stable.append(name[:-1])
-                            elif re.fullmatch(r"[0-9]{4}\.[0-9]{2}-[0-9a-z]{7}/", name):
-                                testing.append(name[:-1])
-                        title = "Mower版本过旧，请及时更新"
-                        logger.error(title)
-                        body = version_template.render(
-                            stable=stable, testing=testing, current=version
-                        )
-                        send_message(body, title)
+                    if config.conf.check_for_updates:
+                        logger.info("检查版本更新")
+                        listing = get_listing()
+                        version = __version__.replace("+", "-")
+                        if not any(i.name.startswith(version) for i in listing):
+                            stable = []
+                            testing = []
+                            for i in listing:
+                                name = i.name
+                                if re.fullmatch(r"[0-9]{4}\.[0-9]{2}\.[0-9]+/", name):
+                                    stable.append(name[:-1])
+                                elif re.fullmatch(
+                                    r"[0-9]{4}\.[0-9]{2}-[0-9a-z]{7}/", name
+                                ):
+                                    testing.append(name[:-1])
+                            title = "Mower版本过旧，请及时更新"
+                            logger.error(title)
+                            body = version_template.render(
+                                stable=stable, testing=testing, current=version
+                            )
+                            send_message(body, title)
 
                     # 刷新时间以鹰历为准
                     if (
