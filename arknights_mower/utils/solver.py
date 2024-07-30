@@ -642,12 +642,14 @@ class BaseSolver:
         if self.scene() != Scene.INDEX:
             raise StrategyError
 
-    def to_sss(self, sss_type, ec_type=3):
+    def to_sss(self):
         """保全导航"""
         logger.info("保全导航")
         start_time = datetime.now()
 
         while (scene := self.sss_scene()) not in [Scene.SSS_DEPLOY, Scene.SSS_REDEPLOY]:
+            if datetime.now() - start_time > timedelta(minutes=1):
+                return "保全导航超时"
             try:
                 if scene == Scene.INDEX:
                     self.tap_index_element("terminal")
@@ -656,13 +658,13 @@ class BaseSolver:
                 elif scene == Scene.TERMINAL_REGULAR:
                     self.tap((1548, 870))
                 elif scene == Scene.SSS_MAIN:
-                    self.tap((384, 324) if sss_type == 1 else (768, 648))
+                    self.tap((384, 324) if config.conf.sss.type == 1 else (768, 648))
                 elif scene == Scene.SSS_START:
                     self.tap_element("sss/start_button")
                 elif scene == Scene.SSS_EC:
-                    if ec_type == 1:
+                    if config.conf.sss.ec == 1:
                         ec_x = 576
-                    elif ec_type == 2:
+                    elif config.conf.sss.ec == 2:
                         ec_x = 960
                     else:
                         ec_x = 1344
@@ -674,14 +676,10 @@ class BaseSolver:
                     self.tap_element("sss/squad_button")
                 elif scene == Scene.SSS_GUIDE:
                     self.tap_element("sss/close_button")
-                now = datetime.now()
             except MowerExit:
                 raise
             except Exception as e:
                 logger.exception(f"保全导航出错：{e}")
-            if now - start_time > timedelta(minutes=1):
-                return "保全导航失败"
-            self.sleep()
         logger.info(
             f"保全导航成功，用时{(datetime.now() - start_time).total_seconds():.0f}秒"
         )

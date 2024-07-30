@@ -132,10 +132,6 @@ class LongTaskPart(ConfModel):
         "关卡"
         ec: int = 1
         "导能单元"
-        loop: int = 1
-        "循环次数"
-        copilot: str = ""
-        "作业路径"
 
     class ReclamationAlgorithmConf(ConfModel):
         timeout: int = 30

@@ -121,24 +121,24 @@
 </template>
 
 <script setup>
-import { onMounted, inject, provide, h, ref } from 'vue'
+import SkillLevelAdvanced from '@vicons/carbon/SkillLevelAdvanced'
+import WikipediaW from '@vicons/fa/WikipediaW'
+import Wrench from '@vicons/fa/Wrench'
+import Bag from '@vicons/ionicons5/Bag'
+import BarChart from '@vicons/ionicons5/BarChart'
+import BookOutline from '@vicons/ionicons5/BookOutline'
+import HelpCircle from '@vicons/ionicons5/HelpCircle'
+import Home from '@vicons/ionicons5/Home'
+import PieChart from '@vicons/ionicons5/PieChart'
+import ReaderOutline from '@vicons/ionicons5/ReaderOutline'
+import Settings from '@vicons/ionicons5/Settings'
+import StatsChart from '@vicons/ionicons5/StatsChart'
+import Storefront from '@vicons/ionicons5/Storefront'
+import { NIcon } from 'naive-ui'
 import { storeToRefs } from 'pinia'
+import { h, inject, onMounted, provide, ref } from 'vue'
 
 const showModal = ref(false)
-import { NIcon } from 'naive-ui'
-import Home from '@vicons/ionicons5/Home'
-import BookOutline from '@vicons/ionicons5/BookOutline'
-import BarChart from '@vicons/ionicons5/BarChart'
-import PieChart from '@vicons/ionicons5/PieChart'
-import StatsChart from '@vicons/ionicons5/StatsChart'
-import Settings from '@vicons/ionicons5/Settings'
-import HelpCircle from '@vicons/ionicons5/HelpCircle'
-import Storefront from '@vicons/ionicons5/Storefront'
-import ReaderOutline from '@vicons/ionicons5/ReaderOutline'
-import Bag from '@vicons/ionicons5/Bag'
-import Wrench from '@vicons/fa/Wrench'
-import WikipediaW from '@vicons/fa/WikipediaW'
-import SkillLevelAdvanced from '@vicons/carbon/SkillLevelAdvanced'
 function renderIcon(icon) {
   return () => h(NIcon, null, { default: () => h(icon) })
 }
@@ -240,7 +240,7 @@ const menuOptions = [
   }
 ]
 
-import { zhCN, dateZhCN, darkTheme } from 'naive-ui'
+import { darkTheme, dateZhCN, zhCN } from 'naive-ui'
 
 import hljs from 'highlight.js/lib/core'
 import json from 'highlight.js/lib/languages/json'
@@ -248,8 +248,8 @@ import json from 'highlight.js/lib/languages/json'
 hljs.registerLanguage('json', json)
 
 import { useConfigStore } from '@/stores/config'
-import { usePlanStore } from '@/stores/plan'
 import { useMowerStore } from '@/stores/mower'
+import { usePlanStore } from '@/stores/plan'
 
 import { usewatermarkStore } from '@/stores/watermark'
 
@@ -303,6 +303,7 @@ onMounted(async () => {
 
   const params = new URLSearchParams(document.location.search)
   const token = params.get('token')
+  provide('token', token)
   axios.defaults.headers.common['token'] = token
   await Promise.all([load_config(), load_shop(), load_operators(), get_running()])
 

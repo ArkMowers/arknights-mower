@@ -235,6 +235,29 @@ def import_from_image():
         return "排班表导入失败！"
 
 
+@app.route("/sss-copilot", methods=["GET", "POST"])
+@require_token
+def upload_sss_copilot():
+    copilot = get_path("@app/sss.json")
+    if request.method == "GET":
+        if copilot.is_file():
+            with copilot.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+        else:
+            return {"exists": False}
+    else:
+        print(request.files)
+        data = request.files["copilot"]
+        data.save(copilot)
+        data.seek(0)
+        data = json.load(data)
+    return {
+        "exists": True,
+        "title": data["doc"]["title"],
+        "details": data["doc"]["details"],
+    }
+
+
 @app.route("/dialog/save/img", methods=["POST"])
 @require_token
 def save_file_dialog():

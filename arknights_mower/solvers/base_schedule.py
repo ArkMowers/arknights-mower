@@ -36,6 +36,7 @@ from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.operators import Operator, Operators
+from arknights_mower.utils.path import get_path
 from arknights_mower.utils.plan import PlanTriggerTiming
 from arknights_mower.utils.recognize import Recognizer, Scene
 from arknights_mower.utils.scheduler_task import (
@@ -3214,24 +3215,20 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             },
                         )
                     elif conf.SSS:
+                        copilot = get_path("@app/sss.json")
                         if (
-                            conf.sss.copilot == ""
-                            or conf.sss.loop <= 0
+                            not copilot.is_file()
                             or conf.sss.type not in [1, 2]
+                            or conf.sss.ec not in [1, 2, 3]
                         ):
-                            raise Exception("保全派驻配置无法找到")
-                        ec_type = conf.sss.ec
+                            raise Exception("保全派驻配置错误")
                         self.recog.update()
                         self.back_to_index()
-                        if self.to_sss(conf.sss.type, ec_type) is not None:
+                        if self.to_sss():
                             raise Exception("保全派驻导航失败")
                         self.MAA.append_task(
                             "SSSCopilot",
-                            {
-                                "filename": conf.sss.copilot,
-                                "formation": False,
-                                "loop_times": conf.sss.loop,
-                            },
+                            {"filename": str(copilot), "loop_times": 9999999},
                         )
                     logger.info("启动")
                     self.MAA.start()

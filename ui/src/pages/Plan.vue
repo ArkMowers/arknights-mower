@@ -194,8 +194,7 @@ function import_plan({ event }) {
 
 const import_url = `${import.meta.env.VITE_HTTP_URL}/import`
 
-const params = new URLSearchParams(document.location.search)
-const token = params.get('token')
+const token = inject('token')
 
 const export_options = [
   {
