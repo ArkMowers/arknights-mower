@@ -108,6 +108,7 @@ class ReportSolver(SceneGraphSolver):
                         report_data=self.report_res, title_text="基建报告"
                     ),
                     "基建报告",
+                    "INFO",
                     attach_image=self.recog.img,
                 )
             except Exception as e:

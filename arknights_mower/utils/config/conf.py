@@ -67,6 +67,8 @@ class EmailPart(ConfModel):
     "自定义邮箱"
     mail_subject: str = "[Mower通知]"
     "标题前缀"
+    notification_level: str = "INFO"
+    "邮件通知等级"
 
 
 class ExtraPart(ConfModel):

@@ -383,7 +383,9 @@ class SecretFront(BaseSolver):
             self.tap((960, 980), interval=2)
 
             if scene == Scene.SF_END:
-                send_message(f"隐秘战线成功完成{config.conf.secret_front.target}")
+                send_message(
+                    f"隐秘战线成功完成{config.conf.secret_front.target}", level="INFO"
+                )
 
         # 关闭说明
         elif scene == Scene.SF_INFO:

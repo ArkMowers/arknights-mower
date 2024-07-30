@@ -228,7 +228,7 @@ def simulate():
                             body = version_template.render(
                                 stable=stable, testing=testing, current=version
                             )
-                            send_message(body, title)
+                            send_message(body, title, "WARNING")
 
                     # 刷新时间以鹰历为准
                     if (

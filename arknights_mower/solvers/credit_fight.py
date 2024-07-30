@@ -4,6 +4,7 @@ from scipy.signal import argrelmin
 from arknights_mower.solvers.auto_fight import AutoFight
 from arknights_mower.solvers.navigation import NavigationSolver
 from arknights_mower.utils import config
+from arknights_mower.utils.email import send_message
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, loadres
 from arknights_mower.utils.log import logger
@@ -96,7 +97,9 @@ class CreditFight(SceneGraphSolver):
         elif scene == Scene.OPERATOR_FINISH:
             return True
         elif scene == Scene.OPERATOR_FAILED:
-            logger.info("OF-1失败，请检查干员，*今天*不会继续进行信用作战")
+            msg = "OF-1失败，请检查干员，*今天*不会继续进行信用作战"
+            logger.info(msg)
+            send_message(msg, level="ERROR")
             return True
         elif scene in self.waiting_scene:
             self.waiting_solver()

@@ -5,7 +5,8 @@ from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from threading import Thread
-from typing import Optional
+from time import sleep
+from typing import Literal, Optional
 
 import cv2
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -81,28 +82,38 @@ class Email:
         s.quit()
 
 
-def send_message_sync(body="", subject="", attach_image=None):
-    conf = config.conf
-    if not conf.mail_enable:
-        return
-    if subject == "":
-        subject = body.split("\n")[0].strip()
-    subject = conf.mail_subject + subject
-    email = Email(body, subject, attach_image)
-    try:
-        email.send()
-    except Exception as e:
-        logger.exception("邮件发送失败：" + str(e))
-
-
-def send_message(body="", subject="", attach_image: Optional[tp.Image] = None):
+def send_message(
+    body="",
+    subject="",
+    level: Literal["INFO", "WARNING", "ERROR"] = "INFO",
+    attach_image: Optional[tp.Image] = None,
+):
     """异步发送邮件
 
     Args:
         body: 邮件内容
         subject: 邮件标题
+        level: 通知等级
         attach_image: 图片附件
     """
-    if not config.conf.mail_enable:
+    conf = config.conf
+    if not conf.mail_enable:
         return
-    Thread(target=send_message_sync, args=(body, subject, attach_image)).start()
+    if conf.notification_level == "WARNING" and level == "INFO":
+        return
+    if conf.notification_level == "ERROR" and level != "ERROR":
+        return
+    if subject == "":
+        subject = body.split("\n")[0].strip()
+    email = Email(body, subject, attach_image)
+
+    def send_message_sync(email):
+        for i in range(3):
+            try:
+                email.send()
+                break
+            except Exception as e:
+                logger.exception("邮件发送失败：" + str(e))
+                sleep(2**i)
+
+    Thread(target=send_message_sync, args=(email,)).start()

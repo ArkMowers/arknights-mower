@@ -94,6 +94,7 @@ class RecruitSolver(SceneGraphSolver):
                         title_text="公招汇总",
                     ),
                     "公招汇总通知",
+                    "INFO",
                 )
         return self.agent_choose, self.result_agent
 
@@ -242,6 +243,7 @@ class RecruitSolver(SceneGraphSolver):
                         title_text="稀有tag通知",
                     ),
                     "出稀有标签辣",
+                    "INFO",
                 )
                 logger.info("稀有tag,发送邮件")
             if recruit_result_level == 6 or recruit_result_level == 1:

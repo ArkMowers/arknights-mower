@@ -216,7 +216,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 success = True
             else:
                 msg = f"无法完成 {self.task.meta_data} 的排班，如果重复接收此邮件请检查替换组是否被占用"
-                send_message(msg)
+                send_message(msg, level="ERROR")
         if not success:
             # 如果不满足，则找到并且执行最近一个type 包含 超过数量的high free 和low free 的 任务并且 干员没有 exaust_require 词条
             task_index = -1
@@ -1180,7 +1180,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.back()
         except Exception as e:
             logger.exception(e)
-            send_message("专精任务失败" + str(e))
+            send_message("专精任务失败" + str(e), level="ERROR")
 
     def plan_run_order(self, room):
         plan = self.op_data.plan
@@ -1628,7 +1628,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if not low_agent.rest_in_full:
                     msg = f"同组干员{low_name}与{high_name}心情差值大于4，请注意！"
                     logger.warning(msg)
-                    send_message(msg)
+                    send_message(msg, level="WARNING")
         return exist_replacement, plan, high_free - _high, low_free - _low
 
     def initialize_operators(self):
@@ -2884,7 +2884,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         else:
                             logger.info("检测到漏单")
                             self.recog.save_screencap("run_order_failure")
-                            send_message("检测到漏单！")
+                            send_message("检测到漏单！", level="WARNING")
                             self.reset_room_time(room)
                             raise Exception("检测到漏单！")
                     if room == "train":
@@ -3280,7 +3280,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             logger.exception(e)
             self.MAA = None
             self.device.exit()
-            send_message(str(e), "Maa调用出错！")
+            send_message(str(e), "Maa调用出错！", level="ERROR")
             remaining_time = (self.tasks[0].time - datetime.now()).total_seconds()
             if remaining_time > 0:
                 logger.info(
@@ -3296,7 +3296,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             raise
         except Exception as e:
             logger.exception(f"森空岛签到失败:{e}")
-            send_message(f"森空岛签到失败: {e}")
+            send_message(f"森空岛签到失败: {e}", level="ERROR")
         # 仅尝试一次 不再尝试
         return (datetime.now() - timedelta(hours=4)).date()
 

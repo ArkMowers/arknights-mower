@@ -518,7 +518,9 @@ class BaseSolver:
                         else:
                             break
                     if captcha_times <= 0:
-                        send_message("验证码自动滑动失败，退出游戏，停止运行mower")
+                        send_message(
+                            "验证码自动滑动失败，退出游戏，停止运行mower", level="ERROR"
+                        )
                         self.device.exit()
                         sys.exit()
                 elif scene == Scene.LOGIN_INPUT:
