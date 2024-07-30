@@ -242,7 +242,7 @@ class RecruitSolver(SceneGraphSolver):
                     title_text="稀有tag通知",
                 ),
                 "出稀有标签辣",
-                "INFO",
+                "WARNING",
             )
             if recruit_result_level == 6 or recruit_result_level == 1:
                 logger.debug(f"{recruit_result_level}星稀有tag  ,不选")

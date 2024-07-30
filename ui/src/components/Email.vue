@@ -28,8 +28,8 @@ async function test_email() {
 }
 
 const levels = [
-  { label: 'INFO - 基建任务、刷理智、公招、基报、活动签到等', value: 'INFO' },
-  { label: 'WARNING - 版本过旧、组内心情差过大、漏单等', value: 'WARNING' },
+  { label: 'INFO - 基建任务、刷理智、公招汇总、基报、活动签到等', value: 'INFO' },
+  { label: 'WARNING - 版本过旧、组内心情差过大、漏单、公招稀有标签等', value: 'WARNING' },
   {
     label: 'ERROR - 无法排班、专精失败、Maa调用出错、森空岛签到失败、活动签到超时、OF-1失败等',
     value: 'ERROR'
