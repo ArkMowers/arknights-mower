@@ -8,7 +8,6 @@ from threading import Thread
 from typing import Optional
 
 import cv2
-import requests
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from arknights_mower.utils import config
@@ -85,34 +84,16 @@ class Email:
 
 def send_message_sync(body="", subject="", attach_image=None):
     conf = config.conf
+    if not conf.mail_enable:
+        return
     if subject == "":
         subject = body.split("\n")[0].strip()
     subject = conf.mail_subject + subject
-
-    if conf.mail_enable:
-        email = Email(body, subject, attach_image)
-        try:
-            email.send()
-        except Exception as e:
-            logger.exception("邮件发送失败：" + str(e))
-
-    if conf.pushplus.enable:
-        url = "http://www.pushplus.plus/send"
-
-        try:
-            response = requests.post(
-                url,
-                json={
-                    "token": conf.pushplus.token,
-                    "title": subject,
-                    "content": body,
-                    "template": "html",
-                },
-            ).json()
-            if response["code"] != 200:
-                logger.error(f"PushPlus通知发送失败：{response['msg']}")
-        except Exception as e:
-            logger.exception("PushPlus通知发送失败：" + str(e))
+    email = Email(body, subject, attach_image)
+    try:
+        email.send()
+    except Exception as e:
+        logger.exception("邮件发送失败：" + str(e))
 
 
 def send_message(body="", subject="", attach_image: Optional[tp.Image] = None):
@@ -123,4 +104,6 @@ def send_message(body="", subject="", attach_image: Optional[tp.Image] = None):
         subject: 邮件标题
         attach_image: 图片附件
     """
+    if not config.conf.mail_enable:
+        return
     Thread(target=send_message_sync, args=(body, subject, attach_image)).start()

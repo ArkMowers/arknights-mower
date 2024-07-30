@@ -541,55 +541,6 @@ def test_custom_screenshot():
     return {"elapsed": elapsed, "screenshot": data}
 
 
-@app.route("/test-serverJang-push")
-@require_token
-def test_serverJang_push():
-    import requests
-
-    try:
-        response = requests.get(
-            f"https://sctapi.ftqq.com/{config.conf.sendKey}.send",
-            params={
-                "title": "arknights-mower推送测试",
-                "desp": "arknights-mower推送测试",
-            },
-        )
-
-        if response.status_code == 200 and response.json().get("code") == 0:
-            return "发送成功"
-        else:
-            return "发送失败 : " + response.json().get("message", "")
-    except Exception as e:
-        msg = "发送失败 : " + str(e)
-        logger.exception(e)
-        return msg
-
-
-@app.route("/test-pushplus-push")
-@require_token
-def test_pushplus_push():
-    import requests
-
-    try:
-        response = requests.post(
-            r"http://www.pushplus.plus/send",
-            params={
-                "token": config.conf.pushplus.token,
-                "title": "arknights-mower推送测试",
-                "content": "arknights-mower推送测试",
-            },
-        )
-
-        if response.status_code == 200 and response.json().get("code") == 200:
-            return "发送成功"
-        else:
-            return "发送失败 : " + response.json().get("message", "")
-    except Exception as e:
-        msg = "发送失败 : " + str(e)
-        logger.exception(msg)
-        return msg
-
-
 @app.route("/check-skland")
 @require_token
 def test_skland():
