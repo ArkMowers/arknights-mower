@@ -105,6 +105,7 @@ def send_message(
         return
     if subject == "":
         subject = body.split("\n")[0].strip()
+    subject = conf.mail_subject + subject
     email = Email(body, subject, attach_image)
 
     def send_message_sync(email):
