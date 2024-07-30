@@ -11,14 +11,30 @@ const mobile = inject('mobile')
 
 const test_result = ref('')
 
-const { mail_enable, account, pass_code, recipient, mail_subject, custom_smtp_server } =
-  storeToRefs(store)
+const {
+  mail_enable,
+  account,
+  pass_code,
+  recipient,
+  mail_subject,
+  custom_smtp_server,
+  notification_level
+} = storeToRefs(store)
 
 async function test_email() {
   test_result.value = '正在发送……'
   const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/test-email`)
   test_result.value = response.data
 }
+
+const levels = [
+  { label: 'INFO - 基建任务、刷理智、公招、基报、活动签到等', value: 'INFO' },
+  { label: 'WARNING - 版本过旧、组内心情差过大、漏单等', value: 'WARNING' },
+  {
+    label: 'ERROR - 无法排班、专精失败、Maa调用出错、森空岛签到失败、活动签到超时、OF-1失败等',
+    value: 'ERROR'
+  }
+]
 </script>
 
 <template>
@@ -87,6 +103,9 @@ async function test_email() {
             </template>
           </template>
           <n-input v-model:value="pass_code" type="password" show-password-on="click" />
+        </n-form-item>
+        <n-form-item label="通知等级">
+          <n-select v-model:value="notification_level" :options="levels" />
         </n-form-item>
         <n-form-item>
           <template #label>

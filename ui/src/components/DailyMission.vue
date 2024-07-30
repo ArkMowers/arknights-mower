@@ -4,15 +4,8 @@ import { storeToRefs } from 'pinia'
 
 const store = useConfigStore()
 
-const {
-  check_mail_enable,
-  report_enable,
-  send_report,
-  sign_in,
-  visit_friend,
-  skland_info,
-  skland_enable
-} = storeToRefs(store)
+const { check_mail_enable, report_enable, sign_in, visit_friend, skland_info, skland_enable } =
+  storeToRefs(store)
 </script>
 
 <template>
@@ -43,11 +36,10 @@ const {
         <div class="item">访问好友</div>
       </n-checkbox>
       <n-divider />
-      <n-flex size="large">
+      <n-flex>
         <n-checkbox v-model:checked="report_enable">
           <div class="item">读取基报</div>
         </n-checkbox>
-        <n-checkbox v-model:checked="send_report" v-if="report_enable">发送邮件</n-checkbox>
       </n-flex>
       <n-divider />
       <n-flex>

@@ -55,11 +55,9 @@ export const useConfigStore = defineStore('config', () => {
   const recruitment_permit = ref(30)
   const recruit_robot = ref(true)
   const recruit_auto_only5 = ref(true)
-  const recruit_email_enable = ref(true)
   const run_order_grandet_mode = ref({})
   const check_mail_enable = ref(true)
   const report_enable = ref(true)
-  const send_report = ref(true)
   const recruit_gap = ref(false)
   const recruit_auto_5 = ref('hand')
   const webview = ref({ scale: 1.0 })
@@ -76,6 +74,7 @@ export const useConfigStore = defineStore('config', () => {
   const credit_fight = ref({})
   const custom_screenshot = ref({})
   const check_for_updates = ref(true)
+  const notification_level = ref('INFO')
 
   async function load_shop() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/shop`)
@@ -146,11 +145,9 @@ export const useConfigStore = defineStore('config', () => {
     recruitment_permit.value = response.data.recruitment_permit
     recruit_robot.value = response.data.recruit_robot
     recruit_auto_only5.value = response.data.recruit_auto_only5
-    recruit_email_enable.value = response.data.recruit_email_enable
     run_order_grandet_mode.value = response.data.run_order_grandet_mode
     check_mail_enable.value = response.data.check_mail_enable
     report_enable.value = response.data.report_enable
-    send_report.value = response.data.send_report
     recruit_gap.value = response.data.recruit_gap
     recruit_auto_5.value = response.data.recruit_auto_5
     webview.value = response.data.webview
@@ -167,6 +164,7 @@ export const useConfigStore = defineStore('config', () => {
     credit_fight.value = response.data.credit_fight
     custom_screenshot.value = response.data.custom_screenshot
     check_for_updates.value = response.data.check_for_updates
+    notification_level.value = response.data.notification_level
   }
 
   function build_config() {
@@ -226,11 +224,9 @@ export const useConfigStore = defineStore('config', () => {
       recruitment_permit: recruitment_permit.value,
       recruit_robot: recruit_robot.value,
       recruit_auto_only5: recruit_auto_only5.value,
-      recruit_email_enable: recruit_email_enable.value,
       run_order_grandet_mode: run_order_grandet_mode.value,
       check_mail_enable: check_mail_enable.value,
       report_enable: report_enable.value,
-      send_report: send_report.value,
       recruit_gap: recruit_gap.value,
       recruit_auto_5: recruit_auto_5.value,
       webview: webview.value,
@@ -250,7 +246,8 @@ export const useConfigStore = defineStore('config', () => {
       visit_friend: visit_friend.value,
       credit_fight: credit_fight.value,
       custom_screenshot: custom_screenshot.value,
-      check_for_updates: check_for_updates.value
+      check_for_updates: check_for_updates.value,
+      notification_level: notification_level.value
     }
   }
 
@@ -315,13 +312,11 @@ export const useConfigStore = defineStore('config', () => {
     recruitment_permit,
     recruit_robot,
     recruit_auto_only5,
-    recruit_email_enable,
     skland_enable,
     skland_info,
     run_order_grandet_mode,
     check_mail_enable,
     report_enable,
-    send_report,
     recruit_gap,
     recruit_auto_5,
     webview,
@@ -337,6 +332,7 @@ export const useConfigStore = defineStore('config', () => {
     visit_friend,
     credit_fight,
     custom_screenshot,
-    check_for_updates
+    check_for_updates,
+    notification_level
   }
 })

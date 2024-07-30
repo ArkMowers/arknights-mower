@@ -8,8 +8,7 @@ const {
   recruit_robot,
   recruit_gap,
   recruit_auto_5,
-  recruit_auto_only5,
-  recruit_email_enable
+  recruit_auto_only5
 } = storeToRefs(store)
 import { inject } from 'vue'
 
@@ -57,9 +56,6 @@ const mobile = inject('mobile')
       </n-form-item>
       <n-form-item v-if="recruit_auto_5 === 2" :show-label="false">
         <n-checkbox v-model:checked="recruit_auto_only5">五星词条组合唯一时自动选择</n-checkbox>
-      </n-form-item>
-      <n-form-item :show-label="false">
-        <n-checkbox v-model:checked="recruit_email_enable">邮件通知</n-checkbox>
       </n-form-item>
       <n-form-item :show-label="false">
         <n-checkbox v-model:checked="recruit_robot">保留支援机械标签</n-checkbox>

@@ -473,38 +473,11 @@ def get_orundum_data():
 @app.route("/test-email")
 @require_token
 def test_email():
-    import smtplib
-    from email.mime.multipart import MIMEMultipart
-    from email.mime.text import MIMEText
+    from arknights_mower.utils.email import Email
 
-    msg = MIMEMultipart()
-    msg.attach(MIMEText("arknights-mower测试邮件", "plain"))
-    msg["Subject"] = config.conf.mail_subject + "测试邮件"
-    recipients = config.conf.recipient or [config.conf.account]
-    msg["To"] = ", ".join(recipients)
-    msg["From"] = config.conf.account
-    # 根据conf字典中的custom_smtp_server设置SMTP服务器和端口
-    smtp_server = config.conf.custom_smtp_server.server
-    ssl_port = config.conf.custom_smtp_server.ssl_port
-    use_qq_mail = not config.conf.custom_smtp_server.enable
-    # 根据encryption键的值选择加密方法
-    encryption = config.conf.custom_smtp_server.encryption
+    email = Email("mower测试邮件", config.conf.mail_subject + "测试邮件", None)
     try:
-        if use_qq_mail:
-            # 如果不用自定义用qq邮箱就使用TLS加密
-            s = smtplib.SMTP_SSL("smtp.qq.com", 465, timeout=10.0)
-        elif encryption == "starttls":
-            # 使用STARTTLS加密
-            s = smtplib.SMTP(smtp_server, ssl_port, timeout=10.0)
-            s.starttls()
-        else:
-            # 如果encryption键的值不是starttls，则使用默认的TLS加密
-            s = smtplib.SMTP_SSL(smtp_server, ssl_port, timeout=10.0)
-        # 登录SMTP服务器
-        s.login(config.conf.account, config.conf.pass_code)
-        # 发送邮件
-        s.sendmail(config.conf.account, recipients, msg.as_string())
-        s.close()
+        email.send()
     except Exception as e:
         msg = "邮件发送失败！\n" + str(e)
         logger.exception(msg)

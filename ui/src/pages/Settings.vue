@@ -244,7 +244,7 @@ async function test_screenshot() {
             <n-form-item :show-label="false">
               <n-checkbox
                 v-model:checked="exit_game_when_idle"
-                :disabled="close_simulator_when_idle"
+                :disabled="simulator.name && close_simulator_when_idle"
               >
                 任务结束后退出游戏
                 <help-text>降低功耗</help-text>

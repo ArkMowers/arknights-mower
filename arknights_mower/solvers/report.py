@@ -5,7 +5,6 @@ import cv2
 import pandas as pd
 
 from arknights_mower.models import noto_sans
-from arknights_mower.utils import config
 from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.digit_reader import DigitReader
 from arknights_mower.utils.email import report_template, send_message
@@ -40,7 +39,6 @@ class ReportSolver(SceneGraphSolver):
             (datetime.datetime.now() - datetime.timedelta(hours=4)).date().__str__()
         )
         self.digitReader = DigitReader()
-        self.send_report = config.conf.send_report
         self.report_res = {
             "作战录像": None,
             "赤金": None,
@@ -100,20 +98,19 @@ class ReportSolver(SceneGraphSolver):
             )
         except Exception as e:
             logger.exception(f"存入数据失败：{e}")
-        if self.send_report:
-            self.tap((1253, 81), interval=2)
-            try:
-                send_message(
-                    report_template.render(
-                        report_data=self.report_res, title_text="基建报告"
-                    ),
-                    "基建报告",
-                    "INFO",
-                    attach_image=self.recog.img,
-                )
-            except Exception as e:
-                logger.exception(f"基报邮件发送失败：{e}")
-            self.tap((40, 80), interval=2)
+        self.tap((1253, 81), interval=2)
+        try:
+            send_message(
+                report_template.render(
+                    report_data=self.report_res, title_text="基建报告"
+                ),
+                "基建报告",
+                "INFO",
+                attach_image=self.recog.img,
+            )
+        except Exception as e:
+            logger.exception(f"基报邮件发送失败：{e}")
+        self.tap((40, 80), interval=2)
 
     def has_record(self):
         try:

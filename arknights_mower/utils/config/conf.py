@@ -178,8 +178,6 @@ class RecruitPart(ConfModel):
     "五星招募策略，1自动，2手动"
     recruit_auto_only5: bool = False
     "五星词条组合唯一时自动选择"
-    recruit_email_enable: bool = True
-    "邮件通知"
 
 
 class RegularTaskPart(ConfModel):
@@ -405,13 +403,8 @@ class RegularTaskPart(ConfModel):
     "仓库物品混合读取"
     visit_friend: bool = True
     "访问好友"
-
-
-class ReportPart(ConfModel):
     report_enable: bool = True
     "读取基报"
-    send_report: bool = True
-    "发送邮件"
 
 
 class RIICPart(ConfModel):
@@ -531,7 +524,6 @@ class Conf(
     MaaPart,
     RecruitPart,
     RegularTaskPart,
-    ReportPart,
     RIICPart,
     SimulatorPart,
     SKLandPart,
