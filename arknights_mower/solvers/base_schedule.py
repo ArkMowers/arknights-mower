@@ -3196,6 +3196,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 while (self.tasks[0].time - datetime.now()).total_seconds() > 30:
                     self.MAA = None
                     self.initialize_maa()
+                    self.recog.update()
+                    self.back_to_index()
                     if conf.RG:
                         self.MAA.append_task(
                             "Roguelike",
@@ -3222,8 +3224,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             or conf.sss.ec not in [1, 2, 3]
                         ):
                             raise Exception("保全派驻配置错误")
-                        self.recog.update()
-                        self.back_to_index()
                         if self.to_sss():
                             raise Exception("保全派驻导航失败")
                         self.MAA.append_task(
@@ -3243,12 +3243,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
             elif not rg_sleep:
                 if conf.RA:
-                    self.recog.update()
                     self.back_to_index()
                     ra_solver = ReclamationAlgorithm(self.device, self.recog)
                     ra_solver.run(self.tasks[0].time - datetime.now())
                 elif conf.SF:
-                    self.recog.update()
                     self.back_to_index()
                     sf_solver = SecretFront(self.device, self.recog)
                     sf_solver.run(self.tasks[0].time - datetime.now())
