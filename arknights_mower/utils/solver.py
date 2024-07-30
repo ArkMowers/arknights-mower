@@ -676,6 +676,8 @@ class BaseSolver:
                     self.tap_element("sss/squad_button")
                 elif scene == Scene.SSS_GUIDE:
                     self.tap_element("sss/close_button")
+                else:
+                    self.sleep()
             except MowerExit:
                 raise
             except Exception as e:
