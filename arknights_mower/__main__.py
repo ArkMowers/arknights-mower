@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from datetime import datetime, timedelta
 
 from evalidate import Expr
@@ -14,7 +15,7 @@ from arknights_mower.utils.datetime import format_time
 from arknights_mower.utils.depot import 创建csv, 创建json
 from arknights_mower.utils.device.adb_client.session import Session
 from arknights_mower.utils.device.scrcpy import Scrcpy
-from arknights_mower.utils.email import send_message, task_template
+from arknights_mower.utils.email import send_message, task_template, version_template
 from arknights_mower.utils.hot_update import get_listing
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.logic_expression import LogicExpression
@@ -211,9 +212,20 @@ def simulate():
                     listing = get_listing()
                     version = __version__.replace("+", "-")
                     if not any(i.name.startswith(version) for i in listing):
-                        msg = "Mower版本过旧，请更新至受支持的版本"
-                        logger.error(msg)
-                        send_message(msg)
+                        stable = []
+                        testing = []
+                        for i in listing:
+                            name = i.name
+                            if re.fullmatch(r"[0-9]{4}\.[0-9]{2}\.[0-9]+/", name):
+                                stable.append(name[:-1])
+                            elif re.fullmatch(r"[0-9]{4}\.[0-9]{2}-[0-9a-z]{7}/", name):
+                                testing.append(name[:-1])
+                        title = "Mower版本过旧，请及时更新"
+                        logger.error(title)
+                        body = version_template.render(
+                            stable=stable, testing=testing, current=version
+                        )
+                        send_message(body, title)
 
                     # 刷新时间以鹰历为准
                     if (
@@ -428,8 +440,8 @@ def simulate():
                 continue
             else:
                 raise e
-        except RuntimeError as re:
-            logger.exception(f"程序出错-尝试重启模拟器->{re}")
+        except RuntimeError as e:
+            logger.exception(f"程序出错-尝试重启模拟器->{e}")
             restart_simulator()
             base_scheduler.device.client.check_server_alive()
             Session().connect(config.conf.adb)

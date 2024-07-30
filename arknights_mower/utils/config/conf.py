@@ -92,6 +92,8 @@ class ExtraPart(ConfModel):
     "界面主题"
     screenshot: int = 200
     "截图数量"
+    check_for_updates: bool = True
+    "检查更新"
 
 
 class LongTaskPart(ConfModel):
