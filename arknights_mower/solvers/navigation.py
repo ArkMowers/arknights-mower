@@ -5,6 +5,7 @@ import cv2
 from arknights_mower.models import navigation
 from arknights_mower.utils import hot_update
 from arknights_mower.utils.graph import SceneGraphSolver
+from arknights_mower.utils.image import thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.vector import va, vs
@@ -240,7 +241,7 @@ class NavigationSolver(SceneGraphSolver):
                     )
                     self.recog.update()
             else:
-                self.tap((230, 175), interval=2)
+                self.tap((230, 175))
         elif scene == Scene.TERMINAL_BIOGRAPHY:
             if self.prefix not in ["OF"]:
                 self.back()
@@ -269,6 +270,12 @@ class NavigationSolver(SceneGraphSolver):
                 if self.prefix in ["PR"]:
                     self.swipe_noinertia((900, 500), (-600, 0))
         elif scene == Scene.OPERATOR_CHOOSE_LEVEL:
+            non_black_count = cv2.countNonZero(thres2(self.recog.gray, 10))
+            non_black_ratio = non_black_count / (1920 * 1080)
+            logger.debug(f"{non_black_ratio=}")
+            if non_black_ratio < 0.1:
+                self.sleep()
+                return
             name, val, loc = "", 1, None
             prefix = self.prefix
             # 资源收集关直接按坐标点击
