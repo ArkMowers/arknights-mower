@@ -295,12 +295,12 @@ class RecruitSolver(SceneGraphSolver):
         if recruit_time_choose == 540:
             # 09:00
             logger.debug("时间9h")
-            self.tap_element("one_hour", 0.2, 0.8, 0)
+            self.tap_element("one_hour", 0.2, 0.8, 0.5)
         elif recruit_time_choose == 230:
             # 03:50
             logger.debug("时间3h50min")
-            [self.tap_element("one_hour", 0.2, 0.2, 0) for _ in range(2)]
-            [self.tap_element("one_hour", 0.5, 0.2, 0) for _ in range(5)]
+            [self.tap_element("one_hour", 0.2, 0.2, 0.5) for _ in range(2)]
+            [self.tap_element("one_hour", 0.5, 0.2, 0.5) for _ in range(5)]
         # elif recruit_time_choose == 460:
         #     # 07:40
         #     logger.debug("时间7h40min")
