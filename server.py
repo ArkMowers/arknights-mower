@@ -170,6 +170,18 @@ def stop():
         return "true"
 
 
+@app.route("/stop-maa")
+@require_token
+def stop_maa():
+    global mower_thread
+
+    if mower_thread is None:
+        return "true"
+
+    config.stop_maa.set()
+    return "OK"
+
+
 @sock.route("/log")
 def log(ws):
     global ws_connections

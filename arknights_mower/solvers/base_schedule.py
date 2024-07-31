@@ -3101,6 +3101,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         logger.debug(Message(msg))
 
     def initialize_maa(self):
+        config.stop_maa.clear()
         conf = config.conf
         path = pathlib.Path(conf.maa_path)
         asst_path = os.path.dirname(path / "Python" / "asst")
@@ -3193,7 +3194,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if (conf.RG or conf.SSS) and not rg_sleep:
                 logger.info("准备开始：肉鸽/保全")
                 send_message("启动 肉鸽/保全")
-                while (self.tasks[0].time - datetime.now()).total_seconds() > 30:
+                while True:
                     self.MAA = None
                     self.initialize_maa()
                     self.recog.update()
@@ -3231,14 +3232,21 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         )
                     logger.info("启动")
                     self.MAA.start()
+                    maa_crash = True
                     while self.MAA.running():
-                        if (self.tasks[0].time - datetime.now()).total_seconds() < 30:
+                        csleep(5)
+                        if (
+                            self.tasks[0].time - datetime.now() < timedelta(seconds=30)
+                            or config.stop_maa.is_set()
+                        ):
+                            maa_crash = False
                             self.MAA.stop()
                             break
-                        else:
-                            csleep(5)
-                    self.device.exit()
-                    self.check_current_focus()
+                    if maa_crash:
+                        self.device.exit()
+                        self.check_current_focus()
+                    else:
+                        break
 
             elif not rg_sleep:
                 if conf.RA:

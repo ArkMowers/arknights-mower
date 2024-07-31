@@ -72,6 +72,17 @@ const { theme } = storeToRefs(config_store)
 const bg_opacity = computed(() => {
   return theme.value == 'light' ? 0.2 : 0.3
 })
+
+function stop_maa() {
+  axios.get(`${import.meta.env.VITE_HTTP_URL}/stop-maa`)
+}
+
+const stop_options = [
+  {
+    label: '停止Maa',
+    key: 'maa'
+  }
+]
 </script>
 
 <template>
@@ -108,14 +119,16 @@ const bg_opacity = computed(() => {
     </n-table>
     <n-log class="log" :log="log" language="mower" style="user-select: text" />
     <div class="action-container">
-      <n-button type="error" @click="stop" v-if="running" :loading="waiting" :disabled="waiting">
-        <template #icon>
-          <n-icon>
-            <stop-icon />
-          </n-icon>
-        </template>
-        <template v-if="!mobile">立即停止</template>
-      </n-button>
+      <drop-down v-if="running" :select="stop_maa" :options="stop_options" type="error" :up="true">
+        <n-button type="error" @click="stop" :loading="waiting" :disabled="waiting">
+          <template #icon>
+            <n-icon>
+              <stop-icon />
+            </n-icon>
+          </template>
+          <template v-if="!mobile">立即停止</template>
+        </n-button>
+      </drop-down>
       <n-button type="primary" @click="start" v-else :loading="waiting" :disabled="waiting">
         <template #icon>
           <n-icon>
