@@ -267,6 +267,7 @@ def upload_sss_copilot():
         "exists": True,
         "title": data["doc"]["title"],
         "details": data["doc"]["details"],
+        "operators": data["opers"],
     }
 
 

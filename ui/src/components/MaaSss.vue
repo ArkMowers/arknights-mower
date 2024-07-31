@@ -116,11 +116,17 @@ async function download_maa_copilot() {
       </div>
     </n-form-item>
     <n-form-item label="作业信息">
-      <div class="wrapper" v-if="sss_data.exists">
-        <div class="title">{{ sss_data.title }}</div>
-        <div>{{ sss_data.details }}</div>
-      </div>
-      <div v-else>未选择作业</div>
+      <n-flex vertical>
+        <div class="wrapper" v-if="sss_data.exists">
+          <div class="title">{{ sss_data.title }}</div>
+          <div>{{ sss_data.details }}</div>
+        </div>
+        <div v-else>未选择作业</div>
+        <n-flex v-for="o in sss_data.operators" align="center">
+          <n-avatar :src="`avatar/${o.name}.webp`" />
+          <div>{{ o.name }}（{{ o.skill }}技能）</div>
+        </n-flex>
+      </n-flex>
     </n-form-item>
   </n-form>
 </template>
