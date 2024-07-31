@@ -1,8 +1,8 @@
 <script setup>
-import { useConfigStore } from '@/stores/config';
-import { usePlanStore } from '@/stores/plan';
-import { storeToRefs } from 'pinia';
-import { inject } from 'vue';
+import { useConfigStore } from '@/stores/config'
+import { usePlanStore } from '@/stores/plan'
+import { storeToRefs } from 'pinia'
+import { inject } from 'vue'
 
 const mobile = inject('mobile')
 
@@ -13,8 +13,8 @@ const { maa_rg_theme, rogue } = storeToRefs(config_store)
 const plan_store = usePlanStore()
 const { operators } = storeToRefs(plan_store)
 
-import { pinyin_match } from '@/utils/common';
-import { render_op_label } from '@/utils/op_select';
+import { pinyin_match } from '@/utils/common'
+import { render_op_label } from '@/utils/op_select'
 
 const rogue_themes = [
   { label: '傀影与猩红孤钻', value: 'Phantom' },

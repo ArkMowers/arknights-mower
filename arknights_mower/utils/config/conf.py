@@ -114,7 +114,12 @@ class LongTaskPart(ConfModel):
         "策略"
         refresh_trader_with_dice: bool = False
         "刷新商店（指路鳞）"
-        expected_collapsal_paradigms: list[str] = ["目空一些", "睁眼瞎", "图像损坏", "一抹黑"]
+        expected_collapsal_paradigms: list[str] = [
+            "目空一些",
+            "睁眼瞎",
+            "图像损坏",
+            "一抹黑",
+        ]
         "需要刷的坍缩范式"
 
     class SSSConf(ConfModel):
