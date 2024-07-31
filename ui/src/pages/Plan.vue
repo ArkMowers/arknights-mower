@@ -180,6 +180,7 @@ import CodeSlash from '@vicons/ionicons5/CodeSlash'
 import TrashOutline from '@vicons/ionicons5/TrashOutline'
 import AddTaskRound from '@vicons/material/AddTaskRound'
 import PlusRound from '@vicons/material/PlusRound'
+import DropDown from '@vicons/ionicons4/MdArrowDropdown'
 
 function import_plan({ event }) {
   const msg = event.target.response
@@ -223,47 +224,51 @@ async function export_json() {
   <trigger-dialog />
   <task-dialog />
   <div class="plan-bar w-980 mx-auto mt-12 mw-980">
-    <n-button
-      :disabled="sub_plan == 'main'"
-      @click="sub_plan = sub_plan == 0 ? 'main' : sub_plan - 1"
-    >
-      <template #icon>
-        <n-icon><ios-arrow-back /></n-icon>
-      </template>
-    </n-button>
-    <n-button
-      :disabled="sub_plan == backup_plans.length - 1 || backup_plans.length == 0"
-      @click="sub_plan = sub_plan == 'main' ? 0 : sub_plan + 1"
-    >
-      <template #icon>
-        <n-icon><ios-arrow-forward /></n-icon>
-      </template>
-    </n-button>
+    <n-button-group>
+      <n-button
+        :disabled="sub_plan == 'main'"
+        @click="sub_plan = sub_plan == 0 ? 'main' : sub_plan - 1"
+      >
+        <template #icon>
+          <n-icon><ios-arrow-back /></n-icon>
+        </template>
+      </n-button>
+      <n-button
+        :disabled="sub_plan == backup_plans.length - 1 || backup_plans.length == 0"
+        @click="sub_plan = sub_plan == 'main' ? 0 : sub_plan + 1"
+      >
+        <template #icon>
+          <n-icon><ios-arrow-forward /></n-icon>
+        </template>
+      </n-button>
+    </n-button-group>
     <n-select v-model:value="sub_plan" :options="sub_plan_options" />
-    <n-button @click="create_sub_plan">
-      <template #icon>
-        <n-icon :size="22"><plus-round /></n-icon>
-      </template>
-      新建副表
-    </n-button>
-    <n-button :disabled="sub_plan == 'main'" @click="show_trigger_editor = true">
-      <template #icon>
-        <n-icon><code-slash /></n-icon>
-      </template>
-      编辑触发条件
-    </n-button>
-    <n-button :disabled="sub_plan == 'main'" @click="show_task = true">
-      <template #icon>
-        <n-icon><add-task-round /></n-icon>
-      </template>
-      编辑任务
-    </n-button>
-    <n-button :disabled="sub_plan == 'main'" @click="delete_sub_plan">
-      <template #icon>
-        <n-icon><trash-outline /></n-icon>
-      </template>
-      删除此副表
-    </n-button>
+    <n-button-group>
+      <n-button @click="create_sub_plan">
+        <template #icon>
+          <n-icon :size="22"><plus-round /></n-icon>
+        </template>
+        新建副表
+      </n-button>
+      <n-button :disabled="sub_plan == 'main'" @click="show_trigger_editor = true">
+        <template #icon>
+          <n-icon><code-slash /></n-icon>
+        </template>
+        编辑触发条件
+      </n-button>
+      <n-button :disabled="sub_plan == 'main'" @click="show_task = true">
+        <template #icon>
+          <n-icon><add-task-round /></n-icon>
+        </template>
+        编辑任务
+      </n-button>
+      <n-button :disabled="sub_plan == 'main'" @click="delete_sub_plan">
+        <template #icon>
+          <n-icon><trash-outline /></n-icon>
+        </template>
+        删除此副表
+      </n-button>
+    </n-button-group>
     <n-upload
       style="width: auto; margin-left: 8px"
       :action="import_url"
@@ -280,17 +285,25 @@ async function export_json() {
       </n-button>
     </n-upload>
     <n-dropdown
-      trigger="hover"
+      trigger="click"
       placement="bottom-start"
+      width="trigger"
       :options="export_options"
       @select="export_json"
     >
-      <n-button @click="save" :loading="generating_image" :disabled="generating_image">
-        <template #icon>
-          <n-icon><document-export /></n-icon>
-        </template>
-        导出图片
-      </n-button>
+      <n-button-group>
+        <n-button @click="save" :loading="generating_image" :disabled="generating_image">
+          <template #icon>
+            <n-icon><document-export /></n-icon>
+          </template>
+          导出图片
+        </n-button>
+        <n-button class="dropdown">
+          <template #icon>
+            <n-icon><drop-down /></n-icon>
+          </template>
+        </n-button>
+      </n-button-group>
     </n-dropdown>
   </div>
   <plan-editor ref="plan_editor" class="w-980 mx-auto mw-980 px-12" />
@@ -404,5 +417,9 @@ async function export_json() {
   flex-grow: 0;
   gap: 6px;
   padding: 0 12px;
+}
+
+.dropdown {
+  padding: 0 6px;
 }
 </style>
