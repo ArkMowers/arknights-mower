@@ -3209,8 +3209,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                 "use_support": conf.rogue.use_support,
                                 "use_nonfriend_support": conf.rogue.use_nonfriend_support,
                                 "mode": conf.rogue.mode,
-                                "investment_enabled": conf.rogue.investment_enabled,
-                                "stop_when_investment_full": conf.rogue.stop_when_investment_full,
                                 "refresh_trader_with_dice": conf.rogue.refresh_trader_with_dice,
                                 "starts_count": 9999999,
                                 "investments_count": 9999999,

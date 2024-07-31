@@ -75,9 +75,9 @@ class ExtraPart(ConfModel):
     class WebViewConf(ConfModel):
         port: int = 58000
         "端口号"
-        width: int = 2000
+        width: int = 1450
         "窗口宽度"
-        height: int = 1000
+        height: int = 850
         "窗口高度"
         token: str = ""
         "远程连接密钥"
@@ -112,12 +112,10 @@ class LongTaskPart(ConfModel):
         "开局干员使用非好友助战"
         mode: int = 1
         "策略"
-        investment_enabled: bool = True
-        "投资源石锭"
-        stop_when_investment_full: bool = True
-        "储备源石锭达到上限时停止"
         refresh_trader_with_dice: bool = False
         "刷新商店（指路鳞）"
+        expected_collapsal_paradigms: list[str] = ["目空一些", "睁眼瞎", "图像损坏", "一抹黑"]
+        "需要刷的坍缩范式"
 
     class SSSConf(ConfModel):
         type: int = 1
