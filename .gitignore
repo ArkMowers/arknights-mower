@@ -38,6 +38,7 @@ __pycache__/
 
 # Distribution / packaging
 .Python
+mower/
 build/
 develop-eggs/
 dist/
