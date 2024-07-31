@@ -107,7 +107,7 @@ def start_tray(queue: mp.Queue, global_space, port, url):
     icon.run()
 
 
-def webview_window(child_conn, global_space, host, port, token, url, tray):
+def webview_window(child_conn, global_space, host, port, url, tray):
     import sys
     from threading import Thread
 
@@ -259,7 +259,7 @@ if __name__ == "__main__":
     parent_conn, child_conn = mp.Pipe()
     webview_process = mp.Process(
         target=webview_window,
-        args=(child_conn, path.global_space, host, port, token, url, tray),
+        args=(child_conn, path.global_space, host, port, url, tray),
         daemon=True,
     )
     webview_process.start()
@@ -285,7 +285,6 @@ if __name__ == "__main__":
                             path.global_space,
                             host,
                             port,
-                            token,
                             url,
                             tray,
                         ),
