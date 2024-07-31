@@ -180,7 +180,6 @@ import CodeSlash from '@vicons/ionicons5/CodeSlash'
 import TrashOutline from '@vicons/ionicons5/TrashOutline'
 import AddTaskRound from '@vicons/material/AddTaskRound'
 import PlusRound from '@vicons/material/PlusRound'
-import DropDown from '@vicons/ionicons4/MdArrowDropdown'
 
 function import_plan({ event }) {
   const msg = event.target.response
@@ -284,27 +283,14 @@ async function export_json() {
         导入排班
       </n-button>
     </n-upload>
-    <n-dropdown
-      trigger="click"
-      placement="bottom-start"
-      width="trigger"
-      :options="export_options"
-      @select="export_json"
-    >
-      <n-button-group>
-        <n-button @click="save" :loading="generating_image" :disabled="generating_image">
-          <template #icon>
-            <n-icon><document-export /></n-icon>
-          </template>
-          导出图片
-        </n-button>
-        <n-button class="dropdown">
-          <template #icon>
-            <n-icon><drop-down /></n-icon>
-          </template>
-        </n-button>
-      </n-button-group>
-    </n-dropdown>
+    <drop-down :select="export_json" :options="export_options">
+      <n-button @click="save" :loading="generating_image" :disabled="generating_image">
+        <template #icon>
+          <n-icon><document-export /></n-icon>
+        </template>
+        导出图片
+      </n-button>
+    </drop-down>
   </div>
   <plan-editor ref="plan_editor" class="w-980 mx-auto mw-980 px-12" />
   <n-form
@@ -417,9 +403,5 @@ async function export_json() {
   flex-grow: 0;
   gap: 6px;
   padding: 0 12px;
-}
-
-.dropdown {
-  padding: 0 6px;
 }
 </style>

@@ -12,6 +12,7 @@ declare module 'vue' {
     Clue: typeof import('./src/components/Clue.vue')['default']
     DailyMission: typeof import('./src/components/DailyMission.vue')['default']
     Depotswitch: typeof import('./src/components/Depotswitch.vue')['default']
+    DropDown: typeof import('./src/components/DropDown.vue')['default']
     Email: typeof import('./src/components/Email.vue')['default']
     HelpText: typeof import('./src/components/HelpText.vue')['default']
     LongTasks: typeof import('./src/components/LongTasks.vue')['default']
