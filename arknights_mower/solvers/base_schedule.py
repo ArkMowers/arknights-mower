@@ -3212,6 +3212,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                 "refresh_trader_with_dice": conf.rogue.refresh_trader_with_dice,
                                 "starts_count": 9999999,
                                 "investments_count": 9999999,
+                                "expected_collapsal_paradigms": conf.rogue.expected_collapsal_paradigms,
                             },
                         )
                     elif conf.SSS:
