@@ -111,6 +111,20 @@
         "NORMAL",
         10008
     ],
+    "LMTGS_COIN_5301": [
+        "LMTGS_COIN_5301",
+        "LMTGS_COIN_5301",
+        "寻访数据契约",
+        "NORMAL",
+        10025
+    ],
+    "寻访数据契约": [
+        "LMTGS_COIN_5301",
+        "LMTGS_COIN_5301",
+        "寻访数据契约",
+        "NORMAL",
+        10025
+    ],
     "EPGS_COIN": [
         "EPGS_COIN",
         "EPGS_COIN",
@@ -377,6 +391,20 @@
         "NORMAL",
         40001
     ],
+    "LIMITED_TKT_GACHA_10_5301": [
+        "LIMITED_TKT_GACHA_10_5301",
+        "LIMITED_TKT_GACHA_10_5301",
+        "璀璨闪耀寻访凭证",
+        "NORMAL",
+        40003
+    ],
+    "璀璨闪耀寻访凭证": [
+        "LIMITED_TKT_GACHA_10_5301",
+        "LIMITED_TKT_GACHA_10_5301",
+        "璀璨闪耀寻访凭证",
+        "NORMAL",
+        40003
+    ],
     "7003": [
         "7003",
         "TKT_GACHA",
@@ -573,6 +601,34 @@
         "CONSUME",
         50013
     ],
+    "voucher_recruitR6_pick5301": [
+        "voucher_recruitR6_pick5301",
+        "voucher_recruitR6_pick5301",
+        "高级干员调用凭证-新人",
+        "CONSUME",
+        50017
+    ],
+    "高级干员调用凭证-新人": [
+        "voucher_recruitR6_pick5301",
+        "voucher_recruitR6_pick5301",
+        "高级干员调用凭证-新人",
+        "CONSUME",
+        50017
+    ],
+    "voucher_item_4pick1_5301": [
+        "voucher_item_4pick1_5301",
+        "voucher_item_4pick1_5301",
+        "资深干员调用凭证-新人",
+        "CONSUME",
+        50018
+    ],
+    "资深干员调用凭证-新人": [
+        "voucher_item_4pick1_5301",
+        "voucher_item_4pick1_5301",
+        "资深干员调用凭证-新人",
+        "CONSUME",
+        50018
+    ],
     "voucher_levelmax_6": [
         "voucher_levelmax_6",
         "voucher_levelmax_6",
@@ -643,6 +699,20 @@
         "CONSUME",
         50021
     ],
+    "voucher_skill_specialLevelMax_6": [
+        "voucher_skill_specialLevelMax_6",
+        "voucher_skill_specialLevelMax_6",
+        "高级资深干员技巧集",
+        "CONSUME",
+        50022
+    ],
+    "高级资深干员技巧集": [
+        "voucher_skill_specialLevelMax_6",
+        "voucher_skill_specialLevelMax_6",
+        "高级资深干员技巧集",
+        "CONSUME",
+        50022
+    ],
     "voucher_skill_specialLevelMax_5": [
         "voucher_skill_specialLevelMax_5",
         "voucher_skill_specialLevelMax_5",
@@ -656,6 +726,20 @@
         "资深干员技巧集",
         "CONSUME",
         50023
+    ],
+    "voucher_skill_specialLevelMax_4": [
+        "voucher_skill_specialLevelMax_4",
+        "voucher_skill_specialLevelMax_4",
+        "专业干员技巧集",
+        "CONSUME",
+        50024
+    ],
+    "专业干员技巧集": [
+        "voucher_skill_specialLevelMax_4",
+        "voucher_skill_specialLevelMax_4",
+        "专业干员技巧集",
+        "CONSUME",
+        50024
     ],
     "voucher_skin": [
         "voucher_skin",
@@ -754,6 +838,34 @@
         "自助芯片印刻仪",
         "CONSUME",
         60002
+    ],
+    "premium_material_voucher_perm": [
+        "premium_material_voucher_perm",
+        "premium_material_issue_voucher",
+        "特级材料提货券",
+        "CONSUME",
+        60004
+    ],
+    "特级材料提货券": [
+        "premium_material_issue_voucher",
+        "premium_material_issue_voucher",
+        "特级材料提货券",
+        "CONSUME",
+        30200
+    ],
+    "advanced_material_voucher_perm": [
+        "advanced_material_voucher_perm",
+        "advanced_material_issue_voucher",
+        "高级材料提货券",
+        "CONSUME",
+        60005
+    ],
+    "高级材料提货券": [
+        "advanced_material_issue_voucher",
+        "advanced_material_issue_voucher",
+        "高级材料提货券",
+        "CONSUME",
+        30201
     ],
     "randomMaterialRune_0": [
         "randomMaterialRune_0",
@@ -6439,6 +6551,34 @@
         "MATERIAL",
         700149
     ],
+    "p_char_4140_lasher": [
+        "p_char_4140_lasher",
+        "p_char_4140_lasher",
+        "衡沙的信物",
+        "MATERIAL",
+        700150
+    ],
+    "衡沙的信物": [
+        "p_char_4140_lasher",
+        "p_char_4140_lasher",
+        "衡沙的信物",
+        "MATERIAL",
+        700150
+    ],
+    "p_char_4139_papyrs": [
+        "p_char_4139_papyrs",
+        "p_char_4139_papyrs",
+        "莎草的信物",
+        "MATERIAL",
+        700151
+    ],
+    "莎草的信物": [
+        "p_char_4139_papyrs",
+        "p_char_4139_papyrs",
+        "莎草的信物",
+        "MATERIAL",
+        700151
+    ],
     "p_char_103_angel": [
         "p_char_103_angel",
         "p_char_103_angel",
@@ -7754,6 +7894,34 @@
         "妮芙的信物",
         "MATERIAL",
         600094
+    ],
+    "p_char_4138_narant": [
+        "p_char_4138_narant",
+        "p_char_4138_narant",
+        "娜仁图亚的信物",
+        "MATERIAL",
+        600095
+    ],
+    "娜仁图亚的信物": [
+        "p_char_4138_narant",
+        "p_char_4138_narant",
+        "娜仁图亚的信物",
+        "MATERIAL",
+        600095
+    ],
+    "p_char_4058_pepe": [
+        "p_char_4058_pepe",
+        "p_char_4058_pepe",
+        "佩佩的信物",
+        "MATERIAL",
+        600096
+    ],
+    "佩佩的信物": [
+        "p_char_4058_pepe",
+        "p_char_4058_pepe",
+        "佩佩的信物",
+        "MATERIAL",
+        600096
     ],
     "class_p_char_123_fang": [
         "class_p_char_123_fang",
@@ -9876,21 +10044,7 @@
         "CONSUME",
         30200
     ],
-    "特级材料提货券": [
-        "premium_material_issue_voucher",
-        "premium_material_issue_voucher",
-        "特级材料提货券",
-        "CONSUME",
-        30200
-    ],
     "advanced_material_issue_voucher": [
-        "advanced_material_issue_voucher",
-        "advanced_material_issue_voucher",
-        "高级材料提货券",
-        "CONSUME",
-        30201
-    ],
-    "高级材料提货券": [
         "advanced_material_issue_voucher",
         "advanced_material_issue_voucher",
         "高级材料提货券",

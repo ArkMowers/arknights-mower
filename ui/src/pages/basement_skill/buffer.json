@@ -673,5 +673,11 @@
     "termName": "嘉维尔",
     "description": "包含以下干员\n百炼嘉维尔、嘉维尔",
     "buffer": []
+  },
+  "cc_tra_pepe": {
+    "termId": "cc.tra.pepe",
+    "termName": "特别独占订单",
+    "description": "由佩佩提供的特殊贵金属订单，该订单的获取时长固定，收益恒定，所需赤金交付数为0",
+    "buffer": []
   }
 }
