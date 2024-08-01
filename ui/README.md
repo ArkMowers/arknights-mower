@@ -59,7 +59,9 @@ VITE_HTTP_URL="http://localhost:5000"
 npm run build
 ```
 
-将生成的 `dist` 文件夹复制到 `arknights-mower` 的目录中。此时运行后端：
+将会在 `arknights-mower` 目录中生成一个 `dist` 文件夹。每次更新前端代码后，都需要重新构建静态文件；不需删除已经存在的 `dist`，打包工具 `vite` 会执行原位替换。
+
+此时运行后端：
 
 ```运行
 flask --app server run --port=8000
