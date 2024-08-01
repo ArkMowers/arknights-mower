@@ -286,7 +286,7 @@ def back_to_friend_confirm(solver: BaseSolver):
 @edge(Scene.TERMINAL_LONGTERM, Scene.TERMINAL_MAIN_THEME)
 @edge(Scene.TERMINAL_PERIODIC, Scene.TERMINAL_MAIN_THEME)
 def terminal_to_main_theme(solver: BaseSolver):
-    solver.tap_element("main_theme_small")
+    solver.tap_terminal_button("main_theme")
 
 
 @edge(Scene.TERMINAL_MAIN, Scene.TERMINAL_BIOGRAPHY)
@@ -295,7 +295,7 @@ def terminal_to_main_theme(solver: BaseSolver):
 @edge(Scene.TERMINAL_LONGTERM, Scene.TERMINAL_BIOGRAPHY)
 @edge(Scene.TERMINAL_PERIODIC, Scene.TERMINAL_BIOGRAPHY)
 def terminal_to_biography(solver: BaseSolver):
-    solver.tap_element("biography_small")
+    solver.tap_terminal_button("biography")
 
 
 @edge(Scene.OPERATOR_RECOVER_POTION, Scene.OPERATOR_BEFORE)

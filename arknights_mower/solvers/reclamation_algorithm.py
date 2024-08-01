@@ -333,7 +333,7 @@ class ReclamationAlgorithm(BaseSolver):
         elif scene == Scene.INDEX:
             self.tap_index_element("terminal")
         elif scene == Scene.TERMINAL_MAIN:
-            self.tap_element("terminal_button_longterm")
+            self.tap_terminal_button("longterm")
         elif scene == Scene.TERMINAL_LONGTERM:
             self.tap_element("terminal_longterm_reclamation_algorithm")
 

@@ -1,7 +1,6 @@
 import random
 import sys
 import time
-import traceback
 from abc import abstractmethod
 from datetime import datetime, timedelta
 from inspect import getframeinfo, stack
@@ -86,15 +85,11 @@ class BaseSolver:
             except MowerExit:
                 raise
             except RecognizeError as e:
-                logger.warning(f"识别出了点小差错 qwq: {e}")
+                logger.exception(f"识别出了点小差错 qwq: {e}")
                 self.recog.save_screencap("failure")
                 retry_times -= 1
                 self.sleep(3)
                 continue
-            except StrategyError as e:
-                logger.error(e)
-                logger.debug(traceback.format_exc())
-                return
             except Exception as e:
                 logger.exception(e)
                 raise e
@@ -267,6 +262,32 @@ class BaseSolver:
             "shop": (1804, 362),  # 采购中心
             "mission": (1631, 53),  # 任务
             "friend": (1801, 53),  # 好友
+        }
+        self.ctap(pos[name])
+
+    def tap_terminal_button(
+        self,
+        name: Literal[
+            "main",
+            "main_theme",
+            "intermezzi",
+            "biography",
+            "collection",
+            "regular",
+            "longterm",
+            "contract",
+        ],
+    ):
+        y = 1005
+        pos = {
+            "main": (115, y),  # 首页
+            "main_theme": (356, y),  # 主题曲
+            "intermezzi": (596, y),  # 插曲
+            "biography": (836, y),  # 别传
+            "collection": (1077, y),  # 资源收集
+            "regular": (1317, y),  # 常态事务
+            "longterm": (1556, y),  # 长期探索
+            "contract": (1796, y),  # 危机合约
         }
         self.ctap(pos[name])
 
@@ -546,7 +567,7 @@ class BaseSolver:
             except MowerExit:
                 raise
             except RecognizeError as e:
-                logger.warning(f"识别出了点小差错 qwq: {e}")
+                logger.exception(f"识别出了点小差错 qwq: {e}")
                 self.recog.save_screencap("failure")
                 retry_times -= 1
                 self.sleep(3)
@@ -631,7 +652,7 @@ class BaseSolver:
             except MowerExit:
                 raise
             except RecognizeError as e:
-                logger.warning(f"识别出了点小差错 qwq: {e}")
+                logger.exception(f"识别出了点小差错 qwq: {e}")
                 self.recog.save_screencap("failure")
                 retry_times -= 1
                 self.sleep(3)
@@ -656,7 +677,7 @@ class BaseSolver:
                 if scene == Scene.INDEX:
                     self.tap_index_element("terminal")
                 elif scene == Scene.TERMINAL_MAIN:
-                    self.tap((1317, 1005))
+                    self.tap_terminal_button("regular")
                 elif scene == Scene.TERMINAL_REGULAR:
                     self.tap((1548, 870))
                 elif scene == Scene.SSS_MAIN:

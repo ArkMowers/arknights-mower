@@ -254,7 +254,7 @@ class SecretFront(BaseSolver):
         if scene == Scene.INDEX:
             self.tap_index_element("terminal")
         elif scene == Scene.TERMINAL_MAIN:
-            self.tap_element("main_theme_small")
+            self.tap_terminal_button("main_theme")
         elif scene == Scene.TERMINAL_MAIN_THEME:
             self.tap_element("navigation/main/14")
         elif scene == Scene.SF_ENTRANCE:

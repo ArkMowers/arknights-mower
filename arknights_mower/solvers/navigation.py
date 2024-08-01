@@ -215,11 +215,11 @@ class NavigationSolver(SceneGraphSolver):
                     logger.info("本周剿灭已完成")
                     return True
             elif isinstance(self.prefix, int):
-                self.tap_element("main_theme_small")
+                self.tap_terminal_button("main_theme")
             elif self.prefix in ["OF"]:
-                self.tap_element("biography_small")
+                self.tap_terminal_button("biography")
             elif self.prefix in collection_prefixs:
-                self.tap_element("collection_small")
+                self.tap_terminal_button("collection")
         elif scene == Scene.OPERATOR_ELIMINATE:
             if self.name != "Annihilation":
                 self.back()
