@@ -235,7 +235,7 @@ const stop_options = [
   background-image: url(/bg.webp);
   background-repeat: no-repeat;
   background-size: cover;
-  background-position: 30% 75%;
+  background-position: 65% 50%;
   pointer-events: none;
 }
 </style>
