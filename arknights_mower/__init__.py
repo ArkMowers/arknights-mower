@@ -2,7 +2,7 @@ import platform
 import sys
 from pathlib import Path
 
-__version__ = "2024.05"
+__version__ = "2024.05.1"
 
 # Use sys.frozen to check if run through pyinstaller frozen exe, and sys._MEIPASS to get temp path.
 if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
