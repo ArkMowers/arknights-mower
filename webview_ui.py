@@ -256,16 +256,13 @@ if __name__ == "__main__":
 
     splash_queue.put({"type": "text", "data": "创建主窗口"})
 
-    parent_conn, child_conn = mp.Pipe()
-    webview_process = mp.Process(
+    config.parent_conn, child_conn = mp.Pipe()
+    config.webview_process = mp.Process(
         target=webview_window,
         args=(child_conn, path.global_space, host, port, url, tray),
         daemon=True,
     )
-    webview_process.start()
-
-    config.parent_conn = parent_conn
-    config.webview_process = webview_process
+    config.webview_process.start()
 
     splash_process.terminate()
 
@@ -273,12 +270,13 @@ if __name__ == "__main__":
         while True:
             msg = tray_queue.get()
             if msg == "toggle":
-                if webview_process.is_alive():
-                    parent_conn.send("exit")
-                    webview_process.join()
+                if config.webview_process.is_alive():
+                    config.parent_conn.send("exit")
+                    if config.webview_process.join(3) is None:
+                        config.webview_process.terminate()
                 else:
-                    parent_conn, child_conn = mp.Pipe()
-                    webview_process = mp.Process(
+                    config.parent_conn, child_conn = mp.Pipe()
+                    config.webview_process = mp.Process(
                         target=webview_window,
                         args=(
                             child_conn,
@@ -290,12 +288,11 @@ if __name__ == "__main__":
                         ),
                         daemon=True,
                     )
-                    webview_process.start()
-                    config.parent_conn = parent_conn
-                    config.webview_process = webview_process
+                    config.webview_process.start()
             elif msg == "exit":
-                parent_conn.send("exit")
-                webview_process.join()
+                config.parent_conn.send("exit")
+                if config.webview_process.join(3) is None:
+                    config.webview_process.terminate()
                 break
     else:
-        webview_process.join()
+        config.webview_process.join()
