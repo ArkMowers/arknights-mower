@@ -14,8 +14,8 @@
         <n-button text tag="a" target="_blank" type="primary" v-text="props.avatar"> </n-button>
       </div>
     </n-td>
-    <n-td style="width: 5%; text-align: center; vertical-align: middle">
-      技能{{ item.skill_key }}
+    <n-td style="width: 7%; text-align: center; vertical-align: middle">
+      第 {{ item.skill_key + 1 }} 个技能
     </n-td>
     <n-td style="width: 5%; text-align: center; vertical-align: middle">
       {{ item.phase_level }}

@@ -19,7 +19,7 @@
       <thead>
         <tr v-if="index === 0">
           <th>干员名</th>
-          <th>技能序号</th>
+          <th>技能枚举</th>
           <th>等级</th>
           <th>技能名称</th>
           <th>进驻场所</th>
