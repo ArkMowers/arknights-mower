@@ -5,12 +5,31 @@ defineProps({
   type: { default: 'default' },
   up: { default: false, type: Boolean }
 })
+
 import DropUpIcon from '@vicons/ionicons4/MdArrowDropup'
 import DropDownIcon from '@vicons/ionicons4/MdArrowDropdown'
+
+import { inject, computed } from 'vue'
+
+const mobile = inject('mobile')
+
+const btn_pad = computed(() => {
+  if (mobile.value) {
+    return '12px'
+  } else {
+    return '6px'
+  }
+})
 </script>
 
 <template>
-  <n-dropdown trigger="hover" width="trigger" :options="options" @select="select">
+  <n-dropdown
+    trigger="hover"
+    width="trigger"
+    :options="options"
+    @select="select"
+    :placement="up ? 'top' : 'bottom'"
+  >
     <n-button-group>
       <slot />
       <n-button class="dropdown" :type="type" ghost>
@@ -24,6 +43,7 @@ import DropDownIcon from '@vicons/ionicons4/MdArrowDropdown'
 
 <style scoped>
 .dropdown {
-  padding: 0 6px;
+  padding-left: v-bind(btn_pad);
+  padding-right: v-bind(btn_pad);
 }
 </style>
