@@ -3,6 +3,10 @@ from typing import Dict, List, Tuple, Union
 import numpy as np
 from numpy.typing import NDArray
 
+from .res import Res
+
+__all__ = ["Res"]
+
 # Image
 Image = NDArray[np.int8]
 Pixel = NDArray[np.int8]

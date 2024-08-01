@@ -151,7 +151,7 @@ class BaseSolver:
 
     def find(
         self,
-        res: str,
+        res: tp.Res,
         draw: bool = False,
         scope: tp.Scope = None,
         thres: int = None,
@@ -193,7 +193,7 @@ class BaseSolver:
 
     def tap_element(
         self,
-        element_name: str,
+        element_name: tp.Res,
         x_rate: float = 0.5,
         y_rate: float = 0.5,
         interval: float = 1,

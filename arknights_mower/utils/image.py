@@ -26,7 +26,7 @@ def img2bytes(img) -> bytes:
     return cv2.imencode(".png", img)[1]
 
 
-def loadres(res: str, gray: bool = False) -> Union[tp.Image, tp.GrayImage]:
+def loadres(res: tp.Res, gray: bool = False) -> Union[tp.Image, tp.GrayImage]:
     if res.startswith("@hot"):
         res_name = res.replace("@hot", "@install/tmp/hot_update", 1)
     else:

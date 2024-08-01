@@ -629,7 +629,7 @@ class Recognizer(object):
 
     def find(
         self,
-        res: str,
+        res: tp.Res,
         draw: bool = False,
         scope: tp.Scope | None = None,
         thres: int | None = None,

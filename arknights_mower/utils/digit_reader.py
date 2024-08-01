@@ -17,17 +17,9 @@ class DigitReader:
             template_dir = Path(template_dir)
         self.time_template = []
         self.drone_template = []
-        self.report_template = []
-        self.report_template_white = []
-        self.recruit_template = []
-        self.spent_creidt_number = []
         for i in range(10):
             self.time_template.append(loadres(f"orders_time/{i}", True))
             self.drone_template.append(loadres(f"drone_count/{i}", True))
-            self.report_template.append(loadres(f"report_number/{i}", False))
-            self.report_template_white.append(loadres(f"report_number/{i}", True))
-            self.recruit_template.append(loadres(f"recruit_ticket/{i}", True))
-            self.spent_creidt_number.append(loadres(f"spent_creidt_number/{i}", True))
 
     def get_drone(self, img_grey, h=1080, w=1920):
         drone_part = img_grey[
@@ -83,110 +75,6 @@ class DigitReader:
                     result[loc[1][i]] = j
         ch = [str(result[k]) for k in sorted(result)]
         return f"{ch[0]}{ch[1]}:{ch[2]}{ch[3]}:{ch[4]}{ch[5]}"
-
-    def get_report_number(self, digit_part):
-        result = {}
-        digit_part = cv2.cvtColor(digit_part, cv2.COLOR_BGR2RGB)
-        # digit_part = cv2.resize(digit_part, (width*2, height*2), interpolation=cv2.INTER_AREA)
-        for j in range(10):
-            res = cv2.matchTemplate(
-                digit_part,
-                self.report_template[j],
-                cv2.TM_CCORR_NORMED,
-            )
-            threshold = 0.9
-            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
-            # print(max_val, j)
-            loc = np.where(res >= threshold)
-            for i in range(len(loc[0])):
-                x = loc[1][i]
-                accept = True
-                for o in result:
-                    if abs(o - x) < 5:
-                        accept = False
-                        break
-                if accept:
-                    result[loc[1][i]] = j
-
-        ch = [str(result[k]) for k in sorted(result)]
-        return int("".join(ch))
-
-    def get_report_number_white(self, digit_part):
-        result = {}
-        digit_part = cv2.cvtColor(digit_part, cv2.COLOR_RGB2GRAY)
-
-        for j in range(10):
-            res = cv2.matchTemplate(
-                digit_part,
-                self.report_template_white[j],
-                cv2.TM_CCOEFF_NORMED,
-            )
-
-            threshold = 0.93
-            loc = np.where(res >= threshold)
-            for i in range(len(loc[0])):
-                x = loc[1][i]
-                accept = True
-                for o in result:
-                    if abs(o - x) < 5:
-                        accept = False
-                        break
-                if accept:
-                    result[loc[1][i]] = j
-
-        ch = [str(result[k]) for k in sorted(result)]
-        return int("".join(ch))
-
-    def get_recruit_ticket(self, digit_part):
-        result = {}
-        digit_part = cv2.cvtColor(digit_part, cv2.COLOR_RGB2GRAY)
-
-        for j in range(10):
-            res = cv2.matchTemplate(
-                digit_part,
-                self.recruit_template[j],
-                cv2.TM_CCORR_NORMED,
-            )
-            threshold = 0.94
-            loc = np.where(res >= threshold)
-            for i in range(len(loc[0])):
-                x = loc[1][i]
-                accept = True
-                for o in result:
-                    if abs(o - x) < 5:
-                        accept = False
-                        break
-                if accept:
-                    result[loc[1][i]] = j
-
-        ch = [str(result[k]) for k in sorted(result)]
-        return int("".join(ch))
-
-    def get_credict_number(self, digit_part):
-        result = {}
-        digit_part = cv2.cvtColor(digit_part, cv2.COLOR_RGB2GRAY)
-
-        for j in range(10):
-            res = cv2.matchTemplate(
-                digit_part,
-                self.spent_creidt_number[j],
-                cv2.TM_CCOEFF_NORMED,
-            )
-            threshold = 0.95
-            loc = np.where(res >= threshold)
-            for i in range(len(loc[0])):
-                x = loc[1][i]
-                accept = True
-                for o in result:
-                    if abs(o - x) < 5:
-                        accept = False
-                        break
-                if accept:
-                    result[loc[1][i]] = j
-
-        ch = [str(result[k]) for k in sorted(result)]
-
-        return int("".join(ch))
 
     def 识别制造加速总剩余时间(self, img_grey, h, w):
         时间部分 = img_grey[
