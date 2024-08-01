@@ -36,4 +36,3 @@ for name, matches in references.items():
 for name, matches in references.items():
     if len(matches) == 0:
         print(f"[WARN]{name}")
-
