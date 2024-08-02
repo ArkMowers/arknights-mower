@@ -9,6 +9,7 @@ from typing import Literal, Optional, Tuple
 import cv2
 import numpy as np
 
+from arknights_mower.data import scene_list
 from arknights_mower.utils import config
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.csleep import MowerExit, csleep
@@ -33,14 +34,14 @@ class BaseSolver:
     """Base class, provide basic operation"""
 
     tap_info = None, None
-    waiting_scene = {
-        Scene.CONNECTING: (1, 10),
-        Scene.UNKNOWN: (1, 10),
-        Scene.LOADING: (2, 15),
-        Scene.LOGIN_LOADING: (3, 10),
-        Scene.LOGIN_MAIN_NOENTRY: (3, 10),
-        Scene.OPERATOR_ONGOING: (10, 30),
-    }
+    waiting_scene = [
+        Scene.CONNECTING,
+        Scene.UNKNOWN,
+        Scene.LOADING,
+        Scene.LOGIN_LOADING,
+        Scene.LOGIN_MAIN_NOENTRY,
+        Scene.OPERATOR_ONGOING,
+    ]
 
     def __init__(
         self,
@@ -712,7 +713,9 @@ class BaseSolver:
     def waiting_solver(self):
         """需要等待的页面解决方法。触发超时重启会返回False"""
         scene = self.scene()
-        sleep_time, wait_count = self.waiting_scene[scene]
+        sleep_time, wait_count = getattr(
+            config.conf.waiting_scene, scene_list[str(scene)]["label"]
+        )
         for _ in range(wait_count):
             self.sleep(sleep_time)
             if self.scene() != scene:

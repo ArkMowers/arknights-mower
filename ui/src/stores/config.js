@@ -75,6 +75,7 @@ export const useConfigStore = defineStore('config', () => {
   const custom_screenshot = ref({})
   const check_for_updates = ref(true)
   const notification_level = ref('INFO')
+  const waiting_scene = ref({})
 
   async function load_shop() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/shop`)
@@ -165,6 +166,7 @@ export const useConfigStore = defineStore('config', () => {
     custom_screenshot.value = response.data.custom_screenshot
     check_for_updates.value = response.data.check_for_updates
     notification_level.value = response.data.notification_level
+    waiting_scene.value = response.data.waiting_scene
   }
 
   function build_config() {
@@ -247,7 +249,8 @@ export const useConfigStore = defineStore('config', () => {
       credit_fight: credit_fight.value,
       custom_screenshot: custom_screenshot.value,
       check_for_updates: check_for_updates.value,
-      notification_level: notification_level.value
+      notification_level: notification_level.value,
+      waiting_scene: waiting_scene.value
     }
   }
 
@@ -333,6 +336,7 @@ export const useConfigStore = defineStore('config', () => {
     credit_fight,
     custom_screenshot,
     check_for_updates,
-    notification_level
+    notification_level,
+    waiting_scene
   }
 })

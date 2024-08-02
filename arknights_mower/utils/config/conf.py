@@ -86,6 +86,14 @@ class ExtraPart(ConfModel):
         tray: bool = True
         "托盘图标"
 
+    class WaitingSceneConf(ConfModel):
+        CONNECTING: tuple[int, int] = (1, 10)
+        UNKNOWN: tuple[int, int] = (1, 10)
+        LOADING: tuple[int, int] = (2, 30)
+        LOGIN_LOADING: tuple[int, int] = (3, 10)
+        LOGIN_MAIN_NOENTRY: tuple[int, int] = (3, 10)
+        OPERATOR_ONGOING: tuple[int, int] = (10, 30)
+
     start_automatically: bool = False
     "启动后自动开始任务"
     webview: WebViewConf
@@ -96,6 +104,8 @@ class ExtraPart(ConfModel):
     "截图数量"
     check_for_updates: bool = True
     "检查更新"
+    waiting_scene: WaitingSceneConf
+    "等待时间"
 
 
 class LongTaskPart(ConfModel):
