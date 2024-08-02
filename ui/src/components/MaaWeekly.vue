@@ -3,7 +3,8 @@ import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 
 const store = useConfigStore()
-const { maa_weekly_plan, maa_enable, maa_expiring_medicine } = storeToRefs(store)
+const { maa_weekly_plan, maa_enable, maa_expiring_medicine, exipring_medicine_on_weekend } =
+  storeToRefs(store)
 
 import { NTag } from 'naive-ui'
 import { h, inject } from 'vue'
@@ -103,9 +104,17 @@ function create_tag(label) {
       label-align="left"
     >
       <n-form-item :show-label="false">
-        <n-checkbox v-model:checked="maa_expiring_medicine">
-          自动使用快要过期（约3天）的理智药
-        </n-checkbox>
+        <n-flex>
+          <n-checkbox v-model:checked="maa_expiring_medicine">
+            自动使用将要过期（约3天）的理智药
+          </n-checkbox>
+          <n-checkbox
+            v-model:checked="exipring_medicine_on_weekend"
+            :disabled="!maa_expiring_medicine"
+          >
+            仅在周末使用
+          </n-checkbox>
+        </n-flex>
       </n-form-item>
     </n-form>
     <table>

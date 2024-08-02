@@ -6,6 +6,7 @@ import cv2
 from arknights_mower.models import secret_front
 from arknights_mower.utils import config
 from arknights_mower.utils import typealias as tp
+from arknights_mower.utils.datetime import get_server_weekday
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.log import logger
@@ -80,18 +81,28 @@ class OperationSolver(SceneGraphSolver):
         elif scene == Scene.OPERATOR_GIVEUP:
             self.tap_element("double_confirm/main", x_rate=1)
         elif scene == Scene.OPERATOR_RECOVER_POTION:
+            use_medicine = False
+            # 先看设置是否吃药
             if config.conf.maa_expiring_medicine:
+                if config.conf.exipring_medicine_on_weekend:
+                    use_medicine = get_server_weekday() >= 5
+                else:
+                    use_medicine = True
+            # 再看是否有药可吃
+            if use_medicine:
                 img = cropimg(self.recog.img, ((1015, 515), (1170, 560)))
                 img = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
                 img = cv2.inRange(img, (170, 0, 0), (174, 255, 255))
                 count = cv2.countNonZero(img)
-                logger.debug(count)
-                if count > 3000:
-                    logger.info("使用即将过期的理智药")
-                    self.tap((1635, 865))
-                    return
-            self.sanity_drain = True
-            return True
+                logger.debug(f"{count=}")
+                use_medicine = count > 3000
+            if use_medicine:
+                logger.info("使用即将过期的理智药")
+                self.tap((1635, 865))
+                return
+            else:
+                self.sanity_drain = True
+                return True
         elif scene == Scene.OPERATOR_RECOVER_ORIGINITE:
             self.sanity_drain = True
             return True

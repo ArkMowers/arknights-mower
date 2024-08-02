@@ -76,6 +76,7 @@ export const useConfigStore = defineStore('config', () => {
   const check_for_updates = ref(true)
   const notification_level = ref('INFO')
   const waiting_scene = ref({})
+  const exipring_medicine_on_weekend = ref(false)
 
   async function load_shop() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/shop`)
@@ -167,6 +168,7 @@ export const useConfigStore = defineStore('config', () => {
     check_for_updates.value = response.data.check_for_updates
     notification_level.value = response.data.notification_level
     waiting_scene.value = response.data.waiting_scene
+    exipring_medicine_on_weekend.value = response.data.exipring_medicine_on_weekend
   }
 
   function build_config() {
@@ -250,7 +252,8 @@ export const useConfigStore = defineStore('config', () => {
       custom_screenshot: custom_screenshot.value,
       check_for_updates: check_for_updates.value,
       notification_level: notification_level.value,
-      waiting_scene: waiting_scene.value
+      waiting_scene: waiting_scene.value,
+      exipring_medicine_on_weekend: exipring_medicine_on_weekend.value
     }
   }
 
@@ -337,6 +340,7 @@ export const useConfigStore = defineStore('config', () => {
     custom_screenshot,
     check_for_updates,
     notification_level,
-    waiting_scene
+    waiting_scene,
+    exipring_medicine_on_weekend
   }
 })
