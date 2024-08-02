@@ -520,10 +520,4 @@ function clear() {
   vertical-align: middle;
   /* 文本垂直居中 */
 }
-
-.card-title {
-  font-weight: 500;
-  font-size: 18px;
-  margin-right: 8px;
-}
 </style>

@@ -135,20 +135,6 @@ function create_tag(label) {
 </template>
 
 <style scoped lang="scss">
-h4 {
-  margin: 0;
-}
-
-ul {
-  padding-left: 24px;
-}
-
-.card-title {
-  font-weight: 500;
-  font-size: 18px;
-  margin-right: 8px;
-}
-
 table {
   width: 100%;
 

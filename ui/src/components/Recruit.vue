@@ -65,11 +65,6 @@ const mobile = inject('mobile')
 </template>
 
 <style scoped lang="scss">
-.card-title {
-  font-weight: 500;
-  font-size: 18px;
-}
-
 p {
   margin: 0 0 8px 0;
 }

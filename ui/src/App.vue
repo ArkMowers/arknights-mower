@@ -494,4 +494,16 @@ pre {
 .n-dynamic-input-item__action {
   align-self: center !important;
 }
+
+ul,
+ol {
+  padding-left: 18px;
+  margin: 0;
+}
+
+.card-title {
+  font-weight: 500;
+  font-size: 18px;
+  white-space: nowrap;
+}
 </style>

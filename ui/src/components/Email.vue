@@ -163,11 +163,6 @@ p {
   margin: 0 0 10px 0;
 }
 
-.card-title {
-  font-weight: 500;
-  font-size: 18px;
-}
-
 .mt-16 {
   margin-top: 16px;
 }

@@ -52,11 +52,3 @@ const maa_long_task_options = [
     <secret-front v-else-if="maa_long_task_type == 'sf'" />
   </n-card>
 </template>
-
-<style scoped>
-.card-title {
-  font-weight: 500;
-  font-size: 18px;
-  width: 80px;
-}
-</style>

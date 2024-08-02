@@ -614,11 +614,6 @@ h4 {
   margin: 12px 0 10px 0;
 }
 
-ul {
-  padding-left: 24px;
-  margin: 0 0 10px 0;
-}
-
 .time-table {
   width: 100%;
   margin-bottom: 12px;

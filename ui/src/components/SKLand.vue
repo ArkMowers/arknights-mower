@@ -68,11 +68,6 @@ async function test_maa() {
 </template>
 
 <style>
-.card-title {
-  font-weight: 500;
-  font-size: 18px;
-}
-
 .misc-container {
   margin-top: 12px;
   display: flex;

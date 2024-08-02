@@ -182,22 +182,12 @@ const show_map = ref(false)
 </template>
 
 <style scoped lang="scss">
-.card-title {
-  font-weight: 500;
-  font-size: 18px;
-}
-
 p {
   margin: 2px 0;
 }
 
 h4 {
   margin: 12px 0 8px 0;
-}
-
-ol {
-  margin: 0 0 8px 0;
-  padding-left: 24px;
 }
 
 table {
