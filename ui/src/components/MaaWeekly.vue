@@ -79,8 +79,22 @@ function create_tag(label) {
         <div class="card-title">刷理智周计划</div>
       </n-checkbox>
       <help-text>
-        当前常驻关卡仅支持第一章主线（包括1-7）和全部资源收集关卡（包括红票、钱本、经验本、碳本、技能书本、芯片本）
+        <div>支持的常驻关卡：</div>
+        <ul>
+          <li>第一章、第八章、第十二章主线；</li>
+          <li>全部资源收集关卡。</li>
+        </ul>
       </help-text>
+      <n-button
+        text
+        tag="a"
+        href="https://m.prts.wiki/w/%E5%85%B3%E5%8D%A1%E4%B8%80%E8%A7%88/%E8%B5%84%E6%BA%90%E6%94%B6%E9%9B%86"
+        target="_blank"
+        type="primary"
+        class="prts-wiki-link"
+      >
+        PRTS.wiki：关卡一览/资源收集
+      </n-button>
     </template>
     <n-form
       :label-placement="mobile ? 'top' : 'left'"
@@ -94,22 +108,12 @@ function create_tag(label) {
         </n-checkbox>
       </n-form-item>
     </n-form>
-    <n-button
-      text
-      tag="a"
-      href="https://m.prts.wiki/w/%E5%85%B3%E5%8D%A1%E4%B8%80%E8%A7%88/%E8%B5%84%E6%BA%90%E6%94%B6%E9%9B%86"
-      target="_blank"
-      type="primary"
-      class="prts-wiki-link"
-    >
-      PRTS.wiki：关卡一览/资源收集
-    </n-button>
     <table>
-      <tr>
+      <!-- <tr>
         <th></th>
         <th>关卡</th>
         <th>每次吃药</th>
-      </tr>
+      </tr> -->
       <tr v-for="plan in maa_weekly_plan" :key="plan.weekday">
         <td>{{ plan.weekday }}</td>
         <td>
@@ -124,11 +128,11 @@ function create_tag(label) {
             :on-create="create_tag"
           />
         </td>
-        <td>
+        <!-- <td>
           <n-input-number v-model:value="plan.medicine" :min="0" :show-button="false">
             <template #suffix>支</template>
           </n-input-number>
-        </td>
+        </td> -->
       </tr>
     </table>
   </n-card>

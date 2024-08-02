@@ -347,16 +347,16 @@ function clear() {
 
     有问题先看问号，2023年12月6日更新了 请点击下方按钮
     <help-text>
-      <p>先看上一个周计划问号</p>
-      <p>如何不打本： <b>把所有的"打"都点了</b>或者点一次<b>清除当前配置以匹配最新表格</b></p>
-      <p>快要过期的理智药选项在上面 往上滑。</p>
-      <p>建议每次更新后 点一次<b>清除当前配置以匹配最新表格</b></p>
-      <p>如果觉得这个表有什么要改进的 at群管理</p>
-      <p>前三行的空行用来写 一些自定义关卡</p>
-      <p>
+      <div>先看上一个周计划问号</div>
+      <div>如何不打本：<b>把所有的"打"都点了</b>或者点一次<b>清除当前配置以匹配最新表格</b></div>
+      <div>将要过期的理智药选项在上面 往上滑。</div>
+      <div>建议每次更新后 点一次<b>清除当前配置以匹配最新表格</b></div>
+      <div>如果觉得这个表有什么要改进的 at群管理</div>
+      <div>前三行的空行用来写 一些自定义关卡</div>
+      <div>
         新用法<n-tag closable>SSReopen-XX</n-tag> 如<n-tag closable>SSReopen-FC</n-tag
         >可以刷照我以火的所有复刻本(FC-1到FC-8)
-      </p>
+      </div>
       <ul>
         <li>
           在第一行填入<n-tag closable class="tag-mr">HE-7</n-tag>
@@ -386,7 +386,7 @@ function clear() {
               {{ day[1] }}{{ currentDay === (index + 1) % 7 ? ' (今天)' : '' }}
             </th>
           </tr>
-          <tr>
+          <!-- <tr>
             <th></th>
             <th>药</th>
             <th v-for="(day, index) in daysOfWeek" :key="index">
@@ -397,7 +397,7 @@ function clear() {
                 :show-button="false"
               />
             </th>
-          </tr>
+          </tr> -->
         </thead>
         <tbody>
           <tr v-for="(plan, index) in maa_weekly_plan1" :key="plan.weekday1">
