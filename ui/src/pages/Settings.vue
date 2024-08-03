@@ -321,13 +321,11 @@ const scene_name = {
             </n-form-item>
             <n-form-item>
               <template #label>
-                <span>截图数量</span>
-                <help-text>
-                  <div><code>screenshot</code>下每个文件夹中最多保存的截图数量</div>
-                </help-text>
+                <span>截图保存时间</span>
+                <help-text>可填小数</help-text>
               </template>
               <n-input-number v-model:value="screenshot">
-                <template #suffix>张</template>
+                <template #suffix>小时</template>
               </n-input-number>
             </n-form-item>
             <n-form-item label="等待时间">
