@@ -204,7 +204,7 @@ class Device(object):
         config.droidcast.process = process
         return True
 
-    def screencap(self, save: bool = False) -> bytes:
+    def screencap(self) -> bytes:
         """get a screencap"""
         if config.conf.droidcast.enable:
             session = config.droidcast.session
@@ -269,8 +269,7 @@ class Device(object):
             gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 
         screencap = img2bytes(img)
-        if save:
-            save_screenshot(screencap)
+        save_screenshot(screencap)
         return screencap, img, gray
 
     def current_focus(self) -> str:

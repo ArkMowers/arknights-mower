@@ -100,8 +100,8 @@ class ExtraPart(ConfModel):
     "GUI相关设置"
     theme: str = "light"
     "界面主题"
-    screenshot: int = 200
-    "截图数量"
+    screenshot: float = 24
+    "截图保留时长（小时）"
     check_for_updates: bool = True
     "检查更新"
     waiting_scene: WaitingSceneConf

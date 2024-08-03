@@ -2147,7 +2147,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     if not self.waiting_solver():
                         return
                 self.recog.update()
-                self.recog.save_screencap("run_order")
                 if not (
                     self.drone_room is None
                     or (
@@ -2652,7 +2651,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         mood_p = [tuple(zip(mood_x, y)) for y in mood_y]
         result = []
         swiped = False
-        self.recog.save_screencap("get_agent_from_room")
         for i in range(0, length):
             if i >= 3 and not swiped:
                 while self.get_color((1800, 930))[0] > 51:
@@ -2663,7 +2661,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         interval=1,
                     )
                 swiped = True
-                self.recog.save_screencap("get_agent_from_room")
             data = {}
             if self.find("infra_no_operator", scope=name_p[i]):
                 _name = ""
@@ -2883,7 +2880,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                 self.turn_on_room_detail(room)
                         else:
                             logger.info("检测到漏单")
-                            self.recog.save_screencap("run_order_failure")
                             send_message("检测到漏单！", level="WARNING")
                             self.reset_room_time(room)
                             raise Exception("检测到漏单！")
@@ -2929,7 +2925,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 logger.exception(e)
                 choose_error += 1
                 self.recog.update()
-                self.recog.save_screencap("choose_agent_failure")
                 if "检测到漏单！" in str(e):
                     return {}
                 if choose_error > 3:
@@ -2998,7 +2993,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         if not self.waiting_solver():
                             return
                 self.recog.update()
-                self.recog.save_screencap("run_order")
                 # 接受当前订单
                 while (
                     self.find("order_ready", scope=((450, 675), (600, 750))) is not None

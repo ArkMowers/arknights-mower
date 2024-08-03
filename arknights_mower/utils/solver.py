@@ -87,7 +87,6 @@ class BaseSolver:
                 raise
             except RecognizeError as e:
                 logger.exception(f"识别出了点小差错 qwq: {e}")
-                self.recog.save_screencap("failure")
                 retry_times -= 1
                 self.sleep(3)
                 continue
@@ -568,7 +567,6 @@ class BaseSolver:
                 raise
             except RecognizeError as e:
                 logger.exception(f"识别出了点小差错 qwq: {e}")
-                self.recog.save_screencap("failure")
                 retry_times -= 1
                 self.sleep(3)
                 continue
@@ -653,7 +651,6 @@ class BaseSolver:
                 raise
             except RecognizeError as e:
                 logger.exception(f"识别出了点小差错 qwq: {e}")
-                self.recog.save_screencap("failure")
                 retry_times -= 1
                 self.sleep(3)
                 continue

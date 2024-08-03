@@ -1,11 +1,9 @@
 import logging
-import os
+import shutil
 import sys
-import threading
 import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Optional
 
 import colorlog
 
@@ -72,20 +70,19 @@ whlr.setLevel(logging.INFO)
 logger.addHandler(whlr)
 
 
-def save_screenshot(
-    img: bytes, filename: Optional[str] = None, subdir: str = ""
-) -> None:
-    """save screenshot"""
-    folder = Path(get_path("@app/screenshot")).joinpath(subdir)
+def save_screenshot(img: bytes) -> None:
+    folder = get_path("@app/screenshot")
     folder.mkdir(exist_ok=True, parents=True)
-    if subdir != "-1" and len(list(folder.iterdir())) > config.conf.screenshot:
-        screenshots = list(folder.iterdir())
-        screenshots = sorted(screenshots, key=lambda x: x.name)
-        for x in screenshots[: -config.conf.screenshot]:
-            logger.debug(f"remove screenshot: {x.name}")
-            x.unlink()
-    if filename is None:
-        filename = time.strftime("%Y%m%d%H%M%S.jpg", time.localtime())
+    time_ns = time.time_ns()
+    start_time_ns = time_ns - config.conf.screenshot * 3600 * 10**9
+    for i in folder.iterdir():
+        if i.is_dir():
+            shutil.rmtree(i)
+        elif not i.stem.isnumeric():
+            i.unlink()
+        elif int(i.stem) < start_time_ns:
+            i.unlink()
+    filename = f"{time_ns}.jpg"
     with folder.joinpath(filename).open("wb") as f:
         f.write(img)
     logger.debug(f"save screenshot: {filename}")

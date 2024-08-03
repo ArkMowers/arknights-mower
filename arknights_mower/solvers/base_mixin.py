@@ -156,7 +156,6 @@ class BaseMixin:
             if err_cnt > 3:
                 raise Exception("未进入筛选页面")
 
-        self.recog.save_screencap("detail_filter")
         for label, pos in label_pos_map.items():
             current_state = self.get_color(pos)[2] > 100
             if target_state[label] != current_state:

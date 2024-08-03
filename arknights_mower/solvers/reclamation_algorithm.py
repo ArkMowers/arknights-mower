@@ -194,7 +194,6 @@ class ReclamationAlgorithm(BaseSolver):
                 (start_point, end_point, end_point), durations=[500, 200]
             )
             self.sleep(0.1)
-        self.recog.save_screencap("ra_drag_map")
         return True
 
     def plan_task(self):

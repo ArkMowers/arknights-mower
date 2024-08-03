@@ -98,20 +98,9 @@ def cropimg(img: tp.Image, scope: tp.Scope) -> tp.Image:
     return img[scope2slice(scope)]
 
 
-def saveimg(img, folder="failure"):
-    save_screenshot(
-        img2bytes(img),
-        subdir=f"{folder}/{img.shape[0]}x{img.shape[1]}",
-    )
-
-
-def saveimg_depot(img, filename, folder="depot"):
-    """filename 传入文件拓展名"""
-    save_screenshot(
-        img2bytes(img),
-        subdir=f"{folder}/",
-        filename=filename,
-    )
+def saveimg(img: tp.Image, folder):
+    del folder  # 兼容2024.05旧版接口
+    save_screenshot(img2bytes(img))
 
 
 def cmatch(

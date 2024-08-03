@@ -135,7 +135,6 @@ class AutoFight(BaseSolver):
     def update_operators(self):
         "识别可部署的干员"
         self.recog.update()
-        self.recog.save_screencap("auto_fight")
         y = 887
         img = cropimg(self.recog.gray, ((0, y), (1920, 905)))
         threshold = 0.7
@@ -190,7 +189,6 @@ class AutoFight(BaseSolver):
         self.device.tap((1800, 80))
         sleep(1)
         self.recog.update()
-        self.recog.save_screencap("auto_fight_pause")
         img = cropimg(self.recog.gray, ((740, 480), (1180, 665)))
         img = thres2(img, 250)
         res = loadres("fight/pause", True)
