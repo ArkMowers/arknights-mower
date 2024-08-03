@@ -94,7 +94,7 @@ function create_tag(label) {
         type="primary"
         class="prts-wiki-link"
       >
-        PRTS.wiki：关卡一览/资源收集
+        <div class="prts-wiki-link-text">PRTS.wiki：关卡一览/资源收集</div>
       </n-button>
     </template>
     <n-form
@@ -169,5 +169,12 @@ table {
 
 .prts-wiki-link {
   margin: 8px 0;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.prts-wiki-link-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>
