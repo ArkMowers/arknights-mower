@@ -3,7 +3,6 @@ import sys
 import time
 from abc import abstractmethod
 from datetime import datetime, timedelta
-from inspect import getframeinfo, stack
 from typing import Literal, Optional, Tuple
 
 import cv2
@@ -22,6 +21,7 @@ from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
 from arknights_mower.utils.simulator import restart_simulator
+from arknights_mower.utils.traceback import caller_info
 
 
 class StrategyError(Exception):
@@ -178,8 +178,7 @@ class BaseSolver:
             self.sleep(interval)
 
     def ctap(self, pos: tp.Location, max_seconds: int = 10):
-        caller = getframeinfo(stack()[1][0])
-        id = f"{caller.filename}:{caller.lineno}"
+        id = caller_info()
         logger.debug(id)
         now = datetime.now()
         lid, ltime = self.tap_info
