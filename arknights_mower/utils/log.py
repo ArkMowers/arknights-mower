@@ -2,6 +2,7 @@ import logging
 import shutil
 import sys
 import time
+import traceback
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -26,15 +27,6 @@ class PackagePathFilter(logging.Filter):
 filter = PackagePathFilter()
 
 
-class Handler(logging.StreamHandler):
-    def __init__(self, queue):
-        logging.StreamHandler.__init__(self)
-        self.queue = queue
-
-    def emit(self, record):
-        self.queue.put(record.message)
-
-
 logger = logging.getLogger(__name__)
 logger.setLevel("DEBUG")
 
@@ -57,7 +49,16 @@ fhlr.setLevel("DEBUG")
 fhlr.addFilter(filter)
 logger.addHandler(fhlr)
 
-whlr = Handler(config.log_queue)
+
+class Handler(logging.StreamHandler):
+    def emit(self, record: logging.LogRecord):
+        msg = f"{record.asctime} {record.levelname} {record.message}"
+        if record.exc_info:
+            msg += "\n" + "".join(traceback.format_exception(*record.exc_info))
+        config.log_queue.put(msg)
+
+
+whlr = Handler()
 whlr.setLevel(logging.INFO)
 logger.addHandler(whlr)
 
