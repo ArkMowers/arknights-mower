@@ -8,11 +8,11 @@ from threading import Thread
 from time import sleep
 from typing import Literal, Optional
 
-import cv2
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from arknights_mower.utils import config
 from arknights_mower.utils import typealias as tp
+from arknights_mower.utils.image import img2bytes
 from arknights_mower.utils.log import logger
 
 if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
@@ -49,10 +49,7 @@ class Email:
         msg["To"] = ", ".join(conf.recipient)
 
         if attach_image is not None:
-            img = cv2.cvtColor(attach_image, cv2.COLOR_RGB2BGR)
-            _, attachment = cv2.imencode(
-                ".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), 75]
-            )
+            attachment = img2bytes(attach_image)
             image_content = MIMEImage(attachment.tobytes())
             image_content.add_header(
                 "Content-Disposition", "attachment", filename="image.jpg"

@@ -85,7 +85,7 @@ def save_screenshot(
             logger.debug(f"remove screenshot: {x.name}")
             x.unlink()
     if filename is None:
-        filename = time.strftime("%Y%m%d%H%M%S.png", time.localtime())
+        filename = time.strftime("%Y%m%d%H%M%S.jpg", time.localtime())
     with folder.joinpath(filename).open("wb") as f:
         f.write(img)
     logger.debug(f"save screenshot: {filename}")

@@ -14,7 +14,7 @@ from arknights_mower.utils.device.adb_client.core import Client as ADBClient
 from arknights_mower.utils.device.adb_client.session import Session
 from arknights_mower.utils.device.maatouch import MaaTouch
 from arknights_mower.utils.device.scrcpy import Scrcpy
-from arknights_mower.utils.image import bytes2img
+from arknights_mower.utils.image import bytes2img, img2bytes
 from arknights_mower.utils.log import logger, save_screenshot
 from arknights_mower.utils.network import get_new_port, is_port_in_use
 from arknights_mower.utils.simulator import restart_simulator
@@ -268,7 +268,7 @@ class Device(object):
             img = cv2.cvtColor(array, cv2.COLOR_RGBA2RGB)
             gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 
-        screencap = cv2.imencode(".png", cv2.cvtColor(img, cv2.COLOR_RGB2BGR))[1]
+        screencap = img2bytes(img)
         if save:
             save_screenshot(screencap)
         return screencap, img, gray

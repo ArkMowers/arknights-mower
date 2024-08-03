@@ -66,7 +66,7 @@ class Recognizer(object):
             self._matcher = Matcher(self.gray)
         return self._matcher
 
-    def start(self, screencap: bytes = None) -> None:
+    def start(self, screencap: Optional[bytes] = None) -> None:
         """init with screencap"""
         retry_times = config.MAX_RETRYTIME
         while retry_times > 0:

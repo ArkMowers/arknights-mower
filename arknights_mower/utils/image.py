@@ -21,9 +21,13 @@ def bytes2img(data: bytes, gray: bool = False) -> Union[tp.Image, tp.GrayImage]:
         )
 
 
-def img2bytes(img) -> bytes:
-    """bytes -> image"""
-    return cv2.imencode(".png", img)[1]
+def img2bytes(img: tp.Image) -> bytes:
+    """image -> bytes"""
+    return cv2.imencode(
+        ".jpg",
+        cv2.cvtColor(img, cv2.COLOR_RGB2BGR),
+        [int(cv2.IMWRITE_JPEG_QUALITY), 75],
+    )[1]
 
 
 def loadres(res: tp.Res, gray: bool = False) -> Union[tp.Image, tp.GrayImage]:
@@ -96,7 +100,7 @@ def cropimg(img: tp.Image, scope: tp.Scope) -> tp.Image:
 
 def saveimg(img, folder="failure"):
     save_screenshot(
-        img2bytes(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)),
+        img2bytes(img),
         subdir=f"{folder}/{img.shape[0]}x{img.shape[1]}",
     )
 
@@ -104,7 +108,7 @@ def saveimg(img, folder="failure"):
 def saveimg_depot(img, filename, folder="depot"):
     """filename 传入文件拓展名"""
     save_screenshot(
-        img2bytes(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)),
+        img2bytes(img),
         subdir=f"{folder}/",
         filename=filename,
     )
