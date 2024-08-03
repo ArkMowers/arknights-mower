@@ -10,10 +10,8 @@ import colorlog
 from arknights_mower.utils import config
 from arknights_mower.utils.path import get_path
 
-BASIC_FORMAT = (
-    "%(asctime)s - %(levelname)s - %(pathname)s:%(lineno)d - %(funcName)s - %(message)s"
-)
-COLOR_FORMAT = "%(log_color)s%(asctime)s - %(levelname)s - %(pathname)s:%(lineno)d - %(funcName)s - %(message)s"
+BASIC_FORMAT = "%(asctime)s %(relativepath)s:%(lineno)d %(levelname)s %(message)s"
+COLOR_FORMAT = f"%(log_color)s{BASIC_FORMAT}"
 DATE_FORMAT = None
 basic_formatter = logging.Formatter(BASIC_FORMAT, DATE_FORMAT)
 color_formatter = colorlog.ColoredFormatter(COLOR_FORMAT, DATE_FORMAT)
@@ -21,16 +19,11 @@ color_formatter = colorlog.ColoredFormatter(COLOR_FORMAT, DATE_FORMAT)
 
 class PackagePathFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
-        pathname = record.pathname
-        record.relativepath = None
-        abs_sys_paths = map(os.path.abspath, sys.path)
-        for path in sorted(abs_sys_paths, key=len, reverse=True):  # longer paths first
-            if not path.endswith(os.sep):
-                path += os.sep
-            if pathname.startswith(path):
-                record.relativepath = os.path.relpath(pathname, path)
-                break
+        record.relativepath = Path(record.pathname).relative_to(get_path("@install"))
         return True
+
+
+filter = PackagePathFilter()
 
 
 class Handler(logging.StreamHandler):
@@ -42,16 +35,14 @@ class Handler(logging.StreamHandler):
         self.queue.put(record.message)
 
 
+logger = logging.getLogger(__name__)
+logger.setLevel("DEBUG")
+
 dhlr = logging.StreamHandler(stream=sys.stdout)
 dhlr.setFormatter(color_formatter)
 dhlr.setLevel("DEBUG")
-dhlr.addFilter(PackagePathFilter())
-
-
-logger = logging.getLogger(__name__)
-logger.setLevel("DEBUG")
+dhlr.addFilter(filter)
 logger.addHandler(dhlr)
-
 
 folder = Path(get_path("@app/log"))
 folder.mkdir(exist_ok=True, parents=True)
@@ -63,8 +54,9 @@ fhlr = RotatingFileHandler(
 )
 fhlr.setFormatter(basic_formatter)
 fhlr.setLevel("DEBUG")
-fhlr.addFilter(PackagePathFilter())
+fhlr.addFilter(filter)
 logger.addHandler(fhlr)
+
 whlr = Handler(config.log_queue)
 whlr.setLevel(logging.INFO)
 logger.addHandler(whlr)
