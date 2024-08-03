@@ -41,11 +41,10 @@ def read_log():
 
     while True:
         msg = config.log_queue.get()
-        new_line = time.strftime("%m-%d %H:%M:%S ") + msg
-        log_lines.append(new_line)
-        log_lines = log_lines[-500:]
+        log_lines.append(msg)
+        log_lines = log_lines[-100:]
         for ws in ws_connections:
-            ws.send(new_line)
+            ws.send(msg)
 
 
 Thread(target=read_log, daemon=True).start()

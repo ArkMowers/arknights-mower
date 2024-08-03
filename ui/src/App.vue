@@ -295,6 +295,13 @@ provide('mobile', mobile)
 
 const loaded = inject('loaded')
 
+const operators_with_free_current = computed(() => {
+  return [
+    { value: 'Current', label: 'Current' },
+    { value: 'Free', label: 'Free' }
+  ].concat(operators.value)
+})
+
 onMounted(async () => {
   actions_on_resize()
   window.addEventListener('resize', () => {
@@ -311,8 +318,7 @@ onMounted(async () => {
 
   loaded.value = true
 
-  const r = RegExp(operators.value.map((x) => "'" + x.value).join('|'))
-  watermarkData.value = await getwatermarkinfo()
+  const r = RegExp(operators_with_free_current.value.map((x) => "'" + x.value).join('|'))
   hljs.registerLanguage('mower', () => ({
     contains: [
       {
@@ -330,12 +336,28 @@ onMounted(async () => {
         className: 'date'
       },
       {
-        begin: /[0-9]+:[0-9]+:[0-9]+(\.[0-9]+)?/,
+        begin: /[0-9]+:[0-9]+:[0-9]+((\.|,)[0-9]+)?/,
         className: 'time'
       },
       {
         begin: /room_[0-9]_[0-9]|dormitory_[0-9]|central|contact|factory|meeting/,
         className: 'room'
+      },
+      {
+        begin: /INFO/,
+        className: 'info'
+      },
+      {
+        begin: /WARNING/,
+        className: 'warning'
+      },
+      {
+        begin: /ERROR/,
+        className: 'error'
+      },
+      {
+        begin: /Scene [0-9]+:.*/,
+        className: 'scene'
       }
     ]
   }))
@@ -347,6 +369,8 @@ onMounted(async () => {
   if (start_automatically.value) {
     start()
   }
+
+  watermarkData.value = await getwatermarkinfo()
 })
 
 watch(

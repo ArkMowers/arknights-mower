@@ -4,7 +4,8 @@ import { onMounted, onUnmounted, inject, nextTick, watch, ref } from 'vue'
 
 import { useMowerStore } from '@/stores/mower'
 const mower_store = useMowerStore()
-const { log, running, log_lines, task_list, waiting, get_task_id } = storeToRefs(mower_store)
+const { log, log_mobile, running, log_lines, task_list, waiting, get_task_id } =
+  storeToRefs(mower_store)
 const { get_tasks } = mower_store
 const axios = inject('axios')
 const mobile = inject('mobile')
@@ -117,7 +118,12 @@ const stop_options = [
         </template>
       </tbody>
     </n-table>
-    <n-log class="log" :log="log" language="mower" style="user-select: text" />
+    <n-log
+      class="log"
+      :log="mobile ? log_mobile : log"
+      language="mower"
+      style="user-select: text"
+    />
     <div class="action-container">
       <drop-down v-if="running" :select="stop_maa" :options="stop_options" type="error" :up="true">
         <n-button type="error" @click="stop" :loading="waiting" :disabled="waiting">
@@ -258,5 +264,23 @@ const stop_options = [
 
 .hljs-operator {
   color: #d03050 !important;
+}
+
+.hljs-info {
+  font-weight: bold;
+}
+
+.hljs-warning {
+  color: #f0a020 !important;
+  font-weight: bold;
+}
+
+.hljs-error {
+  color: #d03050 !important;
+  font-weight: bold;
+}
+
+.hljs-scene {
+  font-style: italic;
 }
 </style>

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
 import ReconnectingWebSocket from 'reconnecting-websocket'
+import { computed, ref } from 'vue'
 
 import axios from 'axios'
 
@@ -9,6 +9,19 @@ export const useMowerStore = defineStore('mower', () => {
 
   const log = computed(() => {
     return log_lines.value.join('\n')
+  })
+
+  const num_reg = /^[0-9].*/
+  const log_mobile = computed(() => {
+    const result = []
+    for (const i of log_lines.value) {
+      if (i.match(num_reg)) {
+        result.push(i.substring(24))
+      } else {
+        result.push(i)
+      }
+    }
+    return result.join('\n')
   })
 
   const ws = ref(null)
@@ -30,7 +43,7 @@ export const useMowerStore = defineStore('mower', () => {
     const ws_url = backend_url.replace(/^http/, 'ws') + '/log'
     ws.value = new ReconnectingWebSocket(ws_url)
     ws.value.onmessage = (event) => {
-      log_lines.value = log_lines.value.concat(event.data.split('\n')).slice(-500)
+      log_lines.value = log_lines.value.concat(event.data.split('\n')).slice(-100)
     }
   }
 
@@ -51,6 +64,7 @@ export const useMowerStore = defineStore('mower', () => {
 
   return {
     log,
+    log_mobile,
     log_lines,
     ws,
     running,
