@@ -89,20 +89,3 @@ def save_screenshot(
     with folder.joinpath(filename).open("wb") as f:
         f.write(img)
     logger.debug(f"save screenshot: {filename}")
-
-
-class log_sync(threading.Thread):
-    """recv output from subprocess"""
-
-    def __init__(self, process: str, pipe: int) -> None:
-        self.process = process
-        self.pipe = os.fdopen(pipe)
-        super().__init__(daemon=True)
-
-    def __del__(self) -> None:
-        self.pipe.close()
-
-    def run(self) -> None:
-        while True:
-            line = self.pipe.readline().strip()
-            logger.debug(f"{self.process}: {line}")
