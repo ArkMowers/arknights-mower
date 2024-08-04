@@ -20,7 +20,12 @@ color_formatter = colorlog.ColoredFormatter(COLOR_FORMAT, DATE_FORMAT)
 
 class PackagePathFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
-        record.relativepath = Path(record.pathname).relative_to(get_path("@install"))
+        relativepath = Path(record.pathname)
+        try:
+            relativepath = relativepath.relative_to(get_path("@install"))
+        except ValueError:
+            pass
+        record.relativepath = relativepath
         return True
 
 
