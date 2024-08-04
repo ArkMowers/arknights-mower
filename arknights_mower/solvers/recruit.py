@@ -9,6 +9,8 @@ from arknights_mower.data import (
     agent_with_tags,
     recruit_agent,
 )
+from matplotlib import pyplot as plt
+import numpy as np
 from arknights_mower.utils import config
 from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.email import recruit_rarity, recruit_template, send_message
@@ -89,7 +91,7 @@ class RecruitSolver(SceneGraphSolver):
                 recruit_template.render(
                     recruit_results=self.agent_choose,
                     recruit_get_agent=self.result_agent,
-                    permit_count=config.conf.recruitment_permit,
+                    permit_count=self.ticket_number,
                     title_text="公招汇总",
                 ),
                 "公招汇总通知",
@@ -280,9 +282,18 @@ class RecruitSolver(SceneGraphSolver):
         # tap selected tags
         logger.info(f"选择标签：{list(choose)} ")
         for x in choose:
-            # 存在choose为空但是进行标签选择的情况
-            logger.debug(f"tap{x}:{tags[x]}")
-            self.tap(tags[x])
+            try_tap = 0
+            while self.tag_not_choosed(tags, x):
+                logger.info(f"被选了? {self.tag_not_choosed(tags,x)} {try_tap}")
+                # 存在choose为空但是进行标签选择的情况
+                logger.debug(f"tap{x}:{tags[x]}")
+                self.ctap(tags[x])
+                try_tap += 1
+                if try_tap > 5:
+                    logger.error(f"{self.recruit_index}的tap{x}:{tags[x]}没选上")
+                    # 要选标签但是没选上，尝试多次失败 直接去下一个槽位
+                    self.recruit_index = self.recruit_index + 1
+                    self.back()
 
         # 9h为True 3h50min为False
         logger.debug("开始选择时长")
@@ -516,3 +527,22 @@ class RecruitSolver(SceneGraphSolver):
         if not config.conf.recruit_robot:
             self.recruit_order = [6, 5, 4, 3, 2, 1]
             self.recruit_order_index = 1
+
+    def tag_not_choosed(self, tags, tag):
+        color_blue = (12, 157, 221, 0)  # 黑色tag被选中
+        color_yellow = (212, 180, 0, 0)  # 稀有tag被选中
+
+        color = color_blue
+        if tag in ["高级资深干员", "资深干员"]:
+            color = color_yellow
+        h, w, _ = tag_template[tag].shape
+        point1 = np.array(color)
+        point2 = cv2.mean(cropimg(self.recog.img, (tags[tag], va(tags[tag], (w, h)))))
+
+        dis = cv2.norm(point1 - point2)
+        logger.debug(f"与预计像素偏差值 {dis}")
+
+        if dis > 70:
+            return True
+
+        return False
