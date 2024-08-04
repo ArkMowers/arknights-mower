@@ -168,13 +168,19 @@ def webview_window(child_conn, global_space, host, port, url, tray):
             child_conn.send(result)
 
     Thread(target=recv_msg, daemon=True).start()
-    webview.start()
 
-    config.load_conf()
-    config.conf.webview.width = width
-    config.conf.webview.height = height
-    config.save_conf()
-    sys.exit()
+    try:
+        webview.start()
+
+        config.load_conf()
+        config.conf.webview.width = width
+        config.conf.webview.height = height
+        config.save_conf()
+        sys.exit()
+    except Exception:
+        import webbrowser
+
+        webbrowser.open(url)
 
 
 if __name__ == "__main__":

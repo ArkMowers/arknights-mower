@@ -1,6 +1,4 @@
-import os
 import smtplib
-import sys
 from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -14,21 +12,9 @@ from arknights_mower.utils import config
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.image import img2bytes
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.path import get_path
 
-if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-    template_dir = os.path.join(
-        sys._MEIPASS,
-        "arknights_mower",
-        "__init__",
-        "templates",
-    )
-else:
-    template_dir = os.path.join(
-        os.getcwd(),
-        "arknights_mower",
-        "templates",
-    )
-
+template_dir = get_path("@internal/arknights_mower/templates")
 env = Environment(loader=FileSystemLoader(template_dir), autoescape=select_autoescape())
 
 task_template = env.get_template("task.html")

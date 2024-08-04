@@ -26,24 +26,22 @@ for v in yaml_paths:
 add_data = list(set(yaml_add_data + onnx_add_data))
 
 
+site_packages = install_dir.parent
+
+
 mower_a = Analysis(
     ["webview_ui.py"],
     pathex=[],
     binaries=[],
     datas=[
-        ("arknights_mower/fonts", "arknights_mower/__init__/fonts"),
-        ("arknights_mower/models", "arknights_mower/__init__/models"),
-        ("arknights_mower/templates", "arknights_mower/__init__/templates"),
-        ("arknights_mower/resources", "arknights_mower/__init__/resources"),
-        ("arknights_mower/data", "arknights_mower/__init__/data"),
-        ("arknights_mower/vendor", "arknights_mower/__init__/vendor"),
+        ("arknights_mower", "arknights_mower"),
+        ("logo.png", "."),
         (
-            "venv/Lib/site-packages/onnxruntime/capi/onnxruntime_providers_shared.dll",
+            f"{site_packages}/onnxruntime/capi/onnxruntime_providers_shared.dll",
             "onnxruntime/capi/",
         ),
-        ("logo.png", "."),
-        ("venv/Lib/site-packages/pyzbar/libzbar-64.dll", "."),
-        ("venv/Lib/site-packages/pyzbar/libiconv.dll", "."),
+        (f"{site_packages}/pyzbar/libzbar-64.dll", "."),
+        (f"{site_packages}/pyzbar/libiconv.dll", "."),
     ]
     + add_data,
     hiddenimports=[],
@@ -57,11 +55,14 @@ mower_a = Analysis(
     noarchive=False,
 )
 
+mower_pure = [i for i in mower_a.pure if not i[0].startswith("arknights_mower")]
+
 mower_pyz = PYZ(
-    mower_a.pure,
+    mower_pure,
     mower_a.zipped_data,
     cipher=block_cipher,
 )
+
 
 mower_exe = EXE(
     mower_pyz,
@@ -69,11 +70,11 @@ mower_exe = EXE(
     [],
     exclude_binaries=True,
     name="mower",
-    debug=False,
+    debug=True,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,
+    console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
