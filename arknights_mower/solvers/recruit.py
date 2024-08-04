@@ -3,14 +3,13 @@ import pickle
 from itertools import combinations
 
 import cv2
+import numpy as np
 
 from arknights_mower import __rootdir__
 from arknights_mower.data import (
     agent_with_tags,
     recruit_agent,
 )
-from matplotlib import pyplot as plt
-import numpy as np
 from arknights_mower.utils import config
 from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.email import recruit_rarity, recruit_template, send_message
@@ -284,7 +283,6 @@ class RecruitSolver(SceneGraphSolver):
         for x in choose:
             try_tap = 0
             while self.tag_not_choosed(tags, x):
-                logger.info(f"被选了? {self.tag_not_choosed(tags,x)} {try_tap}")
                 # 存在choose为空但是进行标签选择的情况
                 logger.debug(f"tap{x}:{tags[x]}")
                 self.ctap(tags[x])
