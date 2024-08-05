@@ -351,11 +351,9 @@ class Recognizer(object):
 
         else:
             self.scene = Scene.UNKNOWN
+            self.check_current_focus()
 
         logger.info(f"Scene {self.scene}: {SceneComment[self.scene]}")
-
-        if self.scene == Scene.UNKNOWN:
-            self.check_current_focus()
 
         return self.scene
 
