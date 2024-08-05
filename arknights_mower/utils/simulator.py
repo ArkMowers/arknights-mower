@@ -93,6 +93,7 @@ def restart_simulator(stop=True, start=True):
             hotkey = hotkey.split("+")
             import pyautogui
 
+            pyautogui.FAILSAFE = False
             pyautogui.hotkey(*hotkey)
 
 
