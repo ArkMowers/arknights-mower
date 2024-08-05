@@ -30,6 +30,7 @@ const {
   exit_game_when_idle,
   close_simulator_when_idle,
   screenshot,
+  screenshot_interval,
   run_order_grandet_mode,
   webview,
   fix_mumu12_adb_disconnect,
@@ -318,6 +319,11 @@ const scene_name = {
                 <n-image :src="'data:image/jpeg;base64,' + image" width="100%" />
                 <div>（截图用时{{ elapsed }}ms）</div>
               </n-flex>
+            </n-form-item>
+            <n-form-item label="截图最短间隔">
+              <n-input-number v-model:value="screenshot_interval" :precision="0">
+                <template #suffix>毫秒</template>
+              </n-input-number>
             </n-form-item>
             <n-form-item>
               <template #label>

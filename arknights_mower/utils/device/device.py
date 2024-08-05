@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import gzip
 import subprocess
+import time
+from datetime import datetime, timedelta
 from typing import Optional
 
 import cv2
@@ -205,7 +207,15 @@ class Device(object):
         return True
 
     def screencap(self) -> bytes:
-        """get a screencap"""
+        start_time = datetime.now()
+        min_time = config.screenshot_time + timedelta(
+            milliseconds=config.conf.screenshot_interval
+        )
+        delta = (min_time - start_time).total_seconds()
+        if delta > 0:
+            time.sleep(delta)
+            start_time = min_time
+
         if config.conf.droidcast.enable:
             session = config.droidcast.session
             while True:
@@ -270,6 +280,18 @@ class Device(object):
 
         screencap = img2bytes(img)
         save_screenshot(screencap)
+
+        interval = (datetime.now() - start_time).total_seconds() * 1000
+        if config.screenshot_avg is None:
+            config.screenshot_avg = interval
+        else:
+            config.screenshot_avg = config.screenshot_avg * 0.9 + interval * 0.1
+        if config.screenshot_count >= 10:
+            config.screenshot_count = 0
+            logger.info(f"截图用时{interval}ms 平均用时{config.screenshot_avg}ms")
+        else:
+            config.screenshot_count += 1
+
         return screencap, img, gray
 
     def current_focus(self) -> str:

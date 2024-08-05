@@ -1,7 +1,8 @@
 import json
+from datetime import datetime, timedelta
 from queue import Queue
 from threading import Event
-from typing import Any
+from typing import Any, Optional
 
 import requests
 import yaml
@@ -78,6 +79,12 @@ class DroidCast(BaseModel):
 
 
 droidcast = DroidCast()
+
+screenshot_time: datetime = datetime.now() - timedelta(
+    milliseconds=conf.screenshot_interval
+)
+screenshot_avg: Optional[int] = None
+screenshot_count: int = 0
 
 
 # 常量

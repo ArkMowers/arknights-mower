@@ -1,6 +1,6 @@
-import { defineStore } from 'pinia'
-import { ref, watchEffect, inject } from 'vue'
 import axios from 'axios'
+import { defineStore } from 'pinia'
+import { inject, ref, watchEffect } from 'vue'
 
 export const useConfigStore = defineStore('config', () => {
   const adb = ref('')
@@ -48,6 +48,7 @@ export const useConfigStore = defineStore('config', () => {
   const rogue = ref({})
   const sss = ref({})
   const screenshot = ref(0)
+  const screenshot_interval = ref(500)
   const mail_subject = ref('')
   const skland_enable = ref(false)
   const skland_info = ref([])
@@ -140,6 +141,7 @@ export const useConfigStore = defineStore('config', () => {
     rogue.value = response.data.rogue
     sss.value = response.data.sss
     screenshot.value = response.data.screenshot
+    screenshot_interval.value = response.data.screenshot_interval
     mail_subject.value = response.data.mail_subject
     skland_enable.value = response.data.skland_enable != 0
     skland_info.value = response.data.skland_info
@@ -221,6 +223,7 @@ export const useConfigStore = defineStore('config', () => {
       rogue: rogue.value,
       sss: sss.value,
       screenshot: screenshot.value,
+      screenshot_interval: screenshot_interval.value,
       mail_subject: mail_subject.value,
       skland_enable: skland_enable.value,
       skland_info: skland_info.value,
@@ -313,6 +316,7 @@ export const useConfigStore = defineStore('config', () => {
     rogue,
     sss,
     screenshot,
+    screenshot_interval,
     mail_subject,
     recruit_enable,
     recruitment_permit,
