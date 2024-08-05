@@ -281,7 +281,9 @@ class Device(object):
         screencap = img2bytes(img)
         save_screenshot(screencap)
 
-        interval = (datetime.now() - start_time).total_seconds() * 1000
+        stop_time = datetime.now()
+        config.screenshot_time = stop_time
+        interval = (stop_time - start_time).total_seconds() * 1000
         if config.screenshot_avg is None:
             config.screenshot_avg = interval
         else:
