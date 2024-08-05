@@ -286,9 +286,9 @@ class Device(object):
             config.screenshot_avg = interval
         else:
             config.screenshot_avg = config.screenshot_avg * 0.9 + interval * 0.1
-        if config.screenshot_count >= 10:
+        if config.screenshot_count >= 100:
             config.screenshot_count = 0
-            logger.info(f"截图用时{interval}ms 平均用时{config.screenshot_avg}ms")
+            logger.info(f"截图用时{interval:.0f}ms 平均用时{config.screenshot_avg:.0f}ms")
         else:
             config.screenshot_count += 1
 
