@@ -11,7 +11,6 @@ from PIL import Image, ImageDraw, ImageFont
 from skimage.feature import hog
 from sklearn.neighbors import KNeighborsClassifier
 
-from arknights_mower.data import agent_list
 from arknights_mower.utils.image import loadimg, thres2
 
 
@@ -392,10 +391,7 @@ class Arknights数据处理器:
             recruit_tag_template[tag] = cv2.cvtColor(
                 np.array(im.crop(im.getbbox())), cv2.COLOR_RGB2BGR
             )
-        with lzma.open(
-            "D:\\Git_Repositories\\Pycharm_Project\\Mower\\arknights-mower\\arknights_mower\\models\\recruit.pkl",
-            "wb",
-        ) as f:
+        with lzma.open("./arknights_mower/models/recruit.pkl", "wb") as f:
             pickle.dump(recruit_tag_template, f)
 
     def load_recruit_resource(self):
@@ -458,6 +454,8 @@ class Arknights数据处理器:
 
         kernel = np.ones((12, 12), np.uint8)
 
+        with open("./arknights_mower/data/agent.json", "r", encoding="utf-8") as f:
+            agent_list = json.load(f)
         for operator in sorted(agent_list, key=lambda x: len(x), reverse=True):
             img = Image.new(mode="L", size=(400, 100))
             draw = ImageDraw.Draw(img)
@@ -494,6 +492,8 @@ class Arknights数据处理器:
 
         kernel = np.ones((10, 10), np.uint8)
 
+        with open("./arknights_mower/data/agent.json", "r", encoding="utf-8") as f:
+            agent_list = json.load(f)
         for idx, operator in enumerate(agent_list):
             font = font31
             if not operator[0].encode().isalpha():
@@ -619,7 +619,7 @@ class Arknights数据处理器:
         干员技能列表 = sorted(干员技能列表, key=lambda x: (-x["key"]))
         # print(干员技能列表)
         with open(
-            r".\ui\src\pages\basement_skill\skill.json", "w", encoding="utf-8"
+            "./ui/src/pages/basement_skill/skill.json", "w", encoding="utf-8"
         ) as f:
             json.dump(干员技能列表, f, ensure_ascii=False, indent=2)
 
@@ -639,14 +639,14 @@ class Arknights数据处理器:
             buff_table[item.replace(".", "_")] = dict1
 
         with open(
-            r".\ui\src\pages\basement_skill\buffer.json", "w", encoding="utf-8"
+            "./ui/src/pages/basement_skill/buffer.json", "w", encoding="utf-8"
         ) as f:
             json.dump(buff_table, f, ensure_ascii=False, indent=2)
 
     def 添加基建技能图标(self):
         # 源目录和目标目录
-        source_dir = r".\ArknightsGameResource\building_skill"
-        destination_dir = r".\ui\public\building_skill"
+        source_dir = "./ArknightsGameResource/building_skill"
+        destination_dir = "./ui/public/building_skill"
 
         # 创建目标目录（如果不存在）
         os.makedirs(destination_dir, exist_ok=True)
