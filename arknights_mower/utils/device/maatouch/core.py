@@ -10,7 +10,7 @@ from arknights_mower.utils.log import logger
 MNT_PATH = "/data/local/tmp/maatouch"
 
 
-class Client(object):
+class Client:
     """Use maatouch to control Android devices easily"""
 
     def __init__(self, client: ADBClient) -> None:

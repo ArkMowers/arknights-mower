@@ -6,7 +6,7 @@ from arknights_mower.utils.log import logger
 DEFAULT_DELAY = 0.05
 
 
-class CommandBuilder(object):
+class CommandBuilder:
     """Build command str for minitouch"""
 
     def __init__(self) -> None:

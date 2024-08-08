@@ -22,7 +22,7 @@ class RecognizeError(Exception):
     pass
 
 
-class Recognizer(object):
+class Recognizer:
     def __init__(self, device: Device, screencap: bytes = None) -> None:
         self.device = device
         self.w = 1920

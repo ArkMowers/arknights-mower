@@ -22,10 +22,10 @@ from arknights_mower.utils.network import get_new_port, is_port_in_use
 from arknights_mower.utils.simulator import restart_simulator
 
 
-class Device(object):
+class Device:
     """Android Device"""
 
-    class Control(object):
+    class Control:
         """Android Device Control"""
 
         def __init__(

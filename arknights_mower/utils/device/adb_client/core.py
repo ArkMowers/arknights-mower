@@ -12,7 +12,7 @@ from arknights_mower.utils.device.adb_client.utils import run_cmd
 from arknights_mower.utils.log import logger
 
 
-class Client(object):
+class Client:
     """ADB Client"""
 
     def __init__(

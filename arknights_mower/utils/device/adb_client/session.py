@@ -8,7 +8,7 @@ from arknights_mower.utils.device.adb_client.socket import Socket
 from arknights_mower.utils.log import logger
 
 
-class Session(object):
+class Session:
     """Session between ADB client and ADB server"""
 
     def __init__(self):

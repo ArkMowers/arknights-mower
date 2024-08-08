@@ -67,7 +67,7 @@ def aHash(img1: tp.GrayImage, img2: tp.GrayImage) -> int:
     return hammingDistance(hash1, hash2)
 
 
-class Matcher(object):
+class Matcher:
     """image matching module"""
 
     def __init__(self, origin: tp.GrayImage) -> None:

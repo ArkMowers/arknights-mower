@@ -7,7 +7,7 @@ from arknights_mower.utils.device.adb_client.core import Client as ADBClient
 from arknights_mower.utils.log import logger
 
 
-class Session(object):
+class Session:
     def __init__(self, client: ADBClient) -> None:
         self.process = subprocess.Popen(
             [

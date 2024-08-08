@@ -3,12 +3,14 @@ from datetime import datetime, timedelta
 
 from evalidate import Expr, base_eval_model
 
+from arknights_mower.utils.plan import PlanConfig
+
 from ..data import agent_arrange_order, agent_list, base_room_list
 from ..solvers.record import save_action_to_sqlite_decorator
 from ..utils.log import logger
 
 
-class SkillUpgradeSupport(object):
+class SkillUpgradeSupport:
     support_class = None
     level = 1
     efficiency = 0
@@ -29,7 +31,7 @@ class SkillUpgradeSupport(object):
         self.swap_name = swap_name
 
 
-class Operators(object):
+class Operators:
     config = None
     operators = None
     exhaust_agent = []
@@ -108,7 +110,7 @@ class Operators(object):
 
     def swap_plan(self, condition, refresh=False):
         self.plan = copy.deepcopy(self.global_plan["default_plan"].plan)
-        self.config = copy.deepcopy(self.global_plan["default_plan"].config)
+        self.config: PlanConfig = copy.deepcopy(self.global_plan["default_plan"].config)
         for index, success in enumerate(condition):
             if success:
                 self.plan, self.config = self.merge_plan(index, self.config, self.plan)
@@ -539,12 +541,12 @@ class Operators(object):
     def add(self, operator):
         if operator.name not in agent_list:
             return
-        if self.config.get_config(operator.name, 3):
+        if self.config.is_resting_priority(operator.name):
             operator.resting_priority = "low"
-        operator.exhaust_require = self.config.get_config(operator.name, 1)
-        operator.rest_in_full = self.config.get_config(operator.name, 0)
-        operator.workaholic = self.config.get_config(operator.name, 2)
-        operator.refresh_order_room = self.config.get_config(operator.name, 5)
+        operator.exhaust_require = self.config.is_exhaust_require(operator.name)
+        operator.rest_in_full = self.config.is_rest_in_full(operator.name)
+        operator.workaholic = self.config.is_workaholic(operator.name)
+        operator.refresh_order_room = self.config.is_refresh_trading(operator.name)
         if operator.name in agent_arrange_order:
             operator.arrange_order = agent_arrange_order[operator.name]
         # 复制基建数据
@@ -652,7 +654,7 @@ class Operators(object):
         return ret
 
 
-class Dormitory(object):
+class Dormitory:
     def __init__(self, position, name="", time=None):
         self.position = position
         self.name = name
@@ -664,7 +666,7 @@ class Dormitory(object):
         )
 
 
-class Operator(object):
+class Operator:
     time_stamp = None
     depletion_rate = 0
     workaholic = False

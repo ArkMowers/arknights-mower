@@ -5,7 +5,7 @@ import socket
 from arknights_mower.utils.log import logger
 
 
-class Socket(object):
+class Socket:
     """Connect ADB server with socket"""
 
     def __init__(self, server: tuple[str, int], timeout: int) -> None:

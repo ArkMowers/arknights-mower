@@ -49,7 +49,6 @@ def initialize(
         return scheduler
 
     base_scheduler = BaseSchedulerSolver()
-    base_scheduler.operators = {}
     plan1 = {}
     plan = config.plan.model_dump(exclude_none=True)
     conf = config.conf
@@ -62,9 +61,6 @@ def initialize(
         max_resting_count=config.plan.conf.max_resting_count,
         free_blacklist=conf.free_blacklist,
         resting_threshold=conf.resting_threshold,
-        run_order_buffer_time=conf.run_order_grandet_mode.buffer_time
-        if conf.run_order_grandet_mode.enable
-        else -1,
         refresh_trading_config=config.plan.conf.refresh_trading,
         free_room=conf.free_room,
     )
@@ -92,9 +88,6 @@ def initialize(
             max_resting_count=i["conf"]["max_resting_count"],
             free_blacklist=i["conf"]["free_blacklist"],
             resting_threshold=conf.resting_threshold,
-            run_order_buffer_time=conf.run_order_grandet_mode.buffer_time
-            if conf.run_order_grandet_mode.enable
-            else -1,
             refresh_trading_config=i["conf"]["refresh_trading"],
             free_room=conf.free_room,
         )

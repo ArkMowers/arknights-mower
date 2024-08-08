@@ -76,6 +76,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.recruit_time = None
         self.last_clue = None
         self.sleeping = False
+        self.operators = {}
 
         self.last_execution = {
             "maa": None,
@@ -622,7 +623,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         config.conf.run_order_grandet_mode.back_to_index
                         and TaskTypes.RUN_ORDER == self.task.type
                         and not self.refresh_connecting
-                        and self.op_data.config.run_order_buffer_time > 0
+                        and config.conf.run_order_buffer_time > 0
                     ):
                         logger.info("跑单前返回主界面以保持登录状态")
                         self.back_to_index()
@@ -2295,13 +2296,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if (
             room in self.op_data.run_order_rooms
             and len(new_plan) == 1
-            and self.op_data.config.run_order_buffer_time > 0
+            and config.conf.run_order_buffer_time > 0
         ):
             wait_confirm = round(
                 (
                     (self.task.time - datetime.now()).total_seconds()
                     + config.conf.run_order_delay * 60
-                    - self.op_data.config.run_order_buffer_time
+                    - config.conf.run_order_buffer_time
                 ),
                 1,
             )
@@ -2864,12 +2865,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     # choose_error <= 0 选人如果失败则马上重新选过
                     if (
                         len(new_plan) == 1
-                        and self.op_data.config.run_order_buffer_time > 0
+                        and config.conf.run_order_buffer_time > 0
                         and choose_error <= 0
                     ):
                         remaining_time = self.get_order_remaining_time()
                         if 0 < remaining_time < (config.conf.run_order_delay + 10) * 60:
-                            if self.op_data.config.run_order_buffer_time > 0:
+                            if config.conf.run_order_buffer_time > 0:
                                 self.task.time = (
                                     datetime.now()
                                     + timedelta(seconds=remaining_time)
@@ -2942,7 +2943,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if len(new_plan) != 1:
             self.back(0.5)
         else:
-            if self.op_data.config.run_order_buffer_time <= 0:
+            if config.conf.run_order_buffer_time <= 0:
                 self.back(0.5)
         return new_plan
 
@@ -2955,7 +2956,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         for room in rooms:
             new_plan = self.agent_arrange_room(new_plan, room, plan, get_time=get_time)
         if len(new_plan) == 1:
-            if self.op_data.config.run_order_buffer_time <= 0:
+            if config.conf.run_order_buffer_time <= 0:
                 logger.info("开始插拔")
                 self.drone(room, not_customize=True)
             else:
@@ -3011,7 +3012,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         self.drone(
                             room, not_return=True, not_customize=True, skip_enter=True
                         )
-                if self.op_data.config.run_order_buffer_time > 0:
+                if config.conf.run_order_buffer_time > 0:
                     while self.find("bill_accelerate") is not None:
                         self.back(interval=0.5)
                 else:
@@ -3026,7 +3027,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 new_plan[run_order_room] = [
                     data.agent for data in self.op_data.plan[room]
                 ]
-            if self.op_data.config.run_order_buffer_time > 0:
+            if config.conf.run_order_buffer_time > 0:
                 self.agent_arrange_room({}, run_order_room, new_plan, skip_enter=True)
             else:
                 self.tasks.append(

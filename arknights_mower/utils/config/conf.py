@@ -568,3 +568,13 @@ class Conf(
     @property
     def SF(self):
         return self.maa_rg_enable == 1 and self.maa_long_task_type == "sf"
+
+    @property
+    def run_order_buffer_time(self):
+        """
+        >  0 葛朗台跑单的缓冲时间
+        <= 0 无人机跑单
+        """
+        if self.run_order_grandet_mode.enable:
+            return self.run_order_grandet_mode.buffer_time
+        return -1
