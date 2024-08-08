@@ -168,6 +168,8 @@ class RecruitSolver(SceneGraphSolver):
                     return
                 self.tap(pos)
                 return
+            else:
+                self.scene_graph_navigation(Scene.RECRUIT_MAIN)
 
         elif scene == Scene.RECRUIT_TAGS:
             self.ticket_number = self.get_ticket_number()
