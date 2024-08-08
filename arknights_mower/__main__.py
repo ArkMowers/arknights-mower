@@ -18,7 +18,7 @@ from arknights_mower.utils.device.scrcpy import Scrcpy
 from arknights_mower.utils.email import send_message, task_template, version_template
 from arknights_mower.utils.hot_update import get_listing
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.logic_expression import LogicExpression
+from arknights_mower.utils.logic_expression import get_logic_exp
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.simulator import restart_simulator
@@ -32,13 +32,6 @@ def main():
     logger.info("开始运行Mower")
     rapidocr.initialize_ocr()
     simulate()
-
-
-def get_logic_exp(trigger):
-    for k in ["left", "operator", "right"]:
-        if not isinstance(trigger[k], str):
-            trigger[k] = get_logic_exp(trigger[k])
-    return LogicExpression(trigger["left"], trigger["operator"], trigger["right"])
 
 
 def initialize(
@@ -71,10 +64,10 @@ def initialize(
     # 默认任务
     plan["default_plan"] = Plan(plan1, plan_config)
     # 备用自定义任务
-    backup_plans = []
+    backup_plans: list[Plan] = []
 
     for i in plan["backup_plans"]:
-        backup_plan = {}
+        backup_plan: dict[str, Room] = {}
         for room, obj in i["plan"].items():
             backup_plan[room] = [
                 Room(op["agent"], op["group"], op["replacement"]) for op in obj["plans"]
@@ -92,8 +85,8 @@ def initialize(
             free_room=conf.free_room,
         )
         backup_trigger = get_logic_exp(i["trigger"]) if "trigger" in i else None
-        backup_task = i["task"] if "task" in i else None
-        backup_trigger_timing = i["trigger_timing"] if "trigger_timing" in i else None
+        backup_task = i.get("task")
+        backup_trigger_timing = i.get("trigger_timing")
         backup_plans.append(
             Plan(
                 backup_plan,

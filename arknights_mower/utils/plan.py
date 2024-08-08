@@ -1,48 +1,25 @@
 import copy
 from enum import Enum
+from typing import Optional, Self
 
 from arknights_mower.utils.log import logger
-
-
-def set_timing_enum(value):
-    try:
-        return PlanTriggerTiming[value.upper()]
-    except Exception as e:
-        logger.exception(e)
-        return PlanTriggerTiming.AFTER_PLANNING
-
-
-class Plan:
-    def __init__(self, plan, config, trigger=None, task=None, trigger_timing=None):
-        # 基建计划 or 触发备用plan 的排班表，只需要填和默认不一样的部分
-        self.plan = plan
-        # 基建计划相关配置，必须填写全部配置
-        self.config = config
-        # 触发备用plan 的条件(必填）就是每次最多只有一个备用plan触发
-        self.trigger = trigger
-        # 触发备用plan 的时间生成的任务 (选填）
-        self.task = task
-        self.trigger_timing = set_timing_enum(trigger_timing)
+from arknights_mower.utils.logic_expression import LogicExpression
 
 
 class PlanTriggerTiming(Enum):
+    "副表触发时机"
+
     BEGINNING = 0
+    "任务开始"
     BEFORE_PLANNING = 300
+    "下班结束"
     AFTER_PLANNING = 600
+    "上班结束"
     END = 999
+    "任务结束"
 
 
-class Room:
-    def __init__(self, agent, group, replacement):
-        # 固定高效组干员
-        self.agent = agent
-        # 分组
-        self.group = group
-        # 替换组
-        self.replacement = replacement
-
-
-def to_list(str_data):
+def to_list(str_data: str) -> list[str]:
     lst = str_data.replace("，", ",").split(",")
     return [x.strip() for x in lst]
 
@@ -121,7 +98,7 @@ class PlanConfig:
         else:
             return [False, []]
 
-    def merge_config(self, target):
+    def merge_config(self, target: Self) -> Self:
         n = copy.deepcopy(self)
         for p in [
             "rest_in_full",
@@ -135,3 +112,50 @@ class PlanConfig:
             target_p = set(getattr(target, p))
             setattr(n, p, list(p_dict.union(target_p)))
         return n
+
+
+class Room:
+    def __init__(self, agent: str, group: str, replacement: list[str]):
+        """房间
+
+        Args:
+            agent: 主力干员
+            group: 组
+            replacement: 替换组
+        """
+        self.agent = agent
+        self.group = group
+        self.replacement = replacement
+
+
+class Plan:
+    def __init__(
+        self,
+        plan: dict[str, Room],
+        config: PlanConfig,
+        trigger: Optional[LogicExpression] = None,
+        task: Optional[dict[str, list[str]]] = None,
+        trigger_timing: Optional[str] = None,
+    ):
+        """
+        Args:
+            plan: 基建计划 or 触发备用plan 的排班表，只需要填和默认不一样的部分
+            config: 基建计划相关配置，必须填写全部配置
+            trigger: 触发备用plan 的条件（必填）就是每次最多只有一个备用plan触发
+            task: 触发备用plan 的时间生成的任务（选填）
+            trigger_timing: 触发时机
+        """
+        self.plan = plan
+        self.config = config
+        self.trigger = trigger
+        self.task = task
+        self.trigger_timing = self.set_timing_enum(trigger_timing)
+
+    @staticmethod
+    def set_timing_enum(value: str) -> PlanTriggerTiming:
+        "将字符串转换为副表触发时机"
+        try:
+            return PlanTriggerTiming[value.upper()]
+        except Exception as e:
+            logger.exception(e)
+            return PlanTriggerTiming.AFTER_PLANNING
