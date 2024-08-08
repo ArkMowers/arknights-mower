@@ -473,6 +473,7 @@ class SceneGraphSolver(BaseSolver):
                     self.device.start_droidcast()
                 if config.conf.touch_method == "scrcpy":
                     self.device.control.scrcpy = Scrcpy(self.device.client)
+                self.check_current_focus()
                 return False
         return True
 
