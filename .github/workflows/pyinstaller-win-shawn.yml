@@ -61,10 +61,16 @@ jobs:
         uses: actions/checkout@v4
 
       - name: change version number
-        if: github.event.head_commit.message != '发版'
         shell: bash
         run: |
-          sed -i "s/__version__ = \"\(.*\)\"/__version__ = \"\1+${GITHUB_SHA::7}\"/g" ./arknights_mower/__init__.py
+          msg=$(git log -1 --format=%s)
+          echo $msg
+          if [ "$msg" == "发版" ]; then
+            echo "保持版本号不变"
+          else
+            echo "更新版本号"
+            sed -i "s/__version__ = \"\(.*\)\"/__version__ = \"\1+${GITHUB_SHA::7}\"/g" ./arknights_mower/__init__.py
+          fi
 
       - name: install python 3.12
         uses: actions/setup-python@v5
