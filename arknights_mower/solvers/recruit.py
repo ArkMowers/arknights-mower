@@ -182,22 +182,26 @@ class RecruitSolver(SceneGraphSolver):
                     f"{self.recruit_index}号位置的tag识别结果{self.tags[self.recruit_index]}"
                 )
 
-            try:
-                if choose := self.agent_choose[self.recruit_index]["tags"]:
-                    tags = self.tags[self.recruit_index]
-                    logger.info(choose)
-                    tag_all_choose = True
-                    for x in choose:
-                        h, w, _ = tag_template[x].shape
-                        tag_img = cropimg(
-                            self.recog.img, [tags[x], va(tags[x], (w, h))]
-                        )
+            if self.recruit_index in self.agent_choose.keys():
+                choose = self.agent_choose[self.recruit_index]["tags"]
+                tags = self.tags[self.recruit_index]
+                logger.info(choose)
+                tag_all_choose = True
+                for x in choose:
+                    h, w, _ = tag_template[x].shape
+                    tag_img = cropimg(self.recog.img, [tags[x], va(tags[x], (w, h))])
 
-                        if self.tag_not_choosed(tag_img):
-                            self.tap(tags[x])
+                    if self.tag_not_choosed(tag_img):
+                        self.tap(tags[x])
 
-                    if tag_all_choose is False:
-                        return
+                if tag_all_choose is False:
+                    return
+
+                logger.info(tag_all_choose)
+                if self.ticket_number == 0:
+                    self.recruit_index = self.recruit_index + 1
+                    self.back()
+                    return
 
                 # 默认三星招募时长是9：00
                 recruit_time_choose = 540
@@ -205,6 +209,15 @@ class RecruitSolver(SceneGraphSolver):
                 # 默认一星招募时长是3：50
                 if recruit_result_level == 1:
                     recruit_time_choose = 230
+
+                if (
+                    self.ticket_number < config.conf.recruitment_permit
+                    and recruit_result_level == 3
+                ):
+                    self.recruit_index = self.recruit_index + 1
+                    logger.info("没券 返回")
+                    self.back()
+                    return
 
                 recruit_time = [9, 0]
                 if recruit_time_choose == 230:
@@ -217,8 +230,6 @@ class RecruitSolver(SceneGraphSolver):
                     self.get_recruit_time("minute"),
                 ]
 
-                logger.info(now_time)
-
                 if now_time[1] != recruit_time[1]:
                     self.choose_time(now_time[1], recruit_time[1], mode="minute")
                     return
@@ -228,12 +239,12 @@ class RecruitSolver(SceneGraphSolver):
                     return
 
                 # # start recruit
-                self.tap_element("recruit/start_recruit")
+                # self.tap_element("recruit/start_recruit")
                 self.ticket_number = self.ticket_number - 1
                 self.recruit_index = self.recruit_index + 1
-
+                self.back()
                 return
-            except (KeyError, TypeError):
+            else:
                 self.recruit_tags(self.tags[self.recruit_index])
         elif scene == Scene.REFRESH_TAGS:
             self.tap_element("recruit/refresh_comfirm")
@@ -325,26 +336,13 @@ class RecruitSolver(SceneGraphSolver):
                         self.back()
                         return
 
-        if self.ticket_number == 0:
-            self.recruit_index = self.recruit_index + 1
-            self.back()
-            return
-
-        if (
-            self.ticket_number < config.conf.recruitment_permit
-            and recruit_result_level == 3
-        ):
-            self.recruit_index = self.recruit_index + 1
-            logger.info("没券 返回")
-            self.back()
-            return
-
         if recruit_result_level != 3:
             self.agent_choose[self.recruit_index] = {
                 "tags": list(recruit_cal_result[0]["tag"]),
                 "result": list(recruit_cal_result[0]["result"]),
                 "level": recruit_result_level,
             }
+            return
 
         self.agent_choose[self.recruit_index] = {
             "tags": [],
