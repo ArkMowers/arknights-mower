@@ -31,7 +31,7 @@ def restart_simulator(stop=True, start=True):
     if simulator_type not in [types.value for types in Simulator_Type]:
         logger.warning(f"尚未支持{simulator_type}重启/自动启动")
         csleep(10)
-        return
+        return False
 
     if simulator_type == Simulator_Type.Nox.value:
         cmd = "Nox.exe"
@@ -95,6 +95,7 @@ def restart_simulator(stop=True, start=True):
 
             pyautogui.FAILSAFE = False
             pyautogui.hotkey(*hotkey)
+    return True
 
 
 def exec_cmd(cmd, folder_path, wait_time, blocking):
