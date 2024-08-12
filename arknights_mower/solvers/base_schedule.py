@@ -3323,33 +3323,32 @@ class BaseSchedulerSolver(BaseSolver, BaseMixin):
         elif type == "Fight":
             _plan = self.maa_config["weekly_plan"][get_server_weekday()]
             logger.info(f"现在服务器是{_plan['weekday']}")
-            hot_update.update()
-            if (
-                len(_plan["stage"]) == 1
-                and _plan["stage"][0] in hot_update.navigation.NavigationSolver.location
-            ):
-                name = _plan["stage"][0]
-                logger.info(f"导航至{name}")
-                hot_update.navigation.NavigationSolver(self.device).run(name)
-                self.stages.append(name)
-                self.MAA.append_task(
-                    "Fight",
-                    {
-                        "stage": "",
-                        "medicine": _plan["medicine"],
-                        "stone": 999 if self.maa_config["eat_stone"] else 0,
-                        "times": 999,
-                        "report_to_penguin": True,
-                        "client_type": "",
-                        "penguin_id": "",
-                        "DrGrandet": False,
-                        "server": "CN",
-                        "expiring_medicine": 999
-                        if self.maa_config["expiring_medicine"]
-                        else 0,
-                    },
-                )
-                return
+            # if (
+            #     len(_plan["stage"]) == 1
+            #     and _plan["stage"][0] in hot_update.navigation.NavigationSolver.location
+            # ):
+            #     name = _plan["stage"][0]
+            #     logger.info(f"导航至{name}")
+            #     hot_update.navigation.NavigationSolver(self.device).run(name)
+            #     self.stages.append(name)
+            #     self.MAA.append_task(
+            #         "Fight",
+            #         {
+            #             "stage": "",
+            #             "medicine": _plan["medicine"],
+            #             "stone": 999 if self.maa_config["eat_stone"] else 0,
+            #             "times": 999,
+            #             "report_to_penguin": True,
+            #             "client_type": "",
+            #             "penguin_id": "",
+            #             "DrGrandet": False,
+            #             "server": "CN",
+            #             "expiring_medicine": 999
+            #             if self.maa_config["expiring_medicine"]
+            #             else 0,
+            #         },
+            #     )
+            #     return
             for stage in _plan["stage"]:
                 logger.info(f"添加关卡:{stage}")
                 self.MAA.append_task(

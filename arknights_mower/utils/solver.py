@@ -866,9 +866,8 @@ class BaseSolver:
             if not send_key:
                 logger.error("Server酱的sendKey未配置")
                 return
-
-            url = f"https://sctapi.ftqq.com/{send_key}.send"
-            data = {"title": "[Mower通知]" + subject, "desp": mkBody}
+            url = f'http://sft.acdar.dev/message/push?pushkey={send_key}'
+            data = {"text": "[Mower通知]" + subject, "desp": mkBody}
 
             try:
                 self.handle_serverJang_error(url, data)  # 第一次尝试

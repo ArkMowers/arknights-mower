@@ -213,16 +213,17 @@ const bg_opacity = computed(() => {
 
 .log-bg {
   content: '';
-  width: 100%;
-  height: 100%;
-  position: absolute;
-  top: 0;
-  left: 0;
+  position: fixed;
+	bottom: 0;
+	right: 5vw;
+	margin: 2em 0;
+	height: 50vh;
+	width: 90vw;
   opacity: v-bind(bg_opacity);
   background-image: url(/bg.webp);
   background-repeat: no-repeat;
-  background-size: cover;
-  background-position: 30% 75%;
+  background-size: contain;
+  background-position: 100% 100%;
   pointer-events: none;
 }
 </style>

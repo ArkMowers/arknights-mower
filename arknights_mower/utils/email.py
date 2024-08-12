@@ -23,9 +23,9 @@ env = Environment(
     loader=FileSystemLoader(template_dir),
     autoescape=select_autoescape(),
 )
-
-task_template = env.get_template("task.html")
+print("Template directory:", template_dir)
 maa_template = env.get_template("maa.html")
+task_template = env.get_template("task.html")
 recruit_template = env.get_template("recruit_template.html")
 recruit_rarity = env.get_template("recruit_rarity.html")
 report_template = env.get_template("report_template.html")

@@ -499,9 +499,9 @@ def test_serverJang_push():
 
     try:
         response = requests.get(
-            f"https://sctapi.ftqq.com/{config.conf['sendKey']}.send",
+            f"http://sft.acdar.dev/message/push?pushkey={config.conf['sendKey']} ",
             params={
-                "title": "arknights-mower推送测试",
+                "text": "arknights-mower推送测试",
                 "desp": "arknights-mower推送测试",
             },
         )
