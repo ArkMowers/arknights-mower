@@ -196,7 +196,7 @@ class TestScheduling(unittest.TestCase):
         # 验证第一个宿舍任务包含换班+宿舍任务
         self.assertEqual(2, len(tasks[0].plan))
         # 老plan不变
-        self.assertEqual("Current", tasks[1].plan["dormitory_1"][3])
+        self.assertEqual("Free", tasks[1].plan["dormitory_1"][3])
         # 假设换班任务执行完毕
         del tasks[0]
         # 重复执行不会生成新的

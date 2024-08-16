@@ -156,8 +156,8 @@ class Operators:
             for idx, data in enumerate(self.plan[room]):
                 if data.agent not in agent_list and data.agent != "Free":
                     return f"干员名输入错误: 房间->{room}, 干员->{data.agent}"
-                if data.agent in ["龙舌兰", "但书"]:
-                    return f"高效组不可用龙舌兰，但书 房间->{room}, 干员->{data.agent}"
+                if data.agent in ["龙舌兰", "但书", "佩佩"]:
+                    return f"高效组不可用龙舌兰，但书,佩佩 房间->{room}, 干员->{data.agent}"
                 if data.agent == "菲亚梅塔" and idx == 1:
                     return f"菲亚梅塔不能安排在2号位置 房间->{room}, 干员->{data.agent}"
                 if data.agent == "菲亚梅塔" and not room.startswith("dorm"):
@@ -183,12 +183,27 @@ class Operators:
                 return f"宿舍 {room} 人数少于5人"
             for idx, data in enumerate(self.plan[room]):
                 # 菲亚梅塔替换组做特例判断
-                if "龙舌兰" in data.replacement and "但书" in data.replacement:
-                    return f"替换组不可同时安排龙舌兰和但书 房间->{room}, 干员->{data.agent}"
+                if (
+                    sum(
+                        [
+                            any(
+                                char in replacement_str
+                                for replacement_str in data.replacement
+                            )
+                            for char in ["龙舌兰", "但书", "佩佩"]
+                        ]
+                    )
+                    > 1
+                ):
+                    return f"替换组不可同时安排龙舌兰, 但书或者佩佩 房间->{room}, 干员->{data.agent}"
                 if "菲亚梅塔" in data.replacement:
                     return f"替换组不可安排菲亚梅塔 房间->{room}, 干员->{data.agent}"
                 r_count = len(data.replacement)
-                if "龙舌兰" in data.replacement or "但书" in data.replacement:
+                if any(
+                    char in replacement_str
+                    for replacement_str in data.replacement
+                    for char in ["龙舌兰", "但书", "佩佩"]
+                ):
                     r_count -= 1
                 if r_count <= 0 and (
                     (data.agent != "Free" and (not room.startswith("dorm")))
@@ -261,7 +276,9 @@ class Operators:
             if not x.startswith("room"):
                 continue
             if any(
-                ("但书" in obj.replacement or "龙舌兰" in obj.replacement) for obj in y
+                char in obj.replacement
+                for obj in y
+                for char in ["但书", "龙舌兰", "佩佩"]
             ):
                 self.run_order_rooms[x] = {}
         # 判定分组排班可能性
@@ -276,7 +293,7 @@ class Operators:
                     (
                         r
                         for r in self.operators[name].replacement
-                        if r not in _replacement and r not in ["龙舌兰", "但书"]
+                        if r not in _replacement and r not in ["龙舌兰", "但书", "佩佩"]
                     ),
                     None,
                 )

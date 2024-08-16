@@ -49,10 +49,11 @@ class TestBaseScheduler(unittest.TestCase):
             mock_agent_get_mood.return_value = None
             solver.backup_plan_solver()
             self.assertEqual(len(solver.tasks), 1)
-            print(solver.op_data.plan_name)
             solver.party_time = datetime.now()
             solver.backup_plan_solver()
-            self.assertEqual(solver.op_data.plan_name, "default_plan")
+            self.assertTrue(
+                all(not condition for condition in solver.op_data.plan_condition)
+            )
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_backup_plan_solver_GreyytheLightningbearer(self):
@@ -98,7 +99,6 @@ class TestBaseScheduler(unittest.TestCase):
             "伺夜,帕拉斯,雷蛇,澄闪,红云,乌有,年,远牙,阿米娅,桑葚,截云,掠风",
             ling_xi=2,
             resting_threshold=0.1,
-            run_order_buffer_time=20,
         )
         agent_base_config = PlanConfig(
             "稀音,黑键,焰尾,伊内丝",
@@ -106,7 +106,6 @@ class TestBaseScheduler(unittest.TestCase):
             "伺夜,帕拉斯,雷蛇,澄闪,红云,乌有,年,远牙,阿米娅,桑葚,截云",
             ling_xi=2,
             free_blacklist="艾丽妮,但书,龙舌兰",
-            run_order_buffer_time=20,
         )
         plan = {
             # 阶段 1
@@ -150,7 +149,9 @@ class TestBaseScheduler(unittest.TestCase):
             self.assertEqual(len(solver.tasks), 1)
             solver.op_data.operators["承曦格雷伊"].mood = 12
             solver.backup_plan_solver()
-            self.assertEqual(solver.op_data.plan_name, "default_plan")
+            self.assertTrue(
+                all(not condition for condition in solver.op_data.plan_condition)
+            )
 
 
 if __name__ == "__main__":
