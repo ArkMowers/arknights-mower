@@ -844,7 +844,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     or (
                         (
                             name in plan[key][idx].replacement
-                            and name not in ["但书", "龙舌兰"]
+                            and name not in ["但书", "龙舌兰", "佩佩"]
                         )
                         and len(plan[key][idx].replacement) > 0
                     )
@@ -1189,7 +1189,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             return
         in_out_plan = {room: ["Current"] * len(plan[room])}
         for idx, x in enumerate(plan[room]):
-            if "但书" in x.replacement or "龙舌兰" in x.replacement:
+            if any(
+                any(char in replacement_str for replacement_str in x.replacement)
+                for char in ["但书", "龙舌兰", "佩佩"]
+            ):
                 in_out_plan[room][idx] = x.replacement[0]
         self.tasks.append(
             SchedulerTask(
@@ -1215,7 +1218,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         logger.info("宿舍未满员,跳过读取插拔时间")
                         break
             if valid:
-                # 处理龙舌兰和但书的插拔
+                # 处理龙舌兰/但书/佩佩的插拔
                 for k, v in self.op_data.run_order_rooms.items():
                     self.plan_run_order(k)
                 adj_task = scheduling(self.tasks)
@@ -1540,7 +1543,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                 and not self.op_data.operators[obj].is_resting()
                             )
                         )
-                        and obj not in ["但书", "龙舌兰"]
+                        and obj not in ["但书", "龙舌兰", "佩佩"]
                         and obj not in exist_replacement
                         and obj not in __replacement
                         and self.op_data.operators[obj].current_room != x.room
@@ -2818,8 +2821,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self.turn_on_room_detail(room)
                 error_count = 0
                 if not checked:
-                    if (
-                        "但书" in plan[room] or "龙舌兰" in plan[room]
+                    if any(
+                        any(char in item for item in plan[room])
+                        for char in ["但书", "龙舌兰", "佩佩"]
                     ) and not room.startswith("dormitory"):
                         new_plan[room] = self.refresh_current_room(room)
                     if "菲亚梅塔" in plan[room] and len(plan[room]) == 2:
@@ -3020,9 +3024,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.back(interval=0.5)
             # 防止由于意外导致的死循环
             run_order_room = next(iter(new_plan))
-            if (
-                "但书" in new_plan[run_order_room]
-                or "龙舌兰" in new_plan[run_order_room]
+            if any(
+                any(char in item for item in new_plan[run_order_room])
+                for char in ["但书", "龙舌兰", "佩佩"]
             ):
                 new_plan[run_order_room] = [
                     data.agent for data in self.op_data.plan[room]

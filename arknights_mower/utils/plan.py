@@ -2,7 +2,6 @@ import copy
 from enum import Enum
 from typing import Optional, Self
 
-from arknights_mower.utils.log import logger
 from arknights_mower.utils.logic_expression import LogicExpression
 
 
@@ -156,6 +155,5 @@ class Plan:
         "将字符串转换为副表触发时机"
         try:
             return PlanTriggerTiming[value.upper()]
-        except Exception as e:
-            logger.exception(e)
+        except Exception:
             return PlanTriggerTiming.AFTER_PLANNING
