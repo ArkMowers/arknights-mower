@@ -1,163 +1,40 @@
-name: Windows打包
+# https://arkmowers.github.io/arknights-mower/dev/environment.html#auto-formatting
 
+name: 代码格式检查与测试
 on:
-  workflow_dispatch:
+  - push
+  - pull_request
 
 jobs:
-  build-frontend:
-    runs-on: ubuntu-22.04
+  ruff:
+    runs-on: ubuntu-latest
     steps:
-      - name: fetch source
-        uses: actions/checkout@v4
-
-      - name: setup nodejs 18
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: chartboost/ruff-action@v1
+      - uses: chartboost/ruff-action@v1
         with:
-          node-version: 18
-          cache: "npm"
-          cache-dependency-path: "ui/package-lock.json"
+          args: "format --check"
 
-      - name: build frontend
-        working-directory: ui
-        shell: bash
-        run: |
-          npm ci
-          npm run build
-
-      - name: cache frontend dist
-        uses: actions/cache/save@v4
-        with:
-          key: frontend-dist-${{ github.sha }}
-          path: ui/dist
-
-  build-docs:
-    runs-on: ubuntu-22.04
+  prettier:
+    runs-on: ubuntu-latest
     steps:
-      - name: fetch source
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: creyD/prettier_action@v4.3
         with:
-          repository: ArkMowers/arknights-mower
-          ref: doc-pages
+          dry: True
+          prettier_options: "--check ui/**/*.js ui/**/*.vue"
 
-      - name: setup ruby
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: "3.3.3"
-          bundler-cache: true
-
-      - name: build docs
-        run: bundle exec jekyll build -b /docs
-
-      - name: cache docs
-        uses: actions/cache/save@v4
-        with:
-          key: docs-${{ github.sha }}
-          path: _site
-
-  build-mower:
-    runs-on: windows-2022
+  unittest:
+    runs-on: ubuntu-latest
     steps:
-      - name: download source
-        uses: actions/checkout@v4
-
-      - name: change version number
-        if: github.event.head_commit.message != '发版'
-        shell: bash
-        run: |
-          sed -i "s/__version__ = \"\(.*\)\"/__version__ = \"\1+${GITHUB_SHA::7}\"/g" ./arknights_mower/__init__.py
-
-      - name: install python 3.12
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: 3.12
           cache: pip
-
-      - name: Install dependencies
-        shell: cmd
-        run: |
-          python -m venv venv
-          venv\Scripts\pip install -r requirements.txt
-          venv\Scripts\pip install -U pyinstaller
-
-      - name: install UPX
-        uses: crazy-max/ghaction-upx@v3
-        with:
-          install-only: true
-
-      - name: Make package
-        shell: cmd
-        run: |
-          set PYTHONHASHSEED=114514
-          set SOURCE_DATE_EPOCH=1694076231
-          venv\Scripts\pyinstaller .\webui_zip.spec --distpath=mower
-
-      - name: cache mower
-        uses: actions/cache/save@v4
-        with:
-          enableCrossOsArchive: true
-          key: mower-${{ github.sha }}
-          path: mower/mower
-
-  package-and-upload:
-    needs:
-      - build-frontend
-      - build-docs
-      - build-mower
-    runs-on: ubuntu-22.04
-    steps:
-      - name: download updater
-        uses: actions/checkout@v4
-        with:
-          repository: ArkMowers/updater
-
-      - name: install python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: 3.12
-          cache: pip
-
-      - name: Install dependencies
-        run: |
-          python -m venv venv
-          venv/bin/pip install -U xxhash
-
-      - name: restore frontend dist
-        uses: actions/cache/restore@v4
-        with:
-          key: frontend-dist-${{ github.sha }}
-          path: ui/dist
-
-      - name: restore docs
-        uses: actions/cache/restore@v4
-        with:
-          key: docs-${{ github.sha }}
-          path: _site
-
-      - name: restore mower
-        uses: actions/cache/restore@v4
-        with:
-          enableCrossOsArchive: true
-          key: mower-${{ github.sha }}
-          path: mower/mower
-
-      - name: delete unused files
-        working-directory: mower/mower/_internal
-        run: rm -fr matplotlib* cv2/opencv_videoio_ffmpeg490_64.dll
-
-      - name: merge files
-        run: |
-          mv ui/dist mower/mower/_internal/
-          mv _site mower/mower/_internal/dist/docs
-
-      - name: calculate hash
-        working-directory: mower/mower
-        run: ../../venv/bin/python ../../publish.py
-
-      - name: create zip
-        working-directory: mower
-        run: zip -r mower.zip mower
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: mower
-          path: mower/mower.zip
+          cache-dependency-path: requirements.txt
+      - run: |
+          python3.12 -m venv venv
+          ./venv/bin/pip install -r requirements.txt
+      - run: |
+          ./venv/bin/python3 -m unittest discover -s arknights_mower/tests -p "*_tests.py"

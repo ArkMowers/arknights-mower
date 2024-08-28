@@ -2,20 +2,15 @@
 import { inject, ref } from 'vue'
 const axios = inject('axios')
 
+const mobile = inject('mobile')
+
 import { useConfigStore } from '@/stores/config'
 const store = useConfigStore()
 
 import { storeToRefs } from 'pinia'
-const { maa_path, maa_adb_path, maa_gap, maa_conn_preset, maa_touch_option } = storeToRefs(store)
+const { maa_path, maa_conn_preset, maa_touch_option } = storeToRefs(store)
 
-import { file_dialog, folder_dialog } from '@/utils/dialog'
-
-async function select_maa_adb_path() {
-  const file_path = await file_dialog()
-  if (file_path) {
-    maa_adb_path.value = file_path
-  }
-}
+import { folder_dialog } from '@/utils/dialog'
 
 async function select_maa_dir() {
   const folder_path = await folder_dialog()
@@ -48,53 +43,29 @@ const maa_touch_options = ['maatouch', 'minitouch', 'adb'].map((x) => {
 
 <template>
   <n-card title="Maa设置">
-    <p>清理智、线索收集（信用商店购物）、集成战略、保全派驻、生息演算</p>
-    <table class="maa-basic">
-      <tr>
-        <td>Maa目录</td>
-        <td>
-          <n-input v-model:value="maa_path"></n-input>
-        </td>
-        <td>
-          <n-button @click="select_maa_dir">...</n-button>
-        </td>
-      </tr>
-      <tr>
-        <td>adb路径</td>
-        <td>
-          <n-input v-model:value="maa_adb_path"></n-input>
-        </td>
-        <td>
-          <n-button @click="select_maa_adb_path">...</n-button>
-        </td>
-      </tr>
-    </table>
-    <table class="maa-conn">
-      <tr>
-        <td>连接配置</td>
-        <td>
-          <n-select :options="maa_conn_presets" v-model:value="maa_conn_preset" />
-        </td>
-        <td>
-          <n-button @click="get_maa_conn_presets">刷新</n-button>
-        </td>
-      </tr>
-      <tr>
-        <td>触控模式</td>
-        <td colspan="2">
-          <n-select v-model:value="maa_touch_option" :options="maa_touch_options" />
-        </td>
-      </tr>
-    </table>
+    <template #header>Maa设置<help-text>集成战略、保全派驻</help-text></template>
+    <n-form
+      :label-placement="mobile ? 'top' : 'left'"
+      :show-feedback="false"
+      label-width="96"
+      label-align="left"
+    >
+      <n-form-item label="Maa目录">
+        <n-input type="textarea" :autosize="true" v-model:value="maa_path" />
+        <n-button @click="select_maa_dir" class="dialog-btn">...</n-button>
+      </n-form-item>
+      <n-form-item label="连接配置">
+        <n-select :options="maa_conn_presets" v-model:value="maa_conn_preset" />
+        <n-button @click="get_maa_conn_presets" class="dialog-btn">刷新</n-button>
+      </n-form-item>
+      <n-form-item label="触控模式">
+        <n-select v-model:value="maa_touch_option" :options="maa_touch_options" />
+      </n-form-item>
+    </n-form>
+    <n-divider />
     <div class="misc-container">
       <n-button @click="test_maa">测试设置</n-button>
       <div>{{ maa_msg }}</div>
-    </div>
-    <n-divider />
-    <div class="misc-container">
-      <div>启动间隔</div>
-      <n-input-number class="hour-input" v-model:value="maa_gap" />
-      <div>小时（可填小数）</div>
     </div>
   </n-card>
 </template>
@@ -104,45 +75,10 @@ p {
   margin: 0 0 10px 0;
 }
 
-.maa-basic {
-  width: 100%;
-}
-
-.maa-basic {
-  td:nth-child(1) {
-    width: 62px;
-  }
-
-  td:nth-child(2) {
-    padding-right: 6px;
-  }
-
-  td:nth-child(3) {
-    width: 40px;
-  }
-}
-
 .misc-container {
   margin-top: 12px;
   display: flex;
   align-items: center;
   gap: 12px;
-}
-
-.hour-input {
-  width: 120px;
-}
-
-.maa-conn {
-  width: 100%;
-
-  td {
-    &:nth-child(1) {
-      width: 62px;
-    }
-    &:nth-child(3) {
-      width: 56px;
-    }
-  }
 }
 </style>

@@ -1,3 +1,5 @@
+FZDYSK.TTF
+
 !main.spec
 *.yaml
 !arknights_mower/templates/*.yaml
@@ -28,11 +30,15 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Nodejs Version Manager
+.nvmrc
+
 # C extensions
 *.so
 
 # Distribution / packaging
 .Python
+mower/
 build/
 develop-eggs/
 dist/
@@ -108,6 +114,13 @@ ipython_config.py
 # pyenv
 .python-version
 
+# nodenv
+.node-version
+
+# syncthing
+.stfolder/
+.stignore
+
 # pipenv
 #   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
 #   However, in case of collaboration, if having platform-specific dependencies or dependencies
@@ -178,3 +191,22 @@ dmypy.json
 /tmp/
 
 # End of https://www.toptal.com/developers/gitignore/api/visualstudiocode
+/*.json
+dist
+MAA
+/*.yml
+
+# venv
+/bin/
+/pyvenv.cfg
+/lib64
+
+#testspace
+/testspace
+
+
+/.buildozer/
+
+
+*.ipynb
+.rgignore

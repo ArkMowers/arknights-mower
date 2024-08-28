@@ -29,6 +29,6 @@
 
 <style scoped>
 .help {
-  line-height: 34px;
+  z-index: 100;
 }
 </style>

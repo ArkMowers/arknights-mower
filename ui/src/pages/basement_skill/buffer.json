@@ -1,0 +1,683 @@
+{
+  "ba_sluggish": {
+    "termId": "ba.sluggish",
+    "termName": "停顿",
+    "description": "移动速度降低80%",
+    "buffer": []
+  },
+  "ba_root": {
+    "termId": "ba.root",
+    "termName": "束缚",
+    "description": "无法移动",
+    "buffer": []
+  },
+  "ba_stun": {
+    "termId": "ba.stun",
+    "termName": "晕眩",
+    "description": "无法移动、阻挡、攻击及使用技能",
+    "buffer": []
+  },
+  "ba_buffres": {
+    "termId": "ba.buffres",
+    "termName": "抵抗",
+    "description": "<$ba.stun>晕眩</>、<$ba.cold>寒冷</>、<$ba.frozen>冻结</>等异常状态的持续时间减半（同名效果不叠加）",
+    "buffer": []
+  },
+  "ba_invisible": {
+    "termId": "ba.invisible",
+    "termName": "隐匿",
+    "description": "不阻挡时不成为敌方攻击的目标",
+    "buffer": []
+  },
+  "ba_camou": {
+    "termId": "ba.camou",
+    "termName": "迷彩",
+    "description": "不阻挡时不成为敌方普通攻击的目标（无法躲避溅射类攻击）",
+    "buffer": []
+  },
+  "ba_fragile": {
+    "termId": "ba.fragile",
+    "termName": "脆弱",
+    "description": "受到的物理、法术、真实伤害提升相应比例（同名效果取最高）",
+    "buffer": []
+  },
+  "ba_shield": {
+    "termId": "ba.shield",
+    "termName": "护盾",
+    "description": "每层护盾可以抵挡一次伤害",
+    "buffer": []
+  },
+  "ba_protect": {
+    "termId": "ba.protect",
+    "termName": "庇护",
+    "description": "受到的物理和法术伤害降低相应比例（同名效果取最高）",
+    "buffer": []
+  },
+  "ba_cold": {
+    "termId": "ba.cold",
+    "termName": "寒冷",
+    "description": "攻击速度下降30，如果在持续时间内再次受到寒冷效果则会变为<$ba.frozen>冻结</>",
+    "buffer": []
+  },
+  "ba_frozen": {
+    "termId": "ba.frozen",
+    "termName": "冻结",
+    "description": "无法移动、攻击及使用技能（通过<$ba.cold>寒冷</>触发）；敌方被冻结时，法术抗性-15",
+    "buffer": []
+  },
+  "ba_sleep": {
+    "termId": "ba.sleep",
+    "termName": "沉睡",
+    "description": "无敌且无法行动",
+    "buffer": []
+  },
+  "ba_inspire": {
+    "termId": "ba.inspire",
+    "termName": "鼓舞",
+    "description": "获得额外附加的基础属性加成（同类属性取最高）",
+    "buffer": []
+  },
+  "ba_binding": {
+    "termId": "ba.binding",
+    "termName": "绑定",
+    "description": "绑定对象不在场时技能强制结束，清空所有技力且无法回复技力",
+    "buffer": []
+  },
+  "ba_dt_neural": {
+    "termId": "ba.dt.neural",
+    "termName": "神经损伤",
+    "description": "神经损伤累计至1000时，受到1000点真实伤害并<$ba.stun>晕眩</>10秒",
+    "buffer": []
+  },
+  "ba_charged": {
+    "termId": "ba.charged",
+    "termName": "蓄力",
+    "description": "技力达到上限可继续回复，回复至上限2倍时进入蓄力状态，此时开启技能会触发额外效果（任何时候开启均消耗全部技力）",
+    "buffer": []
+  },
+  "ba_strong": {
+    "termId": "ba.strong",
+    "termName": "精力充沛",
+    "description": "生命值高于一定比例时攻击力加成提升相应比例（同名效果攻击力加成取最高）",
+    "buffer": []
+  },
+  "ba_dt_erosion": {
+    "termId": "ba.dt.erosion",
+    "termName": "侵蚀损伤",
+    "description": "侵蚀损伤累计至1000时，永久降低100点防御力并受到800点物理伤害",
+    "buffer": []
+  },
+  "ba_dt_burning": {
+    "termId": "ba.dt.burning",
+    "termName": "灼燃损伤",
+    "description": "灼燃损伤累计至1000时，10秒内降低20法术抗性并受到1200点法术伤害",
+    "buffer": []
+  },
+  "ba_float": {
+    "termId": "ba.float",
+    "termName": "近地悬浮",
+    "description": "无法被阻挡或近战攻击",
+    "buffer": []
+  },
+  "ba_refraction": {
+    "termId": "ba.refraction",
+    "termName": "折射",
+    "description": "生效时，法术抗性+70",
+    "buffer": []
+  },
+  "ba_dt_element": {
+    "termId": "ba.dt.element",
+    "termName": "元素损伤",
+    "description": "包括<$ba.dt.neural>神经损伤</>、<$ba.dt.erosion>侵蚀损伤</>、<$ba.dt.burning>灼燃损伤</>、<$ba.dt.apoptosis>凋亡损伤</>",
+    "buffer": []
+  },
+  "ba_overdrive": {
+    "termId": "ba.overdrive",
+    "termName": "过载",
+    "description": "技能持续拥有两段计量槽，技能进行到一半时触发额外效果",
+    "buffer": []
+  },
+  "ba_dt_apoptosis": {
+    "termId": "ba.dt.apoptosis",
+    "termName": "凋亡损伤",
+    "description": "凋亡损伤累计至1000时，15秒内无法开启技能，每秒损失1点技力并受到100点法术伤害",
+    "buffer": []
+  },
+  "ba_debuff": {
+    "termId": "ba.debuff",
+    "termName": "异常状态",
+    "description": "包括<$ba.stun>晕眩</>、<$ba.cold>寒冷</>、<$ba.frozen>冻结</>等",
+    "buffer": []
+  },
+  "ba_levitate": {
+    "termId": "ba.levitate",
+    "termName": "浮空",
+    "description": "变为空中单位，无法移动、攻击及使用技能；对重量大于3的单位持续时间减半",
+    "buffer": []
+  },
+  "ba_physhield": {
+    "termId": "ba.physhield",
+    "termName": "物理护盾",
+    "description": "每层物理护盾可以抵挡一次物理伤害",
+    "buffer": []
+  },
+  "ba_magicfragile": {
+    "termId": "ba.magicfragile",
+    "termName": "法术脆弱",
+    "description": "受到的法术伤害提升相应比例（同名效果取最高）",
+    "buffer": []
+  },
+  "ba_elementfragile": {
+    "termId": "ba.elementfragile",
+    "termName": "元素脆弱",
+    "description": "受到的元素伤害提升相应比例（同名效果取最高）",
+    "buffer": []
+  },
+  "ba_dying": {
+    "termId": "ba.dying",
+    "termName": "重伤",
+    "description": "移速下降且无法被阻挡，10秒后自然死亡，被击杀后使击杀者回复数点技力",
+    "buffer": []
+  },
+  "ba_barrier": {
+    "termId": "ba.barrier",
+    "termName": "屏障",
+    "description": "可以吸收一定数值的伤害",
+    "buffer": []
+  },
+  "ba_weightless": {
+    "termId": "ba.weightless",
+    "termName": "失重",
+    "description": "重量下降一个等级（同名效果不可叠加）",
+    "buffer": []
+  },
+  "ba_berserk": {
+    "termId": "ba.berserk",
+    "termName": "坚忍",
+    "description": "根据已损失的生命值获得相应比例的属性加成，损失一定比例时达最大加成（同类属性取最高）",
+    "buffer": []
+  },
+  "ba_steal": {
+    "termId": "ba.steal",
+    "termName": "偷取",
+    "description": "减少目标的基础属性作为自身加成，目标减少和自身加成的属性不超过指定上限（同类属性取最高）",
+    "buffer": []
+  },
+  "ba_weaken": {
+    "termId": "ba.weaken",
+    "termName": "虚弱",
+    "description": "使目标攻击力降低相应比例（同名效果取最高）",
+    "buffer": []
+  },
+  "ba_dt_apoptosis2": {
+    "termId": "ba.dt.apoptosis2",
+    "termName": "凋亡损伤·我方",
+    "description": "累计满时爆发（普通、精英敌人1000点、领袖2000点累计值），使敌人附加50%<$ba.weaken>虚弱</>但期间逐渐恢复，每秒受到800点元素伤害。15秒冷却",
+    "buffer": []
+  },
+  "ba_epbarrier": {
+    "termId": "ba.epbarrier",
+    "termName": "损伤屏障",
+    "description": "可以吸收一定数值的<$ba.dt.element>元素损伤</>",
+    "buffer": []
+  },
+  "ba_tremble": {
+    "termId": "ba.tremble",
+    "termName": "战栗",
+    "description": "被阻挡后无法进行普通攻击",
+    "buffer": []
+  },
+  "ba_fear": {
+    "termId": "ba.fear",
+    "termName": "恐惧",
+    "description": "无法被阻挡并四散逃跑",
+    "buffer": []
+  },
+  "ba_dt_burning2": {
+    "termId": "ba.dt.burning2",
+    "termName": "灼燃损伤·我方",
+    "description": "累计满时爆发（普通、精英敌人1000点、领袖2000点累计值），敌人立即受到7000点元素伤害且期间法术抗性-20。10秒冷却",
+    "buffer": []
+  },
+  "ba_addash": {
+    "termId": "ba.addash",
+    "termName": "移动",
+    "description": "不退场，以当前血量在目标位置部署",
+    "buffer": []
+  },
+  "cc_bd_A_1": {
+    "termId": "cc.bd_A_1",
+    "termName": "念力",
+    "description": "拥有该基建技能的干员\n迷迭香",
+    "buffer": []
+  },
+  "cc_bd_A_2": {
+    "termId": "cc.bd_A_2",
+    "termName": "意识实体",
+    "description": "拥有该基建技能的干员\n迷迭香",
+    "buffer": []
+  },
+  "cc_bd_B_1": {
+    "termId": "cc.bd_B_1",
+    "termName": "徘徊旋律",
+    "description": "拥有该基建技能的干员\n黑键",
+    "buffer": []
+  },
+  "cc_bd_B_2": {
+    "termId": "cc.bd_B_2",
+    "termName": "怅惘和声",
+    "description": "拥有该基建技能的干员\n黑键",
+    "buffer": []
+  },
+  "cc_bd_B_3": {
+    "termId": "cc.bd_B_3",
+    "termName": "无词颂歌",
+    "description": "拥有该基建技能的干员\n塑心",
+    "buffer": []
+  },
+  "cc_bd_A": {
+    "termId": "cc.bd_A",
+    "termName": "思维链环",
+    "description": "可影响<$cc.bd_A_1><@cc.rem>念力</></>、<$cc.bd_A_2><@cc.rem>意识实体</></>相关技能\n由以下干员的基建技能提供\n迷迭香",
+    "buffer": [
+      "cc_bd_A_1",
+      "cc_bd_A_2"
+    ]
+  },
+  "cc_bd_B": {
+    "termId": "cc.bd_B",
+    "termName": "无声共鸣",
+    "description": "可影响<$cc.bd_B_1><@cc.rem>徘徊旋律</></>、<$cc.bd_B_2><@cc.rem>怅惘和声</></>、<$cc.bd_B_3><@cc.rem>无词颂歌</></>相关技能\n由以下干员的基建技能提供\n黑键、塑心、深律",
+    "buffer": [
+      "cc_bd_B_1",
+      "cc_bd_B_2",
+      "cc_bd_B_3"
+    ]
+  },
+  "cc_bd_C": {
+    "termId": "cc.bd_C",
+    "termName": "巫术结晶",
+    "description": "拥有该基建技能的干员\n截云",
+    "buffer": []
+  },
+  "cc_bd_a1": {
+    "termId": "cc.bd_a1",
+    "termName": "感知信息",
+    "description": "可影响<$cc.bd_A><@cc.rem>思维链环</></>、<$cc.bd_B><@cc.rem>无声共鸣</></>相关变量\n由以下干员的基建技能提供\n迷迭香、黑键、夕、令、絮雨、爱丽丝、车尔尼",
+    "buffer": [
+      "cc_bd_A",
+      "cc_bd_B"
+    ]
+  },
+  "cc_bd_b1": {
+    "termId": "cc.bd_b1",
+    "termName": "人间烟火",
+    "description": "可影响<$cc.bd_C><@cc.rem>巫术结晶</></>相关技能\n由以下干员的基建技能提供\n夕、令、重岳、乌有、桑葚",
+    "buffer": [
+      "cc_bd_C"
+    ]
+  },
+  "cc_bd_ash": {
+    "termId": "cc.bd_ash",
+    "termName": "情报储备",
+    "description": "由以下干员的基建技能提供\n灰烬",
+    "buffer": []
+  },
+  "cc_bd_tachanka": {
+    "termId": "cc.bd_tachanka",
+    "termName": "乌萨斯特饮",
+    "description": "由以下干员的基建技能提供\n战车",
+    "buffer": []
+  },
+  "cc_bd_malist": {
+    "termId": "cc.bd_malist",
+    "termName": "工程机器人",
+    "description": "由以下干员的基建技能提供\n至简",
+    "buffer": []
+  },
+  "cc_bd_a1_a1": {
+    "termId": "cc.bd_a1_a1",
+    "termName": "记忆碎片",
+    "description": "可影响<$cc.bd_a1><@cc.rem>感知信息</></>相关变量\n由以下干员的基建技能提供\n絮雨",
+    "buffer": [
+      "cc_bd_a1"
+    ]
+  },
+  "cc_bd_a1_a2": {
+    "termId": "cc.bd_a1_a2",
+    "termName": "梦境",
+    "description": "可影响<$cc.bd_a1><@cc.rem>感知信息</></>相关变量\n由以下干员的基建技能提供\n爱丽丝",
+    "buffer": [
+      "cc_bd_a1"
+    ]
+  },
+  "cc_bd_a1_a3": {
+    "termId": "cc.bd_a1_a3",
+    "termName": "小节",
+    "description": "可影响<$cc.bd_a1><@cc.rem>感知信息</></>相关变量\n由以下干员的基建技能提供\n车尔尼",
+    "buffer": [
+      "cc_bd_a1"
+    ]
+  },
+  "cc_bd_costdrop": {
+    "termId": "cc.bd.costdrop",
+    "termName": "心情落差",
+    "description": "干员自身心情上限与当前心情值的差值",
+    "buffer": []
+  },
+  "cc_bd_felyne": {
+    "termId": "cc.bd_felyne",
+    "termName": "木天蓼",
+    "description": "可影响<$cc.bd_felyne_1><@cc.rem>可爱的艾露猫</></>、<$cc.bd_felyne_2><@cc.rem>可靠的随从们</></>相关技能\n由以下干员的基建技能提供\n火龙S黑角、麒麟R夜刀",
+    "buffer": [
+      "cc_bd_felyne_1",
+      "cc_bd_felyne_2"
+    ]
+  },
+  "cc_bd_felyne_1": {
+    "termId": "cc.bd_felyne_1",
+    "termName": "可爱的艾露猫",
+    "description": "拥有该基建技能的干员\n泰拉大陆调查团",
+    "buffer": []
+  },
+  "cc_bd_felyne_2": {
+    "termId": "cc.bd_felyne_2",
+    "termName": "可靠的随从们",
+    "description": "拥有该基建技能的干员\n泰拉大陆调查团",
+    "buffer": []
+  },
+  "cc_m_var1": {
+    "termId": "cc.m.var1",
+    "termName": "回收利用",
+    "description": "拥有该基建技能的干员\n红云",
+    "buffer": []
+  },
+  "cc_m_var2": {
+    "termId": "cc.m.var2",
+    "termName": "配合意识",
+    "description": "拥有该基建技能的干员\n槐琥",
+    "buffer": []
+  },
+  "cc_t_snsant1": {
+    "termId": "cc.t.snsant1",
+    "termName": "天道酬勤·α",
+    "description": "拥有该基建技能的干员\n雪雉",
+    "buffer": []
+  },
+  "cc_t_snsant2": {
+    "termId": "cc.t.snsant2",
+    "termName": "天道酬勤·β",
+    "description": "拥有该基建技能的干员\n雪雉",
+    "buffer": []
+  },
+  "cc_g_lgd": {
+    "termId": "cc.g.lgd",
+    "termName": "龙门近卫局",
+    "description": "包含以下干员\n陈、星熊、诗怀雅",
+    "buffer": []
+  },
+  "cc_g_lda": {
+    "termId": "cc.g.lda",
+    "termName": "鲤氏侦探事务所",
+    "description": "包含以下干员\n老鲤、阿、吽、槐琥",
+    "buffer": []
+  },
+  "cc_g_ussg": {
+    "termId": "cc.g.ussg",
+    "termName": "乌萨斯学生自治团",
+    "description": "包含以下干员\n早露、凛冬、真理、古米、烈夏",
+    "buffer": []
+  },
+  "cc_g_A1": {
+    "termId": "cc.g.A1",
+    "termName": "A1小队",
+    "description": "包含以下干员\n芙蓉、炎熔、米格鲁、芬、克洛丝",
+    "buffer": []
+  },
+  "cc_g_R6": {
+    "termId": "cc.g.R6",
+    "termName": "彩虹小队",
+    "description": "包含以下干员\n灰烬、战车、闪击、霜华、艾拉、医生、双月、导火索",
+    "buffer": []
+  },
+  "cc_g_Attack": {
+    "termId": "cc.g.Attack",
+    "termName": "进攻方",
+    "description": "包含以下干员\n灰烬、闪击、双月、导火索",
+    "buffer": []
+  },
+  "cc_g_Defence": {
+    "termId": "cc.g.Defence",
+    "termName": "防守方",
+    "description": "包含以下干员\n战车、霜华、艾拉、医生",
+    "buffer": []
+  },
+  "cc_g_sp": {
+    "termId": "cc.g.sp",
+    "termName": "异格",
+    "description": "包含所有异格干员",
+    "buffer": []
+  },
+  "cc_g_abyssal": {
+    "termId": "cc.g.abyssal",
+    "termName": "深海猎人",
+    "description": "包含以下干员\n歌蕾蒂娅、斯卡蒂、幽灵鲨、安哲拉、乌尔比安",
+    "buffer": []
+  },
+  "cc_g_psk": {
+    "termId": "cc.g.psk",
+    "termName": "红松骑士团",
+    "description": "包含以下干员\n焰尾、远牙、灰毫、野鬃、正义骑士号",
+    "buffer": []
+  },
+  "cc_g_karlan": {
+    "termId": "cc.g.karlan",
+    "termName": "喀兰贸易",
+    "description": "包含以下干员\n银灰、灵知、初雪、崖心、角峰、讯使、耶拉、极光、锏",
+    "buffer": []
+  },
+  "cc_g_sui": {
+    "termId": "cc.g.sui",
+    "termName": "岁",
+    "description": "包含以下干员\n年、夕、令、重岳、黍",
+    "buffer": []
+  },
+  "cc_g_glasgow": {
+    "termId": "cc.g.glasgow",
+    "termName": "格拉斯哥帮",
+    "description": "包含以下干员\n推进之王、摩根、达格达、因陀罗",
+    "buffer": []
+  },
+  "cc_g_rh": {
+    "termId": "cc.g.rh",
+    "termName": "莱茵生命",
+    "description": "包含以下干员\n赫默、伊芙利特、塞雷娅、白面鸮、梅尔、麦哲伦、多萝西、星源、缪尔赛思",
+    "buffer": []
+  },
+  "cc_g_sm": {
+    "termId": "cc.g.sm",
+    "termName": "萨米",
+    "description": "包含以下干员\n远山、柏喙、雪绒、提丰、寒檀、凛视",
+    "buffer": []
+  },
+  "cc_g_bs": {
+    "termId": "cc.g.bs",
+    "termName": "黑钢国际",
+    "description": "包含以下干员\n雷蛇、芙兰卡、杰西卡、香草、杏仁",
+    "buffer": []
+  },
+  "cc_c_abyssal2_1": {
+    "termId": "cc.c.abyssal2_1",
+    "termName": "特殊加成",
+    "description": "每有1个<$cc.g.abyssal><@cc.kw>深海猎人</></>干员进驻制造站，则控制中枢给每个进驻<$cc.g.abyssal><@cc.kw>深海猎人</></>的制造站提供<@cc.vup>5%</>生产力，最多给单个制造站提供<@cc.vup>45%</>生产力",
+    "buffer": [
+      "cc_g_abyssal",
+      "cc_g_abyssal"
+    ]
+  },
+  "cc_c_abyssal2_2": {
+    "termId": "cc.c.abyssal2_2",
+    "termName": "特殊加成",
+    "description": "每有1个<$cc.g.abyssal><@cc.kw>深海猎人</></>干员进驻制造站，则控制中枢给每个进驻<$cc.g.abyssal><@cc.kw>深海猎人</></>的制造站提供<@cc.vup>10%</>生产力，最多给单个制造站提供<@cc.vup>90%</>生产力",
+    "buffer": [
+      "cc_g_abyssal",
+      "cc_g_abyssal"
+    ]
+  },
+  "cc_c_abyssal2_3": {
+    "termId": "cc.c.abyssal2_3",
+    "termName": "特殊叠加规则",
+    "description": "无法与<$cc.m.var2><@cc.rem>配合意识</></>进行叠加，且优先生效\n无法与<$cc.m.pow1><@cc.rem>自动化·α</></>、<$cc.m.pow2><@cc.rem>自动化·β</></>、<$cc.m.pow3><@cc.rem>仿生海龙</></>进行叠加，且清零效果优先生效",
+    "buffer": [
+      "cc_m_var2",
+      "cc_m_pow1",
+      "cc_m_pow2",
+      "cc_m_pow3"
+    ]
+  },
+  "cc_c_room1": {
+    "termId": "cc.c.room1",
+    "termName": "部分设施",
+    "description": "包含以下设施\n发电站、人力办公室、会客室",
+    "buffer": []
+  },
+  "cc_c_room2": {
+    "termId": "cc.c.room2",
+    "termName": "其他设施",
+    "description": "包含以下设施\n发电站、制造站、贸易站、人力办公室、会客室",
+    "buffer": []
+  },
+  "cc_c_room3": {
+    "termId": "cc.c.room3",
+    "termName": "工作场所",
+    "description": "包含以下设施\n发电站、制造站、贸易站、人力办公室、会客室、控制中枢、训练室",
+    "buffer": []
+  },
+  "cc_c_skill": {
+    "termId": "cc.c.skill",
+    "termName": "部分技能",
+    "description": "包含以下技能\n左膀右臂、S.W.E.E.P.、零食网络、清理协议、替身、必要责任、护卫、小小的领袖、独善其身、笑靥如春、金盏花诗会、捍卫之道",
+    "buffer": []
+  },
+  "cc_t_strong2": {
+    "termId": "cc.t.strong2",
+    "termName": "特殊叠加规则",
+    "description": "无法单独与<$cc.t.snsant1><@cc.rem>天道酬勤·α</></>、<$cc.t.snsant2><@cc.rem>天道酬勤·β</></>进行叠加，且优先生效\n当<$cc.t.snsant1><@cc.rem>天道酬勤·α</></>、<$cc.t.snsant2><@cc.rem>天道酬勤·β</></>与其他技能进行叠加时，该技能会对此叠加效果进行叠加",
+    "buffer": [
+      "cc_t_snsant1",
+      "cc_t_snsant2",
+      "cc_t_snsant1",
+      "cc_t_snsant2"
+    ]
+  },
+  "cc_c_sui2_1": {
+    "termId": "cc.c.sui2_1",
+    "termName": "特殊比较规则",
+    "description": "在<@cc.kw>公事公办</>，<@cc.kw>孤光共照</>，<@cc.kw>巴别塔之帜</>提供的<$cc.c.room2><@cc.kw>其他设施</></>每小时心情恢复值中取最高生效",
+    "buffer": [
+      "cc_c_room2"
+    ]
+  },
+  "cc_m_pow1": {
+    "termId": "cc.m.pow1",
+    "termName": "自动化·α",
+    "description": "由以下干员提供\n温蒂、森蚺、异客",
+    "buffer": []
+  },
+  "cc_m_pow2": {
+    "termId": "cc.m.pow2",
+    "termName": "自动化·β",
+    "description": "由以下干员提供\n森蚺",
+    "buffer": []
+  },
+  "cc_m_pow3": {
+    "termId": "cc.m.pow3",
+    "termName": "仿生海龙",
+    "description": "由以下干员提供\n温蒂",
+    "buffer": []
+  },
+  "cc_t_flow_gold": {
+    "termId": "cc.t.flow_gold",
+    "termName": "赤金生产线",
+    "description": "每有<@cc.kw>1</>间<@cc.kw>制造站</>生产<@cc.kw>赤金</>，则赤金生产线<@cc.kw>+1</>",
+    "buffer": []
+  },
+  "cc_w_ncdeer1": {
+    "termId": "cc.w.ncdeer1",
+    "termName": "因果",
+    "description": "每当加工心情消耗<@cc.kw>4</>以下的配方未产出副产品时，所消耗的每<@cc.kw>1</>点心情转化为<@cc.kw>1</>点<@cc.kw>因果</>",
+    "buffer": []
+  },
+  "cc_w_ncdeer2": {
+    "termId": "cc.w.ncdeer2",
+    "termName": "业报",
+    "description": "每当加工心情消耗<@cc.kw>8</>的配方未产出副产品时，所消耗的每<@cc.kw>1</>点心情转化为<@cc.kw>1</>点<@cc.kw>业报</>",
+    "buffer": []
+  },
+  "cc_t_accmuguard1": {
+    "termId": "cc.t.accmuguard1",
+    "termName": "武道",
+    "description": "协助专精训练至1级时累计<@cc.kw>1</>点、2级时累计<@cc.kw>2</>点、3级时累计<@cc.kw>3</>点，累计上限为<@cc.kw>3</>点（协助者心情为0时，无法累计或消耗）",
+    "buffer": []
+  },
+  "cc_sk_manu1": {
+    "termId": "cc.sk.manu1",
+    "termName": "标准化类技能",
+    "description": "包含以下技能\n标准化·α、标准化·β",
+    "buffer": []
+  },
+  "cc_sk_manu2": {
+    "termId": "cc.sk.manu2",
+    "termName": "莱茵科技类技能",
+    "description": "包含以下技能\n莱茵科技·α、莱茵科技·β、莱茵科技·γ",
+    "buffer": []
+  },
+  "cc_sk_manu3": {
+    "termId": "cc.sk.manu3",
+    "termName": "红松骑士团类技能",
+    "description": "包含以下技能\n红松骑士团·α、红松骑士团·β",
+    "buffer": []
+  },
+  "cc_sk_manu4": {
+    "termId": "cc.sk.manu4",
+    "termName": "金属工艺类技能",
+    "description": "包含以下技能\n金属工艺·α、金属工艺·β",
+    "buffer": []
+  },
+  "cc_tag_op": {
+    "termId": "cc.tag.op",
+    "termName": "作业平台",
+    "description": "包含以下干员\nLancet-2、Castle-3、THRM-EX、正义骑士号、Friston-3、PhonoR-0",
+    "buffer": []
+  },
+  "cc_tag_knight": {
+    "termId": "cc.tag.knight",
+    "termName": "骑士",
+    "description": "包含以下干员\n耀骑士临光、临光、瑕光、鞭刃、焰尾、远牙、灰毫、野鬃、正义骑士号、砾、薇薇安娜",
+    "buffer": []
+  },
+  "cc_tag_durin": {
+    "termId": "cc.tag.durin",
+    "termName": "杜林族",
+    "description": "包含以下干员\n至简、桃金娘、褐果、杜林",
+    "buffer": []
+  },
+  "cc_tag_mh": {
+    "termId": "cc.tag.mh",
+    "termName": "怪物猎人小队",
+    "description": "包含以下干员\n火龙S黑角、麒麟R夜刀、泰拉大陆调查团",
+    "buffer": []
+  },
+  "cc_gvial": {
+    "termId": "cc.gvial",
+    "termName": "嘉维尔",
+    "description": "包含以下干员\n百炼嘉维尔、嘉维尔",
+    "buffer": []
+  },
+  "cc_tra_pepe": {
+    "termId": "cc.tra.pepe",
+    "termName": "特别独占订单",
+    "description": "由佩佩提供的特殊贵金属订单，该订单的获取时长固定，收益恒定，所需赤金交付数为0",
+    "buffer": []
+  }
+}

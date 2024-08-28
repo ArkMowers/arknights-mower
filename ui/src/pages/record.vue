@@ -136,6 +136,7 @@ const showWorkRestReport = () => {
   padding: 20px 20px 100px 20px;
   border: 1px solid #ccc;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  position: relative;
 }
 
 h2 {
