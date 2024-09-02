@@ -245,6 +245,24 @@
     "description": "不退场，以当前血量在目标位置部署",
     "buffer": []
   },
+  "ba_magicpoint": {
+    "termId": "ba.magicpoint",
+    "termName": "魔力",
+    "description": "特殊技力，整场战斗继承",
+    "buffer": []
+  },
+  "ba_chant": {
+    "termId": "ba.chant",
+    "termName": "吟唱",
+    "description": "停止攻击一段时间后尝试开启技能，期间被打断则中止",
+    "buffer": []
+  },
+  "ba_laiosteam": {
+    "termId": "ba.laiosteam",
+    "termName": "莱欧斯小队",
+    "description": "包括玛露西尔、森西、莱欧斯、齐尔查克",
+    "buffer": []
+  },
   "cc_bd_A_1": {
     "termId": "cc.bd_A_1",
     "termName": "念力",
@@ -384,6 +402,12 @@
     "termId": "cc.bd_felyne_2",
     "termName": "可靠的随从们",
     "description": "拥有该基建技能的干员\n泰拉大陆调查团",
+    "buffer": []
+  },
+  "cc_bd_dungeon": {
+    "termId": "cc.bd_dungeon",
+    "termName": "魔物料理",
+    "description": "由以下干员的基建技能提供\n森西",
     "buffer": []
   },
   "cc_m_var1": {
@@ -666,6 +690,12 @@
     "termId": "cc.tag.mh",
     "termName": "怪物猎人小队",
     "description": "包含以下干员\n火龙S黑角、麒麟R夜刀、泰拉大陆调查团",
+    "buffer": []
+  },
+  "cc_tag_dungeon": {
+    "termId": "cc.tag.dungeon",
+    "termName": "莱欧斯小队",
+    "description": "包含以下干员\n玛露西尔、莱欧斯、齐尔查克、森西",
     "buffer": []
   },
   "cc_gvial": {
