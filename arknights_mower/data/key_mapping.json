@@ -111,20 +111,6 @@
         "NORMAL",
         10008
     ],
-    "LMTGS_COIN_5301": [
-        "LMTGS_COIN_5301",
-        "LMTGS_COIN_5301",
-        "寻访数据契约",
-        "NORMAL",
-        10025
-    ],
-    "寻访数据契约": [
-        "LMTGS_COIN_5301",
-        "LMTGS_COIN_5301",
-        "寻访数据契约",
-        "NORMAL",
-        10025
-    ],
     "EPGS_COIN": [
         "EPGS_COIN",
         "EPGS_COIN",
@@ -391,17 +377,17 @@
         "NORMAL",
         40001
     ],
-    "LIMITED_TKT_GACHA_10_5301": [
-        "LIMITED_TKT_GACHA_10_5301",
-        "LIMITED_TKT_GACHA_10_5301",
-        "璀璨闪耀寻访凭证",
+    "LINKAGE_TKT_GACHA_10_5401": [
+        "LINKAGE_TKT_GACHA_10_5401",
+        "LINKAGE_TKT_GACHA_10_5401",
+        "好好吃饭寻访凭证",
         "NORMAL",
         40003
     ],
-    "璀璨闪耀寻访凭证": [
-        "LIMITED_TKT_GACHA_10_5301",
-        "LIMITED_TKT_GACHA_10_5301",
-        "璀璨闪耀寻访凭证",
+    "好好吃饭寻访凭证": [
+        "LINKAGE_TKT_GACHA_10_5401",
+        "LINKAGE_TKT_GACHA_10_5401",
+        "好好吃饭寻访凭证",
         "NORMAL",
         40003
     ],
@@ -6579,6 +6565,48 @@
         "MATERIAL",
         700151
     ],
+    "p_char_4142_laios": [
+        "p_char_4142_laios",
+        "p_char_4142_laios",
+        "莱欧斯的信物",
+        "MATERIAL",
+        700152
+    ],
+    "莱欧斯的信物": [
+        "p_char_4142_laios",
+        "p_char_4142_laios",
+        "莱欧斯的信物",
+        "MATERIAL",
+        700152
+    ],
+    "p_char_4143_sensi": [
+        "p_char_4143_sensi",
+        "p_char_4143_sensi",
+        "森西的信物",
+        "MATERIAL",
+        700153
+    ],
+    "森西的信物": [
+        "p_char_4143_sensi",
+        "p_char_4143_sensi",
+        "森西的信物",
+        "MATERIAL",
+        700153
+    ],
+    "p_char_4144_chilc": [
+        "p_char_4144_chilc",
+        "p_char_4144_chilc",
+        "齐尔查克的信物",
+        "MATERIAL",
+        700154
+    ],
+    "齐尔查克的信物": [
+        "p_char_4144_chilc",
+        "p_char_4144_chilc",
+        "齐尔查克的信物",
+        "MATERIAL",
+        700154
+    ],
     "p_char_103_angel": [
         "p_char_103_angel",
         "p_char_103_angel",
@@ -7922,6 +7950,20 @@
         "佩佩的信物",
         "MATERIAL",
         600096
+    ],
+    "p_char_4141_marcil": [
+        "p_char_4141_marcil",
+        "p_char_4141_marcil",
+        "玛露西尔的信物",
+        "MATERIAL",
+        600097
+    ],
+    "玛露西尔的信物": [
+        "p_char_4141_marcil",
+        "p_char_4141_marcil",
+        "玛露西尔的信物",
+        "MATERIAL",
+        600097
     ],
     "class_p_char_123_fang": [
         "class_p_char_123_fang",
