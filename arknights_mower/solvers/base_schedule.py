@@ -28,7 +28,7 @@ from arknights_mower.utils.csleep import MowerExit, csleep
 from arknights_mower.utils.datetime import format_time, get_server_weekday
 from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.digit_reader import DigitReader
-from arknights_mower.utils.email import send_message, maa_template
+from arknights_mower.utils.email import maa_template, send_message
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
@@ -3253,7 +3253,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     global stage_drop
                     stage_drop = {"details": [], "summary": {}}
 
-                logger.info(f"MAA 启动")
+                logger.info("MAA 启动")
                 hard_stop = False
                 while self.MAA.running():
                     # 单次任务默认5分钟
@@ -3278,7 +3278,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     if self.device.check_current_focus():
                         self.recog.update()
                 elif not one_time:
-                    logger.info(f"记录MAA 本次执行时间")
+                    logger.info("记录MAA 本次执行时间")
                     self.last_execution["maa"] = datetime.now()
                     logger.info(self.last_execution["maa"])
                     if "Mall" in tasks and self.credit_fight is None:

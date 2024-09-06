@@ -3,7 +3,6 @@ import re
 import cv2
 
 from arknights_mower.models import navigation
-from arknights_mower.utils import hot_update
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import thres2
 from arknights_mower.utils.log import logger
