@@ -1,3 +1,5 @@
+FZDYSK.TTF
+
 !main.spec
 *.yaml
 !arknights_mower/templates/*.yaml
@@ -28,11 +30,15 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Nodejs Version Manager
+.nvmrc
+
 # C extensions
 *.so
 
 # Distribution / packaging
 .Python
+mower/
 build/
 develop-eggs/
 dist/
@@ -56,7 +62,6 @@ MANIFEST
 #  Usually these files are written by a python script from a template
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
-*.spec
 
 # Installer logs
 pip-log.txt
@@ -108,6 +113,13 @@ ipython_config.py
 
 # pyenv
 .python-version
+
+# nodenv
+.node-version
+
+# syncthing
+.stfolder/
+.stignore
 
 # pipenv
 #   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
@@ -175,4 +187,26 @@ dmypy.json
 ###JetBrains Product###
 .idea/*
 
+### 命令行运行产生的/tmp/data.db
+/tmp/
+
 # End of https://www.toptal.com/developers/gitignore/api/visualstudiocode
+/*.json
+dist
+MAA
+/*.yml
+
+# venv
+/bin/
+/pyvenv.cfg
+/lib64
+
+#testspace
+/testspace
+
+
+/.buildozer/
+
+
+*.ipynb
+.rgignore

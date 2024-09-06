@@ -1,352 +1,518 @@
-from __future__ import annotations
+import lzma
+import pickle
+from itertools import combinations
 
-from ..data import recruit_agent, recruit_tag
-from ..ocr import ocr_rectify, ocrhandle
-from ..utils import segment
-from ..utils.device import Device
-from ..utils.log import logger
-from ..utils.recognize import RecognizeError, Recognizer, Scene
-from ..utils.solver import BaseSolver
+import cv2
+
+from arknights_mower import __rootdir__
+from arknights_mower.data import (
+    agent_with_tags,
+    recruit_agent,
+)
+from arknights_mower.utils import config
+from arknights_mower.utils.device.device import Device
+from arknights_mower.utils.email import recruit_rarity, recruit_template, send_message
+from arknights_mower.utils.graph import SceneGraphSolver
+from arknights_mower.utils.image import cropimg, thres2
+from arknights_mower.utils.log import logger
+from arknights_mower.utils.recognize import Recognizer, Scene
+from arknights_mower.utils.vector import va
+
+with lzma.open(f"{__rootdir__}/models/riic_base_digits.pkl", "rb") as f:
+    number = pickle.load(f)
+with lzma.open(f"{__rootdir__}/models/recruit_result.pkl", "rb") as f:
+    recruit_res_template = pickle.load(f)
+with lzma.open(f"{__rootdir__}/models/recruit.pkl", "rb") as f:
+    tag_template = pickle.load(f)
+job_list = [
+    "recruit/riic_res/CASTER",
+    "recruit/riic_res/MEDIC",
+    "recruit/riic_res/PIONEER",
+    "recruit/riic_res/SPECIAL",
+    "recruit/riic_res/SNIPER",
+    "recruit/riic_res/SUPPORT",
+    "recruit/riic_res/TANK",
+    "recruit/riic_res/WARRIOR",
+]
 
 
-class RecruitPoss(object):
-    """ 记录公招标签组合的可能性数据 """
-
-    def __init__(self, choose: int, max: int = 0, min: int = 7) -> None:
-        self.choose = choose  # 标签选择（按位），第 6 个标志位表示是否选满招募时限，0 为选满，1 为选 03:50
-        self.max = max  # 等级上限
-        self.min = min  # 等级下限
-        self.poss = 0  # 可能性
-        self.lv2a3 = False  # 是否包含等级为 2 和 3 的干员
-        self.ls = []  # 可能的干员列表
-
-    def __lt__(self, another: RecruitPoss) -> bool:
-        return (self.poss) < (another.poss)
-
-    def __str__(self) -> str:
-        return "%s,%s,%s,%s,%s" % (self.choose, self.max, self.min, self.poss, self.ls)
-
-    def __repr__(self) -> str:
-        return "%s,%s,%s,%s,%s" % (self.choose, self.max, self.min, self.poss, self.ls)
-
-
-class RecruitSolver(BaseSolver):
-    """
-    自动进行公招
-    """
-
+class RecruitSolver(SceneGraphSolver):
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
         super().__init__(device, recog)
+        self.find_scope = {
+            "recruit/begin_recruit": [(340, 200), (590, 300)],
+            "recruit/job_requirements": [(100, 20), (300, 100)],
+            "recruit/recruit_done": [(300, 250), (600, 340)],
+            "recruit/recruit_lock": [(400, 120), (540, 220)],
+        }
 
-    def run(self, priority: list[str] = None) -> None:
-        """
-        :param priority: list[str], 优先考虑的公招干员，默认为高稀有度优先
-        """
-        self.priority = priority
-        self.recruiting = 0
-        self.has_ticket = True  # 默认含有招募票
-        self.can_refresh = True  # 默认可以刷新
+        # 四个招募栏位的位置 固定1920*1080所以直接写死了
+        up = 270
+        down = 1060
+        left = 25
+        right = 1890
 
-        logger.info('Start: 公招')
-        logger.info(f'目标干员：{priority if priority else "无，高稀有度优先"}')
+        self.segments = {
+            1: [(left, up), (950, 650)],
+            2: [(970, up), (right, 650)],
+            3: [(left, 690), (950, 650)],
+            4: [(970, 690), (right, down)],
+        }
+        self.agent_choose = {}
+        self.recruit_index = 1
+        # 默认要支援机械
+        self.recruit_order_index = 2
+        self.recruit_order = [6, 5, 1, 4, 3, 2]
+
+        self.result_agent = {}
+        self.ticket_number = None
+
+    def run(self):
+        self.add_recruit_param()
         super().run()
+        logger.info(self.result_agent)
+
+        if self.agent_choose:
+            logger.info("开包汇总如下")
+            for pos in self.agent_choose:
+                agent = []
+                for item in self.agent_choose[pos]["result"]:
+                    agent.append(item["name"])
+                logger.info(
+                    "{}:[".format(pos)
+                    + ",".join(self.agent_choose[pos]["tags"])
+                    + "]:{}".format(",".join(agent))
+                )
+        if self.agent_choose or self.result_agent:
+            logger.info("招募汇总如下")
+            send_message(
+                recruit_template.render(
+                    recruit_results=self.agent_choose,
+                    recruit_get_agent=self.result_agent,
+                    permit_count=config.conf.recruitment_permit,
+                    title_text="公招汇总",
+                ),
+                "公招汇总通知",
+                "INFO",
+            )
+        return self.agent_choose, self.result_agent
 
     def transition(self) -> bool:
-        if self.scene() == Scene.INDEX:
-            self.tap_element('index_recruit')
-        elif self.scene() == Scene.RECRUIT_MAIN:
-            segments = segment.recruit(self.recog.img)
-            tapped = False
-            for idx, seg in enumerate(segments):
-                if self.recruiting & (1 << idx) != 0:
-                    continue
-                if self.tap_element('recruit_finish', scope=seg, detected=True):
-                    tapped = True
-                    break
-                if not self.has_ticket and not self.can_refresh:
-                    continue
-                required = self.find('job_requirements', scope=seg)
-                if required is None:
-                    self.tap(seg)
-                    tapped = True
-                    self.recruiting |= (1 << idx)
-                    break
-            if not tapped:
+        if (scene := self.scene()) == Scene.RECRUIT_MAIN:
+            if self.recruit_index > 4:
+                logger.info("结束公招")
                 return True
-        elif self.scene() == Scene.RECRUIT_TAGS:
+            job_requirements_scope = [
+                va(
+                    self.segments[self.recruit_index][0],
+                    self.find_scope["recruit/job_requirements"][0],
+                ),
+                va(
+                    self.segments[self.recruit_index][0],
+                    self.find_scope["recruit/job_requirements"][1],
+                ),
+            ]
+            begin_recruit_scope = [
+                va(
+                    self.segments[self.recruit_index][0],
+                    self.find_scope["recruit/begin_recruit"][0],
+                ),
+                va(
+                    self.segments[self.recruit_index][0],
+                    self.find_scope["recruit/begin_recruit"][1],
+                ),
+            ]
+            recruit_done_scope = [
+                va(
+                    self.segments[self.recruit_index][0],
+                    self.find_scope["recruit/recruit_done"][0],
+                ),
+                va(
+                    self.segments[self.recruit_index][0],
+                    self.find_scope["recruit/recruit_done"][1],
+                ),
+            ]
+            recruit_lock_scope = [
+                va(
+                    self.segments[self.recruit_index][0],
+                    self.find_scope["recruit/recruit_lock"][0],
+                ),
+                va(
+                    self.segments[self.recruit_index][0],
+                    self.find_scope["recruit/recruit_lock"][1],
+                ),
+            ]
+
+            if self.find("recruit/job_requirements", scope=job_requirements_scope):
+                self.recruit_index = self.recruit_index + 1
+                logger.debug(f"{self.recruit_index}正在招募")
+                return
+            elif pos := self.find("recruit/recruit_lock", scope=recruit_lock_scope):
+                logger.debug(f"{self.recruit_index}锁定")
+                return True
+            elif pos := self.find("recruit/recruit_done", scope=recruit_done_scope):
+                logger.debug(f"{self.recruit_index}结束招募 开包")
+                self.tap(pos)
+                return
+            elif pos := self.find("recruit/begin_recruit", scope=begin_recruit_scope):
+                self.ticket_number = self.get_ticket_number()
+                if self.ticket_number == 0:
+                    self.recruit_index = self.recruit_index + 1
+                    logger.debug(f"{self.recruit_index} 张招募券")
+                    return
+                self.tap(pos)
+                return
+
+        elif scene == Scene.RECRUIT_TAGS:
+            self.ticket_number = self.get_ticket_number()
             return self.recruit_tags()
-        elif self.scene() == Scene.SKIP:
-            self.tap_element('skip')
-        elif self.scene() == Scene.RECRUIT_AGENT:
+        elif scene == Scene.REFRESH_TAGS:
+            self.tap_element("recruit/refresh_comfirm")
+        elif scene == Scene.RECRUIT_AGENT:
             return self.recruit_result()
-        elif self.scene() == Scene.MATERIEL:
-            self.tap_element('materiel_ico')
-        elif self.scene() == Scene.LOADING:
-            self.sleep(3)
-        elif self.scene() == Scene.CONNECTING:
-            self.sleep(3)
-        elif self.get_navigation():
-            self.tap_element('nav_recruit')
-        elif self.scene() != Scene.UNKNOWN:
-            self.back_to_index()
+        elif scene == Scene.SKIP:
+            self.tap_element("skip")
+        elif scene in self.waiting_scene:
+            self.waiting_solver()
         else:
-            raise RecognizeError('Unknown scene')
+            self.scene_graph_navigation(Scene.RECRUIT_MAIN)
 
-    def recruit_tags(self) -> bool:
-        """ 识别公招标签的逻辑 """
-        if self.find('recruit_no_ticket') is not None:
-            self.has_ticket = False
-        if self.find('recruit_no_refresh') is not None:
-            self.can_refresh = False
+    def recruit_result(self):
+        try:
+            # 存在读完一次没退完再读一次
+            if str(self.recruit_index) in self.result_agent.keys():
+                self.tap((950, 150))
+                return
 
-        needs = self.find('career_needs', judge=False)
-        avail_level = self.find('available_level', judge=False)
-        budget = self.find('recruit_budget', judge=False)
-        up = needs[0][1] - 80
-        down = needs[1][1] + 60
-        left = needs[1][0]
-        right = avail_level[0][0]
+            job_pt = None
+            for i in job_list:
+                if job_pt := self.find(i):
+                    break
 
-        while True:
-            # ocr the recruitment tags and rectify
-            img = self.recog.img[up:down, left:right]
-            ocr = ocrhandle.predict(img)
-            for x in ocr:
-                if x[1] not in recruit_tag:
-                    x[1] = ocr_rectify(img, x, recruit_tag, '公招标签')
+            img = cropimg(self.recog.gray, ((job_pt[1][0], 730), (1800, 860)))
+            img = cv2.threshold(img, 220, 255, cv2.THRESH_BINARY)[1]
 
-            # recruitment tags
-            tags = [x[1] for x in ocr]
-            logger.info(f'公招标签：{tags}')
+            score = {}
+            for id in recruit_res_template:
+                res = recruit_res_template[id]
+                result = cv2.matchTemplate(img, res, cv2.TM_CCORR_NORMED, res)
+                _, max_val, _, _ = cv2.minMaxLoc(result)
+                score[id] = max_val
+            self.result_agent[self.recruit_index] = recruit_agent[
+                max(score, key=score.get)
+            ]["name"]
 
-            # choose tags
-            choose, best = self.tags_choose(tags, self.priority)
-            if best.choose < (1 << 5) and best.min <= 3:
-                # refresh
-                if self.tap_element('recruit_refresh', detected=True):
-                    self.tap_element('double_confirm', 0.8,
-                                     interval=3, judge=False)
-                    continue
-            elif not self.has_ticket and best.choose < (1 << 5) and best.min <= 4:
-                # refresh, when no ticket
-                if self.tap_element('recruit_refresh', detected=True):
-                    self.tap_element('double_confirm', 0.8,
-                                     interval=3, judge=False)
-                    continue
-            break
+        except Exception as e:
+            logger.exception(f"公招开包异常:{e}")
+        finally:
+            self.tap((500, 500))
 
-        # 如果没有招募券则只刷新标签不选人
-        if not self.has_ticket:
-            logger.debug('OK')
+    def recruit_tags(self):
+        tags = self.get_recruit_tag()
+        logger.debug("tag识别结果{}".format(tags))
+
+        tem_res = self.recruit_cal(sorted(tags))
+        recruit_cal_result = None
+        recruit_result_level = -1
+
+        for index in self.recruit_order:
+            if tem_res[index]:
+                recruit_result_level = index
+                break
+        if recruit_result_level == -1:
+            logger.error("筛选结果为 {}".format(tem_res))
+            raise ValueError("筛选tag失败")
+        elif recruit_result_level != 3 and self.all_same_res(
+            tem_res, recruit_result_level
+        ):
+            recruit_cal_result = [tem_res[recruit_result_level][-1]]
+        else:
+            recruit_cal_result = tem_res[recruit_result_level]
+        logger.debug(recruit_cal_result)
+        if recruit_result_level == 3:
+            if pos := self.find("recruit/refresh"):
+                self.tap(pos)
+                return
+
+        if self.recruit_order.index(recruit_result_level) <= self.recruit_order_index:
+            logger.info("稀有tag,发送邮件")
+            send_message(
+                recruit_rarity.render(
+                    recruit_results=recruit_cal_result,
+                    title_text="稀有tag通知",
+                ),
+                "出稀有标签辣",
+                "WARNING",
+            )
+            if recruit_result_level == 6 or recruit_result_level == 1:
+                logger.debug(f"{recruit_result_level}星稀有tag  ,不选")
+                self.recruit_index = self.recruit_index + 1
+                self.back()
+                return
+            elif recruit_result_level == 5:
+                if config.conf.recruit_auto_5 == 2:
+                    if config.conf.recruit_auto_only5 and len(recruit_cal_result) > 1:
+                        logger.debug(
+                            f"{recruit_result_level}星稀有tag,但不止一个或纯手动选择"
+                        )
+                        self.recruit_index = self.recruit_index + 1
+                        self.back()
+                        return
+
+        if self.ticket_number == 0:
+            self.recruit_index = self.recruit_index + 1
             self.back()
             return
 
-        # tap selected tags
-        logger.info(f'选择：{choose}')
-        for x in ocr:
-            color = self.recog.img[up+x[2][0][1]-5, left+x[2][0][0]-5]
-            if (color[2] < 100) != (x[1] not in choose):
-                self.device.tap((left+x[2][0][0]-5, up+x[2][0][1]-5))
+        if (
+            self.ticket_number < config.conf.recruitment_permit
+            and recruit_result_level == 3
+        ):
+            self.recruit_index = self.recruit_index + 1
+            logger.info("没券 返回")
+            self.back()
+            return
 
-        if best.choose < (1 << 5):
+        choose = []
+        if recruit_result_level > 3:
+            choose = recruit_cal_result[0]["tag"]
+
+        # tap selected tags
+        logger.info(f"选择标签：{list(choose)} ")
+        for x in choose:
+            # 存在choose为空但是进行标签选择的情况
+            logger.debug(f"tap{x}:{tags[x]}")
+            self.tap(tags[x])
+
+        # 9h为True 3h50min为False
+        logger.debug("开始选择时长")
+        # 默认三星招募时长是9：00
+        recruit_time_choose = 540
+        # 默认一星招募时长是3：50
+        if recruit_result_level == 1:
+            recruit_time_choose = 230
+
+        if recruit_time_choose == 540:
             # 09:00
-            self.tap_element('one_hour', 0.2, 0.8, 0)
-        else:
+            logger.debug("时间9h")
+            self.tap_element("one_hour", 0.2, 0.8, 0.5)
+        elif recruit_time_choose == 230:
             # 03:50
-            [self.tap_element('one_hour', 0.2, 0.2, 0) for _ in range(2)]
-            [self.tap_element('one_hour', 0.5, 0.2, 0) for _ in range(5)]
+            logger.debug("时间3h50min")
+            [self.tap_element("one_hour", 0.2, 0.2, 0.5) for _ in range(2)]
+            [self.tap_element("one_hour", 0.5, 0.2, 0.5) for _ in range(5)]
+        # elif recruit_time_choose == 460:
+        #     # 07:40
+        #     logger.debug("时间7h40min")
+        #     [self.tap_element("one_hour", 0.2, 0.8, 0) for _ in range(2)]
+        #     [self.tap_element("one_hour", 0.5, 0.8, 0) for _ in range(2)]
 
         # start recruit
-        self.tap((avail_level[1][0], budget[0][1]), interval=3)
+        self.tap_element("recruit/start_recruit")
+        self.ticket_number = self.ticket_number - 1
 
-    def recruit_result(self) -> bool:
-        """ 识别公招招募到的干员 """
-        agent = None
-        ocr = ocrhandle.predict(self.recog.img)
-        for x in ocr:
-            if x[1][-3:] == '的信物':
-                agent = x[1][:-3]
-                agent_ocr = x
-                break
-        if agent is None:
-            logger.warning('未能识别到干员名称')
+        if recruit_result_level > 3:
+            self.agent_choose[str(self.recruit_index)] = {
+                "tags": list(choose),
+                "result": list(recruit_cal_result[0]["result"]),
+            }
+            tmp_res_list = []
+            for i in list(recruit_cal_result[0]["result"]):
+                tmp_res_list.append(i["name"])
+            logger.info(
+                "第{}个位置上的公招预测结果：{}".format(
+                    self.recruit_index,
+                    tmp_res_list,
+                )
+            )
         else:
-            if agent not in recruit_agent.keys():
-                agent_with_suf = [x+'的信物' for x in recruit_agent.keys()]
-                agent = ocr_rectify(
-                    self.recog.img, agent_ocr, agent_with_suf, '干员名称')[:-3]
-            if agent in recruit_agent.keys():
-                if 2 <= recruit_agent[agent]['stars'] <= 4:
-                    logger.info(f'获得干员：{agent}')
-                else:
-                    logger.critical(f'获得干员：{agent}')
-        self.tap((self.recog.w // 2, self.recog.h // 2))
+            self.agent_choose[str(self.recruit_index)] = {
+                "tags": list(choose),
+                "result": [{"id": "", "name": "随机三星干员", "star": 3}],
+            }
+            logger.info(
+                f'第{self.recruit_index}个位置上的公招预测结果：{"随机三星干员"}'
+            )
+        self.recruit_index = self.recruit_index + 1
+        return
 
-    def tags_choose(self, tags: list[str], priority: list[str]) -> tuple[list[str], RecruitPoss]:
-        """ 公招标签选择核心逻辑 """
-        if priority is None:
-            priority = []
-        if len(priority) and isinstance(priority[0], str):
-            priority = [[x] for x in priority]
-        possibility: dict[int, RecruitPoss] = {}
-        agent_level_dict = {}
+    def all_same_res(self, recruit_cal_res, index):
+        tmp_list = recruit_cal_res[index]
+        last_res = tmp_list[-1]
+        for i in range(len(tmp_list) - 2, -1, -1):
+            if tmp_list[i]["result"] != last_res["result"]:
+                return False
+        return True
 
-        # 挨个干员判断可能性
-        for x in recruit_agent.values():
-            agent_name = x['name']
-            agent_level = x['stars']
-            agent_tags = x['tags']
-            agent_level_dict[agent_name] = agent_level
+    def recruit_cal(self, tags: list[str]):
+        logger.debug(f"选择标签{tags}")
+        index_dict = {k: i for i, k in enumerate(self.recruit_order)}
+        combined_agent = {}
+        if "新手" in tags:
+            tags.remove("新手")
+        for item in combinations(tags, 1):
+            tmp = agent_with_tags[item[0]]
 
-            # 高级资深干员需要有特定的 tag
-            if agent_level == 6 and '高级资深干员' not in tags:
+            if len(tmp) == 0:
                 continue
+            tmp.sort(key=lambda k: k["star"], reverse=True)
+            combined_agent[item] = tmp
+        for item in combinations(tags, 2):
+            tmp = [j for j in agent_with_tags[item[0]] if j in agent_with_tags[item[1]]]
 
-            # 统计 9 小时公招的可能性
-            valid_9 = None
-            if 3 <= agent_level <= 6:
-                valid_9 = 0
-                if agent_level == 6 and '高级资深干员' in tags:
-                    valid_9 |= (1 << tags.index('高级资深干员'))
-                if agent_level == 5 and '资深干员' in tags:
-                    valid_9 |= (1 << tags.index('资深干员'))
-                for tag in agent_tags:
-                    if tag in tags:
-                        valid_9 |= (1 << tags.index(tag))
+            if len(tmp) == 0:
+                continue
+            tmp.sort(key=lambda k: k["star"])
+            combined_agent[item] = tmp
+        for item in combinations(tags, 3):
+            tmp1 = [
+                j for j in agent_with_tags[item[0]] if j in agent_with_tags[item[1]]
+            ]
+            tmp = [j for j in tmp1 if j in agent_with_tags[item[2]]]
 
-            # 统计 3 小时公招的可能性
-            valid_3 = None
-            if 1 <= agent_level <= 4:
-                valid_3 = 0
-                for tag in agent_tags:
-                    if tag in tags:
-                        valid_3 |= (1 << tags.index(tag))
+            if len(tmp) == 0:
+                continue
+            tmp.sort(key=lambda k: k["star"], reverse=True)
+            combined_agent[item] = tmp
 
-            # 枚举所有可能的标签组合子集
-            for o in range(1 << 5):
-                if valid_9 is not None and o & valid_9 == o:
-                    if o not in possibility.keys():
-                        possibility[o] = RecruitPoss(o)
-                    possibility[o].ls.append(agent_name)
-                    possibility[o].max = max(possibility[o].max, agent_level)
-                    possibility[o].min = min(possibility[o].min, agent_level)
-                    possibility[o].lv2a3 |= 2 <= agent_level <= 3
-                _o = o + (1 << 5)
-                if valid_3 is not None and o & valid_3 == o:
-                    if _o not in possibility.keys():
-                        possibility[_o] = RecruitPoss(_o)
-                    possibility[_o].ls.append(agent_name)
-                    possibility[_o].max = max(possibility[_o].max, agent_level)
-                    possibility[_o].min = min(possibility[_o].min, agent_level)
-                    possibility[_o].lv2a3 |= 2 <= agent_level <= 3
+        sorted_list = sorted(
+            combined_agent.items(), key=lambda x: index_dict[x[1][0]["star"]]
+        )
 
-        # 检查是否存在无法从公开招募中获得的干员
-        for considering in priority:
-            for x in considering:
-                if agent_level_dict.get(x) is None:
-                    logger.error(f'该干员并不能在公开招募中获得：{x}')
-                    raise RuntimeError
+        result_dict = {}
+        for item in sorted_list:
+            result_dict[item[0]] = []
+            max_star = -1
+            min_star = 7
+            for agent in item[1]:
+                if "高级资深干员" not in item[0] and agent["star"] == 6:
+                    continue
+                if agent["star"] > max_star:
+                    max_star = agent["star"]
+                if agent["star"] < min_star:
+                    min_star = agent["star"]
+            for agent in item[1]:
+                if max_star > 1 and agent["star"] == 2:
+                    continue
+                if max_star > 1 and agent["star"] == 1:
+                    continue
+                if max_star < 6 and agent["star"] == 6:
+                    continue
+                result_dict[item[0]].append(agent)
+                logger.debug(item[0], agent)
+            try:
+                for key in list(result_dict.keys()):
+                    if len(result_dict[key]) == 0:
+                        result_dict.pop(key)
 
-        best = RecruitPoss(0)
+                result_dict[item[0]] = sorted(
+                    result_dict[item[0]], key=lambda x: x["star"], reverse=True
+                )
+                min_star = result_dict[item[0]][-1]["star"]
+                for res in result_dict[item[0]][:]:
+                    if res["star"] > min_star:
+                        result_dict[item[0]].remove(res)
+            except KeyError:
+                logger.debug("Recruit Cal Key Error :{}".format(result_dict))
+                continue
+        result = {
+            6: [],
+            5: [],
+            4: [],
+            3: [],
+            2: [],
+            1: [],
+        }
+        for tag in result_dict:
+            result[result_dict[tag][0]["star"]].append(
+                {"tag": tag, "result": result_dict[tag]}
+            )
+        for item in result:
+            if result[item]:
+                logger.debug("{}:{}".format(item, result[item]))
+        return result
 
-        # 按照优先级判断，必定选中同一星级干员
-        # 附加限制：min_level == agent_level
-        if best.poss == 0:
-            logger.debug('choose: priority, min_level == agent_level')
-            for considering in priority:
-                for o in possibility.keys():
-                    possibility[o].poss = 0
-                    for x in considering:
-                        if x in possibility[o].ls:
-                            agent_level = agent_level_dict[x]
-                            if agent_level != 1 and agent_level == possibility[o].min:
-                                possibility[o].poss += 1
-                            elif agent_level == 1 and agent_level == possibility[o].min == possibility[o].max:
-                                # 必定选中一星干员的特殊逻辑
-                                possibility[o].poss += 1
-                    possibility[o].poss /= len(possibility[o].ls)
-                    if best < possibility[o]:
-                        best = possibility[o]
-                if best.poss > 0:
-                    break
+    def get_recruit_tag(self):
+        up = 520
+        down = 740
+        left = 530
+        right = 1300
 
-        # 按照优先级判断，若目标干员 1 星且该组合不存在 2/3 星的可能，则选择
-        # 附加限制：min_level == agent_level == 1 and not lv2a3
-        if best.poss == 0:
-            logger.debug(
-                'choose: priority, min_level == agent_level == 1 and not lv2a3')
-            for considering in priority:
-                for o in possibility.keys():
-                    possibility[o].poss = 0
-                    for x in considering:
-                        if x in possibility[o].ls:
-                            agent_level = agent_level_dict[x]
-                            if agent_level == possibility[o].min == 1 and not possibility[o].lv2a3:
-                                # 特殊判断：选中一星和四星干员的 Tag 组合
-                                possibility[o].poss += 1
-                    possibility[o].poss /= len(possibility[o].ls)
-                    if best < possibility[o]:
-                        best = possibility[o]
-                if best.poss > 0:
-                    break
+        img = self.recog.img[up:down, left:right]
+        tags_img = self.split_tags(img)
+        tags = {}
+        h, w, _ = img.shape
 
-        # 按照优先级判断，必定选中星级 >= 4 的干员
-        # 附加限制：min_level >= 4
-        if best.poss == 0:
-            logger.debug('choose: priority, min_level >= 4')
-            for considering in priority:
-                for o in possibility.keys():
-                    possibility[o].poss = 0
-                    if possibility[o].min >= 4:
-                        for x in considering:
-                            if x in possibility[o].ls:
-                                possibility[o].poss += 1
-                    possibility[o].poss /= len(possibility[o].ls)
-                    if best < possibility[o]:
-                        best = possibility[o]
-                if best.poss > 0:
-                    break
+        for index, value in enumerate(tags_img):
+            max_v = -1
+            tag_res = None
+            for key in tag_template:
+                res = cv2.matchTemplate(
+                    value,
+                    tag_template[key],
+                    cv2.TM_CCORR_NORMED,
+                )
 
-        # 按照等级下限判断，必定选中星级 >= 4 的干员
-        # 附加限制：min_level >= 4
-        if best.poss == 0:
-            logger.debug('choose: min_level >= 4')
-            for o in possibility.keys():
-                possibility[o].poss = 0
-                if possibility[o].min >= 4:
-                    possibility[o].poss = possibility[o].min
-                if best < possibility[o]:
-                    best = possibility[o]
+                _, max_val, _, _ = cv2.minMaxLoc(res)
+                if max_val > max_v:
+                    tag_res = {"tag": key, "val": max_val}
+                    max_v = max_val
+            tag_pos = (
+                int(left + (index % 3) * int(w / 3) + 30),
+                int(up + int(index / 3) * int(h / 2) + 30),
+            )
+            tags[tag_res["tag"]] = tag_pos
+        return tags
 
-        # 按照优先级判断，检查其概率
-        if best.poss == 0:
-            logger.debug('choose: priority')
-            for considering in priority:
-                for o in possibility.keys():
-                    possibility[o].poss = 0
-                    for x in considering:
-                        if x in possibility[o].ls:
-                            possibility[o].poss += 1
-                    possibility[o].poss /= len(possibility[o].ls)
-                    if best < possibility[o]:
-                        best = possibility[o]
-                if best.poss > 0:
-                    break
+    def split_tags(self, img):
+        tag_img = []
+        h, w, _ = img.shape
+        ori_img = img
+        tag_h, tag_w = int(h / 2), int(w / 3)
+        for i in range(0, 2):
+            for j in range(0, 3):
+                if i * j == 2:
+                    continue
+                tag_img.append(img[0:tag_h, 0:tag_w])
+                img = img[0:h, tag_w:w]
+            img = ori_img[tag_h:h, 0:w]
 
-        # 按照等级下限判断，默认高稀有度优先
-        if best.poss == 0:
-            logger.debug('choose: min_level')
-            for o in possibility.keys():
-                possibility[o].poss = possibility[o].min
-                if best < possibility[o]:
-                    best = possibility[o]
+        return tag_img
 
-        logger.debug(f'poss: {possibility}')
-        logger.debug(f'best: {best}')
+    def get_ticket_number(self, height: int | None = 0, thres: int | None = 180):
+        p1, p2 = self.find("recruit/ticket")
+        p3, _ = self.find("recruit/stone")
+        p1 = (p2[0], p1[1] + 10)
+        p3 = (p3[0] - 30, p2[1] - 5)
+        img = cropimg(self.recog.gray, (p1, p3))
+        default_height = 29
+        if height and height != default_height:
+            scale = default_height / height
+            img = cv2.resize(img, None, None, scale, scale)
+        img = thres2(img, thres)
+        contours, _ = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        rect = [cv2.boundingRect(c) for c in contours]
+        rect.sort(key=lambda c: c[0])
+        value = 0
+        for x, y, w, h in rect:
+            digit = cropimg(img, ((x, y), (x + w, y + h)))
+            digit = cv2.copyMakeBorder(
+                digit, 10, 10, 10, 10, cv2.BORDER_CONSTANT, None, (0,)
+            )
+            if digit.size < 800:
+                continue
+            score = []
+            for i in range(10):
+                im = number[i]
+                if digit.shape[0] < im.shape[0] or digit.shape[1] < im.shape[1]:
+                    continue
+                result = cv2.matchTemplate(digit, im, cv2.TM_SQDIFF_NORMED)
+                min_val, _, _, _ = cv2.minMaxLoc(result)
+                score.append(min_val)
+            value = value * 10 + score.index(min(score))
+        return value
 
-        # 返回选择的标签列表
-        choose = []
-        for i in range(len(tags)):
-            if best.choose & (1 << i):
-                choose.append(tags[i])
-        return choose, best
+    def add_recruit_param(self):
+        if not config.conf.recruit_robot:
+            self.recruit_order = [6, 5, 4, 3, 2, 1]
+            self.recruit_order_index = 1

@@ -1,48 +1,54 @@
-from ..utils import detector
-from ..utils.device import Device
-from ..utils.log import logger
-from ..utils.recognize import RecognizeError, Recognizer, Scene
-from ..utils.solver import BaseSolver
+import cv2
+
+from arknights_mower.utils.graph import SceneGraphSolver
+from arknights_mower.utils.image import cropimg, loadres, thres2
+from arknights_mower.utils.log import logger
+from arknights_mower.utils.recognize import Scene
 
 
-class CreditSolver(BaseSolver):
-    """
-    通过线索交换自动收集信用
-    """
-
-    def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
-        super().__init__(device, recog)
-
+class CreditSolver(SceneGraphSolver):
     def run(self) -> None:
-        logger.info('Start: 信用')
-        super().run()
+        logger.info("Start: 访问好友")
+        self.wait_times = 5
+        return super().run()
 
     def transition(self) -> bool:
-        if self.scene() == Scene.INDEX:
-            self.tap_element('index_friend')
-        elif self.scene() == Scene.FRIEND_LIST_OFF:
-            self.tap_element('friend_list')
-        elif self.scene() == Scene.FRIEND_LIST_ON:
-            down = self.find('friend_list_on', strict=True)[1][1]
-            scope = [(0, 0), (100000, down)]
-            if not self.tap_element('friend_visit', scope=scope, detected=True):
-                self.sleep(1)
-        elif self.scene() == Scene.FRIEND_VISITING:
-            visit_limit = self.find('visit_limit')
-            if visit_limit is not None:
-                return True
-            visit_next = detector.visit_next(self.recog.img)
-            if visit_next is not None:
-                self.tap(visit_next)
+        if (scene := self.scene()) == Scene.FRIEND_LIST:
+            left, top = 1460, 220
+            img = cropimg(self.recog.gray, ((left, top), (1800, 1000)))
+            img = thres2(img, 245)
+            tpl = loadres("friend_visit", True)
+            result = cv2.matchTemplate(img, tpl, cv2.TM_SQDIFF_NORMED)
+            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+            h, w = tpl.shape
+            pos = (
+                (min_loc[0] + left, min_loc[1] + top),
+                (min_loc[0] + left + w, min_loc[1] + top + h),
+            )
+            logger.debug(f"{min_val=}, {pos=}")
+            if min_val < 0.5:
+                self.tap(pos)
             else:
-                return True
-        elif self.scene() == Scene.LOADING:
-            self.sleep(3)
-        elif self.scene() == Scene.CONNECTING:
-            self.sleep(3)
-        elif self.get_navigation():
-            self.tap_element('nav_social')
-        elif self.scene() != Scene.UNKNOWN:
-            self.back_to_index()
+                self.sleep()
+        elif self.find("visit_limit"):
+            logger.info("今日参与交流已达上限")
+            return True
+        elif scene == Scene.FRIEND_VISITING:
+            if clue_next := self.find("clue_next"):
+                x, y = self.get_pos(clue_next, x_rate=0.5, y_rate=0.85)
+                hsv = cv2.cvtColor(self.recog.img, cv2.COLOR_RGB2HSV)
+                if abs(hsv[y][x][0] - 12) < 3:
+                    self.wait_times = 5
+                    self.tap(clue_next)
+                else:
+                    return True
+            else:
+                if self.wait_times > 0:
+                    self.wait_times -= 1
+                    self.sleep()
+                else:
+                    return True
+        elif scene in self.waiting_scene:
+            self.waiting_solver()
         else:
-            raise RecognizeError('Unknown scene')
+            self.scene_graph_navigation(Scene.FRIEND_LIST)

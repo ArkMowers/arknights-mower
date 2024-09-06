@@ -2,20 +2,20 @@ from __future__ import annotations
 
 import socket
 
-from ...log import logger
+from arknights_mower.utils.log import logger
 
 
-class Socket(object):
-    """ Connect ADB server with socket """
+class Socket:
+    """Connect ADB server with socket"""
 
     def __init__(self, server: tuple[str, int], timeout: int) -> None:
-        logger.debug(f'server: {server}, timeout: {timeout}')
+        logger.debug(f"server: {server}, timeout: {timeout}")
         try:
             self.sock = None
             self.sock = socket.create_connection(server, timeout=timeout)
             self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         except ConnectionRefusedError as e:
-            logger.error(f'ConnectionRefusedError: {server}')
+            logger.error(f"ConnectionRefusedError: {server}")
             raise e
 
     def __enter__(self) -> Socket:
@@ -28,7 +28,7 @@ class Socket(object):
         self.close()
 
     def close(self) -> None:
-        """ close socket """
+        """close socket"""
         self.sock and self.sock.close()
         self.sock = None
 
@@ -49,7 +49,7 @@ class Socket(object):
             view = view[rcvlen:]
             pos += rcvlen
         data.append(buf[:pos])
-        return b''.join(data)
+        return b"".join(data)
 
     def recv_exactly(self, len: int) -> bytes:
         buf = bytearray(len)
@@ -62,32 +62,32 @@ class Socket(object):
             view = view[rcvlen:]
             pos += rcvlen
         if pos != len:
-            raise EOFError('recv_exactly %d bytes failed' % len)
+            raise EOFError("recv_exactly %d bytes failed" % len)
         return bytes(buf)
 
     def recv_response(self) -> bytes:
-        """ read a chunk of length indicated by 4 hex digits """
+        """read a chunk of length indicated by 4 hex digits"""
         len = int(self.recv_exactly(4), 16)
         if len == 0:
-            return b''
+            return b""
         return self.recv_exactly(len)
 
     def check_okay(self) -> None:
-        """ check if first 4 bytes is "OKAY" """
+        """check if first 4 bytes is "OKAY" """
         result = self.recv_exactly(4)
-        if result != b'OKAY':
+        if result != b"OKAY":
             raise ConnectionError(self.recv_response())
 
     def recv(self, len: int) -> bytes:
         return self.sock.recv(len)
 
     def send(self, data: bytes) -> Socket:
-        """ send data to server """
+        """send data to server"""
         self.sock.send(data)
         return self
 
     def sendall(self, data: bytes) -> Socket:
-        """ send data to server """
+        """send data to server"""
         self.sock.sendall(data)
         return self
 

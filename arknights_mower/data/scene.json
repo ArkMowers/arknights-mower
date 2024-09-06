@@ -37,7 +37,7 @@
     },
     "8": {
         "label": "DOUBLE_CONFIRM",
-        "comment": "二次确认"
+        "comment": "二次确认（未知）"
     },
     "9": {
         "label": "CONNECTING",
@@ -46,6 +46,18 @@
     "10": {
         "label": "NETWORK_CHECK",
         "comment": "网络拨测"
+    },
+    "11": {
+        "label": "EXIT_GAME",
+        "comment": "退出游戏"
+    },
+    "12": {
+        "label": "DOWNLOAD_VOICE_RESOURCES",
+        "comment": "检测到有未下载的语音资源"
+    },
+    "13": {
+        "label": "AGREEMENT_UPDATE",
+        "comment": "协议更新"
     },
     "101": {
         "label": "LOGIN_MAIN",
@@ -95,6 +107,18 @@
         "label": "CLOSE_MINE",
         "comment": "产业合作洽谈会"
     },
+    "113": {
+        "label": "CHECK_IN",
+        "comment": "4周年签到"
+    },
+    "114": {
+        "label": "LOGIN_NEW",
+        "comment": "新登陆界面"
+    },
+    "116": {
+        "label": "LOGIN_BILIBILI_PRIVACY",
+        "comment": "B服隐私政策提示"
+    },
     "201": {
         "label": "INFRA_MAIN",
         "comment": "基建全局视角"
@@ -123,17 +147,89 @@
         "label": "INFRA_ARRANGE_ORDER",
         "comment": "干员进驻设施排序界面"
     },
+    "208": {
+        "label": "RIIC_REPORT",
+        "comment": "副手简报界面"
+    },
+    "209": {
+        "label": "CTRLCENTER_ASSISTANT",
+        "comment": "控制中枢界面"
+    },
+    "210": {
+        "label": "RIIC_OPERATOR_SELECT",
+        "comment": "干员选择界面"
+    },
+    "211": {
+        "label": "CLUE_DAILY",
+        "comment": "每日线索领取"
+    },
+    "212": {
+        "label": "CLUE_RECEIVE",
+        "comment": "接收线索"
+    },
+    "213": {
+        "label": "CLUE_GIVE_AWAY",
+        "comment": "传递线索"
+    },
+    "214": {
+        "label": "CLUE_SUMMARY",
+        "comment": "线索交流活动汇总"
+    },
+    "215": {
+        "label": "CLUE_PLACE",
+        "comment": "放置线索"
+    },
+    "216": {
+        "label": "TRAIN_SKILL_UPGRADE",
+        "comment": "技能升级"
+    },
+    "217": {
+        "label": "TRAIN_MAIN",
+        "comment": "训练室主界面"
+    },
+    "218": {
+        "label": "TRAIN_SKILL_UPGRADE_ERROR",
+        "comment": "技能升级失败"
+    },
+    "219": {
+        "label": "TRAIN_SKILL_SELECT",
+        "comment": "选择技能"
+    },
+    "220": {
+        "label": "TRAIN_FINISH",
+        "comment": "技能升级结算"
+    },
+    "221": {
+        "label": "ORDER_LIST",
+        "comment": "贸易站订单列表"
+    },
+    "222": {
+        "label": "DRONE_ACCELERATE",
+        "comment": "无人机加速对话框"
+    },
+    "223": {
+        "label": "FACTORY_ROOMS",
+        "comment": "制造站设施列表"
+    },
+    "224": {
+        "label": "LEAVE_INFRASTRUCTURE",
+        "comment": "离开基建"
+    },
     "301": {
-        "label": "FRIEND_LIST_OFF",
-        "comment": "好友列表（未选中）"
+        "label": "BUSINESS_CARD",
+        "comment": "个人名片"
     },
     "302": {
-        "label": "FRIEND_LIST_ON",
-        "comment": "好友列表（选中）"
+        "label": "FRIEND_LIST",
+        "comment": "好友列表"
     },
     "303": {
         "label": "FRIEND_VISITING",
         "comment": "基建内访问好友"
+    },
+    "304": {
+        "label": "BACK_TO_FRIEND_LIST",
+        "comment": "返回好友列表"
     },
     "401": {
         "label": "MISSION_DAILY",
@@ -167,6 +263,22 @@
         "label": "TERMINAL_COLLECTION",
         "comment": "资源收集"
     },
+    "506": {
+        "label": "TERMINAL_REGULAR",
+        "comment": "常态事务"
+    },
+    "507": {
+        "label": "TERMINAL_LONGTERM",
+        "comment": "长期探索"
+    },
+    "508": {
+        "label": "TERMINAL_PERIODIC",
+        "comment": "周期挑战"
+    },
+    "601": {
+        "label": "OPERATOR_CHOOSE_LEVEL",
+        "comment": "作战前，关卡未选定"
+    },
     "602": {
         "label": "OPERATOR_BEFORE",
         "comment": "作战前，关卡已选定"
@@ -177,7 +289,7 @@
     },
     "604": {
         "label": "OPERATOR_ONGOING",
-        "comment": "作战中"
+        "comment": "代理作战"
     },
     "605": {
         "label": "OPERATOR_FINISH",
@@ -205,7 +317,7 @@
     },
     "612": {
         "label": "OPERATOR_GIVEUP",
-        "comment": "代理失误"
+        "comment": "放弃行动"
     },
     "613": {
         "label": "OPERATOR_FAILED",
@@ -214,6 +326,14 @@
     "614": {
         "label": "OPERATOR_ELIMINATE_AGENCY",
         "comment": "剿灭代理卡使用确认"
+    },
+    "615": {
+        "label": "OPERATOR_SUPPORT",
+        "comment": "借助战"
+    },
+    "616": {
+        "label": "OPERATOR_STRANGER_SUPPORT",
+        "comment": "使用非好友助战"
     },
     "701": {
         "label": "SHOP_OTHERS",
@@ -231,6 +351,10 @@
         "label": "SHOP_ASSIST",
         "comment": "助战使用次数"
     },
+    "705": {
+        "label": "SHOP_UNLOCK_SCHEDULE",
+        "comment": "累计信用消费"
+    },
     "801": {
         "label": "RECRUIT_MAIN",
         "comment": "公招主界面"
@@ -242,6 +366,190 @@
     "803": {
         "label": "RECRUIT_AGENT",
         "comment": "开包干员展示"
+    },
+    "804": {
+        "label": "REFRESH_TAGS",
+        "comment": "刷新词条"
+    },
+    "901": {
+        "label": "RA_MAIN",
+        "comment": "生息演算首页"
+    },
+    "902": {
+        "label": "RA_GUIDE_ENTRANCE",
+        "comment": "剧情入口：众人会聚之地（后舍）"
+    },
+    "903": {
+        "label": "RA_GUIDE_DIALOG",
+        "comment": "剧情对话"
+    },
+    "904": {
+        "label": "RA_BATTLE_ENTRANCE",
+        "comment": "作战入口"
+    },
+    "905": {
+        "label": "RA_BATTLE",
+        "comment": "作战中"
+    },
+    "906": {
+        "label": "RA_BATTLE_EXIT_CONFIRM",
+        "comment": "作战退出确认对话框"
+    },
+    "907": {
+        "label": "RA_GUIDE_BATTLE_ENTRANCE",
+        "comment": "剧情作战入口"
+    },
+    "908": {
+        "label": "RA_BATTLE_COMPLETE",
+        "comment": "作战结算"
+    },
+    "909": {
+        "label": "RA_MAP",
+        "comment": "地图"
+    },
+    "910": {
+        "label": "RA_SQUAD_EDIT",
+        "comment": "作战分队编辑"
+    },
+    "911": {
+        "label": "RA_KITCHEN",
+        "comment": "烹饪台"
+    },
+    "912": {
+        "label": "RA_GET_ITEM",
+        "comment": "获得物资"
+    },
+    "913": {
+        "label": "RA_SQUAD_EDIT_DIALOG",
+        "comment": "作战分队不携带干员确认"
+    },
+    "914": {
+        "label": "RA_DAY_COMPLETE",
+        "comment": "生息日结算"
+    },
+    "915": {
+        "label": "RA_DAY_DETAIL",
+        "comment": "当日详细信息"
+    },
+    "916": {
+        "label": "RA_WASTE_TIME_DIALOG",
+        "comment": "跳过行动确认对话框"
+    },
+    "917": {
+        "label": "RA_PERIOD_COMPLETE",
+        "comment": "生存周期完成"
+    },
+    "918": {
+        "label": "RA_DELETE_SAVE_DIALOG",
+        "comment": "存档删除确认"
+    },
+    "919": {
+        "label": "RA_ADVENTURE",
+        "comment": "奇遇"
+    },
+    "920": {
+        "label": "RA_NOTICE",
+        "comment": "一张便条"
+    },
+    "921": {
+        "label": "RA_INSUFFICIENT_DRINK",
+        "comment": "能量饮料不足"
+    },
+    "922": {
+        "label": "RA_SQUAD_ABNORMAL",
+        "comment": "当前编队中存在异常情况"
+    },
+    "1001": {
+        "label": "SSS_MAIN",
+        "comment": "保全作战首页"
+    },
+    "1002": {
+        "label": "SSS_START",
+        "comment": "开始保全作战"
+    },
+    "1003": {
+        "label": "SSS_EC",
+        "comment": "定向导能元件"
+    },
+    "1004": {
+        "label": "SSS_DEVICE",
+        "comment": "战术装备配置"
+    },
+    "1005": {
+        "label": "SSS_SQUAD",
+        "comment": "首批作战小队选任"
+    },
+    "1006": {
+        "label": "SSS_DEPLOY",
+        "comment": "开始部署"
+    },
+    "1007": {
+        "label": "SSS_REDEPLOY",
+        "comment": "重新部署"
+    },
+    "1008": {
+        "label": "SSS_LOADING",
+        "comment": "正在进入"
+    },
+    "1009": {
+        "label": "SSS_GUIDE",
+        "comment": "保全教程"
+    },
+    "1101": {
+        "label": "SF_ENTRANCE",
+        "comment": "隐秘战线入口"
+    },
+    "1102": {
+        "label": "SF_INFO",
+        "comment": "隐秘战线详细说明"
+    },
+    "1103": {
+        "label": "SF_SELECT_TEAM",
+        "comment": "选择小队"
+    },
+    "1104": {
+        "label": "SF_CONTINUE",
+        "comment": "继续前进"
+    },
+    "1105": {
+        "label": "SF_SELECT",
+        "comment": "选择路线"
+    },
+    "1106": {
+        "label": "SF_ACTIONS",
+        "comment": "行动选项"
+    },
+    "1107": {
+        "label": "SF_RESULT",
+        "comment": "行动结果"
+    },
+    "1108": {
+        "label": "SF_EVENT",
+        "comment": "应对危机事件"
+    },
+    "1109": {
+        "label": "SF_TEAM_PASS",
+        "comment": "小队通过危机事件"
+    },
+    "1110": {
+        "label": "SF_CLICK_ANYWHERE",
+        "comment": "点击任意处继续"
+    },
+    "1111": {
+        "label": "SF_END",
+        "comment": "抵达终点"
+    },
+    "1112": {
+        "label": "SF_EXIT",
+        "comment": "暂离行动"
+    },
+    "1201": {
+        "label": "HEADHUNTING",
+        "comment": "干员寻访"
+    },
+    "1301": {
+        "label": "DEPOT",
+        "comment": "仓库"
     },
     "9998": {
         "label": "LOADING",
