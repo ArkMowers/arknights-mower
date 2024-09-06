@@ -12,11 +12,12 @@ from arknights_mower.data import (
 )
 from arknights_mower.models import noto_sans, riic_base_digits
 from arknights_mower.utils import config
+from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.email import recruit_rarity, recruit_template, send_message
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cmatch, cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.recognize import Scene
+from arknights_mower.utils.recognize import Recognizer, Scene
 from arknights_mower.utils.vector import va
 
 number = riic_base_digits
@@ -37,8 +38,8 @@ job_list = [
 
 
 class RecruitSolver(SceneGraphSolver):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
+        super().__init__(device, recog)
         self.find_scope = {
             "recruit/begin_recruit": [(340, 200), (590, 300)],
             "recruit/job_requirements": [(100, 20), (300, 100)],
@@ -200,7 +201,7 @@ class RecruitSolver(SceneGraphSolver):
                 tag_all_choose = True
                 for x in choose:
                     h, w, _ = tag_template[x].shape
-                    tag_img = cropimg(config.recog.img, [tags[x], va(tags[x], (w, h))])
+                    tag_img = cropimg(self.recog.img, [tags[x], va(tags[x], (w, h))])
 
                     if self.tag_not_choosed(tag_img):
                         tag_all_choose = False
@@ -280,7 +281,7 @@ class RecruitSolver(SceneGraphSolver):
                 if job_pt := self.find(i):
                     break
 
-            img = cropimg(config.recog.gray, ((job_pt[1][0], 730), (1800, 860)))
+            img = cropimg(self.recog.gray, ((job_pt[1][0], 730), (1800, 860)))
             img = cv2.threshold(img, 220, 255, cv2.THRESH_BINARY)[1]
 
             score = {}
@@ -463,7 +464,7 @@ class RecruitSolver(SceneGraphSolver):
         left = 530
         right = 1300
 
-        img = config.recog.img[up:down, left:right]
+        img = self.recog.img[up:down, left:right]
         tags_img = self.split_tags(img)
         tags = {}
         h, w, _ = img.shape
@@ -511,7 +512,7 @@ class RecruitSolver(SceneGraphSolver):
         p3, _ = self.find("recruit/stone")
         p1 = (p2[0], p1[1] + 10)
         p3 = (p3[0] - 30, p2[1] - 5)
-        img = cropimg(config.recog.gray, (p1, p3))
+        img = cropimg(self.recog.gray, (p1, p3))
         default_height = 29
         if height and height != default_height:
             scale = default_height / height
@@ -559,7 +560,7 @@ class RecruitSolver(SceneGraphSolver):
         elif mode == "minute":
             area = [(850, 280), (980, 400)]
 
-        img = cropimg(config.recog.gray, area)
+        img = cropimg(self.recog.gray, area)
         templates = noto_sans
         default_height = 28
 

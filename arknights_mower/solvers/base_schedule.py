@@ -3238,12 +3238,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 # 任务及参数请参考 docs/集成文档.md
                 self.initialize_maa()
                 if tasks == "All":
-                    tasks = ["StartUp", "Fight", "Visit", "Mall", "Award"]
-                    # tasks = ['StartUp', 'Fight', 'Visit', 'Mall', 'Award', 'Depot']
-                    # tasks = ['StartUp', 'Fight', 'Recruit', 'Visit', 'Mall', 'Award']
+                    tasks = ["StartUp", "Fight", "Mall", "Award"]
                 for maa_task in tasks:
-                    # if maa_task == "Recruit":
-                    # continue
                     self.append_maa_task(maa_task)
                 self.MAA.start()
                 stop_time = None
@@ -3425,7 +3421,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         ] is None or datetime.now() > self.last_execution["recruit"] + timedelta(
             hours=config.conf.recruit_gap
         ):
-            RecruitSolver().run()
+            RecruitSolver(self.device, self.recog).run()
 
             self.last_execution["recruit"] = datetime.now()
             logger.info(f"下一次公开招募执行时间在{config.conf.recruit_gap}小时之后")

@@ -102,7 +102,7 @@ class ExtraPart(ConfModel):
     "界面主题"
     screenshot_interval: int = 500
     "截图最短间隔（毫秒）"
-    screenshot: float = 24
+    screenshot: float = 0.02
     "截图保留时长（小时）"
     check_for_updates: bool = True
     "检查更新"
