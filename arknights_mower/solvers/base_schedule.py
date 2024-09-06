@@ -3,6 +3,7 @@ import json
 import os
 import pathlib
 import sys
+import urllib
 from ctypes import CFUNCTYPE, c_char_p, c_int, c_void_p
 from datetime import datetime, timedelta
 from typing import Literal
@@ -12,26 +13,22 @@ import cv2
 from arknights_mower.data import agent_list, base_room_list
 from arknights_mower.solvers.base_mixin import BaseMixin
 from arknights_mower.solvers.credit import CreditSolver
-from arknights_mower.solvers.credit_fight import CreditFight
 from arknights_mower.solvers.cultivate_depot import cultivate as cultivateDepotSolver
 from arknights_mower.solvers.depotREC import depotREC as DepotSolver
 from arknights_mower.solvers.mail import MailSolver
-from arknights_mower.solvers.mission import MissionSolver
-from arknights_mower.solvers.navigation import NavigationSolver
-from arknights_mower.solvers.operation import OperationSolver
 from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
 from arknights_mower.solvers.recruit import RecruitSolver
 from arknights_mower.solvers.report import ReportSolver
 from arknights_mower.solvers.secret_front import SecretFront
 from arknights_mower.solvers.shop import CreditShop
 from arknights_mower.solvers.skland import SKLand
-from arknights_mower.utils import config, detector, hot_update, rapidocr
+from arknights_mower.utils import config, detector, rapidocr
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.csleep import MowerExit, csleep
 from arknights_mower.utils.datetime import format_time, get_server_weekday
 from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.digit_reader import DigitReader
-from arknights_mower.utils.email import send_message
+from arknights_mower.utils.email import send_message, maa_template
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
@@ -589,36 +586,36 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     if TaskTypes.RELEASE_DORM == self.task.type:
                         # 如果该房间提前已经被移出，则跳过安排避免影响正常排班
                         free_room = list(self.task.plan.keys())[0]
-                        if "Free" in self.task.plan[free_room]:
-                            free_index = self.task.plan[free_room].index("Free")
-                            if self.task.meta_data in self.op_data.operators.keys():
-                                free_agent = self.op_data.operators[self.task.meta_data]
-                                if (
-                                    free_agent.current_room == free_room
-                                    and free_agent.current_index == free_index
-                                ):
-                                    get_time = True
-                                    # 如果是高优先，还需要把宿舍reference移除
-                                    if free_agent.is_high():
-                                        idx, dorm = self.op_data.get_dorm_by_name(
-                                            free_agent.name
+                        free_index = self.task.plan[free_room].index("Free")
+                        if self.task.meta_data in self.op_data.operators.keys():
+                            free_agent = self.op_data.operators[self.task.meta_data]
+                            if (
+                                free_agent.current_room == free_room
+                                and free_agent.current_index == free_index
+                            ):
+                                get_time = True
+                                # 如果是高优先，还需要把宿舍reference移除
+                                if free_agent.is_high():
+                                    idx, dorm = self.op_data.get_dorm_by_name(
+                                        free_agent.name
+                                    )
+                                    if idx is not None:
+                                        update_task = find_next_task(
+                                            self.tasks,
+                                            task_type=TaskTypes.SHIFT_ON,
+                                            meta_data="dorm" + str(idx),
                                         )
-                                        if idx is not None:
-                                            if update_task := self.find_next_task(
-                                                task_type=TaskTypes.SHIFT_ON,
-                                                meta_data="dorm" + str(idx),
-                                            ):
-                                                logger.debug("开始更新宿舍信息")
-                                                dorm_list = update_task.meta_data.split(
-                                                    ","
-                                                )
-                                                dorm_list.remove("dorm" + str(idx))
-                                                update_task.meta_data = ",".join(
-                                                    dorm_list
-                                                )
-                                                free_agent.mood = free_agent.upper_limit
-                                                free_agent.time_stamp = dorm.time
-                        self.task.plan = {}
+                                        if update_task:
+                                            logger.debug("开始更新宿舍信息")
+                                            dorm_list = update_task.meta_data.split(",")
+                                            dorm_list.remove("dorm" + str(idx))
+                                            update_task.meta_data = ",".join(dorm_list)
+                                            free_agent.mood = free_agent.upper_limit
+                                            free_agent.time_stamp = dorm.time
+                            else:
+                                self.task.plan = {}
+                        else:
+                            self.task.plan = {}
                     if (
                         config.conf.run_order_grandet_mode.back_to_index
                         and TaskTypes.RUN_ORDER == self.task.type
@@ -3096,8 +3093,35 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
     @CFUNCTYPE(None, c_int, c_char_p, c_void_p)
     def log_maa(msg, details, arg):
-        logger.debug(json.loads(details.decode("utf-8")))
-        logger.debug(Message(msg))
+        m = Message(msg)
+        d = json.loads(details.decode("utf-8"))
+        logger.debug(d)
+        logger.debug(m)
+        logger.debug(arg)
+        if "what" in d and d["what"] == "StageDrops":
+            global stage_drop
+            stage_drop["details"].append(d["details"]["drops"])
+            stage_drop["summary"] = d["details"]["stats"]
+
+        elif "what" in d and d["what"] == "RecruitTagsSelected":
+            global recruit_tags_selected
+            recruit_tags_selected["tags"].append(d["details"]["tags"])
+
+        elif "what" in d and d["what"] == "RecruitResult":
+            global recruit_results
+            temp_dict = {
+                "tags": d["details"]["tags"],
+                "level": d["details"]["level"],
+                "result": d["details"]["result"],
+            }
+            recruit_results["results"].append(temp_dict)
+
+        elif "what" in d and d["what"] == "RecruitSpecialTag":
+            global recruit_special_tags
+            recruit_special_tags["tags"].append(d["details"]["tags"])
+        # elif d.get("what") == "DepotInfo" and d["details"].get("done") is True:
+        #     logger.info(f"开始扫描仓库（MAA）")
+        #     process_itemlist(d)
 
     def initialize_maa(self):
         config.stop_maa.clear()
@@ -3117,9 +3141,25 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             logger.exception(f"Maa Python模块导入失败：{str(e)}")
             raise Exception("Maa Python模块导入失败")
 
+        try:
+            logger.debug("开始更新Maa活动关卡导航……")
+            ota_tasks_url = (
+                "https://ota.maa.plus/MaaAssistantArknights/api/resource/tasks.json"
+            )
+            ota_tasks_path = path / "cache" / "resource" / "tasks.json"
+            ota_tasks_path.parent.mkdir(parents=True, exist_ok=True)
+            with urllib.request.urlopen(ota_tasks_url) as u:
+                res = u.read().decode("utf-8")
+            with open(ota_tasks_path, "w", encoding="utf-8") as f:
+                f.write(res)
+            logger.info("Maa活动关卡导航更新成功")
+        except Exception as e:
+            logger.error(f"Maa活动关卡导航更新失败：{str(e)}")
+
         Asst.load(path=path, incremental_path=path / "cache")
 
         self.MAA = Asst(callback=self.log_maa)
+        self.stages = []
         self.MAA.set_instance_option(
             InstanceOptionType.touch_type, conf.maa_touch_option
         )
@@ -3131,12 +3171,57 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             logger.info("MAA 连接失败")
             raise Exception("MAA 连接失败")
 
-    def maa_plan_solver(self):
+    def append_maa_task(self, type):
+        if type in ["StartUp", "Visit", "Award"]:
+            self.MAA.append_task(type)
+        elif type == "Fight":
+            conf = config.conf
+            _plan = conf.maa_weekly_plan[get_server_weekday()]
+            logger.info(f"现在服务器是{_plan.weekday}")
+            for stage in _plan.stage:
+                logger.info(f"添加关卡:{stage}")
+                self.MAA.append_task(
+                    "Fight",
+                    {
+                        # 空值表示上一次
+                        # 'stage': '',
+                        "stage": stage,
+                        "medicine": _plan.medicine,
+                        "stone": 999 if conf.maa_eat_stone else 0,
+                        "times": 999,
+                        "report_to_penguin": True,
+                        "client_type": "",
+                        "penguin_id": "",
+                        "DrGrandet": False,
+                        "server": "CN",
+                        "expiring_medicine": 999
+                        if conf.exipring_medicine_on_weekend
+                        else 0,
+                    },
+                )
+                self.stages.append(stage)
+        elif type == "Mall":
+            conf = config.conf
+            self.MAA.append_task(
+                "Mall",
+                {
+                    "shopping": True,
+                    "buy_first": conf.maa_mall_buy.split(","),
+                    "blacklist": conf.maa_mall_blacklist.split(","),
+                    "credit_fight": conf.maa_credit_fight
+                    and "" not in self.stages
+                    and self.credit_fight is None,
+                    "force_shopping_if_credit_full": conf.maa_mall_ignore_blacklist_when_full,
+                },
+            )
+
+    def maa_plan_solver(self, tasks="All", one_time=False):
         """清日常"""
         try:
             conf = config.conf
             if (
-                self.last_execution["maa"] is not None
+                not one_time
+                and self.last_execution["maa"] is not None
                 and (
                     delta := (
                         timedelta(hours=conf.maa_gap)
@@ -3148,37 +3233,67 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             ):
                 logger.info(f"{format_time(delta.total_seconds())}后开始做日常任务")
             else:
-                send_message("开始刷理智")
-                plan_today = conf.maa_weekly_plan[get_server_weekday()]
-                stage_today = plan_today.stage
-                nav_solver = NavigationSolver(self.device, self.recog)
-                ope_solver = OperationSolver(self.device, self.recog)
-                drain = True
-                for name in stage_today:
-                    if self.tasks[0].time - datetime.now() < timedelta(minutes=5):
-                        drain = False
-                        break
-                    if nav_solver.run(name):
-                        drain = drain and ope_solver.run(self.tasks[0].time)
-                mission_solver = MissionSolver(self.device, self.recog)
-                mission_solver.run()
-                logger.debug(self.credit_fight)
-                if (
-                    config.conf.maa_credit_fight
-                    and "" not in stage_today
-                    and self.credit_fight is None
-                    and self.tasks[0].time - datetime.now() > timedelta(minutes=3)
-                ):
-                    credit_fight = CreditFight(self.device, self.recog)
-                    credit_fight.run()
-                    self.credit_fight = get_server_weekday()
-                    logger.debug(self.credit_fight)
-                if drain:
-                    self.last_execution["maa"] = datetime.now()
-                    send_message("刷理智结束")
+                send_message("启动MAA")
+                self.back_to_index()
+                # 任务及参数请参考 docs/集成文档.md
+                self.initialize_maa()
+                if tasks == "All":
+                    tasks = ["StartUp", "Fight", "Visit", "Mall", "Award"]
+                    # tasks = ['StartUp', 'Fight', 'Visit', 'Mall', 'Award', 'Depot']
+                    # tasks = ['StartUp', 'Fight', 'Recruit', 'Visit', 'Mall', 'Award']
+                for maa_task in tasks:
+                    # if maa_task == "Recruit":
+                    # continue
+                    self.append_maa_task(maa_task)
+                self.MAA.start()
+                stop_time = None
+                if one_time:
+                    stop_time = datetime.now() + timedelta(minutes=5)
                 else:
-                    send_message("理智没有刷完")
+                    global stage_drop
+                    stage_drop = {"details": [], "summary": {}}
 
+                logger.info(f"MAA 启动")
+                hard_stop = False
+                while self.MAA.running():
+                    # 单次任务默认5分钟
+                    if one_time and stop_time < datetime.now():
+                        self.MAA.stop()
+                        hard_stop = True
+                    # 5分钟之前就停止
+                    elif (
+                        not one_time
+                        and (self.tasks[0].time - datetime.now()).total_seconds() < 300
+                    ):
+                        self.MAA.stop()
+                        hard_stop = True
+                    else:
+                        self.sleep(5)
+                if hard_stop:
+                    hard_stop_msg = "Maa任务未完成，等待3分钟关闭游戏"
+                    logger.info(hard_stop_msg)
+                    send_message(hard_stop_msg)
+                    self.sleep(180)
+                    self.device.exit()
+                    if self.device.check_current_focus():
+                        self.recog.update()
+                elif not one_time:
+                    logger.info(f"记录MAA 本次执行时间")
+                    self.last_execution["maa"] = datetime.now()
+                    logger.info(self.last_execution["maa"])
+                    if "Mall" in tasks and self.credit_fight is None:
+                        self.credit_fight = get_server_weekday()
+                        logger.info("记录首次信用作战")
+                    logger.debug(stage_drop)
+                    # 有掉落东西再发
+                    if stage_drop["details"]:
+                        send_message(
+                            maa_template.render(stage_drop=stage_drop),
+                            "Maa停止",
+                        )
+
+                else:
+                    send_message("Maa单次任务停止")
             conf = config.conf
             now_time = datetime.now().time()
             try:
@@ -3331,7 +3446,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     def sign_in_plan_solver(self):
         if not config.conf.sign_in.enable:
             return
-        hot_update.update()
+        # hot_update.update()
         try:
             import sign_in
 

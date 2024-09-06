@@ -40,10 +40,13 @@ onUnmounted(() => {
   clearTimeout(get_task_id.value)
 })
 
-function start() {
+function start(value) {
   running.value = true
   log_lines.value = []
-  axios.get(`${import.meta.env.VITE_HTTP_URL}/start`)
+  if (value == undefined) {
+    value = "0"
+  }
+  axios.get(`${import.meta.env.VITE_HTTP_URL}/start/${value}`)
   get_tasks()
 }
 
@@ -84,6 +87,21 @@ const stop_options = [
     key: 'maa'
   }
 ]
+const start_options = [
+  {
+    label: '载入心情任务',
+    key: '0'
+  },
+  {
+    label: '载入心情数据',
+    key: '1'
+  },
+  {
+    label: '缓存清零重启',
+    key: '2'
+  }
+]
+
 </script>
 
 <template>
@@ -118,12 +136,7 @@ const stop_options = [
         </template>
       </tbody>
     </n-table>
-    <n-log
-      class="log"
-      :log="mobile ? log_mobile : log"
-      language="mower"
-      style="user-select: text"
-    />
+    <n-log class="log" :log="mobile ? log_mobile : log" language="mower" style="user-select: text" />
     <div class="action-container">
       <drop-down v-if="running" :select="stop_maa" :options="stop_options" type="error" :up="true">
         <n-button type="error" @click="stop" :loading="waiting" :disabled="waiting">
@@ -135,14 +148,16 @@ const stop_options = [
           <template v-if="!mobile">立即停止</template>
         </n-button>
       </drop-down>
-      <n-button type="primary" @click="start" v-else :loading="waiting" :disabled="waiting">
-        <template #icon>
-          <n-icon>
-            <play-icon />
-          </n-icon>
-        </template>
-        <template v-if="!mobile">开始执行</template>
-      </n-button>
+      <drop-down v-if="!running" :select="start" :options="start_options" type="primary" :up="true">
+        <n-button v-if="!running" type="primary" @click="start" :loading="waiting" :disabled="waiting">
+          <template #icon>
+            <n-icon>
+              <play-icon />
+            </n-icon>
+          </template>
+          <template v-if="!mobile">开始执行</template>
+        </n-button>
+      </drop-down>
       <task-dialog />
       <n-button type="warning" @click="show_task = true">
         <template #icon>
@@ -168,13 +183,8 @@ const stop_options = [
         <span class="scroll-label" v-if="!mobile">自动滚动</span>
       </div>
     </div>
-    <n-button
-      class="toggle-table-collapse-btn"
-      size="small"
-      @click="show_task_table = !show_task_table"
-      :focusable="false"
-      v-if="mobile"
-    >
+    <n-button class="toggle-table-collapse-btn" size="small" @click="show_task_table = !show_task_table"
+      :focusable="false" v-if="mobile">
       <template #icon>
         <n-icon>
           <collapse-icon v-if="show_task_table" />

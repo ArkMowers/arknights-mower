@@ -150,10 +150,10 @@ class NavigationSolver(SceneGraphSolver):
         self.success = False
         self.act = None
 
-        hot_update.update()
-        if name in hot_update.navigation.NavigationSolver.location:
-            hot_update.navigation.NavigationSolver(self.device, self.recog).run(name)
-            return True
+        # hot_update.update()
+        # if name in hot_update.navigation.NavigationSolver.location:
+        #     hot_update.navigation.NavigationSolver(self.device, self.recog).run(name)
+        #     return True
 
         self.name = name
         prefix = name.split("-")[0]
