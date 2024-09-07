@@ -2577,6 +2577,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.swipe_left(right_swipe)
         self.switch_arrange_order(2)
         if not self.verify_agent(agents):
+            logger.debug(agents)
             raise Exception("检测到干员选择错误，重新选择")
         self.last_room = room
 

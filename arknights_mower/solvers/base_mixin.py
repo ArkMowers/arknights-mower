@@ -339,6 +339,7 @@ class BaseMixin:
                 time_str = self.digit_reader.get_time(self.recog.gray)
             else:
                 time_str = self.read_screen(self.recog.img, type="time", cord=cord)
+            logger.debug(time_str)
             h, m, s = str(time_str).split(":")
             if int(m) > 60 or int(s) > 60:
                 raise Exception("读取错误")
