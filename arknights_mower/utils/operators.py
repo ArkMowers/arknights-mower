@@ -366,6 +366,11 @@ class Operators:
             else:
                 self.set_mood_limit(TOTTER, upper_limit=24, lower_limit=20)
 
+        #减少仅回满干员的心情阈值0.5
+        for name in self.operators:
+            if self.operators[name].rest_in_full and self.operators[name].exhaust_require is not True:
+                self.set_mood_limit(name, upper_limit=self.operators[name].upper_limit - 0.5)
+
     def evaluate_expression(self, expression):
         try:
             result = Expr(expression, self.eval_model).eval({"op_data": self})
