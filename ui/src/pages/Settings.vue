@@ -480,9 +480,8 @@ const scene_name = {
               <template #label>
                 <span>无人机使用阈值</span>
                 <help-text>
-                  <div>如加速贸易，推荐大于 贸易站数*x + 92</div>
-                  <div>如加速制造，推荐大于 贸易站数*x</div>
-                  <div>葛朗台跑单模式下x=0,非葛朗台推荐x=10</div>
+                  <div>如加速贸易，推荐大于 贸易站数*10 + 92</div>
+                  <div>如加速制造，推荐大于 贸易站数*10</div>
                 </help-text>
               </template>
               <n-input-number v-model:value="drone_count_limit" />
