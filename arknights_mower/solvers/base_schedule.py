@@ -325,7 +325,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             return
         # 肥鸭充能新模式：https://github.com/ArkMowers/arknights-mower/issues/551
         target = None
-        if config.conf.fia_fool is not True:
+        if not config.conf.fia_fool:
             fia_threshold = config.conf.fia_threshold
             logger.info(f"菲亚防呆设计未开启，菲亚阈值为{fia_threshold}")
         else:
@@ -365,7 +365,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             target = operator
             break
         # 若全部跳过且关闭防呆则令目标干员为心情最低干员
-        if target is None and config.conf.fia_fool is not True:
+        if target is None and not config.conf.fia_fool:
             target = fia_plan[0]
             op_mood = 24
             for op in fia_plan:
