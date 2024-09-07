@@ -534,6 +534,33 @@ const scene_name = {
                 <help-text>干员心情回满后，立即释放宿舍空位</help-text>
               </n-checkbox>
             </n-form-item>
+            <n-form-item :show-label="false">
+              <n-checkbox v-model:checked="fia_fool">
+                菲亚防呆
+                <help-text>沿用默认逻辑，不确定菲亚替换心情消耗请启用本选项</help-text>
+              </n-checkbox>
+            </n-form-item>
+            <n-form-item>
+              <template #label>
+                <span>菲亚阈值</span>
+                <help-text>
+                  <div>开启防呆设计时，菲亚只充心情在90%以下的干员，且此处设置无效</div>
+                  <div>不开启防呆设计时，菲亚优先充心情在该阈值以下的干员，若心情均高于该阈值则充心情最低者</div>
+                </help-text>
+              </template>
+              <div class="threshold">
+                <n-slider
+                  v-model:value="fia_threshold"
+                  :step="5"
+                  :min="50"
+                  :max="90"
+                  :format-tooltip="(v) => `${v}%`"
+                />
+                <n-input-number v-model:value="fia_threshold" :step="5" :min="50" :max="90">
+                  <template #suffix>%</template>
+                </n-input-number>
+              </div>
+            </n-form-item>
           </n-form>
         </n-card>
       </div>

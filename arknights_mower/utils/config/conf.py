@@ -451,6 +451,10 @@ class RIICPart(ConfModel):
     "葛朗台跑单"
     free_room: bool = False
     "宿舍不养闲人模式"
+    fia_fool: bool = True
+    "菲亚防呆"
+    fia_threshold: float = 0.9
+    "菲亚阈值"
 
 
 class SimulatorPart(ConfModel):
