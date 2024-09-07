@@ -386,7 +386,7 @@ function clear() {
               {{ day[1] }}{{ currentDay === (index + 1) % 7 ? ' (今天)' : '' }}
             </th>
           </tr>
-          <!-- <tr>
+          <tr>
             <th></th>
             <th>药</th>
             <th v-for="(day, index) in daysOfWeek" :key="index">
@@ -397,7 +397,7 @@ function clear() {
                 :show-button="false"
               />
             </th>
-          </tr> -->
+          </tr>
         </thead>
         <tbody>
           <tr v-for="(plan, index) in maa_weekly_plan1" :key="plan.weekday1">
