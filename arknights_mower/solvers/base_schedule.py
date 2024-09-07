@@ -3198,8 +3198,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.MAA.append_task(type)
         elif type == "Fight":
             conf = config.conf
-            _plan = conf.maa_weekly_plan[get_server_weekday()]
+            server_weekday = get_server_weekday()
+            _plan = conf.maa_weekly_plan[server_weekday]
             logger.info(f"现在服务器是{_plan.weekday}")
+            use_medicine = False
+            if conf.maa_expiring_medicine:
+                if conf.exipring_medicine_on_weekend:
+                    use_medicine = server_weekday >= 5
+                else:
+                    use_medicine = True
             for stage in _plan.stage:
                 logger.info(f"添加关卡:{stage}")
                 self.MAA.append_task(
@@ -3217,7 +3224,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         "DrGrandet": False,
                         "server": "CN",
                         "expiring_medicine": 999
-                        if conf.exipring_medicine_on_weekend
+                        if use_medicine
                         else 0,
                     },
                 )
