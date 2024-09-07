@@ -646,7 +646,7 @@ class Operators:
             _room = None
             for i in range(self.config.max_resting_count, len(self.dorm)):
                 _name = self.dorm[i].name
-                if _name == "" or not self.operators[_name].is_high():
+                if _name == "" or not self.operators[_name].is_high() or (self.dorm[i].time is not None and self.dorm[i].time < datetime.now()):
                     _room = self.dorm[i]
                     break
         _room.name = name
