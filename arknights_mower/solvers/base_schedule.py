@@ -626,9 +626,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                             )
                                             if update_task:
                                                 logger.debug("开始更新宿舍信息")
-                                                dorm_list = update_task.meta_data.split(",")
+                                                dorm_list = update_task.meta_data.split(
+                                                    ","
+                                                )
                                                 dorm_list.remove("dorm" + str(idx))
-                                                update_task.meta_data = ",".join(dorm_list)
+                                                update_task.meta_data = ",".join(
+                                                    dorm_list
+                                                )
                                                 free_agent.mood = free_agent.upper_limit
                                                 free_agent.time_stamp = dorm.time
                                 else:
@@ -3223,9 +3227,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         "penguin_id": "",
                         "DrGrandet": False,
                         "server": "CN",
-                        "expiring_medicine": 999
-                        if use_medicine
-                        else 0,
+                        "expiring_medicine": 999 if use_medicine else 0,
                     },
                 )
                 self.stages.append(stage)
