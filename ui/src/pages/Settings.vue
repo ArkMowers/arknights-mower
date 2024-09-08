@@ -547,7 +547,9 @@ const scene_name = {
                 <span>菲亚阈值</span>
                 <help-text>
                   <div>开启防呆设计时，菲亚只充心情在90%以下的干员，且此处设置无效</div>
-                  <div>不开启防呆设计时，菲亚优先充心情在该阈值以下的干员，若心情均高于该阈值则充心情最低者</div>
+                  <div>
+                    不开启防呆设计时，菲亚优先充心情在该阈值以下的干员，若心情均高于该阈值则充心情最低者
+                  </div>
                 </help-text>
               </template>
               <div class="threshold">
