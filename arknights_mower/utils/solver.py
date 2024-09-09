@@ -228,7 +228,7 @@ class BaseSolver:
     ):
         pos = {
             "friend": (544, 862),  # 好友
-            "infrastructure": (1545, 948),  # 基建
+            "infrastructure": (1410, 870),  # 基建
             "mission": (1201, 904),  # 任务
             "recruit": (1507, 774),  # 公开招募
             "shop": (1251, 727),  # 采购中心
