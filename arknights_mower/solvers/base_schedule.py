@@ -654,14 +654,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.refresh_connecting = False
                     self.agent_arrange(self.task.plan, get_time)
                     if get_time:
-                        self.backup_plan_solver(PlanTriggerTiming.BEFORE_PLANNING)
-                        if (
-                            self.find_next_task(datetime.now() + timedelta(seconds=15))
-                            is None
+                        if not self.backup_plan_solver(
+                            PlanTriggerTiming.BEFORE_PLANNING
                         ):
                             self.plan_metadata()
                         else:
-                            logger.info("检测到15秒内有额外任务，跳过plan")
+                            logger.info("检测到排班表切换，跳过plan")
                     if TaskTypes.RE_ORDER == self.task.type:
                         self.skip()
                 # 如果任务名称包含干员名,则为动态生成的
@@ -1451,10 +1449,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if timing is None:
             timing = PlanTriggerTiming.END
         try:
+            new_task = False
             if self.op_data.backup_plans:
                 con = copy.deepcopy(self.op_data.plan_condition)
                 current_con = self.op_data.plan_condition
-                new_task = False
                 for idx, bp in enumerate(self.op_data.backup_plans):
                     func = str(bp.trigger)
                     logger.debug(func)
@@ -1481,10 +1479,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.op_data.swap_plan(con, refresh=True)
                     if not new_task:
                         self.tasks.append(SchedulerTask(task_plan={}))
+            return new_task
         except MowerExit:
             raise
         except Exception as e:
             logger.exception(e)
+        return False
 
     def rearrange_resting_priority(self, group):
         operators = self.op_data.groups[group]
