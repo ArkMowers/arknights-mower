@@ -188,7 +188,6 @@ def simulate(saved):
         try:
             if len(base_scheduler.tasks) > 0:
                 (base_scheduler.tasks.sort(key=lambda x: x.time, reverse=False))
-                logger.info("||".join([str(t) for t in base_scheduler.tasks]))
                 remaining_time = (
                     base_scheduler.tasks[0].time - datetime.now()
                 ).total_seconds()
