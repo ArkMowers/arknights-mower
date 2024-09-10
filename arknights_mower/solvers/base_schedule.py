@@ -2433,7 +2433,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         right_swipe = 0
         retry_count = 0
         selected = []
-        logger.info(f"上次进入房间为：{self.last_room},本次房间为：{room}")
+        logger.debug(f"上次进入房间为：{self.last_room},本次房间为：{room}")
         self.detail_filter()
         if self.detect_arrange_order()[0] == "信赖值":
             self.switch_arrange_order("工作状态")
