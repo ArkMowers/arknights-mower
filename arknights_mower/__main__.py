@@ -1,12 +1,12 @@
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
 from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
 from arknights_mower.solvers.secret_front import SecretFront
 from arknights_mower.utils import config, path, rapidocr
 from arknights_mower.utils.csleep import MowerExit
-from arknights_mower.utils.datetime import format_time
+from arknights_mower.utils.datetime import format_time, get_server_time
 from arknights_mower.utils.depot import 创建csv, 创建json
 from arknights_mower.utils.device.adb_client.session import Session
 from arknights_mower.utils.device.scrcpy import Scrcpy
@@ -218,50 +218,34 @@ def simulate(saved):
                     # 刷新时间以鹰历为准
                     # if (
                     #     base_scheduler.sign_in
-                    #     < (datetime.now() - timedelta(hours=4)).date()
+                    #     < get_server_time().date()
                     # ):
                     #     if base_scheduler.sign_in_plan_solver():
                     #         base_scheduler.sign_in = (
                     #             datetime.now() - timedelta(hours=4)
                     #         ).date()
 
-                    if (
-                        base_scheduler.daily_visit_friend
-                        < (datetime.now() - timedelta(hours=4)).date()
-                    ):
+                    if base_scheduler.daily_visit_friend < get_server_time().date():
                         if base_scheduler.visit_friend_plan_solver():
-                            base_scheduler.daily_visit_friend = (
-                                datetime.now() - timedelta(hours=4)
-                            ).date()
+                            base_scheduler.daily_visit_friend = get_server_time().date()
 
-                    if (
-                        base_scheduler.daily_report
-                        < (datetime.now() - timedelta(hours=4)).date()
-                    ):
+                    if base_scheduler.daily_report < get_server_time().date():
                         if base_scheduler.report_plan_solver():
-                            base_scheduler.daily_report = (
-                                datetime.now() - timedelta(hours=4)
-                            ).date()
+                            base_scheduler.daily_report = get_server_time().date()
 
                     if (
                         config.conf.skland_enable
-                        and base_scheduler.daily_skland
-                        < (datetime.now() - timedelta(hours=4)).date()
+                        and base_scheduler.daily_skland < get_server_time().date()
                     ):
                         if base_scheduler.skland_plan_solover():
-                            base_scheduler.daily_skland = (
-                                datetime.now() - timedelta(hours=4)
-                            ).date()
+                            base_scheduler.daily_skland = get_server_time().date()
 
                     if (
                         config.conf.check_mail_enable
-                        and base_scheduler.daily_mail
-                        < (datetime.now() - timedelta(hours=8)).date()
+                        and base_scheduler.daily_mail < get_server_time().date()
                     ):
                         if base_scheduler.mail_plan_solver():
-                            base_scheduler.daily_mail = (
-                                datetime.now() - timedelta(hours=8)
-                            ).date()
+                            base_scheduler.daily_mail = get_server_time().date()
 
                     if config.conf.recruit_enable:
                         base_scheduler.recruit_plan_solver()
