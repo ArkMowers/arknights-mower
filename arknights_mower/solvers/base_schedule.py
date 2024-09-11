@@ -1547,10 +1547,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         # 对于252可能需要进行额外判定，由于 low_free 性质等同于 high_free
         success = True
         if high_free - _high >= 0 and low_free - _low >= 0:
+            logger.debug(f"计算排班:{agents}")
             for agent in agents:
                 if not success:
                     break
                 x = self.op_data.operators[agent]
+                if x.room not in base_room_list:
+                    logger.debug(f"干员房间出错:{agent}")
+                    success = False
+                    break
                 if self.op_data.get_dorm_by_name(x.name)[0] is not None:
                     # 如果干员已经被安排了
                     success = False

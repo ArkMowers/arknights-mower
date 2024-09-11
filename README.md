@@ -7,6 +7,7 @@
 [![qq_guild](https://img.shields.io/badge/QQ%E9%A2%91%E9%81%93-2r118jwue4-blue)](https://pd.qq.com/s/5t91c3gx9)
 
 Mower 是为长期运行设计的、开源的明日方舟脚本。
+Mower 致力于为用户提供最佳服务，全天候 24\*7 托管支持，旨在让用户彻底解放双手，忘记《明日方舟》，并且帮助用户获取游戏内最多资源。
 
 ## 功能介绍
 
@@ -26,8 +27,12 @@ Mower 是为长期运行设计的、开源的明日方舟脚本。
 
 ## 下载与安装
 
-Mower 支持 Windows、macOS 与 Linux 平台。Windows 用户推荐从 [mower 下载站](https://mower.zhaozuohong.vip/)下载运行；macOS 与 Linux 用户请参考《[从源码运行 arknights-mower](https://blog.zhaozuohong.vip/2023/08/02/run-arknights-mower-from-source/)》。
+Mower 支持 Windows、macOS 与 Linux 平台。Windows 用户推荐从 QQ 群(239200680) 下载运行。
 
-初次使用，建议阅读《[Mower 简明教程](https://blog.zhaozuohong.vip/2024/05/10/mower-guide/tutorial/)》。
+初次使用，建议阅读 官方群内公告。
 
-提出建议、反馈 Bug 或交流基建知识，欢迎加入 QQ 频道 ArkMower（频道号：2r118jwue4）。
+提出建议、反馈 Bug，欢迎加入 QQ 频道 ArkMower（频道号：2r118jwue4）。
+
+## 关于 Mower-NG
+
+Mower-NG 为前贡献者非正常 fork 的独立项目，EE0000 已经退出 Mower 开发组，其在网上的个人言论不代表 Mower/ Mower 开发组立场。请广大网友谨慎甄别。
