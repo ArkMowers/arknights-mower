@@ -144,6 +144,14 @@ const scene_name = {
   LOGIN_MAIN_NOENTRY: '登录页面（无按钮入口）',
   OPERATOR_ONGOING: '代理作战'
 }
+
+const onSelectionChange = (newValue) => {
+  if (newValue === '夜神') {
+    simulator.value.index = '-1'
+  } else {
+    simulator.value.index = '0'
+  }
+}
 </script>
 
 <template>
@@ -188,7 +196,11 @@ const scene_name = {
               </n-radio-group>
             </n-form-item>
             <n-form-item label="模拟器">
-              <n-select v-model:value="simulator.name" :options="simulator_types" />
+              <n-select
+                v-model:value="simulator.name"
+                :options="simulator_types"
+                @update:value="onSelectionChange"
+              />
             </n-form-item>
             <n-form-item v-if="simulator.name">
               <template #label>
@@ -568,15 +580,27 @@ const scene_name = {
           </n-form>
         </n-card>
       </div>
-      <div><SKLand /></div>
-      <div><Depotswitch /></div>
-      <div><DailyMission /></div>
-      <div><email /></div>
+      <div>
+        <SKLand />
+      </div>
+      <div>
+        <Depotswitch />
+      </div>
+      <div>
+        <DailyMission />
+      </div>
+      <div>
+        <email />
+      </div>
     </div>
 
     <div class="grid-right">
-      <div><clue /></div>
-      <div><Recruit /></div>
+      <div>
+        <clue />
+      </div>
+      <div>
+        <Recruit />
+      </div>
       <div><maa-weekly /></div>
       <div><maa-weekly-new /></div>
       <div><maa-basic /></div>
@@ -613,6 +637,7 @@ const scene_name = {
     &:nth-child(1) {
       width: 130px;
     }
+
     &:nth-child(3) {
       padding-left: 12px;
       width: 120px;
@@ -689,11 +714,13 @@ h4 {
     width: 100%;
     max-width: 600px;
   }
+
   .grid-left {
     display: grid;
     row-gap: 10px;
     grid-template-columns: 100%;
   }
+
   .grid-right {
     display: grid;
     row-gap: 10px;
@@ -701,6 +728,7 @@ h4 {
     margin-top: 10px;
   }
 }
+
 /*双栏 大于1400的内容 */
 @media (min-width: 1400px) {
   .grid-two {
@@ -709,12 +737,14 @@ h4 {
     align-items: flex-start;
     gap: 5px;
   }
+
   .grid-left {
     display: grid;
     gap: 5px;
     grid-template-columns: 100%;
     max-width: 600px;
   }
+
   .grid-right {
     display: grid;
     gap: 5px;

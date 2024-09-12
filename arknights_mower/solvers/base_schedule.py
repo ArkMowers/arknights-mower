@@ -126,6 +126,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if len(self.tasks) > 0:
             # 找到时间最近的一次单个任务
             self.task = self.tasks[0]
+            logger.debug(f"当前任务: {str(self.task)}")
         else:
             self.task = None
         if self.task is not None and datetime.now() < self.task.time:
@@ -141,7 +142,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.free_clue = None
         if self.credit_fight is not None and self.credit_fight != get_server_weekday():
             self.credit_fight = None
-        logger.debug(self.credit_fight)
         self.todo_task = False
         self.collect_notification = False
         self.planned = False
