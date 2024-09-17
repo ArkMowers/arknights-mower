@@ -795,7 +795,8 @@ class Operator:
                 else:
                     return False
             return (
-                self.need_to_refresh(2.5)
+                # 歌蕾蒂娅主班 刷新心情频率提升
+                self.need_to_refresh(2.5 if self.name != "歌蕾蒂娅" else 0.5)
                 or self.current_room != self.room
                 or self.index != self.current_index
             )
