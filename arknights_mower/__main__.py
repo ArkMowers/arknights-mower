@@ -170,7 +170,6 @@ def simulate(saved):
     timezone_offset = 0
     if saved:
         try:
-            logger.info(saved)
             for k, v in saved["operators"].items():
                 if k not in base_scheduler.op_data.operators:
                     base_scheduler.op_data.add(Operator(k, ""))
@@ -191,13 +190,6 @@ def simulate(saved):
         base_scheduler.tasks = tasks
     while True:
         try:
-            if (
-                config.conf.check_mail_enable
-                and base_scheduler.daily_mail < get_server_time().date()
-            ):
-                if base_scheduler.mail_plan_solver():
-                    base_scheduler.daily_mail = get_server_time().date()
-
             if len(base_scheduler.tasks) > 0:
                 (base_scheduler.tasks.sort(key=lambda x: x.time, reverse=False))
                 remaining_time = (
