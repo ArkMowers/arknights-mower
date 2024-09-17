@@ -170,6 +170,7 @@ def simulate(saved):
     timezone_offset = 0
     if saved:
         try:
+            logger.info(saved)
             for k, v in saved["operators"].items():
                 if k not in base_scheduler.op_data.operators:
                     base_scheduler.op_data.add(Operator(k, ""))
@@ -181,11 +182,22 @@ def simulate(saved):
                 base_scheduler.op_data.operators[k].current_index = v.current_index
             base_scheduler.op_data.dorm = saved["dorm"]
             base_scheduler.party_time = saved["party_time"]
+            base_scheduler.daily_visit_friend = saved["daily_visit_friend"]
+            base_scheduler.daily_report = saved["daily_report"]
+            base_scheduler.daily_skland = saved["daily_skland"]
+            base_scheduler.daily_mail = saved["daily_mail"]
         except Exception as ex:
             logger.error(ex)
         base_scheduler.tasks = tasks
     while True:
         try:
+            if (
+                config.conf.check_mail_enable
+                and base_scheduler.daily_mail < get_server_time().date()
+            ):
+                if base_scheduler.mail_plan_solver():
+                    base_scheduler.daily_mail = get_server_time().date()
+
             if len(base_scheduler.tasks) > 0:
                 (base_scheduler.tasks.sort(key=lambda x: x.time, reverse=False))
                 remaining_time = (

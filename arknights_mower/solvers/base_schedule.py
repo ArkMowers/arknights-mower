@@ -1440,7 +1440,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         except Exception as e:
             logger.exception(e)
             # 如果下个 普通任务 >5 分钟则补全宿舍
-        logger.debug("tasks:" + str(self.tasks))
+        logger.debug("tasks: " + ("||".join([str(t) for t in self.tasks])))
         if self.find_next_task(datetime.now() + timedelta(seconds=15)):
             logger.info("有其他任务,跳过宿舍纠错")
             return
