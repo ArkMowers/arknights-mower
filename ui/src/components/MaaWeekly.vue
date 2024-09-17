@@ -118,11 +118,11 @@ function create_tag(label) {
       </n-form-item>
     </n-form>
     <table>
-      <!-- <tr>
+      <tr>
         <th></th>
         <th>关卡</th>
         <th>每次吃药</th>
-      </tr> -->
+      </tr>
       <tr v-for="plan in maa_weekly_plan" :key="plan.weekday">
         <td>{{ plan.weekday }}</td>
         <td>
@@ -137,11 +137,11 @@ function create_tag(label) {
             :on-create="create_tag"
           />
         </td>
-        <!-- <td>
+        <td>
           <n-input-number v-model:value="plan.medicine" :min="0" :show-button="false">
             <template #suffix>支</template>
           </n-input-number>
-        </td> -->
+        </td>
       </tr>
     </table>
   </n-card>

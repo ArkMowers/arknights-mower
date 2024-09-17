@@ -26,6 +26,7 @@ const {
   simulator,
   theme,
   resting_threshold,
+  fia_threshold,
   tap_to_launch_game,
   exit_game_when_idle,
   close_simulator_when_idle,
@@ -36,6 +37,7 @@ const {
   fix_mumu12_adb_disconnect,
   touch_method,
   free_room,
+  fia_fool,
   droidcast,
   maa_adb_path,
   maa_gap,
@@ -142,6 +144,14 @@ const scene_name = {
   LOGIN_MAIN_NOENTRY: '登录页面（无按钮入口）',
   OPERATOR_ONGOING: '代理作战'
 }
+
+const onSelectionChange = (newValue) => {
+  if (newValue === '夜神') {
+    simulator.value.index = '-1'
+  } else {
+    simulator.value.index = '0'
+  }
+}
 </script>
 
 <template>
@@ -186,7 +196,11 @@ const scene_name = {
               </n-radio-group>
             </n-form-item>
             <n-form-item label="模拟器">
-              <n-select v-model:value="simulator.name" :options="simulator_types" />
+              <n-select
+                v-model:value="simulator.name"
+                :options="simulator_types"
+                @update:value="onSelectionChange"
+              />
             </n-form-item>
             <n-form-item v-if="simulator.name">
               <template #label>
@@ -480,9 +494,8 @@ const scene_name = {
               <template #label>
                 <span>无人机使用阈值</span>
                 <help-text>
-                  <div>如加速贸易，推荐大于 贸易站数*x + 92</div>
-                  <div>如加速制造，推荐大于 贸易站数*x</div>
-                  <div>葛朗台跑单模式下x=0,非葛朗台推荐x=10</div>
+                  <div>如加速贸易，推荐大于 贸易站数*10 + 92</div>
+                  <div>如加速制造，推荐大于 贸易站数*10</div>
                 </help-text>
               </template>
               <n-input-number v-model:value="drone_count_limit" />
@@ -535,18 +548,59 @@ const scene_name = {
                 <help-text>干员心情回满后，立即释放宿舍空位</help-text>
               </n-checkbox>
             </n-form-item>
+            <n-form-item :show-label="false">
+              <n-checkbox v-model:checked="fia_fool">
+                菲亚防呆
+                <help-text>沿用默认逻辑，不确定菲亚替换心情消耗请启用本选项</help-text>
+              </n-checkbox>
+            </n-form-item>
+            <n-form-item>
+              <template #label>
+                <span>菲亚阈值</span>
+                <help-text>
+                  <div>开启防呆设计时，菲亚只充心情在90%以下的干员，且此处设置无效</div>
+                  <div>
+                    不开启防呆设计时，菲亚优先充心情在该阈值以下的干员，若心情均高于该阈值则充心情最低者
+                  </div>
+                </help-text>
+              </template>
+              <div class="threshold">
+                <n-slider
+                  v-model:value="fia_threshold"
+                  :step="5"
+                  :min="50"
+                  :max="90"
+                  :format-tooltip="(v) => `${v}%`"
+                />
+                <n-input-number v-model:value="fia_threshold" :step="5" :min="50" :max="90">
+                  <template #suffix>%</template>
+                </n-input-number>
+              </div>
+            </n-form-item>
           </n-form>
         </n-card>
       </div>
-      <div><SKLand /></div>
-      <div><Depotswitch /></div>
-      <div><DailyMission /></div>
-      <div><email /></div>
+      <div>
+        <SKLand />
+      </div>
+      <div>
+        <Depotswitch />
+      </div>
+      <div>
+        <DailyMission />
+      </div>
+      <div>
+        <email />
+      </div>
     </div>
 
     <div class="grid-right">
-      <div><clue /></div>
-      <div><Recruit /></div>
+      <div>
+        <clue />
+      </div>
+      <div>
+        <Recruit />
+      </div>
       <div><maa-weekly /></div>
       <div><maa-weekly-new /></div>
       <div><maa-basic /></div>
@@ -583,6 +637,7 @@ const scene_name = {
     &:nth-child(1) {
       width: 130px;
     }
+
     &:nth-child(3) {
       padding-left: 12px;
       width: 120px;
@@ -659,11 +714,13 @@ h4 {
     width: 100%;
     max-width: 600px;
   }
+
   .grid-left {
     display: grid;
     row-gap: 10px;
     grid-template-columns: 100%;
   }
+
   .grid-right {
     display: grid;
     row-gap: 10px;
@@ -671,6 +728,7 @@ h4 {
     margin-top: 10px;
   }
 }
+
 /*双栏 大于1400的内容 */
 @media (min-width: 1400px) {
   .grid-two {
@@ -679,12 +737,14 @@ h4 {
     align-items: flex-start;
     gap: 5px;
   }
+
   .grid-left {
     display: grid;
     gap: 5px;
     grid-template-columns: 100%;
     max-width: 600px;
   }
+
   .grid-right {
     display: grid;
     gap: 5px;

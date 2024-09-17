@@ -93,6 +93,8 @@ def get_work_rest_ratios():
                             AND b.is_high = 1 AND b.current_room NOT LIKE 'dormitory%'
                             UNION
                             SELECT '菲亚梅塔' AS name
+                            UNION
+                            SELECT '歌蕾蒂娅' AS name
                         ) AS subquery ON a.name = subquery.name
                         WHERE DATE(a.current_time) >= DATE('now', '-1 month', 'localtime')
                         ORDER BY a.current_time;
@@ -163,6 +165,8 @@ def get_mood_ratios():
                             AND b.is_high = 1 AND b.current_room NOT LIKE 'dormitory%'
                             UNION
                             SELECT '菲亚梅塔' AS name
+                            UNION
+                            SELECT '歌蕾蒂娅' AS name
                         ) AS subquery ON a.name = subquery.name
                         WHERE DATE(a.current_time) >= DATE('now', '-7 day', 'localtime')
                         ORDER BY a.agent_group DESC, a.current_time;

@@ -102,7 +102,7 @@ class ExtraPart(ConfModel):
     "界面主题"
     screenshot_interval: int = 500
     "截图最短间隔（毫秒）"
-    screenshot: float = 24
+    screenshot: float = 0.02
     "截图保留时长（小时）"
     check_for_updates: bool = True
     "检查更新"
@@ -235,6 +235,26 @@ class RegularTaskPart(ConfModel):
     "周计划"
     maa_weekly_plan1: list[MaaDailyPlan1] = [
         {
+            "stage": ["Annihilation"],
+            "周一": 1,
+            "周二": 1,
+            "周三": 1,
+            "周四": 1,
+            "周五": 1,
+            "周六": 1,
+            "周日": 1,
+        },
+        {
+            "stage": ["1-7"],
+            "周一": 1,
+            "周二": 1,
+            "周三": 1,
+            "周四": 1,
+            "周五": 1,
+            "周六": 1,
+            "周日": 1,
+        },
+        {
             "stage": ["点x删除"],
             "周一": 1,
             "周二": 1,
@@ -256,26 +276,6 @@ class RegularTaskPart(ConfModel):
         },
         {
             "stage": ["自定义关卡3"],
-            "周一": 1,
-            "周二": 1,
-            "周三": 1,
-            "周四": 1,
-            "周五": 1,
-            "周六": 1,
-            "周日": 1,
-        },
-        {
-            "stage": ["Annihilation"],
-            "周一": 1,
-            "周二": 1,
-            "周三": 1,
-            "周四": 1,
-            "周五": 1,
-            "周六": 1,
-            "周日": 1,
-        },
-        {
-            "stage": ["1-7"],
             "周一": 1,
             "周二": 1,
             "周三": 1,
@@ -315,7 +315,7 @@ class RegularTaskPart(ConfModel):
             "周日": 1,
         },
         {
-            "stage": ["SK-6"],
+            "stage": ["SK-5"],
             "周一": 1,
             "周二": 0,
             "周三": 1,
@@ -345,7 +345,7 @@ class RegularTaskPart(ConfModel):
             "周日": 1,
         },
         {
-            "stage": ["PR-A-2"],
+            "stage": ["PR-A-1"],
             "周一": 1,
             "周二": 0,
             "周三": 0,
@@ -451,6 +451,10 @@ class RIICPart(ConfModel):
     "葛朗台跑单"
     free_room: bool = False
     "宿舍不养闲人模式"
+    fia_fool: bool = True
+    "菲亚防呆"
+    fia_threshold: float = 0.9
+    "菲亚阈值"
 
 
 class SimulatorPart(ConfModel):

@@ -366,6 +366,16 @@ class Operators:
             else:
                 self.set_mood_limit(TOTTER, upper_limit=24, lower_limit=20)
 
+        # 减少仅回满干员的心情阈值0.5
+        for name in self.operators:
+            if (
+                self.operators[name].rest_in_full
+                and self.operators[name].exhaust_require is not True
+            ):
+                self.set_mood_limit(
+                    name, upper_limit=self.operators[name].upper_limit - 0.5
+                )
+
     def evaluate_expression(self, expression):
         try:
             result = Expr(expression, self.eval_model).eval({"op_data": self})
@@ -646,7 +656,14 @@ class Operators:
             _room = None
             for i in range(self.config.max_resting_count, len(self.dorm)):
                 _name = self.dorm[i].name
-                if _name == "" or not self.operators[_name].is_high():
+                if (
+                    _name == ""
+                    or not self.operators[_name].is_high()
+                    or (
+                        self.dorm[i].time is not None
+                        and self.dorm[i].time < datetime.now()
+                    )
+                ):
                     _room = self.dorm[i]
                     break
         _room.name = name
@@ -778,7 +795,8 @@ class Operator:
                 else:
                     return False
             return (
-                self.need_to_refresh(2.5)
+                # 歌蕾蒂娅主班 刷新心情频率提升
+                self.need_to_refresh(2.5 if self.name != "歌蕾蒂娅" else 0.5)
                 or self.current_room != self.room
                 or self.index != self.current_index
             )

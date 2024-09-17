@@ -28,7 +28,7 @@ def restart_simulator(stop=True, start=True):
     cmd = ""
     blocking = False
 
-    if simulator_type not in Simulator_Type:
+    if simulator_type not in [types.value for types in Simulator_Type]:
         logger.warning(f"尚未支持{simulator_type}重启/自动启动")
         csleep(10)
         return

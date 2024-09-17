@@ -161,7 +161,6 @@ def stop():
     global mower_thread
     global saved_state
 
-    logger.info(mower_thread)
     if mower_thread is None:
         return "true"
     from arknights_mower.__main__ import base_scheduler

@@ -126,6 +126,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if len(self.tasks) > 0:
             # 找到时间最近的一次单个任务
             self.task = self.tasks[0]
+            logger.debug(f"当前任务: {str(self.task)}")
         else:
             self.task = None
         if self.task is not None and datetime.now() < self.task.time:
@@ -141,7 +142,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.free_clue = None
         if self.credit_fight is not None and self.credit_fight != get_server_weekday():
             self.credit_fight = None
-        logger.debug(self.credit_fight)
         self.todo_task = False
         self.collect_notification = False
         self.planned = False
@@ -325,7 +325,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             return
         # 肥鸭充能新模式：https://github.com/ArkMowers/arknights-mower/issues/551
         target = None
-        fia_threshold = 0.9
+        if not config.conf.fia_fool:
+            fia_threshold = config.conf.fia_threshold
+            logger.info(f"菲亚防呆设计未开启，菲亚阈值为{fia_threshold}")
+        else:
+            fia_threshold = 0.9
+            logger.info(f"菲亚防呆设计已开启，菲亚阈值为{fia_threshold}")
         for operator in fia_plan:
             data = self.op_data.operators[operator]
             operator_morale = data.current_mood()
@@ -359,6 +364,19 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     continue
             target = operator
             break
+        # 若全部跳过且关闭防呆则令目标干员为心情最低干员
+        if target is None and not config.conf.fia_fool:
+            target = fia_plan[0]
+            op_mood = 24
+            for op in fia_plan:
+                data = self.op_data.operators[op]
+                op_mood_t = data.current_mood()
+                if data.rest_in_full and data.exhaust_require and not data.is_resting():
+                    logger.debug(f"{operator}为暖机干员但不在宿舍，跳过充能")
+                    continue
+                if op_mood_t < op_mood:
+                    target = op
+                    op_mood = op_mood_t
         if target:
             self.tasks.append(
                 SchedulerTask(
@@ -424,6 +442,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 continue
             _name = dorm.name
             if _name == "":
+                continue
+            if self.op_data.operators[dorm.name].operator_type != "high":
                 continue
             # 如果是rest in full，则新增单独任务..
             if (
@@ -586,32 +606,39 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     if TaskTypes.RELEASE_DORM == self.task.type:
                         # 如果该房间提前已经被移出，则跳过安排避免影响正常排班
                         free_room = list(self.task.plan.keys())[0]
-                        free_index = self.task.plan[free_room].index("Free")
-                        if self.task.meta_data in self.op_data.operators.keys():
-                            free_agent = self.op_data.operators[self.task.meta_data]
-                            if (
-                                free_agent.current_room == free_room
-                                and free_agent.current_index == free_index
-                            ):
-                                get_time = True
-                                # 如果是高优先，还需要把宿舍reference移除
-                                if free_agent.is_high():
-                                    idx, dorm = self.op_data.get_dorm_by_name(
-                                        free_agent.name
-                                    )
-                                    if idx is not None:
-                                        update_task = find_next_task(
-                                            self.tasks,
-                                            task_type=TaskTypes.SHIFT_ON,
-                                            meta_data="dorm" + str(idx),
+                        if "Free" in self.task.plan[free_room]:
+                            free_index = self.task.plan[free_room].index("Free")
+                            if self.task.meta_data in self.op_data.operators.keys():
+                                free_agent = self.op_data.operators[self.task.meta_data]
+                                if (
+                                    free_agent.current_room == free_room
+                                    and free_agent.current_index == free_index
+                                ):
+                                    get_time = True
+                                    # 如果是高优先，还需要把宿舍reference移除
+                                    if free_agent.is_high():
+                                        idx, dorm = self.op_data.get_dorm_by_name(
+                                            free_agent.name
                                         )
-                                        if update_task:
-                                            logger.debug("开始更新宿舍信息")
-                                            dorm_list = update_task.meta_data.split(",")
-                                            dorm_list.remove("dorm" + str(idx))
-                                            update_task.meta_data = ",".join(dorm_list)
-                                            free_agent.mood = free_agent.upper_limit
-                                            free_agent.time_stamp = dorm.time
+                                        if idx is not None:
+                                            update_task = find_next_task(
+                                                self.tasks,
+                                                task_type=TaskTypes.SHIFT_ON,
+                                                meta_data="dorm" + str(idx),
+                                            )
+                                            if update_task:
+                                                logger.debug("开始更新宿舍信息")
+                                                dorm_list = update_task.meta_data.split(
+                                                    ","
+                                                )
+                                                dorm_list.remove("dorm" + str(idx))
+                                                update_task.meta_data = ",".join(
+                                                    dorm_list
+                                                )
+                                                free_agent.mood = free_agent.upper_limit
+                                                free_agent.time_stamp = dorm.time
+                                else:
+                                    self.task.plan = {}
                             else:
                                 self.task.plan = {}
                         else:
@@ -629,14 +656,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.refresh_connecting = False
                     self.agent_arrange(self.task.plan, get_time)
                     if get_time:
-                        self.backup_plan_solver(PlanTriggerTiming.BEFORE_PLANNING)
-                        if (
-                            self.find_next_task(datetime.now() + timedelta(seconds=15))
-                            is None
+                        if not self.backup_plan_solver(
+                            PlanTriggerTiming.BEFORE_PLANNING
                         ):
                             self.plan_metadata()
                         else:
-                            logger.info("检测到15秒内有额外任务，跳过plan")
+                            logger.info("检测到排班表切换，跳过plan")
                     if TaskTypes.RE_ORDER == self.task.type:
                         self.skip()
                 # 如果任务名称包含干员名,则为动态生成的
@@ -1426,10 +1451,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if timing is None:
             timing = PlanTriggerTiming.END
         try:
+            new_task = False
             if self.op_data.backup_plans:
                 con = copy.deepcopy(self.op_data.plan_condition)
                 current_con = self.op_data.plan_condition
-                new_task = False
                 for idx, bp in enumerate(self.op_data.backup_plans):
                     func = str(bp.trigger)
                     logger.debug(func)
@@ -1456,10 +1481,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.op_data.swap_plan(con, refresh=True)
                     if not new_task:
                         self.tasks.append(SchedulerTask(task_plan={}))
+            return new_task
         except MowerExit:
             raise
         except Exception as e:
             logger.exception(e)
+        return False
 
     def rearrange_resting_priority(self, group):
         operators = self.op_data.groups[group]
@@ -1522,10 +1549,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         # 对于252可能需要进行额外判定，由于 low_free 性质等同于 high_free
         success = True
         if high_free - _high >= 0 and low_free - _low >= 0:
+            logger.debug(f"计算排班:{agents}")
             for agent in agents:
                 if not success:
                     break
                 x = self.op_data.operators[agent]
+                if x.room not in base_room_list:
+                    logger.debug(f"干员房间出错:{agent}")
+                    success = False
+                    break
                 if self.op_data.get_dorm_by_name(x.name)[0] is not None:
                     # 如果干员已经被安排了
                     success = False
@@ -2408,7 +2440,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         right_swipe = 0
         retry_count = 0
         selected = []
-        logger.info(f"上次进入房间为：{self.last_room},本次房间为：{room}")
+        logger.debug(f"上次进入房间为：{self.last_room},本次房间为：{room}")
         self.detail_filter()
         if self.detect_arrange_order()[0] == "信赖值":
             self.switch_arrange_order("工作状态")
@@ -2577,6 +2609,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.swipe_left(right_swipe)
         self.switch_arrange_order(2)
         if not self.verify_agent(agents):
+            logger.debug(agents)
             raise Exception("检测到干员选择错误，重新选择")
         self.last_room = room
 
@@ -3176,8 +3209,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.MAA.append_task(type)
         elif type == "Fight":
             conf = config.conf
-            _plan = conf.maa_weekly_plan[get_server_weekday()]
+            server_weekday = get_server_weekday()
+            _plan = conf.maa_weekly_plan[server_weekday]
             logger.info(f"现在服务器是{_plan.weekday}")
+            use_medicine = False
+            if conf.maa_expiring_medicine:
+                if conf.exipring_medicine_on_weekend:
+                    use_medicine = server_weekday >= 5
+                else:
+                    use_medicine = True
             for stage in _plan.stage:
                 logger.info(f"添加关卡:{stage}")
                 self.MAA.append_task(
@@ -3194,9 +3234,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         "penguin_id": "",
                         "DrGrandet": False,
                         "server": "CN",
-                        "expiring_medicine": 999
-                        if conf.exipring_medicine_on_weekend
-                        else 0,
+                        "expiring_medicine": 999 if use_medicine else 0,
                     },
                 )
                 self.stages.append(stage)
@@ -3238,12 +3276,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 # 任务及参数请参考 docs/集成文档.md
                 self.initialize_maa()
                 if tasks == "All":
-                    tasks = ["StartUp", "Fight", "Visit", "Mall", "Award"]
-                    # tasks = ['StartUp', 'Fight', 'Visit', 'Mall', 'Award', 'Depot']
-                    # tasks = ['StartUp', 'Fight', 'Recruit', 'Visit', 'Mall', 'Award']
+                    tasks = ["StartUp", "Fight", "Mall", "Award"]
                 for maa_task in tasks:
-                    # if maa_task == "Recruit":
-                    # continue
                     self.append_maa_task(maa_task)
                 self.MAA.start()
                 stop_time = None
