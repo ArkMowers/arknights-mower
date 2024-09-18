@@ -68,7 +68,7 @@ if __name__ == "__main__":
     api = Api()
     window = webview.create_window(
         title="多开管理器",
-        url="dist/index.html",
+        url="ui/dist/index.html",
         js_api=api,
         min_size=(400, 500),
         width=400,
