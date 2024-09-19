@@ -3339,6 +3339,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     ):
                         self.MAA.stop()
                         hard_stop = True
+                    elif config.stop_maa.is_set():
+                        self.MAA.stop()
+                        hard_stop = True
                     else:
                         self.sleep(5)
                 if hard_stop:
