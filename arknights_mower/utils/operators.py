@@ -667,6 +667,7 @@ class Operators:
                     _room = self.dorm[i]
                     break
         _room.name = name
+        _room.time = None
         return _room
 
     def get_current_operator(self, room, index):
