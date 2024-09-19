@@ -141,6 +141,7 @@ class Plan:
         trigger: Optional[LogicExpression] = None,
         task: Optional[dict[str, list[str]]] = None,
         trigger_timing: Optional[str] = None,
+        name: Optional[str] = None,
     ):
         """
         Args:
@@ -149,12 +150,14 @@ class Plan:
             trigger: 触发备用plan 的条件（必填）就是每次最多只有一个备用plan触发
             task: 触发备用plan 的时间生成的任务（选填）
             trigger_timing: 触发时机
+            name: plan标题
         """
         self.plan = plan
         self.config = config
         self.trigger = trigger
         self.task = task
         self.trigger_timing = self.set_timing_enum(trigger_timing)
+        self.name = name
 
     @staticmethod
     def set_timing_enum(value: str) -> PlanTriggerTiming:

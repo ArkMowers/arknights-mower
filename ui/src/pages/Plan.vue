@@ -89,7 +89,7 @@ const sub_plan_options = computed(() => {
   ]
   for (let i = 0; i < backup_plans.value.length; i++) {
     result.push({
-      label: `副表${i + 1}`,
+      label: backup_plans.value[i].name,
       value: i
     })
   }
@@ -116,7 +116,8 @@ function create_sub_plan() {
       right: ''
     },
     trigger_timing: 'AFTER_PLANNING',
-    task: {}
+    task: {},
+    name: `plan${backup_plans.value.length}`
   })
   sub_plan.value = backup_plans.value.length - 1
 }
@@ -173,6 +174,9 @@ watchEffect(() => {
 const show_trigger_editor = ref(false)
 provide('show_trigger_editor', show_trigger_editor)
 
+const show_name_editor = ref(false)
+provide('show_name_editor', show_name_editor)
+
 const show_task = ref(false)
 const add_task = ref(false)
 provide('show_task', show_task)
@@ -186,6 +190,7 @@ import CodeSlash from '@vicons/ionicons5/CodeSlash'
 import TrashOutline from '@vicons/ionicons5/TrashOutline'
 import AddTaskRound from '@vicons/material/AddTaskRound'
 import PlusRound from '@vicons/material/PlusRound'
+import Pencil from '@vicons/tabler/Pencil'
 
 function import_plan({ event }) {
   const msg = event.target.response
@@ -228,6 +233,7 @@ async function export_json() {
 <template>
   <trigger-dialog />
   <task-dialog />
+  <rename-dialog />
   <div class="plan-bar w-980 mx-auto mt-12 mw-980">
     <n-button-group>
       <n-button
@@ -247,7 +253,17 @@ async function export_json() {
         </template>
       </n-button>
     </n-button-group>
-    <n-select v-model:value="sub_plan" :options="sub_plan_options" />
+    <n-button-group>
+      <n-select v-model:value="sub_plan" :style="{ width: '150px' }" :options="sub_plan_options" />
+      <n-button 
+        :disabled="sub_plan == 'main'"
+        @click="show_name_editor = true"
+      >
+        <template #icon>
+          <n-icon><Pencil /></n-icon>
+        </template>
+      </n-button>
+    </n-button-group>
     <n-button-group>
       <n-button @click="create_sub_plan">
         <template #icon>

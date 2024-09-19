@@ -105,6 +105,7 @@ class BackupPlan(BaseModel):
     task: Task = {}
     trigger: Trigger = {}
     trigger_timing: str = "AFTER_PLANNING"
+    name: str = "plan"
 
 
 class PlanModel(BaseModel):
