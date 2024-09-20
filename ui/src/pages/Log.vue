@@ -6,7 +6,7 @@ import { useMowerStore } from '@/stores/mower'
 const mower_store = useMowerStore()
 const { log, log_mobile, running, log_lines, task_list, waiting, get_task_id } =
   storeToRefs(mower_store)
-const { get_tasks } = mower_store
+const { get_tasks, get_running } = mower_store
 const axios = inject('axios')
 const mobile = inject('mobile')
 
@@ -34,6 +34,8 @@ watch(
 
 onMounted(() => {
   get_tasks()
+  get_running()
+  setInterval(get_running, 5000)
 })
 
 onUnmounted(() => {
