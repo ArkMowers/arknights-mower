@@ -26,8 +26,6 @@ class SkillUpgradeSupport:
         self.level = skill_level
         self.efficiency = efficiency
         self.match = match
-        if self.level > 1:
-            self.half_off = True
         self.swap_name = swap_name
 
 

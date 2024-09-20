@@ -580,15 +580,15 @@ def get_count():
                                 or s["swap_name"] not in agent_list
                             ):
                                 raise Exception("干员名不正确")
-                            supports.append(
-                                SkillUpgradeSupport(
-                                    name=s["name"],
-                                    skill_level=s["skill_level"],
-                                    efficiency=s["efficiency"],
-                                    match=s["match"],
-                                    swap_name=s["swap_name"],
-                                )
+                            sup = SkillUpgradeSupport(
+                                name=s["name"],
+                                skill_level=s["skill_level"],
+                                efficiency=s["efficiency"],
+                                match=s["match"],
+                                swap_name=s["swap_name"],
                             )
+                            sup.half_off = s["half_off"]
+                            supports.append(sup)
                         if len(supports) == 0:
                             raise Exception("请添加专精工具人")
                         base_scheduler.op_data.skill_upgrade_supports = supports
