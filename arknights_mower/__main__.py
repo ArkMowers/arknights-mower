@@ -185,6 +185,7 @@ def simulate(saved):
             base_scheduler.daily_report = saved["daily_report"]
             base_scheduler.daily_skland = saved["daily_skland"]
             base_scheduler.daily_mail = saved["daily_mail"]
+            base_scheduler.task_count = saved["task_count"]
         except Exception as ex:
             logger.error(ex)
         base_scheduler.tasks = tasks

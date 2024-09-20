@@ -87,6 +87,7 @@ def save_state(func):
             "daily_report": base_scheduler.daily_report,
             "daily_skland": base_scheduler.daily_skland,
             "daily_mail": base_scheduler.daily_mail,
+            "task_count": base_scheduler.task_count,
         }
 
         # Call the original function
