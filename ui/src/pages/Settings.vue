@@ -20,7 +20,6 @@ const {
   drone_interval,
   reload_room,
   start_automatically,
-  free_blacklist,
   adb,
   package_type,
   simulator,
@@ -429,26 +428,6 @@ const onSelectionChange = (newValue) => {
             label-width="140"
             label-align="left"
           >
-            <n-form-item>
-              <template #label>
-                <span>宿舍黑名单</span>
-                <help-text>
-                  <div>不希望进行填充宿舍的干员</div>
-                </help-text>
-              </template>
-              <n-transfer
-                v-if="mobile"
-                virtual-scroll
-                source-filterable
-                target-filterable
-                :options="operators"
-                v-model:value="free_blacklist"
-                :render-source-label="(o) => render_op_label(o.option)"
-                :render-target-label="(o) => render_op_label(o.option)"
-                :filter="(p, o) => (p ? pinyin_match(o.label, p) : true)"
-              />
-              <slick-operator-select v-else v-model="free_blacklist" />
-            </n-form-item>
             <n-form-item>
               <template #label>
                 <span>跑单前置延时</span>
