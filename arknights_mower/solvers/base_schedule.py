@@ -3328,6 +3328,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
                 else:
                     send_message("Maa单次任务停止")
+                    if (
+                        self.find_next_task(datetime.now() + timedelta(minutes=15))
+                        is None
+                    ):
+                        logger.debug(
+                            "Maa单次任务结束15分钟内没有其他任务，新增单次任务防止漏单"
+                        )
+                        self.tasks.insert(0, SchedulerTask(time=datetime.now()))
             conf = config.conf
             now_time = datetime.now().time()
             try:
