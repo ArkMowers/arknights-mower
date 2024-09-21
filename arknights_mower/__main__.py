@@ -52,6 +52,7 @@ def initialize(
         free_blacklist=conf.free_blacklist,
         resting_threshold=conf.resting_threshold,
         refresh_trading_config=config.plan.conf.refresh_trading,
+        refresh_drained=config.plan.conf.refresh_drained,
         free_room=conf.free_room,
     )
     for room, obj in plan[plan["default"]].items():
@@ -79,6 +80,7 @@ def initialize(
             free_blacklist=i["conf"]["free_blacklist"],
             resting_threshold=conf.resting_threshold,
             refresh_trading_config=i["conf"]["refresh_trading"],
+            refresh_drained=i["conf"]["refresh_drained"],
             free_room=conf.free_room,
         )
         backup_trigger = get_logic_exp(i["trigger"]) if "trigger" in i else None
@@ -181,6 +183,11 @@ def simulate(saved):
                 base_scheduler.op_data.operators[k].current_index = v.current_index
             base_scheduler.op_data.dorm = saved["dorm"]
             base_scheduler.party_time = saved["party_time"]
+            base_scheduler.daily_visit_friend = saved["daily_visit_friend"]
+            base_scheduler.daily_report = saved["daily_report"]
+            base_scheduler.daily_skland = saved["daily_skland"]
+            base_scheduler.daily_mail = saved["daily_mail"]
+            base_scheduler.task_count = saved["task_count"]
         except Exception as ex:
             logger.error(ex)
         base_scheduler.tasks = tasks

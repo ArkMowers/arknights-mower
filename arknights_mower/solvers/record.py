@@ -1,4 +1,5 @@
 # 用于记录Mower操作行为
+import pickle
 import sqlite3
 from datetime import datetime
 
@@ -71,6 +72,93 @@ def save_action_to_sqlite_decorator(func):
         return result
 
     return wrapper
+
+
+def save_state(func):
+    def save_wrapper(*args, **kwargs):
+        from arknights_mower.__main__ import base_scheduler
+
+        saved_state = {
+            "dorm": base_scheduler.op_data.dorm,
+            "tasks": base_scheduler.tasks,
+            "party_time": base_scheduler.op_data.party_time,
+            "operators": base_scheduler.op_data.operators,
+            "daily_visit_friend": base_scheduler.daily_visit_friend,
+            "daily_report": base_scheduler.daily_report,
+            "daily_skland": base_scheduler.daily_skland,
+            "daily_mail": base_scheduler.daily_mail,
+            "task_count": base_scheduler.task_count,
+        }
+
+        # Call the original function
+        result = func(*args, **kwargs)
+
+        # Save saved_state to database
+        current_time = datetime.now()
+        database_path = get_path("@app/tmp/data.db")
+
+        try:
+            # Create 'tmp' directory if it doesn't exist
+            get_path("@app/tmp").mkdir(exist_ok=True)
+
+            connection = sqlite3.connect(database_path)
+            cursor = connection.cursor()
+
+            # Create a table if it doesn't exist
+            cursor.execute(
+                "CREATE TABLE IF NOT EXISTS saved_state (" "time TEXT," "state BLOB" ")"
+            )
+
+            # Delete the previous saved state
+            cursor.execute("DELETE FROM saved_state")
+
+            # Insert data
+            cursor.execute(
+                "INSERT INTO saved_state VALUES (?, ?)",
+                (
+                    str(current_time),
+                    sqlite3.Binary(pickle.dumps(saved_state)),  # Serialize saved_state
+                ),
+            )
+
+            connection.commit()
+            connection.close()
+
+            logger.info(f"储存缓存数据至数据库 {current_time}")
+
+        except sqlite3.Error as e:
+            logger.error(f"SQLite error: {e}")
+
+        return result
+
+    return save_wrapper
+
+
+def load_state():
+    # Initialize an empty variable to hold the loaded state
+    loaded_state = None
+    database_path = get_path("@app/tmp/data.db")
+
+    try:
+        connection = sqlite3.connect(database_path)
+        cursor = connection.cursor()
+
+        # Query the last saved state
+        cursor.execute("SELECT state FROM saved_state ORDER BY time DESC LIMIT 1")
+        row = cursor.fetchone()
+
+        if row is not None:
+            loaded_state = pickle.loads(row[0])  # Deserialize the state
+            logger.info("成功从数据库载入缓存数据")
+        else:
+            logger.debug("No saved state found in the database")
+
+        connection.close()
+
+    except sqlite3.Error as e:
+        logger.error(f"SQLite error: {e}")
+
+    return loaded_state
 
 
 def get_work_rest_ratios():

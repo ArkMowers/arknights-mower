@@ -1440,7 +1440,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         except Exception as e:
             logger.exception(e)
             # 如果下个 普通任务 >5 分钟则补全宿舍
-        logger.debug("tasks:" + str(self.tasks))
+        logger.debug("tasks: " + ("||".join([str(t) for t in self.tasks])))
         if self.find_next_task(datetime.now() + timedelta(seconds=15)):
             logger.info("有其他任务,跳过宿舍纠错")
             return
@@ -2799,6 +2799,44 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             )
             for ref_room in ref_rooms:
                 self.refresh_run_order_time(ref_room)
+            if (
+                instance.name in self.op_data.operators
+                and self.op_data.operators[instance.name].refresh_drained
+            ):
+                self.refresh_drained_time()
+
+    def refresh_drained_time(self):
+        logger.debug("刷新用尽倒计时")
+        solved = []
+        for agent in self.op_data.exhaust_agent:
+            if agent in solved:
+                continue
+            logger.debug(f"开始检查{agent}")
+            shift_off = self.find_next_task(
+                datetime.now() + timedelta(hours=24),
+                task_type=TaskTypes.EXHAUST_OFF,
+                meta_data=agent,
+                compare_type="<",
+            )
+            if shift_off:
+                logger.info(f"移除 {shift_off.meta_data} 用尽下班任务以刷新时间")
+                exhausts = shift_off.meta_data.split(",")
+                solved.extend(exhausts)
+                self.tasks.remove(shift_off)
+                for o in exhausts:
+                    self.op_data.operators[o].time_stamp = None
+            else:
+                self.op_data.operators[agent].time_stamp = None
+        if solved:
+            self.tasks.append(
+                (
+                    SchedulerTask(
+                        time=datetime.now(),
+                        task_plan={},
+                        task_type=TaskTypes.NOT_SPECIFIC,
+                    )
+                )
+            )
 
     def refresh_run_order_time(self, room):
         logger.debug("检测到插拔房间人员变动！")
@@ -3328,6 +3366,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
                 else:
                     send_message("Maa单次任务停止")
+                    if (
+                        self.find_next_task(datetime.now() + timedelta(minutes=15))
+                        is None
+                    ):
+                        logger.debug(
+                            "Maa单次任务结束15分钟内没有其他任务，新增单次任务防止漏单"
+                        )
+                        self.tasks.insert(0, SchedulerTask(time=datetime.now()))
             conf = config.conf
             now_time = datetime.now().time()
             try:

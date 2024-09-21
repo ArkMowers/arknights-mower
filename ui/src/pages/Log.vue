@@ -6,7 +6,7 @@ import { useMowerStore } from '@/stores/mower'
 const mower_store = useMowerStore()
 const { log, log_mobile, running, log_lines, task_list, waiting, get_task_id } =
   storeToRefs(mower_store)
-const { get_tasks } = mower_store
+const { get_tasks, get_running } = mower_store
 const axios = inject('axios')
 const mobile = inject('mobile')
 
@@ -34,6 +34,8 @@ watch(
 
 onMounted(() => {
   get_tasks()
+  get_running()
+  setInterval(get_running, 5000)
 })
 
 onUnmounted(() => {
@@ -180,9 +182,9 @@ const start_options = [
       <help-text v-if="!mobile">
         <div>目前只糊了一个勉强能用的版本，其他功能敬请期待</div>
         <div>只开放了空任务/专精任务</div>
-        <div>只能增，不能删！！谨慎填写任务</div>
+        <div>只能增，不能删！！写错了可以【载入心情数据】启动</div>
         <div>如果 mower 休息到 00:30，新增的 00:15 的任务是不会被执行的，因为此时在休息</div>
-        <div>所以最好在 00:00 mower运行的时候添加 00:15 的任务了，考验手速的时候到了</div>
+        <div>添加完任务可以【载入心情任务】启动</div>
         <div>空任务，请确保任务房间名字，干员数量正确（没有判定）</div>
         <div>专精任务，UI有详细说明；新增完毕，UI上面的表会实时反馈</div>
         <div>在Q群或者频道提以上问题，看心情踢人</div>

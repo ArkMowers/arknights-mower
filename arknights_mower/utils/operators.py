@@ -26,8 +26,6 @@ class SkillUpgradeSupport:
         self.level = skill_level
         self.efficiency = efficiency
         self.match = match
-        if self.level > 1:
-            self.half_off = True
         self.swap_name = swap_name
 
 
@@ -574,6 +572,7 @@ class Operators:
         operator.rest_in_full = self.config.is_rest_in_full(operator.name)
         operator.workaholic = self.config.is_workaholic(operator.name)
         operator.refresh_order_room = self.config.is_refresh_trading(operator.name)
+        operator.refresh_drained = self.config.is_refresh_drained(operator.name)
         if operator.name in agent_arrange_order:
             operator.arrange_order = agent_arrange_order[operator.name]
         # 复制基建数据
@@ -667,6 +666,7 @@ class Operators:
                     _room = self.dorm[i]
                     break
         _room.name = name
+        _room.time = None
         return _room
 
     def get_current_operator(self, room, index):
@@ -705,6 +705,7 @@ class Operator:
     depletion_rate = 0
     workaholic = False
     arrange_order = [2, "false"]
+    refresh_drained = False
 
     def __init__(
         self,

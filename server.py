@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import copy
 import datetime
 import json
 import mimetypes
@@ -19,6 +18,7 @@ from tzlocal import get_localzone
 from werkzeug.exceptions import NotFound
 
 from arknights_mower import __system__
+from arknights_mower.solvers.record import load_state, save_state
 from arknights_mower.utils import config
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
@@ -34,7 +34,6 @@ CORS(app)
 mower_thread = None
 log_lines = []
 ws_connections = []
-saved_state = None
 
 
 def read_log():
@@ -130,23 +129,21 @@ def running():
 def start(start_type):
     global mower_thread
     global log_lines
-    global saved_state
 
     if mower_thread and mower_thread.is_alive():
         return "false"
-
     # 创建 tmp 文件夹
     tmp_dir = get_path("@app/tmp")
     tmp_dir.mkdir(exist_ok=True)
 
     config.stop_mower.clear()
-
-    from arknights_mower.__main__ import main
-
+    saved_state = load_state()
     if saved_state is None or start_type == "2":
         saved_state = {}
     if start_type == "1":
         saved_state["tasks"] = []
+    from arknights_mower.__main__ import main
+
     mower_thread = Thread(target=main, args=(saved_state,), daemon=True)
     mower_thread.start()
 
@@ -157,21 +154,12 @@ def start(start_type):
 
 @app.route("/stop")
 @require_token
+@save_state
 def stop():
     global mower_thread
-    global saved_state
 
     if mower_thread is None:
         return "true"
-    from arknights_mower.__main__ import base_scheduler
-
-    saved_state = {
-        "dorm": copy.deepcopy(base_scheduler.op_data.dorm),
-        "tasks": copy.deepcopy(base_scheduler.tasks),
-        "party_time": copy.deepcopy(base_scheduler.op_data.party_time),
-        "operators": copy.deepcopy(base_scheduler.op_data.operators),
-    }
-    logger.info("Mower数据已经保存")
 
     config.stop_mower.set()
 
@@ -592,15 +580,15 @@ def get_count():
                                 or s["swap_name"] not in agent_list
                             ):
                                 raise Exception("干员名不正确")
-                            supports.append(
-                                SkillUpgradeSupport(
-                                    name=s["name"],
-                                    skill_level=s["skill_level"],
-                                    efficiency=s["efficiency"],
-                                    match=s["match"],
-                                    swap_name=s["swap_name"],
-                                )
+                            sup = SkillUpgradeSupport(
+                                name=s["name"],
+                                skill_level=s["skill_level"],
+                                efficiency=s["efficiency"],
+                                match=s["match"],
+                                swap_name=s["swap_name"],
                             )
+                            sup.half_off = s["half_off"]
+                            supports.append(sup)
                         if len(supports) == 0:
                             raise Exception("请添加专精工具人")
                         base_scheduler.op_data.skill_upgrade_supports = supports

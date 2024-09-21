@@ -36,6 +36,7 @@ class PlanConfig:
         resting_threshold: float = 0.5,
         refresh_trading_config: str = "",
         free_room: bool = False,
+        refresh_drained: str = "",
     ):
         """排班的设置
 
@@ -68,6 +69,7 @@ class PlanConfig:
         # example： 阿米娅,夕,令
         #           夕(room_3_1,room_1_3),令(room_3_1)
         self.refresh_trading_config = to_list(refresh_trading_config)
+        self.refresh_drained = to_list(refresh_drained)
 
     def is_rest_in_full(self, agent_name) -> bool:
         return agent_name in self.rest_in_full
@@ -83,6 +85,9 @@ class PlanConfig:
 
     def is_free_blacklist(self, agent_name) -> bool:
         return agent_name in self.free_blacklist
+
+    def is_refresh_drained(self, agent_name) -> bool:
+        return agent_name in self.refresh_drained
 
     def is_refresh_trading(self, agent_name) -> list[bool, list[str]]:
         match = next(
@@ -106,6 +111,7 @@ class PlanConfig:
             "resting_priority",
             "free_blacklist",
             "refresh_trading_config",
+            "refresh_drained",
         ]:
             p_dict = set(getattr(n, p))
             target_p = set(getattr(target, p))
