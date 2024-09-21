@@ -17,7 +17,8 @@ const {
   workaholic,
   backup_plans,
   sub_plan,
-  refresh_trading
+  refresh_trading,
+  refresh_drained
 } = storeToRefs(plan_store)
 const { load_plan, fill_empty } = plan_store
 
@@ -105,7 +106,8 @@ function create_sub_plan() {
       rest_in_full: deepcopy(rest_in_full.value),
       resting_priority: deepcopy(resting_priority.value),
       workaholic: deepcopy(workaholic.value),
-      refresh_trading: deepcopy(refresh_trading.value)
+      refresh_trading: deepcopy(refresh_trading.value),
+      refresh_drained: []
     },
     plan: fill_empty({}),
     trigger: {
@@ -144,7 +146,8 @@ watchEffect(() => {
       workaholic: workaholic.value,
       exhaust_require: exhaust_require.value,
       refresh_trading: refresh_trading.value,
-      free_blacklist: free_blacklist.value
+      free_blacklist: free_blacklist.value,
+      refresh_drained: refresh_drained.value
     }
   } else {
     current_conf.value = backup_plans.value[sub_plan.value].conf
@@ -161,6 +164,7 @@ watchEffect(() => {
     workaholic.value = current_conf.value.workaholic
     refresh_trading.value = current_conf.value.refresh_trading
     free_blacklist.value = current_conf.value.free_blacklist
+    refresh_drained.value = current_conf.value.refresh_drained
   } else {
     backup_plans.value[sub_plan.value].conf = current_conf.value
   }
@@ -362,6 +366,13 @@ async function export_json() {
         v-model="current_conf.refresh_trading"
         select_placeholder="填入在贸易站外影响贸易效率的干员"
       ></slick-operator-select>
+    </n-form-item>
+    <n-form-item>
+      <template #label>
+        <span>用尽刷新</span>
+        <help-text>上下班会影响用尽干员心情速率</help-text>
+      </template>
+      <slick-operator-select v-model="current_conf.refresh_drained"></slick-operator-select>
     </n-form-item>
     <n-form-item>
       <template #label>

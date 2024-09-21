@@ -2799,6 +2799,44 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             )
             for ref_room in ref_rooms:
                 self.refresh_run_order_time(ref_room)
+            if (
+                instance.name in self.op_data.operators
+                and self.op_data.operators[instance.name].refresh_drained
+            ):
+                self.refresh_drained_time()
+
+    def refresh_drained_time(self):
+        logger.debug("刷新用尽倒计时")
+        solved = []
+        for agent in self.op_data.exhaust_agent:
+            if agent in solved:
+                continue
+            logger.debug(f"开始检查{agent}")
+            shift_off = self.find_next_task(
+                datetime.now() + timedelta(hours=24),
+                task_type=TaskTypes.EXHAUST_OFF,
+                meta_data=agent,
+                compare_type="<",
+            )
+            if shift_off:
+                logger.info(f"移除 {shift_off.meta_data} 用尽下班任务以刷新时间")
+                exhausts = shift_off.meta_data.split(",")
+                solved.extend(exhausts)
+                self.tasks.remove(shift_off)
+                for o in exhausts:
+                    self.op_data.operators[o].time_stamp = None
+            else:
+                self.op_data.operators[agent].time_stamp = None
+        if solved:
+            self.tasks.append(
+                (
+                    SchedulerTask(
+                        time=datetime.now(),
+                        task_plan={},
+                        task_type=TaskTypes.NOT_SPECIFIC,
+                    )
+                )
+            )
 
     def refresh_run_order_time(self, room):
         logger.debug("检测到插拔房间人员变动！")

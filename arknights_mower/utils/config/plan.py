@@ -20,6 +20,8 @@ class PlanConf(BaseModel):
     "0心情工作（主力宿舍黑名单）"
     refresh_trading: str = ""
     "跑单时间刷新干员"
+    refresh_drained: str = ""
+    "用尽时间刷新干员"
 
 
 class BackupPlanConf(PlanConf):

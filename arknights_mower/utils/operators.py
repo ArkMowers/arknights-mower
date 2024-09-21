@@ -572,6 +572,7 @@ class Operators:
         operator.rest_in_full = self.config.is_rest_in_full(operator.name)
         operator.workaholic = self.config.is_workaholic(operator.name)
         operator.refresh_order_room = self.config.is_refresh_trading(operator.name)
+        operator.refresh_drained = self.config.is_refresh_drained(operator.name)
         if operator.name in agent_arrange_order:
             operator.arrange_order = agent_arrange_order[operator.name]
         # 复制基建数据
@@ -704,6 +705,7 @@ class Operator:
     depletion_rate = 0
     workaholic = False
     arrange_order = [2, "false"]
+    refresh_drained = False
 
     def __init__(
         self,
