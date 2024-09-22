@@ -455,7 +455,8 @@ class RIICPart(ConfModel):
     "菲亚防呆"
     fia_threshold: float = 0.9
     "菲亚阈值"
-
+    merge_interval: float = 10
+    "不养闲人合并间隔"
 
 class SimulatorPart(ConfModel):
     class SimulatorConf(ConfModel):

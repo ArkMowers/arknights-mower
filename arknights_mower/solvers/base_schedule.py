@@ -597,7 +597,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     dorm_name = key
                     dorm_op = value
                     break
-                if self.op_data.operators[name].current_room != dorm_name or dorm_op[self.op_data.operators[name].current_index] != 'Free':
+                if (
+                    self.op_data.operators[name].current_room != dorm_name
+                    or dorm_op[self.op_data.operators[name].current_index] != "Free"
+                ):
                     logger.info(f"检测到{task.meta_data}不在对应位置，移除相关任务")
                     return False
                 i, d = self.op_data.get_dorm_by_name(task.meta_data)
@@ -607,22 +610,33 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 return True
 
             self.tasks = [t for t in self.tasks if should_keep(t)]
-            for idx in range(1, len(self.tasks)+1):
+            merge_interval = config.conf.merge_interval
+            for idx in range(1, len(self.tasks) + 1):
                 if idx == 1:
                     continue
                 task = self.tasks[-idx]
                 last_not_release = None
                 if task.type != TaskTypes.RELEASE_DORM:
                     continue
-                for index_last_not_release in range(idx+1, len(self.tasks)+1):
-                    if self.tasks[-index_last_not_release].type != TaskTypes.RELEASE_DORM and self.tasks[-index_last_not_release].time>task.time-timedelta(minutes=1):
+                for index_last_not_release in range(idx + 1, len(self.tasks) + 1):
+                    if self.tasks[
+                        -index_last_not_release
+                    ].type != TaskTypes.RELEASE_DORM and self.tasks[
+                        -index_last_not_release
+                    ].time > task.time - timedelta(minutes=1):
                         last_not_release = self.tasks[-index_last_not_release]
                 if last_not_release is not None:
                     continue
-                elif task.time+timedelta(minutes=10) >self.tasks[-idx+1].time:
+                elif (
+                    task.time + timedelta(minutes=merge_interval)
+                    > self.tasks[-idx + 1].time
+                ):
                     task.time = self.tasks[-idx + 1].time + timedelta(seconds=1)
-                    self.tasks[-idx], self.tasks[-idx + 1] = self.tasks[-idx + 1], self.tasks[-idx]
-                    logger.info("自动合并时间接近任务")
+                    self.tasks[-idx], self.tasks[-idx + 1] = (
+                        self.tasks[-idx + 1],
+                        self.tasks[-idx],
+                    )
+                    logger.info(f"自动合并{merge_interval}分钟以内任务")
 
     def infra_main(self):
         """位于基建首页"""

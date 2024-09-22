@@ -36,6 +36,7 @@ const {
   fix_mumu12_adb_disconnect,
   touch_method,
   free_room,
+  merge_interval,
   fia_fool,
   droidcast,
   maa_adb_path,
@@ -526,6 +527,18 @@ const onSelectionChange = (newValue) => {
                 宿舍不养闲人
                 <help-text>干员心情回满后，立即释放宿舍空位</help-text>
               </n-checkbox>
+            </n-form-item>
+            <n-form-item v-if="free_room">
+              <template #label>
+                <span>任务合并间隔</span>
+                <help-text>
+                  <div>可填小数</div>
+                  <div>将不养闲人任务合并至下一个指定间隔内的任务</div>
+                </help-text>
+              </template>
+              <n-input-number v-model:value="merge_interval">
+                <template #suffix>分钟</template>
+              </n-input-number>
             </n-form-item>
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="fia_fool">

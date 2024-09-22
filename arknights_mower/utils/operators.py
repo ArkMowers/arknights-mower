@@ -364,7 +364,6 @@ class Operators:
             else:
                 self.set_mood_limit(TOTTER, upper_limit=24, lower_limit=20)
 
-
     def evaluate_expression(self, expression):
         try:
             result = Expr(expression, self.eval_model).eval({"op_data": self})
