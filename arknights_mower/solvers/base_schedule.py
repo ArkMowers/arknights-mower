@@ -463,7 +463,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     __time = dorm.time
                 else:
                     __time = datetime.max
+                need_early = True
                 for x in __rest_agent:
+                    # 如果小组内没有耗尽，则提前8分钟上班
+                    if self.op_data.operators[x].exhaust_require:
+                        need_early = False
                     # 如果同小组也是rest_in_full则取最大休息时间 否则忽略
                     if x in low_priority:
                         logger.debug("检测到回满组已经安排")
@@ -489,6 +493,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if __time < datetime.now():
                     __time = datetime.now()
                 if __time != datetime.max:
+                    if need_early:
+                        __time -= timedelta(minutes=8)
+                        logger.info("全组无耗尽，提前8分钟上班")
                     self.tasks.append(
                         SchedulerTask(
                             time=__time,
