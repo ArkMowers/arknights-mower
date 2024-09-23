@@ -383,7 +383,10 @@ async function export_json() {
     <n-form-item>
       <template #label>
         <span>用尽刷新</span>
-        <help-text>上下班会影响用尽干员心情速率</help-text>
+        <help-text>
+          <p>会影响用尽干员心情消耗速率的干员</p>
+          <p>在填入该选项的干员上下班后，会重新读取用尽干员的下班时间</p>
+        </help-text>
       </template>
       <slick-operator-select v-model="current_conf.refresh_drained"></slick-operator-select>
     </n-form-item>
