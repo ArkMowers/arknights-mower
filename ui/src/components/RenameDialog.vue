@@ -29,13 +29,8 @@ function update_trigger(data) {
     style="width: auto; max-width: 90vw"
   >
     <div class="dropdown-container">
-      <label class="dropdown-label"
-        >副表名称
-      </label>
-      <n-input
-        v-model:value="backup_plans[sub_plan].name"
-      >
-      </n-input>
+      <label class="dropdown-label">副表名称 </label>
+      <n-input v-model:value="backup_plans[sub_plan].name"> </n-input>
     </div>
   </n-modal>
 </template>

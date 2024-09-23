@@ -255,10 +255,7 @@ async function export_json() {
     </n-button-group>
     <n-button-group>
       <n-select v-model:value="sub_plan" :style="{ width: '150px' }" :options="sub_plan_options" />
-      <n-button 
-        :disabled="sub_plan == 'main'"
-        @click="show_name_editor = true"
-      >
+      <n-button :disabled="sub_plan == 'main'" @click="show_name_editor = true">
         <template #icon>
           <n-icon><Pencil /></n-icon>
         </template>

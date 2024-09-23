@@ -92,7 +92,7 @@ class Operators:
         # 基本5%
         basic = 5
         if support.add_on:
-            # 阿斯卡伦
+            # 阿斯卡纶
             basic += 5
         if hour == 0:
             hour = level * 8
@@ -787,7 +787,7 @@ class Operator:
                     return False
             return (
                 # 歌蕾蒂娅主班 刷新心情频率提升
-                self.need_to_refresh(2.5 if self.name != "歌蕾蒂娅" else 0.5)
+                self.need_to_refresh(2.5)
                 or self.current_room != self.room
                 or self.index != self.current_index
             )

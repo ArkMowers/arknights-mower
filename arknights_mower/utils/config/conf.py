@@ -458,6 +458,7 @@ class RIICPart(ConfModel):
     merge_interval: float = 10
     "不养闲人合并间隔"
 
+
 class SimulatorPart(ConfModel):
     class SimulatorConf(ConfModel):
         name: str = ""
