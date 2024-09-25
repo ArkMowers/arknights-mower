@@ -3309,6 +3309,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     "credit_fight": conf.maa_credit_fight
                     and "" not in self.stages
                     and self.credit_fight is None,
+                    "select_formation": conf.credit_fight.squad,
                     "force_shopping_if_credit_full": conf.maa_mall_ignore_blacklist_when_full,
                 },
             )
