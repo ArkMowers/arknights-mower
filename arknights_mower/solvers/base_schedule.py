@@ -42,9 +42,9 @@ from arknights_mower.utils.scheduler_task import (
     add_release_dorm,
     check_dorm_ordering,
     find_next_task,
+    merge_release_dorm,
     scheduling,
     try_add_release_dorm,
-    merge_release_dorm,
 )
 
 
