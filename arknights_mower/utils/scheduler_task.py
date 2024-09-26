@@ -273,6 +273,30 @@ def set_type_enum(value):
     return TaskTypes.NOT_SPECIFIC
 
 
+def merge_release_dorm(tasks, merge_interval):
+    for idx in range(1, len(tasks) + 1):
+        if idx == 1:
+            continue
+        task = tasks[-idx]
+        last_not_release = None
+        if task.type != TaskTypes.RELEASE_DORM:
+            continue
+        for index_last_not_release in range(idx + 1, len(tasks) + 1):
+            if tasks[-index_last_not_release].type != TaskTypes.RELEASE_DORM and tasks[
+                -index_last_not_release
+            ].time > task.time - timedelta(minutes=1):
+                last_not_release = tasks[-index_last_not_release]
+        if last_not_release is not None:
+            continue
+        elif task.time + timedelta(minutes=merge_interval) > tasks[-idx + 1].time:
+            task.time = tasks[-idx + 1].time + timedelta(seconds=1)
+            tasks[-idx], tasks[-idx + 1] = (
+                tasks[-idx + 1],
+                tasks[-idx],
+            )
+            logger.info(f"自动合并{merge_interval}分钟以内任务")
+
+
 class SchedulerTask:
     time = None
     type = ""
