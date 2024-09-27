@@ -42,6 +42,7 @@ from arknights_mower.utils.scheduler_task import (
     add_release_dorm,
     check_dorm_ordering,
     find_next_task,
+    merge_release_dorm,
     scheduling,
     try_add_release_dorm,
 )
@@ -463,7 +464,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     __time = dorm.time
                 else:
                     __time = datetime.max
+                need_early = True
                 for x in __rest_agent:
+                    # 如果小组内没有耗尽，则提前8分钟上班
+                    if self.op_data.operators[x].exhaust_require:
+                        need_early = False
                     # 如果同小组也是rest_in_full则取最大休息时间 否则忽略
                     if x in low_priority:
                         logger.debug("检测到回满组已经安排")
@@ -489,6 +494,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if __time < datetime.now():
                     __time = datetime.now()
                 if __time != datetime.max:
+                    if need_early:
+                        __time -= timedelta(minutes=8)
+                        logger.info("全组无耗尽，提前8分钟上班")
                     self.tasks.append(
                         SchedulerTask(
                             time=__time,
@@ -584,6 +592,17 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             def should_keep(task):
                 if task.type != TaskTypes.RELEASE_DORM:
                     return True
+                name = task.meta_data
+                for key, value in task.plan.items():
+                    dorm_name = key
+                    dorm_op = value
+                    break
+                if (
+                    self.op_data.operators[name].current_room != dorm_name
+                    or dorm_op[self.op_data.operators[name].current_index] != "Free"
+                ):
+                    logger.info(f"检测到{task.meta_data}不在对应位置，移除相关任务")
+                    return False
                 i, d = self.op_data.get_dorm_by_name(task.meta_data)
                 if i is None:
                     logger.info(f"检测到{task.meta_data}不在宿舍，移除相关任务")
@@ -591,6 +610,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 return True
 
             self.tasks = [t for t in self.tasks if should_keep(t)]
+            merge_interval = config.conf.merge_interval
+            merge_release_dorm(self.tasks, merge_interval)
 
     def infra_main(self):
         """位于基建首页"""
@@ -3287,6 +3308,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     "credit_fight": conf.maa_credit_fight
                     and "" not in self.stages
                     and self.credit_fight is None,
+                    "select_formation": conf.credit_fight.squad,
                     "force_shopping_if_credit_full": conf.maa_mall_ignore_blacklist_when_full,
                 },
             )
@@ -3337,6 +3359,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         not one_time
                         and (self.tasks[0].time - datetime.now()).total_seconds() < 300
                     ):
+                        self.MAA.stop()
+                        hard_stop = True
+                    elif config.stop_maa.is_set():
                         self.MAA.stop()
                         hard_stop = True
                     else:

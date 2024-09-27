@@ -92,7 +92,7 @@ class Operators:
         # 基本5%
         basic = 5
         if support.add_on:
-            # 阿斯卡伦
+            # 阿斯卡纶
             basic += 5
         if hour == 0:
             hour = level * 8
@@ -363,16 +363,6 @@ class Operators:
                 self.set_mood_limit(TOTTER, upper_limit=12, lower_limit=8)
             else:
                 self.set_mood_limit(TOTTER, upper_limit=24, lower_limit=20)
-
-        # 减少仅回满干员的心情阈值0.5
-        for name in self.operators:
-            if (
-                self.operators[name].rest_in_full
-                and self.operators[name].exhaust_require is not True
-            ):
-                self.set_mood_limit(
-                    name, upper_limit=self.operators[name].upper_limit - 0.5
-                )
 
     def evaluate_expression(self, expression):
         try:
@@ -797,7 +787,7 @@ class Operator:
                     return False
             return (
                 # 歌蕾蒂娅主班 刷新心情频率提升
-                self.need_to_refresh(2.5 if self.name != "歌蕾蒂娅" else 0.5)
+                self.need_to_refresh(2.5)
                 or self.current_room != self.room
                 or self.index != self.current_index
             )
