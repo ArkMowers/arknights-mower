@@ -141,7 +141,6 @@ class Plan:
         trigger: Optional[LogicExpression] = None,
         task: Optional[dict[str, list[str]]] = None,
         trigger_timing: Optional[str] = None,
-        name: Optional[str] = None,
     ):
         """
         Args:
