@@ -188,8 +188,11 @@ def simulate(saved):
             base_scheduler.daily_skland = saved["daily_skland"]
             base_scheduler.daily_mail = saved["daily_mail"]
             base_scheduler.task_count = saved["task_count"]
+            base_scheduler.op_data.skill_upgrade_supports = saved[
+                "skill_upgrade_supports"
+            ]
         except Exception as ex:
-            logger.error(ex)
+            logger.exception(ex)
         base_scheduler.tasks = tasks
     while True:
         try:

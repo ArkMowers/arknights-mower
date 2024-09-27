@@ -592,7 +592,7 @@ def get_count():
                         if len(supports) == 0:
                             raise Exception("请添加专精工具人")
                         base_scheduler.op_data.skill_upgrade_supports = supports
-                        logger.error("更新专精工具人完毕")
+                        logger.info("更新专精工具人完毕")
                     base_scheduler.tasks.append(new_task)
                     logger.debug(f"成功：{str(new_task)}")
                     return "添加任务成功！"

@@ -825,7 +825,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         need_read = set(
             v.room
             for k, v in self.op_data.operators.items()
-            if v.need_to_refresh() and v.room in base_room_list
+            if v.need_to_refresh(0.5 if k in ["歌蕾蒂娅", "见行者"] else 2)
+            and v.room in base_room_list
         )
         for room in need_read:
             error_count = 0
