@@ -586,7 +586,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 logger.debug("检测到时间数据不存在")
                 self.op_data.reset_dorm_time()
                 self.error = True
-        self.tasks.sort(key=lambda task: task.time)
         # 最后再做不养闲人刷新
         if self.op_data.config.free_room:
 
