@@ -592,14 +592,18 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             def should_keep(task):
                 if task.type != TaskTypes.RELEASE_DORM:
                     return True
+                elif len(task.plan) == 0:
+                    return False
                 name = task.meta_data
-                for key, value in task.plan.items():
+                free_room = list(task.plan.keys())[0]
+                free_op = task.plan[free_room]
+                '''for key, value in task.plan.items():
                     dorm_name = key
                     dorm_op = value
-                    break
+                    break'''
                 if (
-                    self.op_data.operators[name].current_room != dorm_name
-                    or dorm_op[self.op_data.operators[name].current_index] != "Free"
+                    self.op_data.operators[name].current_room != free_room
+                    or free_op[self.op_data.operators[name].current_index] != "Free"
                 ):
                     logger.info(f"检测到{task.meta_data}不在对应位置，移除相关任务")
                     return False
