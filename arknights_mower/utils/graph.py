@@ -433,7 +433,7 @@ class SceneGraphSolver(BaseSolver):
             logger.error(f"{SceneComment[scene]}不在场景图中")
             return
 
-        error_count=0
+        error_count = 0
 
         while (current := self.scene()) != scene:
             if current in self.waiting_scene:
@@ -469,7 +469,7 @@ class SceneGraphSolver(BaseSolver):
                 raise
             except Exception as e:
                 logger.exception(f"场景转移异常：{e}")
-                '''restart_simulator()
+                """restart_simulator()
                 self.device.client.check_server_alive()
                 Session().connect(config.conf.adb)
                 if config.conf.droidcast.enable:
@@ -478,7 +478,7 @@ class SceneGraphSolver(BaseSolver):
                     self.device.control.scrcpy = Scrcpy(self.device.client)
                 self.check_current_focus()
                 return False
-        return True'''
+        return True"""
                 if error_count <= 5:
                     self.sleep()
                     error_count += 1
