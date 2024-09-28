@@ -597,10 +597,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 name = task.meta_data
                 free_room = list(task.plan.keys())[0]
                 free_op = task.plan[free_room]
-                '''for key, value in task.plan.items():
-                    dorm_name = key
-                    dorm_op = value
-                    break'''
                 if (
                     self.op_data.operators[name].current_room != free_room
                     or free_op[self.op_data.operators[name].current_index] != "Free"
