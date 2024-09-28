@@ -444,8 +444,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             _name = dorm.name
             if _name == "":
                 continue
-            if self.op_data.operators[dorm.name].operator_type != "high":
-                continue
             # 如果是rest in full，则新增单独任务..
             if (
                 _name in self.op_data.operators.keys()
