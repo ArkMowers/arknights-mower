@@ -190,6 +190,11 @@ class BaseSolver:
     def check_current_focus(self):
         self.recog.check_current_focus()
 
+    def restart_game(self):
+        self.device.exit()
+        self.device.launch()
+        self.recog.update()
+
     def tap_element(
         self,
         element_name: tp.Res,

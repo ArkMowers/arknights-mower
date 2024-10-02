@@ -289,7 +289,7 @@ def merge_release_dorm(tasks, merge_interval):
         if last_not_release is not None:
             continue
         elif task.time + timedelta(minutes=merge_interval) > tasks[-idx + 1].time:
-            task.time = tasks[-idx + 1].time + timedelta(seconds=1)
+            tasks[-idx].time = tasks[-idx + 1].time + timedelta(seconds=1)
             tasks[-idx], tasks[-idx + 1] = (
                 tasks[-idx + 1],
                 tasks[-idx],
