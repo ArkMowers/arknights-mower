@@ -79,20 +79,23 @@ async function saveTasks() {
   if (task_type.value == '技能专精') {
     task.meta_data = skill_level.value + ''
     task.plan = {}
-  }
-  upgrade_support.value.sort((a, b) => a.skill_level - b.skill_level)
-  if (upgrade_support.value[0].skill_level != 1) {
-    upgrade_support.value[0].half_off = half_off.value
-    // 如果第一个不是1技能，则更新 是否减半
-  } else upgrade_support.value[0].half_off = false
-  const data = deepcopy(upgrade_support.value)
-  for (const value of data) {
-    if (!value.swap) {
-      value.swap_name = value.name
-      value.match = false
+    upgrade_support.value.sort((a, b) => a.skill_level - b.skill_level)
+    if (upgrade_support.value[0].skill_level != 1) {
+      upgrade_support.value[0].half_off = half_off.value
+      // 如果第一个不是1技能，则更新 是否减半
+    } else upgrade_support.value[0].half_off = false
+    const data = deepcopy(upgrade_support.value)
+    for (const value of data) {
+      if (!value.swap) {
+        value.swap_name = value.name
+        value.match = false
+      }
+      delete value.swap
     }
-    delete value.swap
+  } else {
+    var data = []
   }
+
   const req = { task, upgrade_support: data }
   msg.value = (await axios.post(`${import.meta.env.VITE_HTTP_URL}/task`, req)).data
   if (msg.value != '添加任务成功！') {
