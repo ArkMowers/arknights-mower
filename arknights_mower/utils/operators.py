@@ -366,7 +366,9 @@ class Operators:
 
     def evaluate_expression(self, expression):
         try:
-            result = Expr(expression, self.eval_model).eval({"op_data": self})
+            model = {e: e for e in base_room_list}
+            model["op_data"] = self
+            result = Expr(expression, self.eval_model).eval(model)
             return result
         except Exception as e:
             logger.exception(f"Error evaluating expression: {e}")
@@ -513,6 +515,7 @@ class Operators:
                     ):
                         op.mood = op.upper_limit
                         op.time_stamp = self.dorm[idx].time
+                        op.depletion_rate = 0
                         logger.debug(
                             f"检测到{op.name}心情恢复满，设置心情至{op.upper_limit}"
                         )

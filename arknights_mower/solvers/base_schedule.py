@@ -485,6 +485,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     if _idx is not None:
                         __type.append("dorm" + str(_idx))
                     planned_index.append(_idx)
+                    logger.debug(f"计划干员为{x}")
                     __room = self.op_data.operators[x].room
                     if __room not in __plan.keys():
                         __plan[__room] = ["Current"] * len(self.op_data.plan[__room])
@@ -851,7 +852,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         for item in _mood_data
                     ]
                     logger.info(f"房间 {self.translate_room(room)}  {mood_info}")
-                    # logger.info(f'房间 {room} 心情为：{_mood_data}')
                     break
                 except MowerExit:
                     raise
@@ -1466,6 +1466,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             return
         if self.agent_get_mood() is None:
             self.backup_plan_solver()
+        if not self.find_next_task(datetime.now() + timedelta(minutes=5)):
+            try_add_release_dorm({}, None, self.op_data, self.tasks)
 
     def backup_plan_solver(self, timing=None):
         if timing is None:

@@ -1,4 +1,5 @@
 import copy
+import heapq
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Literal
@@ -171,12 +172,61 @@ def scheduling(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
 def try_add_release_dorm(plan, time, op_data, tasks):
     if not op_data.config.free_room:
         return
+    # 有plan 的情况
     for k, v in plan.items():
         for name in v:
             if name != "Current":
                 _idx, __dorm = op_data.get_dorm_by_name(name)
                 if __dorm and __dorm.time < time:
                     add_release_dorm(tasks, op_data, name)
+    # 普通情况
+    if not plan:
+        try:
+            # 查看是否有未满心情的人
+            logger.info("启动不养闲人安排空余宿舍位")
+            waiting_list = []
+            for k, v in op_data.operators.items():
+                if (
+                    not v.is_high()
+                    and v.current_mood() < v.upper_limit
+                    and v.current_room == ""
+                    and v.name not in op_data.free_blacklist
+                ):
+                    heapq.heappush(
+                        waiting_list,
+                        (
+                            1 if k in ["九色鹿", "年"] else 0,
+                            (v.current_mood() - v.lower_limit)
+                            / (v.upper_limit - v.lower_limit),
+                            k,
+                        ),
+                    )
+                    logger.debug(f"{k}:心情：{v.current_mood()}")
+            if not waiting_list:
+                return
+            logger.debug(f"有{len(waiting_list)}个干员心情未满")
+            plan = {}
+            for idx, value in enumerate(op_data.dorm):
+                if value.name in op_data.operators:
+                    if not waiting_list:
+                        break
+                    agent = op_data.operators[value.name]
+                    logger.info(str(value))
+                    if not v.is_high() and (
+                        agent.current_mood() >= agent.upper_limit
+                        or (value.time is not None and value.time < datetime.now())
+                    ):
+                        rest = heapq.heappop(waiting_list)
+                        if value.position[0] not in plan:
+                            plan[value.position[0]] = ["Current"] * 5
+                        plan[value.position[0]][value.position[1]] = rest[2]
+            if plan:
+                logger.debug(f"不养闲人任务：{plan}")
+                logger.info("添加不养闲人任务完成")
+                task = SchedulerTask(task_plan=plan)
+                tasks.append(task)
+        except Exception as ex:
+            logger.exception(ex)
 
 
 def add_release_dorm(tasks, op_data, name):
