@@ -26,6 +26,8 @@ coloredlogs==15.0.1
     # via onnxruntime
 colorlog==6.8.2
     # via -r requirements.in
+cryptography==43.0.1
+    # via -r requirements.in
 evalidate==2.0.2
     # via -r requirements.in
 flask==3.0.3
