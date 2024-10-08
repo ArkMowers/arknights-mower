@@ -1,8 +1,8 @@
 <script setup>
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
-import { deepcopy } from '@/utils/deepcopy'
 import { storeToRefs } from 'pinia'
+import { swap } from '@/utils/common'
 
 const config_store = useConfigStore()
 const { free_blacklist, theme } = storeToRefs(config_store)
@@ -99,14 +99,14 @@ const sub_plan_options = computed(() => {
 function create_sub_plan() {
   backup_plans.value.push({
     conf: {
-      exhaust_require: deepcopy(exhaust_require.value),
-      free_blacklist: deepcopy(free_blacklist.value),
+      exhaust_require: [],
+      free_blacklist: [],
       ling_xi: ling_xi.value,
       max_resting_count: max_resting_count.value,
-      rest_in_full: deepcopy(rest_in_full.value),
-      resting_priority: deepcopy(resting_priority.value),
-      workaholic: deepcopy(workaholic.value),
-      refresh_trading: deepcopy(refresh_trading.value),
+      rest_in_full: [],
+      resting_priority: [],
+      workaholic: [],
+      refresh_trading: [],
       refresh_drained: []
     },
     plan: fill_empty({}),
@@ -228,6 +228,22 @@ async function export_json() {
   document.body.removeChild(link)
   window.URL.revokeObjectURL(url)
 }
+
+function movePlanBackward() {
+  if (sub_plan.value !== 'main' && sub_plan.value > 0) {
+    const currentIndex = sub_plan.value
+    swap(currentIndex, currentIndex - 1, backup_plans.value)
+    sub_plan.value = currentIndex - 1
+  }
+}
+
+function movePlanForward() {
+  if (sub_plan.value !== 'main' && sub_plan.value < backup_plans.value.length - 1) {
+    const currentIndex = sub_plan.value
+    swap(currentIndex, currentIndex + 1, backup_plans.value)
+    sub_plan.value = currentIndex + 1
+  }
+}
 </script>
 
 <template>
@@ -236,17 +252,14 @@ async function export_json() {
   <rename-dialog />
   <div class="plan-bar w-980 mx-auto mt-12 mw-980">
     <n-button-group>
-      <n-button
-        :disabled="sub_plan == 'main'"
-        @click="sub_plan = sub_plan == 0 ? 'main' : sub_plan - 1"
-      >
+      <n-button :disabled="sub_plan == 'main' || sub_plan == 0" @click="movePlanBackward">
         <template #icon>
           <n-icon><ios-arrow-back /></n-icon>
         </template>
       </n-button>
       <n-button
-        :disabled="sub_plan == backup_plans.length - 1 || backup_plans.length == 0"
-        @click="sub_plan = sub_plan == 'main' ? 0 : sub_plan + 1"
+        :disabled="sub_plan == 'main' || sub_plan == backup_plans.length - 1"
+        @click="movePlanForward"
       >
         <template #icon>
           <n-icon><ios-arrow-forward /></n-icon>

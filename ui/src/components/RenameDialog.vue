@@ -7,17 +7,6 @@ import { usePlanStore } from '@/stores/plan'
 
 const plan_store = usePlanStore()
 const { sub_plan, backup_plans } = storeToRefs(plan_store)
-
-const triggerTimingOptions = [
-  { label: '任务开始', value: 'BEGINNING' },
-  { label: '下班结束', value: 'BEFORE_PLANNING' },
-  { label: '上班结束', value: 'AFTER_PLANNING' },
-  { label: '任务结束', value: 'END' }
-]
-
-function update_trigger(data) {
-  backup_plans.value[sub_plan.value].trigger = data
-}
 </script>
 
 <template>
