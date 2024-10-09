@@ -188,7 +188,6 @@ function drop_facility(target, event) {
 
   // 1. 更新当前 current_plan 表
   swap(source, target, current_plan.value)
-  console.log(current_plan.value)
 
   // 2. 更新所有副表和主表（除当前表以外）
   const allPlans = ['main', ...backup_plans.value]

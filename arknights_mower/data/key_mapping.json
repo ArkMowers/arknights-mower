@@ -377,20 +377,6 @@
         "NORMAL",
         40001
     ],
-    "LINKAGE_TKT_GACHA_10_5401": [
-        "LINKAGE_TKT_GACHA_10_5401",
-        "LINKAGE_TKT_GACHA_10_5401",
-        "好好吃饭寻访凭证",
-        "NORMAL",
-        40003
-    ],
-    "好好吃饭寻访凭证": [
-        "LINKAGE_TKT_GACHA_10_5401",
-        "LINKAGE_TKT_GACHA_10_5401",
-        "好好吃饭寻访凭证",
-        "NORMAL",
-        40003
-    ],
     "7003": [
         "7003",
         "TKT_GACHA",
@@ -1194,56 +1180,56 @@
         "randomDiamondShd_1",
         "罗德岛迎春红包",
         "CONSUME",
-        60111
+        60112
     ],
     "罗德岛迎春红包": [
         "randomDiamondShd_1",
         "randomDiamondShd_1",
         "罗德岛迎春红包",
         "CONSUME",
-        60111
+        60112
     ],
     "randomDiamondShd_2": [
         "randomDiamondShd_2",
         "randomDiamondShd_2",
         "庆典礼盒",
         "CONSUME",
-        60112
+        60113
     ],
     "庆典礼盒": [
         "randomDiamondShd_2",
         "randomDiamondShd_2",
         "庆典礼盒",
         "CONSUME",
-        60112
+        60113
     ],
     "randomMaterial_siesta2": [
         "randomMaterial_siesta2",
         "randomMaterial_siesta2",
         "峯联贸易物流补给",
         "CONSUME",
-        60113
+        60114
     ],
     "峯联贸易物流补给": [
         "randomMaterial_siesta2",
         "randomMaterial_siesta2",
         "峯联贸易物流补给",
         "CONSUME",
-        60113
+        60114
     ],
     "randomMaterial_leith2": [
         "randomMaterial_leith2",
         "randomMaterial_leith2",
         "查访补给",
         "CONSUME",
-        60114
+        60115
     ],
     "查访补给": [
         "randomMaterial_leith2",
         "randomMaterial_leith2",
         "查访补给",
         "CONSUME",
-        60114
+        60115
     ],
     "2001": [
         "2001",
@@ -6607,6 +6593,34 @@
         "MATERIAL",
         700154
     ],
+    "p_char_487_bobb": [
+        "p_char_487_bobb",
+        "p_char_487_bobb",
+        "波卜的信物",
+        "MATERIAL",
+        700155
+    ],
+    "波卜的信物": [
+        "p_char_487_bobb",
+        "p_char_487_bobb",
+        "波卜的信物",
+        "MATERIAL",
+        700155
+    ],
+    "p_char_4162_cathy": [
+        "p_char_4162_cathy",
+        "p_char_4162_cathy",
+        "凯瑟琳的信物",
+        "MATERIAL",
+        700156
+    ],
+    "凯瑟琳的信物": [
+        "p_char_4162_cathy",
+        "p_char_4162_cathy",
+        "凯瑟琳的信物",
+        "MATERIAL",
+        700156
+    ],
     "p_char_103_angel": [
         "p_char_103_angel",
         "p_char_103_angel",
@@ -7964,6 +7978,20 @@
         "玛露西尔的信物",
         "MATERIAL",
         600097
+    ],
+    "p_char_1019_siege2": [
+        "p_char_1019_siege2",
+        "p_char_1019_siege2",
+        "维娜·维多利亚的信物",
+        "MATERIAL",
+        600098
+    ],
+    "维娜·维多利亚的信物": [
+        "p_char_1019_siege2",
+        "p_char_1019_siege2",
+        "维娜·维多利亚的信物",
+        "MATERIAL",
+        600098
     ],
     "class_p_char_123_fang": [
         "class_p_char_123_fang",
@@ -10092,5 +10120,19 @@
         "高级材料提货券",
         "CONSUME",
         30201
+    ],
+    "SINGLE_55_0_1_GACHA": [
+        "SINGLE_55_0_1_GACHA",
+        "SINGLE_55_0_1_GACHA",
+        "未致蒙尘寻访凭证",
+        "NORMAL",
+        40003
+    ],
+    "未致蒙尘寻访凭证": [
+        "SINGLE_55_0_1_GACHA",
+        "SINGLE_55_0_1_GACHA",
+        "未致蒙尘寻访凭证",
+        "NORMAL",
+        40003
     ]
 }
