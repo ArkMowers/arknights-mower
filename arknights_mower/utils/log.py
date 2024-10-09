@@ -85,6 +85,8 @@ def screenshot_cleanup():
     start_time_ns = time.time_ns() - config.conf.screenshot * 3600 * 10**9
     for i in screenshot_folder.iterdir():
         if i.is_dir():
+            if i.name == "run_order":
+                continue
             shutil.rmtree(i)
         elif not i.stem.isnumeric():
             i.unlink()
@@ -108,7 +110,11 @@ def screenshot_worker():
 Thread(target=screenshot_worker, daemon=True).start()
 
 
-def save_screenshot(img: bytes) -> None:
+def save_screenshot(img: bytes, sub_folder=None) -> None:
     filename = f"{time.time_ns()}.jpg"
     logger.debug(filename)
+    if sub_folder:
+        sub_folder_path = Path(screenshot_folder) / sub_folder
+        sub_folder_path.mkdir(parents=True, exist_ok=True)
+        filename = f"{sub_folder}/{filename}"
     screenshot_queue.put((img, filename))

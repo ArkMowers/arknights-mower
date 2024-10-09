@@ -193,7 +193,7 @@ function drop_facility(target, event) {
   const allPlans = ['main', ...backup_plans.value]
 
   allPlans.forEach((item, index) => {
-    if ((sub_plan.value === 'main' && item === 'main') || sub_plan.value === index) {
+    if ((sub_plan.value === 'main' && item === 'main') || sub_plan.value + 1 === index) {
       return
     }
     // 执行更新操作
