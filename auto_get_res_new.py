@@ -491,6 +491,10 @@ class Arknights数据处理器:
             "arknights_mower/fonts/SourceHanSansCN-Medium.otf", 25
         )
 
+        font26 = ImageFont.truetype(
+            "arknights_mower/fonts/SourceHanSansCN-Medium.otf", 26
+        )
+
         data = {}
 
         kernel = np.ones((10, 10), np.uint8)
@@ -500,7 +504,10 @@ class Arknights数据处理器:
         for idx, operator in enumerate(agent_list):
             font = font31
             if not operator[0].encode().isalpha():
-                if len(operator) == 7:
+                if "·" in operator:
+                    # 维娜·维多利亚 识别的临时解决办法
+                    font = font26
+                elif len(operator) == 7:
                     font = font25
                 elif len(operator) == 6:
                     font = font30
