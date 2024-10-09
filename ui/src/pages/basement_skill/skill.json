@@ -1,5 +1,126 @@
 [
   {
+    "key": 345,
+    "name": "凯瑟琳",
+    "span": 3,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "工效模范·α",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻加工站加工<@cc.kw>任意类材料</>时，副产品的产出概率提升<@cc.vup>50%</>",
+        "roomType": "加工站",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ws_p2",
+        "buffColor": "#e3eb00",
+        "textColor": "#333333"
+      },
+      {
+        "skill_key": 0,
+        "skill_level": 1,
+        "phase_level": "精2 1级",
+        "skillname": "工效模范·β",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻加工站加工<@cc.kw>任意类材料</>时，副产品的产出概率提升<@cc.vup>50%</>；如果<@cc.kw>白铁</>进驻在宿舍，则额外提升<@cc.vup>10%</>",
+        "roomType": "加工站",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ws_p7",
+        "buffColor": "#e3eb00",
+        "textColor": "#333333"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "自动化流水线",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻加工站加工<@cc.kw>任意类材料</>时，心情消耗为<@cc.kw>4</>以上的配方全部<@cc.vup>-2</>心情消耗",
+        "roomType": "加工站",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ws_cost",
+        "buffColor": "#e3eb00",
+        "textColor": "#333333"
+      }
+    ]
+  },
+  {
+    "key": 344,
+    "name": "波卜",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "倾听者",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻宿舍时，该宿舍内所有干员的心情每小时恢复<@cc.vup>+0.15</>（同种效果取最高）",
+        "roomType": "宿舍",
+        "buffCategory": "RECOVERY",
+        "skillIcon": "bskill_dorm_all2",
+        "buffColor": "#21cdcb",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "倾谈者",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻宿舍时，该宿舍内所有干员的心情每小时恢复<@cc.vup>+0.2</>；同时该宿舍每有<@cc.kw>1</>名心情未满的干员，则恢复效果额外<@cc.vup>+0.01</>（同种效果取最高）",
+        "roomType": "宿舍",
+        "buffCategory": "RECOVERY",
+        "skillIcon": "bskill_dorm_unfull",
+        "buffColor": "#21cdcb",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 343,
+    "name": "维娜·维多利亚",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "外贸决议·α",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻贸易站时，订单获取效率<@cc.vup>+30%</>",
+        "roomType": "贸易站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "trade_ord_spd&par1",
+        "buffColor": "#0075a9",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 0,
+        "skill_level": 1,
+        "phase_level": "精2 1级",
+        "skillname": "外贸决议·β",
+        "buffer": true,
+        "buffer_des": [
+          "cc_g_glasgow"
+        ],
+        "des": "进驻贸易站时，订单获取效率<@cc.vup>+30%</>；当前贸易站内存在<$cc.g.glasgow><@cc.kw>格拉斯哥帮</></>干员时，订单获取效率额外<@cc.vup>+10%</>",
+        "roomType": "贸易站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "trade_ord_spd&par2",
+        "buffColor": "#0075a9",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
     "key": 342,
     "name": "莱欧斯",
     "span": 2,
