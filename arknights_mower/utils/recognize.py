@@ -97,8 +97,8 @@ class Recognizer:
 
     @deprecated
     def save_screencap(self, folder):
-        del folder  # 兼容2024.05旧版接口
-        save_screenshot(self.screencap)
+        # del folder  # 兼容2024.05旧版接口
+        save_screenshot(self.screencap, folder)
 
     def detect_index_scene(self) -> bool:
         res = loadres("index_nav", True)

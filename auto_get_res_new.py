@@ -131,9 +131,12 @@ class Arknights数据处理器:
             干员头像路径 = f"./ArknightsGameResource/avatar/{干员代码}.png"
             目标路径 = f"./ui/public/avatar/{干员数据['name']}.webp"
             print(f"{干员名}: {干员代码}")
-
-            png_image = Image.open(干员头像路径)
-            png_image.save(目标路径, "WEBP")
+            try:
+                png_image = Image.open(干员头像路径)
+                png_image.save(目标路径, "WEBP")
+            except Exception as ex:
+                print("头像读取失败")
+                print(ex)
         干员_名称列表.sort(key=len)
         with open("./arknights_mower/data/agent.json", "w", encoding="utf-8") as f:
             json.dump(干员_名称列表, f, ensure_ascii=False)

@@ -472,15 +472,9 @@ class Operators:
 
     def refresh_dorm_time(self, room, index, agent):
         for idx, dorm in enumerate(self.dorm):
-            # Filter out resting priority low
-            # if idx >= self.config.max_resting_count:
-            #     break
             if dorm.position[0] == room and dorm.position[1] == index:
-                # 如果人为高效组，则记录时间
                 _name = agent["agent"]
-                if _name in self.operators.keys() and (
-                    self.operators[_name].is_high() or self.config.free_room
-                ):
+                if _name in self.operators.keys() or _name in agent_list:
                     dorm.name = _name
                     _agent = self.operators[_name]
                     # 如果干员有心情上限，则按比例修改休息时间
@@ -493,9 +487,6 @@ class Operators:
                         dorm.time = _agent.time_stamp + timedelta(seconds=sec_remaining)
                     else:
                         dorm.time = agent["time"]
-                elif _name in agent_list:
-                    dorm.name = _name
-                    dorm.time = agent["time"]
                 break
 
     def correct_dorm(self):

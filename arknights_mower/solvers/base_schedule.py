@@ -127,7 +127,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if len(self.tasks) > 0:
             # 找到时间最近的一次单个任务
             self.task = self.tasks[0]
-            logger.debug(f"当前任务: {str(self.task)}")
         else:
             self.task = None
         if self.task is not None and datetime.now() < self.task.time:
@@ -150,6 +149,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.initialize_operators()
         self.op_data.correct_dorm()
         self.backup_plan_solver(PlanTriggerTiming.BEGINNING)
+        logger.debug("当前任务: " + ("||".join([str(t) for t in self.tasks])))
         return super().run()
 
     def transition(self) -> None:
@@ -1460,7 +1460,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         except Exception as e:
             logger.exception(e)
             # 如果下个 普通任务 >5 分钟则补全宿舍
-        logger.debug("tasks: " + ("||".join([str(t) for t in self.tasks])))
         if self.find_next_task(datetime.now() + timedelta(seconds=15)):
             logger.info("有其他任务,跳过宿舍纠错")
             return
@@ -2532,6 +2531,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         right_swipe = 0
                     last_special_filter = "功能类后勤"
                 self.switch_arrange_order(3, "true")
+            elif agent and agent[0] in self.op_data.operators:
+                ag = self.op_data.operators[agent[0]]
+                if ag.is_resting():
+                    self.detail_filter(自定义设施=True)
+                    last_special_filter = "自定义设施"
+                    self.switch_arrange_order(3, "true")
             changed, ret = self.scan_agent(agent)
             if changed:
                 selected.extend(changed)
@@ -3088,6 +3093,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         if not self.waiting_solver():
                             return
                 self.recog.update()
+                self.recog.save_screencap("run_order")
                 # 接受当前订单
                 while (
                     self.find("order_ready", scope=((450, 675), (600, 750))) is not None
