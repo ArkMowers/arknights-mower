@@ -685,12 +685,6 @@ class Dormitory:
 
 
 class Operator:
-    time_stamp = None
-    depletion_rate = 0
-    workaholic = False
-    arrange_order = [2, "false"]
-    refresh_drained = False
-
     def __init__(
         self,
         name,
@@ -731,6 +725,9 @@ class Operator:
         self.lower_limit = lower_limit
         self.depletion_rate = depletion_rate
         self.time_stamp = time_stamp
+        self.workaholic = False
+        self.arrange_order = [2, "false"]
+        self.refresh_drained = False
 
     @property
     def current_room(self):
@@ -799,6 +796,17 @@ class Operator:
             return predict
         else:
             return self.mood
+
+    def predict_exhaust(self):
+        remaining_mood = self.mood - self.lower_limit  # 剩余心情
+        depletion_rate = self.depletion_rate  # 心情掉率，小时单位
+        # 计算到心情归零所需时间（小时），再加上当前时间戳
+        if depletion_rate > 0:
+            return self.time_stamp + timedelta(
+                hours=((remaining_mood / depletion_rate) - 0.5)
+            )
+        else:
+            return datetime.now() + timedelta(hours=24)
 
     def __repr__(self):
         return f"Operator(name='{self.name}', room='{self.room}', index={self.index}, group='{self.group}', replacement={self.replacement}, resting_priority='{self.resting_priority}', current_room='{self.current_room}',exhaust_require={self.exhaust_require},mood={self.mood}, upper_limit={self.upper_limit}, rest_in_full={self.rest_in_full}, current_index={self.current_index}, lower_limit={self.lower_limit}, operator_type='{self.operator_type}',depletion_rate={self.depletion_rate},time_stamp='{self.time_stamp}',refresh_order_room = {self.refresh_order_room})"
