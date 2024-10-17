@@ -9,7 +9,6 @@ from arknights_mower import __rootdir__
 from arknights_mower.utils import config
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.csleep import MowerExit
-from arknights_mower.utils.deprecated import deprecated
 from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.image import bytes2img, cmatch, cropimg, loadres, thres2
 from arknights_mower.utils.log import logger, save_screenshot
@@ -95,7 +94,6 @@ class Recognizer:
         """get the color of the pixel"""
         return self.img[y][x]
 
-    @deprecated
     def save_screencap(self, folder):
         # del folder  # 兼容2024.05旧版接口
         save_screenshot(self.screencap, folder)

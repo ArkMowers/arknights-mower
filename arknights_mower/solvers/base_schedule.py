@@ -1250,7 +1250,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 in_out_plan[room][idx] = x.replacement[0]
         self.tasks.append(
             SchedulerTask(
-                time=self.get_run_roder_time(room),
+                time=self.get_run_order_time(room),
                 task_plan=in_out_plan,
                 task_type=TaskTypes.RUN_ORDER,
                 meta_data=room,
@@ -1711,7 +1711,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             ].replacement, self.op_data.operators["菲亚梅塔"].room
         return None, None
 
-    def get_run_roder_time(self, room):
+    def get_run_order_time(self, room):
         logger.info("基建：读取插拔时间")
         # 点击进入该房间
         self.enter_room(room)
@@ -3112,10 +3112,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.sleep(0.5)
                     wait += 1
                 # 接受当前订单
+                not_take = True
                 while (
                     self.find("order_ready", scope=((450, 675), (600, 750))) is not None
                 ):
-                    self.recog.save_screencap("run_order")
+                    if not_take:
+                        self.recog.save_screencap("run_order")
+                        not_take = False
                     self.tap((self.recog.w * 0.25, self.recog.h * 0.25), interval=0.5)
                 if self.drone_room is None or (
                     self.drone_room == room and room in self.op_data.run_order_rooms
