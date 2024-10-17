@@ -190,7 +190,7 @@ def try_add_release_dorm(plan, time, op_data, tasks):
                     not v.is_high()
                     and v.current_mood() < v.upper_limit
                     and v.current_room == ""
-                    and v.name not in op_data.free_blacklist
+                    and v.name not in op_data.config.free_blacklist
                 ):
                     heapq.heappush(
                         waiting_list,

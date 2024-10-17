@@ -409,6 +409,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if "dorm" in t.meta_data:
                 planned_index.extend([int(w[4:]) for w in t.meta_data.split(",")])
         _time = datetime.max
+        min_resting_time = datetime.max
         _plan = {}
         _type = []
         # 第一个心情低的且小于3 则只休息半小时
@@ -435,6 +436,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             is not None
         ):
             short_rest = True
+        if not short_rest:
+            for x in self.total_agent:
+                if (
+                    not x.workaholic
+                    and not x.exhaust_require
+                    and x.room not in ["factory", "train"]
+                ):
+                    min_resting_time = min(min_resting_time, x.predict_exhaust())
+        logger.debug(f"预测最低休息时间为:{min_resting_time}")
         low_priority = []
         for idx, dorm in enumerate(self.op_data.dorm):
             logger.debug(f"开始计算{dorm}")
@@ -447,6 +457,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             # 如果是rest in full，则新增单独任务..
             if (
                 _name in self.op_data.operators.keys()
+                and self.op_data.operators[_name].is_high()
                 and self.op_data.operators[_name].rest_in_full
             ):
                 __plan = {}
@@ -566,6 +577,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 # 生成单个任务
         if len(_plan.items()) > 0:
             if _time != datetime.max:
+                _time = min(_time, min_resting_time)
                 _time -= timedelta(minutes=8)
                 if _time < datetime.now():
                     _time = datetime.now()
@@ -3092,12 +3104,18 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     if self.scene() in self.waiting_scene:
                         if not self.waiting_solver():
                             return
-                self.recog.update()
-                self.recog.save_screencap("run_order")
+                wait = 0
+                while self.find("order_ready", scope=((450, 675), (600, 750))) is None:
+                    if wait > 6:
+                        break
+                    self.recog.update()
+                    self.sleep(0.5)
+                    wait += 1
                 # 接受当前订单
                 while (
                     self.find("order_ready", scope=((450, 675), (600, 750))) is not None
                 ):
+                    self.recog.save_screencap("run_order")
                     self.tap((self.recog.w * 0.25, self.recog.h * 0.25), interval=0.5)
                 if self.drone_room is None or (
                     self.drone_room == room and room in self.op_data.run_order_rooms

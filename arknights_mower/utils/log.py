@@ -116,5 +116,5 @@ def save_screenshot(img: bytes, sub_folder=None) -> None:
     if sub_folder:
         sub_folder_path = Path(screenshot_folder) / sub_folder
         sub_folder_path.mkdir(parents=True, exist_ok=True)
-        filename = f"{sub_folder}/{filename}"
+        filename = f"{sub_folder}/{datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
     screenshot_queue.put((img, filename))
