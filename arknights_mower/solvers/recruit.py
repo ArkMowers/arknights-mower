@@ -64,7 +64,7 @@ class RecruitSolver(SceneGraphSolver):
         # 默认要支援机械
         self.recruit_order_index = 2
         self.recruit_order = [6, 5, 1, 4, 3, 2]
-
+        self.refresh = False
         self.result_agent = {}
         self.tags = {}
         self.ticket_number = None
@@ -154,6 +154,8 @@ class RecruitSolver(SceneGraphSolver):
 
             if self.find("recruit/job_requirements", scope=job_requirements_scope):
                 self.recruit_index = self.recruit_index + 1
+                if self.recruit_index in self.agent_choose.keys():
+                    self.agent_choose[self.recruit_index]["choosed"] = True
                 logger.debug(f"{self.recruit_index}正在招募")
                 return
             elif pos := self.find("recruit/recruit_lock", scope=recruit_lock_scope):
@@ -177,12 +179,13 @@ class RecruitSolver(SceneGraphSolver):
         elif scene == Scene.RECRUIT_TAGS:
             self.ticket_number = self.get_ticket_number()
 
-            if self.recruit_index not in self.tags.keys():
+            if self.recruit_index not in self.tags.keys() or self.refresh:
                 tmp_tags = self.get_recruit_tag()
                 if tmp_tags is False:
                     self.back()
                     return
                 self.tags[self.recruit_index] = tmp_tags
+                self.refresh = False
                 logger.info(
                     f"{self.recruit_index}号位置的tag识别结果{self.tags[self.recruit_index]}"
                 )
@@ -193,6 +196,7 @@ class RecruitSolver(SceneGraphSolver):
                         self.tap(pos)
                         del self.tags[self.recruit_index]
                         del self.agent_choose[self.recruit_index]
+                        self.refresh = True
                         return
 
                 choose = self.agent_choose[self.recruit_index]["tags"]
@@ -346,8 +350,8 @@ class RecruitSolver(SceneGraphSolver):
 
         if recruit_result_level != 3:
             self.agent_choose[self.recruit_index] = {
-                "tags": list(recruit_cal_result[0]["tag"]),
-                "result": list(recruit_cal_result[0]["result"]),
+                "tags": list(recruit_cal_result[-1]["tag"]),
+                "result": list(recruit_cal_result[-1]["result"]),
                 "level": recruit_result_level,
                 "choosed": False,
             }
@@ -425,7 +429,7 @@ class RecruitSolver(SceneGraphSolver):
                 if max_star < 6 and agent["star"] == 6:
                     continue
                 result_dict[item[0]].append(agent)
-                logger.debug(item[0], agent)
+
             try:
                 for key in list(result_dict.keys()):
                     if len(result_dict[key]) == 0:
