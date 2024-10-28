@@ -78,8 +78,17 @@ class BaseSolver:
         self.check_current_focus()
         retry_times = config.MAX_RETRYTIME
         result = None
+        start_time = datetime.now()
+        recruit_timeout_limit = 300  # 获取超时限制 300s
+        from arknights_mower.solvers.recruit import RecruitSolver
+
         while retry_times > 0:
             try:
+                if isinstance(self, RecruitSolver):
+                    if datetime.now() - start_time > timedelta(
+                        seconds=recruit_timeout_limit
+                    ):
+                        raise Exception("任务超时,强制停止")
                 result = self.transition()
                 if result:
                     return result

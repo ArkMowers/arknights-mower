@@ -836,8 +836,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         need_read = set(
             v.room
             for k, v in self.op_data.operators.items()
-            if v.need_to_refresh(0.5 if k in ["歌蕾蒂娅", "见行者"] else 2)
-            and v.room in base_room_list
+            if v.need_to_refresh() and v.room in base_room_list
         )
         for room in need_read:
             error_count = 0
@@ -3268,7 +3267,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             )
             ota_tasks_path = path / "cache" / "resource" / "tasks.json"
             ota_tasks_path.parent.mkdir(parents=True, exist_ok=True)
-            with urllib.request.urlopen(ota_tasks_url) as u:
+            with urllib.request.urlopen(ota_tasks_url, timeout=60) as u:
                 res = u.read().decode("utf-8")
             with open(ota_tasks_path, "w", encoding="utf-8") as f:
                 f.write(res)

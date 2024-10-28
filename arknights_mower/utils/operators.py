@@ -422,11 +422,18 @@ class Operators:
         agent = self.operators[name]
         if update_time:
             if agent.time_stamp is not None and agent.mood > mood:
-                agent.depletion_rate = (
-                    (agent.mood - mood)
-                    * 3600
-                    / ((datetime.now() - agent.time_stamp).total_seconds())
-                )
+                time_difference = datetime.now() - agent.time_stamp
+                if time_difference > timedelta(minutes=29):
+                    logger.debug("开始计算心情掉率")
+                    logger.debug(
+                        f"当前心情：{mood},上次{agent.mood},上次时间{agent.time_stamp}"
+                    )
+                    agent.depletion_rate = (
+                        (agent.mood - mood) * 3600 / time_difference.total_seconds()
+                    )
+                    logger.debug(
+                        f"更新 {agent.name} 心情掉率为：{agent.depletion_rate}"
+                    )
             agent.time_stamp = datetime.now()
         # 如果移出宿舍，则清除对应宿舍数据 且重新记录高效组心情（如果有备用班，则跳过高效组判定）
         if (
@@ -751,6 +758,8 @@ class Operator:
 
     def need_to_refresh(self, h=2, r=""):
         # 是否需要读取心情
+        if self.name in ["歌蕾蒂娅", "见行者"]:
+            h = 0.5
         if (
             self.time_stamp is None
             or (
