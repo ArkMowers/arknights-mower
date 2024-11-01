@@ -1161,6 +1161,20 @@
         "CONSUME",
         60110
     ],
+    "randomMaterial_5d5": [
+        "randomMaterial_5d5",
+        "randomMaterial_4",
+        "2024感谢庆典物资补给",
+        "CONSUME",
+        60111
+    ],
+    "2024感谢庆典物资补给": [
+        "randomMaterial_5d5",
+        "randomMaterial_4",
+        "2024感谢庆典物资补给",
+        "CONSUME",
+        60111
+    ],
     "randomMaterial_rhine2": [
         "randomMaterial_rhine2",
         "randomMaterial_rhine2",
@@ -10120,19 +10134,5 @@
         "高级材料提货券",
         "CONSUME",
         30201
-    ],
-    "SINGLE_55_0_1_GACHA": [
-        "SINGLE_55_0_1_GACHA",
-        "SINGLE_55_0_1_GACHA",
-        "未致蒙尘寻访凭证",
-        "NORMAL",
-        40003
-    ],
-    "未致蒙尘寻访凭证": [
-        "SINGLE_55_0_1_GACHA",
-        "SINGLE_55_0_1_GACHA",
-        "未致蒙尘寻访凭证",
-        "NORMAL",
-        40003
     ]
 }

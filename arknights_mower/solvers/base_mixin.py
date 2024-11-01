@@ -21,7 +21,7 @@ kernel = np.ones((12, 12), np.uint8)
 class BaseMixin:
     def detect_arrange_order(self):
         name_list = ["工作状态", "技能", "心情", "信赖值"]
-        x_list = (1196, 1320, 1445, 1572)
+        x_list = (1309, 1435, 1560, 1685)
         y = 70
         hsv = cv2.cvtColor(self.recog.img, cv2.COLOR_RGB2HSV)
         mask = cv2.inRange(hsv, (99, 200, 0), (100, 255, 255))
@@ -32,7 +32,7 @@ class BaseMixin:
                 return (name_list[idx], False)
 
     def switch_arrange_order(self, name, ascending=False):
-        name_x = {"工作状态": 1197, "技能": 1322, "心情": 1447, "信赖值": 1575}
+        name_x = {"工作状态": 1309, "技能": 1439, "心情": 1565, "信赖值": 1690}
         if isinstance(name, int):
             name = list(name_x.keys())[name - 1]
         if isinstance(ascending, str):
@@ -104,73 +104,13 @@ class BaseMixin:
                 raise e
 
     def swipe_left(self, right_swipe):
-        if right_swipe > 3:
-            self.detail_filter(控制中枢=True)
-            self.detail_filter(控制中枢=False)
-        else:
-            swipe_time = 2 if right_swipe == 3 else right_swipe
-            for i in range(swipe_time):
-                self.swipe_noinertia((650, 540), (1900, 0))
+        # if right_swipe > 3:
+        #     return right_swipe
+        # else:
+        #     swipe_time = 2 if right_swipe == 3 else right_swipe
+        for i in range(right_swipe):
+            self.swipe_noinertia((650, 540), (1900, 0))
         return 0
-
-    def detail_filter(self, **kwargs):
-        if kwargs:
-            text = "，".join(
-                f"{'打开' if value else '关闭'}{label}筛选"
-                for label, value in kwargs.items()
-            )
-            text += "，关闭其余筛选"
-            logger.info(text)
-        else:
-            logger.info("关闭所有筛选")
-
-        labels = [
-            "未进驻",
-            "产出设施",
-            "功能设施",
-            "自定义设施",
-            "控制中枢",
-            "生产类后勤",
-            "功能类后勤",
-            "恢复类后勤",
-        ]
-        label_x = (560, 815, 1070, 1330)
-        label_y = (540, 645)
-
-        label_pos = []
-        for y in label_y:
-            for x in label_x:
-                label_pos.append((x, y))
-
-        label_pos_map = dict(zip(labels, label_pos))
-        target_state = dict(zip(labels, [False] * len(labels)))
-        target_state.update(kwargs)
-
-        filter_pos = (self.recog.w * 0.95, self.recog.h * 0.05)
-        self.tap(filter_pos)
-
-        err_cnt = 0
-        while not self.find("arrange_order_options_scene"):
-            self.ctap(filter_pos)
-            err_cnt += 1
-            if err_cnt > 3:
-                raise Exception("未进入筛选页面")
-
-        for label, pos in label_pos_map.items():
-            current_state = self.get_color(pos)[2] > 100
-            if target_state[label] != current_state:
-                self.tap(pos, interval=0.1)
-
-        self.recog.update()
-        confirm_pos = (self.recog.w * 0.8, self.recog.h * 0.8)
-        self.tap(confirm_pos)
-
-        err_cnt = 0
-        while self.find("arrange_order_options_scene"):
-            self.ctap(confirm_pos)
-            err_cnt += 1
-            if err_cnt > 3:
-                raise Exception("筛选确认失败")
 
     def detect_room_number(self, img) -> int:
         score = []

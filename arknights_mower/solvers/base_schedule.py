@@ -405,9 +405,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
     def plan_metadata(self):
         planned_index = []
-        for t in self.tasks:
-            if "dorm" in t.meta_data:
-                planned_index.extend([int(w[4:]) for w in t.meta_data.split(",")])
+        # 移除当前 SHIFT_ON 重新刷新
+        self.tasks = [p for p in self.tasks if p.type != TaskTypes.SHIFT_ON]
         _time = datetime.max
         min_resting_time = datetime.max
         _plan = {}
@@ -718,7 +717,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             self.refresh_skill_time(upgrade)
                     else:
                         self.plan_run_order(self.task.meta_data)
-                    self.skip(["planned", "todo_task", "collect_notification"])
+                    self.skip(["todo_task", "collect_notification"])
                 elif self.task.type == TaskTypes.SKILL_UPGRADE:
                     self.skill_upgrade(self.task.meta_data)
                 del self.tasks[0]
@@ -2373,19 +2372,27 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if wait_confirm > 0:
                 logger.info(f"等待跑单 {str(wait_confirm)} 秒")
                 self.sleep(wait_confirm)
-        self.tap_element("confirm_blue")
-        if self.find("arrange_confirm"):
+        retry_count = 0
+        while self.find("confirm_blue") and retry_count < 4:
+            self.tap_element("confirm_blue")
+            self.sleep(0.5)
+            self.recog.update()
+            retry_count += 1
+        retry_count = 0
+        while self.find("arrange_confirm") and retry_count < 4:
             _x0 = self.recog.w // 3 * 2  # double confirm
             _y0 = self.recog.h - 10
             self.tap((_x0, _y0))
+            self.sleep(0.5)
+            self.recog.update()
 
     def choose_train_agent(
         self, current_room, agents, idx, error_count=0, fast_mode=False
     ):
         if current_room[idx] != agents[idx]:
             while (
-                self.find("arrange_order_options") is None
-                and self.find("confirm_blue") is None
+                # self.find("arrange_order_options",scope=((1785, 0), (1920, 128))) is None
+                self.find("confirm_blue") is None
             ):
                 if error_count > 3:
                     raise Exception("未成功进入干员选择界面")
@@ -2473,11 +2480,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         retry_count = 0
         selected = []
         logger.debug(f"上次进入房间为：{self.last_room},本次房间为：{room}")
-        self.detail_filter()
         if self.detect_arrange_order()[0] == "信赖值":
             self.switch_arrange_order("工作状态")
-        siege = False  # 推进之王
-        last_special_filter = ""
         while len(agent) > 0:
             if retry_count > 1:
                 raise Exception("到达最大尝试次数 1次")
@@ -2486,7 +2490,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 right_swipe = self.swipe_left(right_swipe)
                 max_swipe = 50
                 retry_count += 1
-                self.detail_filter()
             if first_time:
                 # 清空
                 if is_dorm:
@@ -2515,45 +2518,42 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.switch_arrange_order(arrange_type[0], arrange_type[1])
                     # 滑倒最左边
                     self.sleep(interval=0.5)
-                    if not siege:
-                        right_swipe = self.swipe_left(right_swipe)
                     pre_order = arrange_type
             first_time = False
 
-            if (
-                not siege
-                and not is_dorm
-                and agent
-                and all(
-                    element in ["推进之王", "安哲拉", "斯卡蒂", "幽灵鲨", "乌尔比安"]
-                    for element in agent
-                )
-            ):
-                siege = True
-
-                if agent[0] in ["推进之王", "安哲拉", "斯卡蒂", "幽灵鲨"]:
-                    self.detail_filter(恢复类后勤=True)
-                    if last_special_filter != "恢复类后勤":
-                        right_swipe = 0
-                    last_special_filter = "恢复类后勤"
-                else:
-                    self.detail_filter(功能类后勤=True)
-                    if last_special_filter != "功能类后勤":
-                        right_swipe = 0
-                    last_special_filter = "功能类后勤"
-                self.switch_arrange_order(3, "true")
-            elif agent and agent[0] in self.op_data.operators:
-                ag = self.op_data.operators[agent[0]]
-                if ag.is_resting():
-                    self.detail_filter(自定义设施=True)
-                    last_special_filter = "自定义设施"
-                    self.switch_arrange_order(3, "true")
+            # if (
+            #     not siege
+            #     and not is_dorm
+            #     and agent
+            #     and all(
+            #         element in ["推进之王", "安哲拉", "斯卡蒂", "幽灵鲨", "乌尔比安"]
+            #         for element in agent
+            #     )
+            # ):
+            #     siege = True
+            #
+            #     if agent[0] in ["推进之王", "安哲拉", "斯卡蒂", "幽灵鲨"]:
+            #         self.detail_filter(恢复类后勤=True)
+            #         if last_special_filter != "恢复类后勤":
+            #             right_swipe = 0
+            #         last_special_filter = "恢复类后勤"
+            #     else:
+            #         self.detail_filter(功能类后勤=True)
+            #         if last_special_filter != "功能类后勤":
+            #             right_swipe = 0
+            #         last_special_filter = "功能类后勤"
+            #     self.switch_arrange_order(3, "true")
+            # elif agent and agent[0] in self.op_data.operators:
+            #     ag = self.op_data.operators[agent[0]]
+            #     if ag.is_resting():
+            #         self.detail_filter(自定义设施=True)
+            #         last_special_filter = "自定义设施"
+            #         self.switch_arrange_order(3, "true")
             changed, ret = self.scan_agent(agent)
             if changed:
                 selected.extend(changed)
                 # 如果找到了
                 index_change = True
-                siege = False
             else:
                 # 如果没找到 而且右移次数大于5
                 if ret[0][0] == first_name and right_swipe > 5:
@@ -2566,9 +2566,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self.swipe_noinertia(st, (ed[0] - st[0], 0))
                 right_swipe += 1
             if len(agent) == 0:
-                if siege:
-                    self.detail_filter()
-                    right_swipe = 0
                 break
 
         # 安排空闲干员
@@ -2579,7 +2576,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 # 滑动到最左边
                 self.sleep(interval=0.5)
                 right_swipe = self.swipe_left(right_swipe)
-            self.detail_filter(未进驻=True)
             self.switch_arrange_order(3, "true")
             # 只选择在列表里面的
             # 替换组小于20才休息，防止进入就满心情进行网络连接
@@ -2997,7 +2993,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     if room == "train":
                         self.choose_train(plan[room], choose_error <= 0)
                     else:
-                        while self.find("arrange_order_options", score=0.5) is None:
+                        while self.find("confirm_blue") is None:
                             if error_count > 3:
                                 raise Exception("未成功进入干员选择界面")
                             self.ctap((self.recog.w * 0.82, self.recog.h * 0.2))
@@ -3103,6 +3099,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     if self.scene() in self.waiting_scene:
                         if not self.waiting_solver():
                             return
+                else:
+                    logger.info("检测到漏单")
+                    send_message("检测到漏单！", level="WARNING")
                 wait = 0
                 while self.find("order_ready", scope=((450, 675), (600, 750))) is None:
                     if wait > 6:

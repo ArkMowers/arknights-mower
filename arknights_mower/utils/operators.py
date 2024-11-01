@@ -591,6 +591,18 @@ class Operators:
         if operator.workaholic and operator.name not in self.workaholic_agent:
             self.workaholic_agent.append(operator.name)
 
+    def average_mood(self):
+        total_mood = 0
+        current_mood = 0
+        count = 0
+        for k, v in self.operators().items():
+            if not v.is_resting() and v.operator_type != "low" and not v.workaholic:
+                current_mood += v.current_mood() - v.lower_limit
+                total_mood += v.upper_limit - v.lower_limit
+                count += 1
+        logger.debug(f"{count}, {current_mood / total_mood}")
+        return current_mood / total_mood
+
     def available_free(self, free_type="high"):
         ret = 0
         freeName = []

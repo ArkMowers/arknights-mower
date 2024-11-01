@@ -172,7 +172,7 @@ class Recognizer:
             self.scene = Scene.CTRLCENTER_ASSISTANT
         elif self.find("infra_overview"):
             self.scene = Scene.INFRA_MAIN
-        elif self.find("infra_todo"):
+        elif self.find("infra_todo", scope=((0, 1013), (241, 1080))):
             self.scene = Scene.INFRA_TODOLIST
         elif self.find("clue"):
             self.scene = Scene.INFRA_CONFIDENTIAL
@@ -670,9 +670,9 @@ class Recognizer:
             "factory_collect": (1542, 886),
             "fight/refresh": (1639, 22),
             "hypergryph": (0, 961),
-            "infra_overview": (54, 135),
+            # "infra_overview": (54, 135),
             "infra_overview_in": (64, 705),
-            "infra_todo": (13, 1013),
+            # "infra_todo": (13, 1013),
             "loading2": (620, 247),
             "loading7": (106, 635),
             "login_account": (622, 703),
