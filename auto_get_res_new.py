@@ -121,13 +121,13 @@ class Arknights数据处理器:
 
     def 添加干员(self):
         干员_名称列表 = []
-
+        干员_职业列表 = {}
         for 干员代码, 干员数据 in self.干员表.items():
             if not 干员数据["itemObtainApproach"]:
                 continue
-
             干员名 = 干员数据["name"]
             干员_名称列表.append(干员名)
+            干员_职业列表[干员名] = 干员数据["profession"]
             干员头像路径 = f"./ArknightsGameResource/avatar/{干员代码}.png"
             目标路径 = f"./ui/public/avatar/{干员数据['name']}.webp"
             print(f"{干员名}: {干员代码}")
@@ -138,6 +138,10 @@ class Arknights数据处理器:
                 print("头像读取失败")
                 print(ex)
         干员_名称列表.sort(key=len)
+        with open(
+            "./arknights_mower/data/agent_profession.json", "w", encoding="utf-8"
+        ) as f:
+            json.dump(干员_职业列表, f, ensure_ascii=False)
         with open("./arknights_mower/data/agent.json", "w", encoding="utf-8") as f:
             json.dump(干员_名称列表, f, ensure_ascii=False)
         print()

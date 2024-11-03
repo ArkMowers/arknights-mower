@@ -112,6 +112,53 @@ class BaseMixin:
             self.swipe_noinertia((650, 540), (1900, 0))
         return 0
 
+    def profession_filter(self, profession=None):
+        retry = 0
+        open_threshold = 1700
+        if profession:
+            logger.info(f"打开 {profession} 筛选")
+        else:
+            logger.info("关闭职业筛选")
+            while (
+                confirm_btn := self.find("confirm_blue")
+            ) is not None and confirm_btn[0][0] < open_threshold:
+                self.tap((1860, 60), 0.1)
+                retry += 1
+                if retry > 5:
+                    Exception("关闭职业筛选失败")
+            return
+        labels = [
+            "ALL",
+            "PIONEER",
+            "WARRIOR",
+            "TANK",
+            "SNIPER",
+            "CASTER",
+            "MEDIC",
+            "SUPPORT",
+            "SPECIAL",
+        ]
+        x = 1918
+        label_pos = [(x, 60 + i * 120) for i in range(9)]
+        label_pos_map = dict(zip(labels, label_pos))
+        if profession == "ALL":
+            self.tap(label_pos_map[profession], 0.1)
+            self.tap(label_pos_map[profession], 0.1)
+            return
+        while (confirm_btn := self.find("confirm_blue")) is not None and confirm_btn[0][
+            0
+        ] > open_threshold:
+            self.tap((1860, 60), 0.1)
+            retry += 1
+            if retry > 5:
+                Exception("打开职业筛选失败")
+        retry = 0
+        while self.get_color(label_pos_map[profession])[2] != 253:
+            self.tap(label_pos_map[profession], 0.1)
+            retry += 1
+            if retry > 5:
+                Exception("打开职业筛选失败")
+
     def detect_room_number(self, img) -> int:
         score = []
         for i in range(1, 5):

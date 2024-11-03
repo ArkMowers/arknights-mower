@@ -10,7 +10,7 @@ from typing import Literal
 
 import cv2
 
-from arknights_mower.data import agent_list, base_room_list
+from arknights_mower.data import agent_list, agent_profession, base_room_list
 from arknights_mower.solvers.base_mixin import BaseMixin
 from arknights_mower.solvers.credit import CreditSolver
 from arknights_mower.solvers.cultivate_depot import cultivate as cultivateDepotSolver
@@ -406,7 +406,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     def plan_metadata(self):
         planned_index = []
         # 移除当前 SHIFT_ON 重新刷新
-        self.tasks = [p for p in self.tasks if p.type != TaskTypes.SHIFT_ON]
+        for t in self.tasks:
+            if "dorm" in t.meta_data:
+                planned_index.extend([int(w[4:]) for w in t.meta_data.split(",")])
         _time = datetime.max
         min_resting_time = datetime.max
         _plan = {}
@@ -708,7 +710,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.last_clue = None
                     self.clue_new()
                     self.last_clue = datetime.now()
-                    self.skip(["planned", "collect_notification"])
+                    self.skip(["collect_notification"])
                 elif self.task.type == TaskTypes.REFRESH_TIME:
                     if self.task.meta_data == "train":
                         if upgrade := self.find_next_task(
@@ -2480,8 +2482,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         retry_count = 0
         selected = []
         logger.debug(f"上次进入房间为：{self.last_room},本次房间为：{room}")
+        self.profession_filter()
         if self.detect_arrange_order()[0] == "信赖值":
             self.switch_arrange_order("工作状态")
+        siege = False  # 推进之王
+        last_special_filter = "ALL"
         while len(agent) > 0:
             if retry_count > 1:
                 raise Exception("到达最大尝试次数 1次")
@@ -2490,6 +2495,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 right_swipe = self.swipe_left(right_swipe)
                 max_swipe = 50
                 retry_count += 1
+                self.profession_filter()
             if first_time:
                 # 清空
                 if is_dorm:
@@ -2518,42 +2524,40 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.switch_arrange_order(arrange_type[0], arrange_type[1])
                     # 滑倒最左边
                     self.sleep(interval=0.5)
+                    if not siege:
+                        right_swipe = self.swipe_left(right_swipe)
                     pre_order = arrange_type
             first_time = False
 
-            # if (
-            #     not siege
-            #     and not is_dorm
-            #     and agent
-            #     and all(
-            #         element in ["推进之王", "安哲拉", "斯卡蒂", "幽灵鲨", "乌尔比安"]
-            #         for element in agent
-            #     )
-            # ):
-            #     siege = True
-            #
-            #     if agent[0] in ["推进之王", "安哲拉", "斯卡蒂", "幽灵鲨"]:
-            #         self.detail_filter(恢复类后勤=True)
-            #         if last_special_filter != "恢复类后勤":
-            #             right_swipe = 0
-            #         last_special_filter = "恢复类后勤"
-            #     else:
-            #         self.detail_filter(功能类后勤=True)
-            #         if last_special_filter != "功能类后勤":
-            #             right_swipe = 0
-            #         last_special_filter = "功能类后勤"
-            #     self.switch_arrange_order(3, "true")
-            # elif agent and agent[0] in self.op_data.operators:
-            #     ag = self.op_data.operators[agent[0]]
-            #     if ag.is_resting():
-            #         self.detail_filter(自定义设施=True)
-            #         last_special_filter = "自定义设施"
-            #         self.switch_arrange_order(3, "true")
+            if (
+                not siege
+                and not is_dorm
+                and agent
+                and all(element in self.op_data.profession_filter for element in agent)
+            ):
+                siege = True
+                if agent[0] in self.op_data.profession_filter:
+                    profession = agent_profession[agent[0]]
+                    self.profession_filter(profession)
+                    if last_special_filter != profession:
+                        right_swipe = 0
+                    last_special_filter = profession
+            elif agent and agent[0] in self.op_data.operators:
+                ag = self.op_data.operators[agent[0]]
+                if ag.is_resting() and room.startswith("drom") and ag.name != "阿米娅":
+                    # 只有在宿舍中打开职介筛选
+                    profession = agent_profession[agent[0]]
+                    self.profession_filter(profession)
+                    if last_special_filter != profession:
+                        right_swipe = 0
+                    last_special_filter = profession
+                    self.switch_arrange_order(3, "true")
             changed, ret = self.scan_agent(agent)
             if changed:
                 selected.extend(changed)
                 # 如果找到了
                 index_change = True
+                siege = False
             else:
                 # 如果没找到 而且右移次数大于5
                 if ret[0][0] == first_name and right_swipe > 5:
@@ -2566,6 +2570,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self.swipe_noinertia(st, (ed[0] - st[0], 0))
                 right_swipe += 1
             if len(agent) == 0:
+                if siege:
+                    self.detail_filter()
+                    if last_special_filter != "ALL":
+                        right_swipe = 0
                 break
 
         # 安排空闲干员
