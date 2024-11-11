@@ -1747,7 +1747,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self.tap(pos)
                 tapped = True
                 tap_times += 1
-                if tap_times > 5:
+                if tap_times > 0:
                     break
         if not tapped:
             # 点击右上角的通知图标
