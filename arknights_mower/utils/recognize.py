@@ -720,6 +720,28 @@ class Recognizer:
             "terminal_pre2": (1459, 797),
         }
 
+        template_matching_score = {
+            "connecting": 0.7,
+            "navigation/ope_hard": 0.7,
+            "navigation/ope_hard_small": 0.7,
+            "navigation/ope_normal": 0.7,
+            "navigation/ope_normal_small": 0.7,
+            "recruit/agent_token": 0.8,
+            "recruit/agent_token_first": 0.8,
+            "recruit/lmb": 0.7,
+            "recruit/riic_res/CASTER": 0.7,
+            "recruit/riic_res/MEDIC": 0.7,
+            "recruit/riic_res/PIONEER": 0.7,
+            "recruit/riic_res/SPECIAL": 0.7,
+            "recruit/riic_res/SNIPER": 0.7,
+            "recruit/riic_res/SUPPORT": 0.7,
+            "recruit/riic_res/TANK": 0.7,
+            "recruit/riic_res/WARRIOR": 0.7,
+            "recruit/time": 0.8,
+            "recruit/stone": 0.7,
+            "arrange_confirm": 0.85,
+        }
+
         if res in color:
             res_img = loadres(res)
             h, w, _ = res_img.shape
@@ -735,7 +757,10 @@ class Recognizer:
                     res_img = cv2.cvtColor(res_img, cv2.COLOR_RGB2GRAY)
                     ssim = structural_similarity(gray, res_img)
                     logger.debug(f"{ssim=}")
-                    if ssim >= 0.9:
+                    threshold = 0.9
+                    if res in template_matching_score:
+                        threshold = template_matching_score[res]
+                    if ssim >= threshold:
                         return scope
 
             return None
@@ -810,27 +835,6 @@ class Recognizer:
             "riic/orundum": ((1500, 320), (1800, 550)),
             "riic/trade": ((1320, 250), (1600, 500)),
             "upgrade": (997, 501),
-        }
-
-        template_matching_score = {
-            "connecting": 0.7,
-            "navigation/ope_hard": 0.7,
-            "navigation/ope_hard_small": 0.7,
-            "navigation/ope_normal": 0.7,
-            "navigation/ope_normal_small": 0.7,
-            "recruit/agent_token": 0.8,
-            "recruit/agent_token_first": 0.8,
-            "recruit/lmb": 0.7,
-            "recruit/riic_res/CASTER": 0.7,
-            "recruit/riic_res/MEDIC": 0.7,
-            "recruit/riic_res/PIONEER": 0.7,
-            "recruit/riic_res/SPECIAL": 0.7,
-            "recruit/riic_res/SNIPER": 0.7,
-            "recruit/riic_res/SUPPORT": 0.7,
-            "recruit/riic_res/TANK": 0.7,
-            "recruit/riic_res/WARRIOR": 0.7,
-            "recruit/time": 0.8,
-            "recruit/stone": 0.7,
         }
 
         if res in template_matching:
