@@ -382,6 +382,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.tasks.append(
                 SchedulerTask(
                     time=self.task.time,
+                    task_type=TaskTypes.FIAMMETTA,
                     task_plan={fia_room: [target, "菲亚梅塔"]},
                 )
             )
@@ -842,19 +843,24 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         for room in need_read:
             error_count = 0
             # 由于训练室不纠错，如果训练室有干员且时间读取过就跳过
-            if room == "train":
-                first = next(
-                    (
-                        (value)
-                        for key, value in self.op_data.operators.items()
-                        if value.current_room == "train"
-                    ),
-                    None,
+            current_working = [
+                value
+                for key, value in self.op_data.operators.items()
+                if value.current_room == room
+            ]
+
+            if current_working and all(
+                operator.time_stamp
+                > datetime.now()
+                - timedelta(
+                    hours=0.5 if operator.name in ["歌蕾蒂娅", "见行者"] else 2.5
                 )
-                if first is not None and first.time_stamp > datetime.now() - timedelta(
-                    hours=2.5
-                ):
-                    continue
+                for operator in current_working
+            ):
+                for e in current_working:
+                    logger.debug(e.time_stamp)
+                logger.debug(f"{room} 所有干员不满足扫描条件，跳过")
+                continue
             while True:
                 try:
                     self.enter_room(room)
@@ -2435,6 +2441,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     "dorm"
                 ):
                     agents[idx] = "Free"
+                    __agent.depletion_rate = 0
                     logger.info("检测满心情释放休息位")
                 elif agents[idx] == "Free" and self.task.type != TaskTypes.RE_ORDER:
                     if self.op_data.config.free_room:
@@ -2898,14 +2905,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             compare_type="<",
         )
         if run_order_task and run_order_task.time > datetime.now():
+            task_time = datetime.now()
+            if len(self.tasks) > 0 and self.tasks[0].type != TaskTypes.FIAMMETTA:
+                task_time = self.tasks[0].time - timedelta(seconds=1)
             logger.info(f"移除{limit}分钟以内的跑单任务以强X刷新时间")
             self.tasks.remove(run_order_task)
             logger.info("新增强X刷新跑单时间任务")
-            task_time = (
-                datetime.now()
-                if len(self.tasks) == 0
-                else self.tasks[0].time - timedelta(seconds=1)
-            )
             self.tasks.append(
                 (
                     SchedulerTask(
@@ -3167,7 +3172,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self.skip()
         elif len(new_plan) > 1:
             self.tasks.append(
-                SchedulerTask(time=self.tasks[0].time, task_plan=new_plan)
+                SchedulerTask(
+                    time=self.tasks[0].time,
+                    task_plan=new_plan,
+                    task_type=TaskTypes.FIAMMETTA,
+                )
             )
             # 急速换班
             self.skip()
