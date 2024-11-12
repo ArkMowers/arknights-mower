@@ -851,6 +851,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
             if current_working and all(
                 operator.time_stamp
+                and operator.time_stamp
                 > datetime.now()
                 - timedelta(
                     hours=0.5 if operator.name in ["歌蕾蒂娅", "见行者"] else 2.5
