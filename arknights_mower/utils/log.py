@@ -118,3 +118,27 @@ def save_screenshot(img: bytes, sub_folder=None) -> None:
         sub_folder_path.mkdir(parents=True, exist_ok=True)
         filename = f"{sub_folder}/{datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
     screenshot_queue.put((img, filename))
+
+
+def get_log_by_time(target_time, time_range=1):
+    folder = Path(get_path("@app/log"))
+    time_points = [
+        target_time - timedelta(hours=time_range),
+        target_time,
+        target_time + timedelta(hours=time_range),
+    ]
+    valid_suffixes = [tp.strftime("%Y-%m-%d_%H") for tp in time_points]
+    matching_files = []
+    for file_path in folder.iterdir():
+        if file_path.is_file():
+            try:
+                if any(suffix in file_path.name for suffix in valid_suffixes):
+                    matching_files.append(file_path)
+                elif (
+                    file_path.name == "runtime.log"
+                    and (datetime.now() - target_time).total_seconds() <= 3600
+                ):
+                    matching_files.append(file_path)
+            except Exception as e:
+                logger.exception(f"Error processing file {file_path}: {e}")
+    return matching_files

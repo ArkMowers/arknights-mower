@@ -75,11 +75,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.last_clue = None
         self.sleeping = False
         self.operators = {}
-
-        self.last_execution = {
-            "maa": None,
-            "recruit": None,
-        }
+        self.last_execution = {"maa": None, "recruit": None, "todo": None}
 
         self.sign_in = (datetime.now() - timedelta(days=1, hours=4)).date()
         self.daily_report = (datetime.now() - timedelta(days=1, hours=4)).date()
@@ -150,6 +146,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.op_data.correct_dorm()
         self.backup_plan_solver(PlanTriggerTiming.BEGINNING)
         logger.debug("当前任务: " + ("||".join([str(t) for t in self.tasks])))
+        while True:
+            try:
+                self.recog.update()
+                logger.info(self.detect_arrange_order())
+                self.sleep(2)
+            except Exception as e:
+                logger.info(e)
+                continue
+
         return super().run()
 
     def transition(self) -> None:
@@ -775,10 +780,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             ):
                 self.clue_new()
                 self.last_clue = datetime.now()
-            # if (self.party_time is None or self.free_clue is None) and self.enable_party:
-            #     self.clue()
-            # if self.clue_count > self.clue_count_limit and self.enable_party:
-            #     self.share_clue()
             if (
                 self.drone_room not in self.op_data.run_order_rooms
                 and (
@@ -1747,20 +1748,24 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         """处理基建 Todo 列表"""
         tapped = False
         collect = {"bill": "订单", "factory": "制造站产物", "trust": "信赖"}
-        for res, name in collect.items():
-            tap_times = 0
-            while pos := self.find(f"infra_collect_{res}"):
-                logger.info(f"收取{name}")
-                self.tap(pos)
-                tapped = True
-                tap_times += 1
-                if tap_times > 0:
-                    break
-        if not tapped:
-            # 点击右上角的通知图标
-            # 可能被产物收取提示挡住，所以直接点位置
-            self.tap((1840, 140))
-            self.todo_task = True
+        if self.last_execution["todo"] is None or self.last_execution[
+            "todo"
+        ] < datetime.now() - timedelta(hours=2):
+            for res, name in collect.items():
+                tap_times = 0
+                while pos := self.find(f"infra_collect_{res}"):
+                    logger.info(f"收取{name}")
+                    self.tap(pos)
+                    tapped = True
+                    tap_times += 1
+                    if tap_times > 0:
+                        break
+            if not tapped:
+                # 点击右上角的通知图标
+                # 可能被产物收取提示挡住，所以直接点位置
+                self.tap((1840, 140))
+                self.todo_task = True
+            self.last_execution["todo"] = datetime.now()
 
     def clue_new(self):
         logger.info("基建：线索")

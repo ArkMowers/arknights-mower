@@ -60,6 +60,8 @@ function stop() {
   })
 }
 
+const show_feedback = ref(false)
+
 import PlayIcon from '@vicons/ionicons5/Play'
 import StopIcon from '@vicons/ionicons5/Stop'
 import AddIcon from '@vicons/ionicons5/Add'
@@ -70,6 +72,7 @@ const show_task_table = ref(true)
 const show_task = ref(false)
 const add_task = ref(true)
 provide('show_task', show_task)
+provide('show_feedback', show_feedback)
 provide('add_task', add_task)
 import { useConfigStore } from '@/stores/config'
 const config_store = useConfigStore()
@@ -189,6 +192,15 @@ const start_options = [
         <div>专精任务，UI有详细说明；新增完毕，UI上面的表会实时反馈</div>
         <div>在Q群或者频道提以上问题，看心情踢人</div>
       </help-text>
+      <n-button type="error" @click="show_feedback = true">
+        <template #icon>
+          <!-- <n-icon>
+          <add-icon />
+        </n-icon> -->
+        </template>
+        <template v-if="!mobile">反馈问题</template>
+      </n-button>
+      <feedback />
       <div class="expand"></div>
       <div class="scroll-container">
         <n-switch v-model:value="auto_scroll" />

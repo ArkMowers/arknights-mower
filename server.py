@@ -20,7 +20,7 @@ from werkzeug.exceptions import NotFound
 from arknights_mower import __system__
 from arknights_mower.solvers.record import load_state, save_state
 from arknights_mower.utils import config
-from arknights_mower.utils.log import logger
+from arknights_mower.utils.log import get_log_by_time, logger
 from arknights_mower.utils.path import get_path
 
 mimetypes.add_type("text/html", ".html")
@@ -615,3 +615,39 @@ def get_count():
             ]
         else:
             return []
+
+
+@app.route("/submit_feedback", methods=["POST"])
+@require_token
+def submit_feedback():
+    from arknights_mower.utils.email import Email
+
+    req = request.json
+    logger.debug(f"收到反馈务请求：{req}")
+    try:
+        log_files = []
+        if req["type"] == "Bug":
+            dt = datetime.datetime.fromtimestamp(req["endTime"] / 1000.0)
+            logger.info(dt)
+            log_files = get_log_by_time(dt)
+            logger.info("log 文件发送中，请等待")
+            if not log_files:
+                raise ValueError("对应时间log 文件无法找到")
+            body = f"<p>Bug 发生时间区间:{datetime.datetime.fromtimestamp(req['startTime']/ 1000.0)}--{dt}</p><br><p>{req['description']}</p>"
+        else:
+            body = req["description"]
+        email = Email(
+            body,
+            "Mower " + req["type"],
+            None,
+            attach_files=None if req["type"] != "Bug" else log_files,
+        )
+        email.send(["354013233@qq.com"])
+    except ValueError as v:
+        logger.exception(v)
+        return str(v)
+    except Exception as e:
+        msg = "反馈发送失败，请确保邮箱功能正常使用\n" + str(e)
+        logger.exception(msg)
+        return msg
+    return "邮件发送成功！"

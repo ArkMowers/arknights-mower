@@ -24,7 +24,7 @@ class BaseMixin:
         x_list = (1309, 1435, 1560, 1685)
         y = 70
         hsv = cv2.cvtColor(self.recog.img, cv2.COLOR_RGB2HSV)
-        mask = cv2.inRange(hsv, (99, 200, 0), (100, 255, 255))
+        mask = cv2.inRange(hsv, (95, 100, 100), (105, 255, 255))
         for idx, x in enumerate(x_list):
             if np.count_nonzero(mask[y : y + 3, x : x + 5]):
                 return (name_list[idx], True)
@@ -125,7 +125,7 @@ class BaseMixin:
                 self.tap((1860, 60), 0.1)
                 retry += 1
                 if retry > 5:
-                    Exception("关闭职业筛选失败")
+                    raise Exception("关闭职业筛选失败")
             return
         labels = [
             "ALL",
@@ -151,13 +151,14 @@ class BaseMixin:
             self.tap((1860, 60), 0.1)
             retry += 1
             if retry > 5:
-                Exception("打开职业筛选失败")
+                raise Exception("打开职业筛选失败")
         retry = 0
         while self.get_color(label_pos_map[profession])[2] != 253:
+            logger.debug(f"配色为： {self.get_color(label_pos_map[profession])[2]}")
             self.tap(label_pos_map[profession], 0.1)
             retry += 1
             if retry > 5:
-                Exception("打开职业筛选失败")
+                raise Exception("打开职业筛选失败")
 
     def detect_room_number(self, img) -> int:
         score = []
