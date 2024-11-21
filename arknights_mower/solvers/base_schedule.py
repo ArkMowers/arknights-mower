@@ -1741,7 +1741,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         collect = {"bill": "订单", "factory": "制造站产物", "trust": "信赖"}
         if self.last_execution["todo"] is None or self.last_execution[
             "todo"
-        ] < datetime.now() - timedelta(hours=2):
+        ] < datetime.now() - timedelta(minutes=30):
             for res, name in collect.items():
                 tap_times = 0
                 while pos := self.find(f"infra_collect_{res}"):
@@ -1751,12 +1751,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     tap_times += 1
                     if tap_times > 0:
                         break
-            if not tapped:
-                # 点击右上角的通知图标
-                # 可能被产物收取提示挡住，所以直接点位置
-                self.tap((1840, 140))
-                self.todo_task = True
             self.last_execution["todo"] = datetime.now()
+        if not tapped:
+            # 点击右上角的通知图标
+            # 可能被产物收取提示挡住，所以直接点位置
+            self.tap((1840, 140))
+            self.todo_task = True
 
     def clue_new(self):
         logger.info("基建：线索")
