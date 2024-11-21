@@ -146,15 +146,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.op_data.correct_dorm()
         self.backup_plan_solver(PlanTriggerTiming.BEGINNING)
         logger.debug("当前任务: " + ("||".join([str(t) for t in self.tasks])))
-        while True:
-            try:
-                self.recog.update()
-                logger.info(self.detect_arrange_order())
-                self.sleep(2)
-            except Exception as e:
-                logger.info(e)
-                continue
-
         return super().run()
 
     def transition(self) -> None:
