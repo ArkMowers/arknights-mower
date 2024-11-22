@@ -1741,7 +1741,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         collect = {"bill": "订单", "factory": "制造站产物", "trust": "信赖"}
         if self.last_execution["todo"] is None or self.last_execution[
             "todo"
-        ] < datetime.now() - timedelta(minutes=30):
+        ] < datetime.now() - timedelta(minutes=15):
             for res, name in collect.items():
                 tap_times = 0
                 while pos := self.find(f"infra_collect_{res}"):
@@ -2216,6 +2216,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     if not self.waiting_solver():
                         return
                 self.recog.update()
+                wait = 0
+                while self.find("order_ready", scope=((450, 675), (600, 750))) is None:
+                    if wait > 6:
+                        break
+                    self.sleep(1)
+                self.recog.save_screencap("run_order")
                 if not (
                     self.drone_room is None
                     or (
