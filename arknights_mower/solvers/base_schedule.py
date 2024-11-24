@@ -3324,7 +3324,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             raise Exception("MAA 连接失败")
 
     def append_maa_task(self, type):
-        if type in ["StartUp", "Visit", "Award"]:
+        if type in ["StartUp", "Visit"]:
             self.MAA.append_task(type)
         elif type == "Fight":
             conf = config.conf
@@ -3371,6 +3371,19 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     "select_formation": conf.credit_fight.squad,
                     "force_shopping_if_credit_full": conf.maa_mall_ignore_blacklist_when_full,
                 },
+            )
+        elif type == "Award":
+            conf = config.conf
+            self.MAA.append_task(
+                "Award",
+                {
+                    "award": True,
+                    "mail": True,
+                    "recruit": False,
+                    "orundum": False,
+                    "mining": False,
+                    "specialaccess": False,
+                }
             )
 
     def maa_plan_solver(self, tasks="All", one_time=False):
