@@ -20,6 +20,7 @@ from werkzeug.exceptions import NotFound
 from arknights_mower import __system__
 from arknights_mower.solvers.record import load_state, save_state
 from arknights_mower.utils import config
+from arknights_mower.utils.datetime import get_server_time
 from arknights_mower.utils.log import get_log_by_time, logger
 from arknights_mower.utils.path import get_path
 
@@ -346,6 +347,26 @@ def get_mood_ratios():
     from arknights_mower.solvers import record
 
     return record.get_mood_ratios()
+
+
+@app.route("/report/restore-trading-history")
+def restoreTradingHistory():
+    from arknights_mower.utils.trading_order import TradingOrder
+
+    trading = TradingOrder()
+    return trading.restore_history()
+
+
+@app.route("/report/trading_history")
+def getTradingHistory():
+    start_date = request.args.get("startDate")
+    end_date = request.args.get("endDate")
+    if not start_date or not end_date:
+        end_date = str(get_server_time().date())
+        start_date = str((get_server_time() - datetime.timedelta(days=8)).date())
+    from arknights_mower.solvers import record
+
+    return record.get_trading_history(start_date, end_date)
 
 
 @app.route("/getwatermark")
