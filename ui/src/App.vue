@@ -275,7 +275,7 @@ const axios = inject('axios')
 function start() {
   running.value = true
   log_lines.value = []
-  axios.get(`${import.meta.env.VITE_HTTP_URL}/start`)
+  axios.get(`${import.meta.env.VITE_HTTP_URL}/start/0`)
 }
 
 function actions_on_resize() {

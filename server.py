@@ -18,15 +18,16 @@ from tzlocal import get_localzone
 from werkzeug.exceptions import NotFound
 
 from arknights_mower import __system__
+from arknights_mower.solvers.record import load_state, save_state
 from arknights_mower.utils import config
-from arknights_mower.utils.log import logger
+from arknights_mower.utils.log import get_log_by_time, logger
 from arknights_mower.utils.path import get_path
 
 mimetypes.add_type("text/html", ".html")
 mimetypes.add_type("text/css", ".css")
 mimetypes.add_type("application/javascript", ".js")
 
-app = Flask(__name__, static_folder="dist", static_url_path="")
+app = Flask(__name__, static_folder="ui/dist", static_url_path="")
 sock = Sock(app)
 CORS(app)
 
@@ -62,17 +63,17 @@ def require_token(f):
 
 @app.route("/<path:path>")
 def serve_index(path):
-    return send_from_directory("dist", path)
+    return send_from_directory("ui/dist", path)
 
 
 @app.errorhandler(404)
 def not_found(e):
     if (path := request.path).startswith("/docs"):
         try:
-            return send_from_directory("dist" + path, "index.html")
+            return send_from_directory("ui/dist" + path, "index.html")
         except NotFound:
             return "<h1>404 Not Found</h1>", 404
-    return send_from_directory("dist", "index.html")
+    return send_from_directory("ui/dist", "index.html")
 
 
 @app.route("/conf", methods=["GET", "POST"])
@@ -123,25 +124,27 @@ def running():
     return "true" if mower_thread and mower_thread.is_alive() else "false"
 
 
-@app.route("/start")
+@app.route("/start/<start_type>")
 @require_token
-def start():
+def start(start_type):
     global mower_thread
     global log_lines
 
     if mower_thread and mower_thread.is_alive():
         return "false"
-
     # 创建 tmp 文件夹
     tmp_dir = get_path("@app/tmp")
     tmp_dir.mkdir(exist_ok=True)
 
     config.stop_mower.clear()
-    config.operators = {}
-
+    saved_state = load_state()
+    if saved_state is None or start_type == "2":
+        saved_state = {}
+    if start_type == "1":
+        saved_state["tasks"] = []
     from arknights_mower.__main__ import main
 
-    mower_thread = Thread(target=main, daemon=True)
+    mower_thread = Thread(target=main, args=(saved_state,), daemon=True)
     mower_thread.start()
 
     log_lines = []
@@ -151,6 +154,7 @@ def start():
 
 @app.route("/stop")
 @require_token
+@save_state
 def stop():
     global mower_thread
 
@@ -576,19 +580,19 @@ def get_count():
                                 or s["swap_name"] not in agent_list
                             ):
                                 raise Exception("干员名不正确")
-                            supports.append(
-                                SkillUpgradeSupport(
-                                    name=s["name"],
-                                    skill_level=s["skill_level"],
-                                    efficiency=s["efficiency"],
-                                    match=s["match"],
-                                    swap_name=s["swap_name"],
-                                )
+                            sup = SkillUpgradeSupport(
+                                name=s["name"],
+                                skill_level=s["skill_level"],
+                                efficiency=s["efficiency"],
+                                match=s["match"],
+                                swap_name=s["swap_name"],
                             )
+                            sup.half_off = s["half_off"]
+                            supports.append(sup)
                         if len(supports) == 0:
                             raise Exception("请添加专精工具人")
                         base_scheduler.op_data.skill_upgrade_supports = supports
-                        logger.error("更新专精工具人完毕")
+                        logger.info("更新专精工具人完毕")
                     base_scheduler.tasks.append(new_task)
                     logger.debug(f"成功：{str(new_task)}")
                     return "添加任务成功！"
@@ -611,3 +615,39 @@ def get_count():
             ]
         else:
             return []
+
+
+@app.route("/submit_feedback", methods=["POST"])
+@require_token
+def submit_feedback():
+    from arknights_mower.utils.email import Email
+
+    req = request.json
+    logger.debug(f"收到反馈务请求：{req}")
+    try:
+        log_files = []
+        if req["type"] == "Bug":
+            dt = datetime.datetime.fromtimestamp(req["endTime"] / 1000.0)
+            logger.info(dt)
+            log_files = get_log_by_time(dt)
+            logger.info("log 文件发送中，请等待")
+            if not log_files:
+                raise ValueError("对应时间log 文件无法找到")
+            body = f"<p>Bug 发生时间区间:{datetime.datetime.fromtimestamp(req['startTime']/ 1000.0)}--{dt}</p><br><p>{req['description']}</p>"
+        else:
+            body = req["description"]
+        email = Email(
+            body,
+            "Mower " + req["type"],
+            None,
+            attach_files=None if req["type"] != "Bug" else log_files,
+        )
+        email.send(["354013233@qq.com"])
+    except ValueError as v:
+        logger.exception(v)
+        return str(v)
+    except Exception as e:
+        msg = "反馈发送失败，请确保邮箱功能正常使用\n" + str(e)
+        logger.exception(msg)
+        return msg
+    return "邮件发送成功！"

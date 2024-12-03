@@ -431,7 +431,9 @@ class SceneGraphSolver(BaseSolver):
     def scene_graph_navigation(self, scene: int):
         if scene not in DG.nodes:
             logger.error(f"{SceneComment[scene]}不在场景图中")
-            return False
+            return
+
+        error_count = 0
 
         while (current := self.scene()) != scene:
             if current in self.waiting_scene:
@@ -453,7 +455,7 @@ class SceneGraphSolver(BaseSolver):
                     self.device.start_droidcast()
                 if config.conf.touch_method == "scrcpy":
                     self.device.control.scrcpy = Scrcpy(self.device.client)
-                return False
+                return
 
             logger.debug(sp)
 
@@ -462,11 +464,12 @@ class SceneGraphSolver(BaseSolver):
 
             try:
                 transition(self)
+                error_count = 0
             except MowerExit:
                 raise
             except Exception as e:
                 logger.exception(f"场景转移异常：{e}")
-                restart_simulator()
+                """restart_simulator()
                 self.device.client.check_server_alive()
                 Session().connect(config.conf.adb)
                 if config.conf.droidcast.enable:
@@ -475,7 +478,22 @@ class SceneGraphSolver(BaseSolver):
                     self.device.control.scrcpy = Scrcpy(self.device.client)
                 self.check_current_focus()
                 return False
-        return True
+        return True"""
+                if error_count <= 5:
+                    self.sleep()
+                    error_count += 1
+                    continue
+                if restart_simulator():
+                    self.device.client.check_server_alive()
+                    Session().connect(config.conf.adb)
+                    if config.conf.droidcast.enable:
+                        self.device.start_droidcast()
+                    if config.conf.touch_method == "scrcpy":
+                        self.device.control.scrcpy = Scrcpy(self.device.client)
+                    self.check_current_focus()
+                else:
+                    self.restart_game()
+                error_count = 0
 
     def back_to_index(self):
         logger.info("场景图导航：back_to_index")

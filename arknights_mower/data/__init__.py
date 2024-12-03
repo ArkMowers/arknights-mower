@@ -6,6 +6,10 @@ from .. import __rootdir__
 # agents list in Arknights
 agent_list = json.loads(Path(f"{__rootdir__}/data/agent.json").read_text("utf-8"))
 
+agent_profession = json.loads(
+    Path(f"{__rootdir__}/data/agent_profession.json").read_text("utf-8")
+)
+
 # # agents base skills
 # agent_base_config = json.loads(
 #     Path(f'{__rootdir__}/data/agent-base.json').read_text('utf-8'))

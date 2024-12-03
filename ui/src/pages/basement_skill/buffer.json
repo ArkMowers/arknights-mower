@@ -245,6 +245,30 @@
     "description": "不退场，以当前血量在目标位置部署",
     "buffer": []
   },
+  "ba_magicpoint": {
+    "termId": "ba.magicpoint",
+    "termName": "魔力",
+    "description": "特殊技力，整场战斗继承",
+    "buffer": []
+  },
+  "ba_chant": {
+    "termId": "ba.chant",
+    "termName": "吟唱",
+    "description": "停止攻击一段时间后尝试开启技能，期间被打断则中止",
+    "buffer": []
+  },
+  "ba_laiosteam": {
+    "termId": "ba.laiosteam",
+    "termName": "莱欧斯小队",
+    "description": "包括玛露西尔、森西、莱欧斯、齐尔查克",
+    "buffer": []
+  },
+  "ba_liftoff": {
+    "termId": "ba.liftoff",
+    "termName": "起飞",
+    "description": "不阻挡地面敌人且不会被地面敌人攻击，可以阻挡飞行敌人",
+    "buffer": []
+  },
   "cc_bd_A_1": {
     "termId": "cc.bd_A_1",
     "termName": "念力",
@@ -386,6 +410,12 @@
     "description": "拥有该基建技能的干员\n泰拉大陆调查团",
     "buffer": []
   },
+  "cc_bd_dungeon": {
+    "termId": "cc.bd_dungeon",
+    "termName": "魔物料理",
+    "description": "由以下干员的基建技能提供\n森西",
+    "buffer": []
+  },
   "cc_m_var1": {
     "termId": "cc.m.var1",
     "termName": "回收利用",
@@ -504,6 +534,12 @@
     "termId": "cc.g.bs",
     "termName": "黑钢国际",
     "description": "包含以下干员\n雷蛇、芙兰卡、杰西卡、香草、杏仁",
+    "buffer": []
+  },
+  "cc_g_siracusa": {
+    "termId": "cc.g.siracusa",
+    "termName": "叙拉古",
+    "description": "包含以下干员\n安洁莉娜、拉普兰德、普罗旺斯、红云、布洛卡、巫恋、铃兰、贾维、奥斯塔、斥罪、子月、伺夜、阿罗玛、忍冬、裁度、荒芜拉普兰德",
     "buffer": []
   },
   "cc_c_abyssal2_1": {
@@ -666,6 +702,12 @@
     "termId": "cc.tag.mh",
     "termName": "怪物猎人小队",
     "description": "包含以下干员\n火龙S黑角、麒麟R夜刀、泰拉大陆调查团",
+    "buffer": []
+  },
+  "cc_tag_dungeon": {
+    "termId": "cc.tag.dungeon",
+    "termName": "莱欧斯小队",
+    "description": "包含以下干员\n玛露西尔、莱欧斯、齐尔查克、森西",
     "buffer": []
   },
   "cc_gvial": {

@@ -26,8 +26,6 @@ class SkillUpgradeSupport:
         self.level = skill_level
         self.efficiency = efficiency
         self.match = match
-        if self.level > 1:
-            self.half_off = True
         self.swap_name = swap_name
 
 
@@ -63,7 +61,7 @@ class Operators:
         self.clues = []
         self.current_room_changed_callback = None
         self.party_time = None
-
+        self.profession_filter = agent_arrange_order["职介选择开关"]
         self.eval_model = base_eval_model.clone()
         self.eval_model.nodes.extend(["Call", "Attribute"])
         self.eval_model.attributes.extend(
@@ -94,7 +92,7 @@ class Operators:
         # 基本5%
         basic = 5
         if support.add_on:
-            # 阿斯卡伦
+            # 阿斯卡纶
             basic += 5
         if hour == 0:
             hour = level * 8
@@ -368,7 +366,9 @@ class Operators:
 
     def evaluate_expression(self, expression):
         try:
-            result = Expr(expression, self.eval_model).eval({"op_data": self})
+            model = {e: e for e in base_room_list}
+            model["op_data"] = self
+            result = Expr(expression, self.eval_model).eval(model)
             return result
         except Exception as e:
             logger.exception(f"Error evaluating expression: {e}")
@@ -422,11 +422,18 @@ class Operators:
         agent = self.operators[name]
         if update_time:
             if agent.time_stamp is not None and agent.mood > mood:
-                agent.depletion_rate = (
-                    (agent.mood - mood)
-                    * 3600
-                    / ((datetime.now() - agent.time_stamp).total_seconds())
-                )
+                time_difference = datetime.now() - agent.time_stamp
+                if time_difference > timedelta(minutes=29):
+                    logger.debug("开始计算心情掉率")
+                    logger.debug(
+                        f"当前心情：{mood},上次{agent.mood},上次时间{agent.time_stamp}"
+                    )
+                    agent.depletion_rate = (
+                        (agent.mood - mood) * 3600 / time_difference.total_seconds()
+                    )
+                    logger.debug(
+                        f"更新 {agent.name} 心情掉率为：{agent.depletion_rate}"
+                    )
             agent.time_stamp = datetime.now()
         # 如果移出宿舍，则清除对应宿舍数据 且重新记录高效组心情（如果有备用班，则跳过高效组判定）
         if (
@@ -472,15 +479,9 @@ class Operators:
 
     def refresh_dorm_time(self, room, index, agent):
         for idx, dorm in enumerate(self.dorm):
-            # Filter out resting priority low
-            # if idx >= self.config.max_resting_count:
-            #     break
             if dorm.position[0] == room and dorm.position[1] == index:
-                # 如果人为高效组，则记录时间
                 _name = agent["agent"]
-                if _name in self.operators.keys() and (
-                    self.operators[_name].is_high() or self.config.free_room
-                ):
+                if _name in self.operators.keys() or _name in agent_list:
                     dorm.name = _name
                     _agent = self.operators[_name]
                     # 如果干员有心情上限，则按比例修改休息时间
@@ -493,9 +494,6 @@ class Operators:
                         dorm.time = _agent.time_stamp + timedelta(seconds=sec_remaining)
                     else:
                         dorm.time = agent["time"]
-                elif _name in agent_list:
-                    dorm.name = _name
-                    dorm.time = agent["time"]
                 break
 
     def correct_dorm(self):
@@ -515,6 +513,7 @@ class Operators:
                     ):
                         op.mood = op.upper_limit
                         op.time_stamp = self.dorm[idx].time
+                        op.depletion_rate = 0
                         logger.debug(
                             f"检测到{op.name}心情恢复满，设置心情至{op.upper_limit}"
                         )
@@ -564,6 +563,7 @@ class Operators:
         operator.rest_in_full = self.config.is_rest_in_full(operator.name)
         operator.workaholic = self.config.is_workaholic(operator.name)
         operator.refresh_order_room = self.config.is_refresh_trading(operator.name)
+        operator.refresh_drained = self.config.is_refresh_drained(operator.name)
         if operator.name in agent_arrange_order:
             operator.arrange_order = agent_arrange_order[operator.name]
         # 复制基建数据
@@ -590,6 +590,18 @@ class Operators:
                 self.groups[operator.group].append(operator.name)
         if operator.workaholic and operator.name not in self.workaholic_agent:
             self.workaholic_agent.append(operator.name)
+
+    def average_mood(self):
+        total_mood = 0
+        current_mood = 0
+        count = 0
+        for k, v in self.operators().items():
+            if not v.is_resting() and v.operator_type != "low" and not v.workaholic:
+                current_mood += v.current_mood() - v.lower_limit
+                total_mood += v.upper_limit - v.lower_limit
+                count += 1
+        logger.debug(f"{count}, {current_mood / total_mood}")
+        return current_mood / total_mood
 
     def available_free(self, free_type="high"):
         ret = 0
@@ -646,10 +658,18 @@ class Operators:
             _room = None
             for i in range(self.config.max_resting_count, len(self.dorm)):
                 _name = self.dorm[i].name
-                if _name == "" or not self.operators[_name].is_high():
+                if (
+                    _name == ""
+                    or not self.operators[_name].is_high()
+                    or (
+                        self.dorm[i].time is not None
+                        and self.dorm[i].time < datetime.now()
+                    )
+                ):
                     _room = self.dorm[i]
                     break
         _room.name = name
+        _room.time = None
         return _room
 
     def get_current_operator(self, room, index):
@@ -684,11 +704,6 @@ class Dormitory:
 
 
 class Operator:
-    time_stamp = None
-    depletion_rate = 0
-    workaholic = False
-    arrange_order = [2, "false"]
-
     def __init__(
         self,
         name,
@@ -729,6 +744,9 @@ class Operator:
         self.lower_limit = lower_limit
         self.depletion_rate = depletion_rate
         self.time_stamp = time_stamp
+        self.workaholic = False
+        self.arrange_order = [2, "false"]
+        self.refresh_drained = False
 
     @property
     def current_room(self):
@@ -752,6 +770,8 @@ class Operator:
 
     def need_to_refresh(self, h=2, r=""):
         # 是否需要读取心情
+        if self.name in ["歌蕾蒂娅", "见行者"]:
+            h = 0.5
         if (
             self.time_stamp is None
             or (
@@ -797,6 +817,17 @@ class Operator:
             return predict
         else:
             return self.mood
+
+    def predict_exhaust(self):
+        remaining_mood = self.mood - self.lower_limit  # 剩余心情
+        depletion_rate = self.depletion_rate  # 心情掉率，小时单位
+        # 计算到心情归零所需时间（小时），再加上当前时间戳
+        if depletion_rate > 0:
+            return self.time_stamp + timedelta(
+                hours=((remaining_mood / depletion_rate) - 0.5)
+            )
+        else:
+            return datetime.now() + timedelta(hours=24)
 
     def __repr__(self):
         return f"Operator(name='{self.name}', room='{self.room}', index={self.index}, group='{self.group}', replacement={self.replacement}, resting_priority='{self.resting_priority}', current_room='{self.current_room}',exhaust_require={self.exhaust_require},mood={self.mood}, upper_limit={self.upper_limit}, rest_in_full={self.rest_in_full}, current_index={self.current_index}, lower_limit={self.lower_limit}, operator_type='{self.operator_type}',depletion_rate={self.depletion_rate},time_stamp='{self.time_stamp}',refresh_order_room = {self.refresh_order_room})"

@@ -1,8 +1,8 @@
 <script setup>
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
-import { deepcopy } from '@/utils/deepcopy'
 import { storeToRefs } from 'pinia'
+import { swap } from '@/utils/common'
 
 const config_store = useConfigStore()
 const { free_blacklist, theme } = storeToRefs(config_store)
@@ -17,7 +17,8 @@ const {
   workaholic,
   backup_plans,
   sub_plan,
-  refresh_trading
+  refresh_trading,
+  refresh_drained
 } = storeToRefs(plan_store)
 const { load_plan, fill_empty } = plan_store
 
@@ -88,7 +89,7 @@ const sub_plan_options = computed(() => {
   ]
   for (let i = 0; i < backup_plans.value.length; i++) {
     result.push({
-      label: `副表${i + 1}`,
+      label: backup_plans.value[i].name,
       value: i
     })
   }
@@ -98,14 +99,15 @@ const sub_plan_options = computed(() => {
 function create_sub_plan() {
   backup_plans.value.push({
     conf: {
-      exhaust_require: deepcopy(exhaust_require.value),
-      free_blacklist: deepcopy(free_blacklist.value),
+      exhaust_require: [],
+      free_blacklist: [],
       ling_xi: ling_xi.value,
       max_resting_count: max_resting_count.value,
-      rest_in_full: deepcopy(rest_in_full.value),
-      resting_priority: deepcopy(resting_priority.value),
-      workaholic: deepcopy(workaholic.value),
-      refresh_trading: deepcopy(refresh_trading.value)
+      rest_in_full: [],
+      resting_priority: [],
+      workaholic: [],
+      refresh_trading: [],
+      refresh_drained: []
     },
     plan: fill_empty({}),
     trigger: {
@@ -114,7 +116,8 @@ function create_sub_plan() {
       right: ''
     },
     trigger_timing: 'AFTER_PLANNING',
-    task: {}
+    task: {},
+    name: `plan${backup_plans.value.length}`
   })
   sub_plan.value = backup_plans.value.length - 1
 }
@@ -143,7 +146,9 @@ watchEffect(() => {
       resting_priority: resting_priority.value,
       workaholic: workaholic.value,
       exhaust_require: exhaust_require.value,
-      refresh_trading: refresh_trading.value
+      refresh_trading: refresh_trading.value,
+      free_blacklist: free_blacklist.value,
+      refresh_drained: refresh_drained.value
     }
   } else {
     current_conf.value = backup_plans.value[sub_plan.value].conf
@@ -159,6 +164,8 @@ watchEffect(() => {
     resting_priority.value = current_conf.value.resting_priority
     workaholic.value = current_conf.value.workaholic
     refresh_trading.value = current_conf.value.refresh_trading
+    free_blacklist.value = current_conf.value.free_blacklist
+    refresh_drained.value = current_conf.value.refresh_drained
   } else {
     backup_plans.value[sub_plan.value].conf = current_conf.value
   }
@@ -166,6 +173,9 @@ watchEffect(() => {
 
 const show_trigger_editor = ref(false)
 provide('show_trigger_editor', show_trigger_editor)
+
+const show_name_editor = ref(false)
+provide('show_name_editor', show_name_editor)
 
 const show_task = ref(false)
 const add_task = ref(false)
@@ -180,6 +190,7 @@ import CodeSlash from '@vicons/ionicons5/CodeSlash'
 import TrashOutline from '@vicons/ionicons5/TrashOutline'
 import AddTaskRound from '@vicons/material/AddTaskRound'
 import PlusRound from '@vicons/material/PlusRound'
+import Pencil from '@vicons/tabler/Pencil'
 
 function import_plan({ event }) {
   const msg = event.target.response
@@ -217,31 +228,52 @@ async function export_json() {
   document.body.removeChild(link)
   window.URL.revokeObjectURL(url)
 }
+
+function movePlanBackward() {
+  if (sub_plan.value !== 'main' && sub_plan.value > 0) {
+    const currentIndex = sub_plan.value
+    swap(currentIndex, currentIndex - 1, backup_plans.value)
+    sub_plan.value = currentIndex - 1
+  }
+}
+
+function movePlanForward() {
+  if (sub_plan.value !== 'main' && sub_plan.value < backup_plans.value.length - 1) {
+    const currentIndex = sub_plan.value
+    swap(currentIndex, currentIndex + 1, backup_plans.value)
+    sub_plan.value = currentIndex + 1
+  }
+}
 </script>
 
 <template>
   <trigger-dialog />
   <task-dialog />
+  <rename-dialog />
   <div class="plan-bar w-980 mx-auto mt-12 mw-980">
     <n-button-group>
-      <n-button
-        :disabled="sub_plan == 'main'"
-        @click="sub_plan = sub_plan == 0 ? 'main' : sub_plan - 1"
-      >
+      <n-button :disabled="sub_plan == 'main' || sub_plan == 0" @click="movePlanBackward">
         <template #icon>
           <n-icon><ios-arrow-back /></n-icon>
         </template>
       </n-button>
       <n-button
-        :disabled="sub_plan == backup_plans.length - 1 || backup_plans.length == 0"
-        @click="sub_plan = sub_plan == 'main' ? 0 : sub_plan + 1"
+        :disabled="sub_plan == 'main' || sub_plan == backup_plans.length - 1"
+        @click="movePlanForward"
       >
         <template #icon>
           <n-icon><ios-arrow-forward /></n-icon>
         </template>
       </n-button>
     </n-button-group>
-    <n-select v-model:value="sub_plan" :options="sub_plan_options" />
+    <n-button-group>
+      <n-select v-model:value="sub_plan" :style="{ width: '150px' }" :options="sub_plan_options" />
+      <n-button :disabled="sub_plan == 'main'" @click="show_name_editor = true">
+        <template #icon>
+          <n-icon><Pencil /></n-icon>
+        </template>
+      </n-button>
+    </n-button-group>
     <n-button-group>
       <n-button @click="create_sub_plan">
         <template #icon>
@@ -361,7 +393,17 @@ async function export_json() {
         select_placeholder="填入在贸易站外影响贸易效率的干员"
       ></slick-operator-select>
     </n-form-item>
-    <n-form-item v-if="sub_plan != 'main'">
+    <n-form-item>
+      <template #label>
+        <span>用尽刷新</span>
+        <help-text>
+          <p>会影响用尽干员心情消耗速率的干员</p>
+          <p>在填入该选项的干员上下班后，会重新读取用尽干员的下班时间</p>
+        </help-text>
+      </template>
+      <slick-operator-select v-model="current_conf.refresh_drained"></slick-operator-select>
+    </n-form-item>
+    <n-form-item>
       <template #label>
         <span>宿舍黑名单</span>
         <help-text>不希望进行填充宿舍的干员</help-text>

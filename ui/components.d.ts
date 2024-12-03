@@ -85,6 +85,7 @@ declare module 'vue' {
     PlanEditor: typeof import('./src/components/PlanEditor.vue')['default']
     ReclamationAlgorithm: typeof import('./src/components/ReclamationAlgorithm.vue')['default']
     Recruit: typeof import('./src/components/Recruit.vue')['default']
+    RenameDialog: typeof import('./src/components/RenameDialog.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     SecretFront: typeof import('./src/components/SecretFront.vue')['default']

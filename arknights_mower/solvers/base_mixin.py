@@ -21,10 +21,10 @@ kernel = np.ones((12, 12), np.uint8)
 class BaseMixin:
     def detect_arrange_order(self):
         name_list = ["工作状态", "技能", "心情", "信赖值"]
-        x_list = (1196, 1320, 1445, 1572)
+        x_list = (1309, 1435, 1560, 1685)
         y = 70
         hsv = cv2.cvtColor(self.recog.img, cv2.COLOR_RGB2HSV)
-        mask = cv2.inRange(hsv, (99, 200, 0), (100, 255, 255))
+        mask = cv2.inRange(hsv, (95, 100, 100), (105, 255, 255))
         for idx, x in enumerate(x_list):
             if np.count_nonzero(mask[y : y + 3, x : x + 5]):
                 return (name_list[idx], True)
@@ -32,7 +32,7 @@ class BaseMixin:
                 return (name_list[idx], False)
 
     def switch_arrange_order(self, name, ascending=False):
-        name_x = {"工作状态": 1197, "技能": 1322, "心情": 1447, "信赖值": 1575}
+        name_x = {"工作状态": 1309, "技能": 1439, "心情": 1565, "信赖值": 1690}
         if isinstance(name, int):
             name = list(name_x.keys())[name - 1]
         if isinstance(ascending, str):
@@ -104,73 +104,61 @@ class BaseMixin:
                 raise e
 
     def swipe_left(self, right_swipe):
-        if right_swipe > 3:
-            self.detail_filter(控制中枢=True)
-            self.detail_filter(控制中枢=False)
-        else:
-            swipe_time = 2 if right_swipe == 3 else right_swipe
-            for i in range(swipe_time):
-                self.swipe_noinertia((650, 540), (1900, 0))
+        # if right_swipe > 3:
+        #     return right_swipe
+        # else:
+        #     swipe_time = 2 if right_swipe == 3 else right_swipe
+        for i in range(right_swipe):
+            self.swipe_noinertia((650, 540), (1900, 0))
         return 0
 
-    def detail_filter(self, **kwargs):
-        if kwargs:
-            text = "，".join(
-                f"{'打开' if value else '关闭'}{label}筛选"
-                for label, value in kwargs.items()
-            )
-            text += "，关闭其余筛选"
-            logger.info(text)
+    def profession_filter(self, profession=None):
+        retry = 0
+        open_threshold = 1700
+        if profession:
+            logger.info(f"打开 {profession} 筛选")
         else:
-            logger.info("关闭所有筛选")
-
+            logger.info("关闭职业筛选")
+            while (
+                confirm_btn := self.find("confirm_blue")
+            ) is not None and confirm_btn[0][0] < open_threshold:
+                self.tap((1860, 60), 0.1)
+                retry += 1
+                if retry > 5:
+                    raise Exception("关闭职业筛选失败")
+            return
         labels = [
-            "未进驻",
-            "产出设施",
-            "功能设施",
-            "自定义设施",
-            "控制中枢",
-            "生产类后勤",
-            "功能类后勤",
-            "恢复类后勤",
+            "ALL",
+            "PIONEER",
+            "WARRIOR",
+            "TANK",
+            "SNIPER",
+            "CASTER",
+            "MEDIC",
+            "SUPPORT",
+            "SPECIAL",
         ]
-        label_x = (560, 815, 1070, 1330)
-        label_y = (540, 645)
-
-        label_pos = []
-        for y in label_y:
-            for x in label_x:
-                label_pos.append((x, y))
-
+        x = 1918
+        label_pos = [(x, 60 + i * 120) for i in range(9)]
         label_pos_map = dict(zip(labels, label_pos))
-        target_state = dict(zip(labels, [False] * len(labels)))
-        target_state.update(kwargs)
-
-        filter_pos = (self.recog.w * 0.95, self.recog.h * 0.05)
-        self.tap(filter_pos)
-
-        err_cnt = 0
-        while not self.find("arrange_order_options_scene"):
-            self.ctap(filter_pos)
-            err_cnt += 1
-            if err_cnt > 3:
-                raise Exception("未进入筛选页面")
-
-        for label, pos in label_pos_map.items():
-            current_state = self.get_color(pos)[2] > 100
-            if target_state[label] != current_state:
-                self.tap(pos, interval=0.1)
-
-        self.recog.update()
-        confirm_pos = (self.recog.w * 0.8, self.recog.h * 0.8)
-        self.tap(confirm_pos)
-
-        err_cnt = 0
-        while self.find("arrange_order_options_scene"):
-            self.ctap(confirm_pos)
-            err_cnt += 1
-            if err_cnt > 3:
-                raise Exception("筛选确认失败")
+        if profession == "ALL":
+            self.tap(label_pos_map[profession], 0.1)
+            self.tap(label_pos_map[profession], 0.1)
+            return
+        while (confirm_btn := self.find("confirm_blue")) is not None and confirm_btn[0][
+            0
+        ] > open_threshold:
+            self.tap((1860, 60), 0.1)
+            retry += 1
+            if retry > 5:
+                raise Exception("打开职业筛选失败")
+        retry = 0
+        while self.get_color(label_pos_map[profession])[2] < 250:
+            logger.debug(f"配色为： {self.get_color(label_pos_map[profession])[2]}")
+            self.tap(label_pos_map[profession], 0.1)
+            retry += 1
+            if retry > 5:
+                raise Exception("打开职业筛选失败")
 
     def detect_room_number(self, img) -> int:
         score = []
@@ -339,6 +327,7 @@ class BaseMixin:
                 time_str = self.digit_reader.get_time(self.recog.gray)
             else:
                 time_str = self.read_screen(self.recog.img, type="time", cord=cord)
+            logger.debug(time_str)
             h, m, s = str(time_str).split(":")
             if int(m) > 60 or int(s) > 60:
                 raise Exception("读取错误")

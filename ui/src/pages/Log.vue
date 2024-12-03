@@ -6,7 +6,7 @@ import { useMowerStore } from '@/stores/mower'
 const mower_store = useMowerStore()
 const { log, log_mobile, running, log_lines, task_list, waiting, get_task_id } =
   storeToRefs(mower_store)
-const { get_tasks } = mower_store
+const { get_tasks, get_running } = mower_store
 const axios = inject('axios')
 const mobile = inject('mobile')
 
@@ -34,16 +34,21 @@ watch(
 
 onMounted(() => {
   get_tasks()
+  get_running()
+  setInterval(get_running, 5000)
 })
 
 onUnmounted(() => {
   clearTimeout(get_task_id.value)
 })
 
-function start() {
+function start(value) {
   running.value = true
   log_lines.value = []
-  axios.get(`${import.meta.env.VITE_HTTP_URL}/start`)
+  if (value == undefined) {
+    value = '0'
+  }
+  axios.get(`${import.meta.env.VITE_HTTP_URL}/start/${value}`)
   get_tasks()
 }
 
@@ -55,6 +60,8 @@ function stop() {
   })
 }
 
+const show_feedback = ref(false)
+
 import PlayIcon from '@vicons/ionicons5/Play'
 import StopIcon from '@vicons/ionicons5/Stop'
 import AddIcon from '@vicons/ionicons5/Add'
@@ -65,6 +72,7 @@ const show_task_table = ref(true)
 const show_task = ref(false)
 const add_task = ref(true)
 provide('show_task', show_task)
+provide('show_feedback', show_feedback)
 provide('add_task', add_task)
 import { useConfigStore } from '@/stores/config'
 const config_store = useConfigStore()
@@ -82,6 +90,20 @@ const stop_options = [
   {
     label: '停止Maa',
     key: 'maa'
+  }
+]
+const start_options = [
+  {
+    label: '载入心情任务',
+    key: '0'
+  },
+  {
+    label: '载入心情数据',
+    key: '1'
+  },
+  {
+    label: '缓存清零重启',
+    key: '2'
   }
 ]
 </script>
@@ -135,14 +157,22 @@ const stop_options = [
           <template v-if="!mobile">立即停止</template>
         </n-button>
       </drop-down>
-      <n-button type="primary" @click="start" v-else :loading="waiting" :disabled="waiting">
-        <template #icon>
-          <n-icon>
-            <play-icon />
-          </n-icon>
-        </template>
-        <template v-if="!mobile">开始执行</template>
-      </n-button>
+      <drop-down v-if="!running" :select="start" :options="start_options" type="primary" :up="true">
+        <n-button
+          v-if="!running"
+          type="primary"
+          @click="start"
+          :loading="waiting"
+          :disabled="waiting"
+        >
+          <template #icon>
+            <n-icon>
+              <play-icon />
+            </n-icon>
+          </template>
+          <template v-if="!mobile">开始执行</template>
+        </n-button>
+      </drop-down>
       <task-dialog />
       <n-button type="warning" @click="show_task = true">
         <template #icon>
@@ -155,13 +185,22 @@ const stop_options = [
       <help-text v-if="!mobile">
         <div>目前只糊了一个勉强能用的版本，其他功能敬请期待</div>
         <div>只开放了空任务/专精任务</div>
-        <div>只能增，不能删！！谨慎填写任务</div>
+        <div>只能增，不能删！！写错了可以【载入心情数据】启动</div>
         <div>如果 mower 休息到 00:30，新增的 00:15 的任务是不会被执行的，因为此时在休息</div>
-        <div>所以最好在 00:00 mower运行的时候添加 00:15 的任务了，考验手速的时候到了</div>
+        <div>添加完任务可以【载入心情任务】启动</div>
         <div>空任务，请确保任务房间名字，干员数量正确（没有判定）</div>
         <div>专精任务，UI有详细说明；新增完毕，UI上面的表会实时反馈</div>
         <div>在Q群或者频道提以上问题，看心情踢人</div>
       </help-text>
+      <n-button type="error" @click="show_feedback = true">
+        <template #icon>
+          <!-- <n-icon>
+          <add-icon />
+        </n-icon> -->
+        </template>
+        <template v-if="!mobile">反馈问题</template>
+      </n-button>
+      <feedback />
       <div class="expand"></div>
       <div class="scroll-container">
         <n-switch v-model:value="auto_scroll" />

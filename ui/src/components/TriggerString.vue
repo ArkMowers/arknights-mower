@@ -112,7 +112,29 @@ function update_type(type) {
 import { pinyin_match } from '@/utils/common'
 import { render_op_label } from '@/utils/op_select'
 
-const custom_tips = ['True', 'False', 'None']
+const custom_tips = [
+  'True',
+  'False',
+  'None',
+  'central',
+  'meeting',
+  'room_1_1',
+  'room_1_2',
+  'room_1_3',
+  'room_2_1',
+  'room_2_2',
+  'room_2_3',
+  'room_3_1',
+  'room_3_2',
+  'room_3_3',
+  'contact',
+  'factory',
+  'train',
+  'dormitory_1',
+  'dormitory_2',
+  'dormitory_3',
+  'dormitory_4'
+]
 </script>
 
 <template>

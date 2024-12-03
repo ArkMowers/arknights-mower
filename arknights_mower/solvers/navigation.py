@@ -3,7 +3,6 @@ import re
 import cv2
 
 from arknights_mower.models import navigation
-from arknights_mower.utils import hot_update
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import thres2
 from arknights_mower.utils.log import logger
@@ -150,10 +149,10 @@ class NavigationSolver(SceneGraphSolver):
         self.success = False
         self.act = None
 
-        hot_update.update()
-        if name in hot_update.navigation.NavigationSolver.location:
-            hot_update.navigation.NavigationSolver(self.device, self.recog).run(name)
-            return True
+        # hot_update.update()
+        # if name in hot_update.navigation.NavigationSolver.location:
+        #     hot_update.navigation.NavigationSolver(self.device, self.recog).run(name)
+        #     return True
 
         self.name = name
         prefix = name.split("-")[0]

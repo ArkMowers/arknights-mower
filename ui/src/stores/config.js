@@ -33,6 +33,7 @@ export const useConfigStore = defineStore('config', () => {
   const maa_gap = ref(false)
   const simulator = ref({ name: '', index: -1 })
   const resting_threshold = ref(50)
+  const fia_threshold = ref(90)
   const theme = ref('light')
   const tap_to_launch_game = ref(false)
   const exit_game_when_idle = ref(true)
@@ -69,6 +70,8 @@ export const useConfigStore = defineStore('config', () => {
   const sf_target = ref('结局A')
   const touch_method = ref('scrcpy')
   const free_room = ref(false)
+  const merge_interval = ref(10)
+  const fia_fool = ref(true)
   const sign_in = ref({ enable: true })
   const droidcast = ref({})
   const visit_friend = ref(true)
@@ -125,6 +128,7 @@ export const useConfigStore = defineStore('config', () => {
     maa_gap.value = response.data.maa_gap
     simulator.value = response.data.simulator
     resting_threshold.value = response.data.resting_threshold * 100
+    fia_threshold.value = response.data.fia_threshold * 100
     theme.value = response.data.theme
     tap_to_launch_game.value = response.data.tap_to_launch_game
     tap_to_launch_game.value.enable = tap_to_launch_game.value.enable ? 'tap' : 'adb'
@@ -162,6 +166,8 @@ export const useConfigStore = defineStore('config', () => {
     sf_target.value = response.data.secret_front.target
     touch_method.value = response.data.touch_method
     free_room.value = response.data.free_room
+    merge_interval.value = response.data.merge_interval
+    fia_fool.value = response.data.fia_fool
     sign_in.value = response.data.sign_in
     droidcast.value = response.data.droidcast
     visit_friend.value = response.data.visit_friend
@@ -205,6 +211,7 @@ export const useConfigStore = defineStore('config', () => {
       simulator: simulator.value,
       theme: theme.value,
       resting_threshold: resting_threshold.value / 100,
+      fia_threshold: fia_threshold.value / 100,
       tap_to_launch_game: {
         enable: tap_to_launch_game.value.enable == 'tap',
         x: tap_to_launch_game.value.x,
@@ -248,6 +255,8 @@ export const useConfigStore = defineStore('config', () => {
       },
       touch_method: touch_method.value,
       free_room: free_room.value,
+      merge_interval: merge_interval.value,
+      fia_fool: fia_fool.value,
       sign_in: sign_in.value,
       droidcast: droidcast.value,
       visit_friend: visit_friend.value,
@@ -301,6 +310,7 @@ export const useConfigStore = defineStore('config', () => {
     build_config,
     simulator,
     resting_threshold,
+    fia_threshold,
     theme,
     tap_to_launch_game,
     exit_game_when_idle,
@@ -337,6 +347,8 @@ export const useConfigStore = defineStore('config', () => {
     sf_target,
     touch_method,
     free_room,
+    merge_interval,
+    fia_fool,
     sign_in,
     droidcast,
     visit_friend,

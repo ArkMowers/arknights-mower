@@ -11,6 +11,7 @@ export const usePlanStore = defineStore('plan', () => {
   const resting_priority = ref([])
   const workaholic = ref([])
   const refresh_trading = ref([])
+  const refresh_drained = ref([])
 
   const plan = ref({})
 
@@ -53,7 +54,8 @@ export const usePlanStore = defineStore('plan', () => {
     'resting_priority',
     'workaholic',
     'free_blacklist',
-    'refresh_trading'
+    'refresh_trading',
+    'refresh_drained'
   ]
 
   function fill_empty(full_plan) {
@@ -134,6 +136,7 @@ export const usePlanStore = defineStore('plan', () => {
     resting_priority.value = str2list(response.data.conf.resting_priority)
     workaholic.value = str2list(response.data.conf.workaholic)
     refresh_trading.value = str2list(response.data.conf.refresh_trading)
+    refresh_drained.value = str2list(response.data.conf.refresh_drained)
 
     plan.value = fill_empty(response.data.plan1)
 
@@ -169,7 +172,8 @@ export const usePlanStore = defineStore('plan', () => {
         rest_in_full: list2str(rest_in_full.value),
         resting_priority: list2str(resting_priority.value),
         workaholic: list2str(workaholic.value),
-        refresh_trading: list2str(refresh_trading.value)
+        refresh_trading: list2str(refresh_trading.value),
+        refresh_drained: list2str(refresh_drained.value)
       },
       backup_plans: deepcopy(backup_plans.value)
     }
@@ -241,6 +245,7 @@ export const usePlanStore = defineStore('plan', () => {
     resting_priority,
     workaholic,
     refresh_trading,
+    refresh_drained,
     plan,
     operators,
     facility_operator_limit,

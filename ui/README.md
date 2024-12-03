@@ -59,7 +59,7 @@ VITE_HTTP_URL="http://localhost:5000"
 npm run build
 ```
 
-将生成的 `dist` 文件夹复制到 `arknights-mower` 的目录中。此时运行后端：
+此时运行后端：
 
 ```运行
 flask --app server run --port=8000
@@ -78,7 +78,7 @@ pip install pyinstaller
 使用 `pyinstaller` 打包：
 
 ```bash
-pyinstaller menu.spec
+pyinstaller webui_zip.spec
 ```
 
-生成的 `mower.exe` 在 `dist` 文件夹中。
+生成的 `mower.exe` 在 `dist` 文件夹中，打包后在依赖文件夹`_internal`中新建`ui`文件夹，并将构建的前端`dist`文件夹复制到该`ui`文件夹中即可使用。

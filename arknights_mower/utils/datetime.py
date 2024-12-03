@@ -19,6 +19,10 @@ def get_server_weekday():
     return datetime.now(pytz.timezone("Asia/Dubai")).weekday()
 
 
+def get_server_time():
+    return datetime.now(pytz.timezone("Asia/Dubai"))
+
+
 # newbing说用这个来定义休息时间省事
 def format_time(seconds):
     if seconds < 0:  # 权宜之计 配合刷生息演算

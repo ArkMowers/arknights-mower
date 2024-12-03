@@ -3,15 +3,20 @@ import shutil
 import sys
 import time
 import traceback
-from logging.handlers import RotatingFileHandler
+from datetime import datetime, timedelta
+from logging.handlers import QueueHandler, QueueListener, TimedRotatingFileHandler
 from pathlib import Path
+from queue import Queue
+from threading import Thread
 
 import colorlog
 
 from arknights_mower.utils import config
 from arknights_mower.utils.path import get_path
 
-BASIC_FORMAT = "%(asctime)s %(relativepath)s:%(lineno)d %(levelname)s %(message)s"
+BASIC_FORMAT = (
+    "%(asctime)s %(relativepath)s:%(lineno)d %(levelname)s %(funcName)s: %(message)s"
+)
 COLOR_FORMAT = f"%(log_color)s{BASIC_FORMAT}"
 DATE_FORMAT = None
 basic_formatter = logging.Formatter(BASIC_FORMAT, DATE_FORMAT)
@@ -31,28 +36,24 @@ class PackagePathFilter(logging.Filter):
 
 filter = PackagePathFilter()
 
-
 logger = logging.getLogger(__name__)
-logger.setLevel("DEBUG")
+logger.setLevel(logging.DEBUG)
 
+# d(ebug)hlr: 终端输出
 dhlr = logging.StreamHandler(stream=sys.stdout)
 dhlr.setFormatter(color_formatter)
-dhlr.setLevel("DEBUG")
+dhlr.setLevel(logging.DEBUG)
 dhlr.addFilter(filter)
-logger.addHandler(dhlr)
 
+# f(ile)hlr: 文件记录
 folder = Path(get_path("@app/log"))
 folder.mkdir(exist_ok=True, parents=True)
-fhlr = RotatingFileHandler(
-    folder.joinpath("runtime.log"),
-    encoding="utf8",
-    maxBytes=10 * 1024 * 1024,
-    backupCount=20,
+fhlr = TimedRotatingFileHandler(
+    folder.joinpath("runtime.log"), encoding="utf8", backupCount=168
 )
 fhlr.setFormatter(basic_formatter)
 fhlr.setLevel("DEBUG")
 fhlr.addFilter(filter)
-logger.addHandler(fhlr)
 
 
 class Handler(logging.StreamHandler):
@@ -63,24 +64,81 @@ class Handler(logging.StreamHandler):
         config.log_queue.put(msg)
 
 
+# w(ebsocket)hlr: WebSocket
 whlr = Handler()
 whlr.setLevel(logging.INFO)
-logger.addHandler(whlr)
+
+log_queue = Queue()
+queue_handler = QueueHandler(log_queue)
+logger.addHandler(queue_handler)
+listener = QueueListener(log_queue, dhlr, fhlr, whlr, respect_handler_level=True)
+listener.start()
+
+screenshot_folder = get_path("@app/screenshot")
+screenshot_folder.mkdir(exist_ok=True, parents=True)
+screenshot_queue = Queue()
+cleanup_time = datetime.now()
 
 
-def save_screenshot(img: bytes) -> None:
-    folder = get_path("@app/screenshot")
-    folder.mkdir(exist_ok=True, parents=True)
-    time_ns = time.time_ns()
-    start_time_ns = time_ns - config.conf.screenshot * 3600 * 10**9
-    for i in folder.iterdir():
+def screenshot_cleanup():
+    logger.info("清理过期截图")
+    start_time_ns = time.time_ns() - config.conf.screenshot * 3600 * 10**9
+    for i in screenshot_folder.iterdir():
         if i.is_dir():
+            if i.name == "run_order":
+                continue
             shutil.rmtree(i)
         elif not i.stem.isnumeric():
             i.unlink()
         elif int(i.stem) < start_time_ns:
             i.unlink()
-    filename = f"{time_ns}.jpg"
-    with folder.joinpath(filename).open("wb") as f:
-        f.write(img)
-    logger.debug(f"save screenshot: {filename}")
+    global cleanup_time
+    cleanup_time = datetime.now()
+
+
+def screenshot_worker():
+    screenshot_cleanup()
+    while True:
+        now = datetime.now()
+        if now - cleanup_time > timedelta(hours=1):
+            screenshot_cleanup()
+        img, filename = screenshot_queue.get()
+        with screenshot_folder.joinpath(filename).open("wb") as f:
+            f.write(img)
+
+
+Thread(target=screenshot_worker, daemon=True).start()
+
+
+def save_screenshot(img: bytes, sub_folder=None) -> None:
+    filename = f"{time.time_ns()}.jpg"
+    logger.debug(filename)
+    if sub_folder:
+        sub_folder_path = Path(screenshot_folder) / sub_folder
+        sub_folder_path.mkdir(parents=True, exist_ok=True)
+        filename = f"{sub_folder}/{datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
+    screenshot_queue.put((img, filename))
+
+
+def get_log_by_time(target_time, time_range=1):
+    folder = Path(get_path("@app/log"))
+    time_points = [
+        target_time - timedelta(hours=time_range),
+        target_time,
+        target_time + timedelta(hours=time_range),
+    ]
+    valid_suffixes = [tp.strftime("%Y-%m-%d_%H") for tp in time_points]
+    matching_files = []
+    for file_path in folder.iterdir():
+        if file_path.is_file():
+            try:
+                if any(suffix in file_path.name for suffix in valid_suffixes):
+                    matching_files.append(file_path)
+                elif (
+                    file_path.name == "runtime.log"
+                    and (datetime.now() - target_time).total_seconds() <= 3600
+                ):
+                    matching_files.append(file_path)
+            except Exception as e:
+                logger.exception(f"Error processing file {file_path}: {e}")
+    return matching_files

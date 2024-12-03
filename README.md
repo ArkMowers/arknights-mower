@@ -1,13 +1,5 @@
 # arknights-mower
 
-<!--
-[![GitHub License](https://img.shields.io/github/license/ArkMowers/arknights-mower)](https://github.com/ArkMowers/arknights-mower/blob/master/LICENSE)
-[![GitHub last commit (branch)](https://img.shields.io/github/last-commit/ArkMowers/arknights-mower/dev_shawn)](https://github.com/ArkMowers/arknights-mower/commits/dev_shawn/)
-[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/ArkMowers/arknights-mower/pyinstaller-win-shawn.yml?branch=dev_shawn&)](https://github.com/ArkMowers/arknights-mower/actions/workflows/pyinstaller-win-shawn.yml)
--->
-<!--[![download](https://img.shields.io/website?url=https%3A%2F%2Fmower.zhaozuohong.vip&label=Mower%E4%B8%8B%E8%BD%BD%E7%AB%99)](https://mower.zhaozuohong.vip/)-->
-<!--[![qq_guild](https://img.shields.io/badge/QQ%E9%A2%91%E9%81%93-2r118jwue4-blue)](https://pd.qq.com/s/5t91c3gx9)-->
-
 Mower 是为长期运行设计的、开源的明日方舟脚本。
 
 ## 关于 Mower-NG
@@ -36,10 +28,5 @@ Mower 是为长期运行设计的、开源的明日方舟脚本。
 
 待更新……
 
-<!--
-Mower 支持 Windows、macOS 与 Linux 平台。Windows 用户推荐从 [mower 下载站](https://mower.zhaozuohong.vip/)下载运行；macOS 与 Linux 用户请参考《[从源码运行 arknights-mower](https://blog.zhaozuohong.vip/2023/08/02/run-arknights-mower-from-source/)》。
+提出建议、反馈 Bug，欢迎加入 QQ群：239200680 QQ频道:ArkMower（频道号：2r118jwue4）。
 
-初次使用，建议阅读《[Mower 简明教程](https://blog.zhaozuohong.vip/2024/05/10/mower-guide/tutorial/)》。
-
-提出建议、反馈 Bug 或交流基建知识，欢迎加入 QQ 频道 ArkMower（频道号：2r118jwue4）。
--->

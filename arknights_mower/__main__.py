@@ -1,37 +1,34 @@
-import json
 import os
-import re
-from datetime import datetime, timedelta
+from datetime import datetime
 
-from evalidate import Expr
-
-from arknights_mower import __version__
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
 from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
 from arknights_mower.solvers.secret_front import SecretFront
 from arknights_mower.utils import config, path, rapidocr
 from arknights_mower.utils.csleep import MowerExit
-from arknights_mower.utils.datetime import format_time
+from arknights_mower.utils.datetime import format_time, get_server_time
 from arknights_mower.utils.depot import 创建csv, 创建json
 from arknights_mower.utils.device.adb_client.session import Session
 from arknights_mower.utils.device.scrcpy import Scrcpy
-from arknights_mower.utils.email import send_message, task_template, version_template
-from arknights_mower.utils.hot_update import get_listing
+from arknights_mower.utils.email import send_message, task_template
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.logic_expression import get_logic_exp
+from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.simulator import restart_simulator
 
 base_scheduler = None
-operators = config.operators
 
 
 # 执行自动排班
-def main():
+def main(saved_state):
     logger.info("开始运行Mower")
     rapidocr.initialize_ocr()
-    simulate()
+    data = None
+    if saved_state != {}:
+        data = saved_state
+    simulate(data)
 
 
 def initialize(
@@ -55,6 +52,7 @@ def initialize(
         free_blacklist=conf.free_blacklist,
         resting_threshold=conf.resting_threshold,
         refresh_trading_config=config.plan.conf.refresh_trading,
+        refresh_drained=config.plan.conf.refresh_drained,
         free_room=conf.free_room,
     )
     for room, obj in plan[plan["default"]].items():
@@ -82,6 +80,7 @@ def initialize(
             free_blacklist=i["conf"]["free_blacklist"],
             resting_threshold=conf.resting_threshold,
             refresh_trading_config=i["conf"]["refresh_trading"],
+            refresh_drained=i["conf"]["refresh_drained"],
             free_room=conf.free_room,
         )
         backup_trigger = get_logic_exp(i["trigger"]) if "trigger" in i else None
@@ -121,19 +120,19 @@ def initialize(
     return base_scheduler
 
 
-def simulate():
+def simulate(saved):
     """
     具体调用方法可见各个函数的参数说明
     """
     logger.info(f"正在使用全局配置空间: {path.global_space}")
-    tasks = []
+    tasks = saved["tasks"] if saved else []
     reconnect_max_tries = 10
     reconnect_tries = 0
     global base_scheduler
     success = False
     while not success:
         try:
-            base_scheduler = initialize(tasks)
+            base_scheduler = initialize([])
             success = True
         except MowerExit:
             return
@@ -158,20 +157,6 @@ def simulate():
     if validation_msg is not None:
         logger.error(validation_msg)
         return
-    if operators != {}:
-        for k, v in operators.items():
-            if (
-                k in base_scheduler.op_data.operators
-                and not base_scheduler.op_data.operators[k].room.startswith("dorm")
-            ):
-                # 只复制心情数据
-                base_scheduler.op_data.operators[k].mood = v.mood
-                base_scheduler.op_data.operators[k].time_stamp = v.time_stamp
-                base_scheduler.op_data.operators[k].depletion_rate = v.depletion_rate
-                base_scheduler.op_data.operators[k].current_room = v.current_room
-                base_scheduler.op_data.operators[k].current_index = v.current_index
-    timezone_offset = 0
-
     if len(base_scheduler.op_data.backup_plans) > 0:
         conditions = base_scheduler.op_data.generate_conditions(
             len(base_scheduler.op_data.backup_plans)
@@ -184,85 +169,93 @@ def simulate():
         base_scheduler.op_data.swap_plan(
             [False] * len(base_scheduler.op_data.backup_plans), True
         )
+    timezone_offset = 0
+    if saved:
+        try:
+            for k, v in saved["operators"].items():
+                if k not in base_scheduler.op_data.operators:
+                    base_scheduler.op_data.add(Operator(k, ""))
+                    # 只复制心情数据
+                base_scheduler.op_data.operators[k].mood = v.mood
+                base_scheduler.op_data.operators[k].time_stamp = v.time_stamp
+                base_scheduler.op_data.operators[k].depletion_rate = v.depletion_rate
+                base_scheduler.op_data.operators[k].current_room = v.current_room
+                base_scheduler.op_data.operators[k].current_index = v.current_index
+            base_scheduler.op_data.dorm = saved["dorm"]
+            base_scheduler.party_time = saved["party_time"]
+            base_scheduler.daily_visit_friend = saved["daily_visit_friend"]
+            base_scheduler.daily_report = saved["daily_report"]
+            base_scheduler.daily_skland = saved["daily_skland"]
+            base_scheduler.daily_mail = saved["daily_mail"]
+            base_scheduler.task_count = saved["task_count"]
+            base_scheduler.op_data.skill_upgrade_supports = saved[
+                "skill_upgrade_supports"
+            ]
+        except Exception as ex:
+            logger.exception(ex)
+        base_scheduler.tasks = tasks
     while True:
         try:
             if len(base_scheduler.tasks) > 0:
                 (base_scheduler.tasks.sort(key=lambda x: x.time, reverse=False))
-                logger.info("||".join([str(t) for t in base_scheduler.tasks]))
                 remaining_time = (
                     base_scheduler.tasks[0].time - datetime.now()
                 ).total_seconds()
 
                 if remaining_time > 540:
-                    if config.conf.check_for_updates:
-                        logger.info("检查版本更新")
-                        listing = get_listing()
-                        version = __version__.replace("+", "-")
-                        if not any(i.name.startswith(version) for i in listing):
-                            stable = []
-                            testing = []
-                            for i in listing:
-                                name = i.name
-                                if re.fullmatch(r"[0-9]{4}\.[0-9]{2}\.[0-9]+/", name):
-                                    stable.append(name[:-1])
-                                elif re.fullmatch(
-                                    r"[0-9]{4}\.[0-9]{2}-[0-9a-z]{7}/", name
-                                ):
-                                    testing.append(name[:-1])
-                            title = "Mower版本过旧，请及时更新"
-                            logger.error(title)
-                            body = version_template.render(
-                                stable=stable, testing=testing, current=version
-                            )
-                            send_message(body, title, "WARNING")
+                    # if config.conf.check_for_updates:
+                    #     logger.info("检查版本更新")
+                    #     listing = get_listing()
+                    #     version = __version__.replace("+", "-")
+                    #     if not any(i.name.startswith(version) for i in listing):
+                    #         stable = []
+                    #         testing = []
+                    #         for i in listing:
+                    #             name = i.name
+                    #             if re.fullmatch(r"[0-9]{4}\.[0-9]{2}\.[0-9]+/", name):
+                    #                 stable.append(name[:-1])
+                    #             elif re.fullmatch(
+                    #                 r"[0-9]{4}\.[0-9]{2}-[0-9a-z]{7}/", name
+                    #             ):
+                    #                 testing.append(name[:-1])
+                    #         title = "Mower版本过旧，请及时更新"
+                    #         logger.error(title)
+                    #         body = version_template.render(
+                    #             stable=stable, testing=testing, current=version
+                    #         )
+                    #         send_message(body, title, "WARNING")
 
                     # 刷新时间以鹰历为准
-                    if (
-                        base_scheduler.sign_in
-                        < (datetime.now() - timedelta(hours=4)).date()
-                    ):
-                        if base_scheduler.sign_in_plan_solver():
-                            base_scheduler.sign_in = (
-                                datetime.now() - timedelta(hours=4)
-                            ).date()
+                    # if (
+                    #     base_scheduler.sign_in
+                    #     < get_server_time().date()
+                    # ):
+                    #     if base_scheduler.sign_in_plan_solver():
+                    #         base_scheduler.sign_in = (
+                    #             datetime.now() - timedelta(hours=4)
+                    #         ).date()
 
-                    if (
-                        base_scheduler.daily_visit_friend
-                        < (datetime.now() - timedelta(hours=4)).date()
-                    ):
+                    if base_scheduler.daily_visit_friend < get_server_time().date():
                         if base_scheduler.visit_friend_plan_solver():
-                            base_scheduler.daily_visit_friend = (
-                                datetime.now() - timedelta(hours=4)
-                            ).date()
+                            base_scheduler.daily_visit_friend = get_server_time().date()
 
-                    if (
-                        base_scheduler.daily_report
-                        < (datetime.now() - timedelta(hours=4)).date()
-                    ):
+                    if base_scheduler.daily_report < get_server_time().date():
                         if base_scheduler.report_plan_solver():
-                            base_scheduler.daily_report = (
-                                datetime.now() - timedelta(hours=4)
-                            ).date()
+                            base_scheduler.daily_report = get_server_time().date()
 
                     if (
                         config.conf.skland_enable
-                        and base_scheduler.daily_skland
-                        < (datetime.now() - timedelta(hours=4)).date()
+                        and base_scheduler.daily_skland < get_server_time().date()
                     ):
                         if base_scheduler.skland_plan_solover():
-                            base_scheduler.daily_skland = (
-                                datetime.now() - timedelta(hours=4)
-                            ).date()
+                            base_scheduler.daily_skland = get_server_time().date()
 
                     if (
                         config.conf.check_mail_enable
-                        and base_scheduler.daily_mail
-                        < (datetime.now() - timedelta(hours=8)).date()
+                        and base_scheduler.daily_mail < get_server_time().date()
                     ):
                         if base_scheduler.mail_plan_solver():
-                            base_scheduler.daily_mail = (
-                                datetime.now() - timedelta(hours=8)
-                            ).date()
+                            base_scheduler.daily_mail = get_server_time().date()
 
                     if config.conf.recruit_enable:
                         base_scheduler.recruit_plan_solver()
@@ -443,29 +436,3 @@ def simulate():
         except Exception as e:
             logger.exception(f"程序出错--->{e}")
             base_scheduler.recog.update()
-
-
-def save_state(op_data, file="state.json"):
-    tmp_dir = get_path("@app/tmp")
-    if not tmp_dir.exists():
-        tmp_dir.mkdir()
-    state_file = tmp_dir / file
-    with open(state_file, "w") as f:
-        if op_data is not None:
-            json.dump(vars(op_data), f, default=str)
-
-
-def load_state(file="state.json"):
-    state_file = get_path("@app/tmp") / file
-    if not state_file.exists():
-        return None
-    with open(state_file, "r") as f:
-        state = json.load(f)
-    operators = {k: Expr(v).eval() for k, v in state["operators"].items()}
-    for k, v in operators.items():
-        if not v.time_stamp == "None":
-            v.time_stamp = datetime.strptime(v.time_stamp, "%Y-%m-%d %H:%M:%S.%f")
-        else:
-            v.time_stamp = None
-    logger.info("基建配置已加载！")
-    return operators

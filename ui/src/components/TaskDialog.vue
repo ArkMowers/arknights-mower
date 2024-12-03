@@ -21,7 +21,7 @@ const skill_level = ref(1)
 const upgrade_support = ref([])
 const msg = ref('')
 const error = ref(false)
-
+const half_off = ref(true)
 const taskTypeOptions = [
   { label: '空任务', value: '空任务' },
   { label: '专精任务', value: '技能专精' }
@@ -50,7 +50,8 @@ function new_support() {
     efficiency: 30,
     swap: true,
     swap_name: '艾丽妮',
-    match: true
+    match: true,
+    half_off: true
   }
 }
 function clear() {
@@ -75,17 +76,23 @@ async function saveTasks() {
     task_type: task_type.value,
     meta_data: ''
   }
+  var data = []
   if (task_type.value == '技能专精') {
     task.meta_data = skill_level.value + ''
     task.plan = {}
-  }
-  const data = deepcopy(upgrade_support.value)
-  for (const value of data) {
-    if (!value.swap) {
-      value.swap_name = value.name
-      value.match = false
+    upgrade_support.value.sort((a, b) => a.skill_level - b.skill_level)
+    if (upgrade_support.value[0].skill_level != 1) {
+      upgrade_support.value[0].half_off = half_off.value
+      // 如果第一个不是1技能，则更新 是否减半
+    } else upgrade_support.value[0].half_off = false
+    data = deepcopy(upgrade_support.value)
+    for (const value of data) {
+      if (!value.swap) {
+        value.swap_name = value.name
+        value.match = false
+      }
+      delete value.swap
     }
-    delete value.swap
   }
   const req = { task, upgrade_support: data }
   msg.value = (await axios.post(`${import.meta.env.VITE_HTTP_URL}/task`, req)).data
@@ -191,7 +198,7 @@ const swap_30 = [
           <div>排班表是要填写协助位和训练位的，最好写从来没用的工具人。</div>
           <div>训练室排班表纠错暂时关闭，有需要纠错的朋友，请绑大组</div>
           <div>自动计算时暂时默认2，3专精获得小鸟/狗剩增益效果</div>
-          <div>如果开启专精时未获得减半增益，本次专精可手动计算时间以添加艾丽妮替换任务</div>
+          <div>如果开启专精时未获得减半增益（非专1-3），取消勾选【有减半加成】</div>
           <div>
             参考攻略：
             <n-button
@@ -313,6 +320,12 @@ const swap_30 = [
           <label v-if="!error" style="color: green">{{ msg }}</label>
         </div>
         <div style="display: flex; gap: 12px; margin-top: 16px">
+          <n-checkbox
+            v-if="task_type == '技能专精'"
+            v-model:checked="half_off"
+            :default-checked="true"
+            >有减半加成</n-checkbox
+          >
           <n-button type="primary" @click="saveTasks">添加至任务队列</n-button>
           <n-button type="error" @click="clear">清除输入</n-button>
         </div>

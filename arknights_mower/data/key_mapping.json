@@ -111,19 +111,19 @@
         "NORMAL",
         10008
     ],
-    "LMTGS_COIN_5301": [
-        "LMTGS_COIN_5301",
-        "LMTGS_COIN_5301",
+    "LMTGS_COIN_5601": [
+        "LMTGS_COIN_5601",
+        "LMTGS_COIN_5601",
         "寻访数据契约",
         "NORMAL",
-        10025
+        10026
     ],
     "寻访数据契约": [
-        "LMTGS_COIN_5301",
-        "LMTGS_COIN_5301",
+        "LMTGS_COIN_5601",
+        "LMTGS_COIN_5601",
         "寻访数据契约",
         "NORMAL",
-        10025
+        10026
     ],
     "EPGS_COIN": [
         "EPGS_COIN",
@@ -203,11 +203,11 @@
         20001
     ],
     "ID信息更新卡": [
-        "renamingCard_30_050",
+        "renamingCard_30_056",
         "renamingCard",
         "ID信息更新卡",
         "CONSUME",
-        20022
+        20024
     ],
     "renamingCard_0_018": [
         "renamingCard_0_018",
@@ -307,6 +307,20 @@
         "CONSUME",
         20022
     ],
+    "renamingCard_0_056": [
+        "renamingCard_0_056",
+        "renamingCard",
+        "ID信息更新卡",
+        "CONSUME",
+        20023
+    ],
+    "renamingCard_30_056": [
+        "renamingCard_30_056",
+        "renamingCard",
+        "ID信息更新卡",
+        "CONSUME",
+        20024
+    ],
     "ap_supply_lt_100": [
         "ap_supply_lt_100",
         "ap_supply_lt_100",
@@ -391,17 +405,17 @@
         "NORMAL",
         40001
     ],
-    "LIMITED_TKT_GACHA_10_5301": [
-        "LIMITED_TKT_GACHA_10_5301",
-        "LIMITED_TKT_GACHA_10_5301",
-        "璀璨闪耀寻访凭证",
+    "LIMITED_TKT_GACHA_10_5601": [
+        "LIMITED_TKT_GACHA_10_5601",
+        "LIMITED_TKT_GACHA_10_5601",
+        "荒芜探戈寻访凭证",
         "NORMAL",
         40003
     ],
-    "璀璨闪耀寻访凭证": [
-        "LIMITED_TKT_GACHA_10_5301",
-        "LIMITED_TKT_GACHA_10_5301",
-        "璀璨闪耀寻访凭证",
+    "荒芜探戈寻访凭证": [
+        "LIMITED_TKT_GACHA_10_5601",
+        "LIMITED_TKT_GACHA_10_5601",
+        "荒芜探戈寻访凭证",
         "NORMAL",
         40003
     ],
@@ -518,11 +532,11 @@
         50006
     ],
     "感谢庆典干员凭证": [
-        "voucher_item_pick4401",
+        "voucher_item_pick5601",
         "voucher_recruitR6_g",
         "感谢庆典干员凭证",
         "CONSUME",
-        50014
+        50018
     ],
     "voucher_item_pick1803": [
         "voucher_item_pick1803",
@@ -626,6 +640,27 @@
         "voucher_item_4pick1_5301",
         "voucher_item_4pick1_5301",
         "资深干员调用凭证-新人",
+        "CONSUME",
+        50018
+    ],
+    "voucher_item_pick5601": [
+        "voucher_item_pick5601",
+        "voucher_recruitR6_g",
+        "感谢庆典干员凭证",
+        "CONSUME",
+        50018
+    ],
+    "voucher_class_pick5601": [
+        "voucher_class_pick5601",
+        "voucher_class_pick5601",
+        "中坚高级干员调用凭证",
+        "CONSUME",
+        50018
+    ],
+    "中坚高级干员调用凭证": [
+        "voucher_class_pick5601",
+        "voucher_class_pick5601",
+        "中坚高级干员调用凭证",
         "CONSUME",
         50018
     ],
@@ -1189,6 +1224,20 @@
         "CONSUME",
         60110
     ],
+    "randomMaterial_5d5": [
+        "randomMaterial_5d5",
+        "randomMaterial_4",
+        "2024感谢庆典物资补给",
+        "CONSUME",
+        60111
+    ],
+    "2024感谢庆典物资补给": [
+        "randomMaterial_5d5",
+        "randomMaterial_4",
+        "2024感谢庆典物资补给",
+        "CONSUME",
+        60111
+    ],
     "randomMaterial_rhine2": [
         "randomMaterial_rhine2",
         "randomMaterial_rhine2",
@@ -1208,56 +1257,70 @@
         "randomDiamondShd_1",
         "罗德岛迎春红包",
         "CONSUME",
-        60111
+        60112
     ],
     "罗德岛迎春红包": [
         "randomDiamondShd_1",
         "randomDiamondShd_1",
         "罗德岛迎春红包",
         "CONSUME",
-        60111
+        60112
     ],
     "randomDiamondShd_2": [
         "randomDiamondShd_2",
         "randomDiamondShd_2",
         "庆典礼盒",
         "CONSUME",
-        60112
+        60113
     ],
     "庆典礼盒": [
         "randomDiamondShd_2",
         "randomDiamondShd_2",
         "庆典礼盒",
         "CONSUME",
-        60112
+        60113
     ],
     "randomMaterial_siesta2": [
         "randomMaterial_siesta2",
         "randomMaterial_siesta2",
         "峯联贸易物流补给",
         "CONSUME",
-        60113
+        60114
     ],
     "峯联贸易物流补给": [
         "randomMaterial_siesta2",
         "randomMaterial_siesta2",
         "峯联贸易物流补给",
         "CONSUME",
-        60113
+        60114
     ],
     "randomMaterial_leith2": [
         "randomMaterial_leith2",
         "randomMaterial_leith2",
         "查访补给",
         "CONSUME",
-        60114
+        60115
     ],
     "查访补给": [
         "randomMaterial_leith2",
         "randomMaterial_leith2",
         "查访补给",
         "CONSUME",
-        60114
+        60115
+    ],
+    "randomMaterial_act38side": [
+        "randomMaterial_act38side",
+        "randomMaterial_act38side",
+        "狂欢烟花桶",
+        "CONSUME",
+        60115
+    ],
+    "狂欢烟花桶": [
+        "randomMaterial_act38side",
+        "randomMaterial_act38side",
+        "狂欢烟花桶",
+        "CONSUME",
+        60115
     ],
     "2001": [
         "2001",
@@ -4451,6 +4514,20 @@
         "MATERIAL",
         800055
     ],
+    "p_char_4165_ctrail": [
+        "p_char_4165_ctrail",
+        "p_char_4165_ctrail",
+        "云迹的信物",
+        "MATERIAL",
+        800056
+    ],
+    "云迹的信物": [
+        "p_char_4165_ctrail",
+        "p_char_4165_ctrail",
+        "云迹的信物",
+        "MATERIAL",
+        800056
+    ],
     "p_char_128_plosis": [
         "p_char_128_plosis",
         "p_char_128_plosis",
@@ -6579,6 +6656,104 @@
         "MATERIAL",
         700151
     ],
+    "p_char_4142_laios": [
+        "p_char_4142_laios",
+        "p_char_4142_laios",
+        "莱欧斯的信物",
+        "MATERIAL",
+        700152
+    ],
+    "莱欧斯的信物": [
+        "p_char_4142_laios",
+        "p_char_4142_laios",
+        "莱欧斯的信物",
+        "MATERIAL",
+        700152
+    ],
+    "p_char_4143_sensi": [
+        "p_char_4143_sensi",
+        "p_char_4143_sensi",
+        "森西的信物",
+        "MATERIAL",
+        700153
+    ],
+    "森西的信物": [
+        "p_char_4143_sensi",
+        "p_char_4143_sensi",
+        "森西的信物",
+        "MATERIAL",
+        700153
+    ],
+    "p_char_4144_chilc": [
+        "p_char_4144_chilc",
+        "p_char_4144_chilc",
+        "齐尔查克的信物",
+        "MATERIAL",
+        700154
+    ],
+    "齐尔查克的信物": [
+        "p_char_4144_chilc",
+        "p_char_4144_chilc",
+        "齐尔查克的信物",
+        "MATERIAL",
+        700154
+    ],
+    "p_char_487_bobb": [
+        "p_char_487_bobb",
+        "p_char_487_bobb",
+        "波卜的信物",
+        "MATERIAL",
+        700155
+    ],
+    "波卜的信物": [
+        "p_char_487_bobb",
+        "p_char_487_bobb",
+        "波卜的信物",
+        "MATERIAL",
+        700155
+    ],
+    "p_char_4162_cathy": [
+        "p_char_4162_cathy",
+        "p_char_4162_cathy",
+        "凯瑟琳的信物",
+        "MATERIAL",
+        700156
+    ],
+    "凯瑟琳的信物": [
+        "p_char_4162_cathy",
+        "p_char_4162_cathy",
+        "凯瑟琳的信物",
+        "MATERIAL",
+        700156
+    ],
+    "p_char_4148_philae": [
+        "p_char_4148_philae",
+        "p_char_4148_philae",
+        "菲莱的信物",
+        "MATERIAL",
+        700157
+    ],
+    "菲莱的信物": [
+        "p_char_4148_philae",
+        "p_char_4148_philae",
+        "菲莱的信物",
+        "MATERIAL",
+        700157
+    ],
+    "p_char_4155_talr": [
+        "p_char_4155_talr",
+        "p_char_4155_talr",
+        "裁度的信物",
+        "MATERIAL",
+        700158
+    ],
+    "裁度的信物": [
+        "p_char_4155_talr",
+        "p_char_4155_talr",
+        "裁度的信物",
+        "MATERIAL",
+        700158
+    ],
     "p_char_103_angel": [
         "p_char_103_angel",
         "p_char_103_angel",
@@ -7922,6 +8097,90 @@
         "佩佩的信物",
         "MATERIAL",
         600096
+    ],
+    "p_char_4141_marcil": [
+        "p_char_4141_marcil",
+        "p_char_4141_marcil",
+        "玛露西尔的信物",
+        "MATERIAL",
+        600097
+    ],
+    "玛露西尔的信物": [
+        "p_char_4141_marcil",
+        "p_char_4141_marcil",
+        "玛露西尔的信物",
+        "MATERIAL",
+        600097
+    ],
+    "p_char_1019_siege2": [
+        "p_char_1019_siege2",
+        "p_char_1019_siege2",
+        "维娜·维多利亚的信物",
+        "MATERIAL",
+        600098
+    ],
+    "维娜·维多利亚的信物": [
+        "p_char_1019_siege2",
+        "p_char_1019_siege2",
+        "维娜·维多利亚的信物",
+        "MATERIAL",
+        600098
+    ],
+    "p_char_1038_whitw2": [
+        "p_char_1038_whitw2",
+        "p_char_1038_whitw2",
+        "荒芜拉普兰德的信物",
+        "MATERIAL",
+        600099
+    ],
+    "荒芜拉普兰德的信物": [
+        "p_char_1038_whitw2",
+        "p_char_1038_whitw2",
+        "荒芜拉普兰德的信物",
+        "MATERIAL",
+        600099
+    ],
+    "p_char_1502_crosly": [
+        "p_char_1502_crosly",
+        "p_char_1502_crosly",
+        "弑君者的信物",
+        "MATERIAL",
+        600100
+    ],
+    "弑君者的信物": [
+        "p_char_1502_crosly",
+        "p_char_1502_crosly",
+        "弑君者的信物",
+        "MATERIAL",
+        600100
+    ],
+    "p_char_4026_vulpis": [
+        "p_char_4026_vulpis",
+        "p_char_4026_vulpis",
+        "忍冬的信物",
+        "MATERIAL",
+        600101
+    ],
+    "忍冬的信物": [
+        "p_char_4026_vulpis",
+        "p_char_4026_vulpis",
+        "忍冬的信物",
+        "MATERIAL",
+        600101
+    ],
+    "p_char_4011_lessng": [
+        "p_char_4011_lessng",
+        "p_char_4011_lessng",
+        "止颂的信物",
+        "MATERIAL",
+        600102
+    ],
+    "止颂的信物": [
+        "p_char_4011_lessng",
+        "p_char_4011_lessng",
+        "止颂的信物",
+        "MATERIAL",
+        600102
     ],
     "class_p_char_123_fang": [
         "class_p_char_123_fang",

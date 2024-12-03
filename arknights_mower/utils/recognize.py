@@ -9,7 +9,6 @@ from arknights_mower import __rootdir__
 from arknights_mower.utils import config
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.csleep import MowerExit
-from arknights_mower.utils.deprecated import deprecated
 from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.image import bytes2img, cmatch, cropimg, loadres, thres2
 from arknights_mower.utils.log import logger, save_screenshot
@@ -95,10 +94,9 @@ class Recognizer:
         """get the color of the pixel"""
         return self.img[y][x]
 
-    @deprecated
     def save_screencap(self, folder):
-        del folder  # 兼容2024.05旧版接口
-        save_screenshot(self.screencap)
+        # del folder  # 兼容2024.05旧版接口
+        save_screenshot(self.screencap, folder)
 
     def detect_index_scene(self) -> bool:
         res = loadres("index_nav", True)
@@ -174,7 +172,7 @@ class Recognizer:
             self.scene = Scene.CTRLCENTER_ASSISTANT
         elif self.find("infra_overview"):
             self.scene = Scene.INFRA_MAIN
-        elif self.find("infra_todo"):
+        elif self.find("infra_todo", scope=((0, 1013), (241, 1080))):
             self.scene = Scene.INFRA_TODOLIST
         elif self.find("clue"):
             self.scene = Scene.INFRA_CONFIDENTIAL
@@ -672,9 +670,9 @@ class Recognizer:
             "factory_collect": (1542, 886),
             "fight/refresh": (1639, 22),
             "hypergryph": (0, 961),
-            "infra_overview": (54, 135),
+            # "infra_overview": (54, 135),
             "infra_overview_in": (64, 705),
-            "infra_todo": (13, 1013),
+            # "infra_todo": (13, 1013),
             "loading2": (620, 247),
             "loading7": (106, 635),
             "login_account": (622, 703),
@@ -722,6 +720,28 @@ class Recognizer:
             "terminal_pre2": (1459, 797),
         }
 
+        template_matching_score = {
+            "connecting": 0.7,
+            "navigation/ope_hard": 0.7,
+            "navigation/ope_hard_small": 0.7,
+            "navigation/ope_normal": 0.7,
+            "navigation/ope_normal_small": 0.7,
+            "recruit/agent_token": 0.8,
+            "recruit/agent_token_first": 0.8,
+            "recruit/lmb": 0.7,
+            "recruit/riic_res/CASTER": 0.7,
+            "recruit/riic_res/MEDIC": 0.7,
+            "recruit/riic_res/PIONEER": 0.7,
+            "recruit/riic_res/SPECIAL": 0.7,
+            "recruit/riic_res/SNIPER": 0.7,
+            "recruit/riic_res/SUPPORT": 0.7,
+            "recruit/riic_res/TANK": 0.7,
+            "recruit/riic_res/WARRIOR": 0.7,
+            "recruit/time": 0.8,
+            "recruit/stone": 0.7,
+            "arrange_confirm": 0.85,
+        }
+
         if res in color:
             res_img = loadres(res)
             h, w, _ = res_img.shape
@@ -737,7 +757,10 @@ class Recognizer:
                     res_img = cv2.cvtColor(res_img, cv2.COLOR_RGB2GRAY)
                     ssim = structural_similarity(gray, res_img)
                     logger.debug(f"{ssim=}")
-                    if ssim >= 0.9:
+                    threshold = 0.9
+                    if res in template_matching_score:
+                        threshold = template_matching_score[res]
+                    if ssim >= threshold:
                         return scope
 
             return None
@@ -812,27 +835,6 @@ class Recognizer:
             "riic/orundum": ((1500, 320), (1800, 550)),
             "riic/trade": ((1320, 250), (1600, 500)),
             "upgrade": (997, 501),
-        }
-
-        template_matching_score = {
-            "connecting": 0.7,
-            "navigation/ope_hard": 0.7,
-            "navigation/ope_hard_small": 0.7,
-            "navigation/ope_normal": 0.7,
-            "navigation/ope_normal_small": 0.7,
-            "recruit/agent_token": 0.8,
-            "recruit/agent_token_first": 0.8,
-            "recruit/lmb": 0.7,
-            "recruit/riic_res/CASTER": 0.7,
-            "recruit/riic_res/MEDIC": 0.7,
-            "recruit/riic_res/PIONEER": 0.7,
-            "recruit/riic_res/SPECIAL": 0.7,
-            "recruit/riic_res/SNIPER": 0.7,
-            "recruit/riic_res/SUPPORT": 0.7,
-            "recruit/riic_res/TANK": 0.7,
-            "recruit/riic_res/WARRIOR": 0.7,
-            "recruit/time": 0.8,
-            "recruit/stone": 0.7,
         }
 
         if res in template_matching:

@@ -78,8 +78,17 @@ class BaseSolver:
         self.check_current_focus()
         retry_times = config.MAX_RETRYTIME
         result = None
+        start_time = datetime.now()
+        recruit_timeout_limit = 300  # 获取超时限制 300s
+        from arknights_mower.solvers.recruit import RecruitSolver
+
         while retry_times > 0:
             try:
+                if isinstance(self, RecruitSolver):
+                    if datetime.now() - start_time > timedelta(
+                        seconds=recruit_timeout_limit
+                    ):
+                        raise Exception("任务超时,强制停止")
                 result = self.transition()
                 if result:
                     return result
@@ -190,6 +199,11 @@ class BaseSolver:
     def check_current_focus(self):
         self.recog.check_current_focus()
 
+    def restart_game(self):
+        self.device.exit()
+        self.device.launch()
+        self.recog.update()
+
     def tap_element(
         self,
         element_name: tp.Res,
@@ -228,7 +242,7 @@ class BaseSolver:
     ):
         pos = {
             "friend": (544, 862),  # 好友
-            "infrastructure": (1545, 948),  # 基建
+            "infrastructure": (1410, 870),  # 基建
             "mission": (1201, 904),  # 任务
             "recruit": (1507, 774),  # 公开招募
             "shop": (1251, 727),  # 采购中心
