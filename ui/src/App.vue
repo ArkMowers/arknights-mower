@@ -96,6 +96,13 @@
                           基建报告
                         </n-button>
                       </div>
+                      <div>
+                        <n-button
+                          @click=";(showModal = false), $router.push('/record/trading_analysis')"
+                        >
+                          贸易订单分析
+                        </n-button>
+                      </div>
                     </n-card>
                   </n-modal>
                 </n-tab>
@@ -131,6 +138,7 @@ import HelpCircle from '@vicons/ionicons5/HelpCircle'
 import Home from '@vicons/ionicons5/Home'
 import PieChart from '@vicons/ionicons5/PieChart'
 import ReaderOutline from '@vicons/ionicons5/ReaderOutline'
+import Newspaper from '@vicons/ionicons5/Newspaper'
 import Settings from '@vicons/ionicons5/Settings'
 import StatsChart from '@vicons/ionicons5/StatsChart'
 import Storefront from '@vicons/ionicons5/Storefront'
@@ -192,6 +200,16 @@ const menuOptions = [
           h(RouterLink, { to: { path: '/record/report' } }, { default: () => '基建报表' }),
         icon: renderIcon(ReaderOutline),
         key: 'go-to-record-report'
+      },
+      {
+        label: () =>
+          h(
+            RouterLink,
+            { to: { path: '/record/trading_analysis' } },
+            { default: () => '贸易订单分析' }
+          ),
+        icon: renderIcon(Newspaper),
+        key: 'go-to-trading-analysis'
       }
     ]
   },

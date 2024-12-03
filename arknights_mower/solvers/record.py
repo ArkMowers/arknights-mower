@@ -1,7 +1,11 @@
 # 用于记录Mower操作行为
+import collections
 import pickle
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
+
+import pytz
+from tzlocal import get_localzone
 
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
@@ -150,7 +154,6 @@ def load_state():
 
         if row is not None:
             loaded_state = pickle.loads(row[0])  # Deserialize the state
-            logger.info("成功从数据库载入缓存数据")
         else:
             logger.debug("No saved state found in the database")
 
@@ -325,3 +328,119 @@ def calculate_time_difference(start_time, end_time):
     end_datetime = datetime.strptime(end_time, time_format)
     time_difference = end_datetime - start_datetime
     return time_difference.total_seconds()
+
+
+def save_trading_info(func):
+    def wrapper(*args, **kwargs):
+        database_path = get_path("@app/tmp/data.db")
+        try:
+            result = None
+            get_path("@app/tmp").mkdir(exist_ok=True)
+            connection = sqlite3.connect(database_path)
+            cursor = connection.cursor()
+            cursor.execute(
+                "CREATE TABLE IF NOT EXISTS trading_history ("
+                "time INTEGER PRIMARY KEY,"
+                "server_date TEXT,"
+                "type TEXT,"
+                "price INTEGER"
+                ")"
+            )
+            if len(args) > 2:
+                dt = args[2]
+                cursor.execute(
+                    "SELECT COUNT(*) FROM trading_history WHERE time = ?",
+                    (int(dt.timestamp()),),
+                )
+                exists = cursor.fetchone()[0] > 0
+                if exists:
+                    logger.debug("当前订单信息已经存在数据库，跳过.")
+                    return
+            result = func(*args, **kwargs)
+
+            if result:
+                dubai_tz = pytz.timezone("Asia/Dubai")
+                cursor.execute(
+                    "INSERT INTO trading_history VALUES (?, ?, ?, ?)",
+                    (
+                        int(result.time.timestamp()),
+                        result.time.astimezone(dubai_tz).date(),
+                        result.buff,
+                        result.price,
+                    ),
+                )
+                logger.info(f"当前为 {result.buff} 订单, 订单价值为: {result.price}")
+                logger.info(f"储存订单信息至数据库 {datetime.now()}")
+                connection.commit()
+        except sqlite3.Error as e:
+            logger.error(f"SQLite error: {e}")
+        finally:
+            connection.close()
+        return result
+
+    return wrapper
+
+
+def get_trading_history(start_date: str, end_date: str):
+    if start_date == "" or end_date == "":
+        pass
+    dubai_tz = pytz.timezone("Asia/Dubai")
+    dubai_start = dubai_tz.localize(datetime.strptime(start_date, "%Y-%m-%d"))
+    dubai_end = (
+        dubai_tz.localize(datetime.strptime(end_date, "%Y-%m-%d"))
+        + timedelta(days=1)
+        - timedelta(seconds=1)
+    )
+    local_tz = get_localzone()
+
+    start_dt = dubai_start.astimezone(local_tz)
+    end_dt = dubai_end.astimezone(local_tz)
+
+    database_path = get_path("@app/tmp/data.db")
+    start_timestamp = int(start_dt.timestamp())
+    end_timestamp = int(end_dt.timestamp())
+
+    result_dict = collections.defaultdict(list)
+    logger.debug(f"分析数据从{start_dt}")
+    logger.debug(f"分析数据至{end_dt}")
+
+    try:
+        connection = sqlite3.connect(database_path)
+        cursor = connection.cursor()
+        cursor.execute(
+            "CREATE TABLE IF NOT EXISTS trading_history ("
+            "time INTEGER PRIMARY KEY,"
+            "server_date TEXT,"
+            "type TEXT,"
+            "price INTEGER"
+            ")"
+        )
+        cursor.execute(
+            """
+            SELECT server_date, type, price, COUNT(*)
+            FROM trading_history
+            WHERE time BETWEEN ? AND ?
+            GROUP BY server_date, type, price
+            """,
+            (start_timestamp, end_timestamp),
+        )
+        for row in cursor.fetchall():
+            trade_date, trade_type, price, count = row
+            # 构建每个记录的统计信息
+            key = (
+                trade_type
+                if trade_type in ["佩佩", "龙舌兰"]
+                else f"{trade_type}_{price}"
+            )
+            result_dict[trade_date].append({key: count})
+
+    except sqlite3.Error as e:
+        logger.exception(e)
+    finally:
+        if connection:
+            connection.close()
+    result_list = [
+        {"日期": date, **{k: v for stat in stats for k, v in stat.items()}}
+        for date, stats in result_dict.items()
+    ]
+    return result_list

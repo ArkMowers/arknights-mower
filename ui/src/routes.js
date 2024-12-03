@@ -70,6 +70,12 @@ export const routes = [
             component: () => import('@/pages/report.vue'),
             meta: { title: '基建报告' },
             name: 'report'
+          },
+          {
+            path: 'trading_analysis',
+            component: () => import('@/pages/trading_analysis.vue'),
+            meta: { title: '贸易订单分析' },
+            name: 'trading_analysis'
           }
         ]
       }

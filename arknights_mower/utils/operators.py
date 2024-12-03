@@ -723,10 +723,12 @@ class Operator:
         depletion_rate=0,
         time_stamp=None,
         refresh_order_room=None,
+        refresh_drained=False,
     ):
         if refresh_order_room is not None:
             self.refresh_order_room = refresh_order_room
         self.refresh_order_room = [False, []]
+        self.refresh_drained = refresh_drained
         self.name = name
         self.room = room
         self.operator_type = operator_type
@@ -746,7 +748,6 @@ class Operator:
         self.time_stamp = time_stamp
         self.workaholic = False
         self.arrange_order = [2, "false"]
-        self.refresh_drained = False
 
     @property
     def current_room(self):
@@ -756,7 +757,11 @@ class Operator:
     def current_room(self, value):
         if self._current_room != value:
             self._current_room = value
-            if Operators.current_room_changed_callback and self.refresh_order_room[0]:
+            if (
+                Operators.current_room_changed_callback
+                and self.refresh_order_room[0]
+                or self.refresh_drained
+            ):
                 Operators.current_room_changed_callback(self)
 
     def is_high(self):
