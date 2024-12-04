@@ -14,9 +14,9 @@ with lzma.open(f"{__rootdir__}/models/operator_select.model", "rb") as f:
     OP_SELECT = pickle.loads(f.read())
 
 
-def operator_list(img, draw=False):
+def operator_list(img, draw=False, full_scan=True):
     name_y = ((488, 520), (909, 941))
-    line1 = cropimg(img, tuple(zip((600, 1860), name_y[0])))
+    line1 = cropimg(img, tuple(zip((600, 1860 if not full_scan else 1920), name_y[0])))
     hsv = cv2.cvtColor(line1, cv2.COLOR_RGB2HSV)
     mask = cv2.inRange(hsv, (98, 140, 200), (102, 255, 255))
     line1 = cv2.cvtColor(line1, cv2.COLOR_RGB2GRAY)
