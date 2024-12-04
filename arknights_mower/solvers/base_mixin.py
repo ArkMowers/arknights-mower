@@ -45,20 +45,21 @@ class BaseMixin:
                 break
             self.tap((name_x[name], name_y), interval=0.5)
 
-    def scan_agent(self, agent: list[str], error_count=0, max_agent_count=-1):
+    def scan_agent(
+        self, agent: list[str], error_count=0, max_agent_count=-1, full_scan=True
+    ):
         try:
             # 识别干员
             while self.find("connecting"):
                 logger.info("等待网络连接")
                 self.sleep()
             # 返回的顺序是从左往右从上往下
-            ret = operator_list(self.recog.img)
+            ret = operator_list(self.recog.img, full_scan=full_scan)
             # 提取识别出来的干员的名字
             select_name = []
             for name, scope in ret:
                 if name in agent:
                     select_name.append(name)
-                    # self.get_agent_detail((y[1][0]))
                     self.tap(scope, interval=0)
                     agent.remove(name)
                     # 如果是按照个数选择 Free
@@ -69,21 +70,24 @@ class BaseMixin:
         except MowerExit:
             raise
         except Exception as e:
-            logger.exception(e)
             error_count += 1
             if error_count < 3:
-                self.sleep(3)
-                return self.scan_agent(agent, error_count, max_agent_count)
+                return self.scan_agent(agent, error_count, max_agent_count, False)
             else:
+                logger.exception(e)
                 raise e
 
-    def verify_agent(self, agent: list[str], error_count=0, max_agent_count=-1):
+    def verify_agent(
+        self, agent: list[str], error_count=0, max_agent_count=-1, full_scan=True
+    ):
         try:
             # 识别干员
             while self.find("connecting"):
                 logger.info("等待网络连接")
                 self.sleep()
-            ret = operator_list(self.recog.img)  # 返回的顺序是从左往右从上往下
+            ret = operator_list(
+                self.recog.img, full_scan=full_scan
+            )  # 返回的顺序是从左往右从上往下
             # 提取识别出来的干员的名字
             index = 0
             for name, scope in ret:
@@ -94,13 +98,14 @@ class BaseMixin:
                 index += 1
             return True
         except Exception as e:
-            logger.exception(e)
             error_count += 1
             self.switch_arrange_order("技能")
             if error_count < 3:
-                self.sleep(3)
-                return self.verify_agent(agent, error_count, max_agent_count)
+                return self.verify_agent(
+                    agent, error_count, max_agent_count, full_scan=False
+                )
             else:
+                logger.exception(e)
                 raise e
 
     def swipe_left(self, right_swipe):

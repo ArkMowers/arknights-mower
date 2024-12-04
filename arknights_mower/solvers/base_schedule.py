@@ -2520,7 +2520,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     pre_order = [3, "true"]
                 if not fast_mode:
                     self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
-                changed, ret = self.scan_agent(agent)
+                changed, ret = self.scan_agent(
+                    agent, full_scan=last_special_filter == "ALL"
+                )
                 if changed:
                     selected.extend(changed)
                     if len(agent) == 0:
@@ -2569,7 +2571,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         right_swipe = 0
                     last_special_filter = profession
                     self.switch_arrange_order(3, "true")
-            changed, ret = self.scan_agent(agent)
+            changed, ret = self.scan_agent(
+                agent, full_scan=last_special_filter == "ALL"
+            )
             if changed:
                 selected.extend(changed)
                 # 如果找到了
@@ -2625,7 +2629,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 free_list.remove(train_support)
             while free_num:
                 selected_name, ret = self.scan_agent(
-                    free_list, max_agent_count=free_num
+                    free_list,
+                    max_agent_count=free_num,
+                    full_scan=last_special_filter == "ALL",
                 )
                 selected.extend(selected_name)
                 free_num -= len(selected_name)
