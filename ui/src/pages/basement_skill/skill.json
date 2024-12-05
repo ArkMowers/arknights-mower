@@ -1,5 +1,110 @@
 [
   {
+    "key": 354,
+    "name": "瑰盐",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "钱不我待",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻贸易站时，当前贸易站每级<@cc.vup>+1</>个订单上限",
+        "roomType": "贸易站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "bskill_tra_limit&trade2",
+        "buffColor": "#0075a9",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "订单分发·β",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻贸易站时，订单获取效率<@cc.vup>+30%</>",
+        "roomType": "贸易站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "bskill_tra_spd2",
+        "buffColor": "#0075a9",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 353,
+    "name": "特克诺",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "熟极而流",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻加工站加工<@cc.kw>晶体类材料</>时，全部心情消耗<@cc.vup>-1</>",
+        "roomType": "加工站",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ws_evolve_cost4",
+        "buffColor": "#e3eb00",
+        "textColor": "#333333"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "DIY·晶体",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻加工站加工<@cc.kw>晶体</>类材料时，副产品的产出概率提升<@cc.vup>80%</>",
+        "roomType": "加工站",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ws_Crystalline",
+        "buffColor": "#e3eb00",
+        "textColor": "#333333"
+      }
+    ]
+  },
+  {
+    "key": 352,
+    "name": "引星棘刺",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "金属工艺·α",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻制造站时，<@cc.kw>贵金属</>类配方的生产力<@cc.vup>+30%</>",
+        "roomType": "制造站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "bskill_man_gold1",
+        "buffColor": "#ffd800",
+        "textColor": "#333333"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "原质塑金副产物",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻制造站时，每个<@cc.kw>贸易站</>为当前制造站<@cc.kw>贵金属</>类配方的生产力<@cc.vup>+3%</>",
+        "roomType": "制造站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "bskill_man_spd&trade1",
+        "buffColor": "#ffd800",
+        "textColor": "#333333"
+      }
+    ]
+  },
+  {
     "key": 351,
     "name": "云迹",
     "span": 2,
