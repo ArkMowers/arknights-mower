@@ -111,20 +111,6 @@
         "NORMAL",
         10008
     ],
-    "LMTGS_COIN_5601": [
-        "LMTGS_COIN_5601",
-        "LMTGS_COIN_5601",
-        "寻访数据契约",
-        "NORMAL",
-        10026
-    ],
-    "寻访数据契约": [
-        "LMTGS_COIN_5601",
-        "LMTGS_COIN_5601",
-        "寻访数据契约",
-        "NORMAL",
-        10026
-    ],
     "EPGS_COIN": [
         "EPGS_COIN",
         "EPGS_COIN",
@@ -380,14 +366,14 @@
     "EXTERMINATION_AGENT": [
         "EXTERMINATION_AGENT",
         "EXTERMINATION_AGENT",
-        "PRTS剿灭代理卡",
+        "常态事务代理卡",
         "NORMAL",
         30200
     ],
-    "PRTS剿灭代理卡": [
+    "常态事务代理卡": [
         "EXTERMINATION_AGENT",
         "EXTERMINATION_AGENT",
-        "PRTS剿灭代理卡",
+        "常态事务代理卡",
         "NORMAL",
         30200
     ],
@@ -404,20 +390,6 @@
         "十连寻访凭证",
         "NORMAL",
         40001
-    ],
-    "LIMITED_TKT_GACHA_10_5601": [
-        "LIMITED_TKT_GACHA_10_5601",
-        "LIMITED_TKT_GACHA_10_5601",
-        "荒芜探戈寻访凭证",
-        "NORMAL",
-        40003
-    ],
-    "荒芜探戈寻访凭证": [
-        "LIMITED_TKT_GACHA_10_5601",
-        "LIMITED_TKT_GACHA_10_5601",
-        "荒芜探戈寻访凭证",
-        "NORMAL",
-        40003
     ],
     "7003": [
         "7003",
@@ -6754,6 +6726,34 @@
         "MATERIAL",
         700158
     ],
+    "p_char_4163_rosesa": [
+        "p_char_4163_rosesa",
+        "p_char_4163_rosesa",
+        "瑰盐的信物",
+        "MATERIAL",
+        700159
+    ],
+    "瑰盐的信物": [
+        "p_char_4163_rosesa",
+        "p_char_4163_rosesa",
+        "瑰盐的信物",
+        "MATERIAL",
+        700159
+    ],
+    "p_char_4164_tecno": [
+        "p_char_4164_tecno",
+        "p_char_4164_tecno",
+        "特克诺的信物",
+        "MATERIAL",
+        700160
+    ],
+    "特克诺的信物": [
+        "p_char_4164_tecno",
+        "p_char_4164_tecno",
+        "特克诺的信物",
+        "MATERIAL",
+        700160
+    ],
     "p_char_103_angel": [
         "p_char_103_angel",
         "p_char_103_angel",
@@ -8181,6 +8181,20 @@
         "止颂的信物",
         "MATERIAL",
         600102
+    ],
+    "p_char_1039_thorn2": [
+        "p_char_1039_thorn2",
+        "p_char_1039_thorn2",
+        "引星棘刺的信物",
+        "MATERIAL",
+        600103
+    ],
+    "引星棘刺的信物": [
+        "p_char_1039_thorn2",
+        "p_char_1039_thorn2",
+        "引星棘刺的信物",
+        "MATERIAL",
+        600103
     ],
     "class_p_char_123_fang": [
         "class_p_char_123_fang",
