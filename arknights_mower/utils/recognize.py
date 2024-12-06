@@ -154,7 +154,8 @@ class Recognizer:
             self.scene = Scene.FACTORY_ROOMS
         elif self.find("nav_bar"):
             self.scene = Scene.NAVIGATION_BAR
-        elif self.find("mail"):
+        elif self.find("read_mail"):
+            logger.info(self.find("read_mail"))
             self.scene = Scene.MAIL
         elif self.find("navigation/record_restoration"):
             self.scene = Scene.OPERATOR_CHOOSE_LEVEL
@@ -680,7 +681,7 @@ class Recognizer:
             "login_connecting": (760, 881),
             "login_loading": (920, 388),
             "login_logo": (601, 332),
-            "mail": (305, 33),
+            "read_mail": (1541, 947),
             "mission_trainee_on": (690, 17),
             "nav_bar": (655, 0),
             "nav_button": (26, 20),
