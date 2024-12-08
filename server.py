@@ -545,8 +545,6 @@ def get_count():
     from arknights_mower.utils.operators import SkillUpgradeSupport
     from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
-    #
-
     if request.method == "POST":
         try:
             req = request.json
