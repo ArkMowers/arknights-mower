@@ -16,7 +16,7 @@ class ClueManager:
         logger.info("基建：线索")
 
         clue_count = GetClueCountSolver().run()
-        if clue_count > 9:
+        if clue_count <= 9:
             DailySolver().run()
 
         ReceiveSolver().run()
