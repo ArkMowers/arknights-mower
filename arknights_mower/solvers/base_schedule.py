@@ -3378,7 +3378,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 "Award",
                 {
                     "award": True,
-                    "mail": True,
+                    "mail": False,
                     "recruit": False,
                     "orundum": False,
                     "mining": False,
