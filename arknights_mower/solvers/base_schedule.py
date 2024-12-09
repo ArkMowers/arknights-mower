@@ -3383,7 +3383,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     "orundum": False,
                     "mining": False,
                     "specialaccess": False,
-                }
+                },
             )
 
     def maa_plan_solver(self, tasks="All", one_time=False):
