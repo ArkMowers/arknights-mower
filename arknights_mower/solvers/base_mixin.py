@@ -19,6 +19,18 @@ kernel = np.ones((12, 12), np.uint8)
 
 
 class BaseMixin:
+    profession_labels = [
+        "ALL",
+        "PIONEER",
+        "WARRIOR",
+        "TANK",
+        "SNIPER",
+        "CASTER",
+        "MEDIC",
+        "SUPPORT",
+        "SPECIAL",
+    ]
+
     def detect_arrange_order(self):
         name_list = ["工作状态", "技能", "心情", "信赖值"]
         x_list = (1309, 1435, 1560, 1685)
@@ -108,13 +120,18 @@ class BaseMixin:
                 logger.exception(e)
                 raise e
 
-    def swipe_left(self, right_swipe):
-        # if right_swipe > 3:
-        #     return right_swipe
-        # else:
-        #     swipe_time = 2 if right_swipe == 3 else right_swipe
-        for i in range(right_swipe):
-            self.swipe_noinertia((650, 540), (1900, 0))
+    def swipe_left(self, right_swipe, special_filter):
+        if right_swipe > 3:
+            selected_label = next(
+                (label for label in self.profession_labels if label != special_filter),
+                None,
+            )
+            self.profession_filter(selected_label)
+            self.profession_filter(special_filter)
+        else:
+            swipe_time = 2 if right_swipe == 3 else right_swipe
+            for i in range(swipe_time):
+                self.swipe_noinertia((650, 540), (1900, 0))
         return 0
 
     def profession_filter(self, profession=None):
@@ -132,20 +149,9 @@ class BaseMixin:
                 if retry > 5:
                     raise Exception("关闭职业筛选失败")
             return
-        labels = [
-            "ALL",
-            "PIONEER",
-            "WARRIOR",
-            "TANK",
-            "SNIPER",
-            "CASTER",
-            "MEDIC",
-            "SUPPORT",
-            "SPECIAL",
-        ]
         x = 1918
         label_pos = [(x, 60 + i * 120) for i in range(9)]
-        label_pos_map = dict(zip(labels, label_pos))
+        label_pos_map = dict(zip(self.profession_labels, label_pos))
         if profession == "ALL":
             self.tap(label_pos_map[profession], 0.1)
             self.tap(label_pos_map[profession], 0.1)

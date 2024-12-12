@@ -18,7 +18,8 @@ const {
   recipient,
   mail_subject,
   custom_smtp_server,
-  notification_level
+  notification_level,
+  timezone_offset
 } = storeToRefs(store)
 
 async function test_email() {
@@ -120,6 +121,17 @@ const levels = [
             <help-text>不填时将邮件发给自己</help-text>
           </template>
           <n-dynamic-input v-model:value="recipient" />
+        </n-form-item>
+        <n-form-item>
+          <template #label>
+            <span>时差修正</span>
+            <help-text>
+              <p>收件人时区与本地电脑的时差修正</p>
+              <p>比如你在中国帮美国的朋友代挂</p>
+              <p>发送邮件的任务时间会自动转化成当地时间</p>
+            </help-text>
+          </template>
+          <n-input-number v-model:value="timezone_offset" />
         </n-form-item>
       </n-form>
       <n-divider />

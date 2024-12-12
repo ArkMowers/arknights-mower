@@ -37,6 +37,7 @@ const {
   touch_method,
   free_room,
   merge_interval,
+  flexible_shift_mode,
   fia_fool,
   droidcast,
   maa_adb_path,
@@ -526,6 +527,21 @@ const onSelectionChange = (newValue) => {
               <n-checkbox v-model:checked="free_room">
                 宿舍不养闲人
                 <help-text>干员心情回满后，立即释放宿舍空位</help-text>
+              </n-checkbox>
+            </n-form-item>
+            <n-form-item :show-label="false">
+              <n-checkbox v-model:checked="flexible_shift_mode">
+                弹性休息模式
+                <help-text>
+                  <div>原先模式不再维护，请尽快更新排班表适配新逻辑</div>
+                  <div>该模式下：</div>
+                  <div>最大分组数失效</div>
+                  <div>低优先逻辑变更->强制低优先（只会安排非vip）</div>
+                  <div>回满逻辑变更->强制回满（同组心情差过大自动回满）</div>
+                  <div>整体平均心情如果低于心情阈值*0.75，则休息的时候塞满宿舍</div>
+                  <div>反之，则只安排满vip位</div>
+                  <div>有建议请一键反馈</div>
+                </help-text>
               </n-checkbox>
             </n-form-item>
             <n-form-item v-if="free_room">
