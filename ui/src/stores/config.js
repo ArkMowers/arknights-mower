@@ -22,6 +22,7 @@ export const useConfigStore = defineStore('config', () => {
   const account = ref('')
   const pass_code = ref('')
   const recipient = ref('')
+  const timezone_offset = ref(0)
   const custom_smtp_server = ref({})
   const package_type = ref('official')
   const reload_room = ref('')
@@ -71,6 +72,7 @@ export const useConfigStore = defineStore('config', () => {
   const touch_method = ref('scrcpy')
   const free_room = ref(false)
   const merge_interval = ref(10)
+  const flexible_shift_mode = ref(false)
   const fia_fool = ref(true)
   const sign_in = ref({ enable: true })
   const droidcast = ref({})
@@ -116,6 +118,7 @@ export const useConfigStore = defineStore('config', () => {
     account.value = response.data.account
     pass_code.value = response.data.pass_code
     recipient.value = response.data.recipient
+    timezone_offset.value = response.data.timezone_offset
     custom_smtp_server.value = response.data.custom_smtp_server
     package_type.value = response.data.package_type == 1 ? 'official' : 'bilibili'
     reload_room.value = response.data.reload_room == '' ? [] : response.data.reload_room.split(',')
@@ -167,6 +170,7 @@ export const useConfigStore = defineStore('config', () => {
     touch_method.value = response.data.touch_method
     free_room.value = response.data.free_room
     merge_interval.value = response.data.merge_interval
+    flexible_shift_mode.value = response.data.flexible_shift_mode
     fia_fool.value = response.data.fia_fool
     sign_in.value = response.data.sign_in
     droidcast.value = response.data.droidcast
@@ -201,6 +205,7 @@ export const useConfigStore = defineStore('config', () => {
       package_type: package_type.value == 'official' ? 1 : 0,
       pass_code: pass_code.value,
       recipient: recipient.value,
+      timezone_offset: timezone_offset.value,
       custom_smtp_server: custom_smtp_server.value,
       reload_room: reload_room.value.join(','),
       run_order_delay: run_order_delay.value,
@@ -256,6 +261,7 @@ export const useConfigStore = defineStore('config', () => {
       touch_method: touch_method.value,
       free_room: free_room.value,
       merge_interval: merge_interval.value,
+      flexible_shift_mode: flexible_shift_mode.value,
       fia_fool: fia_fool.value,
       sign_in: sign_in.value,
       droidcast: droidcast.value,
@@ -297,6 +303,7 @@ export const useConfigStore = defineStore('config', () => {
     account,
     pass_code,
     recipient,
+    timezone_offset,
     custom_smtp_server,
     package_type,
     reload_room,
@@ -348,6 +355,7 @@ export const useConfigStore = defineStore('config', () => {
     touch_method,
     free_room,
     merge_interval,
+    flexible_shift_mode,
     fia_fool,
     sign_in,
     droidcast,

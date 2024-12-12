@@ -169,7 +169,7 @@ def simulate(saved):
         base_scheduler.op_data.swap_plan(
             [False] * len(base_scheduler.op_data.backup_plans), True
         )
-    timezone_offset = 0
+    timezone_offset = config.conf.timezone_offset
     if saved:
         try:
             for k, v in saved["operators"].items():
@@ -299,7 +299,10 @@ def simulate(saved):
                             ],
                             base_scheduler=base_scheduler,
                         )
-                        send_message(body, subject)
+                        send_message(
+                            body,
+                            f"下次任务在{base_scheduler.tasks[0].format(timezone_offset).time.strftime('%H:%M:%S')}",
+                        )
                         base_scheduler.maa_plan_solver()
                     else:
                         remaining_time = (
@@ -324,7 +327,10 @@ def simulate(saved):
                                 ],
                                 base_scheduler=base_scheduler,
                             )
-                            send_message(body, subject)
+                            send_message(
+                                body,
+                                f"休息 {format_time(remaining_time)}，到{base_scheduler.tasks[0].format(timezone_offset).time.strftime('%H:%M:%S')}开始工作",
+                            )
                             base_scheduler.sleeping = True
                             base_scheduler.sleep(remaining_time)
                             base_scheduler.sleeping = False
@@ -385,7 +391,10 @@ def simulate(saved):
                         ],
                         base_scheduler=base_scheduler,
                     )
-                    send_message(body, subject)
+                    send_message(
+                        body,
+                        f"休息 {format_time(remaining_time)}，到{base_scheduler.tasks[0].format(timezone_offset).time.strftime('%H:%M:%S')}开始工作",
+                    )
                     base_scheduler.sleeping = True
                     base_scheduler.sleep(remaining_time)
                     base_scheduler.sleeping = False

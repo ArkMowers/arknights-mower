@@ -10,6 +10,7 @@ from arknights_mower.utils.scheduler_task import (
     check_dorm_ordering,
     find_next_task,
     scheduling,
+    try_reorder,
 )
 
 with patch.dict("sys.modules", {"save_action_to_sqlite_decorator": MagicMock()}):
@@ -370,6 +371,41 @@ class TestScheduling(unittest.TestCase):
         # 返还的是应该拉开跑单的任务
         self.assertNotEqual(res, None)
 
+    def test_reorder_1(self):
+        # 高优先级被拉前面
+        op_data = self.init_opdata()
+        tasks = []
+        op_data.dorm[0].name = "麒麟R夜刀"
+        op_data.dorm[1].name = "凯尔希"
+        op_data.operators["凯尔希"].current_room = "dormitory_2"
+        op_data.operators["凯尔希"].current_index = 2
+        op_data.dorm[2].name = "夕"
+        try_reorder(op_data.plan, None, op_data, tasks)
+
+    def test_reorder_2(self):
+        # 非高优高效不会被移动
+        op_data = self.init_opdata()
+        tasks = []
+        op_data.dorm[0].name = "麒麟R夜刀"
+        op_data.dorm[1].name = "凯尔希"
+        op_data.dorm[2].name = "夕"
+        op_data.dorm[3].name = "见行者"
+        op_data.dorm[4].name = "森蚺"
+        try_reorder(op_data.plan, None, op_data, tasks)
+
+    def test_reorder_3(self):
+        # 如果高优都占了，则不动
+        op_data = self.init_opdata()
+        tasks = []
+        op_data.dorm[0].name = "夕"
+        op_data.dorm[1].name = "焰尾"
+        op_data.dorm[2].name = "森蚺"
+        op_data.dorm[3].name = "玛恩纳"
+        op_data.operators["见行者"].current_room = "dormitory_2"
+        op_data.operators["见行者"].current_index = 2
+        op_data.dorm[4].name = "见行者"
+        try_reorder(op_data.plan, None, op_data, tasks)
+
     def init_opdata(self):
         agent_base_config = PlanConfig(
             "稀音,黑键,伊内丝,承曦格雷伊", "稀音,柏喙,伊内丝", "见行者"
@@ -393,6 +429,20 @@ class TestScheduling(unittest.TestCase):
                 Room("Free", "", []),
                 Room("Free", "", []),
             ],
+            "dormitory_2": [
+                Room("琴柳", "", []),
+                Room("阿米娅", "", []),
+                Room("Free", "", []),
+                Room("Free", "", []),
+                Room("Free", "", []),
+            ],
+            "dormitory_3": [
+                Room("迷迭香", "", []),
+                Room("杜林", "", []),
+                Room("月见夜", "", []),
+                Room("Free", "", []),
+                Room("Free", "", []),
+            ],
         }
         plan = {
             "default_plan": Plan(plan_config, agent_base_config),
@@ -404,12 +454,28 @@ class TestScheduling(unittest.TestCase):
         op_data.operators["冰酿"].current_room = op_data.operators[
             "塑心"
         ].current_room = op_data.operators["见行者"].current_room = "dormitory_1"
+
         op_data.operators["红"].current_room = op_data.operators[
             "玛恩纳"
         ].current_room = "dormitory_1"
+
         op_data.operators["冰酿"].current_index = 0
         op_data.operators["塑心"].current_index = 1
         op_data.operators["红"].current_index = 2
         op_data.operators["见行者"].current_index = 3
         op_data.operators["玛恩纳"].current_index = 4
+        # drom 2
+        op_data.operators["琴柳"].current_room = op_data.operators[
+            "阿米娅"
+        ].current_room = "dormitory_2"
+        op_data.operators["琴柳"].current_index = 0
+        op_data.operators["阿米娅"].current_index = 1
+        # drom 3
+        op_data.operators["迷迭香"].current_room = op_data.operators[
+            "杜林"
+        ].current_room = op_data.operators["月见夜"].current_room = "dormitory_3"
+        op_data.operators["迷迭香"].current_index = 0
+        op_data.operators["杜林"].current_index = 1
+        op_data.operators["月见夜"].current_index = 2
+
         return op_data

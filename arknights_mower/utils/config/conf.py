@@ -69,6 +69,8 @@ class EmailPart(ConfModel):
     "标题前缀"
     notification_level: str = "INFO"
     "邮件通知等级"
+    timezone_offset: int = 0
+    "时差修正"
 
 
 class ExtraPart(ConfModel):
@@ -457,6 +459,8 @@ class RIICPart(ConfModel):
     "菲亚阈值"
     merge_interval: float = 10
     "不养闲人合并间隔"
+    flexible_shift_mode: bool = False
+    "弹性休息模式"
 
 
 class SimulatorPart(ConfModel):

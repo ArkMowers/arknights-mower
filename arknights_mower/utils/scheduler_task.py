@@ -1,5 +1,6 @@
 import copy
 import heapq
+from collections import defaultdict
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Literal
@@ -167,6 +168,253 @@ def scheduling(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
                         logger.debug("||".join([str(t) for t in tasks]))
                         break
         tasks.sort(key=lambda x: x.time)
+
+
+def generate_plan_by_drom(tasks, op_data):
+    if not tasks:
+        return []
+    ordered = sorted(tasks.items())
+    result = []
+    planned = set()
+    for time, (dorms, rest_in_full) in ordered:
+        plan = {}
+        for room in dorms:
+            if room.name in planned:
+                continue
+            op = op_data.operators[room.name]
+            if not op.is_high():
+                # 释放宿舍类别
+                if op.current_room not in plan:
+                    plan[op.current_room] = ["Current"] * len(
+                        op_data.plan[op.current_room]
+                    )
+                plan[op.current_room][op.current_index] = "Free"
+            else:
+                # 拉全组
+                agents = op_data.groups[op.group] if op.group != "" else [op.name]
+                for agent in agents:
+                    o = op_data.operators[agent]
+                    if o.room not in plan:
+                        plan[o.room] = ["Current"] * len(op_data.plan[o.room])
+                    plan[o.room][o.index] = agent
+                    planned.add(o.name)
+        if rest_in_full:
+            result.append(
+                SchedulerTask(task_plan=plan, time=time, task_type=TaskTypes.SHIFT_ON)
+            )
+        else:
+            added = False
+            if rest_in_full is None and not op_data.config.free_room:
+                continue
+            for idx in range(len(result) - 1, -1, -1):
+                interval = config.conf.merge_interval
+                if result[idx].time < time - timedelta(
+                    minutes=interval if rest_in_full is None else 3 * interval
+                ):
+                    break
+                if result[idx].type == (
+                    TaskTypes.RELEASE_DORM
+                    if rest_in_full is None
+                    else TaskTypes.SHIFT_ON
+                ):
+                    result.insert(
+                        idx,
+                        SchedulerTask(
+                            task_plan=plan,
+                            time=result[idx].time - timedelta(seconds=1),
+                            task_type=TaskTypes.RELEASE_DORM
+                            if rest_in_full is None
+                            else TaskTypes.SHIFT_ON,
+                        ),
+                    )
+                    added = True
+                    break
+            if not added:
+                result.append(
+                    SchedulerTask(
+                        task_plan=plan,
+                        time=time - timedelta(seconds=1),
+                        task_type=TaskTypes.RELEASE_DORM
+                        if rest_in_full is None
+                        else TaskTypes.SHIFT_ON,
+                    )
+                )
+    return result
+
+
+def plan_metadata(op_data, tasks):
+    # 清除，重新添加刷新
+    tasks = [
+        t for t in tasks if t.type not in [TaskTypes.SHIFT_ON, TaskTypes.RELEASE_DORM]
+    ]
+    _time = datetime.max
+    min_resting_time = datetime.max
+    _plan = {}
+    _type = []
+    # 第一个心情低的且小于3 则只休息半小时
+    total_agent = sorted(
+        (
+            v
+            for v in op_data.operators.values()
+            if v.is_high() and not v.room.startswith("dorm") and not v.is_resting()
+        ),
+        key=lambda x: x.current_mood() - x.lower_limit,
+    )
+
+    # 计算最低休息时间
+    for agent in total_agent:
+        if (
+            agent.workaholic
+            or agent.exhaust_require
+            or agent.room in ["factory", "train"]
+        ):
+            continue
+
+        # 如果全红脸，使用急救模式
+        predicted_rest_time = max(
+            agent.predict_exhaust(), datetime.now() + timedelta(minutes=30)
+        )
+        min_resting_time = min(min_resting_time, predicted_rest_time)
+
+    logger.debug(f"预测最低休息时间为: {min_resting_time}")
+    grouped_dorms = defaultdict(list)
+    free_rooms = []
+    # 分组 dorm 对象
+    for dorm in op_data.dorm:
+        if dorm.name and dorm.name in op_data.operators:
+            operator = op_data.operators[dorm.name]
+            grouped_dorms[operator.group].append(dorm)
+            if not operator.is_high():
+                free_rooms.append(dorm)
+    new_task = {}
+    for group_name, dorms in grouped_dorms.items():
+        logger.debug(f"开始计算:{group_name}")
+        logger.debug(f"开始计算:{dorms}")
+        max_rest_in_full_time = None
+        task_time = datetime.max
+        high_dorms = [dorm for dorm in dorms if op_data.operators[dorm.name].is_high()]
+        rest_in_full_dorms = [
+            dorm for dorm in high_dorms if op_data.operators[dorm.name].rest_in_full
+        ]
+        if high_dorms and group_name:
+            # 如果与第一个差值过大，
+            base_time = high_dorms[0].time
+            need_early = not op_data.operators[high_dorms[0].name].exhaust_require
+            if base_time is not None and not rest_in_full_dorms:
+                for dorm in high_dorms[1:]:
+                    if dorm.time and (base_time - dorm.time).total_seconds() > 2 * 3600:
+                        logger.debug(
+                            f"{high_dorms[0].name} 的时间 {base_time} 被调整为 {dorm.time}，因为时间差超过 2 小时"
+                        )
+                        max_rest_in_full_time = base_time
+                    if op_data.operators[high_dorms[0].name].exhaust_require:
+                        need_early = False
+            if rest_in_full_dorms:
+                max_rest_in_full_time = max(
+                    (dorm.time for dorm in rest_in_full_dorms if dorm.time is not None),
+                    default=None,
+                )
+            nearest_dorm = min(
+                (dorm for dorm in high_dorms if dorm.time is not None),
+                key=lambda d: d.time,
+                default=None,
+            )
+            logger.debug(f"最前上班时间为{nearest_dorm}")
+            logger.debug({max_rest_in_full_time})
+            if max_rest_in_full_time:
+                task_time = max_rest_in_full_time - (
+                    timedelta(minutes=0.4 * len(high_dorms))
+                    if need_early
+                    else timedelta(seconds=0)
+                )
+            elif nearest_dorm:
+                task_time = nearest_dorm.time
+            else:
+                continue
+            if task_time not in new_task:
+                new_task[task_time] = (high_dorms, len(rest_in_full_dorms) > 0)
+            else:
+                combined = new_task[task_time][0] + high_dorms
+                type = new_task[task_time][1] or len(rest_in_full_dorms) > 0
+                new_task[task_time] = (combined, type)
+        if high_dorms and not group_name:
+            # 单独添加，最后合并
+            # high_droms 如果触发急救模式，后面的移送到急救前
+            for room in high_dorms:
+                if room.time and room.name:
+                    rest_in_full = op_data.operators[room.name].rest_in_full
+                    task_time = (
+                        min(room.time, min_resting_time)
+                        if not rest_in_full
+                        else room.time
+                    )
+                    if task_time not in new_task:
+                        new_task[task_time] = ([room], rest_in_full)
+                    else:
+                        combined = new_task[task_time][0] + [room]
+                        new_task[task_time] = (
+                            combined,
+                            new_task[task_time][1] or rest_in_full,
+                        )
+    if op_data.config.free_room:
+        for room in free_rooms:
+            # 防止时间和前面重复
+            min_resting_time += timedelta(seconds=10)
+            if room.time and room.name:
+                task_time = min(room.time, min_resting_time)
+                if task_time < datetime.now():
+                    # 如果干员休息完毕，则不再生成
+                    continue
+                if task_time not in new_task:
+                    new_task[task_time] = ([room], None)
+                else:
+                    new_task[task_time] = (new_task[task_time][0].append(room), None)
+    tasks.extend(generate_plan_by_drom(new_task, op_data))
+    return tasks
+
+
+def try_reorder(op_data):
+    # 如果当前高优有空位(非高优人员)，则重新排序，正在休息的人逐个往前挤
+    vip = sum(1 for key in op_data.plan.keys() if key.startswith("dorm"))
+    logger.debug(f"当前vip个数{vip}")
+    if vip == 0:
+        return
+    ready_index = 0
+    for idx, room in enumerate(op_data.dorm):
+        logger.debug(room)
+        if not room.name:
+            continue
+        op = op_data.operators[room.name]
+        if op.operator_type == "high" and idx >= vip and op.resting_priority != "high":
+            if idx == ready_index:
+                ready_index += 1
+            elif ready_index >= vip:
+                op_data.dorm[ready_index].name, room.name = (
+                    room.name,
+                    op_data.dorm[ready_index].name,
+                )
+                room.time = None
+                ready_index += 1
+        elif op.operator_type == "high":
+            if idx != ready_index:
+                op_data.dorm[ready_index].name, room.name = (
+                    room.name,
+                    op_data.dorm[ready_index].name,
+                )
+                room.time = None
+            ready_index += 1
+    plan = {}
+    logger.debug(f"更新房间信息{print(op_data.dorm)}")
+    for room in op_data.dorm:
+        if room.name:
+            op = op_data.operators[room.name]
+            room_name, idx = room.position
+            if not (op.current_room == room_name and op.current_index == idx):
+                if room_name not in plan:
+                    plan[room_name] = ["Current"] * 5
+                plan[room_name][idx] = room.name
+    # 生成移动任务
+    return plan
 
 
 def try_add_release_dorm(plan, time, op_data, tasks):
