@@ -1713,7 +1713,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if (
                 (op.current_mood() - op.lower_limit) / (op.upper_limit - op.lower_limit)
             ) > self.op_data.config.resting_threshold:
-                continue
+                return
             required += 1
         logger.debug(f"需求:{current_resting} 当前休息")
         logger.debug(f"需求:{required}宿舍空位")

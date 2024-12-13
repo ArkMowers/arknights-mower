@@ -177,6 +177,7 @@ def generate_plan_by_drom(tasks, op_data):
     result = []
     planned = set()
     for time, (dorms, rest_in_full) in ordered:
+        logger.debug(f"{time},{dorms},{rest_in_full}")
         plan = {}
         for room in dorms:
             if room.name in planned:
@@ -239,6 +240,7 @@ def generate_plan_by_drom(tasks, op_data):
                         else TaskTypes.SHIFT_ON,
                     )
                 )
+    logger.debug("生成任务: " + ("||".join([str(t) for t in result])))
     return result
 
 
