@@ -8,6 +8,7 @@ from arknights_mower.utils.plan import PlanConfig
 from ..data import agent_arrange_order, agent_list, base_room_list
 from ..solvers.record import save_action_to_sqlite_decorator
 from ..utils.log import logger
+from . import config
 
 
 class SkillUpgradeSupport:
@@ -280,8 +281,12 @@ class Operators:
             ):
                 self.run_order_rooms[x] = {}
         # 判定分组排班可能性
+        current_high = self.config.max_resting_count
+        current_low = len(self.dorm) - self.config.max_resting_count
         for key in self.groups:
             total_count = 0
+            high_count = 0
+            low_count = 0
             _replacement = []
             for name in self.groups[key]:
                 _candidate = next(
@@ -298,8 +303,16 @@ class Operators:
                     _replacement.append(_candidate)
                 if self.operators[name].workaholic:
                     continue
+                if self.operators[name].resting_priority == "high":
+                    high_count += 1
+                else:
+                    low_count += 1
+                if (
+                    high_count > current_high or low_count > current_low
+                ) and not config.conf.flexible_shift_mode:
+                    return f"{key} 分组无法排班,宿舍可用高优先{current_high},低优先{current_low}->分组需要高优先{high_count},低优先{low_count}"
                 total_count += 1
-            if total_count > len(self.dorm):
+            if total_count > len(self.dorm) and config.conf.flexible_shift_mode:
                 return f"{key} 分组无法排班,分组总数(不包含0心情工作){total_count}大于总宿舍数{len(self.dorm)}"
         # 设定令夕模式的心情阈值
         self.init_mood_limit()
@@ -826,7 +839,7 @@ class Operator:
         remaining_mood = self.mood - self.lower_limit  # 剩余心情
         depletion_rate = self.depletion_rate  # 心情掉率，小时单位
         # 计算到心情归零所需时间（小时），再加上当前时间戳
-        if depletion_rate > 0:
+        if self.time_stamp and depletion_rate > 0:
             return self.time_stamp + timedelta(
                 hours=((remaining_mood / depletion_rate) - 0.5)
             )
