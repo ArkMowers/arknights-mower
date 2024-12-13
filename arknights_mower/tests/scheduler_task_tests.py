@@ -374,29 +374,30 @@ class TestScheduling(unittest.TestCase):
     def test_reorder_1(self):
         # 高优先级被拉前面
         op_data = self.init_opdata()
-        tasks = []
         op_data.dorm[0].name = "麒麟R夜刀"
         op_data.dorm[1].name = "凯尔希"
         op_data.operators["凯尔希"].current_room = "dormitory_2"
         op_data.operators["凯尔希"].current_index = 2
         op_data.dorm[2].name = "夕"
-        try_reorder(op_data.plan, None, op_data, tasks)
+        plan = try_reorder(op_data)
+        self.assertEqual(len(plan), 2)
 
     def test_reorder_2(self):
         # 非高优高效不会被移动
         op_data = self.init_opdata()
-        tasks = []
         op_data.dorm[0].name = "麒麟R夜刀"
         op_data.dorm[1].name = "凯尔希"
         op_data.dorm[2].name = "夕"
         op_data.dorm[3].name = "见行者"
         op_data.dorm[4].name = "森蚺"
-        try_reorder(op_data.plan, None, op_data, tasks)
+        plan = try_reorder(op_data)
+        self.assertEqual(len(plan), 3)
+        self.assertEqual(plan["dormitory_1"][2], "夕")
+        self.assertEqual(plan["dormitory_1"][4], "凯尔希")
 
     def test_reorder_3(self):
         # 如果高优都占了，则不动
         op_data = self.init_opdata()
-        tasks = []
         op_data.dorm[0].name = "夕"
         op_data.dorm[1].name = "焰尾"
         op_data.dorm[2].name = "森蚺"
@@ -404,7 +405,10 @@ class TestScheduling(unittest.TestCase):
         op_data.operators["见行者"].current_room = "dormitory_2"
         op_data.operators["见行者"].current_index = 2
         op_data.dorm[4].name = "见行者"
-        try_reorder(op_data.plan, None, op_data, tasks)
+        try_reorder(op_data)
+        plan = try_reorder(op_data)
+        self.assertEqual(plan["dormitory_1"][2], "夕")
+        self.assertEqual(plan["dormitory_1"][3], "见行者")
 
     def init_opdata(self):
         agent_base_config = PlanConfig(
