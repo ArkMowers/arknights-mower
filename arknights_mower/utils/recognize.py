@@ -155,7 +155,6 @@ class Recognizer:
         elif self.find("nav_bar"):
             self.scene = Scene.NAVIGATION_BAR
         elif self.find("read_mail"):
-            logger.info(self.find("read_mail"))
             self.scene = Scene.MAIL
         elif self.find("navigation/record_restoration"):
             self.scene = Scene.OPERATOR_CHOOSE_LEVEL
