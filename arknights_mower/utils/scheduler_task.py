@@ -304,9 +304,11 @@ def plan_metadata(op_data, tasks):
             need_early = not op_data.operators[high_dorms[0].name].exhaust_require
             if base_time is not None and not rest_in_full_dorms:
                 for dorm in high_dorms[1:]:
-                    if dorm.time and (base_time - dorm.time).total_seconds() > 2 * 3600:
+                    # 三电站限制为1小时，2电站限制为1.5小时
+                    limit = 5400 if op_data.power_plant_count == 2 else 3600
+                    if dorm.time and (base_time - dorm.time).total_seconds() > limit:
                         logger.debug(
-                            f"{high_dorms[0].name} 的时间 {base_time} 被调整为 {dorm.time}，因为时间差超过 2 小时"
+                            f"{high_dorms[0].name} 的时间 {base_time} 被调整为 {dorm.time}，因为时间差超过{limit/3600}小时"
                         )
                         max_rest_in_full_time = base_time
                     if op_data.operators[high_dorms[0].name].exhaust_require:

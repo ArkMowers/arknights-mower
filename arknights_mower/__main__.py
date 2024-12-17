@@ -57,7 +57,14 @@ def initialize(
     )
     for room, obj in plan[plan["default"]].items():
         plan1[room] = [
-            Room(op["agent"], op["group"], op["replacement"]) for op in obj["plans"]
+            Room(
+                op["agent"],
+                op["group"],
+                op["replacement"],
+                obj["name"],
+                obj["product"] if "product" in obj else "",
+            )
+            for op in obj["plans"]
         ]
     # 默认任务
     plan["default_plan"] = Plan(plan1, plan_config)
@@ -68,7 +75,14 @@ def initialize(
         backup_plan: dict[str, Room] = {}
         for room, obj in i["plan"].items():
             backup_plan[room] = [
-                Room(op["agent"], op["group"], op["replacement"]) for op in obj["plans"]
+                Room(
+                    op["agent"],
+                    op["group"],
+                    op["replacement"],
+                    obj["name"],
+                    obj["product"] if "product" in obj else "",
+                )
+                for op in obj["plans"]
             ]
         backup_config = PlanConfig(
             i["conf"]["rest_in_full"],

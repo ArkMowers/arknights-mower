@@ -18,6 +18,16 @@ class PlanTriggerTiming(Enum):
     "任务结束"
 
 
+class BaseProduct(Enum):
+    "基地产物"
+
+    LMD = 0
+    "龙门币"
+    PureGold = 1
+    "赤金"
+    Electricity = 3
+
+
 def to_list(str_data: str) -> list[str]:
     lst = str_data.replace("，", ",").split(",")
     return [x.strip() for x in lst]
@@ -120,7 +130,14 @@ class PlanConfig:
 
 
 class Room:
-    def __init__(self, agent: str, group: str, replacement: list[str]):
+    def __init__(
+        self,
+        agent: str,
+        group: str,
+        replacement: list[str],
+        facility: str,
+        product: str,
+    ):
         """房间
 
         Args:
@@ -131,6 +148,11 @@ class Room:
         self.agent = agent
         self.group = group
         self.replacement = replacement
+        self.facility = facility
+        if self.facility == "发电站":
+            self.product = BaseProduct.Electricity
+        else:
+            self.product = product
 
 
 class Plan:

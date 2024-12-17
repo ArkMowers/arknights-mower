@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 
 from evalidate import Expr, base_eval_model
 
-from arknights_mower.utils.plan import PlanConfig
+from arknights_mower.utils.plan import BaseProduct, PlanConfig
 
 from ..data import agent_arrange_order, agent_list, base_room_list
 from ..solvers.record import save_action_to_sqlite_decorator
@@ -33,8 +33,6 @@ class SkillUpgradeSupport:
 class Operators:
     config = None
     operators = None
-    exhaust_agent = []
-    exhaust_group = []
     groups = None
     dorm = []
     plan = None
@@ -49,10 +47,11 @@ class Operators:
     def __init__(self, plan):
         self.operators = {}
         self.groups = {}
-        self.exhaust_agent = []
-        self.exhaust_group = []
+        self.exhaust_agent = set()
+        self.exhaust_group = set()
+        self.rest_in_full_group = set()
         self.dorm = []
-        self.workaholic_agent = []
+        self.workaholic_agent = set()
         self.free_blacklist = []
         self.global_plan = plan
         self.backup_plans = plan["backup_plans"]
@@ -75,6 +74,7 @@ class Operators:
                 "current_room",
             ]
         )
+        self.power_plant_count = 0
 
     def __repr__(self):
         return f"Operators(operators={self.operators})"
@@ -146,9 +146,10 @@ class Operators:
 
     def init_and_validate(self, update=False):
         self.groups = {}
-        self.exhaust_agent = []
-        self.exhaust_group = []
-        self.workaholic_agent = []
+        self.exhaust_agent = set()
+        self.exhaust_group = set()
+        self.rest_in_full_group = set()
+        self.workaholic_agent = set()
         self.shadow_copy = copy.deepcopy(self.operators)
         self.operators = {}
         for room in self.plan.keys():
@@ -319,13 +320,16 @@ class Operators:
         for name in self.workaholic_agent:
             if name not in self.config.free_blacklist:
                 self.config.free_blacklist.append(name)
-        logger.info("宿舍黑名单：" + str(self.config.free_blacklist))
+        self.power_plant_count = sum(
+            1
+            for room in self.plan.values()
+            if room and room[0].product == BaseProduct.Electricity
+        )
 
     def set_mood_limit(self, name, upper_limit=24, lower_limit=0):
         if name in self.operators:
             self.operators[name].upper_limit = upper_limit
             self.operators[name].lower_limit = lower_limit
-            logger.info(f"自动设置{name}心情下限为{lower_limit},上限为{upper_limit}")
 
     def init_mood_limit(self):
         # 设置心情阈值 for 夕，令，
@@ -584,20 +588,21 @@ class Operators:
             operator.current_index = exist.current_index
         self.operators[operator.name] = operator
         # 需要用尽心情干员逻辑
-        if (
-            operator.exhaust_require or operator.group in self.exhaust_group
-        ) and operator.name not in self.exhaust_agent:
-            self.exhaust_agent.append(operator.name)
+        if operator.exhaust_require:
+            self.exhaust_agent.add(operator.name)
             if operator.group != "":
-                self.exhaust_group.append(operator.group)
+                self.exhaust_group.add(operator.group)
         # 干员分组逻辑
         if operator.group != "":
             if operator.group not in self.groups.keys():
                 self.groups[operator.group] = [operator.name]
             else:
                 self.groups[operator.group].append(operator.name)
-        if operator.workaholic and operator.name not in self.workaholic_agent:
-            self.workaholic_agent.append(operator.name)
+        if operator.workaholic:
+            self.workaholic_agent.add(operator.name)
+        if operator.rest_in_full:
+            if operator.group != "":
+                self.rest_in_full_group.add(operator.group)
 
     def average_mood(self):
         total_mood = 0
