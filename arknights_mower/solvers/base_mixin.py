@@ -164,7 +164,7 @@ class BaseMixin:
             if retry > 5:
                 raise Exception("打开职业筛选失败")
         retry = 0
-        while self.get_color(label_pos_map[profession])[2] < 250:
+        while self.get_color(label_pos_map[profession])[2] < 240:
             logger.debug(f"配色为： {self.get_color(label_pos_map[profession])[2]}")
             self.tap(label_pos_map[profession], 0.1)
             retry += 1

@@ -135,8 +135,8 @@ class Room:
         agent: str,
         group: str,
         replacement: list[str],
-        facility: str,
-        product: str,
+        facility: str = "",
+        product: str = "",
     ):
         """房间
 
