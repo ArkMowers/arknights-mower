@@ -497,7 +497,7 @@ class Operators:
                     dorm.name = _name
                     _agent = self.operators[_name]
                     # 如果干员有心情上限，则按比例修改休息时间
-                    if _agent.mood != 24:
+                    if _agent.mood != 24 and _agent.time_stamp:
                         sec_remaining = (
                             (_agent.upper_limit - _agent.mood)
                             * ((agent["time"] - _agent.time_stamp).total_seconds())

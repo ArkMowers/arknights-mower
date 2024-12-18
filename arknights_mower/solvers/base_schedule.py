@@ -88,6 +88,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.daily_visit_friend = (datetime.now() - timedelta(days=1, hours=4)).date()
         self.ideal_resting_count = 4
         self.choose_error = set()
+        self.drop_send = False
 
     def find_next_task(
         self,
@@ -152,7 +153,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.op_data.correct_dorm()
         self.backup_plan_solver(PlanTriggerTiming.BEGINNING)
         logger.debug("当前任务: " + ("||".join([str(t) for t in self.tasks])))
-
         return super().run()
 
     def transition(self) -> None:
@@ -193,7 +193,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         datetime.now(), task_plan=plan, task_type=TaskTypes.SHIFT_OFF
                     )
                 )
-                success = True
             else:
                 msg = f"无法完成 {self.task.meta_data} 的排班，如果重复接收此邮件请检查替换组是否被占用"
                 send_message(msg, level="ERROR")
@@ -245,6 +244,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         self.op_data.dorm
                     ):
                         break
+                if current_resting - len(remove_name) + required > len(
+                    self.op_data.drom
+                ):
+                    msg = f"无法完成 {self.task.meta_data} 的排班，宿舍可用空位不足，请减少使用回满词条"
+                    send_message(msg, level="ERROR")
+                    return
                 logger.debug(f"需要提前移出宿舍的干员: {remove_name}")
                 planned = set()
                 for name in remove_name:
@@ -1424,6 +1429,73 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         time=result[fia_idx]["time"], task_type=TaskTypes.FIAMMETTA
                     )
                 )
+        for name in self.op_data.exhaust_agent:
+            op = self.op_data.operators[name]
+            if op.current_mood() <= op.lower_limit + 2:
+                if (
+                    self.find_next_task(
+                        task_type=TaskTypes.EXHAUST_OFF, meta_data=op.name
+                    )
+                    is None
+                ):
+                    self.enter_room(op.current_room)
+                    result = self.get_agent_from_room(
+                        op.current_room, [op.current_index]
+                    )
+                    _time = datetime.now()
+                    if (
+                        result[op.current_index]["time"] is not None
+                        and result[op.current_index]["time"] > _time
+                    ):
+                        _time = result[op.current_index]["time"] - timedelta(minutes=10)
+                    elif (
+                        op.current_mood() > 0.25 + op.lower_limit
+                        and op.depletion_rate != 0
+                    ):
+                        _time = (
+                            datetime.now()
+                            + timedelta(
+                                hours=(op.current_mood() - op.lower_limit - 0.25)
+                                / op.depletion_rate
+                            )
+                            - timedelta(minutes=10)
+                        )
+                    self.back()
+                    # plan 是空的是因为得动态生成
+                    update_time = False
+                    if op.group != "":
+                        # 检查是否有其他同组任务，刷新时间
+                        for item in self.op_data.groups[op.group]:
+                            if item not in self.op_data.exhaust_agent:
+                                continue
+                            elif self.find_next_task(
+                                task_type=TaskTypes.EXHAUST_OFF, meta_data=item
+                            ):
+                                update_time = True
+                                exh_task = self.find_next_task(
+                                    task_type=TaskTypes.EXHAUST_OFF,
+                                    meta_data=item,
+                                )
+                                if _time < exh_task.time:
+                                    logger.info(
+                                        f"检测到用尽同组{op.name}比{item}提前下班，更新任务时间为{_time}"
+                                    )
+                                    exh_task.time = _time
+                                exh_task.meta_data += f",{op.name}"
+                                logger.debug(f"更新用尽meta_data为{exh_task.meta_data}")
+                    if not update_time:
+                        logger.info(f"生成{op.name}的下班任务")
+
+                        self.tasks.append(
+                            SchedulerTask(
+                                time=_time,
+                                task_type=TaskTypes.EXHAUST_OFF,
+                                meta_data=op.name,
+                            )
+                        )
+                    # 如果是生成的过去时间，则停止 plan 其他
+                    if _time < datetime.now():
+                        break
 
     def plan_solver(self):
         # 准备数据
@@ -1644,77 +1716,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 * self.op_data.config.resting_threshold
                 + op.lower_limit
             ):
-                continue
-            if op.name in self.op_data.exhaust_agent:
-                if op.current_mood() <= op.lower_limit + 2:
-                    if (
-                        self.find_next_task(
-                            task_type=TaskTypes.EXHAUST_OFF, meta_data=op.name
-                        )
-                        is None
-                    ):
-                        self.enter_room(op.current_room)
-                        result = self.get_agent_from_room(
-                            op.current_room, [op.current_index]
-                        )
-                        _time = datetime.now()
-                        if (
-                            result[op.current_index]["time"] is not None
-                            and result[op.current_index]["time"] > _time
-                        ):
-                            _time = result[op.current_index]["time"] - timedelta(
-                                minutes=10
-                            )
-                        elif (
-                            op.current_mood() > 0.25 + op.lower_limit
-                            and op.depletion_rate != 0
-                        ):
-                            _time = (
-                                datetime.now()
-                                + timedelta(
-                                    hours=(op.current_mood() - op.lower_limit - 0.25)
-                                    / op.depletion_rate
-                                )
-                                - timedelta(minutes=10)
-                            )
-                        self.back()
-                        # plan 是空的是因为得动态生成
-                        update_time = False
-                        if op.group != "":
-                            # 检查是否有其他同组任务，刷新时间
-                            for item in self.op_data.groups[op.group]:
-                                if item not in self.op_data.exhaust_agent:
-                                    continue
-                                elif self.find_next_task(
-                                    task_type=TaskTypes.EXHAUST_OFF, meta_data=item
-                                ):
-                                    update_time = True
-                                    exh_task = self.find_next_task(
-                                        task_type=TaskTypes.EXHAUST_OFF,
-                                        meta_data=item,
-                                    )
-                                    if _time < exh_task.time:
-                                        logger.info(
-                                            f"检测到用尽同组{op.name}比{item}提前下班，更新任务时间为{_time}"
-                                        )
-                                        exh_task.time = _time
-                                    exh_task.meta_data += f",{op.name}"
-                                    logger.debug(
-                                        f"更新用尽meta_data为{exh_task.meta_data}"
-                                    )
-                        if not update_time:
-                            logger.info(f"生成{op.name}的下班任务")
-
-                            self.tasks.append(
-                                SchedulerTask(
-                                    time=_time,
-                                    task_type=TaskTypes.EXHAUST_OFF,
-                                    meta_data=op.name,
-                                )
-                            )
-                        # 如果是生成的过去时间，则停止 plan 其他
-                        if _time < datetime.now():
-                            break
                 continue
             if op.group != "":
                 if op.group in self.op_data.exhaust_group:
@@ -3727,7 +3728,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 },
             )
         elif type == "Award":
-            conf = config.conf
             self.MAA.append_task(
                 "Award",
                 {
@@ -3740,9 +3740,22 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 },
             )
 
+    def maa_stop(self, stop=True):
+        if stop:
+            self.MAA.stop()
+        logger.debug(stage_drop)
+        # 有掉落东西再发
+        if stage_drop["details"] and not self.drop_send:
+            send_message(
+                maa_template.render(stage_drop=stage_drop),
+                "Maa停止",
+            )
+            self.drop_send = True
+
     def maa_plan_solver(self, tasks="All", one_time=False):
         """清日常"""
         try:
+            self.drop_send = False
             conf = config.conf
             if (
                 not one_time
@@ -3779,17 +3792,17 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 while self.MAA.running():
                     # 单次任务默认5分钟
                     if one_time and stop_time < datetime.now():
-                        self.MAA.stop()
+                        self.maa_stop()
                         hard_stop = True
                     # 5分钟之前就停止
                     elif (
                         not one_time
                         and (self.tasks[0].time - datetime.now()).total_seconds() < 300
                     ):
-                        self.MAA.stop()
+                        self.maa_stop()
                         hard_stop = True
                     elif config.stop_maa.is_set():
-                        self.MAA.stop()
+                        self.maa_stop()
                         hard_stop = True
                     else:
                         self.sleep(5)
@@ -3808,14 +3821,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     if "Mall" in tasks and self.credit_fight is None:
                         self.credit_fight = get_server_weekday()
                         logger.info("记录首次信用作战")
-                    logger.debug(stage_drop)
-                    # 有掉落东西再发
-                    if stage_drop["details"]:
-                        send_message(
-                            maa_template.render(stage_drop=stage_drop),
-                            "Maa停止",
-                        )
-
+                        self.maa_stop(False)
                 else:
                     send_message("Maa单次任务停止")
                     if (
@@ -3886,7 +3892,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             or config.stop_maa.is_set()
                         ):
                             maa_crash = False
-                            self.MAA.stop()
+                            self.maa_stop()
                             break
                     if maa_crash:
                         self.device.exit()
@@ -3924,7 +3930,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.MAA = None
         except MowerExit:
             if self.MAA is not None:
-                self.MAA.stop()
+                self.maa_stop()
                 logger.info("停止maa")
             raise
         except Exception as e:

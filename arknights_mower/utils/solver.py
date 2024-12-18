@@ -701,7 +701,7 @@ class BaseSolver:
                     elif config.conf.sss.ec == 2:
                         ec_x = 960
                     else:
-                        ec_x = 1344
+                        ec_x = 1860
                     self.tap((ec_x, 540))
                     self.tap_element("sss/ec_button")
                 elif scene == Scene.SSS_DEVICE:
