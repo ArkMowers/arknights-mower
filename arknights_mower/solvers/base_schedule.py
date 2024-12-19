@@ -245,7 +245,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     ):
                         break
                 if current_resting - len(remove_name) + required > len(
-                    self.op_data.drom
+                    self.op_data.dorm
                 ):
                     msg = f"无法完成 {self.task.meta_data} 的排班，宿舍可用空位不足，请减少使用回满词条"
                     send_message(msg, level="ERROR")
@@ -1697,7 +1697,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         _replacement = []
         _plan = {}
         for op in self.total_agent:
-            if current_resting + len(_replacement) >= self.ideal_resting_count:
+            if (
+                current_resting + len(_replacement) >= self.ideal_resting_count
+                and self.op_data.available_free() >= self.ideal_resting_count
+            ):
                 break
             if op.name in self.op_data.workaholic_agent:
                 continue
@@ -1709,6 +1712,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 continue
             # 忽略掉心情太高的
             if op.upper_limit - op.current_mood() < 2:
+                continue
+            # 忽略 用尽，已经处理
+            if op.name in self.op_data.exhaust_agent:
                 continue
             # 忽略掉心情值没低于上限的的
             if op.current_mood() > int(
