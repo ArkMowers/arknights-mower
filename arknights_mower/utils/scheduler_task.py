@@ -378,13 +378,15 @@ def plan_metadata(op_data, tasks):
 
 
 def try_reorder(op_data):
+    # 复制副本，防止原本的dorm错误触发纠错
+    dorm = copy.deepcopy(op_data.dorm)
     # 如果当前高优有空位(非高优人员)，则重新排序，正在休息的人逐个往前挤
     vip = sum(1 for key in op_data.plan.keys() if key.startswith("dorm"))
     logger.debug(f"当前vip个数{vip}")
     if vip == 0:
         return
     ready_index = 0
-    for idx, room in enumerate(op_data.dorm):
+    for idx, room in enumerate(dorm):
         logger.debug(room)
         if not room.name:
             continue
@@ -393,23 +395,23 @@ def try_reorder(op_data):
             if idx == ready_index:
                 ready_index += 1
             elif ready_index >= vip:
-                op_data.dorm[ready_index].name, room.name = (
+                dorm[ready_index].name, room.name = (
                     room.name,
-                    op_data.dorm[ready_index].name,
+                    dorm[ready_index].name,
                 )
                 room.time = None
                 ready_index += 1
         elif op.operator_type == "high":
             if idx != ready_index:
-                op_data.dorm[ready_index].name, room.name = (
+                dorm[ready_index].name, room.name = (
                     room.name,
-                    op_data.dorm[ready_index].name,
+                    dorm[ready_index].name,
                 )
                 room.time = None
             ready_index += 1
     plan = {}
-    logger.debug(f"更新房间信息{print(op_data.dorm)}")
-    for room in op_data.dorm:
+    logger.debug(f"更新房间信息{dorm}")
+    for room in dorm:
         if room.name:
             op = op_data.operators[room.name]
             room_name, idx = room.position

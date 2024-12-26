@@ -62,6 +62,7 @@ class BaseMixin:
     ):
         try:
             # 识别干员
+            self.recog.update()
             while self.find("connecting"):
                 logger.info("等待网络连接")
                 self.sleep()
@@ -131,7 +132,7 @@ class BaseMixin:
         else:
             swipe_time = 2 if right_swipe == 3 else right_swipe
             for i in range(swipe_time):
-                self.swipe_noinertia((650, 540), (1900, 0))
+                self.swipe_noinertia((650, 540), (2500, 0))
         return 0
 
     def profession_filter(self, profession=None):
