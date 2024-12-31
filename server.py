@@ -130,7 +130,7 @@ def running():
         from arknights_mower.__main__ import base_scheduler
 
         if base_scheduler and mower_thread.is_alive():
-            response["plan_condition"] = base_scheduler.op_data.plan_condition
+            response["plan_condition"] = list(base_scheduler.op_data.plan_condition)
             for idx, plan in enumerate(base_scheduler.op_data.backup_plans):
                 if response["plan_condition"][idx]:
                     response["plan_condition"][idx] = plan.name

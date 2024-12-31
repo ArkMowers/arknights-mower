@@ -2955,6 +2955,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 ed = ret[0][1][0]  # 终点
                 self.swipe_noinertia(st, (ed[0] - st[0], 0))
                 right_swipe += 1
+                if right_swipe >= 3:
+                    self.sleep(0.3)
             if len(agent) == 0:
                 if siege:
                     if last_special_filter != "ALL":
