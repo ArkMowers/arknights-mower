@@ -107,6 +107,7 @@ def initialize(
                 trigger=backup_trigger,
                 task=backup_task,
                 trigger_timing=backup_trigger_timing,
+                name=i.get("name"),
             )
         )
     plan["backup_plans"] = backup_plans

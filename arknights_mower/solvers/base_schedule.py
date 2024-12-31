@@ -25,7 +25,11 @@ from arknights_mower.solvers.skland import SKLand
 from arknights_mower.utils import config, detector, rapidocr
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.csleep import MowerExit, csleep
-from arknights_mower.utils.datetime import format_time, get_server_weekday
+from arknights_mower.utils.datetime import (
+    format_time,
+    get_server_weekday,
+    pass_deadline,
+)
 from arknights_mower.utils.deprecated import deprecated
 from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.digit_reader import DigitReader
@@ -179,7 +183,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             ]
         logger.debug(f"更新下班小组信息为{candidates}")
         # 在candidate 中，计算出需要的high free 和 Low free 数量
-        if config.conf.flexible_shift_mode:
+        if config.conf.flexible_shift_mode or pass_deadline():
+            if not config.conf.flexible_shift_mode:
+                logger.warning("弹性模式被强制启动，请确保排班表已更新+切换至弹性模式")
             current_resting = (
                 len(self.op_data.dorm)
                 - self.op_data.available_free()
@@ -508,7 +514,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.tasks.sort(key=lambda task: task.time)
 
     def plan_metadata(self):
-        if not config.conf.flexible_shift_mode:
+        if config.conf.flexible_shift_mode or pass_deadline():
+            if not config.conf.flexible_shift_mode:
+                logger.warning("弹性模式被强制启动，请确保排班表已更新+切换至弹性模式")
+            self.tasks = plan_metadata(self.op_data, self.tasks)
+        else:
             planned_index = []
             # 移除当前 SHIFT_ON 重新刷新
             for t in self.tasks:
@@ -734,9 +744,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self.tasks = [t for t in self.tasks if should_keep(t)]
                 merge_interval = config.conf.merge_interval
                 merge_release_dorm(self.tasks, merge_interval)
-        else:
-            # 移除当前 SHIFT_ON and Free Room 重新刷新
-            self.tasks = plan_metadata(self.op_data, self.tasks)
 
     def infra_main(self):
         """位于基建首页"""
@@ -1517,7 +1524,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 logger.info("有未完成的下班任务")
                 return
             self.plan_metadata()
-            if config.conf.flexible_shift_mode:
+            if config.conf.flexible_shift_mode or pass_deadline():
+                if not config.conf.flexible_shift_mode:
+                    logger.warning(
+                        "弹性模式被强制启动，请确保排班表已更新+切换至弹性模式"
+                    )
                 self.resting_new()
             else:
                 self.resting_old()
@@ -1701,7 +1712,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         for op in self.total_agent:
             if (
                 current_resting + len(_replacement) >= self.ideal_resting_count
-                and self.op_data.available_free() >= self.ideal_resting_count
+                and self.op_data.available_free() == 0
             ):
                 break
             if op.name in self.op_data.workaholic_agent:

@@ -17,7 +17,7 @@ from flask_sock import Sock
 from tzlocal import get_localzone
 from werkzeug.exceptions import NotFound
 
-from arknights_mower import __system__
+from arknights_mower import __system__, __version__
 from arknights_mower.solvers.record import load_state, save_state
 from arknights_mower.utils import config
 from arknights_mower.utils.datetime import get_server_time
@@ -122,7 +122,22 @@ def read_depot():
 
 @app.route("/running")
 def running():
-    return "true" if mower_thread and mower_thread.is_alive() else "false"
+    response = {
+        "running": bool(mower_thread and mower_thread.is_alive()),
+        "plan_condition": [],
+    }
+    if response["running"]:
+        from arknights_mower.__main__ import base_scheduler
+
+        if base_scheduler and mower_thread.is_alive():
+            response["plan_condition"] = base_scheduler.op_data.plan_condition
+            for idx, plan in enumerate(base_scheduler.op_data.backup_plans):
+                if response["plan_condition"][idx]:
+                    response["plan_condition"][idx] = plan.name
+            response["plan_condition"] = [
+                name for name in response["plan_condition"] if name
+            ]
+    return response
 
 
 @app.route("/start/<start_type>")
@@ -647,6 +662,12 @@ def submit_feedback():
     logger.debug(f"收到反馈务请求：{req}")
     try:
         log_files = []
+        logger.debug(__version__)
+        from arknights_mower.__main__ import base_scheduler
+
+        if base_scheduler and mower_thread.is_alive():
+            for k, v in base_scheduler.op_data.plan.items():
+                logger.debug(str(v))
         if req["type"] == "Bug":
             dt = datetime.datetime.fromtimestamp(req["endTime"] / 1000.0)
             logger.info(dt)
