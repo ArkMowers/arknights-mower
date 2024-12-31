@@ -4,7 +4,7 @@ import { onMounted, onUnmounted, inject, nextTick, watch, ref } from 'vue'
 
 import { useMowerStore } from '@/stores/mower'
 const mower_store = useMowerStore()
-const { log, log_mobile, running,plan_condition, log_lines, task_list, waiting, get_task_id } =
+const { log, log_mobile, running, plan_condition, log_lines, task_list, waiting, get_task_id } =
   storeToRefs(mower_store)
 const { get_tasks, get_running } = mower_store
 const axios = inject('axios')
@@ -140,12 +140,12 @@ const start_options = [
         </template>
       </tbody>
     </n-table>
-    <div v-if="plan_condition.length>0" style="display: flex; gap: 10px;">
+    <div v-if="plan_condition.length > 0" style="display: flex; gap: 10px">
       <span>当前激活的副表为： </span>
-  <span v-for="(x, index) in plan_condition" :key="index" style="color: green;" >
-    {{ x }}
-  </span>
-</div>
+      <span v-for="(x, index) in plan_condition" :key="index" style="color: green">
+        {{ x }}
+      </span>
+    </div>
     <n-log
       class="log"
       :log="mobile ? log_mobile : log"
