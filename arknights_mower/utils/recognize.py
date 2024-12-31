@@ -559,7 +559,7 @@ class Recognizer:
             self.scene = Scene.SSS_START
         elif self.find("sss/ec_button"):
             self.scene = Scene.SSS_EC
-        elif self.find("sss/device_button"):
+        elif self.find("sss/device_button") or self.find("sss/next_step_button"):
             self.scene = Scene.SSS_DEVICE
         elif self.find("sss/squad_button"):
             self.scene = Scene.SSS_SQUAD
@@ -567,6 +567,8 @@ class Recognizer:
             self.scene = Scene.SSS_DEPLOY
         elif self.find("sss/redeploy_button"):
             self.scene = Scene.SSS_REDEPLOY
+        elif self.find("sss/confirm"):
+            self.scene = Scene.SSS_CONFIRM
         elif self.find("sss/loading"):
             self.scene = Scene.SSS_LOADING
         elif self.find("sss/close_button"):
