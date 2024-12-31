@@ -154,6 +154,12 @@ class Room:
         else:
             self.product = product
 
+    def __repr__(self):
+        return (
+            f"Room(agent='{self.agent}', group='{self.group}', replacement={self.replacement}, "
+            f"facility='{self.facility}', product='{self.product}')"
+        )
+
 
 class Plan:
     def __init__(
@@ -163,6 +169,7 @@ class Plan:
         trigger: Optional[LogicExpression] = None,
         task: Optional[dict[str, list[str]]] = None,
         trigger_timing: Optional[str] = None,
+        name: Optional[str] = "",
     ):
         """
         Args:
@@ -177,6 +184,7 @@ class Plan:
         self.trigger = trigger
         self.task = task
         self.trigger_timing = self.set_timing_enum(trigger_timing)
+        self.name = name
 
     @staticmethod
     def set_timing_enum(value: str) -> PlanTriggerTiming:

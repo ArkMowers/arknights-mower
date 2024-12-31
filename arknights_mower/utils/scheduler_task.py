@@ -522,32 +522,34 @@ def check_dorm_ordering(tasks, op_data):
             if room.startswith("dorm"):
                 # 是否检查过vip位置
                 pass_first_free = False
+                clear = False
                 for idx, agent in enumerate(v):
-                    # 如果当前位置非宿管 且无人员变动（有变动则是下班干员）
-                    if "Free" == plan[room][idx].agent and agent == "Current":
-                        # 如果高优先不变，则跳过逻辑判定
-                        if not pass_first_free:
-                            continue
-                        current = next(
-                            (
-                                obj
-                                for obj in op_data.operators.values()
-                                if obj.current_room == room and obj.current_index == idx
-                            ),
-                            None,
-                        )
-                        if current:
-                            if current.name not in working_agent:
-                                v[idx] = current.name
-                            else:
-                                logger.debug(f"检测到干员{current.name}已经上班")
-                                v[idx] = "Free"
-                        if room not in extra_plan:
-                            extra_plan[room] = copy.deepcopy(v)
-                        # 新生成移除任务 --> 换成移除
-                        extra_plan[room][idx] = ""
+                    # 如果当前位置为VIP，且有人员变动，则清除后续人员
+                    if pass_first_free and clear:
+                        if agent == "Current":
+                            current = next(
+                                (
+                                    obj
+                                    for obj in op_data.operators.values()
+                                    if obj.current_room == room
+                                    and obj.current_index == idx
+                                ),
+                                None,
+                            )
+                            if current:
+                                if current.name not in working_agent:
+                                    v[idx] = current.name
+                                else:
+                                    logger.debug(f"检测到干员{current.name}已经上班")
+                                    v[idx] = "Free"
+                            if room not in extra_plan:
+                                extra_plan[room] = copy.deepcopy(v)
+                            # 新生成移除任务 --> 换成移除
+                            extra_plan[room][idx] = ""
                     if "Free" == plan[room][idx].agent and not pass_first_free:
                         pass_first_free = True
+                        if agent != "Current":
+                            clear = True
             else:
                 other_plan[room] = v
         tasks[0].meta_data = "宿舍排序完成"
@@ -555,6 +557,8 @@ def check_dorm_ordering(tasks, op_data):
             for k, v in other_plan.items():
                 del tasks[0].plan[k]
                 extra_plan[k] = v
+            for k, v in extra_plan.items():
+                extra_plan[k] = [item for item in v if item != ""]
             logger.info("新增排序任务任务")
             task = SchedulerTask(
                 task_plan=extra_plan,
