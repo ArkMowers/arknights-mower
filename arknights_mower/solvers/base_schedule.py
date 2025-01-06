@@ -202,7 +202,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             else:
                 msg = f"无法完成 {self.task.meta_data} 的排班，如果重复接收此邮件请检查替换组是否被占用"
                 send_message(msg, level="ERROR")
-                # 尝试挤出当前休息的
+                # 简单暴力一点，移除所有非回满的
+                # 智能情况的话，得在人数和替换冲突中做出选择
                 required = 0
                 for x in candidates:
                     op = self.op_data.operators[x]
@@ -227,12 +228,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     operator = self.op_data.operators[dorm.name]
                     if (
                         operator.rest_in_full
-                        or operator.name in self.op_data.rest_in_full_group
+                        or operator.group in self.op_data.rest_in_full_group
                     ):
                         # 如果回满，则跳过
                         logger.debug(f"跳过{str(dorm)}，回满")
                         continue
-                    # 检查是否有分组
+                    if not operator.is_high():
+                        # 跳过非高优
+                        continue
                     if operator.group and operator.name not in remove_name:
                         # 增加当前宿舍组的所有在休息中的干员
                         for name in self.op_data.groups[operator.group]:
@@ -270,15 +273,22 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         plan[o.room][o.index] = agent
                         planned.add(o.name)
                 logger.debug(f"生成顶替上班任务{plan}")
-                self.tasks.append(SchedulerTask(task_plan=plan))
-                # 执行完提前换班任务再次执行本任务
-                self.tasks.append(
-                    SchedulerTask(
-                        task_plan=copy.deepcopy(self.task.plan),
-                        meta_data=self.task.meta_data,
-                        task_type=self.task.type,
+                if plan:
+                    self.tasks.append(SchedulerTask(task_plan=plan))
+                    # 执行完提前换班任务再次执行本任务
+                    self.tasks.append(
+                        SchedulerTask(
+                            task_plan=copy.deepcopy(self.task.plan),
+                            meta_data=self.task.meta_data,
+                            task_type=self.task.type,
+                        )
                     )
-                )
+                else:
+                    msg = (
+                        f"无法完成 {self.task.meta_data} 的排班，请检查是否有替换组冲突"
+                    )
+                    logger.warning(msg)
+                    send_message(msg, level="ERROR")
                 self.skip()
         else:
             _high_free = 0
@@ -2915,6 +2925,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     last_special_filter = profession
                     if index_change:
                         self.switch_arrange_order(3, "true")
+                elif is_dorm and agent[0] == "阿米娅" and last_special_filter != "ALL":
+                    # 如果是阿米娅且filter 不是all
+                    self.profession_filter("ALL")
+                    last_special_filter = "ALL"
                 if (
                     agent[0] in self.op_data.operators
                     and self.op_data.operators[agent[0]].is_resting()

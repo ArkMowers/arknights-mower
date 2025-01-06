@@ -647,7 +647,7 @@ class Recognizer:
         color = {
             "1800": (158, 958),
             "12cadpa": (1810, 21),
-            "arrange_confirm": (755, 903),
+            "arrange_confirm": (963, 969),
             "arrange_order_options": (1652, 23),
             "arrange_order_options_scene": (369, 199),
             "clue": (1740, 855),
@@ -741,7 +741,6 @@ class Recognizer:
             "recruit/riic_res/WARRIOR": 0.7,
             "recruit/time": 0.8,
             "recruit/stone": 0.7,
-            "arrange_confirm": 0.85,
         }
 
         if res in color:
