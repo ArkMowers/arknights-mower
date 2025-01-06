@@ -250,7 +250,6 @@ class Operators:
                         _dorm.agent == "Free"
                         and not free_found
                         and (dorm + str(_idx)) not in added
-                        and len(added) < self.config.max_resting_count
                     ):
                         self.dorm.append(Dormitory((dorm, _idx)))
                         added.append(dorm + str(_idx))
@@ -268,8 +267,6 @@ class Operators:
             for key, value in self.shadow_copy.items():
                 if key not in self.operators:
                     self.add(Operator(key, ""))
-        if len(self.dorm) < self.config.max_resting_count:
-            return f"宿舍Free总数 {len(self.dorm)}小于最大分组数 {self.config.max_resting_count}"
         # 跑单
         for x, y in self.plan.items():
             if not x.startswith("room"):
@@ -528,10 +525,6 @@ class Operators:
         if room.startswith("dorm") and self.config.free_room:
             return [i for i, x in enumerate(self.plan[room]) if x == "Free"]
         for idx, dorm in enumerate(self.dorm):
-            # Filter out resting priority low
-            if idx >= self.config.max_resting_count:
-                if not self.config.free_room:
-                    break
             if dorm.position[0] == room:
                 for i, _name in enumerate(plan):
                     if _name not in self.operators.keys():
@@ -604,7 +597,9 @@ class Operators:
         )
         return current_mood / total_mood
 
-    def available_free(self, free_type="high"):
+    def available_free(self, free_type="high", time=None):
+        if not time:
+            time = datetime.now()
         ret = 0
         freeName = []
         max_count = sum(1 for key in self.plan if key.startswith("dorm"))
@@ -616,7 +611,7 @@ class Operators:
                     and not self.operators[dorm.name].is_high()
                 ):
                     ret += 1
-                elif dorm.time is not None and dorm.time < datetime.now():
+                elif dorm.time is not None and dorm.time < time:
                     logger.info(f"检测到房间休息完毕，释放{dorm.name}宿舍位")
                     freeName.append(dorm.name)
                     ret += 1
@@ -634,7 +629,7 @@ class Operators:
                     and not self.operators[dorm.name].is_high()
                 ):
                     ret += 1
-                elif dorm.time is not None and dorm.time < datetime.now():
+                elif dorm.time is not None and dorm.time < time:
                     logger.info(f"检测到房间休息完毕，释放{dorm.name}宿舍位")
                     freeName.append(dorm.name)
                     ret += 1
@@ -643,23 +638,15 @@ class Operators:
                 if name in agent_list:
                     self.operators[name].mood = self.operators[name].upper_limit
                     self.operators[name].depletion_rate = 0
-                    self.operators[name].time_stamp = datetime.now()
+                    self.operators[name].time_stamp = time
         return ret
 
     def assign_dorm(self, name, is_new=False):
         is_high = self.operators[name].resting_priority == "high"
-        if is_high:
-            _room = next(
-                obj
-                for obj in self.dorm
-                if obj.name not in self.operators.keys()
-                or not self.operators[obj.name].is_high()
-            )
-        else:
-            _room = None
-            for i in range(
-                4 if is_new else self.config.max_resting_count, len(self.dorm)
-            ):
+        _room = None
+        max_count = sum(1 for key in self.plan if key.startswith("dorm"))
+        if not is_high:
+            for i in range(max_count, len(self.dorm)):
                 _name = self.dorm[i].name
                 if (
                     _name == ""
@@ -671,6 +658,16 @@ class Operators:
                 ):
                     _room = self.dorm[i]
                     break
+        if is_high or _room is None:
+            if not is_high:
+                logger.warning("弹性模式下请勿设置过多低优先")
+            _room = next(
+                obj
+                for obj in self.dorm
+                if obj.name not in self.operators.keys()
+                or not self.operators[obj.name].is_high()
+                or (obj.time is not None and obj.time < datetime.now())
+            )
         _room.name = name
         _room.time = None
         return _room
@@ -812,14 +809,14 @@ class Operator:
             )
         return False
 
-    def current_mood(self):
+    def current_mood(self, time=None):
+        if not time:
+            time = datetime.now()
         predict = self.mood
         if self.time_stamp is not None:
             predict = (
                 self.mood
-                - self.depletion_rate
-                * (datetime.now() - self.time_stamp).total_seconds()
-                / 3600
+                - self.depletion_rate * (time - self.time_stamp).total_seconds() / 3600
             )
         if 0 <= predict <= 24:
             return predict
