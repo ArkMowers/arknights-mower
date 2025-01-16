@@ -5,7 +5,6 @@ import { deepcopy } from '@/utils/deepcopy'
 
 export const usePlanStore = defineStore('plan', () => {
   const ling_xi = ref(1)
-  const max_resting_count = ref([])
   const exhaust_require = ref([])
   const rest_in_full = ref([])
   const resting_priority = ref([])
@@ -130,7 +129,6 @@ export const usePlanStore = defineStore('plan', () => {
   async function load_plan() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/plan`)
     ling_xi.value = response.data.conf.ling_xi
-    max_resting_count.value = response.data.conf.max_resting_count
     exhaust_require.value = str2list(response.data.conf.exhaust_require)
     rest_in_full.value = str2list(response.data.conf.rest_in_full)
     resting_priority.value = str2list(response.data.conf.resting_priority)
@@ -167,7 +165,6 @@ export const usePlanStore = defineStore('plan', () => {
       plan1: strip_plan(plan.value),
       conf: {
         ling_xi: ling_xi.value,
-        max_resting_count: max_resting_count.value,
         exhaust_require: list2str(exhaust_require.value),
         rest_in_full: list2str(rest_in_full.value),
         resting_priority: list2str(resting_priority.value),
@@ -239,7 +236,6 @@ export const usePlanStore = defineStore('plan', () => {
     load_plan,
     load_operators,
     ling_xi,
-    max_resting_count,
     exhaust_require,
     rest_in_full,
     resting_priority,

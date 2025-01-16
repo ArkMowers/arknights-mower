@@ -9,8 +9,7 @@ const { free_blacklist, theme } = storeToRefs(config_store)
 
 const plan_store = usePlanStore()
 const {
-  ling_xi,
-  max_resting_count,
+  ling_xi,  
   resting_priority,
   exhaust_require,
   rest_in_full,
@@ -101,8 +100,7 @@ function create_sub_plan() {
     conf: {
       exhaust_require: [],
       free_blacklist: [],
-      ling_xi: ling_xi.value,
-      max_resting_count: max_resting_count.value,
+      ling_xi: ling_xi.value,      
       rest_in_full: [],
       resting_priority: [],
       workaholic: [],
@@ -129,7 +127,6 @@ function delete_sub_plan() {
 
 const current_conf = ref({
   ling_xi: ling_xi.value,
-  max_resting_count: max_resting_count.value,
   rest_in_full: rest_in_full.value,
   resting_priority: resting_priority.value,
   workaholic: workaholic.value,
@@ -140,8 +137,7 @@ const current_conf = ref({
 watchEffect(() => {
   if (sub_plan.value == 'main') {
     current_conf.value = {
-      ling_xi: ling_xi.value,
-      max_resting_count: max_resting_count.value,
+      ling_xi: ling_xi.value,     
       rest_in_full: rest_in_full.value,
       resting_priority: resting_priority.value,
       workaholic: workaholic.value,
@@ -157,8 +153,7 @@ watchEffect(() => {
 
 watchEffect(() => {
   if (sub_plan.value == 'main') {
-    ling_xi.value = current_conf.value.ling_xi
-    max_resting_count.value = current_conf.value.max_resting_count
+    ling_xi.value = current_conf.value.ling_xi    
     rest_in_full.value = current_conf.value.rest_in_full
     exhaust_require.value = current_conf.value.exhaust_require
     resting_priority.value = current_conf.value.resting_priority
@@ -350,12 +345,6 @@ function movePlanForward() {
           <n-radio :value="3">均衡模式</n-radio>
         </n-space>
       </n-radio-group>
-    </n-form-item>
-    <n-form-item>
-      <template #label><span>最大组人数</span><help-text>请查阅文档</help-text></template>
-      <n-input-number v-model:value="current_conf.max_resting_count">
-        <template #suffix>人</template>
-      </n-input-number>
     </n-form-item>
     <n-form-item>
       <template #label><span>需要回满心情的干员</span><help-text>请查阅文档</help-text></template>

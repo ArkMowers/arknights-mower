@@ -72,7 +72,6 @@ export const useConfigStore = defineStore('config', () => {
   const touch_method = ref('scrcpy')
   const free_room = ref(false)
   const merge_interval = ref(10)
-  const flexible_shift_mode = ref(false)
   const fia_fool = ref(true)
   const sign_in = ref({ enable: true })
   const droidcast = ref({})
@@ -170,7 +169,6 @@ export const useConfigStore = defineStore('config', () => {
     touch_method.value = response.data.touch_method
     free_room.value = response.data.free_room
     merge_interval.value = response.data.merge_interval
-    flexible_shift_mode.value = response.data.flexible_shift_mode
     fia_fool.value = response.data.fia_fool
     sign_in.value = response.data.sign_in
     droidcast.value = response.data.droidcast
@@ -261,7 +259,6 @@ export const useConfigStore = defineStore('config', () => {
       touch_method: touch_method.value,
       free_room: free_room.value,
       merge_interval: merge_interval.value,
-      flexible_shift_mode: flexible_shift_mode.value,
       fia_fool: fia_fool.value,
       sign_in: sign_in.value,
       droidcast: droidcast.value,
@@ -355,7 +352,6 @@ export const useConfigStore = defineStore('config', () => {
     touch_method,
     free_room,
     merge_interval,
-    flexible_shift_mode,
     fia_fool,
     sign_in,
     droidcast,

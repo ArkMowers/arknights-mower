@@ -41,7 +41,6 @@ class PlanConfig:
         resting_priority: str,
         ling_xi: int = 0,
         workaholic: str = "",
-        max_resting_count: int = 4,
         free_blacklist: str = "",
         resting_threshold: float = 0.5,
         refresh_trading_config: str = "",
@@ -56,7 +55,6 @@ class PlanConfig:
             resting_priority: 低优先级
             ling_xi: 令夕模式
             workaholic: 0心情工作
-            max_resting_count: 最大组人数
             free_blacklist: 宿舍黑名单
             resting_threshold: 心情阈值
             refresh_trading_config: 跑单时间刷新干员
@@ -66,7 +64,6 @@ class PlanConfig:
         self.exhaust_require = to_list(exhaust_require)
         self.workaholic = to_list(workaholic)
         self.resting_priority = to_list(resting_priority)
-        self.max_resting_count = max_resting_count
         self.free_blacklist = to_list(free_blacklist)
         # 0 为均衡模式
         # 1 为感知信息模式
