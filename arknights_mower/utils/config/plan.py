@@ -8,8 +8,6 @@ from pydantic import BaseModel
 class PlanConf(BaseModel):
     ling_xi: int = 1
     "令夕模式，1感知 2烟火 3均衡"
-    max_resting_count: int = 4
-    "最大组人数"
     exhaust_require: str = ""
     "耗尽"
     rest_in_full: str = ""

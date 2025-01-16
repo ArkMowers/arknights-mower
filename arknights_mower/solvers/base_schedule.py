@@ -30,7 +30,6 @@ from arknights_mower.utils.datetime import (
     get_server_weekday,
     pass_deadline,
 )
-from arknights_mower.utils.deprecated import deprecated
 from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.digit_reader import DigitReader
 from arknights_mower.utils.email import maa_template, send_message
@@ -183,243 +182,106 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             ]
         logger.debug(f"更新下班小组信息为{candidates}")
         # 在candidate 中，计算出需要的high free 和 Low free 数量
-        if config.conf.flexible_shift_mode or pass_deadline():
-            if not config.conf.flexible_shift_mode:
-                logger.warning("弹性模式被强制启动，请确保排班表已更新+切换至弹性模式")
-            current_resting = (
-                len(self.op_data.dorm)
-                - self.op_data.available_free()
-                - self.op_data.available_free("low")
+        current_resting = (
+            len(self.op_data.dorm)
+            - self.op_data.available_free()
+            - self.op_data.available_free("low")
+        )
+        plan = {}
+        self.get_resting_plan(candidates, [], plan, current_resting)
+        if len(plan.items()) > 0:
+            self.tasks.append(
+                SchedulerTask(
+                    datetime.now(), task_plan=plan, task_type=TaskTypes.SHIFT_OFF
+                )
             )
-            plan = {}
-            self.get_resting_plan_new(candidates, [], plan, current_resting)
-            if len(plan.items()) > 0:
+        else:
+            msg = f"无法完成 {self.task.meta_data} 的排班，如果重复接收此邮件请检查替换组是否被占用"
+            send_message(msg, level="ERROR")
+            # 简单暴力一点，移除所有非回满的
+            # 智能情况的话，得在人数和替换冲突中做出选择
+            required = 0
+            for x in candidates:
+                op = self.op_data.operators[x]
+                if op.workaholic:
+                    continue
+                required += 1
+            remove_name = set()
+            # 按心情降序排序
+            sorted_dorms = sorted(
+                self.op_data.dorm,
+                key=lambda dorm: self.op_data.operators[dorm.name].mood
+                if dorm.name in self.op_data.operators
+                else 25,
+                reverse=True,
+            )
+            for idx, dorm in enumerate(sorted_dorms):
+                if not dorm.name or dorm.name not in self.op_data.operators:
+                    continue
+                if dorm.time is not None and dorm.time < datetime.now():
+                    logger.debug(f"跳过{str(dorm)}，休息完毕")
+                    continue
+                operator = self.op_data.operators[dorm.name]
+                if (
+                    operator.rest_in_full
+                    or operator.group in self.op_data.rest_in_full_group
+                ):
+                    # 如果回满，则跳过
+                    logger.debug(f"跳过{str(dorm)}，回满")
+                    continue
+                if not operator.is_high():
+                    # 跳过非高优
+                    continue
+                if operator.group and operator.name not in remove_name:
+                    # 增加当前宿舍组的所有在休息中的干员
+                    for name in self.op_data.groups[operator.group]:
+                        if self.op_data.operators[name].is_resting():
+                            _, dorm = self.op_data.get_dorm_by_name(name)
+                            # 跳过已经计算的休息完毕的人
+                            if dorm.time is not None and dorm.time < datetime.now():
+                                continue
+                            remove_name.add(name)
+                else:
+                    remove_name.add(dorm.name)
+
+                # 检查条件是否满足
+                if current_resting - len(remove_name) + required <= len(
+                    self.op_data.dorm
+                ):
+                    break
+            if current_resting - len(remove_name) + required > len(self.op_data.dorm):
+                msg = f"无法完成 {self.task.meta_data} 的排班，宿舍可用空位不足，请减少使用回满词条"
+                send_message(msg, level="ERROR")
+                return
+            logger.debug(f"需要提前移出宿舍的干员: {remove_name}")
+            planned = set()
+            for name in remove_name:
+                if name in planned:
+                    continue
+                op = self.op_data.operators[name]
+                group = [op.name] if not op.group else self.op_data.groups[op.group]
+                for agent in group:
+                    o = self.op_data.operators[agent]
+                    if o.room not in plan:
+                        plan[o.room] = ["Current"] * len(self.op_data.plan[o.room])
+                    plan[o.room][o.index] = agent
+                    planned.add(o.name)
+            logger.debug(f"生成顶替上班任务{plan}")
+            if plan:
+                self.tasks.append(SchedulerTask(task_plan=plan))
+                # 执行完提前换班任务再次执行本任务
                 self.tasks.append(
                     SchedulerTask(
-                        datetime.now(), task_plan=plan, task_type=TaskTypes.SHIFT_OFF
+                        task_plan=copy.deepcopy(self.task.plan),
+                        meta_data=self.task.meta_data,
+                        task_type=self.task.type,
                     )
                 )
             else:
-                msg = f"无法完成 {self.task.meta_data} 的排班，如果重复接收此邮件请检查替换组是否被占用"
+                msg = f"无法完成 {self.task.meta_data} 的排班，请检查是否有替换组冲突"
+                logger.warning(msg)
                 send_message(msg, level="ERROR")
-                # 简单暴力一点，移除所有非回满的
-                # 智能情况的话，得在人数和替换冲突中做出选择
-                required = 0
-                for x in candidates:
-                    op = self.op_data.operators[x]
-                    if op.workaholic:
-                        continue
-                    required += 1
-                remove_name = set()
-                # 按心情降序排序
-                sorted_dorms = sorted(
-                    self.op_data.dorm,
-                    key=lambda dorm: self.op_data.operators[dorm.name].mood
-                    if dorm.name in self.op_data.operators
-                    else 25,
-                    reverse=True,
-                )
-                for idx, dorm in enumerate(sorted_dorms):
-                    if not dorm.name or dorm.name not in self.op_data.operators:
-                        continue
-                    if dorm.time is not None and dorm.time < datetime.now():
-                        logger.debug(f"跳过{str(dorm)}，休息完毕")
-                        continue
-                    operator = self.op_data.operators[dorm.name]
-                    if (
-                        operator.rest_in_full
-                        or operator.group in self.op_data.rest_in_full_group
-                    ):
-                        # 如果回满，则跳过
-                        logger.debug(f"跳过{str(dorm)}，回满")
-                        continue
-                    if not operator.is_high():
-                        # 跳过非高优
-                        continue
-                    if operator.group and operator.name not in remove_name:
-                        # 增加当前宿舍组的所有在休息中的干员
-                        for name in self.op_data.groups[operator.group]:
-                            if self.op_data.operators[name].is_resting():
-                                _, dorm = self.op_data.get_dorm_by_name(name)
-                                # 跳过已经计算的休息完毕的人
-                                if dorm.time is not None and dorm.time < datetime.now():
-                                    continue
-                                remove_name.add(name)
-                    else:
-                        remove_name.add(dorm.name)
-
-                    # 检查条件是否满足
-                    if current_resting - len(remove_name) + required <= len(
-                        self.op_data.dorm
-                    ):
-                        break
-                if current_resting - len(remove_name) + required > len(
-                    self.op_data.dorm
-                ):
-                    msg = f"无法完成 {self.task.meta_data} 的排班，宿舍可用空位不足，请减少使用回满词条"
-                    send_message(msg, level="ERROR")
-                    return
-                logger.debug(f"需要提前移出宿舍的干员: {remove_name}")
-                planned = set()
-                for name in remove_name:
-                    if name in planned:
-                        continue
-                    op = self.op_data.operators[name]
-                    group = [op.name] if not op.group else self.op_data.groups[op.group]
-                    for agent in group:
-                        o = self.op_data.operators[agent]
-                        if o.room not in plan:
-                            plan[o.room] = ["Current"] * len(self.op_data.plan[o.room])
-                        plan[o.room][o.index] = agent
-                        planned.add(o.name)
-                logger.debug(f"生成顶替上班任务{plan}")
-                if plan:
-                    self.tasks.append(SchedulerTask(task_plan=plan))
-                    # 执行完提前换班任务再次执行本任务
-                    self.tasks.append(
-                        SchedulerTask(
-                            task_plan=copy.deepcopy(self.task.plan),
-                            meta_data=self.task.meta_data,
-                            task_type=self.task.type,
-                        )
-                    )
-                else:
-                    msg = (
-                        f"无法完成 {self.task.meta_data} 的排班，请检查是否有替换组冲突"
-                    )
-                    logger.warning(msg)
-                    send_message(msg, level="ERROR")
-                self.skip()
-        else:
-            _high_free = 0
-            _low_free = 0
-            remove_name = []
-            for x in candidates:
-                if (
-                    self.op_data.operators[x].is_resting()
-                    or self.op_data.operators[x].current_mood() == 24
-                ):
-                    remove_name.append(x)
-                else:
-                    if self.op_data.operators[x].resting_priority == "high":
-                        _high_free += 1
-                    else:
-                        _low_free += 1
-            candidates = [x for x in candidates if x not in remove_name]
-            self.agent_get_mood(force=True)
-            # 剩余高效组位置
-            current_high = self.op_data.available_free()
-            # 剩余低效位置
-            current_low = self.op_data.available_free("low")
-            logger.debug(f"剩余高效:{current_high},低效：{current_low}")
-            logger.debug(f"需求高效:{_high_free},低效：{_low_free}")
-            success = False
-            if current_high >= _high_free and current_low >= _low_free:
-                # 检查是否目前宿舍满足 low free 和high free 的数量需求，如果满足，则直接安排
-                _plan = {}
-                _replacement = []
-                _replacement, _plan, current_high, current_low = self.get_resting_plan(
-                    candidates, _replacement, _plan, current_high, current_low
-                )
-                if len(_plan.items()) > 0:
-                    self.tasks.append(
-                        SchedulerTask(
-                            datetime.now(),
-                            task_plan=_plan,
-                            task_type=TaskTypes.SHIFT_OFF,
-                        )
-                    )
-                    success = True
-                else:
-                    msg = f"无法完成 {self.task.meta_data} 的排班，如果重复接收此邮件请检查替换组是否被占用"
-                    send_message(msg, level="ERROR")
-            if not success:
-                # 如果不满足，则找到并且执行最近一个type 包含 超过数量的high free 和low free 的 任务并且 干员没有 exaust_require 词条
-                task_index = -1
-                current_high, current_low = 0, 0
-                for idx, task in enumerate(self.tasks):
-                    if "dorm" in task.meta_data:
-                        # 检查数量
-                        ids = [int(w[4:]) for w in task.meta_data.split(",")]
-                        is_exhaust_require = False
-                        for _id in ids:
-                            if not is_exhaust_require:
-                                if (
-                                    self.op_data.dorm[_id].name
-                                    in self.op_data.exhaust_agent
-                                ):
-                                    is_exhaust_require = True
-
-                            if _id > self.op_data.config.max_resting_count - 1:
-                                current_low += 1
-                            else:
-                                current_high += 1
-                        # 休息满需要则跳过
-                        if (
-                            current_high >= _high_free
-                            and current_low >= _low_free
-                            and not is_exhaust_require
-                        ):
-                            task_index = idx
-                        else:
-                            current_low, current_high = 0, 0
-                if task_index > -1:
-                    # 修改执行时间
-                    self.tasks[task_index].time = datetime.now()
-                    # 执行完提前换班任务再次执行本任务
-                    self.tasks.append(
-                        SchedulerTask(
-                            task_plan=copy.deepcopy(self.task.plan),
-                            meta_data=self.task.meta_data,
-                            task_type=self.task.type,
-                        )
-                    )
-                else:
-                    # 任务全清
-                    rooms = []
-                    remove_idx = []
-                    for idx, task in enumerate(self.tasks):
-                        if "dorm" in task.meta_data:
-                            # 检查数量
-                            ids = [int(w[4:]) for w in task.meta_data.split(",")]
-                            is_exhaust_require = False
-                            _rooms = []
-                            for _id in ids:
-                                if not is_exhaust_require:
-                                    if (
-                                        self.op_data.dorm[_id].name
-                                        in self.op_data.exhaust_agent
-                                    ):
-                                        is_exhaust_require = True
-                                __room = self.op_data.operators[
-                                    self.op_data.dorm[_id].name
-                                ].room
-                                if __room not in _rooms:
-                                    _rooms.append(__room)
-                            # 跳过需要休息满
-                            if not is_exhaust_require:
-                                rooms.extend(_rooms)
-                                remove_idx.append(idx)
-                    for idx in sorted(remove_idx, reverse=True):
-                        self.tasks.pop(idx)
-                    plan = {}
-                    for room in rooms:
-                        if room not in plan.keys():
-                            plan[room] = [
-                                data.agent for data in self.op_data.plan[room]
-                            ]
-                    if len(plan.keys()) > 0:
-                        self.tasks.append(SchedulerTask(task_plan=plan))
-                        # 执行完提前换班任务再次执行本任务
-                        self.tasks.append(
-                            SchedulerTask(
-                                task_plan=copy.deepcopy(self.task.plan),
-                                meta_data=self.task.meta_data,
-                                task_type=self.task.type,
-                            )
-                        )
-                self.skip()
-                return
+            self.skip()
 
     def handle_error(self, force=False):
         if self.scene() == Scene.UNKNOWN:
@@ -1534,14 +1396,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 logger.info("有未完成的下班任务")
                 return
             self.plan_metadata()
-            if config.conf.flexible_shift_mode or pass_deadline():
-                if not config.conf.flexible_shift_mode:
-                    logger.warning(
-                        "弹性模式被强制启动，请确保排班表已更新+切换至弹性模式"
-                    )
-                self.resting_new()
-            else:
-                self.resting_old()
+            self.resting()
         except MowerExit:
             raise
         except Exception as e:
@@ -1562,144 +1417,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             task = SchedulerTask(task_plan=re_order_dorm_plan)
             self.tasks.append(task)
 
-    @deprecated("该休息逻辑即将在2025年1月1日被自动替代，请尽量选择弹性休息模式")
-    def resting_old(self):
-        self.total_agent.sort(
-            key=lambda x: x.current_mood() - x.lower_limit, reverse=False
-        )
-        # 剩余高效组位置
-        high_free = self.op_data.available_free()
-        # 剩余低效位置
-        low_free = self.op_data.available_free("low")
-        _replacement = []
-        _plan = {}
-        for op in self.total_agent:
-            # 忽略掉菲亚梅塔充能的干员
-            if high_free == 0 and low_free == 0:
-                break
-            if op.name in self.op_data.workaholic_agent:
-                continue
-            # 忽略掉正在休息的
-            if (
-                op.is_resting()
-                or op.current_room in ["factory", "train"]
-                or op.room in ["factory", "train"]
-            ):
-                continue
-            # 忽略掉心情值没低于上限的的
-            if op.current_mood() > int(
-                (op.upper_limit - op.lower_limit)
-                * self.op_data.config.resting_threshold
-                + op.lower_limit
-            ):
-                continue
-            if op.name in self.op_data.exhaust_agent:
-                if op.current_mood() <= op.lower_limit + 2:
-                    if (
-                        self.find_next_task(
-                            task_type=TaskTypes.EXHAUST_OFF, meta_data=op.name
-                        )
-                        is None
-                    ):
-                        self.enter_room(op.current_room)
-                        result = self.get_agent_from_room(
-                            op.current_room, [op.current_index]
-                        )
-                        _time = datetime.now()
-                        if (
-                            result[op.current_index]["time"] is not None
-                            and result[op.current_index]["time"] > _time
-                        ):
-                            _time = result[op.current_index]["time"] - timedelta(
-                                minutes=10
-                            )
-                        elif (
-                            op.current_mood() > 0.25 + op.lower_limit
-                            and op.depletion_rate != 0
-                        ):
-                            _time = (
-                                datetime.now()
-                                + timedelta(
-                                    hours=(op.current_mood() - op.lower_limit - 0.25)
-                                    / op.depletion_rate
-                                )
-                                - timedelta(minutes=10)
-                            )
-                        self.back()
-                        # plan 是空的是因为得动态生成
-                        update_time = False
-                        if op.group != "":
-                            # 检查是否有其他同组任务，刷新时间
-                            for item in self.op_data.groups[op.group]:
-                                if item not in self.op_data.exhaust_agent:
-                                    continue
-                                elif self.find_next_task(
-                                    task_type=TaskTypes.EXHAUST_OFF, meta_data=item
-                                ):
-                                    update_time = True
-                                    exh_task = self.find_next_task(
-                                        task_type=TaskTypes.EXHAUST_OFF,
-                                        meta_data=item,
-                                    )
-                                    if _time < exh_task.time:
-                                        logger.info(
-                                            f"检测到用尽同组{op.name}比{item}提前下班，更新任务时间为{_time}"
-                                        )
-                                        exh_task.time = _time
-                                    exh_task.meta_data += f",{op.name}"
-                                    logger.debug(
-                                        f"更新用尽meta_data为{exh_task.meta_data}"
-                                    )
-                        if not update_time:
-                            self.tasks.append(
-                                SchedulerTask(
-                                    time=_time,
-                                    task_type=TaskTypes.EXHAUST_OFF,
-                                    meta_data=op.name,
-                                )
-                            )
-                        # 如果是生成的过去时间，则停止 plan 其他
-                        if _time < datetime.now():
-                            break
-                continue
-            if op.group != "":
-                if op.group in self.op_data.exhaust_group:
-                    # 忽略掉用尽心情的分组
-                    continue
-
-                self.rearrange_resting_priority(op.group)
-                # 如果在group里则同时上下班
-                group_resting = self.op_data.groups[op.group]
-
-                skip_resting = False
-                for operator in group_resting:
-                    if self.op_data.operators[operator].resting_priority == "high" and (
-                        self.op_data.operators[operator].upper_limit
-                        - self.op_data.operators[operator].current_mood()
-                        < 2
-                    ):
-                        skip_resting = True
-                        break
-                if skip_resting:
-                    logger.debug(
-                        f"{op.group}组内干员{operator}的心情{self.op_data.operators[operator].current_mood()}过高，跳过休息"
-                    )
-                    continue
-
-                _replacement, _plan, high_free, low_free = self.get_resting_plan(
-                    group_resting, _replacement, _plan, high_free, low_free
-                )
-            else:
-                _replacement, _plan, high_free, low_free = self.get_resting_plan(
-                    [op.name], _replacement, _plan, high_free, low_free
-                )
-        if len(_plan.keys()) > 0:
-            self.tasks.append(
-                SchedulerTask(task_plan=_plan, task_type=TaskTypes.SHIFT_OFF)
-            )
-            logger.info(f"生成{_plan}的下班任务")
-
-    def resting_new(self):
+    def resting(self):
         self.total_agent.sort(
             key=lambda x: x.current_mood() - x.lower_limit, reverse=False
         )
@@ -1751,18 +1469,16 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     # 忽略掉用尽心情的分组
                     continue
                 group_resting = self.op_data.groups[op.group]
-                self.get_resting_plan_new(
+                self.get_resting_plan(
                     group_resting, _replacement, _plan, current_resting
                 )
             else:
-                self.get_resting_plan_new(
-                    [op.name], _replacement, _plan, current_resting
-                )
+                self.get_resting_plan([op.name], _replacement, _plan, current_resting)
         if len(_plan.keys()) > 0:
             self.tasks.append(
                 SchedulerTask(task_plan=_plan, task_type=TaskTypes.SHIFT_OFF)
             )
-            logger.info(f"生成{_plan}的下班任务 新")
+            logger.info(f"生成{_plan}的下班任务")
 
     def backup_plan_solver(self, timing=None):
         if timing is None:
@@ -1836,7 +1552,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             )
             high_count -= 1
 
-    def get_resting_plan_new(self, agents, exist_replacement, plan, current_resting):
+    def get_resting_plan(self, agents, exist_replacement, plan, current_resting):
         __replacement = []
         __plan = {}
         required = 0
@@ -1918,151 +1634,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     if plan[k][idx] == "Current" and name != "Current":
                         plan[k][idx] = name
             logger.debug(f"当前plan{plan}")
-
-    def get_resting_plan(self, agents, exist_replacement, plan, high_free, low_free):
-        _low, _high = 0, 0
-        __replacement = []
-        __plan = {}
-        for x in agents:
-            if self.op_data.operators[x].workaholic:
-                continue
-            if self.op_data.operators[x].resting_priority == "low":
-                _low += 1
-            else:
-                _high += 1
-        logger.debug(f"需求高效:{_high},低效：{_low}")
-        # 肥鸭充能新模式：https://github.com/ArkMowers/arknights-mower/issues/551
-        fia_plan, fia_room = self.check_fia()
-        # 排序
-        # 1. 肥鸭充能列表中的干员靠前
-        # 2. 不在加工站的干员靠前
-        # 3. 心情低的干员靠前
-        agents.sort(
-            key=lambda y: (
-                y not in fia_plan if fia_plan else True,
-                self.op_data.operators[y].current_room in ["factory", "train"],
-                self.op_data.operators[y].current_mood()
-                - self.op_data.operators[y].lower_limit,
-            )
-        )
-        # 进行位置数量的初步判定
-        # 对于252可能需要进行额外判定，由于 low_free 性质等同于 high_free
-        success = True
-        if high_free - _high >= 0 and low_free - _low >= 0:
-            logger.debug(f"计算排班:{agents}")
-            for agent in agents:
-                if not success:
-                    break
-                x = self.op_data.operators[agent]
-                if x.room not in base_room_list:
-                    logger.debug(f"干员房间出错:{agent}")
-                    success = False
-                    break
-                if self.op_data.get_dorm_by_name(x.name)[0] is not None:
-                    # 如果干员已经被安排了
-                    success = False
-                    break
-                _rep = next(
-                    (
-                        obj
-                        for obj in x.replacement
-                        if (
-                            not (
-                                self.op_data.operators[obj].current_room != ""
-                                and not self.op_data.operators[obj].is_resting()
-                            )
-                        )
-                        and obj not in ["但书", "龙舌兰", "佩佩"]
-                        and obj not in exist_replacement
-                        and obj not in __replacement
-                        and self.op_data.operators[obj].current_room != x.room
-                    ),
-                    None,
-                )
-                if _rep is not None:
-                    __replacement.append(_rep)
-                    if x.room not in __plan.keys():
-                        __plan[x.room] = ["Current"] * len(self.op_data.plan[x.room])
-                    __plan[x.room][x.index] = _rep
-                else:
-                    success = False
-            if success:
-                # 记录替换组
-                exist_replacement.extend(__replacement)
-                new_plan = False
-                if any(
-                    self.op_data.operators[a_name].resting_priority == "low"
-                    for a_name in agents
-                ):
-                    first_low = last_high = None
-                    for a in agents:
-                        ag = self.op_data.operators[a]
-                        if ag.workaholic:
-                            continue
-                        if ag.resting_priority == "low" and first_low is None:
-                            first_low = ag
-                        if ag.resting_priority == "high":
-                            last_high = ag
-                    # 如果低优先的心情低于高优先
-                    if first_low is None or last_high is None:
-                        pass
-                    elif (
-                        first_low.current_mood() - last_high.current_mood()
-                        < (last_high.lower_limit - last_high.upper_limit) / 8
-                    ):
-                        logger.info("低优先级干员心情过低，自动按心情切换优先级")
-                        new_plan = True
-                workaholic_count = 0
-                for idx, x in enumerate(agents):
-                    if self.op_data.operators[x].workaholic:
-                        workaholic_count += 1
-                        continue
-                    if new_plan:
-                        self.op_data.operators[x].resting_priority = (
-                            "high" if idx + 1 - workaholic_count <= _high else "low"
-                        )
-                        logger.info(
-                            f"自动更新{x} 优先级为 {self.op_data.operators[x].resting_priority}"
-                        )
-                    _dorm = self.op_data.assign_dorm(x)
-                    if _dorm.position[0] not in plan.keys():
-                        plan[_dorm.position[0]] = ["Current"] * 5
-                    plan[_dorm.position[0]][_dorm.position[1]] = _dorm.name
-                for k, v in __plan.items():
-                    if k not in plan.keys():
-                        plan[k] = __plan[k]
-                    for idx, name in enumerate(__plan[k]):
-                        if plan[k][idx] == "Current" and name != "Current":
-                            plan[k][idx] = name
-        else:
-            success = False
-        if not success:
-            _high, _low = 0, 0
-        else:
-            # 如果组内心情人差距过大，则报错
-            low_mood = 24
-            high_mood = 0
-            low_name = ""
-            high_name = ""
-            for agent in agents:
-                x = self.op_data.operators[agent]
-                if x.resting_priority == "high" and not x.workaholic:
-                    mood = 24 - x.upper_limit + x.current_mood()
-                    if mood < low_mood:
-                        low_mood = mood + 0
-                        low_name = agent
-                    if mood > high_mood:
-                        high_mood = mood + 0
-                        high_name = agent
-            logger.debug(f"低心情：{low_mood}")
-            logger.debug(f"高心情：{high_mood}")
-            if low_mood + 4 <= high_mood:
-                low_agent = self.op_data.operators[low_name]
-                if not low_agent.rest_in_full:
-                    msg = f"同组干员{low_name}与{high_name}心情差值大于4，请注意！"
-                    logger.warning(msg)
-                    send_message(msg, level="WARNING")
-        return exist_replacement, plan, high_free - _high, low_free - _low
 
     def initialize_operators(self):
         self.op_data = Operators(self.global_plan)
