@@ -9,7 +9,7 @@ const { free_blacklist, theme } = storeToRefs(config_store)
 
 const plan_store = usePlanStore()
 const {
-  ling_xi,  
+  ling_xi,
   resting_priority,
   exhaust_require,
   rest_in_full,
@@ -100,7 +100,7 @@ function create_sub_plan() {
     conf: {
       exhaust_require: [],
       free_blacklist: [],
-      ling_xi: ling_xi.value,      
+      ling_xi: ling_xi.value,
       rest_in_full: [],
       resting_priority: [],
       workaholic: [],
@@ -137,7 +137,7 @@ const current_conf = ref({
 watchEffect(() => {
   if (sub_plan.value == 'main') {
     current_conf.value = {
-      ling_xi: ling_xi.value,     
+      ling_xi: ling_xi.value,
       rest_in_full: rest_in_full.value,
       resting_priority: resting_priority.value,
       workaholic: workaholic.value,
@@ -153,7 +153,7 @@ watchEffect(() => {
 
 watchEffect(() => {
   if (sub_plan.value == 'main') {
-    ling_xi.value = current_conf.value.ling_xi    
+    ling_xi.value = current_conf.value.ling_xi
     rest_in_full.value = current_conf.value.rest_in_full
     exhaust_require.value = current_conf.value.exhaust_require
     resting_priority.value = current_conf.value.resting_priority

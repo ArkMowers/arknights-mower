@@ -18,7 +18,7 @@ from tzlocal import get_localzone
 from werkzeug.exceptions import NotFound
 
 from arknights_mower import __system__, __version__
-from arknights_mower.solvers.record import load_state, save_state
+from arknights_mower.solvers.record import clear_data, load_state, save_state
 from arknights_mower.utils import config
 from arknights_mower.utils.datetime import get_server_time
 from arknights_mower.utils.log import get_log_by_time, logger
@@ -384,6 +384,21 @@ def getTradingHistory():
     return record.get_trading_history(start_date, end_date)
 
 
+@app.route("/record/clear-data", methods=["DELETE"])
+def clear_data_route():
+    date_time_str = request.json.get("date_time")
+    logger.info(date_time_str)
+    if not date_time_str:
+        return "日期时间参数缺失", 400
+    try:
+        date_time = datetime.datetime.fromtimestamp(date_time_str / 1000.0)
+    except ValueError:
+        return "日期时间格式不正确", 400
+
+    clear_data(date_time)
+    return "数据已清除", 200
+
+
 @app.route("/getwatermark")
 def getwatermark():
     from arknights_mower.__init__ import __version__
@@ -675,7 +690,7 @@ def submit_feedback():
             logger.info("log 文件发送中，请等待")
             if not log_files:
                 raise ValueError("对应时间log 文件无法找到")
-            body = f"<p>Bug 发生时间区间:{datetime.datetime.fromtimestamp(req['startTime']/ 1000.0)}--{dt}</p><br><p>{req['description']}</p>"
+            body = f"<p>Bug 发生时间区间:{datetime.datetime.fromtimestamp(req['startTime'] / 1000.0)}--{dt}</p><br><p>{req['description']}</p>"
         else:
             body = req["description"]
         email = Email(
