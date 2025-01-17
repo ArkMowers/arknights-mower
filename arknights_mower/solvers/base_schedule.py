@@ -2089,7 +2089,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             ):
                 task.time = task_time
                 logger.info(
-                    f'房间 {room} 无人机加速后接单时间为 {task_time.strftime("%H:%M:%S")}'
+                    f"房间 {room} 无人机加速后接单时间为 {task_time.strftime('%H:%M:%S')}"
                 )
                 action_required_task = scheduling(self.tasks)
             else:
@@ -2997,7 +2997,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         if current[idx]["agent"] != name and name != "Free":
                             if not (room == "train" and idx == 1):
                                 logger.error(
-                                    f'检测到的干员{current[idx]["agent"]},需要安排的干员{name}'
+                                    f"检测到的干员{current[idx]['agent']},需要安排的干员{name}"
                                 )
                                 raise Exception("检测到安排干员未成功")
                 else:

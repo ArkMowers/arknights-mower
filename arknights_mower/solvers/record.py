@@ -111,7 +111,7 @@ def save_state(func):
 
             # Create a table if it doesn't exist
             cursor.execute(
-                "CREATE TABLE IF NOT EXISTS saved_state (" "time TEXT," "state BLOB" ")"
+                "CREATE TABLE IF NOT EXISTS saved_state (time TEXT,state BLOB)"
             )
 
             # Delete the previous saved state
@@ -163,6 +163,31 @@ def load_state():
         logger.error(f"SQLite error: {e}")
 
     return loaded_state
+
+
+def clear_data(date_time):
+    database_path = get_path("@app/tmp/data.db")
+    try:
+        connection = sqlite3.connect(database_path)
+        cursor = connection.cursor()
+
+        # Ensure date_time is in the correct format
+        if isinstance(date_time, datetime):
+            date_time_str = date_time.strftime("%Y-%m-%d %H:%M:%S")
+        else:
+            date_time_str = date_time
+
+        # Execute the DELETE statement with parameterized query
+        cursor.execute(
+            "DELETE FROM agent_action WHERE `current_time` < ?", (date_time_str,)
+        )
+
+        connection.commit()
+        connection.close()
+        logger.info(f"已删除 早于 {date_time_str} 的干员心情记录")
+
+    except sqlite3.Error as e:
+        logger.error(f"SQLite error: {e}")
 
 
 def get_work_rest_ratios():

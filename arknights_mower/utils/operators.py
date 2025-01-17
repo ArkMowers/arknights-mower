@@ -232,7 +232,7 @@ class Operators:
         if "菲亚梅塔" in missing_replacements:
             return "菲亚梅塔替换缺失"
         if len(missing_replacements):
-            return f'以下干员替换组缺失：{",".join(missing_replacements)}'
+            return f"以下干员替换组缺失：{','.join(missing_replacements)}"
         dorm_names = [k for k in self.plan.keys() if k.startswith("dorm")]
         dorm_names.sort(key=lambda d: d, reverse=False)
         added = []
