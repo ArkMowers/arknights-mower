@@ -156,6 +156,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.op_data.correct_dorm()
         self.backup_plan_solver(PlanTriggerTiming.BEGINNING)
         logger.debug("当前任务: " + ("||".join([str(t) for t in self.tasks])))
+        # while True:
+        #     try:
+        #         self.recog.update()
+        #         logger.info(self.detect_arrange_order())
+        #     except Exception as e :
+        #         self.sleep()
+        #         continue
+
         return super().run()
 
     def transition(self) -> None:
@@ -170,7 +178,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         else:
             self.scene_graph_navigation(Scene.INFRA_MAIN)
             self.last_room = ""
-            logger.info("重设上次房间为空")
+            logger.debug("重设上次房间为空")
 
     def overtake_room(self):
         candidates = self.task.meta_data.split(",")
@@ -697,12 +705,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     and self.task.type == TaskTypes.EXHAUST_OFF
                 ):
                     self.overtake_room()
-                elif self.task.type == TaskTypes.CLUE_PARTY:
-                    self.party_time = None
-                    self.last_clue = None
-                    self.clue_new()
-                    self.last_clue = datetime.now()
-                    self.skip(["collect_notification"])
+                # elif self.task.type == TaskTypes.CLUE_PARTY:
+                #     self.party_time = None
+                #     self.last_clue = None
+                #     self.clue_new()
+                #     self.last_clue = datetime.now()
+                #     self.skip(["collect_notification"])
                 elif self.task.type == TaskTypes.REFRESH_TIME:
                     if self.task.meta_data == "train":
                         if upgrade := self.find_next_task(
@@ -1698,6 +1706,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.todo_task = True
 
     def clue_new(self):
+        # 暂时禁用
+        return
         logger.info("基建：线索")
         self.scene_graph_navigation(Scene.INFRA_MAIN)
         self.enter_room("meeting")
@@ -2647,7 +2657,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.sleep(interval=0.5)
                 elif pos := self.find("arrange_check_in"):
                     self.tap(pos, interval=0.7)
+                elif pos := self.find("arrange_check_in_small"):
+                    self.tap(pos, interval=0.7)
                 else:
+                    logger.info("sleep")
                     self.sleep()
             for back_time in range(3):
                 if pos := self.find("control_central"):
@@ -2662,15 +2675,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     def get_agent_from_room(self, room, read_time_index=None):
         if read_time_index is None:
             read_time_index = []
-        if room == "meeting" and not self.leifeng_mode:
-            self.sleep(0.5)
-            self.recog.update()
-            clue_res = self.read_screen(
-                self.recog.img, limit=10, cord=((645, 977), (755, 1018))
-            )
-            if clue_res != 11:
-                self.clue_count = clue_res
-                logger.info(f"当前拥有线索数量为{self.clue_count}")
+        # if room == "meeting" and not self.leifeng_mode:
+        #     self.sleep(0.5)
+        #     self.recog.update()
+        #     clue_res = self.read_screen(
+        #         self.recog.img, limit=10, cord=((645, 977), (755, 1018))
+        #     )
+        #     if clue_res != 11:
+        #         self.clue_count = clue_res
+        #         logger.info(f"当前拥有线索数量为{self.clue_count}")
         self.turn_on_room_detail(room)
         # 如果是宿舍则全读取
         if room.startswith("dorm"):

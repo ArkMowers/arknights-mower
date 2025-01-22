@@ -310,7 +310,11 @@ class Recognizer:
             self.scene = Scene.FRIEND_LIST
         elif self.find("credit_visiting"):
             self.scene = Scene.FRIEND_VISITING
-        elif self.find("arrange_check_in") or self.find("arrange_check_in_on"):
+        elif (
+            self.find("arrange_check_in")
+            or self.find("arrange_check_in_on")
+            or self.find("room_detail")
+        ):
             self.scene = Scene.INFRA_DETAILS
         elif self.find("ope_failed"):
             self.scene = Scene.OPERATOR_FAILED
@@ -767,7 +771,7 @@ class Recognizer:
             return None
 
         template_matching = {
-            "arrange_check_in": ((30, 300), (175, 700)),
+            # "arrange_check_in": ((30, 300), (175, 700)),
             "arrange_check_in_on": ((30, 300), (175, 700)),
             "biography": (768, 934),
             "business_card": (55, 165),
@@ -871,10 +875,10 @@ class Recognizer:
         ]
 
         if scope is None and threshold == 0.0:
-            if res == "arrange_check_in":
-                scope = ((0, 350), (200, 530))
-                threshold = 0.55
-            elif res == "arrange_check_in_on":
+            # if res == "arrange_check_in":
+            #     scope = ((0, 350), (200, 530))
+            #     threshold = 0.55
+            if res == "arrange_check_in_on":
                 scope = ((0, 350), (200, 530))
             elif res == "connecting":
                 scope = ((1087, 978), (1430, 1017))
