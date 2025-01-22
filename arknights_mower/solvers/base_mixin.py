@@ -234,18 +234,60 @@ class BaseMixin:
             logger.debug("办公室B205")
         return room
 
+    def adjust_room(self, _room):
+        # 定义屏幕范围
+        screen_min_x = 0
+        screen_max_x = 1920
+
+        # 检查是否有点在屏幕范围内
+        any_point_in_view = any(screen_min_x <= p[0] <= screen_max_x for p in _room)
+
+        if any_point_in_view:
+            logger.debug(
+                f"At least one point of {_room} is within screen range [0, 1920]. No movement needed."
+            )
+            for i in range(4):
+                _room[i, 0] = max(_room[i, 0], 0)
+                _room[i, 0] = min(_room[i, 0], self.recog.w)
+                _room[i, 1] = max(_room[i, 1], 0)
+                _room[i, 1] = min(_room[i, 1], self.recog.h)
+            return _room
+
+        # 如果所有点都超出屏幕范围，则计算需要的移动距离
+        min_x = min(p[0] for p in _room)
+        max_x = max(p[0] for p in _room)
+
+        dx = 0
+        if min_x < screen_min_x:
+            # 左边超出，向右移动
+            dx = screen_min_x - min_x
+            start = (int(self.recog.w * 4 / 5), 540)  # 屏幕 4/5 宽度开始，垂直中心
+            logger.debug(f"Moving right by {dx} to bring room into view.")
+        elif max_x > screen_max_x:
+            # 右边超出，向左移动
+            dx = screen_max_x - max_x
+            start = (int(self.recog.w * 1 / 5), 540)  # 屏幕 1/5 宽度开始，垂直中心
+            logger.debug(f"Moving left by {-dx} to bring room into view.")
+
+        # 如果需要移动，则移动视图
+        if dx != 0:
+            movement = (dx, 0)  # 仅水平移动
+            self.swipe_noinertia(start, movement)
+            # 更新 _room 的所有点位置
+            for i in range(len(_room)):
+                _room[i][0] += dx
+
+        # 返回修正后的 _room
+        return _room
+
     def enter_room(self, room):
         """从基建首页进入房间"""
+
         for enter_times in range(3):
             for retry_times in range(10):
                 if pos := self.find("control_central"):
-                    _room = segment.base(self.recog.img, pos)[room]
-                    for i in range(4):
-                        _room[i, 0] = max(_room[i, 0], 0)
-                        _room[i, 0] = min(_room[i, 0], self.recog.w)
-                        _room[i, 1] = max(_room[i, 1], 0)
-                        _room[i, 1] = min(_room[i, 1], self.recog.h)
-                    self.tap(_room)
+                    _room = segment.base(self.recog.img, pos, True)[room]
+                    self.tap(self.adjust_room(_room))
                 elif self.detect_room() == room:
                     return
                 else:

@@ -111,6 +111,20 @@
         "NORMAL",
         10008
     ],
+    "LMTGS_COIN_5801": [
+        "LMTGS_COIN_5801",
+        "LMTGS_COIN_5801",
+        "寻访数据契约",
+        "NORMAL",
+        10026
+    ],
+    "寻访数据契约": [
+        "LMTGS_COIN_5801",
+        "LMTGS_COIN_5801",
+        "寻访数据契约",
+        "NORMAL",
+        10026
+    ],
     "EPGS_COIN": [
         "EPGS_COIN",
         "EPGS_COIN",
@@ -390,6 +404,20 @@
         "十连寻访凭证",
         "NORMAL",
         40001
+    ],
+    "LIMITED_TKT_GACHA_10_5801": [
+        "LIMITED_TKT_GACHA_10_5801",
+        "LIMITED_TKT_GACHA_10_5801",
+        "欢宴良宵寻访凭证",
+        "NORMAL",
+        40003
+    ],
+    "欢宴良宵寻访凭证": [
+        "LIMITED_TKT_GACHA_10_5801",
+        "LIMITED_TKT_GACHA_10_5801",
+        "欢宴良宵寻访凭证",
+        "NORMAL",
+        40003
     ],
     "7003": [
         "7003",
@@ -6754,6 +6782,34 @@
         "MATERIAL",
         700160
     ],
+    "p_char_4052_surfer": [
+        "p_char_4052_surfer",
+        "p_char_4052_surfer",
+        "寻澜的信物",
+        "MATERIAL",
+        700161
+    ],
+    "寻澜的信物": [
+        "p_char_4052_surfer",
+        "p_char_4052_surfer",
+        "寻澜的信物",
+        "MATERIAL",
+        700161
+    ],
+    "p_char_4172_xingzh": [
+        "p_char_4172_xingzh",
+        "p_char_4172_xingzh",
+        "行箸的信物",
+        "MATERIAL",
+        700162
+    ],
+    "行箸的信物": [
+        "p_char_4172_xingzh",
+        "p_char_4172_xingzh",
+        "行箸的信物",
+        "MATERIAL",
+        700162
+    ],
     "p_char_103_angel": [
         "p_char_103_angel",
         "p_char_103_angel",
@@ -8195,6 +8251,34 @@
         "引星棘刺的信物",
         "MATERIAL",
         600103
+    ],
+    "p_char_2026_yu": [
+        "p_char_2026_yu",
+        "p_char_2026_yu",
+        "余的信物",
+        "MATERIAL",
+        600104
+    ],
+    "余的信物": [
+        "p_char_2026_yu",
+        "p_char_2026_yu",
+        "余的信物",
+        "MATERIAL",
+        600104
+    ],
+    "p_char_1040_blaze2": [
+        "p_char_1040_blaze2",
+        "p_char_1040_blaze2",
+        "烛煌的信物",
+        "MATERIAL",
+        600105
+    ],
+    "烛煌的信物": [
+        "p_char_1040_blaze2",
+        "p_char_1040_blaze2",
+        "烛煌的信物",
+        "MATERIAL",
+        600105
     ],
     "class_p_char_123_fang": [
         "class_p_char_123_fang",

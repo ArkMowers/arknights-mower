@@ -114,6 +114,8 @@ const right_side_facility_name = computed(() => {
     return '加工站'
   } else if (facility.value == 'train') {
     return '训练室（仅可安排协助位）'
+  } else if (facility.value.startsWith('gaming')) {
+    return '活动室'
   } else {
     return '未知'
   }
@@ -508,7 +510,6 @@ function set_facility(e) {
             </div>
           </n-button>
         </div>
-        <!-- <div class="right_contain"><n-button disabled class="facility-2">训练室</n-button></div> -->
         <div class="right_contain">
           <n-button
             :secondary="facility != 'train'"
@@ -523,6 +524,68 @@ function set_facility(e) {
               <div class="avatars">
                 <img
                   v-for="i in current_plan.train.plans"
+                  :src="`avatar/${i.agent}.webp`"
+                  width="45"
+                  height="45"
+                  :style="{ 'border-bottom': color_map[i.group] }"
+                />
+              </div>
+            </div>
+          </n-button>
+        </div>
+      </div>
+      <div class="extra_box">
+        <div class="right_extra_contain">
+          <n-button
+            :secondary="facility != 'gaming_1'"
+            class="facility-1"
+            @click="set_facility('gaming_1')"
+          >
+            <div>
+              <div class="facility-name">活动室1</div>
+              <div class="avatars">
+                <img
+                  v-for="i in current_plan.gaming_1.plans"
+                  :src="`avatar/${i.agent}.webp`"
+                  width="45"
+                  height="45"
+                  :style="{ 'border-bottom': color_map[i.group] }"
+                />
+              </div>
+            </div>
+          </n-button>
+        </div>
+        <div>
+          <n-button
+            :secondary="facility != 'gaming_2'"
+            class="facility-1"
+            @click="set_facility('gaming_2')"
+          >
+            <div>
+              <div class="facility-name">活动室2</div>
+              <div class="avatars">
+                <img
+                  v-for="i in current_plan.gaming_2.plans"
+                  :src="`avatar/${i.agent}.webp`"
+                  width="45"
+                  height="45"
+                  :style="{ 'border-bottom': color_map[i.group] }"
+                />
+              </div>
+            </div>
+          </n-button>
+        </div>
+        <div>
+          <n-button
+            :secondary="facility != 'gaming_3'"
+            class="facility-1"
+            @click="set_facility('gaming_3')"
+          >
+            <div>
+              <div class="facility-name">活动室3</div>
+              <div class="avatars">
+                <img
+                  v-for="i in current_plan.gaming_3.plans"
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
@@ -657,6 +720,12 @@ function set_facility(e) {
   width: 160px;
 }
 
+.facility-1 {
+  width: 71px;
+  height: 76px;
+  margin: 2px 3px;
+}
+
 .facility-2 {
   width: 124px;
   height: 76px;
@@ -699,6 +768,13 @@ function set_facility(e) {
 .outer {
   display: flex;
   margin: 0 auto;
+}
+
+.right_extra_contain {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 80px;
 }
 
 .left_box {
