@@ -38,6 +38,9 @@ export const usePlanStore = defineStore('plan', () => {
   for (let i = 1; i <= 4; ++i) {
     facility_operator_limit[`dormitory_${i}`] = 5
   }
+  for (let i = 1; i <= 3; ++i) {
+    facility_operator_limit[`gaming_${i}`] = 1
+  }
 
   function list2str(data) {
     return data.join(',')
@@ -135,7 +138,19 @@ export const usePlanStore = defineStore('plan', () => {
     workaholic.value = str2list(response.data.conf.workaholic)
     refresh_trading.value = str2list(response.data.conf.refresh_trading)
     refresh_drained.value = str2list(response.data.conf.refresh_drained)
-
+    const gamings = ['gaming_1', 'gaming_2', 'gaming_3']
+    for (const key of gamings) {
+      if (!response.data.plan1[key]) {
+        response.data.plan1[key] = { plans: [] }
+      }
+    }
+    for (const key of gamings) {
+      for (const b of response.data.backup_plans) {
+        if (!b.conf[key]) {
+          b.conf[key] = { plans: [] }
+        }
+      }
+    }
     plan.value = fill_empty(response.data.plan1)
 
     backup_plans.value = response.data.backup_plans ?? []

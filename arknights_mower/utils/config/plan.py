@@ -50,6 +50,12 @@ class Plan1(BaseModel):
     "办公室"
     train: Optional[Facility] = None
     "训练室"
+    gaming_1: Optional[Facility] = None
+    "活动室1"
+    gaming_2: Optional[Facility] = None
+    "活动室2"
+    gaming_3: Optional[Facility] = None
+    "活动室3"
     dormitory_1: Optional[Facility] = None
     dormitory_2: Optional[Facility] = None
     dormitory_3: Optional[Facility] = None
@@ -76,6 +82,12 @@ class Task(BaseModel):
     "办公室"
     train: Optional[list[str]] = None
     "训练室"
+    gaming_1: Optional[list[str]] = None
+    "活动室1"
+    gaming_2: Optional[list[str]] = None
+    "活动室2"
+    gaming_3: Optional[list[str]] = None
+    "训练室3"
     dormitory_1: Optional[list[str]] = None
     dormitory_2: Optional[list[str]] = None
     dormitory_3: Optional[list[str]] = None
