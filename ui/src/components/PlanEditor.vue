@@ -534,7 +534,7 @@ function set_facility(e) {
           </n-button>
         </div>
       </div>
-      <div class="extra_box">
+      <!-- <div class="extra_box">
         <div class="right_extra_contain">
           <n-button
             :secondary="facility != 'gaming_1'"
@@ -595,7 +595,7 @@ function set_facility(e) {
             </div>
           </n-button>
         </div>
-      </div>
+      </div> -->
     </div>
     <n-space justify="center" v-if="facility">
       <table>
