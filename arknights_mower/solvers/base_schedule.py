@@ -156,14 +156,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.op_data.correct_dorm()
         self.backup_plan_solver(PlanTriggerTiming.BEGINNING)
         logger.debug("当前任务: " + ("||".join([str(t) for t in self.tasks])))
-        # while True:
-        #     try:
-        #         self.recog.update()
-        #         logger.info(self.detect_arrange_order())
-        #     except Exception as e :
-        #         self.sleep()
-        #         continue
-
         return super().run()
 
     def transition(self) -> None:
@@ -705,12 +697,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     and self.task.type == TaskTypes.EXHAUST_OFF
                 ):
                     self.overtake_room()
-                # elif self.task.type == TaskTypes.CLUE_PARTY:
-                #     self.party_time = None
-                #     self.last_clue = None
-                #     self.clue_new()
-                #     self.last_clue = datetime.now()
-                #     self.skip(["collect_notification"])
+                elif self.task.type == TaskTypes.CLUE_PARTY:
+                    self.party_time = None
+                    self.last_clue = None
+                    self.clue_new()
+                    self.last_clue = datetime.now()
+                    self.skip(["collect_notification"])
                 elif self.task.type == TaskTypes.REFRESH_TIME:
                     if self.task.meta_data == "train":
                         if upgrade := self.find_next_task(
@@ -1706,240 +1698,203 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.todo_task = True
 
     def clue_new(self):
-        # 暂时禁用
-        return
-        logger.info("基建：线索")
-        self.scene_graph_navigation(Scene.INFRA_MAIN)
-        self.enter_room("meeting")
+        try:
+            logger.info("基建：线索")
+            self.scene_graph_navigation(Scene.INFRA_MAIN)
+            self.enter_room("meeting")
 
-        clue_size = (162, 216)
-        clue_top_left = {
-            "daily": (1118, 334),
-            "receive": (1305, 122),
-            "give_away": (30, 208),
-            # 摆放线索界面，线索框的左上角
-            1: (72, 228),
-            2: (374, 334),
-            3: (679, 198),
-            4: (1003, 265),
-            5: (495, 660),
-            6: (805, 573),
-            7: (154, 608),
-        }
-        dot_offset = (168, -8)
-        main_offset = (425, 0)
-        main_time_offset = (443, 257)
+            clue_size = (162, 216)
+            clue_top_left = {
+                "daily": (1118, 334),
+                "receive": (1305, 122),
+                "give_away": (30, 208),
+                # 摆放线索界面，线索框的左上角
+                1: (72, 228),
+                2: (374, 334),
+                3: (679, 198),
+                4: (1003, 265),
+                5: (495, 660),
+                6: (805, 573),
+                7: (154, 608),
+            }
+            dot_offset = (168, -8)
+            main_offset = (425, 0)
+            main_time_offset = (443, 257)
 
-        def va(a, b):
-            return a[0] + b[0], a[1] + b[1]
+            def va(a, b):
+                return a[0] + b[0], a[1] + b[1]
 
-        def tl2p(top_left):
-            return top_left, va(top_left, clue_size)
+            def tl2p(top_left):
+                return top_left, va(top_left, clue_size)
 
-        def is_orange(dot):
-            orange_dot = (255, 104, 1)
-            return all([abs(dot[i] - orange_dot[i]) < 3 for i in range(3)])
+            def is_orange(dot):
+                orange_dot = (255, 104, 1)
+                return all([abs(dot[i] - orange_dot[i]) < 3 for i in range(3)])
 
-        clue_scope = {}
-        for index, top_left in clue_top_left.items():
-            clue_scope[index] = tl2p(top_left)
-        clue_dots = {}
-        main_dots = {}
-        main_time = {}
-        main_scope = {}
-        for i in range(1, 8):
-            clue_dots[i] = va(clue_top_left[i], dot_offset)
-            main_dots[i] = va(clue_dots[i], main_offset)
-            main_time[i] = va(clue_top_left[i], main_time_offset)
-            main_scope[i] = tl2p(va(clue_top_left[i], main_offset))
-
-        class ClueTaskManager:
-            def __init__(self):
-                # 操作顺序：领取每日线索、接收好友线索、摆线索、送线索、更新线索交流结束时间
-                self.task_list = [
-                    "daily",
-                    "receive",
-                    "place",
-                    "give_away",
-                    "party_time",
-                ]
-                self.task = self.task_list[0]
-
-            def complete(self, task):
-                task = task or self.task
-                if task in self.task_list:
-                    self.task_list.remove(task)
-                self.task = self.task_list[0] if self.task_list else None
-
-        tm_thres = 0.6
-
-        def clue_cls(scope):
-            scope_dict = clue_scope if isinstance(scope, str) else main_scope
-            img = cropimg(self.recog.img, scope_dict[scope])
+            clue_scope = {}
+            for index, top_left in clue_top_left.items():
+                clue_scope[index] = tl2p(top_left)
+            clue_dots = {}
+            main_dots = {}
+            main_time = {}
+            main_scope = {}
             for i in range(1, 8):
-                res = loadres(f"clue/{i}")
-                result = cv2.matchTemplate(img, res, cv2.TM_CCOEFF_NORMED)
-                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-                if max_val > tm_thres:
-                    return i
-            return None
+                clue_dots[i] = va(clue_top_left[i], dot_offset)
+                main_dots[i] = va(clue_dots[i], main_offset)
+                main_time[i] = va(clue_top_left[i], main_time_offset)
+                main_scope[i] = tl2p(va(clue_top_left[i], main_offset))
 
-        exit_pos = (1239, 144)
+            class ClueTaskManager:
+                def __init__(self):
+                    # 操作顺序：领取每日线索、接收好友线索、摆线索、送线索、更新线索交流结束时间
+                    self.task_list = [
+                        "daily",
+                        "receive",
+                        "place",
+                        "give_away",
+                        "party_time",
+                    ]
+                    self.task = self.task_list[0]
 
-        ctm = ClueTaskManager()
+                def complete(self, task):
+                    task = task or self.task
+                    if task in self.task_list:
+                        self.task_list.remove(task)
+                    self.task = self.task_list[0] if self.task_list else None
 
-        friend_clue = []
+            tm_thres = 0.6
 
-        clue_status = {}
-
-        def place_index():
-            for cl, st in clue_status.items():
-                if st in ["available", "self", "available_self_only"]:
-                    return cl, st
-            return None, None
-
-        def detect_unlock():
-            unlock_pos = self.find("clue/button_unlock")
-            if unlock_pos is None:
-                return None
-            color = self.get_color(self.get_pos(unlock_pos))
-            if all(color > [252] * 3):
-                return unlock_pos
-            return None
-
-        while ctm.task:
-            scene = self.scene()
-
-            if scene == Scene.INFRA_DETAILS:
-                if ctm.task == "party_time":
-                    if self.find("clue/title_party", scope=((1600, 190), (1880, 260))):
-                        self.party_time = self.double_read_time(
-                            ((1768, 438), (1902, 480))
-                        )
-                        logger.info(f"线索交流结束时间：{self.party_time}")
-                        if not find_next_task(
-                            self.tasks,
-                            task_type=TaskTypes.CLUE_PARTY,
-                        ):
-                            self.tasks.append(
-                                SchedulerTask(
-                                    time=self.party_time - timedelta(milliseconds=1),
-                                    task_type=TaskTypes.CLUE_PARTY,
-                                )
-                            )
-                    else:
-                        self.party_time = None
-                        logger.info("线索交流未开启")
-                    ctm.complete("party_time")
-                else:
-                    # 点击左下角，关闭进驻信息，进入线索界面
-                    self.tap((725, 850))
-
-            elif scene == Scene.INFRA_CONFIDENTIAL:
-                if ctm.task == "daily":
-                    # 检查是否领过线索
-                    daily_scope = ((1815, 200), (1895, 250))
-                    if self.find("clue/badge_new", scope=daily_scope):
-                        self.tap((1800, 270))
-                    else:
-                        ctm.complete("daily")
-                elif ctm.task == "receive":
-                    receive_scope = ((1815, 360), (1895, 410))
-                    if self.find("clue/badge_new", scope=receive_scope):
-                        self.ctap((1800, 430))
-                    else:
-                        ctm.complete("receive")
-                elif ctm.task == "place":
-                    if unlock_pos := detect_unlock():
-                        self.tap(unlock_pos)
-                        continue
-                    for i in range(1, 8):
-                        if is_orange(self.get_color(main_dots[i])):
-                            clue_status[i] = "available"
-                        elif clue_cls(i):
-                            hsv = cv2.cvtColor(self.recog.img, cv2.COLOR_RGB2HSV)
-                            if 160 < hsv[main_time[i][1]][main_time[i][0]][0] < 180:
-                                clue_status[i] = "friend"
-                            else:
-                                clue_status[i] = "self"
-                        else:
-                            clue_status[i] = None
-                    cl, st = place_index()
-                    if st in ["available", "self", "available_self_only"]:
-                        self.tap(main_scope[cl])
-                        continue
-                    else:
-                        ctm.complete("place")
-                elif ctm.task == "give_away":
-                    self.ctap((1799, 578))
-                elif ctm.task == "party_time":
-                    self.back()
-
-            elif scene == Scene.CLUE_DAILY:
-                if not self.find(
-                    "clue/icon_notification", scope=((1400, 0), (1920, 400))
-                ) and (clue := clue_cls("daily")):
-                    logger.info(f"领取今日线索（{clue}号）")
-                    self.tap_element("clue/button_get")
-                    ctm.complete("daily")
-                else:
-                    # 今日线索已领取，点X退出
-                    self.tap((1484, 152))
-
-            elif scene == Scene.CLUE_RECEIVE:
-                if self.find(
-                    "infra_trust_complete", scope=((1230, 0), (1920, 1080)), score=0.1
-                ):
-                    self.sleep()
-                    continue
-                if clue := clue_cls("receive"):
-                    name_scope = ((1580, 220), (1880, 255))
-                    name_img = cropimg(self.recog.gray, name_scope)
-                    name_img = cv2.copyMakeBorder(
-                        name_img, 48, 48, 48, 48, cv2.BORDER_REPLICATE
-                    )
-                    name = rapidocr.engine(
-                        name_img,
-                        use_det=True,
-                        use_cls=False,
-                        use_rec=True,
-                    )[0][0][1]
-                    name = name.strip() if name else "好友"
-                    logger.info(f"接收{name}的{clue}号线索")
-                    self.tap(name_scope)
-                else:
-                    ctm.complete("receive")
-                    self.tap(exit_pos)
-
-            elif scene == Scene.CLUE_PLACE:
-                cl, st = place_index()
-                if cl is None:
-                    if unlock_pos := detect_unlock():
-                        self.tap(unlock_pos)
-                    else:
-                        ctm.complete("place")
-                        self.tap(exit_pos)
-                    continue
-                if self.get_color((1328 + 77 * cl, 114))[0] < 150:
-                    # 右上角 1-7
-                    self.tap(clue_scope[cl])
-                    continue
-                receive = st in ["available", "self"]
-                filter_receive = (1900, 45)
-                filter_self = (1610, 70)
-                filter_pos = filter_receive if receive else filter_self
-                if not all(self.get_color(filter_pos) > [252] * 3):
-                    self.tap(filter_pos)
-                    continue
-                clue_pos = ((1305, 208), (1305, 503), (1305, 797))
-                clue_list = []
-                for cp in clue_pos:
-                    clue_img = cropimg(self.recog.img, tl2p(cp))
-                    res = loadres(f"clue/{cl}")
-                    result = cv2.matchTemplate(clue_img, res, cv2.TM_CCOEFF_NORMED)
+            def clue_cls(scope):
+                scope_dict = clue_scope if isinstance(scope, str) else main_scope
+                img = cropimg(self.recog.img, scope_dict[scope])
+                for i in range(1, 8):
+                    res = loadres(f"clue/{i}")
+                    result = cv2.matchTemplate(img, res, cv2.TM_CCOEFF_NORMED)
                     min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
                     if max_val > tm_thres:
-                        name_scope = (va(cp, (274, 99)), va(cp, (580, 134)))
+                        return i
+                return None
+
+            exit_pos = (1239, 144)
+
+            ctm = ClueTaskManager()
+
+            friend_clue = []
+
+            clue_status = {}
+
+            def place_index():
+                for cl, st in clue_status.items():
+                    if st in ["available", "self", "available_self_only"]:
+                        return cl, st
+                return None, None
+
+            def detect_unlock():
+                unlock_pos = self.find("clue/button_unlock")
+                if unlock_pos is None:
+                    return None
+                color = self.get_color(self.get_pos(unlock_pos))
+                if all(color > [252] * 3):
+                    return unlock_pos
+                return None
+
+            while ctm.task:
+                scene = self.scene()
+
+                if scene == Scene.INFRA_DETAILS:
+                    logger.info("INFRA_DETAILS")
+                    if ctm.task == "party_time":
+                        if pos := self.find("clue/check_party"):
+                            logger.info("tap")
+                            self.tap(pos)
+                            self.party_time = self.double_read_time(
+                                ((1768, 438), (1902, 480))
+                            )
+                            logger.info(f"线索交流结束时间：{self.party_time}")
+                            if not find_next_task(
+                                self.tasks,
+                                task_type=TaskTypes.CLUE_PARTY,
+                            ):
+                                self.tasks.append(
+                                    SchedulerTask(
+                                        time=self.party_time
+                                        - timedelta(milliseconds=1),
+                                        task_type=TaskTypes.CLUE_PARTY,
+                                    )
+                                )
+                        else:
+                            self.party_time = None
+                            logger.info("线索交流未开启")
+                        ctm.complete("party_time")
+                        logger.info("party_time")
+                    else:
+                        # 点击左下角，关闭进驻信息，进入线索界面
+                        self.tap((330, 1000))
+
+                elif scene == Scene.INFRA_CONFIDENTIAL:
+                    logger.info("INFRA_CONFIDENTIAL")
+                    if ctm.task == "daily":
+                        # 检查是否领过线索
+                        daily_scope = ((1815, 200), (1895, 250))
+                        if self.find("clue/badge_new", scope=daily_scope):
+                            self.tap((1800, 270))
+                        else:
+                            ctm.complete("daily")
+                    elif ctm.task == "receive":
+                        receive_scope = ((1815, 360), (1895, 410))
+                        if self.find("clue/badge_new", scope=receive_scope):
+                            self.ctap((1800, 430))
+                        else:
+                            ctm.complete("receive")
+                    elif ctm.task == "place":
+                        if unlock_pos := detect_unlock():
+                            self.tap(unlock_pos)
+                            continue
+                        for i in range(1, 8):
+                            if is_orange(self.get_color(main_dots[i])):
+                                clue_status[i] = "available"
+                            elif clue_cls(i):
+                                hsv = cv2.cvtColor(self.recog.img, cv2.COLOR_RGB2HSV)
+                                if 160 < hsv[main_time[i][1]][main_time[i][0]][0] < 180:
+                                    clue_status[i] = "friend"
+                                else:
+                                    clue_status[i] = "self"
+                            else:
+                                clue_status[i] = None
+                        cl, st = place_index()
+                        if st in ["available", "self", "available_self_only"]:
+                            self.tap(main_scope[cl])
+                            continue
+                        else:
+                            ctm.complete("place")
+                    elif ctm.task == "give_away":
+                        self.ctap((1799, 578))
+                    elif ctm.task == "party_time":
+                        self.back()
+
+                elif scene == Scene.CLUE_DAILY:
+                    logger.info("CLUE_DAILY")
+                    if not self.find(
+                        "clue/icon_notification", scope=((1400, 0), (1920, 400))
+                    ) and (clue := clue_cls("daily")):
+                        logger.info(f"领取今日线索（{clue}号）")
+                        self.tap_element("clue/button_get")
+                        ctm.complete("daily")
+                    else:
+                        # 今日线索已领取，点X退出
+                        self.tap((1484, 152))
+
+                elif scene == Scene.CLUE_RECEIVE:
+                    logger.info("CLUE_RECEIVE")
+                    if self.find(
+                        "infra_trust_complete",
+                        scope=((1230, 0), (1920, 1080)),
+                        score=0.1,
+                    ):
+                        self.sleep()
+                        continue
+                    if clue := clue_cls("receive"):
+                        name_scope = ((1580, 220), (1880, 255))
                         name_img = cropimg(self.recog.gray, name_scope)
                         name_img = cv2.copyMakeBorder(
                             name_img, 48, 48, 48, 48, cv2.BORDER_REPLICATE
@@ -1950,118 +1905,181 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             use_cls=False,
                             use_rec=True,
                         )[0][0][1]
-                        if name:
-                            name = name.strip()
-                        time_scope = (va(cp, (45, 222)), va(cp, (168, 255)))
-                        time_hsv = cropimg(self.recog.img, time_scope)
-                        time_hsv = cv2.cvtColor(time_hsv, cv2.COLOR_RGB2HSV)
-                        if 165 < time_hsv[0][0][0] < 175:
-                            time_img = thres2(cropimg(self.recog.gray, time_scope), 180)
-                            time_img = cv2.copyMakeBorder(
-                                time_img, 48, 48, 48, 48, cv2.BORDER_REPLICATE
-                            )
-                            time = rapidocr.engine(
-                                time_img,
-                                use_det=True,
-                                use_cls=False,
-                                use_rec=True,
-                            )[0][0][1]
-                            if time:
-                                time = time.strip()
-                        else:
-                            time = None
-                        clue_list.append(
-                            {"name": name, "time": time, "scope": tl2p(cp)}
-                        )
+                        name = name.strip() if name else "好友"
+                        logger.info(f"接收{name}的{clue}号线索")
+                        self.tap(name_scope)
                     else:
-                        break
-                if clue_list:
-                    list_name = "接收库" if receive else "自有库"
-                    logger.info(f"{cl}号线索{list_name}：{clue_list}")
-                    selected = None
-                    for c in clue_list:
-                        if c["time"]:
-                            selected = c
-                            break
-                    selected = selected or clue_list[0]
-                    self.tap(selected["scope"])
-                    if clue_status[cl] == "available":
-                        clue_status[cl] = "friend"
-                    elif clue_status[cl] == "available_self_only":
-                        clue_status[cl] = "self_only"
-                    elif clue_status[cl] == "self":
-                        clue_status[cl] = "friend"
-                    else:
-                        clue_status[cl] = None
-                else:
-                    if clue_status[cl] == "available":
-                        clue_status[cl] = "available_self_only"
-                    elif clue_status[cl] == "available_self_only":
-                        clue_status[cl] = None
-                    elif clue_status[cl] == "self":
-                        clue_status[cl] = "self_only"
-                    else:
-                        clue_status[cl] = None
+                        ctm.complete("receive")
+                        self.tap(exit_pos)
 
-            elif scene == Scene.CLUE_GIVE_AWAY:
-                give_away_true = self.leifeng_mode or (
-                    not self.leifeng_mode and self.clue_count > self.clue_count_limit
-                )
-                if (c := clue_cls("give_away")) and give_away_true:
-                    if not friend_clue:
-                        if self.find(
-                            "clue/icon_notification", scope=((1400, 0), (1920, 400))
-                        ):
-                            self.sleep()
-                            continue
-                        for i in range(4):
-                            label_scope = ((1450, 228 + i * 222), (1580, 278 + i * 222))
-                            if not self.find("clue/label_give_away", scope=label_scope):
-                                break
-                            name_top_left = (870, 127 + 222 * i)
-                            name_scope = (name_top_left, va(name_top_left, (383, 62)))
+                elif scene == Scene.CLUE_PLACE:
+                    logger.info("CLUE_PLACE")
+                    cl, st = place_index()
+                    if cl is None:
+                        if unlock_pos := detect_unlock():
+                            self.tap(unlock_pos)
+                        else:
+                            ctm.complete("place")
+                            self.tap(exit_pos)
+                        continue
+                    if self.get_color((1328 + 77 * cl, 114))[0] < 150:
+                        # 右上角 1-7
+                        self.tap(clue_scope[cl])
+                        continue
+                    receive = st in ["available", "self"]
+                    filter_receive = (1900, 45)
+                    filter_self = (1610, 70)
+                    filter_pos = filter_receive if receive else filter_self
+                    if not all(self.get_color(filter_pos) > [252] * 3):
+                        self.tap(filter_pos)
+                        continue
+                    clue_pos = ((1305, 208), (1305, 503), (1305, 797))
+                    clue_list = []
+                    for cp in clue_pos:
+                        clue_img = cropimg(self.recog.img, tl2p(cp))
+                        res = loadres(f"clue/{cl}")
+                        result = cv2.matchTemplate(clue_img, res, cv2.TM_CCOEFF_NORMED)
+                        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+                        if max_val > tm_thres:
+                            name_scope = (va(cp, (274, 99)), va(cp, (580, 134)))
+                            name_img = cropimg(self.recog.gray, name_scope)
+                            name_img = cv2.copyMakeBorder(
+                                name_img, 48, 48, 48, 48, cv2.BORDER_REPLICATE
+                            )
                             name = rapidocr.engine(
-                                cropimg(self.recog.gray, name_scope),
+                                name_img,
                                 use_det=True,
                                 use_cls=False,
                                 use_rec=True,
                             )[0][0][1]
                             if name:
                                 name = name.strip()
-                            data = {"name": name}
-                            for j in range(1, 8):
-                                pos = (1230 + j * 64, 142 + i * 222)
-                                data[j] = self.get_color(pos)[0] < 137
-                            friend_clue.append(data)
-                    logger.debug(friend_clue)
-                    friend = None
-                    for idx, fc in enumerate(friend_clue):
-                        if not fc[c]:
-                            friend = idx
-                            fc[c] = True
+                            time_scope = (va(cp, (45, 222)), va(cp, (168, 255)))
+                            time_hsv = cropimg(self.recog.img, time_scope)
+                            time_hsv = cv2.cvtColor(time_hsv, cv2.COLOR_RGB2HSV)
+                            if 165 < time_hsv[0][0][0] < 175:
+                                time_img = thres2(
+                                    cropimg(self.recog.gray, time_scope), 180
+                                )
+                                time_img = cv2.copyMakeBorder(
+                                    time_img, 48, 48, 48, 48, cv2.BORDER_REPLICATE
+                                )
+                                time = rapidocr.engine(
+                                    time_img,
+                                    use_det=True,
+                                    use_cls=False,
+                                    use_rec=True,
+                                )[0][0][1]
+                                if time:
+                                    time = time.strip()
+                            else:
+                                time = None
+                            clue_list.append(
+                                {"name": name, "time": time, "scope": tl2p(cp)}
+                            )
+                        else:
                             break
-                    friend = friend or 0
-                    logger.info(f"给{friend_clue[friend]['name']}送一张线索{c}")
-                    self.tap(clue_scope["give_away"])
-                    self.clue_count -= 1
-                    self.tap((1790, 200 + friend * 222))
+                    if clue_list:
+                        list_name = "接收库" if receive else "自有库"
+                        logger.info(f"{cl}号线索{list_name}：{clue_list}")
+                        selected = None
+                        for c in clue_list:
+                            if c["time"]:
+                                selected = c
+                                break
+                        selected = selected or clue_list[0]
+                        self.tap(selected["scope"])
+                        if clue_status[cl] == "available":
+                            clue_status[cl] = "friend"
+                        elif clue_status[cl] == "available_self_only":
+                            clue_status[cl] = "self_only"
+                        elif clue_status[cl] == "self":
+                            clue_status[cl] = "friend"
+                        else:
+                            clue_status[cl] = None
+                    else:
+                        if clue_status[cl] == "available":
+                            clue_status[cl] = "available_self_only"
+                        elif clue_status[cl] == "available_self_only":
+                            clue_status[cl] = None
+                        elif clue_status[cl] == "self":
+                            clue_status[cl] = "self_only"
+                        else:
+                            clue_status[cl] = None
+
+                elif scene == Scene.CLUE_GIVE_AWAY:
+                    logger.info("CLUE_GIVE_AWAY")
+                    give_away_true = self.leifeng_mode or (
+                        not self.leifeng_mode
+                        and self.clue_count > self.clue_count_limit
+                    )
+                    if (c := clue_cls("give_away")) and give_away_true:
+                        if not friend_clue:
+                            if self.find(
+                                "clue/icon_notification", scope=((1400, 0), (1920, 400))
+                            ):
+                                self.sleep()
+                                continue
+                            for i in range(4):
+                                label_scope = (
+                                    (1450, 228 + i * 222),
+                                    (1580, 278 + i * 222),
+                                )
+                                if not self.find(
+                                    "clue/label_give_away", scope=label_scope
+                                ):
+                                    break
+                                name_top_left = (870, 127 + 222 * i)
+                                name_scope = (
+                                    name_top_left,
+                                    va(name_top_left, (383, 62)),
+                                )
+                                name = rapidocr.engine(
+                                    cropimg(self.recog.gray, name_scope),
+                                    use_det=True,
+                                    use_cls=False,
+                                    use_rec=True,
+                                )[0][0][1]
+                                if name:
+                                    name = name.strip()
+                                data = {"name": name}
+                                for j in range(1, 8):
+                                    pos = (1230 + j * 64, 142 + i * 222)
+                                    data[j] = self.get_color(pos)[0] < 137
+                                friend_clue.append(data)
+                        logger.debug(friend_clue)
+                        friend = None
+                        for idx, fc in enumerate(friend_clue):
+                            if not fc[c]:
+                                friend = idx
+                                fc[c] = True
+                                break
+                        friend = friend or 0
+                        logger.info(f"给{friend_clue[friend]['name']}送一张线索{c}")
+                        self.tap(clue_scope["give_away"])
+                        self.clue_count -= 1
+                        self.tap((1790, 200 + friend * 222))
+                    else:
+                        ctm.complete("give_away")
+                        self.tap((1868, 54))
+
+                elif scene == Scene.CLUE_SUMMARY:
+                    logger.info("CLUE_SUMMARY")
+                    self.back()
+
+                elif scene in self.waiting_scene:
+                    logger.info("waiting_scene")
+                    self.waiting_solver()
+
                 else:
-                    ctm.complete("give_away")
-                    self.tap((1868, 54))
-
-            elif scene == Scene.CLUE_SUMMARY:
-                self.back()
-
-            elif scene in self.waiting_scene:
-                self.waiting_solver()
-
-            else:
-                self.scene_graph_navigation(Scene.INFRA_MAIN)
-                self.enter_room("meeting")
-
-        shop_solver = CreditShop(self.device, self.recog)
-        shop_solver.run()
-        self.scene_graph_navigation(Scene.INFRA_MAIN)
+                    self.scene_graph_navigation(Scene.INFRA_MAIN)
+                    self.enter_room("meeting")
+            shop_solver = CreditShop(self.device, self.recog)
+            shop_solver.run()
+            self.scene_graph_navigation(Scene.INFRA_MAIN)
+        except Exception as e:
+            logger.exception(e)
+            return
 
     def adjust_order_time(self, accelerate, room):
         error_count = 0
@@ -2675,15 +2693,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     def get_agent_from_room(self, room, read_time_index=None):
         if read_time_index is None:
             read_time_index = []
-        # if room == "meeting" and not self.leifeng_mode:
-        #     self.sleep(0.5)
-        #     self.recog.update()
-        #     clue_res = self.read_screen(
-        #         self.recog.img, limit=10, cord=((645, 977), (755, 1018))
-        #     )
-        #     if clue_res != 11:
-        #         self.clue_count = clue_res
-        #         logger.info(f"当前拥有线索数量为{self.clue_count}")
+        if room == "meeting" and not self.leifeng_mode:
+            self.sleep(0.5)
+            self.recog.update()
+            clue_res = self.read_screen(
+                self.recog.img, limit=10, cord=((439, 987), (577, 1033))
+            )
+            if clue_res != 11:
+                self.clue_count = clue_res
+                logger.info(f"当前拥有线索数量为{self.clue_count}")
         self.turn_on_room_detail(room)
         # 如果是宿舍则全读取
         if room.startswith("dorm"):
