@@ -314,6 +314,7 @@ class Recognizer:
             self.find("arrange_check_in")
             or self.find("arrange_check_in_on")
             or self.find("room_detail")
+            or self.find("arrange_check_in_small")
         ):
             self.scene = Scene.INFRA_DETAILS
         elif self.find("ope_failed"):
