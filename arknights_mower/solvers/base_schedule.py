@@ -1431,7 +1431,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.ideal_resting_count = (
             4
             if self.op_data.average_mood()
-            > self.op_data.config.resting_threshold * 0.75
+            > self.op_data.config.resting_threshold * config.conf.rescue_threshold
             else len(self.op_data.dorm)
         )
         logger.debug(f"当前理想休息人数是{self.ideal_resting_count}")

@@ -35,6 +35,7 @@ export const useConfigStore = defineStore('config', () => {
   const simulator = ref({ name: '', index: -1 })
   const resting_threshold = ref(50)
   const fia_threshold = ref(90)
+  const rescue_threshold = ref(75)
   const theme = ref('light')
   const tap_to_launch_game = ref(false)
   const exit_game_when_idle = ref(true)
@@ -131,6 +132,7 @@ export const useConfigStore = defineStore('config', () => {
     simulator.value = response.data.simulator
     resting_threshold.value = response.data.resting_threshold * 100
     fia_threshold.value = response.data.fia_threshold * 100
+    rescue_threshold.value = response.data.rescue_threshold * 100
     theme.value = response.data.theme
     tap_to_launch_game.value = response.data.tap_to_launch_game
     tap_to_launch_game.value.enable = tap_to_launch_game.value.enable ? 'tap' : 'adb'
@@ -215,6 +217,7 @@ export const useConfigStore = defineStore('config', () => {
       theme: theme.value,
       resting_threshold: resting_threshold.value / 100,
       fia_threshold: fia_threshold.value / 100,
+      rescue_threshold: rescue_threshold.value / 100,
       tap_to_launch_game: {
         enable: tap_to_launch_game.value.enable == 'tap',
         x: tap_to_launch_game.value.x,
@@ -315,6 +318,7 @@ export const useConfigStore = defineStore('config', () => {
     simulator,
     resting_threshold,
     fia_threshold,
+    rescue_threshold,
     theme,
     tap_to_launch_game,
     exit_game_when_idle,
