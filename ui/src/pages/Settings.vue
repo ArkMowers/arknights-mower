@@ -26,6 +26,7 @@ const {
   theme,
   resting_threshold,
   fia_threshold,
+  rescue_threshold,
   tap_to_launch_game,
   exit_game_when_idle,
   close_simulator_when_idle,
@@ -565,6 +566,26 @@ const onSelectionChange = (newValue) => {
                   :format-tooltip="(v) => `${v}%`"
                 />
                 <n-input-number v-model:value="fia_threshold" :step="5" :min="50" :max="90">
+                  <template #suffix>%</template>
+                </n-input-number>
+              </div>
+            </n-form-item>
+            <n-form-item>
+              <template #label>
+                <span>急救阈值</span>
+                <help-text>
+                  <div>整体心情低于换班阈值乘急救阈值后，将忽视高优人数安排休息任务。</div>
+                </help-text>
+              </template>
+              <div class="threshold">
+                <n-slider
+                  v-model:value="rescue_threshold"
+                  :step="5"
+                  :min="0"
+                  :max="90"
+                  :format-tooltip="(v) => `${v}%`"
+                />
+                <n-input-number v-model:value="rescue_threshold" :step="5" :min="0" :max="90">
                   <template #suffix>%</template>
                 </n-input-number>
               </div>

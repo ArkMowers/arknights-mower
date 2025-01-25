@@ -457,6 +457,8 @@ class RIICPart(ConfModel):
     "菲亚防呆"
     fia_threshold: float = 0.9
     "菲亚阈值"
+    rescue_threshold: float = 0.75
+    "急救阈值"
     merge_interval: float = 10
     "不养闲人合并间隔"
     flexible_shift_mode: bool = False
