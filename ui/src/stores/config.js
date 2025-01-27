@@ -36,6 +36,7 @@ export const useConfigStore = defineStore('config', () => {
   const resting_threshold = ref(50)
   const fia_threshold = ref(90)
   const rescue_threshold = ref(75)
+  const favorite = ref([])
   const theme = ref('light')
   const tap_to_launch_game = ref(false)
   const exit_game_when_idle = ref(true)
@@ -133,6 +134,7 @@ export const useConfigStore = defineStore('config', () => {
     resting_threshold.value = response.data.resting_threshold * 100
     fia_threshold.value = response.data.fia_threshold * 100
     rescue_threshold.value = response.data.rescue_threshold * 100
+    favorite.value = response.data.favorite == '' ? [] : response.data.favorite.split(',')
     theme.value = response.data.theme
     tap_to_launch_game.value = response.data.tap_to_launch_game
     tap_to_launch_game.value.enable = tap_to_launch_game.value.enable ? 'tap' : 'adb'
@@ -218,6 +220,7 @@ export const useConfigStore = defineStore('config', () => {
       resting_threshold: resting_threshold.value / 100,
       fia_threshold: fia_threshold.value / 100,
       rescue_threshold: rescue_threshold.value / 100,
+      favorite: favorite.value.join(','),
       tap_to_launch_game: {
         enable: tap_to_launch_game.value.enable == 'tap',
         x: tap_to_launch_game.value.x,
@@ -319,6 +322,7 @@ export const useConfigStore = defineStore('config', () => {
     resting_threshold,
     fia_threshold,
     rescue_threshold,
+    favorite,
     theme,
     tap_to_launch_game,
     exit_game_when_idle,

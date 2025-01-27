@@ -27,6 +27,7 @@ const {
   resting_threshold,
   fia_threshold,
   rescue_threshold,
+  favorite,
   tap_to_launch_game,
   exit_game_when_idle,
   close_simulator_when_idle,
@@ -589,6 +590,13 @@ const onSelectionChange = (newValue) => {
                   <template #suffix>%</template>
                 </n-input-number>
               </div>
+            </n-form-item>
+            <n-form-item>
+              <template #label>
+                <span>替换组心情监视</span>
+                <help-text>填入需要查看心情曲线的替换组干员</help-text>
+              </template>
+              <slick-operator-select v-model="favorite"></slick-operator-select>
             </n-form-item>
           </n-form>
         </n-card>

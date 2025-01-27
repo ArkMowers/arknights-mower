@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 import pytz
 from tzlocal import get_localzone
 
+from arknights_mower.utils import config
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 
@@ -193,7 +194,13 @@ def clear_data(date_time):
 def get_work_rest_ratios():
     # TODO 整理数据计算工休比
     database_path = get_path("@app/tmp/data.db")
-
+    favorite = [] if config.conf.favorite == '' else config.conf.favorite.split(',')
+    sel = ''
+    for name in favorite:
+        sel = sel + """
+                UNION
+                SELECT '{}' AS name
+            """.format(name)
     try:
         # 连接到数据库
         conn = sqlite3.connect(database_path)
@@ -210,8 +217,8 @@ def get_work_rest_ratios():
                             AND b.is_high = 1 AND b.current_room NOT LIKE 'dormitory%'
                             UNION
                             SELECT '菲亚梅塔' AS name
-                            UNION
-                            SELECT '歌蕾蒂娅' AS name
+                       """+ sel +
+                        """
                         ) AS subquery ON a.name = subquery.name
                         WHERE DATE(a.current_time) >= DATE('now', '-1 month', 'localtime')
                         ORDER BY a.current_time;
@@ -266,7 +273,13 @@ def get_work_rest_ratios():
 # 整理心情曲线
 def get_mood_ratios():
     database_path = get_path("@app/tmp/data.db")
-
+    favorite = [] if config.conf.favorite == '' else config.conf.favorite.split(',')
+    sel = ''
+    for name in favorite:
+        sel = sel + """
+                UNION
+                SELECT '{}' AS name
+            """.format(name)
     try:
         # 连接到数据库
         conn = sqlite3.connect(database_path)
@@ -282,8 +295,8 @@ def get_mood_ratios():
                             AND b.is_high = 1 AND b.current_room NOT LIKE 'dormitory%'
                             UNION
                             SELECT '菲亚梅塔' AS name
-                            UNION
-                            SELECT '歌蕾蒂娅' AS name
+                       """+ sel +
+                        """
                         ) AS subquery ON a.name = subquery.name
                         WHERE DATE(a.current_time) >= DATE('now', '-7 day', 'localtime')
                         ORDER BY a.agent_group DESC, a.current_time;
