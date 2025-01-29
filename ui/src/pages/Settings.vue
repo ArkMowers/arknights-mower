@@ -45,7 +45,9 @@ const {
   maa_gap,
   custom_screenshot,
   check_for_updates,
-  waiting_scene
+  waiting_scene,
+  enable_party,
+  leifeng_mode
 } = storeToRefs(config_store)
 
 const { operators } = storeToRefs(plan_store)
@@ -424,6 +426,18 @@ const onSelectionChange = (newValue) => {
         </n-card>
       </div>
       <div>
+        <SKLand />
+      </div>
+      <div>
+        <Depotswitch />
+      </div>
+      <div>
+        <DailyMission />
+      </div>
+    </div>
+
+    <div class="grid-right">
+      <div>
         <n-card title="基建设置">
           <n-form
             :label-placement="mobile ? 'top' : 'left'"
@@ -431,6 +445,20 @@ const onSelectionChange = (newValue) => {
             label-width="140"
             label-align="left"
           >
+            <n-form-item>
+              <n-flex>
+                <n-checkbox v-model:checked="enable_party"
+                  ><div class="item">线索收集</div></n-checkbox
+                >
+                <n-checkbox v-model:checked="leifeng_mode">
+                  雷锋模式
+                  <help-text>
+                    <div>开启时，向好友赠送多余的线索；</div>
+                    <div>关闭则超过9个线索才送好友。</div>
+                  </help-text>
+                </n-checkbox>
+              </n-flex>
+            </n-form-item>
             <n-form-item>
               <template #label>
                 <span>跑单前置延时</span>
@@ -545,7 +573,9 @@ const onSelectionChange = (newValue) => {
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="fia_fool">
                 菲亚防呆
-                <help-text>沿用默认逻辑，不确定菲亚替换心情消耗请启用本选项</help-text>
+                <help-text
+                  >当菲亚替换干员心情均超过90%时菲亚等待半小时，不确定菲亚替换心情消耗请启用本选项</help-text
+                >
               </n-checkbox>
             </n-form-item>
             <n-form-item>
@@ -602,30 +632,11 @@ const onSelectionChange = (newValue) => {
         </n-card>
       </div>
       <div>
-        <SKLand />
-      </div>
-      <div>
-        <Depotswitch />
-      </div>
-      <div>
-        <DailyMission />
+        <Recruit />
       </div>
       <div>
         <email />
       </div>
-    </div>
-
-    <div class="grid-right">
-      <div>
-        <clue />
-      </div>
-      <div>
-        <Recruit />
-      </div>
-      <div><maa-weekly /></div>
-      <div><maa-weekly-new /></div>
-      <div><maa-basic /></div>
-      <div><long-tasks /></div>
     </div>
   </div>
 </template>

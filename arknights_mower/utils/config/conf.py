@@ -547,6 +547,19 @@ class SKLandPart(ConfModel):
     "森空岛账号"
 
 
+class MaaRewardPart(ConfModel):
+    maa_mail: bool = False
+    "领取所有邮件奖励"
+    maa_recruit: bool = False
+    "进行限定池赠送的每日免费单抽"
+    maa_orundum: bool = False
+    "领取幸运墙的每日合成玉奖励"
+    maa_mining: bool = False
+    "领取限时开采许可的每日合成玉奖励"
+    maa_specialaccess: bool = False
+    "领取五周年赠送月卡奖励"
+
+
 class Conf(
     CluePart,
     EmailPart,
@@ -558,6 +571,7 @@ class Conf(
     RIICPart,
     SimulatorPart,
     SKLandPart,
+    MaaRewardPart,
 ):
     @property
     def APPNAME(self):

@@ -50,11 +50,32 @@
                     日志
                   </div>
                 </n-tab>
-                <n-tab name="设置" @click="$router.push('/settings')">
+                <n-tab name="设置" @click="showModal2 = true">
                   <div style="display: flex; flex-direction: column; align-items: center">
                     <n-icon size="20" style="margin-bottom: -1px" :component="Settings" />
                     设置
                   </div>
+                  <n-modal v-model:show="showModal2">
+                    <n-card
+                      style="width: 300px"
+                      title="全部设置"
+                      :bordered="false"
+                      size="huge"
+                      role="dialog"
+                      aria-modal="true"
+                    >
+                      <div>
+                        <n-button @click=";(showModal2 = false), $router.push('/mowersettings')">
+                          mower设置
+                        </n-button>
+                      </div>
+                      <div>
+                        <n-button @click=";(showModal2 = false), $router.push('/maasettings')">
+                          maa设置
+                        </n-button>
+                      </div>
+                    </n-card>
+                  </n-modal>
                 </n-tab>
                 <n-tab name="排班" @click="$router.push('/plan-editor')">
                   <div style="display: flex; flex-direction: column; align-items: center">
@@ -142,11 +163,14 @@ import Newspaper from '@vicons/ionicons5/Newspaper'
 import Settings from '@vicons/ionicons5/Settings'
 import StatsChart from '@vicons/ionicons5/StatsChart'
 import Storefront from '@vicons/ionicons5/Storefront'
+import RoseOutline from '@vicons/ionicons5/RoseOutline'
+import Coffee from '@vicons/tabler/Coffee'
 import { NIcon } from 'naive-ui'
 import { storeToRefs } from 'pinia'
 import { h, inject, onMounted, provide, ref } from 'vue'
 
 const showModal = ref(false)
+const showModal2 = ref(false)
 function renderIcon(icon) {
   return () => h(NIcon, null, { default: () => h(icon) })
 }
@@ -159,9 +183,22 @@ const menuOptions = [
     key: 'go-to-log'
   },
   {
-    label: () => h(RouterLink, { to: { path: '/settings' } }, { default: () => '全部设置' }),
+    label: () => '全部设置',
     icon: renderIcon(Settings),
-    key: 'go-to-allsetting'
+    key: 'allsetting',
+    children: [
+      {
+        label: () =>
+          h(RouterLink, { to: { path: '/mowersettings' } }, { default: () => 'mower设置' }),
+        icon: renderIcon(Coffee),
+        key: 'go-to-mowersetting'
+      },
+      {
+        label: () => h(RouterLink, { to: { path: '/maasettings' } }, { default: () => 'maa设置' }),
+        icon: renderIcon(RoseOutline),
+        key: 'go-to-maasetting'
+      }
+    ]
   },
   // {
   //   label: () => h(RouterLink, { to: { path: '/aio' } }, { default: () => 'aio' }),
