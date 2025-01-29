@@ -387,8 +387,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
     def plan_metadata(self):
         if config.conf.flexible_shift_mode or pass_deadline():
-            if not config.conf.flexible_shift_mode:
-                logger.warning("弹性模式被强制启动，请确保排班表已更新+切换至弹性模式")
             self.tasks = plan_metadata(self.op_data, self.tasks)
         else:
             planned_index = []
@@ -1312,7 +1310,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             op = self.op_data.operators[name]
             if op.is_resting():
                 continue
-            if op.current_mood() <= op.lower_limit + 2:
+            if op.current_mood() <= op.lower_limit + 4:
                 if (
                     self.find_next_task(
                         task_type=TaskTypes.EXHAUST_OFF, meta_data=op.name
@@ -2515,8 +2513,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         right_swipe = 0
                     last_special_filter = profession
             elif agent and agent[0] in agent_list:
-                if is_dorm and agent[0] != "阿米娅":
-                    # 只有在宿舍中打开职介筛选
+                if agent[0] != "阿米娅":
+                    # 只要不是阿米娅就打开职介筛选
                     profession = agent_profession[agent[0]]
                     self.profession_filter(profession)
                     if last_special_filter != profession:
@@ -3369,11 +3367,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 "Award",
                 {
                     "award": True,
-                    "mail": False,
-                    "recruit": False,
-                    "orundum": False,
-                    "mining": False,
-                    "specialaccess": False,
+                    "mail": config.conf.maa_mail,
+                    "recruit": config.conf.maa_recruit,
+                    "orundum": config.conf.maa_orundum,
+                    "mining": config.conf.maa_mining,
+                    "specialaccess": config.conf.maa_specialaccess,
                 },
             )
 

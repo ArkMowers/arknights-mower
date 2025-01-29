@@ -84,6 +84,11 @@ export const useConfigStore = defineStore('config', () => {
   const notification_level = ref('INFO')
   const waiting_scene = ref({})
   const exipring_medicine_on_weekend = ref(false)
+  const maa_mail = ref(false)
+  const maa_recruit = ref(false)
+  const maa_orundum = ref(false)
+  const maa_mining = ref(false)
+  const maa_specialaccess = ref(false)
 
   async function load_shop() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/shop`)
@@ -183,6 +188,11 @@ export const useConfigStore = defineStore('config', () => {
     notification_level.value = response.data.notification_level
     waiting_scene.value = response.data.waiting_scene
     exipring_medicine_on_weekend.value = response.data.exipring_medicine_on_weekend
+    maa_mail.value = response.data.maa_mail
+    maa_recruit.value = response.data.maa_recruit
+    maa_orundum.value = response.data.maa_orundum
+    maa_mining.value = response.data.maa_mining
+    maa_specialaccess.value = response.data.maa_specialaccess
   }
 
   function build_config() {
@@ -274,7 +284,12 @@ export const useConfigStore = defineStore('config', () => {
       check_for_updates: check_for_updates.value,
       notification_level: notification_level.value,
       waiting_scene: waiting_scene.value,
-      exipring_medicine_on_weekend: exipring_medicine_on_weekend.value
+      exipring_medicine_on_weekend: exipring_medicine_on_weekend.value,
+      maa_mail: maa_mail.value,
+      maa_recruit: maa_recruit.value,
+      maa_orundum: maa_orundum.value,
+      maa_mining: maa_mining.value,
+      maa_specialaccess: maa_specialaccess.value
     }
   }
 
@@ -369,6 +384,11 @@ export const useConfigStore = defineStore('config', () => {
     check_for_updates,
     notification_level,
     waiting_scene,
-    exipring_medicine_on_weekend
+    exipring_medicine_on_weekend,
+    maa_mail,
+    maa_recruit,
+    maa_orundum,
+    maa_mining,
+    maa_specialaccess
   }
 })
