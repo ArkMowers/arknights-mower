@@ -2156,7 +2156,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if accelerate:
             drone_count = self.digit_reader.get_drone(self.recog.gray)
             logger.info(f"当前无人机数量为：{drone_count}")
-            if drone_count < config.conf.drone_count_limit or drone_count > 200:
+            if drone_count < config.conf.drone_count_limit or drone_count > 225:
                 logger.info(f"无人机数量小于{config.conf.drone_count_limit}->停止")
                 return
             logger.info("制造站加速")
