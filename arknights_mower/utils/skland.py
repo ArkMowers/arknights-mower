@@ -118,6 +118,7 @@ def get_binding_list(sign_token):
             None,
             sign_token,
         ),
+        timeout=30,
     ).json()
 
     if resp["code"] != 0:
@@ -141,6 +142,7 @@ def log(account):
         token_password_url,
         json={"phone": account.account, "password": account.password},
         headers=header_login,
+        timeout=30,
     ).json()
     if r.get("status") != 0:
         raise Exception(f"获得token失败：{r['msg']}")

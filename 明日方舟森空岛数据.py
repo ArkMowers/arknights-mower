@@ -67,6 +67,7 @@ class SKLand:
                 resp = requests.get(
                     ingame,
                     headers=self.get_sign_header(ingame, "get", body, self.header),
+                    timeout=30,
                 ).json()
                 with open("森空岛数据.json", "w", encoding="utf-8") as 保存:
                     json.dump(resp, 保存, ensure_ascii=False, indent=4)
@@ -115,6 +116,7 @@ class SKLand:
         resp = requests.get(
             binding_url,
             headers=self.get_sign_header(binding_url, "get", None, self.header),
+            timeout=10,
         ).json()
 
         if resp["code"] != 0:
