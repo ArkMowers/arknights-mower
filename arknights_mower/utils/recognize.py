@@ -34,6 +34,8 @@ class Recognizer:
             self.scene = Scene.UNDEFINED
         self.loading_time = 0
         self.LOADING_TIME_LIMIT = 5
+        self.last_scene = None
+        self.last_scene_time = time.time()
 
     def clear(self):
         self._screencap = None
@@ -136,6 +138,16 @@ class Recognizer:
 
     def get_scene(self) -> int:
         """get the current scene in the game"""
+        current_time = time.time()
+        # 检查模拟器是否卡死，超过跑单时间*90秒则视为卡死
+        if self.scene == self.last_scene and self.scene != Scene.UNDEFINED:
+            elapsed_time = current_time - self.last_scene_time
+            if elapsed_time > config.conf.run_order_delay * 90:
+                logger.warning("相同场景等待超时 ")
+                self.last_scene = None
+                self.last_scene_time = current_time
+                self.device.exit()
+
         if self.scene != Scene.UNDEFINED:
             return self.scene
 
@@ -357,7 +369,8 @@ class Recognizer:
             self.check_current_focus()
 
         logger.info(f"Scene {self.scene}: {SceneComment[self.scene]}")
-
+        self.last_scene = self.scene
+        self.last_scene_time = current_time
         return self.scene
 
     def find_ra_battle_exit(self) -> bool:
