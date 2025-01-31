@@ -1310,7 +1310,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             op = self.op_data.operators[name]
             if op.is_resting():
                 continue
-            if op.current_mood() <= op.lower_limit + 4:
+            if op.current_mood() <= op.lower_limit + 2:
                 if (
                     self.find_next_task(
                         task_type=TaskTypes.EXHAUST_OFF, meta_data=op.name
