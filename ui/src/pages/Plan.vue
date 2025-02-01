@@ -17,7 +17,8 @@ const {
   backup_plans,
   sub_plan,
   refresh_trading,
-  refresh_drained
+  refresh_drained,
+  ope_resting_priority
 } = storeToRefs(plan_store)
 const { load_plan, fill_empty } = plan_store
 
@@ -105,7 +106,8 @@ function create_sub_plan() {
       resting_priority: [],
       workaholic: [],
       refresh_trading: [],
-      refresh_drained: []
+      refresh_drained: [],
+      ope_resting_priority: []
     },
     plan: fill_empty({}),
     trigger: {
@@ -144,7 +146,8 @@ watchEffect(() => {
       exhaust_require: exhaust_require.value,
       refresh_trading: refresh_trading.value,
       free_blacklist: free_blacklist.value,
-      refresh_drained: refresh_drained.value
+      refresh_drained: refresh_drained.value,
+      ope_resting_priority: ope_resting_priority.value
     }
   } else {
     current_conf.value = backup_plans.value[sub_plan.value].conf
@@ -161,6 +164,7 @@ watchEffect(() => {
     refresh_trading.value = current_conf.value.refresh_trading
     free_blacklist.value = current_conf.value.free_blacklist
     refresh_drained.value = current_conf.value.refresh_drained
+    ope_resting_priority.value = current_conf.value.ope_resting_priority
   } else {
     backup_plans.value[sub_plan.value].conf = current_conf.value
   }
@@ -265,7 +269,9 @@ function movePlanForward() {
       <n-select v-model:value="sub_plan" :style="{ width: '150px' }" :options="sub_plan_options" />
       <n-button :disabled="sub_plan == 'main'" @click="show_name_editor = true">
         <template #icon>
-          <n-icon><Pencil /></n-icon>
+          <n-icon>
+            <Pencil />
+          </n-icon>
         </template>
       </n-button>
     </n-button-group>
@@ -398,6 +404,16 @@ function movePlanForward() {
         <help-text>不希望进行填充宿舍的干员</help-text>
       </template>
       <slick-operator-select v-model="current_conf.free_blacklist"></slick-operator-select>
+    </n-form-item>
+    <n-form-item>
+      <template #label>
+        <span>干员休息优先级</span>
+        <help-text>
+          <p>会按照优先级放入宿舍的时候重新排序</p>
+          <p>宿舍重新排序触发此设置优先级最高，所以非高效组谨慎填写</p>
+        </help-text>
+      </template>
+      <slick-operator-select v-model="current_conf.ope_resting_priority"></slick-operator-select>
     </n-form-item>
   </n-form>
 </template>

@@ -20,6 +20,8 @@ class PlanConf(BaseModel):
     "跑单时间刷新干员"
     refresh_drained: str = ""
     "用尽时间刷新干员"
+    ope_resting_priority: str = ""
+    "休息排序优先级"
 
 
 class BackupPlanConf(PlanConf):

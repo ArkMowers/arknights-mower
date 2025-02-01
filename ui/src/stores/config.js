@@ -27,6 +27,7 @@ export const useConfigStore = defineStore('config', () => {
   const package_type = ref('official')
   const reload_room = ref('')
   const run_order_delay = ref(10)
+  const dorm_order = ref([])
   const start_automatically = ref(false)
   const maa_mall_buy = ref('')
   const maa_mall_blacklist = ref('')
@@ -128,7 +129,10 @@ export const useConfigStore = defineStore('config', () => {
     custom_smtp_server.value = response.data.custom_smtp_server
     package_type.value = response.data.package_type == 1 ? 'official' : 'bilibili'
     reload_room.value = response.data.reload_room == '' ? [] : response.data.reload_room.split(',')
+    console.log(response.data)
     run_order_delay.value = response.data.run_order_delay
+
+    dorm_order.value = response.data.dorm_order == '' ? [] : response.data.dorm_order.split(',')
     start_automatically.value = response.data.start_automatically
     maa_mall_buy.value =
       response.data.maa_mall_buy == '' ? [] : response.data.maa_mall_buy.split(',')
@@ -221,6 +225,7 @@ export const useConfigStore = defineStore('config', () => {
       custom_smtp_server: custom_smtp_server.value,
       reload_room: reload_room.value.join(','),
       run_order_delay: run_order_delay.value,
+      dorm_order: dorm_order.value.join(','),
       start_automatically: start_automatically.value,
       maa_mall_buy: maa_mall_buy.value.join(','),
       maa_mall_blacklist: maa_mall_blacklist.value.join(','),
@@ -326,6 +331,7 @@ export const useConfigStore = defineStore('config', () => {
     package_type,
     reload_room,
     run_order_delay,
+    dorm_order,
     start_automatically,
     maa_mall_buy,
     maa_mall_blacklist,

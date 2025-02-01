@@ -46,6 +46,7 @@ class PlanConfig:
         refresh_trading_config: str = "",
         free_room: bool = False,
         refresh_drained: str = "",
+        ope_resting_priority: str = "",
     ):
         """排班的设置
 
@@ -77,6 +78,7 @@ class PlanConfig:
         #           夕(room_3_1,room_1_3),令(room_3_1)
         self.refresh_trading_config = to_list(refresh_trading_config)
         self.refresh_drained = to_list(refresh_drained)
+        self.ope_resting_priority = to_list(ope_resting_priority)
 
     def is_rest_in_full(self, agent_name) -> bool:
         return agent_name in self.rest_in_full
@@ -119,6 +121,7 @@ class PlanConfig:
             "free_blacklist",
             "refresh_trading_config",
             "refresh_drained",
+            "ope_resting_priority",
         ]:
             p_dict = set(getattr(n, p))
             target_p = set(getattr(target, p))

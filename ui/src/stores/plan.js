@@ -7,6 +7,7 @@ export const usePlanStore = defineStore('plan', () => {
   const ling_xi = ref(1)
   const exhaust_require = ref([])
   const rest_in_full = ref([])
+  const ope_resting_priority = ref([])
   const resting_priority = ref([])
   const workaholic = ref([])
   const refresh_trading = ref([])
@@ -57,7 +58,8 @@ export const usePlanStore = defineStore('plan', () => {
     'workaholic',
     'free_blacklist',
     'refresh_trading',
-    'refresh_drained'
+    'refresh_drained',
+    'ope_resting_priority'
   ]
 
   function fill_empty(full_plan) {
@@ -134,6 +136,7 @@ export const usePlanStore = defineStore('plan', () => {
     ling_xi.value = response.data.conf.ling_xi
     exhaust_require.value = str2list(response.data.conf.exhaust_require)
     rest_in_full.value = str2list(response.data.conf.rest_in_full)
+    ope_resting_priority.value = str2list(response.data.conf.ope_resting_priority)
     resting_priority.value = str2list(response.data.conf.resting_priority)
     workaholic.value = str2list(response.data.conf.workaholic)
     refresh_trading.value = str2list(response.data.conf.refresh_trading)
@@ -182,6 +185,7 @@ export const usePlanStore = defineStore('plan', () => {
         ling_xi: ling_xi.value,
         exhaust_require: list2str(exhaust_require.value),
         rest_in_full: list2str(rest_in_full.value),
+        ope_resting_priority: list2str(ope_resting_priority.value),
         resting_priority: list2str(resting_priority.value),
         workaholic: list2str(workaholic.value),
         refresh_trading: list2str(refresh_trading.value),
@@ -254,6 +258,7 @@ export const usePlanStore = defineStore('plan', () => {
     exhaust_require,
     rest_in_full,
     resting_priority,
+    ope_resting_priority,
     workaholic,
     refresh_trading,
     refresh_drained,

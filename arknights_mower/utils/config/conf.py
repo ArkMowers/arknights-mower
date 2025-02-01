@@ -463,8 +463,8 @@ class RIICPart(ConfModel):
     "替换组心情监视"
     merge_interval: float = 10
     "不养闲人合并间隔"
-    flexible_shift_mode: bool = False
-    "弹性休息模式"
+    dorm_order: str = ""
+    "宿舍优先级"
 
 
 class SimulatorPart(ConfModel):

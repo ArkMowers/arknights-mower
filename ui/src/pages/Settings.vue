@@ -15,6 +15,7 @@ const mobile = inject('mobile')
 
 const {
   run_order_delay,
+  dorm_order,
   drone_room,
   drone_count_limit,
   drone_interval,
@@ -577,6 +578,15 @@ const onSelectionChange = (newValue) => {
                   >当菲亚替换干员心情均超过90%时菲亚等待半小时，不确定菲亚替换心情消耗请启用本选项</help-text
                 >
               </n-checkbox>
+            </n-form-item>
+            <n-form-item>
+              <template #label>
+                <span>宿舍优先级排序</span>
+                <help-text>
+                  <div>正常情况千万不需要，除非你有特殊情况</div>
+                </help-text>
+              </template>
+              <slick-dorm-select v-model="dorm_order"></slick-dorm-select>
             </n-form-item>
             <n-form-item>
               <template #label>

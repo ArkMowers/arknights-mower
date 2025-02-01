@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 
 from evalidate import Expr, base_eval_model
 
+from arknights_mower.utils import config
 from arknights_mower.utils.plan import BaseProduct, PlanConfig
 
 from ..data import agent_arrange_order, agent_list, base_room_list
@@ -263,6 +264,32 @@ class Operators:
                     if _dorm.agent == "Free" and (dorm + str(_idx)) not in added:
                         self.dorm.append(Dormitory((dorm, _idx)))
                         added.append(dorm + str(_idx))
+            if config.conf.dorm_order == "":
+                logger.info(self.dorm)
+                config.conf.dorm_order = ",".join(
+                    [
+                        dorm.position[0] + "_" + str(dorm.position[1])
+                        for dorm in self.dorm
+                    ]
+                )
+                logger.info(config.conf.dorm_order)
+                config.save_conf()  # 保存配置
+            else:
+                dorm_order = config.conf.dorm_order.split(",")
+                current_dorm_names = {
+                    dorm.position[0] + "_" + str(dorm.position[1]) for dorm in self.dorm
+                }
+                saved_dorm_names = set(dorm_order)
+                if saved_dorm_names == current_dorm_names:
+                    self.dorm.sort(
+                        key=lambda dorm: dorm_order.index(
+                            dorm.position[0] + "_" + str(dorm.position[1])
+                        )
+                    )
+                else:
+                    return (
+                        "宿舍优先级和当前宿舍不匹配，请清除优先级自动排序或者自己更正"
+                    )
         else:
             for key, value in self.shadow_copy.items():
                 if key not in self.operators:
@@ -748,6 +775,7 @@ class Operator:
         self.time_stamp = time_stamp
         self.workaholic = False
         self.arrange_order = [2, "false"]
+        self.exhaust_time = None
 
     @property
     def current_room(self):
