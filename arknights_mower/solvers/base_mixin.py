@@ -282,8 +282,8 @@ class BaseMixin:
     def enter_room(self, room):
         """从基建首页进入房间"""
 
-        for enter_times in range(3):
-            for retry_times in range(10):
+        for enter_times in range(2):
+            for retry_times in range(2):
                 if pos := self.find("control_central"):
                     _room = segment.base(self.recog.img, pos)[room]
                     self.tap(self.adjust_room(_room))
