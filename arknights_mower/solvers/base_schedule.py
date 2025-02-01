@@ -1412,7 +1412,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             datetime.now() + timedelta(minutes=0.75 * len(re_order_dorm_plan))
         ):
             logger.info(f"新增宿舍移位任务{re_order_dorm_plan}")
-            task = SchedulerTask(task_plan=re_order_dorm_plan)
+            task = SchedulerTask(
+                task_plan=re_order_dorm_plan, task_type=TaskTypes.SHIFT_OFF
+            )
             self.tasks.append(task)
 
     def resting(self):
