@@ -378,7 +378,7 @@ class TestScheduling(unittest.TestCase):
         op_data.operators["凯尔希"].current_index = 2
         op_data.dorm[2].name = "夕"
         plan = try_reorder(op_data)
-        self.assertEqual(plan['dormitory_1'][2], "夕")
+        self.assertEqual(plan["dormitory_1"][2], "夕")
         tasks = [SchedulerTask(task_plan=plan, task_type=TaskTypes.SHIFT_OFF)]
         check_dorm_ordering(tasks, op_data)
         self.assertEqual(len(tasks), 2)
@@ -391,6 +391,7 @@ class TestScheduling(unittest.TestCase):
         op_data.dorm[2].name = "夕"
         op_data.dorm[3].name = "见行者"
         op_data.dorm[4].name = "森蚺"
+
         # op_data.config.ope_resting_priority=["森蚺","夕"]
         plan = try_reorder(op_data)
         self.assertEqual(len(plan), 3)

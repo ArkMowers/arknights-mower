@@ -49,7 +49,7 @@ def initialize(
         ling_xi=config.plan.conf.ling_xi,
         workaholic=config.plan.conf.workaholic,
         free_blacklist=conf.free_blacklist,
-        ope_resting_priority=conf.ope_resting_priority,
+        ope_resting_priority=config.plan.conf.ope_resting_priority,
         resting_threshold=conf.resting_threshold,
         refresh_trading_config=config.plan.conf.refresh_trading,
         refresh_drained=config.plan.conf.refresh_drained,
