@@ -140,7 +140,7 @@ class Recognizer:
         """get the current scene in the game"""
         current_time = time.time()
         # 检查模拟器是否卡死，超过跑单时间*90秒则视为卡死
-        if self.scene == self.last_scene and self.scene != Scene.UNDEFINED:
+        if self.scene == self.last_scene:
             elapsed_time = current_time - self.last_scene_time
             if elapsed_time > config.conf.run_order_delay * 90:
                 logger.warning("相同场景等待超时 ")

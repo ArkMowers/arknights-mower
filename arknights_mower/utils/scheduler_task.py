@@ -176,6 +176,7 @@ def generate_plan_by_drom(tasks, op_data):
     ordered = sorted(tasks.items())
     result = []
     planned = set()
+    current_time = datetime.now()
     for time, (dorms, rest_in_full) in ordered:
         logger.debug(f"{time},{dorms},{rest_in_full}")
         plan = {}
@@ -201,7 +202,11 @@ def generate_plan_by_drom(tasks, op_data):
                     planned.add(o.name)
         if rest_in_full:
             result.append(
-                SchedulerTask(task_plan=plan, time=time, task_type=TaskTypes.SHIFT_ON)
+                SchedulerTask(
+                    task_plan=plan,
+                    time=max(time, current_time),
+                    task_type=TaskTypes.SHIFT_ON,
+                )
             )
         else:
             added = False
@@ -222,7 +227,9 @@ def generate_plan_by_drom(tasks, op_data):
                         idx,
                         SchedulerTask(
                             task_plan=plan,
-                            time=result[idx].time - timedelta(seconds=1),
+                            time=max(
+                                result[idx].time, current_time - timedelta(seconds=1)
+                            ),
                             task_type=TaskTypes.RELEASE_DORM
                             if rest_in_full is None
                             else TaskTypes.SHIFT_ON,
@@ -234,7 +241,7 @@ def generate_plan_by_drom(tasks, op_data):
                 result.append(
                     SchedulerTask(
                         task_plan=plan,
-                        time=time - timedelta(seconds=1),
+                        time=max(time, current_time - timedelta(seconds=1)),
                         task_type=TaskTypes.RELEASE_DORM
                         if rest_in_full is None
                         else TaskTypes.SHIFT_ON,
