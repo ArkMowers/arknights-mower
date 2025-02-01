@@ -136,7 +136,7 @@ function copy_descrioption() {
       </template>
       <n-form-item path="acknowledged1" class="checkbox-wrapper">
         <n-checkbox v-model:checked="feedbackData.acknowledged1">
-          我查看了Mower群文件，确保软件版本是最新版本
+          我查看了更新公告/下崽器，确保软件版本是最新版本
         </n-checkbox>
       </n-form-item>
       <n-form-item path="acknowledged2" class="checkbox-wrapper">

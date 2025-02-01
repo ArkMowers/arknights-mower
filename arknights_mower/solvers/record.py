@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 import pytz
 from tzlocal import get_localzone
 
+from arknights_mower.utils import config
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 
@@ -111,7 +112,7 @@ def save_state(func):
 
             # Create a table if it doesn't exist
             cursor.execute(
-                "CREATE TABLE IF NOT EXISTS saved_state (" "time TEXT," "state BLOB" ")"
+                "CREATE TABLE IF NOT EXISTS saved_state (time TEXT,state BLOB)"
             )
 
             # Delete the previous saved state
@@ -165,17 +166,52 @@ def load_state():
     return loaded_state
 
 
+def clear_data(date_time):
+    database_path = get_path("@app/tmp/data.db")
+    try:
+        connection = sqlite3.connect(database_path)
+        cursor = connection.cursor()
+
+        # Ensure date_time is in the correct format
+        if isinstance(date_time, datetime):
+            date_time_str = date_time.strftime("%Y-%m-%d %H:%M:%S")
+        else:
+            date_time_str = date_time
+
+        # Execute the DELETE statement with parameterized query
+        cursor.execute(
+            "DELETE FROM agent_action WHERE `current_time` < ?", (date_time_str,)
+        )
+
+        connection.commit()
+        connection.close()
+        logger.info(f"已删除 早于 {date_time_str} 的干员心情记录")
+
+    except sqlite3.Error as e:
+        logger.error(f"SQLite error: {e}")
+
+
 def get_work_rest_ratios():
     # TODO 整理数据计算工休比
     database_path = get_path("@app/tmp/data.db")
-
+    favorite = [] if config.conf.favorite == "" else config.conf.favorite.split(",")
+    sel = ""
+    for name in favorite:
+        sel = (
+            sel
+            + """
+                UNION
+                SELECT '{}' AS name
+            """.format(name)
+        )
     try:
         # 连接到数据库
         conn = sqlite3.connect(database_path)
         # conn = sqlite3.connect('../../tmp/data.db')
         cursor = conn.cursor()
         # 查询数据
-        cursor.execute("""
+        cursor.execute(
+            """
                         SELECT a.*
                         FROM agent_action a
                         JOIN (
@@ -185,12 +221,14 @@ def get_work_rest_ratios():
                             AND b.is_high = 1 AND b.current_room NOT LIKE 'dormitory%'
                             UNION
                             SELECT '菲亚梅塔' AS name
-                            UNION
-                            SELECT '歌蕾蒂娅' AS name
+                       """
+            + sel
+            + """
                         ) AS subquery ON a.name = subquery.name
                         WHERE DATE(a.current_time) >= DATE('now', '-1 month', 'localtime')
                         ORDER BY a.current_time;
-                       """)
+                       """
+        )
         data = cursor.fetchall()
         # 关闭数据库连接
         conn.close()
@@ -241,13 +279,23 @@ def get_work_rest_ratios():
 # 整理心情曲线
 def get_mood_ratios():
     database_path = get_path("@app/tmp/data.db")
-
+    favorite = [] if config.conf.favorite == "" else config.conf.favorite.split(",")
+    sel = ""
+    for name in favorite:
+        sel = (
+            sel
+            + """
+                UNION
+                SELECT '{}' AS name
+            """.format(name)
+        )
     try:
         # 连接到数据库
         conn = sqlite3.connect(database_path)
         cursor = conn.cursor()
         # 查询数据（筛掉宿管和替班组的数据）
-        cursor.execute("""
+        cursor.execute(
+            """
                        SELECT a.*
                         FROM agent_action a
                         JOIN (
@@ -257,13 +305,15 @@ def get_mood_ratios():
                             AND b.is_high = 1 AND b.current_room NOT LIKE 'dormitory%'
                             UNION
                             SELECT '菲亚梅塔' AS name
-                            UNION
-                            SELECT '歌蕾蒂娅' AS name
+                       """
+            + sel
+            + """
                         ) AS subquery ON a.name = subquery.name
                         WHERE DATE(a.current_time) >= DATE('now', '-7 day', 'localtime')
                         ORDER BY a.agent_group DESC, a.current_time;
 
-        """)
+        """
+        )
         data = cursor.fetchall()
         # 关闭数据库连接
         conn.close()

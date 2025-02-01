@@ -48,8 +48,8 @@ def initialize(
         resting_priority=config.plan.conf.resting_priority,
         ling_xi=config.plan.conf.ling_xi,
         workaholic=config.plan.conf.workaholic,
-        max_resting_count=config.plan.conf.max_resting_count,
         free_blacklist=conf.free_blacklist,
+        ope_resting_priority=config.plan.conf.ope_resting_priority,
         resting_threshold=conf.resting_threshold,
         refresh_trading_config=config.plan.conf.refresh_trading,
         refresh_drained=config.plan.conf.refresh_drained,
@@ -90,8 +90,8 @@ def initialize(
             i["conf"]["resting_priority"],
             ling_xi=i["conf"]["ling_xi"],
             workaholic=i["conf"]["workaholic"],
-            max_resting_count=i["conf"]["max_resting_count"],
             free_blacklist=i["conf"]["free_blacklist"],
+            ope_resting_priority=i["conf"]["ope_resting_priority"],
             resting_threshold=conf.resting_threshold,
             refresh_trading_config=i["conf"]["refresh_trading"],
             refresh_drained=i["conf"]["refresh_drained"],
@@ -107,6 +107,7 @@ def initialize(
                 trigger=backup_trigger,
                 task=backup_task,
                 trigger_timing=backup_trigger_timing,
+                name=i.get("name"),
             )
         )
     plan["backup_plans"] = backup_plans

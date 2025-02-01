@@ -27,6 +27,7 @@ export const useConfigStore = defineStore('config', () => {
   const package_type = ref('official')
   const reload_room = ref('')
   const run_order_delay = ref(10)
+  const dorm_order = ref([])
   const start_automatically = ref(false)
   const maa_mall_buy = ref('')
   const maa_mall_blacklist = ref('')
@@ -35,6 +36,8 @@ export const useConfigStore = defineStore('config', () => {
   const simulator = ref({ name: '', index: -1 })
   const resting_threshold = ref(50)
   const fia_threshold = ref(90)
+  const rescue_threshold = ref(75)
+  const favorite = ref([])
   const theme = ref('light')
   const tap_to_launch_game = ref(false)
   const exit_game_when_idle = ref(true)
@@ -72,7 +75,6 @@ export const useConfigStore = defineStore('config', () => {
   const touch_method = ref('scrcpy')
   const free_room = ref(false)
   const merge_interval = ref(10)
-  const flexible_shift_mode = ref(false)
   const fia_fool = ref(true)
   const sign_in = ref({ enable: true })
   const droidcast = ref({})
@@ -83,6 +85,11 @@ export const useConfigStore = defineStore('config', () => {
   const notification_level = ref('INFO')
   const waiting_scene = ref({})
   const exipring_medicine_on_weekend = ref(false)
+  const maa_mail = ref(false)
+  const maa_recruit = ref(false)
+  const maa_orundum = ref(false)
+  const maa_mining = ref(false)
+  const maa_specialaccess = ref(false)
 
   async function load_shop() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/shop`)
@@ -122,7 +129,10 @@ export const useConfigStore = defineStore('config', () => {
     custom_smtp_server.value = response.data.custom_smtp_server
     package_type.value = response.data.package_type == 1 ? 'official' : 'bilibili'
     reload_room.value = response.data.reload_room == '' ? [] : response.data.reload_room.split(',')
+    console.log(response.data)
     run_order_delay.value = response.data.run_order_delay
+
+    dorm_order.value = response.data.dorm_order == '' ? [] : response.data.dorm_order.split(',')
     start_automatically.value = response.data.start_automatically
     maa_mall_buy.value =
       response.data.maa_mall_buy == '' ? [] : response.data.maa_mall_buy.split(',')
@@ -132,6 +142,8 @@ export const useConfigStore = defineStore('config', () => {
     simulator.value = response.data.simulator
     resting_threshold.value = response.data.resting_threshold * 100
     fia_threshold.value = response.data.fia_threshold * 100
+    rescue_threshold.value = response.data.rescue_threshold * 100
+    favorite.value = response.data.favorite == '' ? [] : response.data.favorite.split(',')
     theme.value = response.data.theme
     tap_to_launch_game.value = response.data.tap_to_launch_game
     tap_to_launch_game.value.enable = tap_to_launch_game.value.enable ? 'tap' : 'adb'
@@ -170,7 +182,6 @@ export const useConfigStore = defineStore('config', () => {
     touch_method.value = response.data.touch_method
     free_room.value = response.data.free_room
     merge_interval.value = response.data.merge_interval
-    flexible_shift_mode.value = response.data.flexible_shift_mode
     fia_fool.value = response.data.fia_fool
     sign_in.value = response.data.sign_in
     droidcast.value = response.data.droidcast
@@ -181,6 +192,11 @@ export const useConfigStore = defineStore('config', () => {
     notification_level.value = response.data.notification_level
     waiting_scene.value = response.data.waiting_scene
     exipring_medicine_on_weekend.value = response.data.exipring_medicine_on_weekend
+    maa_mail.value = response.data.maa_mail
+    maa_recruit.value = response.data.maa_recruit
+    maa_orundum.value = response.data.maa_orundum
+    maa_mining.value = response.data.maa_mining
+    maa_specialaccess.value = response.data.maa_specialaccess
   }
 
   function build_config() {
@@ -209,6 +225,7 @@ export const useConfigStore = defineStore('config', () => {
       custom_smtp_server: custom_smtp_server.value,
       reload_room: reload_room.value.join(','),
       run_order_delay: run_order_delay.value,
+      dorm_order: dorm_order.value.join(','),
       start_automatically: start_automatically.value,
       maa_mall_buy: maa_mall_buy.value.join(','),
       maa_mall_blacklist: maa_mall_blacklist.value.join(','),
@@ -217,6 +234,8 @@ export const useConfigStore = defineStore('config', () => {
       theme: theme.value,
       resting_threshold: resting_threshold.value / 100,
       fia_threshold: fia_threshold.value / 100,
+      rescue_threshold: rescue_threshold.value / 100,
+      favorite: favorite.value.join(','),
       tap_to_launch_game: {
         enable: tap_to_launch_game.value.enable == 'tap',
         x: tap_to_launch_game.value.x,
@@ -261,7 +280,6 @@ export const useConfigStore = defineStore('config', () => {
       touch_method: touch_method.value,
       free_room: free_room.value,
       merge_interval: merge_interval.value,
-      flexible_shift_mode: flexible_shift_mode.value,
       fia_fool: fia_fool.value,
       sign_in: sign_in.value,
       droidcast: droidcast.value,
@@ -271,7 +289,12 @@ export const useConfigStore = defineStore('config', () => {
       check_for_updates: check_for_updates.value,
       notification_level: notification_level.value,
       waiting_scene: waiting_scene.value,
-      exipring_medicine_on_weekend: exipring_medicine_on_weekend.value
+      exipring_medicine_on_weekend: exipring_medicine_on_weekend.value,
+      maa_mail: maa_mail.value,
+      maa_recruit: maa_recruit.value,
+      maa_orundum: maa_orundum.value,
+      maa_mining: maa_mining.value,
+      maa_specialaccess: maa_specialaccess.value
     }
   }
 
@@ -308,6 +331,7 @@ export const useConfigStore = defineStore('config', () => {
     package_type,
     reload_room,
     run_order_delay,
+    dorm_order,
     start_automatically,
     maa_mall_buy,
     maa_mall_blacklist,
@@ -318,6 +342,8 @@ export const useConfigStore = defineStore('config', () => {
     simulator,
     resting_threshold,
     fia_threshold,
+    rescue_threshold,
+    favorite,
     theme,
     tap_to_launch_game,
     exit_game_when_idle,
@@ -355,7 +381,6 @@ export const useConfigStore = defineStore('config', () => {
     touch_method,
     free_room,
     merge_interval,
-    flexible_shift_mode,
     fia_fool,
     sign_in,
     droidcast,
@@ -365,6 +390,11 @@ export const useConfigStore = defineStore('config', () => {
     check_for_updates,
     notification_level,
     waiting_scene,
-    exipring_medicine_on_weekend
+    exipring_medicine_on_weekend,
+    maa_mail,
+    maa_recruit,
+    maa_orundum,
+    maa_mining,
+    maa_specialaccess
   }
 })

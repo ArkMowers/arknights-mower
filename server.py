@@ -17,8 +17,8 @@ from flask_sock import Sock
 from tzlocal import get_localzone
 from werkzeug.exceptions import NotFound
 
-from arknights_mower import __system__
-from arknights_mower.solvers.record import load_state, save_state
+from arknights_mower import __system__, __version__
+from arknights_mower.solvers.record import clear_data, load_state, save_state
 from arknights_mower.utils import config
 from arknights_mower.utils.datetime import get_server_time
 from arknights_mower.utils.log import get_log_by_time, logger
@@ -122,7 +122,22 @@ def read_depot():
 
 @app.route("/running")
 def running():
-    return "true" if mower_thread and mower_thread.is_alive() else "false"
+    response = {
+        "running": bool(mower_thread and mower_thread.is_alive()),
+        "plan_condition": [],
+    }
+    if response["running"]:
+        from arknights_mower.__main__ import base_scheduler
+
+        if base_scheduler and mower_thread.is_alive():
+            response["plan_condition"] = list(base_scheduler.op_data.plan_condition)
+            for idx, plan in enumerate(base_scheduler.op_data.backup_plans):
+                if response["plan_condition"][idx]:
+                    response["plan_condition"][idx] = plan.name
+            response["plan_condition"] = [
+                name for name in response["plan_condition"] if name
+            ]
+    return response
 
 
 @app.route("/start/<start_type>")
@@ -367,6 +382,21 @@ def getTradingHistory():
     from arknights_mower.solvers import record
 
     return record.get_trading_history(start_date, end_date)
+
+
+@app.route("/record/clear-data", methods=["DELETE"])
+def clear_data_route():
+    date_time_str = request.json.get("date_time")
+    logger.info(date_time_str)
+    if not date_time_str:
+        return "日期时间参数缺失", 400
+    try:
+        date_time = datetime.datetime.fromtimestamp(date_time_str / 1000.0)
+    except ValueError:
+        return "日期时间格式不正确", 400
+
+    clear_data(date_time)
+    return "数据已清除", 200
 
 
 @app.route("/getwatermark")
@@ -647,6 +677,12 @@ def submit_feedback():
     logger.debug(f"收到反馈务请求：{req}")
     try:
         log_files = []
+        logger.debug(__version__)
+        from arknights_mower.__main__ import base_scheduler
+
+        if base_scheduler and mower_thread.is_alive():
+            for k, v in base_scheduler.op_data.plan.items():
+                logger.debug(str(v))
         if req["type"] == "Bug":
             dt = datetime.datetime.fromtimestamp(req["endTime"] / 1000.0)
             logger.info(dt)
@@ -654,7 +690,7 @@ def submit_feedback():
             logger.info("log 文件发送中，请等待")
             if not log_files:
                 raise ValueError("对应时间log 文件无法找到")
-            body = f"<p>Bug 发生时间区间:{datetime.datetime.fromtimestamp(req['startTime']/ 1000.0)}--{dt}</p><br><p>{req['description']}</p>"
+            body = f"<p>Bug 发生时间区间:{datetime.datetime.fromtimestamp(req['startTime'] / 1000.0)}--{dt}</p><br><p>{req['description']}</p>"
         else:
             body = req["description"]
         email = Email(

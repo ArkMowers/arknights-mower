@@ -176,6 +176,7 @@ def generate_plan_by_drom(tasks, op_data):
     ordered = sorted(tasks.items())
     result = []
     planned = set()
+    current_time = datetime.now()
     for time, (dorms, rest_in_full) in ordered:
         logger.debug(f"{time},{dorms},{rest_in_full}")
         plan = {}
@@ -201,7 +202,11 @@ def generate_plan_by_drom(tasks, op_data):
                     planned.add(o.name)
         if rest_in_full:
             result.append(
-                SchedulerTask(task_plan=plan, time=time, task_type=TaskTypes.SHIFT_ON)
+                SchedulerTask(
+                    task_plan=plan,
+                    time=max(time, current_time),
+                    task_type=TaskTypes.SHIFT_ON,
+                )
             )
         else:
             added = False
@@ -222,7 +227,9 @@ def generate_plan_by_drom(tasks, op_data):
                         idx,
                         SchedulerTask(
                             task_plan=plan,
-                            time=result[idx].time - timedelta(seconds=1),
+                            time=max(
+                                result[idx].time, current_time - timedelta(seconds=1)
+                            ),
                             task_type=TaskTypes.RELEASE_DORM
                             if rest_in_full is None
                             else TaskTypes.SHIFT_ON,
@@ -234,7 +241,7 @@ def generate_plan_by_drom(tasks, op_data):
                 result.append(
                     SchedulerTask(
                         task_plan=plan,
-                        time=time - timedelta(seconds=1),
+                        time=max(time, current_time - timedelta(seconds=1)),
                         task_type=TaskTypes.RELEASE_DORM
                         if rest_in_full is None
                         else TaskTypes.SHIFT_ON,
@@ -308,7 +315,7 @@ def plan_metadata(op_data, tasks):
                     limit = 5400 if op_data.power_plant_count == 2 else 3600
                     if dorm.time and (base_time - dorm.time).total_seconds() > limit:
                         logger.debug(
-                            f"{high_dorms[0].name} 的时间 {base_time} 被调整为 {dorm.time}，因为时间差超过{limit/3600}小时"
+                            f"{high_dorms[0].name} 的时间 {base_time} 被调整为 {dorm.time}，因为时间差超过{limit / 3600}小时"
                         )
                         max_rest_in_full_time = base_time
                     if op_data.operators[high_dorms[0].name].exhaust_require:
@@ -380,35 +387,50 @@ def plan_metadata(op_data, tasks):
 def try_reorder(op_data):
     # 复制副本，防止原本的dorm错误触发纠错
     dorm = copy.deepcopy(op_data.dorm)
-    # 如果当前高优有空位(非高优人员)，则重新排序，正在休息的人逐个往前挤
+    priority_list = op_data.config.ope_resting_priority
     vip = sum(1 for key in op_data.plan.keys() if key.startswith("dorm"))
     logger.debug(f"当前vip个数{vip}")
     if vip == 0:
         return
-    ready_index = 0
-    for idx, room in enumerate(dorm):
-        logger.debug(room)
-        if not room.name:
-            continue
-        op = op_data.operators[room.name]
-        if op.operator_type == "high" and idx >= vip and op.resting_priority != "high":
-            if idx == ready_index:
-                ready_index += 1
-            elif ready_index >= vip:
-                dorm[ready_index].name, room.name = (
-                    room.name,
-                    dorm[ready_index].name,
-                )
-                room.time = None
-                ready_index += 1
-        elif op.operator_type == "high":
-            if idx != ready_index:
-                dorm[ready_index].name, room.name = (
-                    room.name,
-                    dorm[ready_index].name,
-                )
-                room.time = None
-            ready_index += 1
+
+    def get_ranking(name):
+        if name in op_data.operators:
+            op = op_data.operators[name]
+            if op.operator_type == "high" and op.resting_priority == "high":
+                return "high"
+            elif op.operator_type == "high":
+                return "normal"
+        return "low"
+
+    dorm_info = [
+        {
+            "name": room.name,
+            "index": idx,
+            "time": room.time,
+            "priority": get_ranking(room.name),
+        }
+        for idx, room in enumerate(dorm)  # **跳过 name 为空的 dorm**
+    ]
+
+    def sort_key(op):
+        length = len(priority_list)
+        priority_order = {
+            "high": length,
+            "normal": length + 1,
+            "low": length + 2,
+        }  # **先排 priority_list，再按 high > normal > low**
+        return (
+            priority_list.index(op["name"])
+            if op["name"] in priority_list and op["name"] != ""
+            else priority_order[op["priority"]],
+            op["index"],
+        )
+
+    dorm_info.sort(key=sort_key)
+    for idx in range(len(dorm)):
+        if dorm[idx].name:  # **只修改非空 dorm**
+            dorm[idx].name = dorm_info[idx]["name"]
+            dorm[idx].time = dorm_info[idx]["time"]
     plan = {}
     logger.debug(f"更新房间信息{dorm}")
     for room in dorm:
@@ -522,32 +544,34 @@ def check_dorm_ordering(tasks, op_data):
             if room.startswith("dorm"):
                 # 是否检查过vip位置
                 pass_first_free = False
+                clear = False
                 for idx, agent in enumerate(v):
-                    # 如果当前位置非宿管 且无人员变动（有变动则是下班干员）
-                    if "Free" == plan[room][idx].agent and agent == "Current":
-                        # 如果高优先不变，则跳过逻辑判定
-                        if not pass_first_free:
-                            continue
-                        current = next(
-                            (
-                                obj
-                                for obj in op_data.operators.values()
-                                if obj.current_room == room and obj.current_index == idx
-                            ),
-                            None,
-                        )
-                        if current:
-                            if current.name not in working_agent:
-                                v[idx] = current.name
-                            else:
-                                logger.debug(f"检测到干员{current.name}已经上班")
-                                v[idx] = "Free"
+                    # 如果当前位置为VIP，且有人员变动，则清除后续人员
+                    if pass_first_free and clear:
+                        if agent == "Current":
+                            current = next(
+                                (
+                                    obj
+                                    for obj in op_data.operators.values()
+                                    if obj.current_room == room
+                                    and obj.current_index == idx
+                                ),
+                                None,
+                            )
+                            if current:
+                                if current.name not in working_agent:
+                                    v[idx] = current.name
+                                else:
+                                    logger.debug(f"检测到干员{current.name}已经上班")
+                                    v[idx] = "Free"
                         if room not in extra_plan:
                             extra_plan[room] = copy.deepcopy(v)
                         # 新生成移除任务 --> 换成移除
                         extra_plan[room][idx] = ""
                     if "Free" == plan[room][idx].agent and not pass_first_free:
                         pass_first_free = True
+                        if agent != "Current":
+                            clear = True
             else:
                 other_plan[room] = v
         tasks[0].meta_data = "宿舍排序完成"
@@ -555,6 +579,8 @@ def check_dorm_ordering(tasks, op_data):
             for k, v in other_plan.items():
                 del tasks[0].plan[k]
                 extra_plan[k] = v
+            for k, v in extra_plan.items():
+                extra_plan[k] = [item for item in v if item != ""]
             logger.info("新增排序任务任务")
             task = SchedulerTask(
                 task_plan=extra_plan,

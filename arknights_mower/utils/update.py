@@ -90,7 +90,7 @@ def download_version(version):
             if chunk:
                 f.write(chunk)
                 index += len(chunk)
-                print(f"更新进度：{'%.2f%%' % (index*100 / total)}({index}/{total})")
+                print(f"更新进度：{'%.2f%%' % (index * 100 / total)}({index}/{total})")
     zip_file = zipfile.ZipFile("./tmp/mower.zip")
     zip_list = zip_file.namelist()
 

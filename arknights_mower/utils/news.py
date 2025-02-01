@@ -10,7 +10,7 @@ from arknights_mower.utils.log import logger
 def get_update_time():
     host = "https://ak.hypergryph.com"
     url = host + "/news/"
-    response = requests.get(url)
+    response = requests.get(url, timeout=30)
     response.encoding = "utf8"
     soup = BeautifulSoup(response.text, "lxml")
     soup.encode("utf-8")

@@ -3,12 +3,12 @@ from datetime import datetime, timedelta
 
 from evalidate import Expr, base_eval_model
 
+from arknights_mower.utils import config
 from arknights_mower.utils.plan import BaseProduct, PlanConfig
 
 from ..data import agent_arrange_order, agent_list, base_room_list
 from ..solvers.record import save_action_to_sqlite_decorator
 from ..utils.log import logger
-from . import config
 
 
 class SkillUpgradeSupport:
@@ -233,7 +233,7 @@ class Operators:
         if "菲亚梅塔" in missing_replacements:
             return "菲亚梅塔替换缺失"
         if len(missing_replacements):
-            return f'以下干员替换组缺失：{",".join(missing_replacements)}'
+            return f"以下干员替换组缺失：{','.join(missing_replacements)}"
         dorm_names = [k for k in self.plan.keys() if k.startswith("dorm")]
         dorm_names.sort(key=lambda d: d, reverse=False)
         added = []
@@ -251,7 +251,6 @@ class Operators:
                         _dorm.agent == "Free"
                         and not free_found
                         and (dorm + str(_idx)) not in added
-                        and len(added) < self.config.max_resting_count
                     ):
                         self.dorm.append(Dormitory((dorm, _idx)))
                         added.append(dorm + str(_idx))
@@ -265,12 +264,36 @@ class Operators:
                     if _dorm.agent == "Free" and (dorm + str(_idx)) not in added:
                         self.dorm.append(Dormitory((dorm, _idx)))
                         added.append(dorm + str(_idx))
+            if config.conf.dorm_order == "":
+                logger.info(self.dorm)
+                config.conf.dorm_order = ",".join(
+                    [
+                        dorm.position[0] + "_" + str(dorm.position[1])
+                        for dorm in self.dorm
+                    ]
+                )
+                logger.info(config.conf.dorm_order)
+                config.save_conf()  # 保存配置
+            else:
+                dorm_order = config.conf.dorm_order.split(",")
+                current_dorm_names = {
+                    dorm.position[0] + "_" + str(dorm.position[1]) for dorm in self.dorm
+                }
+                saved_dorm_names = set(dorm_order)
+                if saved_dorm_names == current_dorm_names:
+                    self.dorm.sort(
+                        key=lambda dorm: dorm_order.index(
+                            dorm.position[0] + "_" + str(dorm.position[1])
+                        )
+                    )
+                else:
+                    return (
+                        "宿舍优先级和当前宿舍不匹配，请清除优先级自动排序或者自己更正"
+                    )
         else:
             for key, value in self.shadow_copy.items():
                 if key not in self.operators:
                     self.add(Operator(key, ""))
-        if len(self.dorm) < self.config.max_resting_count:
-            return f"宿舍Free总数 {len(self.dorm)}小于最大分组数 {self.config.max_resting_count}"
         # 跑单
         for x, y in self.plan.items():
             if not x.startswith("room"):
@@ -281,13 +304,8 @@ class Operators:
                 for char in ["但书", "龙舌兰", "佩佩"]
             ):
                 self.run_order_rooms[x] = {}
-        # 判定分组排班可能性
-        current_high = self.config.max_resting_count
-        current_low = len(self.dorm) - self.config.max_resting_count
         for key in self.groups:
             total_count = 0
-            high_count = 0
-            low_count = 0
             _replacement = []
             for name in self.groups[key]:
                 _candidate = next(
@@ -304,16 +322,8 @@ class Operators:
                     _replacement.append(_candidate)
                 if self.operators[name].workaholic:
                     continue
-                if self.operators[name].resting_priority == "high":
-                    high_count += 1
-                else:
-                    low_count += 1
-                if (
-                    high_count > current_high or low_count > current_low
-                ) and not config.conf.flexible_shift_mode:
-                    return f"{key} 分组无法排班,宿舍可用高优先{current_high},低优先{current_low}->分组需要高优先{high_count},低优先{low_count}"
                 total_count += 1
-            if total_count > len(self.dorm) and config.conf.flexible_shift_mode:
+            if total_count > len(self.dorm):
                 return f"{key} 分组无法排班,分组总数(不包含0心情工作){total_count}大于总宿舍数{len(self.dorm)}"
         # 设定令夕模式的心情阈值
         self.init_mood_limit()
@@ -542,10 +552,6 @@ class Operators:
         if room.startswith("dorm") and self.config.free_room:
             return [i for i, x in enumerate(self.plan[room]) if x == "Free"]
         for idx, dorm in enumerate(self.dorm):
-            # Filter out resting priority low
-            if idx >= self.config.max_resting_count:
-                if not self.config.free_room:
-                    break
             if dorm.position[0] == room:
                 for i, _name in enumerate(plan):
                     if _name not in self.operators.keys():
@@ -618,9 +624,12 @@ class Operators:
         )
         return current_mood / total_mood
 
-    def available_free(self, free_type="high"):
+    def available_free(self, free_type="high", time=None):
+        if not time:
+            time = datetime.now()
         ret = 0
         freeName = []
+        max_count = sum(1 for key in self.plan if key.startswith("dorm"))
         if free_type == "high":
             idx = 0
             for dorm in self.dorm:
@@ -629,17 +638,16 @@ class Operators:
                     and not self.operators[dorm.name].is_high()
                 ):
                     ret += 1
-                elif dorm.time is not None and dorm.time < datetime.now():
+                elif dorm.time is not None and dorm.time < time:
                     logger.info(f"检测到房间休息完毕，释放{dorm.name}宿舍位")
                     freeName.append(dorm.name)
                     ret += 1
-                if idx == self.config.max_resting_count - 1:
+                if idx == max_count - 1:
                     break
                 else:
                     idx += 1
         else:
-            idx = self.config.max_resting_count
-            for i in range(idx, len(self.dorm)):
+            for i in range(max_count, len(self.dorm)):
                 dorm = self.dorm[i]
                 # 释放满休息位
                 # TODO 高效组且低优先可以相互替换
@@ -648,7 +656,7 @@ class Operators:
                     and not self.operators[dorm.name].is_high()
                 ):
                     ret += 1
-                elif dorm.time is not None and dorm.time < datetime.now():
+                elif dorm.time is not None and dorm.time < time:
                     logger.info(f"检测到房间休息完毕，释放{dorm.name}宿舍位")
                     freeName.append(dorm.name)
                     ret += 1
@@ -657,23 +665,15 @@ class Operators:
                 if name in agent_list:
                     self.operators[name].mood = self.operators[name].upper_limit
                     self.operators[name].depletion_rate = 0
-                    self.operators[name].time_stamp = datetime.now()
+                    self.operators[name].time_stamp = time
         return ret
 
     def assign_dorm(self, name, is_new=False):
         is_high = self.operators[name].resting_priority == "high"
-        if is_high:
-            _room = next(
-                obj
-                for obj in self.dorm
-                if obj.name not in self.operators.keys()
-                or not self.operators[obj.name].is_high()
-            )
-        else:
-            _room = None
-            for i in range(
-                4 if is_new else self.config.max_resting_count, len(self.dorm)
-            ):
+        _room = None
+        max_count = sum(1 for key in self.plan if key.startswith("dorm"))
+        if not is_high:
+            for i in range(max_count, len(self.dorm)):
                 _name = self.dorm[i].name
                 if (
                     _name == ""
@@ -685,6 +685,16 @@ class Operators:
                 ):
                     _room = self.dorm[i]
                     break
+        if is_high or _room is None:
+            if not is_high:
+                logger.warning("弹性模式下请勿设置过多低优先")
+            _room = next(
+                obj
+                for obj in self.dorm
+                if obj.name not in self.operators.keys()
+                or not self.operators[obj.name].is_high()
+                or (obj.time is not None and obj.time < datetime.now())
+            )
         _room.name = name
         _room.time = None
         return _room
@@ -765,6 +775,7 @@ class Operator:
         self.time_stamp = time_stamp
         self.workaholic = False
         self.arrange_order = [2, "false"]
+        self.exhaust_time = None
 
     @property
     def current_room(self):
@@ -826,14 +837,14 @@ class Operator:
             )
         return False
 
-    def current_mood(self):
+    def current_mood(self, time=None):
+        if not time:
+            time = datetime.now()
         predict = self.mood
         if self.time_stamp is not None:
             predict = (
                 self.mood
-                - self.depletion_rate
-                * (datetime.now() - self.time_stamp).total_seconds()
-                / 3600
+                - self.depletion_rate * (time - self.time_stamp).total_seconds() / 3600
             )
         if 0 <= predict <= 24:
             return predict
