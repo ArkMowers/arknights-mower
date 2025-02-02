@@ -180,10 +180,13 @@ def generate_plan_by_drom(tasks, op_data):
     for time, (dorms, rest_in_full) in ordered:
         logger.debug(f"{time},{dorms},{rest_in_full}")
         plan = {}
+        exhaust_exist = False
         for room in dorms:
             if room.name in planned:
                 continue
             op = op_data.operators[room.name]
+            if op.exhaust_require:
+                exhaust_exist = True
             if not op.is_high():
                 # 释放宿舍类别
                 if op.current_room not in plan:
@@ -201,13 +204,22 @@ def generate_plan_by_drom(tasks, op_data):
                     plan[o.room][o.index] = agent
                     planned.add(o.name)
         if rest_in_full:
-            result.append(
-                SchedulerTask(
-                    task_plan=plan,
-                    time=max(time, current_time),
-                    task_type=TaskTypes.SHIFT_ON,
+            if exhaust_exist:
+                result.append(
+                    SchedulerTask(
+                        task_plan=plan,
+                        time=max(time, current_time),
+                        task_type=TaskTypes.SHIFT_ON,
+                    )
                 )
-            )
+            else:
+                result.append(
+                    SchedulerTask(
+                        task_plan=plan,
+                        time=max(time-timedelta(minutes=8), current_time),
+                        task_type=TaskTypes.SHIFT_ON,
+                    )
+                )  
         else:
             added = False
             if rest_in_full is None and not op_data.config.free_room:
@@ -241,7 +253,12 @@ def generate_plan_by_drom(tasks, op_data):
                 result.append(
                     SchedulerTask(
                         task_plan=plan,
-                        time=max(time, current_time - timedelta(seconds=1)),
+                        time=max(time, current_time - timedelta(seconds=1))
+                        if rest_in_full is None
+                        else max(
+                            time - timedelta(minutes=8),
+                            current_time - timedelta(seconds=1),
+                        ),
                         task_type=TaskTypes.RELEASE_DORM
                         if rest_in_full is None
                         else TaskTypes.SHIFT_ON,
@@ -301,7 +318,11 @@ def plan_metadata(op_data, tasks):
         logger.debug(f"开始计算:{dorms}")
         max_rest_in_full_time = None
         task_time = datetime.max
-        high_dorms = [dorm for dorm in dorms if op_data.operators[dorm.name].is_high()]
+        _high_dorms = [dorm for dorm in dorms if op_data.operators[dorm.name].is_high() and op_data.operators[dorm.name].resting_priority == "high"]
+        if len(_high_dorms) == 0:
+            high_dorms = [dorm for dorm in dorms if op_data.operators[dorm.name].is_high()]
+        else:
+            high_dorms = _high_dorms
         rest_in_full_dorms = [
             dorm for dorm in high_dorms if op_data.operators[dorm.name].rest_in_full
         ]
