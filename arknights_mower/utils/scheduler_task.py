@@ -216,10 +216,10 @@ def generate_plan_by_drom(tasks, op_data):
                 result.append(
                     SchedulerTask(
                         task_plan=plan,
-                        time=max(time-timedelta(minutes=8), current_time),
+                        time=max(time - timedelta(minutes=8), current_time),
                         task_type=TaskTypes.SHIFT_ON,
                     )
-                )  
+                )
         else:
             added = False
             if rest_in_full is None and not op_data.config.free_room:
@@ -318,9 +318,16 @@ def plan_metadata(op_data, tasks):
         logger.debug(f"开始计算:{dorms}")
         max_rest_in_full_time = None
         task_time = datetime.max
-        _high_dorms = [dorm for dorm in dorms if op_data.operators[dorm.name].is_high() and op_data.operators[dorm.name].resting_priority == "high"]
+        _high_dorms = [
+            dorm
+            for dorm in dorms
+            if op_data.operators[dorm.name].is_high()
+            and op_data.operators[dorm.name].resting_priority == "high"
+        ]
         if len(_high_dorms) == 0:
-            high_dorms = [dorm for dorm in dorms if op_data.operators[dorm.name].is_high()]
+            high_dorms = [
+                dorm for dorm in dorms if op_data.operators[dorm.name].is_high()
+            ]
         else:
             high_dorms = _high_dorms
         rest_in_full_dorms = [
