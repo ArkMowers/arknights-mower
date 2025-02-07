@@ -26,6 +26,7 @@ export const useMowerStore = defineStore('mower', () => {
 
   const ws = ref(null)
   const running = ref(false)
+  const plan_condition = ref([])
   const waiting = ref(false)
 
   const first_load = ref(true)
@@ -49,7 +50,8 @@ export const useMowerStore = defineStore('mower', () => {
 
   async function get_running() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/running`)
-    running.value = response.data
+    running.value = response.data['running']
+    plan_condition.value = response.data['plan_condition']
   }
 
   async function get_tasks() {
@@ -68,6 +70,7 @@ export const useMowerStore = defineStore('mower', () => {
     log_lines,
     ws,
     running,
+    plan_condition,
     waiting,
     listen_ws,
     get_running,

@@ -47,7 +47,7 @@ class SKLand:
                     self.reward.append(
                         {"nickName": item.account, "reward": resp.get("message")}
                     )
-                    logger.info(f'{i.get("nickName")}：{resp.get("message")}')
+                    logger.info(f"{i.get('nickName')}：{resp.get('message')}")
                     continue
                 awards = resp["data"]["awards"]
                 for j in awards:
@@ -59,7 +59,7 @@ class SKLand:
                         }
                     )
                     logger.info(
-                        f'{i.get("nickName")}获得了{res["name"]}×{j.get("count") or 1}'
+                        f"{i.get('nickName')}获得了{res['name']}×{j.get('count') or 1}"
                     )
         if len(self.reward) > 0:
             return self.record_log()
@@ -78,7 +78,7 @@ class SKLand:
             headers=header_login,
         ).json()
         if r.get("status") != 0:
-            raise Exception(f'获得token失败：{r["msg"]}')
+            raise Exception(f"获得token失败：{r['msg']}")
         return r["data"]["token"]
 
     def record_log(self):

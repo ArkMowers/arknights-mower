@@ -34,6 +34,8 @@ class Recognizer:
             self.scene = Scene.UNDEFINED
         self.loading_time = 0
         self.LOADING_TIME_LIMIT = 5
+        self.last_scene = None
+        self.last_scene_time = time.time()
 
     def clear(self):
         self._screencap = None
@@ -136,6 +138,16 @@ class Recognizer:
 
     def get_scene(self) -> int:
         """get the current scene in the game"""
+        current_time = time.time()
+        # 检查模拟器是否卡死，超过跑单时间*90秒则视为卡死
+        if self.scene == self.last_scene:
+            elapsed_time = current_time - self.last_scene_time
+            if elapsed_time > config.conf.run_order_delay * 90:
+                logger.warning("相同场景等待超时 ")
+                self.last_scene = None
+                self.last_scene_time = current_time
+                self.device.exit()
+
         if self.scene != Scene.UNDEFINED:
             return self.scene
 
@@ -310,7 +322,12 @@ class Recognizer:
             self.scene = Scene.FRIEND_LIST
         elif self.find("credit_visiting"):
             self.scene = Scene.FRIEND_VISITING
-        elif self.find("arrange_check_in") or self.find("arrange_check_in_on"):
+        elif (
+            self.find("arrange_check_in")
+            or self.find("arrange_check_in_on")
+            or self.find("room_detail")
+            or self.find("arrange_check_in_small")
+        ):
             self.scene = Scene.INFRA_DETAILS
         elif self.find("ope_failed"):
             self.scene = Scene.OPERATOR_FAILED
@@ -352,7 +369,8 @@ class Recognizer:
             self.check_current_focus()
 
         logger.info(f"Scene {self.scene}: {SceneComment[self.scene]}")
-
+        self.last_scene = self.scene
+        self.last_scene_time = current_time
         return self.scene
 
     def find_ra_battle_exit(self) -> bool:
@@ -559,7 +577,7 @@ class Recognizer:
             self.scene = Scene.SSS_START
         elif self.find("sss/ec_button"):
             self.scene = Scene.SSS_EC
-        elif self.find("sss/device_button"):
+        elif self.find("sss/device_button") or self.find("sss/next_step_button"):
             self.scene = Scene.SSS_DEVICE
         elif self.find("sss/squad_button"):
             self.scene = Scene.SSS_SQUAD
@@ -567,6 +585,8 @@ class Recognizer:
             self.scene = Scene.SSS_DEPLOY
         elif self.find("sss/redeploy_button"):
             self.scene = Scene.SSS_REDEPLOY
+        elif self.find("sss/confirm"):
+            self.scene = Scene.SSS_CONFIRM
         elif self.find("sss/loading"):
             self.scene = Scene.SSS_LOADING
         elif self.find("sss/close_button"):
@@ -645,7 +665,7 @@ class Recognizer:
         color = {
             "1800": (158, 958),
             "12cadpa": (1810, 21),
-            "arrange_confirm": (755, 903),
+            "arrange_confirm": (963, 969),
             "arrange_order_options": (1652, 23),
             "arrange_order_options_scene": (369, 199),
             "clue": (1740, 855),
@@ -739,7 +759,6 @@ class Recognizer:
             "recruit/riic_res/WARRIOR": 0.7,
             "recruit/time": 0.8,
             "recruit/stone": 0.7,
-            "arrange_confirm": 0.85,
         }
 
         if res in color:
@@ -766,7 +785,7 @@ class Recognizer:
             return None
 
         template_matching = {
-            "arrange_check_in": ((30, 300), (175, 700)),
+            # "arrange_check_in": ((30, 300), (175, 700)),
             "arrange_check_in_on": ((30, 300), (175, 700)),
             "biography": (768, 934),
             "business_card": (55, 165),
@@ -870,10 +889,10 @@ class Recognizer:
         ]
 
         if scope is None and threshold == 0.0:
-            if res == "arrange_check_in":
-                scope = ((0, 350), (200, 530))
-                threshold = 0.55
-            elif res == "arrange_check_in_on":
+            # if res == "arrange_check_in":
+            #     scope = ((0, 350), (200, 530))
+            #     threshold = 0.55
+            if res == "arrange_check_in_on":
                 scope = ((0, 350), (200, 530))
             elif res == "connecting":
                 scope = ((1087, 978), (1430, 1017))

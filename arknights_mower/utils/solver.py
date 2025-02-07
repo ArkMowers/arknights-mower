@@ -705,11 +705,13 @@ class BaseSolver:
                     self.tap((ec_x, 540))
                     self.tap_element("sss/ec_button")
                 elif scene == Scene.SSS_DEVICE:
-                    self.tap_element("sss/device_button")
+                    self.tap((1824, 1026))
                 elif scene == Scene.SSS_SQUAD:
                     self.tap_element("sss/squad_button")
                 elif scene == Scene.SSS_GUIDE:
                     self.tap_element("sss/close_button")
+                elif scene == Scene.SSS_CONFIRM:
+                    self.tap_element("sss/confirm")
                 else:
                     self.sleep()
             except MowerExit:

@@ -5,14 +5,12 @@ import { storeToRefs } from 'pinia'
 
 const config_store = useConfigStore()
 const {
-  enable_party,
   shop_list,
   maa_mall_buy,
   maa_mall_blacklist,
   maa_mall_ignore_blacklist_when_full,
   maa_enable,
   maa_credit_fight,
-  leifeng_mode,
   credit_fight
 } = storeToRefs(config_store)
 
@@ -72,18 +70,8 @@ const show_map = ref(false)
 </script>
 
 <template>
-  <n-card title="线索收集与信用">
-    <n-flex>
-      <n-checkbox v-model:checked="enable_party"><div class="item">线索收集</div></n-checkbox>
-      <n-checkbox v-model:checked="leifeng_mode">
-        雷锋模式
-        <help-text>
-          <div>开启时，向好友赠送多余的线索；</div>
-          <div>关闭则超过9个线索才送好友。</div>
-        </help-text>
-      </n-checkbox>
-    </n-flex>
-    <n-divider />
+  <n-card title="获取信用及购物">
+    开趴相关已移至 mower设置-基建设置 当中
     <n-form :label-placement="mobile ? 'top' : 'left'" :show-feedback="false" class="rogue">
       <n-form-item :show-label="false">
         <n-checkbox v-model:checked="maa_credit_fight">
@@ -91,13 +79,13 @@ const show_map = ref(false)
         </n-checkbox>
         <help-text>
           <div>借助战打OF-1</div>
-          <div>使用指定编队中的指定干员</div>
+          <div>使用指定编队</div>
         </help-text>
       </n-form-item>
       <n-form-item label="编队">
         <n-select :options="squads" v-model:value="credit_fight.squad" />
       </n-form-item>
-      <n-form-item label="干员">
+      <!--<n-form-item label="干员">
         <n-select
           filterable
           :options="operators"
@@ -120,7 +108,7 @@ const show_map = ref(false)
       </n-form-item>
       <n-form-item :show-label="false" v-if="show_map">
         <n-image src="/map-OF-1.webp" width="100%" />
-      </n-form-item>
+      </n-form-item>-->
     </n-form>
     <n-divider />
     <n-checkbox v-model:checked="maa_enable" class="maa-shop">

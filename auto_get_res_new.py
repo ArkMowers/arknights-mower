@@ -616,7 +616,7 @@ class Arknights数据处理器:
                         干员技能详情["skill_level"] = skill_level
                         skill_level += 1
                         干员技能详情["phase_level"] = (
-                            f'精{item2["cond"]["phase"]} {item2["cond"]["level"]}级'
+                            f"精{item2['cond']['phase']} {item2['cond']['level']}级"
                         )
                         干员技能详情["skillname"] = buff_table[item2["buffId"]][0]
                         text = buff_table[item2["buffId"]][1]

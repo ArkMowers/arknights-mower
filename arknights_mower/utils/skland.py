@@ -86,7 +86,7 @@ def get_grant_code(token):
     if response.status_code != 200:
         raise Exception(f"获得认证代码失败：{resp}")
     if resp.get("status") != 0:
-        raise Exception(f'获得认证代码失败：{resp["msg"]}')
+        raise Exception(f"获得认证代码失败：{resp['msg']}")
     return resp["data"]["code"]
 
 
@@ -103,7 +103,7 @@ def get_cred(grant):
     ).json()
 
     if resp["code"] != 0:
-        raise Exception(f'获得cred失败：{resp["message"]}')
+        raise Exception(f"获得cred失败：{resp['message']}")
 
     return resp["data"]
 
@@ -118,6 +118,7 @@ def get_binding_list(sign_token):
             None,
             sign_token,
         ),
+        timeout=30,
     ).json()
 
     if resp["code"] != 0:
@@ -141,8 +142,9 @@ def log(account):
         token_password_url,
         json={"phone": account.account, "password": account.password},
         headers=header_login,
+        timeout=30,
     ).json()
     if r.get("status") != 0:
-        raise Exception(f'获得token失败：{r["msg"]}')
+        raise Exception(f"获得token失败：{r['msg']}")
     logger.info("森空岛登陆成功")
     return r["data"]["token"]

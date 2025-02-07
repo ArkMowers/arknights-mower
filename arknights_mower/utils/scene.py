@@ -247,6 +247,8 @@ class Scene:
     "正在进入"
     SSS_GUIDE = 1009
     "保全教程"
+    SSS_CONFIRM = 1010
+    "保全确定"
     SF_ENTRANCE = 1101
     "隐秘战线入口"
     SF_INFO = 1102

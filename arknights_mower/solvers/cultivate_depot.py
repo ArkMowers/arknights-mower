@@ -33,6 +33,7 @@ class cultivate:
                             headers=get_sign_header(
                                 ingame, "get", body, self.sign_token
                             ),
+                            timeout=30,
                         ).json()
                         with open(self.record_path, "w", encoding="utf-8") as file:
                             json.dump(resp, file, ensure_ascii=False, indent=4)

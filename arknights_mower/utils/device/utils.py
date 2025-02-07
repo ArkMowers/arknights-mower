@@ -8,7 +8,7 @@ from ..log import logger
 def download_file(target_url: str) -> str:
     """download file to temp path, and return its file path for further usage"""
     logger.debug(f"downloading: {target_url}")
-    resp = requests.get(target_url, verify=False)
+    resp = requests.get(target_url, verify=False, timeout=300)
     with tempfile.NamedTemporaryFile("wb+", delete=False) as f:
         file_name = f.name
         f.write(resp.content)
