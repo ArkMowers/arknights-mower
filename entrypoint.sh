@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# 清理 Xvfb 锁文件
+# 清理 Xvfb 锁文件，防止容器因为异常关闭而重启失败
 if [ -f /tmp/.X99-lock ]; then
     echo "Cleaning up Xvfb lock file"
     rm -f /tmp/.X99-lock
@@ -26,6 +26,6 @@ if [ ! -L "./dist" ]; then
     ln -s ui/dist ./dist
 fi
 
-# 启动应用
+# 启动mower应用
 echo "Starting application..."
 dbus-run-session -- ./venv/bin/python /app/webview_ui.py
