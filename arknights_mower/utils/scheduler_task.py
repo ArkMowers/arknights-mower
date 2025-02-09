@@ -205,21 +205,16 @@ def generate_plan_by_drom(tasks, op_data):
                     planned.add(o.name)
         if rest_in_full:
             if exhaust_exist:
-                result.append(
-                    SchedulerTask(
-                        task_plan=plan,
-                        time=max(time, current_time),
-                        task_type=TaskTypes.SHIFT_ON,
-                    )
-                )
+                time = max(time, current_time)
             else:
-                result.append(
-                    SchedulerTask(
-                        task_plan=plan,
-                        time=max(time - timedelta(minutes=8), current_time),
-                        task_type=TaskTypes.SHIFT_ON,
-                    )
+                time = max(time - timedelta(minutes=8), current_time)
+            result.append(
+                SchedulerTask(
+                    task_plan=plan,
+                    time=time,
+                    task_type=TaskTypes.SHIFT_ON,
                 )
+            )
         else:
             added = False
             if rest_in_full is None and not op_data.config.free_room:
