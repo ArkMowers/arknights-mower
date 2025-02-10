@@ -2285,8 +2285,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         right_swipe = 0
                     last_special_filter = profession
             elif agent and agent[0] in agent_list:
-                if agent[0] != "阿米娅":
-                    # 只要不是阿米娅就打开职介筛选
+                if is_dorm and agent[0] != "阿米娅":
+                    # 在宿舍并且不是阿米娅则打开职介筛选
                     profession = agent_profession[agent[0]]
                     self.profession_filter(profession)
                     if last_special_filter != profession:

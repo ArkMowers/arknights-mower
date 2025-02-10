@@ -793,6 +793,7 @@ class Operator:
                 Operators.current_room_changed_callback(self)
 
     def is_high(self):
+        # 是否为高效组
         return self.operator_type == "high"
 
     def is_resting(self):
