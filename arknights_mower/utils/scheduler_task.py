@@ -418,10 +418,10 @@ def try_reorder(op_data):
 
     def get_ranking(name):
         if name in op_data.operators:
-            op = op_data.operators[name]
-            if op.operator_type == "high" and op.resting_priority == "high":
+            _op = op_data.operators[name]
+            if _op.operator_type == "high" and _op.resting_priority == "high":
                 return "high"
-            elif op.operator_type == "high":
+            elif _op.operator_type == "high":
                 return "normal"
         return "low"
 
@@ -435,7 +435,7 @@ def try_reorder(op_data):
         for idx, room in enumerate(dorm)  # **跳过 name 为空的 dorm**
     ]
 
-    def sort_key(op):
+    def sort_key(_op):
         length = len(priority_list)
         priority_order = {
             "high": length,
@@ -443,10 +443,10 @@ def try_reorder(op_data):
             "low": length + 2,
         }  # **先排 priority_list，再按 high > normal > low**
         return (
-            priority_list.index(op["name"])
-            if op["name"] in priority_list and op["name"] != ""
-            else priority_order[op["priority"]],
-            op["index"],
+            priority_list.index(_op["name"])
+            if _op["name"] in priority_list and _op["name"] != ""
+            else priority_order[_op["priority"]],
+            _op["index"],
         )
 
     dorm_info.sort(key=sort_key)

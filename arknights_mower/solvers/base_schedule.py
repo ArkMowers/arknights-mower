@@ -1169,23 +1169,21 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             raise
         except Exception as e:
             logger.exception(e)
-            # 如果下个 普通任务 >5 分钟则补全宿舍
+        # 更新宿舍任务
+        re_order_dorm_plan = try_reorder(self.op_data)
+        if re_order_dorm_plan:
+            logger.debug(f"新增宿舍任务{re_order_dorm_plan}")
+            task = SchedulerTask(
+                task_plan=re_order_dorm_plan, task_type=TaskTypes.SHIFT_OFF
+            )
+            self.tasks.append(task)
+        if not self.find_next_task(datetime.now() + timedelta(minutes=5)):
+            try_add_release_dorm({}, None, self.op_data, self.tasks)
         if self.find_next_task(datetime.now() + timedelta(seconds=15)):
             logger.info("有其他任务,跳过宿舍纠错")
             return
         if self.agent_get_mood() is None:
             self.backup_plan_solver()
-        if not self.find_next_task(datetime.now() + timedelta(minutes=5)):
-            try_add_release_dorm({}, None, self.op_data, self.tasks)
-        re_order_dorm_plan = try_reorder(self.op_data)
-        if re_order_dorm_plan and not self.find_next_task(
-            datetime.now() + timedelta(minutes=0.75 * len(re_order_dorm_plan))
-        ):
-            logger.info(f"新增宿舍移位任务{re_order_dorm_plan}")
-            task = SchedulerTask(
-                task_plan=re_order_dorm_plan, task_type=TaskTypes.SHIFT_OFF
-            )
-            self.tasks.append(task)
 
     def resting(self):
         self.total_agent.sort(
@@ -1394,9 +1392,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if self.op_data.operators[x].workaholic:
                     continue
                 _dorm = self.op_data.assign_dorm(x, True)
-                if _dorm.position[0] not in plan.keys():
-                    plan[_dorm.position[0]] = ["Current"] * 5
-                plan[_dorm.position[0]][_dorm.position[1]] = _dorm.name
+                # 移除宿舍任务，改由re_order一次触发
+                # if _dorm.position[0] not in plan.keys():
+                #     plan[_dorm.position[0]] = ["Current"] * 5
+                # plan[_dorm.position[0]][_dorm.position[1]] = _dorm.name
             for k, v in __plan.items():
                 if k not in plan.keys():
                     plan[k] = __plan[k]
@@ -1577,9 +1576,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         if pos := self.find("clue/check_party"):
                             logger.info("tap")
                             self.tap(pos)
-                            self.party_time = self.double_read_time(
-                                ((1768, 438), (1902, 480))
-                            )
+                        self.party_time = self.double_read_time(
+                            ((1768, 438), (1902, 480))
+                        )
+                        if self.party_time > datetime.now():
                             logger.info(f"线索交流结束时间：{self.party_time}")
                             if not find_next_task(
                                 self.tasks,
@@ -1596,7 +1596,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             self.party_time = None
                             logger.info("线索交流未开启")
                         ctm.complete("party_time")
-                        logger.info("party_time")
                     else:
                         # 点击左下角，关闭进驻信息，进入线索界面
                         self.tap((330, 1000))
@@ -2375,7 +2374,16 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 ]
             )
             train_support = self.op_data.get_train_support()
-            free_list = list(set(free_list) - set(self.op_data.config.free_blacklist))
+            # 获取所有要移除的字符串集合（排除 'Crueent'）
+            remove_set = set()
+            for key, value_list in self.task.plan.items():
+                remove_set.update(value_list)  # 加入所有列表中的元素
+            remove_set.discard("Current")
+            remove_set.discard("Free")
+            logger.debug(f"去除被安排的人员{remove_set}")
+            free_list = list(
+                set(free_list) - set(self.op_data.config.free_blacklist) - remove_set
+            )
             if train_support in free_list:
                 free_list.remove(train_support)
             while free_num:
