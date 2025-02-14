@@ -391,10 +391,10 @@ class BaseMixin:
                 return res
         except Exception:
             if error_count > 3:
-                logger.exception(f"读取失败{error_count}次超过上限")
+                logger.debug(f"读取失败{error_count}次超过上限")
                 return None
             else:
-                logger.exception("读取失败")
+                logger.debug("读取失败")
                 return self.read_time(
                     cord, upperlimit, error_count + 1, use_digit_reader
                 )
