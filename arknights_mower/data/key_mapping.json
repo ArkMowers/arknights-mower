@@ -111,20 +111,6 @@
         "NORMAL",
         10008
     ],
-    "LMTGS_COIN_5801": [
-        "LMTGS_COIN_5801",
-        "LMTGS_COIN_5801",
-        "寻访数据契约",
-        "NORMAL",
-        10026
-    ],
-    "寻访数据契约": [
-        "LMTGS_COIN_5801",
-        "LMTGS_COIN_5801",
-        "寻访数据契约",
-        "NORMAL",
-        10026
-    ],
     "EPGS_COIN": [
         "EPGS_COIN",
         "EPGS_COIN",
@@ -404,20 +390,6 @@
         "十连寻访凭证",
         "NORMAL",
         40001
-    ],
-    "LIMITED_TKT_GACHA_10_5801": [
-        "LIMITED_TKT_GACHA_10_5801",
-        "LIMITED_TKT_GACHA_10_5801",
-        "欢宴良宵寻访凭证",
-        "NORMAL",
-        40003
-    ],
-    "欢宴良宵寻访凭证": [
-        "LIMITED_TKT_GACHA_10_5801",
-        "LIMITED_TKT_GACHA_10_5801",
-        "欢宴良宵寻访凭证",
-        "NORMAL",
-        40003
     ],
     "7003": [
         "7003",
@@ -6810,6 +6782,20 @@
         "MATERIAL",
         700162
     ],
+    "p_char_4173_nowell": [
+        "p_char_4173_nowell",
+        "p_char_4173_nowell",
+        "诺威尔的信物",
+        "MATERIAL",
+        700163
+    ],
+    "诺威尔的信物": [
+        "p_char_4173_nowell",
+        "p_char_4173_nowell",
+        "诺威尔的信物",
+        "MATERIAL",
+        700163
+    ],
     "p_char_103_angel": [
         "p_char_103_angel",
         "p_char_103_angel",
@@ -8279,6 +8265,20 @@
         "烛煌的信物",
         "MATERIAL",
         600105
+    ],
+    "p_char_4010_etlchi": [
+        "p_char_4010_etlchi",
+        "p_char_4010_etlchi",
+        "隐德来希的信物",
+        "MATERIAL",
+        600106
+    ],
+    "隐德来希的信物": [
+        "p_char_4010_etlchi",
+        "p_char_4010_etlchi",
+        "隐德来希的信物",
+        "MATERIAL",
+        600106
     ],
     "class_p_char_123_fang": [
         "class_p_char_123_fang",
