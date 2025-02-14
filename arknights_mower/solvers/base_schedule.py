@@ -192,6 +192,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     datetime.now(), task_plan=plan, task_type=TaskTypes.SHIFT_OFF
                 )
             )
+            re_order_dorm_plan = try_reorder(self.op_data)
+            if re_order_dorm_plan:
+                logger.debug(f"新增宿舍任务{re_order_dorm_plan}")
+                task = SchedulerTask(
+                    task_plan=re_order_dorm_plan, task_type=TaskTypes.SHIFT_OFF
+                )
+                self.tasks.append(task)
         else:
             msg = f"无法完成 {self.task.meta_data} 的排班，如果重复接收此邮件请检查替换组是否被占用"
             send_message(msg, level="ERROR")
