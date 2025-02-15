@@ -410,6 +410,7 @@ def plan_metadata(op_data, tasks):
 def try_reorder(op_data):
     # 复制副本，防止原本的dorm错误触发纠错
     dorm = copy.deepcopy(op_data.dorm)
+    logger.debug(op_data.dorm)
     priority_list = op_data.config.ope_resting_priority
     vip = sum(1 for key in op_data.plan.keys() if key.startswith("dorm"))
     logger.debug(f"当前vip个数{vip}")
@@ -451,9 +452,8 @@ def try_reorder(op_data):
 
     dorm_info.sort(key=sort_key)
     for idx in range(len(dorm)):
-        if dorm[idx].name:  # **只修改非空 dorm**
-            dorm[idx].name = dorm_info[idx]["name"]
-            dorm[idx].time = dorm_info[idx]["time"]
+        dorm[idx].name = dorm_info[idx]["name"]
+        dorm[idx].time = dorm_info[idx]["time"]
     plan = {}
     logger.debug(f"更新房间信息{dorm}")
     for room in dorm:

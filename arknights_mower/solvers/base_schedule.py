@@ -1403,6 +1403,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 # if _dorm.position[0] not in plan.keys():
                 #     plan[_dorm.position[0]] = ["Current"] * 5
                 # plan[_dorm.position[0]][_dorm.position[1]] = _dorm.name
+            logger.debug(_dorm)
             for k, v in __plan.items():
                 if k not in plan.keys():
                     plan[k] = __plan[k]
@@ -2463,7 +2464,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 elif pos := self.find("arrange_check_in_small"):
                     self.tap(pos, interval=0.7)
                 else:
-                    logger.info("sleep")
                     self.sleep()
             for back_time in range(3):
                 if pos := self.find("control_central"):
