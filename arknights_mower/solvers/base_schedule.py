@@ -192,7 +192,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     datetime.now(), task_plan=plan, task_type=TaskTypes.SHIFT_OFF
                 )
             )
-            re_order_dorm_plan = try_reorder(self.op_data)
+            re_order_dorm_plan = try_reorder(self.op_data, plan)
             if re_order_dorm_plan:
                 logger.debug(f"新增宿舍任务{re_order_dorm_plan}")
                 task = SchedulerTask(
@@ -1165,19 +1165,20 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.total_agent.sort(key=lambda x: x.current_mood(), reverse=False)
         # 目前有换班的计划后面改
         logger.debug(f"当前基地数据--> {self.total_agent}")
+        new_plan = {}
         try:
             # 重新排序
             if self.find_next_task(task_type=TaskTypes.SHIFT_OFF):
                 logger.info("有未完成的下班任务")
                 return
             self.plan_metadata()
-            self.resting()
+            new_plan = self.resting()
         except MowerExit:
             raise
         except Exception as e:
             logger.exception(e)
         # 更新宿舍任务
-        re_order_dorm_plan = try_reorder(self.op_data)
+        re_order_dorm_plan = try_reorder(self.op_data, new_plan)
         if re_order_dorm_plan:
             logger.debug(f"新增宿舍任务{re_order_dorm_plan}")
             task = SchedulerTask(
@@ -1254,6 +1255,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 SchedulerTask(task_plan=_plan, task_type=TaskTypes.SHIFT_OFF)
             )
             logger.info(f"生成{_plan}的下班任务")
+        return _plan
 
     def backup_plan_solver(self, timing=None):
         if timing is None:

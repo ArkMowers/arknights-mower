@@ -628,40 +628,35 @@ class Operators:
         if not time:
             time = datetime.now()
 
-        max_count = sum(1 for key in self.plan if key.startswith("dorm"))
+        dorm_count = sum(1 for key in self.plan if key.startswith("dorm"))
         total = len(self.dorm)
 
         count_high = 0
-        count_normal = 0
         count_low = 0
         free_name = []
 
         # 一次性遍历 dorm
-        for dorm in self.dorm:
+        for idx, dorm in enumerate(self.dorm):
             if dorm.name == "" or (
                 dorm.name in self.operators.keys()
                 and not self.operators[dorm.name].is_high()
             ):
-                count_low += 1  # 空位或非 high 的人
-
+                continue
             elif dorm.time is not None and dorm.time < time:
-                logger.info(f"检测到房间休息完毕，释放{dorm.name}宿舍位")
                 free_name.append(dorm.name)
-                count_low += 1  # 休息完的也算空位
-
+                continue
             if dorm.name in self.operators:
                 op = self.operators[dorm.name]
                 if op.resting_priority == "high":
                     count_high += 1
                 else:
-                    count_normal += 1
-
-        available_high = max(0, max_count - count_high)
-
-        available_low = total - max_count - count_low - min(0, count_high - max_count)
+                    count_low += 1
+        available_high = max(0, dorm_count - count_high)
+        available_low = total - count_low - max(count_high, dorm_count)
 
         if len(free_name) > 0:
             for name in free_name:
+                logger.debug(f"检测到房间休息完毕，释放{dorm.name}宿舍位")
                 if name in agent_list:
                     self.operators[name].mood = self.operators[name].upper_limit
                     self.operators[name].depletion_rate = 0

@@ -407,7 +407,13 @@ def plan_metadata(op_data, tasks):
     return tasks
 
 
-def try_reorder(op_data):
+def try_reorder(op_data, new_plan):
+    # 移除被拉去上班的替班
+    assigned_names = {name for names in new_plan.values() for name in names}
+    for d in op_data.dorm:
+        if d.name in assigned_names:
+            d.name = ""
+            d.time = None
     # 复制副本，防止原本的dorm错误触发纠错
     dorm = copy.deepcopy(op_data.dorm)
     logger.debug(op_data.dorm)
