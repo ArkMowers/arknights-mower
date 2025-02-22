@@ -440,6 +440,16 @@ class Operators:
 
     @save_action_to_sqlite_decorator
     def update_detail(self, name, mood, current_room, current_index, update_time=False):
+        """更新对象的详细信息，并记录到SQLite数据库
+        参数:
+        name(str): 对象的名称。
+        mood(str): 当前的心情状态。
+        current_room(str): 当前所在的房间名称(新)。
+        current_index(int): 当前索引（新）。
+        update_time(bool, 可选): 是否更新时间戳，默认为
+        False 是否刷新时间
+
+        返回: index 如果需要读取时间 None"""
         agent = self.operators[name]
         logger.debug(f"{name},{mood},{current_room},{current_index},{update_time}")
         if update_time:
@@ -457,41 +467,26 @@ class Operators:
                         f"更新 {agent.name} 心情掉率为：{agent.depletion_rate}"
                     )
             agent.time_stamp = datetime.now()
-        # 如果移出宿舍，则清除对应宿舍数据 且重新记录高效组心情（如果有备用班，则跳过高效组判定）
-        if (
-            agent.current_room.startswith("dorm")
-            and not current_room.startswith("dorm")
-            and (agent.is_high() or self.backup_plans)
-        ):
-            self.refresh_dorm_time(
-                agent.current_room, agent.current_index, {"agent": ""}
-            )
+        from_dorm = agent.current_room.startswith("dorm")
+        to_dorm = current_room.startswith("dorm")
+        if from_dorm and not to_dorm:
             if update_time:
                 self.time_stamp = datetime.now()
             else:
                 self.time_stamp = None
             agent.depletion_rate = 0
-        if (
-            self.get_dorm_by_name(name)[0] is not None
-            and not current_room.startswith("dorm")
-            and (agent.is_high() or self.backup_plans)
-        ):
-            _dorm = self.get_dorm_by_name(name)[1]
-            _dorm.name = ""
-            _dorm.time = None
+        if from_dorm:
+            idx, dorm = self.get_dorm_by_name(name)
+            if dorm:
+                dorm.reset()
         agent.current_room = current_room
         agent.current_index = current_index
         agent.mood = mood
         # 如果是高效组且没有记录时间，则返还index
-        if agent.current_room.startswith("dorm") and (
-            agent.is_high() or self.backup_plans
-        ):
-            for dorm in self.dorm:
-                if (
-                    dorm.position[0] == current_room
-                    and dorm.position[1] == current_index
-                    and dorm.time is None
-                ):
+        if to_dorm:
+            idx, dorm = self.get_dorm_by_name(name)
+            if dorm:
+                if dorm.time is None:
                     return current_index
         if agent.name == "菲亚梅塔" and (
             self.operators["菲亚梅塔"].time_stamp is None
@@ -567,8 +562,15 @@ class Operators:
         return ret
 
     def get_dorm_by_name(self, name):
+        _op = self.operators[name]
+        logger.debug(name)
         for idx, dorm in enumerate(self.dorm):
-            if dorm.name == name:
+            if (
+                dorm.position[0] == _op.current_room
+                and dorm.position[1] == _op.current_index
+            ):
+                logger.debug(idx)
+                logger.debug(dorm)
                 return idx, dorm
         return None, None
 
@@ -725,6 +727,10 @@ class Dormitory:
             f"Dormitory(position={self.position},name='{self.name}',time='{self.time}')"
         )
 
+    def reset(self):
+        self.name = ""
+        self.time = None
+
 
 class Operator:
     def __init__(
@@ -781,6 +787,7 @@ class Operator:
     def current_room(self, value):
         if self._current_room != value:
             self._current_room = value
+            logger.debug("call_back")
             if (
                 Operators.current_room_changed_callback
                 and self.refresh_order_room[0]

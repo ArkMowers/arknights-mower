@@ -1182,7 +1182,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if re_order_dorm_plan:
             logger.debug(f"新增宿舍任务{re_order_dorm_plan}")
             task = SchedulerTask(
-                task_plan=re_order_dorm_plan, task_type=TaskTypes.SHIFT_OFF
+                task_plan=re_order_dorm_plan,
+                task_type=TaskTypes.SHIFT_OFF if new_plan else TaskTypes.NOT_SPECIFIC,
             )
             self.tasks.append(task)
         if not self.find_next_task(datetime.now() + timedelta(minutes=5)):
@@ -1401,10 +1402,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if self.op_data.operators[x].workaholic:
                     continue
                 _dorm = self.op_data.assign_dorm(x, True)
-                # 移除宿舍任务，改由re_order一次触发
-                # if _dorm.position[0] not in plan.keys():
-                #     plan[_dorm.position[0]] = ["Current"] * 5
-                # plan[_dorm.position[0]][_dorm.position[1]] = _dorm.name
             logger.debug(_dorm)
             for k, v in __plan.items():
                 if k not in plan.keys():
@@ -2516,7 +2513,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         time_y = [(270, 305), (480, 515), (690, 725), (668, 703), (877, 912)]
         time_p = [tuple(zip(time_x, y)) for y in time_y]
         mood_x = (1470, 1780)
-        mood_y = [(219, 220), (428, 429), (637, 638), (615, 616), (823, 825)]
         mood_y = (219, 428, 637, 615, 823)
         mood_y = [(y, y + 1) for y in mood_y]
         mood_p = [tuple(zip(mood_x, y)) for y in mood_y]
