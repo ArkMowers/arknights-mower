@@ -6796,6 +6796,34 @@
         "MATERIAL",
         700163
     ],
+    "p_char_4171_wulfen": [
+        "p_char_4171_wulfen",
+        "p_char_4171_wulfen",
+        "钼铅的信物",
+        "MATERIAL",
+        700164
+    ],
+    "钼铅的信物": [
+        "p_char_4171_wulfen",
+        "p_char_4171_wulfen",
+        "钼铅的信物",
+        "MATERIAL",
+        700164
+    ],
+    "p_char_4177_brigid": [
+        "p_char_4177_brigid",
+        "p_char_4177_brigid",
+        "水灯心的信物",
+        "MATERIAL",
+        700165
+    ],
+    "水灯心的信物": [
+        "p_char_4177_brigid",
+        "p_char_4177_brigid",
+        "水灯心的信物",
+        "MATERIAL",
+        700165
+    ],
     "p_char_103_angel": [
         "p_char_103_angel",
         "p_char_103_angel",
@@ -8279,6 +8307,20 @@
         "隐德来希的信物",
         "MATERIAL",
         600106
+    ],
+    "p_char_450_necras": [
+        "p_char_450_necras",
+        "p_char_450_necras",
+        "死芒的信物",
+        "MATERIAL",
+        600107
+    ],
+    "死芒的信物": [
+        "p_char_450_necras",
+        "p_char_450_necras",
+        "死芒的信物",
+        "MATERIAL",
+        600107
     ],
     "class_p_char_123_fang": [
         "class_p_char_123_fang",
