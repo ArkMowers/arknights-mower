@@ -220,10 +220,7 @@ def generate_plan_by_drom(tasks, op_data):
             if rest_in_full is None and not op_data.config.free_room:
                 continue
             for idx in range(len(result) - 1, -1, -1):
-                interval = config.conf.merge_interval
-                if result[idx].time < time - timedelta(
-                    minutes=interval if rest_in_full is None else 3 * interval
-                ):
+                if result[idx].time < time:
                     break
                 if result[idx].type == (
                     TaskTypes.RELEASE_DORM
@@ -259,6 +256,8 @@ def generate_plan_by_drom(tasks, op_data):
                         else TaskTypes.SHIFT_ON,
                     )
                 )
+    interval = config.conf.merge_interval
+    merge_release_dorm(result, interval)
     logger.debug("生成任务: " + ("||".join([str(t) for t in result])))
     return result
 
