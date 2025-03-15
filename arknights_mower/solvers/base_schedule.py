@@ -3339,10 +3339,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             logger.info(f"第{self.task_count}次任务结束")
             timezone_offset = config.conf.timezone_offset
             body = task_template.render(
-                tasks=[
-                    obj.format(timezone_offset)
-                    for obj in self.tasks
-                ],
+                tasks=[obj.format(timezone_offset) for obj in self.tasks],
                 base_scheduler=self,
             )
             send_message(
