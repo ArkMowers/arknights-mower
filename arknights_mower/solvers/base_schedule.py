@@ -31,7 +31,7 @@ from arknights_mower.utils.datetime import (
 )
 from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.digit_reader import DigitReader
-from arknights_mower.utils.email import maa_template, send_message
+from arknights_mower.utils.email import maa_template, send_message, task_template
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
@@ -3337,6 +3337,18 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             logger.info(subject)
             self.task_count += 1
             logger.info(f"第{self.task_count}次任务结束")
+            timezone_offset = config.conf.timezone_offset
+            body = task_template.render(
+                tasks=[
+                    obj.format(timezone_offset)
+                    for obj in self.tasks
+                ],
+                base_scheduler=self,
+            )
+            send_message(
+                body,
+                f"休息 {format_time(remaining_time)}，到{self.tasks[0].format(timezone_offset).time.strftime('%H:%M:%S')}开始工作",
+            )
             if remaining_time > 0:
                 if remaining_time > 300:
                     if config.conf.close_simulator_when_idle:
