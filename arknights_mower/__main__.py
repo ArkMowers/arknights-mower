@@ -315,10 +315,6 @@ def simulate(saved):
                             base_scheduler=base_scheduler,
                         )
                         base_scheduler.maa_plan_solver()
-                        send_message(
-                            body,
-                            f"下次任务在{base_scheduler.tasks[0].format(timezone_offset).time.strftime('%H:%M:%S')}",
-                        )
                     else:
                         remaining_time = (
                             base_scheduler.tasks[0].time - datetime.now()
