@@ -3075,7 +3075,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             )
             ota_tasks_path = path / "cache" / "resource" / "tasks.json"
             ota_tasks_path.parent.mkdir(parents=True, exist_ok=True)
-            headers = {'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36 Edg/133.0.0.0'}
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36 Edg/133.0.0.0"
+            }
             request = urllib.request.Request(url=ota_tasks_url, headers=headers)
             with urllib.request.urlopen(request, timeout=60) as u:
                 res = u.read().decode("utf-8")
