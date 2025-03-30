@@ -17,15 +17,57 @@ const { get_tasks } = mower_store
 const task_list = ref([])
 const task_time = ref(new Date().getTime())
 const task_type = ref('空任务')
+const train_job = ref('术师')
 const skill_level = ref(1)
 const upgrade_support = ref([])
 const msg = ref('')
 const error = ref(false)
 const half_off = ref(true)
+const optimal = ref(false)
 const taskTypeOptions = [
-  { label: '空任务', value: '空任务' },
-  { label: '专精任务', value: '技能专精' }
+  { label: '专精任务', value: '技能专精' },
+  { label: '空任务', value: '空任务' }
 ]
+const train_ope = {
+  '先锋':{name:'嵯峨',speed:60},
+  '近卫':{name:'史尔特尔',speed:60},
+  '重装':{name:'星熊',speed:60},
+  '狙击':{name:'黑',speed:60},
+  '术师':{name:'卡涅利安',speed:60},
+  '医疗':{name:'阿',speed:60},
+  '辅助':{name:'铃兰',speed:60},
+  '特种':{name:'傀影',speed:60}
+}
+const train_ope_1 = {
+  '先锋':{name:'夜半',speed:75},
+  '近卫':{name:'赤冬',speed:75},
+  '重装':{name:'极光',speed:75},
+  '狙击':{name:'假日威龙陈',speed:95},
+  '术师':{name:'特米米',speed:75},
+  '医疗':{name:'阿',speed:60},
+  '辅助':{name:'铃兰',speed:60},
+  '特种':{name:'罗宾',speed:75}
+}
+const train_ope_2 = {
+  '先锋':{name:'缄默德克萨斯',speed:80},
+  '近卫':{name:'燧石',speed:75},
+  '重装':{name:'暴雨',speed:75},
+  '狙击':{name:'埃拉托',speed:75},
+  '术师':{name:'薄绿',speed:75},
+  '医疗':{name:'濯尘芙蓉',speed:75},
+  '辅助':{name:'铃兰',speed:60},
+  '特种':{name:'缄默德克萨斯',speed:80}
+}
+const train_ope_3 = {
+  '先锋':{name:'嵯峨',speed:60},
+  '近卫':{name:'百炼嘉维尔',speed:95},
+  '重装':{name:'星熊',speed:60},
+  '狙击':{name:'W',speed:95},
+  '术师':{name:'死芒',speed:95},
+  '医疗':{name:'阿',speed:60},
+  '辅助':{name:'浊心斯卡蒂',speed:95},
+  '特种':{name:'归溟幽灵鲨',speed:95}
+}
 
 function update_tasks() {
   if (sub_plan.value != 'main' && !isLogPage.value) {
@@ -44,14 +86,39 @@ function new_task() {
   }
 }
 function new_support() {
-  return {
-    name: '假日威龙陈',
-    skill_level: upgrade_support.value.length + 1,
-    efficiency: 30,
-    swap: true,
-    swap_name: '艾丽妮',
-    match: true,
-    half_off: true
+    if (optimal.value) {
+    return {
+      name: upgrade_support.value.length + 1 == 1 ? train_ope_1[train_job.value].name
+            :upgrade_support.value.length + 1 == 2 ? train_ope_2[train_job.value].name
+            :upgrade_support.value.length + 1 == 3 ? train_ope_3[train_job.value].name
+            :train_ope[train_job.value].name,
+      skill_level: upgrade_support.value.length + 1,
+      efficiency: upgrade_support.value.length + 1 == 1 ? train_ope_1[train_job.value].speed
+                  :upgrade_support.value.length + 1 == 2 ? train_ope_2[train_job.value].speed
+                  :upgrade_support.value.length + 1 == 3 ? train_ope_3[train_job.value].speed
+                  :train_ope[train_job.value].speed,
+      swap: true,
+      swap_name: ['近卫', '狙击'].includes(train_job.value) ? '艾丽妮' : '逻各斯',
+      match: ['近卫', '狙击', '术师', '辅助'].includes(train_job.value) ? true : false,
+      half_off: true
+    }
+  }
+  else {
+    return {
+      name: upgrade_support.value.length + 1 == 1 ? train_ope[train_job.value].name
+            :upgrade_support.value.length + 1 == 2 ? train_ope[train_job.value].name
+            :upgrade_support.value.length + 1 == 3 ? train_ope_3[train_job.value].name
+            :train_ope[train_job.value].name,
+      skill_level: upgrade_support.value.length + 1,
+      efficiency: upgrade_support.value.length + 1 == 1 ? train_ope[train_job.value].speed
+                  :upgrade_support.value.length + 1 == 2 ? train_ope[train_job.value].speed
+                  :upgrade_support.value.length + 1 == 3 ? train_ope_3[train_job.value].speed
+                  :train_ope[train_job.value].speed,
+      swap: true,
+      swap_name: ['近卫', '狙击'].includes(train_job.value) ? '艾丽妮' : '逻各斯',
+      match: ['近卫', '狙击', '术师', '辅助'].includes(train_job.value) ? true : false,
+      half_off: true
+    }
   }
 }
 function clear() {
@@ -135,6 +202,17 @@ const operators_with_free_current = computed(() => {
 import { pinyin_match } from '@/utils/common'
 import { render_op_label } from '@/utils/op_select'
 
+const job_list = [
+  { value: '先锋', label: '先锋' },
+  { value: '近卫', label: '近卫' },
+  { value: '重装', label: '重装' },
+  { value: '狙击', label: '狙击' },
+  { value: '术师', label: '术师' },
+  { value: '医疗', label: '医疗' },
+  { value: '辅助', label: '辅助' },
+  { value: '特种', label: '特种' },
+]
+
 const skill_list = [
   { value: 1, label: '一技能' },
   { value: 2, label: '二技能' },
@@ -175,6 +253,12 @@ const swap_30 = [
           :options="skill_list"
           style="width: 100px"
         />
+        <n-select
+          v-if="task_type == '技能专精'"
+          v-model:value="train_job"
+          :options="job_list"
+          style="width: 100px"
+        />
         <n-date-picker
           v-model:value="task_time"
           type="datetime"
@@ -194,8 +278,8 @@ const swap_30 = [
               明日方舟工具箱 </n-button
             >查询
           </div>
-          <div>任务开启前，请手动把专精干员放入训练室（Mower暂时不支持训练室换人）</div>
-          <div>排班表是要填写协助位和训练位的，最好写从来没用的工具人。</div>
+          <div>任务开启前，请手动把待专精干员放入训练室（Mower暂时不支持训练室换人）</div>
+          <div>排班表需要填写协助位和训练位，可以写不用的人，如巡林者+安德切尔。</div>
           <div>训练室排班表纠错暂时关闭，有需要纠错的朋友，请绑大组</div>
           <div>自动计算时暂时默认2，3专精获得小鸟/狗剩增益效果</div>
           <div>如果开启专精时未获得减半增益（非专1-3），取消勾选【有减半加成】</div>
@@ -322,10 +406,20 @@ const swap_30 = [
         <div style="display: flex; gap: 12px; margin-top: 16px">
           <n-checkbox
             v-if="task_type == '技能专精'"
+            v-model:checked="optimal"
+            :default-checked="false"
+            >最优协助干员
+            <help-text>
+            <div>不勾选该选项时默认使用60或专三95速度协助位</div>
+            <div>勾选后根据专精等级和职业使用对应加成干员</div>
+            </help-text>
+          </n-checkbox>
+          <n-checkbox
+            v-if="task_type == '技能专精'"
             v-model:checked="half_off"
             :default-checked="true"
-            >有减半加成</n-checkbox
-          >
+            >有减半加成
+          </n-checkbox>
           <n-button type="primary" @click="saveTasks">添加至任务队列</n-button>
           <n-button type="error" @click="clear">清除输入</n-button>
         </div>
