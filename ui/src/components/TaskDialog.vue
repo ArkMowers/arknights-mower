@@ -29,44 +29,44 @@ const taskTypeOptions = [
   { label: '空任务', value: '空任务' }
 ]
 const train_ope = {
-  '先锋':{name:'嵯峨',speed:60},
-  '近卫':{name:'史尔特尔',speed:60},
-  '重装':{name:'星熊',speed:60},
-  '狙击':{name:'黑',speed:60},
-  '术师':{name:'卡涅利安',speed:60},
-  '医疗':{name:'阿',speed:60},
-  '辅助':{name:'铃兰',speed:60},
-  '特种':{name:'傀影',speed:60}
+  先锋: { name: '嵯峨', speed: 60 },
+  近卫: { name: '史尔特尔', speed: 60 },
+  重装: { name: '星熊', speed: 60 },
+  狙击: { name: '黑', speed: 60 },
+  术师: { name: '卡涅利安', speed: 60 },
+  医疗: { name: '阿', speed: 60 },
+  辅助: { name: '铃兰', speed: 60 },
+  特种: { name: '傀影', speed: 60 }
 }
 const train_ope_1 = {
-  '先锋':{name:'夜半',speed:75},
-  '近卫':{name:'赤冬',speed:75},
-  '重装':{name:'极光',speed:75},
-  '狙击':{name:'假日威龙陈',speed:95},
-  '术师':{name:'特米米',speed:75},
-  '医疗':{name:'阿',speed:60},
-  '辅助':{name:'铃兰',speed:60},
-  '特种':{name:'罗宾',speed:75}
+  先锋: { name: '夜半', speed: 75 },
+  近卫: { name: '赤冬', speed: 75 },
+  重装: { name: '极光', speed: 75 },
+  狙击: { name: '假日威龙陈', speed: 95 },
+  术师: { name: '特米米', speed: 75 },
+  医疗: { name: '阿', speed: 60 },
+  辅助: { name: '铃兰', speed: 60 },
+  特种: { name: '罗宾', speed: 75 }
 }
 const train_ope_2 = {
-  '先锋':{name:'缄默德克萨斯',speed:80},
-  '近卫':{name:'燧石',speed:75},
-  '重装':{name:'暴雨',speed:75},
-  '狙击':{name:'埃拉托',speed:75},
-  '术师':{name:'薄绿',speed:75},
-  '医疗':{name:'濯尘芙蓉',speed:75},
-  '辅助':{name:'铃兰',speed:60},
-  '特种':{name:'缄默德克萨斯',speed:80}
+  先锋: { name: '缄默德克萨斯', speed: 80 },
+  近卫: { name: '燧石', speed: 75 },
+  重装: { name: '暴雨', speed: 75 },
+  狙击: { name: '埃拉托', speed: 75 },
+  术师: { name: '薄绿', speed: 75 },
+  医疗: { name: '濯尘芙蓉', speed: 75 },
+  辅助: { name: '铃兰', speed: 60 },
+  特种: { name: '缄默德克萨斯', speed: 80 }
 }
 const train_ope_3 = {
-  '先锋':{name:'嵯峨',speed:60},
-  '近卫':{name:'百炼嘉维尔',speed:95},
-  '重装':{name:'星熊',speed:60},
-  '狙击':{name:'W',speed:95},
-  '术师':{name:'死芒',speed:95},
-  '医疗':{name:'阿',speed:60},
-  '辅助':{name:'浊心斯卡蒂',speed:95},
-  '特种':{name:'归溟幽灵鲨',speed:95}
+  先锋: { name: '嵯峨', speed: 60 },
+  近卫: { name: '百炼嘉维尔', speed: 95 },
+  重装: { name: '星熊', speed: 60 },
+  狙击: { name: 'W', speed: 95 },
+  术师: { name: '死芒', speed: 95 },
+  医疗: { name: '阿', speed: 60 },
+  辅助: { name: '浊心斯卡蒂', speed: 95 },
+  特种: { name: '归溟幽灵鲨', speed: 95 }
 }
 
 function update_tasks() {
@@ -86,34 +86,49 @@ function new_task() {
   }
 }
 function new_support() {
-    if (optimal.value) {
+  if (optimal.value) {
     return {
-      name: upgrade_support.value.length + 1 == 1 ? train_ope_1[train_job.value].name
-            :upgrade_support.value.length + 1 == 2 ? train_ope_2[train_job.value].name
-            :upgrade_support.value.length + 1 == 3 ? train_ope_3[train_job.value].name
-            :train_ope[train_job.value].name,
+      name:
+        upgrade_support.value.length + 1 == 1
+          ? train_ope_1[train_job.value].name
+          : upgrade_support.value.length + 1 == 2
+            ? train_ope_2[train_job.value].name
+            : upgrade_support.value.length + 1 == 3
+              ? train_ope_3[train_job.value].name
+              : train_ope[train_job.value].name,
       skill_level: upgrade_support.value.length + 1,
-      efficiency: upgrade_support.value.length + 1 == 1 ? train_ope_1[train_job.value].speed
-                  :upgrade_support.value.length + 1 == 2 ? train_ope_2[train_job.value].speed
-                  :upgrade_support.value.length + 1 == 3 ? train_ope_3[train_job.value].speed
-                  :train_ope[train_job.value].speed,
+      efficiency:
+        upgrade_support.value.length + 1 == 1
+          ? train_ope_1[train_job.value].speed
+          : upgrade_support.value.length + 1 == 2
+            ? train_ope_2[train_job.value].speed
+            : upgrade_support.value.length + 1 == 3
+              ? train_ope_3[train_job.value].speed
+              : train_ope[train_job.value].speed,
       swap: true,
       swap_name: ['近卫', '狙击'].includes(train_job.value) ? '艾丽妮' : '逻各斯',
       match: ['近卫', '狙击', '术师', '辅助'].includes(train_job.value) ? true : false,
       half_off: true
     }
-  }
-  else {
+  } else {
     return {
-      name: upgrade_support.value.length + 1 == 1 ? train_ope[train_job.value].name
-            :upgrade_support.value.length + 1 == 2 ? train_ope[train_job.value].name
-            :upgrade_support.value.length + 1 == 3 ? train_ope_3[train_job.value].name
-            :train_ope[train_job.value].name,
+      name:
+        upgrade_support.value.length + 1 == 1
+          ? train_ope[train_job.value].name
+          : upgrade_support.value.length + 1 == 2
+            ? train_ope[train_job.value].name
+            : upgrade_support.value.length + 1 == 3
+              ? train_ope_3[train_job.value].name
+              : train_ope[train_job.value].name,
       skill_level: upgrade_support.value.length + 1,
-      efficiency: upgrade_support.value.length + 1 == 1 ? train_ope[train_job.value].speed
-                  :upgrade_support.value.length + 1 == 2 ? train_ope[train_job.value].speed
-                  :upgrade_support.value.length + 1 == 3 ? train_ope_3[train_job.value].speed
-                  :train_ope[train_job.value].speed,
+      efficiency:
+        upgrade_support.value.length + 1 == 1
+          ? train_ope[train_job.value].speed
+          : upgrade_support.value.length + 1 == 2
+            ? train_ope[train_job.value].speed
+            : upgrade_support.value.length + 1 == 3
+              ? train_ope_3[train_job.value].speed
+              : train_ope[train_job.value].speed,
       swap: true,
       swap_name: ['近卫', '狙击'].includes(train_job.value) ? '艾丽妮' : '逻各斯',
       match: ['近卫', '狙击', '术师', '辅助'].includes(train_job.value) ? true : false,
@@ -210,7 +225,7 @@ const job_list = [
   { value: '术师', label: '术师' },
   { value: '医疗', label: '医疗' },
   { value: '辅助', label: '辅助' },
-  { value: '特种', label: '特种' },
+  { value: '特种', label: '特种' }
 ]
 
 const skill_list = [
@@ -410,8 +425,8 @@ const swap_30 = [
             :default-checked="false"
             >最优协助干员
             <help-text>
-            <div>不勾选该选项时默认使用60或专三95速度协助位</div>
-            <div>勾选后根据专精等级和职业使用对应加成干员</div>
+              <div>不勾选该选项时默认使用60或专三95速度协助位</div>
+              <div>勾选后根据专精等级和职业使用对应加成干员</div>
             </help-text>
           </n-checkbox>
           <n-checkbox
