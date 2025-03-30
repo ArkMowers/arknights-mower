@@ -3356,6 +3356,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         restart_simulator(start=False)
                     elif config.conf.exit_game_when_idle:
                         self.device.exit()
+                self.recog.last_scene = None
                 self.sleep(remaining_time)
                 self.check_current_focus()
             self.MAA = None
