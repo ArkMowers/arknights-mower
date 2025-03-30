@@ -567,8 +567,8 @@ td {
 
 pre {
   word-break: break-all !important;
-  font-family: 'Cascadia Mono', Consolas, 'Microsoft YaHei', 'SF Mono', 'Menlo', 'PingFang SC',
-    monospace !important;
+  font-family:
+    'Cascadia Mono', Consolas, 'Microsoft YaHei', 'SF Mono', 'Menlo', 'PingFang SC', monospace !important;
 }
 
 .n-dynamic-input-item__action {
