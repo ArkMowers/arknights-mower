@@ -342,6 +342,7 @@ def simulate(saved):
                                 body,
                                 f"休息 {format_time(remaining_time)}，到{base_scheduler.tasks[0].format(timezone_offset).time.strftime('%H:%M:%S')}开始工作",
                             )
+                            base_scheduler.recog.last_scene = None
                             base_scheduler.sleeping = True
                             base_scheduler.sleep(remaining_time)
                             base_scheduler.sleeping = False

@@ -3075,7 +3075,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             )
             ota_tasks_path = path / "cache" / "resource" / "tasks.json"
             ota_tasks_path.parent.mkdir(parents=True, exist_ok=True)
-            headers = {'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36 Edg/133.0.0.0'}
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36 Edg/133.0.0.0"
+            }
             request = urllib.request.Request(url=ota_tasks_url, headers=headers)
             with urllib.request.urlopen(request, timeout=60) as u:
                 res = u.read().decode("utf-8")
@@ -3356,6 +3358,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         restart_simulator(start=False)
                     elif config.conf.exit_game_when_idle:
                         self.device.exit()
+                self.recog.last_scene = None
                 self.sleep(remaining_time)
                 self.check_current_focus()
             self.MAA = None
