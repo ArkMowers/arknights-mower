@@ -43,6 +43,7 @@ class Operators:
     current_room_changed_callback = None
     first_init = True
     skill_upgrade_supports = []
+    true_exhaust_room = set(["central"])
 
     def __init__(self, plan):
         self.operators = {}
@@ -265,14 +266,14 @@ class Operators:
                         self.dorm.append(Dormitory((dorm, _idx)))
                         added.append(dorm + str(_idx))
             if config.conf.dorm_order == "":
-                logger.info(self.dorm)
+                logger.debug(self.dorm)
                 config.conf.dorm_order = ",".join(
                     [
                         dorm.position[0] + "_" + str(dorm.position[1])
                         for dorm in self.dorm
                     ]
                 )
-                logger.info(config.conf.dorm_order)
+                logger.debug(config.conf.dorm_order)
                 config.save_conf()  # 保存配置
             else:
                 dorm_order = config.conf.dorm_order.split(",")
@@ -479,6 +480,9 @@ class Operators:
             idx, dorm = self.get_dorm_by_name(name)
             if dorm:
                 dorm.reset()
+        if current_room not in self.true_exhaust_room:
+            agent.exhaust_time = None
+            logger.debug(f"{name} 退出{current_room}，重置真实用尽时间")
         agent.current_room = current_room
         agent.current_index = current_index
         agent.mood = mood
@@ -495,12 +499,12 @@ class Operators:
             return current_index
 
     def refresh_dorm_time(self, room, index, agent):
+        _name = agent["agent"]
         for idx, dorm in enumerate(self.dorm):
             if dorm.position[0] == room and dorm.position[1] == index:
-                _name = agent["agent"]
                 if _name in self.operators.keys() or _name in agent_list:
-                    dorm.name = _name
                     _agent = self.operators[_name]
+                    dorm.name = _name
                     # 如果干员有心情上限，则按比例修改休息时间
                     if _agent.mood != 24 and _agent.time_stamp:
                         sec_remaining = (
@@ -512,6 +516,17 @@ class Operators:
                     else:
                         dorm.time = agent["time"]
                 break
+        # 记录真实用尽时间
+        if room in self.true_exhaust_room and _name in self.operators.keys():
+            _agent = self.operators[_name]
+            time_elapsed = (agent["time"] - datetime.now()).total_seconds()
+            if time_elapsed < 0:
+                _agent.exhaust_time = datetime.now()
+                return
+            _agent.exhaust_time = datetime.now() + timedelta(
+                seconds=(_agent.mood - _agent.lower_limit) * time_elapsed / _agent.mood
+            )
+            logger.debug(f"{_name} 真实用尽时间：{_agent.exhaust_time}")
 
     def correct_dorm(self):
         for idx, dorm in enumerate(self.dorm):
@@ -621,7 +636,7 @@ class Operators:
                 current_mood += v.current_mood() - v.lower_limit
                 total_mood += v.upper_limit - v.lower_limit
                 count += 1
-        logger.info(
+        logger.debug(
             f"当前工作总计高效组：{count}, 当前平均心情百分比 {current_mood / total_mood}"
         )
         return current_mood / total_mood
@@ -787,7 +802,6 @@ class Operator:
     def current_room(self, value):
         if self._current_room != value:
             self._current_room = value
-            logger.debug("call_back")
             if (
                 Operators.current_room_changed_callback
                 and self.refresh_order_room[0]
@@ -860,9 +874,15 @@ class Operator:
         depletion_rate = self.depletion_rate  # 心情掉率，小时单位
         # 计算到心情归零所需时间（小时），再加上当前时间戳
         if self.time_stamp and depletion_rate > 0:
-            return self.time_stamp + timedelta(
+            predict = self.time_stamp + timedelta(
                 hours=((remaining_mood / depletion_rate) - 0.5)
             )
+            if self.exhaust_time is not None:
+                logger.debug("预测用尽时间:{predict}")
+                logger.debug(f"真实用尽时间：{self.exhaust_time}")
+                return min(predict, self.exhaust_time)
+            else:
+                return predict
         else:
             return datetime.now() + timedelta(hours=24)
 

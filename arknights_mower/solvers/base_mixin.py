@@ -368,8 +368,7 @@ class BaseMixin:
                 return ret.strip()
             else:
                 return ret
-        except Exception as e:
-            logger.exception(e)
+        except Exception:
             return limit + 1
 
     def read_time(self, cord, upperlimit, error_count=0, use_digit_reader=False):

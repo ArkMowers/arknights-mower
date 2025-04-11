@@ -587,6 +587,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             "central": lambda parts: "控制中枢",
             "factory": lambda parts: "加工站",
             "meeting": lambda parts: "会客室",
+            "train": lambda parts: "训练室",
         }
 
         for keyword, translation_func in translations.items():
@@ -628,7 +629,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             while True:
                 try:
                     self.enter_room(room)
-                    _mood_data = self.get_agent_from_room(room)
+                    num = len(self.op_data.plan[room])
+                    _mood_data = self.get_agent_from_room(
+                        room,
+                        list(range(num))
+                        if room in self.op_data.true_exhaust_room
+                        else None,
+                    )
                     mood_info = [
                         f"干员: '{item['agent']}', 心情: {round(item['mood'], 3)}"
                         for item in _mood_data
@@ -1085,7 +1092,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 )
         for name in self.op_data.exhaust_agent:
             op = self.op_data.operators[name]
-            if op.is_resting():
+            if (
+                op.is_resting()
+                or not op.is_high()
+                or op.current_room not in base_room_list
+            ):
                 continue
             if op.current_mood() <= op.lower_limit + 2:
                 if (
@@ -2537,13 +2548,16 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 )
             _mood = 24
             # 如果房间不为空
+            update_time = False
             if _name != "":
                 if _name not in self.op_data.operators.keys() and _name in agent_list:
                     self.op_data.add(Operator(_name, ""))
-                update_time = False
+
                 agent = self.op_data.operators[_name]
-                if self.op_data.operators[_name].need_to_refresh(r=room) or (
-                    self.tasks and self.tasks[0].type == TaskTypes.SHIFT_ON
+                if (
+                    self.op_data.operators[_name].need_to_refresh(r=room)
+                    or (self.tasks and self.tasks[0].type == TaskTypes.SHIFT_ON)
+                    or i in read_time_index
                 ):
                     _mood = self.read_accurate_mood(cropimg(self.recog.gray, mood_p[i]))
                     update_time = True
@@ -2563,13 +2577,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             data["agent"] = _name
             data["mood"] = _mood
             if i in read_time_index and _name != "":
-                if _mood == 24 or room in ["central", "meeting", "factory"]:
+                if _mood == 24 or room in ["meeting", "factory"] and not update_time:
                     data["time"] = datetime.now()
                 else:
-                    upperLimit = 43200
                     logger.debug(f"开始记录时间:{room},{i}")
                     data["time"] = self.double_read_time(
-                        time_p[i], upperLimit=upperLimit
+                        time_p[i], use_digit_reader=True
                     )
                 self.op_data.refresh_dorm_time(room, i, data)
                 logger.debug(f"停止记录时间:{str(data)}")
