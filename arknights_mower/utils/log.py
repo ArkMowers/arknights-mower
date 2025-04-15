@@ -87,8 +87,10 @@ def screenshot_cleanup():
         if i.is_dir():
             if i.name == "run_order":
                 # 处理run_order文件夹，只保留最后100张图片
-                images = sorted([f for f in i.iterdir() if f.is_file() and f.stem.isnumeric()], 
-                               key=lambda x: int(x.stem))
+                images = sorted(
+                    [f for f in i.iterdir() if f.is_file() and f.stem.isnumeric()],
+                    key=lambda x: int(x.stem),
+                )
                 if len(images) > 100:
                     for img in images[:-100]:  # 保留最后100张，删除其余的
                         img.unlink()
