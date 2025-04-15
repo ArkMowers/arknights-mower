@@ -43,7 +43,6 @@ class Operators:
     current_room_changed_callback = None
     first_init = True
     skill_upgrade_supports = []
-    true_exhaust_room = set(["central"])
 
     def __init__(self, plan):
         self.operators = {}
@@ -76,6 +75,7 @@ class Operators:
             ]
         )
         self.power_plant_count = 0
+        self.true_exhaust_room = set(["central"])
 
     def __repr__(self):
         return f"Operators(operators={self.operators})"
@@ -393,7 +393,7 @@ class Operators:
             result = Expr(expression, self.eval_model).eval(model)
             return result
         except Exception as e:
-            logger.exception(f"Error evaluating expression: {e}")
+            logger.exception(f"附表格式出错: {e}")
             return None
 
     def get_current_room(self, room, bypass=False, current_index=None):

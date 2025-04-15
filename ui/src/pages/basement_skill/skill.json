@@ -1,5 +1,128 @@
 [
   {
+    "key": 366,
+    "name": "骋风",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "广交义友",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻会客室时，每个招募位（不包含初始招募位）提升<@cc.vup>5%</>线索搜集速度",
+        "roomType": "会客室",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_meet_spd_clue",
+        "buffColor": "#dd653f",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精1 1级",
+        "skillname": "眼观六路",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻会客室时，处于线索交流时更容易获得线索板上尚未拥有的线索",
+        "roomType": "会客室",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_meet_spd_notOwned_exchange",
+        "buffColor": "#dd653f",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 365,
+    "name": "阿兰娜",
+    "span": 3,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "机械精通·α",
+        "buffer": true,
+        "buffer_des": [
+          "cc_tag_op"
+        ],
+        "des": "进驻制造站时，每有<@cc.vup>1</>台<$cc.tag.op><@cc.kw>作业平台</></>进驻发电站，<@cc.kw>贵金属</>类配方的生产力<@cc.vup>+5%</>",
+        "roomType": "制造站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "bskill_man_token_spd1",
+        "buffColor": "#ffd800",
+        "textColor": "#333333"
+      },
+      {
+        "skill_key": 0,
+        "skill_level": 1,
+        "phase_level": "精2 1级",
+        "skillname": "机械精通·β",
+        "buffer": true,
+        "buffer_des": [
+          "cc_tag_op"
+        ],
+        "des": "进驻制造站时，每有<@cc.vup>1</>台<$cc.tag.op><@cc.kw>作业平台</></>进驻发电站，<@cc.kw>贵金属</>类配方的生产力<@cc.vup>+10%</>",
+        "roomType": "制造站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "bskill_man_token_spd2",
+        "buffColor": "#ffd800",
+        "textColor": "#333333"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "“搭把手！”",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻制造站时，当与<@cc.kw>温米</>在同一个制造站时，<@cc.kw>贵金属</>类配方的生产力<@cc.vup>+15%</>",
+        "roomType": "制造站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "bskill_man_spd_double",
+        "buffColor": "#ffd800",
+        "textColor": "#333333"
+      }
+    ]
+  },
+  {
+    "key": 364,
+    "name": "Mon3tr",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "博识生手",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻控制中枢时，控制中枢内所有干员的心情每小时恢复<@cc.vup>+0.05</>",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_cost",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "最高权限",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻控制中枢时，所有制造站生产力<@cc.vup>+2%</>（同种效果取最高）",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_p_spd",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
     "key": 363,
     "name": "水灯心",
     "span": 2,
@@ -46,7 +169,7 @@
         "skillname": "行动派",
         "buffer": false,
         "buffer_des": [],
-        "des": "进驻制造站时，生产力<@cc.vup>+20%</>，仓库容量上限<@cc.vup>-8</>",
+        "des": "进驻制造站时，生产力<@cc.vup>+20%</>，仓库容量上限<@cc.vdown>-8</>",
         "roomType": "制造站",
         "buffCategory": "OUTPUT",
         "skillIcon": "bskill_man_spd&limit6",
@@ -4751,7 +4874,7 @@
         "skillname": "巡线框架",
         "buffer": false,
         "buffer_des": [],
-        "des": "进驻发电站时，每<@cc.vup>10</>架无人机上限<@cc.vup>+1%</>无人机充能速度",
+        "des": "进驻发电站时，每<@cc.vup>10</>架无人机上限<@cc.vup>+1%</>无人机充能速度（最多<@cc.vup>+25%</>）",
         "roomType": "发电站",
         "buffCategory": "OUTPUT",
         "skillIcon": "bskill_pow_drone",

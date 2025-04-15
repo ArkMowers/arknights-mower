@@ -1196,6 +1196,20 @@
         "CONSUME",
         60110
     ],
+    "randomMaterial_11": [
+        "randomMaterial_11",
+        "randomMaterial_1",
+        "罗德岛物资补给VIII",
+        "CONSUME",
+        60110
+    ],
+    "罗德岛物资补给VIII": [
+        "randomMaterial_11",
+        "randomMaterial_1",
+        "罗德岛物资补给VIII",
+        "CONSUME",
+        60110
+    ],
     "randomMaterial_5d5": [
         "randomMaterial_5d5",
         "randomMaterial_4",
@@ -1439,740 +1453,782 @@
         "MTL_SL_KETONE1",
         "双酮",
         "MATERIAL",
-        100053
+        100056
     ],
     "双酮": [
         "30051",
         "MTL_SL_KETONE1",
         "双酮",
         "MATERIAL",
-        100053
+        100056
     ],
     "30052": [
         "30052",
         "MTL_SL_KETONE2",
         "酮凝集",
         "MATERIAL",
-        100052
+        100055
     ],
     "酮凝集": [
         "30052",
         "MTL_SL_KETONE2",
         "酮凝集",
         "MATERIAL",
-        100052
+        100055
     ],
     "30053": [
         "30053",
         "MTL_SL_KETONE3",
         "酮凝集组",
         "MATERIAL",
-        100051
+        100054
     ],
     "酮凝集组": [
         "30053",
         "MTL_SL_KETONE3",
         "酮凝集组",
         "MATERIAL",
-        100051
+        100054
     ],
     "30054": [
         "30054",
         "MTL_SL_KETONE4",
         "酮阵列",
         "MATERIAL",
-        100050
+        100053
     ],
     "酮阵列": [
         "30054",
         "MTL_SL_KETONE4",
         "酮阵列",
         "MATERIAL",
-        100050
+        100053
     ],
     "30041": [
         "30041",
         "MTL_SL_IRON1",
         "异铁碎片",
         "MATERIAL",
-        100049
+        100052
     ],
     "异铁碎片": [
         "30041",
         "MTL_SL_IRON1",
         "异铁碎片",
         "MATERIAL",
-        100049
+        100052
     ],
     "30042": [
         "30042",
         "MTL_SL_IRON2",
         "异铁",
         "MATERIAL",
-        100048
+        100051
     ],
     "异铁": [
         "30042",
         "MTL_SL_IRON2",
         "异铁",
         "MATERIAL",
-        100048
+        100051
     ],
     "30043": [
         "30043",
         "MTL_SL_IRON3",
         "异铁组",
         "MATERIAL",
-        100047
+        100050
     ],
     "异铁组": [
         "30043",
         "MTL_SL_IRON3",
         "异铁组",
         "MATERIAL",
-        100047
+        100050
     ],
     "30044": [
         "30044",
         "MTL_SL_IRON4",
         "异铁块",
         "MATERIAL",
-        100046
+        100049
     ],
     "异铁块": [
         "30044",
         "MTL_SL_IRON4",
         "异铁块",
         "MATERIAL",
-        100046
+        100049
     ],
     "30021": [
         "30021",
         "MTL_SL_STRG1",
         "代糖",
         "MATERIAL",
-        100045
+        100048
     ],
     "代糖": [
         "30021",
         "MTL_SL_STRG1",
         "代糖",
         "MATERIAL",
-        100045
+        100048
     ],
     "30022": [
         "30022",
         "MTL_SL_STRG2",
         "糖",
         "MATERIAL",
-        100044
+        100047
     ],
     "糖": [
         "30022",
         "MTL_SL_STRG2",
         "糖",
         "MATERIAL",
-        100044
+        100047
     ],
     "30023": [
         "30023",
         "MTL_SL_STRG3",
         "糖组",
         "MATERIAL",
-        100043
+        100046
     ],
     "糖组": [
         "30023",
         "MTL_SL_STRG3",
         "糖组",
         "MATERIAL",
-        100043
+        100046
     ],
     "30024": [
         "30024",
         "MTL_SL_STRG4",
         "糖聚块",
         "MATERIAL",
-        100042
+        100045
     ],
     "糖聚块": [
         "30024",
         "MTL_SL_STRG4",
         "糖聚块",
         "MATERIAL",
-        100042
+        100045
     ],
     "30031": [
         "30031",
         "MTL_SL_RUSH1",
         "酯原料",
         "MATERIAL",
-        100041
+        100044
     ],
     "酯原料": [
         "30031",
         "MTL_SL_RUSH1",
         "酯原料",
         "MATERIAL",
-        100041
+        100044
     ],
     "30032": [
         "30032",
         "MTL_SL_RUSH2",
         "聚酸酯",
         "MATERIAL",
-        100040
+        100043
     ],
     "聚酸酯": [
         "30032",
         "MTL_SL_RUSH2",
         "聚酸酯",
         "MATERIAL",
-        100040
+        100043
     ],
     "30033": [
         "30033",
         "MTL_SL_RUSH3",
         "聚酸酯组",
         "MATERIAL",
-        100039
+        100042
     ],
     "聚酸酯组": [
         "30033",
         "MTL_SL_RUSH3",
         "聚酸酯组",
         "MATERIAL",
-        100039
+        100042
     ],
     "30034": [
         "30034",
         "MTL_SL_RUSH4",
         "聚酸酯块",
         "MATERIAL",
-        100038
+        100041
     ],
     "聚酸酯块": [
         "30034",
         "MTL_SL_RUSH4",
         "聚酸酯块",
         "MATERIAL",
-        100038
+        100041
     ],
     "30061": [
         "30061",
         "MTL_SL_BOSS1",
         "破损装置",
         "MATERIAL",
-        100037
+        100040
     ],
     "破损装置": [
         "30061",
         "MTL_SL_BOSS1",
         "破损装置",
         "MATERIAL",
-        100037
+        100040
     ],
     "30062": [
         "30062",
         "MTL_SL_BOSS2",
         "装置",
         "MATERIAL",
-        100036
+        100039
     ],
     "装置": [
         "30062",
         "MTL_SL_BOSS2",
         "装置",
         "MATERIAL",
-        100036
+        100039
     ],
     "30063": [
         "30063",
         "MTL_SL_BOSS3",
         "全新装置",
         "MATERIAL",
-        100035
+        100038
     ],
     "全新装置": [
         "30063",
         "MTL_SL_BOSS3",
         "全新装置",
         "MATERIAL",
-        100035
+        100038
     ],
     "30064": [
         "30064",
         "MTL_SL_BOSS4",
         "改量装置",
         "MATERIAL",
-        100034
+        100037
     ],
     "改量装置": [
         "30064",
         "MTL_SL_BOSS4",
         "改量装置",
         "MATERIAL",
-        100034
+        100037
     ],
     "30011": [
         "30011",
         "MTL_SL_G1",
         "源岩",
         "MATERIAL",
-        100033
+        100036
     ],
     "源岩": [
         "30011",
         "MTL_SL_G1",
         "源岩",
         "MATERIAL",
-        100033
+        100036
     ],
     "30012": [
         "30012",
         "MTL_SL_G2",
         "固源岩",
         "MATERIAL",
-        100032
+        100035
     ],
     "固源岩": [
         "30012",
         "MTL_SL_G2",
         "固源岩",
         "MATERIAL",
-        100032
+        100035
     ],
     "30013": [
         "30013",
         "MTL_SL_G3",
         "固源岩组",
         "MATERIAL",
-        100031
+        100034
     ],
     "固源岩组": [
         "30013",
         "MTL_SL_G3",
         "固源岩组",
         "MATERIAL",
-        100031
+        100034
     ],
     "30014": [
         "30014",
         "MTL_SL_G4",
         "提纯源岩",
         "MATERIAL",
-        100030
+        100033
     ],
     "提纯源岩": [
         "30014",
         "MTL_SL_G4",
         "提纯源岩",
         "MATERIAL",
-        100030
+        100033
     ],
     "30103": [
         "30103",
         "MTL_SL_RMA7012",
         "RMA70-12",
         "MATERIAL",
-        100029
+        100032
     ],
     "RMA70-12": [
         "30103",
         "MTL_SL_RMA7012",
         "RMA70-12",
         "MATERIAL",
-        100029
+        100032
     ],
     "30104": [
         "30104",
         "MTL_SL_RMA7024",
         "RMA70-24",
         "MATERIAL",
-        100028
+        100031
     ],
     "RMA70-24": [
         "30104",
         "MTL_SL_RMA7024",
         "RMA70-24",
         "MATERIAL",
-        100028
+        100031
     ],
     "30093": [
         "30093",
         "MTL_SL_PG1",
         "研磨石",
         "MATERIAL",
-        100027
+        100030
     ],
     "研磨石": [
         "30093",
         "MTL_SL_PG1",
         "研磨石",
         "MATERIAL",
-        100027
+        100030
     ],
     "30094": [
         "30094",
         "MTL_SL_PG2",
         "五水研磨石",
         "MATERIAL",
-        100026
+        100029
     ],
     "五水研磨石": [
         "30094",
         "MTL_SL_PG2",
         "五水研磨石",
         "MATERIAL",
-        100026
+        100029
     ],
     "30083": [
         "30083",
         "MTL_SL_MANGANESE1",
         "轻锰矿",
         "MATERIAL",
-        100025
+        100028
     ],
     "轻锰矿": [
         "30083",
         "MTL_SL_MANGANESE1",
         "轻锰矿",
         "MATERIAL",
-        100025
+        100028
     ],
     "30084": [
         "30084",
         "MTL_SL_MANGANESE2",
         "三水锰矿",
         "MATERIAL",
-        100024
+        100027
     ],
     "三水锰矿": [
         "30084",
         "MTL_SL_MANGANESE2",
         "三水锰矿",
         "MATERIAL",
-        100024
+        100027
     ],
     "30073": [
         "30073",
         "MTL_SL_ALCOHOL1",
         "扭转醇",
         "MATERIAL",
-        100023
+        100026
     ],
     "扭转醇": [
         "30073",
         "MTL_SL_ALCOHOL1",
         "扭转醇",
         "MATERIAL",
-        100023
+        100026
     ],
     "30074": [
         "30074",
         "MTL_SL_ALCOHOL2",
         "白马醇",
         "MATERIAL",
-        100022
+        100025
     ],
     "白马醇": [
         "30074",
         "MTL_SL_ALCOHOL2",
         "白马醇",
         "MATERIAL",
-        100022
+        100025
     ],
     "31013": [
         "31013",
         "MTL_SL_PGEL3",
         "凝胶",
         "MATERIAL",
-        100021
+        100024
     ],
     "凝胶": [
         "31013",
         "MTL_SL_PGEL3",
         "凝胶",
         "MATERIAL",
-        100021
+        100024
     ],
     "31014": [
         "31014",
         "MTL_SL_PGEL4",
         "聚合凝胶",
         "MATERIAL",
-        100020
+        100023
     ],
     "聚合凝胶": [
         "31014",
         "MTL_SL_PGEL4",
         "聚合凝胶",
         "MATERIAL",
-        100020
+        100023
     ],
     "31023": [
         "31023",
         "MTL_SL_IAM3",
         "炽合金",
         "MATERIAL",
-        100019
+        100022
     ],
     "炽合金": [
         "31023",
         "MTL_SL_IAM3",
         "炽合金",
         "MATERIAL",
-        100019
+        100022
     ],
     "31024": [
         "31024",
         "MTL_SL_IAM4",
         "炽合金块",
         "MATERIAL",
-        100018
+        100021
     ],
     "炽合金块": [
         "31024",
         "MTL_SL_IAM4",
         "炽合金块",
         "MATERIAL",
-        100018
+        100021
     ],
     "31033": [
         "31033",
         "MTL_SL_OC3",
         "晶体元件",
         "MATERIAL",
-        100017
+        100020
     ],
     "晶体元件": [
         "31033",
         "MTL_SL_OC3",
         "晶体元件",
         "MATERIAL",
-        100017
+        100020
     ],
     "31034": [
         "31034",
         "MTL_SL_OC4",
         "晶体电路",
         "MATERIAL",
-        100016
+        100019
     ],
     "晶体电路": [
         "31034",
         "MTL_SL_OC4",
         "晶体电路",
         "MATERIAL",
-        100016
+        100019
     ],
     "31043": [
         "31043",
         "MTL_SL_SS",
         "半自然溶剂",
         "MATERIAL",
-        100015
+        100018
     ],
     "半自然溶剂": [
         "31043",
         "MTL_SL_SS",
         "半自然溶剂",
         "MATERIAL",
-        100015
+        100018
     ],
     "31044": [
         "31044",
         "MTL_SL_RS",
         "精炼溶剂",
         "MATERIAL",
-        100014
+        100017
     ],
     "精炼溶剂": [
         "31044",
         "MTL_SL_RS",
         "精炼溶剂",
         "MATERIAL",
-        100014
+        100017
     ],
     "31053": [
         "31053",
         "MTL_SL_CCF",
         "化合切削液",
         "MATERIAL",
-        100013
+        100016
     ],
     "化合切削液": [
         "31053",
         "MTL_SL_CCF",
         "化合切削液",
         "MATERIAL",
-        100013
+        100016
     ],
     "31054": [
         "31054",
         "MTL_SL_PLCF",
         "切削原液",
         "MATERIAL",
-        100012
+        100015
     ],
     "切削原液": [
         "31054",
         "MTL_SL_PLCF",
         "切削原液",
         "MATERIAL",
-        100012
+        100015
     ],
     "31063": [
         "31063",
         "MTL_SL_ZY",
         "转质盐组",
         "MATERIAL",
-        100011
+        100014
     ],
     "转质盐组": [
         "31063",
         "MTL_SL_ZY",
         "转质盐组",
         "MATERIAL",
-        100011
+        100014
     ],
     "31064": [
         "31064",
         "MTL_SL_ZYK",
         "转质盐聚块",
         "MATERIAL",
-        100010
+        100013
     ],
     "转质盐聚块": [
         "31064",
         "MTL_SL_ZYK",
         "转质盐聚块",
         "MATERIAL",
-        100010
+        100013
     ],
     "31073": [
         "31073",
         "MTL_SL_XW",
         "褐素纤维",
         "MATERIAL",
-        100009
+        100012
     ],
     "褐素纤维": [
         "31073",
         "MTL_SL_XW",
         "褐素纤维",
         "MATERIAL",
-        100009
+        100012
     ],
     "31074": [
         "31074",
         "MTL_SL_XWB",
         "固化纤维板",
         "MATERIAL",
-        100008
+        100011
     ],
     "固化纤维板": [
         "31074",
         "MTL_SL_XWB",
         "固化纤维板",
         "MATERIAL",
-        100008
+        100011
     ],
     "31083": [
         "31083",
         "MTL_SL_HT",
         "环烃聚质",
         "MATERIAL",
-        100007
+        100010
     ],
     "环烃聚质": [
         "31083",
         "MTL_SL_HT",
         "环烃聚质",
         "MATERIAL",
-        100007
+        100010
     ],
     "31084": [
         "31084",
         "MTL_SL_HTT",
         "环烃预制体",
         "MATERIAL",
-        100006
+        100009
     ],
     "环烃预制体": [
         "31084",
         "MTL_SL_HTT",
         "环烃预制体",
         "MATERIAL",
-        100006
+        100009
+    ],
+    "31093": [
+        "31093",
+        "MTL_SL_JH",
+        "类凝结核",
+        "MATERIAL",
+        100008
+    ],
+    "类凝结核": [
+        "31093",
+        "MTL_SL_JH",
+        "类凝结核",
+        "MATERIAL",
+        100008
+    ],
+    "31094": [
+        "31094",
+        "MTL_SL_QGT",
+        "手性屈光体",
+        "MATERIAL",
+        100007
+    ],
+    "手性屈光体": [
+        "31094",
+        "MTL_SL_QGT",
+        "手性屈光体",
+        "MATERIAL",
+        100007
     ],
     "30115": [
         "30115",
         "MTL_SL_PP",
         "聚合剂",
         "MATERIAL",
-        100005
+        100006
     ],
     "聚合剂": [
         "30115",
         "MTL_SL_PP",
         "聚合剂",
         "MATERIAL",
-        100005
+        100006
     ],
     "30125": [
         "30125",
         "MTL_SL_BN",
         "双极纳米片",
         "MATERIAL",
-        100004
+        100005
     ],
     "双极纳米片": [
         "30125",
         "MTL_SL_BN",
         "双极纳米片",
         "MATERIAL",
-        100004
+        100005
     ],
     "30135": [
         "30135",
         "MTL_SL_DS",
         "D32钢",
         "MATERIAL",
-        100003
+        100004
     ],
     "D32钢": [
         "30135",
         "MTL_SL_DS",
         "D32钢",
         "MATERIAL",
-        100003
+        100004
     ],
     "30145": [
         "30145",
         "MTL_SL_OEU",
         "晶体电子单元",
         "MATERIAL",
-        100002
+        100003
     ],
     "晶体电子单元": [
         "30145",
         "MTL_SL_OEU",
         "晶体电子单元",
         "MATERIAL",
-        100002
+        100003
     ],
     "30155": [
         "30155",
         "MTL_SL_SHJ",
         "烧结核凝晶",
         "MATERIAL",
-        100001
+        100002
     ],
     "烧结核凝晶": [
         "30155",
         "MTL_SL_SHJ",
         "烧结核凝晶",
+        "MATERIAL",
+        100002
+    ],
+    "30165": [
+        "30165",
+        "MTL_SL_DYT",
+        "重相位对映体",
+        "MATERIAL",
+        100001
+    ],
+    "重相位对映体": [
+        "30165",
+        "MTL_SL_DYT",
+        "重相位对映体",
         "MATERIAL",
         100001
     ],
@@ -4500,6 +4556,20 @@
         "MATERIAL",
         800056
     ],
+    "p_char_445_wscoot": [
+        "p_char_445_wscoot",
+        "p_char_445_wscoot",
+        "骋风的信物",
+        "MATERIAL",
+        800057
+    ],
+    "骋风的信物": [
+        "p_char_445_wscoot",
+        "p_char_445_wscoot",
+        "骋风的信物",
+        "MATERIAL",
+        800057
+    ],
     "p_char_128_plosis": [
         "p_char_128_plosis",
         "p_char_128_plosis",
@@ -6824,6 +6894,20 @@
         "MATERIAL",
         700165
     ],
+    "p_char_4178_alanna": [
+        "p_char_4178_alanna",
+        "p_char_4178_alanna",
+        "阿兰娜的信物",
+        "MATERIAL",
+        700166
+    ],
+    "阿兰娜的信物": [
+        "p_char_4178_alanna",
+        "p_char_4178_alanna",
+        "阿兰娜的信物",
+        "MATERIAL",
+        700166
+    ],
     "p_char_103_angel": [
         "p_char_103_angel",
         "p_char_103_angel",
@@ -8321,6 +8405,20 @@
         "死芒的信物",
         "MATERIAL",
         600107
+    ],
+    "p_char_4179_monstr": [
+        "p_char_4179_monstr",
+        "p_char_4179_monstr",
+        "Mon3tr的信物",
+        "MATERIAL",
+        600108
+    ],
+    "Mon3tr的信物": [
+        "p_char_4179_monstr",
+        "p_char_4179_monstr",
+        "Mon3tr的信物",
+        "MATERIAL",
+        600108
     ],
     "class_p_char_123_fang": [
         "class_p_char_123_fang",
@@ -9932,6 +10030,104 @@
         "MATERIAL",
         1300064
     ],
+    "class_p_char_475_akafyu": [
+        "class_p_char_475_akafyu",
+        "class_p_char_475_akafyu",
+        "赤冬的中坚信物",
+        "MATERIAL",
+        1300065
+    ],
+    "赤冬的中坚信物": [
+        "class_p_char_475_akafyu",
+        "class_p_char_475_akafyu",
+        "赤冬的中坚信物",
+        "MATERIAL",
+        1300065
+    ],
+    "class_p_char_478_kirara": [
+        "class_p_char_478_kirara",
+        "class_p_char_478_kirara",
+        "绮良的中坚信物",
+        "MATERIAL",
+        1300066
+    ],
+    "绮良的中坚信物": [
+        "class_p_char_478_kirara",
+        "class_p_char_478_kirara",
+        "绮良的中坚信物",
+        "MATERIAL",
+        1300066
+    ],
+    "class_p_char_421_crow": [
+        "class_p_char_421_crow",
+        "class_p_char_421_crow",
+        "羽毛笔的中坚信物",
+        "MATERIAL",
+        1300067
+    ],
+    "羽毛笔的中坚信物": [
+        "class_p_char_421_crow",
+        "class_p_char_421_crow",
+        "羽毛笔的中坚信物",
+        "MATERIAL",
+        1300067
+    ],
+    "class_p_char_473_mberry": [
+        "class_p_char_473_mberry",
+        "class_p_char_473_mberry",
+        "桑葚的中坚信物",
+        "MATERIAL",
+        1300068
+    ],
+    "桑葚的中坚信物": [
+        "class_p_char_473_mberry",
+        "class_p_char_473_mberry",
+        "桑葚的中坚信物",
+        "MATERIAL",
+        1300068
+    ],
+    "class_p_char_431_ashlok": [
+        "class_p_char_431_ashlok",
+        "class_p_char_431_ashlok",
+        "灰毫的中坚信物",
+        "MATERIAL",
+        1300069
+    ],
+    "灰毫的中坚信物": [
+        "class_p_char_431_ashlok",
+        "class_p_char_431_ashlok",
+        "灰毫的中坚信物",
+        "MATERIAL",
+        1300069
+    ],
+    "class_p_char_489_serum": [
+        "class_p_char_489_serum",
+        "class_p_char_489_serum",
+        "蚀清的中坚信物",
+        "MATERIAL",
+        1300070
+    ],
+    "蚀清的中坚信物": [
+        "class_p_char_489_serum",
+        "class_p_char_489_serum",
+        "蚀清的中坚信物",
+        "MATERIAL",
+        1300070
+    ],
+    "class_p_char_422_aurora": [
+        "class_p_char_422_aurora",
+        "class_p_char_422_aurora",
+        "极光的中坚信物",
+        "MATERIAL",
+        1300071
+    ],
+    "极光的中坚信物": [
+        "class_p_char_422_aurora",
+        "class_p_char_422_aurora",
+        "极光的中坚信物",
+        "MATERIAL",
+        1300071
+    ],
     "class_p_char_103_angel": [
         "class_p_char_103_angel",
         "class_p_char_103_angel",
@@ -10394,6 +10590,118 @@
         "MATERIAL",
         1200034
     ],
+    "class_p_char_003_kalts": [
+        "class_p_char_003_kalts",
+        "class_p_char_003_kalts",
+        "凯尔希的中坚信物",
+        "MATERIAL",
+        1200035
+    ],
+    "凯尔希的中坚信物": [
+        "class_p_char_003_kalts",
+        "class_p_char_003_kalts",
+        "凯尔希的中坚信物",
+        "MATERIAL",
+        1200035
+    ],
+    "class_p_char_426_billro": [
+        "class_p_char_426_billro",
+        "class_p_char_426_billro",
+        "卡涅利安的中坚信物",
+        "MATERIAL",
+        1200036
+    ],
+    "卡涅利安的中坚信物": [
+        "class_p_char_426_billro",
+        "class_p_char_426_billro",
+        "卡涅利安的中坚信物",
+        "MATERIAL",
+        1200036
+    ],
+    "class_p_char_485_pallas": [
+        "class_p_char_485_pallas",
+        "class_p_char_485_pallas",
+        "帕拉斯的中坚信物",
+        "MATERIAL",
+        1200037
+    ],
+    "帕拉斯的中坚信物": [
+        "class_p_char_485_pallas",
+        "class_p_char_485_pallas",
+        "帕拉斯的中坚信物",
+        "MATERIAL",
+        1200037
+    ],
+    "class_p_char_437_mizuki": [
+        "class_p_char_437_mizuki",
+        "class_p_char_437_mizuki",
+        "水月的中坚信物",
+        "MATERIAL",
+        1200038
+    ],
+    "水月的中坚信物": [
+        "class_p_char_437_mizuki",
+        "class_p_char_437_mizuki",
+        "水月的中坚信物",
+        "MATERIAL",
+        1200038
+    ],
+    "class_p_char_479_sleach": [
+        "class_p_char_479_sleach",
+        "class_p_char_479_sleach",
+        "琴柳的中坚信物",
+        "MATERIAL",
+        1200039
+    ],
+    "琴柳的中坚信物": [
+        "class_p_char_479_sleach",
+        "class_p_char_479_sleach",
+        "琴柳的中坚信物",
+        "MATERIAL",
+        1200039
+    ],
+    "class_p_char_430_fartth": [
+        "class_p_char_430_fartth",
+        "class_p_char_430_fartth",
+        "远牙的中坚信物",
+        "MATERIAL",
+        1200040
+    ],
+    "远牙的中坚信物": [
+        "class_p_char_430_fartth",
+        "class_p_char_430_fartth",
+        "远牙的中坚信物",
+        "MATERIAL",
+        1200040
+    ],
+    "class_p_char_420_flamtl": [
+        "class_p_char_420_flamtl",
+        "class_p_char_420_flamtl",
+        "焰尾的中坚信物",
+        "MATERIAL",
+        1200041
+    ],
+    "焰尾的中坚信物": [
+        "class_p_char_420_flamtl",
+        "class_p_char_420_flamtl",
+        "焰尾的中坚信物",
+        "MATERIAL",
+        1200041
+    ],
+    "class_p_char_206_gnosis": [
+        "class_p_char_206_gnosis",
+        "class_p_char_206_gnosis",
+        "灵知的中坚信物",
+        "MATERIAL",
+        1200042
+    ],
+    "灵知的中坚信物": [
+        "class_p_char_206_gnosis",
+        "class_p_char_206_gnosis",
+        "灵知的中坚信物",
+        "MATERIAL",
+        1200042
+    ],
     "classic_normal_ticket": [
         "classic_normal_ticket",
         "classic_normal_ticket",
@@ -10449,5 +10757,19 @@
         "高级材料提货券",
         "CONSUME",
         30201
+    ],
+    "SINGLE_60_0_1_GACHA": [
+        "SINGLE_60_0_1_GACHA",
+        "SINGLE_60_0_1_GACHA",
+        "指令重构寻访凭证",
+        "NORMAL",
+        40003
+    ],
+    "指令重构寻访凭证": [
+        "SINGLE_60_0_1_GACHA",
+        "SINGLE_60_0_1_GACHA",
+        "指令重构寻访凭证",
+        "NORMAL",
+        40003
     ]
 }
