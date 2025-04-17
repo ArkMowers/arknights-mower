@@ -269,6 +269,12 @@
     "description": "不阻挡地面敌人且不会被地面敌人攻击，可以阻挡飞行敌人",
     "buffer": []
   },
+  "ba_physicfragile": {
+    "termId": "ba.physicfragile",
+    "termName": "物理脆弱",
+    "description": "受到的物理伤害提升相应比例（同名效果取最高）",
+    "buffer": []
+  },
   "cc_bd_A_1": {
     "termId": "cc.bd_A_1",
     "termName": "念力",
@@ -509,7 +515,7 @@
   "cc_g_sui": {
     "termId": "cc.g.sui",
     "termName": "岁",
-    "description": "包含以下干员\n年、夕、令、重岳、黍",
+    "description": "包含以下干员\n年、夕、令、重岳、黍、余",
     "buffer": []
   },
   "cc_g_glasgow": {
@@ -533,7 +539,7 @@
   "cc_g_bs": {
     "termId": "cc.g.bs",
     "termName": "黑钢国际",
-    "description": "包含以下干员\n雷蛇、芙兰卡、杰西卡、香草、杏仁",
+    "description": "包含以下干员\n雷蛇、芙兰卡、杰西卡、香草、杏仁、寻澜",
     "buffer": []
   },
   "cc_g_siracusa": {
@@ -592,7 +598,7 @@
   "cc_c_skill": {
     "termId": "cc.c.skill",
     "termName": "部分技能",
-    "description": "包含以下技能\n左膀右臂、S.W.E.E.P.、零食网络、清理协议、替身、必要责任、护卫、小小的领袖、独善其身、笑靥如春、金盏花诗会、捍卫之道",
+    "description": "包含以下技能\n左膀右臂、S.W.E.E.P.、零食网络、清理协议、替身、必要责任、护卫、小小的领袖、独善其身、笑靥如春、金盏花诗会、捍卫之道、博识生手",
     "buffer": []
   },
   "cc_t_strong2": {

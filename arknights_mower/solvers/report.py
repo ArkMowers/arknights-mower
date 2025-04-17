@@ -1,3 +1,4 @@
+import datetime
 import os
 
 import cv2
@@ -84,6 +85,36 @@ class ReportSolver(SceneGraphSolver):
             self.sleep(1)
             return
 
+    def add_order_detail(self):
+        try:
+            current_date = str((get_server_time() - datetime.timedelta(days=1)).date())
+            from arknights_mower.solvers import record
+
+            order_history = record.get_trading_history(current_date, current_date)
+            total = 0
+            if len(order_history) == 1:
+                for k, count in order_history[0].items():
+                    if k == "日期":
+                        continue
+                    key = ""
+                    value = 0
+                    if k == "龙舌兰":
+                        key = "龙舌兰" + "(2500)"
+                        value = 2500 * count
+                    else:
+                        parts = k.split("_")
+                        key = parts[0] + "(" + parts[1] + ")"
+                        value = int(parts[1]) * count
+                    self.report_res[key] = value
+                    total += value
+            if (
+                self.report_res["龙门币订单"] is not None
+                and total != self.report_res["龙门币订单"]
+            ):
+                self.report_res["未知订单"] = self.report_res["龙门币订单"] - total
+        except Exception as e:
+            logger.exception(f"处理交易历史记录时出错：{e}")
+
     def record_report(self):
         logger.info(f"存入{self.date}的数据{self.report_res}")
         try:
@@ -98,6 +129,7 @@ class ReportSolver(SceneGraphSolver):
             logger.exception(f"存入数据失败：{e}")
         self.tap((1253, 81), interval=2)
         try:
+            self.add_order_detail()
             send_message(
                 report_template.render(
                     report_data=self.report_res, title_text="基建报告"

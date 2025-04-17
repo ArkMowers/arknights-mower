@@ -1,4 +1,5 @@
 import time
+from datetime import datetime
 from typing import List, Optional, Tuple
 
 import cv2
@@ -136,19 +137,24 @@ class Recognizer:
         if min_val < 0.02:
             return (min_loc[0] + 960 + 42, min_loc[1] + 42)
 
-    def get_scene(self) -> int:
-        """get the current scene in the game"""
-        current_time = time.time()
-        # 检查模拟器是否卡死，超过跑单时间*90秒则视为卡死
-        if self.scene == self.last_scene:
-            elapsed_time = current_time - self.last_scene_time
+    def check_freeze(self, current_time):
+        if self.scene != self.last_scene:
+            self.last_scene_time = current_time
+            self.last_scene = self.scene
+        else:
+            elapsed_time = (current_time - self.last_scene_time).total_seconds()
             if elapsed_time > config.conf.run_order_delay * 90:
                 logger.warning("相同场景等待超时 ")
                 self.last_scene = None
                 self.last_scene_time = current_time
                 self.device.exit()
 
+    def get_scene(self) -> int:
+        """get the current scene in the game"""
+        current_time = datetime.now()
+        # 检查模拟器是否卡死，超过跑单时间*90秒则视为卡死
         if self.scene != Scene.UNDEFINED:
+            self.check_freeze(current_time)
             return self.scene
 
         # 连接中，优先级最高
@@ -369,8 +375,7 @@ class Recognizer:
             self.check_current_focus()
 
         logger.info(f"Scene {self.scene}: {SceneComment[self.scene]}")
-        self.last_scene = self.scene
-        self.last_scene_time = current_time
+        self.check_freeze(current_time)
         return self.scene
 
     def find_ra_battle_exit(self) -> bool:

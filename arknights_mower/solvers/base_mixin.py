@@ -282,8 +282,8 @@ class BaseMixin:
     def enter_room(self, room):
         """从基建首页进入房间"""
 
-        for enter_times in range(2):
-            for retry_times in range(2):
+        for enter_times in range(3):
+            for retry_times in range(5):
                 if pos := self.find("control_central"):
                     _room = segment.base(self.recog.img, pos)[room]
                     self.tap(self.adjust_room(_room))
@@ -368,8 +368,7 @@ class BaseMixin:
                 return ret.strip()
             else:
                 return ret
-        except Exception as e:
-            logger.exception(e)
+        except Exception:
             return limit + 1
 
     def read_time(self, cord, upperlimit, error_count=0, use_digit_reader=False):
@@ -391,10 +390,10 @@ class BaseMixin:
                 return res
         except Exception:
             if error_count > 3:
-                logger.exception(f"读取失败{error_count}次超过上限")
+                logger.debug(f"读取失败{error_count}次超过上限")
                 return None
             else:
-                logger.exception("读取失败")
+                logger.debug("读取失败")
                 return self.read_time(
                     cord, upperlimit, error_count + 1, use_digit_reader
                 )
