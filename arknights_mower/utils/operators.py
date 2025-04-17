@@ -520,13 +520,17 @@ class Operators:
         if room in self.true_exhaust_room and _name in self.operators.keys():
             _agent = self.operators[_name]
             time_elapsed = (agent["time"] - datetime.now()).total_seconds()
-            if time_elapsed < 0:
+            _agent.exhaust_time = agent["time"]
+            if _agent.mood > 0 and _agent.lower_limit > 0:
+                _agent.exhaust_time = datetime.now() + timedelta(
+                    seconds=(_agent.mood - _agent.lower_limit)
+                    * time_elapsed
+                    / _agent.mood
+                )
+            if time_elapsed < 0 or _agent.exhaust_time < datetime.now():
                 _agent.exhaust_time = datetime.now()
-                return
-            _agent.exhaust_time = datetime.now() + timedelta(
-                seconds=(_agent.mood - _agent.lower_limit) * time_elapsed / _agent.mood
-            )
             logger.debug(f"{_name} 真实用尽时间：{_agent.exhaust_time}")
+            return
 
     def correct_dorm(self):
         for idx, dorm in enumerate(self.dorm):
