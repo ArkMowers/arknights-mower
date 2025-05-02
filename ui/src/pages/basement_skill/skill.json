@@ -1,5 +1,216 @@
 [
   {
+    "key": 371,
+    "name": "CONFESS-47",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "充能中",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻发电站时，无人机充能速度<@cc.vup>+10%</>",
+        "roomType": "发电站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "bskill_pow_spd1",
+        "buffColor": "#8fc31f",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精0 30级",
+        "skillname": "维护中",
+        "buffer": true,
+        "buffer_des": [
+          "cc_g_laterano"
+        ],
+        "des": "进驻发电站时，如果其他<$cc.g.laterano><@cc.kw>拉特兰</></>干员进驻在发电站，则无人机充能速度<@cc.vup>+5%</>",
+        "roomType": "发电站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "bskill_power_rec_spd_ext&faction",
+        "buffColor": "#8fc31f",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 370,
+    "name": "聆音",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "恩典颂歌",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻宿舍时，使该宿舍内除自身以外心情未满的某个干员每小时恢复<@cc.vup>+0.7</>（同种效果取最高）",
+        "roomType": "宿舍",
+        "buffCategory": "RECOVERY",
+        "skillIcon": "bskill_dorm_single3",
+        "buffColor": "#21cdcb",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "近卫专精·α",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻训练室协助位时，<@cc.kw>近卫</>干员的专精技能训练速度<@cc.vup>+30%</>",
+        "roomType": "训练室",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_train_guard1",
+        "buffColor": "#7d0022",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 369,
+    "name": "信仰搅拌机",
+    "span": 3,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "泡茶高手",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻会客室时，线索搜集速度提升<@cc.vup>15%</>",
+        "roomType": "会客室",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_meet_spd2",
+        "buffColor": "#dd653f",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 0,
+        "skill_level": 1,
+        "phase_level": "精2 1级",
+        "skillname": "社交达人",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻会客室时，线索搜集速度提升<@cc.vup>20%</>",
+        "roomType": "会客室",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_meet_spd3",
+        "buffColor": "#dd653f",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "不泯童心",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻会客室时，如果<@cc.kw>菲亚梅塔</>进驻在宿舍，则线索搜集速度额外提升<@cc.vup>10%</>",
+        "roomType": "会客室",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_meet_spd_confes1",
+        "buffColor": "#dd653f",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 368,
+    "name": "蕾缪安",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "订单分发·α",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻贸易站时，订单获取效率<@cc.vup>+20%</>",
+        "roomType": "贸易站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "bskill_tra_spd1",
+        "buffColor": "#0075a9",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 0,
+        "skill_level": 1,
+        "phase_level": "精2 1级",
+        "skillname": "相伴",
+        "buffer": true,
+        "buffer_des": [
+          "cc_angel"
+        ],
+        "des": "进驻贸易站时，订单获取效率<@cc.vup>+20%</>；当与<@cc.kw><$cc.angel>能天使</></>在同一个贸易站时，订单获取效率额外<@cc.vup>+25%</>",
+        "roomType": "贸易站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "bskill_tra_lemuen1",
+        "buffColor": "#0075a9",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 367,
+    "name": "新约能天使",
+    "span": 3,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "天生乐天派",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻宿舍时，使该宿舍内除自身以外心情未满的某个干员每小时恢复<@cc.vup>+0.55</>（同种效果取最高）",
+        "roomType": "宿舍",
+        "buffCategory": "RECOVERY",
+        "skillIcon": "bskill_dorm_single1",
+        "buffColor": "#21cdcb",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 0,
+        "skill_level": 1,
+        "phase_level": "精2 1级",
+        "skillname": "圣城趣事通",
+        "buffer": true,
+        "buffer_des": [
+          "cc_g_laterano"
+        ],
+        "des": "进驻宿舍时，使该宿舍内除自身以外心情未满的某个干员每小时恢复<@cc.vup>+0.55</>（同种效果取最高），如果目标是<$cc.g.laterano><@cc.kw>拉特兰</></>干员，则恢复效果额外<@cc.vup>+0.45</>",
+        "roomType": "宿舍",
+        "buffCategory": "RECOVERY",
+        "skillIcon": "bskill_dorm_single_laterano",
+        "buffColor": "#21cdcb",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "同城加急单",
+        "buffer": true,
+        "buffer_des": [
+          "cc_g_laterano"
+        ],
+        "des": "进驻贸易站时，同个贸易站中每有1名<$cc.g.laterano><@cc.kw>拉特兰</></>干员，当前贸易站订单获取效率<@cc.vup>+15%</>",
+        "roomType": "贸易站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "bskill_tra_laterano1",
+        "buffColor": "#0075a9",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
     "key": 366,
     "name": "骋风",
     "span": 2,

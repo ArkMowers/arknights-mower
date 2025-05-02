@@ -59,6 +59,16 @@
             "辅助干员"
         ]
     },
+    "char_4188_confes": {
+        "name": "CONFESS-47",
+        "stars": 1,
+        "tags": [
+            "支援机械",
+            "控场",
+            "近战位",
+            "先锋干员"
+        ]
+    },
     "char_502_nblade": {
         "name": "夜刀",
         "stars": 2,
