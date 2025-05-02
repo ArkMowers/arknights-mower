@@ -154,10 +154,6 @@ class BaseMixin:
         x = 1918
         label_pos = [(x, 135 + i * 110) for i in range(9)]
         label_pos_map = dict(zip(self.profession_labels, label_pos))
-        if profession == "ALL":
-            self.tap(label_pos_map[profession], 0.1)
-            self.tap(label_pos_map[profession], 0.1)
-            return
         while (confirm_btn := self.find("confirm_blue")) is not None and confirm_btn[0][
             0
         ] > open_threshold:
