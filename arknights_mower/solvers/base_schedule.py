@@ -1057,7 +1057,19 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 max_execution = 3
                 adj_count = 0
                 while adj_task is not None and adj_count < max_execution:
-                    self.drone(adj_task.meta_data, adjust_time=True)
+                    adjust_room = adj_task.meta_data
+                    # 如果加速房间为跑单房间，则优先使用
+                    if self.drone_room in self.op_data.run_order_rooms:
+                        adjust_room = self.drone_room
+                    else:
+                        lowest_room = self.op_data.run_order_rooms[0]
+                        for room in self.op_data.run_order_rooms:
+                            if len(self.op_data.plan[room])< len(
+                                self.op_data.plan[lowest_room]
+                            ):
+                                lowest_room = room
+                        adjust_room = lowest_room
+                    self.drone(adjust_room, adjust_time=True)
                     adj_task = scheduling(self.tasks)
                     adj_count += 1
         fia_plan, fia_room = self.check_fia()
