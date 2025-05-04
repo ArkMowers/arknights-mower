@@ -640,6 +640,8 @@ class Operators:
                 current_mood += v.current_mood() - v.lower_limit
                 total_mood += v.upper_limit - v.lower_limit
                 count += 1
+        if total_mood == 0:
+            return 0
         logger.debug(
             f"当前工作总计高效组：{count}, 当前平均心情百分比 {current_mood / total_mood}"
         )
@@ -882,7 +884,7 @@ class Operator:
                 hours=((remaining_mood / depletion_rate) - 0.5)
             )
             if self.exhaust_time is not None:
-                logger.debug("预测用尽时间:{predict}")
+                logger.debug(f"预测用尽时间:{predict}")
                 logger.debug(f"真实用尽时间：{self.exhaust_time}")
                 return min(predict, self.exhaust_time)
             else:

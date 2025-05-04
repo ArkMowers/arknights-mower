@@ -312,6 +312,7 @@ def plan_metadata(op_data, tasks):
         logger.debug(f"开始计算:{dorms}")
         max_rest_in_full_time = None
         task_time = datetime.max
+        # 高优先宿舍
         _high_dorms = [
             dorm
             for dorm in dorms
@@ -355,13 +356,14 @@ def plan_metadata(op_data, tasks):
             logger.debug(f"最前上班时间为{nearest_dorm}")
             logger.debug({max_rest_in_full_time})
             if max_rest_in_full_time:
+                # 处理回满逻辑
                 task_time = max_rest_in_full_time - (
                     timedelta(minutes=0.4 * len(high_dorms))
                     if need_early
                     else timedelta(seconds=0)
                 )
             elif nearest_dorm:
-                task_time = nearest_dorm.time
+                task_time = min(nearest_dorm.time,min_resting_time)
             else:
                 continue
             if task_time not in new_task:
