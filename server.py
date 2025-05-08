@@ -46,7 +46,11 @@ def read_log():
         log_lines.append(msg)
         log_lines = log_lines[-100:]
         for ws in ws_connections:
-            ws.send(msg)
+            ws.send(json.dumps({
+                    "type": "log",
+                    "data": msg,
+                    "screenshot": get_latest_screenshot()
+                }))
 
 
 Thread(target=read_log, daemon=True).start()
@@ -75,7 +79,6 @@ def not_found(e):
         except NotFound:
             return "<h1>404 Not Found</h1>", 404
     return send_from_directory("ui/dist", "index.html")
-
 
 @app.route("/conf", methods=["GET", "POST"])
 @require_token
@@ -206,7 +209,10 @@ def log(ws):
     global ws_connections
     global log_lines
 
-    ws.send("\n".join(log_lines))
+    ws.send(json.dumps({
+        "type": "log",
+        "data": "\n".join(log_lines)  # 发送完整日志
+    }))
     ws_connections.append(ws)
 
     from simple_websocket import ConnectionClosed
@@ -217,6 +223,22 @@ def log(ws):
     except ConnectionClosed:
         ws_connections.remove(ws)
 
+@app.route("/screenshots/<path:filename>")
+def serve_screenshot(filename):
+    """
+    提供截图文件的访问
+    """
+    screenshot_dir = get_path("@app/screenshot")
+    return send_from_directory(screenshot_dir, filename)
+@app.route("/latest-screenshot")
+def get_latest_screenshot():
+    """
+    返回最新截图的路径
+    """
+    from arknights_mower.utils.log import last_screenshot
+    if last_screenshot:
+        return last_screenshot
+    return ""
 
 def conn_send(text):
     from arknights_mower.utils import config

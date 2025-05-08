@@ -4,14 +4,31 @@ import { onMounted, onUnmounted, inject, nextTick, watch, ref } from 'vue'
 
 import { useMowerStore } from '@/stores/mower'
 const mower_store = useMowerStore()
-const { log, log_mobile, running, plan_condition, log_lines, task_list, waiting, get_task_id } =
+const { log, log_mobile, running, plan_condition, log_lines, task_list, waiting, get_task_id, sc_uri } =
   storeToRefs(mower_store)
 const { get_tasks, get_running } = mower_store
 const axios = inject('axios')
 const mobile = inject('mobile')
 
 const auto_scroll = ref(true)
+const sc_preview = ref(true)
+const sc_blob = ref('')
 
+watch(sc_uri, async (new_value) => {
+  if (new_value && sc_preview.value) {
+    try {    
+    const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/screenshots/${sc_uri.value}`, {
+      responseType: 'blob'
+    })
+    const blob = new Blob([response.data], { type: 'image/jpeg' })
+    sc_blob.value = URL.createObjectURL(blob)
+  } catch (error) {
+      console.error('获取最新截图失败:', error)
+    }
+  } else {
+    sc_blob.value = ''
+  }
+})
 function scroll_last_line() {
   nextTick(() => {
     document.querySelector('pre:last-child')?.scrollIntoView()
@@ -111,6 +128,14 @@ const start_options = [
 <template>
   <div class="home-container">
     <div class="log-bg"></div>
+    <n-image
+      v-if="sc_preview"
+      width="100%"
+      class="sc"
+      :src="sc_blob == '' ? '/bg2.webp' : sc_blob"
+      object-fit="scale-down"
+    />
+
     <n-table class="task-table" size="small" :single-line="false">
       <thead>
         <tr>
@@ -209,6 +234,10 @@ const start_options = [
       <feedback />
       <div class="expand"></div>
       <div class="scroll-container">
+        <n-checkbox v-model:checked="sc_preview">
+        <template v-if="mobile">截图</template>
+        <template v-else>预览截图</template>
+      </n-checkbox>
         <n-switch v-model:value="auto_scroll" />
         <span class="scroll-label" v-if="!mobile">自动滚动</span>
       </div>
@@ -327,5 +356,11 @@ const start_options = [
 
 .hljs-scene {
   font-style: italic;
+}
+.sc {
+  max-width: 480px;
+  max-height: 270px;
+  border-radius: 6px;
+  z-index: 15;
 }
 </style>

@@ -33,7 +33,8 @@ export const useMowerStore = defineStore('mower', () => {
 
   const get_task_id = ref(0)
   const task_list = ref([])
-
+  const sc_uri = ref('')
+  const speed_msg = ref([])
   function listen_ws() {
     let backend_url
     if (import.meta.env.DEV) {
@@ -44,9 +45,15 @@ export const useMowerStore = defineStore('mower', () => {
     const ws_url = backend_url.replace(/^http/, 'ws') + '/log'
     ws.value = new ReconnectingWebSocket(ws_url)
     ws.value.onmessage = (event) => {
-      log_lines.value = log_lines.value.concat(event.data.split('\n')).slice(-100)
-    }
+        const data = JSON.parse(event.data)        
+        if (data.type === 'log') {
+          log_lines.value = log_lines.value.concat(data.data.split('\n')).slice(-100); // 追加日志
+          if (data.screenshot) {
+            sc_uri.value = data.screenshot
+          }
+        }
   }
+}
 
   async function get_running() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/running`)
@@ -77,6 +84,8 @@ export const useMowerStore = defineStore('mower', () => {
     first_load,
     task_list,
     get_task_id,
-    get_tasks
+    get_tasks,
+    sc_uri,
+    speed_msg 
   }
 })
