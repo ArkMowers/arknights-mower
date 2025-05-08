@@ -363,7 +363,7 @@ def plan_metadata(op_data, tasks):
                     else timedelta(seconds=0)
                 )
             elif nearest_dorm:
-                task_time = min(nearest_dorm.time,min_resting_time)
+                task_time = min(nearest_dorm.time, min_resting_time)
             else:
                 continue
             if task_time not in new_task:

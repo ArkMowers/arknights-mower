@@ -33,6 +33,7 @@ class PackagePathFilter(logging.Filter):
         record.relativepath = relativepath
         return True
 
+
 last_screenshot = None
 filter = PackagePathFilter()
 
@@ -117,6 +118,7 @@ def screenshot_worker():
             if upate_last:
                 last_screenshot = filename
 
+
 Thread(target=screenshot_worker, daemon=True).start()
 
 
@@ -127,7 +129,7 @@ def save_screenshot(img: bytes, sub_folder=None) -> None:
         sub_folder_path = Path(screenshot_folder) / sub_folder
         sub_folder_path.mkdir(parents=True, exist_ok=True)
         filename = f"{sub_folder}/{datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
-    screenshot_queue.put((img, filename,not sub_folder))
+    screenshot_queue.put((img, filename, not sub_folder))
 
 
 def get_log_by_time(target_time, time_range=1):

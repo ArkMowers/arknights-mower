@@ -4,8 +4,17 @@ import { onMounted, onUnmounted, inject, nextTick, watch, ref } from 'vue'
 
 import { useMowerStore } from '@/stores/mower'
 const mower_store = useMowerStore()
-const { log, log_mobile, running, plan_condition, log_lines, task_list, waiting, get_task_id, sc_uri } =
-  storeToRefs(mower_store)
+const {
+  log,
+  log_mobile,
+  running,
+  plan_condition,
+  log_lines,
+  task_list,
+  waiting,
+  get_task_id,
+  sc_uri
+} = storeToRefs(mower_store)
 const { get_tasks, get_running } = mower_store
 const axios = inject('axios')
 const mobile = inject('mobile')
@@ -16,13 +25,16 @@ const sc_blob = ref('')
 
 watch(sc_uri, async (new_value) => {
   if (new_value && sc_preview.value) {
-    try {    
-    const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/screenshots/${sc_uri.value}`, {
-      responseType: 'blob'
-    })
-    const blob = new Blob([response.data], { type: 'image/jpeg' })
-    sc_blob.value = URL.createObjectURL(blob)
-  } catch (error) {
+    try {
+      const response = await axios.get(
+        `${import.meta.env.VITE_HTTP_URL}/screenshots/${sc_uri.value}`,
+        {
+          responseType: 'blob'
+        }
+      )
+      const blob = new Blob([response.data], { type: 'image/jpeg' })
+      sc_blob.value = URL.createObjectURL(blob)
+    } catch (error) {
       console.error('获取最新截图失败:', error)
     }
   } else {
@@ -235,9 +247,9 @@ const start_options = [
       <div class="expand"></div>
       <div class="scroll-container">
         <n-checkbox v-model:checked="sc_preview">
-        <template v-if="mobile">截图</template>
-        <template v-else>预览截图</template>
-      </n-checkbox>
+          <template v-if="mobile">截图</template>
+          <template v-else>预览截图</template>
+        </n-checkbox>
         <n-switch v-model:value="auto_scroll" />
         <span class="scroll-label" v-if="!mobile">自动滚动</span>
       </div>

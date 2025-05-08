@@ -128,9 +128,9 @@ class BaseMixin:
                 None,
             )
             # 硬切换职业筛选 的时候有时候游戏会出bug，回不去，改成切换到ALL
-            if special_filter == "ALL":                
-                self.profession_filter(selected_label)                
-            else:   
+            if special_filter == "ALL":
+                self.profession_filter(selected_label)
+            else:
                 self.profession_filter("ALL")
             self.profession_filter(special_filter)
         else:

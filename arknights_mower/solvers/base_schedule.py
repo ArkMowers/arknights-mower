@@ -448,7 +448,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         and TaskTypes.RUN_ORDER == self.task.type
                         and not self.refresh_connecting
                         and config.conf.run_order_buffer_time > 0
+                        and datetime.now() + timedelta(seconds=45)
+                        < self.task.time
+                        + timedelta(minutes=config.conf.run_order_delay)
                     ):
+                        # 有45秒冗余时间才返回基地主界面
                         logger.info("跑单前返回主界面以保持登录状态")
                         self.back_to_index()
                         self.refresh_connecting = True
@@ -1064,7 +1068,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     else:
                         lowest_room = self.op_data.run_order_rooms[0]
                         for room in self.op_data.run_order_rooms:
-                            if len(self.op_data.plan[room])< len(
+                            if len(self.op_data.plan[room]) < len(
                                 self.op_data.plan[lowest_room]
                             ):
                                 lowest_room = room
@@ -1955,7 +1959,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if accelerate:
             drone_count = self.digit_reader.get_drone(self.recog.gray)
             logger.info(f"当前无人机数量为：{drone_count}")
-            if drone_count < config.conf.drone_count_limit or drone_count > 225:
+            if drone_count < config.conf.drone_count_limit:
                 logger.info(f"无人机数量小于{config.conf.drone_count_limit}->停止")
                 return
             logger.info("制造站加速")
@@ -2953,11 +2957,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 ):
                     drone_count = self.digit_reader.get_drone(self.recog.gray)
                     logger.info(f"当前无人机数量为：{drone_count}")
-                    # 200 为识别错误
-                    if (
-                        drone_count >= config.conf.drone_count_limit
-                        and drone_count != 201
-                    ):
+                    if drone_count >= config.conf.drone_count_limit:
                         self.drone(
                             room, not_return=True, not_customize=True, skip_enter=True
                         )

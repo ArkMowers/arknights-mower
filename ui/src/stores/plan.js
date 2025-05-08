@@ -135,7 +135,7 @@ export const usePlanStore = defineStore('plan', () => {
 
   async function load_plan() {
     const config_store = useConfigStore()
-    const {dorm_order} = storeToRefs(config_store)
+    const { dorm_order } = storeToRefs(config_store)
     // 新排班表重置宿舍优先级
     dorm_order.value = []
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/plan`)
