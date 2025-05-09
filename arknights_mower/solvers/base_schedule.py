@@ -1887,9 +1887,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     def adjust_order_time(self, accelerate, room):
         error_count = 0
         action_required_task = scheduling(self.tasks)
-        while (
-            action_required_task is not None and action_required_task.meta_data == room
-        ):
+        while action_required_task:
             self.tap(accelerate)
             if self.scene() in self.waiting_scene:
                 if not self.waiting_solver():
