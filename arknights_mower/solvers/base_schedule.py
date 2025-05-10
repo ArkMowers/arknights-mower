@@ -52,6 +52,9 @@ from arknights_mower.utils.scheduler_task import (
 from arknights_mower.utils.trading_order import TradingOrder
 
 
+
+
+
 class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     """
     收集基建的产物：物资、赤金、信赖
@@ -448,7 +451,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         and TaskTypes.RUN_ORDER == self.task.type
                         and not self.refresh_connecting
                         and config.conf.run_order_buffer_time > 0
+                        and datetime.now() + timedelta(seconds=45)
+                        < self.task.time
+                        + timedelta(minutes=config.conf.run_order_delay)
                     ):
+                        # 有45秒冗余时间才返回基地主界面
                         logger.info("跑单前返回主界面以保持登录状态")
                         self.back_to_index()
                         self.refresh_connecting = True
@@ -1051,15 +1058,37 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         break
             if valid:
                 # 处理龙舌兰/但书/佩佩的插拔
-                for k, v in self.op_data.run_order_rooms.items():
+                run_order_rooms =self.op_data.run_order_rooms
+                for k, v in run_order_rooms.items():
                     self.plan_run_order(k)
-                adj_task = scheduling(self.tasks)
+                adj_tasks = scheduling(self.tasks) #修改scheduling 同时输出撞在一起的前后两个任务
                 max_execution = 3
                 adj_count = 0
-                while adj_task is not None and adj_count < max_execution:
-                    self.drone(adj_task.meta_data, adjust_time=True)
-                    adj_task = scheduling(self.tasks)
+
+                if run_order_rooms is not None and len(run_order_rooms) >= 3:
+                    n = len(run_order_rooms)
+                    dp = [0] * (n + 1)
+                    dp[1] = 0
+                    if n >1:
+                        dp[2] = 1
+                    for i in range(3, n + 1):
+                        dp[i] = 3 * dp[i - 1] + 2 * dp[i - 2]
+                    max_execution = min (dp[n] * 1.25,15) #通过跑单房间计算得到循环次数 同时限制最大次数
+                    logger.debug(f'max_execution = {max_execution}')
+                    logger.info(run_order_rooms)
+                    logger.info(f'当前跑单房间数量为：{n}，计算最大循环次数为: {max_execution+1}')
+                while adj_tasks is not None and adj_count <= max_execution: #由于改动会增加触发次数 改为<= 多触发一次
+                    # logger.error("<UNK>,<UNK>")
+                    adjust_0_room = self.get_run_order_adjust_room(adj_tasks) #抽离成单独的
+                    if adjust_0_room is None:
+                        logger.error(f'adjust_0_room的结果为：{adjust_0_room}，获取跑单房间失败，停止循环')
+                        return
+                    is_run=self.drone(adjust_0_room, adjust_time=True)
+                    adj_tasks = scheduling(self.tasks)
                     adj_count += 1
+                    logger.info(f'第{adj_count}次循环结束')
+                    if is_run is not None and is_run == False:
+                        return
         fia_plan, fia_room = self.check_fia()
         if fia_room is not None and fia_plan is not None:
             if self.find_next_task(task_type=TaskTypes.FIAMMETTA) is None:
@@ -1163,6 +1192,43 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     # 如果是生成的过去时间，则停止 plan 其他
                     if _time < datetime.now():
                         break
+    #根据优先级获取跑单冲突时应该要加速的房间
+    def get_run_order_adjust_room(self, adj_tasks):
+        #此处出异常会一直运行，抛出None会终止循环，下面还没考虑过会出什么问题，可自行添加
+        try:
+            adj_0_task, adj_task = adj_tasks
+        except TypeError:
+            return None
+        adjust_0_room = adj_0_task.meta_data
+        adjust_room = adj_task.meta_data
+        # 如果加速房间为跑单房间，则优先使用
+        drone_room = self.drone_room
+        if any(task.meta_data == drone_room for task in adj_tasks):
+            logger.info('检测到加速房间在冲突的跑单任务中，直接采用')
+            adjust_0_room = drone_room
+        else:
+            logger.info('开始比较跑单任务')
+            run_order_rooms = self.op_data.run_order_rooms
+            logger.debug(f'run_order_rooms：{run_order_rooms}')
+            logger.debug(f'adjust_0_room：{adjust_0_room}')
+            logger.debug(f'adjust_room：{adjust_room}')
+
+            adjust_0_room_len = len(self.op_data.plan[adjust_0_room])  # 跑单任务首个
+            adjust_room_len = len(self.op_data.plan[adjust_room])  # 跑单任务第二个
+            # 正常情况按照82算法 1>3>2 进行加速
+            # 如果 adjust_0_room 为 2 adjust_room 为 3 则是 2>3, 两者收益比较接近，先加速前面的订单可能更优，故保留特性
+            if adjust_0_room_len == 3 and adjust_room_len != 1:  # 参考82算法 优先加速3级
+                logger.debug(f'adjust_0_room_len ===> {adjust_0_room_len}')
+                logger.debug(f'adjust_room_len ===> {adjust_room_len}')
+            elif adjust_0_room_len > adjust_room_len:  # 如果首个任务房间比第二个大 #参考82算法
+                adjust_0_room = adjust_room
+                adjust_0_room_len = adjust_room_len
+            logger.info(f'加速房间 :{adjust_0_room}')
+            logger.info(f'加速房间长度 :{adjust_0_room_len}')
+
+        # return adjust_0_room , adjust_0_room_len
+        return adjust_0_room
+
 
     def plan_solver(self):
         # 准备数据
@@ -1871,26 +1937,39 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     def adjust_order_time(self, accelerate, room):
         error_count = 0
         action_required_task = scheduling(self.tasks)
-        while (
-            action_required_task is not None and action_required_task.meta_data == room
-        ):
+        # logger.error(f"action_required_task:{action_required_task}")
+        logger.debug(f"room:{room}")
+        logger.debug(any(task.meta_data == room for task in action_required_task))
+        # while  action_required_task is not None and any(task.meta_data == room for task in action_required_task):
+
+        #设置为每次循环都验证一次当前房间 是否适合加速
+        while  action_required_task is not None and self.get_run_order_adjust_room(action_required_task) == room:
+            #如果不加判断 在无人机为0时将会一直触发循环 暂时设置默认值为20 可以考虑动态值
+            drone_count = self.digit_reader.get_drone(self.recog.gray)
+            logger.info(f"当前无人机数量为：{drone_count}")
+            if drone_count <= 20:
+                logger.error(f"无人机数量不足无法加速")
+                # 看订单加速本体触发的频率，考虑到无人机回复较慢暂时先不加延迟触发了
+                return False
             self.tap(accelerate)
             if self.scene() in self.waiting_scene:
                 if not self.waiting_solver():
-                    return
+                    return None
             self.tap((self.recog.w * 1320 // 1920, self.recog.h * 502 // 1080))
             if self.scene() in self.waiting_scene:
                 if not self.waiting_solver():
-                    return
+                    return None
             self.tap((self.recog.w * 3 // 4, self.recog.h * 4 // 5))
             if self.scene() in self.waiting_scene:
                 if not self.waiting_solver():
-                    return
+                    return None
+
             while self.find("bill_accelerate") is None:
                 if error_count > 5:
                     raise Exception("未成功进入订单界面")
                 self.tap((self.recog.w // 20, self.recog.h * 19 // 20), interval=1)
                 error_count += 1
+
             _time = self.double_read_time(
                 (
                     (self.recog.w * 650 // 2496, self.recog.h * 660 // 1404),
@@ -1909,6 +1988,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 action_required_task = scheduling(self.tasks)
             else:
                 break
+        return None
 
     def drone(
         self,
@@ -1943,7 +2023,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if accelerate:
             drone_count = self.digit_reader.get_drone(self.recog.gray)
             logger.info(f"当前无人机数量为：{drone_count}")
-            if drone_count < config.conf.drone_count_limit or drone_count > 225:
+            if drone_count < config.conf.drone_count_limit:
                 logger.info(f"无人机数量小于{config.conf.drone_count_limit}->停止")
                 return
             logger.info("制造站加速")
@@ -1992,7 +2072,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         break
                 accelerate = self.find("bill_accelerate")
             if adjust_time:
-                self.adjust_order_time(accelerate, room)
+                return self.adjust_order_time(accelerate, room)
         if not_return:
             return
         self.scene_graph_navigation(Scene.INFRA_MAIN)
@@ -2231,6 +2311,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         logger.info(f"安排干员 ：{agent}")
         # 若不是空房间，则清空工作中的干员
         is_dorm = room.startswith("dorm")
+        not_production = not room.startswith("room")
         first_time = True
         # 在 agent 中 'Free' 表示任意空闲干员
         free_num = agent.count("Free")
@@ -2247,6 +2328,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.switch_arrange_order("工作状态")
         siege = False  # 推进之王
         last_special_filter = "ALL"
+        start_time, finish_time = datetime.now(), datetime.now()
         while len(agent) > 0:
             if retry_count > 1:
                 raise Exception("到达最大尝试次数 1次")
@@ -2302,7 +2384,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         right_swipe = 0
                     last_special_filter = profession
             elif agent and agent[0] in agent_list:
-                if is_dorm and agent[0] != "阿米娅":
+                if (is_dorm or not_production) and agent[0] != "阿米娅":
                     # 在宿舍并且不是阿米娅则打开职介筛选
                     profession = agent_profession[agent[0]]
                     self.profession_filter(profession)
@@ -2311,7 +2393,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     last_special_filter = profession
                     if index_change:
                         self.switch_arrange_order(3, "true")
-                elif is_dorm and agent[0] == "阿米娅" and last_special_filter != "ALL":
+                elif (
+                    (is_dorm or not_production)
+                    and agent[0] == "阿米娅"
+                    and last_special_filter != "ALL"
+                ):
                     # 如果是阿米娅且filter 不是all
                     self.profession_filter("ALL")
                     last_special_filter = "ALL"
@@ -2319,7 +2405,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     agent[0] in self.op_data.operators
                     and self.op_data.operators[agent[0]].is_resting()
                     and fast_mode
-                    and is_dorm
+                    and (is_dorm or not_production)
                     and agent[0] != "阿米娅"
                     and agent[0] not in self.choose_error
                 ):
@@ -2451,6 +2537,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         logger.debug("验证干员选择..")
         self.swipe_left(right_swipe, last_special_filter)
         self.switch_arrange_order(2)
+        finish_time = datetime.now()
+        if finish_time - start_time > timedelta(seconds=15) * len(agents):
+            # 如果超过5分钟，则所有里面的干员自动用职介筛选
+            for agent in agents:
+                if agent != "阿米娅" and agent:
+                    logger.debug(f"检测到{agent}选择时间过长，自动使用职介筛选")
+                    self.op_data.profession_filter.add(agent)
         if not self.verify_agent(agents):
             logger.debug(agents)
             raise Exception("检测到干员选择错误，重新选择")
@@ -2941,11 +3034,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 ):
                     drone_count = self.digit_reader.get_drone(self.recog.gray)
                     logger.info(f"当前无人机数量为：{drone_count}")
-                    # 200 为识别错误
-                    if (
-                        drone_count >= config.conf.drone_count_limit
-                        and drone_count != 201
-                    ):
+                    if drone_count >= config.conf.drone_count_limit:
                         self.drone(
                             room, not_return=True, not_customize=True, skip_enter=True
                         )
