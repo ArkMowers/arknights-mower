@@ -114,7 +114,7 @@ def scheduling(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
                         and time_now < last_priority_0_task.time
                     ):
                         logger.info("检测到跑单任务过于接近，准备修正跑单时间")
-                        return last_priority_0_task
+                        return last_priority_0_task, task
                 # 更新上一个优先级0任务和总执行时间
                 last_priority_0_task = task
                 total_execution_time = 0
