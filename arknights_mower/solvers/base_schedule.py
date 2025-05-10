@@ -2543,7 +2543,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             for agent in agents:
                 if agent != "阿米娅" and agent:
                     logger.debug(f"检测到{agent}选择时间过长，自动使用职介筛选")
-                    self.op_data.profession_filter.add(agent)
+                    self.op_data.profession_filter.append(agent) #使用add报错 修改为append
         if not self.verify_agent(agents):
             logger.debug(agents)
             raise Exception("检测到干员选择错误，重新选择")
