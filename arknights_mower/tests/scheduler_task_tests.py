@@ -353,8 +353,8 @@ class TestScheduling(unittest.TestCase):
             tasks, time_now=datetime.strptime("2023-09-19 09:01", "%Y-%m-%d %H:%M")
         )
 
-        while res is not None and res.meta_data == "task1":
-            task_time = res.time - timedelta(minutes=(2))
+        while res is not None and res[0].meta_data == "task1":
+            task_time = res[0].time - timedelta(minutes=(2))
             task = find_next_task(
                 tasks, task_type=TaskTypes.RUN_ORDER, meta_data="task1"
             )

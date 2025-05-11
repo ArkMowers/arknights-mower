@@ -52,9 +52,6 @@ from arknights_mower.utils.scheduler_task import (
 from arknights_mower.utils.trading_order import TradingOrder
 
 
-
-
-
 class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     """
     收集基建的产物：物资、赤金、信赖
@@ -1058,10 +1055,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         break
             if valid:
                 # 处理龙舌兰/但书/佩佩的插拔
-                run_order_rooms =self.op_data.run_order_rooms
+                run_order_rooms = self.op_data.run_order_rooms
                 for k, v in run_order_rooms.items():
                     self.plan_run_order(k)
-                adj_tasks = scheduling(self.tasks) #修改scheduling 同时输出撞在一起的前后两个任务
+                adj_tasks = scheduling(
+                    self.tasks
+                )  # 修改scheduling 同时输出撞在一起的前后两个任务
                 max_execution = 3
                 adj_count = 0
 
@@ -1069,25 +1068,35 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     n = len(run_order_rooms)
                     dp = [0] * (n + 1)
                     dp[1] = 0
-                    if n >1:
+                    if n > 1:
                         dp[2] = 1
                     for i in range(3, n + 1):
                         dp[i] = 3 * dp[i - 1] + 2 * dp[i - 2]
-                    max_execution = min (dp[n] * 1.25,15) #通过跑单房间计算得到循环次数 同时限制最大次数
-                    logger.debug(f'max_execution = {max_execution}')
+                    max_execution = min(
+                        dp[n] * 1.25, 15
+                    )  # 通过跑单房间计算得到循环次数 同时限制最大次数
+                    logger.debug(f"max_execution = {max_execution}")
                     logger.info(run_order_rooms)
-                    logger.info(f'当前跑单房间数量为：{n}，计算最大循环次数为: {max_execution+1}')
-                while adj_tasks is not None and adj_count <= max_execution: #由于改动会增加触发次数 改为<= 多触发一次
+                    logger.info(
+                        f"当前跑单房间数量为：{n}，计算最大循环次数为: {max_execution + 1}"
+                    )
+                while (
+                    adj_tasks is not None and adj_count <= max_execution
+                ):  # 由于改动会增加触发次数 改为<= 多触发一次
                     # logger.error("<UNK>,<UNK>")
-                    adjust_0_room = self.get_run_order_adjust_room(adj_tasks) #抽离成单独的
+                    adjust_0_room = self.get_run_order_adjust_room(
+                        adj_tasks
+                    )  # 抽离成单独的
                     if adjust_0_room is None:
-                        logger.error(f'adjust_0_room的结果为：{adjust_0_room}，获取跑单房间失败，停止循环')
+                        logger.error(
+                            f"adjust_0_room的结果为：{adjust_0_room}，获取跑单房间失败，停止循环"
+                        )
                         return
-                    is_run=self.drone(adjust_0_room, adjust_time=True)
+                    is_run = self.drone(adjust_0_room, adjust_time=True)
                     adj_tasks = scheduling(self.tasks)
                     adj_count += 1
-                    logger.info(f'第{adj_count}次循环结束')
-                    if is_run is not None and is_run == False:
+                    logger.info(f"第{adj_count}次循环结束")
+                    if is_run is not None and not is_run:
                         return
         fia_plan, fia_room = self.check_fia()
         if fia_room is not None and fia_plan is not None:
@@ -1192,9 +1201,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     # 如果是生成的过去时间，则停止 plan 其他
                     if _time < datetime.now():
                         break
-    #根据优先级获取跑单冲突时应该要加速的房间
+
+    # 根据优先级获取跑单冲突时应该要加速的房间
     def get_run_order_adjust_room(self, adj_tasks):
-        #此处出异常会一直运行，抛出None会终止循环，下面还没考虑过会出什么问题，可自行添加
+        # 此处出异常会一直运行，抛出None会终止循环，下面还没考虑过会出什么问题，可自行添加
         try:
             adj_0_task, adj_task = adj_tasks
         except TypeError:
@@ -1204,31 +1214,34 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         # 如果加速房间为跑单房间，则优先使用
         drone_room = self.drone_room
         if any(task.meta_data == drone_room for task in adj_tasks):
-            logger.info('检测到加速房间在冲突的跑单任务中，直接采用')
+            logger.info("检测到加速房间在冲突的跑单任务中，直接采用")
             adjust_0_room = drone_room
         else:
-            logger.info('开始比较跑单任务')
+            logger.info("开始比较跑单任务")
             run_order_rooms = self.op_data.run_order_rooms
-            logger.debug(f'run_order_rooms：{run_order_rooms}')
-            logger.debug(f'adjust_0_room：{adjust_0_room}')
-            logger.debug(f'adjust_room：{adjust_room}')
+            logger.debug(f"run_order_rooms：{run_order_rooms}")
+            logger.debug(f"adjust_0_room：{adjust_0_room}")
+            logger.debug(f"adjust_room：{adjust_room}")
 
             adjust_0_room_len = len(self.op_data.plan[adjust_0_room])  # 跑单任务首个
             adjust_room_len = len(self.op_data.plan[adjust_room])  # 跑单任务第二个
             # 正常情况按照82算法 1>3>2 进行加速
             # 如果 adjust_0_room 为 2 adjust_room 为 3 则是 2>3, 两者收益比较接近，先加速前面的订单可能更优，故保留特性
-            if adjust_0_room_len == 3 and adjust_room_len != 1:  # 参考82算法 优先加速3级
-                logger.debug(f'adjust_0_room_len ===> {adjust_0_room_len}')
-                logger.debug(f'adjust_room_len ===> {adjust_room_len}')
-            elif adjust_0_room_len > adjust_room_len:  # 如果首个任务房间比第二个大 #参考82算法
+            if (
+                adjust_0_room_len == 3 and adjust_room_len != 1
+            ):  # 参考82算法 优先加速3级
+                logger.debug(f"adjust_0_room_len ===> {adjust_0_room_len}")
+                logger.debug(f"adjust_room_len ===> {adjust_room_len}")
+            elif (
+                adjust_0_room_len > adjust_room_len
+            ):  # 如果首个任务房间比第二个大 #参考82算法
                 adjust_0_room = adjust_room
                 adjust_0_room_len = adjust_room_len
-            logger.info(f'加速房间 :{adjust_0_room}')
-            logger.info(f'加速房间长度 :{adjust_0_room_len}')
+            logger.info(f"加速房间 :{adjust_0_room}")
+            logger.info(f"加速房间长度 :{adjust_0_room_len}")
 
         # return adjust_0_room , adjust_0_room_len
         return adjust_0_room
-
 
     def plan_solver(self):
         # 准备数据
@@ -1942,13 +1955,16 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         logger.debug(any(task.meta_data == room for task in action_required_task))
         # while  action_required_task is not None and any(task.meta_data == room for task in action_required_task):
 
-        #设置为每次循环都验证一次当前房间 是否适合加速
-        while  action_required_task is not None and self.get_run_order_adjust_room(action_required_task) == room:
-            #如果不加判断 在无人机为0时将会一直触发循环 暂时设置默认值为20 可以考虑动态值
+        # 设置为每次循环都验证一次当前房间 是否适合加速
+        while (
+            action_required_task is not None
+            and self.get_run_order_adjust_room(action_required_task) == room
+        ):
+            # 如果不加判断 在无人机为0时将会一直触发循环 暂时设置默认值为20 可以考虑动态值
             drone_count = self.digit_reader.get_drone(self.recog.gray)
             logger.info(f"当前无人机数量为：{drone_count}")
             if drone_count <= 20:
-                logger.error(f"无人机数量不足无法加速")
+                logger.error("无人机数量不足无法加速")
                 # 看订单加速本体触发的频率，考虑到无人机回复较慢暂时先不加延迟触发了
                 return False
             self.tap(accelerate)
