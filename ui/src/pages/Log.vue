@@ -32,14 +32,22 @@ watch(sc_uri, async (new_value) => {
           responseType: 'blob'
         }
       )
+      if (sc_blob.value) {
+        URL.revokeObjectURL(sc_blob.value)
+      }
       const blob = new Blob([response.data], { type: 'image/jpeg' })
       sc_blob.value = URL.createObjectURL(blob)
     } catch (error) {
       console.error('获取最新截图失败:', error)
+      sc_blob.value = ''
     }
   } else {
+    if (sc_blob.value) {
+      URL.revokeObjectURL(sc_blob.value)
+    }
     sc_blob.value = ''
   }
+  localStorage.setItem('sc_preview', JSON.stringify(sc_preview.value))
 })
 function scroll_last_line() {
   nextTick(() => {
@@ -65,10 +73,17 @@ onMounted(() => {
   get_tasks()
   get_running()
   setInterval(get_running, 5000)
+  const savedPreviewState = localStorage.getItem('sc_preview')
+  if (savedPreviewState !== null) {
+    sc_preview.value = JSON.parse(savedPreviewState)
+  }
 })
 
 onUnmounted(() => {
   clearTimeout(get_task_id.value)
+  if (sc_blob.value) {
+    URL.revokeObjectURL(sc_blob.value)
+  }
 })
 
 function start(value) {
