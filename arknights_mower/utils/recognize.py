@@ -638,6 +638,36 @@ class Recognizer:
 
         return self.scene
 
+    def get_factory_scene(self) -> int:
+        """
+        加工站场景
+        """
+        if self.scene != Scene.UNDEFINED:
+            return self.scene
+        # 连接中，优先级最高
+        if self.find("connecting"):
+            self.scene = Scene.CONNECTING
+        elif self.find("infra_overview"):
+            self.scene = Scene.INFRA_MAIN
+        elif self.find("factory_dashboard"):
+            self.scene = Scene.FACTORY_DASHBOARD
+        elif self.find("factory_formula"):
+            # 这是一个filter ，鉴于自动的话不会动，用来识别界面
+            self.scene = Scene.FACTORY_FORMULA
+        elif self.find("factory_product_collect"):
+            self.scene = Scene.FACTORY_PRODUCT_COLLECT
+        elif self.find("factory_tag"):
+            self.scene = Scene.FACTORY_ROOM
+        else:
+            self.scene = Scene.UNKNOWN
+            self.check_current_focus()
+
+        logger.info(f"Scene: {self.scene}: {SceneComment[self.scene]}")
+
+        self.check_loading_time()
+
+        return self.scene
+
     def is_black(self) -> None:
         """check if the current scene is all black"""
         return np.max(self.gray[:, 105:-105]) < 16

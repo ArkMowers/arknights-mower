@@ -426,6 +426,15 @@ class RegularTaskPart(ConfModel):
     "读取基报"
 
 
+class WorkShopItem(ConfModel):
+    item_name: str = ""
+    "材料名称"
+    children_lower_limit: int = 20
+    "子项下限"
+    self_upper_limit: int = 30
+    "自己上限"
+
+
 class RIICPart(ConfModel):
     class RunOrderGrandetModeConf(ConfModel):
         enable: bool = True
@@ -434,6 +443,12 @@ class RIICPart(ConfModel):
         "缓冲时间"
         back_to_index: bool = False
         "跑单前返回基建首页"
+
+    class WorkShopSetting(ConfModel):
+        items: list[WorkShopItem] = []
+        "材料列表"
+        operator: str = ""
+        "干员"
 
     drone_count_limit: int = 100
     "无人机使用阈值"
@@ -461,6 +476,8 @@ class RIICPart(ConfModel):
     "急救阈值"
     favorite: str = ""
     "替换组心情监视"
+    workshop_settings: list[WorkShopSetting] = []
+    "工作室设置"
     merge_interval: float = 10
     "不养闲人合并间隔"
     dorm_order: str = ""

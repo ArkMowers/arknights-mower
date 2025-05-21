@@ -411,9 +411,15 @@ class BaseSolver:
 
     def train_scene(self) -> int:
         """
-        训练室景识别
+        训练室场景识别
         """
         return self.recog.get_train_scene()
+
+    def factory_scene(self) -> int:
+        """
+        加工站场景识别
+        """
+        return self.recog.get_factory_scene()
 
     def is_login(self):
         """check if you are logged in"""

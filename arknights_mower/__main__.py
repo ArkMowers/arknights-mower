@@ -15,7 +15,7 @@ from arknights_mower.utils.log import logger
 from arknights_mower.utils.logic_expression import get_logic_exp
 from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.path import get_path
-from arknights_mower.utils.plan import Plan, PlanConfig, PlanTriggerTiming, Room
+from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.simulator import restart_simulator
 
 base_scheduler = None
@@ -209,7 +209,7 @@ def simulate(saved):
             base_scheduler.tasks = tasks
             if len(base_scheduler.op_data.backup_plans) > 0:
                 # 启动的时候按照条件触发副表
-                base_scheduler.backup_plan_solver(PlanTriggerTiming.BEGINNING)
+                base_scheduler.backup_plan_solver()
         except Exception as ex:
             logger.exception(ex)
     while True:

@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 
 from arknights_mower import __rootdir__
+from arknights_mower.data import workshop_formula
 from arknights_mower.utils import rapidocr, segment
 from arknights_mower.utils.character_recognize import operator_list
 from arknights_mower.utils.csleep import MowerExit
@@ -373,6 +374,44 @@ class BaseMixin:
                 return ret
         except Exception:
             return limit + 1
+
+    def item_list(self):
+        try:
+            offset_x = 370
+            offset_y = 125
+            img = self.recog.img[offset_y:1040, offset_x:1860]
+            ocr_result = rapidocr.engine(
+                img,
+                use_det=True,
+                use_cls=False,
+                use_rec=True,
+            )
+            res = []
+            for item in ocr_result[0]:
+                if len(item) > 2 and item[1] in workshop_formula.keys():
+                    box = item[0]
+                    base_px = int(box[0][0]) + 15
+                    base_py = int(box[0][1]) + 75
+                    sample_points = [(base_px + i * 155, base_py) for i in range(3)]
+                    valid = 0
+                    for idx, (px, py) in enumerate(sample_points):
+                        # 加入75px为边界
+                        if 0 <= py < img.shape[0] - 75 and 0 <= px < img.shape[1]:
+                            color = img[py, px]
+                            valid += 1
+                            logger.debug(
+                                f"检测到{item[1]} 颜色 {idx + 1} ({px}, {py}): {color}"
+                            )
+                            if not np.all((color >= 40) & (color <= 80)):
+                                valid = float("-inf ")
+                                break
+                    box_global = [[x + offset_x, y + offset_y] for (x, y) in box]
+                    # 等于 0 则出界了
+                    if valid != 0:
+                        res.append((item[1], box_global, valid > 0))
+            return res
+        except Exception as e:
+            logger.exception(e)
 
     def read_time(self, cord, upperlimit, error_count=0, use_digit_reader=False):
         # 刷新图片

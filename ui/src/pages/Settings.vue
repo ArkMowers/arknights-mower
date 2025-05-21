@@ -48,7 +48,9 @@ const {
   check_for_updates,
   waiting_scene,
   enable_party,
-  leifeng_mode
+  leifeng_mode,
+  item_list,
+  workshop_settings
 } = storeToRefs(config_store)
 
 const { operators } = storeToRefs(plan_store)
@@ -128,19 +130,6 @@ const elapsed = ref(0)
 const loading = ref(false)
 const axios = inject('axios')
 
-async function test_screenshot() {
-  loading.value = true
-  tested.value = false
-  try {
-    const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/test-custom-screenshot`)
-    image.value = response.data.screenshot
-    elapsed.value = response.data.elapsed
-  } finally {
-    loading.value = false
-    tested.value = true
-  }
-}
-
 const scene_name = {
   CONNECTING: '正在提交反馈至神经',
   UNKNOWN: '未知',
@@ -155,6 +144,38 @@ const onSelectionChange = (newValue) => {
     simulator.value.index = '-1'
   } else {
     simulator.value.index = '0'
+  }
+}
+import { ref } from 'vue'
+
+const showSettingModal = ref(false)
+const editingIndex = ref(null)
+
+const tempSetting = ref({
+  operator: '',
+  items: []
+})
+const deepClone = (obj) => JSON.parse(JSON.stringify(obj))
+const openEdit = (index) => {
+  tempSetting.value = workshop_settings.value[index]
+  editingIndex.value = index
+  showSettingModal.value = true
+}
+
+const workshop_setting_close = () => {
+  if (editingIndex.value === null) {
+    workshop_settings.value.push(deepClone(tempSetting.value))
+  } else {
+    workshop_settings.value[editingIndex.value] = deepClone(tempSetting.value)
+  }
+  showSettingModal.value = false
+  editingIndex.value = null
+}
+function createNewItem() {
+  return {
+    item_name: '',
+    children_lower_limit: 0,
+    self_upper_limit: 0
   }
 }
 </script>
@@ -448,9 +469,9 @@ const onSelectionChange = (newValue) => {
           >
             <n-form-item>
               <n-flex>
-                <n-checkbox v-model:checked="enable_party"
-                  ><div class="item">线索收集</div></n-checkbox
-                >
+                <n-checkbox v-model:checked="enable_party">
+                  <div class="item">线索收集</div>
+                </n-checkbox>
                 <n-checkbox v-model:checked="leifeng_mode">
                   雷锋模式
                   <help-text>
@@ -638,6 +659,97 @@ const onSelectionChange = (newValue) => {
               </template>
               <slick-operator-select v-model="favorite"></slick-operator-select>
             </n-form-item>
+            <n-form-item label="无缝合成材料设置">
+              <n-button
+                type="primary"
+                @click="
+                  () => {
+                    tempSetting = { operator: '', items: [] }
+                    editingIndex = null
+                    showSettingModal = true
+                  }
+                "
+                >新增设置</n-button
+              >
+              <n-list bordered>
+                <n-list-item v-for="(setting, idx) in workshop_settings" :key="idx">
+                  <div class="flex justify-between w-full">
+                    <div>
+                      <strong>干员:</strong> {{ setting.operator }}<br />
+                      <ul>
+                        <li v-for="(item, i) in setting.items" :key="i">
+                          {{ item.item_name }} - 子项下限: {{ item.children_lower_limit }},
+                          自身上限: {{ item.self_upper_limit }}
+                        </li>
+                      </ul>
+                    </div>
+                    <n-button text @click="openEdit(idx)">编辑</n-button>
+                    <n-button text type="error" @click="workshop_settings.splice(idx, 1)"
+                      >删除</n-button
+                    >
+                  </div>
+                </n-list-item>
+              </n-list>
+            </n-form-item>
+            <n-modal
+              style="width: 500px"
+              v-model:show="showSettingModal"
+              preset="dialog"
+              title="新增干员设置"
+              :mask-closable="false"
+              @update:show="workshop_setting_close"
+            >
+              <n-select
+                filterable
+                :options="operators"
+                class="operator-select"
+                v-model:value="tempSetting.operator"
+                :filter="(p, o) => pinyin_match(o.label, p)"
+                :render-label="render_op_label"
+              />
+              <n-form :model="tempSetting">
+                <n-dynamic-input v-model:value="tempSetting.items" :on-create="createNewItem">
+                  <template #default="{ value }">
+                    <div>
+                      <div style="display: flex; flex-direction: row; align-self: center">
+                        <span style="white-space: nowrap; margin-top: 5px">合成材料： </span>
+                        <n-select
+                          :options="item_list"
+                          v-model:value="value.item_name"
+                          :filter="(p, o) => pinyin_match(o.label, p)"
+                          filterable
+                        />
+                        <help-text>
+                          <div>加工站干员合成材料的白名单</div>
+                        </help-text>
+                      </div>
+                      <div style="display: flex; flex-direction: row; align-self: center">
+                        <span style="white-space: nowrap; margin-top: 5px">合成数量上限： </span>
+                        <n-input-number
+                          v-model:value="value.self_upper_limit"
+                          :min="0"
+                          placeholder="自身上限"
+                        />
+                        <help-text>
+                          <div>设置占位，可能没用</div>
+                        </help-text>
+                      </div>
+                      <div style="display: flex; flex-direction: row; align-self: center">
+                        <span style="white-space: nowrap; margin-top: 5px">子材料数量下限： </span>
+                        <n-input-number
+                          v-model:value="value.children_lower_limit"
+                          :min="0"
+                          placeholder="子项下限"
+                        />
+                        <help-text>
+                          <div>设置占位，可能没用</div>
+                        </help-text>
+                      </div>
+                    </div>
+                  </template>
+                </n-dynamic-input>
+              </n-form>
+            </n-modal>
           </n-form>
         </n-card>
       </div>

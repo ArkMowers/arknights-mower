@@ -117,6 +117,13 @@ def shop_list():
     return list(shop_items.keys())
 
 
+@app.route("/item")
+def item_list():
+    from arknights_mower.data import workshop_formula
+
+    return list(workshop_formula.keys())
+
+
 @app.route("/depot/readdepot")
 def read_depot():
     from arknights_mower.utils import depot

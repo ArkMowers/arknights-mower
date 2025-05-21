@@ -4,13 +4,19 @@ import os
 import pathlib
 import sys
 import urllib
+from collections import defaultdict, deque
 from ctypes import CFUNCTYPE, c_char_p, c_int, c_void_p
 from datetime import datetime, timedelta
 from typing import Literal
 
 import cv2
 
-from arknights_mower.data import agent_list, agent_profession, base_room_list
+from arknights_mower.data import (
+    agent_list,
+    agent_profession,
+    base_room_list,
+    workshop_formula,
+)
 from arknights_mower.solvers.base_mixin import BaseMixin
 from arknights_mower.solvers.credit import CreditSolver
 from arknights_mower.solvers.cultivate_depot import cultivate as cultivateDepotSolver
@@ -857,6 +863,126 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if scene == Scene.TRAIN_SKILL_UPGRADE:
                     self.back()
             self.back()
+        except Exception as e:
+            logger.exception(e)
+
+    def generate_product(self, agent: str):
+        """
+        Process materials in a factory with specified operators
+        Args:
+            agent: List of operators that need two production cycles
+        """
+
+        try:
+            unknown_cnt = 0
+            is_9colored = agent == "九色鹿"
+            if agent not in [s.operator for s in config.conf.workshop_settings]:
+                logger.info(f"当前干员{agent}不在加工站配置中")
+                return
+            item_list = next(
+                (s.items for s in config.conf.workshop_settings if s.operator == agent)
+            )
+            seen = set()
+            group = defaultdict(dict)
+            for item in item_list:
+                if item.item_name in seen:
+                    logger.info(
+                        f"当前干员{agent}的加工站配置中存在重复材料{item.item_name}，以第一个设置为准"
+                    )
+                    continue
+                seen.add(item.item_name)
+                group[workshop_formula[item.item_name]["tab"]][item.item_name] = item
+            tab_queue = deque(group.items())
+            tab_pos = {
+                "基建材料": (self.recog.w * 0.1, self.recog.h * 0.18),
+                "精英材料": (self.recog.w * 0.1, self.recog.h * 0.31),
+                "技巧概要": (self.recog.w * 0.1, self.recog.h * 0.45),
+                "芯片": (self.recog.w * 0.1, self.recog.h * 0.57),
+            }
+            tasks = ["enter", "select", "process"]
+            while tasks:
+                scene = self.factory_scene()
+                if scene == Scene.UNKNOWN:
+                    unknown_cnt += 1
+                    if unknown_cnt > 5:
+                        unknown_cnt = 0
+                        self.back_to_infrastructure()
+                        self.enter_room("factory")
+                    else:
+                        self.sleep()
+                elif scene == Scene.CONNECTING:
+                    self.sleep()
+                elif self.find("arrange_check_in") or self.find(
+                    "arrange_check_in_small"
+                ):
+                    self.tap((self.recog.w * 0.25, self.recog.h * 0.95), interval=0.5)
+                elif scene == Scene.FACTORY_DASHBOARD:
+                    if tasks[0] == "enter":
+                        del tasks[0]
+                    elif tasks[0] == "select":
+                        self.tap(
+                            (self.recog.w * 0.45, self.recog.h * 0.65), interval=0.5
+                        )
+                    else:
+                        add_btn = (self.recog.w * 0.84, self.recog.h * 0.4)
+                        max_btn = (self.recog.w * 0.95, self.recog.h * 0.4)
+                        produce_btn = (self.recog.w * 0.88, self.recog.h * 0.88)
+                        self.tap(add_btn, interval=0.5)
+                        if self.find("factory_warning"):
+                            tasks = []
+                            logger.info("检测到干员心情见底，任务结束")
+                            continue
+                        self.tap(produce_btn, interval=5.5)
+                elif scene == Scene.FACTORY_FORMULA:
+                    if tasks[0] in ["enter", "process"]:
+                        self.back()
+                    else:
+                        if not tab_queue:
+                            logger.info("没有任何材料满足条件，任务结束")
+                            tasks = []
+                            continue
+                        tab, item_list = tab_queue.popleft()
+                        item_list = set(item_list)
+                        self.tap(tab_pos[tab], interval=0.2)
+                        logger.info(f"开始检索{tab}的材料")
+                        last_scaned = []
+                        while True and item_list:
+                            scanned_items = self.item_list()
+                            current_scan = [item for item, pos, valid in scanned_items]
+                            if current_scan == last_scaned:
+                                logger.info("已经到底了")
+                                break
+                            last_scaned = current_scan
+                            for item, pos, valid in scanned_items:
+                                if item in item_list:
+                                    if valid:
+                                        logger.info(f"检测到{item}满足条件，开始加工")
+                                        self.tap(
+                                            (
+                                                (pos[0][0] + pos[1][0]) / 2,
+                                                (pos[0][1] + pos[1][1]) / 2,
+                                            ),
+                                            interval=0.5,
+                                        )
+                                        item_list = []
+                                        del tasks[0]
+                                        break
+                                    else:
+                                        logger.info(f"检测到{item}不满足条件，跳过")
+                                        item_list.remove(item)
+                            self.swipe_noinertia(
+                                (0.5 * self.recog.w, 0.9 * self.recog.h),
+                                (0, -800),
+                                interval=1,
+                            )
+
+                elif scene == Scene.FACTORY_PRODUCT_COLLECT:
+                    self.recog.save_screencap("workshop")
+                    self.back()
+                elif scene == Scene.FACTORY_ROOM:
+                    self.tap((self.recog.w * 0.1, self.recog.h * 0.95), 0.5)
+            self.back()
+            self.back_to_infrastructure()
         except Exception as e:
             logger.exception(e)
 
@@ -2395,16 +2521,16 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 siege = True
                 if agent[0] in self.op_data.profession_filter:
                     profession = agent_profession[agent[0]]
-                    self.profession_filter(profession)
                     if last_special_filter != profession:
+                        self.profession_filter(profession)
                         right_swipe = 0
                     last_special_filter = profession
             elif agent and agent[0] in agent_list:
                 if (is_dorm or not_production) and agent[0] != "阿米娅":
                     # 在宿舍并且不是阿米娅则打开职介筛选
                     profession = agent_profession[agent[0]]
-                    self.profession_filter(profession)
                     if last_special_filter != profession:
+                        self.profession_filter(profession)
                         right_swipe = 0
                     last_special_filter = profession
                     if index_change:
@@ -2416,12 +2542,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 ):
                     # 如果是阿米娅且filter 不是all
                     self.profession_filter("ALL")
+                    right_swipe = 0
                     last_special_filter = "ALL"
                 if (
                     agent[0] in self.op_data.operators
                     and self.op_data.operators[agent[0]].is_resting()
                     and fast_mode
-                    and (is_dorm or not_production)
+                    and is_dorm
                     and agent[0] != "阿米娅"
                     and agent[0] not in self.choose_error
                 ):
@@ -2475,6 +2602,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if last_special_filter != "ALL":
                 self.profession_filter("ALL")
                 last_special_filter = "ALL"
+                right_swipe = 0
             self.switch_arrange_order(3, "true")
             # 只选择在列表里面的
             # 替换组小于20才休息，防止进入就满心情进行网络连接
