@@ -3140,6 +3140,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         "medicine": _plan.medicine,
                         "stone": 999 if conf.maa_eat_stone else 0,
                         "times": 999,
+                        "series": 0,
                         "report_to_penguin": True,
                         "client_type": "",
                         "penguin_id": "",
