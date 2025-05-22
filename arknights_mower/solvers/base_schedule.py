@@ -875,7 +875,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
         try:
             unknown_cnt = 0
-            is_9colored = agent == "九色鹿"
+            # is_9colored = agent == "九色鹿"
             if agent not in [s.operator for s in config.conf.workshop_settings]:
                 logger.info(f"当前干员{agent}不在加工站配置中")
                 return
@@ -925,7 +925,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         )
                     else:
                         add_btn = (self.recog.w * 0.84, self.recog.h * 0.4)
-                        max_btn = (self.recog.w * 0.95, self.recog.h * 0.4)
+                        # max_btn = (self.recog.w * 0.95, self.recog.h * 0.4)
                         produce_btn = (self.recog.w * 0.88, self.recog.h * 0.88)
                         self.tap(add_btn, interval=0.5)
                         if self.find("factory_warning"):
