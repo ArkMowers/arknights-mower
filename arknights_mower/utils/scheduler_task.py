@@ -5,9 +5,11 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Literal
 
+from arknights_mower.solvers.record import get_inventory_counts
 from arknights_mower.utils import config
 from arknights_mower.utils.datetime import the_same_time
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.operators import Operator
 
 
 class TaskTypes(Enum):
@@ -26,7 +28,8 @@ class TaskTypes(Enum):
     RELEASE_DORM = ("释放宿舍空位", "释放宿舍空位", 2)
     REFRESH_TIME = ("强制刷新任务时间", "强制刷新任务时间", 2)
     SKILL_UPGRADE = ("技能专精", "技能专精", 2)
-    DEPOT = ("仓库扫描", "仓库扫描", 2)  # 但是我不会写剩下的
+    DEPOT = ("仓库扫描", "仓库扫描", 2)
+    WORKSHOP = ("加工材料", "加工材料", 2)
 
     def __new__(cls, value, display_value, priority):
         obj = object.__new__(cls)
@@ -473,6 +476,43 @@ def try_reorder(op_data, new_plan):
                 plan[room_name][idx] = room.name
     # 生成移动任务
     return plan
+
+
+def try_workshop_tasks(op_data, tasks):
+    # 如果没有其他任务则进行加工站干员检查
+    from arknights_mower.data import workshop_formula
+
+    inventory_data = get_inventory_counts()
+    if config.conf.workshop_settings and inventory_data:
+        for item in config.conf.workshop_settings:
+            valid = False
+            if item.operator in op_data.operators:
+                agent = op_data.operators[item.operator]
+                valid = agent.mood > 22
+            else:
+                logger.info(f"自动添加{item.operator}至干员数据列表")
+                valid = True
+                op_data.add(Operator(item.operator, ""))
+            match = False
+            for material in item.items:
+                name = material.item_name
+                metadata = workshop_formula[name]
+                if inventory_data[name] < material.self_upper_limit and all(
+                    inventory_data[child_name] > material.children_lower_limit
+                    for child_name in metadata["items"]
+                ):
+                    match = True
+                    break
+            if match and valid:
+                logger.info(f"满足条件: {item.operator}({item.items}), 生成加工站任务")
+                task = SchedulerTask(
+                    task_type=TaskTypes.WORKSHOP, meta_data=item.operator
+                )
+                tasks.append(task)
+            else:
+                logger.debug("数据不满足条件，跳过加工站任务生成")
+    else:
+        logger.debug("没有加工站配置或仓库数据，跳过加工站任务生成")
 
 
 def try_add_release_dorm(plan, time, op_data, tasks):

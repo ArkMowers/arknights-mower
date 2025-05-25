@@ -55,6 +55,15 @@ const {
 
 const { operators } = storeToRefs(plan_store)
 
+const workshop_operators_list = computed(() => {
+  return operators.value
+    .filter((s) => s.value !== '九色鹿') // 过滤掉九色鹿，暂时不支持
+    .map((s) => ({
+      label: s.label,
+      value: s.value
+    }))
+})
+
 const { left_side_facility } = plan_store
 
 const facility_with_empty = computed(() => {
@@ -174,8 +183,8 @@ const workshop_setting_close = () => {
 function createNewItem() {
   return {
     item_name: '',
-    children_lower_limit: 0,
-    self_upper_limit: 0
+    children_lower_limit: 20,
+    self_upper_limit: 20
   }
 }
 </script>
@@ -659,7 +668,11 @@ function createNewItem() {
               </template>
               <slick-operator-select v-model="favorite"></slick-operator-select>
             </n-form-item>
-            <n-form-item label="无缝合成材料设置">
+            <n-form-item>
+              <template #label>
+                <span>无缝合成材料设置</span>
+                <help-text>暂时不支持九色鹿（特殊适配逻辑没写）</help-text>
+              </template>
               <n-button
                 type="primary"
                 @click="
@@ -701,7 +714,7 @@ function createNewItem() {
             >
               <n-select
                 filterable
-                :options="operators"
+                :options="workshop_operators_list"
                 class="operator-select"
                 v-model:value="tempSetting.operator"
                 :filter="(p, o) => pinyin_match(o.label, p)"

@@ -54,6 +54,7 @@ from arknights_mower.utils.scheduler_task import (
     scheduling,
     try_add_release_dorm,
     try_reorder,
+    try_workshop_tasks,
 )
 from arknights_mower.utils.trading_order import TradingOrder
 
@@ -395,6 +396,30 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             )
             self.tasks.sort(key=lambda task: task.time)
 
+    def craft_material(self):
+        task = self.task
+        try:
+            self.enter_room("factory")
+            current_agent = [
+                key
+                for key, value in self.op_data.operators.items()
+                if value.current_room == "factory"
+            ]
+            agent_room = self.op_data.operators[task.meta_data].current_room
+            logger.debug(f"当前工厂干员: {current_agent}")
+            logger.debug(f"当前加工干员位置: {agent_room}")
+            self.agent_arrange({"factory": [task.meta_data]})
+            self.enter_room("factory")
+            self.generate_product(task.meta_data)
+            if len(current_agent) > 0 and current_agent[0] != task.meta_data:
+                new_plan = {"factory": current_agent}
+                if agent_room:
+                    new_plan[agent_room] = [task.meta_data]
+                self.agent_arrange(new_plan)
+        except Exception as e:
+            logger.error(f"工厂任务失败: {e}")
+            logger.exception(e)
+
     def plan_metadata(self):
         self.tasks = plan_metadata(self.op_data, self.tasks)
 
@@ -421,8 +446,20 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                     and free_agent.current_index == free_index
                                 ):
                                     get_time = True
+                                    if free_agent in [
+                                        item.operator
+                                        for item in config.conf.workshop_settings
+                                    ]:
+                                        logger.info(
+                                            "检测到释放干员为工作站加工干员，切换为工作站任务"
+                                        )
+                                        self.craft_material()
                                     # 如果是高优先，还需要把宿舍reference移除
-                                    if free_agent.is_high():
+                                    # 如果在上一步完成了加工，心情会强制归零
+                                    if (
+                                        free_agent.is_high()
+                                        and self.op_data.operators[free_agent].mood > 0
+                                    ):
                                         idx, dorm = self.op_data.get_dorm_by_name(
                                             free_agent.name
                                         )
@@ -477,6 +514,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 # 如果任务名称包含干员名,则为动态生成的
                 elif self.task.type == TaskTypes.FIAMMETTA:
                     self.plan_fia()
+                elif self.task.type == TaskTypes.WORKSHOP:
+                    self.craft_material()
                 elif (
                     self.task.meta_data.split(",")[0] in agent_list
                     and self.task.type == TaskTypes.EXHAUST_OFF
@@ -924,13 +963,16 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             (self.recog.w * 0.45, self.recog.h * 0.65), interval=0.5
                         )
                     else:
-                        add_btn = (self.recog.w * 0.84, self.recog.h * 0.4)
-                        # max_btn = (self.recog.w * 0.95, self.recog.h * 0.4)
+                        # add_btn = (self.recog.w * 0.84, self.recog.h * 0.4)
+                        max_btn = (self.recog.w * 0.95, self.recog.h * 0.4)
                         produce_btn = (self.recog.w * 0.88, self.recog.h * 0.88)
-                        self.tap(add_btn, interval=0.5)
+                        self.tap(max_btn, interval=0.5)
                         if self.find("factory_warning"):
                             tasks = []
                             logger.info("检测到干员心情见底，任务结束")
+                            self.op_data.operators[agent].mood = 0
+                            self.op_data.operators[agent].time_stamp = datetime.now()
+                            logger.debug("设置加工站干员心情为0，别问我，我懒得算了")
                             continue
                         self.tap(produce_btn, interval=5.5)
                 elif scene == Scene.FACTORY_FORMULA:
@@ -1402,6 +1444,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 task_type=TaskTypes.SHIFT_OFF if new_plan else TaskTypes.NOT_SPECIFIC,
             )
             self.tasks.append(task)
+        if not self.find_next_task(datetime.now() + timedelta(minutes=5)):
+            try_workshop_tasks(self.op_data, self.tasks)
         if not self.find_next_task(datetime.now() + timedelta(minutes=5)):
             try_add_release_dorm({}, None, self.op_data, self.tasks)
         if self.find_next_task(datetime.now() + timedelta(seconds=15)):

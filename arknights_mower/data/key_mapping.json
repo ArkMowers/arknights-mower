@@ -111,20 +111,6 @@
         "NORMAL",
         10008
     ],
-    "LMTGS_COIN_6101": [
-        "LMTGS_COIN_6101",
-        "LMTGS_COIN_6101",
-        "寻访数据契约",
-        "NORMAL",
-        10027
-    ],
-    "寻访数据契约": [
-        "LMTGS_COIN_6101",
-        "LMTGS_COIN_6101",
-        "寻访数据契约",
-        "NORMAL",
-        10027
-    ],
     "EPGS_COIN": [
         "EPGS_COIN",
         "EPGS_COIN",
@@ -10904,19 +10890,5 @@
         "高级材料提货券",
         "CONSUME",
         30201
-    ],
-    "LIMITED_TKT_GACHA_10_6101": [
-        "LIMITED_TKT_GACHA_10_6101",
-        "LIMITED_TKT_GACHA_10_6101",
-        "信徒标兵寻访凭证",
-        "NORMAL",
-        40003
-    ],
-    "信徒标兵寻访凭证": [
-        "LIMITED_TKT_GACHA_10_6101",
-        "LIMITED_TKT_GACHA_10_6101",
-        "信徒标兵寻访凭证",
-        "NORMAL",
-        40003
     ]
 }

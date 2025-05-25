@@ -514,6 +514,9 @@ def save_inventory_counts(inventorys: dict[str, int]):
 def get_inventory_counts(item_names: list[str] | None = None):
     with sqlite3.connect(get_path("@app/tmp/data.db")) as conn:
         cursor = conn.cursor()
+        cursor.execute(
+            "CREATE TABLE IF NOT EXISTS inventory (item_name TEXT PRIMARY KEY, count INTEGER)"
+        )
         if not item_names:
             cursor.execute("SELECT item_name, count FROM inventory")
         else:
