@@ -37,6 +37,8 @@ def 读取仓库():
     新物品 = {**最后一行物品, **新物品1}  # 合并字典
     新物品json = {}
     db_dict = {}
+    for k in workshop_fomula.keys():
+        db_dict[k] = 0
     for item in 新物品:
         新物品json[key_mapping[item][0]] = 新物品[item]
         db_dict[key_mapping[item][2]] = 新物品[item]

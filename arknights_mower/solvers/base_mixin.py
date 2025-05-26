@@ -7,6 +7,7 @@ import numpy as np
 
 from arknights_mower import __rootdir__
 from arknights_mower.data import workshop_formula
+from arknights_mower.solvers.record import save_inventory_counts
 from arknights_mower.utils import rapidocr, segment
 from arknights_mower.utils.character_recognize import operator_list
 from arknights_mower.utils.csleep import MowerExit
@@ -375,6 +376,23 @@ class BaseMixin:
         except Exception:
             return limit + 1
 
+    def item_valid(self):
+        img = self.recog.img
+
+        region = img[
+            int(0.83 * self.recog.h) : int(0.92 * self.recog.h),
+            int(0.77 * self.recog.w) : int(0.96 * self.recog.w),
+        ]
+
+        avg_color = np.mean(region.reshape(-1, 3), axis=0)
+        logger.debug(f"平均颜色: {avg_color}")
+
+        target_color = np.array([189.2, 163.8, 23.7])
+
+        distance = np.linalg.norm(avg_color - target_color)
+
+        return distance < 30
+
     def item_list(self):
         try:
             offset_x = 370
@@ -404,6 +422,11 @@ class BaseMixin:
                             )
                             if not np.all((color >= 40) & (color <= 80)):
                                 valid = float("-inf ")
+                                if idx < len(workshop_formula[item[1]]["items"]):
+                                    logger.info("更新材料数量为0")
+                                    save_inventory_counts(
+                                        {workshop_formula[item[1]]["items"][idx]: 0}
+                                    )
                                 break
                     box_global = [[x + offset_x, y + offset_y] for (x, y) in box]
                     # 等于 0 则出界了

@@ -405,7 +405,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 for key, value in self.op_data.operators.items()
                 if value.current_room == "factory"
             ]
-            agent_room = self.op_data.operators[task.meta_data].current_room
+            agent_room = (
+                self.op_data.operators[task.meta_data].current_room
+                if task.meta_data in self.op_data.operators
+                else ""
+            )
             logger.debug(f"当前工厂干员: {current_agent}")
             logger.debug(f"当前加工干员位置: {agent_room}")
             self.agent_arrange({"factory": [task.meta_data]})
@@ -967,9 +971,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         max_btn = (self.recog.w * 0.95, self.recog.h * 0.4)
                         produce_btn = (self.recog.w * 0.88, self.recog.h * 0.88)
                         self.tap(max_btn, interval=0.5)
-                        if self.find("factory_warning"):
+                        if self.find("factory_warning") or not self.item_valid():
                             tasks = []
-                            logger.info("检测到干员心情见底，任务结束")
+                            logger.info("检测到干员心情见底或材料不足，任务结束")
                             self.op_data.operators[agent].mood = 0
                             self.op_data.operators[agent].time_stamp = datetime.now()
                             logger.debug("设置加工站干员心情为0，别问我，我懒得算了")

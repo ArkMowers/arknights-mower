@@ -497,9 +497,13 @@ def try_workshop_tasks(op_data, tasks):
             for material in item.items:
                 name = material.item_name
                 metadata = workshop_formula[name]
-                if inventory_data[name] < material.self_upper_limit and all(
-                    inventory_data[child_name] > material.children_lower_limit
-                    for child_name in metadata["items"]
+                if (
+                    name in inventory_data
+                    and inventory_data[name] < material.self_upper_limit
+                    and all(
+                        inventory_data[child_name] > material.children_lower_limit
+                        for child_name in metadata["items"]
+                    )
                 ):
                     match = True
                     break
