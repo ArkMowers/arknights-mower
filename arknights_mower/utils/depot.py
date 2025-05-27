@@ -5,7 +5,7 @@ from datetime import datetime
 import pandas as pd
 
 # from .log import logger
-from arknights_mower.data import key_mapping
+from arknights_mower.data import key_mapping, workshop_formula
 
 # from typing import Dict, List, Union
 from arknights_mower.solvers.record import save_inventory_counts
@@ -37,7 +37,7 @@ def 读取仓库():
     新物品 = {**最后一行物品, **新物品1}  # 合并字典
     新物品json = {}
     db_dict = {}
-    for k in workshop_fomula.keys():
+    for k in workshop_formula.keys():
         db_dict[k] = 0
     for item in 新物品:
         新物品json[key_mapping[item][0]] = 新物品[item]
