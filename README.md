@@ -26,11 +26,9 @@ Mower 是为长期运行设计的、开源的明日方舟脚本。
 
 ## 下载与安装
 
-**提出建议、反馈 Bug，欢迎加入 QQ群：~~239200680~~（被爆破）, 521857729 QQ频道:ArkMower（频道号：2r118jwue4）。**
-
 ### 运行环境准备
 
-git、python3.12、nodeJS 16以上
+git、python 3.12、nodeJS 16
 
 ### 克隆仓库
 
@@ -47,7 +45,7 @@ npm install
 npm run build
 ```
 
-### 构建后端
+### 构建后端（Windows）
 
 ```bash
 cd ..
@@ -57,7 +55,17 @@ pip install -r requirements.txt
 pip install Flask flask-cors flask-sock pywebview
 ```
 
-### 打包
+### 构建后端（Linux）
+
+```bash
+cd ..
+python3 -m venv venv
+. ./venv/bin/activate
+pip install -r requirements.in
+pip install Flask flask-cors flask-sock pywebview
+```
+
+### 打包（Windows）
 
 ```bash
 pip install pyinstaller
@@ -65,3 +73,18 @@ pyinstaller webui_zip.spec
 ```
 
 生成的 `mower.exe` 在 `dist` 文件夹中，到此打包完成，已可使用。
+
+### 打包（Linux）
+
+```bash
+pip install pyinstaller
+pyinstaller webui_zip_for_linux.spec
+```
+
+生成的 `mower` 在 `dist` 文件夹中，到此打包完成，已可使用。
+
+注：Linux下运行，shell会显示如 `Running on http://127.0.0.1:53703`的输出，本地浏览器访问`http://127.0.0.1:53703`即进入mower的页面。
+
+## 建议与反馈
+
+**提出建议、反馈 Bug，欢迎加入 QQ群：~~239200680~~（被爆破）, 521857729 QQ频道:ArkMower（频道号：2r118jwue4）。**
