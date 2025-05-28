@@ -26,7 +26,42 @@ Mower 是为长期运行设计的、开源的明日方舟脚本。
 
 ## 下载与安装
 
-待更新……
+**提出建议、反馈 Bug，欢迎加入 QQ群：~~239200680~~（被爆破）, 521857729 QQ频道:ArkMower（频道号：2r118jwue4）。**
 
-提出建议、反馈 Bug，欢迎加入 QQ群：~~239200680~~（被爆破）, 521857729 QQ频道:ArkMower（频道号：2r118jwue4）。
+### 运行环境准备
 
+git、python3.12、nodeJS 16以上
+
+### 克隆仓库
+
+```bash
+git clone -c lfs.concurrenttransfers=200 https://github.com/ArkMowers/arknights-mower.git --branch 2025.6.1
+cd arknights-mower
+```
+
+### 构建前端
+
+```bash
+cd ui
+npm install
+npm run build
+```
+
+### 构建后端
+
+```bash
+cd ..
+python -m venv venv
+.\venv\Scripts\activate.bat
+pip install -r requirements.txt
+pip install Flask flask-cors flask-sock pywebview
+```
+
+### 打包
+
+```bash
+pip install pyinstaller
+pyinstaller webui_zip.spec
+```
+
+生成的 `mower.exe` 在 `dist` 文件夹中，到此打包完成，已可使用。
