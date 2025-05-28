@@ -410,6 +410,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if task.meta_data in self.op_data.operators
                 else ""
             )
+            agent_index = (
+                self.op_data.operators[task.meta_data].current_index
+                if task.meta_data in self.op_data.operators
+                else -1
+            )
             logger.debug(f"当前工厂干员: {current_agent}")
             logger.debug(f"当前加工干员位置: {agent_room}")
             self.agent_arrange({"factory": [task.meta_data]})
@@ -417,8 +422,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.generate_product(task.meta_data)
             if len(current_agent) > 0 and current_agent[0] != task.meta_data:
                 new_plan = {"factory": current_agent}
-                if agent_room:
-                    new_plan[agent_room] = [task.meta_data]
+                if agent_room and agent_index >= 0:
+                    new_plan[agent_room] = ["Current"] * len(
+                        self.op_data.plan[agent_room]
+                    )
+                    new_plan[agent_room][agent_index] = task.meta_data
                 self.agent_arrange(new_plan)
         except Exception as e:
             logger.error(f"工厂任务失败: {e}")
@@ -450,7 +458,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                     and free_agent.current_index == free_index
                                 ):
                                     get_time = True
-                                    if free_agent in [
+                                    if self.task.meta_data in [
                                         item.operator
                                         for item in config.conf.workshop_settings
                                     ]:
@@ -458,12 +466,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                             "检测到释放干员为工作站加工干员，切换为工作站任务"
                                         )
                                         self.craft_material()
-                                    # 如果是高优先，还需要把宿舍reference移除
+                                        if free_agent.mood < 24:
+                                            # 如果心情低于4，则不需要再次执行Free任务
+                                            self.task.plan = {}
+
                                     # 如果在上一步完成了加工，心情会强制归零
-                                    if (
-                                        free_agent.is_high()
-                                        and self.op_data.operators[free_agent].mood > 0
-                                    ):
+                                    # 如果是高优先，还需要把宿舍reference移除
+                                    if free_agent.is_high() and free_agent.mood > 0:
                                         idx, dorm = self.op_data.get_dorm_by_name(
                                             free_agent.name
                                         )
@@ -985,6 +994,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     else:
                         if not tab_queue:
                             logger.info("没有任何材料满足条件，任务结束")
+                            send_message(
+                                f"找不到任何满足{agent}的加工站材料，请及时更新设置",
+                                level="WARNING",
+                            )
                             tasks = []
                             continue
                         tab, item_list = tab_queue.popleft()

@@ -363,6 +363,14 @@ class Recognizer:
             self.scene = Scene.LOGIN_BILIBILI_PRIVACY
         elif self.find("login_captcha"):
             self.scene = Scene.LOGIN_CAPTCHA
+        elif self.find("factory_dashboard"):
+            self.scene = Scene.FACTORY_DASHBOARD
+        elif self.find("factory_formula"):
+            self.scene = Scene.FACTORY_FORMULA
+        elif self.find("factory_product_collect"):
+            self.scene = Scene.FACTORY_PRODUCT_COLLECT
+        elif self.find("factory_tag"):
+            self.scene = Scene.FACTORY_ROOM
 
         # 没弄完的
         # elif self.find("ope_elimi_finished"):

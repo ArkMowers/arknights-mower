@@ -46,7 +46,6 @@ def edge(v_from: int, v_to: int, interval: int = 1):
 @edge(Scene.TERMINAL_COLLECTION, Scene.INDEX)
 @edge(Scene.TERMINAL_REGULAR, Scene.INDEX)
 @edge(Scene.TERMINAL_LONGTERM, Scene.INDEX)
-@edge(Scene.TERMINAL_REGULAR, Scene.INDEX)
 @edge(Scene.DEPOT, Scene.INDEX)
 @edge(Scene.HEADHUNTING, Scene.INDEX)
 @edge(Scene.MAIL, Scene.INDEX)
@@ -352,6 +351,9 @@ def todo_complete(solver: BaseSolver):
 @edge(Scene.ORDER_LIST, Scene.INFRA_DETAILS)
 @edge(Scene.FACTORY_ROOMS, Scene.INFRA_DETAILS)
 @edge(Scene.DRONE_ACCELERATE, Scene.ORDER_LIST)
+@edge(Scene.FACTORY_FORMULA, Scene.FACTORY_DASHBOARD)
+@edge(Scene.FACTORY_DASHBOARD, Scene.FACTORY_ROOM)
+@edge(Scene.FACTORY_ROOM, Scene.INFRA_MAIN)
 def infra_back(solver: BaseSolver):
     solver.back()
 
