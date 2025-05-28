@@ -10,13 +10,15 @@ Mower 的新界面。短期目标是 Mower 继续保持桌面应用的形态，�
 
 ### 后端
 
-需要 Python 3.8 或 3.9。
+需要 Python 3.12。
 
-后端代码在 [ArkMowers/arknights-mower](https://github.com/ArkMowers/arknights-mower) 仓库的 `dev_shawn` 分支中。
+后端代码在 [ArkMowers/arknights-mower](https://github.com/ArkMowers/arknights-mower) 仓库的 `202x.x.1` 分支中。
 
 安装依赖：
 
 ```bash
+python -m venv venv
+.\venv\Scripts\activate.bat
 pip install -r requirements.txt
 pip install Flask flask-cors flask-sock pywebview
 ```
@@ -65,7 +67,7 @@ npm run build
 flask --app server run --port=8000
 ```
 
-直接在浏览器中打开 <http://localhost:8000>，就能看到前端了；运行 `./webview_ui.py`，也能在 WebView 窗口中看到前端。
+直接在浏览器中打开 [http://localhost:8000](http://localhost:8000)，就能看到前端了；运行 `./webview_ui.py`，也能在 WebView 窗口中看到前端。
 
 ## 打包
 
@@ -81,4 +83,4 @@ pip install pyinstaller
 pyinstaller webui_zip.spec
 ```
 
-生成的 `mower.exe` 在 `dist` 文件夹中，打包后在依赖文件夹`_internal`中新建`ui`文件夹，并将构建的前端`dist`文件夹复制到该`ui`文件夹中即可使用。
+生成的 `mower.exe` 在 `dist` 文件夹中，已经可使用。

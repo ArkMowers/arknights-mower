@@ -42,6 +42,7 @@ mower_a = Analysis(
         ),
         (f"{site_packages}/pyzbar/libzbar-64.dll", "."),
         (f"{site_packages}/pyzbar/libiconv.dll", "."),
+        ("./ui/dist","./ui/dist"),
     ]
     + add_data,
     hiddenimports=[],
