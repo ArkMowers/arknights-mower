@@ -37,12 +37,10 @@ mower_a = Analysis(
         ("arknights_mower", "arknights_mower"),
         ("logo.png", "."),
         (
-            f"{site_packages}/onnxruntime/capi/onnxruntime_providers_shared.dll",
+            f"{site_packages}/onnxruntime/capi/libonnxruntime_providers_shared.so",
             "onnxruntime/capi/",
         ),
-        (f"{site_packages}/pyzbar/libzbar-64.dll", "."),
-        (f"{site_packages}/pyzbar/libiconv.dll", "."),
-        ("./ui/dist","./ui/dist"),
+	("./ui/dist","./ui/dist")
     ]
     + add_data,
     hiddenimports=[],
