@@ -718,6 +718,9 @@ class Arknights数据处理器:
             配方类型 = 配方信息.get("formulaType")
             种类.add(配方类型)
             # 添加到结果字典中
+            # 会有重复
+            if 物品名称 == "家具零件":
+                物品名称 += "_"+子类材料[0]
             配方类别[物品名称] = {
                 "tab": formulaType[配方类型],
                 "apCost": 配方信息.get("apCost") / 360000,

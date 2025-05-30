@@ -55,15 +55,6 @@ const {
 
 const { operators } = storeToRefs(plan_store)
 
-const workshop_operators_list = computed(() => {
-  return operators.value
-    .filter((s) => s.value !== '九色鹿') // 过滤掉九色鹿，暂时不支持
-    .map((s) => ({
-      label: s.label,
-      value: s.value
-    }))
-})
-
 const { left_side_facility } = plan_store
 
 const facility_with_empty = computed(() => {
@@ -671,7 +662,7 @@ function createNewItem() {
             <n-form-item>
               <template #label>
                 <span>无缝合成材料设置</span>
-                <help-text>暂时不支持九色鹿（特殊适配逻辑没写）</help-text>
+                <help-text>想看攻略嘛？去Q群精华消息</help-text>
               </template>
               <n-button
                 type="primary"
@@ -714,7 +705,7 @@ function createNewItem() {
             >
               <n-select
                 filterable
-                :options="workshop_operators_list"
+                :options="operators"
                 class="operator-select"
                 v-model:value="tempSetting.operator"
                 :filter="(p, o) => pinyin_match(o.label, p)"

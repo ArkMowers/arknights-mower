@@ -405,8 +405,26 @@ class BaseMixin:
                 use_rec=True,
             )
             res = []
-            for item in ocr_result[0]:
-                if len(item) > 2 and item[1] in workshop_formula.keys():
+            furniture_start_index = -1
+            furniture_keys = [
+                "家具零件_碳素",
+                "家具零件_碳素组",
+                "家具零件_基础加固建材",
+                "家具零件_进阶加固建材",
+                "家具零件_高级加固建材",
+                "家具零件_碳",
+            ]
+            for base_idx, item in enumerate(ocr_result[0]):
+                if item[1] == "家具零件" and furniture_start_index == -1:
+                    furniture_start_index = base_idx
+                if (
+                    len(item) > 2
+                    and item[1] in workshop_formula.keys()
+                    or item[1] == "家具零件"
+                ):
+                    name = item[1]
+                    if furniture_start_index == 0 or furniture_start_index == 5:
+                        name = furniture_keys[base_idx]
                     box = item[0]
                     base_px = int(box[0][0]) + 15
                     base_py = int(box[0][1]) + 75
@@ -422,10 +440,10 @@ class BaseMixin:
                             )
                             if not np.all((color >= 40) & (color <= 80)):
                                 valid = float("-inf ")
-                                if idx < len(workshop_formula[item[1]]["items"]):
+                                if idx < len(workshop_formula[name]["items"]):
                                     logger.info("更新材料数量为0")
                                     save_inventory_counts(
-                                        {workshop_formula[item[1]]["items"][idx]: 0}
+                                        {workshop_formula[name]["items"][idx]: 0}
                                     )
                                 break
                     box_global = [[x + offset_x, y + offset_y] for (x, y) in box]
@@ -433,6 +451,50 @@ class BaseMixin:
                     if valid != 0:
                         res.append((item[1], box_global, valid > 0))
             return res
+        except Exception as e:
+            logger.exception(e)
+
+    def get_number(self, cord, error_count=0):
+        # (290, 335, 95, 200) 九色鹿
+        # (1740,620 , 1600,500 ) 合成次数 不准
+        if error_count > 3:
+            return -1
+        try:
+            self.recog.update()
+            y1, y2, x1, x2 = cord
+            img = self.recog.img[y1:y2, x1:x2]
+            ocr_result = rapidocr.engine(
+                img,
+                use_det=True,
+                use_cls=False,
+                use_rec=True,
+            )
+            text = ocr_result[0][0][1]
+            score_str = text.split("/")[0]
+            return int(score_str)
+        except Exception as e:
+            logger.exception(e)
+            logger.debug(f"读取失败{error_count}次")
+            self.sleep()
+            return self.get_number(cord, error_count=error_count + 1)
+
+    def get_craft(self):
+        try:
+            img = self.recog.img[290:335, 95:200]
+            ocr_result = rapidocr.engine(
+                img,
+                use_det=True,
+                use_cls=False,
+                use_rec=True,
+            )
+
+            res = []
+            text = ocr_result[0][0][1]
+            if text.find("/") == -1:
+                logger.exception("九色鹿技能识别失败")
+                return None
+            score_str = text.split("/")[0]
+            return int(score_str)
         except Exception as e:
             logger.exception(e)
 

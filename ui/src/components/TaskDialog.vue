@@ -190,6 +190,7 @@ async function saveTasks() {
       return
     }
     task.meta_data = workshop_operator.value
+    task.plan = {}
   }
   const req = { task, upgrade_support: data }
   msg.value = (await axios.post(`${import.meta.env.VITE_HTTP_URL}/task`, req)).data

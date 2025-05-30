@@ -486,7 +486,7 @@ def try_workshop_tasks(op_data, tasks):
     if config.conf.workshop_settings and inventory_data:
         for item in config.conf.workshop_settings:
             valid = False
-            if item.operator in op_data.operators:
+            if item.operator in op_data.operators.keys():
                 agent = op_data.operators[item.operator]
                 valid = agent.mood > 22
             else:
@@ -501,14 +501,15 @@ def try_workshop_tasks(op_data, tasks):
                     name in inventory_data
                     and inventory_data[name] < material.self_upper_limit
                     and all(
-                        inventory_data[child_name] > material.children_lower_limit
+                        child_name in inventory_data
+                        and inventory_data[child_name] > material.children_lower_limit
                         for child_name in metadata["items"]
                     )
                 ):
                     match = True
                     break
             if match and valid:
-                logger.info(f"满足条件: {item.operator}({item.items}), 生成加工站任务")
+                logger.info(f"{item.operator}满足使用条件:, 生成加工站任务")
                 task = SchedulerTask(
                     task_type=TaskTypes.WORKSHOP, meta_data=item.operator
                 )
