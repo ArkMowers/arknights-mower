@@ -1,31 +1,21 @@
 #!/bin/bash
 
-# 清理 Xvfb 锁文件，防止容器因为异常关闭而重启失败
-if [ -f /tmp/.X99-lock ]; then
-    echo "Cleaning up Xvfb lock file"
-    rm -f /tmp/.X99-lock
-fi
+# 下载最新版MAA
+curl -L -O $(curl -s https://api.github.com/repos/MaaAssistantArknights/MaaAssistantArknights/releases/latest | \
+    jq -r ".assets[] | select(.name | contains(\"linux\") and contains(\"$(uname -m)\") and contains(\"tar\")) | .browser_download_url")
 
-# 启动 Xvfb
-echo "Starting Xvfb on DISPLAY=:99"
-Xvfb :99 -screen 0 1280x1024x24 &
-sleep 2
+# 解压下载的文件
+mkdir /MAA
+tar -zxvf MAA-*.tar.gz -C /MAA
+rm MAA-*.tar.gz
 
-# 检查 Xvfb 是否正常运行
-if ! xdpyinfo -display :99 >/dev/null 2>&1; then
-    echo "Xvfb failed to start"
-    exit 1
-fi
-
-# 设置 DISPLAY 环境变量
-export DISPLAY=:99
-echo "DISPLAY is set to $DISPLAY"
-
-# 创建符号链接
-if [ ! -L "./dist" ]; then
-    ln -s ui/dist ./dist
-fi
+# 配置MAA路径
+sed -i 's|D:\\\\MAA-v4.13.0-win-x64|/MAA|g' /mower/_internal/arknights_mower/utils/config/conf.py
+# 配置adb路径
+sed -i 's|D:\\\\Program Files\\\\Nox\\\\bin\\\\adb.exe|adb|g' /mower/_internal/arknights_mower/utils/config/conf.py
+# 配置mower固定端口58000，访问时请使用http://127.0.0.1:58000?token=mower
+sed -i 's|token: str = \"\"|token: str = \"mower\"|g' /mower/_internal/arknights_mower/utils/config/conf.py
 
 # 启动mower应用
-echo "Starting application..."
-dbus-run-session -- ./venv/bin/python /app/webview_ui.py
+echo "Mower已启动！请浏览器访问http://127.0.0.1:58000?token=mower进入Mower界面"
+/mower/mower

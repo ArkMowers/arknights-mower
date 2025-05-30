@@ -85,6 +85,43 @@ pyinstaller webui_zip_for_linux.spec
 
 注：Linux下运行，shell会显示如 `Running on http://127.0.0.1:53703`的输出，本地浏览器访问`http://127.0.0.1:53703`即进入mower的页面。
 
+## Linux系统下的Docker一键部署
+
+### 运行环境准备
+
+Docker version 28.1.128.1.1 、Linux
+
+### 克隆仓库
+
+```bash
+git clone -c lfs.concurrenttransfers=200 https://github.com/ArkMowers/arknights-mower.git --branch 2025.6.1
+cd arknights-mower
+```
+
+### 镜像构建
+
+```bash
+docker build -t mower .
+```
+
+### 启动容器
+
+```bash
+docker run -d \
+    --name mower\
+    --network host \
+    -e TZ="Asia/Shanghai" \
+    --restart always \
+    --memory 2g \
+    mower
+```
+
+### 进入Mower
+
+容器在后台启动以后，可以本地浏览器访问`http://127.0.0.1:58000?token=mower`或`http://局域网IP:58000?token=mower`。
+
+此时，该容器已预先配置好maa以及adb设置，仅需要手动配置adb连接地址。
+
 ## 建议与反馈
 
 **提出建议、反馈 Bug，欢迎加入 QQ群：~~239200680~~（被爆破）, 521857729 QQ频道:ArkMower（频道号：2r118jwue4）。**
