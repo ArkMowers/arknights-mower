@@ -505,8 +505,6 @@ class BaseMixin:
                 use_cls=False,
                 use_rec=True,
             )
-
-            res = []
             text = ocr_result[0][0][1]
             if text.find("/") == -1:
                 logger.exception("九色鹿技能识别失败")
