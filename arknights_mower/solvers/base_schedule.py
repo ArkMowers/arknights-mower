@@ -2664,7 +2664,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     agent[0] in self.op_data.operators.keys()
                     and self.op_data.operators[agent[0]].room.startswith("dormitory")
                 ):
-                    arrange_type = (3, "true")
+                    arrange_type = ("心情", "true")
                 # 如果重新排序则滑到最左边
                 if pre_order[0] != arrange_type[0] or pre_order[1] != arrange_type[1]:
                     self.switch_arrange_order(arrange_type[0], room, arrange_type[1])

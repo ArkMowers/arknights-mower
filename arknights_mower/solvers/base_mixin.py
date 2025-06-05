@@ -89,7 +89,6 @@ class BaseMixin:
             ret = operator_list(self.recog.img, full_scan=full_scan)
             # 提取识别出来的干员的名字
             select_name = []
-            logger.info(f"识别到干员：{ret}")
             for name, scope in ret:
                 if name in agent:
                     select_name.append(name)

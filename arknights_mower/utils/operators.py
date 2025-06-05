@@ -797,7 +797,7 @@ class Operator:
         self.depletion_rate = depletion_rate
         self.time_stamp = time_stamp
         self.workaholic = False
-        self.arrange_order = [2, "false"]
+        self.arrange_order = ["技能", "false"]
         self.exhaust_time = None
 
     @property
