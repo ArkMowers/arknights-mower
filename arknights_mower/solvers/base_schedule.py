@@ -161,14 +161,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.op_data.correct_dorm()
         self.backup_plan_solver(PlanTriggerTiming.BEGINNING)
         logger.debug("当前任务: " + ("||".join([str(t) for t in self.tasks])))
-        # while True:
-        #     try:
-        #         self.get_number((290, 335, 95, 200))
-        #         self.recog.update()
-        #         self.sleep(2)
-        #     except Exception as e:
-        #         logger.exception(e)
-        #         continue
         return super().run()
 
     def transition(self) -> None:
@@ -427,7 +419,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             logger.debug(f"当前工厂干员: {current_agent}")
             logger.debug(f"当前加工干员位置: {agent_room}")
             self.agent_arrange({"factory": [task.meta_data]})
-            self.enter_room("factory")
             self.generate_product(task.meta_data)
             if len(current_agent) > 0 and current_agent[0] != task.meta_data:
                 new_plan = {"factory": current_agent}
@@ -1003,7 +994,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     if tasks[0] == "enter":
                         if is_9colored:
                             gap = 40 - self.get_number((290, 335, 95, 200))
-                            logger.debug("初次记录九色鹿技能差值{gap}")
+                            logger.debug(f"初次记录九色鹿技能差值{gap}")
                         del tasks[0]
                     elif tasks[0] == "select":
                         self.tap(
@@ -1015,7 +1006,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         if is_9colored and not crit:
                             mood = self.op_data.operators[agent].mood
                             gap = 40 - self.get_number((290, 335, 95, 200))
-                            logger.debug("九色鹿技能差值{gap}")
+                            logger.debug(f"九色鹿技能差值{gap}")
                             if gap > 40:
                                 logger.error("识别九色鹿阈值出错拉!任务停止")
                                 return
@@ -1055,7 +1046,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             self.op_data.operators[agent].time_stamp = datetime.now()
                             logger.debug("设置加工站干员心情为0，别问我，我懒得算了")
                             continue
-                        self.tap(produce_btn, interval=5.5)
+                        self.tap(produce_btn, interval=2)
+                        max_wait = 10
+                        sleep_time = 0
+                        while self.factory_scene() != Scene.FACTORY_PRODUCT_COLLECT:
+                            self.sleep()
+                            sleep_time += 1
+                            if sleep_time > max_wait:
+                                break
+                        self.recog.save_screencap("workshop")
                         if is_9colored:
                             # 更新心情
                             cost = tap_count * ap_cost if tap_count > 0 else 24
@@ -1063,7 +1062,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             # 暴击完切换状态
                             if crit:
                                 gap = 40 - self.get_number((290, 335, 95, 200))
-                                logger.debug("暴击完九色鹿技能差值{gap}")
+                                logger.debug(f"暴击完九色鹿技能差值{gap}")
                                 if gap > 5:
                                     # 预设个不可能的值
                                     crit = False
@@ -1140,6 +1139,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.back()
                 elif scene == Scene.FACTORY_ROOM:
                     self.tap((self.recog.w * 0.1, self.recog.h * 0.95), 0.5)
+                elif scene == Scene.INFRA_MAIN:
+                    self.enter_room("factory")
             self.back()
             self.back_to_infrastructure()
         except Exception as e:
@@ -2627,8 +2628,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         selected = []
         logger.debug(f"上次进入房间为：{self.last_room},本次房间为：{room}")
         self.profession_filter()
-        if self.detect_arrange_order()[0] == "信赖值":
-            self.switch_arrange_order("工作状态")
+        if self.detect_arrange_order(room)[0] == "信赖值":
+            self.switch_arrange_order("工作状态", room)
         siege = False  # 推进之王
         last_special_filter = "ALL"
         start_time, finish_time = datetime.now(), datetime.now()
@@ -2642,7 +2643,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if first_time:
                 # 清空
                 if is_dorm:
-                    self.switch_arrange_order(3, "true")
+                    self.switch_arrange_order("心情", room, "true")
                     pre_order = [3, "true"]
                 if not fast_mode:
                     self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
@@ -2663,10 +2664,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     agent[0] in self.op_data.operators.keys()
                     and self.op_data.operators[agent[0]].room.startswith("dormitory")
                 ):
-                    arrange_type = (3, "true")
+                    arrange_type = ("心情", "true")
                 # 如果重新排序则滑到最左边
                 if pre_order[0] != arrange_type[0] or pre_order[1] != arrange_type[1]:
-                    self.switch_arrange_order(arrange_type[0], arrange_type[1])
+                    self.switch_arrange_order(arrange_type[0], room, arrange_type[1])
                     # 滑倒最左边
                     self.sleep(interval=0.5)
                     if not siege:
@@ -2695,7 +2696,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         right_swipe = 0
                     last_special_filter = profession
                     if index_change:
-                        self.switch_arrange_order(3, "true")
+                        self.switch_arrange_order("心情", room, "true")
                 elif (
                     (is_dorm or not_production)
                     and agent[0] == "阿米娅"
@@ -2764,7 +2765,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self.profession_filter("ALL")
                 last_special_filter = "ALL"
                 right_swipe = 0
-            self.switch_arrange_order(3, "true")
+            self.switch_arrange_order("心情", room, "true")
             # 只选择在列表里面的
             # 替换组小于20才休息，防止进入就满心情进行网络连接
             free_list = [
@@ -2817,7 +2818,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if len(agents) != 1:
             # 左移
             right_swipe = self.swipe_left(right_swipe, last_special_filter)
-            self.switch_arrange_order("技能")
+            self.switch_arrange_order("技能", room)
             not_match = False
             exists.extend(selected)
             logger.info(exists)
@@ -2841,7 +2842,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     )
         logger.debug("验证干员选择..")
         self.swipe_left(right_swipe, last_special_filter)
-        self.switch_arrange_order(2)
+        self.switch_arrange_order("技能", room)
         finish_time = datetime.now()
         if finish_time - start_time > timedelta(seconds=15) * len(agents):
             # 如果超过5分钟，则所有里面的干员自动用职介筛选
@@ -2849,7 +2850,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if agent != "阿米娅" and agent:
                     logger.debug(f"检测到{agent}选择时间过长，自动使用职介筛选")
                     self.op_data.profession_filter.add(agent)
-        if not self.verify_agent(agents):
+        if not self.verify_agent(agents, room):
             logger.debug(agents)
             raise Exception("检测到干员选择错误，重新选择")
         self.last_room = room
