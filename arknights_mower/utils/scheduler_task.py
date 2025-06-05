@@ -286,13 +286,6 @@ def plan_metadata(op_data, tasks):
 
     # 计算最低休息时间
     for agent in total_agent:
-        if (
-            agent.workaholic
-            or agent.exhaust_require
-            or agent.room in ["factory", "train"]
-        ):
-            continue
-
         # 如果全红脸，使用急救模式
         predicted_rest_time = max(
             agent.predict_exhaust(), datetime.now() + timedelta(minutes=30)
