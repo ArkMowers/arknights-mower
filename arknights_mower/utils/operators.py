@@ -72,6 +72,7 @@ class Operators:
                 "is_resting",
                 "current_mood",
                 "current_room",
+                "get_current_room",
             ]
         )
         self.power_plant_count = 0
