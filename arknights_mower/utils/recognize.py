@@ -628,7 +628,8 @@ class Recognizer:
             self.scene = Scene.INFRA_MAIN
         elif self.find("train_main"):
             self.scene = Scene.TRAIN_MAIN
-        elif self.find("skill_collect_confirm", scope=((1142, 831), (1282, 932))):
+        # 专精完成 图标识别更换识别成文字  
+        elif self.find("skill_collect_confirm"):
             self.scene = Scene.TRAIN_FINISH
         elif self.find("training_support"):
             self.scene = Scene.TRAIN_SKILL_SELECT
