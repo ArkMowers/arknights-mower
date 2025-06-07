@@ -1168,6 +1168,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.enter_room("train")
                 elif scene == Scene.TRAIN_FINISH:
                     self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=0.5)
+                    logger.info('识别到专精训练完成，点击完成图标')
                 elif scene == Scene.TRAIN_MAIN:
                     if tasks[0] == "collect":
                         completed = self.find("training_completed")
@@ -2715,18 +2716,20 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     and agent[0] not in self.choose_error
                 ):
                     # 如果在休息，则直接翻最后:
-                    swipe_map = [20, 3, 5, 3, 3, 3, 3, 3, 3]
-                    skip_swipe_count = swipe_map[
-                        self.profession_labels.index(last_special_filter)
-                    ]
-                    for i in range(skip_swipe_count):
-                        self.swipe_noinertia(
-                            (0.8 * self.recog.w, 0.5 * self.recog.h),
-                            (-1900, 0),
-                            interval=0,
-                        )
-                    right_swipe = skip_swipe_count
-                    self.sleep(1)
+                    # 排除宿管
+                    if agent[0] not in ['阿米娅','斥罪','流明','塑心','隐德来希','杜林']:
+                        swipe_map = [20, 3, 5, 3, 3, 3, 3, 3, 3]
+                        skip_swipe_count = swipe_map[
+                            self.profession_labels.index(last_special_filter)
+                        ]
+                        for i in range(skip_swipe_count):
+                            self.swipe_noinertia(
+                                (0.8 * self.recog.w, 0.5 * self.recog.h),
+                                (-1900, 0),
+                                interval=0,
+                            )
+                        right_swipe = skip_swipe_count
+                        self.sleep(1)
             changed, ret = self.scan_agent(
                 agent, full_scan=last_special_filter == "ALL"
             )
