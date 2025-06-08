@@ -6999,6 +6999,34 @@
         "MATERIAL",
         700167
     ],
+    "p_char_4191_tippi": [
+        "p_char_4191_tippi",
+        "p_char_4191_tippi",
+        "蒂比的信物",
+        "MATERIAL",
+        700168
+    ],
+    "蒂比的信物": [
+        "p_char_4191_tippi",
+        "p_char_4191_tippi",
+        "蒂比的信物",
+        "MATERIAL",
+        700168
+    ],
+    "p_char_4198_christ": [
+        "p_char_4198_christ",
+        "p_char_4198_christ",
+        "Miss.Christine的信物",
+        "MATERIAL",
+        700169
+    ],
+    "Miss.Christine的信物": [
+        "p_char_4198_christ",
+        "p_char_4198_christ",
+        "Miss.Christine的信物",
+        "MATERIAL",
+        700169
+    ],
     "p_char_103_angel": [
         "p_char_103_angel",
         "p_char_103_angel",
@@ -8552,6 +8580,20 @@
         "信仰搅拌机的信物",
         "MATERIAL",
         600111
+    ],
+    "p_char_1042_phatm2": [
+        "p_char_1042_phatm2",
+        "p_char_1042_phatm2",
+        "酒神的信物",
+        "MATERIAL",
+        600112
+    ],
+    "酒神的信物": [
+        "p_char_1042_phatm2",
+        "p_char_1042_phatm2",
+        "酒神的信物",
+        "MATERIAL",
+        600112
     ],
     "class_p_char_123_fang": [
         "class_p_char_123_fang",

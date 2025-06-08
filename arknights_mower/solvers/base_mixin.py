@@ -33,9 +33,15 @@ class BaseMixin:
         "SPECIAL",
     ]
 
-    def detect_arrange_order(self):
-        name_list = ["工作状态", "技能", "心情", "信赖值"]
-        x_list = (1135, 1262, 1363, 1490)
+    def detect_arrange_order(self, current_room):
+        name_list = []
+        if current_room.startswith("dormitory") or current_room == "central":
+            name_list = ["工作状态", "技能", "心情", "信赖值"]
+            x_list = (1070, 1217, 1352, 1490)
+            y = 70
+        else:
+            name_list = ["工作状态", "效率", "技能", "心情", "信赖值"]
+            x_list = (935, 1070, 1210, 1355, 1490)
         y = 70
         hsv = cv2.cvtColor(self.recog.img, cv2.COLOR_RGB2HSV)
         mask = cv2.inRange(hsv, (95, 100, 100), (105, 255, 255))
@@ -45,16 +51,27 @@ class BaseMixin:
             if np.count_nonzero(mask[y + 10 : y + 13, x : x + 5]):
                 return (name_list[idx], True)
 
-    def switch_arrange_order(self, name, ascending=False):
-        name_x = {"工作状态": 1135, "技能": 1264, "心情": 1368, "信赖值": 1495}
-        if isinstance(name, int):
-            name = list(name_x.keys())[name - 1]
-        if isinstance(ascending, str):
-            ascending = ascending == "true"
+    def switch_arrange_order(self, name, current_room, ascending=False):
+        name_x = {}
+        if current_room.startswith("dormitory") or current_room == "central":
+            name_x = {"工作状态": 1070, "技能": 1220, "心情": 1358, "信赖值": 1495}
+            if isinstance(ascending, str):
+                ascending = ascending == "true"
+        else:
+            name_x = {
+                "工作状态": 935,
+                "效率": 1072,
+                "技能": 1215,
+                "心情": 1360,
+                "信赖值": 1495,
+            }
+            if isinstance(ascending, str):
+                ascending = ascending == "true"
         name_y = 60
         self.tap((name_x[name], name_y), interval=0.5)
         while True:
-            n, s = self.detect_arrange_order()
+            self.recog.update()
+            n, s = self.detect_arrange_order(current_room)
             if n == name and s == ascending:
                 break
             self.tap((name_x[name], name_y), interval=0.5)
@@ -93,7 +110,7 @@ class BaseMixin:
                 raise e
 
     def verify_agent(
-        self, agent: list[str], error_count=0, max_agent_count=-1, full_scan=True
+        self, agent: list[str], room, error_count=0, max_agent_count=-1, full_scan=True
     ):
         try:
             # 识别干员
@@ -114,10 +131,10 @@ class BaseMixin:
             return True
         except Exception as e:
             error_count += 1
-            self.switch_arrange_order("技能")
+            self.switch_arrange_order("技能", room)
             if error_count < 3:
                 return self.verify_agent(
-                    agent, error_count, max_agent_count, full_scan=False
+                    agent, room, error_count, max_agent_count, full_scan=False
                 )
             else:
                 logger.exception(e)
@@ -487,8 +504,6 @@ class BaseMixin:
                 use_cls=False,
                 use_rec=True,
             )
-
-            res = []
             text = ocr_result[0][0][1]
             if text.find("/") == -1:
                 logger.exception("九色鹿技能识别失败")

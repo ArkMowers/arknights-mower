@@ -494,6 +494,9 @@ class Arknights数据处理器:
         font25 = ImageFont.truetype(
             "arknights_mower/fonts/SourceHanSansCN-Medium.otf", 25
         )
+        font23 = ImageFont.truetype(
+            "arknights_mower/fonts/SourceHanSansCN-Medium.otf", 23
+        )
 
         font27 = ImageFont.truetype(
             "arknights_mower/fonts/SourceHanSansCN-Medium.otf", 27
@@ -514,6 +517,8 @@ class Arknights数据处理器:
                         font = font27
                     else:
                         font = font25
+                elif operator == "Miss.Christine":
+                    font = font23
                 elif len(operator) == 6:
                     font = font30
             img = Image.new(mode="L", size=(400, 100))
@@ -534,6 +539,12 @@ class Arknights数据处理器:
                         2:4
                     ]  # getbbox 返回 (x1, y1, x2, y2)
                     x += char_width
+            elif operator == "Miss.Christine":
+                x, y = 50, 20
+                for i, char in enumerate(operator):
+                    draw.text((x, y), char, fill=(255,), font=font)
+                    char_width, char_height = font.getbbox(char)[2:4]
+                    x += char_width - 1
             else:
                 draw.text((50, 20), operator, fill=(255,), font=font)
 
@@ -720,7 +731,7 @@ class Arknights数据处理器:
             # 添加到结果字典中
             # 会有重复
             if 物品名称 == "家具零件":
-                物品名称 += "_"+子类材料[0]
+                物品名称 += "_" + 子类材料[0]
             配方类别[物品名称] = {
                 "tab": formulaType[配方类型],
                 "apCost": 配方信息.get("apCost") / 360000,
@@ -751,9 +762,7 @@ formulaType = {
     "F_EVOLVE": "精英材料",
 }
 
-
 数据处理器 = Arknights数据处理器()
-
 
 数据处理器.添加物品()  # 显示在仓库里的物品
 
@@ -766,7 +775,6 @@ formulaType = {
 # 和 数据处理器.添加物品() 有联动 ， 添加物品提供了分类的图片位置
 数据处理器.批量训练并保存扫仓库模型()
 print("批量训练并保存扫仓库模型,完成")
-
 
 数据处理器.训练在房间内的干员名的模型()
 print("训练在房间内的干员名的模型,完成")
