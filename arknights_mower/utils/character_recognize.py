@@ -1,5 +1,6 @@
 import lzma
 import pickle
+from concurrent.futures import ThreadPoolExecutor
 
 import cv2
 import numpy as np
@@ -45,7 +46,7 @@ def operator_list(img, draw=False, full_scan=True):
     op_name = []
     gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 
-    for p in name_p:
+    def process_name_region(p):
         im = cropimg(gray, p)
         im = thres2(im, 140)
         im = cv2.copyMakeBorder(im, 10, 10, 10, 10, cv2.BORDER_CONSTANT, None, (0,))
@@ -65,7 +66,10 @@ def operator_list(img, draw=False, full_scan=True):
             if max_val > max_score:
                 max_score = max_val
                 best_operator = operator
-        op_name.append(best_operator)
+        return best_operator
+
+    with ThreadPoolExecutor() as executor:
+        op_name = list(executor.map(process_name_region, name_p))
 
     logger.debug(op_name)
 
