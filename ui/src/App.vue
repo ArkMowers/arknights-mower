@@ -314,7 +314,7 @@ const { getwatermarkinfo } = watermarkStore
 const watermarkData = ref('mower')
 
 const config_store = useConfigStore()
-const { load_config, load_shop } = config_store
+const { load_config, load_shop, load_item } = config_store
 const { start_automatically, theme, webview } = storeToRefs(config_store)
 
 const plan_store = usePlanStore()
@@ -367,7 +367,7 @@ onMounted(async () => {
   const token = params.get('token')
   provide('token', token)
   axios.defaults.headers.common['token'] = token
-  await Promise.all([load_config(), load_shop(), load_operators(), get_running()])
+  await Promise.all([load_config(), load_shop(), load_item(), load_operators(), get_running()])
 
   await load_plan()
 

@@ -5,9 +5,10 @@ from datetime import datetime
 import pandas as pd
 
 # from .log import logger
-from arknights_mower.data import key_mapping
+from arknights_mower.data import key_mapping, workshop_formula
 
 # from typing import Dict, List, Union
+from arknights_mower.solvers.record import save_inventory_counts
 from arknights_mower.utils.path import get_path
 
 
@@ -35,10 +36,14 @@ def 读取仓库():
     最后一行物品 = json.loads(depotinfo.iloc[-1, 1])
     新物品 = {**最后一行物品, **新物品1}  # 合并字典
     新物品json = {}
+    db_dict = {}
+    for k in workshop_formula.keys():
+        db_dict[k] = 0
     for item in 新物品:
         新物品json[key_mapping[item][0]] = 新物品[item]
+        db_dict[key_mapping[item][2]] = 新物品[item]
     time = depotinfo.iloc[-1, 0]
-
+    save_inventory_counts(db_dict)
     sort = {
         "A常用": [
             "至纯源石",

@@ -345,6 +345,7 @@ class Device:
                 if focus not in [
                     f"{config.conf.APPNAME}/{config.APP_ACTIVITY_NAME}",
                     "com.hypergryph.arknights.bilibili/com.gsc.welcome.WelcomeActivity",
+                    "com.hypergryph.arknights.bilibili/com.gsc.auto_login.AutoLoginActivity",
                 ]:
                     self.exit()  # 防止应用卡死
                     self.launch()

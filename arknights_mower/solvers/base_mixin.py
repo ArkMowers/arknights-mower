@@ -6,6 +6,8 @@ import cv2
 import numpy as np
 
 from arknights_mower import __rootdir__
+from arknights_mower.data import workshop_formula
+from arknights_mower.solvers.record import save_inventory_counts
 from arknights_mower.utils import rapidocr, segment
 from arknights_mower.utils.character_recognize import operator_list
 from arknights_mower.utils.csleep import MowerExit
@@ -31,9 +33,15 @@ class BaseMixin:
         "SPECIAL",
     ]
 
-    def detect_arrange_order(self):
-        name_list = ["工作状态", "技能", "心情", "信赖值"]
-        x_list = (1135, 1262, 1363, 1490)
+    def detect_arrange_order(self, current_room):
+        name_list = []
+        if current_room.startswith("dormitory") or current_room == "central":
+            name_list = ["工作状态", "技能", "心情", "信赖值"]
+            x_list = (1070, 1217, 1352, 1490)
+            y = 70
+        else:
+            name_list = ["工作状态", "效率", "技能", "心情", "信赖值"]
+            x_list = (935, 1070, 1210, 1355, 1490)
         y = 70
         hsv = cv2.cvtColor(self.recog.img, cv2.COLOR_RGB2HSV)
         mask = cv2.inRange(hsv, (95, 100, 100), (105, 255, 255))
@@ -43,16 +51,27 @@ class BaseMixin:
             if np.count_nonzero(mask[y + 10 : y + 13, x : x + 5]):
                 return (name_list[idx], True)
 
-    def switch_arrange_order(self, name, ascending=False):
-        name_x = {"工作状态": 1135, "技能": 1264, "心情": 1368, "信赖值": 1495}
-        if isinstance(name, int):
-            name = list(name_x.keys())[name - 1]
-        if isinstance(ascending, str):
-            ascending = ascending == "true"
+    def switch_arrange_order(self, name, current_room, ascending=False):
+        name_x = {}
+        if current_room.startswith("dormitory") or current_room == "central":
+            name_x = {"工作状态": 1070, "技能": 1220, "心情": 1358, "信赖值": 1495}
+            if isinstance(ascending, str):
+                ascending = ascending == "true"
+        else:
+            name_x = {
+                "工作状态": 935,
+                "效率": 1072,
+                "技能": 1215,
+                "心情": 1360,
+                "信赖值": 1495,
+            }
+            if isinstance(ascending, str):
+                ascending = ascending == "true"
         name_y = 60
         self.tap((name_x[name], name_y), interval=0.5)
         while True:
-            n, s = self.detect_arrange_order()
+            self.recog.update()
+            n, s = self.detect_arrange_order(current_room)
             if n == name and s == ascending:
                 break
             self.tap((name_x[name], name_y), interval=0.5)
@@ -91,7 +110,7 @@ class BaseMixin:
                 raise e
 
     def verify_agent(
-        self, agent: list[str], error_count=0, max_agent_count=-1, full_scan=True
+        self, agent: list[str], room, error_count=0, max_agent_count=-1, full_scan=True
     ):
         try:
             # 识别干员
@@ -112,10 +131,10 @@ class BaseMixin:
             return True
         except Exception as e:
             error_count += 1
-            self.switch_arrange_order("技能")
+            self.switch_arrange_order("技能", room)
             if error_count < 3:
                 return self.verify_agent(
-                    agent, error_count, max_agent_count, full_scan=False
+                    agent, room, error_count, max_agent_count, full_scan=False
                 )
             else:
                 logger.exception(e)
@@ -127,7 +146,11 @@ class BaseMixin:
                 (label for label in self.profession_labels if label != special_filter),
                 None,
             )
-            self.profession_filter(selected_label)
+            # 硬切换职业筛选 的时候有时候游戏会出bug，回不去，改成切换到ALL
+            if special_filter == "ALL":
+                self.profession_filter(selected_label)
+            else:
+                self.profession_filter("ALL")
             self.profession_filter(special_filter)
         else:
             swipe_time = 2 if right_swipe == 3 else right_swipe
@@ -142,6 +165,7 @@ class BaseMixin:
             logger.info(f"打开 {profession} 筛选")
         else:
             logger.info("关闭职业筛选")
+            self.profession_filter("ALL")
             while (
                 confirm_btn := self.find("confirm_blue")
             ) is not None and confirm_btn[0][0] < open_threshold:
@@ -151,12 +175,8 @@ class BaseMixin:
                     raise Exception("关闭职业筛选失败")
             return
         x = 1918
-        label_pos = [(x, 60 + i * 120) for i in range(9)]
+        label_pos = [(x, 135 + i * 110) for i in range(9)]
         label_pos_map = dict(zip(self.profession_labels, label_pos))
-        if profession == "ALL":
-            self.tap(label_pos_map[profession], 0.1)
-            self.tap(label_pos_map[profession], 0.1)
-            return
         while (confirm_btn := self.find("confirm_blue")) is not None and confirm_btn[0][
             0
         ] > open_threshold:
@@ -165,6 +185,8 @@ class BaseMixin:
             if retry > 5:
                 raise Exception("打开职业筛选失败")
         retry = 0
+        # 点击一次ALL先
+        self.tap(label_pos_map["ALL"], 0.1)
         while self.get_color(label_pos_map[profession])[2] < 240:
             logger.debug(f"配色为： {self.get_color(label_pos_map[profession])[2]}")
             self.tap(label_pos_map[profession], 0.1)
@@ -370,6 +392,126 @@ class BaseMixin:
                 return ret
         except Exception:
             return limit + 1
+
+    def item_valid(self):
+        img = self.recog.img
+
+        region = img[
+            int(0.83 * self.recog.h) : int(0.92 * self.recog.h),
+            int(0.77 * self.recog.w) : int(0.96 * self.recog.w),
+        ]
+
+        avg_color = np.mean(region.reshape(-1, 3), axis=0)
+        logger.debug(f"平均颜色: {avg_color}")
+
+        target_color = np.array([189.2, 163.8, 23.7])
+
+        distance = np.linalg.norm(avg_color - target_color)
+
+        return distance < 30
+
+    def item_list(self):
+        try:
+            offset_x = 370
+            offset_y = 125
+            img = self.recog.img[offset_y:1040, offset_x:1860]
+            ocr_result = rapidocr.engine(
+                img,
+                use_det=True,
+                use_cls=False,
+                use_rec=True,
+            )
+            res = []
+            furniture_start_index = -1
+            furniture_keys = [
+                "家具零件_碳素",
+                "家具零件_碳素组",
+                "家具零件_基础加固建材",
+                "家具零件_进阶加固建材",
+                "家具零件_高级加固建材",
+                "家具零件_碳",
+            ]
+            for base_idx, item in enumerate(ocr_result[0]):
+                if item[1] == "家具零件" and furniture_start_index == -1:
+                    furniture_start_index = base_idx
+                if (
+                    len(item) > 2
+                    and item[1] in workshop_formula.keys()
+                    or item[1] == "家具零件"
+                ):
+                    name = item[1]
+                    if furniture_start_index == 0 or furniture_start_index == 5:
+                        name = furniture_keys[base_idx]
+                    box = item[0]
+                    base_px = int(box[0][0]) + 15
+                    base_py = int(box[0][1]) + 75
+                    sample_points = [(base_px + i * 155, base_py) for i in range(3)]
+                    valid = 0
+                    for idx, (px, py) in enumerate(sample_points):
+                        # 加入75px为边界
+                        if 0 <= py < img.shape[0] - 75 and 0 <= px < img.shape[1]:
+                            color = img[py, px]
+                            valid += 1
+                            logger.debug(
+                                f"检测到{item[1]} 颜色 {idx + 1} ({px}, {py}): {color}"
+                            )
+                            if not np.all((color >= 40) & (color <= 80)):
+                                valid = float("-inf ")
+                                if idx < len(workshop_formula[name]["items"]):
+                                    logger.info("更新材料数量为0")
+                                    save_inventory_counts(
+                                        {workshop_formula[name]["items"][idx]: 0}
+                                    )
+                                break
+                    box_global = [[x + offset_x, y + offset_y] for (x, y) in box]
+                    # 等于 0 则出界了
+                    if valid != 0:
+                        res.append((item[1], box_global, valid > 0))
+            return res
+        except Exception as e:
+            logger.exception(e)
+
+    def get_number(self, cord, error_count=0):
+        # (290, 335, 95, 200) 九色鹿
+        # (1740,620 , 1600,500 ) 合成次数 不准
+        if error_count > 3:
+            return -1
+        try:
+            self.recog.update()
+            y1, y2, x1, x2 = cord
+            img = self.recog.img[y1:y2, x1:x2]
+            ocr_result = rapidocr.engine(
+                img,
+                use_det=True,
+                use_cls=False,
+                use_rec=True,
+            )
+            text = ocr_result[0][0][1]
+            score_str = text.split("/")[0]
+            return int(score_str)
+        except Exception as e:
+            logger.exception(e)
+            logger.debug(f"读取失败{error_count}次")
+            self.sleep()
+            return self.get_number(cord, error_count=error_count + 1)
+
+    def get_craft(self):
+        try:
+            img = self.recog.img[290:335, 95:200]
+            ocr_result = rapidocr.engine(
+                img,
+                use_det=True,
+                use_cls=False,
+                use_rec=True,
+            )
+            text = ocr_result[0][0][1]
+            if text.find("/") == -1:
+                logger.exception("九色鹿技能识别失败")
+                return None
+            score_str = text.split("/")[0]
+            return int(score_str)
+        except Exception as e:
+            logger.exception(e)
 
     def read_time(self, cord, upperlimit, error_count=0, use_digit_reader=False):
         # 刷新图片

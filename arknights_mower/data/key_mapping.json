@@ -189,11 +189,11 @@
         20001
     ],
     "ID信息更新卡": [
-        "renamingCard_30_056",
+        "renamingCard_30_061",
         "renamingCard",
         "ID信息更新卡",
         "CONSUME",
-        20024
+        20026
     ],
     "renamingCard_0_018": [
         "renamingCard_0_018",
@@ -306,6 +306,20 @@
         "ID信息更新卡",
         "CONSUME",
         20024
+    ],
+    "renamingCard_0_061": [
+        "renamingCard_0_061",
+        "renamingCard",
+        "ID信息更新卡",
+        "CONSUME",
+        20025
+    ],
+    "renamingCard_30_061": [
+        "renamingCard_30_061",
+        "renamingCard",
+        "ID信息更新卡",
+        "CONSUME",
+        20026
     ],
     "ap_supply_lt_100": [
         "ap_supply_lt_100",
@@ -476,11 +490,11 @@
         50004
     ],
     "资深干员调用凭证": [
-        "voucher_recruitR5_pick5001",
+        "voucher_recruitR5_pick6101",
         "voucher_recruitR5_g",
         "资深干员调用凭证",
         "CONSUME",
-        50013
+        50021
     ],
     "voucher_item_pick601": [
         "voucher_item_pick601",
@@ -518,11 +532,11 @@
         50007
     ],
     "周年庆典干员凭证": [
-        "voucher_item_pick5001",
+        "voucher_item_pick6101",
         "voucher_recruitR6_g",
         "周年庆典干员凭证",
         "CONSUME",
-        50015
+        50019
     ],
     "voucher_item_pick2301": [
         "voucher_item_pick2301",
@@ -630,11 +644,32 @@
         50018
     ],
     "中坚高级干员调用凭证": [
-        "voucher_class_pick5601",
-        "voucher_class_pick5601",
+        "voucher_class_pick6101",
+        "voucher_class_pick6101",
         "中坚高级干员调用凭证",
         "CONSUME",
-        50018
+        50020
+    ],
+    "voucher_item_pick6101": [
+        "voucher_item_pick6101",
+        "voucher_recruitR6_g",
+        "周年庆典干员凭证",
+        "CONSUME",
+        50019
+    ],
+    "voucher_class_pick6101": [
+        "voucher_class_pick6101",
+        "voucher_class_pick6101",
+        "中坚高级干员调用凭证",
+        "CONSUME",
+        50020
+    ],
+    "voucher_recruitR5_pick6101": [
+        "voucher_recruitR5_pick6101",
+        "voucher_recruitR5_g",
+        "资深干员调用凭证",
+        "CONSUME",
+        50021
     ],
     "voucher_levelmax_6": [
         "voucher_levelmax_6",
@@ -663,6 +698,20 @@
         "资深干员特训装置",
         "CONSUME",
         50017
+    ],
+    "voucher_levelmax_4": [
+        "voucher_levelmax_4",
+        "voucher_levelmax_4",
+        "专业干员特训装置",
+        "CONSUME",
+        50018
+    ],
+    "专业干员特训装置": [
+        "voucher_levelmax_4",
+        "voucher_levelmax_4",
+        "专业干员特训装置",
+        "CONSUME",
+        50018
     ],
     "voucher_elite_II_6": [
         "voucher_elite_II_6",
@@ -1307,6 +1356,20 @@
         "狂欢烟花桶",
         "CONSUME",
         60115
+    ],
+    "randomMaterial_act42side": [
+        "randomMaterial_act42side",
+        "randomMaterial_act42side",
+        "铳械工坊赠品盒",
+        "CONSUME",
+        60116
+    ],
+    "铳械工坊赠品盒": [
+        "randomMaterial_act42side",
+        "randomMaterial_act42side",
+        "铳械工坊赠品盒",
+        "CONSUME",
+        60116
     ],
     "2001": [
         "2001",
@@ -3463,6 +3526,20 @@
         "PhonoR-0的信物",
         "MATERIAL",
         1100007
+    ],
+    "p_char_4188_confes": [
+        "p_char_4188_confes",
+        "p_char_4188_confes",
+        "CONFESS-47的信物",
+        "MATERIAL",
+        1100008
+    ],
+    "CONFESS-47的信物": [
+        "p_char_4188_confes",
+        "p_char_4188_confes",
+        "CONFESS-47的信物",
+        "MATERIAL",
+        1100008
     ],
     "p_char_502_nblade": [
         "p_char_502_nblade",
@@ -6908,6 +6985,48 @@
         "MATERIAL",
         700166
     ],
+    "p_char_4187_graceb": [
+        "p_char_4187_graceb",
+        "p_char_4187_graceb",
+        "聆音的信物",
+        "MATERIAL",
+        700167
+    ],
+    "聆音的信物": [
+        "p_char_4187_graceb",
+        "p_char_4187_graceb",
+        "聆音的信物",
+        "MATERIAL",
+        700167
+    ],
+    "p_char_4191_tippi": [
+        "p_char_4191_tippi",
+        "p_char_4191_tippi",
+        "蒂比的信物",
+        "MATERIAL",
+        700168
+    ],
+    "蒂比的信物": [
+        "p_char_4191_tippi",
+        "p_char_4191_tippi",
+        "蒂比的信物",
+        "MATERIAL",
+        700168
+    ],
+    "p_char_4198_christ": [
+        "p_char_4198_christ",
+        "p_char_4198_christ",
+        "Miss.Christine的信物",
+        "MATERIAL",
+        700169
+    ],
+    "Miss.Christine的信物": [
+        "p_char_4198_christ",
+        "p_char_4198_christ",
+        "Miss.Christine的信物",
+        "MATERIAL",
+        700169
+    ],
     "p_char_103_angel": [
         "p_char_103_angel",
         "p_char_103_angel",
@@ -8419,6 +8538,62 @@
         "Mon3tr的信物",
         "MATERIAL",
         600108
+    ],
+    "p_char_1041_angel2": [
+        "p_char_1041_angel2",
+        "p_char_1041_angel2",
+        "新约能天使的信物",
+        "MATERIAL",
+        600109
+    ],
+    "新约能天使的信物": [
+        "p_char_1041_angel2",
+        "p_char_1041_angel2",
+        "新约能天使的信物",
+        "MATERIAL",
+        600109
+    ],
+    "p_char_4193_lemuen": [
+        "p_char_4193_lemuen",
+        "p_char_4193_lemuen",
+        "蕾缪安的信物",
+        "MATERIAL",
+        600110
+    ],
+    "蕾缪安的信物": [
+        "p_char_4193_lemuen",
+        "p_char_4193_lemuen",
+        "蕾缪安的信物",
+        "MATERIAL",
+        600110
+    ],
+    "p_char_4194_rmixer": [
+        "p_char_4194_rmixer",
+        "p_char_4194_rmixer",
+        "信仰搅拌机的信物",
+        "MATERIAL",
+        600111
+    ],
+    "信仰搅拌机的信物": [
+        "p_char_4194_rmixer",
+        "p_char_4194_rmixer",
+        "信仰搅拌机的信物",
+        "MATERIAL",
+        600111
+    ],
+    "p_char_1042_phatm2": [
+        "p_char_1042_phatm2",
+        "p_char_1042_phatm2",
+        "酒神的信物",
+        "MATERIAL",
+        600112
+    ],
+    "酒神的信物": [
+        "p_char_1042_phatm2",
+        "p_char_1042_phatm2",
+        "酒神的信物",
+        "MATERIAL",
+        600112
     ],
     "class_p_char_123_fang": [
         "class_p_char_123_fang",
@@ -10757,19 +10932,5 @@
         "高级材料提货券",
         "CONSUME",
         30201
-    ],
-    "SINGLE_60_0_1_GACHA": [
-        "SINGLE_60_0_1_GACHA",
-        "SINGLE_60_0_1_GACHA",
-        "指令重构寻访凭证",
-        "NORMAL",
-        40003
-    ],
-    "指令重构寻访凭证": [
-        "SINGLE_60_0_1_GACHA",
-        "SINGLE_60_0_1_GACHA",
-        "指令重构寻访凭证",
-        "NORMAL",
-        40003
     ]
 }

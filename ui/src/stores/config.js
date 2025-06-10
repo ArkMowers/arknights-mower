@@ -32,12 +32,14 @@ export const useConfigStore = defineStore('config', () => {
   const maa_mall_buy = ref('')
   const maa_mall_blacklist = ref('')
   const shop_list = ref([])
+  const item_list = ref([])
   const maa_gap = ref(false)
   const simulator = ref({ name: '', index: -1 })
   const resting_threshold = ref(50)
   const fia_threshold = ref(90)
   const rescue_threshold = ref(75)
   const favorite = ref([])
+  const workshop_settings = ref([])
   const theme = ref('light')
   const tap_to_launch_game = ref(false)
   const exit_game_when_idle = ref(true)
@@ -101,6 +103,18 @@ export const useConfigStore = defineStore('config', () => {
       })
     }
     shop_list.value = mall_list
+  }
+
+  async function load_item() {
+    const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/item`)
+    const mall_list = []
+    for (const i of response.data) {
+      mall_list.push({
+        value: i,
+        label: i
+      })
+    }
+    item_list.value = mall_list
   }
 
   async function load_config() {
@@ -188,6 +202,7 @@ export const useConfigStore = defineStore('config', () => {
     visit_friend.value = response.data.visit_friend
     credit_fight.value = response.data.credit_fight
     custom_screenshot.value = response.data.custom_screenshot
+    workshop_settings.value = response.data.workshop_settings
     check_for_updates.value = response.data.check_for_updates
     notification_level.value = response.data.notification_level
     waiting_scene.value = response.data.waiting_scene
@@ -286,6 +301,7 @@ export const useConfigStore = defineStore('config', () => {
       visit_friend: visit_friend.value,
       credit_fight: credit_fight.value,
       custom_screenshot: custom_screenshot.value,
+      workshop_settings: workshop_settings.value,
       check_for_updates: check_for_updates.value,
       notification_level: notification_level.value,
       waiting_scene: waiting_scene.value,
@@ -337,6 +353,8 @@ export const useConfigStore = defineStore('config', () => {
     maa_mall_blacklist,
     load_shop,
     shop_list,
+    load_item,
+    item_list,
     maa_gap,
     build_config,
     simulator,
@@ -344,6 +362,7 @@ export const useConfigStore = defineStore('config', () => {
     fia_threshold,
     rescue_threshold,
     favorite,
+    workshop_settings,
     theme,
     tap_to_launch_game,
     exit_game_when_idle,

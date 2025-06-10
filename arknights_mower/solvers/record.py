@@ -494,3 +494,33 @@ def get_trading_history(start_date: str, end_date: str):
         for date, stats in result_dict.items()
     ]
     return result_list
+
+
+def save_inventory_counts(inventorys: dict[str, int]):
+    data = [(name, count) for name, count in inventorys.items()]
+    with sqlite3.connect(get_path("@app/tmp/data.db")) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "CREATE TABLE IF NOT EXISTS inventory (item_name TEXT PRIMARY KEY, count INTEGER)"
+        )
+        cursor.executemany(
+            "INSERT INTO inventory (item_name, count) VALUES (?, ?) "
+            "ON CONFLICT(item_name) DO UPDATE SET count = excluded.count",
+            data,
+        )
+        conn.commit()
+
+
+def get_inventory_counts(item_names: list[str] | None = None):
+    with sqlite3.connect(get_path("@app/tmp/data.db")) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "CREATE TABLE IF NOT EXISTS inventory (item_name TEXT PRIMARY KEY, count INTEGER)"
+        )
+        if not item_names:
+            cursor.execute("SELECT item_name, count FROM inventory")
+        else:
+            placeholders = ",".join(["?"] * len(item_names))
+            query = f"SELECT item_name, count FROM inventory WHERE item_name IN ({placeholders})"
+            cursor.execute(query, item_names)
+        return dict(cursor.fetchall())

@@ -4,8 +4,9 @@ const show = inject('show_task')
 const isLogPage = inject('add_task') || ref(false)
 import { storeToRefs } from 'pinia'
 import { usePlanStore } from '@/stores/plan'
+import { useConfigStore } from '@/stores/config'
 import axios from 'axios'
-
+const config_store = useConfigStore()
 const plan_store = usePlanStore()
 const { sub_plan, backup_plans, operators } = storeToRefs(plan_store)
 
@@ -13,19 +14,21 @@ import { useMowerStore } from '@/stores/mower'
 const mower_store = useMowerStore()
 const { get_task_id } = storeToRefs(mower_store)
 const { get_tasks } = mower_store
-
+const { workshop_settings } = storeToRefs(config_store)
 const task_list = ref([])
 const task_time = ref(new Date().getTime())
 const task_type = ref('空任务')
 const train_job = ref('术师')
 const skill_level = ref(1)
 const upgrade_support = ref([])
+const workshop_operator = ref('')
 const msg = ref('')
 const error = ref(false)
 const half_off = ref(true)
 const optimal = ref(false)
 const taskTypeOptions = [
   { label: '专精任务', value: '技能专精' },
+  { label: '加工任务', value: '加工材料' },
   { label: '空任务', value: '空任务' }
 ]
 const train_ope = {
@@ -68,7 +71,12 @@ const train_ope_3 = {
   辅助: { name: '浊心斯卡蒂', speed: 95 },
   特种: { name: '归溟幽灵鲨', speed: 95 }
 }
-
+const workshopOperatorOptions = computed(() => {
+  return workshop_settings.value.map((s) => ({
+    label: s.operator,
+    value: s.operator
+  }))
+})
 function update_tasks() {
   if (sub_plan.value != 'main' && !isLogPage.value) {
     const result = []
@@ -175,6 +183,14 @@ async function saveTasks() {
       }
       delete value.swap
     }
+  } else if (task_type.value == '加工材料') {
+    if (!workshop_operator.value) {
+      msg.value = '请先选择加工站工具人！'
+      error.value = true
+      return
+    }
+    task.meta_data = workshop_operator.value
+    task.plan = {}
   }
   const req = { task, upgrade_support: data }
   msg.value = (await axios.post(`${import.meta.env.VITE_HTTP_URL}/task`, req)).data
@@ -315,7 +331,7 @@ const swap_30 = [
       <template v-else>任务</template>
     </template>
     <n-scrollbar
-      v-if="!isLogPage || task_type != '技能专精'"
+      v-if="!isLogPage || task_type == '空任务'"
       style="max-height: 80vh; margin-top: 8px"
     >
       <n-dynamic-input v-model:value="task_list" :on-create="new_task">
@@ -413,6 +429,22 @@ const swap_30 = [
           </template>
         </n-dynamic-input>
       </n-scrollbar>
+      <div class="task_row" v-if="task_type == '加工材料'">
+        <label>选择干员：</label>
+        <n-select
+          v-model:value="workshop_operator"
+          filterable
+          :options="workshopOperatorOptions"
+          :filter="(p, o) => pinyin_match(o.label, p)"
+          :render-label="render_op_label"
+          style="width: 178px"
+        />
+        <help-text>
+          <div>
+            自身上限检查和子材料下限检查会有延迟，因为数据是从森空岛接口拿的，不是读取游戏内的
+          </div>
+        </help-text>
+      </div>
       <div class="task_row button_row">
         <div style="margin-right: auto">
           <label v-if="error" style="color: red">{{ msg }}</label>

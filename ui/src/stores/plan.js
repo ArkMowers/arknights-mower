@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import { ref, watchEffect, computed, inject } from 'vue'
 import axios from 'axios'
 import { deepcopy } from '@/utils/deepcopy'
+import { useConfigStore } from '@/stores/config'
+import { storeToRefs } from 'pinia'
 
 export const usePlanStore = defineStore('plan', () => {
   const ling_xi = ref(1)
@@ -132,6 +134,10 @@ export const usePlanStore = defineStore('plan', () => {
   }
 
   async function load_plan() {
+    const config_store = useConfigStore()
+    const { dorm_order } = storeToRefs(config_store)
+    // 新排班表重置宿舍优先级
+    dorm_order.value = []
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/plan`)
     ling_xi.value = response.data.conf.ling_xi
     exhaust_require.value = str2list(response.data.conf.exhaust_require)

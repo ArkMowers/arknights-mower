@@ -494,6 +494,9 @@ class Arknights数据处理器:
         font25 = ImageFont.truetype(
             "arknights_mower/fonts/SourceHanSansCN-Medium.otf", 25
         )
+        font23 = ImageFont.truetype(
+            "arknights_mower/fonts/SourceHanSansCN-Medium.otf", 23
+        )
 
         font27 = ImageFont.truetype(
             "arknights_mower/fonts/SourceHanSansCN-Medium.otf", 27
@@ -514,6 +517,8 @@ class Arknights数据处理器:
                         font = font27
                     else:
                         font = font25
+                elif operator == "Miss.Christine":
+                    font = font23
                 elif len(operator) == 6:
                     font = font30
             img = Image.new(mode="L", size=(400, 100))
@@ -534,6 +539,12 @@ class Arknights数据处理器:
                         2:4
                     ]  # getbbox 返回 (x1, y1, x2, y2)
                     x += char_width
+            elif operator == "Miss.Christine":
+                x, y = 50, 20
+                for i, char in enumerate(operator):
+                    draw.text((x, y), char, fill=(255,), font=font)
+                    char_width, char_height = font.getbbox(char)[2:4]
+                    x += char_width - 1
             else:
                 draw.text((50, 20), operator, fill=(255,), font=font)
 
@@ -698,6 +709,40 @@ class Arknights数据处理器:
                     else:
                         print(f"跳过: {dest_file_path} 已存在")
 
+    def 获取加工站配方类别(self):
+        配方类别 = {}
+        种类 = set([])
+
+        # 从基建表获取所有配方
+        配方数据 = self.基建表.get("workshopFormulas", {})
+
+        # 遍历所有配方
+        for 配方ID, 配方信息 in 配方数据.items():
+            # 从物品表获取配方产出物品的名称
+            物品ID = 配方信息.get("itemId")
+            物品名称 = self.物品表["items"].get(物品ID, {}).get("name", 物品ID)
+            子类材料 = [
+                self.物品表["items"].get(i["id"], {}).get("name")
+                for i in 配方信息.get("costs")
+            ]
+            # 获取配方类型
+            配方类型 = 配方信息.get("formulaType")
+            种类.add(配方类型)
+            # 添加到结果字典中
+            # 会有重复
+            if 物品名称 == "家具零件":
+                物品名称 += "_" + 子类材料[0]
+            配方类别[物品名称] = {
+                "tab": formulaType[配方类型],
+                "apCost": 配方信息.get("apCost") / 360000,
+                "goldCost": 配方信息.get("goldCost"),
+                "items": 子类材料,
+            }
+        with open(
+            "./arknights_mower/data/workshop_formula.json", "w", encoding="utf8"
+        ) as json_file:
+            json.dump(配方类别, json_file, ensure_ascii=False, indent=4)
+
 
 roomType = {
     "POWER": "发电站",
@@ -710,10 +755,14 @@ roomType = {
     "TRAINING": "训练室",
     "CONTROL": "中枢",
 }
-
+formulaType = {
+    "F_SKILL": "技巧概要",
+    "F_ASC": "芯片",
+    "F_BUILDING": "基建材料",
+    "F_EVOLVE": "精英材料",
+}
 
 数据处理器 = Arknights数据处理器()
-
 
 数据处理器.添加物品()  # 显示在仓库里的物品
 
@@ -726,7 +775,6 @@ roomType = {
 # 和 数据处理器.添加物品() 有联动 ， 添加物品提供了分类的图片位置
 数据处理器.批量训练并保存扫仓库模型()
 print("批量训练并保存扫仓库模型,完成")
-
 
 数据处理器.训练在房间内的干员名的模型()
 print("训练在房间内的干员名的模型,完成")
@@ -744,3 +792,5 @@ print("训练选中的干员名的模型,完成")
 数据处理器.添加基建技能图标()
 
 数据处理器.load_recruit_resource()
+
+数据处理器.获取加工站配方类别()

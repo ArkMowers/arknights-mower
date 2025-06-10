@@ -363,6 +363,14 @@ class Recognizer:
             self.scene = Scene.LOGIN_BILIBILI_PRIVACY
         elif self.find("login_captcha"):
             self.scene = Scene.LOGIN_CAPTCHA
+        elif self.find("factory_dashboard"):
+            self.scene = Scene.FACTORY_DASHBOARD
+        elif self.find("factory_formula"):
+            self.scene = Scene.FACTORY_FORMULA
+        elif self.find("factory_product_collect"):
+            self.scene = Scene.FACTORY_PRODUCT_COLLECT
+        elif self.find("factory_tag"):
+            self.scene = Scene.FACTORY_ROOM
 
         # 没弄完的
         # elif self.find("ope_elimi_finished"):
@@ -638,6 +646,36 @@ class Recognizer:
 
         return self.scene
 
+    def get_factory_scene(self) -> int:
+        """
+        加工站场景
+        """
+        if self.scene != Scene.UNDEFINED:
+            return self.scene
+        # 连接中，优先级最高
+        if self.find("connecting"):
+            self.scene = Scene.CONNECTING
+        elif self.find("infra_overview"):
+            self.scene = Scene.INFRA_MAIN
+        elif self.find("factory_dashboard"):
+            self.scene = Scene.FACTORY_DASHBOARD
+        elif self.find("factory_formula"):
+            # 这是一个filter ，鉴于自动的话不会动，用来识别界面
+            self.scene = Scene.FACTORY_FORMULA
+        elif self.find("factory_product_collect"):
+            self.scene = Scene.FACTORY_PRODUCT_COLLECT
+        elif self.find("factory_tag"):
+            self.scene = Scene.FACTORY_ROOM
+        else:
+            self.scene = Scene.UNKNOWN
+            self.check_current_focus()
+
+        logger.info(f"Scene: {self.scene}: {SceneComment[self.scene]}")
+
+        self.check_loading_time()
+
+        return self.scene
+
     def is_black(self) -> None:
         """check if the current scene is all black"""
         return np.max(self.gray[:, 105:-105]) < 16
@@ -698,7 +736,7 @@ class Recognizer:
             # "infra_overview": (54, 135),
             "infra_overview_in": (64, 705),
             # "infra_todo": (13, 1013),
-            "loading2": (620, 247),
+            "loading2": (630, 240),
             "loading7": (106, 635),
             "login_account": (622, 703),
             "login_awake": (888, 743),
@@ -802,7 +840,7 @@ class Recognizer:
             "friend_list": (61, 306),
             "credit_visiting": (78, 220),
             "loading": (736, 333),
-            "loading2": (620, 247),
+            "loading2": (630, 240),
             "loading3": (1681, 1000),
             "loading4": (828, 429),
             "main_theme": (283, 945),

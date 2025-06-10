@@ -9,6 +9,9 @@ agent_list = json.loads(Path(f"{__rootdir__}/data/agent.json").read_text("utf-8"
 agent_profession = json.loads(
     Path(f"{__rootdir__}/data/agent_profession.json").read_text("utf-8")
 )
+workshop_formula = json.loads(
+    Path(f"{__rootdir__}/data/workshop_formula.json").read_text("utf-8")
+)
 
 # # agents base skills
 # agent_base_config = json.loads(

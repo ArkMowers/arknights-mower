@@ -61,7 +61,7 @@ class Operators:
         self.clues = []
         self.current_room_changed_callback = None
         self.party_time = None
-        self.profession_filter = agent_arrange_order["职介选择开关"]
+        self.profession_filter = set(agent_arrange_order["职介选择开关"])
         self.eval_model = base_eval_model.clone()
         self.eval_model.nodes.extend(["Call", "Attribute"])
         self.eval_model.attributes.extend(
@@ -640,6 +640,8 @@ class Operators:
                 current_mood += v.current_mood() - v.lower_limit
                 total_mood += v.upper_limit - v.lower_limit
                 count += 1
+        if total_mood == 0:
+            return 0
         logger.debug(
             f"当前工作总计高效组：{count}, 当前平均心情百分比 {current_mood / total_mood}"
         )
@@ -795,7 +797,7 @@ class Operator:
         self.depletion_rate = depletion_rate
         self.time_stamp = time_stamp
         self.workaholic = False
-        self.arrange_order = [2, "false"]
+        self.arrange_order = ["技能", "false"]
         self.exhaust_time = None
 
     @property
@@ -874,6 +876,8 @@ class Operator:
             return self.mood
 
     def predict_exhaust(self):
+        if self.workaholic or self.exhaust_require or self.room in ["factory", "train"]:
+            return datetime.now() + timedelta(hours=24)
         remaining_mood = self.mood - self.lower_limit  # 剩余心情
         depletion_rate = self.depletion_rate  # 心情掉率，小时单位
         # 计算到心情归零所需时间（小时），再加上当前时间戳
@@ -882,13 +886,14 @@ class Operator:
                 hours=((remaining_mood / depletion_rate) - 0.5)
             )
             if self.exhaust_time is not None:
-                logger.debug("预测用尽时间:{predict}")
+                logger.debug(f"预测用尽时间:{predict}")
                 logger.debug(f"真实用尽时间：{self.exhaust_time}")
                 return min(predict, self.exhaust_time)
             else:
                 return predict
-        else:
-            return datetime.now() + timedelta(hours=24)
+        elif remaining_mood <= 0:
+            return datetime.now()
+        return datetime.now() + timedelta(hours=24)
 
     def __repr__(self):
         return f"Operator(name='{self.name}', room='{self.room}', index={self.index}, group='{self.group}', replacement={self.replacement}, resting_priority='{self.resting_priority}', current_room='{self.current_room}',exhaust_require={self.exhaust_require},mood={self.mood}, upper_limit={self.upper_limit}, rest_in_full={self.rest_in_full}, current_index={self.current_index}, lower_limit={self.lower_limit}, operator_type='{self.operator_type}',depletion_rate={self.depletion_rate},time_stamp='{self.time_stamp}',refresh_order_room = {self.refresh_order_room})"

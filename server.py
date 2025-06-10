@@ -46,7 +46,11 @@ def read_log():
         log_lines.append(msg)
         log_lines = log_lines[-100:]
         for ws in ws_connections:
-            ws.send(msg)
+            ws.send(
+                json.dumps(
+                    {"type": "log", "data": msg, "screenshot": get_latest_screenshot()}
+                )
+            )
 
 
 Thread(target=read_log, daemon=True).start()
@@ -111,6 +115,13 @@ def shop_list():
     from arknights_mower.data import shop_items
 
     return list(shop_items.keys())
+
+
+@app.route("/item")
+def item_list():
+    from arknights_mower.data import workshop_formula
+
+    return list(workshop_formula.keys())
 
 
 @app.route("/depot/readdepot")
@@ -206,7 +217,14 @@ def log(ws):
     global ws_connections
     global log_lines
 
-    ws.send("\n".join(log_lines))
+    ws.send(
+        json.dumps(
+            {
+                "type": "log",
+                "data": "\n".join(log_lines),  # 发送完整日志
+            }
+        )
+    )
     ws_connections.append(ws)
 
     from simple_websocket import ConnectionClosed
@@ -216,6 +234,27 @@ def log(ws):
             ws.receive()
     except ConnectionClosed:
         ws_connections.remove(ws)
+
+
+@app.route("/screenshots/<path:filename>")
+def serve_screenshot(filename):
+    """
+    提供截图文件的访问
+    """
+    screenshot_dir = get_path("@app/screenshot")
+    return send_from_directory(screenshot_dir, filename)
+
+
+@app.route("/latest-screenshot")
+def get_latest_screenshot():
+    """
+    返回最新截图的路径
+    """
+    from arknights_mower.utils.log import last_screenshot
+
+    if last_screenshot:
+        return last_screenshot
+    return ""
 
 
 def conn_send(text):
@@ -590,7 +629,7 @@ def test_skland():
 
 
 @app.route("/task", methods=["GET", "POST"])
-def get_count():
+def add_task():
     from arknights_mower.__main__ import base_scheduler
     from arknights_mower.data import agent_list
     from arknights_mower.utils.operators import SkillUpgradeSupport
@@ -647,7 +686,7 @@ def get_count():
                     base_scheduler.tasks.append(new_task)
                     logger.debug(f"成功：{str(new_task)}")
                     return "添加任务成功！"
-            raise Exception("添加任务失败！！")
+            raise Exception("添加任务失败！！请确保Mower正在运行")
         except Exception as e:
             logger.exception(f"添加任务失败：{str(e)}")
             return str(e)
