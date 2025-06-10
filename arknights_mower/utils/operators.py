@@ -72,7 +72,8 @@ class Operators:
                 "is_resting",
                 "current_mood",
                 "current_room",
-                "get_current_room",
+                "name",
+                "get_current_room_for_ui",
             ]
         )
         self.power_plant_count = 0
@@ -417,6 +418,65 @@ class Operators:
             return None
         else:
             return res
+
+    def get_current_room_for_ui(self, room, bypass=False, room_index=None , model=None):
+        """供前端调用，简化前端调用代码
+        :param room:
+        :param bypass:
+        以上保持原 get_current_room 参数作用, 删除 current_index
+
+        :param room_index: 获取当前房间指定位置的干员
+        :param model: 前端可传入当前模式选项
+            model状态 -->
+            默认 None:
+                position 输出当前位置干员;
+            可选:
+                mood 输出干员心情;
+                is_high 是否为高效组;"""
+
+        def str_list(index):
+            if isinstance(index, str):
+                return [int(x) for x in index.split(",")]
+            elif isinstance(index, int):
+                return [index]
+            return None
+
+        # current_index= str_list(current_index)
+        gcr=self.get_current_room(room, bypass)
+
+        if gcr is None or len(gcr) == 0:
+            return None
+
+        room_index = str_list(room_index)
+        if room_index is not None:
+            gcr = [gcr[index] for index in room_index]  if len(room_index) > 1 else gcr[room_index[0]]
+
+        if gcr is None or (model is None or model == 'position'):
+            return gcr
+
+        if model == 'mood':
+            return [self.operators[op].current_mood() for op in gcr]
+
+        if model == 'is_high':
+            return [self.operators[op].is_high() for op in gcr]
+
+        return None
+
+    # 组干员数据暂时没应用场景先搁置
+    # def get_group_info(self, group_name, model):
+    #     if group_name not in self.groups:
+    #         return None
+    #
+    #     group_info = []
+    #     for member in self.groups[group_name]:
+    #         operator = self.operators[member]
+    #         group_info.append({
+    #             "name": operator.name,
+    #             "current_room": operator.current_room,
+    #             "mood": operator.current_mood(),
+    #             "exhaust_time": operator.predict_exhaust(),
+    #         })
+    #     return group_info
 
     def predict_fia(self, operators, fia_mood, hours=240):
         recover_hours = (24 - fia_mood) / 2

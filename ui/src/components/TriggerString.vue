@@ -39,25 +39,35 @@ const op_data = computed(() => {
       operator: x[1]
     }
   }
-  //GCR模式匹配
-  x = data.value.match(/^(?!.*current_mood\(\))(\(?op_data\.get_current_room\('(.+?)'(?:,\s*True)?\)(?:\[(\d+)\])?(?:\sor\sNone)?\)?)$/)
+  x = data.value.match(/op_data.operators\['(.+?)'\].name/)
   if (x && x[0] == data.value) {
     return {
-      type: 'gcr',
-      room: x[2],  // 分组索引变化
-      position: x[3] ? parseInt(x[3]) : 'ALL',
-      attribute: 'position'
+      type: 'name',
+      operator: x[1]
     }
   }
-
-  //GCR心情模式
-  x = data.value.match(/\(op_data\.get_current_room\('(.+?)'(?:,\s*True)?\)(?:\[(\d+)\])?\sor\sNone\)\sand\sop_data\.operators\[.+\]\.current_mood\(\)/)
+  //GCR模式匹配
+  x = data.value.match(
+    /^op_data\.get_current_room_for_ui\(\s*'(.+?)'\s*(?:,\s*(True|False))?\s*(?:,\s*(None|\d+|'[\d,]+'))?\s*(?:,\s*'(.+?)'\s*)?\)$/
+  )
   if (x && x[0] == data.value) {
+    let position
+    if (!x[3] || x[3] === 'None') {
+      position = 'ALL'
+    } else if (x[3].startsWith("'")) {
+      // 去掉引号后直接使用（如 '0,1' → '0,1'）
+      position = x[3].slice(1, -1)
+    } else {
+      // 单个数字（如 0）
+      position = parseInt(x[3])
+    }
     return {
       type: 'gcr',
       room: x[1],
-      position: x[2] ? parseInt(x[2]) : 0,
-      attribute: 'mood'
+      bypass: x[2] === 'True',
+      // position: x[3] ? parseInt(x[3]) : 'ALL',
+      position: position,
+      attribute: x[4] || 'position'
     }
   }
   if (data.value == 'op_data.party_time') {
@@ -90,6 +100,7 @@ const type_options = [
 ]
 
 const op_options = [
+  { label: '名称', value: 'name' },
   { label: '心情', value: 'mood' },
   { label: '当前位置', value: 'room' },
   { label: '在工作', value: 'working' },
@@ -120,28 +131,25 @@ const gcr_options = [
 
 //GCR属性选项
 const gcr_attribute_options = [
-  { 
-    label: '干员名称', 
-    value: 'position',
-    buildExpression: (room, pos) => getOperatorExpr(room, pos)
+  {
+    label: '干员名称',
+    value: 'position'
   },
-  { 
-    label: '心情值', 
+  {
+    label: '心情值',
     value: 'mood',
-    buildExpression: (room, pos) =>{
-      if (pos === 'ALL') {
-        // return `[op.current_mood() for op in ${getOperatorExpr(room, pos)} if op]`
-        return getOperatorExpr(room, pos)
-      }
-            const expr = getOperatorExpr(room, pos)
-      return `${expr} and op_data.operators[${expr}].current_mood()`
-    }
+    attribute: 'mood'
+  },
+  {
+    label: '是否在高效组',
+    value: 'is_high',
+    attribute: 'is_high'
   }
-  // 未来可以方便地添加新属性
+  // 未来可扩展模板
   // {
   //   label: '技能',
   //   value: 'skill',
-  //   buildExpression: (room, pos) => `...`
+  //   attribute: 'skill'
   // }
 ]
 
@@ -152,7 +160,7 @@ function set_op_type(v) {
   } else if (v == 'impart') {
     data.value = 'op_data.party_time'
   } else if (v == 'gcr') {
-    data.value = "op_data.get_current_room('dormitory_1')"
+    data.value = "op_data.get_current_room_for_ui('dormitory_1')"
   }
 }
 
@@ -171,6 +179,8 @@ function build_data(op, type) {
     data.value = x + 'current_room'
   } else if (type == 'mood') {
     data.value = x + 'current_mood()'
+  } else if (type == 'name') {
+    data.value = x + 'name'
   } else {
     data.value = ''
   }
@@ -188,61 +198,97 @@ function update_type(type) {
 function update_gcr(room, pos, attribute = 'position') {
   const currentRoom = getCurrentRoom(room)
   const roomConfig = getRoomConfig(currentRoom)
-  // const isSinglePos = roomConfig?.positions === 1
-  const effectivePos = calculateEffectivePosition(pos, roomConfig, roomConfig?.positions === 1);
+  const effectivePos = calculateEffectivePosition(pos, roomConfig, roomConfig?.positions === 1)
+  const bypass = op_data.value.bypass || false
 
-  const attributeConfig = gcr_attribute_options.find(opt => opt.value === attribute)
-  data.value = attributeConfig?.buildExpression(currentRoom, effectivePos)
-            || getOperatorExpr(currentRoom, effectivePos);
+  // 获取选中的属性配置
+  const attributeConfig = gcr_attribute_options.find((opt) => opt.value === attribute) || {}
+
+  data.value = getOperatorExpr({
+    room: currentRoom,
+    room_index: effectivePos !== 'ALL' ? effectivePos : undefined,
+    bypass,
+    attribute: attributeConfig.attribute // 自动从配置读取
+  })
 }
 
 function getCurrentRoom(room = false) {
-  return room || op_data.value.room || 'dormitory_1';
+  return room || op_data.value.room || 'dormitory_1'
 }
 
-function getRoomConfig(room){
-  return gcr_options.find(r => r.value === room)
+function getRoomConfig(room) {
+  return gcr_options.find((r) => r.value === room)
 }
 //处理位置状态
 function calculateEffectivePosition(pos, roomConfig, isSinglePos) {
-  // const maxPos = roomConfig ?  roomConfig.positions - 1 : 0
-  // const effectivePos = isSinglePos ? 0 : 
-  //                    (pos !== undefined ? (pos === 'ALL' ? pos : Math.min(pos, maxPos)) : (op_data.value.position || 'ALL'))
-  if (isSinglePos) return 0;
-  if (pos === undefined) return op_data.value.position || 'ALL';
+  if (isSinglePos) return undefined
+  if (pos === undefined) return op_data.value.position || 'ALL'
 
-  const maxPos = roomConfig ? roomConfig.positions - 1 : 0;
-  return pos === 'ALL' ? pos : Math.min(pos, maxPos);
+  const maxPos = roomConfig ? roomConfig.positions - 1 : 0
+  return pos === 'ALL' ? pos : Math.min(pos, maxPos)
 }
 
 //获取干员的基础表达式
-function getOperatorExpr(room, pos) {
-  const roomExpr = `op_data.get_current_room('${room}'${pos === 'ALL' ? '' : ', True'})`;
-  return pos === 'ALL' ? roomExpr : `(${roomExpr}[${pos}] or None)`;
-}
+function getOperatorExpr({ room, room_index, bypass = false, attribute = null }) {
+  if (!room) throw new Error('room is required')
 
+  // 参数默认值
+  const defaultParams = {
+    bypass: 'False',
+    room_index: 'None',
+    attribute: 'None'
+  }
+
+  // 实际要传递的参数
+  const passedParams = {
+    room: `'${room}'`,
+    ...(bypass !== false && { bypass: bypass ? 'True' : 'False' }),
+    ...(room_index !== undefined && { room_index }),
+    ...(attribute !== null && { attribute: `'${attribute}'` })
+  }
+
+  // 合并参数，确保顺序正确
+  const orderedParams = [
+    passedParams.room,
+    passedParams.bypass !== undefined ? passedParams.bypass : defaultParams.bypass,
+    passedParams.room_index !== undefined ? passedParams.room_index : defaultParams.room_index,
+    passedParams.attribute !== undefined ? passedParams.attribute : defaultParams.attribute
+  ]
+
+  // 移除多余的默认参数（从右向左）
+  let lastNonDefault = orderedParams.length
+  while (
+    lastNonDefault > 1 &&
+    orderedParams[lastNonDefault - 1] ===
+      defaultParams[Object.keys(defaultParams)[lastNonDefault - 2]]
+  ) {
+    lastNonDefault--
+  }
+
+  return `op_data.get_current_room_for_ui(${orderedParams.slice(0, lastNonDefault).join(', ')})`
+}
 //判断是否显示其它选项
-const showAttributeOptions = computed(() => {
-  const room = getCurrentRoom()
-  const roomConfig = getRoomConfig(room)
-  return roomConfig && (roomConfig.positions === 1 || op_data.value.position !== 'ALL')
-})
+// const showAttributeOptions = computed(() => {
+//   const room = getCurrentRoom()
+//   const roomConfig = getRoomConfig(room)
+//   return roomConfig && (roomConfig.positions === 1 || op_data.value.position !== 'ALL')
+// })
 //计算当前房间的位置选项
 const position_options = computed(() => {
   const room = getCurrentRoom()
   const roomConfig = getRoomConfig(room)
   if (!roomConfig) return []
-  
-  return roomConfig.positions > 1 ? [
-    { label: '全部位置', value: 'ALL' },
-    ...Array.from({ length: roomConfig.positions }, (_, i) => ({
-      label: `位置 ${i + 1}`,
-      value: i
-    }))
-  ] : []
+
+  return roomConfig.positions > 1
+    ? [
+        { label: '全部位置', value: 'ALL' },
+        ...Array.from({ length: roomConfig.positions }, (_, i) => ({
+          label: `位置 ${i + 1}`,
+          value: i
+        }))
+      ]
+    : []
 })
-
-
 
 import { pinyin_match } from '@/utils/common'
 import { render_op_label } from '@/utils/op_select'
@@ -311,7 +357,7 @@ const custom_tips = [
       :on-update:value="(v) => update_gcr(v, op_data.position, op_data.attribute)"
       style="min-width: 220px"
     />
-    
+
     <n-select
       v-if="position_options.length > 0"
       :value="op_data.position"
@@ -319,9 +365,9 @@ const custom_tips = [
       :on-update:value="(v) => update_gcr(op_data.room, v, op_data.attribute)"
       style="min-width: 100px; margin-left: 8px"
     />
-    
+
+    <!-- v-if="showAttributeOptions" -->
     <n-select
-      v-if="showAttributeOptions"
       :value="op_data.attribute || 'position'"
       :options="gcr_attribute_options"
       :on-update:value="(v) => update_gcr(op_data.room, op_data.position, v)"
