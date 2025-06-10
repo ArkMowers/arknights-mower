@@ -487,8 +487,12 @@ def try_workshop_tasks(op_data, tasks):
                 valid = True
                 op_data.add(Operator(item.operator, ""))
             match = False
+            base_material_match = False
+            non_base_material_match = False
             for material in item.items:
                 name = material.item_name
+                if name.startswith("家具零件"):
+                    name = "家具零件"
                 metadata = workshop_formula[name]
                 if (
                     name in inventory_data
@@ -499,8 +503,17 @@ def try_workshop_tasks(op_data, tasks):
                         for child_name in metadata["items"]
                     )
                 ):
-                    match = True
+                    # 九色鹿特殊逻辑：需要同时匹配基建材料和非基建材料
+                    if item.operator == "九色鹿":
+                        if metadata["tab"] == "基建材料":
+                            base_material_match = True
+                        else:
+                            non_base_material_match = True
+                    else:
+                        match = True
                     break
+            if item.operator == "九色鹿":
+                match = base_material_match and non_base_material_match
             if match and valid:
                 logger.info(f"{item.operator}满足使用条件:, 生成加工站任务")
                 task = SchedulerTask(

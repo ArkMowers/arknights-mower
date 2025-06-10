@@ -970,10 +970,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 "技巧概要": (self.recog.w * 0.1, self.recog.h * 0.45),
                 "芯片": (self.recog.w * 0.1, self.recog.h * 0.57),
             }
-            ap_cost = 0
+            current_material = None
             tasks = ["enter", "select", "process"]
+            inf_material = "基建材料"
             gap = 0
-            crit = False
             while tasks:
                 scene = self.factory_scene()
                 if scene == Scene.UNKNOWN:
@@ -1003,23 +1003,30 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     else:
                         add_btn = (self.recog.w * 0.84, self.recog.h * 0.4)
                         tap_count = 0
-                        if is_9colored and not crit:
+                        ap_cost = current_material["apCost"]
+                        material_tab = current_material["tab"]
+                        if is_9colored:
                             mood = self.op_data.operators[agent].mood
                             gap = 40 - self.get_number((290, 335, 95, 200))
                             logger.debug(f"九色鹿技能差值{gap}")
                             if gap > 40:
                                 logger.error("识别九色鹿阈值出错拉!任务停止")
                                 return
-                            elif 0 < gap < 5 and mood >= 4:
-                                tasks.insert(0, "select")
-                                logger.info(
-                                    "检测到九色鹿即将暴击，即将切换成暴击用材料"
-                                )
-                                crit = True
-                                continue
-                            elif gap <= mood:
+                            if 0 < gap < 5 and mood >= 4:
+                                if material_tab == inf_material:
+                                    tasks.insert(0, "select")
+                                    logger.info(
+                                        "检测到九色鹿即将暴击，即将切换成暴击用材料"
+                                    )
+                                    continue
+                            if gap >= 5:
+                                if material_tab != inf_material:
+                                    tasks.insert(0, "select")
+                                    logger.info("切换成垫刀材料")
+                                    continue
+                            if gap <= mood:
                                 # 系统自带一次，少一次，一共减少2
-                                tap_count = gap / ap_cost - 2
+                                tap_count = gap // ap_cost - 2
                         max_btn = (self.recog.w * 0.95, self.recog.h * 0.4)
                         produce_btn = (self.recog.w * 0.88, self.recog.h * 0.88)
                         if tap_count > 0:
@@ -1028,7 +1035,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             )
                             for _ in range(int(tap_count)):
                                 self.tap(add_btn, interval=0.1)
-                        elif not crit:
+                        else:
                             self.tap(max_btn, interval=0.5)
                         if self.find("factory_warning") or not self.item_valid():
                             if (
@@ -1059,18 +1066,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             # 更新心情
                             cost = tap_count * ap_cost if tap_count > 0 else 24
                             self.op_data.operators[agent].mood -= cost
-                            # 暴击完切换状态
-                            if crit:
-                                gap = 40 - self.get_number((290, 335, 95, 200))
-                                logger.debug(f"暴击完九色鹿技能差值{gap}")
-                                if gap > 5:
-                                    # 预设个不可能的值
-                                    crit = False
-                                    tasks.insert(0, "select")
-                                    tab_queue = deque(group.items())
-                                elif 0 < gap < 5:
-                                    # 非技能暴击则再点一次
-                                    continue
                 elif scene == Scene.FACTORY_FORMULA:
                     if tasks[0] in ["enter", "process"]:
                         self.back()
@@ -1103,14 +1098,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                             good_to_go = (
                                                 workshop_formula[item]["apCost"] == 4
                                                 and workshop_formula[item]["tab"]
-                                                != "基建材料"
+                                                != inf_material
                                             )
-                                            crit = True
                                         else:
                                             good_to_go = (
                                                 0 < workshop_formula[item]["apCost"] < 4
                                                 or workshop_formula[item]["tab"]
-                                                == "基建材料"
+                                                == inf_material
                                             )
                                     if valid and good_to_go:
                                         logger.info(f"检测到{item}满足条件，开始加工")
@@ -1121,7 +1115,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                             ),
                                             interval=0.5,
                                         )
-                                        ap_cost = workshop_formula[item]["apCost"]
+                                        current_material = workshop_formula[item]
                                         item_list = []
                                         del tasks[0]
                                         break
