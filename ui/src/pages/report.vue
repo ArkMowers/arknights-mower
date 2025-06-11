@@ -35,6 +35,11 @@
           <v-chart class="chart" :option="option_manufactor" />
         </div>
       </n-gi>
+      <n-gi v-if="show_earnings_chart">
+        <div class="report-card_1">
+          <v-chart class="chart" :option="option_earnings" />
+        </div>
+      </n-gi>
       <n-gi v-if="show_orundum_chart">
         <div class="report-card_1">
           <v-chart class="chart" :option="option_orundum" />
@@ -114,13 +119,34 @@ function handleSelect(key, option) {
   } else if (option.id == 1) {
     value_coefficient_gold.value = 0.8
     value_coefficient_lmb.value = 0.245
-    value_coefficient_exp.valuFe = 1
+    value_coefficient_exp.value = 1
   } else {
     isShow.value = true
   }
+  // 同步更新收益数据
+  ReportData.value.forEach((item) => {
+    getTradingHistory.value.forEach((count) => {
+      if (count['日期'] == item['日期']) {
+        if (count['龙舌兰']) {
+          item.龙舌兰赤金 = count['龙舌兰'] * 500
+        }
+      }
+    })
+    item.收益 = ((item['赤金'] + (item.龙舌兰赤金 || 0)) * value_coefficient_gold.value + item['龙门币订单'] * value_coefficient_lmb.value + item['作战录像'] * value_coefficient_exp.value) / 10000
+  })
 }
 function handleClick() {
   isShow.value = false
+  ReportData.value.forEach((item) => {
+    getTradingHistory.value.forEach((count) => {
+      if (count['日期'] == item['日期']) {
+        if (count['龙舌兰']) {
+          item.龙舌兰赤金 = count['龙舌兰'] * 500
+        }
+      }
+    })
+    item.收益 = ((item['赤金'] + (item.龙舌兰赤金 || 0)) * value_coefficient_gold.value + item['龙门币订单'] * value_coefficient_lmb.value + item['作战录像'] * value_coefficient_exp.value) / 10000
+  })
 }
 
 
@@ -139,6 +165,7 @@ const { getReportData, getOrundumData, getTradingHistory } = reportStore
 
 const show_iron_chart = ref(false)
 const show_orundum_chart = ref(false)
+const show_earnings_chart = ref(false)
 const sum_orundum = ref(0)
 const show_alert = ref(false)
 const ReportData = ref([])
@@ -151,12 +178,16 @@ onMounted(async () => {
     //往ReportData.value添加龙舌兰赤金数据
     ReportData.value.forEach((item) => {
       getTradingHistory.value.forEach((count) => {
-        if (count['日期'] == item['日期'] && count['龙舌兰']) {
-          item.龙舌兰赤金 = count['龙舌兰'] * 500
+        if (count['日期'] == item['日期']) {
+          if (count['龙舌兰']) {
+            item.龙舌兰赤金 = count['龙舌兰'] * 500
+          }
         }
       })
+      item.收益 = ((item['赤金'] + (item.龙舌兰赤金 || 0)) * value_coefficient_gold.value + item['龙门币订单'] * value_coefficient_lmb.value + item['作战录像'] * value_coefficient_exp.value) / 10000
     })
     show_iron_chart.value = true
+    show_earnings_chart.value = true
     if (HalfMonthData.value.length > 0) {
       show_orundum_chart.value = true
       sum_orundum.value = HalfMonthData.value[HalfMonthData.value.length - 1]['累计制造合成玉']
@@ -230,9 +261,8 @@ const option_manufactor = computed(() => {
         } else {
           params[0].data['龙舌兰赤金'] = 0
           total_earnings.value = (params[0].data['赤金'] + params[0].data['龙舌兰赤金']) * value_coefficient_gold.value + params[0].data['龙门币订单'] * value_coefficient_lmb.value + params[0].data['作战录像'] * value_coefficient_exp.value
-          
-        }
 
+        }
         const tip = `<div style="font-size:1.4rem;">
                         <span style="font-size:15px">${params[0].data['日期']}</span>  <br>
                         ${params[0].marker}    <span style="font-size:14px">${params[0].seriesName}:${params[0].data['赤金']}</span>  <br>
@@ -346,6 +376,96 @@ const option_manufactor = computed(() => {
     ]
   }
 })
+// 收益折线图
+const option_earnings = computed(() => {
+  // 只取最近7天的数据
+  const source = ReportData.value.length > 7
+    ? ReportData.value.slice(-7)
+    : ReportData.value
+  // 如果数据少于7天，则按照现有数据计算平均值
+  if (source.length < 7) {
+    const averageEarnings = source.reduce((sum, item) => sum + item.收益, 0) / source.length
+    source.forEach(item => {
+      item.收益 = averageEarnings
+    })
+  }
+  return {
+    title: [
+      {
+        text: '收益(近七日平均值：' + (source.reduce((sum, item) => sum + item.收益, 0) / source.length).toFixed(2) + ' 万)'
+      }
+    ],
+    legend: {
+      data: ['收益'],
+      selected: {
+        收益: true
+      }
+    },
+    toolbox: {
+      feature: {
+        dataView: { show: false, readOnly: false },
+        magicType: { show: true, type: ['line', 'bar'] },
+        restore: { show: true },
+        saveAsImage: {
+          show: true,
+          backgroundColor: '#FFFFFF'
+        }
+      }
+    },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: {
+        type: 'cross',
+        crossStyle: {
+          color: '#999'
+        }
+      }
+    },
+    dataset: {
+      dimensions: ['日期', '收益'],
+      source
+    },
+    xAxis: {
+      type: 'category',
+      axisPointer: {
+        type: 'shadow'
+      }
+    },
+    yAxis: {
+      type: 'value',
+      axisLine: {
+        show: true,
+        symbolOffset: 10, //箭头距离x轴末端距离
+        symbolSize: [35, 38] //箭头的宽高
+      },
+      axisLabel: {
+        formatter: '{value}'
+      }
+    },
+    series: [
+      {
+        type: 'line',
+        color: '#f5744f',
+        tooltip: {
+          valueFormatter(value) {
+            return value
+          }
+        },
+        label: {
+          show: true,
+          position: 'top',
+        }
+      }
+    ]
+  }
+})
+
+
+
+
+
+
+
 
 const option_orundum = computed(() => {
   return {
