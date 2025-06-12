@@ -977,7 +977,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             tasks = ["enter", "select", "process"]
             inf_material = "基建材料"
             gap = 0
+            start_time = datetime.now()
             while tasks:
+                if datetime.now() - start_time > timedelta(
+                    minutes=5
+                ):  # 检测是否超过 5 分钟
+                    raise Exception("循环运行时间超过 5 分钟，可能卡死")
                 scene = self.factory_scene()
                 if scene == Scene.UNKNOWN:
                     unknown_cnt += 1
