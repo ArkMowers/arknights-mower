@@ -3621,6 +3621,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 logger.info("MAA 启动")
                 hard_stop = False
                 while self.MAA.running():
+                    logger.info("MAA 运行中...")
+                    self.recog.update()
+                    self.recog.save_screencap(None)
                     # 单次任务默认5分钟
                     if one_time and stop_time < datetime.now():
                         self.maa_stop()
@@ -3718,6 +3721,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     maa_crash = True
                     while self.MAA.running():
                         csleep(5)
+                        logger.info("MAA 运行中...")
+                        self.recog.update()
+                        self.recog.save_screencap(None)
                         if (
                             self.tasks[0].time - datetime.now() < timedelta(seconds=30)
                             or config.stop_maa.is_set()
