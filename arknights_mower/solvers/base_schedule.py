@@ -1,5 +1,6 @@
 import copy
 import json
+import math
 import os
 import pathlib
 import sys
@@ -1003,7 +1004,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         )
                     else:
                         add_btn = (self.recog.w * 0.84, self.recog.h * 0.4)
-                        tap_count = 0
+                        tap_count = 99
                         ap_cost = current_material["apCost"]
                         material_tab = current_material["tab"]
                         if is_9colored:
@@ -1027,10 +1028,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                     continue
                             if gap <= mood:
                                 # 系统自带一次，少一次，一共减少2
-                                tap_count = gap // ap_cost - 2
+                                tap_count = math.ceil(gap / ap_cost) - 2
                         max_btn = (self.recog.w * 0.95, self.recog.h * 0.4)
                         produce_btn = (self.recog.w * 0.88, self.recog.h * 0.88)
-                        if tap_count > 0:
+                        if tap_count != 99:
                             logger.info(
                                 f"开始加工九色鹿{tap_count + 1}次 x {ap_cost} 心情消耗"
                             )
@@ -1136,6 +1137,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.tap((self.recog.w * 0.1, self.recog.h * 0.95), 0.5)
                 elif scene == Scene.INFRA_MAIN:
                     self.enter_room("factory")
+                self.recog.update()
             self.back()
             self.back_to_infrastructure()
         except Exception as e:
