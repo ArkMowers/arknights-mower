@@ -859,6 +859,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if len(fix_plan.keys()) > 0:
                 # 如果5分钟之内有任务则跳过心情读取
                 next_task = self.find_next_task()
+                next_shift_off = self.find_next_task(task_type=TaskTypes.SHIFT_OFF)
                 second = (
                     0
                     if next_task is None
@@ -869,7 +870,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     not force
                     and next_task is not None
                     and len(fix_plan.keys()) * 45 > second
-                ):
+                ) or next_shift_off is not None:
                     logger.info("有未完成的任务，跳过纠错")
                     self.skip()
                     return
