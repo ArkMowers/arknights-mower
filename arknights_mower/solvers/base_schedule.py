@@ -2572,11 +2572,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 current_list.add(n)
             elif n != "Free":
                 agents[idx] = "Free"
-            if (
-                room.startswith("dorm")
-                and agents[idx] in self.op_data.operators.keys()
-                and self.task.type != TaskTypes.FIAMMETTA
-            ):
+            if room.startswith("dorm") and agents[idx] in self.op_data.operators.keys():
                 __agent = self.op_data.operators[agents[idx]]
                 if __agent.mood == __agent.upper_limit and not __agent.room.startswith(
                     "dorm"
