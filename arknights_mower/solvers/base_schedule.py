@@ -928,6 +928,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         """
 
         try:
+            cultivateDepotSolver().start()
             unknown_cnt = 0
             inventory_data = get_inventory_counts()
             is_9colored = agent == "九色鹿"
