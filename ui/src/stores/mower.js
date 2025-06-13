@@ -26,13 +26,15 @@ export const useMowerStore = defineStore('mower', () => {
 
   const ws = ref(null)
   const running = ref(false)
+  const plan_condition = ref([])
   const waiting = ref(false)
 
   const first_load = ref(true)
 
   const get_task_id = ref(0)
   const task_list = ref([])
-
+  const sc_uri = ref('')
+  const speed_msg = ref([])
   function listen_ws() {
     let backend_url
     if (import.meta.env.DEV) {
@@ -43,13 +45,20 @@ export const useMowerStore = defineStore('mower', () => {
     const ws_url = backend_url.replace(/^http/, 'ws') + '/log'
     ws.value = new ReconnectingWebSocket(ws_url)
     ws.value.onmessage = (event) => {
-      log_lines.value = log_lines.value.concat(event.data.split('\n')).slice(-100)
+      const data = JSON.parse(event.data)
+      if (data.type === 'log') {
+        log_lines.value = log_lines.value.concat(data.data.split('\n')).slice(-100) // 追加日志
+        if (data.screenshot) {
+          sc_uri.value = data.screenshot
+        }
+      }
     }
   }
 
   async function get_running() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/running`)
-    running.value = response.data
+    running.value = response.data['running']
+    plan_condition.value = response.data['plan_condition']
   }
 
   async function get_tasks() {
@@ -68,12 +77,15 @@ export const useMowerStore = defineStore('mower', () => {
     log_lines,
     ws,
     running,
+    plan_condition,
     waiting,
     listen_ws,
     get_running,
     first_load,
     task_list,
     get_task_id,
-    get_tasks
+    get_tasks,
+    sc_uri,
+    speed_msg
   }
 })

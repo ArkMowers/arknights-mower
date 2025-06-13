@@ -67,6 +67,7 @@ class SKLand:
                 resp = requests.get(
                     ingame,
                     headers=self.get_sign_header(ingame, "get", body, self.header),
+                    timeout=30,
                 ).json()
                 with open("森空岛数据.json", "w", encoding="utf-8") as 保存:
                     json.dump(resp, 保存, ensure_ascii=False, indent=4)
@@ -83,7 +84,7 @@ class SKLand:
             headers=self.header_login,
         ).json()
         if r.get("status") != 0:
-            raise Exception(f'获得token失败：{r["msg"]}')
+            raise Exception(f"获得token失败：{r['msg']}")
         return r["data"]["token"]
 
     def get_cred_by_token(self, token):
@@ -99,7 +100,7 @@ class SKLand:
         if response.status_code != 200:
             raise Exception(f"获得认证代码失败：{resp}")
         if resp.get("status") != 0:
-            raise Exception(f'获得认证代码失败：{resp["msg"]}')
+            raise Exception(f"获得认证代码失败：{resp['msg']}")
         return resp["data"]["code"]
 
     def get_cred(self, grant):
@@ -107,7 +108,7 @@ class SKLand:
             cred_code_url, json={"code": grant, "kind": 1}, headers=self.header_login
         ).json()
         if resp["code"] != 0:
-            raise Exception(f'获得cred失败：{resp["message"]}')
+            raise Exception(f"获得cred失败：{resp['message']}")
         return resp["data"]
 
     def get_binding_list(self):
@@ -115,6 +116,7 @@ class SKLand:
         resp = requests.get(
             binding_url,
             headers=self.get_sign_header(binding_url, "get", None, self.header),
+            timeout=10,
         ).json()
 
         if resp["code"] != 0:

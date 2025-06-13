@@ -1,6 +1,24 @@
 <template>
   <div>
     <h1 class="page-title">工作休息比例报表</h1>
+    <div style="text-align: center; display: flex; justify-content: center; margin-bottom: 20px">
+      <n-date-picker
+        v-model:value="selectedTime"
+        type="datetime"
+        placeholder="选择时间"
+        style="width: 200px"
+      />
+      <n-button @click="showConfirm = true">清除时间之前的心情数据</n-button>
+    </div>
+    <n-modal
+      v-model:show="showConfirm"
+      preset="dialog"
+      title="确认删除"
+      content="您确定要删除选择时间之前的所有心情数据吗？该行为不可逆，如有需要，请前往temp文件夹备份db文件"
+      positive-text="确定"
+      negative-text="取消"
+      @positive-click="clearData"
+    />
     <n-grid
       :x-gap="12"
       :y-gap="8"
@@ -36,6 +54,7 @@ import {
   Tooltip,
   ArcElement
 } from 'chart.js'
+import axios from 'axios'
 const recordStore = useRecordStore()
 const { getMoodRatios } = recordStore
 
@@ -76,6 +95,20 @@ const pieOptions = ref({
     }
   }
 })
+const selectedTime = ref(new Date().getTime())
+const showConfirm = ref(false)
+const clearData = async () => {
+  try {
+    const req = { date_time: selectedTime.value }
+    await axios.delete(`${import.meta.env.VITE_HTTP_URL}/record/clear-data`, { data: req })
+    alert('数据已清除')
+  } catch (error) {
+    console.error('清除数据失败', error)
+    alert('清除数据失败，请重试')
+  } finally {
+    showConfirm.value = false
+  }
+}
 </script>
 
 <style scoped>

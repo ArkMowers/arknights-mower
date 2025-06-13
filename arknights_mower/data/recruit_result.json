@@ -36,7 +36,9 @@
         "char_356_broca",
         "char_279_excu",
         "char_346_aosta",
+        "char_338_iris",
         "char_171_bldsk",
+        "char_214_kafka",
         "char_158_milu",
         "char_218_cuttle",
         "char_241_panda",
@@ -64,8 +66,10 @@
         "char_126_shotst",
         "char_190_clour",
         "char_118_yuki",
+        "char_440_pinecn",
         "char_366_acdrop",
         "char_290_vigna",
+        "char_452_bstalk",
         "char_130_doberm",
         "char_289_gyuki",
         "char_193_frostl",
@@ -100,6 +104,7 @@
         "char_436_whispr",
         "char_148_nearl",
         "char_243_waaifu",
+        "char_455_nothin",
         "char_107_liskam",
         "char_201_moeshd",
         "char_163_hpsts",
@@ -110,8 +115,10 @@
         "char_195_glassb",
         "char_343_tknogi",
         "char_215_mantic",
+        "char_332_archet",
         "char_197_poca",
         "char_222_bpipe",
+        "char_362_saga",
         "char_358_lisa",
         "char_250_phatom",
         "char_400_weedy",
@@ -138,6 +145,7 @@
         "char_144_red",
         "char_340_shwaz",
         "char_225_haak",
+        "char_264_f12yin",
         "char_010_chen",
         "char_017_huang"
     ],
@@ -147,6 +155,7 @@
         "char_376_therex",
         "char_4000_jnight",
         "char_4093_frston",
-        "char_4136_phonor"
+        "char_4136_phonor",
+        "char_4188_confes"
     ]
 }

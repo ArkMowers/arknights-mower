@@ -1,4 +1,7 @@
+import os
 import smtplib
+from email import encoders
+from email.mime.base import MIMEBase
 from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -26,7 +29,7 @@ version_template = env.get_template("version.html")
 
 
 class Email:
-    def __init__(self, body, subject, attach_image):
+    def __init__(self, body, subject, attach_image, attach_files=None):
         conf = config.conf
         msg = MIMEMultipart()
         msg.attach(MIMEText(body, "html"))
@@ -41,6 +44,20 @@ class Email:
                 "Content-Disposition", "attachment", filename="image.jpg"
             )
             msg.attach(image_content)
+
+        if attach_files:
+            for file_path in attach_files:
+                if os.path.isfile(file_path):
+                    with open(file_path, "rb") as file:
+                        part = MIMEBase("application", "octet-stream")
+                        part.set_payload(file.read())
+                        encoders.encode_base64(part)
+                        part.add_header(
+                            "Content-Disposition",
+                            f"attachment; filename={os.path.basename(file_path)}",
+                        )
+                        msg.attach(part)
+
         self.msg = msg
 
         if conf.custom_smtp_server.enable:
@@ -52,7 +69,7 @@ class Email:
             self.port = 465
             self.encryption = "tls"
 
-    def send(self):
+    def send(self, recipient=None):
         if self.encryption == "starttls":
             s = smtplib.SMTP(self.smtp_server, self.port, timeout=10)
             s.starttls()
@@ -60,7 +77,7 @@ class Email:
             s = smtplib.SMTP_SSL(self.smtp_server, self.port, timeout=10)
         conf = config.conf
         s.login(conf.account, conf.pass_code)
-        recipient = conf.recipient or [conf.account]
+        recipient = (conf.recipient or [conf.account]) if not recipient else recipient
         s.send_message(self.msg, conf.account, recipient)
         s.quit()
 

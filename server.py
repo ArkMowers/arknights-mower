@@ -17,17 +17,18 @@ from flask_sock import Sock
 from tzlocal import get_localzone
 from werkzeug.exceptions import NotFound
 
-from arknights_mower import __system__
-from arknights_mower.solvers.record import load_state, save_state
+from arknights_mower import __system__, __version__
+from arknights_mower.solvers.record import clear_data, load_state, save_state
 from arknights_mower.utils import config
-from arknights_mower.utils.log import logger
+from arknights_mower.utils.datetime import get_server_time
+from arknights_mower.utils.log import get_log_by_time, logger
 from arknights_mower.utils.path import get_path
 
 mimetypes.add_type("text/html", ".html")
 mimetypes.add_type("text/css", ".css")
 mimetypes.add_type("application/javascript", ".js")
 
-app = Flask(__name__, static_folder="dist", static_url_path="")
+app = Flask(__name__, static_folder="ui/dist", static_url_path="")
 sock = Sock(app)
 CORS(app)
 
@@ -45,7 +46,11 @@ def read_log():
         log_lines.append(msg)
         log_lines = log_lines[-100:]
         for ws in ws_connections:
-            ws.send(msg)
+            ws.send(
+                json.dumps(
+                    {"type": "log", "data": msg, "screenshot": get_latest_screenshot()}
+                )
+            )
 
 
 Thread(target=read_log, daemon=True).start()
@@ -63,17 +68,17 @@ def require_token(f):
 
 @app.route("/<path:path>")
 def serve_index(path):
-    return send_from_directory("dist", path)
+    return send_from_directory("ui/dist", path)
 
 
 @app.errorhandler(404)
 def not_found(e):
     if (path := request.path).startswith("/docs"):
         try:
-            return send_from_directory("dist" + path, "index.html")
+            return send_from_directory("ui/dist" + path, "index.html")
         except NotFound:
             return "<h1>404 Not Found</h1>", 404
-    return send_from_directory("dist", "index.html")
+    return send_from_directory("ui/dist", "index.html")
 
 
 @app.route("/conf", methods=["GET", "POST"])
@@ -112,6 +117,13 @@ def shop_list():
     return list(shop_items.keys())
 
 
+@app.route("/item")
+def item_list():
+    from arknights_mower.data import workshop_formula
+
+    return list(workshop_formula.keys())
+
+
 @app.route("/depot/readdepot")
 def read_depot():
     from arknights_mower.utils import depot
@@ -121,7 +133,22 @@ def read_depot():
 
 @app.route("/running")
 def running():
-    return "true" if mower_thread and mower_thread.is_alive() else "false"
+    response = {
+        "running": bool(mower_thread and mower_thread.is_alive()),
+        "plan_condition": [],
+    }
+    if response["running"]:
+        from arknights_mower.__main__ import base_scheduler
+
+        if base_scheduler and mower_thread.is_alive():
+            response["plan_condition"] = list(base_scheduler.op_data.plan_condition)
+            for idx, plan in enumerate(base_scheduler.op_data.backup_plans):
+                if response["plan_condition"][idx]:
+                    response["plan_condition"][idx] = plan.name
+            response["plan_condition"] = [
+                name for name in response["plan_condition"] if name
+            ]
+    return response
 
 
 @app.route("/start/<start_type>")
@@ -190,7 +217,14 @@ def log(ws):
     global ws_connections
     global log_lines
 
-    ws.send("\n".join(log_lines))
+    ws.send(
+        json.dumps(
+            {
+                "type": "log",
+                "data": "\n".join(log_lines),  # 发送完整日志
+            }
+        )
+    )
     ws_connections.append(ws)
 
     from simple_websocket import ConnectionClosed
@@ -200,6 +234,27 @@ def log(ws):
             ws.receive()
     except ConnectionClosed:
         ws_connections.remove(ws)
+
+
+@app.route("/screenshots/<path:filename>")
+def serve_screenshot(filename):
+    """
+    提供截图文件的访问
+    """
+    screenshot_dir = get_path("@app/screenshot")
+    return send_from_directory(screenshot_dir, filename)
+
+
+@app.route("/latest-screenshot")
+def get_latest_screenshot():
+    """
+    返回最新截图的路径
+    """
+    from arknights_mower.utils.log import last_screenshot
+
+    if last_screenshot:
+        return last_screenshot
+    return ""
 
 
 def conn_send(text):
@@ -346,6 +401,41 @@ def get_mood_ratios():
     from arknights_mower.solvers import record
 
     return record.get_mood_ratios()
+
+
+@app.route("/report/restore-trading-history")
+def restoreTradingHistory():
+    from arknights_mower.utils.trading_order import TradingOrder
+
+    trading = TradingOrder()
+    return trading.restore_history()
+
+
+@app.route("/report/trading_history")
+def getTradingHistory():
+    start_date = request.args.get("startDate")
+    end_date = request.args.get("endDate")
+    if not start_date or not end_date:
+        end_date = str(get_server_time().date())
+        start_date = str((get_server_time() - datetime.timedelta(days=8)).date())
+    from arknights_mower.solvers import record
+
+    return record.get_trading_history(start_date, end_date)
+
+
+@app.route("/record/clear-data", methods=["DELETE"])
+def clear_data_route():
+    date_time_str = request.json.get("date_time")
+    logger.info(date_time_str)
+    if not date_time_str:
+        return "日期时间参数缺失", 400
+    try:
+        date_time = datetime.datetime.fromtimestamp(date_time_str / 1000.0)
+    except ValueError:
+        return "日期时间格式不正确", 400
+
+    clear_data(date_time)
+    return "数据已清除", 200
 
 
 @app.route("/getwatermark")
@@ -539,7 +629,7 @@ def test_skland():
 
 
 @app.route("/task", methods=["GET", "POST"])
-def get_count():
+def add_task():
     from arknights_mower.__main__ import base_scheduler
     from arknights_mower.data import agent_list
     from arknights_mower.utils.operators import SkillUpgradeSupport
@@ -592,11 +682,11 @@ def get_count():
                         if len(supports) == 0:
                             raise Exception("请添加专精工具人")
                         base_scheduler.op_data.skill_upgrade_supports = supports
-                        logger.error("更新专精工具人完毕")
+                        logger.info("更新专精工具人完毕")
                     base_scheduler.tasks.append(new_task)
                     logger.debug(f"成功：{str(new_task)}")
                     return "添加任务成功！"
-            raise Exception("添加任务失败！！")
+            raise Exception("添加任务失败！！请确保Mower正在运行")
         except Exception as e:
             logger.exception(f"添加任务失败：{str(e)}")
             return str(e)
@@ -615,3 +705,45 @@ def get_count():
             ]
         else:
             return []
+
+
+@app.route("/submit_feedback", methods=["POST"])
+@require_token
+def submit_feedback():
+    from arknights_mower.utils.email import Email
+
+    req = request.json
+    logger.debug(f"收到反馈务请求：{req}")
+    try:
+        log_files = []
+        logger.debug(__version__)
+        from arknights_mower.__main__ import base_scheduler
+
+        if base_scheduler and mower_thread.is_alive():
+            for k, v in base_scheduler.op_data.plan.items():
+                logger.debug(str(v))
+        if req["type"] == "Bug":
+            dt = datetime.datetime.fromtimestamp(req["endTime"] / 1000.0)
+            logger.info(dt)
+            log_files = get_log_by_time(dt)
+            logger.info("log 文件发送中，请等待")
+            if not log_files:
+                raise ValueError("对应时间log 文件无法找到")
+            body = f"<p>Bug 发生时间区间:{datetime.datetime.fromtimestamp(req['startTime'] / 1000.0)}--{dt}</p><br><p>{req['description']}</p>"
+        else:
+            body = req["description"]
+        email = Email(
+            body,
+            "Mower " + req["type"],
+            None,
+            attach_files=None if req["type"] != "Bug" else log_files,
+        )
+        email.send(["354013233@qq.com"])
+    except ValueError as v:
+        logger.exception(v)
+        return str(v)
+    except Exception as e:
+        msg = "反馈发送失败，请确保邮箱功能正常使用\n" + str(e)
+        logger.exception(msg)
+        return msg
+    return "邮件发送成功！"

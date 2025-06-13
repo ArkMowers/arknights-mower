@@ -1,8 +1,13 @@
 # 用于记录Mower操作行为
+import collections
 import pickle
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 
+import pytz
+from tzlocal import get_localzone
+
+from arknights_mower.utils import config
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 
@@ -88,6 +93,7 @@ def save_state(func):
             "daily_skland": base_scheduler.daily_skland,
             "daily_mail": base_scheduler.daily_mail,
             "task_count": base_scheduler.task_count,
+            "skill_upgrade_supports": base_scheduler.op_data.skill_upgrade_supports,
         }
 
         # Call the original function
@@ -106,7 +112,7 @@ def save_state(func):
 
             # Create a table if it doesn't exist
             cursor.execute(
-                "CREATE TABLE IF NOT EXISTS saved_state (" "time TEXT," "state BLOB" ")"
+                "CREATE TABLE IF NOT EXISTS saved_state (time TEXT,state BLOB)"
             )
 
             # Delete the previous saved state
@@ -149,7 +155,6 @@ def load_state():
 
         if row is not None:
             loaded_state = pickle.loads(row[0])  # Deserialize the state
-            logger.info("成功从数据库载入缓存数据")
         else:
             logger.debug("No saved state found in the database")
 
@@ -161,17 +166,52 @@ def load_state():
     return loaded_state
 
 
+def clear_data(date_time):
+    database_path = get_path("@app/tmp/data.db")
+    try:
+        connection = sqlite3.connect(database_path)
+        cursor = connection.cursor()
+
+        # Ensure date_time is in the correct format
+        if isinstance(date_time, datetime):
+            date_time_str = date_time.strftime("%Y-%m-%d %H:%M:%S")
+        else:
+            date_time_str = date_time
+
+        # Execute the DELETE statement with parameterized query
+        cursor.execute(
+            "DELETE FROM agent_action WHERE `current_time` < ?", (date_time_str,)
+        )
+
+        connection.commit()
+        connection.close()
+        logger.info(f"已删除 早于 {date_time_str} 的干员心情记录")
+
+    except sqlite3.Error as e:
+        logger.error(f"SQLite error: {e}")
+
+
 def get_work_rest_ratios():
     # TODO 整理数据计算工休比
     database_path = get_path("@app/tmp/data.db")
-
+    favorite = [] if config.conf.favorite == "" else config.conf.favorite.split(",")
+    sel = ""
+    for name in favorite:
+        sel = (
+            sel
+            + """
+                UNION
+                SELECT '{}' AS name
+            """.format(name)
+        )
     try:
         # 连接到数据库
         conn = sqlite3.connect(database_path)
         # conn = sqlite3.connect('../../tmp/data.db')
         cursor = conn.cursor()
         # 查询数据
-        cursor.execute("""
+        cursor.execute(
+            """
                         SELECT a.*
                         FROM agent_action a
                         JOIN (
@@ -181,12 +221,14 @@ def get_work_rest_ratios():
                             AND b.is_high = 1 AND b.current_room NOT LIKE 'dormitory%'
                             UNION
                             SELECT '菲亚梅塔' AS name
-                            UNION
-                            SELECT '歌蕾蒂娅' AS name
+                       """
+            + sel
+            + """
                         ) AS subquery ON a.name = subquery.name
                         WHERE DATE(a.current_time) >= DATE('now', '-1 month', 'localtime')
                         ORDER BY a.current_time;
-                       """)
+                       """
+        )
         data = cursor.fetchall()
         # 关闭数据库连接
         conn.close()
@@ -237,13 +279,23 @@ def get_work_rest_ratios():
 # 整理心情曲线
 def get_mood_ratios():
     database_path = get_path("@app/tmp/data.db")
-
+    favorite = [] if config.conf.favorite == "" else config.conf.favorite.split(",")
+    sel = ""
+    for name in favorite:
+        sel = (
+            sel
+            + """
+                UNION
+                SELECT '{}' AS name
+            """.format(name)
+        )
     try:
         # 连接到数据库
         conn = sqlite3.connect(database_path)
         cursor = conn.cursor()
         # 查询数据（筛掉宿管和替班组的数据）
-        cursor.execute("""
+        cursor.execute(
+            """
                        SELECT a.*
                         FROM agent_action a
                         JOIN (
@@ -253,13 +305,15 @@ def get_mood_ratios():
                             AND b.is_high = 1 AND b.current_room NOT LIKE 'dormitory%'
                             UNION
                             SELECT '菲亚梅塔' AS name
-                            UNION
-                            SELECT '歌蕾蒂娅' AS name
+                       """
+            + sel
+            + """
                         ) AS subquery ON a.name = subquery.name
                         WHERE DATE(a.current_time) >= DATE('now', '-7 day', 'localtime')
                         ORDER BY a.agent_group DESC, a.current_time;
 
-        """)
+        """
+        )
         data = cursor.fetchall()
         # 关闭数据库连接
         conn.close()
@@ -324,3 +378,149 @@ def calculate_time_difference(start_time, end_time):
     end_datetime = datetime.strptime(end_time, time_format)
     time_difference = end_datetime - start_datetime
     return time_difference.total_seconds()
+
+
+def save_trading_info(func):
+    def wrapper(*args, **kwargs):
+        database_path = get_path("@app/tmp/data.db")
+        try:
+            result = None
+            get_path("@app/tmp").mkdir(exist_ok=True)
+            connection = sqlite3.connect(database_path)
+            cursor = connection.cursor()
+            cursor.execute(
+                "CREATE TABLE IF NOT EXISTS trading_history ("
+                "time INTEGER PRIMARY KEY,"
+                "server_date TEXT,"
+                "type TEXT,"
+                "price INTEGER"
+                ")"
+            )
+            if len(args) > 2:
+                dt = args[2]
+                cursor.execute(
+                    "SELECT COUNT(*) FROM trading_history WHERE time = ?",
+                    (int(dt.timestamp()),),
+                )
+                exists = cursor.fetchone()[0] > 0
+                if exists:
+                    logger.debug("当前订单信息已经存在数据库，跳过.")
+                    return
+            result = func(*args, **kwargs)
+
+            if result:
+                dubai_tz = pytz.timezone("Asia/Dubai")
+                cursor.execute(
+                    "INSERT INTO trading_history VALUES (?, ?, ?, ?)",
+                    (
+                        int(result.time.timestamp()),
+                        result.time.astimezone(dubai_tz).date(),
+                        result.buff,
+                        result.price,
+                    ),
+                )
+                logger.info(f"当前为 {result.buff} 订单, 订单价值为: {result.price}")
+                logger.info(f"储存订单信息至数据库 {datetime.now()}")
+                connection.commit()
+        except sqlite3.Error as e:
+            logger.error(f"SQLite error: {e}")
+        finally:
+            connection.close()
+        return result
+
+    return wrapper
+
+
+def get_trading_history(start_date: str, end_date: str):
+    if start_date == "" or end_date == "":
+        pass
+    dubai_tz = pytz.timezone("Asia/Dubai")
+    dubai_start = dubai_tz.localize(datetime.strptime(start_date, "%Y-%m-%d"))
+    dubai_end = (
+        dubai_tz.localize(datetime.strptime(end_date, "%Y-%m-%d"))
+        + timedelta(days=1)
+        - timedelta(seconds=1)
+    )
+    local_tz = get_localzone()
+
+    start_dt = dubai_start.astimezone(local_tz)
+    end_dt = dubai_end.astimezone(local_tz)
+
+    database_path = get_path("@app/tmp/data.db")
+    start_timestamp = int(start_dt.timestamp())
+    end_timestamp = int(end_dt.timestamp())
+
+    result_dict = collections.defaultdict(list)
+    logger.debug(f"分析数据从{start_dt}")
+    logger.debug(f"分析数据至{end_dt}")
+
+    try:
+        connection = sqlite3.connect(database_path)
+        cursor = connection.cursor()
+        cursor.execute(
+            "CREATE TABLE IF NOT EXISTS trading_history ("
+            "time INTEGER PRIMARY KEY,"
+            "server_date TEXT,"
+            "type TEXT,"
+            "price INTEGER"
+            ")"
+        )
+        cursor.execute(
+            """
+            SELECT server_date, type, price, COUNT(*)
+            FROM trading_history
+            WHERE time BETWEEN ? AND ?
+            GROUP BY server_date, type, price
+            """,
+            (start_timestamp, end_timestamp),
+        )
+        for row in cursor.fetchall():
+            trade_date, trade_type, price, count = row
+            # 构建每个记录的统计信息
+            key = (
+                trade_type
+                if trade_type in ["佩佩", "龙舌兰"]
+                else f"{trade_type}_{price}"
+            )
+            result_dict[trade_date].append({key: count})
+
+    except sqlite3.Error as e:
+        logger.exception(e)
+    finally:
+        if connection:
+            connection.close()
+    result_list = [
+        {"日期": date, **{k: v for stat in stats for k, v in stat.items()}}
+        for date, stats in result_dict.items()
+    ]
+    return result_list
+
+
+def save_inventory_counts(inventorys: dict[str, int]):
+    data = [(name, count) for name, count in inventorys.items()]
+    with sqlite3.connect(get_path("@app/tmp/data.db")) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "CREATE TABLE IF NOT EXISTS inventory (item_name TEXT PRIMARY KEY, count INTEGER)"
+        )
+        cursor.executemany(
+            "INSERT INTO inventory (item_name, count) VALUES (?, ?) "
+            "ON CONFLICT(item_name) DO UPDATE SET count = excluded.count",
+            data,
+        )
+        conn.commit()
+
+
+def get_inventory_counts(item_names: list[str] | None = None):
+    with sqlite3.connect(get_path("@app/tmp/data.db")) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "CREATE TABLE IF NOT EXISTS inventory (item_name TEXT PRIMARY KEY, count INTEGER)"
+        )
+        if not item_names:
+            cursor.execute("SELECT item_name, count FROM inventory")
+        else:
+            placeholders = ",".join(["?"] * len(item_names))
+            query = f"SELECT item_name, count FROM inventory WHERE item_name IN ({placeholders})"
+            cursor.execute(query, item_names)
+        return dict(cursor.fetchall())

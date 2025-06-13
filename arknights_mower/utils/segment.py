@@ -184,6 +184,16 @@ def recruit(img: tp.Image, draw: bool = False) -> list[tp.Scope]:
         raise RecognizeError(e)
 
 
+def add_gamingroom(base_x1, base_x2, base_y1, base_y2, alpha, room_name, ret):
+    """
+    在指定区域右边添加一个房间，同时保留原区域。
+    """
+    room_x1 = base_x2 + 259 * alpha  # 房间的左边界
+    room_x2 = room_x1 + 458 * alpha  # 房间的右边界
+    room_y1, room_y2 = base_y1, base_y2  # 房间的垂直范围与原区域一致
+    ret[room_name] = get_poly(room_x1, room_x2, room_y1, room_y2)
+
+
 def base(
     img: tp.Image, central: tp.Scope, draw: bool = False
 ) -> dict[str, tp.Rectangle]:
@@ -201,8 +211,9 @@ def base(
         y1 -= 67 * alpha
         y2 += 67 * alpha
         central = get_poly(x1, x2, y1, y2)
+        # 先计算出中枢位置
         ret["central"] = central
-
+        # 根据中枢计算出4个宿舍位置
         for i in range(1, 5):
             y1 = y2 + 25 * alpha
             y2 = y1 + 134 * alpha
@@ -211,10 +222,12 @@ def base(
             else:
                 dormitory = get_poly(x1 + 158 * alpha, x2, y1, y2)
             ret[f"dormitory_{i}"] = dormitory
-
+            print(
+                f"Dormitory {i} Length: {abs(ret[f'dormitory_{i}'][2][0] - ret[f'dormitory_{i}'][0][0]) / alpha}"
+            )
         x1, y1 = ret["dormitory_1"][0]
         x2, y2 = ret["dormitory_1"][2]
-
+        # 根据1号宿舍计算出加工站
         x1 = x2 + 419 * alpha
         x2 = x1 + 297 * alpha
         factory = get_poly(x1, x2, y1, y2)
@@ -222,7 +235,7 @@ def base(
 
         y2 = y1 - 25 * alpha
         y1 = y2 - 134 * alpha
-        meeting = get_poly(x1 - 158 * alpha, x2, y1, y2)
+        meeting = get_poly(x1 - 158 * alpha, x2 + 158 * alpha, y1, y2)
         ret["meeting"] = meeting
 
         y1 = y2 + 25 * alpha
@@ -236,6 +249,36 @@ def base(
         y2 = y1 + 134 * alpha
         train = get_poly(x1, x2, y1, y2)
         ret["train"] = train
+
+        add_gamingroom(
+            ret["factory"][0][0],
+            ret["factory"][2][0],
+            ret["factory"][0][1],
+            ret["factory"][2][1],
+            alpha,
+            "gaming_1",
+            ret,
+        )
+
+        add_gamingroom(
+            ret["contact"][0][0],
+            ret["contact"][2][0],
+            ret["contact"][0][1],
+            ret["contact"][2][1],
+            alpha,
+            "gaming_2",
+            ret,
+        )
+
+        add_gamingroom(
+            ret["train"][0][0],
+            ret["train"][2][0],
+            ret["train"][0][1],
+            ret["train"][2][1],
+            alpha,
+            "gaming_3",
+            ret,
+        )
 
         for floor in range(1, 4):
             x1, y1 = ret[f"dormitory_{floor}"][0]

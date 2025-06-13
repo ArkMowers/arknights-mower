@@ -48,8 +48,8 @@ def initialize(
         resting_priority=config.plan.conf.resting_priority,
         ling_xi=config.plan.conf.ling_xi,
         workaholic=config.plan.conf.workaholic,
-        max_resting_count=config.plan.conf.max_resting_count,
         free_blacklist=conf.free_blacklist,
+        ope_resting_priority=config.plan.conf.ope_resting_priority,
         resting_threshold=conf.resting_threshold,
         refresh_trading_config=config.plan.conf.refresh_trading,
         refresh_drained=config.plan.conf.refresh_drained,
@@ -57,7 +57,14 @@ def initialize(
     )
     for room, obj in plan[plan["default"]].items():
         plan1[room] = [
-            Room(op["agent"], op["group"], op["replacement"]) for op in obj["plans"]
+            Room(
+                op["agent"],
+                op["group"],
+                op["replacement"],
+                obj["name"],
+                obj["product"] if "product" in obj else "",
+            )
+            for op in obj["plans"]
         ]
     # 默认任务
     plan["default_plan"] = Plan(plan1, plan_config)
@@ -68,7 +75,14 @@ def initialize(
         backup_plan: dict[str, Room] = {}
         for room, obj in i["plan"].items():
             backup_plan[room] = [
-                Room(op["agent"], op["group"], op["replacement"]) for op in obj["plans"]
+                Room(
+                    op["agent"],
+                    op["group"],
+                    op["replacement"],
+                    obj["name"],
+                    obj["product"] if "product" in obj else "",
+                )
+                for op in obj["plans"]
             ]
         backup_config = PlanConfig(
             i["conf"]["rest_in_full"],
@@ -76,8 +90,8 @@ def initialize(
             i["conf"]["resting_priority"],
             ling_xi=i["conf"]["ling_xi"],
             workaholic=i["conf"]["workaholic"],
-            max_resting_count=i["conf"]["max_resting_count"],
             free_blacklist=i["conf"]["free_blacklist"],
+            ope_resting_priority=i["conf"]["ope_resting_priority"],
             resting_threshold=conf.resting_threshold,
             refresh_trading_config=i["conf"]["refresh_trading"],
             refresh_drained=i["conf"]["refresh_drained"],
@@ -93,6 +107,7 @@ def initialize(
                 trigger=backup_trigger,
                 task=backup_task,
                 trigger_timing=backup_trigger_timing,
+                name=i.get("name"),
             )
         )
     plan["backup_plans"] = backup_plans
@@ -169,7 +184,7 @@ def simulate(saved):
         base_scheduler.op_data.swap_plan(
             [False] * len(base_scheduler.op_data.backup_plans), True
         )
-    timezone_offset = 0
+    timezone_offset = config.conf.timezone_offset
     if saved:
         try:
             for k, v in saved["operators"].items():
@@ -188,9 +203,15 @@ def simulate(saved):
             base_scheduler.daily_skland = saved["daily_skland"]
             base_scheduler.daily_mail = saved["daily_mail"]
             base_scheduler.task_count = saved["task_count"]
+            base_scheduler.op_data.skill_upgrade_supports = saved[
+                "skill_upgrade_supports"
+            ]
+            base_scheduler.tasks = tasks
+            if len(base_scheduler.op_data.backup_plans) > 0:
+                # 启动的时候按照条件触发副表
+                base_scheduler.backup_plan_solver()
         except Exception as ex:
-            logger.error(ex)
-        base_scheduler.tasks = tasks
+            logger.exception(ex)
     while True:
         try:
             if len(base_scheduler.tasks) > 0:
@@ -296,7 +317,6 @@ def simulate(saved):
                             ],
                             base_scheduler=base_scheduler,
                         )
-                        send_message(body, subject)
                         base_scheduler.maa_plan_solver()
                     else:
                         remaining_time = (
@@ -321,7 +341,11 @@ def simulate(saved):
                                 ],
                                 base_scheduler=base_scheduler,
                             )
-                            send_message(body, subject)
+                            send_message(
+                                body,
+                                f"休息 {format_time(remaining_time)}，到{base_scheduler.tasks[0].format(timezone_offset).time.strftime('%H:%M:%S')}开始工作",
+                            )
+                            base_scheduler.recog.last_scene = None
                             base_scheduler.sleeping = True
                             base_scheduler.sleep(remaining_time)
                             base_scheduler.sleeping = False
@@ -382,7 +406,11 @@ def simulate(saved):
                         ],
                         base_scheduler=base_scheduler,
                     )
-                    send_message(body, subject)
+                    send_message(
+                        body,
+                        f"休息 {format_time(remaining_time)}，到{base_scheduler.tasks[0].format(timezone_offset).time.strftime('%H:%M:%S')}开始工作",
+                    )
+                    base_scheduler.recog.last_scene = None
                     base_scheduler.sleeping = True
                     base_scheduler.sleep(remaining_time)
                     base_scheduler.sleeping = False

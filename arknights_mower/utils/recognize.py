@@ -1,4 +1,5 @@
 import time
+from datetime import datetime
 from typing import List, Optional, Tuple
 
 import cv2
@@ -9,7 +10,6 @@ from arknights_mower import __rootdir__
 from arknights_mower.utils import config
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.csleep import MowerExit
-from arknights_mower.utils.deprecated import deprecated
 from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.image import bytes2img, cmatch, cropimg, loadres, thres2
 from arknights_mower.utils.log import logger, save_screenshot
@@ -35,6 +35,8 @@ class Recognizer:
             self.scene = Scene.UNDEFINED
         self.loading_time = 0
         self.LOADING_TIME_LIMIT = 5
+        self.last_scene = None
+        self.last_scene_time = time.time()
 
     def clear(self):
         self._screencap = None
@@ -95,10 +97,9 @@ class Recognizer:
         """get the color of the pixel"""
         return self.img[y][x]
 
-    @deprecated
     def save_screencap(self, folder):
-        del folder  # 兼容2024.05旧版接口
-        save_screenshot(self.screencap)
+        # del folder  # 兼容2024.05旧版接口
+        save_screenshot(self.screencap, folder)
 
     def detect_index_scene(self) -> bool:
         res = loadres("index_nav", True)
@@ -136,9 +137,24 @@ class Recognizer:
         if min_val < 0.02:
             return (min_loc[0] + 960 + 42, min_loc[1] + 42)
 
+    def check_freeze(self, current_time):
+        if self.scene != self.last_scene:
+            self.last_scene_time = current_time
+            self.last_scene = self.scene
+        else:
+            elapsed_time = (current_time - self.last_scene_time).total_seconds()
+            if elapsed_time > config.conf.run_order_delay * 90:
+                logger.warning("相同场景等待超时 ")
+                self.last_scene = None
+                self.last_scene_time = current_time
+                self.device.exit()
+
     def get_scene(self) -> int:
         """get the current scene in the game"""
+        current_time = datetime.now()
+        # 检查模拟器是否卡死，超过跑单时间*90秒则视为卡死
         if self.scene != Scene.UNDEFINED:
+            self.check_freeze(current_time)
             return self.scene
 
         # 连接中，优先级最高
@@ -156,7 +172,7 @@ class Recognizer:
             self.scene = Scene.FACTORY_ROOMS
         elif self.find("nav_bar"):
             self.scene = Scene.NAVIGATION_BAR
-        elif self.find("mail"):
+        elif self.find("read_mail"):
             self.scene = Scene.MAIL
         elif self.find("navigation/record_restoration"):
             self.scene = Scene.OPERATOR_CHOOSE_LEVEL
@@ -174,7 +190,7 @@ class Recognizer:
             self.scene = Scene.CTRLCENTER_ASSISTANT
         elif self.find("infra_overview"):
             self.scene = Scene.INFRA_MAIN
-        elif self.find("infra_todo"):
+        elif self.find("infra_todo", scope=((0, 1013), (241, 1080))):
             self.scene = Scene.INFRA_TODOLIST
         elif self.find("clue"):
             self.scene = Scene.INFRA_CONFIDENTIAL
@@ -312,7 +328,12 @@ class Recognizer:
             self.scene = Scene.FRIEND_LIST
         elif self.find("credit_visiting"):
             self.scene = Scene.FRIEND_VISITING
-        elif self.find("arrange_check_in") or self.find("arrange_check_in_on"):
+        elif (
+            self.find("arrange_check_in")
+            or self.find("arrange_check_in_on")
+            or self.find("room_detail")
+            or self.find("arrange_check_in_small")
+        ):
             self.scene = Scene.INFRA_DETAILS
         elif self.find("ope_failed"):
             self.scene = Scene.OPERATOR_FAILED
@@ -342,6 +363,14 @@ class Recognizer:
             self.scene = Scene.LOGIN_BILIBILI_PRIVACY
         elif self.find("login_captcha"):
             self.scene = Scene.LOGIN_CAPTCHA
+        elif self.find("factory_dashboard"):
+            self.scene = Scene.FACTORY_DASHBOARD
+        elif self.find("factory_formula"):
+            self.scene = Scene.FACTORY_FORMULA
+        elif self.find("factory_product_collect"):
+            self.scene = Scene.FACTORY_PRODUCT_COLLECT
+        elif self.find("factory_tag"):
+            self.scene = Scene.FACTORY_ROOM
 
         # 没弄完的
         # elif self.find("ope_elimi_finished"):
@@ -354,7 +383,7 @@ class Recognizer:
             self.check_current_focus()
 
         logger.info(f"Scene {self.scene}: {SceneComment[self.scene]}")
-
+        self.check_freeze(current_time)
         return self.scene
 
     def find_ra_battle_exit(self) -> bool:
@@ -561,7 +590,7 @@ class Recognizer:
             self.scene = Scene.SSS_START
         elif self.find("sss/ec_button"):
             self.scene = Scene.SSS_EC
-        elif self.find("sss/device_button"):
+        elif self.find("sss/device_button") or self.find("sss/next_step_button"):
             self.scene = Scene.SSS_DEVICE
         elif self.find("sss/squad_button"):
             self.scene = Scene.SSS_SQUAD
@@ -569,6 +598,8 @@ class Recognizer:
             self.scene = Scene.SSS_DEPLOY
         elif self.find("sss/redeploy_button"):
             self.scene = Scene.SSS_REDEPLOY
+        elif self.find("sss/confirm"):
+            self.scene = Scene.SSS_CONFIRM
         elif self.find("sss/loading"):
             self.scene = Scene.SSS_LOADING
         elif self.find("sss/close_button"):
@@ -615,6 +646,36 @@ class Recognizer:
 
         return self.scene
 
+    def get_factory_scene(self) -> int:
+        """
+        加工站场景
+        """
+        if self.scene != Scene.UNDEFINED:
+            return self.scene
+        # 连接中，优先级最高
+        if self.find("connecting"):
+            self.scene = Scene.CONNECTING
+        elif self.find("infra_overview"):
+            self.scene = Scene.INFRA_MAIN
+        elif self.find("factory_dashboard"):
+            self.scene = Scene.FACTORY_DASHBOARD
+        elif self.find("factory_formula"):
+            # 这是一个filter ，鉴于自动的话不会动，用来识别界面
+            self.scene = Scene.FACTORY_FORMULA
+        elif self.find("factory_product_collect"):
+            self.scene = Scene.FACTORY_PRODUCT_COLLECT
+        elif self.find("factory_tag"):
+            self.scene = Scene.FACTORY_ROOM
+        else:
+            self.scene = Scene.UNKNOWN
+            self.check_current_focus()
+
+        logger.info(f"Scene: {self.scene}: {SceneComment[self.scene]}")
+
+        self.check_loading_time()
+
+        return self.scene
+
     def is_black(self) -> None:
         """check if the current scene is all black"""
         return np.max(self.gray[:, 105:-105]) < 16
@@ -647,7 +708,7 @@ class Recognizer:
         color = {
             "1800": (158, 958),
             "12cadpa": (1810, 21),
-            "arrange_confirm": (755, 903),
+            "arrange_confirm": (963, 969),
             "arrange_order_options": (1652, 23),
             "arrange_order_options_scene": (369, 199),
             "clue": (1740, 855),
@@ -672,17 +733,17 @@ class Recognizer:
             "factory_collect": (1542, 886),
             "fight/refresh": (1639, 22),
             "hypergryph": (0, 961),
-            "infra_overview": (54, 135),
+            # "infra_overview": (54, 135),
             "infra_overview_in": (64, 705),
-            "infra_todo": (13, 1013),
-            "loading2": (620, 247),
+            # "infra_todo": (13, 1013),
+            "loading2": (630, 240),
             "loading7": (106, 635),
             "login_account": (622, 703),
             "login_awake": (888, 743),
             "login_connecting": (760, 881),
             "login_loading": (920, 388),
             "login_logo": (601, 332),
-            "mail": (307, 39),
+            "read_mail": (1541, 947),
             "mission_trainee_on": (690, 17),
             "nav_bar": (655, 0),
             "nav_button": (26, 20),
@@ -722,6 +783,27 @@ class Recognizer:
             "terminal_pre2": (1459, 797),
         }
 
+        template_matching_score = {
+            "connecting": 0.7,
+            "navigation/ope_hard": 0.7,
+            "navigation/ope_hard_small": 0.7,
+            "navigation/ope_normal": 0.7,
+            "navigation/ope_normal_small": 0.7,
+            "recruit/agent_token": 0.8,
+            "recruit/agent_token_first": 0.8,
+            "recruit/lmb": 0.7,
+            "recruit/riic_res/CASTER": 0.7,
+            "recruit/riic_res/MEDIC": 0.7,
+            "recruit/riic_res/PIONEER": 0.7,
+            "recruit/riic_res/SPECIAL": 0.7,
+            "recruit/riic_res/SNIPER": 0.7,
+            "recruit/riic_res/SUPPORT": 0.7,
+            "recruit/riic_res/TANK": 0.7,
+            "recruit/riic_res/WARRIOR": 0.7,
+            "recruit/time": 0.8,
+            "recruit/stone": 0.7,
+        }
+
         if res in color:
             res_img = loadres(res)
             h, w, _ = res_img.shape
@@ -737,13 +819,16 @@ class Recognizer:
                     res_img = cv2.cvtColor(res_img, cv2.COLOR_RGB2GRAY)
                     ssim = structural_similarity(gray, res_img)
                     logger.debug(f"{ssim=}")
-                    if ssim >= 0.9:
+                    threshold = 0.9
+                    if res in template_matching_score:
+                        threshold = template_matching_score[res]
+                    if ssim >= threshold:
                         return scope
 
             return None
 
         template_matching = {
-            "arrange_check_in": ((30, 300), (175, 700)),
+            # "arrange_check_in": ((30, 300), (175, 700)),
             "arrange_check_in_on": ((30, 300), (175, 700)),
             "biography": (768, 934),
             "business_card": (55, 165),
@@ -755,7 +840,7 @@ class Recognizer:
             "friend_list": (61, 306),
             "credit_visiting": (78, 220),
             "loading": (736, 333),
-            "loading2": (620, 247),
+            "loading2": (630, 240),
             "loading3": (1681, 1000),
             "loading4": (828, 429),
             "main_theme": (283, 945),
@@ -814,27 +899,6 @@ class Recognizer:
             "upgrade": (997, 501),
         }
 
-        template_matching_score = {
-            "connecting": 0.7,
-            "navigation/ope_hard": 0.7,
-            "navigation/ope_hard_small": 0.7,
-            "navigation/ope_normal": 0.7,
-            "navigation/ope_normal_small": 0.7,
-            "recruit/agent_token": 0.8,
-            "recruit/agent_token_first": 0.8,
-            "recruit/lmb": 0.7,
-            "recruit/riic_res/CASTER": 0.7,
-            "recruit/riic_res/MEDIC": 0.7,
-            "recruit/riic_res/PIONEER": 0.7,
-            "recruit/riic_res/SPECIAL": 0.7,
-            "recruit/riic_res/SNIPER": 0.7,
-            "recruit/riic_res/SUPPORT": 0.7,
-            "recruit/riic_res/TANK": 0.7,
-            "recruit/riic_res/WARRIOR": 0.7,
-            "recruit/time": 0.8,
-            "recruit/stone": 0.7,
-        }
-
         if res in template_matching:
             threshold = 0.9
             if res in template_matching_score:
@@ -868,10 +932,10 @@ class Recognizer:
         ]
 
         if scope is None and threshold == 0.0:
-            if res == "arrange_check_in":
-                scope = ((0, 350), (200, 530))
-                threshold = 0.55
-            elif res == "arrange_check_in_on":
+            # if res == "arrange_check_in":
+            #     scope = ((0, 350), (200, 530))
+            #     threshold = 0.55
+            if res == "arrange_check_in_on":
                 scope = ((0, 350), (200, 530))
             elif res == "connecting":
                 scope = ((1087, 978), (1430, 1017))

@@ -20,7 +20,7 @@
   "ba_buffres": {
     "termId": "ba.buffres",
     "termName": "抵抗",
-    "description": "<$ba.stun>晕眩</>、<$ba.cold>寒冷</>、<$ba.frozen>冻结</>等异常状态的持续时间减半（同名效果不叠加）",
+    "description": "<$ba.stun>晕眩</>、<$ba.cold>寒冷</>、<$ba.frozen>冻结</>等异常状态的持续时间减半，<$ba.palsy>麻痹</>等效果每5秒流失1层（同名效果不叠加）",
     "buffer": []
   },
   "ba_invisible": {
@@ -263,6 +263,42 @@
     "description": "包括玛露西尔、森西、莱欧斯、齐尔查克",
     "buffer": []
   },
+  "ba_liftoff": {
+    "termId": "ba.liftoff",
+    "termName": "起飞",
+    "description": "不阻挡地面敌人且不会被地面敌人攻击，可以阻挡飞行敌人",
+    "buffer": []
+  },
+  "ba_physicfragile": {
+    "termId": "ba.physicfragile",
+    "termName": "物理脆弱",
+    "description": "受到的物理伤害提升相应比例（同名效果取最高）",
+    "buffer": []
+  },
+  "ba_dt_neural2": {
+    "termId": "ba.dt.neural2",
+    "termName": "神经损伤·我方",
+    "description": "累计满时爆发（普通、精英敌人1000点、领袖2000点累计值），敌人立即受到6000点元素伤害且获得3层<$ba.palsy>麻痹</>。10秒冷却",
+    "buffer": []
+  },
+  "ba_palsy": {
+    "termId": "ba.palsy",
+    "termName": "麻痹",
+    "description": "每层麻痹可以使敌人在普通攻击时打断本次攻击，上限3层；麻痹未被消耗时持续时间无限，拥有抵抗的单位每5秒流失1层",
+    "buffer": []
+  },
+  "ba_addbullet": {
+    "termId": "ba.addbullet",
+    "termName": "补弹",
+    "description": "为其他人的弹药类技能补充弹药。单次弹药类技能的持续时间内，最多被补充该次技能所装有弹药数量上限的弹药",
+    "buffer": []
+  },
+  "ba_attract": {
+    "termId": "ba.attract",
+    "termName": "诱导",
+    "description": "无法被阻挡并向目标位置移动",
+    "buffer": []
+  },
   "cc_bd_A_1": {
     "termId": "cc.bd_A_1",
     "termName": "念力",
@@ -503,7 +539,7 @@
   "cc_g_sui": {
     "termId": "cc.g.sui",
     "termName": "岁",
-    "description": "包含以下干员\n年、夕、令、重岳、黍",
+    "description": "包含以下干员\n年、夕、令、重岳、黍、余",
     "buffer": []
   },
   "cc_g_glasgow": {
@@ -527,7 +563,19 @@
   "cc_g_bs": {
     "termId": "cc.g.bs",
     "termName": "黑钢国际",
-    "description": "包含以下干员\n雷蛇、芙兰卡、杰西卡、香草、杏仁",
+    "description": "包含以下干员\n雷蛇、芙兰卡、杰西卡、香草、杏仁、寻澜",
+    "buffer": []
+  },
+  "cc_g_siracusa": {
+    "termId": "cc.g.siracusa",
+    "termName": "叙拉古",
+    "description": "包含以下干员\n安洁莉娜、拉普兰德、普罗旺斯、红云、布洛卡、巫恋、铃兰、贾维、奥斯塔、斥罪、子月、伺夜、阿罗玛、忍冬、裁度、荒芜拉普兰德",
+    "buffer": []
+  },
+  "cc_g_laterano": {
+    "termId": "cc.g.laterano",
+    "termName": "拉特兰",
+    "description": "包含以下干员\n翎羽、安德切尔、送葬人、莫斯提马、安比尔、芳汀、空弦、菲亚梅塔、见行者、空构、隐现、塑心、蕾缪安、信仰搅拌机、CONFESS-47",
     "buffer": []
   },
   "cc_c_abyssal2_1": {
@@ -580,7 +628,7 @@
   "cc_c_skill": {
     "termId": "cc.c.skill",
     "termName": "部分技能",
-    "description": "包含以下技能\n左膀右臂、S.W.E.E.P.、零食网络、清理协议、替身、必要责任、护卫、小小的领袖、独善其身、笑靥如春、金盏花诗会、捍卫之道",
+    "description": "包含以下技能\n左膀右臂、S.W.E.E.P.、零食网络、清理协议、替身、必要责任、护卫、小小的领袖、独善其身、笑靥如春、金盏花诗会、捍卫之道、博识生手",
     "buffer": []
   },
   "cc_t_strong2": {
@@ -671,7 +719,7 @@
   "cc_tag_op": {
     "termId": "cc.tag.op",
     "termName": "作业平台",
-    "description": "包含以下干员\nLancet-2、Castle-3、THRM-EX、正义骑士号、Friston-3、PhonoR-0",
+    "description": "包含以下干员\nLancet-2、Castle-3、THRM-EX、正义骑士号、Friston-3、PhonoR-0、CONFESS-47",
     "buffer": []
   },
   "cc_tag_knight": {
@@ -683,7 +731,7 @@
   "cc_tag_durin": {
     "termId": "cc.tag.durin",
     "termName": "杜林族",
-    "description": "包含以下干员\n至简、桃金娘、褐果、杜林",
+    "description": "包含以下干员\n至简、桃金娘、褐果、杜林、特克诺",
     "buffer": []
   },
   "cc_tag_mh": {
@@ -702,6 +750,12 @@
     "termId": "cc.gvial",
     "termName": "嘉维尔",
     "description": "包含以下干员\n百炼嘉维尔、嘉维尔",
+    "buffer": []
+  },
+  "cc_angel": {
+    "termId": "cc.angel",
+    "termName": "能天使",
+    "description": "包含以下干员\n新约能天使、能天使",
     "buffer": []
   },
   "cc_tra_pepe": {

@@ -34,6 +34,7 @@ class PackagePathFilter(logging.Filter):
         return True
 
 
+last_screenshot = None
 filter = PackagePathFilter()
 
 logger = logging.getLogger(__name__)
@@ -85,6 +86,16 @@ def screenshot_cleanup():
     start_time_ns = time.time_ns() - config.conf.screenshot * 3600 * 10**9
     for i in screenshot_folder.iterdir():
         if i.is_dir():
+            if i.name in ["run_order", "workshop"]:
+                # 处理run_order文件夹，只保留最后100张图片
+                images = sorted(
+                    [f for f in i.iterdir() if f.is_file() and f.stem.isnumeric()],
+                    key=lambda x: int(x.stem),
+                )
+                if len(images) > 100:
+                    for img in images[:-100]:  # 保留最后100张，删除其余的
+                        img.unlink()
+                continue
             shutil.rmtree(i)
         elif not i.stem.isnumeric():
             i.unlink()
@@ -96,19 +107,50 @@ def screenshot_cleanup():
 
 def screenshot_worker():
     screenshot_cleanup()
+    global last_screenshot
     while True:
         now = datetime.now()
         if now - cleanup_time > timedelta(hours=1):
             screenshot_cleanup()
-        img, filename = screenshot_queue.get()
+        img, filename, upate_last = screenshot_queue.get()
         with screenshot_folder.joinpath(filename).open("wb") as f:
             f.write(img)
+            if upate_last:
+                last_screenshot = filename
 
 
 Thread(target=screenshot_worker, daemon=True).start()
 
 
-def save_screenshot(img: bytes) -> None:
+def save_screenshot(img: bytes, sub_folder=None) -> None:
     filename = f"{time.time_ns()}.jpg"
     logger.debug(filename)
-    screenshot_queue.put((img, filename))
+    if sub_folder:
+        sub_folder_path = Path(screenshot_folder) / sub_folder
+        sub_folder_path.mkdir(parents=True, exist_ok=True)
+        filename = f"{sub_folder}/{datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
+    screenshot_queue.put((img, filename, not sub_folder))
+
+
+def get_log_by_time(target_time, time_range=1):
+    folder = Path(get_path("@app/log"))
+    time_points = [
+        target_time - timedelta(hours=time_range),
+        target_time,
+        target_time + timedelta(hours=time_range),
+    ]
+    valid_suffixes = [tp.strftime("%Y-%m-%d_%H") for tp in time_points]
+    matching_files = []
+    for file_path in folder.iterdir():
+        if file_path.is_file():
+            try:
+                if any(suffix in file_path.name for suffix in valid_suffixes):
+                    matching_files.append(file_path)
+                elif (
+                    file_path.name == "runtime.log"
+                    and (datetime.now() - target_time).total_seconds() <= 3600
+                ):
+                    matching_files.append(file_path)
+            except Exception as e:
+                logger.exception(f"Error processing file {file_path}: {e}")
+    return matching_files

@@ -1,5 +1,6 @@
 import lzma
 import pickle
+from concurrent.futures import ThreadPoolExecutor
 
 import cv2
 import numpy as np
@@ -14,9 +15,9 @@ with lzma.open(f"{__rootdir__}/models/operator_select.model", "rb") as f:
     OP_SELECT = pickle.loads(f.read())
 
 
-def operator_list(img, draw=False):
+def operator_list(img, draw=False, full_scan=True):
     name_y = ((488, 520), (909, 941))
-    line1 = cropimg(img, tuple(zip((600, 1920), name_y[0])))
+    line1 = cropimg(img, tuple(zip((600, 1860 if not full_scan else 1920), name_y[0])))
     hsv = cv2.cvtColor(line1, cv2.COLOR_RGB2HSV)
     mask = cv2.inRange(hsv, (98, 140, 200), (102, 255, 255))
     line1 = cv2.cvtColor(line1, cv2.COLOR_RGB2GRAY)
@@ -45,7 +46,7 @@ def operator_list(img, draw=False):
     op_name = []
     gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 
-    for p in name_p:
+    def process_name_region(p):
         im = cropimg(gray, p)
         im = thres2(im, 140)
         im = cv2.copyMakeBorder(im, 10, 10, 10, 10, cv2.BORDER_CONSTANT, None, (0,))
@@ -65,7 +66,10 @@ def operator_list(img, draw=False):
             if max_val > max_score:
                 max_score = max_val
                 best_operator = operator
-        op_name.append(best_operator)
+        return best_operator
+
+    with ThreadPoolExecutor() as executor:
+        op_name = list(executor.map(process_name_region, name_p))
 
     logger.debug(op_name)
 

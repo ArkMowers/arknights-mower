@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 from skimage.feature import hog
 
+from arknights_mower.utils import depot
 from arknights_mower.utils.graph import SceneGraphSolver
 
 from .. import __rootdir__
@@ -188,6 +189,8 @@ class depotREC(SceneGraphSolver):
             )
         else:
             self.back_to_index()
+        ## 读取的时候会存入数据库
+        depot.读取仓库()
         return True
 
     def 对比截图(self, image1, image2):

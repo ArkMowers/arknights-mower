@@ -50,11 +50,32 @@
                     日志
                   </div>
                 </n-tab>
-                <n-tab name="设置" @click="$router.push('/settings')">
+                <n-tab name="设置" @click="showModal2 = true">
                   <div style="display: flex; flex-direction: column; align-items: center">
                     <n-icon size="20" style="margin-bottom: -1px" :component="Settings" />
                     设置
                   </div>
+                  <n-modal v-model:show="showModal2">
+                    <n-card
+                      style="width: 300px"
+                      title="全部设置"
+                      :bordered="false"
+                      size="huge"
+                      role="dialog"
+                      aria-modal="true"
+                    >
+                      <div>
+                        <n-button @click=";(showModal2 = false), $router.push('/mowersettings')">
+                          mower设置
+                        </n-button>
+                      </div>
+                      <div>
+                        <n-button @click=";(showModal2 = false), $router.push('/maasettings')">
+                          maa设置
+                        </n-button>
+                      </div>
+                    </n-card>
+                  </n-modal>
                 </n-tab>
                 <n-tab name="排班" @click="$router.push('/plan-editor')">
                   <div style="display: flex; flex-direction: column; align-items: center">
@@ -96,6 +117,13 @@
                           基建报告
                         </n-button>
                       </div>
+                      <div>
+                        <n-button
+                          @click=";(showModal = false), $router.push('/record/trading_analysis')"
+                        >
+                          贸易订单分析
+                        </n-button>
+                      </div>
                     </n-card>
                   </n-modal>
                 </n-tab>
@@ -131,14 +159,18 @@ import HelpCircle from '@vicons/ionicons5/HelpCircle'
 import Home from '@vicons/ionicons5/Home'
 import PieChart from '@vicons/ionicons5/PieChart'
 import ReaderOutline from '@vicons/ionicons5/ReaderOutline'
+import Newspaper from '@vicons/ionicons5/Newspaper'
 import Settings from '@vicons/ionicons5/Settings'
 import StatsChart from '@vicons/ionicons5/StatsChart'
 import Storefront from '@vicons/ionicons5/Storefront'
+import RoseOutline from '@vicons/ionicons5/RoseOutline'
+import Coffee from '@vicons/tabler/Coffee'
 import { NIcon } from 'naive-ui'
 import { storeToRefs } from 'pinia'
 import { h, inject, onMounted, provide, ref } from 'vue'
 
 const showModal = ref(false)
+const showModal2 = ref(false)
 function renderIcon(icon) {
   return () => h(NIcon, null, { default: () => h(icon) })
 }
@@ -151,9 +183,22 @@ const menuOptions = [
     key: 'go-to-log'
   },
   {
-    label: () => h(RouterLink, { to: { path: '/settings' } }, { default: () => '全部设置' }),
+    label: () => '全部设置',
     icon: renderIcon(Settings),
-    key: 'go-to-allsetting'
+    key: 'allsetting',
+    children: [
+      {
+        label: () =>
+          h(RouterLink, { to: { path: '/mowersettings' } }, { default: () => 'mower设置' }),
+        icon: renderIcon(Coffee),
+        key: 'go-to-mowersetting'
+      },
+      {
+        label: () => h(RouterLink, { to: { path: '/maasettings' } }, { default: () => 'maa设置' }),
+        icon: renderIcon(RoseOutline),
+        key: 'go-to-maasetting'
+      }
+    ]
   },
   // {
   //   label: () => h(RouterLink, { to: { path: '/aio' } }, { default: () => 'aio' }),
@@ -192,6 +237,16 @@ const menuOptions = [
           h(RouterLink, { to: { path: '/record/report' } }, { default: () => '基建报表' }),
         icon: renderIcon(ReaderOutline),
         key: 'go-to-record-report'
+      },
+      {
+        label: () =>
+          h(
+            RouterLink,
+            { to: { path: '/record/trading_analysis' } },
+            { default: () => '贸易订单分析' }
+          ),
+        icon: renderIcon(Newspaper),
+        key: 'go-to-trading-analysis'
       }
     ]
   },
@@ -259,7 +314,7 @@ const { getwatermarkinfo } = watermarkStore
 const watermarkData = ref('mower')
 
 const config_store = useConfigStore()
-const { load_config, load_shop } = config_store
+const { load_config, load_shop, load_item } = config_store
 const { start_automatically, theme, webview } = storeToRefs(config_store)
 
 const plan_store = usePlanStore()
@@ -312,7 +367,7 @@ onMounted(async () => {
   const token = params.get('token')
   provide('token', token)
   axios.defaults.headers.common['token'] = token
-  await Promise.all([load_config(), load_shop(), load_operators(), get_running()])
+  await Promise.all([load_config(), load_shop(), load_item(), load_operators(), get_running()])
 
   await load_plan()
 
@@ -387,6 +442,7 @@ watch(
 .n-avatar {
   pointer-events: none !important;
 }
+
 .img {
   pointer-events: none !important;
 }
@@ -511,8 +567,8 @@ td {
 
 pre {
   word-break: break-all !important;
-  font-family: 'Cascadia Mono', Consolas, 'Microsoft YaHei', 'SF Mono', 'Menlo', 'PingFang SC',
-    monospace !important;
+  font-family:
+    'Cascadia Mono', Consolas, 'Microsoft YaHei', 'SF Mono', 'Menlo', 'PingFang SC', monospace !important;
 }
 
 .n-dynamic-input-item__action {

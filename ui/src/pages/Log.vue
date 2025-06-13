@@ -4,14 +4,51 @@ import { onMounted, onUnmounted, inject, nextTick, watch, ref } from 'vue'
 
 import { useMowerStore } from '@/stores/mower'
 const mower_store = useMowerStore()
-const { log, log_mobile, running, log_lines, task_list, waiting, get_task_id } =
-  storeToRefs(mower_store)
+const {
+  log,
+  log_mobile,
+  running,
+  plan_condition,
+  log_lines,
+  task_list,
+  waiting,
+  get_task_id,
+  sc_uri
+} = storeToRefs(mower_store)
 const { get_tasks, get_running } = mower_store
 const axios = inject('axios')
 const mobile = inject('mobile')
 
 const auto_scroll = ref(true)
+const sc_preview = ref(true)
+const sc_blob = ref('')
 
+watch(sc_uri, async (new_value) => {
+  if (new_value && sc_preview.value) {
+    try {
+      const response = await axios.get(
+        `${import.meta.env.VITE_HTTP_URL}/screenshots/${sc_uri.value}`,
+        {
+          responseType: 'blob'
+        }
+      )
+      if (sc_blob.value) {
+        URL.revokeObjectURL(sc_blob.value)
+      }
+      const blob = new Blob([response.data], { type: 'image/jpeg' })
+      sc_blob.value = URL.createObjectURL(blob)
+    } catch (error) {
+      console.error('获取最新截图失败:', error)
+      sc_blob.value = ''
+    }
+  } else {
+    if (sc_blob.value) {
+      URL.revokeObjectURL(sc_blob.value)
+    }
+    sc_blob.value = ''
+  }
+  localStorage.setItem('sc_preview', JSON.stringify(sc_preview.value))
+})
 function scroll_last_line() {
   nextTick(() => {
     document.querySelector('pre:last-child')?.scrollIntoView()
@@ -36,10 +73,17 @@ onMounted(() => {
   get_tasks()
   get_running()
   setInterval(get_running, 5000)
+  const savedPreviewState = localStorage.getItem('sc_preview')
+  if (savedPreviewState !== null) {
+    sc_preview.value = JSON.parse(savedPreviewState)
+  }
 })
 
 onUnmounted(() => {
   clearTimeout(get_task_id.value)
+  if (sc_blob.value) {
+    URL.revokeObjectURL(sc_blob.value)
+  }
 })
 
 function start(value) {
@@ -60,6 +104,8 @@ function stop() {
   })
 }
 
+const show_feedback = ref(false)
+
 import PlayIcon from '@vicons/ionicons5/Play'
 import StopIcon from '@vicons/ionicons5/Stop'
 import AddIcon from '@vicons/ionicons5/Add'
@@ -70,6 +116,7 @@ const show_task_table = ref(true)
 const show_task = ref(false)
 const add_task = ref(true)
 provide('show_task', show_task)
+provide('show_feedback', show_feedback)
 provide('add_task', add_task)
 import { useConfigStore } from '@/stores/config'
 const config_store = useConfigStore()
@@ -108,6 +155,14 @@ const start_options = [
 <template>
   <div class="home-container">
     <div class="log-bg"></div>
+    <n-image
+      v-if="sc_preview"
+      width="100%"
+      class="sc"
+      :src="sc_blob == '' ? '/bg2.webp' : sc_blob"
+      object-fit="scale-down"
+    />
+
     <n-table class="task-table" size="small" :single-line="false">
       <thead>
         <tr>
@@ -137,6 +192,12 @@ const start_options = [
         </template>
       </tbody>
     </n-table>
+    <div v-if="plan_condition.length > 0" style="display: flex; gap: 10px">
+      <span>当前激活的副表为： </span>
+      <span v-for="(x, index) in plan_condition" :key="index" style="color: green">
+        {{ x }}
+      </span>
+    </div>
     <n-log
       class="log"
       :log="mobile ? log_mobile : log"
@@ -181,7 +242,7 @@ const start_options = [
       </n-button>
       <help-text v-if="!mobile">
         <div>目前只糊了一个勉强能用的版本，其他功能敬请期待</div>
-        <div>只开放了空任务/专精任务</div>
+        <div>只开放了空任务/专精/加工站任务</div>
         <div>只能增，不能删！！写错了可以【载入心情数据】启动</div>
         <div>如果 mower 休息到 00:30，新增的 00:15 的任务是不会被执行的，因为此时在休息</div>
         <div>添加完任务可以【载入心情任务】启动</div>
@@ -189,8 +250,21 @@ const start_options = [
         <div>专精任务，UI有详细说明；新增完毕，UI上面的表会实时反馈</div>
         <div>在Q群或者频道提以上问题，看心情踢人</div>
       </help-text>
+      <n-button type="error" @click="show_feedback = true">
+        <template #icon>
+          <!-- <n-icon>
+          <add-icon />
+        </n-icon> -->
+        </template>
+        <template v-if="!mobile">反馈问题</template>
+      </n-button>
+      <feedback />
       <div class="expand"></div>
       <div class="scroll-container">
+        <n-checkbox v-model:checked="sc_preview">
+          <template v-if="mobile">截图</template>
+          <template v-else>预览截图</template>
+        </n-checkbox>
         <n-switch v-model:value="auto_scroll" />
         <span class="scroll-label" v-if="!mobile">自动滚动</span>
       </div>
@@ -309,5 +383,11 @@ const start_options = [
 
 .hljs-scene {
   font-style: italic;
+}
+.sc {
+  max-width: 480px;
+  max-height: 270px;
+  border-radius: 6px;
+  z-index: 15;
 }
 </style>

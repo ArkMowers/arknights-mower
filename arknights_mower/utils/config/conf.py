@@ -69,6 +69,8 @@ class EmailPart(ConfModel):
     "标题前缀"
     notification_level: str = "INFO"
     "邮件通知等级"
+    timezone_offset: int = 0
+    "时差修正"
 
 
 class ExtraPart(ConfModel):
@@ -424,6 +426,15 @@ class RegularTaskPart(ConfModel):
     "读取基报"
 
 
+class WorkShopItem(ConfModel):
+    item_name: str = ""
+    "材料名称"
+    children_lower_limit: int = 20
+    "子项下限"
+    self_upper_limit: int = 30
+    "自己上限"
+
+
 class RIICPart(ConfModel):
     class RunOrderGrandetModeConf(ConfModel):
         enable: bool = True
@@ -432,6 +443,12 @@ class RIICPart(ConfModel):
         "缓冲时间"
         back_to_index: bool = False
         "跑单前返回基建首页"
+
+    class WorkShopSetting(ConfModel):
+        items: list[WorkShopItem] = []
+        "材料列表"
+        operator: str = ""
+        "干员"
 
     drone_count_limit: int = 100
     "无人机使用阈值"
@@ -455,6 +472,16 @@ class RIICPart(ConfModel):
     "菲亚防呆"
     fia_threshold: float = 0.9
     "菲亚阈值"
+    rescue_threshold: float = 0.75
+    "急救阈值"
+    favorite: str = ""
+    "替换组心情监视"
+    workshop_settings: list[WorkShopSetting] = []
+    "工作室设置"
+    merge_interval: float = 10
+    "不养闲人合并间隔"
+    dorm_order: str = ""
+    "宿舍优先级"
 
 
 class SimulatorPart(ConfModel):
@@ -537,6 +564,19 @@ class SKLandPart(ConfModel):
     "森空岛账号"
 
 
+class MaaRewardPart(ConfModel):
+    maa_mail: bool = False
+    "领取所有邮件奖励"
+    maa_recruit: bool = False
+    "进行限定池赠送的每日免费单抽"
+    maa_orundum: bool = False
+    "领取幸运墙的每日合成玉奖励"
+    maa_mining: bool = False
+    "领取限时开采许可的每日合成玉奖励"
+    maa_specialaccess: bool = False
+    "领取五周年赠送月卡奖励"
+
+
 class Conf(
     CluePart,
     EmailPart,
@@ -548,6 +588,7 @@ class Conf(
     RIICPart,
     SimulatorPart,
     SKLandPart,
+    MaaRewardPart,
 ):
     @property
     def APPNAME(self):

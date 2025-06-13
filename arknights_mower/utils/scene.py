@@ -107,6 +107,14 @@ class Scene:
     "制造站设施列表"
     LEAVE_INFRASTRUCTURE = 224
     "离开基建"
+    FACTORY_DASHBOARD = 225
+    "加工站工作台"
+    FACTORY_PRODUCT_COLLECT = 226
+    "加工站收取材料"
+    FACTORY_FORMULA = 227
+    "选择材料界面"
+    FACTORY_ROOM = 228
+    "加工站干员选择界面"
     BUSINESS_CARD = 301
     "个人名片"
     FRIEND_LIST = 302
@@ -247,6 +255,8 @@ class Scene:
     "正在进入"
     SSS_GUIDE = 1009
     "保全教程"
+    SSS_CONFIRM = 1010
+    "保全确定"
     SF_ENTRANCE = 1101
     "隐秘战线入口"
     SF_INFO = 1102
@@ -336,6 +346,10 @@ SceneComment = {
     222: "无人机加速对话框",
     223: "制造站设施列表",
     224: "离开基建",
+    225: "加工站工作台",
+    226: "加工站收取材料",
+    227: "选择材料界面",
+    228: "加工站干员选择界面",
     301: "个人名片",
     302: "好友列表",
     303: "基建内访问好友",

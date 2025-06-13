@@ -2,12 +2,14 @@ import { defineStore } from 'pinia'
 import { ref, watchEffect, computed, inject } from 'vue'
 import axios from 'axios'
 import { deepcopy } from '@/utils/deepcopy'
+import { useConfigStore } from '@/stores/config'
+import { storeToRefs } from 'pinia'
 
 export const usePlanStore = defineStore('plan', () => {
   const ling_xi = ref(1)
-  const max_resting_count = ref([])
   const exhaust_require = ref([])
   const rest_in_full = ref([])
+  const ope_resting_priority = ref([])
   const resting_priority = ref([])
   const workaholic = ref([])
   const refresh_trading = ref([])
@@ -39,6 +41,9 @@ export const usePlanStore = defineStore('plan', () => {
   for (let i = 1; i <= 4; ++i) {
     facility_operator_limit[`dormitory_${i}`] = 5
   }
+  for (let i = 1; i <= 3; ++i) {
+    facility_operator_limit[`gaming_${i}`] = 1
+  }
 
   function list2str(data) {
     return data.join(',')
@@ -55,7 +60,8 @@ export const usePlanStore = defineStore('plan', () => {
     'workaholic',
     'free_blacklist',
     'refresh_trading',
-    'refresh_drained'
+    'refresh_drained',
+    'ope_resting_priority'
   ]
 
   function fill_empty(full_plan) {
@@ -128,16 +134,32 @@ export const usePlanStore = defineStore('plan', () => {
   }
 
   async function load_plan() {
+    const config_store = useConfigStore()
+    const { dorm_order } = storeToRefs(config_store)
+    // 新排班表重置宿舍优先级
+    dorm_order.value = []
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/plan`)
     ling_xi.value = response.data.conf.ling_xi
-    max_resting_count.value = response.data.conf.max_resting_count
     exhaust_require.value = str2list(response.data.conf.exhaust_require)
     rest_in_full.value = str2list(response.data.conf.rest_in_full)
+    ope_resting_priority.value = str2list(response.data.conf.ope_resting_priority)
     resting_priority.value = str2list(response.data.conf.resting_priority)
     workaholic.value = str2list(response.data.conf.workaholic)
     refresh_trading.value = str2list(response.data.conf.refresh_trading)
     refresh_drained.value = str2list(response.data.conf.refresh_drained)
-
+    const gamings = ['gaming_1', 'gaming_2', 'gaming_3']
+    for (const key of gamings) {
+      if (!response.data.plan1[key]) {
+        response.data.plan1[key] = { plans: [] }
+      }
+    }
+    for (const key of gamings) {
+      for (const b of response.data.backup_plans) {
+        if (!b.conf[key]) {
+          b.conf[key] = { plans: [] }
+        }
+      }
+    }
     plan.value = fill_empty(response.data.plan1)
 
     backup_plans.value = response.data.backup_plans ?? []
@@ -167,9 +189,9 @@ export const usePlanStore = defineStore('plan', () => {
       plan1: strip_plan(plan.value),
       conf: {
         ling_xi: ling_xi.value,
-        max_resting_count: max_resting_count.value,
         exhaust_require: list2str(exhaust_require.value),
         rest_in_full: list2str(rest_in_full.value),
+        ope_resting_priority: list2str(ope_resting_priority.value),
         resting_priority: list2str(resting_priority.value),
         workaholic: list2str(workaholic.value),
         refresh_trading: list2str(refresh_trading.value),
@@ -239,10 +261,10 @@ export const usePlanStore = defineStore('plan', () => {
     load_plan,
     load_operators,
     ling_xi,
-    max_resting_count,
     exhaust_require,
     rest_in_full,
     resting_priority,
+    ope_resting_priority,
     workaholic,
     refresh_trading,
     refresh_drained,

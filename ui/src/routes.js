@@ -21,10 +21,16 @@ export const routes = [
         name: 'plan'
       },
       {
-        path: 'settings',
+        path: 'mowersettings',
         component: () => import('@/pages/Settings.vue'),
-        meta: { title: '设置' },
-        name: 'settings'
+        meta: { title: 'mower设置' },
+        name: 'mowersettings'
+      },
+      {
+        path: 'maasettings',
+        component: () => import('@/pages/maasettings.vue'),
+        meta: { title: 'maa设置' },
+        name: 'maasettings'
       },
       {
         path: 'aio',
@@ -70,6 +76,12 @@ export const routes = [
             component: () => import('@/pages/report.vue'),
             meta: { title: '基建报告' },
             name: 'report'
+          },
+          {
+            path: 'trading_analysis',
+            component: () => import('@/pages/trading_analysis.vue'),
+            meta: { title: '贸易订单分析' },
+            name: 'trading_analysis'
           }
         ]
       }

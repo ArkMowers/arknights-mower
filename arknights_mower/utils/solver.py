@@ -78,8 +78,17 @@ class BaseSolver:
         self.check_current_focus()
         retry_times = config.MAX_RETRYTIME
         result = None
+        start_time = datetime.now()
+        recruit_timeout_limit = 300  # 获取超时限制 300s
+        from arknights_mower.solvers.recruit import RecruitSolver
+
         while retry_times > 0:
             try:
+                if isinstance(self, RecruitSolver):
+                    if datetime.now() - start_time > timedelta(
+                        seconds=recruit_timeout_limit
+                    ):
+                        raise Exception("任务超时,强制停止")
                 result = self.transition()
                 if result:
                     return result
@@ -189,6 +198,11 @@ class BaseSolver:
 
     def check_current_focus(self):
         self.recog.check_current_focus()
+
+    def restart_game(self):
+        self.device.exit()
+        self.device.launch()
+        self.recog.update()
 
     def tap_element(
         self,
@@ -397,9 +411,15 @@ class BaseSolver:
 
     def train_scene(self) -> int:
         """
-        训练室景识别
+        训练室场景识别
         """
         return self.recog.get_train_scene()
+
+    def factory_scene(self) -> int:
+        """
+        加工站场景识别
+        """
+        return self.recog.get_factory_scene()
 
     def is_login(self):
         """check if you are logged in"""
@@ -687,15 +707,17 @@ class BaseSolver:
                     elif config.conf.sss.ec == 2:
                         ec_x = 960
                     else:
-                        ec_x = 1344
+                        ec_x = 1860
                     self.tap((ec_x, 540))
                     self.tap_element("sss/ec_button")
                 elif scene == Scene.SSS_DEVICE:
-                    self.tap_element("sss/device_button")
+                    self.tap((1824, 1026))
                 elif scene == Scene.SSS_SQUAD:
                     self.tap_element("sss/squad_button")
                 elif scene == Scene.SSS_GUIDE:
                     self.tap_element("sss/close_button")
+                elif scene == Scene.SSS_CONFIRM:
+                    self.tap_element("sss/confirm")
                 else:
                     self.sleep()
             except MowerExit:

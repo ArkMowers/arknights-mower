@@ -15,6 +15,7 @@ const mobile = inject('mobile')
 
 const {
   run_order_delay,
+  dorm_order,
   drone_room,
   drone_count_limit,
   drone_interval,
@@ -26,6 +27,8 @@ const {
   theme,
   resting_threshold,
   fia_threshold,
+  rescue_threshold,
+  favorite,
   tap_to_launch_game,
   exit_game_when_idle,
   close_simulator_when_idle,
@@ -36,13 +39,18 @@ const {
   fix_mumu12_adb_disconnect,
   touch_method,
   free_room,
+  merge_interval,
   fia_fool,
   droidcast,
   maa_adb_path,
   maa_gap,
   custom_screenshot,
   check_for_updates,
-  waiting_scene
+  waiting_scene,
+  enable_party,
+  leifeng_mode,
+  item_list,
+  workshop_settings
 } = storeToRefs(config_store)
 
 const { operators } = storeToRefs(plan_store)
@@ -122,19 +130,6 @@ const elapsed = ref(0)
 const loading = ref(false)
 const axios = inject('axios')
 
-async function test_screenshot() {
-  loading.value = true
-  tested.value = false
-  try {
-    const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/test-custom-screenshot`)
-    image.value = response.data.screenshot
-    elapsed.value = response.data.elapsed
-  } finally {
-    loading.value = false
-    tested.value = true
-  }
-}
-
 const scene_name = {
   CONNECTING: '正在提交反馈至神经',
   UNKNOWN: '未知',
@@ -149,6 +144,38 @@ const onSelectionChange = (newValue) => {
     simulator.value.index = '-1'
   } else {
     simulator.value.index = '0'
+  }
+}
+import { ref } from 'vue'
+
+const showSettingModal = ref(false)
+const editingIndex = ref(null)
+
+const tempSetting = ref({
+  operator: '',
+  items: []
+})
+const deepClone = (obj) => JSON.parse(JSON.stringify(obj))
+const openEdit = (index) => {
+  tempSetting.value = workshop_settings.value[index]
+  editingIndex.value = index
+  showSettingModal.value = true
+}
+
+const workshop_setting_close = () => {
+  if (editingIndex.value === null) {
+    workshop_settings.value.push(deepClone(tempSetting.value))
+  } else {
+    workshop_settings.value[editingIndex.value] = deepClone(tempSetting.value)
+  }
+  showSettingModal.value = false
+  editingIndex.value = null
+}
+function createNewItem() {
+  return {
+    item_name: '',
+    children_lower_limit: 20,
+    self_upper_limit: 20
   }
 }
 </script>
@@ -421,6 +448,18 @@ const onSelectionChange = (newValue) => {
         </n-card>
       </div>
       <div>
+        <SKLand />
+      </div>
+      <div>
+        <Depotswitch />
+      </div>
+      <div>
+        <DailyMission />
+      </div>
+    </div>
+
+    <div class="grid-right">
+      <div>
         <n-card title="基建设置">
           <n-form
             :label-placement="mobile ? 'top' : 'left'"
@@ -428,6 +467,20 @@ const onSelectionChange = (newValue) => {
             label-width="140"
             label-align="left"
           >
+            <n-form-item>
+              <n-flex>
+                <n-checkbox v-model:checked="enable_party">
+                  <div class="item">线索收集</div>
+                </n-checkbox>
+                <n-checkbox v-model:checked="leifeng_mode">
+                  雷锋模式
+                  <help-text>
+                    <div>开启时，向好友赠送多余的线索；</div>
+                    <div>关闭则超过9个线索才送好友。</div>
+                  </help-text>
+                </n-checkbox>
+              </n-flex>
+            </n-form-item>
             <n-form-item>
               <template #label>
                 <span>跑单前置延时</span>
@@ -527,11 +580,34 @@ const onSelectionChange = (newValue) => {
                 <help-text>干员心情回满后，立即释放宿舍空位</help-text>
               </n-checkbox>
             </n-form-item>
+            <n-form-item v-if="free_room">
+              <template #label>
+                <span>任务合并间隔</span>
+                <help-text>
+                  <div>可填小数</div>
+                  <div>将不养闲人任务合并至下一个指定间隔内的任务</div>
+                </help-text>
+              </template>
+              <n-input-number v-model:value="merge_interval">
+                <template #suffix>分钟</template>
+              </n-input-number>
+            </n-form-item>
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="fia_fool">
                 菲亚防呆
-                <help-text>沿用默认逻辑，不确定菲亚替换心情消耗请启用本选项</help-text>
+                <help-text
+                  >当菲亚替换干员心情均超过90%时菲亚等待半小时，不确定菲亚替换心情消耗请启用本选项</help-text
+                >
               </n-checkbox>
+            </n-form-item>
+            <n-form-item>
+              <template #label>
+                <span>宿舍优先级排序</span>
+                <help-text>
+                  <div>正常情况千万不需要，除非你有特殊情况</div>
+                </help-text>
+              </template>
+              <slick-dorm-select v-model="dorm_order"></slick-dorm-select>
             </n-form-item>
             <n-form-item>
               <template #label>
@@ -556,34 +632,137 @@ const onSelectionChange = (newValue) => {
                 </n-input-number>
               </div>
             </n-form-item>
+            <n-form-item>
+              <template #label>
+                <span>急救阈值</span>
+                <help-text>
+                  <div>整体心情低于换班阈值乘急救阈值后，将忽视高优人数安排休息任务。</div>
+                </help-text>
+              </template>
+              <div class="threshold">
+                <n-slider
+                  v-model:value="rescue_threshold"
+                  :step="5"
+                  :min="0"
+                  :max="90"
+                  :format-tooltip="(v) => `${v}%`"
+                />
+                <n-input-number v-model:value="rescue_threshold" :step="5" :min="0" :max="90">
+                  <template #suffix>%</template>
+                </n-input-number>
+              </div>
+            </n-form-item>
+            <n-form-item>
+              <template #label>
+                <span>替换组心情监视</span>
+                <help-text>填入需要查看心情曲线的替换组干员</help-text>
+              </template>
+              <slick-operator-select v-model="favorite"></slick-operator-select>
+            </n-form-item>
+            <n-form-item>
+              <template #label>
+                <span>无缝合成材料设置</span>
+                <help-text>想看攻略嘛？去Q群精华消息</help-text>
+              </template>
+              <n-button
+                type="primary"
+                @click="
+                  () => {
+                    tempSetting = { operator: '', items: [] }
+                    editingIndex = null
+                    showSettingModal = true
+                  }
+                "
+                >新增设置</n-button
+              >
+              <n-list bordered>
+                <n-list-item v-for="(setting, idx) in workshop_settings" :key="idx">
+                  <div class="flex justify-between w-full">
+                    <div>
+                      <strong>干员:</strong> {{ setting.operator }}<br />
+                      <ul>
+                        <li v-for="(item, i) in setting.items" :key="i">
+                          {{ item.item_name }} - 子项下限: {{ item.children_lower_limit }},
+                          自身上限: {{ item.self_upper_limit }}
+                        </li>
+                      </ul>
+                    </div>
+                    <n-button text @click="openEdit(idx)">编辑</n-button>
+                    <n-button text type="error" @click="workshop_settings.splice(idx, 1)"
+                      >删除</n-button
+                    >
+                  </div>
+                </n-list-item>
+              </n-list>
+            </n-form-item>
+            <n-modal
+              style="width: 500px"
+              v-model:show="showSettingModal"
+              preset="dialog"
+              title="新增干员设置"
+              :mask-closable="false"
+              @update:show="workshop_setting_close"
+            >
+              <n-select
+                filterable
+                :options="operators"
+                class="operator-select"
+                v-model:value="tempSetting.operator"
+                :filter="(p, o) => pinyin_match(o.label, p)"
+                :render-label="render_op_label"
+              />
+              <n-form :model="tempSetting">
+                <n-dynamic-input v-model:value="tempSetting.items" :on-create="createNewItem">
+                  <template #default="{ value }">
+                    <div>
+                      <div style="display: flex; flex-direction: row; align-self: center">
+                        <span style="white-space: nowrap; margin-top: 5px">合成材料： </span>
+                        <n-select
+                          :options="item_list"
+                          v-model:value="value.item_name"
+                          :filter="(p, o) => pinyin_match(o.label, p)"
+                          filterable
+                        />
+                        <help-text>
+                          <div>加工站干员合成材料的白名单</div>
+                        </help-text>
+                      </div>
+                      <div style="display: flex; flex-direction: row; align-self: center">
+                        <span style="white-space: nowrap; margin-top: 5px">合成数量上限： </span>
+                        <n-input-number
+                          v-model:value="value.self_upper_limit"
+                          :min="0"
+                          placeholder="自身上限"
+                        />
+                        <help-text>
+                          <div>设置占位，可能没用</div>
+                        </help-text>
+                      </div>
+                      <div style="display: flex; flex-direction: row; align-self: center">
+                        <span style="white-space: nowrap; margin-top: 5px">子材料数量下限： </span>
+                        <n-input-number
+                          v-model:value="value.children_lower_limit"
+                          :min="0"
+                          placeholder="子项下限"
+                        />
+                        <help-text>
+                          <div>设置占位，可能没用</div>
+                        </help-text>
+                      </div>
+                    </div>
+                  </template>
+                </n-dynamic-input>
+              </n-form>
+            </n-modal>
           </n-form>
         </n-card>
       </div>
       <div>
-        <SKLand />
-      </div>
-      <div>
-        <Depotswitch />
-      </div>
-      <div>
-        <DailyMission />
+        <Recruit />
       </div>
       <div>
         <email />
       </div>
-    </div>
-
-    <div class="grid-right">
-      <div>
-        <clue />
-      </div>
-      <div>
-        <Recruit />
-      </div>
-      <div><maa-weekly /></div>
-      <div><maa-weekly-new /></div>
-      <div><maa-basic /></div>
-      <div><long-tasks /></div>
     </div>
   </div>
 </template>
