@@ -1437,11 +1437,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         op.current_room, [op.current_index]
                     )
                     _time = datetime.now()
+                    margin = 20 if name not in self.op_data.rest_in_full_group else 0
                     if (
                         result[op.current_index]["time"] is not None
                         and result[op.current_index]["time"] > _time
                     ):
-                        _time = result[op.current_index]["time"] - timedelta(minutes=10)
+                        _time = result[op.current_index]["time"] - timedelta(
+                            minutes=10 + margin
+                        )
                     elif (
                         op.current_mood() > 0.25 + op.lower_limit
                         and op.depletion_rate != 0
@@ -1452,7 +1455,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                 hours=(op.current_mood() - op.lower_limit - 0.25)
                                 / op.depletion_rate
                             )
-                            - timedelta(minutes=10)
+                            - timedelta(minutes=10 + margin)
                         )
                     self.back()
                     # plan 是空的是因为得动态生成
@@ -3061,10 +3064,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 continue
             logger.debug(f"开始检查{agent}")
             shift_off = self.find_next_task(
-                datetime.now() + timedelta(hours=24),
+                datetime.now() + timedelta(minutes=1),
                 task_type=TaskTypes.EXHAUST_OFF,
                 meta_data=agent,
-                compare_type="<",
+                compare_type=">",
             )
             if shift_off:
                 logger.info(f"移除 {shift_off.meta_data} 用尽下班任务以刷新时间")
