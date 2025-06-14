@@ -490,6 +490,7 @@ class Operators:
         if to_dorm:
             idx, dorm = self.get_dorm_by_name(name)
             if dorm:
+                dorm.name = name
                 if dorm.time is None:
                     return current_index
         if agent.name == "菲亚梅塔" and (

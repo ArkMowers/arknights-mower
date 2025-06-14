@@ -491,9 +491,9 @@ def try_workshop_tasks(op_data, tasks):
             non_base_material_match = False
             for material in item.items:
                 name = material.item_name
+                metadata = workshop_formula[name]
                 if name.startswith("家具零件"):
                     name = "家具零件"
-                metadata = workshop_formula[name]
                 if (
                     name in inventory_data
                     and inventory_data[name] < material.self_upper_limit
