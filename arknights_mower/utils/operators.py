@@ -478,7 +478,7 @@ class Operators:
             agent.depletion_rate = 0
         if from_dorm:
             idx, dorm = self.get_dorm_by_name(name)
-            if dorm:
+            if dorm and dorm.name == name:
                 dorm.reset()
         if current_room not in self.true_exhaust_room:
             agent.exhaust_time = None
