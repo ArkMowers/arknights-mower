@@ -3482,7 +3482,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         try:
             logger.debug("开始更新Maa活动关卡导航……")
             ota_tasks_url = (
-                "https://ota.maa.plus/MaaAssistantArknights/api/resource/tasks.json"
+                "https://api.maa.plus/MaaAssistantArknights/api/resource/tasks.json"
             )
             ota_tasks_path = path / "cache" / "resource" / "tasks.json"
             ota_tasks_path.parent.mkdir(parents=True, exist_ok=True)
