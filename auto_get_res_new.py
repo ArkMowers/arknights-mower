@@ -14,6 +14,24 @@ from sklearn.neighbors import KNeighborsClassifier
 from arknights_mower.utils.image import loadimg, thres2
 
 
+def 提取干员名图片(imgpath, 裁剪区域: int = 1):
+    """
+    imgpath: 选人界面截图的路径，需要待提取干员处于最左侧；
+    裁剪区域：1为左上，2为左下。
+    保存到本地并手动重命名为干员名后可以用于训练模型。
+    """
+    img = Image.open(imgpath)
+    # 只做两个裁剪区域，其他区域可能存在裁剪不准的问题
+    if 裁剪区域 == 2:
+        x = 631
+        y = 909
+    else:
+        x = 631
+        y = 488
+    img = img.crop((x, y, x + 190, y + 32))
+    img.save("./arknights_mower/opname/unknown.png")
+
+
 class Arknights数据处理器:
     def __init__(self):
         self.当前时间戳 = datetime.now().timestamp()
@@ -549,6 +567,12 @@ class Arknights数据处理器:
                 draw.text((50, 20), operator, fill=(255,), font=font)
 
             img = np.array(img, dtype=np.uint8)
+            local_imgpath = f"arknights_mower/opname/{operator}.png"
+            if os.path.exists(local_imgpath):
+                with open(local_imgpath, "rb") as f:
+                    img_data = f.read()
+                img_array = np.frombuffer(img_data, np.uint8)
+                img = cv2.imdecode(img_array, cv2.IMREAD_GRAYSCALE)
             img = thres2(img, 140)
             dilation = cv2.dilate(img, kernel, iterations=1)
             contours, _ = cv2.findContours(
@@ -761,6 +785,8 @@ formulaType = {
     "F_BUILDING": "基建材料",
     "F_EVOLVE": "精英材料",
 }
+
+# 提取干员名图片("./MuMu12-20250615-094057.png",2)
 
 数据处理器 = Arknights数据处理器()
 
