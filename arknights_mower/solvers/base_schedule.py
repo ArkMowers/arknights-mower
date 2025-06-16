@@ -2528,6 +2528,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.tap((_x0, _y0))
             self.sleep(0.5)
             self.recog.update()
+            retry_count += 1
+        retry_count = 0
+        while self.find("confirm_train") and retry_count < 4:
+            self.tap_element("confirm_blue")
+            self.sleep(0.5)
+            self.recog.update()
+            retry_count += 1
 
     def choose_train_agent(
         self, current_room, agents, idx, error_count=0, fast_mode=False
@@ -2551,11 +2558,14 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         current_room = self.op_data.get_current_room("train", True)
         self.choose_train_agent(current_room, agents, 0, 0, fast_mode)
         # 训练室第二个人的干员识别会出错（工作中的干员无法识别 + 正在训练的干员无法换下）
-        # self.choose_train_agent(current_room, agents, 1, 0, fast_mode)
+        self.choose_train_agent(current_room, agents, 1, 0, fast_mode)
 
     def choose_train_ope(self, ope: str):
         found = False
         profession = "ALL"
+        if ope != "阿米娅":
+            profession = agent_profession[ope]
+        self.profession_filter(profession)
         first_ret = None
         right_swipe = 0
         max_swipe = 50
@@ -2577,6 +2587,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if right_swipe >= max_swipe:
                 break
         right_swipe = self.swipe_left(right_swipe, special_filter=profession)
+        self.ctap((1280, 60), 0.3)
+        self.ctap((1280, 60), 0.3)
         if not self.verify_agent([ope], "train", train=True):
             logger.debug([ope])
             raise Exception("检测到干员选择错误，重新选择")

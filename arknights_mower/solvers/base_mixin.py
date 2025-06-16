@@ -185,8 +185,13 @@ class BaseMixin:
             logger.info("关闭职业筛选")
             self.profession_filter("ALL")
             while (
-                confirm_btn := self.find("confirm_blue")
-            ) is not None and confirm_btn[0][0] < open_threshold:
+                (confirm_btn := self.find("confirm_blue")) is not None
+                and confirm_btn[0][0] < open_threshold
+            ) or (
+                (confirm_btn := self.find("confirm_train")) is not None
+                and confirm_btn[0][0] < 1600
+            ):
+                logger.info(f"{confirm_btn[0][0]}")
                 self.tap((1860, 60), 0.1)
                 retry += 1
                 if retry > 5:
@@ -195,9 +200,14 @@ class BaseMixin:
         x = 1918
         label_pos = [(x, 135 + i * 110) for i in range(9)]
         label_pos_map = dict(zip(self.profession_labels, label_pos))
-        while (confirm_btn := self.find("confirm_blue")) is not None and confirm_btn[0][
-            0
-        ] > open_threshold:
+        while (
+            (confirm_btn := self.find("confirm_blue")) is not None
+            and confirm_btn[0][0] > open_threshold
+        ) or (
+            (confirm_btn := self.find("confirm_train")) is not None
+            and confirm_btn[0][0] > 1600
+        ):
+            logger.info(f"{confirm_btn[0][0]}")
             self.tap((1860, 60), 0.1)
             retry += 1
             if retry > 5:
