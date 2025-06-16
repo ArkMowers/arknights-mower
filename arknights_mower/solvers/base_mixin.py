@@ -9,7 +9,7 @@ from arknights_mower import __rootdir__
 from arknights_mower.data import workshop_formula
 from arknights_mower.solvers.record import save_inventory_counts
 from arknights_mower.utils import rapidocr, segment
-from arknights_mower.utils.character_recognize import operator_list
+from arknights_mower.utils.character_recognize import operator_list, operator_list_train
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
@@ -77,7 +77,12 @@ class BaseMixin:
             self.tap((name_x[name], name_y), interval=0.5)
 
     def scan_agent(
-        self, agent: list[str], error_count=0, max_agent_count=-1, full_scan=True
+        self,
+        agent: list[str],
+        error_count=0,
+        max_agent_count=-1,
+        full_scan=True,
+        train=False,
     ):
         try:
             # 识别干员
@@ -86,7 +91,11 @@ class BaseMixin:
                 logger.info("等待网络连接")
                 self.sleep()
             # 返回的顺序是从左往右从上往下
-            ret = operator_list(self.recog.img, full_scan=full_scan)
+            ret = (
+                operator_list(self.recog.img, full_scan=full_scan)
+                if not train
+                else operator_list_train(self.recog.img)
+            )
             # 提取识别出来的干员的名字
             select_name = []
             for name, scope in ret:
@@ -110,15 +119,23 @@ class BaseMixin:
                 raise e
 
     def verify_agent(
-        self, agent: list[str], room, error_count=0, max_agent_count=-1, full_scan=True
+        self,
+        agent: list[str],
+        room,
+        error_count=0,
+        max_agent_count=-1,
+        full_scan=True,
+        train=False,
     ):
         try:
             # 识别干员
             while self.find("connecting"):
                 logger.info("等待网络连接")
                 self.sleep()
-            ret = operator_list(
-                self.recog.img, full_scan=full_scan
+            ret = (
+                operator_list(self.recog.img, full_scan=full_scan)
+                if not train
+                else operator_list_train(self.recog.img)
             )  # 返回的顺序是从左往右从上往下
             # 提取识别出来的干员的名字
             index = 0
@@ -131,7 +148,8 @@ class BaseMixin:
             return True
         except Exception as e:
             error_count += 1
-            self.switch_arrange_order("技能", room)
+            if room != "train":
+                self.switch_arrange_order("技能", room)
             if error_count < 3:
                 return self.verify_agent(
                     agent, room, error_count, max_agent_count, full_scan=False

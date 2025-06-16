@@ -2535,13 +2535,16 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if current_room[idx] != agents[idx]:
             while (
                 # self.find("arrange_order_options",scope=((1785, 0), (1920, 128))) is None
-                self.find("confirm_blue") is None
+                self.find("confirm_blue") is None and self.find("confirm_train") is None
             ):
                 if error_count > 3:
                     raise Exception("未成功进入干员选择界面")
                 self.ctap((self.recog.w * 0.82, self.recog.h * 0.18 * (idx + 1)))
                 error_count += 1
-            self.choose_agent([agents[idx]], "train", fast_mode)
+            if idx == 0:
+                self.choose_agent([agents[idx]], "train", fast_mode)
+            else:
+                self.choose_train_ope(agents[idx])
             self.tap_confirm("train")
 
     def choose_train(self, agents: list[str], fast_mode=True):
@@ -2549,6 +2552,35 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.choose_train_agent(current_room, agents, 0, 0, fast_mode)
         # 训练室第二个人的干员识别会出错（工作中的干员无法识别 + 正在训练的干员无法换下）
         # self.choose_train_agent(current_room, agents, 1, 0, fast_mode)
+
+    def choose_train_ope(self, ope: str):
+        found = False
+        profession = "ALL"
+        first_ret = None
+        right_swipe = 0
+        max_swipe = 50
+        while not found:
+            sel, ret = self.scan_agent([ope], train=True)
+            if sel == [ope]:
+                found = True
+                break
+            if ret == first_ret and right_swipe >= 3:
+                max_swipe = right_swipe
+            else:
+                first_ret = ret
+            st = ret[-2][1][0]  # 起点
+            ed = ret[0][1][0]  # 终点
+            self.swipe_noinertia(st, (ed[0] - st[0], 0))
+            right_swipe += 1
+            if right_swipe >= 3:
+                self.sleep(0.3)
+            if right_swipe >= max_swipe:
+                break
+        right_swipe = self.swipe_left(right_swipe, special_filter=profession)
+        if not self.verify_agent([ope], "train", train=True):
+            logger.debug([ope])
+            raise Exception("检测到干员选择错误，重新选择")
+        self.last_room = "train"
 
     def choose_agent(
         self, agents: list[str], room: str, fast_mode=True, train_index=0
