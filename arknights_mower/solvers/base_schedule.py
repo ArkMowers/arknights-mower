@@ -235,12 +235,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     logger.debug(f"跳过{str(dorm)}，休息完毕")
                     continue
                 operator = self.op_data.operators[dorm.name]
-                if (
-                    operator.rest_in_full
-                    or operator.group in self.op_data.rest_in_full_group
+                if (operator.rest_in_full and operator.exhaust_require) or (
+                    operator.group in self.op_data.rest_in_full_group
+                    and operator.group in self.op_data.exhaust_group
                 ):
                     # 如果回满，则跳过
-                    logger.debug(f"跳过{str(dorm)}，回满")
+                    logger.debug(f"跳过{str(dorm)}，用尽回满")
                     continue
                 if not operator.is_high():
                     # 跳过非高优
