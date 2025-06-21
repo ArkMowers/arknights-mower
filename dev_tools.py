@@ -2,6 +2,73 @@ import filecmp
 import os
 import shutil
 import subprocess
+from urllib.parse import urljoin, urlparse
+
+import requests
+from bs4 import BeautifulSoup
+
+BASE_URL = "https://arkmowers.github.io/arknights-mower/"
+OUTPUT_DIR = "ui/dist/docs"
+VISITED = set()
+
+
+def save_file(url, content):
+    parsed = urlparse(url)
+    # 只保留 URL 的 path 部分，不要包含域名和 offline_docs
+    path = parsed.path.lstrip("/")
+    if not path or path.endswith("/"):
+        path += "index.html"
+    # 防止 path 以 offline_docs/ 开头
+    if path.startswith(OUTPUT_DIR + "/"):
+        path = path[len(OUTPUT_DIR) + 1 :]
+    local_path = os.path.join(OUTPUT_DIR, path)
+    os.makedirs(os.path.dirname(local_path), exist_ok=True)
+    with open(local_path, "wb") as f:
+        f.write(content)
+    print(f"Saved: {local_path}")
+
+
+def download(url):
+    if url in VISITED or not url.startswith(BASE_URL):
+        return
+    VISITED.add(url)
+    try:
+        resp = requests.get(url, timeout=20)
+        resp.raise_for_status()
+    except Exception as e:
+        print(f"Failed to download {url}: {e}")
+        return
+
+    content_type = resp.headers.get("Content-Type", "")
+    if "text/html" in content_type:
+        soup = BeautifulSoup(resp.text, "html.parser")
+        # 只本地化图片资源
+        for img in soup.find_all("img"):
+            src = img.get("src")
+            if src:
+                abs_url = urljoin(url, src)
+                if abs_url.startswith(BASE_URL):
+                    download(abs_url)
+                    parsed = urlparse(abs_url)
+                    local_path = parsed.path.lstrip("/") or "index.html"
+                    img["src"] = os.path.relpath(
+                        local_path,
+                        os.path.dirname(urlparse(url).path.lstrip("/")) or ".",
+                    )
+        # 页面内链接递归下载并本地化
+        for a in soup.find_all("a"):
+            href = a.get("href")
+            if href and not href.startswith("#") and not href.startswith("mailto:"):
+                abs_url = urljoin(url, href)
+                if abs_url.startswith(BASE_URL):
+                    download(abs_url)
+                    parsed = urlparse(abs_url)
+                    local_path = parsed.path.lstrip("/") or "index.html"
+                    node_path = os.path.dirname(urlparse(url).path.lstrip("/")) or "."
+                    a["href"] = os.path.relpath(local_path, node_path)
+        save_file(url, soup.prettify("utf-8"))
+    else:
+        save_file(url, resp.content)
 
 
 def compare_and_update(new_dir, old_dir, update_dir):
@@ -133,3 +200,6 @@ if __name__ == "__main__":
 
     # remove_empty_folders(update_dir)
     process_files("F:\\Git\\arknights-mower")
+
+    # 下载在线文档至本地
+    download(BASE_URL)
