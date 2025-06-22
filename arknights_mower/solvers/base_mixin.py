@@ -177,8 +177,15 @@ class BaseMixin:
         return 0
 
     def profession_filter(self, profession=None):
+        '''
+                    confirm_blue	confirm_train
+        训练位筛选开	1548 0.89		1554
+        训练位筛选关	not				1669
+        普通位筛选关	1724			1732 0.7
+        普通位筛选开	1609			not
+        '''
         retry = 0
-        open_threshold = 1700
+        open_threshold = 1650
         if profession:
             logger.info(f"打开 {profession} 筛选")
         else:
@@ -189,9 +196,9 @@ class BaseMixin:
                 and confirm_btn[0][0] < open_threshold
             ) or (
                 (confirm_btn := self.find("confirm_train")) is not None
-                and confirm_btn[0][0] < 1600
+                and confirm_btn[0][0] < open_threshold
             ):
-                logger.info(f"{confirm_btn[0][0]}")
+                logger.info(f"{confirm_btn}")
                 self.tap((1860, 60), 0.1)
                 retry += 1
                 if retry > 5:
@@ -205,9 +212,9 @@ class BaseMixin:
             and confirm_btn[0][0] > open_threshold
         ) or (
             (confirm_btn := self.find("confirm_train")) is not None
-            and confirm_btn[0][0] > 1600
+            and confirm_btn[0][0] > open_threshold
         ):
-            logger.info(f"{confirm_btn[0][0]}")
+            logger.info(f"{confirm_btn}")
             self.tap((1860, 60), 0.1)
             retry += 1
             if retry > 5:

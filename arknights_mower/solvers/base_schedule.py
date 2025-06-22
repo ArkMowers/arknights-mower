@@ -2522,16 +2522,16 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.recog.update()
             retry_count += 1
         retry_count = 0
-        while self.find("arrange_confirm") and retry_count < 4:
-            _x0 = self.recog.w // 3 * 2  # double confirm
-            _y0 = self.recog.h - 10
-            self.tap((_x0, _y0))
+        while self.find("confirm_train") and retry_count < 4:
+            self.tap_element("confirm_train")
             self.sleep(0.5)
             self.recog.update()
             retry_count += 1
         retry_count = 0
-        while self.find("confirm_train") and retry_count < 4:
-            self.tap_element("confirm_blue")
+        while self.find("arrange_confirm") and retry_count < 4:
+            _x0 = self.recog.w // 3 * 2  # double confirm
+            _y0 = self.recog.h - 10
+            self.tap((_x0, _y0))
             self.sleep(0.5)
             self.recog.update()
             retry_count += 1
@@ -2565,7 +2565,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         profession = "ALL"
         if ope != "阿米娅":
             profession = agent_profession[ope]
-        self.profession_filter(profession)
+            self.profession_filter(profession)
         first_ret = None
         right_swipe = 0
         max_swipe = 50
@@ -2589,6 +2589,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         right_swipe = self.swipe_left(right_swipe, special_filter=profession)
         self.ctap((1280, 60), 0.3)
         self.ctap((1280, 60), 0.3)
+        logger.debug("验证训练位干员选择")
         if not self.verify_agent([ope], "train", train=True):
             logger.debug([ope])
             raise Exception("检测到干员选择错误，重新选择")

@@ -81,11 +81,10 @@ def operator_list(img, draw=False, full_scan=True):
         display = img.copy()
         for p in name_p:
             cv2.rectangle(display, p[0], p[1], (255, 0, 0), 3)
-
-        from matplotlib import pyplot as plt
-
-        plt.imshow(display)
-        plt.show()
+        display = cv2.cvtColor(display, cv2.COLOR_RGB2BGR)
+        cv2.imshow("Image", display)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
 
     return tuple(zip(op_name, name_p))
 
@@ -99,19 +98,44 @@ def operator_list_train(img, draw=False, full_scan=True):
         mask = cv2.inRange(hsv, (98, 140, 200), (102, 255, 255))
         line1 = cv2.cvtColor(line1, cv2.COLOR_RGB2GRAY)
         line1[mask > 0] = (255,)
-        line1 = thres2(line1, 140)
+        line1 = thres2(line1, 85)
 
         last_line = line1[0]
         prev = last_line[0]
-        start = None
+        front_edge = None
+        back_edge = None
         name_x = []
+        def is_black_streak(start, length):
+            """检查从 start 位置开始，向后长度为 length 的像素是否全为黑色（0），包括start"""
+            end = min(start+length, len(last_line))
+            return all(last_line[j] == 0 for j in range(start, end))
+
+        def is_white_streak(start, length):
+            """检查从 start 位置开始，向前长度为 length 的像素是否全为白色（255），不包括start"""
+            start_idx = max(0, start - length)
+            return all(last_line[j] == 255 for j in range(start_idx, start))
+        
         for i in range(1, line1.shape[1]):
             curr = last_line[i]
-            if prev == 0 and curr == 255 and start and i - start > 170:
-                name_x.append((start + 545, i + 543))
-            elif prev == 255 and curr == 0:
-                if start is None or i - start > 170:
-                    start = i
+            # 当从白色像素变为黑色像素时
+            if prev == 255 and curr == 0:
+                if is_black_streak(i, 20) and is_white_streak(i,10):
+                    # 若前边缘未记录或当前位置与前边缘距离超过 200 像素，则更新前边缘
+                    should_update_front_edge = front_edge is None or i - front_edge > 200
+                    if should_update_front_edge:
+                        front_edge = i
+            # 当从黑色像素变为白色像素时
+            elif prev == 0 and curr == 255:
+                if is_black_streak(i-10,10) and is_white_streak(i+10,10):
+                    # 检查前边缘是否已记录且当前位置与前边缘距离超过 160 像素
+                    front_edge_valid = front_edge is not None and i - front_edge > 160
+                    # 检查后边缘是否未记录或当前位置与后边缘距离超过 200 像素
+                    should_update_back_edge = back_edge is None or i - back_edge > 200
+
+                    if front_edge_valid and should_update_back_edge:
+                        back_edge = i
+                        # 记录检测到的名称区域
+                        name_x.append((back_edge + 543 -175, back_edge + 543))
             prev = curr
 
         for x in name_x:
@@ -135,11 +159,23 @@ def operator_list_train(img, draw=False, full_scan=True):
         dilation = cv2.dilate(im, kernel, iterations=1)
         contours, _ = cv2.findContours(dilation, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         rect = map(lambda c: cv2.boundingRect(c), contours)
-        x, y, w, h = sorted(rect, key=lambda c: c[0])[0]
+        rect_list = list(rect)
+        filtered_rects = [rect for rect in rect_list if len(rect) >= 3 and rect[2] > 30]
+        if filtered_rects:
+            # 取第一个元素最大的元组
+            x, y, w, h = max(filtered_rects, key=lambda rect: rect[0])
+        else:
+            # 处理没有符合条件元素的情况
+            x, y, w, h = 0, 0, 0, 0
+        h = h if h <= 42 else 42
+        w = w if w <= 200 else 200
         im = im[y : y + h, x : x + w]
         tpl = np.zeros((42, 200), dtype=np.uint8)
         tpl[: im.shape[0], : im.shape[1]] = im
         tpl = cv2.copyMakeBorder(tpl, 2, 2, 2, 2, cv2.BORDER_CONSTANT, None, (0,))
+        '''cv2.imshow("tpl", tpl)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()'''
         max_score = 0
         best_operator = ""
         for operator, template in OP_TRAIN.items():
@@ -155,13 +191,21 @@ def operator_list_train(img, draw=False, full_scan=True):
 
     with ThreadPoolExecutor() as executor:
         op_name = list(executor.map(process_name_region, name_p))
-        logger.debug(op_name)
-
+    logger.debug(op_name)
+    '''for p in name_p:
+        op_name.append(process_name_region(p))
+    logger.debug(op_name)'''
     if draw:
         display = img.copy()
         for p in name_p:
             cv2.rectangle(display, p[0], p[1], (255, 0, 0), 3)
         display = cv2.cvtColor(display, cv2.COLOR_RGB2BGR)
+        cv2.imwrite("train.png", display)
+        scale_percent = 66.67  # 缩放比例
+        width = int(display.shape[1] * scale_percent / 100)
+        height = int(display.shape[0] * scale_percent / 100)
+        dim = (width, height)
+        display = cv2.resize(display, dim, interpolation=cv2.INTER_AREA)
         cv2.imshow("Image", display)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
