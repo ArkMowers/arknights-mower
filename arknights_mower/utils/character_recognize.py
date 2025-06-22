@@ -105,30 +105,30 @@ def operator_list_train(img, draw=False, full_scan=True):
         front_edge = None
         back_edge = None
         name_x = []
-        def is_black_streak(start, length):
-            """检查从 start 位置开始，向后长度为 length 的像素是否全为黑色（0），包括start"""
+        def color_streak_right(start, length, color):
+            """检查从 start 位置开始，向右长度为 length 的像素是否全为color，包括start"""
             end = min(start+length, len(last_line))
-            return all(last_line[j] == 0 for j in range(start, end))
+            return all(last_line[j] == color for j in range(start, end))
 
-        def is_white_streak(start, length):
-            """检查从 start 位置开始，向前长度为 length 的像素是否全为白色（255），不包括start"""
+        def color_streak_left(start, length, color):
+            """检查从 start 位置开始，向左长度为 length 的像素是否全为color，不包括start"""
             start_idx = max(0, start - length)
-            return all(last_line[j] == 255 for j in range(start_idx, start))
+            return all(last_line[j] == color for j in range(start_idx, start))
         
         for i in range(1, line1.shape[1]):
             curr = last_line[i]
             # 当从白色像素变为黑色像素时
             if prev == 255 and curr == 0:
-                if is_black_streak(i, 20) and is_white_streak(i,10):
+                if color_streak_right(i, 20, 0) and color_streak_left(i,10,255):
                     # 若前边缘未记录或当前位置与前边缘距离超过 200 像素，则更新前边缘
                     should_update_front_edge = front_edge is None or i - front_edge > 200
                     if should_update_front_edge:
                         front_edge = i
             # 当从黑色像素变为白色像素时
             elif prev == 0 and curr == 255:
-                if is_black_streak(i-10,10) and is_white_streak(i+10,10):
+                if color_streak_right(i,10,255) and color_streak_left(i,10,0):
                     # 检查前边缘是否已记录且当前位置与前边缘距离超过 160 像素
-                    front_edge_valid = front_edge is not None and i - front_edge > 160
+                    front_edge_valid = front_edge is not None and 160 < i - front_edge < 200
                     # 检查后边缘是否未记录或当前位置与后边缘距离超过 200 像素
                     should_update_back_edge = back_edge is None or i - back_edge > 200
 
@@ -209,5 +209,5 @@ def operator_list_train(img, draw=False, full_scan=True):
         cv2.imshow("Image", display)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
-
+    logger.debug(tuple(zip(op_name, name_p)))
     return tuple(zip(op_name, name_p))
