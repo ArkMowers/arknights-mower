@@ -105,37 +105,42 @@ def operator_list_train(img, draw=False, full_scan=True):
         front_edge = None
         back_edge = None
         name_x = []
+
         def color_streak_right(start, length, color):
             """检查从 start 位置开始，向右长度为 length 的像素是否全为color，包括start"""
-            end = min(start+length, len(last_line))
+            end = min(start + length, len(last_line))
             return all(last_line[j] == color for j in range(start, end))
 
         def color_streak_left(start, length, color):
             """检查从 start 位置开始，向左长度为 length 的像素是否全为color，不包括start"""
             start_idx = max(0, start - length)
             return all(last_line[j] == color for j in range(start_idx, start))
-        
+
         for i in range(1, line1.shape[1]):
             curr = last_line[i]
             # 当从白色像素变为黑色像素时
             if prev == 255 and curr == 0:
-                if color_streak_right(i, 20, 0) and color_streak_left(i,10,255):
+                if color_streak_right(i, 20, 0) and color_streak_left(i, 10, 255):
                     # 若前边缘未记录或当前位置与前边缘距离超过 200 像素，则更新前边缘
-                    should_update_front_edge = front_edge is None or i - front_edge > 200
+                    should_update_front_edge = (
+                        front_edge is None or i - front_edge > 200
+                    )
                     if should_update_front_edge:
                         front_edge = i
             # 当从黑色像素变为白色像素时
             elif prev == 0 and curr == 255:
-                if color_streak_right(i,10,255) and color_streak_left(i,10,0):
+                if color_streak_right(i, 10, 255) and color_streak_left(i, 10, 0):
                     # 检查前边缘是否已记录且当前位置与前边缘距离超过 160 像素
-                    front_edge_valid = front_edge is not None and 160 < i - front_edge < 200
+                    front_edge_valid = (
+                        front_edge is not None and 160 < i - front_edge < 200
+                    )
                     # 检查后边缘是否未记录或当前位置与后边缘距离超过 200 像素
                     should_update_back_edge = back_edge is None or i - back_edge > 200
 
                     if front_edge_valid and should_update_back_edge:
                         back_edge = i
                         # 记录检测到的名称区域
-                        name_x.append((back_edge + 543 -175, back_edge + 543))
+                        name_x.append((back_edge + 543 - 175, back_edge + 543))
             prev = curr
 
         for x in name_x:
@@ -173,9 +178,9 @@ def operator_list_train(img, draw=False, full_scan=True):
         tpl = np.zeros((42, 200), dtype=np.uint8)
         tpl[: im.shape[0], : im.shape[1]] = im
         tpl = cv2.copyMakeBorder(tpl, 2, 2, 2, 2, cv2.BORDER_CONSTANT, None, (0,))
-        '''cv2.imshow("tpl", tpl)
+        """cv2.imshow("tpl", tpl)
         cv2.waitKey(0)
-        cv2.destroyAllWindows()'''
+        cv2.destroyAllWindows()"""
         max_score = 0
         best_operator = ""
         for operator, template in OP_TRAIN.items():
@@ -192,9 +197,9 @@ def operator_list_train(img, draw=False, full_scan=True):
     with ThreadPoolExecutor() as executor:
         op_name = list(executor.map(process_name_region, name_p))
     logger.debug(op_name)
-    '''for p in name_p:
+    """for p in name_p:
         op_name.append(process_name_region(p))
-    logger.debug(op_name)'''
+    logger.debug(op_name)"""
     if draw:
         display = img.copy()
         for p in name_p:

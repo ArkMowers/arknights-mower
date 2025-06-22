@@ -177,13 +177,13 @@ class BaseMixin:
         return 0
 
     def profession_filter(self, profession=None):
-        '''
+        """
                     confirm_blue	confirm_train
         训练位筛选开	1548 0.89		1554
         训练位筛选关	not				1669
         普通位筛选关	1724			1732 0.7
         普通位筛选开	1609			not
-        '''
+        """
         retry = 0
         open_threshold = 1650
         if profession:
