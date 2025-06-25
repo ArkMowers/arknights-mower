@@ -8,7 +8,7 @@
 
 Mower 是为长期运行设计的、开源的明日方舟脚本。
 
-初次使用，建议阅读《[Mower 简明教程](https://blog.zhaozuohong.vip/2024/05/10/mower-guide/tutorial/)》；提出建议、反馈 Bug 或交流基建知识，欢迎加入 QQ 频道 [ArkMower（频道号：2r118jwue4）](https://pd.qq.com/s/5t91c3gx9)。
+初次使用，建议阅读q群文件《Mower入门一条龙》；提出建议、反馈 Bug 或交流基建知识，欢迎加入 QQ 频道 [ArkMower（频道号：2r118jwue4）](https://pd.qq.com/s/5t91c3gx9)。
 
 ## [安装](./start/download)
 
