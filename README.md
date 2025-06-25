@@ -5,6 +5,7 @@
 [![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/ArkMowers/arknights-mower/pyinstaller-win-shawn.yml?branch=dev_shawn&)](https://github.com/ArkMowers/arknights-mower/actions/workflows/pyinstaller-win-shawn.yml)
 [![download](https://img.shields.io/website?url=https%3A%2F%2Fmower.zhaozuohong.vip&label=Mower%E4%B8%8B%E8%BD%BD%E7%AB%99)](https://mower.zhaozuohong.vip/)
 [![qq_guild](https://img.shields.io/badge/QQ%E9%A2%91%E9%81%93-2r118jwue4-blue)](https://pd.qq.com/s/5t91c3gx9)
+[![QQ群](https://img.shields.io/badge/QQ群-521857729(mower用户交流群)-green)](https://qm.qq.com/q/uALU6yjUuk)
 
 Mower 是为长期运行设计的、开源的明日方舟脚本。
 
@@ -12,11 +13,11 @@ Mower 是为长期运行设计的、开源的明日方舟脚本。
 
 ## [安装](./start/download)
 
-Mower 支持 Windows、macOS 与 Linux 平台。Windows 用户推荐使用[更新器](./start/download#updater)下载运行；macOS 与 Linux 用户请参考《[从源码运行 arknights-mower](https://blog.zhaozuohong.vip/2023/08/02/run-arknights-mower-from-source/)》。
+Mower 支持 Windows、macOS 与 Linux 平台。Windows 用户推荐使用下载器下载运行；macOS 与 Linux 用户请参考群文件《mower入门一条龙》内容运行。
 
 ## 功能介绍
 
-- [基建](./start/riic)：跑单、按心情动态换班；
+- [基建](./start/riic)：跑单、按心情动态换班、自动合成材料；
 - 森空岛：签到、仓库读取；
 - 日常：公招、邮件、线索、清理智；
 - 大型任务：生息演算、隐秘战线；
