@@ -125,7 +125,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self._party_time = value
         if self.op_data is not None:
             current_party_time = self.op_data.party_time
-            if current_party_time is None or (isinstance(current_party_time, datetime) and current_party_time < datetime.now()):
+
+            if current_party_time is None or (
+                isinstance(current_party_time, datetime)
+                and current_party_time < datetime.now()
+            ):
                 self.op_data.party_time = value
 
     def run(self) -> None:
@@ -2498,7 +2502,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if name in self.op_data.operators:
             return True, self.op_data.operators[name].arrange_order
         else:
-            return False, [2, "false"]
+            return False, ["技能", "false"]
 
     def tap_confirm(self, room, new_plan=None):
         if new_plan is None:

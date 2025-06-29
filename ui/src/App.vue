@@ -65,12 +65,12 @@
                       aria-modal="true"
                     >
                       <div>
-                        <n-button @click=";(showModal2 = false), $router.push('/mowersettings')">
+                        <n-button @click=";((showModal2 = false), $router.push('/mowersettings'))">
                           mower设置
                         </n-button>
                       </div>
                       <div>
-                        <n-button @click=";(showModal2 = false), $router.push('/maasettings')">
+                        <n-button @click=";((showModal2 = false), $router.push('/maasettings'))">
                           maa设置
                         </n-button>
                       </div>
@@ -98,28 +98,28 @@
                       aria-modal="true"
                     >
                       <div>
-                        <n-button @click=";(showModal = false), $router.push('/record/line')">
+                        <n-button @click=";((showModal = false), $router.push('/record/line'))">
                           心情曲线
                         </n-button>
                       </div>
                       <div>
-                        <n-button @click=";(showModal = false), $router.push('/record/pie')">
+                        <n-button @click=";((showModal = false), $router.push('/record/pie'))">
                           心情饼图
                         </n-button>
                       </div>
                       <div>
-                        <n-button @click=";(showModal = false), $router.push('/record/depot')">
+                        <n-button @click=";((showModal = false), $router.push('/record/depot'))">
                           仓库
                         </n-button>
                       </div>
                       <div>
-                        <n-button @click=";(showModal = false), $router.push('/record/report')">
+                        <n-button @click=";((showModal = false), $router.push('/record/report'))">
                           基建报告
                         </n-button>
                       </div>
                       <div>
                         <n-button
-                          @click=";(showModal = false), $router.push('/record/trading_analysis')"
+                          @click=";((showModal = false), $router.push('/record/trading_analysis'))"
                         >
                           贸易订单分析
                         </n-button>
@@ -146,6 +146,7 @@
       </n-message-provider>
     </n-dialog-provider>
   </n-config-provider>
+  <ChatBot />
 </template>
 
 <script setup>
