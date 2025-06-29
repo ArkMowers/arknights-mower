@@ -564,6 +564,13 @@ class SKLandPart(ConfModel):
     "森空岛账号"
 
 
+class AIAgentPart(ConfModel):
+    ai_type: str = ""
+    "名称"
+    ai_key: str = ""
+    "密钥"
+
+
 class MaaRewardPart(ConfModel):
     maa_mail: bool = False
     "领取所有邮件奖励"
@@ -589,6 +596,7 @@ class Conf(
     SimulatorPart,
     SKLandPart,
     MaaRewardPart,
+    AIAgentPart,
 ):
     @property
     def APPNAME(self):

@@ -50,7 +50,9 @@ const {
   enable_party,
   leifeng_mode,
   item_list,
-  workshop_settings
+  workshop_settings,
+  ai_type,
+  ai_key
 } = storeToRefs(config_store)
 
 const { operators } = storeToRefs(plan_store)
@@ -147,6 +149,7 @@ const onSelectionChange = (newValue) => {
   }
 }
 import { ref } from 'vue'
+import ChatBotSetting from '../components/ChatBotSetting.vue'
 
 const showSettingModal = ref(false)
 const editingIndex = ref(null)
@@ -762,6 +765,9 @@ function createNewItem() {
       </div>
       <div>
         <email />
+      </div>
+      <div>
+        <ChatBotSetting />
       </div>
     </div>
   </div>

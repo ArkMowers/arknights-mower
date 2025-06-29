@@ -57,6 +57,8 @@ export const useConfigStore = defineStore('config', () => {
   const screenshot = ref(0)
   const screenshot_interval = ref(500)
   const mail_subject = ref('')
+  const ai_type = ref('')
+  const ai_key = ref('')
   const skland_enable = ref(false)
   const skland_info = ref([])
   const recruit_enable = ref(true)
@@ -177,6 +179,8 @@ export const useConfigStore = defineStore('config', () => {
     screenshot_interval.value = response.data.screenshot_interval
     mail_subject.value = response.data.mail_subject
     skland_enable.value = response.data.skland_enable != 0
+    ai_key.value = response.data.ai_key
+    ai_type.value = response.data.ai_type
     skland_info.value = response.data.skland_info
     recruit_enable.value = response.data.recruit_enable
     recruitment_permit.value = response.data.recruitment_permit
@@ -272,6 +276,8 @@ export const useConfigStore = defineStore('config', () => {
       screenshot_interval: screenshot_interval.value,
       mail_subject: mail_subject.value,
       skland_enable: skland_enable.value,
+      ai_type: ai_type.value,
+      ai_key: ai_key.value,
       skland_info: skland_info.value,
       recruit_enable: recruit_enable.value,
       recruitment_permit: recruitment_permit.value,
@@ -385,6 +391,8 @@ export const useConfigStore = defineStore('config', () => {
     recruit_robot,
     recruit_auto_only5,
     skland_enable,
+    ai_type,
+    ai_key,
     skland_info,
     run_order_grandet_mode,
     check_mail_enable,
