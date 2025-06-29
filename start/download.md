@@ -45,19 +45,15 @@ Mower 仅为 Windows 提供可执行文件。Linux 与 macOS 用户需要[从源
 
 <h3 id="updater">更新器</h3>
 
-更新器有两个版本：
+更新器在q群（521857729）群文件可下载，由雨浮维护。
 
-- 新版更新器（[Funny-ppt/MowerUpdater](https://github.com/Funny-ppt/MowerUpdater)），由 [Funny-ppt](https://github.com/Funny-ppt/) 维护。
-- 旧版更新器（[ArkMowers/updater](https://github.com/ArkMowers/updater)），由 [ZhaoZuohong](https://github.com/ZhaoZuohong/) 维护。
+更新器下载文件，既可全新安装，也可用于升级、降级。全量升级前应先下载群里压缩包，再进行覆盖
 
-更新器从 [Mower 下载站](https://mower.zhaozuohong.vip/) 下载文件，既可全新安装，也可用于升级、降级。
-
-新版更新器可检查并自动安装 mower 运行所需依赖。若新版更新器无法使用，可尝试旧版更新器。
 
 ### 直接下载
 
 - GitHub：稳定版可从 [Releases](https://github.com/ArkMowers/arknights-mower/releases) 下载；测试版可从 [Actions](https://github.com/ArkMowers/arknights-mower/actions) 下载。
-- 下载站：从 <https://mower.zhaozuohong.vip/> 直接下载 Zip 压缩包。
+- 下载：从 q群文件直接下载 Zip 压缩包（full为全量包，update为增量包）。
 
 下载后解压运行即可。
 
@@ -67,6 +63,3 @@ Mower 仅为 Windows 提供可执行文件。Linux 与 macOS 用户需要[从源
 - Microsoft Visual C++ 2015-2022 Redistributable：<https://aka.ms/vs/17/release/vc_redist.x64.exe>
 - Microsoft Edge WebView2：<https://go.microsoft.com/fwlink/p/?LinkId=2124703>
 
-<h2 id="run-from-source">从源码运行</h2>
-
-参照《[从源码运行 arknights-mower](https://blog.zhaozuohong.vip/2023/08/02/run-arknights-mower-from-source/)》。
