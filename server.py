@@ -715,22 +715,18 @@ def submit_feedback():
     req = request.json
     logger.debug(f"收到反馈务请求：{req}")
 
-    logger.debug(__version__)
-    from arknights_mower.__main__ import base_scheduler
+    def ts_to_str(ts):
+        if isinstance(ts, (int, float)):
+            return datetime.datetime.fromtimestamp(ts / 1000).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+        return ts
 
-    if base_scheduler and mower_thread.is_alive():
-        for k, v in base_scheduler.op_data.plan.items():
-            logger.debug(str(v))
-    start_time = (
-        req["startTime"]
-        if "startTime" in req and req["startTime"] is not None
-        else None
-    )
-    end_time = (
-        req["endTime"] if "endTime" in req and req["endTime"] is not None else None
-    )
+    start_time = ts_to_str(req.get("startTime"))
+    end_time = ts_to_str(req.get("endTime"))
+
     return submit_issue(
-        req.get("description", ""), req.get("email", ""), start_time, end_time
+        req.get("description", ""), req.get("type", ""), start_time, end_time
     )
 
 
@@ -747,6 +743,7 @@ def ws_chat(ws):
                 user_input = req["message"]
                 context.append({"role": "user", "content": user_input})
                 reply = ask_llm(user_input, context=context, api_key=config.conf.ai_key)
+                logger.debug(f"收到llm请求：{user_input}")
                 context.append({"role": "assistant", "content": reply})
                 ws.send(json.dumps({"reply": reply}))
         except Exception as e:

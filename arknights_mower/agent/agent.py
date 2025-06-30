@@ -1,3 +1,4 @@
+import datetime
 import json
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -10,17 +11,16 @@ from langgraph.graph import END, MessageGraph
 # from arknights_mower.agent.tools.dbquery import query_db
 # from arknights_mower.agent.tools.issue import submit_issue
 from arknights_mower.agent.tools.submit_issue import submit_issue, submit_issue_tool_def
+from arknights_mower.agent.tools.readdata import call_db, call_db_tool_def
 from arknights_mower.utils import config
 
-model_name_map = {
-    "deepseek": ["deepseek-chat", "https://api.deepseek.com/v1"],
-    "Deepseek": ["deepseek-chat", "https://api.deepseek.com/v1"],
-}
+model_name_map = {"deepseek": ["deepseek-chat", "https://api.deepseek.com/v1"]}
 
 
 def get_tools():
     return [
         submit_issue_tool_def,
+        call_db_tool_def,
         # {
         #     "type": "function",
         #     "function": {
@@ -86,6 +86,7 @@ tool_func_map = {
     # "search_code": search_code,
     # "query_db": query_db,
     "submit_issue": submit_issue,
+    "call_db": call_db,
 }
 
 
@@ -138,12 +139,16 @@ def build_workflow(api_key):
 
 
 def ask_llm(user_input, context=None, api_key=None):
+    if api_key is None or not api_key.strip():
+        return "未检测到 API Key，请先在设置中配置你的 AI Key。"
     if context is None:
         context = []
     # 系统提示词，定义AI身份和流程
     AI_INTRO = (
         "你是明日方舟Mower助手AI，负责帮助用户排查和解决软件使用中的问题。"
-        "你可以：1. 检查日志分析bug；2. 查询FAQ/名词释义；3. 检查源代码特性；4. 查询数据库。"
+        "你可以：1. 帮助用户上报问题；2. 查询本地数据库记录的数据"
+        f"当前本地时间为 {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}，请使用24小时制。"
+        f"当前软件的使用时区为 {datetime.datetime.now().astimezone().tzinfo}。"
     )
     messages = [SystemMessage(content=AI_INTRO)]
     for msg in context:

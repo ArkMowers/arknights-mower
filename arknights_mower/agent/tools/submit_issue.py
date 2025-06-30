@@ -1,27 +1,29 @@
 from datetime import datetime
-from typing import Optional
-
 from arknights_mower.utils.email import Email
 from arknights_mower.utils.log import get_log_by_time
+from arknights_mower.utils.log import logger
 
 
 def submit_issue(
     description: str,
     issue_type: str = "Bug",
-    start_time: Optional[float] = None,
-    end_time: Optional[float] = None,
+    start_time: str = None,
+    end_time: str = None,
 ):
     """
     上报用户未解决的问题给开发组，可附带日志
     """
     try:
         log_files = []
-
+        logger.debug(
+            f"Submitting issue: {description}, type: {issue_type}, start_time: {start_time}, end_time: {end_time}"
+        )
         if issue_type == "Bug":
             if not (start_time and end_time):
                 return "请提供问题发生的起止时间（start_time 和 end_time，毫秒时间戳），以便附加日志。"
-            st = datetime.fromtimestamp(start_time / 1000.0)
-            et = datetime.fromtimestamp(end_time / 1000.0)
+            # 直接用本地时间戳
+            st = datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S")
+            et = datetime.strptime(end_time, "%Y-%m-%d %H:%M:%S")
             print(
                 f"Submitting issue: {description}, type: {issue_type}, start_time: {st}, end_time: {et}"
             )
@@ -50,11 +52,13 @@ submit_issue_tool_def = {
         "name": "submit_issue",
         "description": (
             "Attach log with issue description to developer team's email. "
-            "If reporting a bug, you must ensure the user specified the time range (start_time and end_time, both as float milliseconds since epoch, max 15 mins apart). "
+            "If reporting a bug, you must ensure the user specified the time range (start_time and end_time max 15 mins apart). "
+            "User must specify both Issue and expected behavior in the description."
             "If not provided, ask the user for the time range. "
             "If user provides a time range greater than 15 minutes, return an error message."
             "Return the function result directly to the user."
-            "You have to convert the time range to float milliseconds since epoch before calling the function."
+            "If user only provides a time, by default, end_time will be 10 minutes after start_time."
+            "If user only provides natual language description for time, convert it to a datetime and ask user for confirmation."
         ),
         "parameters": {
             "type": "object",
@@ -70,14 +74,21 @@ submit_issue_tool_def = {
                     "default": "Bug",
                 },
                 "start_time": {
-                    "type": "number",
-                    "description": "Start time of the issue (float, milliseconds since epoch). Required for bug report.",
-                    "default": None,
+                    "type": "string",
+                    "description": (
+                        "Using the user's local time zone (not UTC). "
+                        "The start_date must be provided in the format 'YYYY-MM-DD HH:mm:ss', e.g. '2025-06-29 14:35:00'. "
+                        "if milliseconds are not provided, default to 0"
+                    ),
                 },
                 "end_time": {
-                    "type": "number",
-                    "description": "End time of the issue (float, milliseconds since epoch). Required for bug report. Must be within 15 minutes of start_time.",
-                    "default": None,
+                    "type": "string",
+                    "description": (
+                        "Using the user's local time zone (not UTC). "
+                        "The date must be provided in the format 'YYYY-MM-DD HH:mm:ss', e.g. '2025-06-29 14:35:00'. "
+                        "if milliseconds are not provided, default to 0"
+                        "the end_time must be at most 15 minutes after start_time"
+                    ),
                 },
             },
             "required": ["description"],

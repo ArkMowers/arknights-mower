@@ -64,14 +64,15 @@ function sendMessage() {
 <template>
   <div style="position: fixed; left: 32px; bottom: 16px; z-index: 9999">
     <n-button v-if="!show" type="primary" @click="show = !show">Mower 助手</n-button>
-    <n-card v-if="show" style="width: 350px; margin-top: 8px">
-      <div style="height: 200px; overflow-y: auto; margin-bottom: 12px">
+    <n-card v-if="show" style="width: 600px; margin-top: 8px">
+      <div style="height: 600px; overflow-y: auto; margin-bottom: 12px">
         <div
           v-for="(msg, idx) in chatHistory"
           :key="idx"
           :style="{ textAlign: msg.role === 'user' ? 'right' : 'left' }"
         >
-          <b>{{ msg.role === 'user' ? '你' : 'Mower 助手' }}：</b>{{ msg.content }}
+          <b>{{ msg.role === 'user' ? '你' : 'Mower AI 助手' }}：</b>  
+          <span v-html="msg.content"></span>
         </div>
       </div>
       <n-input
