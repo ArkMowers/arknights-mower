@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { useConfigStore } from '@/stores/config'
 import { storeToRefs } from 'pinia'
 
@@ -60,6 +60,27 @@ function sendMessage() {
   }
   userInput.value = ''
 }
+
+watch(show, (val) => {
+  if (
+    val &&
+    (chatHistory.value.length === 0 ||
+      (chatHistory.value.length > 0 &&
+        chatHistory.value[chatHistory.value.length - 1].content ===
+          '未检测到 API Key，请先在设置中配置你的 AI Key。'))
+  ) {
+    loading.value = true
+    const intro = '请用简洁的语言介绍一下你能为用户做什么。'
+    if (!ws || ws.readyState === 3) {
+      pendingMsg = intro
+      connectWS()
+    } else if (ws.readyState === 0) {
+      pendingMsg = intro
+    } else if (ws.readyState === 1) {
+      ws.send(JSON.stringify({ message: intro }))
+    }
+  }
+})
 </script>
 <template>
   <div style="position: fixed; left: 32px; bottom: 16px; z-index: 9999">
@@ -71,7 +92,7 @@ function sendMessage() {
           :key="idx"
           :style="{ textAlign: msg.role === 'user' ? 'right' : 'left' }"
         >
-          <b>{{ msg.role === 'user' ? '你' : 'Mower AI 助手' }}：</b>  
+          <b>{{ msg.role === 'user' ? '你' : 'Mower AI 助手' }}：</b>
           <span v-html="msg.content"></span>
         </div>
       </div>
