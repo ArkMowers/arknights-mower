@@ -9,6 +9,7 @@ const type_options = [{ label: 'Deepseek', value: 'deepseek' }]
   <n-card>
     <template #header>
       <div class="card-title">本地 AI 助手</div>
+<<<<<<< HEAD
       <help-text
         ><div>目前仅支持Deepseek</div>
         <div>
@@ -17,6 +18,9 @@ const type_options = [{ label: 'Deepseek', value: 'deepseek' }]
           充值1元即可使用很久
         </div></help-text
       >
+=======
+      <help-text>目前仅支持Deepseek</help-text>
+>>>>>>> 43db50353535c87d4eb6fd690fb9ac168a4abd55
     </template>
     <n-form label-placement="left" label-width="auto">
       <n-form-item label="AI 类型">
@@ -33,6 +37,7 @@ const type_options = [{ label: 'Deepseek', value: 'deepseek' }]
     </n-form>
   </n-card>
 </template>
+<<<<<<< HEAD
 <style scoped>
 a {
   color: #f5f5f5; /* 或你喜欢的浅色 */
@@ -45,3 +50,5 @@ a:hover {
   color: #ffd700;
 }
 </style>
+=======
+>>>>>>> 43db50353535c87d4eb6fd690fb9ac168a4abd55
