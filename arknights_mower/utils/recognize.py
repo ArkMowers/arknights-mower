@@ -779,7 +779,7 @@ class Recognizer:
             "shop_cart": (1252, 842),
             "shop_credit_2": (1657, 135),
             "skip": (1803, 32),
-            "terminal_main": (73, 959),
+            "terminal_main": (113, 959),
             "terminal_pre2": (1459, 797),
         }
 

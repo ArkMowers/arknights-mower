@@ -283,8 +283,6 @@ class BaseSolver:
         name: Literal[
             "main",
             "main_theme",
-            "intermezzi",
-            "biography",
             "collection",
             "regular",
             "longterm",
@@ -293,14 +291,12 @@ class BaseSolver:
     ):
         y = 1005
         pos = {
-            "main": (115, y),  # 首页
-            "main_theme": (356, y),  # 主题曲
-            "intermezzi": (596, y),  # 插曲
-            "biography": (836, y),  # 别传
-            "collection": (1077, y),  # 资源收集
-            "regular": (1317, y),  # 常态事务
-            "longterm": (1556, y),  # 长期探索
-            "contract": (1796, y),  # 危机合约
+            "main": (165, y),  # 首页
+            "main_theme": (485, y),  # 曲谱
+            "collection": (800, y),  # 资源收集
+            "regular": (1125, y),  # 常态事务
+            "longterm": (1445, y),  # 长期探索
+            "contract": (1760, y),  # 危机合约
         }
         self.ctap(pos[name])
 

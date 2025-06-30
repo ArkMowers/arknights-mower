@@ -1,7 +1,7 @@
 from datetime import datetime
+
 from arknights_mower.utils.email import Email
-from arknights_mower.utils.log import get_log_by_time
-from arknights_mower.utils.log import logger
+from arknights_mower.utils.log import get_log_by_time, logger
 
 
 def submit_issue(

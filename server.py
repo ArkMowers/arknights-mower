@@ -17,7 +17,7 @@ from flask_sock import Sock
 from tzlocal import get_localzone
 from werkzeug.exceptions import NotFound
 
-from arknights_mower import __system__, __version__
+from arknights_mower import __system__
 from arknights_mower.agent.agent import ask_llm
 from arknights_mower.agent.tools.submit_issue import submit_issue
 from arknights_mower.solvers.record import clear_data, load_state, save_state

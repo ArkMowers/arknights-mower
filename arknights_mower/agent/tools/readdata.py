@@ -1,7 +1,7 @@
-import json
 import sqlite3
-from arknights_mower.utils.path import get_path
+
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.path import get_path
 
 
 def call_db(query: str):

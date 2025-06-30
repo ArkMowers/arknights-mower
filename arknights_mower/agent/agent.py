@@ -5,13 +5,14 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, MessageGraph
 
+from arknights_mower.agent.tools.readdata import call_db, call_db_tool_def
+
 # from arknights_mower.agent.tools.faq import get_faq
 # from arknights_mower.agent.tools.logcheck import check_log
 # from arknights_mower.agent.tools.code_search import search_code
 # from arknights_mower.agent.tools.dbquery import query_db
 # from arknights_mower.agent.tools.issue import submit_issue
 from arknights_mower.agent.tools.submit_issue import submit_issue, submit_issue_tool_def
-from arknights_mower.agent.tools.readdata import call_db, call_db_tool_def
 from arknights_mower.utils import config
 
 model_name_map = {"deepseek": ["deepseek-chat", "https://api.deepseek.com/v1"]}
