@@ -109,15 +109,19 @@ def build_workflow(api_key):
     def tool_node(state):
         messages = state
         last_message = messages[-1]
-        tool_call = last_message.additional_kwargs["tool_calls"][0]
-        tool_name = tool_call["function"]["name"]
-        tool_args = json.loads(tool_call["function"]["arguments"])
-        if tool_name in tool_func_map:
-            result = tool_func_map[tool_name](**tool_args)
-        else:
-            result = f"未知工具: {tool_name}"
-        tool_message = ToolMessage(content=result, tool_call_id=tool_call["id"])
-        return [tool_message]
+        tool_calls = last_message.additional_kwargs.get("tool_calls", [])
+        tool_messages = []
+        for tool_call in tool_calls:
+            tool_name = tool_call["function"]["name"]
+            tool_args = json.loads(tool_call["function"]["arguments"])
+            if tool_name in tool_func_map:
+                result = tool_func_map[tool_name](**tool_args)
+            else:
+                result = f"未知工具: {tool_name}"
+            tool_messages.append(
+                ToolMessage(content=result, tool_call_id=tool_call["id"])
+            )
+        return tool_messages
 
     workflow.add_node("agent", agent_node)
     workflow.add_node("action", tool_node)
@@ -150,6 +154,11 @@ def ask_llm(user_input, context=None, api_key=None):
         "你可以：1. 帮助用户上报问题；2. 查询本地数据库记录的数据"
         f"当前本地时间为 {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}，请使用24小时制。"
         f"当前软件的使用时区为 {datetime.datetime.now().astimezone().tzinfo}。"
+        "工具返回的结果如果是 HTML 表格，请直接返回 HTML 字符串，不要转换为 Markdown 或其他格式。举例 <table><tr><th>列名1</th><th>列名2</th></tr><tr><td>数据1</td><td>数据2</td></tr></table> 你可以在这部分前后加入你的分析或者判断，但是不要修改表格的htem string。"
+        "请根据用户选择的工具，只用对应工具回答。"
+        "常见数据库查询问法：'查询最近10条订单'、'查询某干员的上下班记录'。"
+        "常见问题上报问法：'我要反馈一个bug'、'提交无法启动的问题'。"
+        "如果用户的问题与当前可用工具无关，请提示用户选择合适的工具，并提供相关问法"
     )
     messages = [SystemMessage(content=AI_INTRO)]
     for msg in context:
