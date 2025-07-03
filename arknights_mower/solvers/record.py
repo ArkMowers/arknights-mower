@@ -1,7 +1,9 @@
 # 用于记录Mower操作行为
 import collections
+import json
 import pickle
 import sqlite3
+import traceback
 from datetime import datetime, timedelta
 
 import pytz
@@ -524,3 +526,36 @@ def get_inventory_counts(item_names: list[str] | None = None):
             query = f"SELECT item_name, count FROM inventory WHERE item_name IN ({placeholders})"
             cursor.execute(query, item_names)
         return dict(cursor.fetchall())
+
+
+def save_log(message: str, task: str = "{}", level: str = "INFO"):
+    database_path = get_path("@app/tmp/data.db")
+    try:
+        get_path("@app/tmp").mkdir(exist_ok=True)
+        conn = sqlite3.connect(database_path)
+        cursor = conn.cursor()
+        cursor.execute(
+            "CREATE TABLE IF NOT EXISTS log ("
+            "time INTEGER,"
+            "task TEXT,"
+            "level TEXT,"
+            "message TEXT"
+            ")"
+        )
+        if not task:
+            task = "{}"
+        if not isinstance(task, str):
+            task = json.dumps(task, ensure_ascii=False)
+        cursor.execute(
+            "INSERT INTO log VALUES (?, ?, ?, ?)",
+            (int(datetime.now().timestamp()), task, level, message),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Log DB error: {e}")
+
+
+def save_exception(e: Exception):
+    tb = traceback.format_exc()
+    save_log(f"Exception: {str(e)}\n{tb}", task="{}", level="ERROR")

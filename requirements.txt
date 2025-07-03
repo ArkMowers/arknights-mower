@@ -90,6 +90,8 @@ imageio==2.34.2
     # via scikit-image
 itsdangerous==2.2.0
     # via flask
+jieba==0.42.1
+    # via -r requirements.in
 jinja2==3.1.4
     # via
     #   -r requirements.in
