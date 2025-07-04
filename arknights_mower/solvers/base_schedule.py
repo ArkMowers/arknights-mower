@@ -73,6 +73,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
         super().__init__(device, recog)
         self.op_data = None
+        self.op_data.party_time = None
         self.party_time = None
         self.drone_time = None
         self.reload_time = None
