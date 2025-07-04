@@ -124,7 +124,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     def party_time(self, value):
         self._party_time = value
         if self.op_data is not None:
-            if not hasattr(self.op_data, "party_time"):
+            if getattr(self.op_data, "party_time", None) is None:
                 self.op_data.party_time = None
                 
             current_party_time = self.op_data.party_time
