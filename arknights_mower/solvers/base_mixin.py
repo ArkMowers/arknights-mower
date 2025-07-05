@@ -476,7 +476,7 @@ class BaseMixin:
                     name = item[1]
                     if (
                         item[1] == "家具零件" 
-                        and furniture_start_index in (0,1,2,3,4,5)
+                        and furniture_start_index in range(6)
                     ):
                         name = furniture_keys[furniture_start_index]
                     box = item[0]
