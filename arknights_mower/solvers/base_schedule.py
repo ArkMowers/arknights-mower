@@ -2563,6 +2563,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     def choose_train_agent(
         self, current_room, agents, idx, error_count=0, fast_mode=False
     ):
+        if agents[idx] == "Current":
+            agents[idx] = current_room[idx]
         if current_room[idx] != agents[idx]:
             while (
                 # self.find("arrange_order_options",scope=((1785, 0), (1920, 128))) is None
@@ -2581,21 +2583,27 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     def choose_train(self, agents: list[str], fast_mode=True):
         current_room = self.op_data.get_current_room("train", True)
         self.choose_train_agent(current_room, agents, 0, 0, fast_mode)
-        # 训练室第二个人的干员识别会出错（工作中的干员无法识别 + 正在训练的干员无法换下）
         self.choose_train_agent(current_room, agents, 1, 0, fast_mode)
 
     def choose_train_ope(self, ope: str):
         found = False
         profession = "ALL"
-        if ope != "阿米娅":
+        if ope != "阿米娅" and ope not in ["Current", "Free"]:
             profession = agent_profession[ope]
             self.profession_filter(profession)
+        if ope == "Free":
+            self.profession_filter("ALL")
         first_ret = None
         right_swipe = 0
         max_swipe = 50
         while not found:
-            sel, ret = self.scan_agent([ope], train=True)
-            if sel == [ope]:
+            sel, ret = self.scan_agent(
+                [ope] if ope != "Free" else self.get_free_list([]),
+                max_agent_count=1,
+                train=True,
+            )
+            if sel == [ope] or ope == "Free":
+                ope = sel[0]
                 found = True
                 break
             if ret == first_ret and right_swipe >= 3:
@@ -2618,6 +2626,36 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             logger.debug([ope])
             raise Exception("检测到干员选择错误，重新选择")
         self.last_room = "train"
+
+    def get_free_list(self, agents: list[str] = None) -> list[str]:
+        free_list = [
+            v.name
+            for k, v in self.op_data.operators.items()
+            if v.name not in agents
+            and v.operator_type != "high"
+            and v.current_room == ""
+        ]
+        free_list.extend(
+            [
+                _name
+                for _name in agent_list
+                if _name not in self.op_data.operators.keys() and _name not in agents
+            ]
+        )
+        train_support = self.op_data.get_train_support()
+        # 获取所有要移除的字符串集合（排除 'Crueent'）
+        remove_set = set()
+        for key, value_list in self.task.plan.items():
+            remove_set.update(value_list)  # 加入所有列表中的元素
+        remove_set.discard("Current")
+        remove_set.discard("Free")
+        logger.debug(f"去除被安排的人员{remove_set}")
+        free_list = list(
+            set(free_list) - set(self.op_data.config.free_blacklist) - remove_set
+        )
+        if train_support in free_list:
+            free_list.remove(train_support)
+        return free_list
 
     def choose_agent(
         self, agents: list[str], room: str, fast_mode=True, train_index=0
@@ -2840,34 +2878,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.switch_arrange_order("心情", room, "true")
             # 只选择在列表里面的
             # 替换组小于20才休息，防止进入就满心情进行网络连接
-            free_list = [
-                v.name
-                for k, v in self.op_data.operators.items()
-                if v.name not in agents
-                and v.operator_type != "high"
-                and v.current_room == ""
-            ]
-            free_list.extend(
-                [
-                    _name
-                    for _name in agent_list
-                    if _name not in self.op_data.operators.keys()
-                    and _name not in agents
-                ]
-            )
-            train_support = self.op_data.get_train_support()
-            # 获取所有要移除的字符串集合（排除 'Crueent'）
-            remove_set = set()
-            for key, value_list in self.task.plan.items():
-                remove_set.update(value_list)  # 加入所有列表中的元素
-            remove_set.discard("Current")
-            remove_set.discard("Free")
-            logger.debug(f"去除被安排的人员{remove_set}")
-            free_list = list(
-                set(free_list) - set(self.op_data.config.free_blacklist) - remove_set
-            )
-            if train_support in free_list:
-                free_list.remove(train_support)
+            free_list = self.get_free_list(agents)
             while free_num:
                 selected_name, ret = self.scan_agent(
                     free_list,
