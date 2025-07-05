@@ -465,18 +465,19 @@ class BaseMixin:
                 "家具零件_进阶加固建材",
                 "家具零件_高级加固建材",
                 "家具零件_碳",
+                "家具零件_碳素",
+                "家具零件_碳素组",
             ]
             for base_idx, item in enumerate(ocr_result[0]):
-                if item[1] == "家具零件" and furniture_start_index == -1:
-                    furniture_start_index = base_idx
                 if (
                     len(item) > 2
                     and item[1] in workshop_formula.keys()
                     or item[1] == "家具零件"
                 ):
+                    furniture_start_index += 1
                     name = item[1]
                     if item[1] == "家具零件":
-                        name = furniture_keys[base_idx]
+                        name = furniture_keys[furniture_start_index]
                     box = item[0]
                     base_px = int(box[0][0]) + 15
                     base_py = int(box[0][1]) + 75
@@ -501,7 +502,7 @@ class BaseMixin:
                     box_global = [[x + offset_x, y + offset_y] for (x, y) in box]
                     # 等于 0 则出界了
                     if valid != 0:
-                        res.append((item[1], box_global, valid > 0))
+                        res.append((name, box_global, valid > 0))
             return res
         except Exception as e:
             logger.exception(e)
