@@ -465,8 +465,6 @@ class BaseMixin:
                 "家具零件_进阶加固建材",
                 "家具零件_高级加固建材",
                 "家具零件_碳",
-                "家具零件_碳素",
-                "家具零件_碳素组",
             ]
             for base_idx, item in enumerate(ocr_result[0]):
                 if (
@@ -476,7 +474,7 @@ class BaseMixin:
                 ):
                     furniture_start_index += 1
                     name = item[1]
-                    if item[1] == "家具零件":
+                    if item[1] == "家具零件" and furniture_start_index in (0,1,2,3,4,5)::
                         name = furniture_keys[furniture_start_index]
                     box = item[0]
                     base_px = int(box[0][0]) + 15
