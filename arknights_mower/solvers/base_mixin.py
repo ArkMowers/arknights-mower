@@ -475,7 +475,7 @@ class BaseMixin:
                     or item[1] == "家具零件"
                 ):
                     name = item[1]
-                    if furniture_start_index == 0 or furniture_start_index == 5:
+                    if item[1] == "家具零件":
                         name = furniture_keys[base_idx]
                     box = item[0]
                     base_px = int(box[0][0]) + 15
