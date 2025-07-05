@@ -50,9 +50,9 @@ async function accept_name() {
 }
 
 async function openAll() {
-    for (let idx = 0; idx < instances.value.length; idx++) {
-      start(idx); // 调用 start 方法
-    }
+  for (let idx = 0; idx < instances.value.length; idx++) {
+    start(idx) // 调用 start 方法
+  }
 }
 
 function drop_name() {

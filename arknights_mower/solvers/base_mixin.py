@@ -214,7 +214,6 @@ class BaseMixin:
             (confirm_btn := self.find("confirm_train")) is not None
             and confirm_btn[0][0] > open_threshold
         ):
-            logger.info(f"{confirm_btn}")
             self.tap((1860, 60), 0.1)
             retry += 1
             if retry > 5:

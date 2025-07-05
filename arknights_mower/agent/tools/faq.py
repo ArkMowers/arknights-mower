@@ -10,7 +10,9 @@ def get_faq(question: str) -> str:
         if q_words & kw_set:
             candidates.append(item)
     if not candidates:
-        return "[FAQ未命中] 未找到相关常见问题，请尝试其他工具。"
+        return (
+            "[FAQ未命中] 未找到相关常见问题，请使用extract_stack_paths进行进一步分析。"
+        )
     print("找到相关常见问题：", candidates)
     result = "为你找到以下相关常见问题，请选择最符合的：\n"
     for idx, item in enumerate(candidates, 1):
@@ -118,7 +120,7 @@ FAQ_LIST = [
         "answer": "周计划为总开关,mower-全部设置中下拉，勾选刷理智计划，选定关卡。大型任务，如生息演算，在勾选的同时也需要勾选刷理智计划（即使计划为空），才能在跑单之余运行。不需要担心出现勾选之后mower不刷的情况，刷图任务每隔固定时间执行一次。\n勾选后务必查看对应位置问号，检查开始时间与停止时间。",
     },
     {
-        "keywords": ["邮件", "失败"],
+        "keywords": ["邮件", "address", "测试"],
         "question": "发送测试邮件失败，501,b'Bad address syntax.（如下图）。",
         "answer": "若希望给自己发邮件（收件人＝发件人），则需要点击“减号”删除收件人，不能留空。\n若希望是其他收件人，则需要填写正确的邮箱地址。",
     },
@@ -133,7 +135,7 @@ FAQ_LIST = [
         "answer": "删除mower目录下，tmp文件夹中的data.db文件。如果对数据库有所了解，可以用数据库管理软件（如开源的DBeaver）进行编辑。",
     },
     {
-        "keywords": ["配置", "更新", "Mower"],
+        "keywords": ["配置", "更新"],
         "question": "如何更新Mower的时候保持配置不变？",
         "answer": "目录下的conf.yml, plan.json 必须要复制到新版本文件夹下，可选复制：1.temp文件夹（存储了所有相关数据）2.screenshot文件夹（存储了所有截图）3.logs文件夹（存储了所有日志）",
     },

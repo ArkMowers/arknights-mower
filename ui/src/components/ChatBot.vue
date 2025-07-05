@@ -35,7 +35,15 @@ function connectWS(callback) {
   ws.onmessage = (event) => {
     const data = JSON.parse(event.data)
     if (data.reply) {
-      chatHistory.value.push({ role: 'bot', content: data.reply })
+      // 如果上一条是 bot，拼接内容
+      if (
+        chatHistory.value.length > 0 &&
+        chatHistory.value[chatHistory.value.length - 1].role == 'bot'
+      ) {
+        chatHistory.value[chatHistory.value.length - 1].content += data.reply
+      } else {
+        chatHistory.value.push({ role: 'bot', content: data.reply })
+      }
     }
     if (data.error) {
       chatHistory.value.push({ role: 'bot', content: '错误: ' + data.error })
