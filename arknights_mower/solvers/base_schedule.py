@@ -1975,7 +1975,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         self.party_time = self.double_read_time(
                             ((1768, 438), (1902, 480))
                         )
-                        if self.party_time < datetime.now():
+                        if self.party_time <= datetime.now():
                             self.party_time = None
                         if self.party_time > datetime.now():
                             logger.info(f"线索交流结束时间：{self.party_time}")
