@@ -1977,8 +1977,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         )
                         if self.party_time > datetime.now():
                             logger.info(f"线索交流结束时间：{self.party_time}")
-                        else:
-                            self.party_time = None
                             if not find_next_task(
                                 self.tasks,
                                 task_type=TaskTypes.CLUE_PARTY,
