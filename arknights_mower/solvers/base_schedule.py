@@ -127,7 +127,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             current_party_time = getattr(self.op_data, "party_time", None)
             if current_party_time is None or (
                 isinstance(current_party_time, datetime)
-                and current_party_time < datetime.now()
+                and current_party_time <= datetime.now()
             ):
                 self.op_data.party_time = value
 
