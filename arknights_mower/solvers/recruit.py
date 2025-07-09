@@ -267,13 +267,18 @@ class RecruitSolver(SceneGraphSolver):
             self.sleep(1.0)
             # 等待返回 RECRUIT_MAIN 场景
             for _ in range(5):  # 最多尝试5次
-                self.back()
-                self.sleep(1.0)
-                if self.scene() == Scene.RECRUIT_MAIN:
+                if (scene := self.scene()) == Scene.RECRUIT_TAGS:
+                    self.back()
+                    self.sleep(1.0)
+                elif scene == Scene.RECRUIT_MAIN:
+                    logger.debug(f"[refresh confirm] back to RECRUIT_MAIN: {scene}")
                     break
-            if self.scene() in self.waiting_scene:
-                self.waiting_solver()
-                self.sleep(1.0)
+                elif scene in self.waiting_scene:
+                    self.waiting_solver()
+                    self.sleep(1.0)
+                else:
+                    self.sleep(1.0)
+                logger.debug(f"[refresh confirm] Current scene after back: {scene}")
         elif scene == Scene.RECRUIT_AGENT:
             return self.recruit_result()
         elif scene == Scene.SKIP:
