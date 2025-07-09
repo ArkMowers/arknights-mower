@@ -739,12 +739,19 @@ def ws_chat(ws):
             break
         try:
             req = json.loads(data)
+            last_reply = None
             if "message" in req:
                 user_input = req["message"]
                 context.append({"role": "user", "content": user_input})
-                reply = ask_llm(user_input, context=context, api_key=config.conf.ai_key)
                 logger.debug(f"收到llm请求：{user_input}")
-                context.append({"role": "assistant", "content": reply})
-                ws.send(json.dumps({"reply": reply}))
+                # 用流式生成器
+                for reply in ask_llm(
+                    user_input, context=context, api_key=config.conf.ai_key
+                ):
+                    ws.send(json.dumps({"reply": reply}))
+                    last_reply = reply
+                if last_reply:
+                    context.append({"role": "assistant", "content": reply})
         except Exception as e:
+            logger.exception(f"WebSocket处理错误：{str(e)}")
             ws.send(json.dumps({"error": str(e)}))

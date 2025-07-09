@@ -63,4 +63,5 @@ cryptography==43.0.1
 # Agent
 langchain-core==0.3.66
 langchain-openai==0.3.24
-langgraph==0.4.8
+langgraph==0.5.1
+jieba>=0.42.1

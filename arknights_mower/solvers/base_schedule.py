@@ -24,7 +24,11 @@ from arknights_mower.solvers.cultivate_depot import cultivate as cultivateDepotS
 from arknights_mower.solvers.depotREC import depotREC as DepotSolver
 from arknights_mower.solvers.mail import MailSolver
 from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
-from arknights_mower.solvers.record import get_inventory_counts
+from arknights_mower.solvers.record import (
+    get_inventory_counts,
+    save_exception,
+    save_log,
+)
 from arknights_mower.solvers.recruit import RecruitSolver
 from arknights_mower.solvers.report import ReportSolver
 from arknights_mower.solvers.secret_front import SecretFront
@@ -166,7 +170,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.initialize_operators()
         self.op_data.correct_dorm()
         self.backup_plan_solver(PlanTriggerTiming.BEGINNING)
-        logger.debug("当前任务: " + ("||".join([str(t) for t in self.tasks])))
+        logMsg = "||".join([str(t) for t in self.tasks])
+        logger.debug("当前任务: " + logMsg)
+        save_log(logMsg, "{}" if not self.task else str(self.task), level="INFO")
         return super().run()
 
     def transition(self) -> None:
@@ -435,6 +441,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     new_plan[agent_room][agent_index] = task.meta_data
                 self.agent_arrange(new_plan)
         except Exception as e:
+            save_exception(e)
             logger.error(f"工厂任务失败: {e}")
             logger.exception(e)
 
@@ -563,6 +570,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             except MowerExit:
                 raise
             except Exception as e:
+                save_exception(e)
                 logger.exception(e)
                 if (
                     type(e) is ConnectionAbortedError
@@ -589,6 +597,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             except MowerExit:
                 raise
             except Exception as e:
+                save_exception(e)
                 logger.exception(e)
                 if (
                     type(e) is ConnectionAbortedError
@@ -713,6 +722,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 except MowerExit:
                     raise
                 except Exception as e:
+                    save_exception(e)
                     logger.exception(e)
                     if error_count > 3:
                         raise e
@@ -923,6 +933,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.back()
             self.back()
         except Exception as e:
+            save_exception(e)
             logger.exception(e)
 
     def generate_product(self, agent: str):
@@ -1152,6 +1163,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.back()
             self.back_to_infrastructure()
         except Exception as e:
+            save_exception(e)
             logger.exception(e)
 
     def skill_upgrade(self, skill):
@@ -1563,6 +1575,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         except MowerExit:
             raise
         except Exception as e:
+            save_exception(e)
             logger.exception(e)
         # 更新宿舍任务
         re_order_dorm_plan = try_reorder(self.op_data, new_plan)
@@ -1685,6 +1698,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         except MowerExit:
             raise
         except Exception as e:
+            save_exception(e)
             logger.exception(e)
         return False
 
@@ -2243,6 +2257,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             shop_solver.run()
             self.scene_graph_navigation(Scene.INFRA_MAIN)
         except Exception as e:
+            save_exception(e)
             logger.exception(e)
             return
 
@@ -2547,6 +2562,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     def choose_train_agent(
         self, current_room, agents, idx, error_count=0, fast_mode=False
     ):
+        if agents[idx] == "Current":
+            agents[idx] = current_room[idx]
         if current_room[idx] != agents[idx]:
             while (
                 # self.find("arrange_order_options",scope=((1785, 0), (1920, 128))) is None
@@ -2565,21 +2582,27 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     def choose_train(self, agents: list[str], fast_mode=True):
         current_room = self.op_data.get_current_room("train", True)
         self.choose_train_agent(current_room, agents, 0, 0, fast_mode)
-        # 训练室第二个人的干员识别会出错（工作中的干员无法识别 + 正在训练的干员无法换下）
         self.choose_train_agent(current_room, agents, 1, 0, fast_mode)
 
     def choose_train_ope(self, ope: str):
         found = False
         profession = "ALL"
-        if ope != "阿米娅":
+        if ope != "阿米娅" and ope not in ["Current", "Free"]:
             profession = agent_profession[ope]
             self.profession_filter(profession)
+        if ope == "Free":
+            self.profession_filter("ALL")
         first_ret = None
         right_swipe = 0
         max_swipe = 50
         while not found:
-            sel, ret = self.scan_agent([ope], train=True)
-            if sel == [ope]:
+            sel, ret = self.scan_agent(
+                [ope] if ope != "Free" else self.get_free_list([]),
+                max_agent_count=1,
+                train=True,
+            )
+            if sel == [ope] or ope == "Free":
+                ope = sel[0]
                 found = True
                 break
             if ret == first_ret and right_swipe >= 3:
@@ -2602,6 +2625,36 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             logger.debug([ope])
             raise Exception("检测到干员选择错误，重新选择")
         self.last_room = "train"
+
+    def get_free_list(self, agents: list[str] = None) -> list[str]:
+        free_list = [
+            v.name
+            for k, v in self.op_data.operators.items()
+            if v.name not in agents
+            and v.operator_type != "high"
+            and v.current_room == ""
+        ]
+        free_list.extend(
+            [
+                _name
+                for _name in agent_list
+                if _name not in self.op_data.operators.keys() and _name not in agents
+            ]
+        )
+        train_support = self.op_data.get_train_support()
+        # 获取所有要移除的字符串集合（排除 'Crueent'）
+        remove_set = set()
+        for key, value_list in self.task.plan.items():
+            remove_set.update(value_list)  # 加入所有列表中的元素
+        remove_set.discard("Current")
+        remove_set.discard("Free")
+        logger.debug(f"去除被安排的人员{remove_set}")
+        free_list = list(
+            set(free_list) - set(self.op_data.config.free_blacklist) - remove_set
+        )
+        if train_support in free_list:
+            free_list.remove(train_support)
+        return free_list
 
     def choose_agent(
         self, agents: list[str], room: str, fast_mode=True, train_index=0
@@ -2824,34 +2877,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.switch_arrange_order("心情", room, "true")
             # 只选择在列表里面的
             # 替换组小于20才休息，防止进入就满心情进行网络连接
-            free_list = [
-                v.name
-                for k, v in self.op_data.operators.items()
-                if v.name not in agents
-                and v.operator_type != "high"
-                and v.current_room == ""
-            ]
-            free_list.extend(
-                [
-                    _name
-                    for _name in agent_list
-                    if _name not in self.op_data.operators.keys()
-                    and _name not in agents
-                ]
-            )
-            train_support = self.op_data.get_train_support()
-            # 获取所有要移除的字符串集合（排除 'Crueent'）
-            remove_set = set()
-            for key, value_list in self.task.plan.items():
-                remove_set.update(value_list)  # 加入所有列表中的元素
-            remove_set.discard("Current")
-            remove_set.discard("Free")
-            logger.debug(f"去除被安排的人员{remove_set}")
-            free_list = list(
-                set(free_list) - set(self.op_data.config.free_blacklist) - remove_set
-            )
-            if train_support in free_list:
-                free_list.remove(train_support)
+            free_list = self.get_free_list(agents)
             while free_num:
                 selected_name, ret = self.scan_agent(
                     free_list,
@@ -3295,6 +3321,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             except MowerExit:
                 raise
             except Exception as e:
+                save_exception(e)
                 logger.exception(e)
                 choose_error += 1
                 self.recog.update()
@@ -3470,6 +3497,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             except MowerExit:
                 raise
             except Exception as e:
+                save_exception(e)
                 logger.exception(e)
                 error = True
                 self.recog.update()
@@ -3529,6 +3557,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
             logger.info("Maa Python模块导入成功")
         except Exception as e:
+            save_exception(e)
             logger.exception(f"Maa Python模块导入失败：{str(e)}")
             raise Exception("Maa Python模块导入失败")
 
@@ -3550,6 +3579,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             logger.info("Maa活动关卡导航更新成功")
         except Exception as e:
             logger.error(f"Maa活动关卡导航更新失败：{str(e)}")
+            save_exception(e)
 
         Asst.load(path=path, incremental_path=path / "cache")
 
@@ -3839,6 +3869,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 logger.info("停止maa")
             raise
         except Exception as e:
+            save_exception(e)
             logger.exception(e)
             self.MAA = None
             self.device.exit()
@@ -3857,6 +3888,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         except MowerExit:
             raise
         except Exception as e:
+            save_exception(e)
             logger.exception(f"森空岛签到失败:{e}")
             send_message(f"森空岛签到失败: {e}", level="ERROR")
         # 仅尝试一次 不再尝试
@@ -3898,6 +3930,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         except MowerExit:
             raise
         except Exception as e:
+            save_exception(e)
             logger.exception(e)
             return True
 
@@ -3906,6 +3939,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             cultivateDepotSolver().start()
             DepotSolver(self.device, self.recog).run()
         except Exception as e:
+            save_exception(e)
             logger.exception(f"先不运行 出bug了 : {e}")
             return False
         return True

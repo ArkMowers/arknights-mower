@@ -7027,6 +7027,20 @@
         "MATERIAL",
         700169
     ],
+    "p_char_4196_reckpr": [
+        "p_char_4196_reckpr",
+        "p_char_4196_reckpr",
+        "录武官的信物",
+        "MATERIAL",
+        700170
+    ],
+    "录武官的信物": [
+        "p_char_4196_reckpr",
+        "p_char_4196_reckpr",
+        "录武官的信物",
+        "MATERIAL",
+        700170
+    ],
     "p_char_103_angel": [
         "p_char_103_angel",
         "p_char_103_angel",
@@ -8594,6 +8608,20 @@
         "酒神的信物",
         "MATERIAL",
         600112
+    ],
+    "p_char_1043_leizi2": [
+        "p_char_1043_leizi2",
+        "p_char_1043_leizi2",
+        "司霆惊蛰的信物",
+        "MATERIAL",
+        600113
+    ],
+    "司霆惊蛰的信物": [
+        "p_char_1043_leizi2",
+        "p_char_1043_leizi2",
+        "司霆惊蛰的信物",
+        "MATERIAL",
+        600113
     ],
     "class_p_char_123_fang": [
         "class_p_char_123_fang",

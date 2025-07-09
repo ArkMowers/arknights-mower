@@ -1,5 +1,75 @@
 [
   {
+    "key": 376,
+    "name": "司霆惊蛰",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "雷法专精",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻发电站时，无人机充能速度<@cc.vup>+10%</>",
+        "roomType": "发电站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "bskill_pow_spd1",
+        "buffColor": "#8fc31f",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "克己严修",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻加工站加工<@cc.kw>技巧概要</>时，副产品的产出概率提升<@cc.vup>80%</>",
+        "roomType": "加工站",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ws_skill3",
+        "buffColor": "#e3eb00",
+        "textColor": "#333333"
+      }
+    ]
+  },
+  {
+    "key": 375,
+    "name": "录武官",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "医疗专精·α",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻训练室协助位时，<@cc.kw>医疗</>干员的专精技能训练速度<@cc.vup>+30%</>",
+        "roomType": "训练室",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_train_medic1",
+        "buffColor": "#7d0022",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "学无不精·α",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻训练室协助位时，干员的专精技能训练速度<@cc.vup>+25%</>",
+        "roomType": "训练室",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_train_all",
+        "buffColor": "#7d0022",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
     "key": 374,
     "name": "Miss.Christine",
     "span": 2,
@@ -25,7 +95,7 @@
         "skillname": "盛餐的回报",
         "buffer": false,
         "buffer_des": [],
-        "des": "进驻制造站时，当与<@cc.kw>酒神</>在在同一个制造站时，<@cc.kw>作战记录</>类配方的生产力<@cc.vup>+30%</>",
+        "des": "进驻制造站时，当与<@cc.kw>酒神</>在同一个制造站时，<@cc.kw>作战记录</>类配方的生产力<@cc.vup>+30%</>",
         "roomType": "制造站",
         "buffCategory": "OUTPUT",
         "skillIcon": "bskill_man_spd_double2",

@@ -214,7 +214,6 @@ class BaseMixin:
             (confirm_btn := self.find("confirm_train")) is not None
             and confirm_btn[0][0] > open_threshold
         ):
-            logger.info(f"{confirm_btn}")
             self.tap((1860, 60), 0.1)
             retry += 1
             if retry > 5:
@@ -466,41 +465,45 @@ class BaseMixin:
                 "家具零件_高级加固建材",
                 "家具零件_碳",
             ]
-            for base_idx, item in enumerate(ocr_result[0]):
+            base_idx = 0
+            for idx, item in enumerate(ocr_result[0]):
+                if item[1] == "家具零件" and furniture_start_index == -1:
+                    furniture_start_index = base_idx
                 if (
                     len(item) > 2
                     and item[1] in workshop_formula.keys()
                     or item[1] == "家具零件"
                 ):
-                    furniture_start_index += 1
                     name = item[1]
-                    if name == "家具零件" and furniture_start_index in range(6):
-                        name = furniture_keys[furniture_start_index]
+                    if furniture_start_index == 0 or furniture_start_index == 5:
+                        name = furniture_keys[base_idx]
                     box = item[0]
                     base_px = int(box[0][0]) + 15
                     base_py = int(box[0][1]) + 75
                     sample_points = [(base_px + i * 155, base_py) for i in range(3)]
                     valid = 0
-                    for idx, (px, py) in enumerate(sample_points):
+                    for _idx, (px, py) in enumerate(sample_points):
                         # 加入75px为边界
                         if 0 <= py < img.shape[0] - 75 and 0 <= px < img.shape[1]:
                             color = img[py, px]
                             valid += 1
                             logger.debug(
-                                f"检测到{item[1]} 颜色 {idx + 1} ({px}, {py}): {color}"
+                                f"检测到{item[1]} 颜色 {_idx + 1} ({px}, {py}): {color}"
                             )
                             if not np.all((color >= 40) & (color <= 80)):
                                 valid = float("-inf ")
-                                if idx < len(workshop_formula[name]["items"]):
+                                if _idx < len(workshop_formula[name]["items"]):
                                     logger.info("更新材料数量为0")
                                     save_inventory_counts(
-                                        {workshop_formula[name]["items"][idx]: 0}
+                                        {workshop_formula[name]["items"][_idx]: 0}
                                     )
                                 break
                     box_global = [[x + offset_x, y + offset_y] for (x, y) in box]
                     # 等于 0 则出界了
                     if valid != 0:
-                        res.append((name, box_global, valid > 0))
+                        res.append((item[1], box_global, valid > 0))
+                    if base_idx < 5:
+                        base_idx += 1
             return res
         except Exception as e:
             logger.exception(e)
