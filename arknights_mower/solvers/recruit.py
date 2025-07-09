@@ -278,7 +278,7 @@ class RecruitSolver(SceneGraphSolver):
                     self.sleep(1.0)
                 else:
                     self.sleep(1.0)
-                logger.debug(f"[refresh confirm] Current scene after back: {scene}")
+                logger.debug(f"[refresh confirm] scene before back: {scene}")
         elif scene == Scene.RECRUIT_AGENT:
             return self.recruit_result()
         elif scene == Scene.SKIP:
