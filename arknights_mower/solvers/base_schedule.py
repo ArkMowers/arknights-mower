@@ -994,7 +994,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             inf_material = "基建材料"
             gap = 0
             start_time = datetime.now()
-            9colored_crit = False
+            is_9colored_crit = False
             while tasks:
                 if datetime.now() - start_time > timedelta(
                     minutes=5
@@ -1043,7 +1043,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                     logger.info(
                                         "检测到九色鹿即将暴击，即将切换成暴击用材料"
                                     )
-                                    9colored_crit = True
+                                    is_9colored_crit = True
                                     continue
                             if gap >= 5:
                                 if material_tab != inf_material:
@@ -1097,7 +1097,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         self.back()
                     else:
                         if not tab_queue:
-                            if not 9colored_crit:
+                            if not is_9colored_crit:
                                 logger.info("没有任何材料满足条件，任务结束")
                                 send_message(
                                     f"找不到任何满足{agent}的加工站材料，请及时更新设置",
