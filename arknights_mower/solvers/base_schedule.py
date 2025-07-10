@@ -994,6 +994,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             inf_material = "基建材料"
             gap = 0
             start_time = datetime.now()
+            is_9colored_crit = False
+            workshop_production = False
             while tasks:
                 if datetime.now() - start_time > timedelta(
                     minutes=5
@@ -1036,31 +1038,36 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             if gap > 40:
                                 logger.error("识别九色鹿阈值出错拉!任务停止")
                                 return
-                            if 0 < gap < 5 and mood >= 4:
-                                if material_tab == inf_material:
-                                    tasks.insert(0, "select")
-                                    logger.info(
-                                        "检测到九色鹿即将暴击，即将切换成暴击用材料"
-                                    )
-                                    continue
-                            if gap >= 5:
-                                if material_tab != inf_material:
-                                    tasks.insert(0, "select")
-                                    logger.info("切换成垫刀材料")
-                                    continue
-                            if gap <= mood:
-                                # 系统自带一次，少一次，一共减少2
-                                tap_count = math.ceil(gap / ap_cost) - 2
-                        max_btn = (self.recog.w * 0.95, self.recog.h * 0.4)
+                            if 0 < gap < 5 and mood >= 4 and not is_9colored_crit:
+                                tasks.insert(0, "select")
+                                logger.info(
+                                    "检测到九色鹿即将暴击，即将切换成暴击用材料"
+                                )
+                                is_9colored_crit = True
+                                continue
+                            if current_material and mood >= 4:
+                                if gap <= mood:
+                                    tap_count = max(0, math.ceil(gap / ap_cost) - 2)
+                                else:
+                                    tap_count = max(0, math.ceil(mood / ap_cost) - 2)
+                            else:
+                                tasks.insert(0, "select")
+                                logger.info("切换材料")
+                                continue
+                        else:
+                            if current_material:
+                                tap_count = max(0, math.ceil(mood / ap_cost) - 2)
+                            else:
+                                tasks.insert(0, "select")
+                                logger.info("切换材料")
+                                continue
                         produce_btn = (self.recog.w * 0.88, self.recog.h * 0.88)
                         if tap_count != 99:
                             logger.info(
-                                f"开始加工九色鹿{tap_count + 1}次 x {ap_cost} 心情消耗"
+                                f"开始加工{tap_count + 1}次 x {ap_cost} 心情消耗"
                             )
                             for _ in range(int(tap_count)):
                                 self.tap(add_btn, interval=0.1)
-                        else:
-                            self.tap(max_btn, interval=0.5)
                         if self.find("factory_warning") or not self.item_valid():
                             if (
                                 not self.item_valid()
@@ -1070,14 +1077,22 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                 tasks.insert(0, "select")
                                 tab_queue = deque(group.items())
                                 logger.info("检测到当前材料用完，切换其他材料")
+                                is_9colored_crit = False
                                 continue
                             tasks = []
                             logger.info("检测到干员心情见底或材料不足，任务结束")
-                            self.op_data.operators[agent].mood = 0
-                            self.op_data.operators[agent].time_stamp = datetime.now()
-                            logger.debug("设置加工站干员心情为0，别问我，我懒得算了")
                             continue
                         self.tap(produce_btn, interval=2)
+                        workshop_production = True
+                        is_9colored_crit = False
+                        if gap <= mood:
+                            mood -= gap
+                            self.op_data.operators[agent].mood -= gap
+                        else:
+                            mood = 0
+                            self.op_data.operators[agent].mood -= mood
+                        self.op_data.operators[agent].time_stamp = datetime.now()
+                        logger.debug(f"设置{agent}心情为{self.op_data.operators[agent].mood}")
                         max_wait = 10
                         sleep_time = 0
                         while self.factory_scene() != Scene.FACTORY_PRODUCT_COLLECT:
@@ -1086,20 +1101,17 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             if sleep_time > max_wait:
                                 break
                         self.recog.save_screencap("workshop")
-                        if is_9colored:
-                            # 更新心情
-                            cost = tap_count * ap_cost if tap_count > 0 else 24
-                            self.op_data.operators[agent].mood -= cost
                 elif scene == Scene.FACTORY_FORMULA:
                     if tasks[0] in ["enter", "process"]:
                         self.back()
                     else:
                         if not tab_queue:
                             logger.info("没有任何材料满足条件，任务结束")
-                            send_message(
-                                f"找不到任何满足{agent}的加工站材料，请及时更新设置",
-                                level="WARNING",
-                            )
+                            if not workshop_production:
+                                send_message(
+                                    f"找不到任何满足{agent}的加工站材料，请及时更新设置",
+                                    level="WARNING",
+                                )
                             tasks = []
                             continue
                         tab, item_list = tab_queue.popleft()
@@ -1124,6 +1136,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                                 and workshop_formula[item]["tab"]
                                                 != inf_material
                                             )
+                                            is_9colored_crit = True
                                         else:
                                             good_to_go = (
                                                 0 < workshop_formula[item]["apCost"] < 4
