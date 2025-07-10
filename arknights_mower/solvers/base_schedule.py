@@ -1030,7 +1030,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         add_btn = (self.recog.w * 0.84, self.recog.h * 0.4)
                         tap_count = 99
                         ap_cost = current_material["apCost"]
-                        material_tab = current_material["tab"]
                         if is_9colored:
                             mood = self.op_data.operators[agent].mood
                             gap = 40 - self.get_number((290, 335, 95, 200))
