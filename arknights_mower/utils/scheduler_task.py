@@ -516,7 +516,9 @@ def try_workshop_tasks(op_data, tasks):
                             non_base_material_4ap = True
                 match = non_base_material_match and non_base_material_4ap
                 if not match:
-                    logger.info(f"{item.operator}材料设置不符合要求：请检查合成数量，并确认至少要有一个4心情非基建材料")
+                    logger.info(
+                        f"{item.operator}材料设置不符合要求：请检查合成数量，并确认至少要有一个4心情非基建材料"
+                    )
             else:
                 for material in item.items:
                     name = material.item_name
