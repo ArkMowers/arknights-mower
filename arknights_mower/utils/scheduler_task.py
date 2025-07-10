@@ -487,10 +487,9 @@ def try_workshop_tasks(op_data, tasks):
                 valid = True
                 op_data.add(Operator(item.operator, ""))
             match = False
-            base_material_match = False
+
             non_base_material_match = False
             if item.operator == "九色鹿":
-                base_material_match = False
                 non_base_material_match = False
                 non_base_material_4ap = False
                 for material in item.items:
@@ -508,9 +507,7 @@ def try_workshop_tasks(op_data, tasks):
                             for child_name in metadata["items"]
                         )
                     ):
-                        if metadata["tab"] == "基建材料":
-                            base_material_match = True
-                        else:
+                        if metadata["tab"] != "基建材料":
                             non_base_material_match = True
                         if metadata.get("apCost", 0) == 4.0:
                             non_base_material_4ap = True
