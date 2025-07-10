@@ -511,7 +511,7 @@ def try_workshop_tasks(op_data, tasks):
                         else:
                             if metadata.get("apCost", 0) == 4.0:
                                 non_base_material_4ap = True
-                            if metadata.get("apCost", 0) < 4.0:
+                            if 0.0 < metadata.get("apCost", 0) < 4.0:
                                 material_diandao = True
                 match = material_diandao and non_base_material_4ap
                 if not match:
