@@ -492,6 +492,7 @@ def try_workshop_tasks(op_data, tasks):
             if item.operator == "九色鹿":
                 base_material_match = False
                 non_base_material_match = False
+                non_base_material_4ap = False
                 for material in item.items:
                     name = material.item_name
                     metadata = workshop_formula[name]
@@ -511,9 +512,11 @@ def try_workshop_tasks(op_data, tasks):
                             base_material_match = True
                         else:
                             non_base_material_match = True
-                match = base_material_match and non_base_material_match
+                        if metadata.get("apCost", 0) == 4.0：
+                            non_base_material_4ap = True
+                match = non_base_material_match and non_base_material_4ap
                 if not match:
-                    logger.info(f"九色鹿材料设置不符合要求：请检查合成数量，并确认至少要有一个基建材料和一个非基建材料")
+                    logger.info(f"{item.operator}材料设置不符合要求：请检查合成数量，并确认至少要有一个4心情非基建材料")
             else:
                 for material in item.items:
                     name = material.item_name
@@ -533,7 +536,7 @@ def try_workshop_tasks(op_data, tasks):
                         match = True
                         break
                 if not match:
-                    logger.info(f"{item.operator}材料设置和合成数量不符合要求")
+                    logger.info(f"{item.operator}材料设置不符合要求: 请检查合成数量")
             if match and valid:
                 logger.info(f"{item.operator}满足使用条件:, 生成加工站任务")
                 task = SchedulerTask(
