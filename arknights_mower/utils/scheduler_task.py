@@ -496,7 +496,7 @@ def try_workshop_tasks(op_data, tasks):
                     name = material.item_name
                     metadata = workshop_formula[name]
                     if name.startswith("家具零件"):
-                        name = "家具零件"
+                        name = name.split("_")[-1]
                     if (
                         name in inventory_data
                         and inventory_data[name] < material.self_upper_limit
@@ -512,12 +512,14 @@ def try_workshop_tasks(op_data, tasks):
                         else:
                             non_base_material_match = True
                 match = base_material_match and non_base_material_match
+                if not match:
+                    logger.info(f"九色鹿材料设置不符合要求：请检查合成数量，并确认至少要有一个基建材料和一个非基建材料")
             else:
                 for material in item.items:
                     name = material.item_name
                     metadata = workshop_formula[name]
                     if name.startswith("家具零件"):
-                        name = "家具零件"
+                        name = name.split("_")[-1]
                     if (
                         name in inventory_data
                         and inventory_data[name] < material.self_upper_limit
@@ -530,6 +532,8 @@ def try_workshop_tasks(op_data, tasks):
                     ):
                         match = True
                         break
+                if not match:
+                    logger.info(f"{item.operator}材料设置和合成数量不符合要求")
             if match and valid:
                 logger.info(f"{item.operator}满足使用条件:, 生成加工站任务")
                 task = SchedulerTask(
