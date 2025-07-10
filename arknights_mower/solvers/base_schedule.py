@@ -1043,9 +1043,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                 logger.info(
                                     "检测到九色鹿即将暴击，即将切换成暴击用材料"
                                 )
-                                is_9colored_crit = True
                                 continue
-                            if current_material and mood >= 4:
+                            if current_material:
                                 if gap <= mood:
                                     tap_count = max(0, math.ceil(gap / ap_cost) - 2)
                                 else:
@@ -1092,7 +1091,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             mood = 0
                             self.op_data.operators[agent].mood -= mood
                         self.op_data.operators[agent].time_stamp = datetime.now()
-                        logger.debug(f"设置{agent}心情为{self.op_data.operators[agent].mood}")
+                        logger.debug(
+                            f"设置{agent}心情为{self.op_data.operators[agent].mood}"
+                        )
                         max_wait = 10
                         sleep_time = 0
                         while self.factory_scene() != Scene.FACTORY_PRODUCT_COLLECT:
