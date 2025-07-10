@@ -512,7 +512,7 @@ def try_workshop_tasks(op_data, tasks):
                             base_material_match = True
                         else:
                             non_base_material_match = True
-                        if metadata.get("apCost", 0) == 4.0：
+                        if metadata.get("apCost", 0) == 4.0:
                             non_base_material_4ap = True
                 match = non_base_material_match and non_base_material_4ap
                 if not match:
