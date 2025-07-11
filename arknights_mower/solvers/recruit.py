@@ -264,6 +264,21 @@ class RecruitSolver(SceneGraphSolver):
                 self.recruit_tags(self.tags[self.recruit_index])
         elif scene == Scene.REFRESH_TAGS:
             self.tap_element("recruit/refresh_comfirm")
+            self.sleep(1.0)
+            # 等待返回 RECRUIT_MAIN 场景
+            for _ in range(5):  # 最多尝试5次
+                if (scene := self.scene()) == Scene.RECRUIT_TAGS:
+                    self.back()
+                    self.sleep(1.0)
+                elif scene == Scene.RECRUIT_MAIN:
+                    logger.debug(f"[refresh confirm] back to RECRUIT_MAIN: {scene}")
+                    break
+                elif scene in self.waiting_scene:
+                    self.waiting_solver()
+                    self.sleep(1.0)
+                else:
+                    self.sleep(1.0)
+                logger.debug(f"[refresh confirm] scene before back: {scene}")
         elif scene == Scene.RECRUIT_AGENT:
             return self.recruit_result()
         elif scene == Scene.SKIP:
