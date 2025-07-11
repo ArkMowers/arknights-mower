@@ -1042,9 +1042,20 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                 logger.info(
                                     "检测到九色鹿即将暴击，即将切换成暴击用材料"
                                 )
+                                is_9colored_crit = True
+                                continue
+                            if 37< gap < 41 and mood >= 4 and is_9colored_crit:
+                                tasks.insert(0, "select")
+                                logger.info(
+                                    "九色鹿暴击结束，尝试切换成垫刀材料"
+                                )
+                                is_9colored_crit = False
                                 continue
                             if current_material:
-                                if gap <= mood:
+                                #暴击时只合成1个
+                                if is_9colored_crit:
+                                    tap_count = 0
+                                elif gap <= mood:
                                     tap_count = max(0, math.ceil(gap / ap_cost) - 2)
                                 else:
                                     tap_count = max(0, math.ceil(mood / ap_cost) - 2)
@@ -1059,13 +1070,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                 tasks.insert(0, "select")
                                 logger.info("切换材料")
                                 continue
-                        produce_btn = (self.recog.w * 0.88, self.recog.h * 0.88)
-                        if tap_count != 99:
-                            logger.info(
-                                f"开始加工{tap_count + 1}次 x {ap_cost} 心情消耗"
-                            )
-                            for _ in range(int(tap_count)):
-                                self.tap(add_btn, interval=0.1)
                         if self.find("factory_warning") or not self.item_valid():
                             if (
                                 not self.item_valid()
@@ -1080,6 +1084,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             tasks = []
                             logger.info("检测到干员心情见底或材料不足，任务结束")
                             continue
+                        produce_btn = (self.recog.w * 0.88, self.recog.h * 0.88)
+                        if tap_count != 99:
+                            logger.info(
+                                f"开始加工{tap_count + 1}次 x {ap_cost} 心情消耗"
+                            )
+                            for _ in range(int(tap_count)):
+                                self.tap(add_btn, interval=0.1)
                         self.tap(produce_btn, interval=2)
                         workshop_production = True
                         is_9colored_crit = False
@@ -1106,7 +1117,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         self.back()
                     else:
                         if not tab_queue:
-                            logger.info("没有任何材料满足条件，任务结束")
+                            logger.info(f"材料列表遍历完毕，{agent}加工任务结束")
                             if not workshop_production:
                                 send_message(
                                     f"找不到任何满足{agent}的加工站材料，请及时更新设置",
@@ -1143,6 +1154,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                                 or workshop_formula[item]["tab"]
                                                 == inf_material
                                             )
+                                            is_9colored_crit = False
                                     if valid and good_to_go:
                                         logger.info(f"检测到{item}满足条件，开始加工")
                                         self.tap(
