@@ -1091,7 +1091,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                 self.tap(add_btn, interval=0.1)
                         self.tap(produce_btn, interval=2)
                         workshop_production = True
-                        is_9colored_crit = False
                         if gap <= mood:
                             mood -= gap
                             self.op_data.operators[agent].mood -= gap
