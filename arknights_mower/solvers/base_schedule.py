@@ -1044,15 +1044,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                 )
                                 is_9colored_crit = True
                                 continue
-                            if 37< gap < 41 and mood >= 4 and is_9colored_crit:
+                            if 37 < gap < 41 and mood >= 4 and is_9colored_crit:
                                 tasks.insert(0, "select")
-                                logger.info(
-                                    "九色鹿暴击结束，尝试切换成垫刀材料"
-                                )
+                                logger.info("九色鹿暴击结束，尝试切换成垫刀材料")
                                 is_9colored_crit = False
                                 continue
                             if current_material:
-                                #暴击时只合成1个
+                                # 暴击时只合成1个
                                 if is_9colored_crit:
                                     tap_count = 0
                                 elif gap <= mood:
