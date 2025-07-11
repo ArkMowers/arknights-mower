@@ -1040,7 +1040,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             if 0 < gap < 5 and not is_9colored_crit:
                                 if mood < 4:
                                     tasks = []
-                                    logger.info("九色鹿即将暴击但心情<4，任务结束") 
+                                    logger.info("九色鹿即将暴击但心情<4，任务结束")
                                     continue
                                 else:
                                     tasks.insert(0, "select")
