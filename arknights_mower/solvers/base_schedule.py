@@ -1094,26 +1094,26 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             )
                             for _ in range(int(tap_count)):
                                 self.tap(add_btn, interval=0.1)
-                        self.tap(produce_btn, interval=2)
-                        workshop_production = True
-                        if is_9colored and gap <= mood:
-                            mood -= gap
-                            self.op_data.operators[agent].mood -= gap
-                        else:
-                            mood = 0
-                            self.op_data.operators[agent].mood = 0
-                        self.op_data.operators[agent].time_stamp = datetime.now()
-                        logger.debug(
-                            f"设置{agent}心情为{self.op_data.operators[agent].mood}"
-                        )
-                        max_wait = 10
-                        sleep_time = 0
-                        while self.factory_scene() != Scene.FACTORY_PRODUCT_COLLECT:
-                            self.sleep()
-                            sleep_time += 1
-                            if sleep_time > max_wait:
-                                break
-                        self.recog.save_screencap("workshop")
+                            self.tap(produce_btn, interval=2)
+                            workshop_production = True
+                            if is_9colored and gap <= mood:
+                                mood -= gap
+                                self.op_data.operators[agent].mood -= gap
+                            else:
+                                mood = 0
+                                self.op_data.operators[agent].mood = 0
+                            self.op_data.operators[agent].time_stamp = datetime.now()
+                            logger.debug(
+                                f"设置{agent}心情为{self.op_data.operators[agent].mood}"
+                            )
+                            max_wait = 10
+                            sleep_time = 0
+                            while self.factory_scene() != Scene.FACTORY_PRODUCT_COLLECT:
+                                self.sleep()
+                                sleep_time += 1
+                                if sleep_time > max_wait:
+                                    break
+                            self.recog.save_screencap("workshop")
                 elif scene == Scene.FACTORY_FORMULA:
                     if tasks[0] in ["enter", "process"]:
                         self.back()
