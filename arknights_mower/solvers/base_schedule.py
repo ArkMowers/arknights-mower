@@ -1030,8 +1030,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         add_btn = (self.recog.w * 0.84, self.recog.h * 0.4)
                         tap_count = 99
                         ap_cost = current_material["apCost"]
+                        mood = self.op_data.operators[agent].mood
                         if is_9colored:
-                            mood = self.op_data.operators[agent].mood
                             gap = 40 - self.get_number((290, 335, 95, 200))
                             logger.debug(f"九色鹿技能差值{gap}")
                             if gap > 40:
@@ -1096,7 +1096,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             self.op_data.operators[agent].mood -= gap
                         else:
                             mood = 0
-                            self.op_data.operators[agent].mood -= mood
+                            self.op_data.operators[agent].mood = 0
                         self.op_data.operators[agent].time_stamp = datetime.now()
                         logger.debug(
                             f"设置{agent}心情为{self.op_data.operators[agent].mood}"
