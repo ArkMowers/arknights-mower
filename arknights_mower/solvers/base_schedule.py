@@ -1037,14 +1037,19 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             if gap > 40:
                                 logger.error("识别九色鹿阈值出错拉!任务停止")
                                 return
-                            if 0 < gap < 5 and mood >= 4 and not is_9colored_crit:
-                                tasks.insert(0, "select")
-                                logger.info(
-                                    "检测到九色鹿即将暴击，即将切换成暴击用材料"
-                                )
-                                is_9colored_crit = True
-                                continue
-                            if 37 < gap < 41 and mood >= 4 and is_9colored_crit:
+                            if 0 < gap < 5 and not is_9colored_crit:
+                                if mood < 4:
+                                    tasks = []
+                                    logger.info("九色鹿即将暴击但心情<4，任务结束") 
+                                    continue
+                                else:
+                                    tasks.insert(0, "select")
+                                    logger.info(
+                                        "检测到九色鹿即将暴击，即将切换成暴击用材料"
+                                    )
+                                    is_9colored_crit = True
+                                    continue
+                            if 37 < gap < 41 and is_9colored_crit:
                                 tasks.insert(0, "select")
                                 logger.info("九色鹿暴击结束，尝试切换成垫刀材料")
                                 is_9colored_crit = False
