@@ -1049,7 +1049,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                     )
                                     is_9colored_crit = True
                                     continue
-                            if 37 < gap < 41 and is_9colored_crit:
+                            if 36 < gap < 41 and is_9colored_crit:
                                 tasks.insert(0, "select")
                                 logger.info("九色鹿暴击结束，尝试切换成垫刀材料")
                                 is_9colored_crit = False
