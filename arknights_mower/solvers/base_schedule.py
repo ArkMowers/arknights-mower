@@ -1096,12 +1096,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                 self.tap(add_btn, interval=0.1)
                             self.tap(produce_btn, interval=2)
                             workshop_production = True
-                            if is_9colored and gap <= mood:
-                                mood -= gap
-                                self.op_data.operators[agent].mood -= gap
-                            else:
-                                mood = 0
-                                self.op_data.operators[agent].mood = 0
+                            cost = (tap_count + 1) * ap_cost
+                            self.op_data.operators[agent].mood -= cost
                             self.op_data.operators[agent].time_stamp = datetime.now()
                             logger.debug(
                                 f"设置{agent}心情为{self.op_data.operators[agent].mood}"
