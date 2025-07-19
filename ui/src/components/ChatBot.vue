@@ -5,7 +5,10 @@ import { storeToRefs } from 'pinia'
 
 const store = useConfigStore()
 const { ai_key, ai_type } = storeToRefs(store)
-const type_options = [{ label: 'Deepseek', value: 'deepseek' }]
+const type_options = [
+  { label: 'Deepseek 聊天', value: 'deepseek' },
+  { label: 'Deepseek 深度推理', value: 'deepseek_reasoner' }
+]
 
 const show = ref(false)
 const userInput = ref('')

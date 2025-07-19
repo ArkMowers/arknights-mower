@@ -5,6 +5,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, MessageGraph
 
+from arknights_mower.agent.tools.call_db import call_db, call_db_tool_def
 from arknights_mower.agent.tools.extract_stack_paths import (
     extract_stack_paths,
     extract_stack_paths_tool_def,
@@ -14,11 +15,13 @@ from arknights_mower.agent.tools.get_source_snippet import (
     get_source_snippet,
     get_source_snippet_tool_def,
 )
-from arknights_mower.agent.tools.readdata import call_db, call_db_tool_def
 from arknights_mower.agent.tools.submit_issue import submit_issue, submit_issue_tool_def
 from arknights_mower.utils import config
 
-model_name_map = {"deepseek": ["deepseek-chat", "https://api.deepseek.com/v1"]}
+model_name_map = {
+    "deepseek": ["deepseek-chat", "https://api.deepseek.com/v1"],
+    "deepseek_reasoner": ["deepseek-reasoner", "https://api.deepseek.com/v1"],
+}
 
 
 def get_tools():
@@ -114,7 +117,7 @@ def ask_llm(user_input, context=None, api_key=None):
         "优先检查用户问题是否属于常见FAQ，如果匹配FAQ则直接回复修复方法。工具名称是 get_faq。"
         "如果用户的问题与当前可用工具无关，请提示用户选择合适的工具，并提供相关问法"
         "请根据用户选择的工具，只用对应工具回答。"
-        "常见数据库查询问法：'查询最近10条订单'、'查询某干员的上下班记录'。"
+        "常见数据库查询问法：'查询最近10条订单'、'查询某干员的上下班记录'、'查询错误信息包含漏单的任务日志'。"
         "常见问题上报问法：'我要反馈一个bug'、'提交无法启动的问题'。"
         "你可能需要多轮调用不同工具才能得到最终分析结果。"
     )

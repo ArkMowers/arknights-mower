@@ -1,6 +1,6 @@
 [
   {
-    "key": 376,
+    "key": 377,
     "name": "司霆惊蛰",
     "span": 2,
     "child_skill": [
@@ -35,7 +35,7 @@
     ]
   },
   {
-    "key": 375,
+    "key": 376,
     "name": "录武官",
     "span": 2,
     "child_skill": [
@@ -65,6 +65,43 @@
         "buffCategory": "FUNCTION",
         "skillIcon": "bskill_train_all",
         "buffColor": "#7d0022",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 375,
+    "name": "电弧",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "点滴关照",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻控制中枢时，控制中枢内所有干员的心情每小时恢复<@cc.vup>+0.05</>",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_cost",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "无言的慈爱",
+        "buffer": true,
+        "buffer_des": [
+          "cc_g_elite"
+        ],
+        "des": "进驻控制中枢时，所有宿舍内<$cc.g.elite><@cc.kw>精英干员</></>的心情每小时恢复<@cc.vup>+0.1</>（同种效果取最高）",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_d_r_tag",
+        "buffColor": "#005752",
         "textColor": "#ffffff"
       }
     ]

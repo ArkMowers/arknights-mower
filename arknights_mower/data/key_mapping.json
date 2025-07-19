@@ -8623,6 +8623,20 @@
         "MATERIAL",
         600113
     ],
+    "p_char_4195_radian": [
+        "p_char_4195_radian",
+        "p_char_4195_radian",
+        "电弧的信物",
+        "MATERIAL",
+        600114
+    ],
+    "电弧的信物": [
+        "p_char_4195_radian",
+        "p_char_4195_radian",
+        "电弧的信物",
+        "MATERIAL",
+        600114
+    ],
     "class_p_char_123_fang": [
         "class_p_char_123_fang",
         "class_p_char_123_fang",
