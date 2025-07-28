@@ -475,7 +475,7 @@ class BaseMixin:
                     or item[1] == "家具零件"
                 ):
                     name = item[1]
-                    if furniture_start_index == 0 or furniture_start_index == 5:
+                    if name == "家具零件" and furniture_start_index in range(6):
                         name = furniture_keys[base_idx]
                     box = item[0]
                     base_px = int(box[0][0]) + 15
@@ -501,7 +501,7 @@ class BaseMixin:
                     box_global = [[x + offset_x, y + offset_y] for (x, y) in box]
                     # 等于 0 则出界了
                     if valid != 0:
-                        res.append((item[1], box_global, valid > 0))
+                        res.append((name, box_global, valid > 0))
                     if base_idx < 5:
                         base_idx += 1
             return res
