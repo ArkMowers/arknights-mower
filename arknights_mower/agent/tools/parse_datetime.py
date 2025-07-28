@@ -12,7 +12,8 @@ def parse_datetime(time_str: str) -> str:
     except Exception as e:
         print(e)
         return f"无法解析时间格式: {e}"
-        
+
+
 parse_datetime_tool_def = {
     "type": "function",
     "function": {
@@ -30,7 +31,7 @@ parse_datetime_tool_def = {
                     "description": "格式为 YYYY-MM-DD HH:MM:SS 的时间字符串。",
                 }
             },
-            "required": ["time_str"]
-        }
-    }
+            "required": ["time_str"],
+        },
+    },
 }

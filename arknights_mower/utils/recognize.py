@@ -711,7 +711,7 @@ class Recognizer:
             "arrange_confirm": (963, 969),
             "arrange_order_options": (1652, 23),
             "arrange_order_options_scene": (369, 199),
-            "clue": (1740, 855),
+            "clue": (1751, 900),
             "clue/daily": (526, 623),
             "clue/filter_all": (1297, 99),
             "clue/give_away": (25, 18),
