@@ -493,7 +493,7 @@ class BaseMixin:
                             if not np.all((color >= 40) & (color <= 80)):
                                 valid = float("-inf ")
                                 if _idx < len(workshop_formula[name]["items"]):
-                                    logger.info("更新材料数量为0")
+                                    logger.debug(f"更新{name}数量为0")
                                     save_inventory_counts(
                                         {workshop_formula[name]["items"][_idx]: 0}
                                     )
