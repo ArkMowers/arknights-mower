@@ -46,140 +46,154 @@
         "GOLD",
         "龙门币",
         "NORMAL",
-        10004
+        10201
     ],
     "龙门币": [
         "4001",
         "GOLD",
         "龙门币",
         "NORMAL",
-        10004
+        10201
     ],
     "3003": [
         "3003",
         "MTL_GOLD3",
         "赤金",
         "NORMAL",
-        10005
+        10202
     ],
     "赤金": [
         "3003",
         "MTL_GOLD3",
         "赤金",
         "NORMAL",
-        10005
+        10202
     ],
     "4004": [
         "4004",
         "HGG_SHD",
         "高级凭证",
         "NORMAL",
-        10006
+        10203
     ],
     "高级凭证": [
         "4004",
         "HGG_SHD",
         "高级凭证",
         "NORMAL",
-        10006
+        10203
     ],
     "4005": [
         "4005",
         "LGG_SHD",
         "资质凭证",
         "NORMAL",
-        10007
+        10204
     ],
     "资质凭证": [
         "4005",
         "LGG_SHD",
         "资质凭证",
         "NORMAL",
-        10007
+        10204
     ],
     "4006": [
         "4006",
         "EXGG_SHD",
         "采购凭证",
         "NORMAL",
-        10008
+        10205
     ],
     "采购凭证": [
         "4006",
         "EXGG_SHD",
         "采购凭证",
         "NORMAL",
-        10008
+        10205
+    ],
+    "LMTGS_COIN_6401": [
+        "LMTGS_COIN_6401",
+        "LMTGS_COIN_6401",
+        "寻访数据契约",
+        "NORMAL",
+        10322
+    ],
+    "寻访数据契约": [
+        "LMTGS_COIN_6401",
+        "LMTGS_COIN_6401",
+        "寻访数据契约",
+        "NORMAL",
+        10322
     ],
     "EPGS_COIN": [
         "EPGS_COIN",
         "EPGS_COIN",
         "寻访参数模型",
         "NORMAL",
-        10101
+        10401
     ],
     "寻访参数模型": [
         "EPGS_COIN",
         "EPGS_COIN",
         "寻访参数模型",
         "NORMAL",
-        10101
+        10401
     ],
     "REP_COIN": [
         "REP_COIN",
         "REP_COIN",
         "情报凭证",
         "NORMAL",
-        10102
+        10402
     ],
     "情报凭证": [
         "REP_COIN",
         "REP_COIN",
         "情报凭证",
         "NORMAL",
-        10102
+        10402
     ],
     "CRISIS_SHOP_COIN": [
         "CRISIS_SHOP_COIN",
         "CRISIS_SHOP_COIN",
         "合约赏金",
         "NORMAL",
-        10201
+        10501
     ],
     "合约赏金": [
         "CRISIS_SHOP_COIN",
         "CRISIS_SHOP_COIN",
         "合约赏金",
         "NORMAL",
-        10201
+        10501
     ],
     "CRISIS_SHOP_COIN_V2": [
         "CRISIS_SHOP_COIN_V2",
         "CRISIS_SHOP_COIN_V2",
         "晶体合约赏金",
         "NORMAL",
-        10202
+        10502
     ],
     "晶体合约赏金": [
         "CRISIS_SHOP_COIN_V2",
         "CRISIS_SHOP_COIN_V2",
         "晶体合约赏金",
         "NORMAL",
-        10202
+        10502
     ],
     "STORY_REVIEW_COIN": [
         "STORY_REVIEW_COIN",
         "STORY_REVIEW_COIN",
         "事相碎片",
         "NORMAL",
-        10203
+        10503
     ],
     "事相碎片": [
         "STORY_REVIEW_COIN",
         "STORY_REVIEW_COIN",
         "事相碎片",
         "NORMAL",
-        10203
+        10503
     ],
     "renamingCard": [
         "renamingCard",
@@ -404,6 +418,20 @@
         "十连寻访凭证",
         "NORMAL",
         40001
+    ],
+    "LIMITED_TKT_GACHA_10_6401": [
+        "LIMITED_TKT_GACHA_10_6401",
+        "LIMITED_TKT_GACHA_10_6401",
+        "浪客行歌寻访凭证",
+        "NORMAL",
+        40003
+    ],
+    "浪客行歌寻访凭证": [
+        "LIMITED_TKT_GACHA_10_6401",
+        "LIMITED_TKT_GACHA_10_6401",
+        "浪客行歌寻访凭证",
+        "NORMAL",
+        40003
     ],
     "7003": [
         "7003",
@@ -670,6 +698,20 @@
         "资深干员调用凭证",
         "CONSUME",
         50021
+    ],
+    "voucher_recruitR6_pick6401": [
+        "voucher_recruitR6_pick6401",
+        "voucher_recruitR6_pick6401",
+        "高级干员活动调用凭证",
+        "CONSUME",
+        50017
+    ],
+    "高级干员活动调用凭证": [
+        "voucher_recruitR6_pick6401",
+        "voucher_recruitR6_pick6401",
+        "高级干员活动调用凭证",
+        "CONSUME",
+        50017
     ],
     "voucher_levelmax_6": [
         "voucher_levelmax_6",
@@ -7041,6 +7083,34 @@
         "MATERIAL",
         700170
     ],
+    "p_char_4203_kichi": [
+        "p_char_4203_kichi",
+        "p_char_4203_kichi",
+        "吉星的信物",
+        "MATERIAL",
+        700171
+    ],
+    "吉星的信物": [
+        "p_char_4203_kichi",
+        "p_char_4203_kichi",
+        "吉星的信物",
+        "MATERIAL",
+        700171
+    ],
+    "p_char_4199_makiri": [
+        "p_char_4199_makiri",
+        "p_char_4199_makiri",
+        "松桐的信物",
+        "MATERIAL",
+        700172
+    ],
+    "松桐的信物": [
+        "p_char_4199_makiri",
+        "p_char_4199_makiri",
+        "松桐的信物",
+        "MATERIAL",
+        700172
+    ],
     "p_char_103_angel": [
         "p_char_103_angel",
         "p_char_103_angel",
@@ -8636,6 +8706,34 @@
         "电弧的信物",
         "MATERIAL",
         600114
+    ],
+    "p_char_4202_haruka": [
+        "p_char_4202_haruka",
+        "p_char_4202_haruka",
+        "遥的信物",
+        "MATERIAL",
+        600115
+    ],
+    "遥的信物": [
+        "p_char_4202_haruka",
+        "p_char_4202_haruka",
+        "遥的信物",
+        "MATERIAL",
+        600115
+    ],
+    "p_char_1044_hsgma2": [
+        "p_char_1044_hsgma2",
+        "p_char_1044_hsgma2",
+        "斩业星熊的信物",
+        "MATERIAL",
+        600116
+    ],
+    "斩业星熊的信物": [
+        "p_char_1044_hsgma2",
+        "p_char_1044_hsgma2",
+        "斩业星熊的信物",
+        "MATERIAL",
+        600116
     ],
     "class_p_char_123_fang": [
         "class_p_char_123_fang",

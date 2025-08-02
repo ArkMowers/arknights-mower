@@ -1,0 +1,1421 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Mower入门指北</title>
+	<style>
+		/* 主题变量定义 */
+		:root {
+			--sidebar-width: 210px;
+			--header-height: 60px;
+			--primary-color: #4caf50;
+			--secondary-color: #2980b9;
+			--link-color: #0066cc;
+			--reference-color: #e74c3c;
+			--border-color: #e0e0e0;
+			--light-bg: #f9f9f9;
+			--active-color: #e8f5e9;
+			--transition-speed: 0.3s;
+			--shadow: 0 4px 6px rgba(0,0,0,0.1);
+			--card-bg: #fff;
+		}
+		
+		/* 全局基础样式重置 */
+		* {
+			margin: 0;
+			padding: 0;
+			box-sizing: border-box;
+		}
+		
+		/* 页面主体样式 */
+		body {
+			font-family: 'PingFang SC', 'Segoe UI', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, sans-serif;
+			font-size: 16px;
+			line-height: 1.6;
+			color: #333;
+			background-color: #f8fafb;
+			scroll-behavior: smooth;
+			overflow-x: hidden; /* 防止页面整体溢出 */
+		}
+		
+		/* 页面主容器布局 */
+		.container {
+			display: flex;
+			min-height: 100vh;
+			background: linear-gradient(to bottom, #e8f5e9 0%, #f8fafb 150px, #f8fafb 100%);
+		}
+		
+		/* 侧边栏导航样式 */
+		.sidebar {
+			width: var(--sidebar-width);
+			background: var(--light-bg);
+			border-right: 1px solid var(--border-color);
+			height: 100vh;
+			position: sticky;
+			top: 0;
+			overflow-y: auto;
+			z-index: 100;
+			transition: all var(--transition-speed) ease;
+			box-shadow: var(--shadow);
+		}
+		
+		/* 隐藏侧边栏滚动条 */
+		.sidebar::-webkit-scrollbar {
+			display: none;
+		}
+		
+		/* 导航栏标题样式 */
+		.nav-title {
+			padding: 15px 20px;
+			font-weight: bold;
+			background: #e8f5e9;
+			color: #4caf50;
+			font-size: 16px;
+			position: sticky;
+			top: 0;
+			z-index: 10;
+			border-bottom: 1px solid var(--border-color);
+		}
+		
+		/* 一级导航列表样式 */
+		.nav-list {
+			list-style: none;
+			padding: 10px 0;
+		}
+		
+		.nav-list > li {
+			border-bottom: none !important;
+		}
+		
+		/* 一级导航链接样式 */
+		.nav-link {
+			display: block;
+			padding: 12px 20px;
+			color: #333;
+			text-decoration: none;
+			transition: all 0.2s;
+			font-size: 13px;
+			font-weight: bold;
+			position: relative;
+		}
+		
+		.nav-link:hover {
+			background: #e0e0e0;
+		}
+		
+		.nav-link.active {
+			background: var(--active-color);
+			color: var(--primary-color);
+			font-weight: bold;
+			border-left: 3px solid var(--primary-color);
+		}
+		
+		/* 可折叠导航项样式 */
+		.nav-item-toggle {
+			position: relative;
+			cursor: pointer;
+		}
+		
+		/* 折叠/展开图标 */
+		.nav-item-toggle::after {
+			content: '+';
+			position: absolute;
+			right: 15px;
+			top: 50%;
+			transform: translateY(-50%);
+			font-weight: bold;
+			font-size: 16px;
+			color: #666;
+			transition: transform var(--transition-speed);
+		}
+		
+		.nav-item-toggle.collapsed::after {
+			content: '−';
+		}
+		
+		/* 二级导航列表样式（默认收起） */
+		.sub-nav-list {
+			list-style: none;
+			padding-left: 10px;
+			max-height: 0;
+			overflow: hidden;
+			transition: max-height var(--transition-speed) ease;
+			background-color: rgba(255,255,255,0.5);
+		}
+		
+		/* 二级导航展开时样式 */
+		.sub-nav-list.collapsed {
+			max-height: 1000px;
+		}
+		
+		/* 二级导航链接样式 */
+		.sub-nav-link {
+			padding: 10px 20px 10px 35px;
+			display: block;
+			color: #555;
+			text-decoration: none;
+			font-size: 12.5px;
+			position: relative;
+			transition: all 0.2s;
+		}
+		
+		.sub-nav-link:hover {
+			background: #f0f0f0;
+			padding-left: 38px;
+		}
+		
+		/* 二级导航前置圆点 */
+		.sub-nav-link::before {
+			content: '';
+			position: absolute;
+			left: 20px;
+			top: 50%;
+			transform: translateY(-50%);
+			width: 6px;
+			height: 6px;
+			background: #999;
+			border-radius: 50%;
+			transition: all 0.2s;
+		}
+		
+		.sub-nav-link.active {
+			color: var(--primary-color);
+			font-weight: bold;
+			background: #e8f5e9;
+		}
+		
+		.sub-nav-link.active::before {
+			background: var(--primary-color);
+			width: 8px;
+			height: 8px;
+		}
+		
+		/* 主内容区域样式 */
+		.main-content {
+			flex: 1;
+			padding: 20px 40px 60px;
+			max-width: calc(100% - var(--sidebar-width));
+			overflow-x: hidden; /* 防止内容溢出 */
+		}
+		
+		/* 内容卡片样式 */
+		.content-card {
+			background: var(--card-bg);
+			border-radius: 10px;
+			box-shadow: var(--shadow);
+			padding: 25px;
+			margin-bottom: 30px;
+			overflow: hidden; /* 防止卡片内内容溢出 */
+		}
+		
+		/* 一级标题样式 */
+		.title-level-1 {
+			font-size: 22px;
+			font-weight: bold;
+			margin: 0 0 20px;
+			padding-bottom: 15px;
+			border-bottom: 2px solid var(--primary-color);
+			color: #2c3e50;
+			scroll-margin-top: 20px;
+		}
+		
+		/* 二级标题样式 */
+		.title-level-2 {
+			font-size: 18px;
+			font-weight: bold;
+			margin: 25px 0 15px;
+			scroll-margin-top: 20px;
+			color: #2c3e50;
+			padding-left: 10px;
+			border-left: 4px solid var(--secondary-color);
+		}
+		
+		/* 三级标题样式 */
+		.title-level-3 {
+			font-size: 16px;
+			font-weight: bold;
+			margin: 20px 0 12px;
+			scroll-margin-top: 20px;
+			color: #34495e;
+		}
+		
+		/* 正文段落样式 */
+		.text-content p {
+			margin-bottom: 15px;
+			text-align: justify;
+			overflow-wrap: break-word; /* 防止长文本溢出 */
+		}
+		
+		.section-content {
+			padding: 15px 0;
+		}
+		
+		/* 链接文本样式 */
+		.link-text {
+			color: var(--link-color);
+			text-decoration: underline;
+			cursor: pointer;
+			transition: all 0.2s;
+		}
+		
+		.link-text:hover {
+			color: #0044aa;
+		}
+		
+		/* 引用文本样式 */
+		.reference-text {
+			text-decoration: none;
+			color: var(--reference-color);
+			font-weight: bold;
+		}
+
+		.reference-link-text {
+			text-decoration: none;
+			color: var(--reference-color);
+			font-weight: bold;
+			transition: all 0.2s;
+		}
+
+		.reference-link-text:hover {
+			text-decoration: underline;
+			color: #c0392b;
+		}
+		
+		/* 代码块样式 */
+		.code-block {
+			background: #f5f5f5;
+			color: #333;
+			padding: 12px;
+			border-radius: 5px;
+			font-family: 'PingFang SC', 'Microsoft YaHei Mono', 'Menlo', 'Consolas', 'monospace';
+			margin: 15px 0;
+			overflow-x: auto;
+			font-size: 13px;
+			line-height: 1.4;
+			border-left: 3px solid var(--primary-color);
+			position: relative;
+			-webkit-user-select: text;
+			user-select: text;
+		}
+
+		.code-block code,
+		.code-block pre {
+			display: block;
+			text-align: left;
+			margin: 0;
+			white-space: pre-wrap; /* 支持长文本换行 */
+			font-family: inherit;
+		}
+		
+		.code-block .error {
+			color: #ff5555;
+		}
+		
+		/* 代码块复制按钮样式 */
+		.copy-btn {
+			position: absolute;
+			top: 10px;
+			right: 14px;
+			background: #e8f5e9;
+			color: var(--primary-color);
+			border: none;
+			border-radius: 4px;
+			padding: 3px 10px;
+			font-size: 12px;
+			cursor: pointer;
+			box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+			transition: background 0.2s, color 0.2s;
+			z-index: 2;
+			opacity: 0.85;
+		}
+		
+		.copy-btn:hover {
+			background: var(--primary-color);
+			color: #fff;
+			opacity: 1;
+		}
+		
+		/* 信息表格样式 */
+		.info-table {
+			width: 100%;
+			border-collapse: collapse;
+			margin: 20px 0;
+			font-size: 13px;
+			box-shadow: 0 0 10px rgba(0,0,0,0.05);
+			max-width: 100%;
+			overflow-x: auto;
+			display: block; /* 防止表格溢出 */
+		}
+		/* 表头和单元格样式 */
+		.info-table th,
+		.info-table td {
+			border: 1px solid #ddd;
+			padding: 10px 15px;
+			text-align: left;
+			max-width: 300px;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+		/* 表头样式 */
+		.info-table th {
+			background-color: #f5f5f5;
+			font-weight: bold;
+		}
+		/* 奇偶行背景色交替 */
+		.info-table tr:nth-child(even) {
+			background-color: #f9f9f9;
+		}
+		/* 鼠标悬停行高亮 */
+		.info-table tr:hover {
+			background-color: #f0f7ff;
+		}
+		
+		/* 引用提示框样式 */
+		.note-box {
+			background: #fff9e6;
+			border-left: 4px solid #f1c40f;
+			padding: 5px 20px;
+			margin: 20px 0;
+			border-radius: 0 4px 4px 0;
+			overflow: hidden; /* 防止内容溢出 */
+		}
+		
+		/* 警告提示框样式 */
+		.warning-box {
+			background: #ffebee;
+			border-left: 4px solid #f44336;
+			padding: 5px 20px;
+			margin: 20px 0;
+			border-radius: 0 4px 4px 0;
+			overflow: hidden;
+		}
+		
+		/* 提示框样式 */
+		.tip-box {
+			background: #e8f5e9;
+			border-left: 4px solid #4caf50;
+			padding: 5px 20px;
+			margin: 20px 0;
+			border-radius: 0 4px 4px 0;
+			overflow: hidden;
+		}
+		
+		/* 列表样式 */
+		ol, ul {
+			padding-left: 30px;
+			margin-bottom: 15px;
+			overflow: hidden; /* 防止内容溢出 */
+		}
+		
+		li {
+			margin-bottom: 8px;
+			overflow-wrap: break-word; /* 防止长文本溢出 */
+		}
+		
+		/* 响应式设计：平板及以下 */
+		@media (max-width: 992px) {
+			.container {
+				flex-direction: column;
+			}
+			
+			.sidebar {
+				width: 100%;
+				height: auto;
+				position: relative;
+				max-height: 300px;
+			}
+			
+			.main-content {
+				max-width: 100%;
+				padding: 20px;
+			}
+			
+			.nav-item-toggle::after {
+				right: 20px;
+			}
+			
+			.progress-container {
+				left: 0;
+			}
+		}
+		
+		/* 响应式设计：手机端 */
+		@media (max-width: 768px) {
+			.title-level-1 {
+				font-size: 20px;
+			}
+			
+			.title-level-2 {
+				font-size: 17px;
+			}
+			
+			.content-card {
+				padding: 20px 15px;
+			}
+			
+			.code-block {
+				font-size: 12px;
+				padding: 12px;
+			}
+			
+			.nav-item-toggle::after {
+				font-size: 16px;
+				padding: 10px 15px; /* 增加图标内边距，使点击区域更大 */
+			}
+
+		}
+		
+		/* 页面顶部进度条容器 */
+		.progress-container {
+			position: fixed;
+			top: 0;
+			left: var(--sidebar-width);
+			right: 0;
+			height: 4px;
+			background: #f0f0f0;
+			z-index: 1000;
+			transition: left 0.3s ease;
+		}
+		
+		/* 页面顶部进度条 */
+		.progress-bar {
+			height: 100%;
+			background: var(--primary-color);
+			width: 0%;
+			transition: width 0.2s ease;
+		}
+		
+		/* 高亮文本样式 */
+		.highlight {
+			background-color: #fffacd;
+			padding: 2px 4px;
+			border-radius: 3px;
+		}
+		
+		/* 回到顶部按钮样式 */
+		.back-to-top {
+			position: fixed;
+			bottom: 30px;
+			right: 30px;
+			background: var(--primary-color);
+			color: white;
+			width: 50px;
+			height: 50px;
+			border-radius: 50%;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			font-size: 20px;
+			cursor: pointer;
+			box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+			z-index: 99;
+			opacity: 0;
+			transform: translateY(20px);
+			transition: all 0.3s ease;
+		}
+		
+		/* 回到顶部按钮可见时样式 */
+		.back-to-top.visible {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	</style>
+</head>
+
+<body>
+    <div class="container">
+        <!-- 左侧导航栏 -->
+        <div class="sidebar" id="sidebar">
+            <div class="nav-title">Mower入门指北导航</div>
+            <ul class="nav-list">
+                <li><a href="#preface" class="nav-link">前言</a></li>
+                
+                <li>
+                    <div class="nav-item-toggle" data-section="download-update">
+                        <a href="#download-update" class="nav-link">下载及更新</a>
+                    </div>
+                    <ul class="sub-nav-list" id="download-update-sub">
+                        <li><a href="#windows" class="sub-nav-link">Windows</a></li>
+                        <li><a href="#mower-sources" class="sub-nav-link">MacOS、GNU/Linux</a></li>
+                        <li><a href="#multi-instance" class="sub-nav-link">多开</a></li>
+                    </ul>
+                </li>
+
+                <li>
+                    <div class="nav-item-toggle" data-section="Mower-settings">
+                        <a href="#Mower-settings" class="nav-link">Mower设置</a>
+                    </div>
+                    <ul class="sub-nav-list" id="Mower-settings-sub">
+                        <li><a href="#basic-settings" class="sub-nav-link">基础设置</a></li>
+                        <li><a href="#email-notification" class="sub-nav-link">邮件提醒</a></li>
+                        <li><a href="#skland" class="sub-nav-link">森空岛相关</a></li>
+                        <li><a href="#material-synthesis" class="sub-nav-link">无缝合成材料设置</a></li>
+                        <li><a href="#import-schedules" class="sub-nav-link">作业导入</a></li>
+                        <li><a href="#order-running" class="sub-nav-link">葛朗台跑单</a></li>
+                        <li><a href="#mood-threshold" class="sub-nav-link">心情阈值</a></li>
+                        <li><a href="#emergency-threshold" class="sub-nav-link">急救阈值</a></li>
+                        <li><a href="#dorm-optimization" class="sub-nav-link">宿舍不养闲人</a></li>
+                        <li><a href="#phalanx" class="sub-nav-link">肥鸭防呆与肥鸭阈值</a></li>
+                        <li><a href="#dorm-priority" class="sub-nav-link">宿舍优先级排序</a></li>
+                        <li><a href="#local-ai-assistant" class="sub-nav-link">本地AI助手</a></li>
+                    </ul>
+                </li>
+
+                <li><a href="#sanity-plan" class="nav-link">MAA设置</a></li>
+
+                <li>
+                    <div class="nav-item-toggle" data-section="scheduling">
+                        <a href="#scheduling" class="nav-link">排班教学</a>
+                    </div>
+                    <ul class="sub-nav-list" id="scheduling-sub">
+                        <li><a href="#ui-intro" class="sub-nav-link">页面介绍</a></li>
+                        <li><a href="#main-and-replacement" class="sub-nav-link">主力与替换</a></li>
+                        <li><a href="#team-management" class="sub-nav-link">班组管理</a></li>
+                        <li><a href="#dorm-management" class="sub-nav-link">宿舍管理</a></li>
+                        <li><a href="#low-priority" class="sub-nav-link">低优先级设置</a></li>
+                        <li><a href="#infrastructure-calc" class="sub-nav-link">心情回复与消耗</a></li>
+                        <li><a href="#work-rest-ratio" class="sub-nav-link">工休比计算</a></li>
+                    </ul>
+                </li>
+
+				<li>
+					<div class="nav-item-toggle" data-section="faq">
+						<a href="#faq" class="nav-link">常见问题</a>
+					</div>
+					<ul class="sub-nav-list" id="faq-sub">
+						<li><a href="#connection-issues" class="sub-nav-link">连接相关</a></li>
+						<li><a href="#schedule-issues" class="sub-nav-link">副表相关</a></li>
+						<li><a href="#other-issues" class="sub-nav-link">其他问题</a></li>
+					</ul>
+				</li>
+
+                <li><a href="#user-notice" class="nav-link">用户需知</a></li>
+				<li><a href="#acknowledgements" class="nav-link">致谢</a></li>
+            </ul>
+        </div>
+
+        <!-- 进度条 -->
+        <div class="progress-container">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+
+        <!-- 主内容区域 -->
+        <div class="main-content">
+            <div class="text-content">
+                <!-- 前言部分 -->
+                <div class="content-card">
+                    <h1 id="preface" class="title-level-1">前言</h1>
+                    <div class="section-content">
+                        <p>Mower入门指北，下文简称本指北。</p>
+						<span class="reference-text">Mower开发组</span>制作的Mower是一个开源的Arknights（明日方舟）模拟器助手，旨在帮助玩家更高效地管理游戏内的干员和资源。Mower提供了多种功能，包括自动排班、资源管理、邮件通知等，极大地提升了游戏体验。</p>
+						<p>本指北将介绍Mower的下载、运行、更新方法，以及如何配置Mower的各项设置，帮助用户快速上手使用Mower。</p>
+						<p>本指北的内容将持续更新，欢迎用户提出建议和反馈。</p>
+                        <p>本指北可用Chrome、Firfox、Safari等主流浏览器直接打开。</p>
+						<p>若需了解更多Mower相关问题，可加入QQ群<a href="https://qm.qq.com/q/Dz1UrPnRLO" class="reference-link-text" target="_blank" rel="noopener noreferrer">Mower用户交流群</a>或QQ频道<a href="https://pd.qq.com/s/5t91c3gx9" class="reference-link-text" target="_blank" rel="noopener noreferrer">ArkMower</a>，文明交流互助。</p>
+                    </div>
+                </div>
+
+                <!-- 下载、运行及更新 -->
+                <div class="content-card">
+                    <h1 id="download-update" class="title-level-1">下载、运行及更新</h1>
+                    <div class="section-content">
+                        <h2 id="windows" class="title-level-2">Windows</h2>
+                            <h3 id="windows-exe" class="title-level-3">下载和运行</h3>
+                                <ol>
+                                    <li>在群文件<code>"Mower下载"</code>文件夹中获取最新全量包</li>
+                                    <li>在英文路径下创建Mower工作文件夹</li>
+                                    <li>将全量包内容解压至此</li>
+                                    <li>运行<code>"mower.exe"</code>启动Mower</li>
+                                </ol>
+                            <h3 id="windows-update-manual" class="title-level-3">手动更新</h3>
+                                <ol>
+                                    <li>在群文件<code>"Mower下载"</code>文件夹中获取最新增量包</li>
+                                    <li>将增量包内容解压至Mower工作文件夹，覆盖原有文件</li>
+                                    <li>运行<code>"mower.exe"</code>启动Mower</li>
+                                </ol>
+                            <h3 id="windows-update-auto" class="title-level-3">自动更新</h3>
+                                <ol>
+                                    <li>从群文件<code>"Mower下载"</code>获取最新下载器</li>
+                                    <li>解压并运行<code>"MowerDownload.exe"</code>，选择安装路径</li>
+                                    <li>选择目标版本</li>
+                                    <li>选择更新类型：
+                                        <ul>
+                                            <li>仅更新新干员资源（保留当前版本）</li>
+                                            <li>更新Mower代码（体验新功能）</li>
+                                            <li>全量更新（干员资源+代码更新）</li>
+											<li>替换新版本DLL（更新MAA调用文件）</li>
+                                        </ul>
+                                    </li>
+                                    <li>等待更新完成，关闭更新提示窗口</li>
+                                </ol>
+						<!-- MacOS、GNU/Linux -->
+                        <h2 id="mower-sources" class="title-level-2">MacOS、GNU/Linux</h2>
+                        <p>MacOS、GNU/Linux使用源码运行，本指北以MacOS示例</p>
+                        	<h3 id="source-build" class="title-level-3">首次运行</h3>
+                        	<ol>
+                            	<li><strong>配置环境</strong>
+                                	<p>访问MAA项目地址：<a href="https://github.com/MaaAssistantArknights/MaaAssistantArknights" class="link-text" target="_blank" rel="noopener noreferrer">https://github.com/MaaAssistantArknights/MaaAssistantArknights</a></p>
+                                	<p>安装mac版MAA，并下载Windows版MAA，复制其python文件夹到</p>
+                                	<div class="code-block">
+                                    	/Applications/MAA.app/Contents/Resources
+                                    	<button class="copy-btn">复制</button>
+                                	</div>
+                                	<p>将/Applications/MAA.app/Contents/Frameworks里的内容复制到</p>
+                                	<div class="code-block">
+                                    	/Applications/MAA.app/Contents/Resources
+                                    	<button class="copy-btn">复制</button>
+                                	</div>
+                                	<p>安装蓝叠模拟器Air版：<a href="https://www.bluestacks.com/mac" class="link-text" target="_blank" rel="noopener noreferrer">https://www.bluestacks.com/mac</a></p>
+                                	<p>安装MuMu模拟器Mac版：<a href="https://mumu.163.com/" class="link-text" target="_blank" rel="noopener noreferrer">https://mumu.163.com/</a></p>
+                                	<p>模拟器设置
+                                <ul>
+                                    <li>
+                                        分辨率：
+                                        <div class="code-block">
+                                            1920x1080
+                                            <button class="copy-btn">复制</button>
+                                        </div>
+                                    </li>
+                                    <li>
+                                        每英寸点数（DPI）：
+                                        <div class="code-block">
+                                            280
+                                            <button class="copy-btn">复制</button>
+                                        </div>
+                                    </li>
+                                    <li>启用Android调试(ADB)</li>
+                                </ul>
+                                </p>
+                                <p>安装Mac软件包管理器和Mower运行依赖
+								<div class="code-block">
+									<pre><code>/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+brew install git git-lfs python@3.12 android-platform-tools zbar</code></pre>
+									<button class="copy-btn">复制</button>
+								</div>
+                                </p>
+                            </li>
+                            <!-- 配置环境 -->
+                            <li><strong>构建Mower</strong>
+                                <p>（假设你已设置好网络代理）在终端中执行以下命令：</p>
+                                <div class="code-block">
+                                    <pre><code>#创建mower工作目录
+cd
+mkdir ~/ark
+cd ~/ark
+#克隆mower源代码
+git lfs install
+git config --global lfs.concurrenttransfers 50
+git clone -c https://github.com/ArkMowers/arknights-mower.git --branch 2025.6.1
+cd arknights-mower
+#构建python虚拟环境并安装依赖
+python3.12 -m venv venv
+source venv/bin/activate
+pip install -r requirements.in
+cd ui
+npm install
+npm run build</code></pre>
+                                    <button class="copy-btn">复制</button>
+                                </div>
+                            </li>
+							<!-- 运行Mower -->
+                            <li><strong>运行Mower</strong>
+                                <p>通过终端启动：</p>
+                                <div class="code-block">
+                                    <pre><code>cd ~/ark/arknights-mower
+source venv/bin/activate
+python3 webview_ui.py</code></pre>
+                                    <button class="copy-btn">复制</button>
+                                </div>
+                            </li>
+                            <!-- 配置mower -->
+                            <li><strong>配置Mower</strong>
+                                <p><br>
+                                    ADB路径：
+                                        <div class="code-block">
+                                            adb
+                                            <button class="copy-btn">复制</button>
+                                        </div>
+                                    ADB连接地址：<br>
+                                        <div class="code-block">
+                                            127.0.0.1:5555
+                                            <button class="copy-btn">复制</button>
+                                        </div>
+									模拟器类型：<br>
+                                        <div class="code-block">
+                                            其它
+                                            <button class="copy-btn">复制</button>
+                                        </div>
+									启动游戏方式：<br>
+                                        <div class="code-block">
+                                            使用adb命令启动
+                                            <button class="copy-btn">复制</button>
+                                        </div>
+									截图方案：<br>
+                                        <div class="code-block">
+                                            DroidCast
+                                            <button class="copy-btn">复制</button>
+                                        </div>
+									MAA目录：<br>
+                                        <div class="code-block">
+                                            /Applications/MAA.app/Contents/Resources
+                                            <button class="copy-btn">复制</button>
+                                        </div>
+									连接配置：<br>
+                                        <div class="code-block">
+                                            General
+                                            <button class="copy-btn">复制</button>
+                                        </div>
+                                </p>
+                            </li>
+							<!-- 停止Mower -->
+							<li><strong>停止Mower</strong>
+								<p>Mower运行时关闭终端</p>
+							</li>
+                        </ol>
+
+                    <h3 id="mower-sources-update" class="title-level-3">源码更新</h3>
+						<p>（假设你已设置好网络代理）在终端中执行以下命令：</p>
+                        <div class="code-block">
+                            <pre><code>#进入mower工作目录
+cd ~/ark/arknights-mower
+#同步mower最新源代码
+git fetch origin 2025.6.1 --progress
+git switch -f 2025.6.1 --progress
+git reset --hard origin/2025.6.1
+#激活python虚拟环境并更新mower运行依赖
+source venv/bin/activate
+pip install -r requirements.in
+cd ui
+npm install
+npm run build</code></pre>
+							<button class="copy-btn">复制</button>
+                        </div>
+
+                    <!-- 多开 -->
+                    <h2 id="multi-instance" class="title-level-2">多开</h2>
+                        <p>运行Mower文件夹中的"多开管理器.exe"</p>
+                        <p>操作步骤：</p>
+                        <ol>
+                            <li>点击"添加实例"按钮</li>
+                            <li>通过铅笔图标重命名实例</li>
+                            <li>点击"..."设置数据保存路径</li>
+                            <li>启动实例并配置ADB路径和连接地址</li>
+                        </ol>
+                        <div class="tip-box">
+                            <strong>提示：</strong>多开实例的ADB路径可在模拟器多开工具中查询
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Mower设置 -->
+                <div class="content-card">
+                    <h1 id="Mower-settings" class="title-level-1">Mower设置</h1>
+                    <div class="section-content">
+                        <h2 id="basic-settings" class="title-level-2">基础设置</h2>
+                        <p>根据个人需求配置基本参数</p>
+                        
+                        <h2 id="basic-settings" class="title-level-2">宿舍黑名单</h2>
+                        <p>设置永不进宿舍的干员</p>
+                        <div class="tip-box">
+                            <strong>示例：</strong>零心情工作干员Lancet-2
+                        </div>
+
+                        <h2 id="email-notification" class="title-level-2">邮件提醒</h2>
+                        <p>配置接收任务通知的邮箱，通过问号图标查看授权码获取方式。通知等级分为：</p>
+                        <ul>
+                            <li>INFO：基本信息</li>
+                            <li>WARNING：警告信息</li>
+                            <li>ERROR：错误信息</li>
+                        </ul>
+                        <div class="tip-box">
+                            <strong>提示：</strong>高级别包含低级别信息，时差修正单位为小时。清空收件人字段可将邮件发送至本人邮箱
+                        </div>
+                        
+                        <h2 id="skland" class="title-level-2">森空岛相关</h2>
+                        <p>输入账号密码后，Mower可自动完成森空岛每日签到，并为仓库物品混合读取和无缝合成材料提供支持。</p>
+                        
+                        <h2 id="material-synthesis" class="title-level-2">无缝合成材料设置</h2>
+                        <p>位置：全部设置 → Mower设置 → 基建设置</p>
+                        <p>功能特点：</p>
+                        <ul>
+                            <li>由"宿舍不养闲人回满"功能触发</li>
+                            <li>需启用森空岛仓库读取功能</li>
+                            <li>当目标材料数量低于上限且子材料数量高于下限时自动合成</li>
+                            <li>支持多种材料合成策略</li>
+                        </ul>
+                        <p>特殊说明：</p>
+                        <ul>
+                            <li>九色鹿垫刀材料：消耗4心情以下的材料</li>
+                            <li>九色鹿暴击材料：消耗4心情的材料</li>
+                            <li>家具零件需用"家具零件_碳"格式区分配方</li>
+                        </ul>
+                        <div class="tip-box">
+                            <strong>推荐合成路径：</strong>碳素 → 碳素组 → 家具零件_碳素组 → 材料
+                        </div>
+                        <div class="tip-box">
+                            <strong>提示：</strong>合成截图保存在screenshot/workshop文件夹，条件不满足时发送邮件通知
+                        </div>
+
+                        <h2 id="import-schedules" class="title-level-2">作业导入</h2>
+                        <p>从群文件或频道下载图片/JSON格式作业文件，通过"排班编辑→导入排班"加载</p>
+                        <div class="note-box">
+                            <strong>注意：</strong>作业文件不包含主表黑名单列表，具体限制需参考作业说明或咨询作者。
+                        </div>
+                        
+                        <h2 id="order-running" class="title-level-2">葛朗台跑单</h2>
+                        <p>跑单机制：但书、龙舌兰等干员的技能效果仅在订单生成瞬间生效。在贸易站安排高效干员，在订单即将结束时换上特殊干员，新订单生成后换回原班组的操作。</p>
+                        <p>配置方法：将跑单干员置于贸易站替换组首位</p>
+                        <p>选项说明：</p>
+                        <ul>
+                            <li>启用葛朗台跑单：Mower会在跑单前数分钟（前置延时）准备干员，并在新单生成前数秒（缓冲时间）放入贸易站</li>
+                            <li>禁用葛朗台跑单：干员立即放入贸易站并使用无人机加速</li>
+                        </ul>
+                        <div class="tip-box">
+                            <strong>提示：</strong>网络或配置不佳时建议延长前置时间。
+                        </div>
+                        
+                        <h2 id="mood-threshold" class="title-level-2">心情阈值</h2>
+                        <p>干员或班组平均心情达到此百分比时，Mower会在高优位置充足时安排休息。实际心情值计算公式：</p>
+                        <div class="code-block">
+                            实际心情值 = 心情下限 + 心情阈值 × (心情上限 - 心情下限)
+                            <button class="copy-btn">复制</button>
+                        </div>
+                        <div class="tip-box">
+                            <strong>示例：</strong>阈值设为65%，夕在感知模式下的实际心情值为12 + 0.65 × 12 = 19.8
+                        </div>
+                        
+                        <h2 id="emergency-threshold" class="title-level-2">急救阈值</h2>
+                        <p>常规流程：干员到达心情阈值时若高优位充足则正常休息。</p>
+                        <p>急救模式：当整组心情低于"心情阈值×急救阈值"且宿舍有空位时，强制安排休息。</p>
+                        <p>设为0时禁用急救模式。</p>
+                        
+                        <h2 id="dorm-optimization" class="title-level-2">宿舍不养闲人</h2>
+                        <p>自动移出已回满的干员，替换为待回复干员，保持宿舍满员以触发依赖型技能（如黑键、乌有、迷迭香）。启用后会增加任务频率。</p>
+                        
+                        <h2 id="phalanx" class="title-level-2">肥鸭防呆与肥鸭阈值</h2>
+                        <p>
+                            <ul>
+                                <li>开启：所充干员均大于90%则肥鸭待机30分钟</li>
+                                <li>关闭：所充干员均大于肥鸭阈值则优先充能心情最低者</li>
+                            </ul>
+                        </p>
+                        
+                        <h2 id="dorm-priority" class="title-level-2">宿舍优先级排序</h2>
+                        <p>某些布局中上层非VIP位回复能力可能高于下层VIP位，与默认逻辑冲突时可手动设置优先级顺序。更换宿舍布局后需更新此设置。</p>
+                        <h2 id="local-ai-assistant" class="title-level-2">本地AI助手</h2>
+                        <p>待开发</p>
+                    </div>
+                </div>
+
+                <!-- MAA设置 -->
+                <div class="content-card">
+                    <h1 id="sanity-plan" class="title-level-1">MAA设置</h1>
+                    <div class="section-content">
+                        <p>Mower通过调用MAA实现自动刷图、开鹰趴等功能。根据自己的需求进行配置。</p>
+                        <p>刷理智周计划操作指北：</p>
+                        <ol>
+                            <li>点击复选框选择/取消关卡</li>
+                            <li>输入当日目标使用的理智药数量</li>
+                            <li>点击×删除内容</li>
+                            <li>手动添加目标关卡（注意大小写，回车确认）</li>
+                        </ol>
+                        <div class="tip-box">
+                            <strong>提示：</strong>设置实时生效，无需重启Mower
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 排班教学 -->
+                <div class="content-card">
+                    <h1 id="scheduling" class="title-level-1">排班教学</h1>
+                    <div class="section-content">
+                        <h2 id="ui-intro" class="title-level-2">页面介绍</h2>
+                        <p>排班编辑界面分为四个功能区域：</p>
+                        <ol>
+                            <li>条件区：设置触发条件</li>
+                            <li>副表任务区：配置执行任务</li>
+                            <li>设施区：显示工作站布局</li>
+                            <li>设置区：干员管理</li>
+                        </ol>
+                        <p>操作指南：</p>
+                        <ul>
+                            <li>主表的条件及任务区需通过"新建副表"激活</li>
+                            <li>拖拽调整设施区位置需与实际游戏布局一致</li>
+                            <li>输入干员名称时可使用首字母缩写快速匹配</li>
+                        </ul>
+
+                        <h2 id="main-and-replacement" class="title-level-2">主力与替换</h2>
+                        <p><strong>主班（高效组）</strong>：核心高效干员，优先安排工作</p>
+                        <p><strong>替班</strong>：替补干员，在主班休息时自动轮换</p>
+                        <p>轮换规则：</p>
+                        <ul>
+                            <li>Mower选择列表中靠前且未被占用的干员接替工作</li>
+                            <li>一名干员可担任多名主力的替换</li>
+                            <li>主力选择原则：维持长工作时间高效率状态</li>
+                        </ul>
+						<p>验证规则：</p>
+                            <ul>
+                            <li>高效组不可使用龙舌兰、但书（仅限替换组）</li>
+                            <li>同一替换组不可同时安排龙舌兰和但书</li>
+                            <li>替换组不可包含高效组干员</li>
+                            <li>确保替换组数量充足</li>
+                        </ul>
+
+                        <h2 id="team-management" class="title-level-2">班组管理</h2>
+                        <p>填写相同组名可将干员绑定为班组：</p>
+                        <ul>
+                            <li>同组干员一起上下班</li>
+                            <li>不同工作站干员也可绑定</li>
+                            <li>宿管不可绑组</li>
+                        </ul>
+                        <p>小组：无中枢的班组</p>
+                        <p>大组：包含中枢的班组</p>
+
+                        <h2 id="dorm-management" class="title-level-2">宿舍管理</h2>
+                        <p>配置要求：</p>
+                        <ul>
+                            <li>每个宿舍安排一名单回宿管和一名群回宿管</li>
+                            <li>下层宿舍回复能力不超过上层宿舍</li>
+                            <li>单回宿管数值要求：琴柳(0.7)≥蜜莓(0.7)≥车尔尼(0.65)≥波登可(0.65)</li>
+                            <li>群回宿管数值要求：流明(0.25/0.4)≥杜林(0.25)≥桃金娘(0.15)≥波登可(0.15)</li>
+                        </ul>
+
+                        <h2 id="low-priority" class="title-level-2">低优先级设置</h2>
+                        <p>仅作用于主班干员，配置后：</p>
+                        <ul>
+                            <li>不会主动前往高优位休息</li>
+                            <li>高优位充足时可使用</li>
+                            <li>高优干员需入驻时会被移出</li>
+                        </ul>
+                        <p>推荐适用情况：</p>
+                        <ul>
+                            <li>非绑组的会客室/办公室等低收益站干员</li>
+                            <li>回复能力显著高于同组成员的干员</li>
+                            <li>主副班效率相近的干员</li>
+                        </ul>
+
+                        <h2 id="infrastructure-calc" class="title-level-2">心情回复与消耗</h2>
+                        <p>宿舍基础回复公式：</p>
+                        <div class="code-block">
+                            1.5 + 0.1 × 宿舍等级 + 0.0004 × 氛围值
+                            <button class="copy-btn">复制</button>
+                        </div>
+                        <p>各等级宿舍回复能力：</p>
+                        <table class="info-table">
+                            <tr><th>宿舍等级</th><th>心情回复</th></tr>
+                            <tr><td>1</td><td>2</td></tr>
+                            <tr><td>2</td><td>2.5</td></tr>
+                            <tr><td>3</td><td>3</td></tr>
+                            <tr><td>4</td><td>3.5</td></tr>
+                            <tr><td>5</td><td>4</td></tr>
+                        </table>
+                        <p>工作站基础消耗：</p>
+                        <ul>
+                            <li>贸易站/制造站：无减免时为1</li>
+                            <li>入驻2个干员：0.05减免</li>
+                            <li>入驻3个干员：0.1减免</li>
+                        </ul>
+                        <p>中枢效果：每入驻1个干员全局-0.05消耗（上限0.25）</p>
+                        
+                        <h2 id="work-rest-ratio" class="title-level-2">工休比计算</h2>
+                        <p>工作时间占比公式：</p>
+                        <div class="code-block">
+                            工休比 = 回复效率 / (回复效率 + 消耗效率)
+                            <button class="copy-btn">复制</button>
+                        </div>
+                        <p>肥鸭充能情况：</p>
+                        <div class="code-block">
+                            工休比 = (回复效率 + 肥鸭提供效率) / (回复效率 + 消耗效率)
+                            <button class="copy-btn">复制</button>
+                        </div>
+                        <p>应用场景：</p>
+                        <ul>
+                            <li>计算布局收益</li>
+                            <li>评估大组轮休可行性</li>
+                            <li>确定替换组能替多少人</li>
+                            <li>计算肥鸭充能收益</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- 常见问题 -->
+				<div class="content-card">
+					<h1 id="faq" class="title-level-1">常见问题</h1>
+					<div class="section-content">
+						<h2 id="connection-issues" class="title-level-2">连接相关</h2>
+						<p><strong>Q：如何设置模拟器路径和连接地址？</strong></p>
+						<p>A：Mower设置中填写ADB路径和连接地址：</p>
+						<ul>
+							<li>ADB路径格式：[模拟器地址\adb.exe]</li>
+							<li>连接地址格式：127.0.0.1:端口号</li>
+						</ul>
+						<p>常见模拟器默认端口：</p>
+						<table class="info-table">
+							<tr><th>模拟器</th><th>默认端口</th></tr>
+							<tr><td>蓝叠模拟器</td><td>5555</td></tr>
+							<tr><td>夜神模拟器</td><td>62001</td></tr>
+							<tr><td>MuMu模拟器/MuMuX</td><td>7555</td></tr>
+							<tr><td>MuMu12模拟器</td><td>16384</td></tr>
+							<tr><td>MuMu模拟器Mac版</td><td>5555</td></tr>
+							<tr><td>逍遥模拟器</td><td>21503</td></tr>
+							<tr><td>雷电模拟器</td><td>5555 或 emulator-5554</td></tr>
+						</table>
+						
+						<h2 id="schedule-issues" class="title-level-2">副表相关</h2>
+						<p><strong>Q：为什么心情副表在干员到达阈值时未生效？</strong></p>
+						<p>A：可能原因：</p>
+						<ol>
+							<li>Mower心情读取间隔：歌蒂、见行者每0.5小时读取一次，其他干员2.5小时读取一次</li>
+							<li>干员入驻宿舍后只读一次剩余时间</li>
+							<li>触发时机设置不当</li>
+						</ol>
+						<div class="tip-box">
+							<strong>解决方案：</strong>给宿管写用尽，给跑单干员写用尽重读
+						</div>
+						
+						<p><strong>Q：副表提示排班表验证错误怎么办？</strong></p>
+						<p>A：干员在主表或其他副表的其他位置有工作安排，需要在副表对应位置写死其他干员。</p>
+						
+						<h2 id="other-issues" class="title-level-2">其他问题</h2>
+						<p><strong>Q：如何提出功能建议或反馈问题？</strong></p>
+						<p>A：</p>
+						<ol>
+							<li>功能建议：加入QQ频道 ArkMower（频道号：2r118jwue4），在对应分区发帖</li>
+							<li>问题反馈：
+								<ul>
+									<li>保留截图24小时</li>
+									<li>根据日志确定问题发生时间</li>
+									<li>在log文件夹查找对应时间的log文件</li>
+									<li>在Mower反馈按钮处详细描述问题</li>
+									<li>在频道bug反馈区再次反馈</li>
+								</ul>
+							</li>
+						</ol>
+					</div>
+				</div>
+
+                <!-- 用户需知 -->
+                <div class="content-card">
+                    <h1 id="user-notice" class="title-level-1">用户需知</h1>
+                    <div class="section-content">
+						<h3 id="mac-update" class="title-level-3">开源性质</h3>
+							<p>Mower是开源、免费工具，无任何强制收费项目。请勿相信任何收费版本或盗版软件。</p>
+						<h3 id="mac-update" class="title-level-3">社区相关</h3>
+							<p>合理使用群组<a href="https://qm.qq.com/q/Dz1UrPnRLO" class="reference-link-text" target="_blank" rel="noopener noreferrer">Mower用户交流群</a>和频道<a href="https://pd.qq.com/s/5t91c3gx9" class="reference-link-text" target="_blank" rel="noopener noreferrer">ArkMower</a>资源，文明交流互助。</p>
+						<h3 id="mac-update" class="title-level-3">更新频率</h3>
+							<p>保持程序更新，及时获取最新功能和修复。可通过QQ群或<a href="https://github.com/ArkMowers/arknights-mower" class="reference-link-text" target="_blank" rel="noopener noreferrer">GitHub</a>获取最新版本。</p>
+						<h3 id="mac-update" class="title-level-3">数据安全</h3>
+							<p>定期备份配置文件，防止意外丢失设置数据。</p>
+						<h3 id="mac-update" class="title-level-3">手动操作</h3>
+							<p>合理安排任务时间，避免在游戏期间执行自动化操作。</p>
+						<h3 id="mac-update" class="title-level-3">长时挂机</h3>
+							<p>长时间离开时确保设备电源充足并保持网络连接稳定。</p>
+						<h3 id="mac-update" class="title-level-3">异常处理</h3>
+							<p>若遇到异常情况，及时查看日志文件排查问题。</p>
+						<h3 id="mac-update" class="title-level-3">多设备登录</h3>
+							<p>不要在多个设备同时登录同一账号，避免账号安全风险。</p>
+						<h3 id="mac-update" class="title-level-3">反馈建议</h3>
+							<p>发现程序问题及时反馈，提供详细的重现步骤和日志。</p>
+						<h3 id="mac-update" class="title-level-3">模拟器设置</h3>
+							<p>确保模拟器设置正确，分辨率为1920x1080，DPI设为280。</p>
+						<h3 id="mac-update" class="title-level-3">隐私安全</h3>
+							<p>小心网络钓鱼，避免泄露个人隐私信息。</p>
+						<h3 id="mac-update" class="title-level-3">游戏性平衡</h3>
+							<p>合理使用Mower，避免过度依赖自动化工具，保持游戏娱乐性。</p>
+						<h3 id="mac-update" class="title-level-3">寸止必要性</h3>
+							<p>熟悉程序停止快捷键，遇到问题可立即中断任务。</p>
+						<h3 id="mac-update" class="title-level-3">脚本工具论</h3>
+							<p>Mower只是一个脚本工具，当它与你的快乐冲突时，请拥抱自己的生活。</p>
+                    </div>
+                </div>
+
+                <!-- 致谢 -->
+                <div class="content-card">
+                    <h1 id="acknowledgements" class="title-level-1">致谢</h1>
+					<p>感谢所有参与Mower开发和维护的人员，特别是以下贡献者：</p>
+                    <div class="section-content">
+						<h3 class="title-level-3">开发</h3>
+						<ul>
+							<li><span class="reference-text">Shawnsdaddy</span></li>
+							<li><span class="reference-text">yk00</span></li>
+							<li>...</li>
+						</ul>
+						<h3 class="title-level-3">文档</h3>
+						<ul>
+							<li><span class="reference-text">牌佬不取对象</span>（内容创作）</li>
+							<li><span class="reference-text">玛朵布莎英</span>（编辑、校对）</li>
+							<li>...</li>
+						</ul>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+	</div>
+
+    <div class="back-to-top" id="backToTop">
+        ↑
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const sections = document.querySelectorAll('.title-level-1, .title-level-2');
+            const navLinks = document.querySelectorAll('.nav-link');
+            const subNavLinks = document.querySelectorAll('.sub-nav-link');
+            const progressBar = document.getElementById('progressBar');
+            const navToggles = document.querySelectorAll('.nav-item-toggle');
+            const backToTopBtn = document.getElementById('backToTop');
+            const copyButtons = document.querySelectorAll('.copy-btn');
+            
+            // 初始化导航折叠状态
+            navToggles.forEach(toggle => {
+                const sectionId = toggle.getAttribute('data-section');
+                const subNav = document.getElementById(`${sectionId}-sub`);
+                if (subNav) {
+                    toggle.classList.add('nav-item-toggle');
+                    subNav.classList.remove('collapsed');
+                }
+            });
+            
+            // 处理导航折叠/展开
+            navToggles.forEach(toggle => {
+                toggle.addEventListener('click', function(e) {
+                    if (e.target.tagName === 'A') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }
+                    
+                    const sectionId = this.getAttribute('data-section');
+                    const subNav = document.getElementById(`${sectionId}-sub`);
+                    
+                    if (subNav) {
+                        this.classList.toggle('collapsed');
+                        subNav.classList.toggle('collapsed');
+                    }
+                });
+            });
+            
+            // 滚动监听
+            window.addEventListener('scroll', function() {
+                let current = '';
+                
+                // 获取当前滚动位置对应的章节
+                sections.forEach(section => {
+                    const sectionTop = section.offsetTop;
+                    if (scrollY >= sectionTop - 100) {
+                        current = section.getAttribute('id');
+                    }
+                });
+                
+                // 更新一级导航高亮
+                navLinks.forEach(link => {
+                    link.classList.remove('active');
+                    if (link.getAttribute('href').substring(1) === current) {
+                        link.classList.add('active');
+                    }
+                });
+                
+                // 更新二级导航高亮
+                subNavLinks.forEach(link => {
+                    link.classList.remove('active');
+                    if (link.getAttribute('href').substring(1) === current) {
+                        link.classList.add('active');
+                        
+                        // 确保父级菜单是展开状态
+                        const parentSection = link.closest('.sub-nav-list');
+                        if (parentSection && parentSection.previousElementSibling) {
+                            const parentToggle = parentSection.previousElementSibling.querySelector('.nav-item-toggle');
+                            if (parentToggle && parentToggle.classList.contains('collapsed')) {
+                                parentToggle.classList.remove('collapsed');
+                                parentSection.classList.remove('collapsed');
+                            }
+                        }
+                    }
+                });
+                
+                // 更新进度条
+                const scrollHeight = document.documentElement.scrollHeight - window.innerHeight;
+                const scrolled = (window.scrollY / scrollHeight) * 100;
+                progressBar.style.width = scrolled + '%';
+                
+                // 显示/隐藏回到顶部按钮
+                if (window.scrollY > 300) {
+                    backToTopBtn.classList.add('visible');
+                } else {
+                    backToTopBtn.classList.remove('visible');
+                }
+            });
+            
+            // 平滑滚动
+            navLinks.forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const targetId = this.getAttribute('href').substring(1);
+                    const targetSection = document.getElementById(targetId);
+                    
+                    window.scrollTo({
+                        top: targetSection.offsetTop - 80,
+                        behavior: 'smooth'
+                    });
+                    
+                    // 如果目标是一级标题，展开其子菜单
+                    if (targetSection.classList.contains('title-level-1')) {
+                        const sectionId = targetSection.getAttribute('id');
+                        const toggle = document.querySelector(`.nav-item-toggle[data-section="${sectionId}"]`);
+                        if (toggle && toggle.classList.contains('collapsed')) {
+                            toggle.classList.remove('collapsed');
+                            const subNav = document.getElementById(`${sectionId}-sub`);
+                            if (subNav) subNav.classList.remove('collapsed');
+                        }
+                    }
+                });
+            });
+            
+            // 平滑滚动二级导航
+            subNavLinks.forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const targetId = this.getAttribute('href').substring(1);
+                    const targetSection = document.getElementById(targetId);
+                    
+                    window.scrollTo({
+                        top: targetSection.offsetTop - 80,
+                        behavior: 'smooth'
+                    });
+                });
+            });
+            
+            // 回到顶部
+            backToTopBtn.addEventListener('click', function() {
+                window.scrollTo({
+                    top: 0,
+                    behavior: 'smooth'
+                });
+            });
+            
+            // 复制代码功能
+            copyButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    const codeBlock = this.parentElement;
+                    const codeToCopy = codeBlock.querySelector('code') ? 
+                        codeBlock.querySelector('code').innerText : 
+                        codeBlock.innerText.replace('复制', '');
+                    
+                    navigator.clipboard.writeText(codeToCopy).then(() => {
+                        const originalText = this.textContent;
+                        this.textContent = '✓ 已复制';
+                        setTimeout(() => {
+                            this.textContent = originalText;
+                        }, 2000);
+                    }).catch(err => {
+                        console.error('复制失败:', err);
+                        this.textContent = '复制失败';
+                    });
+                });
+            });
+
+			copyButtons.forEach(button => {
+				button.addEventListener('click', function() {
+					const codeBlock = this.parentElement;
+					const codeElem = codeBlock.querySelector('code');
+					let codeToCopy = codeElem ? codeElem.innerText : codeBlock.innerText.replace('复制', '');
+
+					// 优先用 Clipboard API
+					if (navigator.clipboard && window.isSecureContext) {
+						navigator.clipboard.writeText(codeToCopy).then(() => {
+							const originalText = this.textContent;
+							this.textContent = '✓ 已复制';
+							setTimeout(() => {
+								this.textContent = originalText;
+							}, 2000);
+						}).catch(() => {
+							fallbackCopyTextToClipboard(codeToCopy, this);
+						});
+					} else {
+						fallbackCopyTextToClipboard(codeToCopy, this);
+					}
+				});
+			});
+
+			// 兼容方案：用 textarea + execCommand
+			function fallbackCopyTextToClipboard(text, btn) {
+				const textarea = document.createElement('textarea');
+				textarea.value = text;
+				textarea.style.position = 'fixed'; // 防止页面滚动
+				textarea.style.opacity = '0';
+				document.body.appendChild(textarea);
+				textarea.focus();
+				textarea.select();
+				try {
+					const successful = document.execCommand('copy');
+					const originalText = btn.textContent;
+					btn.textContent = successful ? '✓ 已复制' : '复制失败';
+					setTimeout(() => {
+						btn.textContent = originalText;
+					}, 2000);
+				} catch (err) {
+					btn.textContent = '复制失败';
+				}
+				document.body.removeChild(textarea);
+			}
+            
+            // 移动设备优化：点击菜单项时关闭菜单（如果打开）
+            if (window.innerWidth <= 992) {
+                navLinks.forEach(link => {
+                    link.addEventListener('click', function() {
+                        const sidebar = document.getElementById('sidebar');
+                        if (sidebar.style.maxHeight && sidebar.style.maxHeight !== '0px') {
+                            sidebar.style.maxHeight = null;
+                        }
+                    });
+                });
+            }
+        });
+    </script>
+
+
+
+<!-- Code injected by live-server -->
+<script>
+	// <![CDATA[  <-- For SVG support
+	if ('WebSocket' in window) {
+		(function () {
+			function refreshCSS() {
+				var sheets = [].slice.call(document.getElementsByTagName("link"));
+				var head = document.getElementsByTagName("head")[0];
+				for (var i = 0; i < sheets.length; ++i) {
+					var elem = sheets[i];
+					var parent = elem.parentElement || head;
+					parent.removeChild(elem);
+					var rel = elem.rel;
+					if (elem.href && typeof rel != "string" || rel.length == 0 || rel.toLowerCase() == "stylesheet") {
+						var url = elem.href.replace(/(&|\?)_cacheOverride=\d+/, '');
+						elem.href = url + (url.indexOf('?') >= 0 ? '&' : '?') + '_cacheOverride=' + (new Date().valueOf());
+					}
+					parent.appendChild(elem);
+				}
+			}
+			var protocol = window.location.protocol === 'http:' ? 'ws://' : 'wss://';
+			var address = protocol + window.location.host + window.location.pathname + '/ws';
+			var socket = new WebSocket(address);
+			socket.onmessage = function (msg) {
+				if (msg.data == 'reload') window.location.reload();
+				else if (msg.data == 'refreshcss') refreshCSS();
+			};
+			if (sessionStorage && !sessionStorage.getItem('IsThisFirstTime_Log_From_LiveServer')) {
+				console.log('Live reload enabled.');
+				sessionStorage.setItem('IsThisFirstTime_Log_From_LiveServer', true);
+			}
+		})();
+	}
+	else {
+		console.error('Upgrade your browser. This Browser is NOT supported WebSocket for Live-Reloading.');
+	}
+	// ]]>
+</script>
+</body>
+
+</html>
