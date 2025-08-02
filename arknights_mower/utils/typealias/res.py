@@ -20,6 +20,7 @@ Res = Literal[
     "collection_small",
     "confirm",
     "confirm_blue",
+    "confirm_train",
     "connecting",
     "control_central",
     "control_central_assistants",

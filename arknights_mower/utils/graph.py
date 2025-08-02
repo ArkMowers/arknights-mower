@@ -42,7 +42,6 @@ def edge(v_from: int, v_to: int, interval: int = 1):
 @edge(Scene.TERMINAL_MAIN, Scene.INDEX)
 @edge(Scene.TERMINAL_MAIN_THEME, Scene.INDEX)
 @edge(Scene.TERMINAL_EPISODE, Scene.INDEX)
-@edge(Scene.TERMINAL_BIOGRAPHY, Scene.INDEX)
 @edge(Scene.TERMINAL_COLLECTION, Scene.INDEX)
 @edge(Scene.TERMINAL_REGULAR, Scene.INDEX)
 @edge(Scene.TERMINAL_LONGTERM, Scene.INDEX)
@@ -165,7 +164,6 @@ def index_to_headhunting(solver: BaseSolver):
 @edge(Scene.TERMINAL_MAIN, Scene.NAVIGATION_BAR)
 @edge(Scene.TERMINAL_MAIN_THEME, Scene.NAVIGATION_BAR)
 @edge(Scene.TERMINAL_EPISODE, Scene.NAVIGATION_BAR)
-@edge(Scene.TERMINAL_BIOGRAPHY, Scene.NAVIGATION_BAR)
 @edge(Scene.TERMINAL_COLLECTION, Scene.NAVIGATION_BAR)
 @edge(Scene.TERMINAL_REGULAR, Scene.NAVIGATION_BAR)
 @edge(Scene.TERMINAL_LONGTERM, Scene.NAVIGATION_BAR)
@@ -292,20 +290,10 @@ def terminal_to_main_theme(solver: BaseSolver):
     solver.tap_terminal_button("main_theme")
 
 
-@edge(Scene.TERMINAL_MAIN, Scene.TERMINAL_BIOGRAPHY)
-@edge(Scene.TERMINAL_COLLECTION, Scene.TERMINAL_BIOGRAPHY)
-@edge(Scene.TERMINAL_REGULAR, Scene.TERMINAL_BIOGRAPHY)
-@edge(Scene.TERMINAL_LONGTERM, Scene.TERMINAL_BIOGRAPHY)
-@edge(Scene.TERMINAL_PERIODIC, Scene.TERMINAL_BIOGRAPHY)
-def terminal_to_biography(solver: BaseSolver):
-    solver.tap_terminal_button("biography")
-
-
 @edge(Scene.OPERATOR_RECOVER_POTION, Scene.OPERATOR_BEFORE)
 @edge(Scene.OPERATOR_RECOVER_ORIGINITE, Scene.OPERATOR_BEFORE)
 @edge(Scene.OPERATOR_BEFORE, Scene.OPERATOR_CHOOSE_LEVEL)
 @edge(Scene.OPERATOR_CHOOSE_LEVEL, Scene.TERMINAL_MAIN_THEME)
-@edge(Scene.OPERATOR_CHOOSE_LEVEL, Scene.TERMINAL_BIOGRAPHY)
 @edge(Scene.OPERATOR_CHOOSE_LEVEL, Scene.TERMINAL_COLLECTION)
 @edge(Scene.OPERATOR_SUPPORT, Scene.OPERATOR_SELECT)
 @edge(Scene.OPERATOR_STRANGER_SUPPORT, Scene.OPERATOR_SUPPORT)

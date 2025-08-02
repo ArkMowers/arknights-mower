@@ -123,9 +123,13 @@ class PlanConfig:
             "refresh_drained",
             "ope_resting_priority",
         ]:
-            p_dict = set(getattr(n, p))
-            target_p = set(getattr(target, p))
-            setattr(n, p, list(p_dict.union(target_p)))
+            p_list = getattr(n, p)
+            target_list = getattr(target, p)
+            merged_list = []
+            for item in p_list + target_list:
+                if item not in merged_list:
+                    merged_list.append(item)
+            setattr(n, p, merged_list)
         return n
 
 

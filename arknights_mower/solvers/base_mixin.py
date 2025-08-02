@@ -9,7 +9,7 @@ from arknights_mower import __rootdir__
 from arknights_mower.data import workshop_formula
 from arknights_mower.solvers.record import save_inventory_counts
 from arknights_mower.utils import rapidocr, segment
-from arknights_mower.utils.character_recognize import operator_list
+from arknights_mower.utils.character_recognize import operator_list, operator_list_train
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
@@ -77,7 +77,12 @@ class BaseMixin:
             self.tap((name_x[name], name_y), interval=0.5)
 
     def scan_agent(
-        self, agent: list[str], error_count=0, max_agent_count=-1, full_scan=True
+        self,
+        agent: list[str],
+        error_count=0,
+        max_agent_count=-1,
+        full_scan=True,
+        train=False,
     ):
         try:
             # 识别干员
@@ -86,7 +91,11 @@ class BaseMixin:
                 logger.info("等待网络连接")
                 self.sleep()
             # 返回的顺序是从左往右从上往下
-            ret = operator_list(self.recog.img, full_scan=full_scan)
+            ret = (
+                operator_list(self.recog.img, full_scan=full_scan)
+                if not train
+                else operator_list_train(self.recog.img)
+            )
             # 提取识别出来的干员的名字
             select_name = []
             for name, scope in ret:
@@ -110,15 +119,23 @@ class BaseMixin:
                 raise e
 
     def verify_agent(
-        self, agent: list[str], room, error_count=0, max_agent_count=-1, full_scan=True
+        self,
+        agent: list[str],
+        room,
+        error_count=0,
+        max_agent_count=-1,
+        full_scan=True,
+        train=False,
     ):
         try:
             # 识别干员
             while self.find("connecting"):
                 logger.info("等待网络连接")
                 self.sleep()
-            ret = operator_list(
-                self.recog.img, full_scan=full_scan
+            ret = (
+                operator_list(self.recog.img, full_scan=full_scan)
+                if not train
+                else operator_list_train(self.recog.img)
             )  # 返回的顺序是从左往右从上往下
             # 提取识别出来的干员的名字
             index = 0
@@ -131,7 +148,8 @@ class BaseMixin:
             return True
         except Exception as e:
             error_count += 1
-            self.switch_arrange_order("技能", room)
+            if room != "train":
+                self.switch_arrange_order("技能", room)
             if error_count < 3:
                 return self.verify_agent(
                     agent, room, error_count, max_agent_count, full_scan=False
@@ -159,16 +177,28 @@ class BaseMixin:
         return 0
 
     def profession_filter(self, profession=None):
+        """
+                    confirm_blue	confirm_train
+        训练位筛选开	1548 0.89		1554
+        训练位筛选关	not				1669
+        普通位筛选关	1724			1732 0.7
+        普通位筛选开	1609			not
+        """
         retry = 0
-        open_threshold = 1700
+        open_threshold = 1650
         if profession:
             logger.info(f"打开 {profession} 筛选")
         else:
             logger.info("关闭职业筛选")
             self.profession_filter("ALL")
             while (
-                confirm_btn := self.find("confirm_blue")
-            ) is not None and confirm_btn[0][0] < open_threshold:
+                (confirm_btn := self.find("confirm_blue")) is not None
+                and confirm_btn[0][0] < open_threshold
+            ) or (
+                (confirm_btn := self.find("confirm_train")) is not None
+                and confirm_btn[0][0] < open_threshold
+            ):
+                logger.info(f"{confirm_btn}")
                 self.tap((1860, 60), 0.1)
                 retry += 1
                 if retry > 5:
@@ -177,9 +207,13 @@ class BaseMixin:
         x = 1918
         label_pos = [(x, 135 + i * 110) for i in range(9)]
         label_pos_map = dict(zip(self.profession_labels, label_pos))
-        while (confirm_btn := self.find("confirm_blue")) is not None and confirm_btn[0][
-            0
-        ] > open_threshold:
+        while (
+            (confirm_btn := self.find("confirm_blue")) is not None
+            and confirm_btn[0][0] > open_threshold
+        ) or (
+            (confirm_btn := self.find("confirm_train")) is not None
+            and confirm_btn[0][0] > open_threshold
+        ):
             self.tap((1860, 60), 0.1)
             retry += 1
             if retry > 5:
@@ -431,7 +465,8 @@ class BaseMixin:
                 "家具零件_高级加固建材",
                 "家具零件_碳",
             ]
-            for base_idx, item in enumerate(ocr_result[0]):
+            base_idx = 0
+            for idx, item in enumerate(ocr_result[0]):
                 if item[1] == "家具零件" and furniture_start_index == -1:
                     furniture_start_index = base_idx
                 if (
@@ -440,33 +475,35 @@ class BaseMixin:
                     or item[1] == "家具零件"
                 ):
                     name = item[1]
-                    if furniture_start_index == 0 or furniture_start_index == 5:
+                    if name == "家具零件" and furniture_start_index in range(6):
                         name = furniture_keys[base_idx]
                     box = item[0]
                     base_px = int(box[0][0]) + 15
                     base_py = int(box[0][1]) + 75
                     sample_points = [(base_px + i * 155, base_py) for i in range(3)]
                     valid = 0
-                    for idx, (px, py) in enumerate(sample_points):
+                    for _idx, (px, py) in enumerate(sample_points):
                         # 加入75px为边界
                         if 0 <= py < img.shape[0] - 75 and 0 <= px < img.shape[1]:
                             color = img[py, px]
                             valid += 1
                             logger.debug(
-                                f"检测到{item[1]} 颜色 {idx + 1} ({px}, {py}): {color}"
+                                f"检测到{item[1]} 颜色 {_idx + 1} ({px}, {py}): {color}"
                             )
                             if not np.all((color >= 40) & (color <= 80)):
                                 valid = float("-inf ")
-                                if idx < len(workshop_formula[name]["items"]):
-                                    logger.info("更新材料数量为0")
+                                if _idx < len(workshop_formula[name]["items"]):
+                                    logger.debug(f"更新{name}数量为0")
                                     save_inventory_counts(
-                                        {workshop_formula[name]["items"][idx]: 0}
+                                        {workshop_formula[name]["items"][_idx]: 0}
                                     )
                                 break
                     box_global = [[x + offset_x, y + offset_y] for (x, y) in box]
                     # 等于 0 则出界了
                     if valid != 0:
-                        res.append((item[1], box_global, valid > 0))
+                        res.append((name, box_global, valid > 0))
+                    if base_idx < 5:
+                        base_idx += 1
             return res
         except Exception as e:
             logger.exception(e)

@@ -578,6 +578,12 @@
     "description": "包含以下干员\n翎羽、安德切尔、送葬人、莫斯提马、安比尔、芳汀、空弦、菲亚梅塔、见行者、空构、隐现、塑心、蕾缪安、信仰搅拌机、CONFESS-47",
     "buffer": []
   },
+  "cc_g_elite": {
+    "termId": "cc.g.elite",
+    "termName": "精英干员",
+    "description": "包含以下干员\n迷迭香、煌、逻各斯、烛煌、电弧",
+    "buffer": []
+  },
   "cc_c_abyssal2_1": {
     "termId": "cc.c.abyssal2_1",
     "termName": "特殊加成",
@@ -628,7 +634,7 @@
   "cc_c_skill": {
     "termId": "cc.c.skill",
     "termName": "部分技能",
-    "description": "包含以下技能\n左膀右臂、S.W.E.E.P.、零食网络、清理协议、替身、必要责任、护卫、小小的领袖、独善其身、笑靥如春、金盏花诗会、捍卫之道、博识生手",
+    "description": "包含以下技能\r\n左膀右臂、S.W.E.E.P.、零食网络、清理协议、替身、必要责任、护卫、小小的领袖、独善其身、笑靥如春、金盏花诗会、捍卫之道、博识生手、点滴关照",
     "buffer": []
   },
   "cc_t_strong2": {
