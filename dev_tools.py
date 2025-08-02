@@ -144,12 +144,13 @@ def process_files(base_dir):
             if file.endswith(".py"):
                 # 使用 ruff 检查和修复 Python 文件
                 print(f"Checking and fixing Python file: {file_path}")
+                run_command(f"ruff format {file_path}")
                 run_command(f"ruff check {file_path} --fix")
             elif file.endswith(".vue") or file.endswith(".js"):
                 # 使用 prettier 检查和格式化 Vue 和 JavaScript 文件
                 print(f"Checking and formatting Vue/JS file: {file_path}")
-                run_command(f"prettier --check {file_path}")
-                run_command(f"prettier --write {file_path}")
+                run_command(f"'npx prettier --check {file_path}'")
+                run_command(f"'npx prettier --write {file_path}'")
 
 
 def run_command(command):
