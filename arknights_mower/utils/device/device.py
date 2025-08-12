@@ -123,6 +123,11 @@ class Device:
         logger.info("退出游戏")
         self.run(f"am force-stop {config.conf.APPNAME}")
 
+    def return_home(self) -> None:
+        """exit the application"""
+        logger.info("切回主界面")
+        self.send_keyevent(3)
+
     def send_keyevent(self, keycode: int) -> None:
         """send a key event"""
         logger.debug(f"keyevent: {keycode}")
@@ -135,6 +140,17 @@ class Device:
         text = text.replace('"', '\\"')
         command = f'input text "{text}"'
         self.run(command)
+
+    def is_app_running_in_background(self) -> bool:
+        # 通过 adb shell pidof 检查是否正在运行
+        output = self.client.cmd_shell(f"pidof {config.conf.APPNAME}")
+        return bool(output.strip())
+
+    def bring_to_foreground(self):
+        # 用 adb shell am start -n 包名/Activity 切回前台
+        self.client.cmd_shell(
+            f"am start -n {config.conf.APPNAME}/{config.APP_ACTIVITY_NAME}"
+        )
 
     def get_droidcast_classpath(self) -> str | None:
         # TODO: 退出时（并非结束mower线程时）关闭DroidCast进程、取消ADB转发
@@ -342,14 +358,20 @@ class Device:
         while True:
             try:
                 focus = self.current_focus()
-                if focus not in [
+                expected_focuses = [
                     f"{config.conf.APPNAME}/{config.APP_ACTIVITY_NAME}",
                     "com.hypergryph.arknights.bilibili/com.gsc.welcome.WelcomeActivity",
                     "com.hypergryph.arknights.bilibili/com.gsc.auto_login.AutoLoginActivity",
-                ]:
-                    self.exit()  # 防止应用卡死
-                    self.launch()
-                    csleep(10)
+                ]
+
+                if focus not in expected_focuses:
+                    if self.is_app_running_in_background():  # 你需要实现这个函数
+                        self.bring_to_foreground()  # 你需要实现这个函数
+                        csleep(2)
+                    else:
+                        self.exit()
+                        self.launch()
+                        csleep(10)
                     update = True
                 return update
             except MowerExit:

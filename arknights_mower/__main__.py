@@ -334,6 +334,8 @@ def simulate(saved):
                                     restart_simulator(start=False)
                                 elif config.conf.exit_game_when_idle:
                                     base_scheduler.device.exit()
+                                elif config.conf.return_home_when_idle:
+                                    base_scheduler.device.return_home()
                             body = task_template.render(
                                 tasks=[
                                     obj.format(timezone_offset)
