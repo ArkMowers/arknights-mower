@@ -62,6 +62,8 @@ class ReportSolver(SceneGraphSolver):
 
     def transition(self) -> bool:
         if (scene := self.scene()) == Scene.RIIC_REPORT:
+            self.sleep(2)
+            self.recog.update()
             return self.read_report()
         elif scene in self.waiting_scene:
             self.waiting_solver()
