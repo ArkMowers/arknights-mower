@@ -487,15 +487,16 @@ def try_workshop_tasks(op_data, tasks):
                 valid = True
                 op_data.add(Operator(item.operator, ""))
             match = False
-
+            base_material_match = False
+            non_base_material_match = False
             if item.operator == "九色鹿":
-                material_diandao = False
-                non_base_material_4ap = False
+                base_material_match = False
+                non_base_material_match = False
                 for material in item.items:
                     name = material.item_name
                     metadata = workshop_formula[name]
                     if name.startswith("家具零件"):
-                        name = name.split("_")[-1]
+                        name = "家具零件"
                     if (
                         name in inventory_data
                         and inventory_data[name] < material.self_upper_limit
@@ -506,24 +507,21 @@ def try_workshop_tasks(op_data, tasks):
                             for child_name in metadata["items"]
                         )
                     ):
-                        if metadata["tab"] == "基建材料":
-                            material_diandao = True
-                        else:
-                            if metadata.get("apCost", 0) == 4.0:
-                                non_base_material_4ap = True
-                            if 0.0 < metadata.get("apCost", 0) < 4.0:
-                                material_diandao = True
-                match = material_diandao and non_base_material_4ap
+                        if metadata["apCost"] < 4 or metadata["tab"] == "基建材料":
+                            base_material_match = True
+                        elif metadata["apCost"] == 4 and metadata["tab"] != "基建材料":
+                            non_base_material_match = True
+                match = base_material_match and non_base_material_match
                 if not match:
                     logger.info(
-                        f"{item.operator}材料设置不符合要求：请检查合成数量，并确认至少要有一个垫刀材料和一个4心情非基建材料"
+                        f"{item.operator}材料设置不符合要求：请检查合成数量，并确认至少要有一个小于4心情垫刀材料和一个4心情精英材料"
                     )
             else:
                 for material in item.items:
                     name = material.item_name
                     metadata = workshop_formula[name]
                     if name.startswith("家具零件"):
-                        name = name.split("_")[-1]
+                        name = "家具零件"
                     if (
                         name in inventory_data
                         and inventory_data[name] < material.self_upper_limit
