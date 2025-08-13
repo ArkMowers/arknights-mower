@@ -142,12 +142,14 @@ class Device:
         self.run(command)
 
     def is_app_running_in_background(self) -> bool:
-        # 通过 adb shell pidof 检查是否正在运行
-        output = self.client.cmd_shell(f"pidof {config.conf.APPNAME}")
-        return bool(output.strip())
+        try:
+            output = self.client.cmd_shell(f"pidof {config.conf.APPNAME}")
+            return bool(output.strip())
+        except Exception as e:
+            logger.debug(f"检查应用是否在后台运行时出错：{e}")
+            return False
 
     def bring_to_foreground(self):
-        # 用 adb shell am start -n 包名/Activity 切回前台
         self.client.cmd_shell(
             f"am start -n {config.conf.APPNAME}/{config.APP_ACTIVITY_NAME}"
         )
