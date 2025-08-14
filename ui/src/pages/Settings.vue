@@ -197,6 +197,15 @@ watch(
     else idleAction.value = ''
   }
 )
+if (return_home_when_idle.value) {
+  idleAction.value = 'home'
+} else if (exit_game_when_idle.value) {
+  idleAction.value = 'exit'
+} else if (close_simulator_when_idle.value) {
+  idleAction.value = 'close'
+} else {
+  idleAction.value = ''
+}
 </script>
 
 <template>
