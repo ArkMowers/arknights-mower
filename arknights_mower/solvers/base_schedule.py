@@ -3396,7 +3396,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         for room in rooms:
             new_plan = self.agent_arrange_room(new_plan, room, plan, get_time=get_time)
         if len(new_plan) == 1:
-            if config.conf.run_order_buffer_time <= 0:
+            if config.conf.run_order_buffer_time <= 0 or self.task.adjusted:
+                if self.task.adjusted:
+                    logger.info("检测到跑单已调整，强制使用无人机跑单")
                 logger.info("开始插拔")
                 self.drone(room, not_customize=True)
             else:

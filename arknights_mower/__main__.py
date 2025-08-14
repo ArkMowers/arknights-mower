@@ -13,6 +13,7 @@ from arknights_mower.utils.device.scrcpy import Scrcpy
 from arknights_mower.utils.email import send_message, task_template
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.logic_expression import get_logic_exp
+from arknights_mower.utils.news_checker import NewsChecker
 from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
@@ -214,45 +215,25 @@ def simulate(saved):
             logger.exception(ex)
     while True:
         try:
+            st, et = NewsChecker.get_update_time()
+            if st is not None and et is not None:
+                if et > datetime.now() > st:
+                    logger.info("==============================================")
+                    logger.info(
+                        "ザ・ワールド！時よ止まれ！！（The World!~ 时间暂停！）——DIO"
+                    )
+                    logger.info("WRYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY!")
+                    logger.info("服务器维护中，DIO大人已为你暂停一切行动。")
+                    logger.info("==============================================")
+                    handle_idle_action(base_scheduler, config)
+                    base_scheduler.sleep((et - datetime.now()).total_seconds())
+                    logger.info("时间开始流动了……DIO大人贴心为你重启时间！")
             if len(base_scheduler.tasks) > 0:
                 (base_scheduler.tasks.sort(key=lambda x: x.time, reverse=False))
                 remaining_time = (
                     base_scheduler.tasks[0].time - datetime.now()
                 ).total_seconds()
-
                 if remaining_time > 540:
-                    # if config.conf.check_for_updates:
-                    #     logger.info("检查版本更新")
-                    #     listing = get_listing()
-                    #     version = __version__.replace("+", "-")
-                    #     if not any(i.name.startswith(version) for i in listing):
-                    #         stable = []
-                    #         testing = []
-                    #         for i in listing:
-                    #             name = i.name
-                    #             if re.fullmatch(r"[0-9]{4}\.[0-9]{2}\.[0-9]+/", name):
-                    #                 stable.append(name[:-1])
-                    #             elif re.fullmatch(
-                    #                 r"[0-9]{4}\.[0-9]{2}-[0-9a-z]{7}/", name
-                    #             ):
-                    #                 testing.append(name[:-1])
-                    #         title = "Mower版本过旧，请及时更新"
-                    #         logger.error(title)
-                    #         body = version_template.render(
-                    #             stable=stable, testing=testing, current=version
-                    #         )
-                    #         send_message(body, title, "WARNING")
-
-                    # 刷新时间以鹰历为准
-                    # if (
-                    #     base_scheduler.sign_in
-                    #     < get_server_time().date()
-                    # ):
-                    #     if base_scheduler.sign_in_plan_solver():
-                    #         base_scheduler.sign_in = (
-                    #             datetime.now() - timedelta(hours=4)
-                    #         ).date()
-
                     if base_scheduler.daily_visit_friend < get_server_time().date():
                         if base_scheduler.visit_friend_plan_solver():
                             base_scheduler.daily_visit_friend = get_server_time().date()
@@ -265,7 +246,7 @@ def simulate(saved):
                         config.conf.skland_enable
                         and base_scheduler.daily_skland < get_server_time().date()
                     ):
-                        if base_scheduler.skland_plan_solover():
+                        if base_scheduler.skland_plan_solver():
                             base_scheduler.daily_skland = get_server_time().date()
 
                     if (
@@ -330,12 +311,7 @@ def simulate(saved):
                         logger.info(f"第{base_scheduler.task_count}次任务结束")
                         if remaining_time > 0:
                             if remaining_time > 300:
-                                if config.conf.close_simulator_when_idle:
-                                    restart_simulator(start=False)
-                                elif config.conf.exit_game_when_idle:
-                                    base_scheduler.device.exit()
-                                elif config.conf.return_home_when_idle:
-                                    base_scheduler.device.return_home()
+                                handle_idle_action(base_scheduler, config)
                             body = task_template.render(
                                 tasks=[
                                     obj.format(timezone_offset)
@@ -463,3 +439,15 @@ def simulate(saved):
         except Exception as e:
             logger.exception(f"程序出错--->{e}")
             base_scheduler.recog.update()
+
+
+def handle_idle_action(base_scheduler, config):
+    """
+    根据配置执行空闲时的操作：关闭模拟器、退出游戏或返回首页
+    """
+    if config.conf.close_simulator_when_idle:
+        restart_simulator(start=False)
+    elif config.conf.exit_game_when_idle:
+        base_scheduler.device.exit()
+    elif config.conf.return_home_when_idle:
+        base_scheduler.device.return_home()
