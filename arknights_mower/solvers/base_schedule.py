@@ -62,6 +62,7 @@ from arknights_mower.utils.scheduler_task import (
     try_reorder,
     try_workshop_tasks,
 )
+from arknights_mower.utils.simulator import restart_simulator
 from arknights_mower.utils.trading_order import TradingOrder
 
 
@@ -3750,7 +3751,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     else:
                         self.sleep(5)
                 if hard_stop:
-                    hard_stop_msg = "Maa任务未完成，等待3分钟关闭游戏"
+                    hard_stop_msg = "Maa任务未完成，等待3分钟"
                     logger.info(hard_stop_msg)
                     send_message(hard_stop_msg)
                     self.sleep(180)
@@ -3857,6 +3858,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     sf_solver.run(self.tasks[0].time - datetime.now())
 
             remaining_time = (self.tasks[0].time - datetime.now()).total_seconds()
+            self.handle_idle_action(remaining_time)
             subject = f"休息 {format_time(remaining_time)}，到{self.tasks[0].time.strftime('%H:%M:%S')}开始工作"
             context = f"下一次任务:{self.tasks[0].plan if len(self.tasks[0].plan) != 0 else '空任务' if self.tasks[0].type == '' else self.tasks[0].type}"
             logger.info(context)
@@ -3964,3 +3966,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             logger.exception(f"先不运行 出bug了 : {e}")
             return False
         return True
+
+    def handle_idle_action(self, remaining_time=0):
+        if config.conf.close_simulator_when_idle and remaining_time > 300:
+            restart_simulator(start=False)
+        elif config.conf.exit_game_when_idle and remaining_time > 300:
+            self.device.exit()
+        elif config.conf.return_home_when_idle:
+            self.device.return_home()

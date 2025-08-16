@@ -218,6 +218,7 @@ def simulate(saved):
             st, et = NewsChecker.get_update_time()
             if st is not None and et is not None:
                 if et > datetime.now() > st:
+                    remaining_time = (et - datetime.now()).total_seconds()
                     logger.info("==============================================")
                     logger.info(
                         "ザ・ワールド！時よ止まれ！！（The World!~ 时间暂停！）——DIO"
@@ -225,8 +226,8 @@ def simulate(saved):
                     logger.info("WRYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY!")
                     logger.info("服务器维护中，DIO大人已为你暂停一切行动。")
                     logger.info("==============================================")
-                    handle_idle_action(base_scheduler, config)
-                    base_scheduler.sleep((et - datetime.now()).total_seconds())
+                    base_scheduler.handle_idle_action(remaining_time)
+                    base_scheduler.sleep(remaining_time)
                     logger.info("时间开始流动了……DIO大人贴心为你重启时间！")
             if len(base_scheduler.tasks) > 0:
                 (base_scheduler.tasks.sort(key=lambda x: x.time, reverse=False))
@@ -310,8 +311,7 @@ def simulate(saved):
                         base_scheduler.task_count += 1
                         logger.info(f"第{base_scheduler.task_count}次任务结束")
                         if remaining_time > 0:
-                            if remaining_time > 300:
-                                handle_idle_action(base_scheduler, config)
+                            base_scheduler.handle_idle_action(remaining_time)
                             body = task_template.render(
                                 tasks=[
                                     obj.format(timezone_offset)
@@ -440,14 +440,3 @@ def simulate(saved):
             logger.exception(f"程序出错--->{e}")
             base_scheduler.recog.update()
 
-
-def handle_idle_action(base_scheduler, config):
-    """
-    根据配置执行空闲时的操作：关闭模拟器、退出游戏或返回首页
-    """
-    if config.conf.close_simulator_when_idle:
-        restart_simulator(start=False)
-    elif config.conf.exit_game_when_idle:
-        base_scheduler.device.exit()
-    elif config.conf.return_home_when_idle:
-        base_scheduler.device.return_home()
