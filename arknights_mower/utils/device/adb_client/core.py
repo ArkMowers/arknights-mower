@@ -90,15 +90,22 @@ class Client:
     def __run(self, cmd: str, restart: bool = True) -> Optional[bytes]:
         """run command with Session"""
         error_limit = 3
+        connect_retry = 2
         while True:
             try:
                 return Session().run(cmd)
             except (socket.timeout, ConnectionRefusedError, RuntimeError):
                 if restart and error_limit > 0:
                     error_limit -= 1
-                    self.__exec("kill-server")
-                    self.__exec("start-server")
-                    time.sleep(10)
+                    if self.device_id and connect_retry > 0:
+                        connect_retry -= 1
+                        self.__exec(f"disconnect {self.device_id}")
+                        self.__exec(f"connect {self.device_id}")
+                        time.sleep(0.5)
+                    else:
+                        self.__exec("kill-server")
+                        self.__exec("start-server")
+                        time.sleep(10)
                     continue
                 return
 
@@ -139,10 +146,17 @@ class Client:
             except (socket.timeout, ConnectionRefusedError, RuntimeError) as e:
                 if error_limit > 0:
                     error_limit -= 1
-                    self.__exec("kill-server")
-                    self.__exec("start-server")
-                    time.sleep(10)
-                    self.__init_device()
+                    # 只断开并重连当前设备，避免影响其他adb连接
+                    if self.device_id:
+                        self.__exec(f"disconnect {self.device_id}")
+                        self.__exec(f"connect {self.device_id}")
+                        time.sleep(3)
+                        self.__init_device()
+                    else:
+                        self.__exec("kill-server")
+                        self.__exec("start-server")
+                        time.sleep(10)
+                        self.__init_device()
                     continue
                 raise e
         if len(resp) <= 256:
