@@ -439,4 +439,3 @@ def simulate(saved):
         except Exception as e:
             logger.exception(f"程序出错--->{e}")
             base_scheduler.recog.update()
-

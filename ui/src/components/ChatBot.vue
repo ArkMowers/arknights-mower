@@ -5,13 +5,23 @@ import { storeToRefs } from 'pinia'
 
 const store = useConfigStore()
 const { ai_key, ai_type } = storeToRefs(store)
-const show = ref(false)
 const userInput = ref('')
 const chatHistory = ref([])
 const loading = ref(false)
 let ws = null
 let pendingMsg = null
 
+const props = defineProps({
+  show: Boolean
+})
+const emit = defineEmits(['update:show'])
+
+const show = ref(props.show)
+watch(
+  () => props.show,
+  (val) => (show.value = val)
+)
+watch(show, (val) => emit('update:show', val))
 function connectWS(callback) {
   if (ws) ws.close()
   let backend_url
@@ -87,33 +97,103 @@ watch(show, (val) => {
     }
   }
 })
+const isMobile = ref(window.innerWidth < 800)
+window.addEventListener('resize', () => {
+  isMobile.value = window.innerWidth < 800
+})
 </script>
 <template>
-  <div style="position: fixed; left: 32px; bottom: 16px; z-index: 9999">
-    <n-button v-if="!show" type="primary" @click="show = !show">Mower 助手</n-button>
-    <n-card v-if="show" style="width: 600px; margin-top: 8px">
-      <div style="height: 600px; overflow-y: auto; margin-bottom: 12px">
-        <div
-          v-for="(msg, idx) in chatHistory"
-          :key="idx"
-          :style="{ textAlign: msg.role === 'user' ? 'right' : 'left' }"
-        >
-          <b>{{ msg.role === 'user' ? '你' : 'Mower AI 助手' }}：</b>
-          <span v-html="msg.content"></span>
+  <div v-if="show" class="chatbot-container" :class="{ mobile: isMobile }">
+    <n-card class="chatbot-card">
+      <div class="chatbot-flexbox">
+        <div class="chatbot-history" ref="historyRef">
+          <div
+            v-for="(msg, idx) in chatHistory"
+            :key="idx"
+            :style="{ textAlign: msg.role === 'user' ? 'right' : 'left' }"
+          >
+            <b>{{ msg.role === 'user' ? '你' : 'Mower AI 助手' }}：</b>
+            <span v-html="msg.content"></span>
+          </div>
+        </div>
+        <div class="chatbot-input-area">
+          <n-input
+            v-model:value="userInput"
+            placeholder="输入你的问题..."
+            @keyup.enter="sendMessage"
+            :disabled="loading"
+          />
+          <div style="display: flex; gap: 8px; margin-top: 8px">
+            <n-button type="primary" @click="sendMessage" :loading="loading">发送</n-button>
+            <n-button type="error" @click="show = false" :loading="loading">关闭</n-button>
+          </div>
         </div>
       </div>
-      <n-input
-        v-model:value="userInput"
-        placeholder="输入你的问题..."
-        @keyup.enter="sendMessage"
-        :disabled="loading"
-      />
-      <n-button type="primary" @click="sendMessage" :loading="loading" style="margin-top: 8px"
-        >发送</n-button
-      >
-      <n-button type="error" @click="show = !show" :loading="loading" style="margin-top: 8px"
-        >关闭</n-button
-      >
     </n-card>
   </div>
 </template>
+<style scoped>
+.chatbot-container {
+  position: fixed;
+  left: 32px;
+  bottom: 16px;
+  z-index: 9999;
+}
+.chatbot-container.mobile {
+  left: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 9999;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+}
+.chatbot-card {
+  width: 600px;
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  max-height: 80vh;
+  height: auto;
+  min-height: 320px;
+}
+
+.chatbot-container.mobile .chatbot-card {
+  width: 100vw !important;
+  height: 100vh !important;
+  border-radius: 0 !important;
+  margin: 0 !important;
+  max-width: 100vw;
+  max-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+.chatbot-flexbox {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.chatbot-history {
+  flex: 1 1 0%;
+  min-height: 50vh;
+  overflow-y: auto;
+  margin-bottom: 12px;
+  padding-right: 4px;
+  max-height: calc(75vh - 135px);
+}
+
+@media (max-width: 800px) {
+  .chatbot-history {
+    min-height: none;
+    max-height: calc(100vh - 135px);
+    height: 100%;
+  }
+}
+.chatbot-input-area {
+  flex-shrink: 0;
+  padding-bottom: 8px;
+  background: transparent;
+}
+</style>

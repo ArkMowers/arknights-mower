@@ -55,7 +55,7 @@ call_db_tool_def = {
             "If the query is too complex or dangerous, ask the user for confirmation."
             "表定义和专用规则："
             "1. agent_action表 - 干员基建活动:"
-            "   字段: name TEXT,agent_current_room TEXT,current_room TEXT,is_high INTEGER,agent_group TEXT,mood REAL,current_time TEXT"
+            "   字段: name TEXT,agent_current_room TEXT,current_room TEXT,is_high INTEGER,agent_group TEXT,mood REAL,`current_time` TEXT"
             "   规则: 如果current_room是空值则表示该干员不在任何房间中; dorm_开头表示在宿舍"
             "   示例查询: SELECT name AS 干员名称, current_room AS 当前位置 FROM agent_action WHERE agent_current_room LIKE 'dorm_%'"
             "2. trading_history表 - 龙门币交易记录/订单记录:"
@@ -70,14 +70,13 @@ call_db_tool_def = {
             # 强制规则
             "强制规则:"
             "- 任务，日志相关查询必须使用log表，不得使用trading_history表"
-            "- 如果错误选择了表，必须立即纠正"
             "- 列名必须与用户查询语言一致"
             "- 用户查询‘漏单’时候你需要向用户确认是想查询任务记录还是查询账单/龙门币记录"
+            "- agent_action 的 `current_time` 你必须用``包住 例子: Select `current_time` from agent_action"
             # 时间处理
             "时间处理规则:"
             "- trading_history,log 的时间字段需转换 需要调用 parse_datetime 工具"
-            "- agent_action的current_time已是本地时间"
-            "- 不确定时向用户确认"
+            "- agent_action的`current_time`已是本地时间"
             "- 在以下情况必须暂停执行，向用户确认后再继续:"
             "- 查询漏单的时候，如果用户没有规定是订单还是任务记录，则必须暂停执行，向用户确认"
         ),

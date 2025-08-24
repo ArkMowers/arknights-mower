@@ -37,10 +37,12 @@
                 :collapsed-width="64"
                 :collapsed-icon-size="22"
                 :options="menuOptions"
+                @update:value="handleMenuClick"
               />
             </n-layout-sider>
             <n-layout-content class="layout-content-container">
               <router-view v-if="loaded" />
+              <ChatBot v-model:show="showChatBot" />
             </n-layout-content>
             <n-layout-footer v-if="mobile">
               <n-tabs type="line" justify-content="space-evenly" size="small">
@@ -139,6 +141,12 @@
                     资源
                   </div>
                 </n-tab>
+                <n-tab name="Mower AI 助手" @click="handleMenuClick('chatbot')">
+                  <div style="display: flex; flex-direction: column; align-items: center">
+                    <n-icon size="20" style="margin-bottom: -1px" :component="BulbOutline" />
+                    AI助手
+                  </div>
+                </n-tab>
               </n-tabs>
             </n-layout-footer>
           </n-layout>
@@ -146,12 +154,12 @@
       </n-message-provider>
     </n-dialog-provider>
   </n-config-provider>
-  <ChatBot />
 </template>
 
 <script setup>
 import SkillLevelAdvanced from '@vicons/carbon/SkillLevelAdvanced'
 import WikipediaW from '@vicons/fa/WikipediaW'
+import BulbOutline from '@vicons/ionicons5/BulbOutline'
 import Wrench from '@vicons/fa/Wrench'
 import Bag from '@vicons/ionicons5/Bag'
 import BarChart from '@vicons/ionicons5/BarChart'
@@ -175,7 +183,12 @@ const showModal2 = ref(false)
 function renderIcon(icon) {
   return () => h(NIcon, null, { default: () => h(icon) })
 }
-
+const showChatBot = ref(false)
+function handleMenuClick(key) {
+  if (key === 'chatbot') {
+    showChatBot.value = true
+  }
+}
 import { RouterLink } from 'vue-router'
 const menuOptions = [
   {
@@ -293,6 +306,11 @@ const menuOptions = [
       ),
     key: 'wiki',
     icon: renderIcon(WikipediaW)
+  },
+  {
+    label: () => 'Mower AI 助手',
+    icon: renderIcon(BulbOutline),
+    key: 'chatbot'
   }
 ]
 
