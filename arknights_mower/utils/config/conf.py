@@ -543,6 +543,8 @@ class SimulatorPart(ConfModel):
     "触控模式"
     droidcast: DroidCastConf
     "DroidCast截图设置"
+    mumu12IPC: bool = False
+    "MuMu12IPC截图设置"
 
 
 class SKLandPart(ConfModel):
