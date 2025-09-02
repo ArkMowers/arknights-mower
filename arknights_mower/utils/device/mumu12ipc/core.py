@@ -14,6 +14,9 @@ from arknights_mower.utils import config
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.simulator import restart_simulator
+from sympy import false
+
+import re
 
 
 class BufferPool:
@@ -76,7 +79,7 @@ class MuMu12IPC:
     def __init__(self, device):
         self.device = device
         norm = os.path.normpath(config.conf.simulator.simulator_folder)
-        if os.path.basename(norm).lower() == "shell":
+        if os.path.basename(norm).lower() in ["shell", "nx_main"]:
             self.emulator_folder = os.path.dirname(norm)
         else:
             self.emulator_folder = norm
@@ -85,12 +88,23 @@ class MuMu12IPC:
         self.display_id = -1
         self.app_index = 0
         self.buffer_pool = BufferPool(10)
-        self.manager_path = config.conf.simulator.simulator_folder + "MuMuManager.exe"
+        self.manager_path = os.path.join(config.conf.simulator.simulator_folder, "MuMuManager.exe")
+        # self.manager_path = config.conf.simulator.simulator_folder + "MuMuManager.exe"
         self._setting_info = None
         # 加载动态链接库
-        dll_path = os.path.join(
-            self.emulator_folder, "shell", "sdk", "external_renderer_ipc.dll"
-        )
+
+        shell_path = os.path.join(self.emulator_folder, "shell")
+        nx_main_path = os.path.join(self.emulator_folder, "nx_main")
+        dll_path = self.emulator_folder
+        if os.path.exists(shell_path) and os.path.isdir(shell_path):
+            dll_path = os.path.join(self.emulator_folder, "shell", "sdk", "external_renderer_ipc.dll")
+        elif os.path.exists(nx_main_path) and os.path.isdir(nx_main_path):
+            dll_path = os.path.join(self.emulator_folder, "nx_main", "sdk", "external_renderer_ipc.dll")
+        else:
+            raise NemuIpcIncompatible(
+                    f"文件不存在: {dll_path}, 请检查模拟器文件夹是否正确"
+                    f"NemuIpc requires MuMu12 version >= 3.8.13, please check your version"
+                )
         try:
             self.external_renderer = ctypes.CDLL(dll_path)
         except OSError as e:
@@ -186,35 +200,73 @@ class MuMu12IPC:
                 raise
         return self._setting_info
 
+    def get_setting_core_version(self):
+        """获取模拟器 core_version 信息，只执行一次并缓存"""
+        if self._setting_info is None:
+            cmd = [self.manager_path, "setting", "-v", str(self.instanse_index), "get_key","core_version"]
+            try:
+                result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+                output = result.stdout.strip()
+                return output
+                # logger.debug("MuMu setting info loaded and cached.")
+            except Exception as e:
+                logger.error(f"获取 MuMu setting 失败: {e}")
+                raise
+        return self._setting_info
+
     def get_field_value(self, data, key):
         return data.get(key)
 
     def emulator_version(self) -> list[int]:
-        version = self.get_field_value(self.get_setting_info(), "core_version")
-        return [int(v) for v in version.split(".")]
+        core_version = self.get_setting_core_version()
+        # version = self.get_field_value(self.get_setting_info(), "core_version")
+        return [int(v) for v in core_version.split(".")]
 
     def get_emulator_info(self):
         """获取模拟器运行状态（实时查询）"""
-        cmd = [self.manager_path, "info", "-v", str(self.instanse_index), "-a"]
+        # cmd = [self.manager_path, "info", "-v", str(self.instanse_index)]
+        cmd = [self.manager_path, "api", "-v", str(self.instanse_index),"player_state"]
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            output = result.stdout.strip()
-            return json.loads(output)
+            player_index = None
+            found_condition = False
+            stdout = result.stdout
+            pattern1 = r"player index: (\d+)(?:\r\n|\r|\n)"
+            match1 = re.search(pattern1, stdout)
+            if match1:
+                player_index = int(match1.group(1))
+                found_condition = True
+            if found_condition:
+                if player_index == self.instanse_index:
+                    pattern2 = r"state: state=([^\s\r\n]+)(?:\r\n|\r|\n|$)"
+                    match2 = re.search(pattern2, stdout)
+                    if match2:
+                        return match2.group(1)
+            logger.error(f"获取 MuMu 模拟器 info 失败: {e}")
+            raise
         except Exception as e:
             logger.error(f"获取 MuMu 模拟器 info 失败: {e}")
             raise
 
     def emulator_status(self) -> str:
         data = self.get_emulator_info()
-        android = self.get_field_value(data, "is_android_started")
-        process = self.get_field_value(data, "is_process_started")
-        state = self.get_field_value(data, "player_state")
-
-        if android or state == "start_finished":
+        if data == "start_finished":
             return "running"
-        if process:
+        if data == "starting_vm":
+            return "launching"
+        if data == "starting_rom":
             return "launching"
         return "stopped"
+
+        # android = self.get_field_value(data, "is_android_started")
+        # process = self.get_field_value(data, "is_process_started")
+        # state = self.get_field_value(data, "player_state")
+
+        # if android or state == "start_finished":
+        #     return "running"
+        # if process:
+        #     return "launching"
+        # return "stopped"
 
     @cached_property
     def is_new_version(self):
