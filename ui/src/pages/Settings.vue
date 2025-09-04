@@ -43,6 +43,7 @@ const {
   merge_interval,
   fia_fool,
   droidcast,
+  mumu12IPC,
   maa_adb_path,
   maa_gap,
   custom_screenshot,
@@ -113,16 +114,24 @@ const screenshot_method = computed({
       result = 'droidcast'
     } else if (custom_screenshot.value.enable) {
       result = 'custom'
+    } else if (mumu12IPC.value) {
+      result = 'mumu12IPC'
+    }
+    if (result === 'mumu12IPC' && simulator.value.name !== 'MuMu12') {
+      return 'adb_gzip'
     }
     return result
   },
   set(value) {
     droidcast.value.enable = false
     custom_screenshot.value.enable = false
+    mumu12IPC.value = false
     if (value == 'droidcast') {
       droidcast.value.enable = true
     } else if (value == 'custom') {
       custom_screenshot.value.enable = true
+    } else if (value == 'mumu12IPC' && simulator.value.name === 'MuMu12') {
+      mumu12IPC.value = true
     }
   }
 })
@@ -364,6 +373,9 @@ if (return_home_when_idle.value) {
                   </n-radio>
                   <n-radio value="droidcast">
                     DroidCast<help-text>有损压缩，速度更快</help-text>
+                  </n-radio>
+                  <n-radio v-if="simulator.name === 'MuMu12'" value="mumu12IPC">
+                    MuMu 截图增强<help-text>如果选择，则强制使用MuMu自带的触控方案</help-text>
                   </n-radio>
                   <n-radio value="custom">
                     自定义命令<help-text>向<code>STDOUT</code>打印图像</help-text>

@@ -1,5 +1,208 @@
 [
   {
+    "key": 386,
+    "name": "八幡海铃",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "可靠伙伴",
+        "buffer": true,
+        "buffer_des": [
+          "cc_bd_mujica"
+        ],
+        "des": "进驻控制中枢时，<$cc.bd_mujica><@cc.rem>热情值</></><@cc.vup>+10</>；人脉资源的联络速度<@cc.vup>+10%</>（同种效果取最高）",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_hire_tmoris",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "家族认可",
+        "buffer": true,
+        "buffer_des": [
+          "cc_g_siracusa"
+        ],
+        "des": "进驻控制中枢时，每个进驻在贸易站的<$cc.g.siracusa><@cc.kw>叙拉古</></>干员，订单获取效率<@cc.vup>+5%</>",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_t_limit&spd_tmoris",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 385,
+    "name": "三角初华",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "偶像光环",
+        "buffer": true,
+        "buffer_des": [
+          "cc_bd_mujica"
+        ],
+        "des": "进驻控制中枢时，宿舍内每有<@cc.vup>1</>名干员，<$cc.bd_mujica><@cc.rem>热情值</></><@cc.vup>+1</>",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_dorm_uika1",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "羁绊相生",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻控制中枢时，所有宿舍内所有干员的心情每小时恢复<@cc.vup>+0.05</>（同种效果取最高）；当与<@cc.kw>丰川祥子</>一起进驻控制中枢时，<@cc.kw>丰川祥子</>的心情每小时恢复<@cc.vup>+0.1</>",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_dorm_uika2",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 384,
+    "name": "祐天寺若麦",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "勤学苦练",
+        "buffer": true,
+        "buffer_des": [
+          "cc_bd_mujica"
+        ],
+        "des": "进驻控制中枢时，<$cc.bd_mujica><@cc.rem>热情值</></><@cc.vup>+10</>；会客室线索搜集速度提升<@cc.vup>+5%</>（同种效果取最高）",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_meet_amoris1",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "成效优先",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "当与<@cc.kw>丰川祥子</>一起进驻控制中枢时，<@cc.kw>丰川祥子</>心情每小时消耗<@cc.vdown>+0.05</>，会客室线索搜集速度额外提升<@cc.vup>+5%</>（同种效果取最高）",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_meet_amoris2",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 383,
+    "name": "若叶睦",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "演技的怪物",
+        "buffer": true,
+        "buffer_des": [
+          "cc_bd_mujica"
+        ],
+        "des": "进驻控制中枢时，<$cc.bd_mujica><@cc.rem>热情值</></><@cc.vup>+20</>；每有<@cc.vup>8</>点<$cc.bd_mujica><@cc.rem>热情值</></>，自身心情每小时消耗<@cc.vdown>+0.01</>，所有贸易站订单效率<@cc.vup>+1%</>（同种效果取最高）",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_trade_mortis",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "互为半身",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "当与<@cc.kw>丰川祥子</>一起进驻控制中枢时，消除自身心情消耗的影响",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_mp_mortis",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 382,
+    "name": "丰川祥子",
+    "span": 3,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "丰富工作经验",
+        "buffer": true,
+        "buffer_des": [
+          "cc_bd_mujica"
+        ],
+        "des": "进驻控制中枢时，所有生产<@cc.kw>贵金属</>类配方的制造站生产力<@cc.vup>+0.5%</>，每有<@cc.vup>20</>点<$cc.bd_mujica><@cc.rem>热情值</></>，所有生产<@cc.kw>贵金属</>类配方的制造站生产力<@cc.vup>+0.5%</>",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_p_oblvns",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 0,
+        "skill_level": 1,
+        "phase_level": "精2 1级",
+        "skillname": "丰富工作经验",
+        "buffer": true,
+        "buffer_des": [
+          "cc_bd_mujica"
+        ],
+        "des": "进驻控制中枢时，所有生产<@cc.kw>贵金属</>类配方的制造站生产力<@cc.vup>+1%</>，每有<@cc.vup>20</>点<$cc.bd_mujica><@cc.rem>热情值</></>，所有生产<@cc.kw>贵金属</>类配方的制造站生产力<@cc.vup>+1%</>",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_p_oblvns",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "生活的重压",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻控制中枢时，热情值处于<@cc.kw>40</>点及以上时，自身心情每小时消耗<@cc.vdown>+0.05</>",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_mp_oblvns",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
     "key": 381,
     "name": "松桐",
     "span": 2,

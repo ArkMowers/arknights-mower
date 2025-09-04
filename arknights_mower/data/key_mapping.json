@@ -111,20 +111,6 @@
         "NORMAL",
         10205
     ],
-    "LMTGS_COIN_6401": [
-        "LMTGS_COIN_6401",
-        "LMTGS_COIN_6401",
-        "寻访数据契约",
-        "NORMAL",
-        10322
-    ],
-    "寻访数据契约": [
-        "LMTGS_COIN_6401",
-        "LMTGS_COIN_6401",
-        "寻访数据契约",
-        "NORMAL",
-        10322
-    ],
     "EPGS_COIN": [
         "EPGS_COIN",
         "EPGS_COIN",
@@ -419,17 +405,17 @@
         "NORMAL",
         40001
     ],
-    "LIMITED_TKT_GACHA_10_6401": [
-        "LIMITED_TKT_GACHA_10_6401",
-        "LIMITED_TKT_GACHA_10_6401",
-        "浪客行歌寻访凭证",
+    "LINKAGE_TKT_GACHA_10_6501": [
+        "LINKAGE_TKT_GACHA_10_6501",
+        "LINKAGE_TKT_GACHA_10_6501",
+        "坠梦歌谣寻访凭证",
         "NORMAL",
         40003
     ],
-    "浪客行歌寻访凭证": [
-        "LIMITED_TKT_GACHA_10_6401",
-        "LIMITED_TKT_GACHA_10_6401",
-        "浪客行歌寻访凭证",
+    "坠梦歌谣寻访凭证": [
+        "LINKAGE_TKT_GACHA_10_6501",
+        "LINKAGE_TKT_GACHA_10_6501",
+        "坠梦歌谣寻访凭证",
         "NORMAL",
         40003
     ],
@@ -7111,6 +7097,62 @@
         "MATERIAL",
         700172
     ],
+    "p_char_4183_mortis": [
+        "p_char_4183_mortis",
+        "p_char_4183_mortis",
+        "若叶睦的信物",
+        "MATERIAL",
+        700173
+    ],
+    "若叶睦的信物": [
+        "p_char_4183_mortis",
+        "p_char_4183_mortis",
+        "若叶睦的信物",
+        "MATERIAL",
+        700173
+    ],
+    "p_char_4184_dolris": [
+        "p_char_4184_dolris",
+        "p_char_4184_dolris",
+        "三角初华的信物",
+        "MATERIAL",
+        700174
+    ],
+    "三角初华的信物": [
+        "p_char_4184_dolris",
+        "p_char_4184_dolris",
+        "三角初华的信物",
+        "MATERIAL",
+        700174
+    ],
+    "p_char_4185_amoris": [
+        "p_char_4185_amoris",
+        "p_char_4185_amoris",
+        "祐天寺若麦的信物",
+        "MATERIAL",
+        700175
+    ],
+    "祐天寺若麦的信物": [
+        "p_char_4185_amoris",
+        "p_char_4185_amoris",
+        "祐天寺若麦的信物",
+        "MATERIAL",
+        700175
+    ],
+    "p_char_4186_tmoris": [
+        "p_char_4186_tmoris",
+        "p_char_4186_tmoris",
+        "八幡海铃的信物",
+        "MATERIAL",
+        700176
+    ],
+    "八幡海铃的信物": [
+        "p_char_4186_tmoris",
+        "p_char_4186_tmoris",
+        "八幡海铃的信物",
+        "MATERIAL",
+        700176
+    ],
     "p_char_103_angel": [
         "p_char_103_angel",
         "p_char_103_angel",
@@ -8734,6 +8776,20 @@
         "斩业星熊的信物",
         "MATERIAL",
         600116
+    ],
+    "p_char_4182_oblvns": [
+        "p_char_4182_oblvns",
+        "p_char_4182_oblvns",
+        "丰川祥子的信物",
+        "MATERIAL",
+        600117
+    ],
+    "丰川祥子的信物": [
+        "p_char_4182_oblvns",
+        "p_char_4182_oblvns",
+        "丰川祥子的信物",
+        "MATERIAL",
+        600117
     ],
     "class_p_char_123_fang": [
         "class_p_char_123_fang",

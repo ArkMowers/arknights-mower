@@ -459,16 +459,6 @@ class SceneGraphSolver(BaseSolver):
                 raise
             except Exception as e:
                 logger.exception(f"场景转移异常：{e}")
-                """restart_simulator()
-                self.device.client.check_server_alive()
-                Session().connect(config.conf.adb)
-                if config.conf.droidcast.enable:
-                    self.device.start_droidcast()
-                if config.conf.touch_method == "scrcpy":
-                    self.device.control.scrcpy = Scrcpy(self.device.client)
-                self.check_current_focus()
-                return False
-        return True"""
                 if error_count <= 5:
                     self.sleep()
                     error_count += 1
