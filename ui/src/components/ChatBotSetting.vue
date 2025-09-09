@@ -2,15 +2,15 @@
 import { useConfigStore } from '@/stores/config'
 import { storeToRefs } from 'pinia'
 const store = useConfigStore()
-const { ai_key, ai_type } = storeToRefs(store)
-const type_options = [{ label: 'Deepseek', value: 'deepseek' }]
+const { ai_key, ai_type, ai_api_url, ai_model } = storeToRefs(store)
+const type_options = [{ label: 'Deepseek', value: 'deepseek' },{ label: '自定义', value: '自定义' }]
 </script>
 <template>
   <n-card>
     <template #header>
       <div class="card-title">本地 AI 助手</div>
       <help-text
-        ><div>目前仅支持Deepseek</div>
+        ><div>选择自定义可配置API地址和模型</div>
         <div>
           Deepseek 密钥请前往
           <a href="https://platform.deepseek.com/api_keys" target="_blank">Deepseek 官网</a> 获取，
@@ -30,10 +30,25 @@ const type_options = [{ label: 'Deepseek', value: 'deepseek' }]
           show-password-on="click"
         />
       </n-form-item>
+      
+      <n-form-item label="API 地址" v-if="ai_type === '自定义'">
+        <n-input
+          v-model:value="ai_api_url"
+          placeholder="请输入自定义API地址"
+          style="width: 100%"
+        />
+      </n-form-item>
+      
+      <n-form-item label="模型名称" v-if="ai_type === '自定义'">
+        <n-input
+          v-model:value="ai_model"
+          placeholder="请输入自定义模型名称"
+          style="width: 100%"
+        />
+      </n-form-item>
     </n-form>
   </n-card>
 </template>
-<<<<<<< HEAD
 <style scoped>
 a {
   color: #f5f5f5; /* 或你喜欢的浅色 */
@@ -46,4 +61,3 @@ a:hover {
   color: #ffd700;
 }
 </style>
-======= >>>>>>> 43db50353535c87d4eb6fd690fb9ac168a4abd55

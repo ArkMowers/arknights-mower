@@ -51,9 +51,17 @@ tool_message_map = {
 
 
 def build_workflow(api_key):
+    # 如果是自定义类型，使用配置的 API 地址和模型名称
+    if config.conf.ai_type == "自定义":
+        model = config.conf.ai_model
+        base_url = config.conf.ai_api_url
+    else:
+        model = model_name_map[config.conf.ai_type][0]
+        base_url = model_name_map[config.conf.ai_type][1]
+        
     llm = ChatOpenAI(
-        model=model_name_map[config.conf.ai_type][0],
-        base_url=model_name_map[config.conf.ai_type][1],
+        model=model,
+        base_url=base_url,
         api_key=api_key,
         temperature=0,
     )
@@ -106,6 +114,15 @@ def ask_llm(user_input, context=None, api_key=None):
     if api_key is None or not api_key.strip():
         yield "未检测到 API Key，请先在设置中配置你的 AI Key。"
         return
+    
+    # 验证自定义 AI 类型的配置
+    if config.conf.ai_type == "自定义":
+        if not config.conf.ai_api_url or not config.conf.ai_api_url.strip():
+            yield "未检测到 API 地址，请先在设置中配置你的自定义 AI 的 API 地址。"
+            return
+        if not config.conf.ai_model or not config.conf.ai_model.strip():
+            yield "未检测到模型名称，请先在设置中配置你的自定义 AI 的模型名称。"
+            return
     if context is None:
         context = []
     AI_INTRO = (

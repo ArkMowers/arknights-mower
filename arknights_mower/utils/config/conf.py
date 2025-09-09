@@ -569,6 +569,10 @@ class AIAgentPart(ConfModel):
     "名称"
     ai_key: str = ""
     "密钥"
+    ai_api_url: str = ""
+    "API地址"
+    ai_model: str = ""
+    "模型名称"
 
 
 class MaaRewardPart(ConfModel):
