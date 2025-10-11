@@ -204,13 +204,17 @@ if __name__ == "__main__":
     conf = config.conf
     tray = conf.webview.tray
     token = conf.webview.token
-    host = "0.0.0.0" if token else "127.0.0.1"
+    host = conf.webview.host  # 直接从配置读取绑定地址
 
     splash_queue.put({"type": "text", "data": "检测端口占用"})
 
     from arknights_mower.utils.network import get_new_port, is_port_in_use
 
-    if token:
+    if conf.webview.use_random_port:
+        # 使用随机端口
+        port = get_new_port()
+    else:
+        # 使用固定端口
         port = conf.webview.port
 
         if is_port_in_use(port):
@@ -218,8 +222,6 @@ if __name__ == "__main__":
                 {"type": "dialog", "data": f"端口{port}已被占用，无法启动！"}
             )
             sys.exit()
-    else:
-        port = get_new_port()
 
     url = f"http://127.0.0.1:{port}"
     if token:

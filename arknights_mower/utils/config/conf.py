@@ -75,8 +75,12 @@ class EmailPart(ConfModel):
 
 class ExtraPart(ConfModel):
     class WebViewConf(ConfModel):
+        host: str = "127.0.0.1"
+        "绑定地址"
         port: int = 58000
         "端口号"
+        use_random_port: bool = False
+        "使用随机端口"
         width: int = 1450
         "窗口宽度"
         height: int = 850

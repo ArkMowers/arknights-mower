@@ -158,10 +158,15 @@ const onSelectionChange = (newValue) => {
     simulator.value.index = '0'
   }
 }
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import ChatBotSetting from '../components/ChatBotSetting.vue'
 
 const idleAction = ref('') // 'home' | 'exit' | 'close'
+
+// 检测不安全的网络配置
+const isUnsafeNetworkConfig = computed(() => {
+  return webview.value.host === '0.0.0.0' && (!webview.value.token || webview.value.token.trim() === '')
+})
 const showSettingModal = ref(false)
 const editingIndex = ref(null)
 
@@ -460,6 +465,65 @@ if (return_home_when_idle.value) {
               >
                 应用
               </n-button>
+            </n-form-item>
+            <n-form-item>
+              <template #label>
+                <span>远程连接密钥</span>
+                <help-text>
+                  <div>留空则不需要token验证</div>
+                  <div>重启生效</div>
+                </help-text>
+              </template>
+              <n-input v-model:value="webview.token" placeholder="留空表示不启用" type="password" show-password-on="click" />
+            </n-form-item>
+            <n-form-item label="绑定地址">
+              <n-radio-group v-model:value="webview.host">
+                <n-space vertical>
+                  <n-radio value="127.0.0.1">
+                    127.0.0.1（仅本地访问）
+                    <help-text>只能从本机访问，更安全</help-text>
+                  </n-radio>
+                  <n-radio value="0.0.0.0">
+                    0.0.0.0（允许远程访问）
+                    <help-text>允许局域网内其他设备访问，建议配合token使用</help-text>
+                  </n-radio>
+                </n-space>
+              </n-radio-group>
+              <help-text>重启生效</help-text>
+            </n-form-item>
+            <n-form-item v-if="isUnsafeNetworkConfig" :show-label="false">
+              <n-alert type="error" title="安全警告" :bordered="false">
+                <div style="font-weight: bold; margin-bottom: 8px;">⚠️ 严重安全风险！</div>
+                <div>您正在允许远程访问（0.0.0.0）但<strong>未设置连接密钥</strong>！</div>
+                <div>这意味着局域网内的任何人都可以无需验证访问您的Mower，并可能：</div>
+                <ul style="margin: 8px 0; padding-left: 20px;">
+                  <li>查看您的账号配置信息</li>
+                  <li>修改游戏设置和排班计划</li>
+                  <li>控制您的游戏操作</li>
+                </ul>
+                <div style="margin-top: 8px;">
+                  <strong>建议：</strong>立即设置远程连接密钥，或将绑定地址改为 127.0.0.1
+                </div>
+              </n-alert>
+            </n-form-item>
+            <n-form-item label="端口设置">
+              <n-radio-group v-model:value="webview.use_random_port">
+                <n-space vertical>
+                  <n-radio :value="false">
+                    固定端口
+                    <help-text>使用指定的端口号，便于记忆和配置</help-text>
+                  </n-radio>
+                  <n-radio :value="true">
+                    随机端口
+                    <help-text>每次启动时自动分配可用端口</help-text>
+                  </n-radio>
+                </n-space>
+              </n-radio-group>
+              <help-text>重启生效</help-text>
+            </n-form-item>
+            <n-form-item v-if="!webview.use_random_port" label="端口号">
+              <n-input-number v-model:value="webview.port" :min="1024" :max="65535" />
+              <help-text>建议使用1024-65535之间的端口</help-text>
             </n-form-item>
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="webview.tray">
