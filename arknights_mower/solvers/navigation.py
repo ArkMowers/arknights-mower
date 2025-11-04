@@ -216,7 +216,7 @@ class NavigationSolver(SceneGraphSolver):
             elif isinstance(self.prefix, int):
                 self.tap_terminal_button("main_theme")
             elif self.prefix in ["OF"]:
-                self.tap_terminal_button("biography")
+                raise NotImplementedError("别传关卡导航暂未实现，请手动点击")
             elif self.prefix in collection_prefixs:
                 self.tap_terminal_button("collection")
         elif scene == Scene.OPERATOR_ELIMINATE:

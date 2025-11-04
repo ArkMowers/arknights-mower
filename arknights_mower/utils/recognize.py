@@ -109,7 +109,7 @@ class Recognizer:
         result = cv2.matchTemplate(img, res, cv2.TM_SQDIFF_NORMED)
         result = result[0][0]
         logger.debug(result)
-        return result < 0.1
+        return result < 0.31
 
     def check_current_focus(self):
         if self.device.check_current_focus():
@@ -231,7 +231,7 @@ class Recognizer:
             self.scene = Scene.LOGIN_LOADING
         elif self.find("arrange_order_options"):
             self.scene = Scene.RIIC_OPERATOR_SELECT
-        elif self.find("arrange_order_options_scene"):
+        elif self.find("arrange_order_options_scene", threshold=0.90):
             self.scene = Scene.INFRA_ARRANGE_ORDER
         elif self.find("ope_recover_potion_on"):
             self.scene = Scene.OPERATOR_RECOVER_POTION
@@ -710,8 +710,8 @@ class Recognizer:
             "12cadpa": (1810, 21),
             "arrange_confirm": (963, 969),
             "arrange_order_options": (1652, 23),
-            "arrange_order_options_scene": (369, 199),
-            "clue": (1740, 855),
+            ## "arrange_order_options_scene": (369, 199),
+            "clue": (1751, 900),
             "clue/daily": (526, 623),
             "clue/filter_all": (1297, 99),
             "clue/give_away": (25, 18),
@@ -779,7 +779,7 @@ class Recognizer:
             "shop_cart": (1252, 842),
             "shop_credit_2": (1657, 135),
             "skip": (1803, 32),
-            "terminal_main": (73, 959),
+            "terminal_main": (113, 959),
             "terminal_pre2": (1459, 797),
         }
 

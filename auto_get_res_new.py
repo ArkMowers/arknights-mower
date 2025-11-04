@@ -14,6 +14,28 @@ from sklearn.neighbors import KNeighborsClassifier
 from arknights_mower.utils.image import loadimg, thres2
 
 
+def 提取干员名图片(imgpath, 裁剪区域: int = 1, 模式: int = 1):
+    """
+    imgpath: 选人界面截图的路径，需要待提取干员处于最左侧；
+    裁剪区域：1为左上，2为左下；
+    模式：1为基建选择，2为训练室的训练位选择。
+    保存到本地并手动重命名为干员名后可以用于训练模型。
+    """
+    # 只做两个裁剪区域，其他区域可能存在裁剪不准的问题
+    pos = {
+        "常规站": {"左上": (631, 488), "左下": (631, 909)},
+        "训练室": {"左上": (578, 479), "左下": (578, 895)},
+    }
+    shape = {"常规站": (190, 32), "训练室": (180, 27)}
+    img = Image.open(imgpath)
+    站 = "常规站" if 模式 == 1 else "训练室"
+    位置 = "左上" if 裁剪区域 == 1 else "左下"
+    (x, y) = pos[站][位置]
+    (w, h) = shape[站]
+    img = img.crop((x, y, x + w, y + h))
+    img.save("./arknights_mower/opname/unknown.png")
+
+
 class Arknights数据处理器:
     def __init__(self):
         self.当前时间戳 = datetime.now().timestamp()
@@ -549,6 +571,12 @@ class Arknights数据处理器:
                 draw.text((50, 20), operator, fill=(255,), font=font)
 
             img = np.array(img, dtype=np.uint8)
+            local_imgpath = f"arknights_mower/opname/{operator}.png"
+            if os.path.exists(local_imgpath):
+                with open(local_imgpath, "rb") as f:
+                    img_data = f.read()
+                img_array = np.frombuffer(img_data, np.uint8)
+                img = cv2.imdecode(img_array, cv2.IMREAD_GRAYSCALE)
             img = thres2(img, 140)
             dilation = cv2.dilate(img, kernel, iterations=1)
             contours, _ = cv2.findContours(
@@ -563,6 +591,65 @@ class Arknights数据处理器:
             data[operator] = tpl
 
         with lzma.open("arknights_mower/models/operator_select.model", "wb") as f:
+            pickle.dump(data, f)
+
+    def 训练训练室干员名的模型(self):
+        font30 = ImageFont.truetype(
+            "arknights_mower/fonts/SourceHanSansCN-Medium.otf", 30
+        )
+        font28 = ImageFont.truetype(
+            "arknights_mower/fonts/SourceHanSansCN-Medium.otf", 28
+        )
+        font25 = ImageFont.truetype(
+            "arknights_mower/fonts/SourceHanSansCN-Medium.otf", 25
+        )
+
+        font24 = ImageFont.truetype(
+            "arknights_mower/fonts/SourceHanSansCN-Medium.otf", 24
+        )
+
+        data = {}
+
+        kernel = np.ones((10, 10), np.uint8)
+
+        with open("./arknights_mower/data/agent.json", "r", encoding="utf-8") as f:
+            agent_list = json.load(f)
+        for idx, operator in enumerate(agent_list):
+            font = font30
+            if not operator[0].encode().isalpha():
+                if len(operator) == 7:
+                    if "·" in operator:
+                        font = font25  # 维娜·维多利亚的特殊字号
+                    else:
+                        font = font24  # 泰拉大陆调查团
+                elif len(operator) == 6:
+                    font = font28
+            img = Image.new(mode="L", size=(400, 100))
+            draw = ImageDraw.Draw(img)
+            draw.text((50, 20), operator, fill=(255,), font=font)
+
+            img = np.array(img, dtype=np.uint8)
+            local_imgpath = f"arknights_mower/opname/{operator}_train.png"
+            if os.path.exists(local_imgpath):
+                with open(local_imgpath, "rb") as f:
+                    img_data = f.read()
+                img_array = np.frombuffer(img_data, np.uint8)
+                img = cv2.imdecode(img_array, cv2.IMREAD_GRAYSCALE)
+            img = thres2(img, 140)
+            dilation = cv2.dilate(img, kernel, iterations=1)
+            contours, _ = cv2.findContours(
+                dilation, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
+            )
+            rect = map(lambda c: cv2.boundingRect(c), contours)
+            x, y, w, h = sorted(rect, key=lambda c: c[0])[0]
+            img = img[y : y + h, x : x + w]
+            tpl = np.zeros((42, 200), dtype=np.uint8)
+            h = min(img.shape[0], tpl.shape[0])
+            w = min(img.shape[1], tpl.shape[1])
+            tpl[:h, :w] = img[:h, :w]
+            data[operator] = tpl
+
+        with lzma.open("arknights_mower/models/operator_train.model", "wb") as f:
             pickle.dump(data, f)
 
     def auto_fight_avatar(self):
@@ -762,6 +849,8 @@ formulaType = {
     "F_EVOLVE": "精英材料",
 }
 
+# 提取干员名图片("./clst.png",1,2)
+
 数据处理器 = Arknights数据处理器()
 
 数据处理器.添加物品()  # 显示在仓库里的物品
@@ -781,6 +870,9 @@ print("训练在房间内的干员名的模型,完成")
 
 数据处理器.训练选中的干员名的模型()
 print("训练选中的干员名的模型,完成")
+
+数据处理器.训练训练室干员名的模型()
+print("训练训练室干员名的模型,完成")
 
 
 数据处理器.auto_fight_avatar()

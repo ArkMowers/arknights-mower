@@ -8,7 +8,7 @@ RUN echo 'Acquire::https::Verify-Peer "false";' > /etc/apt/apt.conf.d/99disable-
 
 # 安装系统依赖
 RUN apt-get update && \
-    apt-get install -y python3 python3-pip python3-venv adb curl jq ca-certificates libgl1 libglib2.0-0 && \
+    apt-get install -y python3 python3-pip python3-venv adb curl jq ca-certificates libzbar0 libgl1 libglib2.0-0 && \
     rm -rf /var/lib/apt/lists/* && \
     rm /etc/apt/apt.conf.d/99disable-peer-verification
 

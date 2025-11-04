@@ -49,6 +49,12 @@ async function accept_name() {
   await pywebview.api.rename(idx, new_name.value)
 }
 
+async function openAll() {
+  for (let idx = 0; idx < instances.value.length; idx++) {
+    start(idx) // 调用 start 方法
+  }
+}
+
 function drop_name() {
   editing.value = -1
 }
@@ -67,6 +73,9 @@ async function start(idx) {
 
 <template>
   <div class="mower-list">
+    <div class="openheader">
+      <n-button @click="openAll">全部打开</n-button>
+    </div>
     <template v-if="loading">
       <n-card size="small" v-for="i in 3" :key="i">
         <template #header>
@@ -175,6 +184,13 @@ async function start(idx) {
   display: flex;
   gap: 6px;
   align-items: center;
+}
+
+.openheader {
+  display: flex;
+  justify-content: flex-start; /* 按钮靠左显示 */
+  padding: 12px;
+  background-color: #f9f9f9; /* 添加背景色以便更容易看到 */
 }
 
 .folder-content {

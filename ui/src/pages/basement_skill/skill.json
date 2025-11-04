@@ -1,5 +1,806 @@
 [
   {
+    "key": 395,
+    "name": "凛御银灰",
+    "span": 3,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "商业版图",
+        "buffer": true,
+        "buffer_des": [
+          "cc_g_karlan"
+        ],
+        "des": "进驻控制中枢时，每个存在<@cc.vup>3</>名<$cc.g.karlan><@cc.kw>谢拉格</></>干员的贸易站，订单获取效率<@cc.vup>+10%</>",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_t_limit&spd3",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "先锋专精·α",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻训练室协助位时，<@cc.kw>先锋</>干员的专精技能训练速度<@cc.vup>+30%</>，如果本次训练专精技能至<@cc.vup>3</>级，则训练速度额外<@cc.vup>0%</>",
+        "roomType": "训练室",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_train_spd&profession2",
+        "buffColor": "#7d0022",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 1,
+        "phase_level": "精2 1级",
+        "skillname": "先驱者共识",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻训练室协助位时，<@cc.kw>先锋</>干员的专精技能训练速度<@cc.vup>+30%</>，如果本次训练专精技能至<@cc.vup>3</>级，则训练速度额外<@cc.vup>+50%</>",
+        "roomType": "训练室",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_train_spd&profession2",
+        "buffColor": "#7d0022",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 394,
+    "name": "雪猎",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "虔信",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻制造站时，生产力<@cc.vup>+20%</>，心情每小时消耗<@cc.vdown>+0.25</>",
+        "roomType": "制造站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "bskill_man_spd&cost2",
+        "buffColor": "#ffd800",
+        "textColor": "#333333"
+      },
+      {
+        "skill_key": 0,
+        "skill_level": 1,
+        "phase_level": "精2 1级",
+        "skillname": "独当一面",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻制造站时，生产力<@cc.vup>+30%</>，心情每小时消耗<@cc.vdown>+0.25</>",
+        "roomType": "制造站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "bskill_man_spd&cost3",
+        "buffColor": "#ffd800",
+        "textColor": "#333333"
+      }
+    ]
+  },
+  {
+    "key": 393,
+    "name": "协律",
+    "span": 3,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "澎湃紊流",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻发电站时，无人机充能速度<@cc.vup>+10%</>",
+        "roomType": "发电站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "bskill_pow_spd1",
+        "buffColor": "#8fc31f",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 0,
+        "skill_level": 1,
+        "phase_level": "精1 1级",
+        "skillname": "澎湃紊流",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻发电站时，无人机充能速度<@cc.vup>+15%</>",
+        "roomType": "发电站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "bskill_pow_spd2",
+        "buffColor": "#8fc31f",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精1 1级",
+        "skillname": "赋格融汇",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻宿舍时，自身心情每小时恢复<@cc.vup>+0.7</>；如果该宿舍内有其他干员，则每人额外为自身心情每小时恢复<@cc.vup>+0.05</>",
+        "roomType": "宿舍",
+        "buffCategory": "RECOVERY",
+        "skillIcon": "bskill_dorm_one",
+        "buffColor": "#21cdcb",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 392,
+    "name": "溯光星源",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "勘探背包",
+        "buffer": true,
+        "buffer_des": [
+          "cc_sk_manu2"
+        ],
+        "des": "进驻制造站时，当前制造站内每个<$cc.sk.manu2><@cc.kw>莱茵科技类</></>技能为自身<@cc.vup>+5</>的仓库上限容量",
+        "roomType": "制造站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "bskill_man_limit1",
+        "buffColor": "#ffd800",
+        "textColor": "#333333"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "莱茵科技·β",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻制造站时，生产力<@cc.vup>+25%</>",
+        "roomType": "制造站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "bskill_man_spd2",
+        "buffColor": "#ffd800",
+        "textColor": "#333333"
+      }
+    ]
+  },
+  {
+    "key": 391,
+    "name": "圣聆初雪",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "圣女声望",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻人力办公室时，人脉资源的联络速度<@cc.vup>+20%</>，心情每小时消耗<@cc.vup>-0.25</>",
+        "roomType": "人力办公室",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_hire_spd&cost7",
+        "buffColor": "#565656",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 0,
+        "skill_level": 1,
+        "phase_level": "精2 1级",
+        "skillname": "雪境归心",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻人力办公室时，人脉资源的联络速度<@cc.vup>+35%</>，心情每小时消耗<@cc.vup>-0.25</>，如果<@cc.kw>凛御银灰</>进驻在<@cc.kw>控制中枢</>，则人脉资源的联络速度额外<@cc.vup>+10%</>",
+        "roomType": "人力办公室",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_hire_spd&char1",
+        "buffColor": "#565656",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 390,
+    "name": "哈蒂娅",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "近卫专精·α",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻训练室协助位时，<@cc.kw>近卫</>干员的专精技能训练速度<@cc.vup>+30%</>，如果本次训练专精技能至<@cc.vup>0</>级，则训练速度额外<@cc.vup>0%</>",
+        "roomType": "训练室",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_train_guard1",
+        "buffColor": "#7d0022",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 0,
+        "skill_level": 1,
+        "phase_level": "精2 1级",
+        "skillname": "勇气传承",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻训练室协助位时，<@cc.kw>近卫</>干员的专精技能训练速度<@cc.vup>+30%</>，如果本次训练专精技能至<@cc.vup>3</>级，则训练速度额外<@cc.vup>+45%</>",
+        "roomType": "训练室",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_train3_guard1",
+        "buffColor": "#7d0022",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 389,
+    "name": "冬时",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "科学改造",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻制造站时，当前制造站内其他干员提供的生产力<@cc.vdown>全部归零</>（不包含根据设施数量提供加成的生产力），每个当前制造站内干员为当前制造站仓库容量上限<@cc.vup>+5</>",
+        "roomType": "制造站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "bskill_man_spd_manu1",
+        "buffColor": "#ffd800",
+        "textColor": "#333333"
+      },
+      {
+        "skill_key": 0,
+        "skill_level": 1,
+        "phase_level": "精1 1级",
+        "skillname": "流程优化",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻制造站时，当前制造站内其他干员提供的生产力<@cc.vdown>全部归零</>（不包含根据设施数量提供加成的生产力），每个当前制造站内干员为当前制造站<@cc.vup>+10%</>生产力，仓库容量上限<@cc.vup>+5</>",
+        "roomType": "制造站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "bskill_man_spd_manu2",
+        "buffColor": "#ffd800",
+        "textColor": "#333333"
+      }
+    ]
+  },
+  {
+    "key": 388,
+    "name": "折桠",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "铁匠天赋",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻加工站加工<@cc.kw>异铁组</>材料时，心情消耗为<@cc.kw>2</>的配方全部<@cc.vup>-1</>心情消耗",
+        "roomType": "加工站",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ws_p8",
+        "buffColor": "#e3eb00",
+        "textColor": "#333333"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "余料利用",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻加工站加工<@cc.kw>异铁组</>材料时，副产品的产出概率提升<@cc.vup>90%</>",
+        "roomType": "加工站",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ws_oriron",
+        "buffColor": "#e3eb00",
+        "textColor": "#333334"
+      }
+    ]
+  },
+  {
+    "key": 387,
+    "name": "真言",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "订单分发·α",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻贸易站时，订单获取效率<@cc.vup>+20%</>",
+        "roomType": "贸易站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "bskill_tra_spd1",
+        "buffColor": "#0075a9",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 0,
+        "skill_level": 1,
+        "phase_level": "精2 1级",
+        "skillname": "精英小队",
+        "buffer": true,
+        "buffer_des": [
+          "cc_g_elite"
+        ],
+        "des": "进驻贸易站时，订单获取效率<@cc.vup>+25%</>，基建内（不包含副手及活动室）每有一间进驻<$cc.g.elite><@cc.kw>精英干员</></>的设施，订单获取效率额外<@cc.vup>+2%</>（最多<@cc.kw>10</>间）",
+        "roomType": "贸易站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "bskill_ord_spd&tag1",
+        "buffColor": "#0075a9",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 386,
+    "name": "八幡海铃",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "可靠伙伴",
+        "buffer": true,
+        "buffer_des": [
+          "cc_bd_mujica"
+        ],
+        "des": "进驻控制中枢时，<$cc.bd_mujica><@cc.rem>热情值</></><@cc.vup>+10</>；人脉资源的联络速度<@cc.vup>+10%</>（同种效果取最高）",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_hire_tmoris",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "家族认可",
+        "buffer": true,
+        "buffer_des": [
+          "cc_g_siracusa"
+        ],
+        "des": "进驻控制中枢时，每个进驻在贸易站的<$cc.g.siracusa><@cc.kw>叙拉古</></>干员，订单获取效率<@cc.vup>+5%</>",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_t_limit&spd_tmoris",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 385,
+    "name": "三角初华",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "偶像光环",
+        "buffer": true,
+        "buffer_des": [
+          "cc_bd_mujica"
+        ],
+        "des": "进驻控制中枢时，宿舍内每有<@cc.vup>1</>名干员，<$cc.bd_mujica><@cc.rem>热情值</></><@cc.vup>+1</>",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_dorm_uika1",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "羁绊相生",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻控制中枢时，所有宿舍内所有干员的心情每小时恢复<@cc.vup>+0.05</>（同种效果取最高）；当与<@cc.kw>丰川祥子</>一起进驻控制中枢时，<@cc.kw>丰川祥子</>的心情每小时恢复<@cc.vup>+0.1</>",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_dorm_uika2",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 384,
+    "name": "祐天寺若麦",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "勤学苦练",
+        "buffer": true,
+        "buffer_des": [
+          "cc_bd_mujica"
+        ],
+        "des": "进驻控制中枢时，<$cc.bd_mujica><@cc.rem>热情值</></><@cc.vup>+10</>；会客室线索搜集速度提升<@cc.vup>+5%</>（同种效果取最高）",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_meet_amoris1",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "成效优先",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "当与<@cc.kw>丰川祥子</>一起进驻控制中枢时，<@cc.kw>丰川祥子</>心情每小时消耗<@cc.vdown>+0.05</>，会客室线索搜集速度额外提升<@cc.vup>+5%</>（同种效果取最高）",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_meet_amoris2",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 383,
+    "name": "若叶睦",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "演技的怪物",
+        "buffer": true,
+        "buffer_des": [
+          "cc_bd_mujica"
+        ],
+        "des": "进驻控制中枢时，<$cc.bd_mujica><@cc.rem>热情值</></><@cc.vup>+20</>；每有<@cc.vup>8</>点<$cc.bd_mujica><@cc.rem>热情值</></>，自身心情每小时消耗<@cc.vdown>+0.01</>，所有贸易站订单效率<@cc.vup>+1%</>（同种效果取最高）",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_trade_mortis",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "互为半身",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "当与<@cc.kw>丰川祥子</>一起进驻控制中枢时，消除自身心情消耗的影响",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_mp_mortis",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 382,
+    "name": "丰川祥子",
+    "span": 3,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "丰富工作经验",
+        "buffer": true,
+        "buffer_des": [
+          "cc_bd_mujica"
+        ],
+        "des": "进驻控制中枢时，所有生产<@cc.kw>贵金属</>类配方的制造站生产力<@cc.vup>+0.5%</>，每有<@cc.vup>20</>点<$cc.bd_mujica><@cc.rem>热情值</></>，所有生产<@cc.kw>贵金属</>类配方的制造站生产力<@cc.vup>+0.5%</>",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_p_oblvns",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 0,
+        "skill_level": 1,
+        "phase_level": "精2 1级",
+        "skillname": "丰富工作经验",
+        "buffer": true,
+        "buffer_des": [
+          "cc_bd_mujica"
+        ],
+        "des": "进驻控制中枢时，所有生产<@cc.kw>贵金属</>类配方的制造站生产力<@cc.vup>+1%</>，每有<@cc.vup>20</>点<$cc.bd_mujica><@cc.rem>热情值</></>，所有生产<@cc.kw>贵金属</>类配方的制造站生产力<@cc.vup>+1%</>",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_p_oblvns",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "生活的重压",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻控制中枢时，热情值处于<@cc.kw>40</>点及以上时，自身心情每小时消耗<@cc.vdown>+0.05</>",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_mp_oblvns",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 381,
+    "name": "松桐",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "线索搜集·α",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻会客室时，线索搜集速度提升<@cc.vup>10%</>",
+        "roomType": "会客室",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_meet_spd1",
+        "buffColor": "#dd653f",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "见微知著",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻会客室时，更容易获得线索板上尚未拥有的线索",
+        "roomType": "会客室",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_meet_spdNotOwned1",
+        "buffColor": "#dd653f",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 380,
+    "name": "吉星",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "勤俭经营·α",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻贸易站时，贸易站内除自身以外每名处于工作状态的干员<@cc.vup>+10%</>订单获取效率",
+        "roomType": "贸易站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "bskill_tra_share2",
+        "buffColor": "#0075a9",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 0,
+        "skill_level": 1,
+        "phase_level": "精2 1级",
+        "skillname": "勤俭经营·β",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻贸易站时，贸易站内除自身以外每名处于工作状态的干员<@cc.vup>+20%</>订单获取效率",
+        "roomType": "贸易站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "bskill_tra_share3",
+        "buffColor": "#0075a9",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 379,
+    "name": "遥",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "明星效应",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻宿舍时，该宿舍内所有干员的心情每小时恢复<@cc.vup>+0.15</>（同种效果取最高）",
+        "roomType": "宿舍",
+        "buffCategory": "RECOVERY",
+        "skillIcon": "bskill_dorm_all2",
+        "buffColor": "#21cdcb",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "节目邀约",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻人力办公室时，人脉资源的联络速度<@cc.vup>+45%</>",
+        "roomType": "人力办公室",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_hire_spd5",
+        "buffColor": "#565656",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 378,
+    "name": "斩业星熊",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "下城人脉",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻控制中枢时，如训练室有干员在进行技能专精，则该干员的专精技能训练速度<@cc.vup>+5%</>（同种效果取最高）",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_train_spd3",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "共事情谊",
+        "buffer": true,
+        "buffer_des": [
+          "cc_g_lgd"
+        ],
+        "des": "当与<$cc.g.lgd><@cc.kw>龙门近卫局</></>干员进驻控制中枢一起工作时，所有制造站生产力<@cc.vup>+3%</>（同种效果取最高）",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_token_prod_spd3_lungmenguard",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 377,
+    "name": "司霆惊蛰",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "雷法专精",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻发电站时，无人机充能速度<@cc.vup>+10%</>",
+        "roomType": "发电站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "bskill_pow_spd1",
+        "buffColor": "#8fc31f",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "克己严修",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻加工站加工<@cc.kw>技巧概要</>时，副产品的产出概率提升<@cc.vup>80%</>",
+        "roomType": "加工站",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ws_skill3",
+        "buffColor": "#e3eb00",
+        "textColor": "#333333"
+      }
+    ]
+  },
+  {
+    "key": 376,
+    "name": "录武官",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "医疗专精·α",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻训练室协助位时，<@cc.kw>医疗</>干员的专精技能训练速度<@cc.vup>+30%</>",
+        "roomType": "训练室",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_train_medic1",
+        "buffColor": "#7d0022",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "学无不精·α",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻训练室协助位时，干员的专精技能训练速度<@cc.vup>+25%</>",
+        "roomType": "训练室",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_train_all",
+        "buffColor": "#7d0022",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 375,
+    "name": "电弧",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "点滴关照",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻控制中枢时，控制中枢内所有干员的心情每小时恢复<@cc.vup>+0.05</>",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_cost",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "无言的慈爱",
+        "buffer": true,
+        "buffer_des": [
+          "cc_g_elite"
+        ],
+        "des": "进驻控制中枢时，所有宿舍内<$cc.g.elite><@cc.kw>精英干员</></>的心情每小时恢复<@cc.vup>+0.1</>（同种效果取最高）",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_d_r_tag",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
     "key": 374,
     "name": "Miss.Christine",
     "span": 2,
@@ -25,7 +826,7 @@
         "skillname": "盛餐的回报",
         "buffer": false,
         "buffer_des": [],
-        "des": "进驻制造站时，当与<@cc.kw>酒神</>在在同一个制造站时，<@cc.kw>作战记录</>类配方的生产力<@cc.vup>+30%</>",
+        "des": "进驻制造站时，当与<@cc.kw>酒神</>在同一个制造站时，<@cc.kw>作战记录</>类配方的生产力<@cc.vup>+30%</>",
         "roomType": "制造站",
         "buffCategory": "OUTPUT",
         "skillIcon": "bskill_man_spd_double2",
@@ -6222,7 +7023,7 @@
         "buffer_des": [
           "cc_g_karlan"
         ],
-        "des": "进驻控制中枢时，控制中枢内每个<$cc.g.karlan><@cc.kw>喀兰贸易</></>干员可使控制中枢内所有干员的心情每小时恢复<@cc.vup>+0.05</>",
+        "des": "进驻控制中枢时，控制中枢内每个<$cc.g.karlan><@cc.kw>谢拉格</></>干员可使控制中枢内所有干员的心情每小时恢复<@cc.vup>+0.05</>",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
         "skillIcon": "bskill_ctrl_karlan",
@@ -6238,7 +7039,7 @@
         "buffer_des": [
           "cc_g_karlan"
         ],
-        "des": "进驻控制中枢时，每个进驻在贸易站的<$cc.g.karlan><@cc.kw>喀兰贸易</></>干员，订单获取效率<@cc.vdown>-15%</>，订单上限<@cc.vup>+6</>",
+        "des": "进驻控制中枢时，每个进驻在贸易站的<$cc.g.karlan><@cc.kw>谢拉格</></>干员，订单获取效率<@cc.vdown>-15%</>，订单上限<@cc.vup>+6</>",
         "roomType": "中枢",
         "buffCategory": "FUNCTION",
         "skillIcon": "bskill_ctrl_t_limit&spd",

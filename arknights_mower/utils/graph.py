@@ -42,7 +42,6 @@ def edge(v_from: int, v_to: int, interval: int = 1):
 @edge(Scene.TERMINAL_MAIN, Scene.INDEX)
 @edge(Scene.TERMINAL_MAIN_THEME, Scene.INDEX)
 @edge(Scene.TERMINAL_EPISODE, Scene.INDEX)
-@edge(Scene.TERMINAL_BIOGRAPHY, Scene.INDEX)
 @edge(Scene.TERMINAL_COLLECTION, Scene.INDEX)
 @edge(Scene.TERMINAL_REGULAR, Scene.INDEX)
 @edge(Scene.TERMINAL_LONGTERM, Scene.INDEX)
@@ -165,7 +164,6 @@ def index_to_headhunting(solver: BaseSolver):
 @edge(Scene.TERMINAL_MAIN, Scene.NAVIGATION_BAR)
 @edge(Scene.TERMINAL_MAIN_THEME, Scene.NAVIGATION_BAR)
 @edge(Scene.TERMINAL_EPISODE, Scene.NAVIGATION_BAR)
-@edge(Scene.TERMINAL_BIOGRAPHY, Scene.NAVIGATION_BAR)
 @edge(Scene.TERMINAL_COLLECTION, Scene.NAVIGATION_BAR)
 @edge(Scene.TERMINAL_REGULAR, Scene.NAVIGATION_BAR)
 @edge(Scene.TERMINAL_LONGTERM, Scene.NAVIGATION_BAR)
@@ -292,20 +290,10 @@ def terminal_to_main_theme(solver: BaseSolver):
     solver.tap_terminal_button("main_theme")
 
 
-@edge(Scene.TERMINAL_MAIN, Scene.TERMINAL_BIOGRAPHY)
-@edge(Scene.TERMINAL_COLLECTION, Scene.TERMINAL_BIOGRAPHY)
-@edge(Scene.TERMINAL_REGULAR, Scene.TERMINAL_BIOGRAPHY)
-@edge(Scene.TERMINAL_LONGTERM, Scene.TERMINAL_BIOGRAPHY)
-@edge(Scene.TERMINAL_PERIODIC, Scene.TERMINAL_BIOGRAPHY)
-def terminal_to_biography(solver: BaseSolver):
-    solver.tap_terminal_button("biography")
-
-
 @edge(Scene.OPERATOR_RECOVER_POTION, Scene.OPERATOR_BEFORE)
 @edge(Scene.OPERATOR_RECOVER_ORIGINITE, Scene.OPERATOR_BEFORE)
 @edge(Scene.OPERATOR_BEFORE, Scene.OPERATOR_CHOOSE_LEVEL)
 @edge(Scene.OPERATOR_CHOOSE_LEVEL, Scene.TERMINAL_MAIN_THEME)
-@edge(Scene.OPERATOR_CHOOSE_LEVEL, Scene.TERMINAL_BIOGRAPHY)
 @edge(Scene.OPERATOR_CHOOSE_LEVEL, Scene.TERMINAL_COLLECTION)
 @edge(Scene.OPERATOR_SUPPORT, Scene.OPERATOR_SELECT)
 @edge(Scene.OPERATOR_STRANGER_SUPPORT, Scene.OPERATOR_SUPPORT)
@@ -348,6 +336,7 @@ def todo_complete(solver: BaseSolver):
 @edge(Scene.CLUE_GIVE_AWAY, Scene.INFRA_CONFIDENTIAL)
 @edge(Scene.CLUE_SUMMARY, Scene.INFRA_CONFIDENTIAL)
 @edge(Scene.CLUE_PLACE, Scene.INFRA_CONFIDENTIAL)
+@edge(Scene.INFRA_ARRANGE_ORDER, Scene.INFRA_DETAILS)
 @edge(Scene.ORDER_LIST, Scene.INFRA_DETAILS)
 @edge(Scene.FACTORY_ROOMS, Scene.INFRA_DETAILS)
 @edge(Scene.DRONE_ACCELERATE, Scene.ORDER_LIST)
@@ -361,11 +350,6 @@ def infra_back(solver: BaseSolver):
 @edge(Scene.INFRA_ARRANGE_CONFIRM, Scene.INFRA_DETAILS)
 def infra_arrange_confirm(solver: BaseSolver):
     solver.tap((1452, 1029))
-
-
-@edge(Scene.INFRA_ARRANGE_ORDER, Scene.INFRA_DETAILS)
-def infra_arrange_order(solver: BaseSolver):
-    solver.tap_element("arrange_blue_yes", x_rate=0.66)
 
 
 @edge(Scene.RIIC_REPORT, Scene.CTRLCENTER_ASSISTANT)
@@ -471,16 +455,6 @@ class SceneGraphSolver(BaseSolver):
                 raise
             except Exception as e:
                 logger.exception(f"场景转移异常：{e}")
-                """restart_simulator()
-                self.device.client.check_server_alive()
-                Session().connect(config.conf.adb)
-                if config.conf.droidcast.enable:
-                    self.device.start_droidcast()
-                if config.conf.touch_method == "scrcpy":
-                    self.device.control.scrcpy = Scrcpy(self.device.client)
-                self.check_current_focus()
-                return False
-        return True"""
                 if error_count <= 5:
                     self.sleep()
                     error_count += 1

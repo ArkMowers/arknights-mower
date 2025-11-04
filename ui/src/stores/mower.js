@@ -56,8 +56,8 @@ export const useMowerStore = defineStore('mower', () => {
   }
 
   async function get_running() {
-    const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/running`)
-    running.value = response.data['running']
+    const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/status`)
+    running.value = response.data['status'] !== 'stopped'
     plan_condition.value = response.data['plan_condition']
   }
 

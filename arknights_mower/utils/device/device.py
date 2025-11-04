@@ -15,6 +15,7 @@ from arknights_mower.utils.csleep import MowerExit, csleep
 from arknights_mower.utils.device.adb_client.core import Client as ADBClient
 from arknights_mower.utils.device.adb_client.session import Session
 from arknights_mower.utils.device.maatouch import MaaTouch
+from arknights_mower.utils.device.mumu12ipc.core import MuMu12IPC
 from arknights_mower.utils.device.scrcpy import Scrcpy
 from arknights_mower.utils.image import bytes2img, img2bytes
 from arknights_mower.utils.log import logger, save_screenshot
@@ -33,37 +34,62 @@ class Device:
         ) -> None:
             self.device = device
             self.maatouch = None
+            self.mumu12IPC = None
             self.scrcpy = None
-
-            if config.conf.touch_method == "maatouch":
+            if config.conf.mumu12IPC:
+                self.mumu12IPC = MuMu12IPC(device)
+            elif config.conf.touch_method == "maatouch":
                 self.maatouch = MaaTouch(client)
             else:
                 self.scrcpy = Scrcpy(client)
 
         def tap(self, point: tuple[int, int]) -> None:
-            if self.maatouch:
+            if self.mumu12IPC:
+                self.mumu12IPC.tap(point[0], point[1])
+            elif self.maatouch:
                 self.maatouch.tap([point], self.device.display_frames())
             elif self.scrcpy:
                 self.scrcpy.tap(point[0], point[1])
+
             else:
                 raise NotImplementedError
 
         def swipe(
             self, start: tuple[int, int], end: tuple[int, int], duration: int
         ) -> None:
-            if self.maatouch:
+            if self.mumu12IPC:
+                self.mumu12IPC.swipe(
+                    start[0], start[1], end[0], end[1], duration=duration / 1000
+                )
+            elif self.maatouch:
                 self.maatouch.swipe(
                     [start, end], self.device.display_frames(), duration=duration
                 )
             elif self.scrcpy:
                 self.scrcpy.swipe(start[0], start[1], end[0], end[1], duration / 1000)
+
             else:
                 raise NotImplementedError
 
         def swipe_ext(
             self, points: list[tuple[int, int]], durations: list[int], up_wait: int
         ) -> None:
-            if self.maatouch:
+            if self.mumu12IPC:
+                total = len(durations)
+                for idx, (S, E, D) in enumerate(
+                    zip(points[:-1], points[1:], durations)
+                ):
+                    self.mumu12IPC.swipe(
+                        S[0],
+                        S[1],
+                        E[0],
+                        E[1],
+                        D / 1000,
+                        fall=idx == 0,
+                        lift=idx == total - 1,
+                        interval=up_wait / 1000 if idx == total - 1 else 0,
+                    )
+            elif self.maatouch:
                 self.maatouch.swipe(
                     points,
                     self.device.display_frames(),
@@ -123,6 +149,11 @@ class Device:
         logger.info("退出游戏")
         self.run(f"am force-stop {config.conf.APPNAME}")
 
+    def return_home(self) -> None:
+        """exit the application"""
+        logger.info("切回主界面")
+        self.send_keyevent(3)
+
     def send_keyevent(self, keycode: int) -> None:
         """send a key event"""
         logger.debug(f"keyevent: {keycode}")
@@ -135,6 +166,19 @@ class Device:
         text = text.replace('"', '\\"')
         command = f'input text "{text}"'
         self.run(command)
+
+    def is_app_running_in_background(self) -> bool:
+        try:
+            output = self.client.cmd_shell(f"pidof {config.conf.APPNAME}")
+            return bool(output.strip())
+        except Exception as e:
+            logger.debug(f"检查应用是否在后台运行时出错：{e}")
+            return False
+
+    def bring_to_foreground(self):
+        self.client.cmd_shell(
+            f"am start -n {config.conf.APPNAME}/{config.APP_ACTIVITY_NAME}"
+        )
 
     def get_droidcast_classpath(self) -> str | None:
         # TODO: 退出时（并非结束mower线程时）关闭DroidCast进程、取消ADB转发
@@ -216,7 +260,16 @@ class Device:
             time.sleep(delta)
             start_time = min_time
 
-        if config.conf.droidcast.enable:
+        if self.control.mumu12IPC:
+            while True:
+                try:
+                    img = self.control.mumu12IPC.capture_display()
+                    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+                    break
+                except Exception as e:
+                    logger.exception(e)
+                    restart_simulator()
+        elif config.conf.droidcast.enable:
             session = config.droidcast.session
             while True:
                 try:
@@ -342,14 +395,20 @@ class Device:
         while True:
             try:
                 focus = self.current_focus()
-                if focus not in [
+                expected_focuses = [
                     f"{config.conf.APPNAME}/{config.APP_ACTIVITY_NAME}",
                     "com.hypergryph.arknights.bilibili/com.gsc.welcome.WelcomeActivity",
                     "com.hypergryph.arknights.bilibili/com.gsc.auto_login.AutoLoginActivity",
-                ]:
-                    self.exit()  # 防止应用卡死
-                    self.launch()
-                    csleep(10)
+                ]
+
+                if focus not in expected_focuses:
+                    if self.is_app_running_in_background():
+                        self.bring_to_foreground()
+                        csleep(2)
+                    else:
+                        self.exit()
+                        self.launch()
+                        csleep(10)
                     update = True
                 return update
             except MowerExit:
