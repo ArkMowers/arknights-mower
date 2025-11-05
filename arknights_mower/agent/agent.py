@@ -5,6 +5,18 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, MessageGraph
 
+from arknights_mower.agent.tools.auto_submit import (
+    auto_submit,
+    auto_submit_tool_def,
+)
+from arknights_mower.agent.tools.base_skill_faq import (
+    base_skill_faq,
+    base_skill_faq_tool_def,
+)
+from arknights_mower.agent.tools.behavior_faq import (
+    behavior_faq,
+    behavior_faq_tool_def,
+)
 from arknights_mower.agent.tools.call_db import call_db, call_db_tool_def
 from arknights_mower.agent.tools.extract_stack_paths import (
     extract_stack_paths,
@@ -27,26 +39,37 @@ model_name_map = {
 def get_tools():
     return [
         faq_tool_def,
+        base_skill_faq_tool_def,
+        auto_submit_tool_def,
         submit_issue_tool_def,
         call_db_tool_def,
         extract_stack_paths_tool_def,
         get_source_snippet_tool_def,
+        behavior_faq_tool_def,
     ]
 
 
 tool_func_map = {
     "get_faq": get_faq,
+    "base_skill_faq": base_skill_faq,
+    "auto_submit": auto_submit,
     "submit_issue": submit_issue,
     "call_db": call_db,
     "extract_stack_paths": extract_stack_paths,
     "get_source_snippet": get_source_snippet,
+    "behavior_faq": behavior_faq,
 }
+
+
 tool_message_map = {
-    "get_faq": "从知识黑洞中召唤最靠谱的废话锦集",
+    "get_faq": "从知识黑洞中召唤最靠谱的废话锦囊",
+    "base_skill_faq": "检索技能知识库（高效向量召回）",
+    "auto_submit": "快速上报问题（可附带日志）",
     "submit_issue": "把锅优雅地甩给开发组，顺便附上你的怨念",
-    "call_db": "发现一条“我不想被发现”的数据记录",
-    "extract_stack_paths": "提取智商2000用户提交的错误堆栈路径",
-    "get_source_snippet": "获取某个傻逼写的全是bug的源代码片段",
+    "call_db": "发现一条‘我不想被发现’的数据记录",
+    "extract_stack_paths": "提取用户提交的错误堆栈路径",
+    "get_source_snippet": "获取源代码片段",
+    "behavior_faq": "检索核心源代码并总结功能行为",
 }
 
 
@@ -104,18 +127,18 @@ def build_workflow(api_key):
 
 def ask_llm(user_input, context=None, api_key=None):
     if api_key is None or not api_key.strip():
-        yield "未检测到 API Key，请先在设置中配置你的 AI Key。"
+        yield "未检测到 API Key，请先在设置中配置你的 AI Key"
         return
     if context is None:
         context = []
     AI_INTRO = (
         "你是明日方舟Mower助手AI，负责帮助用户排查和解决软件使用中的问题。"
-        "你可以：1. 帮助用户上报问题；2. 查询本地数据库记录的数据；3.根据用户问题查询常见FAQ；"
-        f"当前本地时间为 {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}，请使用24小时制。"
+        "你可以：1. 帮助用户上报问题；2. 查询本地数据库记录的数据；3. 根据用户问题查询常见FAQ。"
+        f"当前本地时间：{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}，请使用24小时制。"
         f"当前软件的使用时区为 {datetime.datetime.now().astimezone().tzinfo}。"
         "工具返回的结果如果是 HTML 表格，请直接返回 HTML 字符串，不要转换为 Markdown 或其他格式。"
-        "优先检查用户问题是否属于常见FAQ，如果匹配FAQ则直接回复修复方法。工具名称是 get_faq。"
-        "如果用户的问题与当前可用工具无关，请提示用户选择合适的工具，并提供相关问法"
+        "优先检查用户问题是否属于常见FAQ，如果匹配FAQ则直接回复修复方法（get_faq）。"
+        "如果用户的问题与当前可用工具无关，请提示用户选择合适的工具，并提供相关问法。"
         "请根据用户选择的工具，只用对应工具回答。"
         "常见数据库查询问法：'查询最近10条订单'、'查询某干员的上下班记录'、'查询错误信息包含漏单的任务日志'。"
         "常见问题上报问法：'我要反馈一个bug'、'提交无法启动的问题'。"
@@ -139,7 +162,7 @@ def ask_llm(user_input, context=None, api_key=None):
                 for call in message_chunk.tool_calls:
                     tool_name = call.get("name")
                     if tool_name:
-                        yield f"Mower助手正在{tool_message_map[tool_name]}...<br/>"
+                        yield f"Mower助手正在{tool_message_map.get(tool_name, tool_name)}...<br/>"
             elif hasattr(message_chunk, "content"):
                 content = message_chunk.content
                 if content:
