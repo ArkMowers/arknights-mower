@@ -46,9 +46,13 @@ class NewsChecker:
             return cls.cached_st, cls.cached_et
 
         # 3. 请求网页
-        response = requests.get(url, timeout=30)
-        response.encoding = "utf8"
-        soup = BeautifulSoup(response.text, "lxml")
+        try:
+            response = requests.get(url, timeout=30)
+            response.encoding = "utf8"
+            soup = BeautifulSoup(response.text, "lxml")
+        except Exception as e:
+            logger.error(f"请求维护时间出错：{e}")
+            return cls.cached_st, cls.cached_et
 
         for script_tag in soup.find_all("script"):
             text = script_tag.get_text()

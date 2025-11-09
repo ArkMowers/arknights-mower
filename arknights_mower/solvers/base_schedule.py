@@ -958,7 +958,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             seen = set()
             group = defaultdict(dict)
             for item in item_list:
-                for name in item.item_names:                    
+                for name in item.item_names:
                     if name in seen:
                         logger.warning(
                             f"当前干员{agent}的加工站配置中存在重复材料{item.item_names}，以第一个设置为准"
