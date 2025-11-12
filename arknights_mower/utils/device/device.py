@@ -269,7 +269,7 @@ class Device:
                 except Exception as e:
                     logger.exception(e)
                     restart_simulator()
-                    self.control.mumu12IPC=MuMu12IPC(self.device)
+                    self.control.mumu12IPC = MuMu12IPC(self.device)
         elif config.conf.droidcast.enable:
             session = config.droidcast.session
             while True:
