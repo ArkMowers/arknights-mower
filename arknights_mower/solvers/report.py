@@ -125,7 +125,7 @@ class ReportSolver(SceneGraphSolver):
                 self.record_path,
                 mode="a",
                 header=not os.path.exists(self.record_path),
-                encoding="gbk",
+                encoding="utf-8",
             )
         except Exception as e:
             logger.exception(f"存入数据失败：{e}")
@@ -144,12 +144,38 @@ class ReportSolver(SceneGraphSolver):
             logger.exception(f"基报邮件发送失败：{e}")
         self.tap((40, 80), interval=2)
 
+    def _load_report_dataframe(self):
+        encodings = ("utf-8", "utf-8-sig", "gbk", "gb18030")
+        last_error = None
+        for idx, encoding in enumerate(encodings):
+            try:
+                if idx:
+                    logger.debug(f"尝试使用编码 {encoding} 读取 report.csv")
+                return pd.read_csv(
+                    self.record_path,
+                    encoding=encoding,
+                    on_bad_lines="skip",
+                )
+            except UnicodeDecodeError as exc:
+                last_error = exc
+                if idx == 0:
+                    logger.warning(
+                        "用 UTF-8 读取 report.csv 失败，将尝试其它编码：%s", exc
+                    )
+                else:
+                    logger.debug("编码 %s 读取 report.csv 失败：%s", encoding, exc)
+        if last_error:
+            logger.error("report.csv 编码异常，无法读取：%s", last_error)
+        return None
+
     def has_record(self):
         try:
             if os.path.exists(self.record_path) is False:
                 logger.debug("基报不存在")
                 return False
-            df = pd.read_csv(self.record_path, encoding="gbk", on_bad_lines="skip")
+            df = self._load_report_dataframe()
+            if df is None:
+                return False
             for item in df.iloc:
                 if item[0] == self.date:
                     return True
@@ -281,7 +307,7 @@ def get_report_data():
         if os.path.exists(record_path) is False:
             logger.debug("基报不存在")
             return False
-        df = pd.read_csv(record_path, encoding="gbk")
+        df = pd.read_csv(record_path, encoding="utf-8")
         data = df.to_dict("dict")
         print(data)
     except PermissionError:

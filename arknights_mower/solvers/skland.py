@@ -71,6 +71,28 @@ class SKLand:
         header["cred"] = cred_resp["cred"]
         self.sign_token = cred_resp["token"]
 
+    def _load_record_dataframe(self):
+        encodings = ("utf-8", "utf-8-sig", "gbk", "gb18030")
+        last_error = None
+        for idx, encoding in enumerate(encodings):
+            try:
+                if idx:
+                    logger.debug(f"尝试使用编码 {encoding} 读取 skland.csv")
+                return pd.read_csv(
+                    self.record_path, header=None, encoding=encoding, on_bad_lines="skip"
+                )
+            except UnicodeDecodeError as exc:
+                last_error = exc
+                if idx == 0:
+                    logger.warning(
+                        "用 UTF-8 读取 skland.csv 失败，将尝试其它编码：%s", exc
+                    )
+                else:
+                    logger.debug("编码 %s 读取 skland.csv 失败：%s", encoding, exc)
+        if last_error:
+            logger.error("skland.csv 编码异常，无法读取：%s", last_error)
+        return None
+
     def log(self, account):
         r = requests.post(
             token_password_url,
@@ -87,7 +109,7 @@ class SKLand:
         try:
             for item in self.reward:
                 res_df = pd.DataFrame(item, index=[date_str])
-                res_df.to_csv(self.record_path, mode="a", header=False, encoding="gbk")
+                res_df.to_csv(self.record_path, mode="a", header=False, encoding="utf-8")
         except Exception as e:
             logger.exception(e)
 
@@ -98,9 +120,9 @@ class SKLand:
             if os.path.exists(self.record_path) is False:
                 logger.debug("无森空岛记录")
                 return False
-            df = pd.read_csv(
-                self.record_path, header=None, encoding="gbk", on_bad_lines="skip"
-            )
+            df = self._load_record_dataframe()
+            if df is None:
+                return False
             for item in df.iloc:
                 if item[0] == datetime.datetime.now().strftime("%Y/%m/%d"):
                     if item[1].astype(str) == phone:

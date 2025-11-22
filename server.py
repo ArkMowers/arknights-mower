@@ -502,7 +502,7 @@ def get_report_data():
         if os.path.exists(record_path) is False:
             logger.debug("基报不存在")
             return False
-        df = pd.read_csv(record_path, encoding="gbk")
+        df = pd.read_csv(record_path, encoding="utf-8")
         data = df.to_dict("records")
         earliest_date = str2date(data[0]["Unnamed: 0"])
 
@@ -553,7 +553,7 @@ def get_orundum_data():
         if os.path.exists(record_path) is False:
             logger.debug("基报不存在")
             return False
-        df = pd.read_csv(record_path, encoding="gbk")
+        df = pd.read_csv(record_path, encoding="utf-8")
         data = df.to_dict("records")
         earliest_date = datetime.datetime.now()
 
