@@ -22,7 +22,7 @@ const type_options = [
         </div>
         <div>
           iFlow 密钥请前往
-          <a href="https://iflow.ai" target="_blank">iFlow 官网</a> 获取
+          <a href="https://iflow.cn" target="_blank">iFlow 官网</a> 获取
         </div>
       </help-text>
     </template>

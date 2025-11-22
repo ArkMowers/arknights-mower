@@ -21,7 +21,7 @@ from arknights_mower.utils import config
 model_name_map = {
     "deepseek": ["deepseek-chat", "https://api.deepseek.com/v1"],
     "deepseek_reasoner": ["deepseek-reasoner", "https://api.deepseek.com/v1"],
-    "iflow": ["glm-4.6", "https://apis.iflow.ai/v1"],
+    "iflow": ["glm-4.6", "https://apis.iflow.cn/v1"],
 }
 
 
