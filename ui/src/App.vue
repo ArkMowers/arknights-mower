@@ -67,12 +67,12 @@
                       aria-modal="true"
                     >
                       <div>
-                        <n-button @click=";((showModal2 = false), $router.push('/mowersettings'))">
+                        <n-button @click=";(showModal2 = false), $router.push('/mowersettings')">
                           mower设置
                         </n-button>
                       </div>
                       <div>
-                        <n-button @click=";((showModal2 = false), $router.push('/maasettings'))">
+                        <n-button @click=";(showModal2 = false), $router.push('/maasettings')">
                           maa设置
                         </n-button>
                       </div>
