@@ -11,6 +11,7 @@ from arknights_mower.utils.depot import 创建csv, 创建json
 from arknights_mower.utils.device.adb_client.session import Session
 from arknights_mower.utils.device.scrcpy import Scrcpy
 from arknights_mower.utils.email import send_message, task_template
+from arknights_mower.utils.floatwindow import show_task_window, update_task_window
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.logic_expression import get_logic_exp
 from arknights_mower.utils.news_checker import NewsChecker
@@ -25,6 +26,7 @@ base_scheduler = None
 # 执行自动排班
 def main(saved_state):
     logger.info("开始运行Mower")
+    show_task_window("", datetime.now())
     rapidocr.initialize_ocr()
     data = None
     if saved_state != {}:
@@ -310,6 +312,7 @@ def simulate(saved):
                         logger.info(subject)
                         base_scheduler.task_count += 1
                         logger.info(f"第{base_scheduler.task_count}次任务结束")
+                        update_task_window(base_scheduler.tasks[0].type.display_value, base_scheduler.tasks[0].time)
                         if remaining_time > 0:
                             base_scheduler.handle_idle_action(remaining_time)
                             body = task_template.render(
@@ -373,6 +376,7 @@ def simulate(saved):
                     logger.info(subject)
                     base_scheduler.task_count += 1
                     logger.info(f"第{base_scheduler.task_count}次任务结束")
+                    update_task_window(base_scheduler.tasks[0].type.display_value, base_scheduler.tasks[0].time)
                     if remaining_time > 300:
                         if config.conf.close_simulator_when_idle:
                             restart_simulator(start=False)

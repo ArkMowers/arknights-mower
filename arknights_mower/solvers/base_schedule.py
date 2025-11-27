@@ -44,6 +44,7 @@ from arknights_mower.utils.datetime import (
 from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.digit_reader import DigitReader
 from arknights_mower.utils.email import maa_template, send_message, task_template
+from arknights_mower.utils.floatwindow import update_task_window
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
@@ -3861,6 +3862,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             logger.info(subject)
             self.task_count += 1
             logger.info(f"第{self.task_count}次任务结束")
+            update_task_window(self.tasks[0].type.display_value, self.tasks[0].time)
             timezone_offset = config.conf.timezone_offset
             body = task_template.render(
                 tasks=[obj.format(timezone_offset) for obj in self.tasks],
@@ -3879,7 +3881,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     elif config.conf.exit_game_when_idle:
                         self.device.exit()
                 self.recog.last_scene = None
+                self.sleeping = True
                 self.sleep(remaining_time)
+                self.sleeping = False
                 self.check_current_focus()
             self.MAA = None
         except MowerExit:
@@ -3898,7 +3902,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 logger.info(
                     f"休息 {format_time(remaining_time)}，到{self.tasks[0].time.strftime('%H:%M:%S')}开始工作"
                 )
+                update_task_window(self.tasks[0].type.display_value, self.tasks[0].time)
+                self.recog.last_scene = None
+                self.sleeping = True
                 self.sleep(remaining_time)
+                self.sleeping = False
             self.check_current_focus()
 
     def skland_plan_solver(self):

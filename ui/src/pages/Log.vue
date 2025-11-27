@@ -104,6 +104,10 @@ function stop() {
   })
 }
 
+function get_float_window() {
+  axios.get(`${import.meta.env.VITE_HTTP_URL}/get_float_window`)
+}
+
 const show_feedback = ref(false)
 
 import PlayIcon from '@vicons/ionicons5/Play'
@@ -261,6 +265,8 @@ const start_options = [
       <feedback />
       <div class="expand"></div>
       <div class="scroll-container">
+        <n-button type="primary" @click="get_float_window" circle size="tiny"/>
+        <span>{{ !mobile ? '刷新悬浮窗' : '窗' }}</span>
         <n-checkbox v-model:checked="sc_preview">
           <template v-if="mobile">截图</template>
           <template v-else>预览截图</template>
