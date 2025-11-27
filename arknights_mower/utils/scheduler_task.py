@@ -7,7 +7,7 @@ from typing import Literal
 
 from arknights_mower.solvers.record import get_inventory_counts
 from arknights_mower.utils import config
-from arknights_mower.utils.datetime import the_same_time
+from arknights_mower.utils.datetime_utils import the_same_time
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.news_checker import NewsChecker
 from arknights_mower.utils.operators import Operator

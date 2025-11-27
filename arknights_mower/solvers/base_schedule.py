@@ -37,7 +37,7 @@ from arknights_mower.solvers.skland import SKLand
 from arknights_mower.utils import config, detector, rapidocr
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.csleep import MowerExit, csleep
-from arknights_mower.utils.datetime import (
+from arknights_mower.utils.datetime_utils import (
     format_time,
     get_server_weekday,
 )

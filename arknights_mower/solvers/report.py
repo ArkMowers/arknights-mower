@@ -5,7 +5,7 @@ import cv2
 import pandas as pd
 
 from arknights_mower.models import noto_sans
-from arknights_mower.utils.datetime import get_server_time
+from arknights_mower.utils.datetime_utils import get_server_time
 from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.digit_reader import DigitReader
 from arknights_mower.utils.email import report_template, send_message

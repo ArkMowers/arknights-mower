@@ -6,7 +6,7 @@ import cv2
 from arknights_mower.models import secret_front
 from arknights_mower.utils import config
 from arknights_mower.utils import typealias as tp
-from arknights_mower.utils.datetime import get_server_weekday
+from arknights_mower.utils.datetime_utils import get_server_weekday
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.log import logger

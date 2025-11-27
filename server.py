@@ -22,7 +22,7 @@ from arknights_mower.agent.agent import ask_llm
 from arknights_mower.agent.tools.submit_issue import submit_issue
 from arknights_mower.solvers.record import clear_data, load_state, save_state
 from arknights_mower.utils import config
-from arknights_mower.utils.datetime import get_server_time
+from arknights_mower.utils.datetime_utils import get_server_time
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 
