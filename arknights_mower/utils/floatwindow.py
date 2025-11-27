@@ -1,10 +1,10 @@
-import tkinter as tk
-from tkinter import ttk
-from datetime import datetime, timedelta
 import sys
 import threading
-from queue import Queue, Empty
 import time
+import tkinter as tk
+from datetime import datetime, timedelta
+from queue import Empty, Queue
+from tkinter import ttk
 
 
 class OverlayWindow:
@@ -24,8 +24,8 @@ class OverlayWindow:
                 from ctypes import windll
 
                 windll.shcore.SetProcessDpiAwareness(1)
-        except:
-            pass
+        except Exception as e:
+            print(e)
 
         self.root.withdraw()  # 初始隐藏窗口
         self._process_commands()
@@ -141,14 +141,17 @@ class OverlayWindow:
         if sys.platform == "win32":
             try:
                 from ctypes import windll
+
                 # 获取窗口句柄
                 hwnd = windll.user32.GetParent(self.root.winfo_id())
                 # 设置窗口扩展样式，添加WS_EX_NOACTIVATE和WS_EX_APPWINDOW标志
                 # 0x8000000 = WS_EX_NOACTIVATE, 0x40000 = WS_EX_APPWINDOW
                 ex_style = windll.user32.GetWindowLongPtrW(hwnd, -20)
-                windll.user32.SetWindowLongPtrW(hwnd, -20, ex_style | 0x8000000 | 0x40000)
-            except:
-                pass
+                windll.user32.SetWindowLongPtrW(
+                    hwnd, -20, ex_style | 0x8000000 | 0x40000
+                )
+            except Exception as e:
+                print(f"Error: {e}")
         # 开始更新剩余时间
         self._update_remaining_time()
 
@@ -158,7 +161,7 @@ class OverlayWindow:
             self.task_type = task_type
             self.task_time = task_time
             if remarks != "":
-                self.remarks = remarks 
+                self.remarks = remarks
 
     def _update_remaining_time(self):
         """更新剩余时间显示"""
@@ -169,7 +172,6 @@ class OverlayWindow:
             now = datetime.now()
             if self.task_time > now:
                 remaining = self.task_time - now
-                days = remaining.days
                 hours, remainder = divmod(remaining.seconds, 3600)
                 minutes, _ = divmod(remainder, 60)
 
@@ -224,12 +226,12 @@ class OverlayWindow:
         if self.root:
             try:
                 self.root.quit()
-            except:
-                pass
+            except Exception as e:
+                print(f"_exit failed: {e}")
             try:
                 self.root.destroy()
-            except:
-                pass
+            except Exception as e:
+                print(f"_exit failed: {e}")
         self.root = None  # 重置root引用
 
     def _request_close(self):

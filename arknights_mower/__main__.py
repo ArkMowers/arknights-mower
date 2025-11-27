@@ -312,7 +312,10 @@ def simulate(saved):
                         logger.info(subject)
                         base_scheduler.task_count += 1
                         logger.info(f"第{base_scheduler.task_count}次任务结束")
-                        update_task_window(base_scheduler.tasks[0].type.display_value, base_scheduler.tasks[0].time)
+                        update_task_window(
+                            base_scheduler.tasks[0].type.display_value,
+                            base_scheduler.tasks[0].time,
+                        )
                         if remaining_time > 0:
                             base_scheduler.handle_idle_action(remaining_time)
                             body = task_template.render(
@@ -376,7 +379,10 @@ def simulate(saved):
                     logger.info(subject)
                     base_scheduler.task_count += 1
                     logger.info(f"第{base_scheduler.task_count}次任务结束")
-                    update_task_window(base_scheduler.tasks[0].type.display_value, base_scheduler.tasks[0].time)
+                    update_task_window(
+                        base_scheduler.tasks[0].type.display_value,
+                        base_scheduler.tasks[0].time,
+                    )
                     if remaining_time > 300:
                         if config.conf.close_simulator_when_idle:
                             restart_simulator(start=False)

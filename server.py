@@ -770,11 +770,15 @@ def ws_chat(ws):
             logger.exception(f"WebSocket处理错误：{str(e)}")
             ws.send(json.dumps({"error": str(e)}))
 
+
 @app.route("/get_float_window")
 def get_float_window():
     if mower_thread and mower_thread.is_alive():
         from arknights_mower.__main__ import base_scheduler
-        from arknights_mower.utils.floatwindow import _overlay, show_task_window, update_task_window
+        from arknights_mower.utils.floatwindow import (
+            show_task_window,
+        )
+
         if base_scheduler and mower_thread.is_alive():
             if base_scheduler.sleeping:
                 task_time = base_scheduler.tasks[0].time
@@ -782,7 +786,7 @@ def get_float_window():
             else:
                 task_time = datetime.datetime.now() - datetime.timedelta(minutes=1)
                 task_type = ""
-            #remark = config.conf.floatremark
+            # remark = config.conf.floatremark
             show_task_window(task_type, task_time)
         else:
             logger.info("没有任务")
