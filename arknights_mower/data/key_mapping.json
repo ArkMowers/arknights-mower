@@ -46,140 +46,140 @@
         "GOLD",
         "龙门币",
         "NORMAL",
-        10004
+        10201
     ],
     "龙门币": [
         "4001",
         "GOLD",
         "龙门币",
         "NORMAL",
-        10004
+        10201
     ],
     "3003": [
         "3003",
         "MTL_GOLD3",
         "赤金",
         "NORMAL",
-        10005
+        10202
     ],
     "赤金": [
         "3003",
         "MTL_GOLD3",
         "赤金",
         "NORMAL",
-        10005
+        10202
     ],
     "4004": [
         "4004",
         "HGG_SHD",
         "高级凭证",
         "NORMAL",
-        10006
+        10203
     ],
     "高级凭证": [
         "4004",
         "HGG_SHD",
         "高级凭证",
         "NORMAL",
-        10006
+        10203
     ],
     "4005": [
         "4005",
         "LGG_SHD",
         "资质凭证",
         "NORMAL",
-        10007
+        10204
     ],
     "资质凭证": [
         "4005",
         "LGG_SHD",
         "资质凭证",
         "NORMAL",
-        10007
+        10204
     ],
     "4006": [
         "4006",
         "EXGG_SHD",
         "采购凭证",
         "NORMAL",
-        10008
+        10205
     ],
     "采购凭证": [
         "4006",
         "EXGG_SHD",
         "采购凭证",
         "NORMAL",
-        10008
+        10205
     ],
     "EPGS_COIN": [
         "EPGS_COIN",
         "EPGS_COIN",
         "寻访参数模型",
         "NORMAL",
-        10101
+        10401
     ],
     "寻访参数模型": [
         "EPGS_COIN",
         "EPGS_COIN",
         "寻访参数模型",
         "NORMAL",
-        10101
+        10401
     ],
     "REP_COIN": [
         "REP_COIN",
         "REP_COIN",
         "情报凭证",
         "NORMAL",
-        10102
+        10402
     ],
     "情报凭证": [
         "REP_COIN",
         "REP_COIN",
         "情报凭证",
         "NORMAL",
-        10102
+        10402
     ],
     "CRISIS_SHOP_COIN": [
         "CRISIS_SHOP_COIN",
         "CRISIS_SHOP_COIN",
         "合约赏金",
         "NORMAL",
-        10201
+        10501
     ],
     "合约赏金": [
         "CRISIS_SHOP_COIN",
         "CRISIS_SHOP_COIN",
         "合约赏金",
         "NORMAL",
-        10201
+        10501
     ],
     "CRISIS_SHOP_COIN_V2": [
         "CRISIS_SHOP_COIN_V2",
         "CRISIS_SHOP_COIN_V2",
         "晶体合约赏金",
         "NORMAL",
-        10202
+        10502
     ],
     "晶体合约赏金": [
         "CRISIS_SHOP_COIN_V2",
         "CRISIS_SHOP_COIN_V2",
         "晶体合约赏金",
         "NORMAL",
-        10202
+        10502
     ],
     "STORY_REVIEW_COIN": [
         "STORY_REVIEW_COIN",
         "STORY_REVIEW_COIN",
         "事相碎片",
         "NORMAL",
-        10203
+        10503
     ],
     "事相碎片": [
         "STORY_REVIEW_COIN",
         "STORY_REVIEW_COIN",
         "事相碎片",
         "NORMAL",
-        10203
+        10503
     ],
     "renamingCard": [
         "renamingCard",
@@ -189,11 +189,11 @@
         20001
     ],
     "ID信息更新卡": [
-        "renamingCard_30_061",
+        "renamingCard_30_067",
         "renamingCard",
         "ID信息更新卡",
         "CONSUME",
-        20026
+        20028
     ],
     "renamingCard_0_018": [
         "renamingCard_0_018",
@@ -320,6 +320,20 @@
         "ID信息更新卡",
         "CONSUME",
         20026
+    ],
+    "renamingCard_0_067": [
+        "renamingCard_0_067",
+        "renamingCard",
+        "ID信息更新卡",
+        "CONSUME",
+        20027
+    ],
+    "renamingCard_30_067": [
+        "renamingCard_30_067",
+        "renamingCard",
+        "ID信息更新卡",
+        "CONSUME",
+        20028
     ],
     "ap_supply_lt_100": [
         "ap_supply_lt_100",
@@ -468,376 +482,404 @@
         "CONSUME",
         50002
     ],
-    "voucher_recruitR5_pick2": [
-        "voucher_recruitR5_pick2",
-        "voucher_recruitR5_pick2",
-        "火神因陀罗招募券",
-        "CONSUME",
-        50003
-    ],
-    "火神因陀罗招募券": [
-        "voucher_recruitR5_pick2",
-        "voucher_recruitR5_pick2",
-        "火神因陀罗招募券",
-        "CONSUME",
-        50003
-    ],
-    "voucher_recruitR5_pick1803": [
-        "voucher_recruitR5_pick1803",
-        "voucher_recruitR5_g",
-        "资深干员调用凭证",
-        "CONSUME",
-        50004
-    ],
-    "资深干员调用凭证": [
-        "voucher_recruitR5_pick6101",
-        "voucher_recruitR5_g",
-        "资深干员调用凭证",
-        "CONSUME",
-        50021
-    ],
     "voucher_item_pick601": [
         "voucher_item_pick601",
         "voucher_item_pick601",
         "高级干员调用凭证",
         "CONSUME",
-        50005
+        50003
     ],
     "高级干员调用凭证": [
         "voucher_item_pick601",
         "voucher_item_pick601",
         "高级干员调用凭证",
         "CONSUME",
-        50005
+        50003
     ],
     "voucher_item_pick1401": [
         "voucher_item_pick1401",
         "voucher_recruitR6_g",
         "感谢庆典干员凭证",
         "CONSUME",
-        50006
+        50004
     ],
     "感谢庆典干员凭证": [
-        "voucher_item_pick5601",
+        "voucher_item_pick6701",
         "voucher_recruitR6_g",
         "感谢庆典干员凭证",
         "CONSUME",
-        50018
+        50015
     ],
     "voucher_item_pick1803": [
         "voucher_item_pick1803",
         "voucher_recruitR6_g",
         "周年庆典干员凭证",
         "CONSUME",
-        50007
+        50005
     ],
     "周年庆典干员凭证": [
         "voucher_item_pick6101",
         "voucher_recruitR6_g",
         "周年庆典干员凭证",
         "CONSUME",
-        50019
+        50013
     ],
     "voucher_item_pick2301": [
         "voucher_item_pick2301",
         "voucher_recruitR6_g",
         "感谢庆典干员凭证",
         "CONSUME",
-        50008
+        50006
     ],
     "voucher_item_pick2701": [
         "voucher_item_pick2701",
         "voucher_recruitR6_g",
         "周年庆典干员凭证",
         "CONSUME",
-        50009
-    ],
-    "voucher_recruitR5_pick2701": [
-        "voucher_recruitR5_pick2701",
-        "voucher_recruitR5_g",
-        "资深干员调用凭证",
-        "CONSUME",
-        50010
+        50007
     ],
     "voucher_item_pick3301": [
         "voucher_item_pick3301",
         "voucher_recruitR6_g",
         "感谢庆典干员凭证",
         "CONSUME",
-        50011
+        50008
     ],
     "voucher_item_pick3801": [
         "voucher_item_pick3801",
         "voucher_recruitR6_g",
         "周年庆典干员凭证",
         "CONSUME",
-        50012
-    ],
-    "voucher_recruitR5_pick3801": [
-        "voucher_recruitR5_pick3801",
-        "voucher_recruitR5_g",
-        "资深干员调用凭证",
-        "CONSUME",
-        50013
+        50009
     ],
     "voucher_item_pick4401": [
         "voucher_item_pick4401",
         "voucher_recruitR6_g",
         "感谢庆典干员凭证",
         "CONSUME",
-        50014
+        50010
     ],
     "voucher_item_pick5001": [
         "voucher_item_pick5001",
         "voucher_recruitR6_g",
         "周年庆典干员凭证",
         "CONSUME",
-        50015
-    ],
-    "voucher_recruitR5_pick5001": [
-        "voucher_recruitR5_pick5001",
-        "voucher_recruitR5_g",
-        "资深干员调用凭证",
-        "CONSUME",
-        50013
-    ],
-    "voucher_recruitR6_pick5301": [
-        "voucher_recruitR6_pick5301",
-        "voucher_recruitR6_pick5301",
-        "高级干员调用凭证-新人",
-        "CONSUME",
-        50017
-    ],
-    "高级干员调用凭证-新人": [
-        "voucher_recruitR6_pick5301",
-        "voucher_recruitR6_pick5301",
-        "高级干员调用凭证-新人",
-        "CONSUME",
-        50017
-    ],
-    "voucher_item_4pick1_5301": [
-        "voucher_item_4pick1_5301",
-        "voucher_item_4pick1_5301",
-        "资深干员调用凭证-新人",
-        "CONSUME",
-        50018
-    ],
-    "资深干员调用凭证-新人": [
-        "voucher_item_4pick1_5301",
-        "voucher_item_4pick1_5301",
-        "资深干员调用凭证-新人",
-        "CONSUME",
-        50018
+        50011
     ],
     "voucher_item_pick5601": [
         "voucher_item_pick5601",
         "voucher_recruitR6_g",
         "感谢庆典干员凭证",
         "CONSUME",
-        50018
-    ],
-    "voucher_class_pick5601": [
-        "voucher_class_pick5601",
-        "voucher_class_pick5601",
-        "中坚高级干员调用凭证",
-        "CONSUME",
-        50018
-    ],
-    "中坚高级干员调用凭证": [
-        "voucher_class_pick6101",
-        "voucher_class_pick6101",
-        "中坚高级干员调用凭证",
-        "CONSUME",
-        50020
+        50012
     ],
     "voucher_item_pick6101": [
         "voucher_item_pick6101",
         "voucher_recruitR6_g",
         "周年庆典干员凭证",
         "CONSUME",
-        50019
+        50013
+    ],
+    "voucher_recruitR6_pick6401": [
+        "voucher_recruitR6_pick6401",
+        "voucher_recruitR6_pick6401",
+        "高级干员活动调用凭证",
+        "CONSUME",
+        50014
+    ],
+    "高级干员活动调用凭证": [
+        "voucher_recruitR6_pick6401",
+        "voucher_recruitR6_pick6401",
+        "高级干员活动调用凭证",
+        "CONSUME",
+        50014
+    ],
+    "voucher_item_pick6701": [
+        "voucher_item_pick6701",
+        "voucher_recruitR6_g",
+        "感谢庆典干员凭证",
+        "CONSUME",
+        50015
+    ],
+    "voucher_class_pick5601": [
+        "voucher_class_pick5601",
+        "voucher_class_pick5601",
+        "中坚高级干员调用凭证",
+        "CONSUME",
+        50031
+    ],
+    "中坚高级干员调用凭证": [
+        "voucher_class_pick6701",
+        "voucher_class_pick6101",
+        "中坚高级干员调用凭证",
+        "CONSUME",
+        50033
     ],
     "voucher_class_pick6101": [
         "voucher_class_pick6101",
         "voucher_class_pick6101",
         "中坚高级干员调用凭证",
         "CONSUME",
-        50020
+        50032
+    ],
+    "voucher_class_pick6701": [
+        "voucher_class_pick6701",
+        "voucher_class_pick6101",
+        "中坚高级干员调用凭证",
+        "CONSUME",
+        50033
+    ],
+    "voucher_recruitR5_pick1803": [
+        "voucher_recruitR5_pick1803",
+        "voucher_recruitR5_g",
+        "资深干员调用凭证",
+        "CONSUME",
+        50041
+    ],
+    "资深干员调用凭证": [
+        "voucher_recruitR5_pick6101",
+        "voucher_recruitR5_g",
+        "资深干员调用凭证",
+        "CONSUME",
+        50045
+    ],
+    "voucher_recruitR5_pick2701": [
+        "voucher_recruitR5_pick2701",
+        "voucher_recruitR5_g",
+        "资深干员调用凭证",
+        "CONSUME",
+        50042
+    ],
+    "voucher_recruitR5_pick3801": [
+        "voucher_recruitR5_pick3801",
+        "voucher_recruitR5_g",
+        "资深干员调用凭证",
+        "CONSUME",
+        50043
+    ],
+    "voucher_recruitR5_pick5001": [
+        "voucher_recruitR5_pick5001",
+        "voucher_recruitR5_g",
+        "资深干员调用凭证",
+        "CONSUME",
+        50044
     ],
     "voucher_recruitR5_pick6101": [
         "voucher_recruitR5_pick6101",
         "voucher_recruitR5_g",
         "资深干员调用凭证",
         "CONSUME",
-        50021
+        50045
+    ],
+    "voucher_recruitR5_pick2": [
+        "voucher_recruitR5_pick2",
+        "voucher_recruitR5_pick2",
+        "火神因陀罗招募券",
+        "CONSUME",
+        50055
+    ],
+    "火神因陀罗招募券": [
+        "voucher_recruitR5_pick2",
+        "voucher_recruitR5_pick2",
+        "火神因陀罗招募券",
+        "CONSUME",
+        50055
+    ],
+    "voucher_recruitR6_pick5301": [
+        "voucher_recruitR6_pick5301",
+        "voucher_recruitR6_pick5301",
+        "高级干员调用凭证-新人",
+        "CONSUME",
+        50056
+    ],
+    "高级干员调用凭证-新人": [
+        "voucher_recruitR6_pick5301",
+        "voucher_recruitR6_pick5301",
+        "高级干员调用凭证-新人",
+        "CONSUME",
+        50056
+    ],
+    "voucher_item_4pick1_5301": [
+        "voucher_item_4pick1_5301",
+        "voucher_item_4pick1_5301",
+        "资深干员调用凭证-新人",
+        "CONSUME",
+        50057
+    ],
+    "资深干员调用凭证-新人": [
+        "voucher_item_4pick1_5301",
+        "voucher_item_4pick1_5301",
+        "资深干员调用凭证-新人",
+        "CONSUME",
+        50057
     ],
     "voucher_levelmax_6": [
         "voucher_levelmax_6",
         "voucher_levelmax_6",
         "高级资深干员特训装置",
         "CONSUME",
-        50016
+        50061
     ],
     "高级资深干员特训装置": [
         "voucher_levelmax_6",
         "voucher_levelmax_6",
         "高级资深干员特训装置",
         "CONSUME",
-        50016
+        50061
     ],
     "voucher_levelmax_5": [
         "voucher_levelmax_5",
         "voucher_levelmax_5",
         "资深干员特训装置",
         "CONSUME",
-        50017
+        50062
     ],
     "资深干员特训装置": [
         "voucher_levelmax_5",
         "voucher_levelmax_5",
         "资深干员特训装置",
         "CONSUME",
-        50017
+        50062
     ],
     "voucher_levelmax_4": [
         "voucher_levelmax_4",
         "voucher_levelmax_4",
         "专业干员特训装置",
         "CONSUME",
-        50018
+        50063
     ],
     "专业干员特训装置": [
         "voucher_levelmax_4",
         "voucher_levelmax_4",
         "专业干员特训装置",
         "CONSUME",
-        50018
+        50063
     ],
     "voucher_elite_II_6": [
         "voucher_elite_II_6",
         "voucher_elite_II_6",
         "高级资深干员特训邀请函",
         "CONSUME",
-        50019
+        50071
     ],
     "高级资深干员特训邀请函": [
         "voucher_elite_II_6",
         "voucher_elite_II_6",
         "高级资深干员特训邀请函",
         "CONSUME",
-        50019
+        50071
     ],
     "voucher_elite_II_5": [
         "voucher_elite_II_5",
         "voucher_elite_II_5",
         "资深干员特训邀请函",
         "CONSUME",
-        50020
+        50072
     ],
     "资深干员特训邀请函": [
         "voucher_elite_II_5",
         "voucher_elite_II_5",
         "资深干员特训邀请函",
         "CONSUME",
-        50020
+        50072
     ],
     "voucher_elite_II_4": [
         "voucher_elite_II_4",
         "voucher_elite_II_4",
         "专业干员特训邀请函",
         "CONSUME",
-        50021
+        50073
     ],
     "专业干员特训邀请函": [
         "voucher_elite_II_4",
         "voucher_elite_II_4",
         "专业干员特训邀请函",
         "CONSUME",
-        50021
+        50073
     ],
     "voucher_skill_specialLevelMax_6": [
         "voucher_skill_specialLevelMax_6",
         "voucher_skill_specialLevelMax_6",
         "高级资深干员技巧集",
         "CONSUME",
-        50022
+        50081
     ],
     "高级资深干员技巧集": [
         "voucher_skill_specialLevelMax_6",
         "voucher_skill_specialLevelMax_6",
         "高级资深干员技巧集",
         "CONSUME",
-        50022
+        50081
     ],
     "voucher_skill_specialLevelMax_5": [
         "voucher_skill_specialLevelMax_5",
         "voucher_skill_specialLevelMax_5",
         "资深干员技巧集",
         "CONSUME",
-        50023
+        50082
     ],
     "资深干员技巧集": [
         "voucher_skill_specialLevelMax_5",
         "voucher_skill_specialLevelMax_5",
         "资深干员技巧集",
         "CONSUME",
-        50023
+        50082
     ],
     "voucher_skill_specialLevelMax_4": [
         "voucher_skill_specialLevelMax_4",
         "voucher_skill_specialLevelMax_4",
         "专业干员技巧集",
         "CONSUME",
-        50024
+        50083
     ],
     "专业干员技巧集": [
         "voucher_skill_specialLevelMax_4",
         "voucher_skill_specialLevelMax_4",
         "专业干员技巧集",
         "CONSUME",
-        50024
+        50083
     ],
     "voucher_skin": [
         "voucher_skin",
         "voucher_skin",
         "时装自选凭证",
         "CONSUME",
-        50051
+        50091
     ],
     "时装自选凭证": [
         "voucher_skin",
         "voucher_skin",
         "时装自选凭证",
         "CONSUME",
-        50051
+        50091
     ],
     "voucher_recruitR4_1": [
         "voucher_recruitR4_1",
         "voucher_recruitR4_1",
         "公开招募★4兑换券·I",
         "CONSUME",
-        50105
+        50201
     ],
     "公开招募★4兑换券·I": [
         "voucher_recruitR4_1",
         "voucher_recruitR4_1",
         "公开招募★4兑换券·I",
         "CONSUME",
-        50105
+        50201
     ],
     "voucher_recruitR3_1": [
         "voucher_recruitR3_1",
         "voucher_recruitR3_1",
         "公开招募★3兑换券·I",
         "CONSUME",
-        50106
+        50202
     ],
     "公开招募★3兑换券·I": [
         "voucher_recruitR3_1",
         "voucher_recruitR3_1",
         "公开招募★3兑换券·I",
         "CONSUME",
-        50106
+        50202
     ],
     "voucher_chipPack": [
         "voucher_chipPack",
@@ -900,7 +942,7 @@
         "premium_material_issue_voucher",
         "特级材料提货券",
         "CONSUME",
-        60004
+        60005
     ],
     "特级材料提货券": [
         "premium_material_issue_voucher",
@@ -914,7 +956,7 @@
         "advanced_material_issue_voucher",
         "高级材料提货券",
         "CONSUME",
-        60005
+        60006
     ],
     "高级材料提货券": [
         "advanced_material_issue_voucher",
@@ -1259,6 +1301,20 @@
         "CONSUME",
         60110
     ],
+    "randomMaterial_12": [
+        "randomMaterial_12",
+        "randomMaterial_1",
+        "罗德岛物资补给IX",
+        "CONSUME",
+        60110
+    ],
+    "罗德岛物资补给IX": [
+        "randomMaterial_12",
+        "randomMaterial_1",
+        "罗德岛物资补给IX",
+        "CONSUME",
+        60110
+    ],
     "randomMaterial_5d5": [
         "randomMaterial_5d5",
         "randomMaterial_4",
@@ -1370,6 +1426,20 @@
         "铳械工坊赠品盒",
         "CONSUME",
         60116
+    ],
+    "randomMaterial_6d5": [
+        "randomMaterial_6d5",
+        "randomMaterial_4",
+        "2025感谢庆典物资补给",
+        "CONSUME",
+        60117
+    ],
+    "2025感谢庆典物资补给": [
+        "randomMaterial_6d5",
+        "randomMaterial_4",
+        "2025感谢庆典物资补给",
+        "CONSUME",
+        60117
     ],
     "2001": [
         "2001",
@@ -7027,6 +7097,104 @@
         "MATERIAL",
         700169
     ],
+    "p_char_4196_reckpr": [
+        "p_char_4196_reckpr",
+        "p_char_4196_reckpr",
+        "录武官的信物",
+        "MATERIAL",
+        700170
+    ],
+    "录武官的信物": [
+        "p_char_4196_reckpr",
+        "p_char_4196_reckpr",
+        "录武官的信物",
+        "MATERIAL",
+        700170
+    ],
+    "p_char_4203_kichi": [
+        "p_char_4203_kichi",
+        "p_char_4203_kichi",
+        "吉星的信物",
+        "MATERIAL",
+        700171
+    ],
+    "吉星的信物": [
+        "p_char_4203_kichi",
+        "p_char_4203_kichi",
+        "吉星的信物",
+        "MATERIAL",
+        700171
+    ],
+    "p_char_4199_makiri": [
+        "p_char_4199_makiri",
+        "p_char_4199_makiri",
+        "松桐的信物",
+        "MATERIAL",
+        700172
+    ],
+    "松桐的信物": [
+        "p_char_4199_makiri",
+        "p_char_4199_makiri",
+        "松桐的信物",
+        "MATERIAL",
+        700172
+    ],
+    "p_char_4183_mortis": [
+        "p_char_4183_mortis",
+        "p_char_4183_mortis",
+        "若叶睦的信物",
+        "MATERIAL",
+        700173
+    ],
+    "若叶睦的信物": [
+        "p_char_4183_mortis",
+        "p_char_4183_mortis",
+        "若叶睦的信物",
+        "MATERIAL",
+        700173
+    ],
+    "p_char_4184_dolris": [
+        "p_char_4184_dolris",
+        "p_char_4184_dolris",
+        "三角初华的信物",
+        "MATERIAL",
+        700174
+    ],
+    "三角初华的信物": [
+        "p_char_4184_dolris",
+        "p_char_4184_dolris",
+        "三角初华的信物",
+        "MATERIAL",
+        700174
+    ],
+    "p_char_4185_amoris": [
+        "p_char_4185_amoris",
+        "p_char_4185_amoris",
+        "祐天寺若麦的信物",
+        "MATERIAL",
+        700175
+    ],
+    "祐天寺若麦的信物": [
+        "p_char_4185_amoris",
+        "p_char_4185_amoris",
+        "祐天寺若麦的信物",
+        "MATERIAL",
+        700175
+    ],
+    "p_char_4186_tmoris": [
+        "p_char_4186_tmoris",
+        "p_char_4186_tmoris",
+        "八幡海铃的信物",
+        "MATERIAL",
+        700176
+    ],
+    "八幡海铃的信物": [
+        "p_char_4186_tmoris",
+        "p_char_4186_tmoris",
+        "八幡海铃的信物",
+        "MATERIAL",
+        700176
+    ],
     "p_char_103_angel": [
         "p_char_103_angel",
         "p_char_103_angel",
@@ -8594,6 +8762,76 @@
         "酒神的信物",
         "MATERIAL",
         600112
+    ],
+    "p_char_1043_leizi2": [
+        "p_char_1043_leizi2",
+        "p_char_1043_leizi2",
+        "司霆惊蛰的信物",
+        "MATERIAL",
+        600113
+    ],
+    "司霆惊蛰的信物": [
+        "p_char_1043_leizi2",
+        "p_char_1043_leizi2",
+        "司霆惊蛰的信物",
+        "MATERIAL",
+        600113
+    ],
+    "p_char_4195_radian": [
+        "p_char_4195_radian",
+        "p_char_4195_radian",
+        "电弧的信物",
+        "MATERIAL",
+        600114
+    ],
+    "电弧的信物": [
+        "p_char_4195_radian",
+        "p_char_4195_radian",
+        "电弧的信物",
+        "MATERIAL",
+        600114
+    ],
+    "p_char_4202_haruka": [
+        "p_char_4202_haruka",
+        "p_char_4202_haruka",
+        "遥的信物",
+        "MATERIAL",
+        600115
+    ],
+    "遥的信物": [
+        "p_char_4202_haruka",
+        "p_char_4202_haruka",
+        "遥的信物",
+        "MATERIAL",
+        600115
+    ],
+    "p_char_1044_hsgma2": [
+        "p_char_1044_hsgma2",
+        "p_char_1044_hsgma2",
+        "斩业星熊的信物",
+        "MATERIAL",
+        600116
+    ],
+    "斩业星熊的信物": [
+        "p_char_1044_hsgma2",
+        "p_char_1044_hsgma2",
+        "斩业星熊的信物",
+        "MATERIAL",
+        600116
+    ],
+    "p_char_4182_oblvns": [
+        "p_char_4182_oblvns",
+        "p_char_4182_oblvns",
+        "丰川祥子的信物",
+        "MATERIAL",
+        600117
+    ],
+    "丰川祥子的信物": [
+        "p_char_4182_oblvns",
+        "p_char_4182_oblvns",
+        "丰川祥子的信物",
+        "MATERIAL",
+        600117
     ],
     "class_p_char_123_fang": [
         "class_p_char_123_fang",

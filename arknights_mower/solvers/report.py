@@ -62,6 +62,8 @@ class ReportSolver(SceneGraphSolver):
 
     def transition(self) -> bool:
         if (scene := self.scene()) == Scene.RIIC_REPORT:
+            self.sleep(2)
+            self.recog.update()
             return self.read_report()
         elif scene in self.waiting_scene:
             self.waiting_solver()
@@ -199,6 +201,49 @@ class ReportSolver(SceneGraphSolver):
         )
         logger.info("订单数读取完成")
 
+    def crop_report_backup(self):
+        logger.info("使用备用方法读取基建报告")
+        exp_area = [[1625, 200], [1800, 230]]
+        iron_pos = self.find("riic/iron")
+        iron_area = [
+            [iron_pos[1][0], iron_pos[0][1]],
+            [1800, iron_pos[1][1]],
+        ]
+        trade_pt = self.find("riic/trade")
+        assist_pt = self.find("riic/assistants")
+        area = {
+            "iron_order": [[1620, trade_pt[1][1] + 10], [1740, assist_pt[0][1] - 50]],
+            "iron_order_number": [
+                [1820, trade_pt[1][1] + 10],
+                [1870, assist_pt[0][1] - 65],
+            ],
+            "orundum": [[1620, trade_pt[1][1] + 45], [1870, assist_pt[0][1]]],
+            "orundum_number": [
+                [1820, trade_pt[1][1] + 55],
+                [1860, assist_pt[0][1] - 20],
+            ],
+        }
+
+        img = cv2.cvtColor(self.recog.img, cv2.COLOR_RGB2HSV)
+        img = cv2.inRange(img, (95, 0, 100), (110, 255, 255))  # 扩大蓝色范围
+        self.report_res["作战录像"] = self.get_number(img, exp_area, height=19)
+        self.report_res["赤金"] = self.get_number(img, iron_area, height=19)
+        self.report_res["龙门币订单"] = self.get_number(
+            img, area["iron_order"], height=19
+        )
+        self.report_res["合成玉"] = self.get_number(img, area["orundum"], height=19)
+        logger.info("备用方法蓝字读取完成")
+
+        img = cv2.cvtColor(self.recog.img, cv2.COLOR_RGB2HSV)
+        img = cv2.inRange(img, (0, 0, 30), (120, 120, 200))  # 扩大灰色范围
+        self.report_res["龙门币订单数"] = self.get_number(
+            img, area["iron_order_number"], height=19, thres=200
+        )
+        self.report_res["合成玉订单数量"] = self.get_number(
+            img, area["orundum_number"], height=19, thres=200
+        )
+        logger.info("备用方法订单数读取完成")
+
     def get_number(
         self, img, scope: tp.Scope, height: int | None = 18, thres: int | None = 100
     ):
@@ -226,7 +271,6 @@ class ReportSolver(SceneGraphSolver):
                 min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
                 score.append(min_val)
             value = value * 10 + score.index(min(score))
-
         return value
 
 

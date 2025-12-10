@@ -109,7 +109,7 @@ class Recognizer:
         result = cv2.matchTemplate(img, res, cv2.TM_SQDIFF_NORMED)
         result = result[0][0]
         logger.debug(result)
-        return result < 0.1
+        return result < 0.31
 
     def check_current_focus(self):
         if self.device.check_current_focus():
@@ -231,7 +231,7 @@ class Recognizer:
             self.scene = Scene.LOGIN_LOADING
         elif self.find("arrange_order_options"):
             self.scene = Scene.RIIC_OPERATOR_SELECT
-        elif self.find("arrange_order_options_scene"):
+        elif self.find("arrange_order_options_scene", threshold=0.90):
             self.scene = Scene.INFRA_ARRANGE_ORDER
         elif self.find("ope_recover_potion_on"):
             self.scene = Scene.OPERATOR_RECOVER_POTION
@@ -628,7 +628,7 @@ class Recognizer:
             self.scene = Scene.INFRA_MAIN
         elif self.find("train_main"):
             self.scene = Scene.TRAIN_MAIN
-        elif self.find("skill_collect_confirm", scope=((1142, 831), (1282, 932))):
+        elif self.find("skill_collect_confirm"):
             self.scene = Scene.TRAIN_FINISH
         elif self.find("training_support"):
             self.scene = Scene.TRAIN_SKILL_SELECT
@@ -710,8 +710,8 @@ class Recognizer:
             "12cadpa": (1810, 21),
             "arrange_confirm": (963, 969),
             "arrange_order_options": (1652, 23),
-            "arrange_order_options_scene": (369, 199),
-            "clue": (1740, 855),
+            ## "arrange_order_options_scene": (369, 199),
+            "clue": (1751, 750),
             "clue/daily": (526, 623),
             "clue/filter_all": (1297, 99),
             "clue/give_away": (25, 18),
@@ -779,7 +779,7 @@ class Recognizer:
             "shop_cart": (1252, 842),
             "shop_credit_2": (1657, 135),
             "skip": (1803, 32),
-            "terminal_main": (73, 959),
+            "terminal_main": (113, 959),
             "terminal_pre2": (1459, 797),
         }
 
@@ -846,6 +846,7 @@ class Recognizer:
             "main_theme": (283, 945),
             "main_theme_small": (321, 973),
             "materiel_ico": (892, 61),
+            "skill_collect_confirm": (1160, 835),
             "mission_daily_on": ((685, 15), (1910, 100)),
             "mission_weekly_on": ((685, 15), (1910, 100)),
             "navigation/collection/AP_entry": ((0, 170), (1920, 870)),

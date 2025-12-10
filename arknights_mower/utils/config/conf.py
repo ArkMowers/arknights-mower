@@ -427,7 +427,7 @@ class RegularTaskPart(ConfModel):
 
 
 class WorkShopItem(ConfModel):
-    item_name: str = ""
+    item_names: list[str] = []
     "材料名称"
     children_lower_limit: int = 20
     "子项下限"
@@ -449,6 +449,8 @@ class RIICPart(ConfModel):
         "材料列表"
         operator: str = ""
         "干员"
+        enabled: bool = True
+        "启用"
 
     drone_count_limit: int = 100
     "无人机使用阈值"
@@ -533,6 +535,8 @@ class SimulatorPart(ConfModel):
     "点击屏幕启动游戏"
     exit_game_when_idle: bool = True
     "任务结束后退出游戏"
+    return_home_when_idle: bool = False
+    "任务结束后返回首页"
     close_simulator_when_idle: bool = False
     "任务结束后关闭模拟器"
     fix_mumu12_adb_disconnect: bool = False
@@ -541,6 +545,8 @@ class SimulatorPart(ConfModel):
     "触控模式"
     droidcast: DroidCastConf
     "DroidCast截图设置"
+    mumu12IPC: bool = False
+    "MuMu12IPC截图设置"
 
 
 class SKLandPart(ConfModel):
@@ -562,6 +568,13 @@ class SKLandPart(ConfModel):
     "森空岛签到"
     skland_info: list[SKLandAccount] = []
     "森空岛账号"
+
+
+class AIAgentPart(ConfModel):
+    ai_type: str = ""
+    "名称"
+    ai_key: str = ""
+    "密钥"
 
 
 class MaaRewardPart(ConfModel):
@@ -589,6 +602,7 @@ class Conf(
     SimulatorPart,
     SKLandPart,
     MaaRewardPart,
+    AIAgentPart,
 ):
     @property
     def APPNAME(self):

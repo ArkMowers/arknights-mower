@@ -9,6 +9,7 @@ from arknights_mower.solvers.record import get_inventory_counts
 from arknights_mower.utils import config
 from arknights_mower.utils.datetime import the_same_time
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.news_checker import NewsChecker
 from arknights_mower.utils.operators import Operator
 
 
@@ -92,6 +93,7 @@ def scheduling(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
     if time_now is None:
         time_now = datetime.now()
     if len(tasks) > 0:
+        adjust_run_order_for_maintenance(tasks, run_order_delay)
         tasks.sort(key=lambda x: x.time)
 
         # 任务间隔最小时间（5分钟）
@@ -115,7 +117,7 @@ def scheduling(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
                         config.conf.run_order_grandet_mode.enable
                         and time_difference < min_time_interval
                         and time_now < last_priority_0_task.time
-                    ):
+                    ) and not task.adjusted:
                         logger.info("检测到跑单任务过于接近，准备修正跑单时间")
                         return last_priority_0_task, task
                 # 更新上一个优先级0任务和总执行时间
@@ -171,6 +173,37 @@ def scheduling(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
                         logger.debug("||".join([str(t) for t in tasks]))
                         break
         tasks.sort(key=lambda x: x.time)
+
+
+def adjust_run_order_for_maintenance(tasks, run_order_delay=5):
+    """
+    将维护期附近的 RUN_ORDER 任务提前到维护前，避免维护期冲突。
+    :param tasks: 任务列表
+    :param st: 维护开始时间（本地时间，datetime）
+    :param ed: 维护结束时间（本地时间，datetime）
+    :param run_order_delay: 跑单间隔（分钟）
+    """
+    time_gap = max(run_order_delay * 2, 10)  # 确保最小间隔为10分钟操作时间
+    st, ed = NewsChecker.get_update_time()
+    if not st or not ed:
+        logger.debug("无法获取维护时间，跳过调整 RUN_ORDER 任务")
+        return
+    window_start = st - timedelta(minutes=time_gap)
+    window_end = ed + timedelta(minutes=time_gap)
+    # 找出需要调整的任务
+    run_order_tasks = [
+        t
+        for t in tasks
+        if t.type == TaskTypes.RUN_ORDER and window_start < t.time < window_end
+    ]
+    # 按原 time 排序
+    run_order_tasks.sort(key=lambda t: t.time)
+    # 依次调整时间
+    for i, t in enumerate(run_order_tasks, 1):
+        new_time = window_start - timedelta(seconds=i)
+        logger.info(f"维护期附近的跑单任务已提前到 {new_time}（原定 {t.time}）")
+        t.time = new_time
+        t.adjusted = True  # 标记为已调整
 
 
 def generate_plan_by_drom(tasks, op_data):
@@ -478,6 +511,9 @@ def try_workshop_tasks(op_data, tasks):
     inventory_data = get_inventory_counts()
     if config.conf.workshop_settings and inventory_data:
         for item in config.conf.workshop_settings:
+            if not item.enabled:
+                logger.info(f"{item.operator}加工站任务被禁用，跳过")
+                continue
             valid = False
             if item.operator in op_data.operators.keys():
                 agent = op_data.operators[item.operator]
@@ -489,31 +525,56 @@ def try_workshop_tasks(op_data, tasks):
             match = False
             base_material_match = False
             non_base_material_match = False
-            for material in item.items:
-                name = material.item_name
-                if name.startswith("家具零件"):
-                    name = "家具零件"
-                metadata = workshop_formula[name]
-                if (
-                    name in inventory_data
-                    and inventory_data[name] < material.self_upper_limit
-                    and all(
-                        child_name in inventory_data
-                        and inventory_data[child_name] > material.children_lower_limit
-                        for child_name in metadata["items"]
-                    )
-                ):
-                    # 九色鹿特殊逻辑：需要同时匹配基建材料和非基建材料
-                    if item.operator == "九色鹿":
-                        if metadata["tab"] == "基建材料":
-                            base_material_match = True
-                        else:
-                            non_base_material_match = True
-                    else:
-                        match = True
-                    break
             if item.operator == "九色鹿":
+                base_material_match = False
+                non_base_material_match = False
+                for material in item.items:
+                    for name in material.item_names:
+                        metadata = workshop_formula[name]
+                        if name.startswith("家具零件"):
+                            name = "家具零件"
+                        if (
+                            name in inventory_data
+                            and inventory_data[name] < material.self_upper_limit
+                            and all(
+                                child_name in inventory_data
+                                and inventory_data[child_name]
+                                > material.children_lower_limit
+                                for child_name in metadata["items"]
+                            )
+                        ):
+                            if metadata["apCost"] < 4 or metadata["tab"] == "基建材料":
+                                base_material_match = True
+                            elif (
+                                metadata["apCost"] == 4
+                                and metadata["tab"] != "基建材料"
+                            ):
+                                non_base_material_match = True
                 match = base_material_match and non_base_material_match
+                if not match:
+                    logger.info(
+                        f"{item.operator}材料设置不符合要求：请检查合成数量，并确认至少要有一个小于4心情垫刀材料和一个4心情精英材料"
+                    )
+            else:
+                for material in item.items:
+                    for name in material.item_names:
+                        metadata = workshop_formula[name]
+                        if name.startswith("家具零件"):
+                            name = "家具零件"
+                        if (
+                            name in inventory_data
+                            and inventory_data[name] < material.self_upper_limit
+                            and all(
+                                child_name in inventory_data
+                                and inventory_data[child_name]
+                                > material.children_lower_limit
+                                for child_name in metadata["items"]
+                            )
+                        ):
+                            match = True
+                            break
+                if not match:
+                    logger.info(f"{item.operator}材料设置不符合要求: 请检查合成数量")
             if match and valid:
                 logger.info(f"{item.operator}满足使用条件:, 生成加工站任务")
                 task = SchedulerTask(
@@ -714,7 +775,9 @@ class SchedulerTask:
     plan = {}
     meta_data = ""
 
-    def __init__(self, time=None, task_plan={}, task_type="", meta_data=""):
+    def __init__(
+        self, time=None, task_plan={}, task_type="", meta_data="", adjusted=False
+    ):
         if time is None:
             self.time = datetime.now()
         else:
@@ -722,6 +785,7 @@ class SchedulerTask:
         self.plan = task_plan
         self.type = set_type_enum(task_type)
         self.meta_data = meta_data
+        self.adjusted = adjusted
 
     def format(self, time_offset=0):
         res = copy.deepcopy(self)
@@ -732,7 +796,7 @@ class SchedulerTask:
         return res
 
     def __str__(self):
-        return f"SchedulerTask(time='{self.time}',task_plan={self.plan},task_type={self.type},meta_data='{self.meta_data}')"
+        return f"SchedulerTask(time='{self.time}',task_plan={self.plan},task_type={self.type},meta_data='{self.meta_data}',adjusted={self.adjusted})"
 
     def __eq__(self, other):
         if isinstance(other, SchedulerTask):

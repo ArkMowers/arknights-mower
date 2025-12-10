@@ -37,10 +37,12 @@
                 :collapsed-width="64"
                 :collapsed-icon-size="22"
                 :options="menuOptions"
+                @update:value="handleMenuClick"
               />
             </n-layout-sider>
             <n-layout-content class="layout-content-container">
               <router-view v-if="loaded" />
+              <ChatBot v-model:show="showChatBot" />
             </n-layout-content>
             <n-layout-footer v-if="mobile">
               <n-tabs type="line" justify-content="space-evenly" size="small">
@@ -65,12 +67,12 @@
                       aria-modal="true"
                     >
                       <div>
-                        <n-button @click=";(showModal2 = false), $router.push('/mowersettings')">
+                        <n-button @click=";((showModal2 = false), $router.push('/mowersettings'))">
                           mower设置
                         </n-button>
                       </div>
                       <div>
-                        <n-button @click=";(showModal2 = false), $router.push('/maasettings')">
+                        <n-button @click=";((showModal2 = false), $router.push('/maasettings'))">
                           maa设置
                         </n-button>
                       </div>
@@ -98,28 +100,28 @@
                       aria-modal="true"
                     >
                       <div>
-                        <n-button @click=";(showModal = false), $router.push('/record/line')">
+                        <n-button @click=";((showModal = false), $router.push('/record/line'))">
                           心情曲线
                         </n-button>
                       </div>
                       <div>
-                        <n-button @click=";(showModal = false), $router.push('/record/pie')">
+                        <n-button @click=";((showModal = false), $router.push('/record/pie'))">
                           心情饼图
                         </n-button>
                       </div>
                       <div>
-                        <n-button @click=";(showModal = false), $router.push('/record/depot')">
+                        <n-button @click=";((showModal = false), $router.push('/record/depot'))">
                           仓库
                         </n-button>
                       </div>
                       <div>
-                        <n-button @click=";(showModal = false), $router.push('/record/report')">
+                        <n-button @click=";((showModal = false), $router.push('/record/report'))">
                           基建报告
                         </n-button>
                       </div>
                       <div>
                         <n-button
-                          @click=";(showModal = false), $router.push('/record/trading_analysis')"
+                          @click=";((showModal = false), $router.push('/record/trading_analysis'))"
                         >
                           贸易订单分析
                         </n-button>
@@ -139,6 +141,12 @@
                     资源
                   </div>
                 </n-tab>
+                <n-tab name="Mower AI 助手" @click="handleMenuClick('chatbot')">
+                  <div style="display: flex; flex-direction: column; align-items: center">
+                    <n-icon size="20" style="margin-bottom: -1px" :component="BulbOutline" />
+                    AI助手
+                  </div>
+                </n-tab>
               </n-tabs>
             </n-layout-footer>
           </n-layout>
@@ -151,6 +159,7 @@
 <script setup>
 import SkillLevelAdvanced from '@vicons/carbon/SkillLevelAdvanced'
 import WikipediaW from '@vicons/fa/WikipediaW'
+import BulbOutline from '@vicons/ionicons5/BulbOutline'
 import Wrench from '@vicons/fa/Wrench'
 import Bag from '@vicons/ionicons5/Bag'
 import BarChart from '@vicons/ionicons5/BarChart'
@@ -174,7 +183,12 @@ const showModal2 = ref(false)
 function renderIcon(icon) {
   return () => h(NIcon, null, { default: () => h(icon) })
 }
-
+const showChatBot = ref(false)
+function handleMenuClick(key) {
+  if (key === 'chatbot') {
+    showChatBot.value = true
+  }
+}
 import { RouterLink } from 'vue-router'
 const menuOptions = [
   {
@@ -292,6 +306,11 @@ const menuOptions = [
       ),
     key: 'wiki',
     icon: renderIcon(WikipediaW)
+  },
+  {
+    label: () => 'Mower AI 助手',
+    icon: renderIcon(BulbOutline),
+    key: 'chatbot'
   }
 ]
 

@@ -20,7 +20,8 @@ const rogue_themes = [
   { label: '傀影与猩红孤钻', value: 'Phantom' },
   { label: '水月与深蓝之树', value: 'Mizuki' },
   { label: '探索者的银凇止境', value: 'Sami' },
-  { label: '萨卡兹的无终奇语', value: 'Sarkaz' }
+  { label: '萨卡兹的无终奇语', value: 'Sarkaz' },
+  { label: '界园志异', value: 'JieGarden' }
 ]
 
 const squad = {
@@ -83,6 +84,20 @@ const squad = {
     '远程战术',
     '破坏战术',
     '高规格'
+  ],
+  JieGarden: [
+    '指挥',
+    '特勤',
+    '突击战术',
+    '堡垒战术',
+    '远程战术',
+    '高台突破',
+    '地面突破',
+    '高规格',
+    '游客',
+    '司岁台',
+    '天师府',
+    '破坏战术'
   ]
 }
 
