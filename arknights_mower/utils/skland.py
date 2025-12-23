@@ -35,7 +35,6 @@ header_login = {
     "User-Agent": "Skland/1.0.1 (com.hypergryph.skland; build:100001014; Android 31; ) Okhttp/4.11.0",
     "Accept-Encoding": "gzip",
     "Connection": "close",
-    "dId": get_d_id(),
 }
 header_for_sign = {"platform": "", "timestamp": "", "dId": "", "vName": ""}
 
@@ -77,10 +76,12 @@ def get_sign_header(url: str, method, body, sign_token, old_header=header):
 
 
 def get_grant_code(token):
+    headers = header_login.copy()
+    headers["dId"] = get_d_id()
     response = requests.post(
         grant_code_url,
         json={"appCode": app_code, "token": token, "type": 0},
-        headers=header_login,
+        headers=headers,
     )
     resp = response.json()
     if response.status_code != 200:
@@ -98,8 +99,10 @@ def get_cred(grant):
     :param header_login: 登录请求头
     :return: cred
     """
+    headers = header_login.copy()
+    headers["dId"] = get_d_id()
     resp = requests.post(
-        cred_code_url, json={"code": grant, "kind": 1}, headers=header_login
+        cred_code_url, json={"code": grant, "kind": 1}, headers=headers
     ).json()
 
     if resp["code"] != 0:
@@ -138,10 +141,12 @@ def get_cred_by_token(token):
 
 
 def log(account):
+    headers = header_login.copy()
+    headers["dId"] = get_d_id()
     r = requests.post(
         token_password_url,
         json={"phone": account.account, "password": account.password},
-        headers=header_login,
+        headers=headers,
         timeout=30,
     ).json()
     if r.get("status") != 0:

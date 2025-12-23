@@ -10,6 +10,7 @@ from arknights_mower.utils.path import get_path
 from arknights_mower.utils.skland import (
     get_binding_list,
     get_cred_by_token,
+    get_d_id,
     get_sign_header,
     header,
     header_login,
@@ -94,10 +95,12 @@ class SKLand:
         return None
 
     def log(self, account):
+        headers = header_login.copy()
+        headers["dId"] = get_d_id()
         r = requests.post(
             token_password_url,
             json={"phone": account.account, "password": account.password},
-            headers=header_login,
+            headers=headers,
         ).json()
         if r.get("status") != 0:
             raise Exception(f"获得token失败：{r['msg']}")
