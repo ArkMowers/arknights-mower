@@ -3618,6 +3618,17 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     "specialaccess": config.conf.maa_specialaccess,
                 },
             )
+        elif type == "Recruit":
+            self.MAA.append_task(
+                "Recruit",
+                {
+                    "refresh": True,
+                    "times": 4,
+                    "select": [3, 4],
+                    "confirm": [3, 4],
+                    "skip_robot": True,
+                },
+            )
 
     def maa_stop(self, stop=True):
         if stop:
@@ -3655,7 +3666,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 # 任务及参数请参考 docs/集成文档.md
                 self.initialize_maa()
                 if tasks == "All":
-                    tasks = ["StartUp", "Fight", "Mall", "Award"]
+                    tasks = ["StartUp", "Fight", "Mall", "Award", "Recruit"]
                 for maa_task in tasks:
                     self.append_maa_task(maa_task)
                 self.MAA.start()
