@@ -13,6 +13,7 @@ from typing import Any, Callable, Optional
 
 import numpy as np
 
+from  arknights_mower import __system__
 from arknights_mower.utils import config
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.log import logger
@@ -222,7 +223,7 @@ class MuMu12IPC:
         cmd = [self._manager, subcmd, "-v", str(self._index), "-a"]
         try:
             out = subprocess.run(
-                cmd, capture_output=True, text=True, check=True
+                cmd, capture_output=True, text=True, check=True, creationflags=subprocess.CREATE_NO_WINDOW if __system__ == "windows" else 0
             ).stdout.strip()
             return json.loads(out)
         except Exception as e:
@@ -240,7 +241,7 @@ class MuMu12IPC:
                 "core_version",
             ]
             try:
-                result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+                result = subprocess.run(cmd, capture_output=True, text=True, check=True, creationflags=subprocess.CREATE_NO_WINDOW if __system__ == "windows" else 0)
                 output = result.stdout.strip()
                 return output
                 # logger.debug("MuMu setting info loaded and cached.")
@@ -265,7 +266,7 @@ class MuMu12IPC:
         """获取模拟器运行状态（实时查询）"""
         cmd = [self._manager, "api", "-v", str(self._index), "player_state"]
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True, creationflags=subprocess.CREATE_NO_WINDOW if __system__ == "windows" else 0)
             player_index = None
             found_condition = False
             stdout = result.stdout
