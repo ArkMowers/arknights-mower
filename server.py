@@ -769,3 +769,12 @@ def ws_chat(ws):
         except Exception as e:
             logger.exception(f"WebSocket处理错误：{str(e)}")
             ws.send(json.dumps({"error": str(e)}))
+
+
+@app.route("/exit")
+@require_token
+def exit():
+    config.parent_conn.send("exit")
+    if config.webview_process.join(3) is None:
+        config.webview_process.terminate()
+    return "true"
