@@ -2596,7 +2596,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             else:
                 self.back_to_infrastructure()
 
-    def choose_train_ope(self, ope: str):
+    def choose_train_ope(self, ope: str, fast_mode=True):
+        if not fast_mode:
+            # 保证处于未选中任何干员状态
+            self.ctap((671, 908), 0.3)
+            self.ctap((671, 908), 0.3)
+
         found = False
         profession = "ALL"
         if ope != "阿米娅" and ope not in ["Current", "Free"]:
@@ -2767,6 +2772,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.switch_arrange_order("心情", room, "true")
                     pre_order = [3, "true"]
                 if not fast_mode:
+                    if room in ["train", "factory", "contact"]:
+                        # 没有清空选择按钮的单人房间手动清除
+                        self.ctap((self.recog.w * 0.35, self.recog.h * 0.75), 0.3)
+                        self.ctap((self.recog.w * 0.35, self.recog.h * 0.75), 0.3)
                     self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
                 changed, ret = self.scan_agent(
                     agent, full_scan=last_special_filter == "ALL"
