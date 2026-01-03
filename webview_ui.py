@@ -297,7 +297,8 @@ if __name__ == "__main__":
                     config.webview_process.start()
             elif msg == "exit":
                 config.parent_conn.send("exit")
-                if config.webview_process.join(3) is None:
+                config.webview_process.join(3)
+                if config.webview_process.is_alive():
                     config.webview_process.terminate()
                 break
     else:

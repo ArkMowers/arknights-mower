@@ -775,6 +775,7 @@ def ws_chat(ws):
 @require_token
 def exit():
     config.parent_conn.send("exit")
-    if config.webview_process.join(3) is None:
+    config.webview_process.join(3)
+    if config.webview_process.is_alive():
         config.webview_process.terminate()
     return "true"
