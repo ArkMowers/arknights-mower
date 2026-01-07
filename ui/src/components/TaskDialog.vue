@@ -77,6 +77,27 @@ const workshopOperatorOptions = computed(() => {
     value: s.operator
   }))
 })
+
+const roomOptions = [
+  { label: '会客室', value: 'meeting' },
+  { label: '办公室', value: 'contact' },
+  { label: '加工站', value: 'factory' },
+  { label: '训练室', value: 'train' },
+  { label: '控制中枢', value: 'central' },
+  { label: '第一层1号房间', value: 'room_1_1' },
+  { label: '第一层2号房间', value: 'room_1_2' },
+  { label: '第一层3号房间', value: 'room_1_3' },
+  { label: '第二层1号房间', value: 'room_2_1' },
+  { label: '第二层2号房间', value: 'room_2_2' },
+  { label: '第二层3号房间', value: 'room_2_3' },
+  { label: '第三层1号房间', value: 'room_3_1' },
+  { label: '第三层2号房间', value: 'room_3_2' },
+  { label: '第三层3号房间', value: 'room_3_3' },
+  { label: '宿舍1', value: 'dormitory_1' },
+  { label: '宿舍2', value: 'dormitory_2' },
+  { label: '宿舍3', value: 'dormitory_3' },
+  { label: '宿舍4', value: 'dormitory_4' }
+]
 function update_tasks() {
   if (sub_plan.value != 'main' && !isLogPage.value) {
     const result = []
@@ -89,7 +110,7 @@ function update_tasks() {
 
 function new_task() {
   return {
-    room: 'room_',
+    room: '',
     operators: []
   }
 }
@@ -338,14 +359,13 @@ const swap_30 = [
         <template #create-button-default>添加任务</template>
         <template #default="{ value }">
           <div class="task_row">
-            <n-input v-model:value="value.room" />
-            <help-text>
-              <div>会客室：meeting</div>
-              <div>办公室：contact</div>
-              <div>加工站：factory</div>
-              <div>训练室：train</div>
-              <div>控制中枢：central</div>
-            </help-text>
+            <n-select
+              v-model:value="value.room"
+              :options="roomOptions"
+              placeholder="选择房间"
+              class="dropdown-select"
+              style="width: 160px"
+            />
             <n-dynamic-tags v-model:value="value.operators" :max="5" size="large">
               <template #input="{ submit, deactivate }">
                 <n-select

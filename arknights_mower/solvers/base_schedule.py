@@ -2193,9 +2193,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         not self.leifeng_mode
                         and self.clue_count > self.clue_count_limit
                     )
-                    if (
+                    if give_away_true and (
                         fast_giveaway := self.find("clue/fast_giveaway")
-                        and give_away_true
                     ):
                         logger.info("快速送出线索")
                         self.tap(fast_giveaway)
@@ -2520,30 +2519,82 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.recog.update()
             retry_count += 1
 
-    def choose_train_agent(
-        self, current_room, agents, idx, error_count=0, fast_mode=False
-    ):
-        if agents[idx] == "Current":
-            agents[idx] = current_room[idx]
-        if current_room[idx] != agents[idx]:
-            while (
-                # self.find("arrange_order_options",scope=((1785, 0), (1920, 128))) is None
-                self.find("confirm_blue") is None and self.find("confirm_train") is None
-            ):
-                if error_count > 3:
-                    raise Exception("未成功进入干员选择界面")
-                self.ctap((self.recog.w * 0.82, self.recog.h * 0.18 * (idx + 1)))
-                error_count += 1
-            if idx == 0:
-                self.choose_agent([agents[idx]], "train", fast_mode)
-            else:
-                self.choose_train_ope(agents[idx])
-            self.tap_confirm("train")
-
     def choose_train(self, agents: list[str], fast_mode=True):
-        current_room = self.op_data.get_current_room("train", True)
-        self.choose_train_agent(current_room, agents, 0, 0, fast_mode)
-        self.choose_train_agent(current_room, agents, 1, 0, fast_mode)
+        tasks = ["scan"]
+        select_targets = []
+        unknown_cnt = 0
+        start_time = datetime.now()
+        while tasks:
+            if datetime.now() - start_time > timedelta(minutes=2):
+                raise Exception("选人流程超时，自动退出")
+            scene = self.scene()
+            if scene == Scene.UNKNOWN:
+                unknown_cnt += 1
+                if unknown_cnt > 5:
+                    unknown_cnt = 0
+                    self.back_to_infrastructure()
+                    self.enter_room("train")
+                else:
+                    self.sleep()
+                continue
+            elif scene == Scene.CONNECTING:
+                self.sleep(1)
+                continue
+            elif scene == Scene.INFRA_DETAILS and not self.find("room_detail"):
+                self.tap((self.recog.w * 0.25, self.recog.h * 0.95), interval=0.5)
+                continue
+            elif scene == Scene.INFRA_MAIN:
+                self.enter_room("train")
+                continue
+            elif scene == Scene.INFRA_DETAILS and self.find("room_detail"):
+                if tasks[0] == "scan":
+                    scan_result = self.get_agent_from_room("train")
+                    logger.debug(f"需要选择的干员：{scan_result}")
+                    if len(scan_result) < len(agents):
+                        scan_result.extend([""] * (len(agents) - len(scan_result)))
+                    desired = list(agents)
+                    logger.debug(f"需要选择的desired干员：{desired}")
+                    for idx, name in enumerate(desired):
+                        if name == "Current":
+                            desired[idx] = scan_result[idx]
+                    select_targets = [
+                        (idx, desired_name)
+                        for idx, desired_name in enumerate(desired)
+                        if scan_result[idx]["agent"] != desired_name
+                    ]
+                    if not select_targets:
+                        tasks = []
+                        return
+                    tasks[0] = "select"
+                    logger.debug(f"需要选择的干员：{select_targets}")
+                else:
+                    if not select_targets:
+                        tasks = []
+                        return
+                    idx = select_targets[0][0]
+                    self.ctap((self.recog.w * 0.82, self.recog.h * 0.18 * (idx + 1)))
+                continue
+            elif scene == Scene.INFRA_ARRANGE_ORDER:
+                logger.info(tasks)
+                if tasks[0] == "scan":
+                    self.back()
+                else:
+                    if not select_targets:
+                        tasks = []
+                        return
+                    logger.info(f"需要选择的干员：{select_targets}")
+                    idx = select_targets[0][0]
+                    if idx == 0:
+                        self.choose_agent([agents[idx]], "train", fast_mode)
+                    else:
+                        self.choose_train_ope(agents[idx])
+                    self.tap_confirm("train")
+                    select_targets.pop(0)
+                    if select_targets:
+                        continue
+                    tasks[0] = "scan"
+            else:
+                self.back_to_infrastructure()
 
     def choose_train_ope(self, ope: str):
         found = False

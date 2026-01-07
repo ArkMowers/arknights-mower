@@ -231,7 +231,11 @@ class Recognizer:
             self.scene = Scene.LOGIN_LOADING
         elif self.find("arrange_order_options"):
             self.scene = Scene.RIIC_OPERATOR_SELECT
-        elif self.find("arrange_order_options_scene", threshold=0.90):
+        elif (
+            self.find("arrange_order_options_scene", threshold=0.90)
+            or self.find("op_select_2")
+            or self.find("op_select_1")
+        ):
             self.scene = Scene.INFRA_ARRANGE_ORDER
         elif self.find("ope_recover_potion_on"):
             self.scene = Scene.OPERATOR_RECOVER_POTION
@@ -779,7 +783,7 @@ class Recognizer:
             "shop_cart": (1252, 842),
             "shop_credit_2": (1657, 135),
             "skip": (1803, 32),
-            "terminal_main": (113, 959),
+            # "terminal_main": (113, 959),
             "terminal_pre2": (1459, 797),
         }
 
@@ -829,6 +833,7 @@ class Recognizer:
 
         template_matching = {
             # "arrange_check_in": ((30, 300), (175, 700)),
+            "terminal_main": ((0, 0), (1920, 1080)),
             "arrange_check_in_on": ((30, 300), (175, 700)),
             "biography": (768, 934),
             "business_card": (55, 165),
@@ -898,6 +903,8 @@ class Recognizer:
             "riic/orundum": ((1500, 320), (1800, 550)),
             "riic/trade": ((1320, 250), (1600, 500)),
             "upgrade": (997, 501),
+            "op_select_1": (95, 474),
+            "op_select_2": (95, 474),
         }
 
         if res in template_matching:
