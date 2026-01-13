@@ -24,6 +24,7 @@ from arknights_mower.solvers.record import clear_data, load_state, save_state
 from arknights_mower.utils import config
 from arknights_mower.utils.datetime import get_server_time
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.operators import Operators, build_global_plan
 from arknights_mower.utils.path import get_path
 
 mimetypes.add_type("text/html", ".html")
@@ -369,6 +370,22 @@ def save_file_dialog():
 @require_token
 def export_json():
     return send_file(config.plan_path)
+
+
+@app.route("/validate-plan", methods=["POST"])
+@require_token
+def validate_backup_plans_route():
+    try:
+        global_plan = build_global_plan()
+        op = Operators(global_plan)
+        validation_msg = op.init_and_validate()
+        if validation_msg is not None:
+            return {"success": False, "message": validation_msg}
+        result = op.validate_backup_plans()
+        return result
+    except Exception as e:
+        logger.exception(e)
+        return {"success": False, "message": f"验证过程中发生错误: {str(e)}"}
 
 
 @app.route("/check-maa")

@@ -1,8 +1,9 @@
-import re
-
 import cv2
 
+from arknights_mower.data import stage_data_full
 from arknights_mower.models import navigation
+from arknights_mower.solvers.base_mixin import BaseMixin
+from arknights_mower.utils import rapidocr
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import thres2
 from arknights_mower.utils.log import logger
@@ -143,56 +144,53 @@ difficulty_str = [
 ]
 
 
-class NavigationSolver(SceneGraphSolver):
+class NavigationSolver(SceneGraphSolver, BaseMixin):
     def run(self, name: str):
         logger.info("Start: 关卡导航")
         self.success = False
         self.act = None
-
-        # hot_update.update()
-        # if name in hot_update.navigation.NavigationSolver.location:
-        #     hot_update.navigation.NavigationSolver(self.device, self.recog).run(name)
-        #     return True
-
         self.name = name
-        prefix = name.split("-")[0]
-        pr_prefix = ""
-        if prefix == "PR":
-            pr_prefix = name.split("-")[1]
-        self.prefix = prefix
-        self.pr_prefix = pr_prefix
-        self.now_difficulty = None
-        self.change_to = None
-        self.patten = r"^(R|JT|H|M)(\d{1,2})$"
-        if name == "Annihilation":
-            logger.info("剿灭导航")
-        elif prefix.isdigit() or re.match(self.patten, prefix):
-            if match := re.search(self.patten, prefix):
-                prefix = match.group(2)
-            prefix = int(prefix)
-            self.prefix = prefix
-            if prefix in location and name in location[prefix]:
-                logger.info(f"主线关卡导航：{name}")
-                if prefix < 4:
-                    act = 0
-                elif prefix < 9:
-                    act = 1
-                else:
-                    act = 2
-                self.act = act
-            else:
-                logger.error(f"暂不支持{name}")
-                return False
-        elif prefix in ["OF"]:
-            logger.info(f'别传关卡导航："{name}"')
-        elif prefix in ["AP", "LS", "CA", "CE", "SK"]:
-            logger.info(f'资源收集关卡导航："{name}"')
-        elif prefix.split("-")[0] in ["PR"]:
-            logger.info(f'芯片关卡导航："{name}"')
+        self.stage_meta = next(
+            (
+                item
+                for item in stage_data_full
+                if item.get("id") == name or item.get("name") == name
+            ),
+            None,
+        )
+        self.stageType = (
+            "ACTIVITY" if not self.stage_meta else self.stage_meta.get("stageType")
+        )
+        self.scene_graph_navigation(Scene.TERMINAL_MAIN)
+        # rapid OCR: 如果右下角显示“上次作战”的关卡名与目标相同，直接点击进入
+        logger.info("尝试使用rapid OCR识别上次作战")
+        if rapidocr.engine:
+            x0, y0, x1, y1 = 1680, 840, 1895, 945
+            region = self.recog.img[y0:y1, x0:x1]
+            ocr_raw = rapidocr.engine(region, use_det=True, use_cls=False, use_rec=True)
+            ocr_result = ocr_raw[0] if isinstance(ocr_raw, tuple) else ocr_raw
 
-        else:
-            logger.error(f"暂不支持{name}")
-            return False
+            texts = []
+            for item in ocr_result or []:
+                try:
+                    txt = None
+                    if (
+                        isinstance(item, (list, tuple))
+                        and len(item) >= 2
+                        and isinstance(item[1], str)
+                    ):
+                        txt = item[1]
+                        logger.info(f"ocr识别结果: {txt}")
+                    if txt:
+                        texts.append(txt.strip())
+                except Exception:
+                    continue
+            logger.info(f"上次作战OCR: {texts}")
+            if self.name in texts:
+                logger.info("识别到上次作战与目标相同，尝试点击进入")
+                self.tap((self.recog.w * 0.88, self.recog.h * 0.81), interval=0.5)
+                self.success = True
+                return
 
         super().run()
         return self.success
@@ -213,11 +211,11 @@ class NavigationSolver(SceneGraphSolver):
                 else:
                     logger.info("本周剿灭已完成")
                     return True
-            elif isinstance(self.prefix, int):
+            elif self.stageType == "MAIN":
                 self.tap_terminal_button("main_theme")
-            elif self.prefix in ["OF"]:
-                raise NotImplementedError("别传关卡导航暂未实现，请手动点击")
-            elif self.prefix in collection_prefixs:
+            elif self.stageType == "ACTIVITY" and self.stage_meta.get("endTS") is None:
+                self.tap_terminal_button("main_theme")
+            elif self.stageType == "DAILY":
                 self.tap_terminal_button("collection")
         elif scene == Scene.OPERATOR_ELIMINATE:
             if self.name != "Annihilation":
@@ -275,6 +273,7 @@ class NavigationSolver(SceneGraphSolver):
             if non_black_ratio < 0.1:
                 self.sleep()
                 return
+
             name, val, loc = "", 1, None
             prefix = self.prefix
             # 资源收集关直接按坐标点击

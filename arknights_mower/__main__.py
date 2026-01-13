@@ -12,11 +12,9 @@ from arknights_mower.utils.device.adb_client.session import Session
 from arknights_mower.utils.device.scrcpy import Scrcpy
 from arknights_mower.utils.email import send_message, task_template
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.logic_expression import get_logic_exp
 from arknights_mower.utils.news_checker import NewsChecker
 from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.path import get_path
-from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.simulator import restart_simulator
 
 base_scheduler = None
@@ -40,84 +38,15 @@ def initialize(
         return scheduler
 
     base_scheduler = BaseSchedulerSolver()
-    plan1 = {}
-    plan = config.plan.model_dump(exclude_none=True)
-    conf = config.conf
-    plan_config = PlanConfig(
-        rest_in_full=config.plan.conf.rest_in_full,
-        exhaust_require=config.plan.conf.exhaust_require,
-        resting_priority=config.plan.conf.resting_priority,
-        ling_xi=config.plan.conf.ling_xi,
-        workaholic=config.plan.conf.workaholic,
-        free_blacklist=conf.free_blacklist,
-        ope_resting_priority=config.plan.conf.ope_resting_priority,
-        resting_threshold=conf.resting_threshold,
-        refresh_trading_config=config.plan.conf.refresh_trading,
-        refresh_drained=config.plan.conf.refresh_drained,
-        free_room=conf.free_room,
-    )
-    for room, obj in plan[plan["default"]].items():
-        plan1[room] = [
-            Room(
-                op["agent"],
-                op["group"],
-                op["replacement"],
-                obj["name"],
-                obj["product"] if "product" in obj else "",
-            )
-            for op in obj["plans"]
-        ]
-    # 默认任务
-    plan["default_plan"] = Plan(plan1, plan_config)
-    # 备用自定义任务
-    backup_plans: list[Plan] = []
+    from arknights_mower.utils.operators import build_global_plan
 
-    for i in plan["backup_plans"]:
-        backup_plan: dict[str, Room] = {}
-        for room, obj in i["plan"].items():
-            backup_plan[room] = [
-                Room(
-                    op["agent"],
-                    op["group"],
-                    op["replacement"],
-                    obj["name"],
-                    obj["product"] if "product" in obj else "",
-                )
-                for op in obj["plans"]
-            ]
-        backup_config = PlanConfig(
-            i["conf"]["rest_in_full"],
-            i["conf"]["exhaust_require"],
-            i["conf"]["resting_priority"],
-            ling_xi=i["conf"]["ling_xi"],
-            workaholic=i["conf"]["workaholic"],
-            free_blacklist=i["conf"]["free_blacklist"],
-            ope_resting_priority=i["conf"]["ope_resting_priority"],
-            resting_threshold=conf.resting_threshold,
-            refresh_trading_config=i["conf"]["refresh_trading"],
-            refresh_drained=i["conf"]["refresh_drained"],
-            free_room=conf.free_room,
-        )
-        backup_trigger = get_logic_exp(i["trigger"]) if "trigger" in i else None
-        backup_task = i.get("task")
-        backup_trigger_timing = i.get("trigger_timing")
-        backup_plans.append(
-            Plan(
-                backup_plan,
-                backup_config,
-                trigger=backup_trigger,
-                task=backup_task,
-                trigger_timing=backup_trigger_timing,
-                name=i.get("name"),
-            )
-        )
-    plan["backup_plans"] = backup_plans
+    plan = build_global_plan()
 
     logger.debug(plan)
     base_scheduler.global_plan = plan
     base_scheduler.tasks = tasks
-    base_scheduler.enable_party = conf.enable_party == 1  # 是否使用线索
-    base_scheduler.leifeng_mode = conf.leifeng_mode == 1  # 是否有额外线索就送出
+    base_scheduler.enable_party = config.conf.enable_party == 1  # 是否使用线索
+    base_scheduler.leifeng_mode = config.conf.leifeng_mode == 1  # 是否有额外线索就送出
     # 干员宿舍回复阈值
     # 高效组心情低于 UpperLimit  * 阈值 (向下取整)的时候才会会安排休息
     base_scheduler.last_room = ""
@@ -125,9 +54,11 @@ def initialize(
     # 估计没用了
     base_scheduler.MAA = None
     base_scheduler.error = False
-    base_scheduler.drone_room = None if conf.drone_room == "" else conf.drone_room
+    base_scheduler.drone_room = (
+        None if config.conf.drone_room == "" else config.conf.drone_room
+    )
     base_scheduler.reload_room = list(
-        filter(None, conf.reload_room.replace("，", ",").split(","))
+        filter(None, config.conf.reload_room.replace("，", ",").split(","))
     )
 
     # 关闭游戏次数计数器
@@ -173,18 +104,10 @@ def simulate(saved):
     if validation_msg is not None:
         logger.error(validation_msg)
         return
-    if len(base_scheduler.op_data.backup_plans) > 0:
-        conditions = base_scheduler.op_data.generate_conditions(
-            len(base_scheduler.op_data.backup_plans)
-        )
-        for con in conditions:
-            validation_msg = base_scheduler.op_data.swap_plan(con, True)
-            if validation_msg is not None:
-                logger.error(f"替换排班验证错误：{validation_msg}, 附表条件为 {con}")
-                return
-        base_scheduler.op_data.swap_plan(
-            [False] * len(base_scheduler.op_data.backup_plans), True
-        )
+    validation_msg = base_scheduler.op_data.validate_backup_plans()
+    if not validation_msg["success"]:
+        logger.error(f"备用计划验证失败: {validation_msg['message']}")
+        return
     timezone_offset = config.conf.timezone_offset
     if saved:
         try:

@@ -1,5 +1,130 @@
 [
   {
+    "key": 401,
+    "name": "摆渡人",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "英雄的骄傲·α",
+        "buffer": true,
+        "buffer_des": [
+          "cc_g_minos",
+          "cc_g_sargon"
+        ],
+        "des": "进驻控制中枢时，基建内（不包含副手及活动室使用者）每有1名<$cc.g.minos><@cc.kw>米诺斯</></>干员，会客室线索搜集速度<@cc.vup>+4%</>（最多<@cc.vup>+20%</>，同种效果取最高）；当与<$cc.g.sargon><@cc.kw>萨尔贡</></>干员进驻控制中枢一起工作时，自身心情每小时消耗<@cc.vdown>+0.02</>",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_c_minos",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 0,
+        "skill_level": 1,
+        "phase_level": "精1 1级",
+        "skillname": "英雄的骄傲·β",
+        "buffer": true,
+        "buffer_des": [
+          "cc_g_minos",
+          "cc_g_sargon"
+        ],
+        "des": "进驻控制中枢时，基建内（不包含副手及活动室使用者）每有1名<$cc.g.minos><@cc.kw>米诺斯</></>干员，会客室线索搜集速度<@cc.vup>+5%</>（最多<@cc.vup>+25%</>，同种效果取最高）；当与<$cc.g.sargon><@cc.kw>萨尔贡</></>干员进驻控制中枢一起工作时，自身心情每小时消耗<@cc.vdown>+0.02</>",
+        "roomType": "中枢",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ctrl_c_minos2",
+        "buffColor": "#005752",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 400,
+    "name": "撷英调香师",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "沉静心灵",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻宿舍时，该宿舍内所有干员的心情每小时恢复<@cc.vup>+0.15</>（同种效果取最高）",
+        "roomType": "宿舍",
+        "buffCategory": "RECOVERY",
+        "skillIcon": "bskill_dorm_all2",
+        "buffColor": "#21cdcb",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "净化呼吸",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻宿舍时，该宿舍内心情<@cc.vup>20</>以下的干员恢复效果额外<@cc.vup>+0.1</>（同种效果取最高）",
+        "roomType": "宿舍",
+        "buffCategory": "RECOVERY",
+        "skillIcon": "bskill_dorm_all_tired2",
+        "buffColor": "#21cdcb",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 399,
+    "name": "缇缇",
+    "span": 3,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "修旧如旧·α",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻加工站加工<@cc.kw>精英材料</>时，副产品的产出概率提升<@cc.vup>75%</>",
+        "roomType": "加工站",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ws_evolve2",
+        "buffColor": "#e3eb00",
+        "textColor": "#333333"
+      },
+      {
+        "skill_key": 0,
+        "skill_level": 1,
+        "phase_level": "精2 1级",
+        "skillname": "修旧如旧·β",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻加工站加工<@cc.kw>精英材料</>时，副产品的产出概率提升<@cc.vup>80%</>",
+        "roomType": "加工站",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ws_evolve3",
+        "buffColor": "#e3eb00",
+        "textColor": "#333333"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "与历史对话",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻加工站加工<@cc.kw>精英材料</>时，心情消耗为<@cc.kw>8</>的配方全部<@cc.vup>-4</>心情消耗",
+        "roomType": "加工站",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ws_evolve_cost3",
+        "buffColor": "#e3eb00",
+        "textColor": "#333333"
+      }
+    ]
+  },
+  {
     "key": 398,
     "name": "天空盒",
     "span": 2,
@@ -14,7 +139,7 @@
         "des": "进驻加工站加工<@cc.kw>精英材料</>时，副产品的产出概率提升<@cc.vup>75%</>",
         "roomType": "加工站",
         "buffCategory": "FUNCTION",
-        "skillIcon": "bskill_ws_evolve3",
+        "skillIcon": "bskill_ws_evolve2",
         "buffColor": "#e3eb00",
         "textColor": "#333333"
       },

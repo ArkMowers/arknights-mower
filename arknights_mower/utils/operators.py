@@ -1,14 +1,97 @@
 import copy
 from datetime import datetime, timedelta
+from itertools import product
 
 from evalidate import Expr, base_eval_model
 
 from arknights_mower.utils import config
-from arknights_mower.utils.plan import BaseProduct, PlanConfig
+from arknights_mower.utils.plan import BaseProduct, Plan, PlanConfig
 
 from ..data import agent_arrange_order, agent_list, base_room_list
 from ..solvers.record import save_action_to_sqlite_decorator
 from ..utils.log import logger
+
+
+def build_global_plan():
+    """构建完整的 global_plan，包括 Plan 对象，用于运行时"""
+    from ..utils import config
+    from ..utils.logic_expression import get_logic_exp
+    from ..utils.plan import Plan, PlanConfig, Room
+
+    plan1 = {}
+    plan = config.plan.model_dump(exclude_none=True)
+    conf = config.conf
+    plan_config = PlanConfig(
+        rest_in_full=config.plan.conf.rest_in_full,
+        exhaust_require=config.plan.conf.exhaust_require,
+        resting_priority=config.plan.conf.resting_priority,
+        ling_xi=config.plan.conf.ling_xi,
+        workaholic=config.plan.conf.workaholic,
+        free_blacklist=conf.free_blacklist,
+        ope_resting_priority=config.plan.conf.ope_resting_priority,
+        resting_threshold=conf.resting_threshold,
+        refresh_trading_config=config.plan.conf.refresh_trading,
+        refresh_drained=config.plan.conf.refresh_drained,
+        free_room=conf.free_room,
+    )
+    for room, obj in plan[plan["default"]].items():
+        plan1[room] = [
+            Room(
+                op["agent"],
+                op["group"],
+                op["replacement"],
+                obj["name"],
+                obj["product"] if "product" in obj else "",
+            )
+            for op in obj["plans"]
+        ]
+    # 默认任务
+    plan["default_plan"] = Plan(plan1, plan_config)
+    # 备用自定义任务
+    backup_plans: list[Plan] = []
+
+    for i in plan["backup_plans"]:
+        backup_plan: dict[str, Room] = {}
+        for room, obj in i["plan"].items():
+            backup_plan[room] = [
+                Room(
+                    op["agent"],
+                    op["group"],
+                    op["replacement"],
+                    obj["name"],
+                    obj["product"] if "product" in obj else "",
+                )
+                for op in obj["plans"]
+            ]
+        backup_config = PlanConfig(
+            i["conf"]["rest_in_full"],
+            i["conf"]["exhaust_require"],
+            i["conf"]["resting_priority"],
+            ling_xi=i["conf"]["ling_xi"],
+            workaholic=i["conf"]["workaholic"],
+            free_blacklist=i["conf"]["free_blacklist"],
+            ope_resting_priority=i["conf"]["ope_resting_priority"],
+            resting_threshold=conf.resting_threshold,
+            refresh_trading_config=i["conf"]["refresh_trading"],
+            refresh_drained=i["conf"]["refresh_drained"],
+            free_room=conf.free_room,
+        )
+        backup_trigger = get_logic_exp(i["trigger"]) if "trigger" in i else None
+        backup_task = i.get("task")
+        backup_trigger_timing = i.get("trigger_timing")
+        backup_plans.append(
+            Plan(
+                backup_plan,
+                backup_config,
+                trigger=backup_trigger,
+                task=backup_task,
+                trigger_timing=backup_trigger_timing,
+                name=i.get("name"),
+            )
+        )
+    plan["backup_plans"] = backup_plans
+
+    return plan
 
 
 class SkillUpgradeSupport:
@@ -135,17 +218,6 @@ class Operators:
                     if operator.agent != "Current":
                         default_plan[key][idx] = operator
         return default_plan, ext_config.merge_config(plan.config)
-
-    def generate_conditions(self, n):
-        if n == 1:
-            return [[True], [False]]
-        else:
-            prev_conditions = self.generate_conditions(n - 1)
-            conditions = []
-            for condition in prev_conditions:
-                conditions.append(condition + [True])
-                conditions.append(condition + [False])
-            return conditions
 
     def init_and_validate(self, update=False):
         self.groups = {}
@@ -664,6 +736,9 @@ class Operators:
         operator.rest_in_full = self.config.is_rest_in_full(operator.name)
         operator.workaholic = self.config.is_workaholic(operator.name)
         operator.refresh_order_room = self.config.is_refresh_trading(operator.name)
+        logger.debug(
+            f"设置 {operator.name} 刷新交易房间: {operator.refresh_order_room}"
+        )
         operator.refresh_drained = self.config.is_refresh_drained(operator.name)
         if operator.name in agent_arrange_order:
             operator.arrange_order = agent_arrange_order[operator.name]
@@ -798,6 +873,83 @@ class Operators:
         ret += "'dorms': [" + ",".join(dorm) + "]}"
         return ret
 
+    def validate_backup_plans(self):
+        backup_count = len(self.backup_plans)
+        if backup_count == 0:
+            return {"success": True, "message": "没有备用计划，无需验证"}
+
+        def collect_agents(plan: Plan) -> set[str]:
+            agents = set()
+            for room_info in plan.plan.values():
+                for op in room_info:
+                    if op.agent not in ("Current", "Free"):
+                        agents.add(op.agent)
+            return agents
+
+        agent_sets = [collect_agents(plan) for plan in self.backup_plans]
+        adjacency = [set() for _ in range(backup_count)]
+        for i in range(backup_count):
+            for j in range(i + 1, backup_count):
+                if agent_sets[i].intersection(agent_sets[j]):
+                    adjacency[i].add(j)
+                    adjacency[j].add(i)
+
+        components: list[list[int]] = []
+        visited = [False] * backup_count
+        for i in range(backup_count):
+            if visited[i]:
+                continue
+            stack = [i]
+            component = []
+            while stack:
+                node = stack.pop()
+                if visited[node]:
+                    continue
+                visited[node] = True
+                component.append(node)
+                stack.extend(adjacency[node])
+            components.append(component)
+
+        tested_conditions: set[tuple[bool, ...]] = set()
+        tested_sequence: list[tuple[bool, ...]] = []
+
+        def validate_condition(condition: list[bool]) -> tuple[bool, str]:
+            key = tuple(condition)
+            if key in tested_conditions:
+                return True, ""
+            tested_conditions.add(key)
+            tested_sequence.append(key)
+            logger.debug(f"验证副表条件：{condition}")
+            validation_msg = self.swap_plan(condition, True)
+            if validation_msg is not None:
+                logger.info(
+                    f"替换排班验证错误：{validation_msg}, 附表条件为 {condition}"
+                )
+                return False, validation_msg
+            return True, ""
+
+        success, msg = validate_condition([False] * backup_count)
+        if not success:
+            return {"success": False, "message": f"基础验证失败：{msg}"}
+
+        for component in components:
+            size = len(component)
+            for combo in product([False, True], repeat=size):
+                if not any(combo):
+                    continue
+                condition = [False] * backup_count
+                for idx, flag in enumerate(combo):
+                    condition[component[idx]] = flag
+                success, msg = validate_condition(condition)
+                if not success:
+                    return {"success": False, "message": f"组件验证失败：{msg}"}
+
+        self.swap_plan([False] * backup_count, True)
+        return {
+            "success": True,
+            "message": f"验证成功，共验证 {len(tested_sequence)} 次",
+        }
+
 
 class Dormitory:
     def __init__(self, position, name="", time=None):
@@ -839,7 +991,9 @@ class Operator:
     ):
         if refresh_order_room is not None:
             self.refresh_order_room = refresh_order_room
-        self.refresh_order_room = [False, []]
+            logger.debug(f"设置{self.name}刷新交易所房间为{self.refresh_order_room}")
+        else:
+            self.refresh_order_room = [False, []]
         self.refresh_drained = refresh_drained
         self.name = name
         self.room = room
@@ -870,12 +1024,13 @@ class Operator:
     def current_room(self, value):
         if self._current_room != value:
             self._current_room = value
-            if (
-                Operators.current_room_changed_callback
-                and self.refresh_order_room[0]
-                or self.refresh_drained
+            if Operators.current_room_changed_callback and (
+                self.refresh_order_room[0] or self.refresh_drained
             ):
                 Operators.current_room_changed_callback(self)
+                logger.debug(
+                    f"触发当前房间变更回调: {self.name} 现在在 {self._current_room}, 刷新交易所房间: {self.refresh_order_room}, 刷新疲劳: {self.refresh_drained}"
+                )
 
     def is_high(self):
         # 是否为高效组
@@ -959,3 +1114,76 @@ class Operator:
 
     def __repr__(self):
         return f"Operator(name='{self.name}', room='{self.room}', index={self.index}, group='{self.group}', replacement={self.replacement}, resting_priority='{self.resting_priority}', current_room='{self.current_room}',exhaust_require={self.exhaust_require},mood={self.mood}, upper_limit={self.upper_limit}, rest_in_full={self.rest_in_full}, current_index={self.current_index}, lower_limit={self.lower_limit}, operator_type='{self.operator_type}',depletion_rate={self.depletion_rate},time_stamp='{self.time_stamp}',refresh_order_room = {self.refresh_order_room})"
+
+
+def validate_backup_plans_offline():
+    """独立的验证函数，不依赖于 BaseSchedulerSolver"""
+    global_plan = build_global_plan()
+    backup_plans = global_plan["backup_plans"]
+
+    backup_count = len(backup_plans)
+    if backup_count == 0:
+        return {"success": True, "message": "没有备用计划，无需验证"}
+
+    def collect_agents(plan: Plan) -> set[str]:
+        agents = set()
+        for room_info in plan.plan.values():
+            for op in room_info:
+                if op.agent not in ("Current", "Free"):
+                    agents.add(op.agent)
+        return agents
+
+    agent_sets = [collect_agents(plan) for plan in backup_plans]
+    adjacency = [set() for _ in range(backup_count)]
+    for i in range(backup_count):
+        for j in range(i + 1, backup_count):
+            if agent_sets[i].intersection(agent_sets[j]):
+                adjacency[i].add(j)
+                adjacency[j].add(i)
+
+    components: list[list[int]] = []
+    visited = [False] * backup_count
+    for i in range(backup_count):
+        if visited[i]:
+            continue
+        stack = [i]
+        component = []
+        while stack:
+            node = stack.pop()
+            if visited[node]:
+                continue
+            visited[node] = True
+            component.append(node)
+            stack.extend(adjacency[node])
+        components.append(component)
+
+    tested_conditions: set[tuple[bool, ...]] = set()
+    tested_sequence: list[tuple[bool, ...]] = []
+
+    # 复制类方法中的验证逻辑
+    for component in components:
+        if len(component) == 1:
+            continue
+        # 检查连通分量中的计划是否有冲突
+        for mask in product([False, True], repeat=len(component)):
+            if mask in tested_conditions:
+                continue
+            tested_conditions.add(mask)
+            tested_sequence.append(mask)
+            active_plans = [
+                backup_plans[i] for i, active in zip(component, mask) if active
+            ]
+            if not active_plans:
+                continue
+            combined_agents = set()
+            for plan in active_plans:
+                combined_agents.update(collect_agents(plan))
+            if len(combined_agents) < sum(
+                len(collect_agents(plan)) for plan in active_plans
+            ):
+                return {
+                    "success": False,
+                    "message": f"备用计划 {', '.join(str(i + 1) for i in component)} 中存在干员重复安排",
+                }
+
+    return {"success": True, "message": "备用计划验证通过"}

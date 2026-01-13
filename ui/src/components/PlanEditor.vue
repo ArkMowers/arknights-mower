@@ -113,7 +113,7 @@ const right_side_facility_name = computed(() => {
   } else if (facility.value == 'factory') {
     return '加工站'
   } else if (facility.value == 'train') {
-    return '训练室（仅可安排协助位）'
+    return '训练室'
   } else if (facility.value.startsWith('gaming')) {
     return '活动室'
   } else {

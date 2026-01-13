@@ -63,7 +63,6 @@ class Arknights数据处理器:
         self.装仓库物品的字典 = {"NORMAL": [], "CONSUME": [], "MATERIAL": []}
 
         self.常驻关卡 = self.加载json("arknights_mower/data/stage_data.json")
-
         self.所有buff = []
 
         self.限定十连 = self.抽卡表["limitTenGachaItem"]
@@ -220,7 +219,17 @@ class Arknights数据处理器:
             for 键, 值 in 关卡.items()
             if 值["endTs"] != -1 and 值["endTs"] > self.当前时间戳
         }
+        所有关卡 = []
         还未结束的非常驻关卡 = dict(sorted(还未结束的非常驻关卡.items()))
+        zones = self.加载json("./ArknightsGameResource/gamedata/excel/zone_table.json")[
+            "zones"
+        ]
+        story_review = {
+            k: v["name"]
+            for k, v in self.加载json(
+                "./ArknightsGameResource/gamedata/excel/story_review_table.json"
+            ).items()
+        }
         for 键, _ in 还未结束的非常驻关卡.items():
             关卡代码 = self.关卡表["stages"][键]["code"]
             if 键.endswith("#f#"):
@@ -265,6 +274,36 @@ class Arknights数据处理器:
                 "特殊掉落": 特殊掉落,
                 "额外物资": 额外物资,
             }
+            值 = self.关卡表["stages"][键]
+            if (
+                值["zoneId"] in zones
+                and 值["levelId"]
+                and any(part in story_review for part in 值["levelId"].split("/"))
+            ):
+                event_name = next(
+                    (
+                        story_review[part]
+                        for part in 值["levelId"].split("/")
+                        if part in story_review
+                    )
+                )
+                所有关卡.append(
+                    {
+                        "id": 关卡代码,
+                        "name": 关卡名称,
+                        "drop": 关卡掉落表,
+                        "zoneId": 值["zoneId"],
+                        "apCost": 值["apCost"],
+                        "difficulty": 值["difficulty"],
+                        "diffGroup": 值["diffGroup"],
+                        "zoneNameSecond": event_name,
+                        "subTitle": zones[值["zoneId"]]["zoneNameSecond"]
+                        if 值["zoneId"] in zones
+                        else "",
+                        "stageType": 值["stageType"],
+                        "endTs": _,
+                    }
+                )
 
             self.常驻关卡.append(
                 {
@@ -289,6 +328,92 @@ class Arknights数据处理器:
             "./ui/src/pages/stage_data/event_data.json", "w", encoding="utf-8"
         ) as f:
             json.dump(self.常驻关卡, f, ensure_ascii=False, indent=2)
+        普通关卡 = self.关卡表["stages"]
+        zoneToActivity = self.加载json(
+            "./ArknightsGameResource/gamedata/excel/activity_table.json"
+        )["zoneToActivity"]
+        storylineStorySets = self.关卡表["storylineStorySets"]
+        ssData = {}
+        全部关卡排序信息 = []
+        for k, v in storylineStorySets.items():
+            if "ssData" in v and v["ssData"] and "reopenActivityId" in v["ssData"]:
+                ssData[v["ssData"]["reopenActivityId"]] = v["ssData"]
+            name = ""
+            if v.get("mainlineData") and v["mainlineData"].get("zoneId"):
+                zid = v["mainlineData"]["zoneId"]
+                name = zones.get(zid, {}).get("zoneNameSecond", zid)
+            elif v.get("ssData") and v["ssData"].get("name"):
+                name = v["ssData"]["name"]
+            elif v.get("collectData") and v["collectData"].get("name"):
+                name = v["collectData"]["name"]
+            全部关卡排序信息.append(
+                {
+                    "name": name,
+                    "sortByYear": v.get("sortByYear"),
+                    "sortWithinYear": v.get("sortWithinYear"),
+                }
+            )
+
+        for 键, 值 in 普通关卡.items():
+            关卡代码 = 值["code"]
+            关卡名称 = 值["name"]
+            关卡掉落表 = None  # 值["stageDropInfo"]["displayDetailRewards"]
+            关卡ZONE = 值["zoneId"]
+            关卡AP = 值["apCost"]
+            if 值["stageType"] == "MAIN" and 关卡ZONE in zones:
+                所有关卡.append(
+                    {
+                        "id": 关卡代码,
+                        "name": 关卡名称,
+                        "drop": 关卡掉落表,
+                        "zoneId": 关卡ZONE,
+                        "apCost": 关卡AP,
+                        "difficulty": 值["difficulty"],
+                        "diffGroup": 值["diffGroup"],
+                        "zoneNameSecond": zones[关卡ZONE]["zoneNameSecond"],
+                        "stageType": 值["stageType"],
+                    }
+                )
+            if 值["stageType"] == "DAILY":
+                所有关卡.append(
+                    {
+                        "id": 关卡代码,
+                        "name": 值["code"],
+                        "drop": 关卡掉落表,
+                        "zoneId": 值["zoneId"],
+                        "apCost": 值["apCost"],
+                        "difficulty": 值["difficulty"],
+                        "diffGroup": 值["diffGroup"],
+                        "zoneNameSecond": "" if 值["zoneId"] in zones else "",
+                        "stageType": 值["stageType"],
+                    }
+                )
+            elif (
+                值["zoneId"] in zoneToActivity
+                and zoneToActivity[值["zoneId"]] in ssData
+            ):
+                所有关卡.append(
+                    {
+                        "id": 关卡代码,
+                        "name": 关卡名称,
+                        "drop": 关卡掉落表,
+                        "zoneId": 关卡ZONE,
+                        "apCost": 关卡AP,
+                        "difficulty": 值["difficulty"],
+                        "diffGroup": 值["diffGroup"],
+                        "zoneNameSecond": ssData[zoneToActivity[值["zoneId"]]]["name"],
+                        "subTitle": zones[关卡ZONE]["zoneNameSecond"]
+                        if 关卡ZONE in zones
+                        else "",
+                        "stageType": 值["stageType"],
+                    }
+                )
+        with open(
+            "arknights_mower/data/stage_data_full.json", "w", encoding="utf-8"
+        ) as f:
+            json.dump(所有关卡, f, ensure_ascii=False, indent=2)
+        with open("arknights_mower/data/stage_order.json", "w", encoding="utf-8") as f:
+            json.dump(全部关卡排序信息, f, ensure_ascii=False, indent=4)
 
     def load_recruit_data(self):
         recruit_data = {}

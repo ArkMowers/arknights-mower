@@ -12,6 +12,13 @@ agent_profession = json.loads(
 workshop_formula = json.loads(
     Path(f"{__rootdir__}/data/workshop_formula.json").read_text("utf-8")
 )
+stage_data_full = json.loads(
+    Path(f"{__rootdir__}/data/stage_data_full.json").read_text("utf-8")
+)
+
+stage_order = json.loads(
+    Path(f"{__rootdir__}/data/stage_order.json").read_text("utf-8")
+)
 
 # # agents base skills
 # agent_base_config = json.loads(

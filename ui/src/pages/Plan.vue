@@ -18,7 +18,9 @@ const {
   sub_plan,
   refresh_trading,
   refresh_drained,
-  ope_resting_priority
+  ope_resting_priority,
+  operators,
+  plan
 } = storeToRefs(plan_store)
 const { load_plan, fill_empty } = plan_store
 
@@ -28,7 +30,15 @@ const axios = inject('axios')
 const facility = ref('')
 provide('facility', facility)
 
-import { useMessage } from 'naive-ui'
+const current_plan = computed(() => {
+  if (sub_plan.value == 'main') {
+    return plan.value
+  } else {
+    return backup_plans.value[sub_plan.value].plan
+  }
+})
+
+import { useMessage, NAlert } from 'naive-ui'
 
 const plan_editor = ref(null)
 
@@ -43,6 +53,9 @@ import { useLoadingBar } from 'naive-ui'
 const loading_bar = useLoadingBar()
 
 import Bowser from 'bowser'
+
+import { render_op_label } from '@/utils/op_select'
+import { pinyin_match } from '@/utils/common'
 
 async function save() {
   generating_image.value = true
@@ -176,18 +189,77 @@ provide('show_trigger_editor', show_trigger_editor)
 const show_name_editor = ref(false)
 provide('show_name_editor', show_name_editor)
 
+const show_replace_dialog = ref(false)
+provide('show_replace_dialog', show_replace_dialog)
+
 const show_task = ref(false)
-const add_task = ref(false)
 provide('show_task', show_task)
+
+const add_task = ref(false)
 provide('add_task', add_task)
+
+const replace_source = ref('')
+const replace_target = ref('')
+
+async function validate_plan() {
+  try {
+    const { data } = await axios.post(
+      `${import.meta.env.VITE_HTTP_URL}/validate-plan`,
+      {},
+      {
+        headers: { token: token }
+      }
+    )
+    if (data.success) {
+      message.success(data.message)
+    } else {
+      message.error(data.message)
+    }
+  } catch (error) {
+    message.error('验证失败: ' + error.message)
+  }
+}
+
+function apply_replace() {
+  if (!replace_source.value || !replace_target.value) {
+    message.error('请选择源干员和目标干员')
+    return
+  }
+  if (replace_source.value === replace_target.value) {
+    message.error('源干员和目标干员不能相同')
+    return
+  }
+  // 遍历所有计划，包括主表和副表
+  const allPlans = [plan.value, ...backup_plans.value.map((bp) => bp.plan)]
+  for (const currentPlan of allPlans) {
+    for (const facility in currentPlan) {
+      if (currentPlan[facility].plans) {
+        for (const planItem of currentPlan[facility].plans) {
+          if (planItem.agent === replace_source.value) {
+            planItem.agent = replace_target.value
+          }
+          if (planItem.replacement) {
+            planItem.replacement = planItem.replacement.map((r) =>
+              r === replace_source.value ? replace_target.value : r
+            )
+          }
+        }
+      }
+    }
+  }
+  message.success('替换完成')
+  show_replace_dialog.value = false
+}
 
 import DocumentExport from '@vicons/carbon/DocumentExport'
 import DocumentImport from '@vicons/carbon/DocumentImport'
 import IosArrowBack from '@vicons/ionicons4/IosArrowBack'
 import IosArrowForward from '@vicons/ionicons4/IosArrowForward'
 import CodeSlash from '@vicons/ionicons5/CodeSlash'
+import Help from '@vicons/ionicons5/Help'
 import TrashOutline from '@vicons/ionicons5/TrashOutline'
 import AddTaskRound from '@vicons/material/AddTaskRound'
+import RefreshRound from '@vicons/material/RefreshRound'
 import PlusRound from '@vicons/material/PlusRound'
 import Pencil from '@vicons/tabler/Pencil'
 
@@ -282,13 +354,25 @@ function movePlanForward() {
         </template>
         新建副表
       </n-button>
-      <n-button :disabled="sub_plan == 'main'" @click="show_trigger_editor = true">
+      <n-button v-if="sub_plan == 'main'" @click="validate_plan">
+        <template #icon>
+          <n-icon><help /></n-icon>
+        </template>
+        验证排班
+      </n-button>
+      <n-button v-else @click="show_trigger_editor = true">
         <template #icon>
           <n-icon><code-slash /></n-icon>
         </template>
         编辑触发条件
       </n-button>
-      <n-button :disabled="sub_plan == 'main'" @click="show_task = true">
+      <n-button v-if="sub_plan == 'main'" @click="show_replace_dialog = true">
+        <template #icon>
+          <n-icon><refresh-round /></n-icon>
+        </template>
+        一键替换干员
+      </n-button>
+      <n-button v-else @click="show_task = true">
         <template #icon>
           <n-icon><add-task-round /></n-icon>
         </template>
@@ -416,6 +500,40 @@ function movePlanForward() {
       <slick-operator-select v-model="current_conf.ope_resting_priority"></slick-operator-select>
     </n-form-item>
   </n-form>
+  <n-modal
+    v-model:show="show_replace_dialog"
+    preset="card"
+    title="一键替换干员"
+    :style="{ width: '500px' }"
+  >
+    <n-alert title="警告" type="warning">
+      该操作会一键替换主表+副表所有干员名字，不可逆，使用前最好复制现有排班表，以防出错
+    </n-alert>
+    <n-space>
+      <n-select
+        v-model:value="replace_source"
+        :options="operators"
+        placeholder="选择要替换的干员"
+        filterable
+        :filter="(p, o) => pinyin_match(o.label, p)"
+        :render-label="render_op_label"
+      />
+      <n-select
+        v-model:value="replace_target"
+        :options="operators"
+        placeholder="选择目标干员"
+        filterable
+        :filter="(p, o) => pinyin_match(o.label, p)"
+        :render-label="render_op_label"
+      />
+    </n-space>
+    <template #footer>
+      <n-space justify="end">
+        <n-button @click="show_replace_dialog = false">取消</n-button>
+        <n-button type="primary" @click="apply_replace">替换</n-button>
+      </n-space>
+    </template>
+  </n-modal>
 </template>
 
 <style scoped lang="scss">

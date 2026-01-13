@@ -103,6 +103,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.ideal_resting_count = 4
         self.choose_error = set()
         self.drop_send = False
+        self.global_plan = {}
 
     def find_next_task(
         self,
@@ -223,6 +224,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         else:
             msg = f"无法完成 {self.task.meta_data} 的排班，如果重复接收此邮件请检查替换组是否被占用"
             send_message(msg, level="ERROR")
+            logger.error(msg)
             # 简单暴力一点，移除所有非回满的
             # 智能情况的话，得在人数和替换冲突中做出选择
             required = 0
@@ -3285,7 +3287,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                 self.back()
                                 self.turn_on_room_detail(room)
                         elif self.task.adjusted:
-                            pass
+                            self.back()
+                            self.turn_on_room_detail(room)
                         else:
                             logger.info("检测到漏单")
                             send_message("检测到漏单！", level="WARNING")

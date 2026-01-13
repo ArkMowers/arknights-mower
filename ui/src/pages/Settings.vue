@@ -67,6 +67,7 @@ const facility_with_empty = computed(() => {
 
 const simulator_types = [
   { label: '夜神', value: '夜神' },
+  { label: '蓝叠模拟器Air（macOS）', value: 'BlueStacksAir' },
   { label: 'MuMu模拟器12', value: 'MuMu12' },
   { label: 'Waydroid', value: 'Waydroid' },
   { label: '雷电模拟器9', value: '雷电9' },
@@ -236,7 +237,18 @@ if (return_home_when_idle.value) {
                 </n-space>
               </n-radio-group>
             </n-form-item>
-            <n-form-item label="ADB路径">
+            <n-form-item>
+              <template #label>
+                <span>ADB路径</span>
+                <help-text>
+                  <div>MuMu12：<code>模拟器路径\\shell\\adb.exe</code></div>
+                  <div>
+                    蓝叠Air（macOS）：Homebrew 安装后通常位于
+                    <code>/opt/homebrew/bin/adb</code>（Intel 机器为
+                    <code>/usr/local/bin/adb</code>）
+                  </div>
+                </help-text>
+              </template>
               <n-input type="textarea" :autosize="true" v-model:value="maa_adb_path" />
               <n-button @click="select_maa_adb_path" class="dialog-btn">...</n-button>
             </n-form-item>
@@ -246,6 +258,7 @@ if (return_home_when_idle.value) {
                 <help-text>
                   <div>不同模拟器adb地址不同。如不填，系统会自动去寻找adb device中的第一个。</div>
                   <div>夜神：<code>127.0.0.1:62001</code></div>
+                  <div>蓝叠Air：<code>127.0.0.1:5555</code></div>
                 </help-text>
               </template>
               <n-input v-model:value="adb" />

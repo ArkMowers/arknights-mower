@@ -1,18 +1,18 @@
 [
   {
-    "id": "OS-1",
-    "name": "呼号声中",
+    "id": "ME-1",
+    "name": "工作与时日",
     "drop": [
       {
         "occPercent": 0,
         "type": "ACTIVITY_ITEM",
-        "id": "act46side_token_detector",
+        "id": "act48side_token_ostracon",
         "dropType": 8
       },
       {
         "occPercent": 0,
         "type": "ACTIVITY_ITEM",
-        "id": "act46side_token_detector",
+        "id": "act48side_token_ostracon",
         "dropType": 2
       },
       {
@@ -58,32 +58,32 @@
         "dropType": 8
       }
     ],
-    "zoneId": "act46side_zone1",
+    "zoneId": "act48side_zone1",
     "apCost": 9,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "雪山降临1101",
-    "subTitle": "圣巡之旅",
+    "zoneNameSecond": "雅赛努斯复仇记",
+    "subTitle": "神殿仪式",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1761951600,
-      "endTs": 1763755199
+      "startTs": 1767913200,
+      "endTs": 1769111999
     }
   },
   {
-    "id": "OS-2",
-    "name": "甜蜜的邻人",
+    "id": "ME-2",
+    "name": "命定的终点",
     "drop": [
       {
         "occPercent": 0,
         "type": "ACTIVITY_ITEM",
-        "id": "act46side_token_detector",
+        "id": "act48side_token_ostracon",
         "dropType": 8
       },
       {
         "occPercent": 0,
         "type": "ACTIVITY_ITEM",
-        "id": "act46side_token_detector",
+        "id": "act48side_token_ostracon",
         "dropType": 2
       },
       {
@@ -129,203 +129,38 @@
         "dropType": 8
       }
     ],
-    "zoneId": "act46side_zone1",
+    "zoneId": "act48side_zone1",
     "apCost": 9,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "雪山降临1101",
-    "subTitle": "圣巡之旅",
+    "zoneNameSecond": "雅赛努斯复仇记",
+    "subTitle": "神殿仪式",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1761951600,
-      "endTs": 1763755199
+      "startTs": 1767913200,
+      "endTs": 1769111999
     }
   },
   {
-    "id": "OS-3",
-    "name": "雪灌木中",
+    "id": "ME-3",
+    "name": "无解的谜题",
     "drop": [
       {
         "occPercent": 0,
         "type": "ACTIVITY_ITEM",
-        "id": "act46side_token_detector",
+        "id": "act48side_token_ostracon",
         "dropType": 8
       },
       {
         "occPercent": 0,
         "type": "ACTIVITY_ITEM",
-        "id": "act46side_token_detector",
-        "dropType": 2
-      },
-      {
-        "occPercent": 3,
-        "type": "MATERIAL",
-        "id": "30031",
-        "dropType": 2
-      },
-      {
-        "occPercent": 3,
-        "type": "MATERIAL",
-        "id": "30061",
-        "dropType": 2
-      },
-      {
-        "occPercent": 3,
-        "type": "MATERIAL",
-        "id": "30041",
-        "dropType": 2
-      },
-      {
-        "occPercent": 3,
-        "type": "MATERIAL",
-        "id": "30051",
-        "dropType": 2
-      },
-      {
-        "occPercent": 3,
-        "type": "MATERIAL",
-        "id": "30021",
-        "dropType": 2
-      },
-      {
-        "occPercent": 2,
-        "type": "MATERIAL",
-        "id": "30011",
-        "dropType": 2
-      },
-      {
-        "occPercent": 0,
-        "type": "DIAMOND",
-        "id": "4002",
-        "dropType": 8
-      }
-    ],
-    "zoneId": "act46side_zone1",
-    "apCost": 9,
-    "difficulty": "NORMAL",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "雪山降临1101",
-    "subTitle": "圣巡之旅",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1761951600,
-      "endTs": 1763755199
-    }
-  },
-  {
-    "id": "OS-4",
-    "name": "并蒂生",
-    "drop": [
-      {
-        "occPercent": 0,
-        "type": "ACTIVITY_ITEM",
-        "id": "act46side_token_detector",
-        "dropType": 8
-      },
-      {
-        "occPercent": 0,
-        "type": "ACTIVITY_ITEM",
-        "id": "act46side_token_detector",
-        "dropType": 2
-      },
-      {
-        "occPercent": 0,
-        "type": "MATERIAL",
-        "id": "30012",
-        "dropType": 2
-      },
-      {
-        "occPercent": 3,
-        "type": "MATERIAL",
-        "id": "30042",
-        "dropType": 2
-      },
-      {
-        "occPercent": 0,
-        "type": "DIAMOND",
-        "id": "4002",
-        "dropType": 8
-      }
-    ],
-    "zoneId": "act46side_zone1",
-    "apCost": 12,
-    "difficulty": "NORMAL",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "雪山降临1101",
-    "subTitle": "圣巡之旅",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1761951600,
-      "endTs": 1763755199
-    }
-  },
-  {
-    "id": "OS-5",
-    "name": "雪夜独行",
-    "drop": [
-      {
-        "occPercent": 0,
-        "type": "ACTIVITY_ITEM",
-        "id": "act46side_token_detector",
-        "dropType": 8
-      },
-      {
-        "occPercent": 0,
-        "type": "ACTIVITY_ITEM",
-        "id": "act46side_token_detector",
+        "id": "act48side_token_ostracon",
         "dropType": 2
       },
       {
         "occPercent": 0,
         "type": "MATERIAL",
         "id": "30022",
-        "dropType": 2
-      },
-      {
-        "occPercent": 2,
-        "type": "MATERIAL",
-        "id": "30032",
-        "dropType": 2
-      },
-      {
-        "occPercent": 0,
-        "type": "DIAMOND",
-        "id": "4002",
-        "dropType": 8
-      }
-    ],
-    "zoneId": "act46side_zone1",
-    "apCost": 12,
-    "difficulty": "NORMAL",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "雪山降临1101",
-    "subTitle": "圣巡之旅",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1761951600,
-      "endTs": 1763755199
-    }
-  },
-  {
-    "id": "OS-6",
-    "name": "绿翡翠",
-    "drop": [
-      {
-        "occPercent": 0,
-        "type": "ACTIVITY_ITEM",
-        "id": "act46side_token_detector",
-        "dropType": 8
-      },
-      {
-        "occPercent": 0,
-        "type": "ACTIVITY_ITEM",
-        "id": "act46side_token_detector",
-        "dropType": 2
-      },
-      {
-        "occPercent": 1,
-        "type": "MATERIAL",
-        "id": "30052",
         "dropType": 2
       },
       {
@@ -341,38 +176,44 @@
         "dropType": 8
       }
     ],
-    "zoneId": "act46side_zone1",
+    "zoneId": "act48side_zone1",
     "apCost": 12,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "雪山降临1101",
-    "subTitle": "圣巡之旅",
+    "zoneNameSecond": "雅赛努斯复仇记",
+    "subTitle": "神殿仪式",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1761951600,
-      "endTs": 1763755199
+      "startTs": 1767913200,
+      "endTs": 1769111999
     }
   },
   {
-    "id": "OS-7",
-    "name": "焚心灼影",
+    "id": "ME-4",
+    "name": "失手",
     "drop": [
       {
         "occPercent": 0,
         "type": "ACTIVITY_ITEM",
-        "id": "act46side_token_detector",
+        "id": "act48side_token_ostracon",
         "dropType": 8
       },
       {
         "occPercent": 0,
         "type": "ACTIVITY_ITEM",
-        "id": "act46side_token_detector",
+        "id": "act48side_token_ostracon",
         "dropType": 2
       },
       {
-        "occPercent": 1,
+        "occPercent": 0,
         "type": "MATERIAL",
-        "id": "30023",
+        "id": "30032",
+        "dropType": 2
+      },
+      {
+        "occPercent": 3,
+        "type": "MATERIAL",
+        "id": "30042",
         "dropType": 2
       },
       {
@@ -382,79 +223,44 @@
         "dropType": 8
       }
     ],
-    "zoneId": "act46side_zone1",
-    "apCost": 21,
+    "zoneId": "act48side_zone1",
+    "apCost": 12,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "雪山降临1101",
-    "subTitle": "圣巡之旅",
+    "zoneNameSecond": "雅赛努斯复仇记",
+    "subTitle": "神殿仪式",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1761951600,
-      "endTs": 1763755199
+      "startTs": 1767913200,
+      "endTs": 1769111999
     }
   },
   {
-    "id": "OS-8",
-    "name": "宣告在途",
+    "id": "ME-5",
+    "name": "汇流",
     "drop": [
       {
         "occPercent": 0,
         "type": "ACTIVITY_ITEM",
-        "id": "act46side_token_detector",
+        "id": "act48side_token_ostracon",
         "dropType": 8
       },
       {
         "occPercent": 0,
         "type": "ACTIVITY_ITEM",
-        "id": "act46side_token_detector",
+        "id": "act48side_token_ostracon",
         "dropType": 2
       },
       {
         "occPercent": 2,
         "type": "MATERIAL",
-        "id": "30103",
-        "dropType": 2
-      },
-      {
-        "occPercent": 0,
-        "type": "DIAMOND",
-        "id": "4002",
-        "dropType": 8
-      }
-    ],
-    "zoneId": "act46side_zone1",
-    "apCost": 21,
-    "difficulty": "NORMAL",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "雪山降临1101",
-    "subTitle": "圣巡之旅",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1761951600,
-      "endTs": 1763755199
-    }
-  },
-  {
-    "id": "OS-9",
-    "name": "凛刃出匣",
-    "drop": [
-      {
-        "occPercent": 0,
-        "type": "ACTIVITY_ITEM",
-        "id": "act46side_token_detector",
-        "dropType": 8
-      },
-      {
-        "occPercent": 0,
-        "type": "ACTIVITY_ITEM",
-        "id": "act46side_token_detector",
+        "id": "30062",
         "dropType": 2
       },
       {
         "occPercent": 2,
         "type": "MATERIAL",
-        "id": "31053",
+        "id": "30032",
         "dropType": 2
       },
       {
@@ -464,27 +270,39 @@
         "dropType": 8
       }
     ],
-    "zoneId": "act46side_zone1",
-    "apCost": 21,
+    "zoneId": "act48side_zone1",
+    "apCost": 12,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "雪山降临1101",
-    "subTitle": "圣巡之旅",
+    "zoneNameSecond": "雅赛努斯复仇记",
+    "subTitle": "神殿仪式",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1761951600,
-      "endTs": 1763755199
+      "startTs": 1767913200,
+      "endTs": 1769111999
     }
   },
   {
-    "id": "OS-10",
-    "name": "耶拉冈德在上",
+    "id": "ME-6",
+    "name": "旧日诗篇",
     "drop": [
       {
         "occPercent": 0,
         "type": "ACTIVITY_ITEM",
-        "id": "act46side_token_detector",
+        "id": "act48side_token_ostracon",
         "dropType": 8
+      },
+      {
+        "occPercent": 0,
+        "type": "ACTIVITY_ITEM",
+        "id": "act48side_token_ostracon",
+        "dropType": 2
+      },
+      {
+        "occPercent": 0,
+        "type": "MATERIAL",
+        "id": "30013",
+        "dropType": 2
       },
       {
         "occPercent": 0,
@@ -493,21 +311,103 @@
         "dropType": 8
       }
     ],
-    "zoneId": "act46side_zone1",
-    "apCost": 10,
+    "zoneId": "act48side_zone1",
+    "apCost": 21,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "雪山降临1101",
-    "subTitle": "圣巡之旅",
+    "zoneNameSecond": "雅赛努斯复仇记",
+    "subTitle": "神殿仪式",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1761951600,
-      "endTs": 1763755199
+      "startTs": 1767913200,
+      "endTs": 1769111999
     }
   },
   {
-    "id": "OS-TR-1",
-    "name": "第一片雪",
+    "id": "ME-7",
+    "name": "奔袭",
+    "drop": [
+      {
+        "occPercent": 0,
+        "type": "ACTIVITY_ITEM",
+        "id": "act48side_token_ostracon",
+        "dropType": 8
+      },
+      {
+        "occPercent": 0,
+        "type": "ACTIVITY_ITEM",
+        "id": "act48side_token_ostracon",
+        "dropType": 2
+      },
+      {
+        "occPercent": 2,
+        "type": "MATERIAL",
+        "id": "30043",
+        "dropType": 2
+      },
+      {
+        "occPercent": 0,
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": 8
+      }
+    ],
+    "zoneId": "act48side_zone1",
+    "apCost": 21,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "雅赛努斯复仇记",
+    "subTitle": "神殿仪式",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1767913200,
+      "endTs": 1769111999
+    }
+  },
+  {
+    "id": "ME-8",
+    "name": "神谕示显",
+    "drop": [
+      {
+        "occPercent": 0,
+        "type": "ACTIVITY_ITEM",
+        "id": "act48side_token_ostracon",
+        "dropType": 8
+      },
+      {
+        "occPercent": 0,
+        "type": "ACTIVITY_ITEM",
+        "id": "act48side_token_ostracon",
+        "dropType": 2
+      },
+      {
+        "occPercent": 2,
+        "type": "MATERIAL",
+        "id": "31093",
+        "dropType": 2
+      },
+      {
+        "occPercent": 0,
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": 8
+      }
+    ],
+    "zoneId": "act48side_zone1",
+    "apCost": 21,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "雅赛努斯复仇记",
+    "subTitle": "神殿仪式",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1767913200,
+      "endTs": 1769111999
+    }
+  },
+  {
+    "id": "ME-TR-1",
+    "name": "入境随俗",
     "drop": [
       {
         "occPercent": 0,
@@ -516,16 +416,16 @@
         "dropType": 8
       }
     ],
-    "zoneId": "act46side_zone1",
+    "zoneId": "act48side_zone1",
     "apCost": 0,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "雪山降临1101",
-    "subTitle": "圣巡之旅",
+    "zoneNameSecond": "雅赛努斯复仇记",
+    "subTitle": "神殿仪式",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1761951600,
-      "endTs": 1763755199
+      "startTs": 1767913200,
+      "endTs": 1769111999
     }
   },
   {
@@ -7127,6 +7027,391 @@
     "diffGroup": "NORMAL",
     "zoneNameSecond": "风暴瞭望",
     "stageType": "MAIN"
+  },
+  {
+    "id": "CE-1",
+    "name": "CE-1",
+    "drop": null,
+    "zoneId": "weekly_9",
+    "apCost": 10,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "CE-2",
+    "name": "CE-2",
+    "drop": null,
+    "zoneId": "weekly_9",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "CE-3",
+    "name": "CE-3",
+    "drop": null,
+    "zoneId": "weekly_9",
+    "apCost": 20,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "CE-4",
+    "name": "CE-4",
+    "drop": null,
+    "zoneId": "weekly_9",
+    "apCost": 25,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "CE-5",
+    "name": "CE-5",
+    "drop": null,
+    "zoneId": "weekly_9",
+    "apCost": 30,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "CE-6",
+    "name": "CE-6",
+    "drop": null,
+    "zoneId": "weekly_9",
+    "apCost": 36,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "SK-1",
+    "name": "SK-1",
+    "drop": null,
+    "zoneId": "weekly_8",
+    "apCost": 10,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "SK-2",
+    "name": "SK-2",
+    "drop": null,
+    "zoneId": "weekly_8",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "SK-3",
+    "name": "SK-3",
+    "drop": null,
+    "zoneId": "weekly_8",
+    "apCost": 20,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "SK-4",
+    "name": "SK-4",
+    "drop": null,
+    "zoneId": "weekly_8",
+    "apCost": 25,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "SK-5",
+    "name": "SK-5",
+    "drop": null,
+    "zoneId": "weekly_8",
+    "apCost": 30,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "LS-1",
+    "name": "LS-1",
+    "drop": null,
+    "zoneId": "weekly_7",
+    "apCost": 10,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "LS-2",
+    "name": "LS-2",
+    "drop": null,
+    "zoneId": "weekly_7",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "LS-3",
+    "name": "LS-3",
+    "drop": null,
+    "zoneId": "weekly_7",
+    "apCost": 20,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "LS-4",
+    "name": "LS-4",
+    "drop": null,
+    "zoneId": "weekly_7",
+    "apCost": 25,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "LS-5",
+    "name": "LS-5",
+    "drop": null,
+    "zoneId": "weekly_7",
+    "apCost": 30,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "LS-6",
+    "name": "LS-6",
+    "drop": null,
+    "zoneId": "weekly_7",
+    "apCost": 36,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "AP-1",
+    "name": "AP-1",
+    "drop": null,
+    "zoneId": "weekly_5",
+    "apCost": 10,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "AP-2",
+    "name": "AP-2",
+    "drop": null,
+    "zoneId": "weekly_5",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "AP-3",
+    "name": "AP-3",
+    "drop": null,
+    "zoneId": "weekly_5",
+    "apCost": 20,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "AP-4",
+    "name": "AP-4",
+    "drop": null,
+    "zoneId": "weekly_5",
+    "apCost": 25,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "AP-5",
+    "name": "AP-5",
+    "drop": null,
+    "zoneId": "weekly_5",
+    "apCost": 30,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "CA-1",
+    "name": "CA-1",
+    "drop": null,
+    "zoneId": "weekly_6",
+    "apCost": 10,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "CA-2",
+    "name": "CA-2",
+    "drop": null,
+    "zoneId": "weekly_6",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "CA-3",
+    "name": "CA-3",
+    "drop": null,
+    "zoneId": "weekly_6",
+    "apCost": 20,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "CA-4",
+    "name": "CA-4",
+    "drop": null,
+    "zoneId": "weekly_6",
+    "apCost": 25,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "CA-5",
+    "name": "CA-5",
+    "drop": null,
+    "zoneId": "weekly_6",
+    "apCost": 30,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "PR-A-1",
+    "name": "PR-A-1",
+    "drop": null,
+    "zoneId": "weekly_1",
+    "apCost": 18,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "PR-A-2",
+    "name": "PR-A-2",
+    "drop": null,
+    "zoneId": "weekly_1",
+    "apCost": 36,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "PR-B-1",
+    "name": "PR-B-1",
+    "drop": null,
+    "zoneId": "weekly_2",
+    "apCost": 18,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "PR-B-2",
+    "name": "PR-B-2",
+    "drop": null,
+    "zoneId": "weekly_2",
+    "apCost": 36,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "PR-C-1",
+    "name": "PR-C-1",
+    "drop": null,
+    "zoneId": "weekly_3",
+    "apCost": 18,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "PR-C-2",
+    "name": "PR-C-2",
+    "drop": null,
+    "zoneId": "weekly_3",
+    "apCost": 36,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "PR-D-1",
+    "name": "PR-D-1",
+    "drop": null,
+    "zoneId": "weekly_4",
+    "apCost": 18,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
+  },
+  {
+    "id": "PR-D-2",
+    "name": "PR-D-2",
+    "drop": null,
+    "zoneId": "weekly_4",
+    "apCost": 36,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "",
+    "stageType": "DAILY"
   },
   {
     "id": "16-1",
