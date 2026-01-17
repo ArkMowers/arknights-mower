@@ -1387,27 +1387,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 adj_tasks = scheduling(
                     self.tasks
                 )  # 修改scheduling 同时输出撞在一起的前后两个任务
-                max_execution = 3
+                run_order_rooms_num = max(min(len(run_order_rooms), 5), 1)
+                max_execution = [0, 1, 4, 5, 5][run_order_rooms_num - 1]
                 adj_count = 0
-
-                if run_order_rooms is not None and len(run_order_rooms) >= 3:
-                    n = len(run_order_rooms)
-                    dp = [0] * (n + 1)
-                    dp[1] = 0
-                    if n > 1:
-                        dp[2] = 1
-                    for i in range(3, n + 1):
-                        dp[i] = 3 * dp[i - 1] + 2 * dp[i - 2]
-                    max_execution = min(
-                        dp[n] * 1.25, 15
-                    )  # 通过跑单房间计算得到循环次数 同时限制最大次数
-                    logger.debug(f"max_execution = {max_execution}")
-                    logger.info(run_order_rooms)
-                    logger.info(
-                        f"当前跑单房间数量为：{n}，计算最大循环次数为: {max_execution + 1}"
-                    )
+                logger.info(
+                    f"跑单房间: {run_order_rooms=},数量: {run_order_rooms_num=}"
+                )
+                logger.info(f"限制订单加速次数，最大为: {max_execution=}")
                 while (
-                    adj_tasks is not None and adj_count <= max_execution
+                    adj_tasks is not None and adj_count < max_execution
                 ):  # 由于改动会增加触发次数 改为<= 多触发一次
                     # logger.error("<UNK>,<UNK>")
                     adjust_0_room = self.get_run_order_adjust_room(
@@ -1535,11 +1523,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
     def get_run_order_adjust_room(self, adj_tasks):
         # 此处出异常会一直运行，抛出None会终止循环，下面还没考虑过会出什么问题，可自行添加
         try:
-            adj_0_task, adj_task = adj_tasks
+            adj_0_task, adj_1_task = adj_tasks
         except TypeError:
             return None
         adjust_0_room = adj_0_task.meta_data
-        adjust_room = adj_task.meta_data
+        adjust_1_room = adj_1_task.meta_data
         # 如果加速房间为跑单房间，则优先使用
         drone_room = self.drone_room
         if any(task.meta_data == drone_room for task in adj_tasks):
@@ -1550,22 +1538,37 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             run_order_rooms = self.op_data.run_order_rooms
             logger.debug(f"run_order_rooms：{run_order_rooms}")
             logger.debug(f"adjust_0_room：{adjust_0_room}")
-            logger.debug(f"adjust_room：{adjust_room}")
+            logger.debug(f"adjust_1_room：{adjust_1_room}")
+            # 改为根据时间前后加速，仍有1架左右无人机的损失，更优加速需要引入一个无人机加速缩短的详细时间
+            # 考虑两者时间非常接近或相等的话加速低级贸易在算法上可能更优，仍需要引入数据
+            adjust_0_time = adj_0_task.time
+            adjust_1_time = adj_1_task.time
+            adjust_0_room_len = len(self.op_data.plan[adjust_0_room])
+            adjust_1_room_len = len(self.op_data.plan[adjust_1_room])
 
-            adjust_0_room_len = len(self.op_data.plan[adjust_0_room])  # 跑单任务首个
-            adjust_room_len = len(self.op_data.plan[adjust_room])  # 跑单任务第二个
-            # 正常情况按照82算法 1>3>2 进行加速
-            # 如果 adjust_0_room 为 2 adjust_room 为 3 则是 2>3, 两者收益比较接近，先加速前面的订单可能更优，故保留特性
+            logger.debug(f"adjust_0_time：{adjust_0_time}")
+            logger.debug(f"adjust_1_time：{adjust_1_time}")
+            logger.debug(f"adjust_0_room_len：{adjust_0_room_len}")
+            logger.debug(f"adjust_1_room_len：{adjust_1_room_len}")
             if (
-                adjust_0_room_len == 3 and adjust_room_len != 1
-            ):  # 参考82算法 优先加速3级
-                logger.debug(f"adjust_0_room_len ===> {adjust_0_room_len}")
-                logger.debug(f"adjust_room_len ===> {adjust_room_len}")
-            elif (
-                adjust_0_room_len > adjust_room_len
-            ):  # 如果首个任务房间比第二个大 #参考82算法
-                adjust_0_room = adjust_room
-                adjust_0_room_len = adjust_room_len
+                adjust_0_room_len != adjust_1_room_len
+                and adjust_0_time <= adjust_1_time
+                and (adjust_1_time - adjust_0_time) < timedelta(minutes=0.5)
+            ):
+                # # 正常情况按照82算法 1>3>2 进行加速
+                # # 如果 adjust_0_room 为 2 adjust_1_room 为 3 则是 2>3, 两者收益比较接近，先加速前面的订单可能更优，故保留特性
+                if (
+                    adjust_0_room_len == 3 and adjust_1_room_len != 1
+                ):  # 参考82算法 优先加速3级
+                    logger.debug(f"adjust_0_room_len ===> {adjust_0_room_len}")
+                    logger.debug(f"adjust_1_room_len ===> {adjust_1_room_len}")
+                elif (
+                    adjust_0_room_len > adjust_1_room_len
+                ):  # 如果首个任务房间比第二个大 #参考82算法
+                    adjust_0_room = adjust_1_room
+                    adjust_0_room_len = adjust_1_room_len
+
+            logger.debug(adjust_0_room)
             logger.info(f"加速房间 :{adjust_0_room}")
             logger.info(f"加速房间长度 :{adjust_0_room_len}")
 

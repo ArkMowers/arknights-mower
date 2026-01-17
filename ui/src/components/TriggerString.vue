@@ -46,7 +46,6 @@ const op_data = computed(() => {
       operator: x[1]
     }
   }
-  //GCR模式匹配
   x = data.value.match(
     /^op_data\.get_current_room_for_ui\(\s*'(.+?)'\s*(?:,\s*(True|False))?\s*(?:,\s*(None|\d+|'[\d,]+'))?\s*(?:,\s*'(.+?)'\s*)?\)$/
   )
@@ -55,10 +54,8 @@ const op_data = computed(() => {
     if (!x[3] || x[3] === 'None') {
       position = 'ALL'
     } else if (x[3].startsWith("'")) {
-      // 去掉引号后直接使用（如 '0,1' → '0,1'）
       position = x[3].slice(1, -1)
     } else {
-      // 单个数字（如 0）
       position = parseInt(x[3])
     }
     return {
@@ -68,6 +65,17 @@ const op_data = computed(() => {
       // position: x[3] ? parseInt(x[3]) : 'ALL',
       position: position,
       attribute: x[4] || 'position'
+    }
+  }
+  x = data.value.match(
+    /^op_data\.get_group_info\(\s*'(.+?)'\s*(?:,\s*(?:'(.+?)'|None)\s*)?\s*(?:,\s*(?:'(.+?)'|None)\s*)?\)$/
+  )
+  if (x && x[0] == data.value) {
+    return {
+      type: 'group',
+      options: x[1],
+      group_name: x[2],
+      mode: x[3]
     }
   }
   if (data.value == 'op_data.party_time') {
@@ -87,6 +95,8 @@ const op_type = computed(() => {
     return 'impart'
   } else if (op_data.value.type == 'gcr') {
     return 'gcr'
+  } else if (op_data.value.type == 'group') {
+    return 'group'
   } else {
     return 'op'
   }
@@ -94,7 +104,8 @@ const op_type = computed(() => {
 
 const type_options = [
   { label: '干员属性', value: 'op' },
-  { label: '获取指定房间干员', value: 'gcr' },
+  // { label: '组属性', value: 'group' },
+  { label: '房间干员', value: 'gcr' },
   { label: '线索交流结束时间', value: 'impart' },
   { label: '自定义', value: 'custom' }
 ]
@@ -107,7 +118,6 @@ const op_options = [
   { label: '在休息', value: 'in_dorm' }
 ]
 
-//GCR房间选项
 const gcr_options = [
   { label: '宿舍1', value: 'dormitory_1', positions: 5 },
   { label: '宿舍2', value: 'dormitory_2', positions: 5 },
@@ -129,28 +139,50 @@ const gcr_options = [
   { label: '训练室', value: 'train', positions: 1 } //暂时不支持训练位
 ]
 
-//GCR属性选项
 const gcr_attribute_options = [
-  {
-    label: '干员名称',
-    value: 'position'
-  },
-  {
-    label: '心情值',
-    value: 'mood',
-    attribute: 'mood'
-  },
-  {
-    label: '是否在高效组',
-    value: 'is_high',
-    attribute: 'is_high'
-  }
   // 未来可扩展模板
-  // {
-  //   label: '技能',
-  //   value: 'skill',
-  //   attribute: 'skill'
-  // }
+  // {label: '技能',value: 'skill',attribute: 'skill'}
+  { label: '干员名称', value: 'position' },
+  { label: '心情值', value: 'mood', attribute: 'mood' },
+  { label: '是否在高效组', value: 'is_high', attribute: 'is_high' }
+]
+
+const group_options = computed(() => {
+  const baseOptions = [
+    { label: '组内属性', value: 'True' },
+    { label: '单人与组', value: 'False,True' },
+    { label: '组与组', value: 'True,True' }
+  ]
+  const isLongPattern =
+    op_data.value.options &&
+    op_data.value.options.split(',').length >
+      Math.max(...baseOptions.map((opt) => opt.value.split(',').length))
+  return isLongPattern
+    ? [...baseOptions, { label: '太长会坏掉的', value: op_data.value.options }]
+    : baseOptions
+})
+
+const group_model_options = [
+  { label: '心情数据', value: 'mode_mood' },
+  { label: '用尽时间', value: 'mode_exhaust_time' },
+  { label: '心情消耗速率', value: 'mode_depletion_rate' },
+  { label: '数据更新时间', value: 'mode_time_stamp' },
+  { label: '最终输出名字', value: 'mode_name' },
+  { label: '正向排序', value: 'mode_up' },
+  { label: '反向排序', value: 'mode_down' },
+  { label: '获取最低', value: 'mode_min' },
+  { label: '获取最高', value: 'mode_max' },
+  { label: '小于几人', value: 'mode_lt' },
+  { label: '大于几人', value: 'mode_gt' },
+  { label: '组平均值', value: 'mode_group_avg' },
+  { label: '干员平均值', value: 'mode_op_avg' },
+  { label: '取消单干员基准', value: 'mode_no_ref' },
+  { label: '以最低为基准', value: 'mode_ref_min' },
+  { label: '以最高为基准', value: 'mode_ref_max' },
+  { label: '最小差值', value: 'mode_diff_min' },
+  { label: '最大差值', value: 'mode_diff_max' },
+  { label: '与临近干员差值', value: 'mode_diff_adj' },
+  { label: '取消自动令夕心情', value: 'mode_no_auto_mood' }
 ]
 
 function set_op_type(v) {
@@ -161,13 +193,15 @@ function set_op_type(v) {
     data.value = 'op_data.party_time'
   } else if (v == 'gcr') {
     data.value = "op_data.get_current_room_for_ui('dormitory_1')"
+  } else if (v == 'group') {
+    data.value = "op_data.get_group_info('True')"
   }
 }
 
 import { storeToRefs } from 'pinia'
 import { usePlanStore } from '@/stores/plan'
 const plan_store = usePlanStore()
-const { operators } = storeToRefs(plan_store)
+const { operators, groups } = storeToRefs(plan_store)
 
 function build_data(op, type) {
   const x = `op_data.operators['${op}'].`
@@ -193,8 +227,7 @@ function update_op(op) {
 function update_type(type) {
   build_data(op_data.value.operator, type)
 }
-
-//更新GCR房间
+// 位置相关
 function update_gcr(room, pos, attribute = 'position') {
   const currentRoom = getCurrentRoom(room)
   const roomConfig = getRoomConfig(currentRoom)
@@ -274,7 +307,7 @@ function getOperatorExpr({ room, room_index, bypass = false, attribute = null })
 //   return roomConfig && (roomConfig.positions === 1 || op_data.value.position !== 'ALL')
 // })
 //计算当前房间的位置选项
-const position_options = computed(() => {
+const gcr_position_options = computed(() => {
   const room = getCurrentRoom()
   const roomConfig = getRoomConfig(room)
   if (!roomConfig) return []
@@ -290,8 +323,146 @@ const position_options = computed(() => {
     : []
 })
 
+// 组相关
+function update_group(options, group_name, mode) {
+  const isModeChanged = options && options !== op_data.value.options
+  if (isModeChanged) {
+    group_name = 'None'
+    // mode = 'None'
+  }
+  const defaultParams = {
+    options: 'True',
+    group_name: 'None',
+    mode: 'None'
+  }
+
+  const currentOptions = options || op_data.value.options || defaultParams.options
+  const currentGroupName = group_name !== undefined ? group_name : defaultParams.group_name
+  const currentModel = mode !== undefined ? mode : defaultParams.mode
+
+  const orderedParams = [
+    `'${currentOptions}'`,
+    currentGroupName === 'None' ? 'None' : `'${currentGroupName}'`,
+    currentModel === 'None' ? 'None' : `'${currentModel}'`
+  ]
+
+  // 从右向左移除多余默认值
+  let lastNonDefault = orderedParams.length
+  while (
+    lastNonDefault > 1 &&
+    orderedParams[lastNonDefault - 1] ===
+      defaultParams[Object.keys(defaultParams)[lastNonDefault - 1]]
+  ) {
+    lastNonDefault--
+  }
+
+  data.value = `op_data.get_group_info(${orderedParams.slice(0, lastNonDefault).join(', ')})`
+}
+
+//处理多选变化
+function handleModeChange(values) {
+  const modeValue = values && values.length > 0 ? values.join(',') : undefined
+  update_group(op_data.value.options, op_data.value.group_name, modeValue)
+}
+
+const useCustomSelector = computed(() => {
+  if (!op_data.value.options) return false
+  const parts = op_data.value.options.split(',')
+  return parts.length >= 3 && new Set(parts).size === 1
+})
+// 解析options生成选择器配置
+const getSelectorConfig = (options) => {
+  const patterns = options.split(',')
+
+  if (useCustomSelector.value) {
+    // 自选模式下只返回一个配置项
+    return [
+      {
+        isGroup: patterns[0] === 'True',
+        placeholder: `选择${patterns.length}个${patterns[0] === 'True' ? '组' : '干员'}`,
+        value: op_data.value.group_name?.split(':').slice(0, patterns.length).join(':') || null,
+        isCustom: true,
+        count: patterns.length
+      }
+    ]
+  }
+
+  // 正常模式
+  return patterns.map((pattern, index) => ({
+    isGroup: pattern === 'True',
+    placeholder: `${index === 0 ? '选择' : '选择'}${pattern === 'True' ? '组' : '干员'}`,
+    value: op_data.value.group_name?.split(':')[index] || null
+  }))
+}
+const getSelectorConfigByType = (isGroup, index, configType, option) => {
+  const configMap = {
+    options: isGroup ? formattedGroups.value : operators.value,
+    renderLabel: isGroup ? render_group_label : render_op_label,
+    renderTag: useCustomSelector.value
+      ? isGroup
+        ? render_group_tag
+        : render_op_tag
+      : isGroup
+        ? render_group_label
+        : render_op_label,
+    style: isGroup
+      ? {
+          'min-width': '120px'
+        }
+      : {
+          'min-width': '220px'
+        }
+  }
+
+  // console.log(useCustomSelector.value);
+  if (option) {
+    return configMap[configType](option)
+  }
+
+  return configMap[configType]
+}
+
+// 统一处理选择器更新
+const handleSelectorUpdate = (values, index) => {
+  if (useCustomSelector.value) {
+    const filteredValues = values.filter((v) => v && v.trim() !== '')
+    const v = filteredValues.length > 0 ? filteredValues.join(':') : 'None'
+    update_group(op_data.value.options, v, op_data.value.mode)
+  } else {
+    const parts = op_data.value.group_name?.split(':') || []
+    parts[index] = values
+    update_group(op_data.value.options, parts.join(':'), op_data.value.mode)
+  }
+}
+const selectedItems = ref([])
+watch(
+  () => op_data.value.group_name,
+  (newVal) => {
+    if (useCustomSelector.value && newVal && newVal !== 'None') {
+      selectedItems.value = newVal.split(':').filter((item) => item && item !== 'None')
+    } else {
+      selectedItems.value = []
+    }
+  },
+  { immediate: true }
+)
+
+const selectedModes = ref([])
+watch(
+  () => op_data.value.mode,
+  (newVal) => {
+    selectedModes.value = newVal && newVal !== 'None' ? newVal.split(',') : []
+  },
+  { immediate: true }
+)
+
 import { pinyin_match } from '@/utils/common'
-import { render_op_label } from '@/utils/op_select'
+import { render_op_label, render_op_tag } from '@/utils/op_select'
+import { formatGroupData, render_group_label, render_group_tag } from '@/utils/group_select'
+
+const formattedGroups = computed(() => {
+  return formatGroupData(groups.value)
+})
 
 const custom_tips = [
   'True',
@@ -319,6 +490,7 @@ const custom_tips = [
 </script>
 
 <template>
+  <!-- 第一行：主选择器和组头部 -->
   <n-select
     :default-value="op_type"
     :options="type_options"
@@ -349,29 +521,90 @@ const custom_tips = [
       style="min-width: 120px"
     />
   </template>
-  <!--GCR模板 -->
   <template v-if="op_type == 'gcr'">
     <n-select
       :value="op_data.room || 'dormitory_1'"
+      filterable
       :options="gcr_options"
       :on-update:value="(v) => update_gcr(v, op_data.position, op_data.attribute)"
-      style="min-width: 220px"
+      :filter="(p, o) => pinyin_match(o.label, p)"
+      style="min-width: 120px"
     />
-
     <n-select
-      v-if="position_options.length > 0"
+      v-if="gcr_position_options.length > 0"
       :value="op_data.position"
-      :options="position_options"
+      :options="gcr_position_options"
       :on-update:value="(v) => update_gcr(op_data.room, v, op_data.attribute)"
-      style="min-width: 100px; margin-left: 8px"
+      style="min-width: 120px"
     />
-
     <!-- v-if="showAttributeOptions" -->
     <n-select
       :value="op_data.attribute || 'position'"
       :options="gcr_attribute_options"
       :on-update:value="(v) => update_gcr(op_data.room, op_data.position, v)"
-      style="min-width: 100px; margin-left: 8px"
+      style="min-width: 120px"
+    />
+  </template>
+
+  <template v-if="op_type == 'group'">
+    <n-select
+      :value="op_data.options"
+      :options="group_options"
+      :on-update:value="(v) => update_group(v, op_data.group_name, op_data.mode)"
+      style="min-width: 150px"
+    />
+
+    <!-- 动态渲染选择器 -->
+    <template v-if="op_type === 'group' && op_data.options !== 'custom'">
+      <template v-for="(config, index) in getSelectorConfig(op_data.options)" :key="index">
+        <n-select
+          v-if="!config.isCustom"
+          :value="config.value"
+          filterable
+          :options="getSelectorConfigByType(config.isGroup, index, 'options')"
+          :render-label="
+            (option) => getSelectorConfigByType(config.isGroup, index, 'renderLabel', option)
+          "
+          :render-tag="
+            ({ option }) => getSelectorConfigByType(config.isGroup, index, 'renderTag', option)
+          "
+          :filter="(p, o) => pinyin_match(o.label, p)"
+          :on-update:value="(v) => handleSelectorUpdate(v, index)"
+          :placeholder="config.placeholder"
+          :style="getSelectorConfigByType(config.isGroup, index, 'style')"
+        />
+        <n-select
+          v-else
+          v-model:value="selectedItems"
+          multiple
+          filterable
+          :options="config.isGroup ? formattedGroups : operators"
+          :render-label="getSelectorConfigByType(config.isGroup, index, 'renderLabel')"
+          :render-tag="getSelectorConfigByType(config.isGroup, index, 'renderTag')"
+          :placeholder="config.placeholder"
+          :filter="(p, o) => pinyin_match(o.label, p)"
+          :style="getSelectorConfigByType(config.isGroup, index, 'style')"
+          @update:value="(vals) => handleSelectorUpdate(vals, index)"
+          clearable
+        />
+      </template>
+    </template>
+    <!-- <n-select
+        :value="op_data.mode"
+        :options="group_model_options"
+        :on-update:value="(v) => update_group(op_data.options, op_data.group_name, v)"
+        style="min-width: 120px"
+      /> -->
+    <n-select
+      v-model:value="selectedModes"
+      multiple
+      filterable
+      :options="group_model_options"
+      :render-tag="render_group_tag"
+      :filter="(p, o) => pinyin_match(o.label, p)"
+      style="min-width: 120px"
+      @update:value="handleModeChange"
+      clearable
     />
   </template>
 </template>
