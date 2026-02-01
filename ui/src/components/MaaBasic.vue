@@ -23,8 +23,22 @@ const maa_msg = ref('')
 
 async function test_maa() {
   maa_msg.value = '正在测试……'
-  const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/check-maa`)
-  maa_msg.value = response.data
+  try {
+    const response = await axios.get(
+      `${import.meta.env.VITE_HTTP_URL}/check-maa`,
+      { timeout: 60000 }
+    )
+    maa_msg.value = response.data
+  } catch (error) {
+    console.error('测试失败：', error)
+    if (error.code === 'ECONNABORTED') {
+      maa_msg.value = '测试超时，请检查网络或Maa配置'
+    } else if (error.response) {
+      maa_msg.value = `测试失败：${error.response.data || error.response.statusText}`
+    } else {
+      maa_msg.value = `测试失败：${error.message}`
+    }
+  }
 }
 
 const maa_conn_presets = ref([])

@@ -5,6 +5,18 @@ import router from './router.js'
 import axios from 'axios'
 import VueAxios from 'vue-axios'
 
+// 添加全局超时配置
+axios.defaults.timeout = 30000  // 30 秒超时
+
+// 添加全局错误拦截器
+axios.interceptors.response.use(
+  response => response,
+  error => {
+    console.error('API请求失败：', error)
+    return Promise.reject(error)
+  }
+)
+
 const app = createApp(App)
 app.use(router)
 app.use(VueAxios, axios)

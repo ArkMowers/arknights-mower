@@ -39,6 +39,13 @@ mower_thread = None
 log_lines = []
 ws_connections = []
 
+# Maa 连接状态缓存
+maa_connection_cache = {
+    'status': None,  # None, 'success', 'failed'
+    'timestamp': None,
+    'message': None
+}
+
 
 def read_log():
     global log_lines
@@ -391,7 +398,17 @@ def validate_backup_plans_route():
 @app.route("/check-maa")
 @require_token
 def get_maa_adb_version():
+    global maa_connection_cache
+
+    # 检查缓存（60秒有效期）
+    current_time = time.time()
+    if (maa_connection_cache['status'] is not None and
+        current_time - maa_connection_cache['timestamp'] < 60):
+        logger.info(f"使用缓存的 Maa 连接状态: {maa_connection_cache['status']}")
+        return maa_connection_cache['message']
+
     try:
+        # 步骤1：加载 Maa 库
         asst_path = os.path.dirname(
             pathlib.Path(config.conf.maa_path) / "Python" / "asst"
         )
@@ -403,14 +420,125 @@ def get_maa_adb_version():
         asst = Asst()
         version = asst.get_version()
         asst.set_instance_option(2, config.conf.maa_touch_option)
-        if asst.connect(config.conf.maa_adb_path, config.conf.adb):
-            maa_msg = f"Maa {version} 加载成功"
-        else:
-            maa_msg = "连接失败，请检查Maa日志！"
+
+        # 步骤2：预检查 ADB 连接
+        try:
+            from arknights_mower.utils.device.adb_client.core import Client
+            from arknights_mower.utils.device.adb_client.session import Session
+
+            # 2.1 检查 ADB 服务器是否正常
+            logger.info("检查 ADB 服务器状态...")
+            adb_client = Client(device_id=config.conf.adb, adb_bin=config.conf.maa_adb_path)
+            if not adb_client.check_server_alive():
+                maa_msg = "ADB 服务器未正常运行，请检查 ADB 配置"
+                _update_cache('failed', maa_msg)
+                return maa_msg
+
+            # 2.2 检查设备是否在线
+            logger.info("检查设备状态...")
+            devices = Session().devices_list()
+            device_ids = [d[0] for d in devices]
+            if config.conf.adb not in device_ids:
+                maa_msg = f"设备 {config.conf.adb} 未连接，请运行 adb devices 检查"
+                _update_cache('failed', maa_msg)
+                return maa_msg
+
+            device_status = [d[1] for d in devices if d[0] == config.conf.adb][0]
+            if device_status != "device":
+                maa_msg = f"设备状态异常：{device_status}"
+                _update_cache('failed', maa_msg)
+                return maa_msg
+
+            # 2.3 执行简单命令验证连接
+            logger.info("验证 ADB 连接...")
+            adb_client.run("echo test")
+
+        except Exception as e:
+            maa_msg = f"ADB 预检查失败：{str(e)}"
+            logger.warning(maa_msg)
+            _update_cache('failed', maa_msg)
+            return maa_msg
+
+        # 步骤3：尝试 Maa 连接（带重试机制）
+        logger.info("开始 Maa 连接测试...")
+        max_retries = 3
+        retry_delay = 2  # 秒
+
+        for attempt in range(max_retries):
+            try:
+                result = {'connected': False, 'error': None}
+
+                def connect_with_timeout():
+                    try:
+                        result['connected'] = asst.connect(config.conf.maa_adb_path, config.conf.adb)
+                    except Exception as e:
+                        result['error'] = str(e)
+
+                thread = Thread(target=connect_with_timeout)
+                thread.start()
+                thread.join(timeout=15)  # 15 秒超时
+
+                if thread.is_alive():
+                    if attempt < max_retries - 1:
+                        logger.warning(f"Maa 连接超时，重试 {attempt + 1}/{max_retries}")
+                        time.sleep(retry_delay)
+                        continue
+                    else:
+                        maa_msg = "Maa 连接超时，请检查设备和 ADB 配置"
+                        _update_cache('failed', maa_msg)
+                        return maa_msg
+                elif result['error']:
+                    if attempt < max_retries - 1:
+                        logger.warning(f"Maa 连接失败，重试 {attempt + 1}/{max_retries}：{result['error']}")
+                        time.sleep(retry_delay)
+                        continue
+                    else:
+                        maa_msg = f"Maa 连接失败：{result['error']}"
+                        _update_cache('failed', maa_msg)
+                        return maa_msg
+                elif result['connected']:
+                    maa_msg = f"Maa {version} 加载成功"
+                    logger.info(maa_msg)
+                    _update_cache('success', maa_msg)
+                    return maa_msg
+                else:
+                    if attempt < max_retries - 1:
+                        logger.warning(f"Maa 连接失败，重试 {attempt + 1}/{max_retries}")
+                        time.sleep(retry_delay)
+                        continue
+                    else:
+                        maa_msg = "Maa 连接失败，请检查 Maa 日志"
+                        _update_cache('failed', maa_msg)
+                        return maa_msg
+
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    logger.warning(f"连接测试失败，重试 {attempt + 1}/{max_retries}：{str(e)}")
+                    time.sleep(retry_delay)
+                    continue
+                else:
+                    maa_msg = f"连接测试失败：{str(e)}"
+                    _update_cache('failed', maa_msg)
+                    return maa_msg
+
+        # 理论上不应该到这里
+        maa_msg = "未知错误"
+        _update_cache('failed', maa_msg)
+        return maa_msg
+
     except Exception as e:
-        maa_msg = "Maa加载失败：" + str(e)
+        maa_msg = "Maa 加载失败：" + str(e)
         logger.exception(maa_msg)
-    return maa_msg
+        _update_cache('failed', maa_msg)
+        return maa_msg
+
+
+def _update_cache(status: str, message: str):
+    """更新 Maa 连接状态缓存"""
+    global maa_connection_cache
+    maa_connection_cache['status'] = status
+    maa_connection_cache['timestamp'] = time.time()
+    maa_connection_cache['message'] = message
 
 
 @app.route("/maa-conn-preset")
