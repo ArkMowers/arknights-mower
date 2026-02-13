@@ -569,7 +569,7 @@
   "cc_g_sui": {
     "termId": "cc.g.sui",
     "termName": "岁",
-    "description": "包含以下干员\n年、夕、令、重岳、黍、余",
+    "description": "包含以下干员\n年、夕、令、重岳、黍、余、望",
     "buffer": []
   },
   "cc_g_glasgow": {
@@ -831,6 +831,18 @@
     "termId": "cc.bd_mujica_2",
     "termName": "演技的怪物",
     "description": "拥有该基建技能的干员\n若叶睦",
+    "buffer": []
+  },
+  "cc_bd_wang_1": {
+    "termId": "cc.bd_wang_1",
+    "termName": "外势",
+    "description": "由以下干员的基建技能提供\n望\n每有一间贸易站、发电站，外势+1",
+    "buffer": []
+  },
+  "cc_bd_wang_2": {
+    "termId": "cc.bd_wang_2",
+    "termName": "实地",
+    "description": "由以下干员的基建技能提供\n望\n每有一间制造站，实地+1",
     "buffer": []
   }
 }
