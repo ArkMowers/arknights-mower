@@ -15,6 +15,7 @@ from arknights_mower.utils.skland import (
     header_login,
     log,
     sign_url,
+    sign_endfield_url,
     token_password_url,
 )
 
@@ -30,37 +31,91 @@ class SKLand:
 
     def start(self):
         for item in config.conf.skland_info:
+            if not(item.isCheck or item.endfield_isCheck):
+                logger.info(f"账号：{item.account}未正确勾选，跳过签到")
+                continue
             if self.has_record(item.account):
                 continue
             self.all_recorded = False
             self.save_param(get_cred_by_token(log(item)))
+            # 明日方舟森空岛签到
             for i in get_binding_list(self.sign_token):
-                body = {"gameId": 1, "uid": i.get("uid")}
-                resp = requests.post(
-                    sign_url,
-                    headers=get_sign_header(
-                        sign_url, "post", body, self.sign_token, header
-                    ),
-                    json=body,
-                ).json()
-                if resp["code"] != 0:
-                    self.reward.append(
-                        {"nickName": item.account, "reward": resp.get("message")}
-                    )
-                    logger.info(f"{i.get('nickName')}：{resp.get('message')}")
-                    continue
-                awards = resp["data"]["awards"]
-                for j in awards:
-                    res = j["resource"]
-                    self.reward.append(
-                        {
-                            "nickName": item.account,
-                            "reward": "{}×{}".format(res["name"], j.get("count") or 1),
-                        }
-                    )
-                    logger.info(
-                        f"{i.get('nickName')}获得了{res['name']}×{j.get('count') or 1}"
-                    )
+                if i["gameId"] == 1 and item.isCheck:
+                    if not(item.sign_in_bilibili) and i["channelName"] == "bilibili服":
+                        logger.info(f"账号：{item.account}的b服未勾选，跳过签到")
+                        continue
+                    if not(item.sign_in_official) and i["channelName"] == "官服":
+                        logger.info(f"账号：{item.account}的官服未勾选，跳过签到")
+                        continue
+                    body = {"gameId": 1, "uid": i.get("uid")}
+                    resp = requests.post(
+                        sign_url,
+                        headers=get_sign_header(
+                            sign_url, "post", body, self.sign_token, header
+                        ),
+                        json=body,
+                    ).json()
+                    if resp["code"] != 0:
+                        self.reward.append(
+                            {"nickName": item.account, "game": "明日方舟", "reward": resp.get("message")}
+                        )
+                        logger.info(f"{i.get('nickName')}：{resp.get('message')}")
+                        continue
+                    awards = resp["data"]["awards"]
+                    for j in awards:
+                        res = j["resource"]
+                        self.reward.append(
+                            {
+                                "nickName": item.account,
+                                "game": "明日方舟",
+                                "reward": "{}×{}".format(res["name"], j.get("count") or 1),
+                            }
+                        )
+                        logger.info(
+                            f"{i.get('nickName')}获得了{res['name']}×{j.get('count') or 1}"
+                        )
+                # 终末地森空岛签到
+                if i["gameId"] == 3 and item.endfield_isCheck:
+                    for j in i["roles"]:
+                        if not(item.sign_in_endfield_bilibili) and i["channelName"] == "bilibili服":
+                            logger.info(f"账号：{item.account}的终末地b服未勾选，跳过签到")
+                            continue
+                        if not(item.sign_in_endfield_official) and i["channelName"] == "官服":
+                            logger.info(f"账号：{item.account}的终末地官服未勾选，跳过签到")
+                            continue
+                        body_endfield = {"gameId": 3, "roleId": j.get("roleId"), "serverId": j.get("serverId")}
+                        headers_endfield = get_sign_header(sign_endfield_url, "post", body_endfield, self.sign_token, header)
+                        headers_endfield["Content-Type"] = "application/json"
+                        headers_endfield["sk-game-role"] = f"3_{j.get('roleId')}_{j.get('serverId')}"
+                        headers_endfield["referer"] = "https://game.skland.com/"
+                        headers_endfield["origin"] = "https://game.skland.com/"
+
+                        resp = requests.post(
+                            sign_endfield_url,
+                            headers=headers_endfield,
+                            json=body_endfield,
+                        ).json()
+                        if resp["code"] != 0:
+                            self.reward.append(
+                                {"nickname": item.account, "game": "终末地", "reward": resp.get("message")}
+                            )
+                            logger.info(f"{j.get('nickname')}：{resp.get('message')}")
+                            continue
+                        awards = resp["data"]["awardIds"]
+                        resource = resp["data"]["resourceInfoMap"]
+                        for award in awards:
+                            awardid = award.get("id")
+                            res = resource[awardid]
+                            self.reward.append(
+                                {
+                                    "nickname": item.account,
+                                    "game": "终末地",
+                                    "reward": "{}×{}".format(res["name"], res.get("count") or 1),
+                                }
+                            )
+                            logger.info(
+                                f"{j.get('nickname')}获得了{res['name']}×{res.get('count') or 1}"
+                            )
         if len(self.reward) > 0:
             return self.record_log()
         if self.all_recorded:
@@ -101,9 +156,17 @@ class SKLand:
             df = pd.read_csv(
                 self.record_path, header=None, encoding="gbk", on_bad_lines="skip"
             )
+
+            sign_arknights = False
+            sign_endfield = False
+
             for item in df.iloc:
                 if item[0] == datetime.datetime.now().strftime("%Y/%m/%d"):
-                    if item[1].astype(str) == phone:
+                    if item[1].astype(str) == phone and item[2] == "明日方舟":
+                        sign_arknights = True
+                    if item[1].astype(str) == phone and item[2] == "终末地":
+                        sign_endfield = True
+                    if sign_arknights and sign_endfield:
                         logger.info(f"{phone}今天签到过了")
                         return True
             return False
@@ -115,16 +178,24 @@ class SKLand:
     def test_connect(self):
         res = []
         for item in config.conf.skland_info:
-            if item.isCheck:
+            if item.isCheck or item.endfield_isCheck:
                 try:
                     self.save_param(get_cred_by_token(log(item)))
                     for i in get_binding_list(self.sign_token):
-                        if i["uid"]:
+                        if i["uid"] and i["gameId"] == 1:
                             res.append(
                                 "{}连接成功".format(
                                     i["nickName"] + "({})".format(i["channelName"])
                                 )
                             )
+                        # 从roles列表中获取终末地角色信息
+                        if i["roles"] and i["gameId"] == 3:
+                            for j in i["roles"]:
+                                res.append(
+                                    "{}连接成功".format(
+                                        j["nickname"] + "(终末地{})".format(i["channelName"])
+                                    )
+                                )
                 except Exception as e:
                     msg = "{}无法连接-{}".format(item.account, e)
                     logger.exception(msg)

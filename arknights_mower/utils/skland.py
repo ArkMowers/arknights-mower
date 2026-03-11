@@ -13,6 +13,8 @@ app_code = "4ca99fa6b56cc2ba"
 
 # 签到url
 sign_url = "https://zonai.skland.com/api/v1/game/attendance"
+# 终末地签到url
+sign_endfield_url = "https://zonai.skland.com/web/v1/game/endfield/attendance"
 # 绑定的角色url
 binding_url = "https://zonai.skland.com/api/v1/game/player/binding"
 # 验证码url
@@ -27,12 +29,12 @@ grant_code_url = "https://as.hypergryph.com/user/oauth2/v2/grant"
 cred_code_url = "https://zonai.skland.com/web/v1/user/auth/generate_cred_by_code"
 header = {
     "cred": "",
-    "User-Agent": "Skland/1.0.1 (com.hypergryph.skland; build:100001014; Android 31; ) Okhttp/4.11.0",
+    "User-Agent": "Skland/1.53.0 (com.hypergryph.skland; build:105300018; Android 31; ) Okhttp/4.11.0",
     "Accept-Encoding": "gzip",
     "Connection": "close",
 }
 header_login = {
-    "User-Agent": "Skland/1.0.1 (com.hypergryph.skland; build:100001014; Android 31; ) Okhttp/4.11.0",
+    "User-Agent": "Skland/1.53.0 (com.hypergryph.skland; build:105300018; Android 31; ) Okhttp/4.11.0",
     "Accept-Encoding": "gzip",
     "Connection": "close",
     "dId": get_d_id(),
@@ -127,7 +129,7 @@ def get_binding_list(sign_token):
             logger.warning("用户登录可能失效了，请重新运行此程序！")
             return []
     for i in resp["data"]["list"]:
-        if i.get("appCode") != "arknights":
+        if i.get("appCode") not in ("arknights", "endfield"):
             continue
         v.extend(i.get("bindingList"))
     return v

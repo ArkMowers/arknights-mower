@@ -11,10 +11,13 @@ const { skland_enable, skland_info } = storeToRefs(store)
 function add_account() {
   return {
     isCheck: true,
+    endfield_isCheck: true,
     account: '',
     password: '',
     sign_in_official: true,
     sign_in_bilibili: true,
+    sign_in_endfield_official: true,
+    sign_in_endfield_bilibili: true,
     cultivate_select: true
   }
 }
