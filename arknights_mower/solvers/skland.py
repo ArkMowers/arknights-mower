@@ -31,8 +31,11 @@ class SKLand:
 
     def start(self):
         for item in config.conf.skland_info:
+            if not(item.account) or not(item.password):
+                logger.warning(f"有未输入的账号或密码，请检查")
+                continue
             if not(item.isCheck or item.endfield_isCheck):
-                logger.info(f"账号：{item.account}未正确勾选，跳过签到")
+                logger.info(f"账号：{item.account}未勾选，跳过签到")
                 continue
             if self.has_record(item.account):
                 continue
@@ -119,6 +122,9 @@ class SKLand:
         if len(self.reward) > 0:
             return self.record_log()
         if self.all_recorded:
+            if len(self.reward) == 0:
+                logger.warning(f"没有设置需要签到的账号！")
+                return False
             return True
         return False
 

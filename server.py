@@ -666,6 +666,9 @@ def test_skland_sign():
     from arknights_mower.solvers.skland import SKLand
 
     if bool(SKLand().start()):
+        logger.info(f"签到测试完成!")
+        if bool(SKLand().has_record()):
+            return "存在重复签到"
         return "已签到"
     return "签到失败，请查看运行日志"
 

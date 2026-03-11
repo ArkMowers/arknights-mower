@@ -9,12 +9,12 @@ const store = useConfigStore()
 const { check_mail_enable, report_enable, sign_in, visit_friend, skland_info, skland_enable } =
   storeToRefs(store)
 
-const maa_msg = ref('')
+const sign_msg = ref('')
 
 async function test_sign() {
-  maa_msg.value = '正在测试签到……'
+  sign_msg.value = '正在测试签到……'
   const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/check-skland-sign`)
-  maa_msg.value = response.data
+  sign_msg.value = response.data
 }
 
 // 复选框逻辑
@@ -72,10 +72,10 @@ const SyncStatus = (item, game) => {
                   森空岛账号：{{ account_info.account }}
                 </n-checkbox>
                 <div style="margin-left: auto;">
-                  <n-checkbox v-model:checked="account_info.sign_in_endfield_official" @update:checkd="() => SyncStatus(account_info, 'endfield')" style="margin-right: 12px">
+                  <n-checkbox v-model:checked="account_info.sign_in_endfield_official" @update:checked="() => SyncStatus(account_info, 'endfield')" style="margin-right: 12px">
                     官服签到
                   </n-checkbox>
-                  <n-checkbox v-model:checked="account_info.sign_in_endfield_bilibili" @update:checkd="() => SyncStatus(account_info, 'endfield')" style="margin-right: 12px">
+                  <n-checkbox v-model:checked="account_info.sign_in_endfield_bilibili" @update:checked="() => SyncStatus(account_info, 'endfield')" style="margin-right: 12px">
                     B服签到
                   </n-checkbox>
                 </div>
@@ -85,7 +85,7 @@ const SyncStatus = (item, game) => {
         </n-tabs>
         <n-flex style="misc-container" align="center">
           <n-button @click="test_sign">测试签到</n-button>
-          <div>{{ maa_msg }}</div>
+          <div>{{ sign_msg }}</div>
         </n-flex>        
       <n-divider />
       <n-checkbox v-model:checked="check_mail_enable">
