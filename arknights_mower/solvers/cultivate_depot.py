@@ -22,7 +22,7 @@ class cultivate:
 
     def start(self):
         for item in config.conf.skland_info:
-            if item.isCheck:
+            if item.arknights_isCheck:
                 self.save_param(get_cred_by_token(log(item)))
                 for i in get_binding_list(self.sign_token):
                     if item.cultivate_select == i.get("isOfficial"):

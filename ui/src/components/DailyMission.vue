@@ -21,7 +21,7 @@ async function test_sign() {
 // 账号勾选时相当于全选
 const AllCheck = (item, status, game) => {
   if (game == "arknights") {
-    item.isCheck = status
+    item.arknights_isCheck = status
     item.sign_in_official = status
     item.sign_in_bilibili = status
   } else if (game == "endfield") {
@@ -33,7 +33,7 @@ const AllCheck = (item, status, game) => {
 // 区服为空时同步账号为空
 const SyncStatus = (item, game) => {
   if (game == "arknights") {
-    item.isCheck = (item.sign_in_official || item.sign_in_bilibili)
+    item.arknights_isCheck = (item.sign_in_official || item.sign_in_bilibili)
   } else if (game == "endfield") {
     item.endfield_isCheck = (item.sign_in_endfield_official || item.sign_in_endfield_bilibili)
   }
@@ -51,7 +51,7 @@ const SyncStatus = (item, game) => {
           <n-tab-pane name="arknights" tab="明日方舟">
             <div v-for="account_info in skland_info" :key="account_info.account">
               <n-flex>
-                <n-checkbox v-model:checked="account_info.isCheck" @update:checked="(status) => AllCheck(account_info, status, 'arknights')" style="margin-right: 12px">
+                <n-checkbox v-model:checked="account_info.arknights_isCheck" @update:checked="(status) => AllCheck(account_info, status, 'arknights')" style="margin-right: 12px">
                   森空岛账号：{{ account_info.account }}
                 </n-checkbox>
                 <div style="margin-left: auto;">

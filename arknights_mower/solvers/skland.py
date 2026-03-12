@@ -34,7 +34,7 @@ class SKLand:
             if not(item.account) or not(item.password):
                 logger.warning(f"有未输入的账号或密码，请检查")
                 continue
-            if not(item.isCheck or item.endfield_isCheck):
+            if not(item.arknights_isCheck or item.endfield_isCheck):
                 logger.info(f"账号：{item.account}未勾选，跳过签到")
                 continue
             if self.has_record(item.account):
@@ -43,7 +43,7 @@ class SKLand:
             self.save_param(get_cred_by_token(log(item)))
             # 明日方舟森空岛签到
             for i in get_binding_list(self.sign_token):
-                if i["gameId"] == 1 and item.isCheck:
+                if i["gameId"] == 1 and item.arknights_isCheck:
                     if not(item.sign_in_bilibili) and i["channelName"] == "bilibili服":
                         logger.info(f"账号：{item.account}的b服未勾选，跳过签到")
                         continue
@@ -181,10 +181,11 @@ class SKLand:
         except pd.errors.EmptyDataError:
             return False
 
+    # 用于测试连接
     def test_connect(self):
         res = []
         for item in config.conf.skland_info:
-            if item.isCheck or item.endfield_isCheck:
+            if item.arknights_isCheck or item.endfield_isCheck:
                 try:
                     self.save_param(get_cred_by_token(log(item)))
                     for i in get_binding_list(self.sign_token):
@@ -207,3 +208,13 @@ class SKLand:
                     logger.exception(msg)
                     res.append(msg)
         return res
+
+
+    # 用于测试签到
+    def test_sign(self):
+        if bool(self.start()):
+            logger.info(f"签到测试完成!")
+            if bool(self.has_record()):
+                return "存在重复签到"
+            return "已签到"
+        return "签到失败，请查看运行日志"

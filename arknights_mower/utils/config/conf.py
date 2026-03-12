@@ -557,8 +557,8 @@ class SKLandPart(ConfModel):
         "密码"
         cultivate_select: bool = True
         "服务器"
-        isCheck: bool = True
-        "签到"
+        arknights_isCheck: bool = True
+        "明日方舟签到"
         endfield_isCheck: bool = True
         "终末地签到"
         sign_in_official: bool = False

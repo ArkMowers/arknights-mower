@@ -10,7 +10,7 @@ const { skland_enable, skland_info } = storeToRefs(store)
 
 function add_account() {
   return {
-    isCheck: true,
+    arknights_isCheck: true,
     endfield_isCheck: true,
     account: '',
     password: '',
