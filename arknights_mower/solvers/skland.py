@@ -29,6 +29,8 @@ class SKLand:
         self.sign_token = ""
         self.all_recorded = True
 
+        self.test_writecsv = True
+
     def start(self):
         for item in config.conf.skland_info:
             if not(item.arknights_isCheck or item.endfield_isCheck):
@@ -40,11 +42,11 @@ class SKLand:
             # 明日方舟森空岛签到
             for i in get_binding_list(self.sign_token):
                 if i["gameId"] == 1 and item.arknights_isCheck:
+                    if not i["uid"]:
+                        continue
                     if not(item.sign_in_bilibili) and i["channelName"] == "bilibili服":
-                        logger.info(f"账号：{item.account}的b服未勾选，跳过签到")
                         continue
                     if not(item.sign_in_official) and i["channelName"] == "官服":
-                        logger.info(f"账号：{item.account}的官服未勾选，跳过签到")
                         continue
                     body = {"gameId": 1, "uid": i.get("uid")}
                     resp = requests.post(
@@ -80,11 +82,11 @@ class SKLand:
                 # 终末地森空岛签到
                 if i["gameId"] == 3 and item.endfield_isCheck:
                     for j in i["roles"]:
+                        if not i["roles"]:
+                            continue
                         if not(item.sign_in_endfield_bilibili) and i["channelName"] == "bilibili服":
-                            logger.info(f"账号：{item.account}的终末地b服未勾选，跳过签到")
                             continue
                         if not(item.sign_in_endfield_official) and i["channelName"] == "官服":
-                            logger.info(f"账号：{item.account}的终末地官服未勾选，跳过签到")
                             continue
                         body_endfield = {"gameId": 3, "roleId": j.get("roleId"), "serverId": j.get("serverId")}
                         headers_endfield = get_sign_header(sign_endfield_url, "post", body_endfield, self.sign_token, header)
@@ -153,8 +155,8 @@ class SKLand:
                 res_df = pd.DataFrame(item, index=[date_str])
                 res_df.to_csv(self.record_path, mode="a", header=False, encoding="gbk")
         except Exception as e:
-            logger.exception(e)
-
+            self.test_writecsv = False
+            logger.exception(e)       
         return True
 
     def has_record(self, phone: str):
@@ -238,19 +240,16 @@ class SKLand:
                     )
                     return res
             if bool(self.start()):
-                for item in config.conf.skland_info:
-                    if bool(self.has_record(item.account)):
-                        res.append(
-                            "账号{}存在重复签到"
-                        )
-                        return res
-                res.append(
-                    self.reward
-                )
+                for info in self.reward:
+                    res.append(
+                        "{}{}签到成功".format(info.get("nickname") or info.get("nickName"), info.get("game")) 
+                    )
+                if not self.test_writecsv:
+                    res.append("签到数据写入失败，可能是根目录下的tmp文件夹不存在或tmp/skland.csv被占用")
                 return res
         except Exception as e:
             msg = "测试出错-{}".format(e)
             logger.exception(msg)
             res.append(msg)
-        res.append("没有需要签到的账号，可能是已签到或没有勾选账号")
+        res.append("未勾选有效的账号或勾选的账号今天已签到~")
         return res
