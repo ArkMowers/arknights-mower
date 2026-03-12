@@ -31,11 +31,7 @@ class SKLand:
 
     def start(self):
         for item in config.conf.skland_info:
-            if not(item.account) or not(item.password):
-                logger.warning(f"有未输入的账号或密码，请检查")
-                continue
             if not(item.arknights_isCheck or item.endfield_isCheck):
-                logger.info(f"账号：{item.account}未勾选，跳过签到")
                 continue
             if self.has_record(item.account):
                 continue
@@ -60,7 +56,11 @@ class SKLand:
                     ).json()
                     if resp["code"] != 0:
                         self.reward.append(
-                            {"nickName": item.account, "game": "明日方舟", "reward": resp.get("message")}
+                            {
+                                "nickName": item.account, 
+                                "game": "明日方舟{}".format(i.get("channelName")), 
+                                "reward": resp.get("message")
+                            }
                         )
                         logger.info(f"{i.get('nickName')}：{resp.get('message')}")
                         continue
@@ -70,12 +70,12 @@ class SKLand:
                         self.reward.append(
                             {
                                 "nickName": item.account,
-                                "game": "明日方舟",
+                                "game": "明日方舟{}".format(i.get("channelName")),
                                 "reward": "{}×{}".format(res["name"], j.get("count") or 1),
                             }
                         )
                         logger.info(
-                            f"{i.get('nickName')}获得了{res['name']}×{j.get('count') or 1}"
+                            f"{i.get('nickName')}的明日方舟{i.get('channelName')}获得了{res['name']}×{j.get('count') or 1}"
                         )
                 # 终末地森空岛签到
                 if i["gameId"] == 3 and item.endfield_isCheck:
@@ -100,7 +100,11 @@ class SKLand:
                         ).json()
                         if resp["code"] != 0:
                             self.reward.append(
-                                {"nickname": item.account, "game": "终末地", "reward": resp.get("message")}
+                                {
+                                    "nickname": item.account, 
+                                    "game": "终末地", 
+                                    "reward": resp.get("message")
+                                }
                             )
                             logger.info(f"{j.get('nickname')}：{resp.get('message')}")
                             continue
@@ -113,7 +117,7 @@ class SKLand:
                                 {
                                     "nickname": item.account,
                                     "game": "终末地",
-                                    "reward": "{}×{}".format(res["name"], res.get("count") or 1),
+                                    "reward": "{}×{}".format(res["name"], res.get("count") or 1)
                                 }
                             )
                             logger.info(
@@ -123,7 +127,6 @@ class SKLand:
             return self.record_log()
         if self.all_recorded:
             if len(self.reward) == 0:
-                logger.warning(f"没有设置需要签到的账号！")
                 return False
             return True
         return False
@@ -163,16 +166,30 @@ class SKLand:
                 self.record_path, header=None, encoding="gbk", on_bad_lines="skip"
             )
 
-            sign_arknights = False
-            sign_endfield = False
+            sign_arknights_official = False
+            sign_arknights_bilbili = False
+            sign_endfield_official = False
+            sign_endfield_bilibili = False
 
             for item in df.iloc:
-                if item[0] == datetime.datetime.now().strftime("%Y/%m/%d"):
-                    if item[1].astype(str) == phone and item[2] == "明日方舟":
-                        sign_arknights = True
-                    if item[1].astype(str) == phone and item[2] == "终末地":
-                        sign_endfield = True
-                    if sign_arknights and sign_endfield:
+                if (item[0] == datetime.datetime.now().strftime("%Y/%m/%d")) and (item[1].astype(str) == phone):
+                    for game in config.conf.skland_info:
+                        if (phone == game.account) and not game.sign_in_official:
+                            sign_arknights_official = True
+                        if (phone == game.account) and not game.sign_in_bilibili:
+                            sign_arknights_bilbili = True
+                        if (phone == game.account) and not game.sign_in_endfield_official:
+                            sign_endfield_official = True
+                        if (phone == game.account) and not game.sign_in_endfield_bilibili:
+                            sign_endfield_bilibili = True                                                     
+                    if item[2] == "明日方舟官服":
+                        sign_arknights_official = True
+                    if item[2] == "明日方舟bilibili服":
+                        sign_arknights_bilbili = True
+                    if item[2] == "终末地":
+                        sign_endfield_official = True
+                        sign_endfield_bilibili = True
+                    if sign_arknights_official and sign_arknights_bilbili and sign_endfield_official and sign_endfield_bilibili:
                         logger.info(f"{phone}今天签到过了")
                         return True
             return False
@@ -212,9 +229,28 @@ class SKLand:
 
     # 用于测试签到
     def test_sign(self):
-        if bool(self.start()):
-            logger.info(f"签到测试完成!")
-            if bool(self.has_record()):
-                return "存在重复签到"
-            return "已签到"
-        return "签到失败，请查看运行日志"
+        res = []
+        try:
+            for item in config.conf.skland_info:
+                if (not item.account or not item.password) and (item.arknights_isCheck or item.endfield_isCheck):
+                    res.append(
+                        "账号{}配置不完整，请检查".format(item.account)
+                    )
+                    return res
+            if bool(self.start()):
+                for item in config.conf.skland_info:
+                    if bool(self.has_record(item.account)):
+                        res.append(
+                            "账号{}存在重复签到"
+                        )
+                        return res
+                res.append(
+                    self.reward
+                )
+                return res
+        except Exception as e:
+            msg = "测试出错-{}".format(e)
+            logger.exception(msg)
+            res.append(msg)
+        res.append("没有需要签到的账号，可能是已签到或没有勾选账号")
+        return res
