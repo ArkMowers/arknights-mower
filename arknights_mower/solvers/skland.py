@@ -148,6 +148,7 @@ class SKLand:
         return r["data"]["token"]
 
     def record_log(self):
+        self.test_writecsv = True
         date_str = datetime.datetime.now().strftime("%Y/%m/%d")
         logger.info(f"存入{date_str}的数据{self.reward}")
         try:
@@ -246,6 +247,7 @@ class SKLand:
                     )
                 if not self.test_writecsv:
                     res.append("签到数据写入失败，可能是根目录下的tmp文件夹不存在或tmp/skland.csv被占用")
+                    self.test_writecsv = True
                 return res
         except Exception as e:
             msg = "测试出错-{}".format(e)
