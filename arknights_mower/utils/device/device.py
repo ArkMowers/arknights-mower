@@ -142,7 +142,17 @@ class Device:
         if tap:
             self.run(f"input tap {x} {y}")
         else:
+            # 检查游戏是否在后台运行
+            in_background = self.is_app_running_in_background()
             self.run(f"am start -n {config.conf.APPNAME}/{config.APP_ACTIVITY_NAME}")
+            # 如果游戏之前不在后台（被 force-stop 过），发送 Overview 键激活 Activity
+            # 避免 am force-stop 后 am start 导致游戏卡在加载页面
+            if not in_background:
+                time.sleep(2)
+                logger.debug("发送 Overview 键激活游戏 Activity")
+                self.send_keyevent(187)  # KEYCODE_APP_SWITCH (Overview)
+                time.sleep(0.5)
+                self.send_keyevent(4)  # KEYCODE_BACK
 
     def exit(self) -> None:
         """exit the application"""
