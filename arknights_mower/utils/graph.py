@@ -422,6 +422,14 @@ class SceneGraphSolver(BaseSolver):
         error_count = 0
 
         while (current := self.scene()) != scene:
+            # 优先检测登录场景，调用完整登录流程
+            if current // 100 == 1:  # 登录场景 (100-199)
+                logger.info(
+                    f"检测到登录场景 {SceneComment.get(current, current)}，自动执行登录流程"
+                )
+                self.login()
+                continue
+
             if current in self.waiting_scene:
                 self.waiting_solver()
                 continue

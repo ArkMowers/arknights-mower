@@ -529,19 +529,27 @@ class BaseSolver:
             try:
                 if (scene := self.scene()) == Scene.LOGIN_START:
                     # 应对两种情况：
-                    # 1. 点击左上角“网络检测”后出现“您即将进行一次网络拨测，该操作将采集您的网络状态并上报，点击确认继续”，点x
-                    # 2. 点击左上角“清除缓存”之后取消
-                    self.tap((665, 741))
+                    # 1. 点击左上角"网络检测"后出现"您即将进行一次网络拨测，该操作将采集您的网络状态并上报，点击确认继续"，点x
+                    # 2. 点击左上角"清除缓存"之后取消
+                    # AVD环境下scrcpy注入的触摸事件可能无效，使用ADB input tap命令
+                    self.device.run("input tap 1600 900")
+                    self.sleep(3)
                 elif scene == Scene.LOGIN_NEW:
                     self.tap_element("login_new")
+                    self.sleep(3)
                 elif scene == Scene.LOGIN_BILIBILI:
                     self.bilibili()
+                    self.sleep(3)
                 elif scene == Scene.LOGIN_BILIBILI_PRIVACY:
                     self.bilibili()
+                    self.sleep(3)
                 elif scene == Scene.LOGIN_QUICKLY:
-                    self.tap_element("login_awake")
+                    # AVD环境下scrcpy注入的触摸事件可能无效，使用ADB input tap命令
+                    self.device.run("input tap 958 766")
+                    self.sleep(3)
                 elif scene == Scene.LOGIN_MAIN:
                     self.tap_element("login_account", 0.25)
+                    self.sleep(3)
                 elif scene == Scene.LOGIN_REGISTER:
                     self.back(2)
                 elif scene == Scene.LOGIN_CAPTCHA:
@@ -570,7 +578,10 @@ class BaseSolver:
                 elif scene == Scene.LOGIN_ANNOUNCE:
                     self.tap_element("login_iknow")
                 elif scene in self.waiting_scene:
-                    self.waiting_solver()
+                    if not self.waiting_solver():
+                        retry_times -= 1
+                        self.sleep(3)
+                        continue
                 elif scene == Scene.CONFIRM:
                     self.tap((960, 740))
                 elif scene == Scene.LOGIN_CADPA_DETAIL:
@@ -593,6 +604,16 @@ class BaseSolver:
 
         if not self.is_login():
             raise StrategyError
+
+        # 登录成功后重新初始化 scrcpy-server
+        # 在 AVD 环境下，使用 ADB input tap 登录后 scrcpy 触摸注入可能失效
+        if self.device.control.scrcpy:
+            logger.info("登录成功，重新初始化 scrcpy-server")
+            try:
+                self.device.control.scrcpy.stop()
+                self.device.control.scrcpy.start()
+            except Exception as e:
+                logger.warning(f"scrcpy-server 重新初始化失败: {e}")
 
     def get_navigation(self):
         """
