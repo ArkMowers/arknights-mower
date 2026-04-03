@@ -840,6 +840,7 @@ class Recognizer:
             "collection": (1005, 943),
             "collection_small": (1053, 982),
             "connecting": (1087, 978),
+            "login_awake": ((700, 650), (1200, 850)),
             "episode": (535, 937),
             "fight/use": (858, 864),
             "friend_list": (61, 306),
