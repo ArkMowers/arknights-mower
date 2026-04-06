@@ -20,7 +20,7 @@ const le_options = [
   { label: '值', value: 'string' }
 ]
 
-const operator_tips = ['and', 'or', '==', '!=', '>', '<', '>=', '<=', '+', '-']
+const operator_tips = ['and', 'or', 'in', '==', '!=', '>', '<', '>=', '<=', '+', '-']
 </script>
 
 <template>

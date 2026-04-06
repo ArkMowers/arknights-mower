@@ -155,6 +155,9 @@ class Operators:
                 "is_resting",
                 "current_mood",
                 "current_room",
+                "name",
+                "get_current_room_for_ui",
+                # "get_group_info",
             ]
         )
         self.power_plant_count = 0
@@ -488,6 +491,122 @@ class Operators:
             return None
         else:
             return res
+
+    def get_current_room_for_ui(self, room, bypass=False, room_index=None, mode=None):
+        """供前端调用，简化前端调用代码
+        :param room:
+        :param bypass:
+        以上保持原 get_current_room 参数作用, 删除 current_index
+
+        :param room_index: 获取当前房间指定位置的干员
+        :param mode: 前端可传入当前模式选项
+            mode状态 -->
+            默认 None:
+                position 输出当前位置干员;
+            可选:
+                mood 输出干员心情;
+                is_high 是否为高效组;"""
+
+        # def str_list(index):
+        #     if isinstance(index, str):
+        #         return [int(x) for x in index.split(",")]
+        #     elif isinstance(index, int):
+        #         return [index]
+        #     return None
+
+        # current_index= str_list(current_index)
+        gcr = self.get_current_room(room, bypass)
+
+        if gcr is None or len(gcr) == 0:
+            return None
+
+        room_index = self.str_to_list(room_index, ",")
+        if room_index is not None:
+            gcr = (
+                [gcr[index] for index in room_index]
+                if len(room_index) > 1
+                else [gcr[room_index[0]]]
+            )
+
+        if gcr is None or (mode is None or mode == "position"):
+            return gcr if len(gcr) > 1 else gcr[0]
+
+        if mode == "mood":
+            gcr = [self.operators[op].current_mood() for op in gcr]
+            return gcr if len(gcr) > 1 else gcr[0]
+
+        if mode == "is_high":
+            gcr = [self.operators[op].is_high() for op in gcr]
+            return gcr if len(gcr) > 1 else gcr[0]
+
+        return None
+
+    def get_group_info(self, group_options, group_name=None, mode=None):
+        logger.warning(group_options)
+        if group_options is None or group_name is None:
+            return None
+
+        # 字符串转换为bool集合
+        rule = self.str_to_list(group_options, ",", bool)
+        rule_len = len(rule)
+        logger.warning(rule)
+        # 字符串转换为字符串集合
+        _name = self.str_to_list(group_name, ":", str)
+        _name_len = len(_name)
+
+        # 如果输入连续三个以上true或false且全部相等, 启用论外模式
+        is_groups = (rule_len >= 3) and all(element == rule[0] for element in rule)
+        logger.warning(is_groups)
+
+        # 如果true或false的长度与输入组或干员数量不符合
+        if not is_groups and rule_len != _name_len:
+            return None
+
+        # 组信息 干员信息
+        group_info = []
+        operator_info = []
+        # 如果满足is 和 值为True,意味着结果都是True,也就都是组
+        if is_groups and rule[0]:
+            for group in _name:
+                group_info.append(self.groups[group])
+        elif is_groups and not rule[0]:
+            for op in _name:
+                operator_info.append(op)
+        else:
+            for i in range(rule_len):
+                _r = rule[i]
+                _n = _name[i]
+                if _r:
+                    group_info.append(self.groups[_n])
+                elif _r is False:
+                    # operator_info.append(self.operators[_n])
+                    operator_info.append(_n)
+                else:
+                    operator_info.append(None)
+        logger.warning(group_info)
+        logger.warning(operator_info)
+        # group_info = []
+        # for member in self.groups[group_name]:
+        #     operator = self.operators[member]
+        #     group_info.append({
+        #         "name": operator.name,
+        #         "current_room": operator.current_room,
+        #         "mood": operator.current_mood(),
+        #         "exhaust_time": operator.predict_exhaust(),
+        #     })
+
+        return [group_info, operator_info]
+
+    def str_to_list(self, index, delimiter, mode=None):
+        if mode is None:
+            mode = int
+        if isinstance(index, str):
+            if mode is bool:
+                return [x.strip().lower() == "true" for x in index.split(delimiter)]
+            return [mode(x) for x in index.split(delimiter)]
+        elif isinstance(index, int):
+            return [index]
+        return None
 
     def predict_fia(self, operators, fia_mood, hours=240):
         recover_hours = (24 - fia_mood) / 2
