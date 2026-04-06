@@ -234,8 +234,6 @@ if __name__ == "__main__":
     from threading import Thread
     from time import sleep
 
-    if token:
-        app.token = token
     flask_thread = Thread(
         target=app.run,
         kwargs={"host": host, "port": port},

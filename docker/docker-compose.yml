@@ -1,0 +1,27 @@
+services:
+  mower:
+    image: arknights-mower:latest
+    container_name: arknights-mower
+    restart: unless-stopped
+    environment:
+      # Mower 访问令牌与端口
+      - MOWER_TOKEN=mower
+      # Mower 监听端口，需与下方端口映射一致
+      - MOWER_PORT=58000
+      # 可选：可通过挂载自定义 adb 后改为 /opt/adb/adb，请配合下方数据卷使用
+      # - MOWER_ADB_BIN=/usr/bin/adb 
+      # 可选：设置 HTTP 代理，用于从海外源下载 MAA 等资源
+      # - HTTP_PROXY=http://localhost:7890
+    ports:
+      - "58000:58000"
+    volumes:
+      # MAA 文件夹
+      - ./maa:/MAA
+      # Mower 数据文件夹
+      - ./mower-data:/mower-data
+      # 可选：挂载自定义 adb 并将 MOWER_ADB_BIN 指向 /opt/adb/adb，请配合上方环境变量使用
+      # - ./adb:/opt/adb:ro
+      # 可选：挂载模拟器目录至固定容器路径 /simulator
+      # - ./simulator:/simulator
+
+    

@@ -28,6 +28,10 @@ else:
     _internal_dir = _app_dir
     _install_dir = _internal_dir
 
+# Allow overriding the app data root so all @app paths can live in one bind-mounted folder.
+_data_dir_env = os.getenv("MOWER_DATA_DIR")
+_data_dir = Path(_data_dir_env).expanduser().resolve() if _data_dir_env else _app_dir
+
 
 def _get_path(base_path, path, space) -> Path:
     if space:
@@ -40,7 +44,7 @@ def get_app_path(path, space=None) -> Path:
     global global_space
     if space is None:  # 不用 not space 是因为 not '' == True
         space = global_space
-    return _get_path(_app_dir, path, space)
+    return _get_path(_data_dir, path, space)
 
 
 def get_internal_path(path) -> Path:
