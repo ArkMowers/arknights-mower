@@ -609,7 +609,10 @@ class Arknights数据处理器:
             hog_features = hog(
                 模板,
                 orientations=18,
-                pixels_per_cell=(8, 8),
+                pixels_per_cell=(
+                    16,
+                    16,
+                ),  # 这里从(8, 8)改成了(16, 16)，解决了一些物品因为特征相似导致会识别错误的问题，depotREC.py中也同步修改了
                 cells_per_block=(2, 2),
                 block_norm="L2-Hys",
                 transform_sqrt=True,
@@ -922,7 +925,7 @@ class Arknights数据处理器:
                     干员技能字典["span"] = len(干员技能字典["child_skill"])
                 skill_key += 1
             干员技能列表.append(干员技能字典.copy())
-        干员技能列表 = sorted(干员技能列表, key=lambda x: (-x["key"]))
+        干员技能列表 = sorted(干员技能列表, key=lambda x: -x["key"])
         # print(干员技能列表)
         with open(
             "./ui/src/pages/basement_skill/skill.json", "w", encoding="utf-8"

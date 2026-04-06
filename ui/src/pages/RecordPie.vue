@@ -244,6 +244,11 @@ const onDrop = (index, event) => {
     const temp = reportData.value[index]
     reportData.value[index] = reportData.value[draggedIndex]
     reportData.value[draggedIndex] = temp
+
+    // 交换卡片同时交换展示的状态
+    const tempShow = showCard.value[index]
+    showCard.value[index] = showCard.value[draggedIndex]
+    showCard.value[draggedIndex] = tempShow
   }
   event.preventDefault()
 }

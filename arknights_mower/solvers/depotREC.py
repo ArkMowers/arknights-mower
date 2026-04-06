@@ -3,6 +3,7 @@ import lzma
 import os
 import pickle
 import re
+import time
 from datetime import datetime
 
 import cv2
@@ -43,7 +44,10 @@ def 提取特征点(模板):
     hog_features = hog(
         模板,
         orientations=18,
-        pixels_per_cell=(8, 8),
+        pixels_per_cell=(
+            16,
+            16,
+        ),  # 这里从(8, 8)改成了(16, 16)，解决了一些物品因为特征相似导致会识别错误的问题，在auto_get_res_new.py中也同步修改了
         cells_per_block=(2, 2),
         block_norm="L2-Hys",
         transform_sqrt=True,
@@ -148,7 +152,11 @@ class depotREC(SceneGraphSolver):
     def 匹配物品一次(self, 物品, 物品灰, 模型名称):
         物品特征 = 提取特征点(物品)
         predicted_label = 模型名称.predict([物品特征])
-        物品数字 = self.读取物品数字(物品灰)
+
+        数字区域 = 物品灰[160:210, 30:210]  # 多加了一次裁切，把数字区域单独裁出来
+        物品数字 = self.读取物品数字(数字区域)
+
+        # 物品数字 = self.读取物品数字(物品灰)
         return [predicted_label[0], 物品数字]
 
     def run(self) -> None:
@@ -162,7 +170,7 @@ class depotREC(SceneGraphSolver):
             self.tap_index_element("warehouse")
             logger.info("仓库扫描: 从主界面点击仓库界面")
 
-            time = datetime.now()
+            starttime = datetime.now()
             任务组 = [
                 (1200, self.knn模型_CONSUME, "消耗物品"),
                 (1400, self.knn模型_NORMAL, "基础物品"),
@@ -170,10 +178,11 @@ class depotREC(SceneGraphSolver):
 
             for 任务 in 任务组:
                 self.tap((任务[0], 70))
+                time.sleep(0.5)
                 if not self.find("depot_empty"):
                     self.分类扫描(任务[1])
                     logger.info(
-                        f"仓库扫描: {任务[2]}识别，识别用时{datetime.now() - time}"
+                        f"仓库扫描: {任务[2]}识别，识别用时{datetime.now() - starttime}"
                     )
                 else:
                     logger.info("仓库扫描: 这个分类下没有物品")

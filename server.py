@@ -660,12 +660,14 @@ def test_skland():
 
     return SKLand().test_connect()
 
+
 @app.route("/check-skland-sign")
 @require_token
 def test_skland_sign():
     from arknights_mower.solvers.skland import SKLand
 
     return SKLand().test_sign()
+
 
 @app.route("/task", methods=["GET", "POST"])
 def add_task():

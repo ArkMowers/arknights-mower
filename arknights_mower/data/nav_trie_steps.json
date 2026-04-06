@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "stages": {
+    "AP-5": {
+      "updated_at": "2026-03-28T22:33:29",
+      "stage_type": "DAILY",
+      "success": true,
+      "steps": [
+        {
+          "action": "tap",
+          "payload": {
+            "pos": [
+              1451,
+              145
+            ],
+            "text": "AP-5",
+            "success": true
+          }
+        }
+      ]
+    }
+  },
+  "patterns": {
+    "AP-*": {
+      "updated_at": "2026-03-28T22:33:29",
+      "stage_type": "DAILY",
+      "source_stage": "AP-5",
+      "success": true,
+      "steps": [
+        {
+          "action": "tap",
+          "payload": {
+            "pos": [
+              1451,
+              145
+            ],
+            "text": "AP-5",
+            "success": true
+          }
+        }
+      ]
+    }
+  }
+}

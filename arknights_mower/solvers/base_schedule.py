@@ -240,9 +240,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             # 按心情降序排序
             sorted_dorms = sorted(
                 self.op_data.dorm,
-                key=lambda dorm: self.op_data.operators[dorm.name].mood
-                if dorm.name in self.op_data.operators
-                else 25,
+                key=lambda dorm: (
+                    self.op_data.operators[dorm.name].mood
+                    if dorm.name in self.op_data.operators
+                    else 25
+                ),
                 reverse=True,
             )
             for idx, dorm in enumerate(sorted_dorms):

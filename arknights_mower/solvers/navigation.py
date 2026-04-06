@@ -10,8 +10,7 @@ from arknights_mower import __rootdir__
 from arknights_mower.data import stage_data_full
 from arknights_mower.models import navigation
 from arknights_mower.solvers.base_mixin import BaseMixin
-from arknights_mower.utils import config
-from arknights_mower.utils import rapidocr
+from arknights_mower.utils import config, rapidocr
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import loadres, thres2
 from arknights_mower.utils.log import logger
