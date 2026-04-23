@@ -267,7 +267,7 @@ class Device:
                     gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
                     break
                 except Exception as e:
-                    logger.exception(e)
+                    logger.error(e)
                     restart_simulator()
                     self.control.mumu12IPC = MuMu12IPC(self.device)
         elif config.conf.droidcast.enable:
@@ -284,7 +284,7 @@ class Device:
                     gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
                     break
                 except Exception as e:
-                    logger.exception(e)
+                    logger.error(e)
                     restart_simulator()
                     self.client.check_server_alive()
                     Session().connect(config.conf.adb)
@@ -304,7 +304,7 @@ class Device:
                     )
                     break
                 except Exception as e:
-                    logger.exception(e)
+                    logger.error(e)
                     restart_simulator()
                     self.client.check_server_alive()
                     Session().connect(config.conf.adb)
@@ -319,7 +319,7 @@ class Device:
                     resp = self.run(command)
                     break
                 except Exception as e:
-                    logger.exception(e)
+                    logger.error(e)
                     restart_simulator()
                     self.client.check_server_alive()
                     Session().connect(config.conf.adb)

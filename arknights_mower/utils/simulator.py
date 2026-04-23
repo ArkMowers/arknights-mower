@@ -1,6 +1,8 @@
 import subprocess
+import time
 from enum import Enum
 from os import system
+from collections import deque
 
 from arknights_mower import __system__
 from arknights_mower.utils import config
@@ -18,7 +20,62 @@ class Simulator_Type(Enum):
     Genymotion = "Genymotion"
 
 
+class RestartBackoff:
+    def __init__(self):
+        # 记录最近 20 次的时间戳
+        self._history = deque(maxlen=20)
+
+        # 策略规则: (时间窗口s, 累计次数阈值, 惩罚等待s)
+        # 建议：由强到弱排列，匹配到最强规则即停止
+        self._rules = [
+            (1800, 10, 120),  # 30分钟内10次 -> 停2分钟 (严重)
+            (600, 5, 30),  # 10分钟内5次  -> 停30秒 (中等)
+            (120, 2, 5),  # 2分钟内2次   -> 停5秒 (轻微)
+        ]
+
+    def check_and_delay(self):
+        """
+        核心调用入口：
+        1. 记录当前重启时间
+        2. 检查是否触发频率限制
+        3. 执行同步等待
+        """
+        now = time.time()
+        self._history.append(now)
+
+        # 如果只有一次记录，无需检查直接返回
+        if len(self._history) < 2:
+            return
+
+        delay_seconds = 0
+        triggered_rule = None
+
+        # 从最严格的规则开始匹配
+        for window, threshold, penalty in self._rules:
+            # 计算在该窗口内的尝试次数
+            count_in_window = sum(1 for ts in self._history if now - ts <= window)
+
+            if count_in_window >= threshold:
+                delay_seconds = penalty
+                triggered_rule = (window, count_in_window)
+                break  # 匹配到最严厉的规则，直接跳出
+
+        if delay_seconds > 0:
+            window_min = triggered_rule[0] // 60
+            logger.warning(
+                f"检测到异常重启频率: {window_min}分钟内尝试{triggered_rule[1]}次。 "
+                f"系统将强制冷却 {delay_seconds}s 以保护后端服务。"
+            )
+            # 同步等待
+            csleep(delay_seconds)
+            logger.info("冷却结束，尝试重新启动...")
+
+
+_restart_backoff = RestartBackoff()
+
+
 def restart_simulator(stop=True, start=True):
+    _restart_backoff.check_and_delay()
     data = config.conf.simulator
     index = data.index
     simulator_type = data.name
