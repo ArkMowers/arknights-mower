@@ -380,11 +380,16 @@ class BaseMixin:
         img = cv2.copyMakeBorder(img, 10, 10, 10, 10, cv2.BORDER_CONSTANT, None, (0,))
         dilation = cv2.dilate(img, kernel, iterations=1)
         contours, _ = cv2.findContours(dilation, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        rect = map(lambda c: cv2.boundingRect(c), contours)
-        x, y, w, h = sorted(rect, key=lambda c: c[0])[0]
-        img = img[y : y + h, x : x + w]
+        rect = [cv2.boundingRect(c) for c in contours]
+        x0 = min(x for x, y, w, h in rect)
+        y0 = min(y for x, y, w, h in rect)
+        x1 = max(x + w for x, y, w, h in rect)
+        y1 = max(y + h for x, y, w, h in rect)
+        img = img[y0:y1, x0:x1]
         tpl = np.zeros((46, 265), dtype=np.uint8)
-        tpl[: img.shape[0], : img.shape[1]] = img
+        h = min(img.shape[0], tpl.shape[0])
+        w = min(img.shape[1], tpl.shape[1])
+        tpl[:h, :w] = img[:h, :w]
         tpl = cv2.copyMakeBorder(tpl, 2, 2, 2, 2, cv2.BORDER_CONSTANT, None, (0,))
         max_score = 0
         best_operator = None
