@@ -15,6 +15,15 @@ class NewsChecker:
     cached_et = None
     last_check_ts = None
 
+    @staticmethod
+    def _build_update_time(year, month, day, start_h, start_m, end_h, end_m, news_tz):
+        start_dt = datetime(year, month, day, start_h, start_m, tzinfo=news_tz)
+        end_dt = datetime(year, month, day, 0, 0, tzinfo=news_tz)
+        end_dt += timedelta(hours=end_h, minutes=end_m)
+        if end_dt <= start_dt:
+            end_dt += timedelta(days=1)
+        return start_dt, end_dt
+
     @classmethod
     def get_update_time(cls):
         host = "https://ak.hypergryph.com"
@@ -80,10 +89,16 @@ class NewsChecker:
                     start_h, start_m = int(m_time.group(4)), int(m_time.group(5))
                     end_h, end_m = int(m_time.group(6)), int(m_time.group(7))
 
-                    start_dt = datetime(
-                        year, month, day, start_h, start_m, tzinfo=news_tz
+                    start_dt, end_dt = cls._build_update_time(
+                        year,
+                        month,
+                        day,
+                        start_h,
+                        start_m,
+                        end_h,
+                        end_m,
+                        news_tz,
                     )
-                    end_dt = datetime(year, month, day, end_h, end_m, tzinfo=news_tz)
                     start_dt_local = start_dt.astimezone(local_tz).replace(tzinfo=None)
                     end_dt_local = end_dt.astimezone(local_tz).replace(tzinfo=None)
 
