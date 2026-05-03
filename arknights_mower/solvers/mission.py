@@ -28,6 +28,13 @@ class MissionSolver(SceneGraphSolver):
             self.daily = True
             return
 
+        if scene == Scene.MISSION_TRAINEE:
+            if self.daily:
+                self.tap_element("mission_weekly")
+            else:
+                self.tap_element("mission_daily")
+            return
+
         if scene == Scene.MISSION_WEEKLY:
             if not self.daily:
                 self.tap_element("mission_daily")
