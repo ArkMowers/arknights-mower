@@ -18,6 +18,52 @@ with lzma.open(f"{__rootdir__}/models/operator_room.model", "rb") as f:
     OP_ROOM = pickle.loads(f.read())
 
 kernel = np.ones((12, 12), np.uint8)
+PREFIX_NAME_SCORE_RATIO = 0.9
+PREFIX_NAME_WIDTH_RATIO = 0.75
+PREFIX_NAME_WIDTH_MARGIN = 30
+
+
+def _foreground_width(img):
+    points = cv2.findNonZero(img)
+    if points is None:
+        return 0
+    return cv2.boundingRect(points)[2]
+
+
+OP_ROOM_WIDTH = {
+    operator: _foreground_width(template) for operator, template in OP_ROOM.items()
+}
+
+
+def _resolve_operator_room_prefix(
+    best_operator, best_score, scores, sample_width, template_widths=None
+):
+    if best_operator is None:
+        return best_operator
+    template_widths = template_widths or OP_ROOM_WIDTH
+    best_width = template_widths.get(best_operator, 0)
+    if sample_width <= best_width + PREFIX_NAME_WIDTH_MARGIN:
+        return best_operator
+    prefix = f"{best_operator}·"
+    prefix_operator = None
+    prefix_score = 0
+    for operator, score in scores.items():
+        if not operator.startswith(prefix):
+            continue
+        operator_width = template_widths.get(operator, 0)
+        if sample_width < operator_width * PREFIX_NAME_WIDTH_RATIO:
+            continue
+        if score < best_score * PREFIX_NAME_SCORE_RATIO:
+            continue
+        if score > prefix_score:
+            prefix_operator = operator
+            prefix_score = score
+    if prefix_operator is not None:
+        logger.debug(
+            f"房间干员名{best_operator}存在长名前缀匹配，改判为{prefix_operator}"
+        )
+        return prefix_operator
+    return best_operator
 
 
 class BaseMixin:
@@ -380,21 +426,31 @@ class BaseMixin:
         img = cv2.copyMakeBorder(img, 10, 10, 10, 10, cv2.BORDER_CONSTANT, None, (0,))
         dilation = cv2.dilate(img, kernel, iterations=1)
         contours, _ = cv2.findContours(dilation, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        rect = map(lambda c: cv2.boundingRect(c), contours)
-        x, y, w, h = sorted(rect, key=lambda c: c[0])[0]
-        img = img[y : y + h, x : x + w]
+        rect = [cv2.boundingRect(c) for c in contours]
+        x0 = min(x for x, y, w, h in rect)
+        y0 = min(y for x, y, w, h in rect)
+        x1 = max(x + w for x, y, w, h in rect)
+        y1 = max(y + h for x, y, w, h in rect)
+        img = img[y0:y1, x0:x1]
         tpl = np.zeros((46, 265), dtype=np.uint8)
-        tpl[: img.shape[0], : img.shape[1]] = img
+        h = min(img.shape[0], tpl.shape[0])
+        w = min(img.shape[1], tpl.shape[1])
+        tpl[:h, :w] = img[:h, :w]
         tpl = cv2.copyMakeBorder(tpl, 2, 2, 2, 2, cv2.BORDER_CONSTANT, None, (0,))
+        sample_width = _foreground_width(tpl)
         max_score = 0
         best_operator = None
+        scores = {}
         for operator, template in OP_ROOM.items():
             result = cv2.matchTemplate(tpl, template, cv2.TM_CCORR_NORMED)
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+            scores[operator] = max_val
             if max_val > max_score:
                 max_score = max_val
                 best_operator = operator
-        return best_operator
+        return _resolve_operator_room_prefix(
+            best_operator, max_score, scores, sample_width
+        )
 
     def read_screen(self, img, type="mood", limit=24, cord=None):
         if cord is not None:
