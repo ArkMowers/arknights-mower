@@ -61,9 +61,6 @@ from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.operators import Operator, Operators
 from arknights_mower.utils.path import get_path
-
-# 赤金交易订单干员常量
-TRADE_ORDER_AGENTS = ["但书", "龙舌兰", "佩佩", "可露希尔"]
 from arknights_mower.utils.plan import PlanTriggerTiming
 from arknights_mower.utils.recognize import Recognizer, Scene
 from arknights_mower.utils.scheduler_task import (
@@ -79,6 +76,9 @@ from arknights_mower.utils.scheduler_task import (
 )
 from arknights_mower.utils.simulator import restart_simulator
 from arknights_mower.utils.trading_order import TradingOrder
+
+# 赤金交易订单干员常量
+TRADE_ORDER_AGENTS = ["但书", "龙舌兰", "佩佩", "可露希尔"]
 
 
 class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
@@ -1533,6 +1533,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             - timedelta(minutes=10 + margin)
                         )
                     self.back()
+                    exhausted_time = _time < datetime.now()
+                    if exhausted_time:
+                        logger.info(
+                            f"{op.name}的下班任务时间{_time}已早于当前时间，改为立即执行"
+                        )
+                        _time = datetime.now()
                     # plan 是空的是因为得动态生成
                     update_time = False
                     if op.group != "":
@@ -1566,7 +1572,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             )
                         )
                     # 如果是生成的过去时间，则停止 plan 其他
-                    if _time < datetime.now():
+                    if exhausted_time:
                         break
 
     # 根据优先级获取跑单冲突时应该要加速的房间
