@@ -16,14 +16,14 @@ def _find_skill_data():
     return candidates[0]
 
 
-def _decompose_to_t3(materials, composite, item_table):
-    """将 T4/T5 材料拆解为 T3 级别材料"""
-    result = {}
+def _decompose_to_t3(materials, composite, item_table, inventory):
+    """将 T4/T5 材料拆解为 T3 级别材料，并与仓库库存对比"""
+    raw = {}
 
     def _expand(mat_id, count):
         comp = composite.get(mat_id)
         if not comp:
-            result[mat_id] = result.get(mat_id, 0) + count
+            raw[mat_id] = raw.get(mat_id, 0) + count
             return
         for p in comp.get("pathway", []):
             _expand(p["id"], count * p["count"])
@@ -31,10 +31,19 @@ def _decompose_to_t3(materials, composite, item_table):
     for mat in materials:
         _expand(mat["id"], mat["count"])
 
-    return [
-        {"id": mid, "name": (item_table.get(mid, {}) or {}).get("name", mid), "count": cnt}
-        for mid, cnt in sorted(result.items(), key=lambda x: -x[1])
-    ]
+    result = []
+    for mid, cnt in sorted(raw.items(), key=lambda x: -x[1]):
+        owned = inventory.get(mid, 0)
+        shortage = max(0, cnt - owned)
+        if shortage > 0:
+            result.append({
+                "id": mid,
+                "name": (item_table.get(mid, {}) or {}).get("name", mid),
+                "count": shortage,
+                "total": cnt,
+                "owned": owned
+            })
+    return result
 
 
 def get_mastery_recommendations():
@@ -201,7 +210,7 @@ def get_mastery_recommendations():
                 if chain_total_needed[mid] > inventory.get(mid, 0)
             ]
 
-            chain_missing_t3 = _decompose_to_t3(chain_missing_list, composite, item_table)
+            chain_missing_t3 = _decompose_to_t3(chain_missing_list, composite, item_table, inventory)
 
             recommendations.append(
                 {

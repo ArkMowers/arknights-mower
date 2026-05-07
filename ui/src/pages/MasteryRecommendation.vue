@@ -97,7 +97,10 @@
                 <div v-if="currentMissing(rec).length" class="missing-section">
                   <n-text depth="3" type="error" style="font-size: 11px">缺少{{ decomposeT3 ? '(T3拆解)' : '' }}:</n-text>
                   <n-space :size="2">
-                    <n-tag v-for="m in currentMissing(rec)" :key="m.id" type="error" size="small">{{ m.name }}x{{ m.count }}</n-tag>
+                    <n-tag v-for="m in currentMissing(rec)" :key="m.id" type="error" size="small">
+                      {{ m.name }}x{{ decomposeT3 ? m.count : m.count }}
+                      <n-text v-if="decomposeT3 && m.total" depth="3" style="font-size: 10px; margin-left: 2px">(需{{ m.total }}有{{ m.owned }})</n-text>
+                    </n-tag>
                   </n-space>
                 </div>
               </n-space>
