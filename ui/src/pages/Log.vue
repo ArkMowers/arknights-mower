@@ -14,7 +14,8 @@ const {
   waiting,
   get_task_id,
   sc_uri,
-  scheduler_engine
+  scheduler_engine,
+  is_paused
 } = storeToRefs(mower_store)
 const { get_tasks, get_running, start_scheduler, stop_scheduler, pause_scheduler, resume_scheduler } = mower_store
 const axios = inject('axios')
@@ -226,7 +227,7 @@ const start_options = [
           开始
         </n-button>
         <n-button
-          v-if="running"
+          v-if="running && !is_paused"
           type="warning"
           @click="pause_scheduler()"
         >
@@ -238,7 +239,7 @@ const start_options = [
           暂停
         </n-button>
         <n-button
-          v-if="running"
+          v-if="running && is_paused"
           type="success"
           @click="resume_scheduler()"
         >

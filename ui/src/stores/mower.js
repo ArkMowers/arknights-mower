@@ -29,6 +29,7 @@ export const useMowerStore = defineStore('mower', () => {
   const plan_condition = ref([])
   const waiting = ref(false)
   const scheduler_engine = ref(false)
+  const is_paused = ref(false)
 
   const first_load = ref(true)
 
@@ -62,6 +63,9 @@ export const useMowerStore = defineStore('mower', () => {
     plan_condition.value = response.data['plan_condition']
     if (response.data['engine'] === 'scheduler') {
       scheduler_engine.value = true
+      is_paused.value = response.data['is_paused'] ?? false
+    } else {
+      is_paused.value = false
     }
   }
 
@@ -111,6 +115,7 @@ export const useMowerStore = defineStore('mower', () => {
     running,
     plan_condition,
     waiting,
+    is_paused,
     listen_ws,
     get_running,
     first_load,
