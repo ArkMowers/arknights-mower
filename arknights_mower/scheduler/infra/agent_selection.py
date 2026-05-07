@@ -67,7 +67,7 @@ _CLOSE_FILTER_THRESHOLD = 1650
 
 _DEFAULT_ARRANGE = ("技能", False)
 _DEFAULT_ARRANGE_FALLBACK = ("技能", "false")
-_MSG_CONNECTING = _MSG_CONNECTING
+_MSG_CONNECTING = "connecting"
 
 
 class AgentSelection:
