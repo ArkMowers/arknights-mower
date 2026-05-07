@@ -6,6 +6,7 @@ from arknights_mower.scheduler.device_port import DevicePort
 from arknights_mower.scheduler.dispatch import TaskDispatch
 from arknights_mower.scheduler.domain.task import TaskTypes
 from arknights_mower.scheduler.errors import ConfigError, DeviceError
+from arknights_mower.scheduler.infra import InfraKit
 from arknights_mower.scheduler.infra.pause_controller import PauseController
 from arknights_mower.scheduler.infra.thread_pause import ThreadPauseController
 from arknights_mower.scheduler.loop import MainLoop
@@ -19,6 +20,10 @@ def _create_device() -> DevicePort:
 
     device = Device()
     return PCDevicePort(device)
+
+
+def _build_infra(device: DevicePort) -> InfraKit:
+    return InfraKit(device=device)
 
 
 def _build_planners(state: SchedulerState) -> list:
@@ -99,6 +104,7 @@ def run(
 
     logger.info("initializing device")
     device = _create_device()
+    infra = _build_infra(device)
 
     logger.info("building global plan")
     from arknights_mower.utils.operators import build_global_plan
@@ -119,10 +125,10 @@ def run(
     dispatch = _build_dispatch()
 
     logger.info("starting main loop")
-    loop = MainLoop(state, planners, dispatch, device, pause)
+    loop = MainLoop(state, planners, dispatch, infra)
     try:
         loop.run_forever()
     except DeviceError:
         logger.warning("device error in main loop, reconnecting...")
-        device.reconnect()
+        infra.device.reconnect()
         loop.run_forever()

@@ -101,7 +101,7 @@
 - `scheduler/infra/registry.py` — InfraRegistry (待实现 DI 容器)
 
 ### 待迁移 (~4000+ 行从 `solvers/base_schedule.py`)
-- AgentSelectionFSM (8 状态状态机)
+- AgentSelection (8 状态状态机)
 - 每个 executor/planner 的具体业务逻辑
 - 截图回放验证
 

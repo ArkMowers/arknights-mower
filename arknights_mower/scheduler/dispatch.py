@@ -1,12 +1,8 @@
 from __future__ import annotations
 
-import time
-from typing import Optional
-
-from arknights_mower.scheduler.device_port import DevicePort
 from arknights_mower.scheduler.domain.task import SchedulerTask, TaskTypes
 from arknights_mower.scheduler.errors import DeviceError, SchedulerError
-from arknights_mower.scheduler.infra.pause_controller import PauseController
+from arknights_mower.scheduler.infra import InfraKit
 from arknights_mower.utils.log import logger
 
 
@@ -19,7 +15,7 @@ class TaskDispatch:
     def register(self, task_type: TaskTypes, executor: type) -> None:
         self._executors[task_type] = executor
 
-    def get(self, task_type: TaskTypes) -> Optional[type]:
+    def get(self, task_type: TaskTypes) -> type | None:
         return self._executors.get(task_type)
 
     def resolve(self, task_type: TaskTypes) -> type:
@@ -28,18 +24,9 @@ class TaskDispatch:
             raise SchedulerError(f"no executor for {task_type}")
         return executor
 
-    def _reconnect(self, device: DevicePort) -> None:
-        logger.info("dispatching reconnect")
-        device.reconnect()
-
-    def execute(
-        self,
-        task: SchedulerTask,
-        device: DevicePort,
-        pause_controller: Optional[PauseController] = None,
-    ) -> bool:
+    def execute(self, task: SchedulerTask, infra: InfraKit) -> bool:
         executor_cls = self.resolve(task.type)
-        executor = executor_cls(device, pause_controller)
+        executor = executor_cls(infra)
 
         for attempt in range(1, self.MAX_RETRY + 1):
             try:
@@ -49,7 +36,7 @@ class TaskDispatch:
                 logger.warning(
                     f"DeviceError on attempt {attempt}/{self.MAX_RETRY}, reconnecting..."
                 )
-                self._reconnect(device)
+                infra.device.reconnect()
                 continue
             except Exception:
                 logger.exception(f"executor failed for task: {task}")

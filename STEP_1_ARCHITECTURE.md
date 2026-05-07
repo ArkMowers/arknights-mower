@@ -63,7 +63,7 @@ PC 实现包装 `utils/device/Device`, Android 实现用 MediaProjection + Acces
 
 ```python
 # 好的: State enum + method dispatch
-class AgentSelectionFSM:
+class AgentSelection:
     state: SelectionState
     def run(self):
         while self.state != SelectionState.DONE:

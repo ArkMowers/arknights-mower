@@ -161,7 +161,7 @@ scheduler/database/
 |------|------|------|
 | Planner | 4 | Shift/Workshop/Skill/Clue (stub) |
 | Executor | 8 | 需要设备交互, ~2000 行 |
-| Infra | 4 | AgentSelectionFSM/RoomManager/MoodScanner/DroneOperator |
+| Infra | 4 | AgentSelection/RoomManager/MoodScanner/DroneOperator |
 | Hooks | 7 | LifecycleHook 链 |
 | get_scene | 1 | 接入 SCENE_RULES 表 |
 
@@ -181,12 +181,12 @@ scheduler/database/
 
 ## 下次 pick up 的推荐路径
 
-1. **AgentSelectionFSM** ← 当前焦点 (见 `.opencode/选人.md`)
+1. **AgentSelection** ← 当前焦点 (见 `.opencode/选人.md`)
 2. 用 FSM 实现 ClueExecutor (计划里说"独立最先做")
 3. 剩余 3 个 Planner (workshop/skill/clue — 非纯计算, 低优先)
 4. 其余 Executor 逐个迁移
 
-## 🔴 当前进行中: AgentSelectionFSM
+## 🔴 当前进行中: AgentSelection
 
 状态机设计已完成 (`.opencode/选人.md`)
 - 7 状态: PREPROCESS → FAST_CLEAR → MAIN_PREPARE → SCAN_SELECT → FREE_ASSIGN → FINAL_SORT → DONE

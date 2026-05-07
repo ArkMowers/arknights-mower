@@ -2,13 +2,10 @@ from __future__ import annotations
 
 import time
 from datetime import datetime
-from typing import Optional
 
-from arknights_mower.scheduler.device_port import DevicePort
 from arknights_mower.scheduler.dispatch import TaskDispatch
-from arknights_mower.scheduler.domain.task import SchedulerTask
-from arknights_mower.scheduler.errors import DeviceError, TaskNotFoundError
-from arknights_mower.scheduler.infra.pause_controller import PauseController
+from arknights_mower.scheduler.errors import TaskNotFoundError
+from arknights_mower.scheduler.infra import InfraKit
 from arknights_mower.scheduler.planners.base import AbstractPlanner
 from arknights_mower.scheduler.state import SchedulerState
 from arknights_mower.utils.log import logger
@@ -23,14 +20,12 @@ class MainLoop:
         state: SchedulerState,
         planners: list[AbstractPlanner],
         dispatch: TaskDispatch,
-        device: DevicePort,
-        pause_controller: PauseController,
+        infra: InfraKit,
     ) -> None:
         self.state = state
         self.planners = planners
         self.dispatch = dispatch
-        self._device = device
-        self._pause = pause_controller
+        self._infra = infra
         self._last_plan_time = 0.0
 
     def _run_planners(self) -> None:
@@ -51,8 +46,8 @@ class MainLoop:
     def run_forever(self) -> None:
         _idle_log = 0.0
         while True:
-            self._pause.wait_if_paused()
-            if self._pause.is_stopped:
+            self._infra.pause.wait_if_paused()
+            if self._infra.pause.is_stopped:
                 logger.info("MainLoop stopped")
                 break
 
@@ -71,7 +66,7 @@ class MainLoop:
                 time.sleep(1)
                 continue
 
-            ok = self.dispatch.execute(task, self._device, self._pause)
+            ok = self.dispatch.execute(task, self._infra)
             try:
                 self.state.task_queue.pop()
             except TaskNotFoundError:

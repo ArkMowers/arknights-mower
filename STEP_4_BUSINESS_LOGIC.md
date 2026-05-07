@@ -51,7 +51,7 @@
 # scheduler/infra/registry.py
 class InfraRegistry:
     def __init__(self, device: DevicePort):
-        self.agent_picker = AgentSelectionFSM(device)
+        self.agent_picker = AgentSelection(device)
         self.room_mgr = RoomManager(device)
         self.mood_scanner = MoodScanner(device)
         self.drone_op = DroneOperator(device)
@@ -61,7 +61,7 @@ class InfraRegistry:
 
 Executor 通过 InfraRegistry 调用底层 UI 原语, 不直接调 DevicePort。
 
-### AgentSelectionFSM
+### AgentSelection
 
 8 状态显式状态机, 替换旧 `choose_agent()` 的 while+flag:
 

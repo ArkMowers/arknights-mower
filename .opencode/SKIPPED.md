@@ -24,7 +24,7 @@
 待完成 (从 `solvers/base_schedule.py` 4474 行中逐条迁移):
 - 每个 executor 的具体业务逻辑
 - 每个 planner 的规划逻辑
-- AgentSelectionFSM 状态机 (8 状态)
+- AgentSelection 状态机 (8 状态)
 - RoomManager UI 原语
 - MoodScanner
 - 截图回放验证每个 executor

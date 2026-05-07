@@ -74,6 +74,19 @@ class TapPosition(Enum):
     LOGIN_BILIBILI = (1000 / SCREEN_W, 600 / SCREEN_H)
 
 
+WORKSHOP_AGENT_JIUSE = "九色鹿"
+WORKSHOP_FURNITURE_PREFIX = "家具零件"
+WORKSHOP_TABS = ["基建材料", "精英材料", "技巧概要", "芯片"]
+WORKSHOP_TAB_POS = {
+    "基建材料": (0.1, 0.18),
+    "精英材料": (0.1, 0.31),
+    "技巧概要": (0.1, 0.45),
+    "芯片": (0.1, 0.57),
+}
+WORKSHOP_MOOD_MIN = 22
+WORKSHOP_MOOD_CRIT = 4
+
+
 def _t(key: str, locale: Locale = Locale.ZH_CN) -> str:
     return _TASK_DISPLAY_NAMES.get(key, {}).get(locale, key)
 
