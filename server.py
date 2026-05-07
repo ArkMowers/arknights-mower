@@ -34,6 +34,10 @@ mimetypes.add_type("application/javascript", ".js")
 app = Flask(__name__, static_folder="ui/dist", static_url_path="")
 sock = Sock(app)
 CORS(app)
+
+tmp_dir = get_path("@app/tmp")
+tmp_dir.mkdir(parents=True, exist_ok=True)
+
 if token := config.conf.webview.token:
     app.token = token
 
@@ -708,6 +712,82 @@ def test_skland_sign():
     from arknights_mower.solvers.skland import SKLand
 
     return SKLand().test_sign()
+
+
+@app.route("/mastery-recommendation-debug")
+def mastery_recommendation_debug():
+    import json
+    import os
+
+    from arknights_mower.utils.mastery_recommendation import (
+        _find_skill_data,
+        get_mastery_recommendations,
+    )
+    from arknights_mower.utils.path import _install_dir, _internal_dir, get_path
+
+    cultivate_path = get_path("@app/tmp/cultivate.json")
+    skill_data_path = _find_skill_data()
+
+    debug_info = {
+        "install_dir": str(_install_dir),
+        "internal_dir": str(_internal_dir),
+        "cultivate_path": str(cultivate_path),
+        "cultivate_exists": os.path.exists(cultivate_path),
+        "skill_data_path": str(skill_data_path),
+        "skill_data_exists": os.path.exists(skill_data_path),
+    }
+
+    if os.path.exists(cultivate_path):
+        try:
+            with open(cultivate_path, "r", encoding="utf-8") as f:
+                cultivate_data = json.load(f)
+            debug_info["cultivate_keys"] = list(cultivate_data.keys())
+            data = cultivate_data.get("data", {})
+            debug_info["data_keys"] = list(data.keys()) if isinstance(data, dict) else str(type(data))
+            chars = data.get("characters", []) if isinstance(data, dict) else []
+            items = data.get("items", []) if isinstance(data, dict) else []
+            debug_info["chars_count"] = len(chars) if isinstance(chars, list) else "not_list"
+            debug_info["items_count"] = len(items) if isinstance(items, list) else "not_list"
+            if isinstance(chars, list) and len(chars) > 0:
+                debug_info["first_char_keys"] = list(chars[0].keys())
+                debug_info["first_char"] = {k: chars[0][k] for k in ["id", "level", "evolvePhase", "mainSkillLevel", "potentialRank"] if k in chars[0]}
+                skills = chars[0].get("skills", [])
+                debug_info["first_char_skills_count"] = len(skills) if isinstance(skills, list) else "not_list"
+        except Exception as e:
+            debug_info["cultivate_read_error"] = str(e)
+
+    if os.path.exists(skill_data_path):
+        try:
+            with open(skill_data_path, "r", encoding="utf-8") as f:
+                sd = json.load(f)
+            debug_info["skill_data_meta"] = sd.get("_meta", {})
+        except Exception as e:
+            debug_info["skill_data_read_error"] = str(e)
+
+    result = get_mastery_recommendations()
+    debug_info["result_error"] = result.get("error")
+    debug_info["result_has_data"] = result.get("has_data")
+    debug_info["result_ops_count"] = len(result.get("operators", []))
+
+    return debug_info
+
+
+@app.route("/mastery-recommendation")
+def mastery_recommendation():
+    from arknights_mower.utils.mastery_recommendation import get_mastery_recommendations
+
+    return get_mastery_recommendations()
+
+
+@app.route("/cultivate-fetch")
+def cultivate_fetch():
+    from arknights_mower.solvers.cultivate_depot import cultivate
+
+    try:
+        cultivate().start()
+        return {"success": True, "message": "数据拉取成功"}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
 
 
 @app.route("/task", methods=["GET", "POST"])

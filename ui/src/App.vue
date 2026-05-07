@@ -113,6 +113,12 @@
                     排班
                   </div>
                 </n-tab>
+                <n-tab name="专精推荐" @click="$router.push('/mastery-recommendation')">
+                  <div style="display: flex; flex-direction: column; align-items: center">
+                    <n-icon size="20" style="margin-bottom: -1px" :component="SkillLevelAdvanced" />
+                    专精
+                  </div>
+                </n-tab>
                 <n-tab name="报表" @click="showModal = true">
                   <div style="display: flex; flex-direction: column; align-items: center">
                     <n-icon size="20" style="margin-bottom: -1px" :component="StatsChart" />
@@ -256,6 +262,12 @@ const menuOptions = [
     label: () => h(RouterLink, { to: { path: '/plan-editor' } }, { default: () => '排班编辑' }),
     icon: renderIcon(Home),
     key: 'go-to-plan'
+  },
+  {
+    label: () =>
+      h(RouterLink, { to: { path: '/mastery-recommendation' } }, { default: () => '专精推荐' }),
+    icon: renderIcon(SkillLevelAdvanced),
+    key: 'go-to-mastery-recommendation'
   },
   {
     label: () => '数据图表',

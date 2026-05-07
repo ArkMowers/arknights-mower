@@ -449,6 +449,7 @@ def get_trading_history(start_date: str, end_date: str):
     end_dt = dubai_end.astimezone(local_tz)
 
     database_path = get_path("@app/tmp/data.db")
+    database_path.parent.mkdir(parents=True, exist_ok=True)
     start_timestamp = int(start_dt.timestamp())
     end_timestamp = int(end_dt.timestamp())
 
