@@ -28,6 +28,7 @@ export const useMowerStore = defineStore('mower', () => {
   const running = ref(false)
   const plan_condition = ref([])
   const waiting = ref(false)
+  const scheduler_engine = ref(false)
 
   const first_load = ref(true)
 
@@ -59,6 +60,9 @@ export const useMowerStore = defineStore('mower', () => {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/status`)
     running.value = response.data['status'] !== 'stopped'
     plan_condition.value = response.data['plan_condition']
+    if (response.data['engine'] === 'scheduler') {
+      scheduler_engine.value = true
+    }
   }
 
   async function get_tasks() {
@@ -69,6 +73,34 @@ export const useMowerStore = defineStore('mower', () => {
     } else {
       task_list.value = []
     }
+  }
+
+  async function start_scheduler(value) {
+    if (value == undefined) {
+      value = '0'
+    }
+    running.value = true
+    log_lines.value = []
+    scheduler_engine.value = true
+    await axios.get(`${import.meta.env.VITE_HTTP_URL}/start-scheduler/${value}`)
+  }
+
+  async function stop_scheduler() {
+    waiting.value = true
+    const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/stop-scheduler`)
+    running.value = !response.data
+    if (!running.value) {
+      scheduler_engine.value = false
+    }
+    waiting.value = false
+  }
+
+  async function pause_scheduler() {
+    await axios.get(`${import.meta.env.VITE_HTTP_URL}/pause-scheduler`)
+  }
+
+  async function resume_scheduler() {
+    await axios.get(`${import.meta.env.VITE_HTTP_URL}/resume-scheduler`)
   }
 
   return {
@@ -86,6 +118,11 @@ export const useMowerStore = defineStore('mower', () => {
     get_task_id,
     get_tasks,
     sc_uri,
-    speed_msg
+    speed_msg,
+    scheduler_engine,
+    start_scheduler,
+    stop_scheduler,
+    pause_scheduler,
+    resume_scheduler
   }
 })

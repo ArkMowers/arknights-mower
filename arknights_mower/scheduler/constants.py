@@ -1,0 +1,99 @@
+from enum import Enum
+
+SCREEN_W = 1920
+SCREEN_H = 1080
+
+
+class Server(Enum):
+    CN = "CN"
+    US = "US"
+    JP = "JP"
+    KR = "KR"
+
+
+class Locale(Enum):
+    ZH_CN = "zh_CN"
+    EN_US = "en_US"
+    JA_JP = "ja_JP"
+    KO_KR = "ko_KR"
+
+
+SERVER_TO_LOCALE = {
+    Server.CN: Locale.ZH_CN,
+    Server.US: Locale.EN_US,
+    Server.JP: Locale.JA_JP,
+    Server.KR: Locale.KO_KR,
+}
+
+
+DORM_ROOM_PREFIX = "dorm"
+
+
+AGENT_SELECT_POSITIONS = [
+    (0.35, 0.35),
+    (0.35, 0.75),
+    (0.45, 0.35),
+    (0.45, 0.75),
+    (0.55, 0.35),
+]
+
+
+class FacilityType(Enum):
+    TRAIN = "train"
+    FACTORY = "factory"
+    CENTRAL = "central"
+    MEETING = "meeting"
+    CONTACT = "contact"
+    TRADING = "trading"
+    POWER = "power"
+    DORMITORY = "dormitory"
+
+    @staticmethod
+    def from_room_name(name: str) -> "FacilityType":
+        for ft in FacilityType:
+            if name.startswith(ft.value):
+                return ft
+        return FacilityType.TRADING
+
+
+class TapPosition(Enum):
+    BACK = (90 / SCREEN_W, 57 / SCREEN_H)
+    CONFIRM_YES = (1371 / SCREEN_W, 998 / SCREEN_H)
+    CONFIRM_NO = (549 / SCREEN_W, 998 / SCREEN_H)
+    CENTER = (960 / SCREEN_W, 540 / SCREEN_H)
+    MATERIEL = (960 / SCREEN_W, 960 / SCREEN_H)
+    FRIEND_LIST = (194 / SCREEN_W, 333 / SCREEN_H)
+    BUSINESS_CARD = (188 / SCREEN_W, 198 / SCREEN_H)
+    OPERATION_FINISH = (310 / SCREEN_W, 330 / SCREEN_H)
+    TODO_COMPLETE = (1840 / SCREEN_W, 140 / SCREEN_H)
+    INFRA_ARRANGE_CONFIRM = (1452 / SCREEN_W, 1029 / SCREEN_H)
+    RIIC_BACK = (30 / SCREEN_W, 55 / SCREEN_H)
+    LOGIN_START = (665 / SCREEN_W, 741 / SCREEN_H)
+    AGREEMENT_LINE1 = (791 / SCREEN_W, 728 / SCREEN_H)
+    AGREEMENT_LINE2 = (959 / SCREEN_W, 828 / SCREEN_H)
+    LOGIN_BILIBILI = (1000 / SCREEN_W, 600 / SCREEN_H)
+
+
+def _t(key: str, locale: Locale = Locale.ZH_CN) -> str:
+    return _TASK_DISPLAY_NAMES.get(key, {}).get(locale, key)
+
+
+_TASK_DISPLAY_NAMES: dict[str, dict[Locale, str]] = {
+    "跑单": {Locale.ZH_CN: "跑单"},
+    "肥鸭": {Locale.ZH_CN: "肥鸭"},
+    "下班": {Locale.ZH_CN: "下班"},
+    "上班": {Locale.ZH_CN: "上班"},
+    "用尽下班": {Locale.ZH_CN: "用尽下班"},
+    "纠错": {Locale.ZH_CN: "纠错"},
+    "趴体": {Locale.ZH_CN: "趴体"},
+    "MAA信用购物": {Locale.ZH_CN: "MAA信用购物"},
+    "空任务": {Locale.ZH_CN: "空任务"},
+    "公招": {Locale.ZH_CN: "公招"},
+    "森空岛签到": {Locale.ZH_CN: "森空岛签到"},
+    "宿舍排序": {Locale.ZH_CN: "宿舍排序"},
+    "释放宿舍空位": {Locale.ZH_CN: "释放宿舍空位"},
+    "强制刷新任务时间": {Locale.ZH_CN: "强制刷新任务时间"},
+    "技能专精": {Locale.ZH_CN: "技能专精"},
+    "仓库扫描": {Locale.ZH_CN: "仓库扫描"},
+    "加工材料": {Locale.ZH_CN: "加工材料"},
+}

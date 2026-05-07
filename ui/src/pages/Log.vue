@@ -13,9 +13,10 @@ const {
   task_list,
   waiting,
   get_task_id,
-  sc_uri
+  sc_uri,
+  scheduler_engine
 } = storeToRefs(mower_store)
-const { get_tasks, get_running } = mower_store
+const { get_tasks, get_running, start_scheduler, stop_scheduler, pause_scheduler, resume_scheduler } = mower_store
 const axios = inject('axios')
 const mobile = inject('mobile')
 
@@ -107,6 +108,7 @@ function stop() {
 const show_feedback = ref(false)
 
 import PlayIcon from '@vicons/ionicons5/Play'
+import PauseIcon from '@vicons/ionicons5/Pause'
 import StopIcon from '@vicons/ionicons5/Stop'
 import AddIcon from '@vicons/ionicons5/Add'
 import CollapseIcon from '@vicons/fluent/PanelTopContract20Regular'
@@ -205,21 +207,14 @@ const start_options = [
       style="user-select: text"
     />
     <div class="action-container">
-      <drop-down v-if="running" :select="stop_maa" :options="stop_options" type="error" :up="true">
-        <n-button type="error" @click="stop" :loading="waiting" :disabled="waiting">
-          <template #icon>
-            <n-icon>
-              <stop-icon />
-            </n-icon>
-          </template>
-          <template v-if="!mobile">立即停止</template>
-        </n-button>
-      </drop-down>
-      <drop-down v-if="!running" :select="start" :options="start_options" type="primary" :up="true">
+      <n-checkbox v-model:checked="scheduler_engine" :disabled="running">
+        新版调度器
+      </n-checkbox>
+      <template v-if="scheduler_engine">
         <n-button
           v-if="!running"
           type="primary"
-          @click="start"
+          @click="start_scheduler('0')"
           :loading="waiting"
           :disabled="waiting"
         >
@@ -228,9 +223,74 @@ const start_options = [
               <play-icon />
             </n-icon>
           </template>
-          <template v-if="!mobile">开始执行</template>
+          开始
         </n-button>
-      </drop-down>
+        <n-button
+          v-if="running"
+          type="warning"
+          @click="pause_scheduler()"
+        >
+          <template #icon>
+            <n-icon>
+              <pause-icon />
+            </n-icon>
+          </template>
+          暂停
+        </n-button>
+        <n-button
+          v-if="running"
+          type="success"
+          @click="resume_scheduler()"
+        >
+          <template #icon>
+            <n-icon>
+              <play-icon />
+            </n-icon>
+          </template>
+          继续
+        </n-button>
+        <n-button
+          v-if="running"
+          type="error"
+          @click="stop_scheduler()"
+          :loading="waiting"
+        >
+          <template #icon>
+            <n-icon>
+              <stop-icon />
+            </n-icon>
+          </template>
+          停止
+        </n-button>
+      </template>
+      <template v-else>
+        <drop-down v-if="running" :select="stop_maa" :options="stop_options" type="error" :up="true">
+          <n-button type="error" @click="stop" :loading="waiting" :disabled="waiting">
+            <template #icon>
+              <n-icon>
+                <stop-icon />
+              </n-icon>
+            </template>
+            <template v-if="!mobile">立即停止</template>
+          </n-button>
+        </drop-down>
+        <drop-down v-if="!running" :select="start" :options="start_options" type="primary" :up="true">
+          <n-button
+            v-if="!running"
+            type="primary"
+            @click="start"
+            :loading="waiting"
+            :disabled="waiting"
+          >
+            <template #icon>
+              <n-icon>
+                <play-icon />
+              </n-icon>
+            </template>
+            <template v-if="!mobile">开始执行</template>
+          </n-button>
+        </drop-down>
+      </template>
       <task-dialog />
       <n-button type="warning" @click="show_task = true">
         <template #icon>

@@ -127,6 +127,8 @@ class Device:
     def start(self) -> None:
         self.client = ADBClient(self.device_id, self.connect)
         self.control = Device.Control(self, self.client)
+        if config.conf.droidcast.enable:
+            self.start_droidcast()
 
     def run(self, cmd: str) -> Optional[bytes]:
         return self.client.run(cmd)

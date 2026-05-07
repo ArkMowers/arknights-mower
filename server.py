@@ -26,6 +26,7 @@ from arknights_mower.utils.datetime import get_server_time
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.operators import Operators, build_global_plan
 from arknights_mower.utils.path import get_path
+from server_scheduler import scheduler_bp, get_status as get_scheduler_status
 
 mimetypes.add_type("text/html", ".html")
 mimetypes.add_type("text/css", ".css")
@@ -34,6 +35,7 @@ mimetypes.add_type("application/javascript", ".js")
 app = Flask(__name__, static_folder="ui/dist", static_url_path="")
 sock = Sock(app)
 CORS(app)
+app.register_blueprint(scheduler_bp)
 if token := config.conf.webview.token:
     app.token = token
 
@@ -160,7 +162,12 @@ def get_status():
         "status": "stopped",
         "next_task_time": None,
         "remaining_seconds": None,
+        "engine": "v1",
     }
+    scheduler_status = get_scheduler_status()
+    if scheduler_status["engine"] == "scheduler":
+        response.update(scheduler_status)
+        return response
     if mower_thread and mower_thread.is_alive():
         from arknights_mower.__main__ import base_scheduler
 
@@ -173,7 +180,6 @@ def get_status():
                 name for name in response["plan_condition"] if name
             ]
 
-            # 添加工作状态信息
             response["status"] = "sleeping" if base_scheduler.sleeping else "working"
             if base_scheduler.tasks and len(base_scheduler.tasks) > 0:
                 response["next_task_time"] = base_scheduler.tasks[0].time.strftime(
