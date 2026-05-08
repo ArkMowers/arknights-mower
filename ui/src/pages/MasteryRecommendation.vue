@@ -8,14 +8,13 @@
           专精计划
           <n-badge v-if="planEntries.length" :value="planEntries.length" :max="99" style="margin-left: 4px" />
         </n-button>
-        <n-button size="small" @click="showBlacklist = true">
-          <template #icon><n-icon :component="BlockedIcon" /></template>
-          黑名单
-          <n-badge v-if="blacklist.length" :value="blacklist.length" :max="99" style="margin-left: 4px" />
-        </n-button>
         <n-button size="small" @click="showSettings = true">
           <template #icon><n-icon :component="SettingsIcon" /></template>
           专精路线
+        </n-button>
+        <n-button size="small" type="warning" @click="autoWorkshop" :loading="workshopLoading">
+          <template #icon><n-icon :component="HammerIcon" /></template>
+          自动合成配置
         </n-button>
         <n-button type="primary" size="small" @click="refresh" :loading="store.loading">刷新</n-button>
       </n-space>
@@ -41,15 +40,30 @@
     <n-empty v-else-if="displayList.length === 0" :description="emptyText" />
 
     <div v-else class="mastery-list">
+      <!-- 计划内 T3 缺料汇总 -->
+      <n-card v-if="plannedT3Summary.length" size="small" title="计划缺料汇总（T3）" style="margin-bottom: 8px">
+        <n-space :size="4" wrap>
+          <n-tag v-for="m in plannedT3Summary" :key="m.id" type="warning" size="small">
+            {{ m.name }} x{{ m.count }}
+          </n-tag>
+        </n-space>
+      </n-card>
+
       <n-collapse accordion>
-        <n-collapse-item v-for="op in displayList" :key="op.char_id" :title="`${op.name} (${op.rarity}★)`">
+        <n-collapse-item v-for="op in displayList" :key="op.char_id">
+          <template #header>
+            <n-space align="center" :size="8">
+              <n-avatar :src="'/avatar/' + op.name + '.webp'" :size="28" round fallback-src="/avatar/阿米娅.webp" />
+              <n-text strong>{{ op.name }}</n-text>
+              <n-text depth="3">({{ op.rarity }}★)</n-text>
+            </n-space>
+          </template>
           <template #header-extra>
             <n-space :size="4">
               <n-tag :bordered="false" size="small">{{ professionName(op.profession) }}</n-tag>
               <n-tag :bordered="false" size="small">E{{ op.elite }} Lv{{ op.level }}</n-tag>
               <n-tag v-if="hasPlannedSkill(op)" type="success" :bordered="false" size="small">计划中</n-tag>
               <n-button size="tiny" quaternary type="warning" @click.stop="addAllToPlan(op)" v-if="!allPlanned(op)">全加计划</n-button>
-              <n-button size="tiny" quaternary type="error" @click.stop="addBlacklist(op)">加黑名单</n-button>
             </n-space>
           </template>
 
@@ -227,73 +241,38 @@
         </n-space>
       </template>
     </n-modal>
-
-    <!-- 专精黑名单 -->
-    <n-modal v-model:show="showBlacklist" preset="card" title="专精黑名单" style="width: min(600px, 95vw)" :mask-closable="false">
-      <n-space vertical>
-        <n-input v-model:value="blacklistSearch" placeholder="搜索干员" clearable size="small" />
-        <n-space :size="4" wrap>
-          <n-tag v-for="cid in blacklist" :key="cid" closable size="small" type="error" @close="removeBlacklist(cid)">
-            {{ getCharName(cid) }}
-          </n-tag>
-          <n-text v-if="!blacklist.length" depth="3">黑名单为空</n-text>
-        </n-space>
-        <n-divider />
-        <n-scrollbar style="max-height: 50vh">
-          <n-grid :x-gap="8" :y-gap="4" cols="2 m:3 l:4" responsive="screen">
-            <n-gi v-for="op in filteredBlacklistOps" :key="op.char_id">
-              <n-thing style="cursor: pointer" @click="toggleBlacklist(op.char_id)">
-                <template #avatar>
-                  <n-avatar :src="'/avatar/' + op.name + '.webp'" :size="28" round fallback-src="/avatar/阿米娅.webp" />
-                </template>
-                <template #header>
-                  <n-text :type="isBlacklisted(op.char_id) ? 'error' : ''">{{ op.name }}</n-text>
-                </template>
-                <template #description>
-                  <n-text depth="3" style="font-size: 11px">{{ op.rarity }}★ {{ professionName(op.profession) }}</n-text>
-                </template>
-              </n-thing>
-            </n-gi>
-          </n-grid>
-        </n-scrollbar>
-      </n-space>
-      <template #footer>
-        <n-space justify="end">
-          <n-button @click="clearBlacklist" size="small">清空</n-button>
-          <n-button type="primary" @click="saveBlacklistFn" size="small">保存</n-button>
-        </n-space>
-      </template>
-    </n-modal>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import {
   NAlert, NAvatar, NBadge, NButton, NCard, NCheckbox, NCollapse, NCollapseItem,
   NDivider, NEmpty, NGi, NGrid, NIcon, NInput, NInputNumber, NModal,
   NScrollbar, NSelect, NSpace, NSpin, NTabs, NTabPane, NTag, NText,
   NThing, NDynamicInput, useMessage
 } from 'naive-ui'
-import { Settings, List, Locked } from '@vicons/carbon'
+import { Settings, List } from '@vicons/carbon'
+import { Build } from '@vicons/ionicons5'
 import axios from 'axios'
 import { useMasteryStore } from '@/stores/mastery'
 import { usePlanStore } from '@/stores/plan'
+import { useConfigStore } from '@/stores/config'
 import { storeToRefs } from 'pinia'
 import { pinyin_match } from '@/utils/common'
 import { render_op_label } from '@/utils/op_select'
 
 const ListIcon = List
-const BlockedIcon = Locked
 const SettingsIcon = Settings
+const HammerIcon = Build
 const message = useMessage()
 const store = useMasteryStore()
 const planStore = usePlanStore()
+const configStore = useConfigStore()
 const { operators: operatorOptions } = storeToRefs(planStore)
 
 const ROUTE_KEY = 'mower_mastery_route'
 const PLAN_KEY = 'mower_mastery_plan_v2'
-const BLACKLIST_KEY = 'mower_mastery_blacklist'
 
 const profKeys = ['先锋', '近卫', '重装', '狙击', '术师', '医疗', '辅助', '特种']
 const profMap = { WARRIOR: '近卫', SNIPER: '狙击', TANK: '重装', MEDIC: '医疗', SUPPORT: '辅助', CASTER: '术师', SPECIAL: '特种', PIONEER: '先锋' }
@@ -308,6 +287,7 @@ const filterProfession = ref([])
 const filterAchievable = ref(false)
 const showOnlyPlanned = ref(false)
 const decomposeT3 = ref(false)
+const workshopLoading = ref(false)
 
 const emptyText = computed(() => {
   if (searchQuery.value || filterRarity.value.length || filterProfession.value.length) return '没有匹配的干员'
@@ -363,32 +343,45 @@ const filteredPlanOperators = computed(() => {
   return list
 })
 
-// ─── 黑名单（干员级别）───
-const blacklist = ref([])
-const showBlacklist = ref(false)
-const blacklistSearch = ref('')
+async function autoWorkshop() {
+  workshopLoading.value = true
+  try {
+    const keys = Object.keys(plan.value).filter(k => plan.value[k])
+    const resp = await axios.post(`${import.meta.env.VITE_HTTP_URL}/workshop-auto-config`, { planned_skills: keys })
+    const ws = resp.data?.workshop_settings
+    if (!ws) { message.warning('生成失败'); return }
+    configStore.workshop_settings = ws
 
-function isBlacklisted(cid) { return blacklist.value.includes(cid) }
-function addBlacklist(op) {
-  if (!blacklist.value.includes(op.char_id)) {
-    blacklist.value.push(op.char_id)
-    message.info(`${op.name} 已加入黑名单`)
+    const tasksResp = await axios.get(`${import.meta.env.VITE_HTTP_URL}/task`)
+    const tasks = tasksResp.data || []
+    const hasWorkshop = tasks.some(t => {
+      const tType = typeof t.type === 'string' ? t.type : (t.type?.display_value || t.type?.value || '')
+      return tType === '加工材料' && (t.meta_data === '' || t.meta_data === '九色鹿')
+    })
+
+    if (!hasWorkshop) {
+      const taskResult = await axios.post(`${import.meta.env.VITE_HTTP_URL}/task`, {
+        task: {
+          time: new Date(Date.now() + 120000).toISOString(),
+          plan: {},
+          task_type: '加工材料',
+          meta_data: '九色鹿'
+        }
+      })
+      if (taskResult.data === '添加任务成功！') {
+        message.success(`已生成九色鹿合成配置（${ws[0]?.items?.length || 0} 个配方）并添加任务`)
+      } else {
+        message.success(`已生成配置，但任务添加失败: ${taskResult.data}`)
+      }
+    } else {
+      message.success(`已生成九色鹿合成配置（${ws[0]?.items?.length || 0} 个配方），任务队列已有加工任务`)
+    }
+  } catch (e) {
+    message.error(`生成失败: ${e.message}`)
+  } finally {
+    workshopLoading.value = false
   }
 }
-function toggleBlacklist(cid) {
-  const i = blacklist.value.indexOf(cid)
-  i >= 0 ? blacklist.value.splice(i, 1) : blacklist.value.push(cid)
-}
-function removeBlacklist(cid) { blacklist.value = blacklist.value.filter(c => c !== cid) }
-function clearBlacklist() { blacklist.value = [] }
-function saveBlacklistFn() { localStorage.setItem(BLACKLIST_KEY, JSON.stringify(blacklist.value)); message.success('黑名单已保存'); showBlacklist.value = false }
-
-const filteredBlacklistOps = computed(() => {
-  let list = allOperatorList.value
-  const q = blacklistSearch.value.trim().toLowerCase()
-  if (q) list = list.filter(o => o.name.toLowerCase().includes(q))
-  return list
-})
 
 function getCharName(cid) { const op = store.recommendations.find(o => o.char_id === cid); return op ? op.name : cid }
 
@@ -433,7 +426,6 @@ const allOperatorList = ref([])
 
 const displayList = computed(() => {
   let list = store.recommendations
-  list = list.filter(op => !blacklist.value.includes(op.char_id))
   if (showOnlyPlanned.value) list = list.filter(op => hasPlannedSkill(op))
   if (searchQuery.value.trim()) { const q = searchQuery.value.trim().toLowerCase(); list = list.filter(op => op.name.toLowerCase().includes(q)) }
   if (filterRarity.value.length) list = list.filter(op => filterRarity.value.includes(op.rarity))
@@ -446,6 +438,19 @@ function visibleRecs(op) {
   if (showOnlyPlanned.value) return op.recommendations.filter(r => isSkillPlanned(op.char_id, r.skill_index))
   return op.recommendations
 }
+
+const plannedT3Summary = computed(() => {
+  const agg = {}
+  for (const op of store.recommendations) {
+    for (const rec of op.recommendations) {
+      if (!isSkillPlanned(op.char_id, rec.skill_index)) continue
+      for (const mat of (rec.chain_missing_t3 || [])) {
+        agg[mat.id] = { id: mat.id, name: mat.name, count: (agg[mat.id]?.count || 0) + mat.count }
+      }
+    }
+  }
+  return Object.values(agg).sort((a, b) => b.count - a.count)
+})
 
 // ─── 工具函数 ───
 function chainHas(rec, matId) { return !rec.chain_missing_materials?.some(m => m.id === matId) }
@@ -488,12 +493,13 @@ async function doAddTask() {
 onMounted(async () => {
   loadRoute()
   try { plan.value = JSON.parse(localStorage.getItem(PLAN_KEY) || '{}') } catch {}
-  try { blacklist.value = JSON.parse(localStorage.getItem(BLACKLIST_KEY) || '[]') } catch {}
   await Promise.all([loadOperators(), store.fetchRecommendations()])
   allOperatorList.value = store.recommendations.map(op => ({ char_id: op.char_id, name: op.name, rarity: op.rarity, profession: op.profession, recommendations: op.recommendations }))
 })
 
 async function loadOperators() { try { const r = await axios.get(`${import.meta.env.VITE_HTTP_URL}/operator`); operatorOptions.value = (r.data || []).map(n => ({ label: n, value: n })) } catch {} }
+
+watch(plan, (v) => { localStorage.setItem(PLAN_KEY, JSON.stringify(v)) }, { deep: true })
 </script>
 
 <style scoped>
