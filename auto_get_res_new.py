@@ -950,6 +950,110 @@ class Arknights数据处理器:
         ) as f:
             json.dump(干员技能列表, f, ensure_ascii=False, indent=2)
 
+    def 提取专精数据(self):
+        import time as _time
+
+        t0 = _time.time()
+
+        characters = {}
+        skill_count = 0
+        skipped = 0
+
+        for char_id, char_info in self.干员表.items():
+            skills_raw = char_info.get("skills", [])
+            if not skills_raw:
+                skipped += 1
+                continue
+
+            has_any_upgrade = False
+            skills = []
+
+            for skill_def in skills_raw:
+                level_up_cost_cond = skill_def.get("levelUpCostCond", [])
+                if not level_up_cost_cond:
+                    continue
+                has_any_upgrade = True
+
+                levels = []
+                for entry in level_up_cost_cond:
+                    level_up_cost = entry.get("levelUpCost", [])
+                    lvl_up_time = entry.get("lvlUpTime", 0)
+                    materials = [
+                        {"id": mat["id"], "count": mat["count"]}
+                        for mat in level_up_cost
+                        if mat.get("type") == "MATERIAL"
+                    ]
+                    levels.append({"materials": materials, "time": lvl_up_time})
+
+                skills.append({
+                    "skillId": skill_def.get("skillId", ""),
+                    "levels": levels,
+                })
+
+            if not has_any_upgrade:
+                skipped += 1
+                continue
+
+            characters[char_id] = {
+                "name": char_info.get("name", char_id),
+                "rarity": char_info.get("rarity", 0) + 1,
+                "profession": char_info.get("profession", ""),
+                "skills": skills,
+            }
+            skill_count += len(skills)
+
+        items = {}
+        for item_id, item_info in self.物品表.get("items", {}).items():
+            if item_info.get("classifyType") == "MATERIAL":
+                items[item_id] = {
+                    "name": item_info.get("name", item_id),
+                    "icon": item_info.get("iconId", ""),
+                    "rarity": item_info.get("rarity", 0),
+                }
+
+        composite_path = "./frontend-v2-plus-dev/src/static/json/material/composite_table.v2.json"
+        composite = {}
+        if os.path.exists(composite_path):
+            with open(composite_path, "r", encoding="utf-8") as f:
+                composite_raw = json.load(f)
+            for entry in composite_raw:
+                if not entry.get("resolve", False):
+                    composite[entry["itemId"]] = {
+                        "name": entry.get("itemName", ""),
+                        "rarity": entry.get("rarity", 0),
+                        "pathway": [
+                            {"id": p["itemId"], "name": p.get("itemName", ""), "count": p.get("count", 1)}
+                            for p in entry.get("pathway", [])
+                        ],
+                    }
+            print(f"  composite_table 读取完成 ({len(composite)} 合成配方)")
+        else:
+            print(f"  警告：未找到 {composite_path}，跳过合成路径提取")
+
+        output = {
+            "_meta": {
+                "description": "专精推荐精简数据 - 由 auto_get_res_new.py 自动生成",
+                "generated": _time.strftime("%Y-%m-%d %H:%M:%S"),
+                "character_count": len(characters),
+                "item_count": len(items),
+                "skill_entry_count": skill_count,
+                "composite_count": len(composite),
+            },
+            "characters": characters,
+            "items": items,
+            "composite": composite,
+        }
+
+        output_path = "./arknights_mower/resources/skill_data.json"
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(output, f, ensure_ascii=False, separators=(",", ":"))
+
+        size_kb = os.path.getsize(output_path) / 1024
+        elapsed = _time.time() - t0
+        print(f"  干员数: {len(characters)}, 物品数: {len(items)}, 技能条目: {skill_count}, 合成配方: {len(composite)}, 跳过: {skipped}")
+        print(f"  输出: {output_path} ({size_kb:.0f} KB, {elapsed:.1f}s)")
+
     def buff转换(self):
         buff_table = {}
         pattern = r"<\$(.*?)>"
@@ -1082,3 +1186,6 @@ print("训练训练室干员名的模型,完成")
 数据处理器.load_recruit_resource()
 
 数据处理器.获取加工站配方类别()
+
+数据处理器.提取专精数据()
+print("提取专精数据,完成")
