@@ -69,7 +69,6 @@ pip install Flask flask-cors flask-sock pywebview
 
 ```bash
 pip install pyinstaller
-python extract_skill_data.py  //打包专精资源
 pyinstaller webui_zip.spec
 python scripts/fix_runtime_dlls.py
 ```
