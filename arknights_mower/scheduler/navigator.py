@@ -170,7 +170,7 @@ class Navigator:
                 self._tap_pos(TapPosition.AGREEMENT_LINE2)
 
     def _action_index_to_infra(self) -> None:
-        self._tap_element("infrastructure")
+        self._tap_pos(TapPosition.INDEX_INFRASTRUCTURE)
 
     def _action_index_to_friend(self) -> None:
         self._tap_element("friend")
