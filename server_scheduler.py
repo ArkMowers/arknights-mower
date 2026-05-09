@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from threading import Thread
 
+import time
+
 from flask import Blueprint, jsonify
 
 from arknights_mower.utils import config
@@ -81,3 +83,20 @@ def resume_scheduler():
         scheduler_pause.resume()
         return "true"
     return "false"
+
+
+@scheduler_bp.route("/test-scene")
+def test_scene_route():
+    from arknights_mower.utils.device.device import Device
+    from arknights_mower.utils.recognize import Recognizer
+    from arknights_mower.utils.scene import SceneComment
+
+    device = Device()
+    recog = Recognizer(device)
+    results = []
+    for i in range(5):
+        recog.update()
+        scene = recog.get_scene()
+        results.append({"tick": i, "scene": int(scene), "label": SceneComment.get(scene, "UNKNOWN")})
+        time.sleep(5)
+    return jsonify(results)
