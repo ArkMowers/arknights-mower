@@ -142,11 +142,13 @@ class Navigator:
         return False
 
     def _wait_room_detail(self) -> bool:
+        from arknights_mower.scheduler.scene import Scene
+
         self.wait_scene_stable()
-        for _ in range(20):
+        for _ in range(10):
             self._pause.wait_if_paused()
-            self._get_scene()
-            if self._recognizer and self._recognizer.find("room_detail"):
+            scene = self._get_scene()
+            if scene in (Scene.INFRA_DETAILS, Scene.INFRA_ARRANGE):
                 return True
             if self._recognizer and self._recognizer.find("arrange_check_in"):
                 self._tap_element("arrange_check_in")

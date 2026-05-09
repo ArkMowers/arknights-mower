@@ -2,7 +2,7 @@
 
 ## 硬性要求 (Hard Requirements)
 
-1. **所有 UI 操作必须用显式状态机** — 不允许 while+flag 手动模拟状态。要么 State enum + method dispatch（如 `AgentSelection`），要么 `@TransitionOn` 装饰器模式。一个 action 一个状态机类。
+1. **所有 UI 操作必须用显式状态机** — 不允许 while+flag 手动模拟状态。每个 action 要么是 State enum + method dispatch，要么是 scene-driven 循环（每轮先检查当前 scene，根据 scene 决定下一步操作）。scene-driven 是首选模式：`while True: scene = get_scene(); if scene == A: ... elif scene == B: ...`。参考 `solvers/base_schedule.py:generate_product()`。
 
 2. **任务执行必须异常隔离** — 单个任务执行中的任何异常不得让主循环崩溃。通过 `AbstractExecutor.safe_execute()` 捕获 + 记录异常，主循环 `pop()` 后继续下一个任务。
 

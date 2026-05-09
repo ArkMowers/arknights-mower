@@ -2,29 +2,11 @@ from __future__ import annotations
 
 from collections import deque
 from datetime import datetime, timedelta
-from enum import Enum, auto
-from typing import Optional
 
-from arknights_mower.scheduler.constants import (
-    WORKSHOP_AGENT_JIUSE,
-    WORKSHOP_FURNITURE_PREFIX,
-    WORKSHOP_TAB_POS,
-)
+from arknights_mower.scheduler.constants import WORKSHOP_AGENT_JIUSE, WORKSHOP_TAB_POS
 from arknights_mower.scheduler.domain.task import SchedulerTask
 from arknights_mower.scheduler.executors.base import AbstractExecutor
 from arknights_mower.utils.log import logger
-
-
-class WorkshopState(Enum):
-    ENTER_ROOM = auto()
-    ARRANGE_AGENT = auto()
-    DASHBOARD_ENTER = auto()
-    FORMULA_SELECT = auto()
-    FORMULA_SCAN = auto()
-    PROCESS = auto()
-    COLLECT = auto()
-    RESTORE = auto()
-    DONE = auto()
 
 
 class WorkshopExecutor(AbstractExecutor):
@@ -34,51 +16,34 @@ class WorkshopExecutor(AbstractExecutor):
         super().__init__(infra)
         self._agent = ""
         self._is_9colored = False
-        self._group = {}
         self._tab_queue: deque = deque()
-        self._state = WorkshopState.ENTER_ROOM
-        self._original_current = ""
-        self._original_room = ""
-        self._original_index = -1
-        self._start_time = datetime.now()
 
     def execute(self, task: SchedulerTask) -> None:
         self._agent = task.meta_data
         self._is_9colored = self._agent == WORKSHOP_AGENT_JIUSE
-        self._state = WorkshopState.ENTER_ROOM
-        self._start_time = datetime.now()
 
-        while self._state != WorkshopState.DONE:
-            self.check_pause()
-            if datetime.now() - self._start_time > self.MAX_DURATION:
-                raise TimeoutError("workshop execution timed out")
-            getattr(self, f"_state_{self._state.name.lower()}")()
-            self.infra.device.screencap()
+        from arknights_mower.scheduler.scene import Scene as V2Scene
 
-    def _state_enter_room(self) -> None:
-        from arknights_mower.scheduler.scene import Scene
+        self._navigate(V2Scene.INFRA_MAIN)
+        self._gather_inventory()
+        self._process_workshop()
 
-        self.infra.navigator.navigate(Scene.INFRA_MAIN)
-        self._state = WorkshopState.ARRANGE_AGENT
+    def _navigate(self, target) -> None:
+        self.infra.navigator.navigate(target)
 
-    def _state_arrange_agent(self) -> None:
-        self.infra.agent_selector.run(
-            [self._agent], "factory", fast_mode=True
-        )
-        self._state = WorkshopState.DASHBOARD_ENTER
-
-    def _state_dashboard_enter(self) -> None:
+    def _gather_inventory(self) -> None:
         from arknights_mower.data import workshop_formula
         from arknights_mower.solvers.record import get_inventory_counts
         from arknights_mower.utils import config
 
-        inventory_data = get_inventory_counts()
-        if self._agent not in [s.operator for s in config.conf.workshop_settings]:
-            self._state = WorkshopState.DONE
+        inventory = get_inventory_counts()
+        if not inventory:
+            self._tab_queue = deque()
             return
 
         item_list = next(
-            s.items for s in config.conf.workshop_settings if s.operator == self._agent
+            (s.items for s in config.conf.workshop_settings if s.operator == self._agent),
+            [],
         )
         seen = set()
         group = {}
@@ -88,15 +53,14 @@ class WorkshopExecutor(AbstractExecutor):
                     continue
                 seen.add(name)
                 metadata = workshop_formula[name]
-                if name.startswith(WORKSHOP_FURNITURE_PREFIX):
-                    name = WORKSHOP_FURNITURE_PREFIX
+                normalized = name if not name.startswith("家具零件") else "家具零件"
                 if (
-                    name in inventory_data
-                    and inventory_data[name] < item.self_upper_limit
+                    normalized in inventory
+                    and inventory[normalized] < item.self_upper_limit
                     and all(
-                        child_name in inventory_data
-                        and inventory_data[child_name] > item.children_lower_limit
-                        for child_name in metadata["items"]
+                        child in inventory
+                        and inventory[child] > item.children_lower_limit
+                        for child in metadata["items"]
                     )
                 ):
                     if self._is_9colored and metadata["apCost"] > 4:
@@ -104,33 +68,84 @@ class WorkshopExecutor(AbstractExecutor):
                     tab = metadata["tab"]
                     if tab not in group:
                         group[tab] = {}
-                    group[tab][name] = item
-
-        self._group = group
+                    group[tab][normalized] = item
         self._tab_queue = deque(group.items())
-        self._state = WorkshopState.FORMULA_SELECT
 
-    def _state_formula_select(self) -> None:
+    def _process_workshop(self) -> None:
+        start = datetime.now()
+        unknown_cnt = 0
+
+        while True:
+            self.check_pause()
+            if datetime.now() - start > self.MAX_DURATION:
+                raise TimeoutError("workshop processing timed out")
+
+            scene = self._get_factory_scene()
+
+            if self._is_arrange_checkin_visible():
+                self.infra.device.tap(0.25, 0.95)
+                continue
+
+            if scene == "UNKNOWN":
+                unknown_cnt += 1
+                if unknown_cnt > 5:
+                    self._navigate_infra()
+                    unknown_cnt = 0
+                continue
+
+            if scene == "CONNECTING":
+                continue
+
+            if scene == "FACTORY_DASHBOARD":
+                if not self._tab_queue:
+                    break
+                self.infra.device.tap(0.45, 0.65)
+
+            elif scene == "FACTORY_FORMULA":
+                self._select_formula()
+
+            elif scene == "FACTORY_PRODUCT_COLLECT":
+                self.infra.device.back()
+
+            else:
+                break
+
+    def _get_factory_scene(self) -> str:
+        from arknights_mower.utils.recognize import Recognizer
+
+        recog = Recognizer(self.infra.device._device)
+        recog.update()
+        s = recog.get_scene()
+
+        from arknights_mower.utils.scene import Scene
+
+        if s == Scene.FACTORY_DASHBOARD:
+            return "FACTORY_DASHBOARD"
+        if s == Scene.FACTORY_FORMULA:
+            return "FACTORY_FORMULA"
+        if s == Scene.FACTORY_PRODUCT_COLLECT:
+            return "FACTORY_PRODUCT_COLLECT"
+        if s == Scene.CONNECTING:
+            return "CONNECTING"
+        return "UNKNOWN"
+
+    def _is_arrange_checkin_visible(self) -> bool:
+        from arknights_mower.utils.recognize import Recognizer
+
+        recog = Recognizer(self.infra.device._device)
+        recog.update()
+        return recog.find("arrange_check_in") is not None
+
+    def _navigate_infra(self) -> None:
+        from arknights_mower.scheduler.scene import Scene as V2Scene
+
+        self.infra.navigator.navigate(V2Scene.INFRA_MAIN)
+        self.infra.navigator.enter_room("factory")
+
+    def _select_formula(self) -> None:
         if not self._tab_queue:
-            self._state = WorkshopState.DONE
             return
         tab, _ = self._tab_queue.popleft()
         pos = WORKSHOP_TAB_POS.get(tab)
         if pos:
             self.infra.device.tap(*pos)
-        self._state = WorkshopState.FORMULA_SCAN
-
-    def _state_formula_scan(self) -> None:
-        self._state = WorkshopState.PROCESS
-
-    def _state_process(self) -> None:
-        self.infra.device.tap(0.84, 0.4)
-        self.infra.device.tap(0.88, 0.88)
-        self._state = WorkshopState.COLLECT
-
-    def _state_collect(self) -> None:
-        self.infra.device.back()
-        self._state = WorkshopState.RESTORE
-
-    def _state_restore(self) -> None:
-        self._state = WorkshopState.DONE
