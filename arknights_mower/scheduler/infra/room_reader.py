@@ -83,8 +83,9 @@ class RoomReader:
         rect.sort(key=lambda r: r[0])
         x, y, w, h = rect[0]
         img = img[y : y + h, x : x + w]
+        h, w = min(img.shape[0], 46), min(img.shape[1], 265)
         tpl = np.zeros((46, 265), dtype=np.uint8)
-        tpl[: img.shape[0], : img.shape[1]] = img
+        tpl[:h, :w] = img[:h, :w]
         tpl = cv2.copyMakeBorder(tpl, 2, 2, 2, 2, cv2.BORDER_CONSTANT, None, (0,))
         best = None
         best_score = 0

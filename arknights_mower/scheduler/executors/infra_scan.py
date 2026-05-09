@@ -11,7 +11,7 @@ from arknights_mower.utils.log import logger
 
 class InfraScanState(Enum):
     NAVIGATE = auto()
-    SCAN_ROOMS = auto()
+    NEXT_ROOM = auto()
     ENTER_ROOM = auto()
     READ_DATA = auto()
     BACK_OUT = auto()
@@ -19,7 +19,7 @@ class InfraScanState(Enum):
 
 
 class InfraScanExecutor(AbstractExecutor):
-    MAX_DURATION = timedelta(minutes=10)
+    MAX_DURATION = timedelta(minutes=15)
 
     def __init__(self, infra) -> None:
         super().__init__(infra)
@@ -42,10 +42,11 @@ class InfraScanExecutor(AbstractExecutor):
     def _state_navigate(self) -> None:
         from arknights_mower.scheduler.scene import Scene
 
-        self.infra.navigator.navigate(Scene.INFRA_MAIN)
-        self._state = InfraScanState.SCAN_ROOMS
+        if not self.infra.navigator.navigate(Scene.INFRA_MAIN):
+            logger.error("failed to reach INFRA_MAIN")
+        self._state = InfraScanState.NEXT_ROOM
 
-    def _state_scan_rooms(self) -> None:
+    def _state_next_room(self) -> None:
         if not self._rooms:
             self._state = InfraScanState.DONE
             return
@@ -54,19 +55,44 @@ class InfraScanExecutor(AbstractExecutor):
     def _state_enter_room(self) -> None:
         room = self._rooms[0]
         logger.info(f"entering room: {room}")
+
+        from arknights_mower.scheduler.scene import Scene
+        from arknights_mower.utils.recognize import Recognizer
+
+        recog = Recognizer(self.infra.device._device)
+        recog.update()
+        recog.get_scene()
+
+        tap_pos = self._find_room_tab(room, recog)
+        if tap_pos is not None:
+            self.infra.device.tap(*tap_pos)
+
         self._state = InfraScanState.READ_DATA
 
     def _state_read_data(self) -> None:
         room = self._rooms[0]
+        logger.info(f"reading data for room: {room}")
+
         from arknights_mower.scheduler.infra.room_reader import RoomReader
         from arknights_mower.utils.recognize import Recognizer
 
-        recognizer = Recognizer(self.infra.device._device)
-        RoomReader(self.infra.device, recognizer).scan_room(
-            room, self.infra.state
-        )
+        recog = Recognizer(self.infra.device._device)
+        RoomReader(self.infra.device, recog).scan_room(room, self.infra.state)
+
         self._state = InfraScanState.BACK_OUT
 
     def _state_back_out(self) -> None:
+        self.infra.device.back()
         self._rooms.popleft()
-        self._state = InfraScanState.SCAN_ROOMS
+        self._state = InfraScanState.NEXT_ROOM
+
+    def _find_room_tab(self, room: str, recog) -> tuple | None:
+        tap = recog.find(f"infra_{room}")
+        if tap is not None:
+            center = (
+                (tap[0][0] + tap[1][0]) / 2 / 1920,
+                (tap[0][1] + tap[1][1]) / 2 / 1080,
+            )
+            return center
+        logger.warning(f"could not find room tab: {room}")
+        return None
