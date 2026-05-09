@@ -65,7 +65,11 @@ class Navigator:
             return
         result = self._recognizer.find(name)
         if result is not None:
-            self._tap(*result)
+            if isinstance(result, tuple) and len(result) == 2:
+                (x1, y1), (x2, y2) = result
+                self._tap((x1 + x2) // 2, (y1 + y2) // 2)
+            else:
+                self._tap(*result)
 
     def _tap_confirm(self, confirm: bool = True) -> None:
         self._tap_pos(TapPosition.CONFIRM_YES if confirm else TapPosition.CONFIRM_NO)

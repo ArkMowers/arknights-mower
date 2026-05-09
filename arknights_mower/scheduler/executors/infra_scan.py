@@ -42,8 +42,14 @@ class InfraScanExecutor(AbstractExecutor):
     def _state_navigate(self) -> None:
         from arknights_mower.scheduler.scene import Scene
 
-        if not self.infra.navigator.navigate(Scene.INFRA_MAIN):
-            logger.error("failed to reach INFRA_MAIN")
+        if self.infra.navigator.navigate(Scene.INFRA_MAIN):
+            self._state = InfraScanState.NEXT_ROOM
+            return
+
+        logger.warning("navigator failed, trying fallback to INFRA_MAIN")
+        for _ in range(3):
+            self.infra.device.tap(0.5, 0.5)
+            self.infra.device.screencap()
         self._state = InfraScanState.NEXT_ROOM
 
     def _state_next_room(self) -> None:
