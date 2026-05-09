@@ -8,6 +8,8 @@ export const useMasteryStore = defineStore('mastery', () => {
   const hasData = ref(false)
   const error = ref('')
   const filterAchievable = ref(false)
+  const cultivateOk = ref(false)
+  const cultivateMsg = ref('')
 
   async function fetchRecommendations() {
     loading.value = true
@@ -43,18 +45,26 @@ export const useMasteryStore = defineStore('mastery', () => {
   async function fetchCultivate() {
     loading.value = true
     error.value = ''
+    cultivateOk.value = false
+    cultivateMsg.value = ''
     try {
       const response = await axios.get(
         `${import.meta.env.VITE_HTTP_URL}/cultivate-fetch`
       )
       const data = response.data
       if (data.success) {
+        cultivateOk.value = true
+        cultivateMsg.value = data.message || '拉取成功'
         await fetchRecommendations()
       } else {
+        cultivateOk.value = false
+        cultivateMsg.value = data.message || '拉取失败'
         error.value = `数据拉取失败: ${data.message}`
         loading.value = false
       }
     } catch (e) {
+      cultivateOk.value = false
+      cultivateMsg.value = e.message || '请求失败'
       error.value = `请求失败: ${e.message || e}`
       loading.value = false
     }
@@ -68,6 +78,8 @@ export const useMasteryStore = defineStore('mastery', () => {
     filterAchievable,
     filteredRecommendations,
     fetchRecommendations,
-    fetchCultivate
+    fetchCultivate,
+    cultivateOk,
+    cultivateMsg
   }
 })

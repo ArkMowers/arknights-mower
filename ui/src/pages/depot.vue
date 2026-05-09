@@ -12,9 +12,17 @@
 
     <n-grid cols="1" responsive="screen">
       <n-gi>
-        扫描时间：{{ reportData[2] }} <br />
-        注：万以下的数字并不会计入，如“龙门币 245万” “资质凭证 2万”<n-divider
-      /></n-gi>
+        <n-space align="center" justify="space-between">
+          <n-text>
+            扫描时间：{{ reportData[2] }} <br />
+            注：万以下的数字并不会计入，如"龙门币 245万" "资质凭证 2万"
+          </n-text>
+          <n-text v-if="cultivateMsg" :type="cultivateOk ? 'success' : 'error'" depth="2" style="font-size: 12px">
+            森空岛同步：{{ cultivateMsg }}
+          </n-text>
+        </n-space>
+        <n-divider />
+      </n-gi>
       <n-gi v-for="(categoryItems, categoryName) in sortedReportData" :key="categoryName">
         <n-h2>{{ categoryName.slice(1) }}</n-h2>
         <n-grid x-gap="10px" y-gap="10px" cols="2 m:6 l:6 " responsive="screen">
@@ -42,14 +50,31 @@
 </style>
 <script setup>
 import { ref, onMounted, computed } from 'vue'
+import { useMessage } from 'naive-ui'
 import { usedepotStore } from '@/stores/depot'
 const depotStore = usedepotStore()
 const { getDepotinfo } = depotStore
+const message = useMessage()
 
 const reportData = ref([])
-let sortedReportData = ref([])
+const sortedReportData = ref([])
+const cultivateOk = ref(false)
+const cultivateMsg = ref('')
+
 async function fetchData() {
-  reportData.value = await getDepotinfo()
+  const resp = await getDepotinfo()
+  if (resp.depot) {
+    reportData.value = resp.depot
+    cultivateOk.value = resp.cultivate_ok
+    cultivateMsg.value = resp.cultivate_msg
+    if (resp.cultivate_ok) {
+      message.success(`森空岛数据同步成功 ${resp.cultivate_msg}`)
+    } else if (resp.cultivate_msg) {
+      message.warning(`森空岛同步失败: ${resp.cultivate_msg}`)
+    }
+  } else {
+    reportData.value = resp
+  }
   sortReportData()
 }
 

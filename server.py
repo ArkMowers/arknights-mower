@@ -152,9 +152,22 @@ def item_list():
 
 @app.route("/depot/readdepot")
 def read_depot():
+    from datetime import datetime as _dt
+
+    from arknights_mower.solvers.cultivate_depot import cultivate
     from arknights_mower.utils import depot
 
-    return depot.读取仓库()
+    cultivate_ok = False
+    cultivate_msg = ""
+    try:
+        cultivate().start()
+        cultivate_ok = True
+        cultivate_msg = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
+    except Exception as e:
+        cultivate_msg = str(e)
+
+    data = depot.读取仓库()
+    return {"depot": data, "cultivate_ok": cultivate_ok, "cultivate_msg": cultivate_msg}
 
 
 @app.route("/status")

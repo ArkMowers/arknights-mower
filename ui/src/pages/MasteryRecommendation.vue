@@ -16,7 +16,11 @@
           <template #icon><n-icon :component="HammerIcon" /></template>
           自动合成配置
         </n-button>
-        <n-button type="primary" size="small" @click="refresh" :loading="store.loading">刷新</n-button>
+        <n-button type="primary" size="small" @click="fetchCultivate" :loading="store.loading">
+          <template #icon><n-icon :component="RefreshIcon" /></template>
+          刷新
+        </n-button>
+        <n-text v-if="store.cultivateMsg" depth="3" style="font-size: 11px">更新: {{ store.cultivateMsg }}</n-text>
       </n-space>
     </div>
 
@@ -30,6 +34,10 @@
     </n-space>
 
     <n-divider />
+
+    <n-text v-if="store.cultivateMsg" :type="store.cultivateOk ? 'success' : 'error'" depth="2" style="font-size: 12px">
+      森空岛同步：{{ store.cultivateMsg }}
+    </n-text>
 
     <n-spin v-if="store.loading" size="large" description="正在分析干员数据..." />
     <n-alert v-else-if="store.error" type="warning" :closable="false">
@@ -253,7 +261,7 @@ import {
   NThing, NDynamicInput, useMessage
 } from 'naive-ui'
 import { Settings, List } from '@vicons/carbon'
-import { Build } from '@vicons/ionicons5'
+import { Build, Refresh } from '@vicons/ionicons5'
 import axios from 'axios'
 import { useMasteryStore } from '@/stores/mastery'
 import { usePlanStore } from '@/stores/plan'
@@ -265,6 +273,7 @@ import { render_op_label } from '@/utils/op_select'
 const ListIcon = List
 const SettingsIcon = Settings
 const HammerIcon = Build
+const RefreshIcon = Refresh
 const message = useMessage()
 const store = useMasteryStore()
 const planStore = usePlanStore()
@@ -457,7 +466,14 @@ function chainHas(rec, matId) { return !rec.chain_missing_materials?.some(m => m
 function currentMissing(rec) { return decomposeT3.value ? (rec.chain_missing_t3 || []) : (rec.chain_missing_materials || []) }
 function formatTime(s) { const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); if (h > 0 && m > 0) return `${h}小时${m}分钟`; if (h > 0) return `${h}小时`; if (m > 0) return `${m}分钟`; return `${s}秒` }
 async function refresh() { await store.fetchRecommendations() }
-async function fetchCultivate() { await store.fetchCultivate() }
+async function fetchCultivate() {
+  await store.fetchCultivate()
+  if (store.cultivateOk) {
+    message.success(`森空岛数据同步成功 ${store.cultivateMsg}`)
+  } else if (store.cultivateMsg) {
+    message.error(`森空岛同步失败: ${store.cultivateMsg}`)
+  }
+}
 
 // ─── 确认 & 提交 ───
 const showConfirm = ref(false)
