@@ -61,31 +61,11 @@ class InfraScanExecutor(AbstractExecutor):
         room = self._rooms[0]
         logger.info(f"entering room: {room}")
 
-        from arknights_mower.utils.recognize import Recognizer
-
-        recog = Recognizer(self.infra.device._device)
-        recog.update()
-
-        pos = recog.find("control_central")
-        if pos is None:
-            logger.warning(f"control_central not found, cannot enter {room}")
+        if self.infra.navigator.enter_room(room):
+            self._state = InfraScanState.READ_DATA
+        else:
+            logger.warning(f"failed to enter room: {room}")
             self._state = InfraScanState.BACK_OUT
-            return
-
-        from arknights_mower.utils.segment import base as segment_base
-
-        rooms_map = segment_base(recog.img, pos)
-        target = rooms_map.get(room)
-        if target is None:
-            logger.warning(f"room {room} not found in segment map")
-            self._state = InfraScanState.BACK_OUT
-            return
-
-        cx = int((target[0][0] + target[2][0]) / 2)
-        cy = int((target[0][1] + target[2][1]) / 2)
-        self.infra.device.tap(cx / 1920, cy / 1080)
-
-        self._state = InfraScanState.READ_DATA
 
     def _state_read_data(self) -> None:
         room = self._rooms[0]
