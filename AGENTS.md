@@ -10,7 +10,7 @@
 
 4. **跨平台从第一天开始** — `scheduler/`、`scheduler/infra/`、`scheduler/domain/`、`scheduler/copilot/` 是纯 Python + numpy + OpenCV，零平台 API 依赖。平台代码只隔离在 `utils/device/` 的 screencap/control/app 三层。
 
-5. **禁止 time.sleep()** — v2 所有等待必须通过 `Navigator.wait_scene()` 或 `PauseController.wait_if_paused()` 实现。场景等待用 `wait_scene(target, max_checks)` 轮询 `get_scene()`，利用 `screencap()` 内置的 `screenshot_interval` 做自然节流。禁止任何 `import time` + `time.sleep()`。
+5. **禁止 time.sleep()** — v2 所有等待必须通过 `PauseController.wait_if_paused()` 实现。等待场景稳定用 `Navigator.wait_scene_stable()`，利用连续截图的像素差异判断动画/加载是否完成。`screencap()` 内置的 `screenshot_interval` 做自然节流。禁止任何 `import time` + `time.sleep()`。
 
 6. **多分辨率通过 Device 层解决** — `Device.screencap()` 总是返回 1920×1080（内部 crop 游戏区域 + resize）。`Device.tap()` 从 1920×1080 参考坐标换算到实际像素。识别层和业务层不感知分辨率。
 

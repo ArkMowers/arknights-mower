@@ -109,14 +109,40 @@ class Navigator:
 
         return False
 
-    def wait_scene(self, target: Scene, max_checks: int = 20) -> bool:
+    def wait_scene_stable(
+        self,
+        max_checks: int = 30,
+        min_stable: int = 3,
+        threshold: float = 0.012,
+    ) -> bool:
+        import cv2
+        import numpy as np
+
+        stable = 0
+        last = None
         for _ in range(max_checks):
             self._pause.wait_if_paused()
-            if self._get_scene() == target:
+            self._get_scene()
+            if self._recognizer and self._recognizer.find("connecting"):
+                stable = 0
+                continue
+            gray = self._recognizer.gray if self._recognizer else None
+            if gray is None:
+                continue
+            current = cv2.resize(gray, (480, 270))
+            if last is not None:
+                diff = np.mean(cv2.absdiff(current, last)) / 255.0
+                if diff <= threshold:
+                    stable += 1
+                else:
+                    stable = 0
+            last = current
+            if stable >= min_stable:
                 return True
         return False
 
     def _wait_room_detail(self) -> bool:
+        self.wait_scene_stable()
         for _ in range(20):
             self._pause.wait_if_paused()
             self._get_scene()
