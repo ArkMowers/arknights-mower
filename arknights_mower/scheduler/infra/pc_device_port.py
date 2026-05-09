@@ -53,7 +53,10 @@ class PCDevicePort(DevicePort):
         self._device.send_keyevent(4)
 
     def check_focus(self) -> bool:
-        self._device.check_current_focus()
+        try:
+            self._device.check_current_focus()
+        except Exception:
+            pass
         return True
 
     def reconnect(self) -> None:
