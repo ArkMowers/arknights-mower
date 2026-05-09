@@ -91,23 +91,27 @@ class Navigator:
     def _tap(self, x: int, y: int) -> None:
         self._device.tap(x / 1920, y / 1080)
 
+    def _center(self, box) -> tuple[int, int]:
+        if isinstance(box, list) and len(box) == 2 and isinstance(box[0], list):
+            x1, y1 = box[0]
+            x2, y2 = box[1]
+            return ((x1 + x2) // 2, (y1 + y2) // 2)
+        if isinstance(box, tuple) and len(box) == 2:
+            if isinstance(box[0], (list, tuple)):
+                x1, y1 = box[0]
+                x2, y2 = box[1]
+                return ((x1 + x2) // 2, (y1 + y2) // 2)
+            return box
+        return (0, 0)
+
     def _tap_element(self, name: str) -> None:
         if self._recognizer is None:
             return
         result = self._recognizer.find(name)
         if result is None:
             return
-        logger.info(f"_tap_element({name}) -> {result}")
-        if isinstance(result, tuple):
-            box = result[0]
-        else:
-            box = result
-        if isinstance(box, list) and len(box) == 2 and isinstance(box[0], list):
-            x1, y1 = box[0]
-            x2, y2 = box[1]
-            self._tap((x1 + x2) // 2, (y1 + y2) // 2)
-        elif isinstance(box, tuple) and len(box) == 2:
-            self._tap(*box)
+        box = result[0] if isinstance(result, tuple) else result
+        self._tap(*self._center(box))
 
     def _tap_confirm(self, confirm: bool = True) -> None:
         self._tap_pos(TapPosition.CONFIRM_YES if confirm else TapPosition.CONFIRM_NO)
@@ -151,13 +155,15 @@ class Navigator:
         if self._recognizer is not None:
             pos = self._recognizer.check_announcement()
             if pos is not None:
-                self._tap(*pos)
+                box = pos[0] if isinstance(pos, tuple) else pos
+                self._tap(*self._center(box))
 
     def _action_agreement(self) -> None:
         if self._recognizer is not None:
             pos = self._recognizer.find("read_and_agree")
             if pos is not None:
-                self._tap(*pos)
+                box = pos[0] if isinstance(pos, tuple) else pos
+                self._tap(*self._center(box))
             else:
                 self._tap_pos(TapPosition.AGREEMENT_LINE1)
                 time.sleep(0.5)
