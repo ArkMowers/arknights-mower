@@ -36,6 +36,7 @@ class InfraScanExecutor(AbstractExecutor):
 
         if not self._at_infra_main():
             self.infra.navigator.navigate(V2Scene.INFRA_MAIN)
+            self.infra.navigator.wait_scene_stable()
 
         self._enter_room_with_retry(room)
 
@@ -48,34 +49,9 @@ class InfraScanExecutor(AbstractExecutor):
 
         return recog.get_scene() == Scene.INFRA_MAIN
 
-    def _enter_room_with_retry(self, room: str) -> None:
-        from arknights_mower.utils.segment import base as segment_base
-        from arknights_mower.utils.recognize import Recognizer
-
-        for _ in range(3):
-            recog = Recognizer(self.infra.device._device)
-            recog.update()
-            central = recog.find("control_central")
-            if central is None:
-                continue
-            rooms_map = segment_base(recog.img, central)
-            target = rooms_map.get(room)
-            if target is None:
-                continue
-            import numpy as np
-
-            target = np.clip(target, [0, 0], [1920, 1080])
-            cx = int((target[0][0] + target[2][0]) / 2)
-            cy = int((target[0][1] + target[2][1]) / 2)
-            self.infra.device.tap(cx / 1920, cy / 1080)
-
-            if self._wait_room_ready():
-                self._read_room_data(room)
-                return
-
-            self.infra.device.back()
-
-        logger.warning(f"failed to enter room: {room}, skip")
+    def _enter_room(self, room: str) -> None:
+        if self.infra.navigator.enter_room(room):
+            self._read_room_data(room)
 
     def _wait_room_ready(self) -> bool:
         self.infra.navigator.wait_scene_stable()

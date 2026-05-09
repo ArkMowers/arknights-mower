@@ -109,6 +109,28 @@ class Navigator:
 
         return False
 
+    def enter_room(self, room: str) -> None:
+        from arknights_mower.utils.segment import base as segment_base
+        import numpy as np
+
+        if self._get_scene() != Scene.INFRA_MAIN:
+            self.navigate(Scene.INFRA_MAIN)
+            self.wait_scene_stable()
+
+        central = self._recognizer.find("control_central") if self._recognizer else None
+        if central is None:
+            return
+
+        rooms_map = segment_base(self._recognizer.img, central)
+        target = rooms_map.get(room)
+        if target is None:
+            return
+
+        target = np.clip(target, [0, 0], [1920, 1080])
+        cx = int((target[0][0] + target[2][0]) / 2)
+        cy = int((target[0][1] + target[2][1]) / 2)
+        self._device.tap(cx / 1920, cy / 1080)
+
     def wait_scene_stable(
         self,
         max_checks: int = 30,
