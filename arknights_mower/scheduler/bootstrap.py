@@ -21,7 +21,7 @@ def _create_device():
     return Device()
 
 
-def _build_infra(v1_device) -> InfraKit:
+def _build_infra(v1_device, state) -> InfraKit:
     from arknights_mower.scheduler.infra.pc_device_port import PCDevicePort
 
     device = PCDevicePort(v1_device)
@@ -43,6 +43,7 @@ def _build_infra(v1_device) -> InfraKit:
 
     return InfraKit(
         device=device,
+        state=state,
         navigator=navigator,
         agent_selector=agent_selector,
     )
@@ -94,10 +95,6 @@ def run(
 ) -> None:
     pause = pause or ThreadPauseController()
 
-    logger.info("initializing device")
-    v1_device = _create_device()
-    infra = _build_infra(v1_device)
-
     logger.info("building global plan")
     from arknights_mower.utils.operators import build_global_plan
 
@@ -109,6 +106,10 @@ def run(
     except ConfigError as e:
         logger.error(f"config error: {e}")
         return
+
+    logger.info("initializing device")
+    v1_device = _create_device()
+    infra = _build_infra(v1_device, state)
 
     logger.info("registering planners")
     planners = _build_planners(state)

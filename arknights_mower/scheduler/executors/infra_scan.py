@@ -52,11 +52,19 @@ class InfraScanExecutor(AbstractExecutor):
         self._state = InfraScanState.ENTER_ROOM
 
     def _state_enter_room(self) -> None:
+        room = self._rooms[0]
+        logger.info(f"entering room: {room}")
         self._state = InfraScanState.READ_DATA
 
     def _state_read_data(self) -> None:
         room = self._rooms[0]
-        logger.info(f"recording data for room: {room}")
+        from arknights_mower.scheduler.infra.room_reader import RoomReader
+        from arknights_mower.utils.recognize import Recognizer
+
+        recognizer = Recognizer(self.infra.device._device)
+        RoomReader(self.infra.device, recognizer).scan_room(
+            room, self.infra.state
+        )
         self._state = InfraScanState.BACK_OUT
 
     def _state_back_out(self) -> None:
