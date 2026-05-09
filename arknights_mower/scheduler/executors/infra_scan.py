@@ -46,10 +46,8 @@ class InfraScanExecutor(AbstractExecutor):
             self._state = InfraScanState.NEXT_ROOM
             return
 
-        logger.warning("navigator failed, trying fallback to INFRA_MAIN")
-        for _ in range(3):
-            self.infra.device.tap(0.5, 0.5)
-            self.infra.device.screencap()
+        logger.warning("navigator failed, tapping to dismiss login")
+        self.infra.device.tap(0.5, 0.5)
         self._state = InfraScanState.NEXT_ROOM
 
     def _state_next_room(self) -> None:
