@@ -82,10 +82,13 @@ class InfraScanExecutor(AbstractExecutor):
                 self._state = InfraScanState.BACK_OUT
             return
 
-        self._room_center = (
-            int((target[0][0] + target[2][0]) / 2),
-            int((target[1][1] + target[3][1]) / 2),
-        )
+        import numpy as np
+
+        target = np.clip(target, [0, 0], [1920, 1080])
+        cx = int((target[0][0] + target[2][0]) / 2)
+        cy = int((target[0][1] + target[2][1]) / 2)
+        self._room_center = (cx, cy)
+        logger.info(f"room {room} center: ({cx}, {cy}) -> tap({cx/1920:.3f}, {cy/1080:.3f})")
         self._state = InfraScanState.ENTER_ROOM
 
     def _state_enter_room(self) -> None:
