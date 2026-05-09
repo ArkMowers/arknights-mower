@@ -1,0 +1,64 @@
+from __future__ import annotations
+
+from collections import deque
+from datetime import datetime, timedelta
+from enum import Enum, auto
+
+from arknights_mower.scheduler.domain.task import SchedulerTask
+from arknights_mower.scheduler.executors.base import AbstractExecutor
+from arknights_mower.utils.log import logger
+
+
+class InfraScanState(Enum):
+    NAVIGATE = auto()
+    SCAN_ROOMS = auto()
+    ENTER_ROOM = auto()
+    READ_DATA = auto()
+    BACK_OUT = auto()
+    DONE = auto()
+
+
+class InfraScanExecutor(AbstractExecutor):
+    MAX_DURATION = timedelta(minutes=10)
+
+    def __init__(self, infra) -> None:
+        super().__init__(infra)
+        self._rooms: deque[str] = deque()
+        self._state = InfraScanState.DONE
+
+    def execute(self, task: SchedulerTask) -> None:
+        rooms = [r.strip() for r in task.meta_data.split(",") if r.strip()]
+        self._rooms = deque(rooms)
+        self._state = InfraScanState.NAVIGATE
+        start = datetime.now()
+
+        while self._state != InfraScanState.DONE:
+            self.check_pause()
+            if datetime.now() - start > self.MAX_DURATION:
+                raise TimeoutError("infra scan timed out")
+            getattr(self, f"_state_{self._state.name.lower()}")()
+            self.infra.device.screencap()
+
+    def _state_navigate(self) -> None:
+        from arknights_mower.scheduler.scene import Scene
+
+        self.infra.navigator.navigate(Scene.INFRA_MAIN)
+        self._state = InfraScanState.SCAN_ROOMS
+
+    def _state_scan_rooms(self) -> None:
+        if not self._rooms:
+            self._state = InfraScanState.DONE
+            return
+        self._state = InfraScanState.ENTER_ROOM
+
+    def _state_enter_room(self) -> None:
+        self._state = InfraScanState.READ_DATA
+
+    def _state_read_data(self) -> None:
+        room = self._rooms[0]
+        logger.info(f"recording data for room: {room}")
+        self._state = InfraScanState.BACK_OUT
+
+    def _state_back_out(self) -> None:
+        self._rooms.popleft()
+        self._state = InfraScanState.SCAN_ROOMS

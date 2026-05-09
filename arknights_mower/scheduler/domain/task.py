@@ -23,6 +23,7 @@ class TaskTypes(Enum):
     SKILL_UPGRADE = ("技能专精", "技能专精", 2)
     DEPOT = ("仓库扫描", "仓库扫描", 2)
     WORKSHOP = ("加工材料", "加工材料", 2)
+    INFRA_SCAN = ("infra_scan", "基建扫描", 2)
 
     def __new__(cls, value: str, display_value: str, priority: int):
         obj = object.__new__(cls)

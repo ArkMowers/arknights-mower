@@ -52,8 +52,10 @@ def _build_planners(state: SchedulerState) -> list:
     planners = []
 
     from arknights_mower.scheduler.planners.workshop import WorkshopPlanner
+    from arknights_mower.scheduler.planners.infra_scan import InfraScanPlanner
 
     planners.append(WorkshopPlanner())
+    planners.append(InfraScanPlanner())
 
     return planners
 
@@ -69,7 +71,9 @@ def _build_dispatch() -> TaskDispatch:
     from arknights_mower.scheduler.executors.correction import CorrectionExecutor
     from arknights_mower.scheduler.executors.skill import SkillExecutor
     from arknights_mower.scheduler.executors.workshop import WorkshopExecutor
+    from arknights_mower.scheduler.executors.infra_scan import InfraScanExecutor
 
+    dispatch.register(TaskTypes.INFRA_SCAN, InfraScanExecutor)
     dispatch.register(TaskTypes.RUN_ORDER, RunOrderExecutor)
     dispatch.register(TaskTypes.SHIFT_OFF, ShiftExecutor)
     dispatch.register(TaskTypes.SHIFT_ON, ShiftExecutor)
