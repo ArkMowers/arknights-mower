@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Any, Optional
 
 from arknights_mower.scheduler.domain.task import SchedulerTask
 
@@ -36,3 +36,18 @@ class AbstractPlanner(ABC):
     @abstractmethod
     def make_task(self, state) -> Optional[SchedulerTask]:
         ...
+
+
+class LegacyPlannerAdapter(AbstractPlanner):
+    """Wrap old-style planners (no AbstractPlanner inheritance) into new interface."""
+
+    def __init__(self, planner: Any) -> None:
+        super().__init__()
+        self._inner = planner
+
+    def condition(self, state) -> bool:
+        return True
+
+    def make_task(self, state) -> Optional[SchedulerTask]:
+        return self._inner.plan(state)
+

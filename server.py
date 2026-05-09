@@ -259,14 +259,18 @@ def log(ws):
     global ws_connections
     global log_lines
 
-    ws.send(
-        json.dumps(
-            {
-                "type": "log",
-                "data": "\n".join(log_lines),  # 发送完整日志
-            }
+    try:
+        ws.send(
+            json.dumps(
+                {
+                    "type": "log",
+                    "data": "\n".join(log_lines),
+                }
+            )
         )
-    )
+    except Exception:
+        return
+
     ws_connections.append(ws)
 
     from simple_websocket import ConnectionClosed
@@ -274,8 +278,11 @@ def log(ws):
     try:
         while True:
             ws.receive()
-    except ConnectionClosed:
-        ws_connections.remove(ws)
+    except (ConnectionClosed, OSError):
+        try:
+            ws_connections.remove(ws)
+        except (ValueError, OSError):
+            pass
 
 
 @app.route("/screenshots/<path:filename>")

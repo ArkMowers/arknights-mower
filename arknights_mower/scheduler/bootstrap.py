@@ -49,24 +49,7 @@ def _build_infra(v1_device) -> InfraKit:
 
 
 def _build_planners(state: SchedulerState) -> list:
-    from arknights_mower import config as app_config
-
     planners = []
-
-    from arknights_mower.scheduler.planners.exhaust import ExhaustPlanner
-    from arknights_mower.scheduler.planners.fiammetta import FiammettaPlanner
-    from arknights_mower.scheduler.planners.idle import IdlePlanner
-    from arknights_mower.scheduler.planners.order import OrderPlanner
-
-    planners.append(ExhaustPlanner())
-    planners.append(FiammettaPlanner())
-    planners.append(IdlePlanner())
-    planners.append(OrderPlanner())
-
-    from arknights_mower.scheduler.planners.backup import BackupPlanner
-
-    if state.backup_plans:
-        planners.append(BackupPlanner())
 
     from arknights_mower.scheduler.planners.workshop import WorkshopPlanner
 
