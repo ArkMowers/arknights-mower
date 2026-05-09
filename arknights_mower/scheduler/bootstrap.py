@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
 from arknights_mower.scheduler.device_port import DevicePort
 from arknights_mower.scheduler.dispatch import TaskDispatch
-from arknights_mower.scheduler.domain.task import TaskTypes
+from arknights_mower.scheduler.domain.task import SchedulerTask, TaskTypes
 from arknights_mower.scheduler.errors import ConfigError, DeviceError
 from arknights_mower.scheduler.infra import InfraKit
 from arknights_mower.scheduler.infra.pause_controller import PauseController
@@ -127,6 +128,15 @@ def run(
 
     logger.info("registering executors")
     dispatch = _build_dispatch()
+
+    from arknights_mower.utils import config as app_config
+
+    if app_config.conf.workshop_settings:
+        agent = app_config.conf.workshop_settings[0].operator
+        logger.info(f"injecting workshop test task for {agent}")
+        state.task_queue.push(
+            SchedulerTask(time=datetime.now(), type=TaskTypes.WORKSHOP, meta_data=agent)
+        )
 
     logger.info("starting main loop")
     loop = MainLoop(state, planners, dispatch, infra)
