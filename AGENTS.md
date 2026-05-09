@@ -2,19 +2,21 @@
 
 ## 硬性要求 (Hard Requirements)
 
-1. **所有 UI 操作必须用显式状态机** — 不允许 while+flag 手动模拟状态。每个 action 要么是 State enum + method dispatch，要么是 scene-driven 循环（每轮先检查当前 scene，根据 scene 决定下一步操作）。scene-driven 是首选模式：`while True: scene = get_scene(); if scene == A: ... elif scene == B: ...`。参考 `solvers/base_schedule.py:generate_product()`。
+1. **所有 UI 操作必须用显式状态机** — 每个 action 要么是 State enum + method dispatch（如 `AgentSelection`），要么是 scene-driven 循环（每轮先检查当前 scene，根据 scene 决定下一步操作）。**scene-driven 是首选模式**：`while True: scene = get_scene(); if scene == A: ... elif scene == B: ...`。参考 `solvers/base_schedule.py:generate_product()`。
 
-2. **任务执行必须异常隔离** — 单个任务执行中的任何异常不得让主循环崩溃。通过 `AbstractExecutor.safe_execute()` 捕获 + 记录异常，主循环 `pop()` 后继续下一个任务。
+2. **每个操作只点一次** (tap-once) — 所有 tap/click 在单次循环迭代内只执行一次，不用 for 循环重试。重试由外层 scene-driven 循环控制：`while True: if scene == A: tap_once(); continue`。
 
-3. **零硬编码坐标** — 坐标、区域、阈值必须从 `scheduler/constants.py` 或 `config` 引用。唯一例外：`recognize.py` 的 color/template_matching 字典（1920×1080 参考坐标），因为 Device.screencap() 保证返回 1920×1080 截图。
+3. **任务执行必须异常隔离** — 单个任务执行中的任何异常不得让主循环崩溃。通过 `AbstractExecutor.safe_execute()` 捕获 + 记录异常，主循环 `pop()` 后继续下一个任务。
 
-4. **跨平台从第一天开始** — `scheduler/`、`scheduler/infra/`、`scheduler/domain/`、`scheduler/copilot/` 是纯 Python + numpy + OpenCV，零平台 API 依赖。平台代码只隔离在 `utils/device/` 的 screencap/control/app 三层。
+4. **零硬编码坐标** — 坐标、区域、阈值必须从 `scheduler/constants.py` 或 `config` 引用。唯一例外：`recognize.py` 的 color/template_matching 字典（1920×1080 参考坐标），因为 Device.screencap() 保证返回 1920×1080 截图。
 
-5. **禁止 time.sleep()** — v2 所有等待必须通过 `PauseController.wait_if_paused()` 实现。等待场景稳定用 `Navigator.wait_scene_stable()`，利用连续截图的像素差异判断动画/加载是否完成。`screencap()` 内置的 `screenshot_interval` 做自然节流。禁止任何 `import time` + `time.sleep()`。
+5. **跨平台从第一天开始** — `scheduler/`、`scheduler/infra/`、`scheduler/domain/`、`scheduler/copilot/` 是纯 Python + numpy + OpenCV，零平台 API 依赖。平台代码只隔离在 `utils/device/` 的 screencap/control/app 三层。
 
-6. **多分辨率通过 Device 层解决** — `Device.screencap()` 总是返回 1920×1080（内部 crop 游戏区域 + resize）。`Device.tap()` 从 1920×1080 参考坐标换算到实际像素。识别层和业务层不感知分辨率。
+6. **禁止 time.sleep()** — v2 所有等待必须通过 `PauseController.wait_if_paused()` 实现。等待场景稳定用 `Navigator.wait_scene_stable()`，利用连续截图的像素差异判断动画/加载是否完成。`screencap()` 内置的 `screenshot_interval` 做自然节流。禁止任何 `import time` + `time.sleep()`。
 
-6. **渐进迁移，向后兼容** — 旧 `solvers/` 和 `utils/` 在功能完全迁移到 `scheduler/` 前不动。每步可独立 PR/merge。
+7. **多分辨率通过 Device 层解决** — `Device.screencap()` 总是返回 1920×1080（内部 crop 游戏区域 + resize）。`Device.tap()` 从 1920×1080 参考坐标换算到实际像素。识别层和业务层不感知分辨率。
+
+8. **渐进迁移，向后兼容** — 旧 `solvers/` 和 `utils/` 在功能完全迁移到 `scheduler/` 前不动。每步可独立 PR/merge。
 
 ## 核心原则
 
@@ -27,7 +29,7 @@
 - 禁止手写坐标 (如 `(0.35, 0.75)`)
 - 禁止手写阈值 (如 `0.6`, `24`, `3`)
 - 禁止为未来预留参数/方法/字段
-- 禁止添加文档注释 (docstring 不算注释)
+- 禁止使用 `time.sleep()` (详见规则 6)
 - 禁止在新代码中依赖 `utils/device/Device` — 新代码只依赖 `scheduler/device_port.py` 的 `DevicePort` 抽象
 
 ## Data Class 界定 (什么放 domain, 什么放 service)

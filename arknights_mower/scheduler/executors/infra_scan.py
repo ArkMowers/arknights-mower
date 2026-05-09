@@ -50,23 +50,32 @@ class InfraScanExecutor(AbstractExecutor):
         return recog.get_scene() == Scene.INFRA_MAIN
 
     def _enter_room(self, room: str) -> None:
-        if self.infra.navigator.enter_room(room):
-            self._read_room_data(room)
-
-    def _wait_room_ready(self) -> bool:
+        self.infra.navigator.enter_room(room)
         self.infra.navigator.wait_scene_stable()
-        for _ in range(10):
-            self.check_pause()
-            self._get_scene()
-            if self._detect_room_view():
-                return True
+        self._flip_room_detail()
+        self._read_room_data(room)
+
+    def _flip_room_detail(self) -> bool:
+        from arknights_mower.utils.recognize import Recognizer
+
+        recog = Recognizer(self.infra.device._device)
+        recog.update()
+
+        if recog.find("room_detail"):
+            return True
+
+        if not recog.find("arrange_check_in"):
+            return False
+
+        self.infra.device.tap(0.25, 0.95)
+        self.infra.navigator.wait_scene_stable()
+        recog.update()
+
+        if recog.find("room_detail"):
+            return True
+
+        self.infra.device.back()
         return False
-
-    def _detect_room_view(self) -> bool:
-        from arknights_mower.utils.scene import Scene
-
-        s = self._get_scene()
-        return s in (Scene.INFRA_DETAILS, Scene.INFRA_ARRANGE)
 
     def _get_scene(self):
         from arknights_mower.utils.recognize import Recognizer
