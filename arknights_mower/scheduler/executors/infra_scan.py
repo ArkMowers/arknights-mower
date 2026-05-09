@@ -87,6 +87,8 @@ class InfraScanExecutor(AbstractExecutor):
         self._state = InfraScanState.BACK_OUT
 
     def _state_back_out(self) -> None:
-        self.infra.device.back()
+        from arknights_mower.scheduler.scene import Scene
+
+        self.infra.navigator.navigate(Scene.INFRA_MAIN)
         self._rooms.popleft()
         self._state = InfraScanState.NEXT_ROOM
