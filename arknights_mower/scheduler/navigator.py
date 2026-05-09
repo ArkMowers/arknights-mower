@@ -14,7 +14,13 @@ from arknights_mower.scheduler.scene import Scene
 logger = logging.getLogger(__name__)
 
 
+_WAITING_SCENES = {Scene.LOADING, Scene.CONNECTING, Scene.LOGIN_LOADING, Scene.SKIP}
+
+
 class Navigator:
+    MAX_UNKNOWN = 6
+    MAX_ERROR = 5
+
     def __init__(
         self,
         device: DevicePort,
@@ -30,26 +36,51 @@ class Navigator:
         self._pause = pause_controller or ThreadPauseController()
 
     def navigate(self, target: Scene) -> bool:
-        for _ in range(5):
+        error_count = 0
+        unknown_count = 0
+
+        while (current := self._get_scene()) != target:
             self._pause.wait_if_paused()
-            current = self._get_scene()
-            if current == target:
-                return True
+
+            if current in _WAITING_SCENES:
+                time.sleep(1)
+                continue
+
+            if current == Scene.UNKNOWN:
+                unknown_count += 1
+                if unknown_count <= 3:
+                    time.sleep(1)
+                elif unknown_count <= self.MAX_UNKNOWN:
+                    self._back()
+                else:
+                    logger.warning(f"abort: unknown scene persists target={target}")
+                    return False
+                continue
+
             path = self._graph.find_path(current, target)
             if path is None:
                 logger.error(f"no path from {current} to {target}")
                 return False
+
             transition = path[0]
             handler = getattr(self, f"_action_{transition.action}", None)
             if handler is None:
                 logger.error(f"no handler for {transition.action}")
                 return False
+
             try:
                 handler()
+                error_count = 0
+                unknown_count = 0
             except Exception:
                 logger.exception(f"navigate action failed: {transition.action}")
-                time.sleep(1)
-        return False
+                error_count += 1
+                if error_count <= self.MAX_ERROR:
+                    time.sleep(1)
+                    continue
+                return False
+
+        return True
 
     def _back(self) -> None:
         self._device.back()

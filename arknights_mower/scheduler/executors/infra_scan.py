@@ -48,6 +48,8 @@ class InfraScanExecutor(AbstractExecutor):
 
         logger.warning("navigator failed, tapping to dismiss login")
         self.infra.device.tap(0.5, 0.5)
+        import time
+        time.sleep(2)
         self._state = InfraScanState.NEXT_ROOM
 
     def _state_next_room(self) -> None:
