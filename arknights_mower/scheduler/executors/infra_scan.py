@@ -12,9 +12,7 @@ from arknights_mower.utils.log import logger
 class InfraScanState(Enum):
     NAVIGATE = auto()
     NEXT_ROOM = auto()
-    FIND_ROOM = auto()
     ENTER_ROOM = auto()
-    ROOM_DETAIL = auto()
     READ_DATA = auto()
     BACK_OUT = auto()
     DONE = auto()
@@ -22,12 +20,10 @@ class InfraScanState(Enum):
 
 class InfraScanExecutor(AbstractExecutor):
     MAX_DURATION = timedelta(minutes=15)
-    MAX_ENTER_RETRY = 3
 
     def __init__(self, infra) -> None:
         super().__init__(infra)
         self._rooms: deque[str] = deque()
-        self._enter_attempts = 0
         self._state = InfraScanState.DONE
 
     def execute(self, task: SchedulerTask) -> None:
@@ -56,51 +52,15 @@ class InfraScanExecutor(AbstractExecutor):
         if not self._rooms:
             self._state = InfraScanState.DONE
             return
-        self._enter_attempts = 0
-        self._state = InfraScanState.FIND_ROOM
-
-    def _state_find_room(self) -> None:
-        room = self._rooms[0]
-        self._get_scene()
-
-        central = self._recognizer.find("control_central") if self._recognizer else None
-        if central is None:
-            self._enter_attempts += 1
-            if self._enter_attempts >= self.MAX_ENTER_RETRY:
-                logger.warning(f"failed to find control_central for {room}, skip")
-                self._state = InfraScanState.BACK_OUT
-            return
-
-        from arknights_mower.utils.segment import base as segment_base
-
-        rooms_map = segment_base(self._recognizer.img, central)
-        target = rooms_map.get(room)
-        if target is None:
-            self._enter_attempts += 1
-            if self._enter_attempts >= self.MAX_ENTER_RETRY:
-                logger.warning(f"room {room} not in segment map, skip")
-                self._state = InfraScanState.BACK_OUT
-            return
-
-        import numpy as np
-
-        target = np.clip(target, [0, 0], [1920, 1080])
-        cx = int((target[0][0] + target[2][0]) / 2)
-        cy = int((target[0][1] + target[2][1]) / 2)
-        self._room_center = (cx, cy)
-        logger.info(f"room {room} center: ({cx}, {cy}) -> tap({cx/1920:.3f}, {cy/1080:.3f})")
         self._state = InfraScanState.ENTER_ROOM
 
     def _state_enter_room(self) -> None:
-        cx, cy = self._room_center
-        self.infra.device.tap(cx / 1920, cy / 1080)
-        self._state = InfraScanState.ROOM_DETAIL
-
-    def _state_room_detail(self) -> None:
-        if self.infra.navigator.turn_on_room_detail():
+        room = self._rooms[0]
+        logger.info(f"entering room: {room}")
+        if self.infra.navigator.enter_room(room):
             self._state = InfraScanState.READ_DATA
         else:
-            logger.warning("failed to turn on room detail")
+            logger.warning(f"failed to enter room: {room}, skip")
             self._state = InfraScanState.BACK_OUT
 
     def _state_read_data(self) -> None:
@@ -120,10 +80,3 @@ class InfraScanExecutor(AbstractExecutor):
         self.infra.navigator.navigate(Scene.INFRA_MAIN)
         self._rooms.popleft()
         self._state = InfraScanState.NEXT_ROOM
-
-    def _get_scene(self) -> None:
-        from arknights_mower.utils.recognize import Recognizer
-
-        recog = Recognizer(self.infra.device._device)
-        recog.update()
-        self._recognizer = recog

@@ -43,13 +43,12 @@ class Navigator:
             self._pause.wait_if_paused()
 
             if current in _WAITING_SCENES:
-                time.sleep(1)
                 continue
 
             if current == Scene.UNKNOWN:
                 unknown_count += 1
                 if unknown_count <= 3:
-                    time.sleep(1)
+                    continue
                 elif unknown_count <= self.MAX_UNKNOWN:
                     self._back()
                 else:
@@ -75,10 +74,8 @@ class Navigator:
             except Exception:
                 logger.exception(f"navigate action failed: {transition.action}")
                 error_count += 1
-                if error_count <= self.MAX_ERROR:
-                    time.sleep(1)
-                    continue
-                return False
+                if error_count > self.MAX_ERROR:
+                    return False
 
         return True
 
@@ -98,24 +95,36 @@ class Navigator:
             if target is None:
                 continue
 
+            import numpy as np
+
+            target = np.clip(target, [0, 0], [1920, 1080])
             cx = int((target[0][0] + target[2][0]) / 2)
             cy = int((target[0][1] + target[2][1]) / 2)
             self._device.tap(cx / 1920, cy / 1080)
-            return True
+
+            if self._wait_room_detail():
+                return True
+
+            self._device.back()
+
         return False
 
-    def turn_on_room_detail(self) -> bool:
-        for _ in range(10):
+    def wait_scene(self, target: Scene, max_checks: int = 20) -> bool:
+        for _ in range(max_checks):
+            self._pause.wait_if_paused()
+            if self._get_scene() == target:
+                return True
+        return False
+
+    def _wait_room_detail(self) -> bool:
+        for _ in range(20):
             self._pause.wait_if_paused()
             self._get_scene()
-
             if self._recognizer and self._recognizer.find("room_detail"):
                 return True
             if self._recognizer and self._recognizer.find("arrange_check_in"):
                 self._tap_element("arrange_check_in")
-                continue
-            import time
-            time.sleep(0.5)
+                return True
         return False
 
     def _back(self) -> None:
