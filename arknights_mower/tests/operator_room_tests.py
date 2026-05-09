@@ -42,9 +42,7 @@ class TestOperatorRoomRecognition(unittest.TestCase):
         )
 
         old_score = cv2.minMaxLoc(
-            cv2.matchTemplate(
-                OP_ROOM["凯尔希"], OP_ROOM["凯尔希"], cv2.TM_CCORR_NORMED
-            )
+            cv2.matchTemplate(OP_ROOM["凯尔希"], OP_ROOM["凯尔希"], cv2.TM_CCORR_NORMED)
         )[1]
         new_score = cv2.minMaxLoc(
             cv2.matchTemplate(

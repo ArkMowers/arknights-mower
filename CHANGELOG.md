@@ -1,5 +1,24 @@
 # CHANGELOG
 
+## 4.1.5.3
+- 新增可露希尔跑单
+- 处理闪断更新公告中不合法的结束时间
+- 修复跑单订单类型识别不正确的问题
+- 为新增的四种材料在仓库中分类
+- 修复基建房间干员名称前缀匹配错误
+- 防止用尽任务生成过期时间
+- 领取奖励时跳过见习任务页检查
+
+详细内容：
+### 新增 feat
+- 可露希尔跑单 [@Shawnsdaddy](https://github.com/ArkMowers/arknights-mower/commit/7ada670ab5050f9f2082da9f0289c0682a8ef729)
+
+### 修复 fix
+- 处理闪断更新公告中的 24:00 时间 [(#850)@clousky2020](https://github.com/ArkMowers/arknights-mower/commit/98e31804cb5b53c2116b3ffa902b2277535c4495)
+- 修复 auto_get_res_new.py 中的解析逻辑，适配部分游戏数据字段从数字改为字符串 [(#849)@NiceAfternoon](https://github.com/ArkMowers/arknights-mower/commit/9071db83b10129037046715f581f7daca45e4c92)
+- 修复跑单订单类型误判并适配新增材料分类 [(#851)@NiceAfternoon](https://github.com/ArkMowers/arknights-mower/commit/b6e23d2d93f09dd76597db53d66f96b87e267c4a)
+- 修复房间干员识别、用尽任务时间和见习任务跳过 [(#848)@ALEXsun0](https://github.com/ArkMowers/arknights-mower/commit/1b2d9baff710aa5f8de2a8f1129de35b3980dbf4)
+
 ## 4.1.5.2
 - 游戏数据更新
 - UI周计划更新（中文名字+开放日期显示）

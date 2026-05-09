@@ -213,8 +213,12 @@ import { storeToRefs } from 'pinia'
 import { h, inject, onMounted, provide, ref } from 'vue'
 import Feedback from '@/components/Feedback.vue'
 import markdownit from 'markdown-it'
+import externalLink from 'markdown-it-external-link'
 
-const md = markdownit({ html: true, breaks: true })
+const md = markdownit({ html: true, breaks: true }).use(externalLink, {
+  externalTarget: '_blank',
+  rel: 'noopener noreferrer'
+})
 const showModal = ref(false)
 const showModal2 = ref(false)
 const showFeedback = ref(false)

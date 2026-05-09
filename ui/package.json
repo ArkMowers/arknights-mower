@@ -29,6 +29,7 @@
     "katex": "^0.16.10",
     "luxon": "^3.4.4",
     "markdown-it": "^14.1.1",
+    "markdown-it-external-link": "^1.1.0",
     "moment": "^2.30.1",
     "pinia": "^2.1.7",
     "pinyin-pro": "^3.19.6",
