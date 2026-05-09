@@ -162,6 +162,8 @@ def build_default_graph() -> SceneGraph:
     g.add_transition(Scene.CONFIRM, Scene.LOGIN_START, "confirm", 1)
     g.add_transition(Scene.NETWORK_CHECK, Scene.LOGIN_START, "network_check_cancel", 1)
 
+    g.add_transition(Scene.LOGIN_MAIN_NOENTRY, Scene.INDEX, "login_main_noentry", 1)
+
     return g
 
 

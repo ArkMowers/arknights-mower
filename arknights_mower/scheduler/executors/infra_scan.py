@@ -41,15 +41,14 @@ class InfraScanExecutor(AbstractExecutor):
 
     def _state_navigate(self) -> None:
         from arknights_mower.scheduler.scene import Scene
-
-        if self.infra.navigator.navigate(Scene.INFRA_MAIN):
-            self._state = InfraScanState.NEXT_ROOM
-            return
-
-        logger.warning("navigator failed, tapping to dismiss login")
-        self.infra.device.tap(0.5, 0.5)
         import time
-        time.sleep(2)
+
+        for _ in range(5):
+            if self.infra.navigator.navigate(Scene.INFRA_MAIN):
+                self._state = InfraScanState.NEXT_ROOM
+                return
+            self.infra.device.tap(0.5, 0.5)
+            time.sleep(2)
         self._state = InfraScanState.NEXT_ROOM
 
     def _state_next_room(self) -> None:

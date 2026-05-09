@@ -292,6 +292,9 @@ class Navigator:
     def _action_get_scene(self) -> None:
         pass
 
+    def _action_login_main_noentry(self) -> None:
+        self._device.tap(0.5, 0.5)
+
     def _action_login_start(self) -> None:
         self._tap_pos(TapPosition.LOGIN_START)
 
