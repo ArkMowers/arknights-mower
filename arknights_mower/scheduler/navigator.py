@@ -85,12 +85,10 @@ class Navigator:
     def enter_room(self, room: str) -> bool:
         for _ in range(3):
             self._pause.wait_if_paused()
-
             self._get_scene()
 
             central = self._recognizer.find("control_central") if self._recognizer else None
             if central is None:
-                logger.warning(f"control_central not found, cannot enter {room}")
                 continue
 
             from arknights_mower.utils.segment import base as segment_base
@@ -98,14 +96,26 @@ class Navigator:
             rooms_map = segment_base(self._recognizer.img, central)
             target = rooms_map.get(room)
             if target is None:
-                logger.warning(f"room {room} not found in segment map")
                 continue
 
             cx = int((target[0][0] + target[2][0]) / 2)
             cy = int((target[0][1] + target[2][1]) / 2)
             self._device.tap(cx / 1920, cy / 1080)
             return True
+        return False
 
+    def turn_on_room_detail(self) -> bool:
+        for _ in range(10):
+            self._pause.wait_if_paused()
+            self._get_scene()
+
+            if self._recognizer and self._recognizer.find("room_detail"):
+                return True
+            if self._recognizer and self._recognizer.find("arrange_check_in"):
+                self._tap_element("arrange_check_in")
+                continue
+            import time
+            time.sleep(0.5)
         return False
 
     def _back(self) -> None:

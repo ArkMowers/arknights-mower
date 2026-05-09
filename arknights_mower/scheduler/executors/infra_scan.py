@@ -13,6 +13,7 @@ class InfraScanState(Enum):
     NAVIGATE = auto()
     NEXT_ROOM = auto()
     ENTER_ROOM = auto()
+    ROOM_DETAIL = auto()
     READ_DATA = auto()
     BACK_OUT = auto()
     DONE = auto()
@@ -62,10 +63,16 @@ class InfraScanExecutor(AbstractExecutor):
         logger.info(f"entering room: {room}")
 
         if self.infra.navigator.enter_room(room):
-            self._state = InfraScanState.READ_DATA
+            self._state = InfraScanState.ROOM_DETAIL
         else:
             logger.warning(f"failed to enter room: {room}")
             self._state = InfraScanState.BACK_OUT
+
+    def _state_room_detail(self) -> None:
+        room = self._rooms[0]
+        logger.info(f"turning on room detail: {room}")
+        self.infra.navigator.turn_on_room_detail()
+        self._state = InfraScanState.READ_DATA
 
     def _state_read_data(self) -> None:
         room = self._rooms[0]
