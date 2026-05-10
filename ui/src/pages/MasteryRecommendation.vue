@@ -16,6 +16,8 @@
           <template #icon><n-icon :component="HammerIcon" /></template>
           自动合成配置
         </n-button>
+        <n-select v-model:value="t5Operator" :options="operatorOptions" filterable placeholder="T5合成干员" style="width: 120px" size="small" />
+        <n-select v-model:value="bookOperator" :options="operatorOptions" filterable placeholder="技巧概要干员" style="width: 120px" size="small" />
         <n-button type="primary" size="small" @click="fetchCultivate" :loading="store.loading">
           <template #icon><n-icon :component="RefreshIcon" /></template>
           刷新
@@ -297,6 +299,9 @@ const filterAchievable = ref(false)
 const showOnlyPlanned = ref(false)
 const decomposeT3 = ref(false)
 const workshopLoading = ref(false)
+const t5Operator = ref('年')
+const bookOperator = ref('司霆惊蛰')
+const workshopT3Summary = ref([])
 
 const emptyText = computed(() => {
   if (searchQuery.value || filterRarity.value.length || filterProfession.value.length) return '没有匹配的干员'
@@ -356,35 +361,43 @@ async function autoWorkshop() {
   workshopLoading.value = true
   try {
     const keys = Object.keys(plan.value).filter(k => plan.value[k])
-    const resp = await axios.post(`${import.meta.env.VITE_HTTP_URL}/workshop-auto-config`, { planned_skills: keys })
+    const resp = await axios.post(`${import.meta.env.VITE_HTTP_URL}/workshop-auto-config`, {
+      planned_skills: keys,
+      t5_operator: t5Operator.value,
+      book_operator: bookOperator.value
+    })
     const ws = resp.data?.workshop_settings
     if (!ws) { message.warning('生成失败'); return }
     configStore.workshop_settings = ws
 
+    await new Promise(r => setTimeout(r, 100))
+    await axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, configStore.build_config())
+    workshopT3Summary.value = resp.data?.t3_summary || []
+
     const tasksResp = await axios.get(`${import.meta.env.VITE_HTTP_URL}/task`)
     const tasks = tasksResp.data || []
-    const hasWorkshop = tasks.some(t => {
+    const hasTask = (opName) => tasks.some(t => {
       const tType = typeof t.type === 'string' ? t.type : (t.type?.display_value || t.type?.value || '')
-      return tType === '加工材料' && (t.meta_data === '' || t.meta_data === '九色鹿')
+      return tType === '加工材料' && (t.meta_data === '' || t.meta_data === opName)
     })
 
-    if (!hasWorkshop) {
-      const taskResult = await axios.post(`${import.meta.env.VITE_HTTP_URL}/task`, {
-        task: {
-          time: new Date(Date.now() + 120000).toISOString(),
-          plan: {},
-          task_type: '加工材料',
-          meta_data: '九色鹿'
-        }
+    let added = []
+    let skipped = []
+    for (const entry of ws) {
+      if (!entry.operator || !entry.items?.length) continue
+      const op = entry.operator
+      if (hasTask(op)) { skipped.push(op); continue }
+      const r = await axios.post(`${import.meta.env.VITE_HTTP_URL}/task`, {
+        task: { time: new Date(Date.now() + 120000 + added.length * 600000).toISOString(), plan: {}, task_type: '加工材料', meta_data: op }
       })
-      if (taskResult.data === '添加任务成功！') {
-        message.success(`已生成九色鹿合成配置（${ws[0]?.items?.length || 0} 个配方）并添加任务`)
-      } else {
-        message.success(`已生成配置，但任务添加失败: ${taskResult.data}`)
-      }
-    } else {
-      message.success(`已生成九色鹿合成配置（${ws[0]?.items?.length || 0} 个配方），任务队列已有加工任务`)
+      if (r.data === '添加任务成功！') { added.push(op) }
+      else { message.warning(`${op} 任务添加失败: ${r.data}`) }
     }
+
+    const parts = []
+    if (added.length) parts.push(`已添加任务: ${added.join(', ')}`)
+    if (skipped.length) parts.push(`已有任务: ${skipped.join(', ')}`)
+    message.success(`合成配置已生成${parts.length ? '，' + parts.join('；') : ''}`)
   } catch (e) {
     message.error(`生成失败: ${e.message}`)
   } finally {
@@ -448,18 +461,7 @@ function visibleRecs(op) {
   return op.recommendations
 }
 
-const plannedT3Summary = computed(() => {
-  const agg = {}
-  for (const op of store.recommendations) {
-    for (const rec of op.recommendations) {
-      if (!isSkillPlanned(op.char_id, rec.skill_index)) continue
-      for (const mat of (rec.chain_missing_t3 || [])) {
-        agg[mat.id] = { id: mat.id, name: mat.name, count: (agg[mat.id]?.count || 0) + mat.count }
-      }
-    }
-  }
-  return Object.values(agg).sort((a, b) => b.count - a.count)
-})
+const plannedT3Summary = computed(() => workshopT3Summary.value)
 
 // ─── 工具函数 ───
 function chainHas(rec, matId) { return !rec.chain_missing_materials?.some(m => m.id === matId) }
