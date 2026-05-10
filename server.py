@@ -1069,6 +1069,27 @@ def workshop_auto_config():
     }
 
 
+@app.route("/mastery-plan", methods=["GET", "POST"])
+def mastery_plan():
+    import json as _json
+
+    plan_path = get_path("@app/tmp/matery_plan.json")
+    if request.method == "GET":
+        if os.path.exists(plan_path):
+            try:
+                with open(plan_path, "r", encoding="utf-8") as f:
+                    return _json.load(f)
+            except Exception:
+                pass
+        return {}
+    else:
+        data = request.json or {}
+        plan_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(plan_path, "w", encoding="utf-8") as f:
+            _json.dump(data, f, ensure_ascii=False)
+        return {"success": True}
+
+
 @app.route("/cultivate-fetch")
 def cultivate_fetch():
     from arknights_mower.solvers.cultivate_depot import cultivate

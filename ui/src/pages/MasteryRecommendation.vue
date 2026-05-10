@@ -470,7 +470,6 @@ const configStore = useConfigStore()
 const { operators: operatorOptions } = storeToRefs(planStore)
 
 const ROUTE_KEY = 'mower_mastery_route'
-const PLAN_KEY = 'mower_mastery_plan_v2'
 
 const profKeys = ['先锋', '近卫', '重装', '狙击', '术师', '医疗', '辅助', '特种']
 const profMap = {
@@ -552,7 +551,7 @@ function clearPlan() {
   plan.value = {}
 }
 function savePlanFn() {
-  localStorage.setItem(PLAN_KEY, JSON.stringify(plan.value))
+  axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, plan.value)
   message.success('计划已保存')
   showPlan.value = false
 }
@@ -879,11 +878,12 @@ async function doAddTask() {
 
 // ─── 初始化 ───
 onMounted(async () => {
-  loadRoute()
-  try {
-    plan.value = JSON.parse(localStorage.getItem(PLAN_KEY) || '{}')
-  } catch {}
-  await Promise.all([loadOperators(), store.fetchRecommendations()])
+loadRoute()
+    try {
+      const r = await axios.get(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`)
+      plan.value = r.data || {}
+    } catch {}
+    await Promise.all([loadOperators(), store.fetchRecommendations()])
   allOperatorList.value = store.recommendations.map((op) => ({
     char_id: op.char_id,
     name: op.name,
@@ -901,12 +901,12 @@ async function loadOperators() {
 }
 
 watch(
-  plan,
-  (v) => {
-    localStorage.setItem(PLAN_KEY, JSON.stringify(v))
-  },
-  { deep: true }
-)
+    plan,
+    (v) => {
+      axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, v).catch(() => {})
+    },
+    { deep: true }
+  )
 </script>
 
 <style scoped>
