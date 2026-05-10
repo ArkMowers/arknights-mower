@@ -44,15 +44,38 @@ def ensure_skill_data_extracted():
     import time as _time
 
     output_path = PROJECT_ROOT / "arknights_mower" / "resources" / "skill_data.json"
-    char_table_path = PROJECT_ROOT / "ArknightsGameResource" / "gamedata" / "excel" / "character_table.json"
-    item_table_path = PROJECT_ROOT / "ArknightsGameResource" / "gamedata" / "excel" / "item_table.json"
-    composite_path = PROJECT_ROOT / "frontend-v2-plus-dev" / "src" / "static" / "json" / "material" / "composite_table.v2.json"
+    char_table_path = (
+        PROJECT_ROOT
+        / "ArknightsGameResource"
+        / "gamedata"
+        / "excel"
+        / "character_table.json"
+    )
+    item_table_path = (
+        PROJECT_ROOT
+        / "ArknightsGameResource"
+        / "gamedata"
+        / "excel"
+        / "item_table.json"
+    )
+    composite_path = (
+        PROJECT_ROOT
+        / "frontend-v2-plus-dev"
+        / "src"
+        / "static"
+        / "json"
+        / "material"
+        / "composite_table.v2.json"
+    )
 
     if not char_table_path.exists():
         print(f"跳过专精数据提取: {char_table_path} 不存在")
         return
 
-    if output_path.exists() and output_path.stat().st_mtime > char_table_path.stat().st_mtime:
+    if (
+        output_path.exists()
+        and output_path.stat().st_mtime > char_table_path.stat().st_mtime
+    ):
         print(f"专精数据已是最新: {output_path}")
         return
 
@@ -126,7 +149,11 @@ def ensure_skill_data_extracted():
                     "name": entry.get("itemName", ""),
                     "rarity": entry.get("rarity", 0),
                     "pathway": [
-                        {"id": p["itemId"], "name": p.get("itemName", ""), "count": p.get("count", 1)}
+                        {
+                            "id": p["itemId"],
+                            "name": p.get("itemName", ""),
+                            "count": p.get("count", 1),
+                        }
                         for p in entry.get("pathway", [])
                     ],
                 }
@@ -150,7 +177,9 @@ def ensure_skill_data_extracted():
         _json.dump(output, f, ensure_ascii=False, separators=(",", ":"))
 
     size_kb = output_path.stat().st_size / 1024
-    print(f"  干员: {len(characters)}, 物品: {len(items)}, 技能: {skill_count}, 合成: {len(composite)}")
+    print(
+        f"  干员: {len(characters)}, 物品: {len(items)}, 技能: {skill_count}, 合成: {len(composite)}"
+    )
     print(f"  输出: {output_path} ({size_kb:.0f} KB)")
 
 

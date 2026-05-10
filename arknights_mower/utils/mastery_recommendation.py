@@ -1,7 +1,7 @@
 import json
 import os
 
-from arknights_mower.utils.path import get_path, _install_dir, _internal_dir
+from arknights_mower.utils.path import _install_dir, _internal_dir, get_path
 
 
 def _find_skill_data():
@@ -36,13 +36,15 @@ def _decompose_to_t3(materials, composite, item_table, inventory):
         owned = inventory.get(mid, 0)
         shortage = max(0, cnt - owned)
         if shortage > 0:
-            result.append({
-                "id": mid,
-                "name": (item_table.get(mid, {}) or {}).get("name", mid),
-                "count": shortage,
-                "total": cnt,
-                "owned": owned
-            })
+            result.append(
+                {
+                    "id": mid,
+                    "name": (item_table.get(mid, {}) or {}).get("name", mid),
+                    "count": shortage,
+                    "total": cnt,
+                    "owned": owned,
+                }
+            )
     return result
 
 
@@ -57,7 +59,9 @@ def get_mastery_recommendations():
         return result
 
     if not os.path.exists(skill_data_path):
-        result["error"] = f"专精数据文件未找到: {skill_data_path}\n请运行 extract_skill_data.py 生成"
+        result["error"] = (
+            f"专精数据文件未找到: {skill_data_path}\n请运行 extract_skill_data.py 生成"
+        )
         return result
 
     try:
@@ -210,7 +214,9 @@ def get_mastery_recommendations():
                 if chain_total_needed[mid] > inventory.get(mid, 0)
             ]
 
-            chain_missing_t3 = _decompose_to_t3(chain_missing_list, composite, item_table, inventory)
+            chain_missing_t3 = _decompose_to_t3(
+                chain_missing_list, composite, item_table, inventory
+            )
 
             recommendations.append(
                 {

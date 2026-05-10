@@ -383,6 +383,13 @@ const swap_30 = [
                 />
               </template>
             </n-dynamic-tags>
+            <n-text
+              v-if="value.room == 'train'"
+              depth="3"
+              style="font-size: 12px; margin-left: 8px"
+            >
+              左边协助位，右边训练位
+            </n-text>
           </div>
         </template>
       </n-dynamic-input>

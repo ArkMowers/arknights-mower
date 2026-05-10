@@ -985,10 +985,12 @@ class Arknights数据处理器:
                     ]
                     levels.append({"materials": materials, "time": lvl_up_time})
 
-                skills.append({
-                    "skillId": skill_def.get("skillId", ""),
-                    "levels": levels,
-                })
+                skills.append(
+                    {
+                        "skillId": skill_def.get("skillId", ""),
+                        "levels": levels,
+                    }
+                )
 
             if not has_any_upgrade:
                 skipped += 1
@@ -1011,7 +1013,9 @@ class Arknights数据处理器:
                     "rarity": item_info.get("rarity", 0),
                 }
 
-        composite_path = "./frontend-v2-plus-dev/src/static/json/material/composite_table.v2.json"
+        composite_path = (
+            "./frontend-v2-plus-dev/src/static/json/material/composite_table.v2.json"
+        )
         composite = {}
         if os.path.exists(composite_path):
             with open(composite_path, "r", encoding="utf-8") as f:
@@ -1022,7 +1026,11 @@ class Arknights数据处理器:
                         "name": entry.get("itemName", ""),
                         "rarity": entry.get("rarity", 0),
                         "pathway": [
-                            {"id": p["itemId"], "name": p.get("itemName", ""), "count": p.get("count", 1)}
+                            {
+                                "id": p["itemId"],
+                                "name": p.get("itemName", ""),
+                                "count": p.get("count", 1),
+                            }
                             for p in entry.get("pathway", [])
                         ],
                     }
@@ -1051,7 +1059,9 @@ class Arknights数据处理器:
 
         size_kb = os.path.getsize(output_path) / 1024
         elapsed = _time.time() - t0
-        print(f"  干员数: {len(characters)}, 物品数: {len(items)}, 技能条目: {skill_count}, 合成配方: {len(composite)}, 跳过: {skipped}")
+        print(
+            f"  干员数: {len(characters)}, 物品数: {len(items)}, 技能条目: {skill_count}, 合成配方: {len(composite)}, 跳过: {skipped}"
+        )
         print(f"  输出: {output_path} ({size_kb:.0f} KB, {elapsed:.1f}s)")
 
     def buff转换(self):

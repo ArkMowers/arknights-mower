@@ -17,7 +17,12 @@
             扫描时间：{{ reportData[2] }} <br />
             注：万以下的数字并不会计入，如"龙门币 245万" "资质凭证 2万"
           </n-text>
-          <n-text v-if="cultivateMsg" :type="cultivateOk ? 'success' : 'error'" depth="2" style="font-size: 12px">
+          <n-text
+            v-if="cultivateMsg"
+            :type="cultivateOk ? 'success' : 'error'"
+            depth="2"
+            style="font-size: 12px"
+          >
             森空岛同步：{{ cultivateMsg }}
           </n-text>
         </n-space>

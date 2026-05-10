@@ -16,6 +16,8 @@ from arknights_mower.utils.skland import (
     restore_cached_session,
 )
 
+MAX_AP = 210
+
 player_info_cache: dict[str, dict] = {}
 
 
@@ -122,7 +124,7 @@ class PlayerInfoClient:
         return get_binding_list(self.sign_token)
 
     @staticmethod
-    def get_recover_time(resp: dict, max_ap: int = 180):
+    def get_recover_time(resp: dict, max_ap: int = MAX_AP):
         now_utc = datetime.datetime.now(datetime.timezone.utc)
         ap = resp.get("data", {}).get("status", {}).get("ap", {})
         raw_recover_time = ap.get("completeRecoveryTime")
@@ -180,7 +182,7 @@ class PlayerInfoClient:
         raw_current = ap.get("current")
         current_ap = computed_ap
         if isinstance(raw_current, int):
-            normalized_raw_current = max(0, min(180, raw_current))
+            normalized_raw_current = max(0, min(MAX_AP, raw_current))
             if abs(normalized_raw_current - computed_ap) <= 1:
                 current_ap = normalized_raw_current
             else:
