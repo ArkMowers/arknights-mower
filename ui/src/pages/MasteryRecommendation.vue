@@ -21,7 +21,7 @@
           <template #icon><n-icon :component="HammerIcon" /></template>
           自动合成配置
         </n-button>
-<<<<<<< 4.1.6
+        <<<<<<< 4.1.6
         <n-select
           v-model:value="t5Operator"
           :options="operatorOptions"
@@ -38,10 +38,24 @@
           style="width: 120px"
           size="small"
         />
-=======
-        <n-select v-model:value="t5Operator" :options="operatorOptions" filterable placeholder="T5合成干员" style="width: 120px" size="small" />
-        <n-select v-model:value="bookOperator" :options="operatorOptions" filterable placeholder="技巧概要干员" style="width: 120px" size="small" />
->>>>>>> 4.1.6
+        =======
+        <n-select
+          v-model:value="t5Operator"
+          :options="operatorOptions"
+          filterable
+          placeholder="T5合成干员"
+          style="width: 120px"
+          size="small"
+        />
+        <n-select
+          v-model:value="bookOperator"
+          :options="operatorOptions"
+          filterable
+          placeholder="技巧概要干员"
+          style="width: 120px"
+          size="small"
+        />
+        >>>>>>> 4.1.6
         <n-button type="primary" size="small" @click="fetchCultivate" :loading="store.loading">
           <template #icon><n-icon :component="RefreshIcon" /></template>
           刷新
