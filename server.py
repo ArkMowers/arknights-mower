@@ -829,7 +829,7 @@ def workshop_auto_config():
     with open(skill_data_path, "r", encoding="utf-8") as f:
         skill_data = _json.load(f)
     items = skill_data.get("items", {})
-    composite = skill_data.get("composite", {})
+    skill_data.get("composite", {})
 
     def item_rarity(name):
         for iid, info in items.items():
