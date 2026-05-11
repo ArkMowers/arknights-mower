@@ -72,11 +72,6 @@ async function fetchData() {
     reportData.value = resp.depot
     cultivateOk.value = resp.cultivate_ok
     cultivateMsg.value = resp.cultivate_msg
-    if (resp.cultivate_ok) {
-      message.success(`森空岛数据同步成功 ${resp.cultivate_msg}`)
-    } else if (resp.cultivate_msg) {
-      message.warning(`森空岛同步失败: ${resp.cultivate_msg}`)
-    }
   } else {
     reportData.value = resp
   }
