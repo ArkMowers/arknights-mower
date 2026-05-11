@@ -15,22 +15,17 @@
   </head>
   <body>
     <table>
-      <td>标签选择</td><td>预计干员名单</td>
+      <td>标签选择</td>
+      <td>预计干员名单</td>
 
       {% for result in recruit_results %}
-          <tr>
-              <td>
-                {{ result['tag'] }}
-              </td>
-              <td>
-              {% for agent in result['result'] %}
-                {{ agent.name }}
-              {% endfor %}
-              </td>
-
-          </tr>
+      <tr>
+        <td>{{ result['tag'] }}</td>
+        <td>
+          {% for agent in result['result'] %} {{ agent.name }} {% endfor %}
+        </td>
+      </tr>
       {% endfor %}
-
     </table>
   </body>
 </html>

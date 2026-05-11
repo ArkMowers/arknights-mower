@@ -9,30 +9,21 @@
         {
           "action": "tap",
           "payload": {
-            "pos": [
-              352,
-              827
-            ],
+            "pos": [352, 827],
             "text": "踏入新生黎明“内关卡已开放"
           }
         },
         {
           "action": "tap",
           "payload": {
-            "pos": [
-              1464,
-              920
-            ],
+            "pos": [1464, 920],
             "text": "告别天真年代"
           }
         },
         {
           "action": "tap",
           "payload": {
-            "pos": [
-              1113,
-              291
-            ],
+            "pos": [1113, 291],
             "text": "PA-8",
             "success": true
           }
@@ -40,10 +31,7 @@
         {
           "action": "tap",
           "payload": {
-            "pos": [
-              1447,
-              145
-            ],
+            "pos": [1447, 145],
             "text": "PA-8",
             "success": true
           }
@@ -58,36 +46,21 @@
         {
           "action": "swipe",
           "payload": {
-            "start": [
-              500,
-              540
-            ],
-            "vector": [
-              800,
-              0
-            ]
+            "start": [500, 540],
+            "vector": [800, 0]
           }
         },
         {
           "action": "swipe",
           "payload": {
-            "start": [
-              500,
-              540
-            ],
-            "vector": [
-              800,
-              0
-            ]
+            "start": [500, 540],
+            "vector": [800, 0]
           }
         },
         {
           "action": "tap",
           "payload": {
-            "pos": [
-              197,
-              316
-            ],
+            "pos": [197, 316],
             "text": "PA-1",
             "success": true
           }
@@ -105,36 +78,21 @@
         {
           "action": "swipe",
           "payload": {
-            "start": [
-              500,
-              540
-            ],
-            "vector": [
-              800,
-              0
-            ]
+            "start": [500, 540],
+            "vector": [800, 0]
           }
         },
         {
           "action": "swipe",
           "payload": {
-            "start": [
-              500,
-              540
-            ],
-            "vector": [
-              800,
-              0
-            ]
+            "start": [500, 540],
+            "vector": [800, 0]
           }
         },
         {
           "action": "tap",
           "payload": {
-            "pos": [
-              197,
-              316
-            ],
+            "pos": [197, 316],
             "text": "PA-1",
             "success": true
           }

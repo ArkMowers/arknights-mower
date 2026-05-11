@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
@@ -26,22 +26,23 @@
         <th>时间</th>
         <th colspan="2">任务</th>
       </tr>
-      {% for task in tasks %}
-      {% if task.plan or task.type == '释放宿舍空位'%}
+      {% for task in tasks %} {% if task.plan or task.type == '释放宿舍空位'%}
       {% for r, p in task.plan.items() %}
       <tr>
         {% if loop.first %}
-        <td rowspan="{{ task.plan|length }}">{{ task.time.strftime('%H:%M:%S') }}</td>
-        {% endif %}
-        {% if task.type == '释放宿舍空位'%}
-        <td>{{ task.meta_data }}在{{ base_scheduler.translate_room(r) }}休息完毕</td>
+        <td rowspan="{{ task.plan|length }}">
+          {{ task.time.strftime('%H:%M:%S') }}
+        </td>
+        {% endif %} {% if task.type == '释放宿舍空位'%}
+        <td>
+          {{ task.meta_data }}在{{ base_scheduler.translate_room(r) }}休息完毕
+        </td>
         {% else %}
         <td>{{ base_scheduler.translate_room(r) }}</td>
         {% endif %}
         <td>{{ p|join(', ') }}</td>
       </tr>
-      {% endfor %}
-      {% elif task.type %}
+      {% endfor %} {% elif task.type %}
       <tr>
         <td>{{ task.time.strftime('%H:%M:%S') }}</td>
         <td colspan="2">{{ task.type }}</td>
@@ -51,8 +52,7 @@
         <td>{{ task.time.strftime('%H:%M:%S') }}</td>
         <td colspan="2">空任务</td>
       </tr>
-      {% endif %}
-      {% endfor %}
+      {% endif %} {% endfor %}
     </table>
   </body>
 </html>

@@ -161,7 +161,9 @@ def read_depot():
     cultivate_json = get_path("@app/tmp/cultivate.json")
     if os.path.exists(cultivate_json):
         cultivate_ok = True
-        cultivate_msg = _dt.fromtimestamp(os.path.getmtime(cultivate_json)).strftime("%Y-%m-%d %H:%M:%S")
+        cultivate_msg = _dt.fromtimestamp(os.path.getmtime(cultivate_json)).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
 
     data = depot.读取仓库()
     return {"depot": data, "cultivate_ok": cultivate_ok, "cultivate_msg": cultivate_msg}
@@ -753,16 +755,34 @@ def mastery_recommendation_debug():
                 cultivate_data = json.load(f)
             debug_info["cultivate_keys"] = list(cultivate_data.keys())
             data = cultivate_data.get("data", {})
-            debug_info["data_keys"] = list(data.keys()) if isinstance(data, dict) else str(type(data))
+            debug_info["data_keys"] = (
+                list(data.keys()) if isinstance(data, dict) else str(type(data))
+            )
             chars = data.get("characters", []) if isinstance(data, dict) else []
             items = data.get("items", []) if isinstance(data, dict) else []
-            debug_info["chars_count"] = len(chars) if isinstance(chars, list) else "not_list"
-            debug_info["items_count"] = len(items) if isinstance(items, list) else "not_list"
+            debug_info["chars_count"] = (
+                len(chars) if isinstance(chars, list) else "not_list"
+            )
+            debug_info["items_count"] = (
+                len(items) if isinstance(items, list) else "not_list"
+            )
             if isinstance(chars, list) and len(chars) > 0:
                 debug_info["first_char_keys"] = list(chars[0].keys())
-                debug_info["first_char"] = {k: chars[0][k] for k in ["id", "level", "evolvePhase", "mainSkillLevel", "potentialRank"] if k in chars[0]}
+                debug_info["first_char"] = {
+                    k: chars[0][k]
+                    for k in [
+                        "id",
+                        "level",
+                        "evolvePhase",
+                        "mainSkillLevel",
+                        "potentialRank",
+                    ]
+                    if k in chars[0]
+                }
                 skills = chars[0].get("skills", [])
-                debug_info["first_char_skills_count"] = len(skills) if isinstance(skills, list) else "not_list"
+                debug_info["first_char_skills_count"] = (
+                    len(skills) if isinstance(skills, list) else "not_list"
+                )
         except Exception as e:
             debug_info["cultivate_read_error"] = str(e)
 
@@ -837,19 +857,44 @@ def workshop_auto_config():
     fodder_list = ["碳素", "碳素组", "家具零件_碳素组"]
     fodder_items = [
         {"item_names": [f], "children_lower_limit": 0, "self_upper_limit": 9999}
-        for f in fodder_list if f in workshop_formula
+        for f in fodder_list
+        if f in workshop_formula
     ]
 
-    t4_names = {n: e for n, e in workshop_formula.items() if e.get("tab") == "精英材料" and e.get("apCost") == 4.0}
-    t5_names = {n: e for n, e in workshop_formula.items() if e.get("tab") == "精英材料" and e.get("apCost") == 8.0}
+    t4_names = {
+        n: e
+        for n, e in workshop_formula.items()
+        if e.get("tab") == "精英材料" and e.get("apCost") == 4.0
+    }
+    t5_names = {
+        n: e
+        for n, e in workshop_formula.items()
+        if e.get("tab") == "精英材料" and e.get("apCost") == 8.0
+    }
 
     if not planned_keys:
-        default_t4 = [{"item_names": [n], "children_lower_limit": 20, "self_upper_limit": 20} for n in sorted(t4_names)]
-        default_t5 = [{"item_names": [n], "children_lower_limit": 20, "self_upper_limit": 20} for n in sorted(t5_names)]
-        default_book = [{"item_names": ["技巧概要·卷3"], "children_lower_limit": 20, "self_upper_limit": 20}]
+        default_t4 = [
+            {"item_names": [n], "children_lower_limit": 20, "self_upper_limit": 20}
+            for n in sorted(t4_names)
+        ]
+        default_t5 = [
+            {"item_names": [n], "children_lower_limit": 20, "self_upper_limit": 20}
+            for n in sorted(t5_names)
+        ]
+        default_book = [
+            {
+                "item_names": ["技巧概要·卷3"],
+                "children_lower_limit": 20,
+                "self_upper_limit": 20,
+            }
+        ]
         return {
             "workshop_settings": [
-                {"operator": "九色鹿", "enabled": True, "items": fodder_items + default_t4},
+                {
+                    "operator": "九色鹿",
+                    "enabled": True,
+                    "items": fodder_items + default_t4,
+                },
                 {"operator": t5_operator, "enabled": True, "items": default_t5},
                 {"operator": book_operator, "enabled": True, "items": default_book},
             ],
@@ -880,7 +925,9 @@ def workshop_auto_config():
     # ── 步骤2,3：分类 T5/T4/T3 ──
     demand_t5_raw = {n: c for n, c in raw_demand.items() if n in t5_names}
     demand_t4_raw = {n: c for n, c in raw_demand.items() if n in t4_names}
-    demand_t3_plus = {n: c for n, c in raw_demand.items() if n not in t4_names and n not in t5_names}
+    demand_t3_plus = {
+        n: c for n, c in raw_demand.items() if n not in t4_names and n not in t5_names
+    }
 
     # 加载仓库库存
     cultivate_path = get_path("@app/tmp/cultivate.json")
@@ -937,21 +984,51 @@ def workshop_auto_config():
         shortage = max(0, need - owned)
         if shortage > 0:
             iid = id_by_name.get(name, name)
-            t3_summary.append({"id": iid, "name": name, "count": shortage, "total": need, "owned": owned})
+            t3_summary.append(
+                {
+                    "id": iid,
+                    "name": name,
+                    "count": shortage,
+                    "total": need,
+                    "owned": owned,
+                }
+            )
 
     # ── 排合成配方 ──
     t5_items = []
     for name, demand in sorted(demand_t5_raw.items()):
         if demand > 0:
-            t5_items.append({"item_names": [name], "children_lower_limit": 0, "self_upper_limit": demand})
+            t5_items.append(
+                {
+                    "item_names": [name],
+                    "children_lower_limit": 0,
+                    "self_upper_limit": demand,
+                }
+            )
 
     t4_items = []
     for name, demand in sorted(demand_t4_raw.items()):
         if demand > 0:
-            t4_items.append({"item_names": [name], "children_lower_limit": 0, "self_upper_limit": demand})
+            t4_items.append(
+                {
+                    "item_names": [name],
+                    "children_lower_limit": 0,
+                    "self_upper_limit": demand,
+                }
+            )
 
     book_count = demand_t3_plus.get("技巧概要·卷3", 0)
-    book_items = [{"item_names": ["技巧概要·卷3"], "children_lower_limit": 0, "self_upper_limit": book_count}] if book_count > 0 else []
+    book_items = (
+        [
+            {
+                "item_names": ["技巧概要·卷3"],
+                "children_lower_limit": 0,
+                "self_upper_limit": book_count,
+            }
+        ]
+        if book_count > 0
+        else []
+    )
 
     return {
         "workshop_settings": [
@@ -1035,7 +1112,15 @@ def workshop_auto_config():
         shortage = max(0, need - owned)
         if shortage > 0:
             iid = id_by_name.get(name, name)
-            t3_summary.append({"id": iid, "name": name, "count": shortage, "total": need, "owned": owned})
+            t3_summary.append(
+                {
+                    "id": iid,
+                    "name": name,
+                    "count": shortage,
+                    "total": need,
+                    "owned": owned,
+                }
+            )
 
     t4_items = [
         {"item_names": [name], "children_lower_limit": 0, "self_upper_limit": count}
