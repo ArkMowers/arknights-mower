@@ -21,7 +21,6 @@
           <template #icon><n-icon :component="HammerIcon" /></template>
           自动合成配置
         </n-button>
-        <<<<<<< 4.1.6
         <n-select
           v-model:value="t5Operator"
           :options="operatorOptions"
@@ -38,24 +37,6 @@
           style="width: 120px"
           size="small"
         />
-        =======
-        <n-select
-          v-model:value="t5Operator"
-          :options="operatorOptions"
-          filterable
-          placeholder="T5合成干员"
-          style="width: 120px"
-          size="small"
-        />
-        <n-select
-          v-model:value="bookOperator"
-          :options="operatorOptions"
-          filterable
-          placeholder="技巧概要干员"
-          style="width: 120px"
-          size="small"
-        />
-        >>>>>>> 4.1.6
         <n-button type="primary" size="small" @click="fetchCultivate" :loading="store.loading">
           <template #icon><n-icon :component="RefreshIcon" /></template>
           刷新
@@ -537,7 +518,8 @@ const bookOperator = ref('司霆惊蛰')
 const workshopT3Summary = ref([])
 
 const emptyText = computed(() => {
-  if (searchQuery.value || filterRarity.value.length || filterProfession.value.length) return '没有匹配的干员'
+  if (searchQuery.value || filterRarity.value.length || filterProfession.value.length)
+    return '没有匹配的干员'
   if (showOnlyPlanned.value) return '没有计划中的专精项'
   return '没有推荐项'
 })
@@ -619,46 +601,37 @@ const filteredPlanOperators = computed(() => {
 async function autoWorkshop() {
   workshopLoading.value = true
   try {
-    const keys = Object.keys(plan.value).filter(k => plan.value[k])
+    const keys = Object.keys(plan.value).filter((k) => plan.value[k])
     const resp = await axios.post(`${import.meta.env.VITE_HTTP_URL}/workshop-auto-config`, {
       planned_skills: keys,
       t5_operator: t5Operator.value,
       book_operator: bookOperator.value
     })
     const ws = resp.data?.workshop_settings
-    if (!ws) { message.warning('生成失败'); return }
+    if (!ws) {
+      message.warning('生成失败')
+      return
+    }
     configStore.workshop_settings = ws
 
-<<<<<<< 4.1.6
     await new Promise((r) => setTimeout(r, 100))
-=======
-    await new Promise(r => setTimeout(r, 100))
->>>>>>> 4.1.6
     await axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, configStore.build_config())
     workshopT3Summary.value = resp.data?.t3_summary || []
 
     const tasksResp = await axios.get(`${import.meta.env.VITE_HTTP_URL}/task`)
     const tasks = tasksResp.data || []
-<<<<<<< 4.1.6
     const hasTask = (opName) =>
       tasks.some((t) => {
         const tType =
           typeof t.type === 'string' ? t.type : t.type?.display_value || t.type?.value || ''
         return tType === '加工材料' && (t.meta_data === '' || t.meta_data === opName)
       })
-=======
-    const hasTask = (opName) => tasks.some(t => {
-      const tType = typeof t.type === 'string' ? t.type : (t.type?.display_value || t.type?.value || '')
-      return tType === '加工材料' && (t.meta_data === '' || t.meta_data === opName)
-    })
->>>>>>> 4.1.6
 
     let added = []
     let skipped = []
     for (const entry of ws) {
       if (!entry.operator || !entry.items?.length) continue
       const op = entry.operator
-<<<<<<< 4.1.6
       if (hasTask(op)) {
         skipped.push(op)
         continue
@@ -676,14 +649,6 @@ async function autoWorkshop() {
       } else {
         message.warning(`${op} 任务添加失败: ${r.data}`)
       }
-=======
-      if (hasTask(op)) { skipped.push(op); continue }
-      const r = await axios.post(`${import.meta.env.VITE_HTTP_URL}/task`, {
-        task: { time: new Date(Date.now() + 120000 + added.length * 600000).toISOString(), plan: {}, task_type: '加工材料', meta_data: op }
-      })
-      if (r.data === '添加任务成功！') { added.push(op) }
-      else { message.warning(`${op} 任务添加失败: ${r.data}`) }
->>>>>>> 4.1.6
     }
 
     const parts = []
@@ -859,17 +824,31 @@ const displayList = computed(() => {
 })
 
 function visibleRecs(op) {
-  if (showOnlyPlanned.value) return op.recommendations.filter(r => isSkillPlanned(op.char_id, r.skill_index))
+  if (showOnlyPlanned.value)
+    return op.recommendations.filter((r) => isSkillPlanned(op.char_id, r.skill_index))
   return op.recommendations
 }
 
 const plannedT3Summary = computed(() => workshopT3Summary.value)
 
 // ─── 工具函数 ───
-function chainHas(rec, matId) { return !rec.chain_missing_materials?.some(m => m.id === matId) }
-function currentMissing(rec) { return decomposeT3.value ? (rec.chain_missing_t3 || []) : (rec.chain_missing_materials || []) }
-function formatTime(s) { const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); if (h > 0 && m > 0) return `${h}小时${m}分钟`; if (h > 0) return `${h}小时`; if (m > 0) return `${m}分钟`; return `${s}秒` }
-async function refresh() { await store.fetchRecommendations() }
+function chainHas(rec, matId) {
+  return !rec.chain_missing_materials?.some((m) => m.id === matId)
+}
+function currentMissing(rec) {
+  return decomposeT3.value ? rec.chain_missing_t3 || [] : rec.chain_missing_materials || []
+}
+function formatTime(s) {
+  const h = Math.floor(s / 3600),
+    m = Math.floor((s % 3600) / 60)
+  if (h > 0 && m > 0) return `${h}小时${m}分钟`
+  if (h > 0) return `${h}小时`
+  if (m > 0) return `${m}分钟`
+  return `${s}秒`
+}
+async function refresh() {
+  await store.fetchRecommendations()
+}
 async function fetchCultivate() {
   await store.fetchCultivate()
   if (store.cultivateOk) {
@@ -944,21 +923,12 @@ async function doAddTask() {
 
 // ─── 初始化 ───
 onMounted(async () => {
-<<<<<<< 4.1.6
   loadRoute()
   try {
     const r = await axios.get(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`)
     plan.value = r.data || {}
   } catch {}
   await Promise.all([loadOperators(), store.fetchRecommendations()])
-=======
-loadRoute()
-    try {
-      const r = await axios.get(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`)
-      plan.value = r.data || {}
-    } catch {}
-    await Promise.all([loadOperators(), store.fetchRecommendations()])
->>>>>>> 4.1.6
   allOperatorList.value = store.recommendations.map((op) => ({
     char_id: op.char_id,
     name: op.name,
@@ -976,21 +946,12 @@ async function loadOperators() {
 }
 
 watch(
-<<<<<<< 4.1.6
   plan,
   (v) => {
     axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, v).catch(() => {})
   },
   { deep: true }
 )
-=======
-    plan,
-    (v) => {
-      axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, v).catch(() => {})
-    },
-    { deep: true }
-  )
->>>>>>> 4.1.6
 </script>
 
 <style scoped>
