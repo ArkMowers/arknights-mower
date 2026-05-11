@@ -15,7 +15,9 @@ export const useMasteryStore = defineStore('mastery', () => {
     loading.value = true
     error.value = ''
     try {
-      const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/mastery-recommendation`)
+      const response = await axios.get(
+        `${import.meta.env.VITE_HTTP_URL}/mastery-recommendation`
+      )
       const data = response.data
       if (data.error) {
         error.value = data.error
@@ -46,7 +48,9 @@ export const useMasteryStore = defineStore('mastery', () => {
     cultivateOk.value = false
     cultivateMsg.value = ''
     try {
-      const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/cultivate-fetch`)
+      const response = await axios.get(
+        `${import.meta.env.VITE_HTTP_URL}/cultivate-fetch`
+      )
       const data = response.data
       if (data.success) {
         cultivateOk.value = true
