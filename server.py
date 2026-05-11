@@ -154,17 +154,14 @@ def item_list():
 def read_depot():
     from datetime import datetime as _dt
 
-    from arknights_mower.solvers.cultivate_depot import cultivate
     from arknights_mower.utils import depot
 
     cultivate_ok = False
-    cultivate_msg = ""
-    try:
-        cultivate().start()
+    cultivate_msg = "未同步"
+    cultivate_json = get_path("@app/tmp/cultivate.json")
+    if os.path.exists(cultivate_json):
         cultivate_ok = True
-        cultivate_msg = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
-    except Exception as e:
-        cultivate_msg = str(e)
+        cultivate_msg = _dt.fromtimestamp(os.path.getmtime(cultivate_json)).strftime("%Y-%m-%d %H:%M:%S")
 
     data = depot.读取仓库()
     return {"depot": data, "cultivate_ok": cultivate_ok, "cultivate_msg": cultivate_msg}
