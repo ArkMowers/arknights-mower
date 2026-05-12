@@ -7,9 +7,77 @@ const { maa_weekly_plan, maa_enable, maa_expiring_medicine, exipring_medicine_on
   storeToRefs(store)
 
 import { NTag } from 'naive-ui'
-import { h, inject } from 'vue'
+import { computed, h, inject, ref } from 'vue'
 
 const mobile = inject('mobile')
+
+// 关卡开放时间表（索引：周一=0, 周日=6）
+const weekdayIndices = { 周一: 0, 周二: 1, 周三: 2, 周四: 3, 周五: 4, 周六: 5, 周日: 6 }
+const time_table = {
+  CE: [1, 3, 5, 6], // 龙门币：周二、周四、周六、周日
+  AP: [0, 3, 5, 6], // 红票：周一、周四、周六、周日
+  SK: [0, 2, 4, 5], // 碳本：周一、周三、周五、周六
+  CA: [1, 2, 4, 6], // 技能书：周二、周三、周五、周日
+  'PR-A': [0, 3, 4, 6], // 医疗重装：周一、周四、周五、周日
+  'PR-B': [0, 1, 4, 5], // 狙击术师：周一、周二、周五、周六
+  'PR-C': [2, 3, 5, 6], // 先锋辅助：周三、周四、周六、周日
+  'PR-D': [1, 2, 5, 6] // 近卫特种：周二、周三、周六、周日
+}
+
+// 关卡过滤开关（活动期间可关闭）
+const filterStageByAvailability = ref(true)
+
+// 关卡显示名称
+const stageDisplayNames = {
+  '': '上次作战',
+  Annihilation: '当期剿灭',
+  'LS-6': '经验书',
+  'CE-6': '龙门币',
+  'AP-5': '红票',
+  'SK-5': '碳本',
+  'CA-5': '技能书',
+  'PR-A-1': '医疗重装1',
+  'PR-A-2': '医疗重装2',
+  'PR-B-1': '狙击术师1',
+  'PR-B-2': '狙击术师2',
+  'PR-C-1': '先锋辅助1',
+  'PR-C-2': '先锋辅助2',
+  'PR-D-1': '近卫特种1',
+  'PR-D-2': '近卫特种2',
+  '1-7': '1-7'
+}
+
+const presetStages = Object.keys(stageDisplayNames)
+
+const stageOptions = computed(() =>
+  presetStages.map((value) => ({
+    label: value ? `${stageDisplayNames[value]} (${value})` : stageDisplayNames[value],
+    value
+  }))
+)
+
+// 判断关卡在某天是否开放
+function isStageAvailableOnWeekday(stage, weekdayName) {
+  const dayIndex = weekdayIndices[weekdayName]
+  if (dayIndex === undefined) return true
+  // 常驻关卡每天都开放
+  if (stage === '' || stage === 'Annihilation' || stage === '1-7' || stage === 'LS-6') return true
+  // 根据时间表判断
+  for (const [prefix, days] of Object.entries(time_table)) {
+    if (stage.startsWith(prefix)) {
+      return days.includes(dayIndex)
+    }
+  }
+  return true
+}
+
+// 根据开关过滤关卡选项
+function filteredStageOptions(weekday) {
+  if (!filterStageByAvailability.value) {
+    return stageOptions.value
+  }
+  return stageOptions.value.filter((opt) => isStageAvailableOnWeekday(opt.value, weekday))
+}
 
 function render_tag({ option, handleClose }) {
   return h(
@@ -85,6 +153,7 @@ function create_tag(label) {
           <li>第一章、第八章、第十二章主线；</li>
           <li>全部资源收集关卡。</li>
         </ul>
+        <div>资源收集关卡按开放时间过滤，活动期间可关闭过滤。</div>
       </help-text>
       <n-button
         text
@@ -104,16 +173,23 @@ function create_tag(label) {
       label-align="left"
     >
       <n-form-item :show-label="false">
-        <n-flex>
-          <n-checkbox v-model:checked="maa_expiring_medicine">
-            自动使用将要过期（约3天）的理智药
-          </n-checkbox>
-          <n-checkbox
-            v-model:checked="exipring_medicine_on_weekend"
-            :disabled="!maa_expiring_medicine"
-          >
-            仅在周末使用
-          </n-checkbox>
+        <n-flex vertical :size="8">
+          <n-flex>
+            <n-checkbox v-model:checked="maa_expiring_medicine">
+              自动使用将要过期（约3天）的理智药
+            </n-checkbox>
+            <n-checkbox
+              v-model:checked="exipring_medicine_on_weekend"
+              :disabled="!maa_expiring_medicine"
+            >
+              仅在周末使用
+            </n-checkbox>
+          </n-flex>
+          <n-flex>
+            <n-checkbox v-model:checked="filterStageByAvailability">
+              只显示当日开放关卡
+            </n-checkbox>
+          </n-flex>
         </n-flex>
       </n-form-item>
     </n-form>
@@ -133,6 +209,7 @@ function create_tag(label) {
             tag
             :show="false"
             :show-arrow="false"
+            :options="filteredStageOptions(plan.weekday)"
             :render-tag="render_tag"
             :on-create="create_tag"
           />
