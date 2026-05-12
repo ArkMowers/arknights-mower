@@ -71,6 +71,9 @@ const copyTargetDays = ref([])
 let copyDialogLongPressTimer = null
 let copyDialogLongPressTriggered = false
 
+// 关卡过滤开关（活动期间可关闭）
+const filterStageByAvailability = ref(true)
+
 const currentWeekdayIndex = computed(() => {
   const day = new Date().getDay()
   return day === 0 ? 6 : day - 1
@@ -82,6 +85,14 @@ const stageOptions = computed(() =>
     value
   }))
 )
+
+// 根据开关过滤关卡选项
+function filteredStageOptions(weekday) {
+  if (!filterStageByAvailability.value) {
+    return stageOptions.value
+  }
+  return stageOptions.value.filter((opt) => isStageAvailableOnWeekday(opt.value, weekday))
+}
 
 // --- 关卡可用性预计算 ---
 const stageAvailability = computed(() => {
@@ -322,17 +333,22 @@ function cancelCopyDialogLongPress() {
       label-align="left"
     >
       <n-form-item :show-label="false">
-        <n-flex class="weekly-plan-toolbar" align="center">
-          <n-checkbox v-model:checked="maa_expiring_medicine">使用将要过期的理智药</n-checkbox>
-          <n-checkbox
-            v-model:checked="exipring_medicine_on_weekend"
-            :disabled="!maa_expiring_medicine"
-          >
-            周末使用
-          </n-checkbox>
-          <div class="weekly-plan-selector-wrap">
-            <WeeklyPlanSelector compact />
-          </div>
+        <n-flex vertical :size="8">
+          <n-flex class="weekly-plan-toolbar" align="center">
+            <n-checkbox v-model:checked="maa_expiring_medicine">使用将要过期的理智药</n-checkbox>
+            <n-checkbox
+              v-model:checked="exipring_medicine_on_weekend"
+              :disabled="!maa_expiring_medicine"
+            >
+              周末使用
+            </n-checkbox>
+            <div class="weekly-plan-selector-wrap">
+              <WeeklyPlanSelector compact />
+            </div>
+          </n-flex>
+          <n-flex>
+            <n-checkbox v-model:checked="filterStageByAvailability">只显示当日开放关卡</n-checkbox>
+          </n-flex>
         </n-flex>
       </n-form-item>
     </n-form>
@@ -359,7 +375,7 @@ function cancelCopyDialogLongPress() {
               multiple
               filterable
               tag
-              :options="stageOptions"
+              :options="filteredStageOptions(plan.weekday)"
               :render-tag="renderStageTag(plan)"
               :on-create="createTag"
             />
