@@ -4465,11 +4465,42 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         try:
             cultivateDepotSolver().start()
             DepotSolver(self.device, self.recog).run()
+            self._auto_schedule_mastery_after_scan()
         except Exception as e:
             save_exception(e)
             logger.exception(f"先不运行 出bug了 : {e}")
             return False
         return True
+
+    def _auto_schedule_mastery_after_scan(self):
+        try:
+            from arknights_mower.utils.mastery_recommendation import (
+                auto_schedule_mastery_tasks,
+            )
+            from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+            res = auto_schedule_mastery_tasks()
+            for entry in res.get("scheduled", []):
+                has = self.find_next_task(
+                    task_type=TaskTypes.SKILL_UPGRADE,
+                    meta_data=str(entry["skill_index"] + 1),
+                )
+                if not has:
+                    self.tasks.append(
+                        SchedulerTask(
+                            task_type=TaskTypes.SKILL_UPGRADE,
+                            meta_data=str(entry["skill_index"] + 1),
+                        )
+                    )
+                    logger.info(
+                        f"自动安排专精: {entry['name']} {entry['skill_name']}"
+                    )
+            skipped = res.get("skipped", [])
+            if skipped:
+                names = [f"{s['name']}{s['skill_name']}" for s in skipped]
+                logger.info(f"跳过专精（材料不足）: {', '.join(names)}")
+        except Exception as e:
+            logger.exception(f"自动安排专精失败: {e}")
 
     def handle_idle_action(self, remaining_time=0):
         if config.conf.close_simulator_when_idle and remaining_time > 300:

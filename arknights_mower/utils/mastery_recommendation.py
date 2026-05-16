@@ -256,3 +256,93 @@ def get_mastery_recommendations():
     result["operators"] = operators
     result["has_data"] = True
     return result
+
+
+def auto_schedule_mastery_tasks():
+    """仓库扫描后：检测计划内未满M3的技能，直接需求全部满足则返回待安排列表"""
+    result = {"scheduled": [], "skipped": []}
+
+    plan_path = get_path("@app/tmp/matery_plan.json")
+    if not os.path.exists(plan_path):
+        return result
+    try:
+        with open(plan_path, "r", encoding="utf-8") as f:
+            plan = json.load(f)
+    except Exception:
+        return result
+    if not plan:
+        return result
+
+    plan_set = set()
+    for key in plan:
+        if not plan[key]:
+            continue
+        parts = key.rsplit("_", 1)
+        if len(parts) == 2:
+            try:
+                plan_set.add((parts[0], int(parts[1])))
+            except ValueError:
+                pass
+
+    if not plan_set:
+        return result
+
+    rec_result = get_mastery_recommendations()
+    if not rec_result.get("has_data"):
+        return result
+
+    operators = rec_result.get("operators", [])
+
+    cultivate_path = get_path("@app/tmp/cultivate.json")
+    inventory = {}
+    if os.path.exists(cultivate_path):
+        try:
+            with open(cultivate_path, "r", encoding="utf-8") as f:
+                cdata = json.load(f)
+            for item in cdata.get("data", {}).get("items", []):
+                cnt = int(item.get("count", 0))
+                if cnt > 0:
+                    inventory[item.get("id", "")] = cnt
+        except Exception:
+            pass
+
+    skill_data_path = _find_skill_data()
+    name_to_id = {}
+    if os.path.exists(skill_data_path):
+        try:
+            with open(skill_data_path, "r", encoding="utf-8") as f:
+                items_table = json.load(f).get("items", {})
+            for iid, info in items_table.items():
+                name_to_id[info.get("name", "")] = iid
+        except Exception:
+            pass
+
+    for op in operators:
+        for rec in op.get("recommendations", []):
+            if (op["char_id"], rec["skill_index"]) not in plan_set:
+                continue
+            if rec.get("current_level", 0) >= 3:
+                continue
+
+            all_materials_sufficient = True
+            for mat in rec.get("chain_needed_materials", []):
+                mat_id = name_to_id.get(mat["name"], "")
+                owned = inventory.get(mat_id, 0)
+                if owned < mat["count"]:
+                    all_materials_sufficient = False
+                    break
+
+            entry = {
+                "char_id": op["char_id"],
+                "name": op["name"],
+                "profession": op["profession"],
+                "skill_index": rec["skill_index"],
+                "skill_name": rec["skill_name"],
+                "achievable": all_materials_sufficient,
+            }
+            if all_materials_sufficient:
+                result["scheduled"].append(entry)
+            else:
+                result["skipped"].append(entry)
+
+    return result

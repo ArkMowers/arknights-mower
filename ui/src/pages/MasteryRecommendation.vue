@@ -21,6 +21,8 @@
           <template #icon><n-icon :component="HammerIcon" /></template>
           自动合成配置
         </n-button>
+        <n-button size="small" @click="savePreset">保存合成配置</n-button>
+        <n-button size="small" @click="restorePreset">还原合成配置</n-button>
         <n-select
           v-model:value="t5Operator"
           :options="operatorOptions"
@@ -361,6 +363,18 @@
             <n-checkbox v-model:checked="routeSettings[prof].optimal">最优协助干员</n-checkbox>
             <n-checkbox v-model:checked="routeSettings[prof].half_off">有减半加成</n-checkbox>
           </div>
+          <n-divider />
+          <n-text depth="2">中枢干员加成</n-text>
+          <n-radio-group v-model:value="controlCenter" style="margin-top: 4px">
+            <n-space vertical>
+              <n-radio v-for="opt in controlCenterOptions" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </n-radio>
+            </n-space>
+          </n-radio-group>
+          <n-text v-if="controlCenterBonus > 0" depth="2" style="font-size: 12px; margin-top: 4px">
+            中枢加成: +{{ controlCenterBonus }}%
+          </n-text>
         </n-tab-pane>
       </n-tabs>
       <template #footer>
@@ -461,6 +475,8 @@ import {
   NText,
   NThing,
   NDynamicInput,
+  NRadio,
+  NRadioGroup,
   useMessage
 } from 'naive-ui'
 import { Settings, List } from '@vicons/carbon'
@@ -598,6 +614,33 @@ const filteredPlanOperators = computed(() => {
   return list
 })
 
+async function savePreset() {
+  try {
+    await axios.post(
+      `${import.meta.env.VITE_HTTP_URL}/workshop-preset`,
+      configStore.workshop_settings
+    )
+    message.success('当前合成配置已保存为默认')
+  } catch (e) {
+    message.error('保存失败: ' + e.message)
+  }
+}
+async function restorePreset() {
+  try {
+    const r = await axios.get(`${import.meta.env.VITE_HTTP_URL}/workshop-preset`)
+    if (r.data && r.data.length) {
+      configStore.workshop_settings = r.data
+      await new Promise((res) => setTimeout(res, 100))
+      await axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, configStore.build_config())
+      message.success('合成配置已还原')
+    } else {
+      message.warning('暂无已保存的合成配置')
+    }
+  } catch (e) {
+    message.error('还原失败: ' + e.message)
+  }
+}
+
 async function autoWorkshop() {
   workshopLoading.value = true
   try {
@@ -683,6 +726,14 @@ const level_list = [
   { value: 2, label: '专二' },
   { value: 3, label: '专三' }
 ]
+const controlCenterOptions = [
+  { label: '无加成', value: 'none' },
+  { label: '阿斯卡纶 (+5%)', value: 'ascalon' },
+  { label: '烛煌 (+5%)', value: 'zhuhuang' },
+  { label: '斩业星熊 (+5%)', value: 'star_bear' }
+]
+const controlCenter = ref('none')
+const controlCenterBonus = computed(() => (controlCenter.value === 'none' ? 0 : 5))
 
 const t60 = {
   先锋: { name: '嵯峨', speed: 60 },
@@ -788,10 +839,12 @@ function loadRoute() {
         routeSettings[p].half_off = d[p].half_off !== undefined ? d[p].half_off : true
       }
     }
+    if (d.controlCenter) controlCenter.value = d.controlCenter
   } catch {}
 }
 function saveRoute() {
-  localStorage.setItem(ROUTE_KEY, JSON.stringify(routeSettings))
+  const toSave = { ...routeSettings, controlCenter: controlCenter.value }
+  localStorage.setItem(ROUTE_KEY, JSON.stringify(toSave))
   message.success('已保存')
   showSettings.value = false
 }
@@ -829,7 +882,27 @@ function visibleRecs(op) {
   return op.recommendations
 }
 
-const plannedT3Summary = computed(() => workshopT3Summary.value)
+const plannedT3Summary = ref([])
+
+async function refreshT3Summary() {
+  const keys = Object.keys(plan.value).filter((k) => plan.value[k])
+  if (!keys.length) {
+    plannedT3Summary.value = []
+    return
+  }
+  try {
+    const r = await axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-t3-summary`, {
+      planned_skills: keys
+    })
+    plannedT3Summary.value = r.data?.t3_summary || []
+  } catch {
+    plannedT3Summary.value = []
+  }
+}
+
+watch(plan, () => {
+  refreshT3Summary()
+}, { deep: true })
 
 // ─── 工具函数 ───
 function chainHas(rec, matId) {
@@ -866,11 +939,12 @@ function buildSupports(op) {
   const p = profMap[op.profession] || '近卫'
   const s = routeSettings[p]
   if (!s?.supports?.length) return []
+  const bonus = controlCenterBonus.value
   return s.supports.map((sup) => ({
     name: sup.name,
     swap_name: sup.swap ? sup.swap_name || sup.name : sup.name,
     skill_level: sup.skill_level,
-    efficiency: sup.efficiency || 45,
+    efficiency: Math.min(100, (sup.efficiency || 45) + bonus),
     match: sup.swap ? !!sup.match : false,
     half_off: sup.skill_level === 1 ? s.half_off : false
   }))
@@ -936,6 +1010,7 @@ onMounted(async () => {
     profession: op.profession,
     recommendations: op.recommendations
   }))
+  await refreshT3Summary()
 })
 
 async function loadOperators() {

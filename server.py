@@ -1151,6 +1151,139 @@ def workshop_auto_config():
     }
 
 
+@app.route("/mastery-t3-summary", methods=["POST"])
+def mastery_t3_summary():
+    import json as _json
+    from collections import defaultdict
+
+    from arknights_mower.data import workshop_formula
+    from arknights_mower.utils.mastery_recommendation import (
+        _find_skill_data,
+        get_mastery_recommendations,
+    )
+
+    req = request.json or {}
+    planned_keys = req.get("planned_skills", [])
+    if not planned_keys:
+        return {"t3_summary": []}
+
+    skill_data_path = _find_skill_data()
+    with open(skill_data_path, "r", encoding="utf-8") as f:
+        skill_data = _json.load(f)
+    items = skill_data.get("items", {})
+
+    t4_names = {
+        n
+        for n, e in workshop_formula.items()
+        if e.get("tab") == "精英材料" and e.get("apCost") == 4.0
+    }
+    t5_names = {
+        n
+        for n, e in workshop_formula.items()
+        if e.get("tab") == "精英材料" and e.get("apCost") == 8.0
+    }
+
+    result = get_mastery_recommendations()
+    operators = result.get("operators", [])
+
+    plan_set = set()
+    for key in planned_keys:
+        parts = key.rsplit("_", 1)
+        if len(parts) == 2:
+            try:
+                plan_set.add((parts[0], int(parts[1])))
+            except ValueError:
+                pass
+
+    # 步骤1: 读取计划内所有需求材料
+    raw_demand = defaultdict(int)
+    for op in operators:
+        for rec in op.get("recommendations", []):
+            if (op["char_id"], rec["skill_index"]) not in plan_set:
+                continue
+            for mat in rec.get("chain_needed_materials", []):
+                raw_demand[mat["name"]] += mat["count"]
+
+    # 步骤2: 分类 T5 / T4 / T3+
+    demand_t5 = {n: c for n, c in raw_demand.items() if n in t5_names}
+    demand_t4 = {n: c for n, c in raw_demand.items() if n in t4_names}
+    demand_t3 = {n: c for n, c in raw_demand.items() if n not in t4_names and n not in t5_names}
+
+    # 加载仓库库存
+    cultivate_path = get_path("@app/tmp/cultivate.json")
+    inventory = defaultdict(int)
+    if os.path.exists(cultivate_path):
+        with open(cultivate_path, "r", encoding="utf-8") as f:
+            cdata = _json.load(f)
+        for item in cdata.get("data", {}).get("items", []):
+            cnt = int(item.get("count", 0))
+            if cnt > 0:
+                inventory[item.get("id", "")] = cnt
+
+    id_by_name = {}
+    for iid, info in items.items():
+        id_by_name[info.get("name", "")] = iid
+
+    def inv_of(name):
+        return inventory.get(id_by_name.get(name, ""), 0)
+
+    # 步骤3: T5缺失 → 拆解为T4间接缺失
+    t4_indirect = defaultdict(int)
+    for t5_name, t5_demand in demand_t5.items():
+        t5_missing = max(0, t5_demand - inv_of(t5_name))
+        formula = t5_names.get(t5_name, {})
+        for child in formula.get("items", []):
+            if child in t4_names:
+                t4_indirect[child] += t5_missing
+
+    # 步骤4: T4总需 = T4直接 + T4间接; T4缺失 = T4总需 - T4库存
+    t4_total = defaultdict(int)
+    for name in set(list(demand_t4.keys()) + list(t4_indirect.keys())):
+        t4_total[name] = demand_t4.get(name, 0) + t4_indirect.get(name, 0)
+
+    t4_missing_entries = []
+    for name, demand in t4_total.items():
+        missing = max(0, demand - inv_of(name))
+        if missing > 0:
+            t4_missing_entries.append((name, missing))
+
+    # 步骤5: T4缺失 → 拆解为T3间接缺失
+    t3_indirect = defaultdict(int)
+    queue = list(t4_missing_entries)
+    while queue:
+        name, cnt = queue.pop(0)
+        formula = workshop_formula.get(name)
+        if not formula or not formula.get("items"):
+            t3_indirect[name] += cnt
+            continue
+        for child in formula["items"]:
+            queue.append((child, cnt))
+
+    # 步骤6: T3总需 = T3直接 + T3间接; T3缺失 = T3总需 - T3库存
+    t3_total = defaultdict(int)
+    for name, count in demand_t3.items():
+        t3_total[name] += count
+    for name, count in t3_indirect.items():
+        t3_total[name] += count
+
+    t3_summary = []
+    for name, need in sorted(t3_total.items(), key=lambda x: -x[1]):
+        owned = inv_of(name)
+        shortage = max(0, need - owned)
+        if shortage > 0:
+            t3_summary.append(
+                {
+                    "id": id_by_name.get(name, name),
+                    "name": name,
+                    "count": shortage,
+                    "total": need,
+                    "owned": owned,
+                }
+            )
+
+    return {"t3_summary": t3_summary}
+
+
 @app.route("/mastery-plan", methods=["GET", "POST"])
 def mastery_plan():
     import json as _json
@@ -1168,6 +1301,27 @@ def mastery_plan():
         data = request.json or {}
         plan_path.parent.mkdir(parents=True, exist_ok=True)
         with open(plan_path, "w", encoding="utf-8") as f:
+            _json.dump(data, f, ensure_ascii=False)
+        return {"success": True}
+
+
+@app.route("/workshop-preset", methods=["GET", "POST"])
+def workshop_preset():
+    import json as _json
+
+    preset_path = get_path("@app/tmp/workshop_preset.json")
+    if request.method == "GET":
+        if os.path.exists(preset_path):
+            try:
+                with open(preset_path, "r", encoding="utf-8") as f:
+                    return _json.load(f)
+            except Exception:
+                pass
+        return []
+    else:
+        data = request.json or []
+        preset_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(preset_path, "w", encoding="utf-8") as f:
             _json.dump(data, f, ensure_ascii=False)
         return {"success": True}
 
