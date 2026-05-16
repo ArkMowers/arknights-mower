@@ -7,13 +7,14 @@ from arknights_mower.utils.log import logger
 
 
 class TaskDispatch:
-    MAX_RETRY = 3
 
     def __init__(self) -> None:
         self._executors: dict[TaskTypes, type] = {}
+        self._executor_kwargs: dict[TaskTypes, dict] = {}
 
-    def register(self, task_type: TaskTypes, executor: type) -> None:
+    def register(self, task_type: TaskTypes, executor: type, **kwargs) -> None:
         self._executors[task_type] = executor
+        self._executor_kwargs[task_type] = kwargs
 
     def get(self, task_type: TaskTypes) -> type | None:
         return self._executors.get(task_type)
@@ -26,21 +27,17 @@ class TaskDispatch:
 
     def execute(self, task: SchedulerTask, infra: InfraKit) -> bool:
         executor_cls = self.resolve(task.type)
-        executor = executor_cls(infra)
+        kwargs = self._executor_kwargs.get(task.type, {})
+        executor = executor_cls(infra, **kwargs)
 
-        for attempt in range(1, self.MAX_RETRY + 1):
+        while True:
             try:
                 executor.execute(task)
                 return True
             except DeviceError:
-                logger.warning(
-                    f"DeviceError on attempt {attempt}/{self.MAX_RETRY}, reconnecting..."
-                )
+                logger.warning("DeviceError, reconnecting...")
                 infra.device.reconnect()
                 continue
             except Exception:
                 logger.exception(f"executor failed for task: {task}")
                 return False
-
-        logger.error(f"executor failed after {self.MAX_RETRY} retries: {task}")
-        return False

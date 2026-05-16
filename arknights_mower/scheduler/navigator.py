@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import logging
-import time
 from typing import Callable, Optional
 
 from arknights_mower.scheduler.constants import TapPosition
@@ -10,8 +8,7 @@ from arknights_mower.scheduler.graph import SceneGraph
 from arknights_mower.scheduler.infra.pause_controller import PauseController
 from arknights_mower.scheduler.infra.thread_pause import ThreadPauseController
 from arknights_mower.scheduler.scene import Scene
-
-logger = logging.getLogger(__name__)
+from arknights_mower.utils.log import logger
 
 
 _WAITING_SCENES = {Scene.LOADING, Scene.CONNECTING, Scene.LOGIN_LOADING, Scene.SKIP}
@@ -60,12 +57,13 @@ class Navigator:
             if path is None:
                 logger.error(f"no path from {current} to {target}")
                 return False
-
             transition = path[0]
             handler = getattr(self, f"_action_{transition.action}", None)
+
             if handler is None:
                 logger.error(f"no handler for {transition.action}")
                 return False
+
 
             try:
                 handler()
@@ -80,62 +78,112 @@ class Navigator:
         return True
 
     def enter_room(self, room: str) -> bool:
-        for _ in range(3):
-            self._pause.wait_if_paused()
-            self._get_scene()
-
-            central = self._recognizer.find("control_central") if self._recognizer else None
-            if central is None:
-                continue
-
-            from arknights_mower.utils.segment import base as segment_base
-
-            rooms_map = segment_base(self._recognizer.img, central)
-            target = rooms_map.get(room)
-            if target is None:
-                continue
-
-            import numpy as np
-
-            target = np.clip(target, [0, 0], [1920, 1080])
-            cx = int((target[0][0] + target[2][0]) / 2)
-            cy = int((target[0][1] + target[2][1]) / 2)
-            self._device.tap(cx / 1920, cy / 1080)
-
-            if self._wait_room_detail():
-                return True
-
-            self._device.back()
-
-        return False
-
-    def enter_room(self, room: str) -> None:
-        from arknights_mower.utils.segment import base as segment_base
-        import numpy as np
+        import time
+        t0 = time.time()
 
         if self._get_scene() != Scene.INFRA_MAIN:
             self.navigate(Scene.INFRA_MAIN)
             self.wait_scene_stable()
 
+        logger.info(f"enter_room({room}): _get_scene + navigate took {time.time()-t0:.2f}s")
+        t1 = time.time()
+
         central = self._recognizer.find("control_central") if self._recognizer else None
         if central is None:
-            return
+            logger.warning(f"enter_room({room}): control_central not found ({time.time()-t1:.2f}s)")
+            return False
+
+        logger.info(f"enter_room({room}): find control_central took {time.time()-t1:.2f}s")
+        t2 = time.time()
+
+        from arknights_mower.utils.segment import base as segment_base
 
         rooms_map = segment_base(self._recognizer.img, central)
         target = rooms_map.get(room)
         if target is None:
-            return
+            logger.warning(f"enter_room({room}): room not in segmented map, keys={list(rooms_map.keys())} ({time.time()-t2:.2f}s)")
+            return False
+
+        logger.info(f"enter_room({room}): segment took {time.time()-t2:.2f}s")
+        t3 = time.time()
+
+        import numpy as np
 
         target = np.clip(target, [0, 0], [1920, 1080])
-        cx = int((target[0][0] + target[2][0]) / 2)
-        cy = int((target[0][1] + target[2][1]) / 2)
+        min_x = min(p[0] for p in target)
+        max_x = max(p[0] for p in target)
+        if min_x < 0:
+            dx = -min_x
+            self._device.swipe(960 / 1920, 540 / 1080, (960 + dx) / 1920, 540 / 1080, duration=500)
+            for i in range(len(target)):
+                target[i][0] += dx
+            target = np.clip(target, [0, 0], [1920, 1080])
+        elif max_x > 1920:
+            dx = 1920 - max_x
+            self._device.swipe(960 / 1920, 540 / 1080, (960 + dx) / 1920, 540 / 1080, duration=500)
+            for i in range(len(target)):
+                target[i][0] += dx
+            target = np.clip(target, [0, 0], [1920, 1080])
+        cx = int((target[0][0] + target[2][0]) // 2)
+        cy = int((target[0][1] + target[2][1]) // 2)
+        logger.info(f"enter_room({room}): tap at ({cx}, {cy})")
         self._device.tap(cx / 1920, cy / 1080)
+        logger.info(f"enter_room({room}): TOTAL {time.time()-t0:.2f}s")
+        return True
+
+    def _detect_room(self) -> str | None:
+        if self._recognizer is None:
+            return None
+        import cv2
+        import numpy as np
+        from arknights_mower.utils.image import cropimg, loadres
+
+        img = cropimg(self._recognizer.img, ((568, 18), (957, 95)))
+        hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
+        color_map = {"room_1_": 25, "room_2_": 99, "room_3_": 36, "train": 178, "factory": 32}
+        for room, color in color_map.items():
+            mask = cv2.inRange(hsv, (color - 1, 0, 0), (color + 2, 255, 255))
+            if cv2.countNonZero(mask) > 1000:
+                if room in ("train", "factory"):
+                    return room
+                d1 = self._detect_digit(cropimg(img, ((211, 24), (232, 54))))
+                d2 = self._detect_digit(cropimg(img, ((253, 24), (274, 54))))
+                return f"room_{d1}_{d2}"
+        white_rooms = ["central", "dormitory", "meeting", "contact"]
+        scores = []
+        for room in white_rooms:
+            tpl = loadres(f"room/{room}")
+            result = cv2.matchTemplate(img, tpl, cv2.TM_CCOEFF_NORMED)
+            _, max_val, _, _ = cv2.minMaxLoc(result)
+            scores.append(max_val)
+        room = white_rooms[scores.index(max(scores))]
+        if room == "dormitory":
+            digit = self._detect_digit(cropimg(img, ((174, 24), (195, 54))))
+            return f"dormitory_{digit}"
+        return room
+
+    def _detect_digit(self, img) -> int:
+        import cv2
+        from arknights_mower.utils.image import loadres
+
+        scores = []
+        for i in range(1, 5):
+            digit = loadres(f"room/{i}")
+            result = cv2.matchTemplate(img, digit, cv2.TM_CCOEFF_NORMED)
+            _, max_val, _, _ = cv2.minMaxLoc(result)
+            scores.append(max_val)
+        return scores.index(max(scores)) + 1
+
+    def wait_scene(self, targets: set) -> bool:
+        self._pause.wait_if_paused()
+        return self._get_scene() in targets
 
     def wait_scene_stable(
         self,
         max_checks: int = 30,
         min_stable: int = 3,
         threshold: float = 0.012,
+        crop: tuple = None,
     ) -> bool:
         import cv2
         import numpy as np
@@ -144,14 +192,14 @@ class Navigator:
         last = None
         for _ in range(max_checks):
             self._pause.wait_if_paused()
-            self._get_scene()
-            if self._recognizer and self._recognizer.find("connecting"):
-                stable = 0
-                continue
+            self._recognizer.update()
             gray = self._recognizer.gray if self._recognizer else None
             if gray is None:
                 continue
-            current = cv2.resize(gray, (480, 270))
+            if crop is not None:
+                x1, y1, x2, y2 = crop[0][0], crop[0][1], crop[1][0], crop[1][1]
+                gray = gray[y1:y2, x1:x2]
+            current = cv2.resize(gray, (240, 135))
             if last is not None:
                 diff = np.mean(cv2.absdiff(current, last)) / 255.0
                 if diff <= threshold:
@@ -166,15 +214,20 @@ class Navigator:
     def _wait_room_detail(self) -> bool:
         from arknights_mower.scheduler.scene import Scene
 
-        self.wait_scene_stable()
+        self.wait_scene_stable(max_checks=5, min_stable=3, crop=((0, 0), (1920, 162)))
         for _ in range(10):
-            self._pause.wait_if_paused()
             scene = self._get_scene()
-            if scene in (Scene.INFRA_DETAILS, Scene.INFRA_ARRANGE):
+            if scene == Scene.INFRA_ARRANGE:
                 return True
+            if scene == Scene.INFRA_DETAILS:
+                if self._recognizer and self._recognizer.find("room_detail"):
+                    return True
+                if self._recognizer and self._recognizer.find("arrange_check_in"):
+                    self._tap_element("arrange_check_in")
+                    continue
             if self._recognizer and self._recognizer.find("arrange_check_in"):
                 self._tap_element("arrange_check_in")
-                return True
+                continue
         return False
 
     def _back(self) -> None:
@@ -217,7 +270,6 @@ class Navigator:
             self._back()
             for _ in range(20):
                 self._pause.wait_if_paused()
-                time.sleep(0.25)
                 if self._get_scene() != scene:
                     return
 
@@ -235,7 +287,7 @@ class Navigator:
 
     def _action_login_captcha(self) -> None:
         self._tap_element("login_captcha")
-        time.sleep(5)
+        self.wait_scene_stable()
 
     def _action_login_bilibili(self) -> None:
         self._tap_pos(TapPosition.LOGIN_BILIBILI)
@@ -250,8 +302,10 @@ class Navigator:
         if self._recognizer is not None:
             pos = self._recognizer.check_announcement()
             if pos is not None:
-                box = pos[0] if isinstance(pos, tuple) else pos
-                self._tap(*self._center(box))
+                x, y = pos
+                self._device.tap(x / 1920, y / 1080)
+            else:
+                self._tap_pos(TapPosition.CENTER)
 
     def _action_agreement(self) -> None:
         if self._recognizer is not None:
@@ -261,7 +315,7 @@ class Navigator:
                 self._tap(*self._center(box))
             else:
                 self._tap_pos(TapPosition.AGREEMENT_LINE1)
-                time.sleep(0.5)
+                self.wait_scene_stable()
                 self._tap_pos(TapPosition.AGREEMENT_LINE2)
 
     def _action_index_to_infra(self) -> None:
@@ -359,6 +413,7 @@ class Navigator:
 
     def _action_infra_back(self) -> None:
         self._back()
+        self.wait_scene_stable()
 
     def _action_infra_arrange_confirm(self) -> None:
         self._tap_pos(TapPosition.INFRA_ARRANGE_CONFIRM)

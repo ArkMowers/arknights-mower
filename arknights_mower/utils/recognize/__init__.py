@@ -37,6 +37,7 @@ class Recognizer:
         self.LOADING_TIME_LIMIT = 5
         self.last_scene = None
         self.last_scene_time = time.time()
+        self._scene_whitelist = None
 
     def clear(self):
         self._screencap = None
@@ -149,6 +150,13 @@ class Recognizer:
                 self.last_scene_time = current_time
                 self.device.exit()
 
+    def set_scene_whitelist(self, scenes: Optional[List[int]]) -> None:
+        self._scene_whitelist = set(scenes) if scenes else None
+
+    def _scene_in_whitelist(self, *scenes: int) -> bool:
+        wl = self._scene_whitelist
+        return wl is None or any(s in wl for s in scenes)
+
     def get_scene(self) -> int:
         """get the current scene in the game"""
         current_time = datetime.now()
@@ -162,88 +170,89 @@ class Recognizer:
             self.scene = Scene.CONNECTING
 
         # 平均色匹配
-        elif self.find("confirm"):
+        elif self._scene_in_whitelist(Scene.CONFIRM) and self.find("confirm"):
             self.scene = Scene.CONFIRM
-        elif self.find("order_label"):
+        elif self._scene_in_whitelist(Scene.ORDER_LIST) and self.find("order_label"):
             self.scene = Scene.ORDER_LIST
-        elif self.find("drone"):
+        elif self._scene_in_whitelist(Scene.DRONE_ACCELERATE) and self.find("drone"):
             self.scene = Scene.DRONE_ACCELERATE
-        elif self.find("factory_collect"):
+        elif self._scene_in_whitelist(Scene.FACTORY_ROOMS) and self.find("factory_collect"):
             self.scene = Scene.FACTORY_ROOMS
-        elif self.find("nav_bar"):
+        elif self._scene_in_whitelist(Scene.NAVIGATION_BAR) and self.find("nav_bar"):
             self.scene = Scene.NAVIGATION_BAR
-        elif self.find("read_mail"):
+        elif self._scene_in_whitelist(Scene.MAIL) and self.find("read_mail"):
             self.scene = Scene.MAIL
-        elif self.find("navigation/record_restoration"):
+        elif self._scene_in_whitelist(Scene.OPERATOR_CHOOSE_LEVEL) and self.find("navigation/record_restoration"):
             self.scene = Scene.OPERATOR_CHOOSE_LEVEL
-        elif self.find("fight/refresh"):
+        elif self._scene_in_whitelist(Scene.OPERATOR_SUPPORT) and self.find("fight/refresh"):
             self.scene = Scene.OPERATOR_SUPPORT
-        elif self.find("ope_select_start"):
+        elif self._scene_in_whitelist(Scene.OPERATOR_SELECT) and self.find("ope_select_start"):
             self.scene = Scene.OPERATOR_SELECT
-        elif self.find("ope_eliminate"):
+        elif self._scene_in_whitelist(Scene.OPERATOR_ELIMINATE) and self.find("ope_eliminate"):
             self.scene = Scene.OPERATOR_ELIMINATE
-        elif self.find("ope_elimi_agency_panel"):
+        elif self._scene_in_whitelist(Scene.OPERATOR_ELIMINATE_AGENCY) and self.find("ope_elimi_agency_panel"):
             self.scene = Scene.OPERATOR_ELIMINATE_AGENCY
-        elif self.find("riic/report_title"):
+        elif self._scene_in_whitelist(Scene.RIIC_REPORT) and self.find("riic/report_title"):
             self.scene = Scene.RIIC_REPORT
-        elif self.find("control_central_assistants"):
+        elif self._scene_in_whitelist(Scene.CTRLCENTER_ASSISTANT) and self.find("control_central_assistants"):
             self.scene = Scene.CTRLCENTER_ASSISTANT
-        elif self.find("infra_overview"):
+        elif self._scene_in_whitelist(Scene.INFRA_MAIN) and self.find("infra_overview"):
             self.scene = Scene.INFRA_MAIN
-        elif self.find("infra_todo", scope=((0, 1013), (241, 1080))):
+        elif self._scene_in_whitelist(Scene.INFRA_TODOLIST) and self.find("infra_todo", scope=((0, 1013), (241, 1080))):
             self.scene = Scene.INFRA_TODOLIST
-        elif self.find("clue"):
+        elif self._scene_in_whitelist(Scene.INFRA_CONFIDENTIAL) and self.find("clue"):
             self.scene = Scene.INFRA_CONFIDENTIAL
-        elif self.find("infra_overview_in"):
+        elif self._scene_in_whitelist(Scene.INFRA_ARRANGE) and self.find("infra_overview_in"):
             self.scene = Scene.INFRA_ARRANGE
-        elif self.find("arrange_confirm"):
+        elif self._scene_in_whitelist(Scene.INFRA_ARRANGE_CONFIRM) and self.find("arrange_confirm"):
             self.scene = Scene.INFRA_ARRANGE_CONFIRM
-        elif self.find("terminal_main"):
+        elif self._scene_in_whitelist(Scene.TERMINAL_MAIN) and self.find("terminal_main"):
             self.scene = Scene.TERMINAL_MAIN
-        elif self.find("open_recruitment"):
+        elif self._scene_in_whitelist(Scene.RECRUIT_MAIN) and self.find("open_recruitment"):
             self.scene = Scene.RECRUIT_MAIN
-        elif self.find("recruiting_instructions"):
+        elif self._scene_in_whitelist(Scene.RECRUIT_TAGS) and self.find("recruiting_instructions"):
             self.scene = Scene.RECRUIT_TAGS
-        elif self.find("credit_shop_countdown"):
+        elif self._scene_in_whitelist(Scene.SHOP_CREDIT, Scene.UNKNOWN) and self.find("credit_shop_countdown"):
             hsv = cv2.cvtColor(self.img, cv2.COLOR_RGB2HSV)
             if 9 < hsv[870][1530][0] < 19:
                 self.scene = Scene.UNKNOWN
             else:
                 self.scene = Scene.SHOP_CREDIT
-        elif self.find("shop_credit_2"):
+        elif self._scene_in_whitelist(Scene.SHOP_OTHERS) and self.find("shop_credit_2"):
             self.scene = Scene.SHOP_OTHERS
-        elif self.find("shop_cart"):
+        elif self._scene_in_whitelist(Scene.SHOP_CREDIT_CONFIRM) and self.find("shop_cart"):
             self.scene = Scene.SHOP_CREDIT_CONFIRM
-        elif self.find("login_logo") and self.find("hypergryph"):
+        elif self._scene_in_whitelist(Scene.LOGIN_QUICKLY, Scene.LOGIN_MAIN, Scene.LOGIN_MAIN_NOENTRY) and self.find("login_logo") and self.find("hypergryph"):
             if self.find("login_awake"):
                 self.scene = Scene.LOGIN_QUICKLY
             elif self.find("login_account"):
                 self.scene = Scene.LOGIN_MAIN
             else:
                 self.scene = Scene.LOGIN_MAIN_NOENTRY
-        elif self.find("login_loading"):
+        elif self._scene_in_whitelist(Scene.LOGIN_LOADING) and self.find("login_loading"):
             self.scene = Scene.LOGIN_LOADING
-        elif self.find("12cadpa"):
+        elif self._scene_in_whitelist(Scene.LOGIN_START) and self.find("12cadpa"):
             self.scene = Scene.LOGIN_START
-        elif self.find("skip"):
+        elif self._scene_in_whitelist(Scene.SKIP) and self.find("skip"):
             self.scene = Scene.SKIP
-        elif self.find("login_connecting"):
+        elif self._scene_in_whitelist(Scene.LOGIN_LOADING) and self.find("login_connecting"):
             self.scene = Scene.LOGIN_LOADING
-        elif self.find("arrange_order_options"):
+        elif self._scene_in_whitelist(Scene.RIIC_OPERATOR_SELECT) and self.find("arrange_order_options"):
             self.scene = Scene.RIIC_OPERATOR_SELECT
-        elif (
+        elif self._scene_in_whitelist(Scene.INFRA_ARRANGE_ORDER) and (
             self.find("arrange_order_options_scene", threshold=0.90)
             or self.find("op_select_2")
             or self.find("op_select_1")
         ):
             self.scene = Scene.INFRA_ARRANGE_ORDER
-        elif self.find("ope_recover_potion_on"):
+        elif self._scene_in_whitelist(Scene.OPERATOR_RECOVER_POTION) and self.find("ope_recover_potion_on"):
             self.scene = Scene.OPERATOR_RECOVER_POTION
-        elif self.find("ope_recover_originite_on", scope=((1530, 120), (1850, 190))):
+        elif self._scene_in_whitelist(Scene.OPERATOR_RECOVER_ORIGINITE) and self.find("ope_recover_originite_on", scope=((1530, 120), (1850, 190))):
             self.scene = Scene.OPERATOR_RECOVER_ORIGINITE
-        elif self.find("double_confirm/main"):
+        elif self._scene_in_whitelist(Scene.DOUBLE_CONFIRM, Scene.EXIT_GAME, Scene.BACK_TO_FRIEND_LIST, Scene.OPERATOR_GIVEUP, Scene.LEAVE_INFRASTRUCTURE, Scene.REFRESH_TAGS, Scene.NETWORK_CHECK, Scene.DOWNLOAD_VOICE_RESOURCES) and self.find("double_confirm/main"):
             if self.find("double_confirm/exit"):
                 self.scene = Scene.EXIT_GAME
+                self.device.tap((650, 750))
             elif self.find("double_confirm/friend"):
                 self.scene = Scene.BACK_TO_FRIEND_LIST
             elif self.find("double_confirm/give_up"):
@@ -258,102 +267,102 @@ class Recognizer:
                 self.scene = Scene.DOWNLOAD_VOICE_RESOURCES
             else:
                 self.scene = Scene.DOUBLE_CONFIRM
-        elif self.find("mission_trainee_on"):
+        elif self._scene_in_whitelist(Scene.MISSION_TRAINEE) and self.find("mission_trainee_on"):
             self.scene = Scene.MISSION_TRAINEE
-        elif self.find("spent_credit"):
+        elif self._scene_in_whitelist(Scene.SHOP_UNLOCK_SCHEDULE) and self.find("spent_credit"):
             self.scene = Scene.SHOP_UNLOCK_SCHEDULE
-        elif self.find("loading7"):
+        elif self._scene_in_whitelist(Scene.LOADING) and self.find("loading7"):
             self.scene = Scene.LOADING
-        elif self.find("clue/daily"):
+        elif self._scene_in_whitelist(Scene.CLUE_DAILY) and self.find("clue/daily"):
             self.scene = Scene.CLUE_DAILY
-        elif self.find("clue/receive"):
+        elif self._scene_in_whitelist(Scene.CLUE_RECEIVE) and self.find("clue/receive"):
             self.scene = Scene.CLUE_RECEIVE
-        elif self.find("clue/give_away"):
+        elif self._scene_in_whitelist(Scene.CLUE_GIVE_AWAY) and self.find("clue/give_away"):
             self.scene = Scene.CLUE_GIVE_AWAY
-        elif self.find("clue/summary"):
+        elif self._scene_in_whitelist(Scene.CLUE_SUMMARY) and self.find("clue/summary"):
             self.scene = Scene.CLUE_SUMMARY
-        elif self.find("clue/filter_all"):
+        elif self._scene_in_whitelist(Scene.CLUE_PLACE) and self.find("clue/filter_all"):
             self.scene = Scene.CLUE_PLACE
-        elif self.find("upgrade"):
+        elif self._scene_in_whitelist(Scene.UPGRADE) and self.find("upgrade"):
             self.scene = Scene.UPGRADE
-        elif self.find("depot"):
+        elif self._scene_in_whitelist(Scene.DEPOT) and self.find("depot"):
             self.scene = Scene.DEPOT
-        elif self.find("pull_once"):
+        elif self._scene_in_whitelist(Scene.HEADHUNTING) and self.find("pull_once"):
             self.scene = Scene.HEADHUNTING
-        elif self.find("read_and_agree") or self.find("next_step"):
+        elif self._scene_in_whitelist(Scene.AGREEMENT_UPDATE) and (self.find("read_and_agree") or self.find("next_step")):
             self.scene = Scene.AGREEMENT_UPDATE
-        elif self.is_black():
+        elif self._scene_in_whitelist(Scene.LOADING) and self.is_black():
             self.scene = Scene.LOADING
 
         # 模板匹配
-        elif self.detect_index_scene():
+        elif self._scene_in_whitelist(Scene.INDEX) and self.detect_index_scene():
             self.scene = Scene.INDEX
-        elif self.find("materiel_ico"):
+        elif self._scene_in_whitelist(Scene.MATERIEL) and self.find("materiel_ico"):
             self.scene = Scene.MATERIEL
-        elif self.find("loading"):
+        elif self._scene_in_whitelist(Scene.LOADING) and self.find("loading"):
             self.scene = Scene.LOADING
-        elif self.find("loading2"):
+        elif self._scene_in_whitelist(Scene.LOADING) and self.find("loading2"):
             self.scene = Scene.LOADING
-        elif self.find("loading3"):
+        elif self._scene_in_whitelist(Scene.LOADING) and self.find("loading3"):
             self.scene = Scene.LOADING
-        elif self.find("loading4"):
+        elif self._scene_in_whitelist(Scene.LOADING) and self.find("loading4"):
             self.scene = Scene.LOADING
-        elif self.find("ope_start"):
+        elif self._scene_in_whitelist(Scene.OPERATOR_BEFORE) and self.find("ope_start"):
             self.scene = Scene.OPERATOR_BEFORE
-        elif self.find("navigation/episode"):
+        elif self._scene_in_whitelist(Scene.OPERATOR_CHOOSE_LEVEL) and self.find("navigation/episode"):
             self.scene = Scene.OPERATOR_CHOOSE_LEVEL
-        elif self.find("navigation/collection/AP-1"):
+        elif self._scene_in_whitelist(Scene.OPERATOR_CHOOSE_LEVEL) and self.find("navigation/collection/AP-1"):
             self.scene = Scene.OPERATOR_CHOOSE_LEVEL
-        elif self.find("navigation/collection/LS-1"):
+        elif self._scene_in_whitelist(Scene.OPERATOR_CHOOSE_LEVEL) and self.find("navigation/collection/LS-1"):
             self.scene = Scene.OPERATOR_CHOOSE_LEVEL
-        elif self.find("navigation/collection/CA-1"):
+        elif self._scene_in_whitelist(Scene.OPERATOR_CHOOSE_LEVEL) and self.find("navigation/collection/CA-1"):
             self.scene = Scene.OPERATOR_CHOOSE_LEVEL
-        elif self.find("navigation/collection/CE-1"):
+        elif self._scene_in_whitelist(Scene.OPERATOR_CHOOSE_LEVEL) and self.find("navigation/collection/CE-1"):
             self.scene = Scene.OPERATOR_CHOOSE_LEVEL
-        elif self.find("navigation/collection/SK-1"):
+        elif self._scene_in_whitelist(Scene.OPERATOR_CHOOSE_LEVEL) and self.find("navigation/collection/SK-1"):
             self.scene = Scene.OPERATOR_CHOOSE_LEVEL
-        elif self.find("navigation/collection/PR-A-1"):
+        elif self._scene_in_whitelist(Scene.OPERATOR_CHOOSE_LEVEL) and self.find("navigation/collection/PR-A-1"):
             self.scene = Scene.OPERATOR_CHOOSE_LEVEL
-        elif self.find("navigation/collection/PR-B-1"):
+        elif self._scene_in_whitelist(Scene.OPERATOR_CHOOSE_LEVEL) and self.find("navigation/collection/PR-B-1"):
             self.scene = Scene.OPERATOR_CHOOSE_LEVEL
-        elif self.find("navigation/collection/PR-C-1"):
+        elif self._scene_in_whitelist(Scene.OPERATOR_CHOOSE_LEVEL) and self.find("navigation/collection/PR-C-1"):
             self.scene = Scene.OPERATOR_CHOOSE_LEVEL
-        elif self.find("navigation/collection/PR-D-1"):
+        elif self._scene_in_whitelist(Scene.OPERATOR_CHOOSE_LEVEL) and self.find("navigation/collection/PR-D-1"):
             self.scene = Scene.OPERATOR_CHOOSE_LEVEL
-        elif self.find("ope_agency_going"):
+        elif self._scene_in_whitelist(Scene.OPERATOR_ONGOING) and self.find("ope_agency_going"):
             self.scene = Scene.OPERATOR_ONGOING
-        elif self.find("ope_finish"):
+        elif self._scene_in_whitelist(Scene.OPERATOR_FINISH) and self.find("ope_finish"):
             self.scene = Scene.OPERATOR_FINISH
-        elif self.find("fight/use"):
+        elif self._scene_in_whitelist(Scene.OPERATOR_STRANGER_SUPPORT) and self.find("fight/use"):
             self.scene = Scene.OPERATOR_STRANGER_SUPPORT
-        elif self.find("business_card"):
+        elif self._scene_in_whitelist(Scene.BUSINESS_CARD) and self.find("business_card"):
             self.scene = Scene.BUSINESS_CARD
-        elif self.find("friend_list"):
+        elif self._scene_in_whitelist(Scene.FRIEND_LIST) and self.find("friend_list"):
             self.scene = Scene.FRIEND_LIST
-        elif self.find("credit_visiting"):
+        elif self._scene_in_whitelist(Scene.FRIEND_VISITING) and self.find("credit_visiting"):
             self.scene = Scene.FRIEND_VISITING
-        elif (
+        elif self._scene_in_whitelist(Scene.INFRA_DETAILS) and (
             self.find("arrange_check_in")
             or self.find("arrange_check_in_on")
             or self.find("room_detail")
             or self.find("arrange_check_in_small")
         ):
             self.scene = Scene.INFRA_DETAILS
-        elif self.find("ope_failed"):
+        elif self._scene_in_whitelist(Scene.OPERATOR_FAILED) and self.find("ope_failed"):
             self.scene = Scene.OPERATOR_FAILED
-        elif self.find("mission_daily_on"):
+        elif self._scene_in_whitelist(Scene.MISSION_DAILY) and self.find("mission_daily_on"):
             self.scene = Scene.MISSION_DAILY
-        elif self.find("mission_weekly_on"):
+        elif self._scene_in_whitelist(Scene.MISSION_WEEKLY) and self.find("mission_weekly_on"):
             self.scene = Scene.MISSION_WEEKLY
-        elif self.find("recruit/agent_token") or self.find("recruit/agent_token_first"):
+        elif self._scene_in_whitelist(Scene.RECRUIT_AGENT) and (self.find("recruit/agent_token") or self.find("recruit/agent_token_first")):
             self.scene = Scene.RECRUIT_AGENT
-        elif self.find("main_theme"):
+        elif self._scene_in_whitelist(Scene.TERMINAL_MAIN_THEME) and self.find("main_theme"):
             self.scene = Scene.TERMINAL_MAIN_THEME
-        elif self.find("episode"):
+        elif self._scene_in_whitelist(Scene.TERMINAL_EPISODE) and self.find("episode"):
             self.scene = Scene.TERMINAL_EPISODE
-        elif self.find("biography"):
+        elif self._scene_in_whitelist(Scene.TERMINAL_BIOGRAPHY) and self.find("biography"):
             self.scene = Scene.TERMINAL_BIOGRAPHY
-        elif self.find("collection"):
+        elif self._scene_in_whitelist(Scene.TERMINAL_COLLECTION) and self.find("collection"):
             self.scene = Scene.TERMINAL_COLLECTION
         elif self.check_announcement():
             self.scene = Scene.ANNOUNCEMENT
@@ -361,19 +370,19 @@ class Recognizer:
         # 特征匹配
         # elif self.find("login_new"):
         #     self.scene = Scene.LOGIN_NEW
-        elif self.find("login_bilibili"):
+        elif self._scene_in_whitelist(Scene.LOGIN_BILIBILI) and self.find("login_bilibili"):
             self.scene = Scene.LOGIN_BILIBILI
-        elif self.find("login_bilibili_privacy"):
+        elif self._scene_in_whitelist(Scene.LOGIN_BILIBILI_PRIVACY) and self.find("login_bilibili_privacy"):
             self.scene = Scene.LOGIN_BILIBILI_PRIVACY
-        elif self.find("login_captcha"):
+        elif self._scene_in_whitelist(Scene.LOGIN_CAPTCHA) and self.find("login_captcha"):
             self.scene = Scene.LOGIN_CAPTCHA
-        elif self.find("factory_dashboard"):
+        elif self._scene_in_whitelist(Scene.FACTORY_DASHBOARD) and self.find("factory_dashboard"):
             self.scene = Scene.FACTORY_DASHBOARD
-        elif self.find("factory_formula"):
+        elif self._scene_in_whitelist(Scene.FACTORY_FORMULA) and self.find("factory_formula"):
             self.scene = Scene.FACTORY_FORMULA
-        elif self.find("factory_product_collect"):
+        elif self._scene_in_whitelist(Scene.FACTORY_PRODUCT_COLLECT) and self.find("factory_product_collect"):
             self.scene = Scene.FACTORY_PRODUCT_COLLECT
-        elif self.find("factory_tag"):
+        elif self._scene_in_whitelist(Scene.FACTORY_ROOM) and self.find("factory_tag"):
             self.scene = Scene.FACTORY_ROOM
 
         # 没弄完的

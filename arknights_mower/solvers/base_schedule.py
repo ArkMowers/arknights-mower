@@ -3070,12 +3070,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             data = {}
             if self.find("infra_no_operator", scope=name_p[i]):
                 _name = ""
-            else:
+            else:                
                 _name = self.read_screen(
                     cropimg(self.recog.gray, name_p[i]), type="name"
                 )
-            _mood = 24
-            # 如果房间不为空
+            _mood = 24            
+            # 如果房间不为空  
             update_time = False
             if _name != "":
                 if _name not in self.op_data.operators.keys() and _name in agent_list:

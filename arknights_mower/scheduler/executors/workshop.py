@@ -111,11 +111,7 @@ class WorkshopExecutor(AbstractExecutor):
                 break
 
     def _get_factory_scene(self) -> str:
-        from arknights_mower.utils.recognize import Recognizer
-
-        recog = Recognizer(self.infra.device._device)
-        recog.update()
-        s = recog.get_scene()
+        s = self._update_scene()
 
         from arknights_mower.utils.scene import Scene
 
@@ -130,11 +126,7 @@ class WorkshopExecutor(AbstractExecutor):
         return "UNKNOWN"
 
     def _is_arrange_checkin_visible(self) -> bool:
-        from arknights_mower.utils.recognize import Recognizer
-
-        recog = Recognizer(self.infra.device._device)
-        recog.update()
-        return recog.find("arrange_check_in") is not None
+        return self._recog is not None and self._recog.find("arrange_check_in") is not None
 
     def _navigate_infra(self) -> None:
         from arknights_mower.scheduler.scene import Scene as V2Scene
