@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from arknights_mower.scheduler.domain.task import SchedulerTask, TaskTypes
 from arknights_mower.scheduler.errors import DeviceError, SchedulerError
 from arknights_mower.scheduler.infra import InfraKit
@@ -29,6 +31,7 @@ class TaskDispatch:
         executor_cls = self.resolve(task.type)
         kwargs = self._executor_kwargs.get(task.type, {})
         executor = executor_cls(infra, **kwargs)
+        executor._timeout_start = datetime.now()
 
         while True:
             try:

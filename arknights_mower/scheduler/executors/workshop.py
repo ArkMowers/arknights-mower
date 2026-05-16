@@ -76,7 +76,7 @@ class WorkshopExecutor(AbstractExecutor):
         unknown_cnt = 0
 
         while True:
-            self.check_pause()
+            self.guard()
             if datetime.now() - start > self.MAX_DURATION:
                 raise TimeoutError("workshop processing timed out")
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Callable, Optional
 
 from arknights_mower.scheduler.constants import TapPosition
@@ -126,9 +127,10 @@ class Navigator:
             target = np.clip(target, [0, 0], [1920, 1080])
         cx = int((target[0][0] + target[2][0]) // 2)
         cy = int((target[0][1] + target[2][1]) // 2)
-        logger.info(f"enter_room({room}): tap at ({cx}, {cy})")
+        logger.debug(f"enter_room({room}): tap at ({cx}, {cy})")
         self._device.tap(cx / 1920, cy / 1080)
-        logger.info(f"enter_room({room}): TOTAL {time.time()-t0:.2f}s")
+        self.wait_scene_stable(max_duration=3.0, min_stable=2, crop=((0,0),(1920,162)))
+        logger.info(f"enter_room({room}): TOTAL {time.time()-t0:.2f}s")   
         return True
 
     def _detect_room(self) -> str | None:
@@ -180,17 +182,29 @@ class Navigator:
 
     def wait_scene_stable(
         self,
-        max_checks: int = 30,
+        max_duration: float = 5.0,
         min_stable: int = 3,
         threshold: float = 0.012,
         crop: tuple = None,
     ) -> bool:
         import cv2
         import numpy as np
+        import time as _time
+
+        t0 = _time.time()
+        debug_dir = Path("debug_ws_stable")
+        debug_dir.mkdir(exist_ok=True)
+        ts = str(int(t0))
+
+        crop_name = ""
+        if crop is not None:
+            crop_name = f" crop{crop[0]}-{crop[1]}"
+        logger.info(f"wait_scene_stable: start max_duration={max_duration} min_stable={min_stable}{crop_name}")
 
         stable = 0
         last = None
-        for _ in range(max_checks):
+        i = 0
+        while _time.time() - t0 < max_duration:
             self._pause.wait_if_paused()
             self._recognizer.update()
             gray = self._recognizer.gray if self._recognizer else None
@@ -206,28 +220,31 @@ class Navigator:
                     stable += 1
                 else:
                     stable = 0
+                    cv2.imwrite(str(debug_dir / f"gap_{ts}_i{i}_diff{diff:.4f}.png"), gray)
+                logger.info(f"wait_scene_stable: i={i} diff={diff:.4f} stable={stable}/{min_stable}")
             last = current
+            i += 1
             if stable >= min_stable:
+                logger.info(f"wait_scene_stable: done i={i} stable={stable}")
                 return True
+        logger.info(f"wait_scene_stable: TIMEOUT after {_time.time()-t0:.1f}s, {i} checks")
+        cv2.imwrite(str(debug_dir / f"timeout_{ts}.png"), gray if gray is not None else np.zeros((1,1)))
         return False
 
-    def _wait_room_detail(self) -> bool:
-        from arknights_mower.scheduler.scene import Scene
-
-        self.wait_scene_stable(max_checks=5, min_stable=3, crop=((0, 0), (1920, 162)))
+    def _wait_room_detail(self) -> bool:  
+        from arknights_mower.scheduler.scene import Scene as V2Scene                          
         for _ in range(10):
             scene = self._get_scene()
-            if scene == Scene.INFRA_ARRANGE:
-                return True
-            if scene == Scene.INFRA_DETAILS:
+            if scene == V2Scene.INFRA_DETAILS:      
                 if self._recognizer and self._recognizer.find("room_detail"):
                     return True
-                if self._recognizer and self._recognizer.find("arrange_check_in"):
+                elif self._recognizer and self._recognizer.find("arrange_check_in"):
                     self._tap_element("arrange_check_in")
-                    continue
-            if self._recognizer and self._recognizer.find("arrange_check_in"):
-                self._tap_element("arrange_check_in")
-                continue
+                    return True                                        
+                elif self._recognizer and self._recognizer.find("arrange_check_in_small"):
+                    self._tap_element("arrange_check_in_small")
+                    return True
+            break                      
         return False
 
     def _back(self) -> None:
@@ -252,7 +269,7 @@ class Navigator:
             return box
         return (0, 0)
 
-    def _tap_element(self, name: str) -> None:
+    def _tap_element(self, name: str, wait_duration: float = 0.25) -> None:
         if self._recognizer is None:
             return
         result = self._recognizer.find(name)
@@ -260,6 +277,7 @@ class Navigator:
             return
         box = result[0] if isinstance(result, tuple) else result
         self._tap(*self._center(box))
+        self.wait_scene_stable(max_duration=wait_duration, min_stable=1)
 
     def _tap_confirm(self, confirm: bool = True) -> None:
         self._tap_pos(TapPosition.CONFIRM_YES if confirm else TapPosition.CONFIRM_NO)

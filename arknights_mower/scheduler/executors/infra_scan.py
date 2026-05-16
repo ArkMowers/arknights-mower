@@ -6,10 +6,11 @@ from datetime import datetime, timedelta
 from arknights_mower.scheduler.domain.task import SchedulerTask
 from arknights_mower.scheduler.executors.base import AbstractExecutor
 from arknights_mower.utils.log import logger
+
 from arknights_mower.scheduler.scene import Scene as V2Scene
 
 class InfraScanExecutor(AbstractExecutor):
-    MAX_DURATION = timedelta(minutes=5)
+    _timeout = timedelta(minutes=5)
     SCENE_WHITELIST = (
         V2Scene.CONNECTING,
         V2Scene.LOADING,
@@ -21,52 +22,34 @@ class InfraScanExecutor(AbstractExecutor):
         V2Scene.RIIC_OPERATOR_SELECT,
     )
 
-    def __init__(self, infra) -> None:
+    def __init__(self, infra, timeout: timedelta = _timeout) -> None:
         super().__init__(infra)
         self._rooms: deque[str] = deque()
         self._current_room = ""
+        self._timeout = timeout
 
-    def execute(self, task: SchedulerTask) -> None:
-        # --- TEST: wait_scene_stable infinite loop ---
-        import time
-        t0 = time.time()
-        while True:
-            self.check_pause()
-            logger.info(f"[TEST] wait_scene_stable loop: {time.time()-t0:.1f}s")
-            from arknights_mower.scheduler.scene import Scene
-            self.infra.navigator.wait_scene_stable(max_checks=10, min_stable=1)
-            logger.info(f"[TEST] wait_scene_stable returned")
-            scene = self._get_scene()
-            logger.info(f"[TEST] scene={scene}")
-        # --- END TEST ---
-
+    def execute(self, task: SchedulerTask) -> None:        
         rooms = [r.strip() for r in task.meta_data.split(",") if r.strip()]
         self._rooms = deque(rooms)
-        start = datetime.now()
 
         while self._rooms:
-            self.check_pause()
-            if datetime.now() - start > self.MAX_DURATION:
-                raise TimeoutError("infra scan timed out")
+            self.guard()
 
             room = self._rooms[0]
             self._current_room = room
-            self._scan_single_room(room, start)
+            self._scan_single_room(room)
             self._rooms.popleft()
             logger.info(f"Finished scanning room {room}, {len(self._rooms)} rooms left")
 
             if self._get_scene() != V2Scene.INFRA_MAIN:
                 logger.info(f"Navigating back to INFRA_MAIN...")
-                nav_ret = self.infra.navigator.navigate(V2Scene.INFRA_MAIN)
-                logger.info(f"Navigate to INFRA_MAIN returned {nav_ret}")
+                self.infra.navigator.navigate(V2Scene.INFRA_MAIN)
 
-    def _scan_single_room(self, room: str, start: datetime) -> None:
+    def _scan_single_room(self, room: str) -> None:
 
         detail_open = False
         while True:
-            self.check_pause()
-            if datetime.now() - start > self.MAX_DURATION:
-                raise TimeoutError("infra scan timed out")
+            self.guard()
 
             scene = self._get_scene()
             logger.info(f"scan loop: room={room} scene={scene} detail_open={detail_open}")

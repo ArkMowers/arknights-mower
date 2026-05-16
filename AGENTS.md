@@ -2,7 +2,7 @@
 
 ## 硬性要求 (Hard Requirements)
 
-1. **所有 UI 操作必须用显式状态机** — 每个 action 要么是 State enum + method dispatch（如 `AgentSelection`），要么是 scene-driven 循环（每轮先检查当前 scene，根据 scene 决定下一步操作）。**scene-driven 是首选模式**：`while True: scene = get_scene(); if scene == A: ... elif scene == B: ...`。参考 `solvers/base_schedule.py:generate_product()`。
+1. **所有 UI 操作必须用 scene-driven 状态机** — 唯一模式：`while True: scene = get_scene(); if scene == A: ... elif scene == B: ...`。每轮先检查当前 scene，根据 scene 决定下一步操作，禁止使用 `State enum + method dispatch` 模式。参考 `solvers/base_schedule.py:generate_product()`。
 
 2. **每个操作只点一次** (tap-once) — 所有 tap/click 在单次循环迭代内只执行一次，不用 for 循环重试。重试由外层 scene-driven 循环控制：`while True: if scene == A: tap_once(); continue`。
 

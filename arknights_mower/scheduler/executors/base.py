@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
+from datetime import datetime, timedelta
 from typing import Optional, Sequence
 
 from arknights_mower.scheduler.domain.task import SchedulerTask
@@ -13,10 +14,12 @@ logger = logging.getLogger(__name__)
 class AbstractExecutor(ABC):
     _recog = None
     SCENE_WHITELIST: Optional[Sequence[int]] = None
+    _timeout: timedelta = timedelta(hours=1)
 
     def __init__(self, infra: InfraKit) -> None:
         self.infra = infra
         AbstractExecutor._recog = infra.navigator._recognizer
+        self._timeout_start: Optional[datetime] = None
 
     @property
     def _device(self):
@@ -53,8 +56,10 @@ class AbstractExecutor(ABC):
             logger.exception(f"executor failed for task: {task}")
             return False
 
-    def check_pause(self) -> None:
+    def guard(self) -> None:
         self.infra.pause.wait_if_paused()
+        if self._timeout_start and datetime.now() - self._timeout_start > self._timeout:
+            raise TimeoutError(f"{type(self).__name__} timeout after {self._timeout}")
 
     @abstractmethod
     def execute(self, task: SchedulerTask) -> None:
