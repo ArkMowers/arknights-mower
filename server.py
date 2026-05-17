@@ -1204,13 +1204,6 @@ def mastery_t3_summary():
             for mat in rec.get("chain_needed_materials", []):
                 raw_demand[mat["name"]] += mat["count"]
 
-    # 步骤2: 分类 T5 / T4 / T3+
-    demand_t5 = {n: c for n, c in raw_demand.items() if n in t5_names}
-    demand_t4 = {n: c for n, c in raw_demand.items() if n in t4_names}
-    demand_t3 = {
-        n: c for n, c in raw_demand.items() if n not in t4_names and n not in t5_names
-    }
-
     # 加载仓库库存
     cultivate_path = get_path("@app/tmp/cultivate.json")
     inventory = defaultdict(int)
@@ -1228,6 +1221,13 @@ def mastery_t3_summary():
 
     def inv_of(name):
         return inventory.get(id_by_name.get(name, ""), 0)
+
+    # 步骤2: 分类 T5 / T4 / T3+
+    demand_t5 = {n: c for n, c in raw_demand.items() if n in t5_names}
+    demand_t4 = {n: c for n, c in raw_demand.items() if n in t4_names}
+    demand_t3 = {
+        n: c for n, c in raw_demand.items() if n not in t4_names and n not in t5_names
+    }
 
     # 步骤3: T5缺失 → 拆解为T4间接缺失
     t4_indirect = defaultdict(int)
@@ -1249,13 +1249,17 @@ def mastery_t3_summary():
         if missing > 0:
             t4_missing_entries.append((name, missing))
 
-    # 步骤5: T4缺失 → 拆解为T3间接缺失
+    # 步骤5: T4缺失 → 拆解为T3间接缺失（只拆到T3层级）
     t3_indirect = defaultdict(int)
     queue = list(t4_missing_entries)
     while queue:
         name, cnt = queue.pop(0)
         formula = workshop_formula.get(name)
         if not formula or not formula.get("items"):
+            t3_indirect[name] += cnt
+            continue
+        is_high = name in t4_names or name in t5_names
+        if not is_high:
             t3_indirect[name] += cnt
             continue
         for child in formula["items"]:

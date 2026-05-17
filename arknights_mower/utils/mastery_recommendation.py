@@ -23,6 +23,12 @@ def _decompose_to_t3(materials, composite, item_table, inventory):
     def _expand(mat_id, count):
         comp = composite.get(mat_id)
         if not comp:
+            rarity = (item_table.get(mat_id, {}) or {}).get("rarity", 0)
+            if rarity == 3:
+                raw[mat_id] = raw.get(mat_id, 0) + count
+            return
+        rarity = comp.get("rarity", 0)
+        if rarity <= 3:
             raw[mat_id] = raw.get(mat_id, 0) + count
             return
         for p in comp.get("pathway", []):
