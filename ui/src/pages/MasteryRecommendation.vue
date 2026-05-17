@@ -900,9 +900,13 @@ async function refreshT3Summary() {
   }
 }
 
-watch(plan, () => {
-  refreshT3Summary()
-}, { deep: true })
+watch(
+  plan,
+  () => {
+    if (store.recommendations.length) refreshT3Summary()
+  },
+  { deep: true }
+)
 
 // ─── 工具函数 ───
 function chainHas(rec, matId) {

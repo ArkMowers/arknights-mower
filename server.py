@@ -1178,7 +1178,7 @@ def mastery_t3_summary():
         if e.get("tab") == "精英材料" and e.get("apCost") == 4.0
     }
     t5_names = {
-        n
+        n: e
         for n, e in workshop_formula.items()
         if e.get("tab") == "精英材料" and e.get("apCost") == 8.0
     }
@@ -1207,7 +1207,9 @@ def mastery_t3_summary():
     # 步骤2: 分类 T5 / T4 / T3+
     demand_t5 = {n: c for n, c in raw_demand.items() if n in t5_names}
     demand_t4 = {n: c for n, c in raw_demand.items() if n in t4_names}
-    demand_t3 = {n: c for n, c in raw_demand.items() if n not in t4_names and n not in t5_names}
+    demand_t3 = {
+        n: c for n, c in raw_demand.items() if n not in t4_names and n not in t5_names
+    }
 
     # 加载仓库库存
     cultivate_path = get_path("@app/tmp/cultivate.json")
@@ -1303,6 +1305,27 @@ def mastery_plan():
         with open(plan_path, "w", encoding="utf-8") as f:
             _json.dump(data, f, ensure_ascii=False)
         return {"success": True}
+
+
+@app.route("/mastery-t3-debug", methods=["POST"])
+def mastery_t3_debug():
+
+    from arknights_mower.utils.mastery_recommendation import (
+        _find_skill_data,
+        get_mastery_recommendations,
+    )
+
+    req = request.json or {}
+    planned_keys = req.get("planned_skills", [])
+    skill_data_path = _find_skill_data()
+    result = get_mastery_recommendations()
+    return {
+        "planned_keys": planned_keys,
+        "has_data": result.get("has_data"),
+        "error": result.get("error"),
+        "operators_count": len(result.get("operators", [])),
+        "skill_data_exists": os.path.exists(skill_data_path),
+    }
 
 
 @app.route("/workshop-preset", methods=["GET", "POST"])

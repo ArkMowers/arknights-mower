@@ -232,12 +232,13 @@ def run_command(command, cwd=None):
 
 
 if __name__ == "__main__":
-    new_dir = os.path.join(PROJECT_ROOT, "dist", "mower", "_internal")
-    old_dir = "I:\\Mower2025.7.1_full\\_internal"
+    new_dir = os.path.join(PROJECT_ROOT, "dist", "mower")
+    old_dir = "D:\\mower4.1.5.4"
     update_dir = os.path.join(PROJECT_ROOT, "dist", "update")
 
     # compare_all_subfolders(new_dir, old_dir, update_dir)
-    # remove_empty_folders(update_dir)
+    remove_empty_folders(update_dir)
+    compare_and_update(new_dir, old_dir, update_dir)
     process_files(PROJECT_ROOT)
     verify_python_ruff_check()
     verify_python_ruff_format()
