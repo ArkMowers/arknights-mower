@@ -4492,9 +4492,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             meta_data=str(entry["skill_index"] + 1),
                         )
                     )
-                    logger.info(
-                        f"自动安排专精: {entry['name']} {entry['skill_name']}"
-                    )
+                    logger.info(f"自动安排专精: {entry['name']} {entry['skill_name']}")
             skipped = res.get("skipped", [])
             if skipped:
                 names = [f"{s['name']}{s['skill_name']}" for s in skipped]

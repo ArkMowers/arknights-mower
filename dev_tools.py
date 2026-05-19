@@ -148,7 +148,8 @@ def compare_all_subfolders(base_new_dir, base_old_dir, base_update_dir):
 
 
 def is_blacklisted(path):
-    return any(blacklisted_dir in path for blacklisted_dir in BLACKLIST_DIRS)
+    rel_path = os.path.relpath(path, PROJECT_ROOT)
+    return any(blacklisted_dir in rel_path for blacklisted_dir in BLACKLIST_DIRS)
 
 
 def ensure_latest_ruff():
