@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Configure Git Credentials
         run: |
           git config user.name github-actions[bot]
@@ -24,5 +26,5 @@ jobs:
           path: ~/.cache 
           restore-keys: |
             mkdocs-material-
-      - run: pip install mkdocs-material mkdocs-material-extensions mkdocs-git-revision-date-localized-plugin mkdocs-git-committers-plugin-2
+      - run: pip install -r requirements.txt
       - run: mkdocs gh-deploy --force
