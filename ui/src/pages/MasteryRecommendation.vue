@@ -950,7 +950,7 @@ function buildSupports(op) {
     skill_level: sup.skill_level,
     efficiency: Math.min(100, (sup.efficiency || 45) + bonus),
     match: sup.swap ? !!sup.match : false,
-    half_off: sup.skill_level === 1 ? s.half_off : false
+    half_off: s.half_off
   }))
 }
 
