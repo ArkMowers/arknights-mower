@@ -18,6 +18,9 @@ hide:
 -   ### 📋 排班教学
     [查看🔗 →](./schedule.md)
 
+-   ### 🔧 专精推荐
+    [查看🔗 →](./MasteryRecommendation.md)
+
 -   ### 📊 数据图表
     [查看🔗 →](./chart.md)
 
