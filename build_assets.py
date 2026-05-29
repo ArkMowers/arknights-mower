@@ -111,7 +111,8 @@ def ensure_skill_data_extracted():
                 lvl_up_time = entry.get("lvlUpTime", 0)
                 materials = [
                     {"id": mat["id"], "count": mat["count"]}
-                    for mat in level_up_cost
+                    for mat in (level_up_cost or [])
+                    # for mat in level_up_cost
                     if mat.get("type") == "MATERIAL"
                 ]
                 levels.append({"materials": materials, "time": lvl_up_time})
@@ -124,7 +125,8 @@ def ensure_skill_data_extracted():
 
         characters[char_id] = {
             "name": char_info.get("name", char_id),
-            "rarity": char_info.get("rarity", 0) + 1,
+            "rarity": int(str(char_info.get("rarity", "TIER_1")).replace("TIER_", "")),
+            # "rarity": char_info.get("rarity", 0) + 1,
             "profession": char_info.get("profession", ""),
             "skills": skills,
         }
