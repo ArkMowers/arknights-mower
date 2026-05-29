@@ -60,7 +60,7 @@ call_db_tool_def = {
             "   示例查询: SELECT name AS 干员名称, current_room AS 当前位置 FROM agent_action WHERE agent_current_room LIKE 'dorm_%'"
             "2. trading_history表 - 龙门币交易记录/订单记录:"
             "   字段: time INTEGER PRIMARY KEY,server_date TEXT,type TEXT,price INTEGER"
-            "   订单类别/ type：龙舌兰，但书，佩佩，漏单"
+            "   订单类别/ type：龙舌兰，但书，佩佩，可露希尔，漏单"
             "   规则: 时间查询需转换: strftime('%Y-%m-%d %H:%M:%S', time, 'unixepoch', 'localtime') AS local_time"
             "   示例查询: SELECT strftime('%Y-%m-%d %H:%M:%S', time, 'unixepoch', 'localtime') AS 交易时间, type AS 类型 FROM trading_history WHERE type = '漏单'"
             "3. log表 - 系统任务记录/报错记录/日志:"
