@@ -85,6 +85,10 @@ pyinstaller webui_zip_for_linux.spec
 
 注：Linux下运行，shell会显示如 `Running on http://127.0.0.1:53703`的输出，本地浏览器访问`http://127.0.0.1:53703`即进入mower的页面。
 
+## Docker 部署
+
+Docker 部署说明见 [docs/docker-deploy-guide.md](docs/docker-deploy-guide.md)。
+
 ## Linux系统下的Docker一键部署
 
 ### 运行环境准备
