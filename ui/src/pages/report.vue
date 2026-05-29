@@ -134,10 +134,14 @@ function handleSelect(key, option) {
         if (count['龙舌兰']) {
           item.龙舌兰赤金 = count['龙舌兰'] * 500
         }
+        if (count['可露希尔']) {
+          item.可露希尔赤金 = count['可露希尔'] * 200
+        }
       }
     })
     item.收益 =
-      ((item['赤金'] + (item.龙舌兰赤金 || 0)) * value_coefficient_gold.value +
+      ((item['赤金'] + (item.龙舌兰赤金 || 0) + (item.可露希尔赤金 || 0)) *
+        value_coefficient_gold.value +
         item['龙门币订单'] * value_coefficient_lmb.value +
         item['作战录像'] * value_coefficient_exp.value) /
       10000
@@ -151,10 +155,14 @@ function handleClick() {
         if (count['龙舌兰']) {
           item.龙舌兰赤金 = count['龙舌兰'] * 500
         }
+        if (count['可露希尔']) {
+          item.可露希尔赤金 = count['可露希尔'] * 200
+        }
       }
     })
     item.收益 =
-      ((item['赤金'] + (item.龙舌兰赤金 || 0)) * value_coefficient_gold.value +
+      ((item['赤金'] + (item.龙舌兰赤金 || 0) + (item.可露希尔赤金 || 0)) *
+        value_coefficient_gold.value +
         item['龙门币订单'] * value_coefficient_lmb.value +
         item['作战录像'] * value_coefficient_exp.value) /
       10000
@@ -193,10 +201,14 @@ onMounted(async () => {
           if (count['龙舌兰']) {
             item.龙舌兰赤金 = count['龙舌兰'] * 500
           }
+          if (count['可露希尔']) {
+            item.可露希尔赤金 = count['可露希尔'] * 200
+          }
         }
       })
       item.收益 =
-        ((item['赤金'] + (item.龙舌兰赤金 || 0)) * value_coefficient_gold.value +
+        ((item['赤金'] + (item.龙舌兰赤金 || 0) + (item.可露希尔赤金 || 0)) *
+          value_coefficient_gold.value +
           item['龙门币订单'] * value_coefficient_lmb.value +
           item['作战录像'] * value_coefficient_exp.value) /
         10000
@@ -210,6 +222,13 @@ onMounted(async () => {
   } catch {
     show_alert.value = true
   }
+})
+
+const chartSource = computed(() => {
+  return ReportData.value.map((item) => ({
+    ...item,
+    特殊赤金: (item.龙舌兰赤金 || 0) + (item.可露希尔赤金 || 0)
+  }))
 })
 
 const option_manufactor = computed(() => {
@@ -253,7 +272,7 @@ const option_manufactor = computed(() => {
       containLabel: true
     },
     legend: {
-      data: ['订单', '赤金', '经验', '龙舌兰赤金'],
+      data: ['订单', '赤金', '经验', '特殊赤金'],
       selected: {
         订单收入: true,
         赤金: true,
@@ -270,15 +289,22 @@ const option_manufactor = computed(() => {
       },
 
       formatter: function (params) {
-        if (params[0].data['龙舌兰赤金']) {
+        if (params[0].data['龙舌兰赤金'] || params[0].data['可露希尔赤金']) {
           total_earnings.value =
-            (params[0].data['赤金'] + params[0].data['龙舌兰赤金']) * value_coefficient_gold.value +
+            (params[0].data['赤金'] +
+              params[0].data['龙舌兰赤金'] +
+              params[0].data['可露希尔赤金']) *
+              value_coefficient_gold.value +
             params[0].data['龙门币订单'] * value_coefficient_lmb.value +
             params[0].data['作战录像'] * value_coefficient_exp.value
         } else {
           params[0].data['龙舌兰赤金'] = 0
+          params[0].data['可露希尔赤金'] = 0
           total_earnings.value =
-            (params[0].data['赤金'] + params[0].data['龙舌兰赤金']) * value_coefficient_gold.value +
+            (params[0].data['赤金'] +
+              params[0].data['龙舌兰赤金'] +
+              params[0].data['可露希尔赤金']) *
+              value_coefficient_gold.value +
             params[0].data['龙门币订单'] * value_coefficient_lmb.value +
             params[0].data['作战录像'] * value_coefficient_exp.value
         }
@@ -287,15 +313,16 @@ const option_manufactor = computed(() => {
                         ${params[0].marker}    <span style="font-size:14px">${params[0].seriesName}:${params[0].data['赤金']}</span>  <br>
                         ${params[2].marker}    <span style="font-size:14px">${params[2].seriesName}:${params[0].data['龙门币订单']}</span>  <br>
                         ${params[1].marker}    <span style="font-size:14px">${params[1].seriesName}:${params[0].data['作战录像']}</span>  <br>
-                        ${params[3].marker}    <span style="font-size:14px">${params[3].seriesName}:${params[0].data['龙舌兰赤金']}</span> <br>
+                        <span style="display:inline-block;margin-right:4px;border-radius:10px;width:10px;height:10px;background-color:#8A2BE2;"></span>    <span style="font-size:14px">龙舌兰赤金:${params[0].data['龙舌兰赤金'] || 0}</span> <br>
+                        <span style="display:inline-block;margin-right:4px;border-radius:10px;width:10px;height:10px;background-color:#8A2BE2;"></span>    <span style="font-size:14px">可露希尔赤金:${params[0].data['可露希尔赤金'] || 0}</span> <br>
                                                <span style="font-size:14px">收益:${total_earnings.value}</span>  <br>
           </div>`
         return tip
       }
     },
     dataset: {
-      dimensions: ['日期', '赤金', '反向作战录像', '龙门币订单', '龙舌兰赤金'],
-      source: ReportData.value
+      dimensions: ['日期', '赤金', '反向作战录像', '龙门币订单', '特殊赤金'],
+      source: chartSource.value
     },
     yAxis: {
       type: 'category',
@@ -374,18 +401,16 @@ const option_manufactor = computed(() => {
         }
       },
       {
-        name: '龙舌兰赤金',
+        name: '特殊赤金',
         type: 'bar',
         stack: 'gold',
         color: '#8A2BE2',
         label: {
           show: true,
           formatter: function (params) {
-            if (params.value['龙舌兰赤金'] === 0) {
-              return ''
-            } else if (params.value['龙舌兰赤金'] < 0) {
-              return -params.value['龙舌兰赤金']
-            }
+            const v = params.value['特殊赤金']
+            if (!v) return ''
+            return v < 0 ? -v : v
           }
         },
         emphasis: {
