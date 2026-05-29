@@ -4476,6 +4476,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         try:
             from arknights_mower.utils.mastery_recommendation import (
                 auto_schedule_mastery_tasks,
+                compute_workshop_config,
             )
             from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
@@ -4497,8 +4498,29 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             if skipped:
                 names = [f"{s['name']}{s['skill_name']}" for s in skipped]
                 logger.info(f"跳过专精（材料不足）: {', '.join(names)}")
+
+            new_settings = compute_workshop_config()
+            if new_settings is not None:
+                from arknights_mower.utils.config.conf import (
+                    RIICPart,
+                    WorkShopItem,
+                )
+
+                ws_list = []
+                for s in new_settings:
+                    items = [WorkShopItem(**item) for item in s.get("items", [])]
+                    ws_list.append(
+                        RIICPart.WorkShopSetting(
+                            operator=s["operator"],
+                            enabled=s.get("enabled", True),
+                            items=items,
+                        )
+                    )
+                config.conf.workshop_settings = ws_list
+                config.save_conf()
+                logger.info("自动更新合成配置完成")
         except Exception as e:
-            logger.exception(f"自动安排专精失败: {e}")
+            logger.exception(f"自动安排专精/合成配置失败: {e}")
 
     def handle_idle_action(self, remaining_time=0):
         if config.conf.close_simulator_when_idle and remaining_time > 300:

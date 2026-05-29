@@ -980,7 +980,7 @@ class Arknights数据处理器:
                     lvl_up_time = entry.get("lvlUpTime", 0)
                     materials = [
                         {"id": mat["id"], "count": mat["count"]}
-                        for mat in level_up_cost
+                        for mat in (level_up_cost or [])
                         if mat.get("type") == "MATERIAL"
                     ]
                     levels.append({"materials": materials, "time": lvl_up_time})
