@@ -162,7 +162,6 @@ const onSelectionChange = (newValue) => {
 import { ref } from 'vue'
 import ChatBotSetting from '../components/ChatBotSetting.vue'
 
-const idleAction = ref('') // 'home' | 'exit' | 'close'
 const showSettingModal = ref(false)
 const editingIndex = ref(null)
 
@@ -188,25 +187,43 @@ const workshop_setting_close = () => {
 }
 function createNewItem() {
   return {
-    item_names: [''],
+    item_names: [],
     children_lower_limit: 20,
     self_upper_limit: 20
   }
 }
+
+const idleAction = ref('') // 'idle' | 'home' | 'exit' | 'close'
+
+const idleOptions = [
+  { label: '无操作', value: 'idle' },
+  { label: '返回首页', value: 'home' },
+  { label: '退出游戏', value: 'exit' },
+  { label: '关闭模拟器', value: 'close' }
+]
+
 watch(idleAction, (val) => {
+  if (val == 'idle') {
+    return_home_when_idle.value = false
+    exit_game_when_idle.value = false
+    close_simulator_when_idle.value = false
+    return
+  }
   return_home_when_idle.value = val === 'home'
   exit_game_when_idle.value = val === 'exit'
   close_simulator_when_idle.value = val === 'close'
 })
+
 watch(
   [return_home_when_idle, exit_game_when_idle, close_simulator_when_idle],
   ([home, exit, close]) => {
     if (home) idleAction.value = 'home'
     else if (exit) idleAction.value = 'exit'
     else if (close) idleAction.value = 'close'
-    else idleAction.value = ''
+    else idleAction.value = 'idle'
   }
 )
+
 if (return_home_when_idle.value) {
   idleAction.value = 'home'
 } else if (exit_game_when_idle.value) {
@@ -214,7 +231,7 @@ if (return_home_when_idle.value) {
 } else if (close_simulator_when_idle.value) {
   idleAction.value = 'close'
 } else {
-  idleAction.value = ''
+  idleAction.value = 'idle'
 }
 </script>
 
@@ -283,7 +300,7 @@ if (return_home_when_idle.value) {
                 <span>模拟器文件夹</span>
                 <help-text>
                   <div>夜神：写到bin文件夹</div>
-                  <div>MuMu12: 写到shell文件夹</div>
+                  <div>MuMu12: 写到nx_main文件夹</div>
                 </help-text>
               </template>
               <n-input
@@ -342,23 +359,17 @@ if (return_home_when_idle.value) {
               <span class="coord-label">Y:</span>
               <n-input-number v-model:value="tap_to_launch_game.y" />
             </n-form-item>
-            <n-form-item :show-label="false">
-              <n-radio-group v-model:value="idleAction">
-                <n-space vertical>
-                  <n-radio value="home">
-                    任务结束后返回首页
-                    <help-text>降低功耗</help-text>
-                  </n-radio>
-                  <n-radio value="exit">
-                    任务结束后退出游戏
-                    <help-text>降低功耗</help-text>
-                  </n-radio>
-                  <n-radio value="close" v-if="simulator.name">
-                    任务结束后关闭模拟器
-                    <help-text>减少空闲时的资源占用、避免模拟器长时间运行出现问题</help-text>
-                  </n-radio>
-                </n-space>
-              </n-radio-group>
+            <n-form-item>
+              <template #label>
+                <span>任务结束后</span>
+                <help-text>
+                  <div>返回首页：降低功耗</div>
+                  <div>退出游戏：降低功耗</div>
+                  <div>关闭模拟器：减少空闲时的资源占用、避免模拟器长时间运行出现问题</div>
+                </help-text>
+              </template>
+
+              <n-select v-model:value="idleAction" :options="idleOptions" />
             </n-form-item>
             <n-form-item
               :show-label="false"
@@ -744,10 +755,8 @@ if (return_home_when_idle.value) {
                         </li>
                       </ul>
                     </div>
-                    <n-button text @click="openEdit(idx)">编辑</n-button>
-                    <n-button text type="error" @click="workshop_settings.splice(idx, 1)"
-                      >删除</n-button
-                    >
+                    <n-button @click="openEdit(idx)" style="margin-right: 20px">编辑</n-button>
+                    <n-button type="error" @click="workshop_settings.splice(idx, 1)">删除</n-button>
                   </div>
                 </n-list-item>
               </n-list>

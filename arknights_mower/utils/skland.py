@@ -1,3 +1,4 @@
+import datetime
 import hashlib
 import hmac
 import json
@@ -11,12 +12,16 @@ from arknights_mower.utils.SecuritySm import get_d_id
 
 app_code = "4ca99fa6b56cc2ba"
 
+# Global session cache - persists for entire program runtime
+skland_cache = {}
+
 # 签到url
 sign_url = "https://zonai.skland.com/api/v1/game/attendance"
 # 终末地签到url
 sign_endfield_url = "https://zonai.skland.com/web/v1/game/endfield/attendance"
 # 绑定的角色url
 binding_url = "https://zonai.skland.com/api/v1/game/player/binding"
+player_info_url = "https://zonai.skland.com/api/v1/game/player/info"
 # 验证码url
 login_code_url = "https://as.hypergryph.com/general/v1/send_phone_code"
 # 验证码登录
@@ -150,3 +155,39 @@ def log(account):
         raise Exception(f"获得token失败：{r['msg']}")
     logger.info("森空岛登陆成功")
     return r["data"]["token"]
+
+
+def restore_cached_session(account: str) -> dict | None:
+    """
+    Restore a cached session if it exists.
+
+    Args:
+        account: Account identifier
+
+    Returns:
+        dict with 'sign_token' and 'cred' keys, or None if not found
+    """
+    session = skland_cache.get(account)
+    if not session:
+        return None
+    return session
+
+
+def refresh_session(item):
+    """
+    Refresh a session by getting new credentials.
+
+    Args:
+        item: Account item with account attribute
+
+    Returns:
+        dict with 'cred', 'sign_token', and 'updated_at' keys
+    """
+    cred_resp = get_cred_by_token(log(item))
+    session_data = {
+        "cred": cred_resp["cred"],
+        "sign_token": cred_resp["token"],
+        "updated_at": datetime.datetime.now(datetime.timezone.utc),
+    }
+    skland_cache[item.account] = session_data
+    return session_data

@@ -1,7 +1,7 @@
 <script setup>
 import { useConfigStore } from '@/stores/config'
 import { storeToRefs } from 'pinia'
-import { inject, ref } from 'vue'
+import { inject, ref, computed } from 'vue'
 const axios = inject('axios')
 
 const store = useConfigStore()
@@ -16,6 +16,12 @@ async function test_sign() {
   const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/check-skland-sign`)
   sign_msg.value = response.data
 }
+
+const enable_test = computed(() => {
+  return skland_info.value.some((item) => {
+    return item.account?.trim() && item.password?.trim()
+  })
+})
 
 // 复选框逻辑
 // 账号勾选时相当于全选
@@ -45,6 +51,14 @@ const SyncStatus = (item, game) => {
     <n-flex vertical>
       <n-checkbox v-model:checked="skland_enable">
         <div class="item">森空岛签到</div>
+        <help-text>
+          <div>签到失败时，请尝试：</div>
+          <ol style="margin: 0">
+            <li>检查森空岛连接是否正常；</li>
+            <li>检查是否勾选了未绑定的区服/游戏</li>
+          </ol>
+          <div>Tips: 可以在根目录下的tmp/skland.csv中查看签到详情</div>
+        </help-text>
       </n-checkbox>
       <n-tabs type="line" animated>
         <n-tab-pane name="arknights" tab="明日方舟">
@@ -107,7 +121,7 @@ const SyncStatus = (item, game) => {
         </n-tab-pane>
       </n-tabs>
       <n-flex style="misc-container" align="center">
-        <n-button @click="test_sign">测试签到</n-button>
+        <n-button :disabled="!enable_test" @click="test_sign">测试签到</n-button>
         <div>{{ sign_msg }}</div>
       </n-flex>
       <n-divider />

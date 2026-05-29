@@ -1,5 +1,9 @@
+from pathlib import Path
+
 from pydantic import BaseModel, model_validator
 from pydantic_core import PydanticUndefined
+
+from arknights_mower import __rootdir__
 
 
 class ConfModel(BaseModel):
@@ -200,18 +204,9 @@ class RecruitPart(ConfModel):
 class RegularTaskPart(ConfModel):
     class MaaDailyPlan(BaseModel):
         medicine: int = 0
+        sanity_threshold: int = 0
         stage: list[str]
         weekday: str
-
-    class MaaDailyPlan1(BaseModel):
-        stage: str | list[str]
-        周一: int
-        周二: int
-        周三: int
-        周四: int
-        周五: int
-        周六: int
-        周日: int
 
     check_mail_enable: bool = True
     "领取邮件奖励"
@@ -226,198 +221,15 @@ class RegularTaskPart(ConfModel):
     maa_eat_stone: bool = False
     "无限吃源石"
     maa_weekly_plan: list[MaaDailyPlan] = [
-        {"medicine": 0, "stage": [""], "weekday": "周一"},
-        {"medicine": 0, "stage": [""], "weekday": "周二"},
-        {"medicine": 0, "stage": [""], "weekday": "周三"},
-        {"medicine": 0, "stage": [""], "weekday": "周四"},
-        {"medicine": 0, "stage": [""], "weekday": "周五"},
-        {"medicine": 0, "stage": [""], "weekday": "周六"},
-        {"medicine": 0, "stage": [""], "weekday": "周日"},
+        {"medicine": 0, "sanity_threshold": 0, "stage": [""], "weekday": "周一"},
+        {"medicine": 0, "sanity_threshold": 0, "stage": [""], "weekday": "周二"},
+        {"medicine": 0, "sanity_threshold": 0, "stage": [""], "weekday": "周三"},
+        {"medicine": 0, "sanity_threshold": 0, "stage": [""], "weekday": "周四"},
+        {"medicine": 0, "sanity_threshold": 0, "stage": [""], "weekday": "周五"},
+        {"medicine": 0, "sanity_threshold": 0, "stage": [""], "weekday": "周六"},
+        {"medicine": 0, "sanity_threshold": 0, "stage": [""], "weekday": "周日"},
     ]
     "周计划"
-    maa_weekly_plan1: list[MaaDailyPlan1] = [
-        {
-            "stage": ["Annihilation"],
-            "周一": 1,
-            "周二": 1,
-            "周三": 1,
-            "周四": 1,
-            "周五": 1,
-            "周六": 1,
-            "周日": 1,
-        },
-        {
-            "stage": ["1-7"],
-            "周一": 1,
-            "周二": 1,
-            "周三": 1,
-            "周四": 1,
-            "周五": 1,
-            "周六": 1,
-            "周日": 1,
-        },
-        {
-            "stage": ["点x删除"],
-            "周一": 1,
-            "周二": 1,
-            "周三": 1,
-            "周四": 1,
-            "周五": 1,
-            "周六": 1,
-            "周日": 1,
-        },
-        {
-            "stage": ["把鼠标放到问号上查看帮助"],
-            "周一": 1,
-            "周二": 1,
-            "周三": 1,
-            "周四": 1,
-            "周五": 1,
-            "周六": 1,
-            "周日": 1,
-        },
-        {
-            "stage": ["自定义关卡3"],
-            "周一": 1,
-            "周二": 1,
-            "周三": 1,
-            "周四": 1,
-            "周五": 1,
-            "周六": 1,
-            "周日": 1,
-        },
-        {
-            "stage": ["LS-6"],
-            "周一": 1,
-            "周二": 1,
-            "周三": 1,
-            "周四": 1,
-            "周五": 1,
-            "周六": 1,
-            "周日": 1,
-        },
-        {
-            "stage": ["CE-6"],
-            "周一": 0,
-            "周二": 1,
-            "周三": 0,
-            "周四": 1,
-            "周五": 0,
-            "周六": 1,
-            "周日": 1,
-        },
-        {
-            "stage": ["AP-5"],
-            "周一": 1,
-            "周二": 0,
-            "周三": 0,
-            "周四": 1,
-            "周五": 0,
-            "周六": 1,
-            "周日": 1,
-        },
-        {
-            "stage": ["SK-5"],
-            "周一": 1,
-            "周二": 0,
-            "周三": 1,
-            "周四": 0,
-            "周五": 1,
-            "周六": 1,
-            "周日": 0,
-        },
-        {
-            "stage": ["CA-5"],
-            "周一": 0,
-            "周二": 1,
-            "周三": 1,
-            "周四": 0,
-            "周五": 1,
-            "周六": 0,
-            "周日": 1,
-        },
-        {
-            "stage": ["PR-A-2"],
-            "周一": 1,
-            "周二": 0,
-            "周三": 0,
-            "周四": 1,
-            "周五": 1,
-            "周六": 0,
-            "周日": 1,
-        },
-        {
-            "stage": ["PR-A-1"],
-            "周一": 1,
-            "周二": 0,
-            "周三": 0,
-            "周四": 1,
-            "周五": 1,
-            "周六": 0,
-            "周日": 1,
-        },
-        {
-            "stage": ["PR-B-2"],
-            "周一": 1,
-            "周二": 1,
-            "周三": 0,
-            "周四": 0,
-            "周五": 1,
-            "周六": 1,
-            "周日": 0,
-        },
-        {
-            "stage": ["PR-B-1"],
-            "周一": 1,
-            "周二": 1,
-            "周三": 0,
-            "周四": 0,
-            "周五": 1,
-            "周六": 1,
-            "周日": 0,
-        },
-        {
-            "stage": ["PR-C-2"],
-            "周一": 0,
-            "周二": 0,
-            "周三": 1,
-            "周四": 1,
-            "周五": 0,
-            "周六": 1,
-            "周日": 1,
-        },
-        {
-            "stage": ["PR-C-1"],
-            "周一": 0,
-            "周二": 0,
-            "周三": 1,
-            "周四": 1,
-            "周五": 0,
-            "周六": 1,
-            "周日": 1,
-        },
-        {
-            "stage": ["PR-D-2"],
-            "周一": 0,
-            "周二": 1,
-            "周三": 1,
-            "周四": 0,
-            "周五": 0,
-            "周六": 1,
-            "周日": 1,
-        },
-        {
-            "stage": ["PR-D-1"],
-            "周一": 0,
-            "周二": 1,
-            "周三": 1,
-            "周四": 0,
-            "周五": 0,
-            "周六": 1,
-            "周日": 1,
-        },
-    ]
-    "周计划（新）"
     maa_depot_enable: bool = False
     "仓库物品混合读取"
     visit_friend: bool = True
@@ -581,6 +393,15 @@ class AIAgentPart(ConfModel):
     "名称"
     ai_key: str = ""
     "密钥"
+
+    @property
+    def resolved_ai_key(self) -> str:
+        if self.ai_key:
+            return self.ai_key
+        token_path = Path(__rootdir__).parent / "token.txt"
+        if token_path.exists():
+            return token_path.read_text(encoding="utf-8").strip()
+        return ""
 
 
 class MaaRewardPart(ConfModel):

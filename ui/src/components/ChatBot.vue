@@ -1,10 +1,15 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { inject, ref, watch } from 'vue'
 import { useConfigStore } from '@/stores/config'
 import { storeToRefs } from 'pinia'
+import markdownit from 'markdown-it'
 
 const store = useConfigStore()
+const md = markdownit({ html: true, breaks: true })
 const { ai_key, ai_type } = storeToRefs(store)
+const showFeedback = inject('show_feedback', null)
+const WELCOME_MESSAGE =
+  '我是 Mower AI 助手，可以帮你查日志、分析漏单、定位报错、查询数据库记录，或协助整理问题描述。'
 const userInput = ref('')
 const chatHistory = ref([])
 const loading = ref(false)
@@ -50,11 +55,15 @@ function connectWS(callback) {
       ) {
         chatHistory.value[chatHistory.value.length - 1].content += data.reply
       } else {
-        chatHistory.value.push({ role: 'bot', content: data.reply })
+        chatHistory.value.push({ role: 'bot', content: data.reply, followUpState: null })
       }
     }
     if (data.error) {
-      chatHistory.value.push({ role: 'bot', content: '错误: ' + data.error })
+      chatHistory.value.push({
+        role: 'bot',
+        content: '错误: ' + data.error,
+        followUpState: null
+      })
     }
     loading.value = false
   }
@@ -77,24 +86,29 @@ function sendMessage() {
   userInput.value = ''
 }
 
+function markResolved(msg) {
+  msg.followUpState = 'resolved'
+}
+
+function openFeedbackFlow(msg) {
+  msg.followUpState = 'feedback'
+  if (showFeedback) {
+    showFeedback.value = true
+  }
+}
+
+function appendWelcomeMessage() {
+  chatHistory.value.push({
+    role: 'bot',
+    content: WELCOME_MESSAGE,
+    followUpState: null,
+    showFollowUp: false
+  })
+}
+
 watch(show, (val) => {
-  if (
-    val &&
-    (chatHistory.value.length === 0 ||
-      (chatHistory.value.length > 0 &&
-        chatHistory.value[chatHistory.value.length - 1].content ===
-          '未检测到 API Key，请先在设置中配置你的 AI Key。'))
-  ) {
-    loading.value = true
-    const intro = '请用简洁的语言介绍一下你能为用户做什么。'
-    if (!ws || ws.readyState === 3) {
-      pendingMsg = intro
-      connectWS()
-    } else if (ws.readyState === 0) {
-      pendingMsg = intro
-    } else if (ws.readyState === 1) {
-      ws.send(JSON.stringify({ message: intro }))
-    }
+  if (val && chatHistory.value.length === 0) {
+    appendWelcomeMessage()
   }
 })
 const isMobile = ref(window.innerWidth < 800)
@@ -111,9 +125,25 @@ window.addEventListener('resize', () => {
             v-for="(msg, idx) in chatHistory"
             :key="idx"
             :style="{ textAlign: msg.role === 'user' ? 'right' : 'left' }"
+            class="chat-row"
           >
             <b>{{ msg.role === 'user' ? '你' : 'Mower AI 助手' }}：</b>
-            <span v-html="msg.content"></span>
+            <span v-html="md.render(msg.content)"></span>
+            <div v-if="msg.role === 'bot' && msg.showFollowUp !== false" class="follow-up-block">
+              <div class="follow-up-title">是否解决了你的问题？</div>
+              <div v-if="msg.followUpState === null" class="follow-up-actions">
+                <n-button size="small" tertiary type="primary" @click="markResolved(msg)">
+                  已解决
+                </n-button>
+                <n-button size="small" tertiary type="warning" @click="openFeedbackFlow(msg)">
+                  反馈问题
+                </n-button>
+              </div>
+              <div v-else-if="msg.followUpState === 'resolved'" class="follow-up-result">
+                已标记为已解决。
+              </div>
+              <div v-else class="follow-up-result">已打开反馈窗口。</div>
+            </div>
           </div>
         </div>
         <div class="chatbot-input-area">
@@ -138,6 +168,8 @@ window.addEventListener('resize', () => {
   left: 32px;
   bottom: 16px;
   z-index: 9999;
+  user-select: text;
+  -webkit-user-select: text;
 }
 .chatbot-container.mobile {
   left: 0;
@@ -182,6 +214,8 @@ window.addEventListener('resize', () => {
   margin-bottom: 12px;
   padding-right: 4px;
   max-height: calc(75vh - 135px);
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 @media (max-width: 800px) {
@@ -195,5 +229,37 @@ window.addEventListener('resize', () => {
   flex-shrink: 0;
   padding-bottom: 8px;
   background: transparent;
+}
+
+.chatbot-history :deep(*) {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.chat-row {
+  margin-bottom: 12px;
+}
+
+.follow-up-block {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.follow-up-title {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.follow-up-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.follow-up-result {
+  font-size: 12px;
+  opacity: 0.75;
 }
 </style>

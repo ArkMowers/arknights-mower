@@ -230,6 +230,45 @@ class Arknights数据处理器:
                 "./ArknightsGameResource/gamedata/excel/story_review_table.json"
             ).items()
         }
+        activity_table = self.加载json(
+            "./ArknightsGameResource/gamedata/excel/activity_table.json"
+        )
+        zoneToActivity = activity_table.get("zoneToActivity", {})
+        activityBasicInfo = activity_table.get("basicInfo", {})
+
+        def _pick_text(*values):
+            for value in values:
+                if isinstance(value, str):
+                    value = value.strip()
+                    if value:
+                        return value
+            return ""
+
+        def clean_zone_name(name):
+            if not isinstance(name, str):
+                return name
+            return name.replace("·复刻", "").strip()
+
+        def get_zone_name(zone_id):
+            zone = zones.get(zone_id, {})
+            return _pick_text(
+                zone.get("zoneNameSecond"),
+                zone.get("zoneNameFirst"),
+                zone.get("zoneNameThird"),
+                zone.get("zoneNameTitleCurrent"),
+                zone.get("zoneNameTitleUnCurrent"),
+                zone.get("zoneID"),
+                zone_id,
+            )
+
+        def get_activity_name(activity_id):
+            if not activity_id:
+                return ""
+            info = activityBasicInfo.get(activity_id, {})
+            return clean_zone_name(
+                _pick_text(info.get("name"), info.get("id"), activity_id)
+            )
+
         for 键, _ in 还未结束的非常驻关卡.items():
             关卡代码 = self.关卡表["stages"][键]["code"]
             if 键.endswith("#f#"):
@@ -296,8 +335,8 @@ class Arknights数据处理器:
                         "apCost": 值["apCost"],
                         "difficulty": 值["difficulty"],
                         "diffGroup": 值["diffGroup"],
-                        "zoneNameSecond": event_name,
-                        "subTitle": zones[值["zoneId"]]["zoneNameSecond"]
+                        "zoneNameSecond": clean_zone_name(event_name),
+                        "subTitle": get_zone_name(值["zoneId"])
                         if 值["zoneId"] in zones
                         else "",
                         "stageType": 值["stageType"],
@@ -329,9 +368,6 @@ class Arknights数据处理器:
         ) as f:
             json.dump(self.常驻关卡, f, ensure_ascii=False, indent=2)
         普通关卡 = self.关卡表["stages"]
-        zoneToActivity = self.加载json(
-            "./ArknightsGameResource/gamedata/excel/activity_table.json"
-        )["zoneToActivity"]
         storylineStorySets = self.关卡表["storylineStorySets"]
         ssData = {}
         全部关卡排序信息 = []
@@ -341,11 +377,15 @@ class Arknights数据处理器:
             name = ""
             if v.get("mainlineData") and v["mainlineData"].get("zoneId"):
                 zid = v["mainlineData"]["zoneId"]
-                name = zones.get(zid, {}).get("zoneNameSecond", zid)
+                name = get_zone_name(zid)
             elif v.get("ssData") and v["ssData"].get("name"):
                 name = v["ssData"]["name"]
             elif v.get("collectData") and v["collectData"].get("name"):
                 name = v["collectData"]["name"]
+            if not name and v.get("relevantActivityId"):
+                name = get_activity_name(v["relevantActivityId"])
+            if not name and v.get("ssData") and v["ssData"].get("reopenActivityId"):
+                name = get_activity_name(v["ssData"]["reopenActivityId"])
             全部关卡排序信息.append(
                 {
                     "name": name,
@@ -370,7 +410,7 @@ class Arknights数据处理器:
                         "apCost": 关卡AP,
                         "difficulty": 值["difficulty"],
                         "diffGroup": 值["diffGroup"],
-                        "zoneNameSecond": zones[关卡ZONE]["zoneNameSecond"],
+                        "zoneNameSecond": clean_zone_name(get_zone_name(关卡ZONE)),
                         "stageType": 值["stageType"],
                     }
                 )
@@ -384,18 +424,21 @@ class Arknights数据处理器:
                         "apCost": 值["apCost"],
                         "difficulty": 值["difficulty"],
                         "diffGroup": 值["diffGroup"],
-                        "zoneNameSecond": "" if 值["zoneId"] in zones else "",
+                        "zoneNameSecond": clean_zone_name(get_zone_name(值["zoneId"]))
+                        if 值["zoneId"] in zones
+                        else "",
                         "stageType": 值["stageType"],
                     }
                 )
-            elif (
-                值["zoneId"] in zoneToActivity
-                and zoneToActivity[值["zoneId"]] in ssData
-            ):
+            elif 值["zoneId"] in zoneToActivity and 值["stageType"] == "ACTIVITY":
+                activity_id = zoneToActivity[值["zoneId"]]
+                activity_name = get_activity_name(activity_id)
+                if not activity_name and activity_id in ssData:
+                    activity_name = _pick_text(ssData[activity_id].get("name"))
                 print(
                     值["zoneId"],
-                    zoneToActivity[值["zoneId"]],
-                    ssData[zoneToActivity[值["zoneId"]]],
+                    activity_id,
+                    activity_name,
                 )
                 所有关卡.append(
                     {
@@ -406,15 +449,31 @@ class Arknights数据处理器:
                         "apCost": 关卡AP,
                         "difficulty": 值["difficulty"],
                         "diffGroup": 值["diffGroup"],
-                        "zoneNameSecond": ssData[zoneToActivity[值["zoneId"]]]["name"]
-                        if "name" in ssData[zoneToActivity[值["zoneId"]]]
-                        else "",
-                        "subTitle": zones[关卡ZONE]["zoneNameSecond"]
+                        "zoneNameSecond": clean_zone_name(activity_name),
+                        "subTitle": get_zone_name(关卡ZONE)
                         if 关卡ZONE in zones
                         else "",
                         "stageType": 值["stageType"],
                     }
                 )
+        if not any(关卡.get("id") == "Annihilation" for 关卡 in 所有关卡):
+            所有关卡.insert(
+                0,
+                {
+                    "id": "Annihilation",
+                    "name": "剿灭",
+                    "drop": [],
+                    "zoneId": "Annihilation",
+                    "apCost": 25,
+                    "difficulty": "NORMAL",
+                    "diffGroup": "Annihilation",
+                    "zoneNameSecond": "剿灭",
+                    "subTitle": "",
+                    "stageType": "UNKNOWN",
+                    "endTs": -1,
+                },
+            )
+
         with open(
             "arknights_mower/data/stage_data_full.json", "w", encoding="utf-8"
         ) as f:
@@ -476,7 +535,7 @@ class Arknights数据处理器:
             if 干员名 in recruit_list:
                 tag = 干员数据["tagList"]
                 # 数据中稀有度从0-5
-                干员数据["rarity"] = 干员数据["rarity"] + 1
+                干员数据["rarity"] = int(干员数据["rarity"].removeprefix("TIER_"))
                 if len(干员名) <= 4:
                     recruit_result_data[len(干员名)].append(干员代码)
                 else:
@@ -627,11 +686,16 @@ class Arknights数据处理器:
             contours, _ = cv2.findContours(
                 dilation, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
             )
-            rect = map(lambda c: cv2.boundingRect(c), contours)
-            x, y, w, h = sorted(rect, key=lambda c: c[0])[0]
-            img = img[y : y + h, x : x + w]
+            rect = [cv2.boundingRect(c) for c in contours]
+            x0 = min(x for x, y, w, h in rect)
+            y0 = min(y for x, y, w, h in rect)
+            x1 = max(x + w for x, y, w, h in rect)
+            y1 = max(y + h for x, y, w, h in rect)
+            img = img[y0:y1, x0:x1]
             tpl = np.zeros((46, 265), dtype=np.uint8)
-            tpl[: img.shape[0], : img.shape[1]] = img
+            h = min(img.shape[0], tpl.shape[0])
+            w = min(img.shape[1], tpl.shape[1])
+            tpl[:h, :w] = img[:h, :w]
             # cv2.imwrite(f"/home/zhao/Desktop/data/{operator}.png", tpl)
             data[operator] = tpl
 
@@ -846,7 +910,7 @@ class Arknights数据处理器:
                         干员技能详情["skill_level"] = skill_level
                         skill_level += 1
                         干员技能详情["phase_level"] = (
-                            f"精{item2['cond']['phase']} {item2['cond']['level']}级"
+                            f"精{item2['cond']['phase'].removeprefix('PHASE_')} {item2['cond']['level']}级"
                         )
                         干员技能详情["skillname"] = buff_table[item2["buffId"]][0]
                         text = buff_table[item2["buffId"]][1]
@@ -885,6 +949,120 @@ class Arknights数据处理器:
             "./ui/src/pages/basement_skill/skill.json", "w", encoding="utf-8"
         ) as f:
             json.dump(干员技能列表, f, ensure_ascii=False, indent=2)
+
+    def 提取专精数据(self):
+        import time as _time
+
+        t0 = _time.time()
+
+        characters = {}
+        skill_count = 0
+        skipped = 0
+
+        for char_id, char_info in self.干员表.items():
+            skills_raw = char_info.get("skills", [])
+            if not skills_raw:
+                skipped += 1
+                continue
+
+            has_any_upgrade = False
+            skills = []
+
+            for skill_def in skills_raw:
+                level_up_cost_cond = skill_def.get("levelUpCostCond", [])
+                if not level_up_cost_cond:
+                    continue
+                has_any_upgrade = True
+
+                levels = []
+                for entry in level_up_cost_cond:
+                    level_up_cost = entry.get("levelUpCost", [])
+                    lvl_up_time = entry.get("lvlUpTime", 0)
+                    materials = [
+                        {"id": mat["id"], "count": mat["count"]}
+                        for mat in (level_up_cost or [])
+                        if mat.get("type") == "MATERIAL"
+                    ]
+                    levels.append({"materials": materials, "time": lvl_up_time})
+
+                skills.append(
+                    {
+                        "skillId": skill_def.get("skillId", ""),
+                        "levels": levels,
+                    }
+                )
+
+            if not has_any_upgrade:
+                skipped += 1
+                continue
+
+            characters[char_id] = {
+                "name": char_info.get("name", char_id),
+                "rarity": char_info.get("rarity", 0) + 1,
+                "profession": char_info.get("profession", ""),
+                "skills": skills,
+            }
+            skill_count += len(skills)
+
+        items = {}
+        for item_id, item_info in self.物品表.get("items", {}).items():
+            if item_info.get("classifyType") == "MATERIAL":
+                items[item_id] = {
+                    "name": item_info.get("name", item_id),
+                    "icon": item_info.get("iconId", ""),
+                    "rarity": item_info.get("rarity", 0),
+                }
+
+        composite_path = (
+            "./frontend-v2-plus-dev/src/static/json/material/composite_table.v2.json"
+        )
+        composite = {}
+        if os.path.exists(composite_path):
+            with open(composite_path, "r", encoding="utf-8") as f:
+                composite_raw = json.load(f)
+            for entry in composite_raw:
+                if not entry.get("resolve", False):
+                    composite[entry["itemId"]] = {
+                        "name": entry.get("itemName", ""),
+                        "rarity": entry.get("rarity", 0),
+                        "pathway": [
+                            {
+                                "id": p["itemId"],
+                                "name": p.get("itemName", ""),
+                                "count": p.get("count", 1),
+                            }
+                            for p in entry.get("pathway", [])
+                        ],
+                    }
+            print(f"  composite_table 读取完成 ({len(composite)} 合成配方)")
+        else:
+            print(f"  警告：未找到 {composite_path}，跳过合成路径提取")
+
+        output = {
+            "_meta": {
+                "description": "专精推荐精简数据 - 由 auto_get_res_new.py 自动生成",
+                "generated": _time.strftime("%Y-%m-%d %H:%M:%S"),
+                "character_count": len(characters),
+                "item_count": len(items),
+                "skill_entry_count": skill_count,
+                "composite_count": len(composite),
+            },
+            "characters": characters,
+            "items": items,
+            "composite": composite,
+        }
+
+        output_path = "./arknights_mower/resources/skill_data.json"
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(output, f, ensure_ascii=False, separators=(",", ":"))
+
+        size_kb = os.path.getsize(output_path) / 1024
+        elapsed = _time.time() - t0
+        print(
+            f"  干员数: {len(characters)}, 物品数: {len(items)}, 技能条目: {skill_count}, 合成配方: {len(composite)}, 跳过: {skipped}"
+        )
+        print(f"  输出: {output_path} ({size_kb:.0f} KB, {elapsed:.1f}s)")
 
     def buff转换(self):
         buff_table = {}
@@ -1018,3 +1196,6 @@ print("训练训练室干员名的模型,完成")
 数据处理器.load_recruit_resource()
 
 数据处理器.获取加工站配方类别()
+
+数据处理器.提取专精数据()
+print("提取专精数据,完成")

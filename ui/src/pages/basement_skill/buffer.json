@@ -341,6 +341,18 @@
     "description": "累计满时爆发（普通、精英敌人1000点、领袖2000点累计值），敌人立即受到5000点元素伤害且永久降低120点防御力（可叠加）。8秒冷却",
     "buffer": []
   },
+  "ba_slowdown": {
+    "termId": "ba.slowdown",
+    "termName": "迟钝",
+    "description": "移动速度、攻击速度、部分技能施放速度和冷却速度、部分异常状态的恢复速度降低相应比例（同名效果取最高）",
+    "buffer": []
+  },
+  "ba_costlowerbound": {
+    "termId": "ba.costlowerbound",
+    "termName": "部署费用下限",
+    "description": "部署费用可降低至部署费用下限；部署费用小于0时部署费用自然回复速度-50%",
+    "buffer": []
+  },
   "cc_bd_A_1": {
     "termId": "cc.bd_A_1",
     "termName": "念力",
@@ -688,7 +700,7 @@
   "cc_c_skill": {
     "termId": "cc.c.skill",
     "termName": "部分技能",
-    "description": "包含以下技能\n左膀右臂、S.W.E.E.P.、零食网络、清理协议、替身、必要责任、护卫、小小的领袖、独善其身、笑靥如春、金盏花诗会、捍卫之道、博识生手、点滴关照",
+    "description": "包含以下技能\n左膀右臂、S.W.E.E.P.、零食网络、清理协议、替身、必要责任、护卫、小小的领袖、独善其身、笑靥如春、金盏花诗会、捍卫之道、博识生手、点滴关照、总工程师",
     "buffer": []
   },
   "cc_t_strong2": {
@@ -779,7 +791,7 @@
   "cc_tag_op": {
     "termId": "cc.tag.op",
     "termName": "作业平台",
-    "description": "包含以下干员\nLancet-2、Castle-3、THRM-EX、正义骑士号、Friston-3、PhonoR-0、CONFESS-47",
+    "description": "包含以下干员\r\nLancet-2、Castle-3、THRM-EX、正义骑士号、Friston-3、PhonoR-0、CONFESS-47、GALLUS²",
     "buffer": []
   },
   "cc_tag_knight": {
@@ -822,6 +834,12 @@
     "termId": "cc.tra.pepe",
     "termName": "特别独占订单",
     "description": "由佩佩提供的特殊贵金属订单，该订单的获取时长固定，收益恒定，所需赤金交付数为0",
+    "buffer": []
+  },
+  "cc_tra_closure": {
+    "termId": "cc.tra.closure",
+    "termName": "可露希尔特别订单",
+    "description": "由可露希尔提供的特殊贵金属订单，该订单的收益恒定，所需赤金交付数为2",
     "buffer": []
   },
   "cc_bd_mujica": {

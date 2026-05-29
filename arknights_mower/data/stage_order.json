@@ -75,14 +75,19 @@
         "sortWithinYear": 11
     },
     {
-        "name": "",
+        "name": "离解复合",
         "sortByYear": 6,
         "sortWithinYear": 10
     },
     {
-        "name": "",
+        "name": "反常光谱",
         "sortByYear": 7,
         "sortWithinYear": 4
+    },
+    {
+        "name": "相变临界",
+        "sortByYear": 8,
+        "sortWithinYear": 1
     },
     {
         "name": "生于黑夜",
@@ -113,6 +118,16 @@
         "name": "我们明日见",
         "sortByYear": 6,
         "sortWithinYear": 8
+    },
+    {
+        "name": "乌萨斯的孩子们",
+        "sortByYear": 2,
+        "sortWithinYear": 1
+    },
+    {
+        "name": "人们，我们",
+        "sortByYear": 7,
+        "sortWithinYear": 10
     },
     {
         "name": "吾导先路",
@@ -153,6 +168,11 @@
         "name": "揭幕者们",
         "sortByYear": 6,
         "sortWithinYear": 5
+    },
+    {
+        "name": "十字路口",
+        "sortByYear": 7,
+        "sortWithinYear": 9
     },
     {
         "name": "玛莉娅·临光",
@@ -213,6 +233,11 @@
         "name": "镜中集",
         "sortByYear": 7,
         "sortWithinYear": 2
+    },
+    {
+        "name": "辞岁行",
+        "sortByYear": 7,
+        "sortWithinYear": 8
     },
     {
         "name": "孤岛风云",
@@ -348,11 +373,6 @@
         "name": "午间逸话",
         "sortByYear": 1,
         "sortWithinYear": 13
-    },
-    {
-        "name": "乌萨斯的孩子们",
-        "sortByYear": 2,
-        "sortWithinYear": 1
     },
     {
         "name": "踏寻往昔之风",

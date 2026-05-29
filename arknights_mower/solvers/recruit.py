@@ -153,10 +153,10 @@ class RecruitSolver(SceneGraphSolver):
             ]
 
             if self.find("recruit/job_requirements", scope=job_requirements_scope):
-                self.recruit_index = self.recruit_index + 1
                 if self.recruit_index in self.agent_choose.keys():
                     self.agent_choose[self.recruit_index]["choosed"] = True
                 logger.debug(f"{self.recruit_index}正在招募")
+                self.recruit_index = self.recruit_index + 1
                 return
             elif pos := self.find("recruit/recruit_lock", scope=recruit_lock_scope):
                 logger.debug(f"{self.recruit_index}锁定")
@@ -172,6 +172,10 @@ class RecruitSolver(SceneGraphSolver):
                     logger.debug(f"{self.recruit_index} 张招募券")
                     return
                 self.tap(pos)
+                if not self.wait_for_scene_stable(Scene.RECRUIT_TAGS):
+                    logger.debug(
+                        f"[begin recruit] scene not stable, keep index={self.recruit_index}"
+                    )
                 return
             else:
                 self.sleep()
@@ -256,9 +260,14 @@ class RecruitSolver(SceneGraphSolver):
 
                 # # start recruit
                 self.tap_element("recruit/start_recruit")
-                self.agent_choose[self.recruit_index]["choosed"] = True
-                self.ticket_number = self.ticket_number - 1
-                self.recruit_index = self.recruit_index + 1
+                if self.wait_for_scene_stable(Scene.RECRUIT_MAIN):
+                    self.agent_choose[self.recruit_index]["choosed"] = True
+                    self.ticket_number = self.ticket_number - 1
+                    self.recruit_index = self.recruit_index + 1
+                else:
+                    logger.debug(
+                        f"[start recruit] scene not stable, retry current index={self.recruit_index}"
+                    )
                 return
             else:
                 self.recruit_tags(self.tags[self.recruit_index])

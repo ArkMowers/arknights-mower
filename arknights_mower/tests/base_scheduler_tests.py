@@ -1,16 +1,87 @@
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
+import arknights_mower.solvers.base_schedule as base_schedule
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
 from arknights_mower.utils.logic_expression import LogicExpression
+from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
+from arknights_mower.utils.recognize import Scene
+from arknights_mower.utils.scheduler_task import TaskTypes, find_next_task
 
 with patch.dict("sys.modules", {"RecruitSolver": MagicMock()}):
     pass
 
 
 class TestBaseScheduler(unittest.TestCase):
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_run_order_solver_uses_current_time_for_expired_exhaust_task(self):
+        solver = BaseSchedulerSolver()
+        solver.tasks = []
+        solver.drone_room = None
+        solver.op_data = MagicMock()
+        solver.op_data.exhaust_agent = ["伊内丝"]
+        solver.op_data.rest_in_full_group = set()
+        solver.op_data.groups = {}
+        solver.op_data.operators = {
+            "伊内丝": Operator(
+                "伊内丝",
+                "meeting",
+                group="",
+                current_room="meeting",
+                current_index=0,
+                exhaust_require=True,
+                mood=1,
+                lower_limit=0,
+                operator_type="high",
+                depletion_rate=1,
+            )
+        }
+        start_time = datetime(2026, 5, 2, 15, 19, 33)
+        detected_exhaust_time = start_time + timedelta(minutes=10)
+
+        class FixedDateTime(datetime):
+            now_value = start_time
+
+            @classmethod
+            def now(cls, tz=None):
+                if tz is not None:
+                    return cls.now_value.replace(tzinfo=tz)
+                return cls.now_value
+
+        with (
+            patch.object(base_schedule, "datetime", FixedDateTime),
+            patch.object(BaseSchedulerSolver, "plan_run_order"),
+            patch.object(BaseSchedulerSolver, "check_fia", return_value=(None, None)),
+            patch.object(BaseSchedulerSolver, "enter_room"),
+            patch.object(
+                BaseSchedulerSolver,
+                "get_agent_from_room",
+                return_value=[{"time": detected_exhaust_time}],
+            ),
+            patch.object(BaseSchedulerSolver, "back"),
+        ):
+            solver.run_order_solver()
+
+        self.assertEqual(len(solver.tasks), 1)
+        self.assertEqual(solver.tasks[0].type, TaskTypes.EXHAUST_OFF)
+        self.assertEqual(solver.tasks[0].time, start_time)
+        self.assertIsNone(
+            find_next_task(solver.tasks, start_time - timedelta(seconds=900))
+        )
+
+        solver.error = True
+        FixedDateTime.now_value = start_time + timedelta(seconds=1)
+        with (
+            patch.object(base_schedule, "datetime", FixedDateTime),
+            patch.object(BaseSchedulerSolver, "scene", return_value=Scene.INDEX),
+        ):
+            solver.handle_error(force=True)
+
+        self.assertEqual(len(solver.tasks), 1)
+        self.assertEqual(solver.tasks[0].type, TaskTypes.EXHAUST_OFF)
+
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_backup_plan_solver_Caper(self):
         plan_config = {

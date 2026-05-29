@@ -1,10 +1,12 @@
 import unittest
+from unittest.mock import MagicMock, patch
 
-from arknights_mower.solvers.recruit import RecruitSolver
+with patch.dict("sys.modules", {"cv2": MagicMock(), "numpy": MagicMock()}):
+    from arknights_mower.solvers.recruit import RecruitSolver
 
 
 class TestRecruitCal(unittest.TestCase):
-    @unittest.mock.patch.object(RecruitSolver, "__init__", lambda x: None)
+    @patch.object(RecruitSolver, "__init__", lambda x: None)
     def setUp(self):
         self.test_class = RecruitSolver()
         self.test_class.recruit_order = [6, 5, 1, 4, 3, 2]

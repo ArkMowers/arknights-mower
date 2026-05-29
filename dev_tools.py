@@ -148,7 +148,8 @@ def compare_all_subfolders(base_new_dir, base_old_dir, base_update_dir):
 
 
 def is_blacklisted(path):
-    return any(blacklisted_dir in path for blacklisted_dir in BLACKLIST_DIRS)
+    rel_path = os.path.relpath(path, PROJECT_ROOT)
+    return any(blacklisted_dir in rel_path for blacklisted_dir in BLACKLIST_DIRS)
 
 
 def ensure_latest_ruff():
@@ -182,6 +183,16 @@ def format_ui_files():
 def verify_ui_prettier():
     print("Running UI Prettier verification with latest Prettier...")
     run_latest_prettier(["--check", "ui/**/*.js", "ui/**/*.vue"])
+
+
+def verify_python_ruff_check():
+    print("Running Python Ruff lint check...")
+    run_latest_ruff(["check", "."])
+
+
+def verify_python_ruff_format():
+    print("Running Python Ruff format check...")
+    run_latest_ruff(["format", "--check", "."])
 
 
 def process_files(base_dir):
@@ -222,13 +233,16 @@ def run_command(command, cwd=None):
 
 
 if __name__ == "__main__":
-    new_dir = os.path.join(PROJECT_ROOT, "dist", "mower", "_internal")
-    old_dir = "I:\\Mower2025.7.1_full\\_internal"
+    new_dir = os.path.join(PROJECT_ROOT, "dist", "mower")
+    old_dir = "D:\\mower4.1.5.4"
     update_dir = os.path.join(PROJECT_ROOT, "dist", "update")
 
     # compare_all_subfolders(new_dir, old_dir, update_dir)
-    # remove_empty_folders(update_dir)
+    remove_empty_folders(update_dir)
+    compare_and_update(new_dir, old_dir, update_dir)
     process_files(PROJECT_ROOT)
+    verify_python_ruff_check()
+    verify_python_ruff_format()
     format_ui_files()
     verify_ui_prettier()
     # download(BASE_URL)

@@ -421,14 +421,29 @@ class SceneGraphSolver(BaseSolver):
 
         error_count = 0
 
+        unknown_count = 0
         while (current := self.scene()) != scene:
-            if current in self.waiting_scene:
+            if current in self.waiting_scene and current != Scene.UNKNOWN:
                 self.waiting_solver()
                 continue
 
             if current not in DG.nodes:
                 logger.debug(f"{SceneComment[current]}不在场景图中")
-                self.sleep()
+                unknown_count += 1
+                if unknown_count <= 3:
+                    self.sleep()
+                elif unknown_count <= 6:
+                    logger.info(
+                        f"scene_graph_navigation unknown scene={current}, try back retry={unknown_count}"
+                    )
+                    self.back()
+                    self.sleep(0.5)
+                else:
+                    logger.warning(
+                        f"scene_graph_navigation abort: unknown scene persists current={current} target={scene}"
+                    )
+                    return
+                continue
 
             try:
                 sp = nx.shortest_path(DG, current, scene, weight="weight")
@@ -477,4 +492,6 @@ class SceneGraphSolver(BaseSolver):
 
     def back_to_infrastructure(self):
         logger.info("场景图导航：back_to_infrastructure")
+        if self.scene() == Scene.INFRA_MAIN:
+            return
         self.scene_graph_navigation(Scene.INFRA_MAIN)

@@ -45,6 +45,12 @@ export const routes = [
         name: 'doc'
       },
       {
+        path: 'mastery-recommendation',
+        component: () => import('@/pages/MasteryRecommendation.vue'),
+        meta: { title: '专精推荐' },
+        name: 'mastery_recommendation'
+      },
+      {
         path: 'BasementSkill',
         component: () => import('@/pages/BasementSkill.vue'),
         meta: { title: '基建技能' },

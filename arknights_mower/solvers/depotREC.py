@@ -3,6 +3,7 @@ import lzma
 import os
 import pickle
 import re
+import time
 from datetime import datetime
 
 import cv2
@@ -148,7 +149,11 @@ class depotREC(SceneGraphSolver):
     def 匹配物品一次(self, 物品, 物品灰, 模型名称):
         物品特征 = 提取特征点(物品)
         predicted_label = 模型名称.predict([物品特征])
-        物品数字 = self.读取物品数字(物品灰)
+
+        数字区域 = 物品灰[160:210, 30:210]  # 多加了一次裁切，把数字区域单独裁出来
+        物品数字 = self.读取物品数字(数字区域)  # 解决了合成玉只能识别3位数的问题
+
+        # 物品数字 = self.读取物品数字(物品灰)  # 这里是原来的逻辑
         return [predicted_label[0], 物品数字]
 
     def run(self) -> None:
@@ -162,7 +167,7 @@ class depotREC(SceneGraphSolver):
             self.tap_index_element("warehouse")
             logger.info("仓库扫描: 从主界面点击仓库界面")
 
-            time = datetime.now()
+            starttime = datetime.now()
             任务组 = [
                 (1200, self.knn模型_CONSUME, "消耗物品"),
                 (1400, self.knn模型_NORMAL, "基础物品"),
@@ -170,10 +175,11 @@ class depotREC(SceneGraphSolver):
 
             for 任务 in 任务组:
                 self.tap((任务[0], 70))
+                time.sleep(0.5)
                 if not self.find("depot_empty"):
                     self.分类扫描(任务[1])
                     logger.info(
-                        f"仓库扫描: {任务[2]}识别，识别用时{datetime.now() - time}"
+                        f"仓库扫描: {任务[2]}识别，识别用时{datetime.now() - starttime}"
                     )
                 else:
                     logger.info("仓库扫描: 这个分类下没有物品")

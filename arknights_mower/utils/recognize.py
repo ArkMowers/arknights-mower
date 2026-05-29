@@ -298,7 +298,7 @@ class Recognizer:
             self.scene = Scene.LOADING
         elif self.find("loading4"):
             self.scene = Scene.LOADING
-        elif self.find("ope_plan"):
+        elif self.find("ope_start"):
             self.scene = Scene.OPERATOR_BEFORE
         elif self.find("navigation/episode"):
             self.scene = Scene.OPERATOR_CHOOSE_LEVEL
@@ -708,6 +708,8 @@ class Recognizer:
         :return ret: 若匹配成功，则返回元素在游戏界面中出现的位置，否则返回 None
         """
         logger.debug(f"find: {res}")
+        normalized_res = str(res).replace("\\", "/")
+        force_feature_match = "navigation/stage/" in normalized_res
 
         color = {
             "1800": (158, 958),
@@ -748,7 +750,6 @@ class Recognizer:
             "login_loading": (920, 388),
             "login_logo": (601, 332),
             "read_mail": (1541, 947),
-            "mission_trainee_on": (690, 17),
             "nav_bar": (655, 0),
             "nav_button": (26, 20),
             "navigation/collection/AP-1": (203, 821),
@@ -766,11 +767,13 @@ class Recognizer:
             "next_step": (915, 811),
             "ope_agency_lock": [(1565, 856), (1565, 875)],
             "ope_elimi_agency_confirm": (1554, 941),
-            "ope_elimi_agency_panel": (1409, 612),
+            # "ope_elimi_agency_panel": (1409, 612),
             "ope_eliminate": (1332, 938),
             "ope_recover_originite_on": (1514, 124),
             "ope_recover_potion_on": (1046, 127),
             "ope_select_start": (1579, 701),
+            "operation/x3": (1477, 601),
+            "operation/x4": (1478, 509),
             "open_recruitment": (192, 143),
             "order_label": (404, 137),
             "pull_once": (1260, 950),
@@ -793,6 +796,8 @@ class Recognizer:
             "navigation/ope_hard_small": 0.7,
             "navigation/ope_normal": 0.7,
             "navigation/ope_normal_small": 0.7,
+            "operation/x3": 0.8,
+            "operation/x4": 0.8,
             "recruit/agent_token": 0.8,
             "recruit/agent_token_first": 0.8,
             "recruit/lmb": 0.7,
@@ -808,7 +813,7 @@ class Recognizer:
             "recruit/stone": 0.7,
         }
 
-        if res in color:
+        if not force_feature_match and res in color:
             res_img = loadres(res)
             h, w, _ = res_img.shape
 
@@ -852,6 +857,9 @@ class Recognizer:
             "main_theme_small": (321, 973),
             "materiel_ico": (892, 61),
             "skill_collect_confirm": (1160, 835),
+            "mission_daily": ((600, 0), (1920, 140)),
+            "mission_trainee_on": ((685, 15), (1910, 100)),
+            "mission_weekly": ((600, 0), (1920, 140)),
             "mission_daily_on": ((685, 15), (1910, 100)),
             "mission_weekly_on": ((685, 15), (1910, 100)),
             "navigation/collection/AP_entry": ((0, 170), (1920, 870)),
@@ -907,7 +915,7 @@ class Recognizer:
             "op_select_2": (95, 474),
         }
 
-        if res in template_matching:
+        if not force_feature_match and res in template_matching:
             threshold = 0.9
             if res in template_matching_score:
                 threshold = template_matching_score[res]
@@ -938,6 +946,8 @@ class Recognizer:
             "login_captcha",
             "control_central",
         ]
+        if force_feature_match:
+            dpi_aware = True
 
         if scope is None and threshold == 0.0:
             # if res == "arrange_check_in":

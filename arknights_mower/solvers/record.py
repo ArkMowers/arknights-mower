@@ -449,6 +449,7 @@ def get_trading_history(start_date: str, end_date: str):
     end_dt = dubai_end.astimezone(local_tz)
 
     database_path = get_path("@app/tmp/data.db")
+    database_path.parent.mkdir(parents=True, exist_ok=True)
     start_timestamp = int(start_dt.timestamp())
     end_timestamp = int(end_dt.timestamp())
 
@@ -481,7 +482,7 @@ def get_trading_history(start_date: str, end_date: str):
             # 构建每个记录的统计信息
             key = (
                 trade_type
-                if trade_type in ["佩佩", "龙舌兰"]
+                if trade_type in ["佩佩", "龙舌兰", "可露希尔"]
                 else f"{trade_type}_{price}"
             )
             result_dict[trade_date].append({key: count})
@@ -559,3 +560,78 @@ def save_log(message: str, task: str = "{}", level: str = "INFO"):
 def save_exception(e: Exception):
     tb = traceback.format_exc()
     save_log(f"Exception: {str(e)}\n{tb}", task="{}", level="ERROR")
+
+
+def _ensure_operation_tables(cursor: sqlite3.Cursor):
+    cursor.execute(
+        "CREATE TABLE IF NOT EXISTS operation_history ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "stage_id TEXT,"
+        "run_count INTEGER,"
+        "ap_cost INTEGER,"
+        "started_at TEXT,"
+        "finished_at TEXT,"
+        "duration_seconds REAL,"
+        "status TEXT,"
+        "drop_json TEXT,"
+        "created_at TEXT"
+        ")"
+    )
+
+
+def record_operation_batch(
+    stage_id: str,
+    run_count: int,
+    ap_cost: int | None,
+    started_at: datetime,
+    finished_at: datetime,
+    duration_seconds: float,
+    status: str = "success",
+    drop_json: str | None = None,
+):
+    database_path = get_path("@app/tmp/data.db")
+    get_path("@app/tmp").mkdir(exist_ok=True)
+    created_at = datetime.now().isoformat(sep=" ", timespec="seconds")
+    with sqlite3.connect(database_path) as conn:
+        cursor = conn.cursor()
+        _ensure_operation_tables(cursor)
+        cursor.execute(
+            "INSERT INTO operation_history (stage_id, run_count, ap_cost, started_at, finished_at, duration_seconds, status, drop_json, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                stage_id,
+                run_count,
+                ap_cost,
+                started_at.isoformat(sep=" ", timespec="seconds"),
+                finished_at.isoformat(sep=" ", timespec="seconds"),
+                duration_seconds,
+                status,
+                drop_json,
+                created_at,
+            ),
+        )
+        conn.commit()
+
+
+def get_stage_operation_duration(
+    stage_id: str,
+    fallback_seconds: int,
+):
+    database_path = get_path("@app/tmp/data.db")
+    get_path("@app/tmp").mkdir(exist_ok=True)
+    with sqlite3.connect(database_path) as conn:
+        cursor = conn.cursor()
+        _ensure_operation_tables(cursor)
+        cursor.execute(
+            "SELECT duration_seconds FROM operation_history "
+            "WHERE stage_id = ? AND status = 'success' "
+            "ORDER BY id DESC LIMIT 1",
+            (stage_id,),
+        )
+        row = cursor.fetchone()
+    if row is None or row[0] is None:
+        return fallback_seconds
+    try:
+        return max(1, int(row[0]))
+    except (TypeError, ValueError):
+        return fallback_seconds

@@ -43,6 +43,34 @@
             <n-layout-content class="layout-content-container">
               <router-view v-if="loaded" />
               <ChatBot v-model:show="showChatBot" />
+              <Feedback />
+              <n-modal
+                v-model:show="showUpdateNoticeModal"
+                preset="card"
+                style="width: min(720px, calc(100vw - 32px))"
+                title="版本更新"
+                :mask-closable="false"
+                :close-on-esc="false"
+                closable
+                @close="handleUpdateNoticeAck"
+              >
+                <div style="font-size: 18px; font-weight: 600">
+                  {{ `已更新到 ${updateNotice.current_version}` }}
+                </div>
+                <div
+                  v-if="updateNotice.previous_version"
+                  style="margin-top: 8px; color: var(--n-text-color-3)"
+                >
+                  {{ `从 ${updateNotice.previous_version} 更新` }}
+                </div>
+                <div
+                  style="margin-top: 16px; max-height: 50vh; overflow: auto; line-height: 1.6"
+                  v-html="renderedChangelog"
+                ></div>
+                <div style="margin-top: 20px; display: flex; justify-content: flex-end">
+                  <n-button type="primary" @click="handleUpdateNoticeAck">我知道了</n-button>
+                </div>
+              </n-modal>
             </n-layout-content>
             <n-layout-footer v-if="mobile">
               <n-tabs type="line" justify-content="space-evenly" size="small">
@@ -83,6 +111,12 @@
                   <div style="display: flex; flex-direction: column; align-items: center">
                     <n-icon size="20" style="margin-bottom: -1px" :component="Home" />
                     排班
+                  </div>
+                </n-tab>
+                <n-tab name="专精推荐" @click="$router.push('/mastery-recommendation')">
+                  <div style="display: flex; flex-direction: column; align-items: center">
+                    <n-icon size="20" style="margin-bottom: -1px" :component="SkillLevelAdvanced" />
+                    专精
                   </div>
                 </n-tab>
                 <n-tab name="报表" @click="showModal = true">
@@ -177,9 +211,18 @@ import Coffee from '@vicons/tabler/Coffee'
 import { NIcon } from 'naive-ui'
 import { storeToRefs } from 'pinia'
 import { h, inject, onMounted, provide, ref } from 'vue'
+import Feedback from '@/components/Feedback.vue'
+import markdownit from 'markdown-it'
+import externalLink from 'markdown-it-external-link'
 
+const md = markdownit({ html: true, breaks: true }).use(externalLink, {
+  externalTarget: '_blank',
+  rel: 'noopener noreferrer'
+})
 const showModal = ref(false)
 const showModal2 = ref(false)
+const showFeedback = ref(false)
+provide('show_feedback', showFeedback)
 function renderIcon(icon) {
   return () => h(NIcon, null, { default: () => h(icon) })
 }
@@ -223,6 +266,12 @@ const menuOptions = [
     label: () => h(RouterLink, { to: { path: '/plan-editor' } }, { default: () => '排班编辑' }),
     icon: renderIcon(Home),
     key: 'go-to-plan'
+  },
+  {
+    label: () =>
+      h(RouterLink, { to: { path: '/mastery-recommendation' } }, { default: () => '专精推荐' }),
+    icon: renderIcon(SkillLevelAdvanced),
+    key: 'go-to-mastery-recommendation'
   },
   {
     label: () => '数据图表',
@@ -324,6 +373,7 @@ hljs.registerLanguage('json', json)
 import { useConfigStore } from '@/stores/config'
 import { useMowerStore } from '@/stores/mower'
 import { usePlanStore } from '@/stores/plan'
+import { useUpdateNoticeStore } from '@/stores/updateNotice'
 
 import { usewatermarkStore } from '@/stores/watermark'
 
@@ -334,7 +384,8 @@ const watermarkData = ref('mower')
 
 const config_store = useConfigStore()
 const { load_config, load_shop, load_item } = config_store
-const { simulator, start_automatically, theme, webview } = storeToRefs(config_store)
+const { check_for_updates, simulator, start_automatically, theme, webview } =
+  storeToRefs(config_store)
 
 const plan_store = usePlanStore()
 const { operators } = storeToRefs(plan_store)
@@ -343,6 +394,11 @@ const { load_plan, load_operators } = plan_store
 const mower_store = useMowerStore()
 const { ws, running, log_lines } = storeToRefs(mower_store)
 const { get_running, listen_ws } = mower_store
+
+const update_notice_store = useUpdateNoticeStore()
+const { notice: updateNotice } = storeToRefs(update_notice_store)
+const { ackUpdateNotice, loadUpdateNotice } = update_notice_store
+const showUpdateNoticeModal = ref(false)
 
 const axios = inject('axios')
 
@@ -368,6 +424,23 @@ const mobile = ref(true)
 provide('mobile', mobile)
 
 const loaded = inject('loaded')
+
+const renderedChangelog = computed(() => {
+  return md.render(updateNotice.value.changelog)
+})
+
+async function handleUpdateNoticeAck() {
+  if (!updateNotice.value.current_version) {
+    showUpdateNoticeModal.value = false
+    return
+  }
+  try {
+    await ackUpdateNotice(updateNotice.value.current_version)
+    showUpdateNoticeModal.value = false
+  } catch (error) {
+    console.error('failed to acknowledge update notice', error)
+  }
+}
 
 const operators_with_free_current = computed(() => {
   return [
@@ -396,6 +469,16 @@ onMounted(async () => {
       : 'arknights-mower'
 
   await load_plan()
+
+  if (check_for_updates.value) {
+    try {
+      const notice = await loadUpdateNotice()
+      showUpdateNoticeModal.value = notice.should_show
+    } catch (error) {
+      console.error('failed to load update notice', error)
+      showUpdateNoticeModal.value = false
+    }
+  }
 
   loaded.value = true
 

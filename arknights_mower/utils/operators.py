@@ -11,6 +11,9 @@ from ..data import agent_arrange_order, agent_list, base_room_list
 from ..solvers.record import save_action_to_sqlite_decorator
 from ..utils.log import logger
 
+# 赤金交易订单干员常量
+TRADE_ORDER_AGENTS = ["但书", "龙舌兰", "佩佩", "可露希尔"]
+
 
 def build_global_plan():
     """构建完整的 global_plan，包括 Plan 对象，用于运行时"""
@@ -146,7 +149,7 @@ class Operators:
         self.party_time = None
         self.profession_filter = set(agent_arrange_order["职介选择开关"])
         self.eval_model = base_eval_model.clone()
-        self.eval_model.nodes.extend(["Call", "Attribute"])
+        self.eval_model.nodes.extend(["Call", "Attribute", "Is", "IsNot"])
         self.eval_model.attributes.extend(
             [
                 "operators",
@@ -229,8 +232,8 @@ class Operators:
             for idx, data in enumerate(self.plan[room]):
                 if data.agent not in agent_list and data.agent != "Free":
                     return f"干员名输入错误: 房间->{room}, 干员->{data.agent}"
-                if data.agent in ["龙舌兰", "但书", "佩佩"]:
-                    return f"高效组不可用龙舌兰，但书,佩佩 房间->{room}, 干员->{data.agent}"
+                if data.agent in TRADE_ORDER_AGENTS + ["可露希尔"]:
+                    return f"高效组不可用龙舌兰，但书,佩佩，可露希尔 房间->{room}, 干员->{data.agent}"
                 if data.agent == "菲亚梅塔" and idx == 1:
                     return f"菲亚梅塔不能安排在2号位置 房间->{room}, 干员->{data.agent}"
                 if data.agent == "菲亚梅塔" and not room.startswith("dorm"):
@@ -263,7 +266,7 @@ class Operators:
                                 char in replacement_str
                                 for replacement_str in data.replacement
                             )
-                            for char in ["龙舌兰", "但书", "佩佩"]
+                            for char in TRADE_ORDER_AGENTS
                         ]
                     )
                     > 1
@@ -275,7 +278,7 @@ class Operators:
                 if any(
                     char in replacement_str
                     for replacement_str in data.replacement
-                    for char in ["龙舌兰", "但书", "佩佩"]
+                    for char in TRADE_ORDER_AGENTS
                 ):
                     r_count -= 1
                 if r_count <= 0 and (
@@ -371,11 +374,7 @@ class Operators:
         for x, y in self.plan.items():
             if not x.startswith("room"):
                 continue
-            if any(
-                char in obj.replacement
-                for obj in y
-                for char in ["但书", "龙舌兰", "佩佩"]
-            ):
+            if any(char in obj.replacement for obj in y for char in TRADE_ORDER_AGENTS):
                 self.run_order_rooms[x] = {}
         for key in self.groups:
             total_count = 0
@@ -385,7 +384,7 @@ class Operators:
                     (
                         r
                         for r in self.operators[name].replacement
-                        if r not in _replacement and r not in ["龙舌兰", "但书", "佩佩"]
+                        if r not in _replacement and r not in TRADE_ORDER_AGENTS
                     ),
                     None,
                 )

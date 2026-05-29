@@ -244,6 +244,8 @@ qrcode==7.4.2
     # via -r requirements.in
 rapidocr-onnxruntime==1.3.24
     # via -r requirements.in
+ddddocr>=1.4.7
+    # via -r requirements.in
 regex==2024.11.6
     # via tiktoken
 requests==2.31.0

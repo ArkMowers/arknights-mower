@@ -210,7 +210,9 @@ def simulate(saved):
                             logger.info(
                                 f"仓库扫描未到时间，将在 {config.conf.maa_gap - dt // 3600}小时之内开始扫描"
                             )
-                    if config.conf.maa_enable == 1:
+                    if config.conf.maa_enable != 1:
+                        base_scheduler.mower_plan_solver()
+                    elif config.conf.maa_enable == 1:
                         subject = f"下次任务在{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}"
                         context = f"下一次任务:{base_scheduler.tasks[0].plan}"
                         logger.info(context)

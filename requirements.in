@@ -8,6 +8,7 @@ pillow==10.3.0
 
 # OCR
 rapidocr-onnxruntime==1.3.24
+ddddocr>=1.4.7
 
 # 二维码
 base45==0.4.4

@@ -1,5 +1,5 @@
 <script setup>
-import { inject, ref } from 'vue'
+import { inject, ref, computed } from 'vue'
 const axios = inject('axios')
 
 import { useConfigStore } from '@/stores/config'
@@ -27,8 +27,14 @@ const maa_msg = ref('')
 async function test_maa() {
   maa_msg.value = '正在测试……'
   const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/check-skland`)
-  maa_msg.value = response.data
+  maa_msg.value = response.data.join('\n')
 }
+
+const enable_test = computed(() => {
+  return skland_info.value.some((item) => {
+    return item.account?.trim() && item.password?.trim()
+  })
+})
 </script>
 
 <template>
@@ -64,8 +70,15 @@ async function test_maa() {
       </template>
     </n-dynamic-input>
     <div class="misc-container">
-      <n-button @click="test_maa">测试设置</n-button>
-      <div>{{ maa_msg }}</div>
+      <n-button :disabled="!enable_test" @click="test_maa">测试设置</n-button>
+      <n-card
+        content-scrollable
+        style="max-height: 80px"
+        segmented
+        :content-style="{ whiteSpace: 'pre-line', overflow: 'auto' }"
+      >
+        <div>{{ maa_msg }}</div>
+      </n-card>
     </div>
   </n-card>
 </template>

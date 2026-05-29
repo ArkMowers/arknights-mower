@@ -56,7 +56,9 @@ class Api:
             Popen(["mower.exe", instance["path"], instance["name"]])
         else:
             if is_win:
-                Popen(["python.exe", "webview_ui.py", instance["path"], instance["name"]])
+                Popen(
+                    ["python.exe", "webview_ui.py", instance["path"], instance["name"]]
+                )
             else:
                 Popen(["python3", "webview_ui.py", instance["path"], instance["name"]])
 

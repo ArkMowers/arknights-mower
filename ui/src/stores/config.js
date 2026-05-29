@@ -1,8 +1,9 @@
 import axios from 'axios'
 import { defineStore } from 'pinia'
-import { inject, ref, watchEffect } from 'vue'
+import { inject, ref, watch, watchEffect } from 'vue'
 
 export const useConfigStore = defineStore('config', () => {
+  const weeklyPlanWeekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
   const adb = ref('')
   const drone_count_limit = ref(0)
   const drone_room = ref('')
@@ -15,7 +16,8 @@ export const useConfigStore = defineStore('config', () => {
   const maa_path = ref('')
   const maa_expiring_medicine = ref(true)
   const maa_weekly_plan = ref([])
-  const maa_weekly_plan1 = ref([])
+  const maa_weekly_plan_options = ref([])
+  const maa_weekly_plan_active = ref('')
   const maa_rg_enable = ref(0)
   const maa_long_task_type = ref('rogue')
   const mail_enable = ref(false)
@@ -96,6 +98,9 @@ export const useConfigStore = defineStore('config', () => {
   const maa_orundum = ref(false)
   const maa_mining = ref(false)
   const maa_specialaccess = ref(false)
+  const syncingWeeklyPlan = ref(false)
+  const skipNextWeeklyPlanSync = ref(false)
+  let weeklyPlanSyncTimer = null
 
   async function load_shop() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/shop`)
@@ -121,6 +126,103 @@ export const useConfigStore = defineStore('config', () => {
     item_list.value = mall_list
   }
 
+  function normalizeWeeklyPlan(rawPlan) {
+    return weeklyPlanWeekdays.map((weekday, index) => {
+      const item = Array.isArray(rawPlan) ? (rawPlan[index] ?? {}) : {}
+      const stageValue = item.stage
+      return {
+        weekday,
+        medicine: Number.isFinite(Number(item.medicine)) ? Number(item.medicine) : 0,
+        sanity_threshold: Math.min(
+          189,
+          Math.max(
+            0,
+            Number.isFinite(Number(item.sanity_threshold)) ? Number(item.sanity_threshold) : 0
+          )
+        ),
+        stage: Array.isArray(stageValue)
+          ? stageValue.filter((value) => typeof value === 'string')
+          : typeof stageValue === 'string'
+            ? [stageValue]
+            : []
+      }
+    })
+  }
+
+  async function load_weekly_plan_state() {
+    const listResponse = await axios.get(`${import.meta.env.VITE_HTTP_URL}/weekly-plans`)
+    maa_weekly_plan_options.value = Array.isArray(listResponse.data.plans)
+      ? listResponse.data.plans
+      : []
+
+    if (!maa_weekly_plan_active.value) {
+      await update_weekly_plan_active('默认', normalizeWeeklyPlan(maa_weekly_plan.value))
+    } else if (!maa_weekly_plan_options.value.includes(maa_weekly_plan_active.value)) {
+      maa_weekly_plan_options.value = Array.from(
+        new Set([...maa_weekly_plan_options.value, maa_weekly_plan_active.value])
+      )
+    }
+  }
+
+  async function update_weekly_plan_active(key, plan = undefined) {
+    const activeKey = typeof key === 'string' ? key.trim() : ''
+    if (!activeKey) {
+      throw new Error('周计划方案不能为空')
+    }
+
+    syncingWeeklyPlan.value = true
+    try {
+      const payload = { active: activeKey }
+      if (plan !== undefined) {
+        payload.plan = normalizeWeeklyPlan(plan)
+      }
+      const response = await axios.post(
+        `${import.meta.env.VITE_HTTP_URL}/weekly-plans/active`,
+        payload
+      )
+      maa_weekly_plan_active.value = response.data.active
+      skipNextWeeklyPlanSync.value = true
+      maa_weekly_plan.value = normalizeWeeklyPlan(response.data.plan)
+      maa_weekly_plan_options.value = Array.from(
+        new Set([...maa_weekly_plan_options.value, response.data.active])
+      )
+      return response.data
+    } finally {
+      syncingWeeklyPlan.value = false
+    }
+  }
+
+  async function sync_active_weekly_plan() {
+    if (!maa_weekly_plan_active.value) {
+      return
+    }
+    return update_weekly_plan_active(maa_weekly_plan_active.value, maa_weekly_plan.value)
+  }
+
+  async function delete_weekly_plan(key) {
+    const planKey = typeof key === 'string' ? key.trim() : ''
+    if (!planKey) {
+      throw new Error('周计划方案不能为空')
+    }
+
+    syncingWeeklyPlan.value = true
+    try {
+      const response = await axios.delete(
+        `${import.meta.env.VITE_HTTP_URL}/weekly-plans/${encodeURIComponent(planKey)}`
+      )
+      maa_weekly_plan_active.value = response.data.active
+      skipNextWeeklyPlanSync.value = true
+      maa_weekly_plan.value = normalizeWeeklyPlan(response.data.plan)
+      const listResponse = await axios.get(`${import.meta.env.VITE_HTTP_URL}/weekly-plans`)
+      maa_weekly_plan_options.value = Array.isArray(listResponse.data.plans)
+        ? listResponse.data.plans
+        : []
+      return response.data
+    } finally {
+      syncingWeeklyPlan.value = false
+    }
+  }
+
   async function load_config() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/conf`)
     adb.value = response.data.adb
@@ -137,8 +239,8 @@ export const useConfigStore = defineStore('config', () => {
     maa_rg_enable.value = response.data.maa_rg_enable == 1
     maa_long_task_type.value = response.data.maa_long_task_type
     maa_expiring_medicine.value = response.data.maa_expiring_medicine
-    maa_weekly_plan.value = response.data.maa_weekly_plan
-    maa_weekly_plan1.value = response.data.maa_weekly_plan1
+    maa_weekly_plan.value = normalizeWeeklyPlan(response.data.maa_weekly_plan)
+    maa_weekly_plan_active.value = response.data.maa_weekly_plan_active || ''
     mail_enable.value = response.data.mail_enable != 0
     account.value = response.data.account
     pass_code.value = response.data.pass_code
@@ -147,7 +249,6 @@ export const useConfigStore = defineStore('config', () => {
     custom_smtp_server.value = response.data.custom_smtp_server
     package_type.value = response.data.package_type == 1 ? 'official' : 'bilibili'
     reload_room.value = response.data.reload_room == '' ? [] : response.data.reload_room.split(',')
-    console.log(response.data)
     run_order_delay.value = response.data.run_order_delay
 
     dorm_order.value = response.data.dorm_order == '' ? [] : response.data.dorm_order.split(',')
@@ -220,6 +321,7 @@ export const useConfigStore = defineStore('config', () => {
     maa_orundum.value = response.data.maa_orundum
     maa_mining.value = response.data.maa_mining
     maa_specialaccess.value = response.data.maa_specialaccess
+    await load_weekly_plan_state()
   }
 
   function build_config() {
@@ -238,8 +340,6 @@ export const useConfigStore = defineStore('config', () => {
       maa_rg_enable: maa_rg_enable.value ? 1 : 0,
       maa_long_task_type: maa_long_task_type.value,
       maa_expiring_medicine: maa_expiring_medicine.value,
-      maa_weekly_plan: maa_weekly_plan.value,
-      maa_weekly_plan1: maa_weekly_plan1.value,
       mail_enable: mail_enable.value ? 1 : 0,
       package_type: package_type.value == 'official' ? 1 : 0,
       pass_code: pass_code.value,
@@ -327,6 +427,26 @@ export const useConfigStore = defineStore('config', () => {
   }
 
   const loaded = inject('loaded')
+  watch(
+    maa_weekly_plan,
+    () => {
+      if (skipNextWeeklyPlanSync.value) {
+        skipNextWeeklyPlanSync.value = false
+        return
+      }
+      if (!loaded.value || syncingWeeklyPlan.value || !maa_weekly_plan_active.value) {
+        return
+      }
+      if (weeklyPlanSyncTimer) {
+        clearTimeout(weeklyPlanSyncTimer)
+      }
+      weeklyPlanSyncTimer = setTimeout(() => {
+        weeklyPlanSyncTimer = null
+        sync_active_weekly_plan()
+      }, 250)
+    },
+    { deep: true }
+  )
   watchEffect(() => {
     if (loaded.value) {
       axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, build_config())
@@ -349,7 +469,8 @@ export const useConfigStore = defineStore('config', () => {
     maa_long_task_type,
     maa_expiring_medicine,
     maa_weekly_plan,
-    maa_weekly_plan1,
+    maa_weekly_plan_options,
+    maa_weekly_plan_active,
     mail_enable,
     account,
     pass_code,
@@ -430,6 +551,10 @@ export const useConfigStore = defineStore('config', () => {
     maa_recruit,
     maa_orundum,
     maa_mining,
-    maa_specialaccess
+    maa_specialaccess,
+    load_weekly_plan_state,
+    update_weekly_plan_active,
+    sync_active_weekly_plan,
+    delete_weekly_plan
   }
 })

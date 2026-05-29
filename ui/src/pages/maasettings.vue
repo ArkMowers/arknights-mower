@@ -12,12 +12,11 @@ for (let i = 0.5; i <= 3.0; i += 0.25) {
       <div><maa-basic /></div>
       <div><maa-weekly /></div>
       <div><maa-reward /></div>
-      <div><long-tasks /></div>
     </div>
 
     <div class="grid-right">
       <div><clue /></div>
-      <div><maa-weekly-new /></div>
+      <div><long-tasks /></div>
     </div>
   </div>
 </template>

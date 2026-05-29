@@ -60,7 +60,7 @@ call_db_tool_def = {
             "   示例查询: SELECT name AS 干员名称, current_room AS 当前位置 FROM agent_action WHERE agent_current_room LIKE 'dorm_%'"
             "2. trading_history表 - 龙门币交易记录/订单记录:"
             "   字段: time INTEGER PRIMARY KEY,server_date TEXT,type TEXT,price INTEGER"
-            "   订单类别/ type：龙舌兰，但书，佩佩，漏单"
+            "   订单类别/ type：龙舌兰，但书，佩佩，可露希尔，漏单"
             "   规则: 时间查询需转换: strftime('%Y-%m-%d %H:%M:%S', time, 'unixepoch', 'localtime') AS local_time"
             "   示例查询: SELECT strftime('%Y-%m-%d %H:%M:%S', time, 'unixepoch', 'localtime') AS 交易时间, type AS 类型 FROM trading_history WHERE type = '漏单'"
             "3. log表 - 系统任务记录/报错记录/日志:"
@@ -72,6 +72,7 @@ call_db_tool_def = {
             "- 任务，日志相关查询必须使用log表，不得使用trading_history表"
             "- 列名必须与用户查询语言一致"
             "- 用户查询‘漏单’时候你需要向用户确认是想查询任务记录还是查询账单/龙门币记录"
+            "- 如果用户是要分析漏单原因而不是单纯查表，应优先使用 analyze_missed_order 工具"
             "- agent_action 的 `current_time` 你必须用``包住 例子: Select `current_time` from agent_action"
             # 时间处理
             "时间处理规则:"

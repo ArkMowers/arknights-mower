@@ -1,7 +1,14 @@
 # -*- mode: python ; coding: utf-8 -*-
 from pathlib import Path
+import sys
 
 import rapidocr_onnxruntime
+
+SPEC_DIR = Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd()
+if str(SPEC_DIR) not in sys.path:
+    sys.path.insert(0, str(SPEC_DIR))
+
+from build_assets import get_pyinstaller_common_datas
 
 block_cipher = None
 
@@ -33,16 +40,14 @@ mower_a = Analysis(
     ["webview_ui.py"],
     pathex=[],
     binaries=[],
-    datas=[
-        ("arknights_mower", "arknights_mower"),
-        ("logo.png", "."),
+    datas=get_pyinstaller_common_datas()
+    + [
         (
             f"{site_packages}/onnxruntime/capi/onnxruntime_providers_shared.dll",
             "onnxruntime/capi/",
         ),
         (f"{site_packages}/pyzbar/libzbar-64.dll", "."),
         (f"{site_packages}/pyzbar/libiconv.dll", "."),
-        ("./ui/dist","./ui/dist"),
     ]
     + add_data,
     hiddenimports=[],

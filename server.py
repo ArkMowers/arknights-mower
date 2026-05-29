@@ -34,6 +34,18 @@ mimetypes.add_type("application/javascript", ".js")
 app = Flask(__name__, static_folder="ui/dist", static_url_path="")
 sock = Sock(app)
 CORS(app)
+
+
+@app.errorhandler(500)
+def handle_500(e):
+    import traceback
+
+    return {"error": str(e), "traceback": traceback.format_exc()}, 500
+
+
+tmp_dir = get_path("@app/tmp")
+tmp_dir.mkdir(parents=True, exist_ok=True)
+
 if token := config.conf.webview.token:
     app.token = token
 
@@ -90,9 +102,26 @@ def not_found(e):
 @require_token
 def load_config():
     if request.method == "GET":
-        return config.conf.model_dump()
+        try:
+            from arknights_mower.utils.config.weekly_plan_loader import (
+                get_weekly_plan_manager,
+            )
+
+            manager = get_weekly_plan_manager()
+            manager.sync_active_plan_to_config()
+        except Exception:
+            logger.exception("Failed to sync active weekly plan before returning /conf")
+            manager = None
+        data = config.conf.model_dump()
+        if manager is not None:
+            data["maa_weekly_plan_active"] = manager.get_active_plan_key()
+        return data
     else:
-        config.conf = config.Conf(**request.json)
+        req = dict(request.json or {})
+        req["maa_weekly_plan"] = [
+            item.model_dump() for item in config.conf.maa_weekly_plan
+        ]
+        config.conf = config.Conf(**req)
         config.save_conf()
         return "New config saved!"
 
@@ -131,9 +160,21 @@ def item_list():
 
 @app.route("/depot/readdepot")
 def read_depot():
+    from datetime import datetime as _dt
+
     from arknights_mower.utils import depot
 
-    return depot.读取仓库()
+    cultivate_ok = False
+    cultivate_msg = "未同步"
+    cultivate_json = get_path("@app/tmp/cultivate.json")
+    if os.path.exists(cultivate_json):
+        cultivate_ok = True
+        cultivate_msg = _dt.fromtimestamp(os.path.getmtime(cultivate_json)).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+
+    data = depot.读取仓库()
+    return {"depot": data, "cultivate_ok": cultivate_ok, "cultivate_msg": cultivate_msg}
 
 
 @app.route("/status")
@@ -480,6 +521,28 @@ def getwatermark():
     return __version__
 
 
+@app.route("/update-notice")
+@require_token
+def get_update_notice():
+    from arknights_mower.utils.update_notice import UpdateNoticeManager
+
+    return UpdateNoticeManager().get_notice()
+
+
+@app.route("/update-notice/ack", methods=["POST"])
+@require_token
+def ack_update_notice():
+    from arknights_mower.utils.update_notice import UpdateNoticeManager
+
+    version = str((request.json or {}).get("version", "")).strip()
+    if not version:
+        return {"ok": False, "message": "missing version"}, 400
+    try:
+        return UpdateNoticeManager().acknowledge(version)
+    except ValueError as exc:
+        return {"ok": False, "message": str(exc)}, 400
+
+
 def str2date(target: str):
     try:
         return datetime.datetime.strptime(target, "%Y-%m-%d").date()
@@ -658,9 +721,9 @@ def test_custom_screenshot():
 @app.route("/check-skland")
 @require_token
 def test_skland():
-    from arknights_mower.solvers.skland import SKLand
+    from arknights_mower.solvers.player_info import PlayerInfoClient
 
-    return SKLand().test_connect()
+    return PlayerInfoClient().probe_accounts()
 
 
 @app.route("/check-skland-sign")
@@ -669,6 +732,318 @@ def test_skland_sign():
     from arknights_mower.solvers.skland import SKLand
 
     return SKLand().test_sign()
+
+
+@app.route("/mastery-recommendation-debug")
+def mastery_recommendation_debug():
+    import json
+    import os
+
+    from arknights_mower.utils.mastery_recommendation import (
+        _find_skill_data,
+        get_mastery_recommendations,
+    )
+    from arknights_mower.utils.path import _install_dir, _internal_dir, get_path
+
+    cultivate_path = get_path("@app/tmp/cultivate.json")
+    skill_data_path = _find_skill_data()
+
+    debug_info = {
+        "install_dir": str(_install_dir),
+        "internal_dir": str(_internal_dir),
+        "cultivate_path": str(cultivate_path),
+        "cultivate_exists": os.path.exists(cultivate_path),
+        "skill_data_path": str(skill_data_path),
+        "skill_data_exists": os.path.exists(skill_data_path),
+    }
+
+    if os.path.exists(cultivate_path):
+        try:
+            with open(cultivate_path, "r", encoding="utf-8") as f:
+                cultivate_data = json.load(f)
+            debug_info["cultivate_keys"] = list(cultivate_data.keys())
+            data = cultivate_data.get("data", {})
+            debug_info["data_keys"] = (
+                list(data.keys()) if isinstance(data, dict) else str(type(data))
+            )
+            chars = data.get("characters", []) if isinstance(data, dict) else []
+            items = data.get("items", []) if isinstance(data, dict) else []
+            debug_info["chars_count"] = (
+                len(chars) if isinstance(chars, list) else "not_list"
+            )
+            debug_info["items_count"] = (
+                len(items) if isinstance(items, list) else "not_list"
+            )
+            if isinstance(chars, list) and len(chars) > 0:
+                debug_info["first_char_keys"] = list(chars[0].keys())
+                debug_info["first_char"] = {
+                    k: chars[0][k]
+                    for k in [
+                        "id",
+                        "level",
+                        "evolvePhase",
+                        "mainSkillLevel",
+                        "potentialRank",
+                    ]
+                    if k in chars[0]
+                }
+                skills = chars[0].get("skills", [])
+                debug_info["first_char_skills_count"] = (
+                    len(skills) if isinstance(skills, list) else "not_list"
+                )
+        except Exception as e:
+            debug_info["cultivate_read_error"] = str(e)
+
+    if os.path.exists(skill_data_path):
+        try:
+            with open(skill_data_path, "r", encoding="utf-8") as f:
+                sd = json.load(f)
+            debug_info["skill_data_meta"] = sd.get("_meta", {})
+        except Exception as e:
+            debug_info["skill_data_read_error"] = str(e)
+
+    result = get_mastery_recommendations()
+    debug_info["result_error"] = result.get("error")
+    debug_info["result_has_data"] = result.get("has_data")
+    debug_info["result_ops_count"] = len(result.get("operators", []))
+
+    return debug_info
+
+
+@app.route("/mastery-recommendation")
+def mastery_recommendation():
+    from arknights_mower.utils.mastery_recommendation import get_mastery_recommendations
+
+    return get_mastery_recommendations()
+
+
+@app.route("/workshop-auto-config", methods=["POST"])
+def workshop_auto_config():
+    import traceback
+
+    from arknights_mower.utils.mastery_recommendation import compute_workshop_config
+
+    try:
+        req = request.json or {}
+        t5_op = req.get("t5_operator", "年")
+        book_op = req.get("book_operator", "司霆惊蛰")
+        settings = compute_workshop_config(t5_operator=t5_op, book_operator=book_op)
+        return {"workshop_settings": settings, "t3_summary": []}
+    except Exception as e:
+        return {"error": str(e), "traceback": traceback.format_exc()}, 500
+
+
+@app.route("/mastery-t3-summary", methods=["POST"])
+def mastery_t3_summary():
+    import json as _json
+    from collections import defaultdict
+
+    from arknights_mower.data import workshop_formula
+    from arknights_mower.utils.mastery_recommendation import (
+        _find_skill_data,
+        get_mastery_recommendations,
+    )
+
+    req = request.json or {}
+    planned_keys = req.get("planned_skills", [])
+    if not planned_keys:
+        return {"t3_summary": []}
+
+    skill_data_path = _find_skill_data()
+    with open(skill_data_path, "r", encoding="utf-8") as f:
+        skill_data = _json.load(f)
+    items = skill_data.get("items", {})
+
+    t4_names = {
+        n
+        for n, e in workshop_formula.items()
+        if e.get("tab") == "精英材料" and e.get("apCost") == 4.0
+    }
+    t5_names = {
+        n: e
+        for n, e in workshop_formula.items()
+        if e.get("tab") == "精英材料" and e.get("apCost") == 8.0
+    }
+
+    result = get_mastery_recommendations()
+    operators = result.get("operators", [])
+
+    plan_set = set()
+    for key in planned_keys:
+        parts = key.rsplit("_", 1)
+        if len(parts) == 2:
+            try:
+                plan_set.add((parts[0], int(parts[1])))
+            except ValueError:
+                pass
+
+    # 步骤1: 读取计划内所有需求材料
+    raw_demand = defaultdict(int)
+    for op in operators:
+        for rec in op.get("recommendations", []):
+            if (op["char_id"], rec["skill_index"]) not in plan_set:
+                continue
+            for mat in rec.get("chain_needed_materials", []):
+                raw_demand[mat["name"]] += mat["count"]
+
+    # 加载仓库库存
+    cultivate_path = get_path("@app/tmp/cultivate.json")
+    inventory = defaultdict(int)
+    if os.path.exists(cultivate_path):
+        with open(cultivate_path, "r", encoding="utf-8") as f:
+            cdata = _json.load(f)
+        for item in cdata.get("data", {}).get("items", []):
+            cnt = int(item.get("count", 0))
+            if cnt > 0:
+                inventory[item.get("id", "")] = cnt
+
+    id_by_name = {}
+    for iid, info in items.items():
+        id_by_name[info.get("name", "")] = iid
+
+    def inv_of(name):
+        return inventory.get(id_by_name.get(name, ""), 0)
+
+    # 步骤2: 分类 T5 / T4 / T3+
+    demand_t5 = {n: c for n, c in raw_demand.items() if n in t5_names}
+    demand_t4 = {n: c for n, c in raw_demand.items() if n in t4_names}
+    demand_t3 = {
+        n: c for n, c in raw_demand.items() if n not in t4_names and n not in t5_names
+    }
+
+    # 步骤3: T5缺失 → 拆解为T4间接缺失
+    t4_indirect = defaultdict(int)
+    for t5_name, t5_demand in demand_t5.items():
+        t5_missing = max(0, t5_demand - inv_of(t5_name))
+        formula = t5_names.get(t5_name, {})
+        for child in formula.get("items", []):
+            if child in t4_names:
+                t4_indirect[child] += t5_missing
+
+    # 步骤4: T4总需 = T4直接 + T4间接; T4缺失 = T4总需 - T4库存
+    t4_total = defaultdict(int)
+    for name in set(list(demand_t4.keys()) + list(t4_indirect.keys())):
+        t4_total[name] = demand_t4.get(name, 0) + t4_indirect.get(name, 0)
+
+    t4_missing_entries = []
+    for name, demand in t4_total.items():
+        missing = max(0, demand - inv_of(name))
+        if missing > 0:
+            t4_missing_entries.append((name, missing))
+
+    # 步骤5: T4缺失 → 拆解为T3间接缺失（只拆到T3层级）
+    t3_indirect = defaultdict(int)
+    queue = list(t4_missing_entries)
+    while queue:
+        name, cnt = queue.pop(0)
+        formula = workshop_formula.get(name)
+        if not formula or not formula.get("items"):
+            t3_indirect[name] += cnt
+            continue
+        is_high = name in t4_names or name in t5_names
+        if not is_high:
+            t3_indirect[name] += cnt
+            continue
+        for child in formula["items"]:
+            queue.append((child, cnt))
+
+    # 步骤6: T3总需 = T3直接 + T3间接; T3缺失 = T3总需 - T3库存
+    t3_total = defaultdict(int)
+    for name, count in demand_t3.items():
+        t3_total[name] += count
+    for name, count in t3_indirect.items():
+        t3_total[name] += count
+
+    t3_summary = []
+    for name, need in sorted(t3_total.items(), key=lambda x: -x[1]):
+        owned = inv_of(name)
+        shortage = max(0, need - owned)
+        if shortage > 0:
+            t3_summary.append(
+                {
+                    "id": id_by_name.get(name, name),
+                    "name": name,
+                    "count": shortage,
+                    "total": need,
+                    "owned": owned,
+                }
+            )
+
+    return {"t3_summary": t3_summary}
+
+
+@app.route("/mastery-plan", methods=["GET", "POST"])
+def mastery_plan():
+    import json as _json
+
+    plan_path = get_path("@app/tmp/matery_plan.json")
+    if request.method == "GET":
+        if os.path.exists(plan_path):
+            try:
+                with open(plan_path, "r", encoding="utf-8") as f:
+                    return _json.load(f)
+            except Exception:
+                pass
+        return {}
+    else:
+        data = request.json or {}
+        plan_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(plan_path, "w", encoding="utf-8") as f:
+            _json.dump(data, f, ensure_ascii=False)
+        return {"success": True}
+
+
+@app.route("/mastery-t3-debug", methods=["POST"])
+def mastery_t3_debug():
+
+    from arknights_mower.utils.mastery_recommendation import (
+        _find_skill_data,
+        get_mastery_recommendations,
+    )
+
+    req = request.json or {}
+    planned_keys = req.get("planned_skills", [])
+    skill_data_path = _find_skill_data()
+    result = get_mastery_recommendations()
+    return {
+        "planned_keys": planned_keys,
+        "has_data": result.get("has_data"),
+        "error": result.get("error"),
+        "operators_count": len(result.get("operators", [])),
+        "skill_data_exists": os.path.exists(skill_data_path),
+    }
+
+
+@app.route("/workshop-preset", methods=["GET", "POST"])
+def workshop_preset():
+    import json as _json
+
+    preset_path = get_path("@app/tmp/workshop_preset.json")
+    if request.method == "GET":
+        if os.path.exists(preset_path):
+            try:
+                with open(preset_path, "r", encoding="utf-8") as f:
+                    return _json.load(f)
+            except Exception:
+                pass
+        return []
+    else:
+        data = request.json or []
+        preset_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(preset_path, "w", encoding="utf-8") as f:
+            _json.dump(data, f, ensure_ascii=False)
+        return {"success": True}
+
+
+@app.route("/cultivate-fetch")
+def cultivate_fetch():
+    from arknights_mower.solvers.cultivate_depot import cultivate
+
+    try:
+        cultivate().start()
+        return {"success": True, "message": "数据拉取成功"}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
 
 
 @app.route("/task", methods=["GET", "POST"])
@@ -750,6 +1125,72 @@ def add_task():
             return []
 
 
+@app.route("/weekly-plans", methods=["GET"])
+@require_token
+def get_weekly_plans():
+    from arknights_mower.utils.config.weekly_plan_loader import get_weekly_plan_manager
+
+    manager = get_weekly_plan_manager()
+    return {"plans": manager.get_plans()}
+
+
+@app.route("/weekly-plans/active", methods=["POST"])
+@require_token
+def update_active_weekly_plan():
+    from arknights_mower.utils.config.weekly_plan_loader import get_weekly_plan_manager
+
+    try:
+        req = request.json or {}
+        manager = get_weekly_plan_manager()
+
+        active_key = str(req.get("active", "")).strip()
+        if not active_key:
+            return {"error": "Plan key cannot be empty"}, 400
+
+        plan_data = req.get("plan")
+
+        if plan_data is not None:
+            if not manager.create_or_update_plan(active_key, plan_data):
+                return {"error": f"Failed to create or update plan '{active_key}'"}, 400
+        else:
+            if not manager.set_active_plan(active_key):
+                return {"error": f"Plan '{active_key}' not found"}, 404
+
+        new_plan = manager.get_plan(active_key) or []
+        return {
+            "active": active_key,
+            "plan": new_plan,
+        }
+    except Exception as e:
+        logger.exception(f"Failed to update weekly plan: {e}")
+        return {"error": str(e)}, 500
+
+
+@app.route("/weekly-plans/<key>", methods=["DELETE"])
+@require_token
+def delete_weekly_plan(key):
+    from arknights_mower.utils.config.weekly_plan_loader import get_weekly_plan_manager
+
+    try:
+        manager = get_weekly_plan_manager()
+
+        if not manager.delete_plan(key):
+            return {
+                "error": f"Cannot delete plan '{key}' (must keep at least one)"
+            }, 400
+
+        active_key = manager.get_active_plan_key()
+        plan_data = manager.get_plan(active_key)
+
+        return {
+            "active": active_key,
+            "plan": plan_data,
+        }
+    except Exception as e:
+        logger.exception(f"Failed to delete weekly plan: {e}")
+        return {"error": str(e)}, 500
+
+
 @app.route("/submit_feedback", methods=["POST"])
 @require_token
 def submit_feedback():
@@ -787,7 +1228,7 @@ def ws_chat(ws):
                 logger.debug(f"收到llm请求：{user_input}")
                 # 用流式生成器
                 for reply in ask_llm(
-                    user_input, context=context, api_key=config.conf.ai_key
+                    user_input, context=context, api_key=config.conf.resolved_ai_key
                 ):
                     ws.send(json.dumps({"reply": reply}))
                     last_reply = reply
