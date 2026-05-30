@@ -82,7 +82,7 @@ pyinstaller webui_zip_for_linux.spec
 
 ## Docker 部署
 
-Docker 部署说明见 [docs/docker-deploy-guide.md](docs/docker-deploy-guide.md)。
+Docker 部署说明见 [Arknights-Mower 文档 - Docker 部署](https://arkmowers.github.io/arknights-mower/manual/docker-deploy/)。
 
 ## Linux系统下的Docker一键部署
 
@@ -123,4 +123,10 @@ docker run -d \
 
 ## 建议与反馈
 
-**提出建议、反馈 Bug，欢迎加入 QQ群：~~239200680~~（被爆破）, 521857729 QQ频道:ArkMower（频道号：2r118jwue4）。**
+**提出建议、反馈 Bug，欢迎加入 QQ 群 (521857729) 或 QQ 频道 (ArkMower)（频道号：2r118jwue4）**
+
+## 关于 Mower-NG
+
+Mower-NG 项目由前 Mower 项目开发者之一 [EE0000 (@ZhaoZuohong)](https://github.com/ZhaoZuohong) 基于 Mower 项目二次开发，现已独立运作为其个人开发的项目，与 Mower 项目不再有关联。
+
+由于 [EE0000 (@ZhaoZuohong)](https://github.com/ZhaoZuohong) 已经退出 Mower 开发组，其在网络平台上发表的言论仅代表其个人观点，不代表 Mower 项目或 Mower 开发组的立场。我们敬请广大用户理性分析，并谨慎甄别相关信息。
