@@ -12,6 +12,9 @@ hide:
 -   ### 📦 下载与更新
     [查看🔗 →](./install.md)
 
+-   ### 🐳 Docker 部署
+    [查看🔗 →](./docker-deploy.md)
+
 -   ### ![Mower](../assets/logo/logo.png){ width="30px" } Mower使用
     [查看🔗 →](./mower-settings.md)
 
