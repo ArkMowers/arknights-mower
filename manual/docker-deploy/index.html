@@ -5,13 +5,13 @@
       
       
       
-        <link rel="canonical" href="https://arkmowers.github.io/arknights-mower/dev/feature-matching/">
+        <link rel="canonical" href="https://arkmowers.github.io/arknights-mower/manual/docker-deploy/">
       
       
-        <link rel="prev" href="../image/">
+        <link rel="prev" href="../install/">
       
       
-        <link rel="next" href="../../assets/snippets/coordinate/">
+        <link rel="next" href="../mower-settings/">
       
       
         
@@ -22,7 +22,7 @@
     
     
       
-        <title>特征匹配 - Arknights-Mower 文档</title>
+        <title>Docker 部署 - Arknights-Mower 文档</title>
       
     
     
@@ -91,7 +91,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#_1" class="md-skip">
+        <a href="#docker" class="md-skip">
           跳转至
         </a>
       
@@ -126,7 +126,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              特征匹配
+              Docker 部署
             
           </span>
         </div>
@@ -258,11 +258,13 @@
   
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
-        <a href="../../manual/" class="md-tabs__link">
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
           
   
   
@@ -302,13 +304,11 @@
   
   
   
-    
-  
   
     
     
-      <li class="md-tabs__item md-tabs__item--active">
-        <a href="../" class="md-tabs__link">
+      <li class="md-tabs__item">
+        <a href="../../dev/" class="md-tabs__link">
           
   
   
@@ -403,6 +403,8 @@
       
   
   
+    
+  
   
   
     
@@ -432,24 +434,26 @@
     
     
       
+        
+        
+      
       
         
       
     
     
       
-        
-        
-      
     
-    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
-  
-  
-  
-    <a href="../../manual/" class="md-nav__link">
-      
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked="">
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
   
   
   <span class="md-ellipsis">
@@ -463,12 +467,439 @@
   
   
 
-      
-        <span class="md-nav__icon md-icon"></span>
-      
-    </a>
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_2" id="__nav_2_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Mower入门一条龙
   
 
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../intro/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    前言
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    下载及更新
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker 部署
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker 部署
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        适用场景
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        运行环境准备
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        克隆仓库
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#maa" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        准备 MAA
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#docker-composeyml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        使用默认 docker-compose.yml
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#usb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        真机 USB 连接示例
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        构建并启动
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        升级
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        常见排错
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="常见排错">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#usb_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        不认 USB 设备
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        容器反复重启
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        配置了代理但健康检查失败
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mower-settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mower使用
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schedule/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    排班教学
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../MasteryRecommendation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    专精推荐
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    数据图表
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../qa/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    常见问题
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
       
     </li>
   
@@ -541,8 +972,6 @@
       
   
   
-    
-  
   
   
     
@@ -551,505 +980,6 @@
         
           
         
-      
-        
-      
-        
-      
-        
-      
-        
-      
-        
-      
-        
-      
-    
-    
-    
-      
-        
-        
-      
-      
-        
-      
-    
-    
-      
-    
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked="">
-        
-          
-          <div class="md-nav__link md-nav__container">
-            <a href="../" class="md-nav__link ">
-              
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    开发文档
-  
-
-    
-  </span>
-  
-  
-
-            </a>
-            
-              
-              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="">
-                <span class="md-nav__icon md-icon"></span>
-              </label>
-            
-          </div>
-        
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_4">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    开发文档
-  
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix="">
-            
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../environment/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    开发环境
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../branch/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    版本与分支
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../doc/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    项目文档
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../image/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    图像处理基础函数
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-    
-  
-  
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    特征匹配
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    特征匹配
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="目录">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      目录
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
-      
-        <li class="md-nav__item">
-  <a href="#_2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        特征与特征点
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_3" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        特征点的匹配
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_4" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        利用特征匹配定位目标图像
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        利用特征匹配求解单应性矩阵
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_6" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        注意事项
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="注意事项">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#_7" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        性能
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_8" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        目标图像截取
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_9" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        随机性
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_10" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        多目标
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    
-    
-      
-        
-      
-        
-      
-    
-    
-    
-      
-      
-        
-          
-          
-        
-      
-    
-    
-      
-    
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_7">
-        
-          
-          <label class="md-nav__link" for="__nav_4_7" id="__nav_4_7_label" tabindex="">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    示例
-  
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_4_7">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    示例
-  
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix="">
-            
-              
-                
-  
-  
-  
-  
-    
-    
-      
-        
-      
-        
-      
-        
-      
-        
-      
-    
-    
-    
-      
-      
-        
-      
-    
-    
-      
-        
-        
-      
-    
-    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
-      
-        
-  
-  
-  
-    <a href="../../assets/snippets/coordinate/" class="md-nav__link">
-      
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    图像处理示例
-  
-
-    
-  </span>
-  
-  
-
-      
-        <span class="md-nav__icon md-icon"></span>
-      
-    </a>
-  
-
-      
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    
-    
       
         
       
@@ -1083,14 +1013,14 @@
   
   
   
-    <a href="../../assets/snippets/feature-point/" class="md-nav__link">
+    <a href="../../dev/" class="md-nav__link">
       
   
   
   <span class="md-ellipsis">
     
   
-    特征匹配示例
+    开发文档
   
 
     
@@ -1104,22 +1034,6 @@
     </a>
   
 
-      
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
       
     </li>
   
@@ -1152,10 +1066,21 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
       
         <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        适用场景
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        特征与特征点
+        运行环境准备
       
     </span>
   </a>
@@ -1166,7 +1091,40 @@
   <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        特征点的匹配
+        克隆仓库
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#maa" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        准备 MAA
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#docker-composeyml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        使用默认 docker-compose.yml
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#usb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        真机 USB 连接示例
       
     </span>
   </a>
@@ -1177,7 +1135,7 @@
   <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
-        利用特征匹配定位目标图像
+        构建并启动
       
     </span>
   </a>
@@ -1188,7 +1146,7 @@
   <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
-        利用特征匹配求解单应性矩阵
+        升级
       
     </span>
   </a>
@@ -1199,19 +1157,30 @@
   <a href="#_6" class="md-nav__link">
     <span class="md-ellipsis">
       
-        注意事项
+        常见排错
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="注意事项">
+    <nav class="md-nav" aria-label="常见排错">
       <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#usb_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        不认 USB 设备
+      
+    </span>
+  </a>
+  
+</li>
         
           <li class="md-nav__item">
   <a href="#_7" class="md-nav__link">
     <span class="md-ellipsis">
       
-        性能
+        容器反复重启
       
     </span>
   </a>
@@ -1222,29 +1191,7 @@
   <a href="#_8" class="md-nav__link">
     <span class="md-ellipsis">
       
-        目标图像截取
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_9" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        随机性
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_10" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        多目标
+        配置了代理但健康检查失败
       
     </span>
   </a>
@@ -1302,7 +1249,7 @@
         <a href="../" class="md-path__link">
           
   <span class="md-ellipsis">
-    开发文档
+    Mower入门一条龙
   </span>
 
         </a>
@@ -1321,7 +1268,7 @@
 
 
   
-    <a href="https://github.com/ArkMowers/arknights-mower/edit/doc-pages/docs/dev/feature-matching.md" title="编辑此页" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/ArkMowers/arknights-mower/edit/doc-pages/docs/manual/docker-deploy.md" title="编辑此页" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"></path></svg>
     </a>
@@ -1329,65 +1276,129 @@
   
 
 
-<h1 id="_1"><a class="toclink" href="#_1">特征匹配</a><a class="headerlink" href="#_1" title="Permanent link">¶</a></h1>
-<p>特征匹配是 mower 中最方便的识别方法。在截图中匹配目标图像时，首先提取截图与目标图像的特征点，然后找出匹配的特征点对，利用匹配结果在截图中定位目标图像。</p>
-<h2 id="_2"><a class="toclink" href="#_2">特征与特征点</a><a class="headerlink" href="#_2" title="Permanent link">¶</a></h2>
-<p><code>arknights_mower.utils.matcher</code> 中提供 <code>keypoints()</code> 与 <code>keypoints_scale_invariant()</code> 函数，可用于提取特征点。接受的参数为需要提取特征点的灰度图像。返回值为特征点元组与描述子矩阵构成的元组。</p>
-<p><code>keypoints_scale_invariant()</code> 提取的特征点与描述子具有尺度不变性，可用于匹配尺度不确定或发生变化的图像，但速度相较 <code>keypoints()</code> 更慢。</p>
-<p>拐角、复杂的图案与纹理（包括文字）处可以提取到较多的特征点；在空白处很难提取到特征点。</p>
-<div class="admonition note">
-<p class="admonition-title">使用示例</p>
-<p><a href="../../assets/snippets/feature-point/">点击跳转至特征与特征点的示例</a></p>
-</div>
-<h2 id="_3"><a class="toclink" href="#_3">特征点的匹配</a><a class="headerlink" href="#_3" title="Permanent link">¶</a></h2>
-<p><code>arknights_mower.utils.matcher</code> 中的 <code>flann</code> 可用于匹配特征点。</p>
-<p>对于目标图像中的每个特征点 <span class="arithmatex">\(A\)</span>，使用 <code>flann.knnMatch(k=2)</code> 找出截图中与之距离最近的和第二近的两个特征点 <span class="arithmatex">\(B_1\)</span>、<span class="arithmatex">\(B_2\)</span>. 如果 <span class="arithmatex">\(A\)</span> 与 <span class="arithmatex">\(B_1\)</span> 的距离 <span class="arithmatex">\(\text{d}(A, B_1)\)</span> 和 <span class="arithmatex">\(A\)</span> 与 <span class="arithmatex">\(B_2\)</span> 的距离 <span class="arithmatex">\(\text{d}(A, B_2)\)</span> 的比值 <span class="arithmatex">\(\frac{\text{d}(A, B_1)}{\text{d}(A, B_2)} &lt;\)</span> <code>GOOD_DISTANCE_LIMIT</code>，就认为 <span class="arithmatex">\(A\)</span> 与 <span class="arithmatex">\(B_1\)</span> 是一对“好”的匹配。</p>
-<p>下面的例子展示了如何利用特征匹配在终端页面定位活动入口。其中 <code>res</code> 图像来自明日方舟网站，尺寸与游戏内截图未必一致，因此对于 <code>res</code> 使用 <code>keypoints_scale_invariant()</code> 提取特征点。对于截图，使用 <code>keypoints()</code> 提取特征点，仍然可以得到很好的匹配结果。</p>
-<div class="admonition note">
-<p class="admonition-title">使用示例</p>
-<p><a href="../../assets/snippets/feature-matching/">点击跳转至特征点的匹配的示例</a></p>
-</div>
-<h2 id="_4"><a class="toclink" href="#_4">利用特征匹配定位目标图像</a><a class="headerlink" href="#_4" title="Permanent link">¶</a></h2>
-<p><code>arknights_mower.utils.matcher</code> 中的 <code>Matcher</code> 类可用于定位目标图片。</p>
-<p>实例化 <code>Matcher</code> 类时，需传入灰度图像 <code>origin</code>。实例化过程中计算 <code>origin</code> 图像的特征点。</p>
-<p><code>Matcher</code> 类的实例方法 <code>match()</code> 接受 6 个参数，其中 <code>query</code> 必选：</p>
+<h1 id="docker"><a class="toclink" href="#docker">Docker 部署</a><a class="headerlink" href="#docker" title="Permanent link">¶</a></h1>
+<p>本文档整理 Linux 环境下使用 Docker 部署 Mower 的基本流程。</p>
+<h2 id="_1"><a class="toclink" href="#_1">适用场景</a><a class="headerlink" href="#_1" title="Permanent link">¶</a></h2>
 <ul>
-<li><code>query</code>：灰度目标图像；</li>
-<li><code>draw</code>：控制是否绘制并显示匹配过程；</li>
-<li><code>scope</code>：<code>origin</code> 在此区域内的特征点参与匹配；</li>
-<li><code>dpi_aware</code>：匹配尺寸不确定，或尺寸有变化的目标图像时，将此选项设置为 <code>True</code>。默认为 <code>False</code>。</li>
-<li><code>prescore</code>：SSIM 分数阈值。如果此参数为正值，则根据 SSIM 分数直接决定是否接受匹配结果。</li>
-<li><code>judge</code>：在 <code>prescore</code> 为 0 时生效。如果为 <code>True</code>，使用支持向量机判断是否接受匹配结果，否则直接接受匹配结果。</li>
+<li>Linux 主机或 NAS 环境；</li>
+<li>已安装 Docker 与 Docker Compose；</li>
+<li>通过浏览器访问 WebUI；</li>
+<li>可按实际情况连接模拟器、远程 ADB 或 USB 调试设备。</li>
 </ul>
-<p>如果匹配成功，<code>match()</code> 返回目标图片在截图中匹配到的区域；否则返回 <code>None</code>。</p>
-<div class="admonition note">
-<p class="admonition-title">使用示例</p>
-<p><a href="../../assets/snippets/matcher/">点击跳转至利用特征匹配定位目标图像的示例</a></p>
-</div>
-<h2 id="_5"><a class="toclink" href="#_5">利用特征匹配求解单应性矩阵</a><a class="headerlink" href="#_5" title="Permanent link">¶</a></h2>
-<p>游戏首页的界面随重力改变角度，为识别界面上的数字，可使用特征匹配求解单应性矩阵，将界面内容变换至平面，再进行进一步的识别。</p>
-<div class="admonition note">
-<p class="admonition-title">使用示例</p>
-<p><a href="../../assets/snippets/feature-matching-3d/">点击跳转至利用特征匹配求解单应力性矩阵的示例</a></p>
-</div>
-<h2 id="_6"><a class="toclink" href="#_6">注意事项</a><a class="headerlink" href="#_6" title="Permanent link">¶</a></h2>
-<h3 id="_7"><a class="toclink" href="#_7">性能</a><a class="headerlink" href="#_7" title="Permanent link">¶</a></h3>
-<p>从截图提取特征点一般会花费数十毫秒，一次 FLANN 匹配也可能花费几毫秒到几十毫秒。大量使用特征匹配会导致脚本很慢。但是，对于不限制区域的匹配，特征匹配往往比在整个截图上进行模板匹配更快。</p>
-<div class="admonition note">
-<p class="admonition-title">使用示例</p>
-<p><a href="../../assets/snippets/ra-map/">点击跳转至生息演算地图匹配地点的示例</a></p>
-</div>
-<h3 id="_8"><a class="toclink" href="#_8">目标图像截取</a><a class="headerlink" href="#_8" title="Permanent link">¶</a></h3>
-<p>目标图像应尽量满足特征点数量多、尺寸小、与其它目标图像有较大区别。例如对于按钮，只截取按钮中独特的图案，或在文字中截取 3-5 字的关键词，相比截取整个按钮，往往能得到更好的效果。</p>
-<h3 id="_9"><a class="toclink" href="#_9">随机性</a><a class="headerlink" href="#_9" title="Permanent link">¶</a></h3>
-<p>FLANN 和 RANSAC 算法具有一定的随机性。若结果变化较大，可考虑重新截取目标图像，或换用其它匹配方式。</p>
-<h3 id="_10"><a class="toclink" href="#_10">多目标</a><a class="headerlink" href="#_10" title="Permanent link">¶</a></h3>
-<p>当目标图像在截图中多次出现时，目标图像的特征点与截图对应特征点的若干对匹配距离相近。在应用比例测试筛选特征点时，这些匹配都会被过滤掉，导致目标图像多次出现时无法匹配到结果。</p>
-<p>如果要处理目标多次出现的情况，如果能够预知出现的范围，可以指定 <code>scope</code> 参数进行限制。</p>
-<div class="admonition note">
-<p class="admonition-title">使用示例</p>
-<p><a href="../../assets/snippets/multi-matching/">点击跳转至多目标的示例</a></p>
-</div>
+<h2 id="_2"><a class="toclink" href="#_2">运行环境准备</a><a class="headerlink" href="#_2" title="Permanent link">¶</a></h2>
+<ul>
+<li>Docker 24.0 或更新版本；</li>
+<li>Docker Compose v2；</li>
+<li>Linux 主机；</li>
+<li>如使用真机 USB 连接，请先在安卓设备上开启 USB 调试，并确认主机侧 <code>adb devices</code> 能看到设备。</li>
+</ul>
+<h2 id="_3"><a class="toclink" href="#_3">克隆仓库</a><a class="headerlink" href="#_3" title="Permanent link">¶</a></h2>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/ArkMowers/arknights-mower.git
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nb">cd</span><span class="w"> </span>arknights-mower
+</span></code></pre></div>
+<p>国内网络环境下，如果 <code>git clone</code> 较慢，也可以下载 main 分支 zip 后解压：</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>https://codeload.github.com/ArkMowers/arknights-mower/zip/refs/heads/main
+</span></code></pre></div>
+<h2 id="maa"><a class="toclink" href="#maa">准备 MAA</a><a class="headerlink" href="#maa" title="Permanent link">¶</a></h2>
+<p>容器启动脚本会在 <code>/MAA</code> 目录为空时尝试自动下载并解压最新版 MAA。</p>
+<p>如果自动下载失败，或希望固定 MAA 版本，可以手动从 MAA Releases 下载对应 Linux 架构的 tar.gz 包，并解压到 <code>docker/maa/</code>：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nb">cd</span><span class="w"> </span>arknights-mower/docker
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>mkdir<span class="w"> </span>-p<span class="w"> </span>maa
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="c1"># 将下载好的 MAA Linux tar.gz 放到当前目录，例如 MAA-linux-x86_64.tar.gz</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>tar<span class="w"> </span>-xzf<span class="w"> </span>MAA-linux-*.tar.gz<span class="w"> </span>-C<span class="w"> </span>maa
+</span></code></pre></div>
+<h2 id="docker-composeyml"><a class="toclink" href="#docker-composeyml">使用默认 docker-compose.yml</a><a class="headerlink" href="#docker-composeyml" title="Permanent link">¶</a></h2>
+<p>仓库内已提供 <code>docker/docker-compose.yml</code>，适合通过端口映射访问 WebUI，并按需配置 ADB、MAA 与数据目录。</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nb">cd</span><span class="w"> </span>arknights-mower/docker
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d
+</span></code></pre></div>
+<p>启动后可访问：</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>http://127.0.0.1:58000?token=mower
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>http://局域网IP:58000?token=mower
+</span></code></pre></div>
+<h2 id="usb"><a class="toclink" href="#usb">真机 USB 连接示例</a><a class="headerlink" href="#usb" title="Permanent link">¶</a></h2>
+<p>如果需要在容器中直接使用主机上的 USB 设备，可使用 host 网络并挂载 USB 设备与 ADB key。下面是一个可参考的 compose 示例：</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">arknights-mower</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="nt">services</span><span class="p">:</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">  </span><span class="nt">mower</span><span class="p">:</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">    </span><span class="nt">build</span><span class="p">:</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">      </span><span class="nt">context</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">..</span>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">      </span><span class="nt">dockerfile</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">docker/Dockerfile</span>
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="w">      </span><span class="c1"># 如构建时需要代理，可按需开启：</span>
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="w">      </span><span class="c1"># args:</span>
+</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="w">      </span><span class="c1">#   HTTP_PROXY: http://proxy:port</span>
+</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="w">      </span><span class="c1">#   HTTPS_PROXY: http://proxy:port</span>
+</span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="w">      </span><span class="c1">#   http_proxy: http://proxy:port</span>
+</span><span id="__span-5-13"><a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a><span class="w">      </span><span class="c1">#   https_proxy: http://proxy:port</span>
+</span><span id="__span-5-14"><a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">arknights-mower:latest</span>
+</span><span id="__span-5-15"><a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a><span class="w">    </span><span class="nt">container_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">arknights-mower</span>
+</span><span id="__span-5-16"><a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a><span class="w">    </span><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unless-stopped</span>
+</span><span id="__span-5-17"><a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a><span class="w">    </span><span class="nt">network_mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">host</span>
+</span><span id="__span-5-18"><a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a><span class="w">    </span><span class="nt">privileged</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-5-19"><a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
+</span><span id="__span-5-20"><a id="__codelineno-5-20" name="__codelineno-5-20" href="#__codelineno-5-20"></a><span class="w">      </span><span class="nt">MOWER_TOKEN</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mower</span>
+</span><span id="__span-5-21"><a id="__codelineno-5-21" name="__codelineno-5-21" href="#__codelineno-5-21"></a><span class="w">      </span><span class="nt">MOWER_PORT</span><span class="p">:</span><span class="w"> </span><span class="s">"58000"</span>
+</span><span id="__span-5-22"><a id="__codelineno-5-22" name="__codelineno-5-22" href="#__codelineno-5-22"></a><span class="w">      </span><span class="nt">TZ</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Asia/Shanghai</span>
+</span><span id="__span-5-23"><a id="__codelineno-5-23" name="__codelineno-5-23" href="#__codelineno-5-23"></a><span class="w">      </span><span class="c1"># 如运行时需要代理，可按需开启：</span>
+</span><span id="__span-5-24"><a id="__codelineno-5-24" name="__codelineno-5-24" href="#__codelineno-5-24"></a><span class="w">      </span><span class="c1"># HTTP_PROXY: http://proxy:port</span>
+</span><span id="__span-5-25"><a id="__codelineno-5-25" name="__codelineno-5-25" href="#__codelineno-5-25"></a><span class="w">      </span><span class="c1"># HTTPS_PROXY: http://proxy:port</span>
+</span><span id="__span-5-26"><a id="__codelineno-5-26" name="__codelineno-5-26" href="#__codelineno-5-26"></a><span class="w">      </span><span class="c1"># NO_PROXY: 127.0.0.1,localhost,::1</span>
+</span><span id="__span-5-27"><a id="__codelineno-5-27" name="__codelineno-5-27" href="#__codelineno-5-27"></a><span class="w">      </span><span class="c1"># no_proxy: 127.0.0.1,localhost,::1</span>
+</span><span id="__span-5-28"><a id="__codelineno-5-28" name="__codelineno-5-28" href="#__codelineno-5-28"></a><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
+</span><span id="__span-5-29"><a id="__codelineno-5-29" name="__codelineno-5-29" href="#__codelineno-5-29"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/dev/bus/usb:/dev/bus/usb</span>
+</span><span id="__span-5-30"><a id="__codelineno-5-30" name="__codelineno-5-30" href="#__codelineno-5-30"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${HOME}/.android:/root/.android</span>
+</span><span id="__span-5-31"><a id="__codelineno-5-31" name="__codelineno-5-31" href="#__codelineno-5-31"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./mower-data:/mower-data</span>
+</span><span id="__span-5-32"><a id="__codelineno-5-32" name="__codelineno-5-32" href="#__codelineno-5-32"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./maa:/MAA</span>
+</span></code></pre></div>
+<p>说明：</p>
+<ul>
+<li><code>network_mode: host</code> 适合需要直接访问主机网络、主机 ADB 服务或局域网设备的部署方式；</li>
+<li><code>privileged: true</code> 与 <code>/dev/bus/usb</code> 挂载主要用于容器内直接访问 USB 设备；如果只连接远程 ADB 或模拟器，可以不启用；</li>
+<li><code>${HOME}/.android:/root/.android</code> 用于复用主机侧 ADB 授权密钥；如果使用 <code>sudo</code> 运行 Docker，请注意 <code>${HOME}</code> 可能指向 root 的家目录；</li>
+<li><code>./mower-data:/mower-data</code> 用于持久化配置与运行数据；</li>
+<li><code>./maa:/MAA</code> 用于保存 MAA 文件，避免每次重建镜像后重复下载。</li>
+</ul>
+<h2 id="_4"><a class="toclink" href="#_4">构建并启动</a><a class="headerlink" href="#_4" title="Permanent link">¶</a></h2>
+<p>如果 compose 中使用 <code>build</code>，可执行：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nb">cd</span><span class="w"> </span>arknights-mower/docker
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>docker<span class="w"> </span>compose<span class="w"> </span>build<span class="w"> </span>mower
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d<span class="w"> </span>mower
+</span></code></pre></div>
+<p>如果只使用已构建好的本地镜像，可直接启动：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nb">cd</span><span class="w"> </span>arknights-mower/docker
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d<span class="w"> </span>mower
+</span></code></pre></div>
+<h2 id="_5"><a class="toclink" href="#_5">升级</a><a class="headerlink" href="#_5" title="Permanent link">¶</a></h2>
+<p>升级前可以先备份数据目录：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nb">cd</span><span class="w"> </span>arknights-mower/docker
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>cp<span class="w"> </span>-a<span class="w"> </span>mower-data<span class="w"> </span>mower-data.bak-<span class="k">$(</span>date<span class="w"> </span>+%Y%m%d<span class="k">)</span>
+</span></code></pre></div>
+<p>拉取新代码并重建：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nb">cd</span><span class="w"> </span>arknights-mower
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>main
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="nb">cd</span><span class="w"> </span>docker
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>docker<span class="w"> </span>compose<span class="w"> </span>build<span class="w"> </span>--pull<span class="o">=</span><span class="nb">false</span><span class="w"> </span>mower
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d<span class="w"> </span>mower
+</span></code></pre></div>
+<p><code>mower-data</code> 通过 volume 挂载，通常升级镜像不会丢失配置与计划数据。</p>
+<h2 id="_6"><a class="toclink" href="#_6">常见排错</a><a class="headerlink" href="#_6" title="Permanent link">¶</a></h2>
+<h3 id="usb_1"><a class="toclink" href="#usb_1">不认 USB 设备</a><a class="headerlink" href="#usb_1" title="Permanent link">¶</a></h3>
+<p>先在主机检查：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>lsusb
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>adb<span class="w"> </span>devices
+</span></code></pre></div>
+<p><code>adb devices</code> 中设备状态应为 <code>device</code>，不能是 <code>unauthorized</code> 或 <code>offline</code>。如果是 <code>unauthorized</code>，需要在手机上确认允许 USB 调试，并确认 <code>.android/adbkey</code> 已存在。</p>
+<h3 id="_7"><a class="toclink" href="#_7">容器反复重启</a><a class="headerlink" href="#_7" title="Permanent link">¶</a></h3>
+<p>查看日志：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>docker<span class="w"> </span>logs<span class="w"> </span>arknights-mower<span class="w"> </span>--tail<span class="w"> </span><span class="m">100</span>
+</span></code></pre></div>
+<p>常见原因包括 MAA 下载失败、代理不通、配置文件异常等。</p>
+<h3 id="_8"><a class="toclink" href="#_8">配置了代理但健康检查失败</a><a class="headerlink" href="#_8" title="Permanent link">¶</a></h3>
+<p>健康检查访问的是容器本机的 <code>127.0.0.1</code>，如果代理环境变量影响了本地访问，可以添加：</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="nt">NO_PROXY</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">127.0.0.1,localhost,::1</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="nt">no_proxy</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">127.0.0.1,localhost,::1</span>
+</span></code></pre></div>
 
 
 
@@ -1410,7 +1421,7 @@
     <span class="md-icon" title="最后更新">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="2024年7月16日 13:10:04 UTC">2024年7月16日</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="2026年5月30日 11:10:35 UTC">2026年5月30日</span>
   </span>
 
     
@@ -1420,7 +1431,7 @@
     <span class="md-icon" title="创建日期">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14.47 15.08 11 13V7h1.5v5.25l3.08 1.83c-.41.28-.79.62-1.11 1m-1.39 4.84c-.36.05-.71.08-1.08.08-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8c0 .37-.03.72-.08 1.08.69.1 1.33.32 1.92.64.1-.56.16-1.13.16-1.72 0-5.5-4.5-10-10-10S2 6.5 2 12s4.47 10 10 10c.59 0 1.16-.06 1.72-.16-.32-.59-.54-1.23-.64-1.92M18 15v3h-3v2h3v3h2v-3h3v-2h-3v-3z"></path></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="2024年7月13日 15:17:05 UTC">2024年7月13日</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="2026年5月30日 11:10:35 UTC">2026年5月30日</span>
   </span>
 
     
@@ -1438,9 +1449,9 @@
     
     <nav>
       
-        <a href="https://github.com/NiceAfternoon" class="md-author" title="@NiceAfternoon">
+        <a href="https://github.com/dhujsi" class="md-author" title="@dhujsi">
           
-          <img src="https://avatars.githubusercontent.com/u/61558924?v=4&amp;size=72" alt="NiceAfternoon">
+          <img src="https://avatars.githubusercontent.com/u/63281018?v=4&amp;size=72" alt="dhujsi">
         </a>
       
         <a href="https://github.com/web-flow" class="md-author" title="@web-flow">
@@ -1483,7 +1494,7 @@
       <nav class="md-footer__inner md-grid" aria-label="页脚">
         
           
-          <a href="../image/" class="md-footer__link md-footer__link--prev" aria-label="上一页: 图像处理基础函数">
+          <a href="../install/" class="md-footer__link md-footer__link--prev" aria-label="上一页: 下载及更新">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
@@ -1493,20 +1504,20 @@
                 上一页
               </span>
               <div class="md-ellipsis">
-                图像处理基础函数
+                下载及更新
               </div>
             </div>
           </a>
         
         
           
-          <a href="../../assets/snippets/coordinate/" class="md-footer__link md-footer__link--next" aria-label="下一页: 坐标与区域">
+          <a href="../mower-settings/" class="md-footer__link md-footer__link--next" aria-label="下一页: Mower使用">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 下一页
               </span>
               <div class="md-ellipsis">
-                坐标与区域
+                Mower使用
               </div>
             </div>
             <div class="md-footer__button md-icon">
