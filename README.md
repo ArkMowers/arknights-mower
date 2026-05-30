@@ -80,7 +80,11 @@ pyinstaller webui_zip_for_linux.spec
 
 注：Linux 下运行时，shell 会显示如 `Running on http://127.0.0.1:53703` 的输出，本地浏览器访问 `http://127.0.0.1:53703` 即进入 Mower 页面。
 
-## Linux 系统下的 Docker 一键部署
+## Docker 部署
+
+Docker 部署说明见 [Arknights-Mower 文档 - Docker 部署](https://arkmowers.github.io/arknights-mower/manual/docker-deploy/)。
+
+## Linux系统下的Docker一键部署
 
 ### 运行环境准备
 
