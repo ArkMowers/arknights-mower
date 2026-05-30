@@ -113,6 +113,7 @@ nav:
     - manual/README.md
     - 前言: manual/intro.md
     - 下载及更新: manual/install.md
+    - Docker 部署: manual/docker-deploy.md
     - Mower使用: manual/mower-settings.md
     - 排班教学: manual/schedule.md
     - 专精推荐: manual/MasteryRecommendation.md
