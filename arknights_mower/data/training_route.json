@@ -1,0 +1,244 @@
+{
+  "先锋": {
+    "supports": [
+      {
+        "name": "夜半",
+        "skill_level": 1,
+        "efficiency": 75,
+        "swap": true,
+        "swap_name": "逻各斯",
+        "match": false
+      },
+      {
+        "name": "缄默德克萨斯",
+        "skill_level": 2,
+        "efficiency": 80,
+        "swap": true,
+        "swap_name": "逻各斯",
+        "match": false
+      },
+      {
+        "name": "凛御银灰",
+        "skill_level": 3,
+        "efficiency": 80,
+        "swap": true,
+        "swap_name": "逻各斯",
+        "match": false
+      }
+    ],
+    "half_off": true
+  },
+  "近卫": {
+    "supports": [
+      {
+        "name": "赤冬",
+        "skill_level": 1,
+        "efficiency": 75,
+        "swap": true,
+        "swap_name": "艾丽妮",
+        "match": true
+      },
+      {
+        "name": "燧石",
+        "skill_level": 2,
+        "efficiency": 75,
+        "swap": true,
+        "swap_name": "艾丽妮",
+        "match": true
+      },
+      {
+        "name": "百炼嘉维尔",
+        "skill_level": 3,
+        "efficiency": 95,
+        "swap": true,
+        "swap_name": "艾丽妮",
+        "match": true
+      }
+    ],
+    "half_off": true
+  },
+  "重装": {
+    "supports": [
+      {
+        "name": "极光",
+        "skill_level": 1,
+        "efficiency": 75,
+        "swap": true,
+        "swap_name": "逻各斯",
+        "match": false
+      },
+      {
+        "name": "暴雨",
+        "skill_level": 2,
+        "efficiency": 75,
+        "swap": true,
+        "swap_name": "逻各斯",
+        "match": false
+      },
+      {
+        "name": "星熊",
+        "skill_level": 3,
+        "efficiency": 60,
+        "swap": true,
+        "swap_name": "逻各斯",
+        "match": false
+      }
+    ],
+    "half_off": true
+  },
+  "狙击": {
+    "supports": [
+      {
+        "name": "假日威龙陈",
+        "skill_level": 1,
+        "efficiency": 95,
+        "swap": true,
+        "swap_name": "艾丽妮",
+        "match": true
+      },
+      {
+        "name": "埃拉托",
+        "skill_level": 2,
+        "efficiency": 75,
+        "swap": true,
+        "swap_name": "艾丽妮",
+        "match": true
+      },
+      {
+        "name": "W",
+        "skill_level": 3,
+        "efficiency": 95,
+        "swap": true,
+        "swap_name": "艾丽妮",
+        "match": true
+      }
+    ],
+    "half_off": true
+  },
+  "术师": {
+    "supports": [
+      {
+        "name": "特米米",
+        "skill_level": 1,
+        "efficiency": 75,
+        "swap": true,
+        "swap_name": "逻各斯",
+        "match": true
+      },
+      {
+        "name": "薄绿",
+        "skill_level": 2,
+        "efficiency": 75,
+        "swap": true,
+        "swap_name": "逻各斯",
+        "match": true
+      },
+      {
+        "name": "死芒",
+        "skill_level": 3,
+        "efficiency": 95,
+        "swap": true,
+        "swap_name": "逻各斯",
+        "match": true
+      }
+    ],
+    "half_off": true
+  },
+  "医疗": {
+    "supports": [
+      {
+        "name": "阿",
+        "skill_level": 1,
+        "efficiency": 60,
+        "swap": true,
+        "swap_name": "逻各斯",
+        "match": false
+      },
+      {
+        "name": "濯尘芙蓉",
+        "skill_level": 2,
+        "efficiency": 75,
+        "swap": true,
+        "swap_name": "逻各斯",
+        "match": false
+      },
+      {
+        "name": "阿",
+        "skill_level": 3,
+        "efficiency": 60,
+        "swap": true,
+        "swap_name": "逻各斯",
+        "match": false
+      }
+    ],
+    "half_off": true
+  },
+  "辅助": {
+    "supports": [
+      {
+        "name": "铃兰",
+        "skill_level": 1,
+        "efficiency": 60,
+        "swap": true,
+        "swap_name": "逻各斯",
+        "match": true
+      },
+      {
+        "name": "铃兰",
+        "skill_level": 2,
+        "efficiency": 60,
+        "swap": true,
+        "swap_name": "逻各斯",
+        "match": true
+      },
+      {
+        "name": "浊心斯卡蒂",
+        "skill_level": 3,
+        "efficiency": 95,
+        "swap": true,
+        "swap_name": "逻各斯",
+        "match": true
+      }
+    ],
+    "half_off": true
+  },
+  "特种": {
+    "supports": [
+      {
+        "name": "罗宾",
+        "skill_level": 1,
+        "efficiency": 75,
+        "swap": true,
+        "swap_name": "逻各斯",
+        "match": false
+      },
+      {
+        "name": "缄默德克萨斯",
+        "skill_level": 2,
+        "efficiency": 80,
+        "swap": true,
+        "swap_name": "逻各斯",
+        "match": false
+      },
+      {
+        "name": "归溟幽灵鲨",
+        "skill_level": 3,
+        "efficiency": 95,
+        "swap": true,
+        "swap_name": "逻各斯",
+        "match": false
+      }
+    ],
+    "half_off": true
+  },
+  "_backups": {
+    "先锋": "嵯峨",
+    "近卫": "史尔特尔",
+    "重装": "星熊",
+    "狙击": "黑",
+    "术师": "卡涅利安",
+    "医疗": "阿",
+    "辅助": "铃兰",
+    "特种": "傀影"
+  }
+}

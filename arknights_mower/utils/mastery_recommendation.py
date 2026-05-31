@@ -16,6 +16,21 @@ def _find_skill_data():
     return candidates[0]
 
 
+_skill_data_cache = None
+
+
+def get_skill_data():
+    global _skill_data_cache
+    if _skill_data_cache is None:
+        path = _find_skill_data()
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                _skill_data_cache = json.load(f)
+        else:
+            _skill_data_cache = {}
+    return _skill_data_cache
+
+
 def _decompose_to_t3(materials, composite, item_table, inventory):
     """将 T4/T5 材料拆解为 T3 级别材料，并与仓库库存对比"""
     raw = {}
@@ -461,6 +476,77 @@ def compute_workshop_config(t5_operator="年", book_operator="司霆惊蛰"):
     ]
 
 
+_default_route_cache = None
+
+
+def _load_default_route():
+    global _default_route_cache
+    if _default_route_cache is not None:
+        return _default_route_cache
+    path = get_path("@internal/arknights_mower/data/training_route.json")
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                _default_route_cache = json.load(f)
+        except Exception:
+            _default_route_cache = {}
+    else:
+        _default_route_cache = {}
+    return _default_route_cache
+
+
+def _build_route_supports(profession, control_center="none"):
+    defaults = _load_default_route()
+    prof_cn = PROF_MAP.get(profession, "近卫")
+    route_path = get_path("@app/tmp/matery_route.json")
+    if os.path.exists(route_path):
+        try:
+            with open(route_path, "r", encoding="utf-8") as f:
+                route = json.load(f)
+        except Exception:
+            route = {}
+    else:
+        route = {}
+    prof_default = defaults.get(prof_cn, {})
+    prof_route = route.get(prof_cn, prof_default)
+    supports_data = prof_route.get("supports", []) or prof_default.get("supports", [])
+    half_off = prof_route.get("half_off", prof_default.get("half_off", True))
+    cc = control_center or prof_route.get(
+        "controlCenter", prof_default.get("controlCenter", "none")
+    )
+    bonus = 0 if cc == "none" else 5
+    supports = []
+    for s in supports_data:
+        supports.append(
+            {
+                "name": s["name"],
+                "skill_level": s["skill_level"],
+                "efficiency": min(100, s["efficiency"] + bonus),
+                "match": s.get("match", False),
+                "swap_name": s.get("swap_name") if s.get("swap") else s["name"],
+                "half_off": half_off,
+            }
+        )
+    return supports
+
+
+def _supports_from_dicts(supports_data):
+    from arknights_mower.utils.operators import SkillUpgradeSupport
+
+    supports = []
+    for s in supports_data:
+        sup = SkillUpgradeSupport(
+            name=s["name"],
+            skill_level=s["skill_level"],
+            efficiency=s["efficiency"],
+            match=s.get("match", False),
+            swap_name=s.get("swap_name", s["name"]),
+        )
+        sup.half_off = s.get("half_off", True)
+        supports.append(sup)
+    return supports
+
+
 def auto_schedule_mastery_tasks():
     """仓库扫描后：检测计划内未满M3的技能，直接需求全部满足则返回待安排列表"""
     result = {"scheduled": [], "skipped": []}
@@ -549,3 +635,15 @@ def auto_schedule_mastery_tasks():
                 result["skipped"].append(entry)
 
     return result
+
+
+PROF_MAP = {
+    "WARRIOR": "近卫",
+    "SNIPER": "狙击",
+    "TANK": "重装",
+    "MEDIC": "医疗",
+    "SUPPORT": "辅助",
+    "CASTER": "术师",
+    "SPECIAL": "特种",
+    "PIONEER": "先锋",
+}
