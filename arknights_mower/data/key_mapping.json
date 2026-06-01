@@ -657,6 +657,20 @@
         "NORMAL",
         40001
     ],
+    "LINKAGE_TKT_GACHA_10_7401": [
+        "LINKAGE_TKT_GACHA_10_7401",
+        "LINKAGE_TKT_GACHA_10_7401",
+        "弓吟空跃寻访凭证",
+        "NORMAL",
+        40003
+    ],
+    "弓吟空跃寻访凭证": [
+        "LINKAGE_TKT_GACHA_10_7401",
+        "LINKAGE_TKT_GACHA_10_7401",
+        "弓吟空跃寻访凭证",
+        "NORMAL",
+        40003
+    ],
     "7003": [
         "7003",
         "TKT_GACHA",
@@ -4065,6 +4079,20 @@
         "GALLUS²的信物",
         "MATERIAL",
         1100009
+    ],
+    "p_char_4215_buddy": [
+        "p_char_4215_buddy",
+        "p_char_4215_buddy",
+        "罗德岛隐秘队的信物",
+        "MATERIAL",
+        1100010
+    ],
+    "罗德岛隐秘队的信物": [
+        "p_char_4215_buddy",
+        "p_char_4215_buddy",
+        "罗德岛隐秘队的信物",
+        "MATERIAL",
+        1100010
     ],
     "p_char_502_nblade": [
         "p_char_502_nblade",
@@ -7860,6 +7888,20 @@
         "MATERIAL",
         700189
     ],
+    "p_char_1049_catap2": [
+        "p_char_1049_catap2",
+        "p_char_1049_catap2",
+        "雷狼龙S空爆的信物",
+        "MATERIAL",
+        700190
+    ],
+    "雷狼龙S空爆的信物": [
+        "p_char_1049_catap2",
+        "p_char_1049_catap2",
+        "雷狼龙S空爆的信物",
+        "MATERIAL",
+        700190
+    ],
     "p_char_103_angel": [
         "p_char_103_angel",
         "p_char_103_angel",
@@ -9679,6 +9721,20 @@
         "可露希尔的信物",
         "MATERIAL",
         600130
+    ],
+    "p_char_1048_orchd2": [
+        "p_char_1048_orchd2",
+        "p_char_1048_orchd2",
+        "焰狐龙梓兰的信物",
+        "MATERIAL",
+        600131
+    ],
+    "焰狐龙梓兰的信物": [
+        "p_char_1048_orchd2",
+        "p_char_1048_orchd2",
+        "焰狐龙梓兰的信物",
+        "MATERIAL",
+        600131
     ],
     "class_p_char_123_fang": [
         "class_p_char_123_fang",

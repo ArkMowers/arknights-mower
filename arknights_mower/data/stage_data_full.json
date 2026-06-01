@@ -13,57 +13,9 @@
     "endTs": -1
   },
   {
-    "id": "MT-1",
-    "name": "圣秩",
+    "id": "TD-1",
+    "name": "硬壳下的胆小鬼",
     "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "ACTIVITY_ITEM",
-        "id": "act42side_token_pacifier_rep_1",
-        "dropType": "COMPLETE"
-      },
-      {
-        "occPercent": "ALWAYS",
-        "type": "ACTIVITY_ITEM",
-        "id": "act42side_token_pacifier_rep_1",
-        "dropType": "NORMAL"
-      },
-      {
-        "occPercent": "OFTEN",
-        "type": "MATERIAL",
-        "id": "30031",
-        "dropType": "NORMAL"
-      },
-      {
-        "occPercent": "OFTEN",
-        "type": "MATERIAL",
-        "id": "30061",
-        "dropType": "NORMAL"
-      },
-      {
-        "occPercent": "OFTEN",
-        "type": "MATERIAL",
-        "id": "30041",
-        "dropType": "NORMAL"
-      },
-      {
-        "occPercent": "OFTEN",
-        "type": "MATERIAL",
-        "id": "30051",
-        "dropType": "NORMAL"
-      },
-      {
-        "occPercent": "OFTEN",
-        "type": "MATERIAL",
-        "id": "30021",
-        "dropType": "NORMAL"
-      },
-      {
-        "occPercent": "USUAL",
-        "type": "MATERIAL",
-        "id": "30011",
-        "dropType": "NORMAL"
-      },
       {
         "occPercent": "ALWAYS",
         "type": "DIAMOND",
@@ -71,70 +23,22 @@
         "dropType": "COMPLETE"
       }
     ],
-    "zoneId": "act42sre_zone1",
+    "zoneId": "act50side_zone1",
     "apCost": 9,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "瞻望圣堂",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
+      "startTs": 1780268400,
+      "endTs": 1781467199
     }
   },
   {
-    "id": "MT-2",
-    "name": "祈祷",
+    "id": "TD-2",
+    "name": "还我锅来！",
     "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "ACTIVITY_ITEM",
-        "id": "act42side_token_pacifier_rep_1",
-        "dropType": "COMPLETE"
-      },
-      {
-        "occPercent": "ALWAYS",
-        "type": "ACTIVITY_ITEM",
-        "id": "act42side_token_pacifier_rep_1",
-        "dropType": "NORMAL"
-      },
-      {
-        "occPercent": "OFTEN",
-        "type": "MATERIAL",
-        "id": "30031",
-        "dropType": "NORMAL"
-      },
-      {
-        "occPercent": "OFTEN",
-        "type": "MATERIAL",
-        "id": "30061",
-        "dropType": "NORMAL"
-      },
-      {
-        "occPercent": "OFTEN",
-        "type": "MATERIAL",
-        "id": "30041",
-        "dropType": "NORMAL"
-      },
-      {
-        "occPercent": "OFTEN",
-        "type": "MATERIAL",
-        "id": "30051",
-        "dropType": "NORMAL"
-      },
-      {
-        "occPercent": "OFTEN",
-        "type": "MATERIAL",
-        "id": "30021",
-        "dropType": "NORMAL"
-      },
-      {
-        "occPercent": "USUAL",
-        "type": "MATERIAL",
-        "id": "30011",
-        "dropType": "NORMAL"
-      },
       {
         "occPercent": "ALWAYS",
         "type": "DIAMOND",
@@ -142,70 +46,22 @@
         "dropType": "COMPLETE"
       }
     ],
-    "zoneId": "act42sre_zone1",
+    "zoneId": "act50side_zone1",
     "apCost": 9,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "瞻望圣堂",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
+      "startTs": 1780268400,
+      "endTs": 1781467199
     }
   },
   {
-    "id": "MT-3",
-    "name": "礼拜",
+    "id": "TD-3",
+    "name": "不能掉以轻心",
     "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "ACTIVITY_ITEM",
-        "id": "act42side_token_pacifier_rep_1",
-        "dropType": "COMPLETE"
-      },
-      {
-        "occPercent": "ALWAYS",
-        "type": "ACTIVITY_ITEM",
-        "id": "act42side_token_pacifier_rep_1",
-        "dropType": "NORMAL"
-      },
-      {
-        "occPercent": "OFTEN",
-        "type": "MATERIAL",
-        "id": "30031",
-        "dropType": "NORMAL"
-      },
-      {
-        "occPercent": "OFTEN",
-        "type": "MATERIAL",
-        "id": "30061",
-        "dropType": "NORMAL"
-      },
-      {
-        "occPercent": "OFTEN",
-        "type": "MATERIAL",
-        "id": "30041",
-        "dropType": "NORMAL"
-      },
-      {
-        "occPercent": "OFTEN",
-        "type": "MATERIAL",
-        "id": "30051",
-        "dropType": "NORMAL"
-      },
-      {
-        "occPercent": "OFTEN",
-        "type": "MATERIAL",
-        "id": "30021",
-        "dropType": "NORMAL"
-      },
-      {
-        "occPercent": "USUAL",
-        "type": "MATERIAL",
-        "id": "30011",
-        "dropType": "NORMAL"
-      },
       {
         "occPercent": "ALWAYS",
         "type": "DIAMOND",
@@ -213,46 +69,22 @@
         "dropType": "COMPLETE"
       }
     ],
-    "zoneId": "act42sre_zone1",
+    "zoneId": "act50side_zone1",
     "apCost": 9,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "瞻望圣堂",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
+      "startTs": 1780268400,
+      "endTs": 1781467199
     }
   },
   {
-    "id": "MT-4",
-    "name": "求道",
+    "id": "TD-4",
+    "name": "赤雪之兆",
     "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "ACTIVITY_ITEM",
-        "id": "act42side_token_pacifier_rep_1",
-        "dropType": "COMPLETE"
-      },
-      {
-        "occPercent": "ALWAYS",
-        "type": "ACTIVITY_ITEM",
-        "id": "act42side_token_pacifier_rep_1",
-        "dropType": "NORMAL"
-      },
-      {
-        "occPercent": "ALMOST",
-        "type": "MATERIAL",
-        "id": "30052",
-        "dropType": "NORMAL"
-      },
-      {
-        "occPercent": "ALMOST",
-        "type": "MATERIAL",
-        "id": "30012",
-        "dropType": "NORMAL"
-      },
       {
         "occPercent": "ALWAYS",
         "type": "DIAMOND",
@@ -260,140 +92,22 @@
         "dropType": "COMPLETE"
       }
     ],
-    "zoneId": "act42sre_zone1",
-    "apCost": 12,
-    "difficulty": "NORMAL",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "瞻望圣堂",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
-    }
-  },
-  {
-    "id": "MT-5",
-    "name": "共融",
-    "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "ACTIVITY_ITEM",
-        "id": "act42side_token_pacifier_rep_1",
-        "dropType": "COMPLETE"
-      },
-      {
-        "occPercent": "ALWAYS",
-        "type": "ACTIVITY_ITEM",
-        "id": "act42side_token_pacifier_rep_1",
-        "dropType": "NORMAL"
-      },
-      {
-        "occPercent": "USUAL",
-        "type": "MATERIAL",
-        "id": "30062",
-        "dropType": "NORMAL"
-      },
-      {
-        "occPercent": "USUAL",
-        "type": "MATERIAL",
-        "id": "30022",
-        "dropType": "NORMAL"
-      },
-      {
-        "occPercent": "ALWAYS",
-        "type": "DIAMOND",
-        "id": "4002",
-        "dropType": "COMPLETE"
-      }
-    ],
-    "zoneId": "act42sre_zone1",
-    "apCost": 12,
-    "difficulty": "NORMAL",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "瞻望圣堂",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
-    }
-  },
-  {
-    "id": "MT-6",
-    "name": "告解",
-    "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "ACTIVITY_ITEM",
-        "id": "act42side_token_pacifier_rep_1",
-        "dropType": "COMPLETE"
-      },
-      {
-        "occPercent": "ALWAYS",
-        "type": "ACTIVITY_ITEM",
-        "id": "act42side_token_pacifier_rep_1",
-        "dropType": "NORMAL"
-      },
-      {
-        "occPercent": "ALWAYS",
-        "type": "MATERIAL",
-        "id": "30012",
-        "dropType": "NORMAL"
-      },
-      {
-        "occPercent": "USUAL",
-        "type": "MATERIAL",
-        "id": "30042",
-        "dropType": "NORMAL"
-      },
-      {
-        "occPercent": "ALWAYS",
-        "type": "DIAMOND",
-        "id": "4002",
-        "dropType": "COMPLETE"
-      }
-    ],
-    "zoneId": "act42sre_zone1",
+    "zoneId": "act50side_zone1",
     "apCost": 15,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "瞻望圣堂",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
+      "startTs": 1780268400,
+      "endTs": 1781467199
     }
   },
   {
-    "id": "MT-7",
-    "name": "丧礼",
+    "id": "TD-5",
+    "name": "只能成功，不能失败",
     "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "ACTIVITY_ITEM",
-        "id": "act42side_token_pacifier_rep_1",
-        "dropType": "COMPLETE"
-      },
-      {
-        "occPercent": "ALWAYS",
-        "type": "ACTIVITY_ITEM",
-        "id": "act42side_token_pacifier_rep_1",
-        "dropType": "NORMAL"
-      },
-      {
-        "occPercent": "ALWAYS",
-        "type": "MATERIAL",
-        "id": "30022",
-        "dropType": "NORMAL"
-      },
-      {
-        "occPercent": "USUAL",
-        "type": "MATERIAL",
-        "id": "30032",
-        "dropType": "NORMAL"
-      },
       {
         "occPercent": "ALWAYS",
         "type": "DIAMOND",
@@ -401,40 +115,22 @@
         "dropType": "COMPLETE"
       }
     ],
-    "zoneId": "act42sre_zone1",
+    "zoneId": "act50side_zone1",
     "apCost": 15,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "瞻望圣堂",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
+      "startTs": 1780268400,
+      "endTs": 1781467199
     }
   },
   {
-    "id": "MT-8",
-    "name": "朝圣",
+    "id": "TD-6",
+    "name": "来自过去的亡魂",
     "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "ACTIVITY_ITEM",
-        "id": "act42side_token_pacifier_rep_1",
-        "dropType": "COMPLETE"
-      },
-      {
-        "occPercent": "ALWAYS",
-        "type": "ACTIVITY_ITEM",
-        "id": "act42side_token_pacifier_rep_1",
-        "dropType": "NORMAL"
-      },
-      {
-        "occPercent": "USUAL",
-        "type": "MATERIAL",
-        "id": "30053",
-        "dropType": "NORMAL"
-      },
       {
         "occPercent": "ALWAYS",
         "type": "DIAMOND",
@@ -442,40 +138,22 @@
         "dropType": "COMPLETE"
       }
     ],
-    "zoneId": "act42sre_zone1",
+    "zoneId": "act50side_zone1",
     "apCost": 21,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "瞻望圣堂",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
+      "startTs": 1780268400,
+      "endTs": 1781467199
     }
   },
   {
-    "id": "MT-9",
-    "name": "解经",
+    "id": "TD-7",
+    "name": "为什么全是死脑筋？",
     "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "ACTIVITY_ITEM",
-        "id": "act42side_token_pacifier_rep_1",
-        "dropType": "COMPLETE"
-      },
-      {
-        "occPercent": "ALWAYS",
-        "type": "ACTIVITY_ITEM",
-        "id": "act42side_token_pacifier_rep_1",
-        "dropType": "NORMAL"
-      },
-      {
-        "occPercent": "USUAL",
-        "type": "MATERIAL",
-        "id": "30093",
-        "dropType": "NORMAL"
-      },
       {
         "occPercent": "ALWAYS",
         "type": "DIAMOND",
@@ -483,40 +161,22 @@
         "dropType": "COMPLETE"
       }
     ],
-    "zoneId": "act42sre_zone1",
+    "zoneId": "act50side_zone1",
     "apCost": 21,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "瞻望圣堂",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
+      "startTs": 1780268400,
+      "endTs": 1781467199
     }
   },
   {
-    "id": "MT-10",
-    "name": "降生",
+    "id": "TD-8",
+    "name": "宿命流转，苍霆激荡",
     "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "ACTIVITY_ITEM",
-        "id": "act42side_token_pacifier_rep_1",
-        "dropType": "COMPLETE"
-      },
-      {
-        "occPercent": "ALWAYS",
-        "type": "ACTIVITY_ITEM",
-        "id": "act42side_token_pacifier_rep_1",
-        "dropType": "NORMAL"
-      },
-      {
-        "occPercent": "USUAL",
-        "type": "MATERIAL",
-        "id": "31053",
-        "dropType": "NORMAL"
-      },
       {
         "occPercent": "ALWAYS",
         "type": "DIAMOND",
@@ -524,28 +184,22 @@
         "dropType": "COMPLETE"
       }
     ],
-    "zoneId": "act42sre_zone1",
+    "zoneId": "act50side_zone1",
     "apCost": 21,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "瞻望圣堂",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
+      "startTs": 1780268400,
+      "endTs": 1781467199
     }
   },
   {
-    "id": "MT-EX-1",
-    "name": "萨科塔生态园",
+    "id": "TD-P-1",
+    "name": "“百兽奔行”",
     "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "ACTIVITY_ITEM",
-        "id": "act42side_token_pacifier_rep_1",
-        "dropType": "COMPLETE"
-      },
       {
         "occPercent": "ALWAYS",
         "type": "DIAMOND",
@@ -553,21 +207,21 @@
         "dropType": "COMPLETE"
       }
     ],
-    "zoneId": "act42sre_zone2",
+    "zoneId": "act50side_zone1",
     "apCost": 10,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "谒见神祇",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
+      "startTs": 1780268400,
+      "endTs": 1781467199
     }
   },
   {
-    "id": "MT-EX-1 突袭",
-    "name": "萨科塔生态园",
+    "id": "TD-TR-1",
+    "name": "狩猎太棒啦！",
     "drop": [
       {
         "occPercent": "ALWAYS",
@@ -576,663 +230,16 @@
         "dropType": "COMPLETE"
       }
     ],
-    "zoneId": "act42sre_zone2",
-    "apCost": 10,
-    "difficulty": "FOUR_STAR",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "谒见神祇",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
-    }
-  },
-  {
-    "id": "MT-EX-2",
-    "name": "甜梦大会堂",
-    "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "ACTIVITY_ITEM",
-        "id": "act42side_token_pacifier_rep_1",
-        "dropType": "COMPLETE"
-      },
-      {
-        "occPercent": "ALWAYS",
-        "type": "DIAMOND",
-        "id": "4002",
-        "dropType": "COMPLETE"
-      }
-    ],
-    "zoneId": "act42sre_zone2",
-    "apCost": 10,
-    "difficulty": "NORMAL",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "谒见神祇",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
-    }
-  },
-  {
-    "id": "MT-EX-2 突袭",
-    "name": "甜梦大会堂",
-    "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "DIAMOND",
-        "id": "4002",
-        "dropType": "COMPLETE"
-      }
-    ],
-    "zoneId": "act42sre_zone2",
-    "apCost": 10,
-    "difficulty": "FOUR_STAR",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "谒见神祇",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
-    }
-  },
-  {
-    "id": "MT-EX-3",
-    "name": "万众圣餐厅",
-    "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "ACTIVITY_ITEM",
-        "id": "act42side_token_pacifier_rep_1",
-        "dropType": "COMPLETE"
-      },
-      {
-        "occPercent": "ALWAYS",
-        "type": "DIAMOND",
-        "id": "4002",
-        "dropType": "COMPLETE"
-      }
-    ],
-    "zoneId": "act42sre_zone2",
-    "apCost": 15,
-    "difficulty": "NORMAL",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "谒见神祇",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
-    }
-  },
-  {
-    "id": "MT-EX-3 突袭",
-    "name": "万众圣餐厅",
-    "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "DIAMOND",
-        "id": "4002",
-        "dropType": "COMPLETE"
-      }
-    ],
-    "zoneId": "act42sre_zone2",
-    "apCost": 15,
-    "difficulty": "FOUR_STAR",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "谒见神祇",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
-    }
-  },
-  {
-    "id": "MT-EX-4",
-    "name": "羽兽栖脚台",
-    "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "ACTIVITY_ITEM",
-        "id": "act42side_token_pacifier_rep_1",
-        "dropType": "COMPLETE"
-      },
-      {
-        "occPercent": "ALWAYS",
-        "type": "DIAMOND",
-        "id": "4002",
-        "dropType": "COMPLETE"
-      }
-    ],
-    "zoneId": "act42sre_zone2",
-    "apCost": 15,
-    "difficulty": "NORMAL",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "谒见神祇",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
-    }
-  },
-  {
-    "id": "MT-EX-4 突袭",
-    "name": "羽兽栖脚台",
-    "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "DIAMOND",
-        "id": "4002",
-        "dropType": "COMPLETE"
-      }
-    ],
-    "zoneId": "act42sre_zone2",
-    "apCost": 15,
-    "difficulty": "FOUR_STAR",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "谒见神祇",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
-    }
-  },
-  {
-    "id": "MT-EX-5",
-    "name": "圣徒祈祷区",
-    "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "ACTIVITY_ITEM",
-        "id": "act42side_token_pacifier_rep_1",
-        "dropType": "COMPLETE"
-      },
-      {
-        "occPercent": "ALWAYS",
-        "type": "DIAMOND",
-        "id": "4002",
-        "dropType": "COMPLETE"
-      }
-    ],
-    "zoneId": "act42sre_zone2",
-    "apCost": 15,
-    "difficulty": "NORMAL",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "谒见神祇",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
-    }
-  },
-  {
-    "id": "MT-EX-5 突袭",
-    "name": "圣徒祈祷区",
-    "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "DIAMOND",
-        "id": "4002",
-        "dropType": "COMPLETE"
-      }
-    ],
-    "zoneId": "act42sre_zone2",
-    "apCost": 15,
-    "difficulty": "FOUR_STAR",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "谒见神祇",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
-    }
-  },
-  {
-    "id": "MT-EX-6",
-    "name": "信仰蒸馏房",
-    "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "ACTIVITY_ITEM",
-        "id": "act42side_token_pacifier_rep_1",
-        "dropType": "COMPLETE"
-      },
-      {
-        "occPercent": "ALWAYS",
-        "type": "DIAMOND",
-        "id": "4002",
-        "dropType": "COMPLETE"
-      }
-    ],
-    "zoneId": "act42sre_zone2",
-    "apCost": 15,
-    "difficulty": "NORMAL",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "谒见神祇",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
-    }
-  },
-  {
-    "id": "MT-EX-6 突袭",
-    "name": "信仰蒸馏房",
-    "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "DIAMOND",
-        "id": "4002",
-        "dropType": "COMPLETE"
-      }
-    ],
-    "zoneId": "act42sre_zone2",
-    "apCost": 15,
-    "difficulty": "FOUR_STAR",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "谒见神祇",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
-    }
-  },
-  {
-    "id": "MT-EX-7",
-    "name": "原初育婴室",
-    "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "ACTIVITY_ITEM",
-        "id": "act42side_token_pacifier_rep_1",
-        "dropType": "COMPLETE"
-      },
-      {
-        "occPercent": "ALWAYS",
-        "type": "DIAMOND",
-        "id": "4002",
-        "dropType": "COMPLETE"
-      }
-    ],
-    "zoneId": "act42sre_zone2",
-    "apCost": 20,
-    "difficulty": "NORMAL",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "谒见神祇",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
-    }
-  },
-  {
-    "id": "MT-EX-7 突袭",
-    "name": "原初育婴室",
-    "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "DIAMOND",
-        "id": "4002",
-        "dropType": "COMPLETE"
-      }
-    ],
-    "zoneId": "act42sre_zone2",
-    "apCost": 20,
-    "difficulty": "FOUR_STAR",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "谒见神祇",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
-    }
-  },
-  {
-    "id": "MT-EX-8",
-    "name": "“拉特兰拼图”",
-    "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "ACTIVITY_ITEM",
-        "id": "act42side_token_pacifier_rep_1",
-        "dropType": "COMPLETE"
-      },
-      {
-        "occPercent": "ALWAYS",
-        "type": "DIAMOND",
-        "id": "4002",
-        "dropType": "COMPLETE"
-      }
-    ],
-    "zoneId": "act42sre_zone2",
-    "apCost": 20,
-    "difficulty": "NORMAL",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "谒见神祇",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
-    }
-  },
-  {
-    "id": "MT-EX-8 突袭",
-    "name": "“拉特兰拼图”",
-    "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "DIAMOND",
-        "id": "4002",
-        "dropType": "COMPLETE"
-      }
-    ],
-    "zoneId": "act42sre_zone2",
-    "apCost": 20,
-    "difficulty": "FOUR_STAR",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "谒见神祇",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
-    }
-  },
-  {
-    "id": "MT-S-1",
-    "name": "甜品展会",
-    "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "ACTIVITY_ITEM",
-        "id": "act42side_token_pacifier_rep_1",
-        "dropType": "COMPLETE"
-      },
-      {
-        "occPercent": "ALWAYS",
-        "type": "DIAMOND",
-        "id": "4002",
-        "dropType": "COMPLETE"
-      }
-    ],
-    "zoneId": "act42sre_zone3",
-    "apCost": 15,
-    "difficulty": "NORMAL",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "息止安所",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
-    }
-  },
-  {
-    "id": "MT-S-1 突袭",
-    "name": "甜品展会",
-    "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "DIAMOND",
-        "id": "4002",
-        "dropType": "COMPLETE"
-      }
-    ],
-    "zoneId": "act42sre_zone3",
-    "apCost": 15,
-    "difficulty": "FOUR_STAR",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "息止安所",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
-    }
-  },
-  {
-    "id": "MT-S-2",
-    "name": "布道演习",
-    "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "ACTIVITY_ITEM",
-        "id": "act42side_token_pacifier_rep_1",
-        "dropType": "COMPLETE"
-      },
-      {
-        "occPercent": "ALWAYS",
-        "type": "DIAMOND",
-        "id": "4002",
-        "dropType": "COMPLETE"
-      }
-    ],
-    "zoneId": "act42sre_zone3",
-    "apCost": 15,
-    "difficulty": "NORMAL",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "息止安所",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
-    }
-  },
-  {
-    "id": "MT-S-2 突袭",
-    "name": "布道演习",
-    "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "DIAMOND",
-        "id": "4002",
-        "dropType": "COMPLETE"
-      }
-    ],
-    "zoneId": "act42sre_zone3",
-    "apCost": 15,
-    "difficulty": "FOUR_STAR",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "息止安所",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
-    }
-  },
-  {
-    "id": "MT-S-3",
-    "name": "全民阅兵",
-    "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "ACTIVITY_ITEM",
-        "id": "act42side_token_pacifier_rep_1",
-        "dropType": "COMPLETE"
-      },
-      {
-        "occPercent": "ALWAYS",
-        "type": "DIAMOND",
-        "id": "4002",
-        "dropType": "COMPLETE"
-      }
-    ],
-    "zoneId": "act42sre_zone3",
-    "apCost": 20,
-    "difficulty": "NORMAL",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "息止安所",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
-    }
-  },
-  {
-    "id": "MT-S-3 突袭",
-    "name": "全民阅兵",
-    "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "DIAMOND",
-        "id": "4002",
-        "dropType": "COMPLETE"
-      }
-    ],
-    "zoneId": "act42sre_zone3",
-    "apCost": 20,
-    "difficulty": "FOUR_STAR",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "息止安所",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
-    }
-  },
-  {
-    "id": "MT-S-4",
-    "name": "万国峰会",
-    "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "ACTIVITY_ITEM",
-        "id": "act42side_token_pacifier_rep_1",
-        "dropType": "COMPLETE"
-      },
-      {
-        "occPercent": "ALWAYS",
-        "type": "DIAMOND",
-        "id": "4002",
-        "dropType": "COMPLETE"
-      }
-    ],
-    "zoneId": "act42sre_zone3",
-    "apCost": 20,
-    "difficulty": "NORMAL",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "息止安所",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
-    }
-  },
-  {
-    "id": "MT-S-4 突袭",
-    "name": "万国峰会",
-    "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "DIAMOND",
-        "id": "4002",
-        "dropType": "COMPLETE"
-      }
-    ],
-    "zoneId": "act42sre_zone3",
-    "apCost": 20,
-    "difficulty": "FOUR_STAR",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "息止安所",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
-    }
-  },
-  {
-    "id": "MT-S-5",
-    "name": "授律圣事",
-    "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "ACTIVITY_ITEM",
-        "id": "act42side_token_pacifier_rep_1",
-        "dropType": "COMPLETE"
-      },
-      {
-        "occPercent": "ALWAYS",
-        "type": "DIAMOND",
-        "id": "4002",
-        "dropType": "COMPLETE"
-      }
-    ],
-    "zoneId": "act42sre_zone3",
-    "apCost": 25,
-    "difficulty": "NORMAL",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "息止安所",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
-    }
-  },
-  {
-    "id": "MT-S-5 突袭",
-    "name": "授律圣事",
-    "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "DIAMOND",
-        "id": "4002",
-        "dropType": "COMPLETE"
-      }
-    ],
-    "zoneId": "act42sre_zone3",
-    "apCost": 25,
-    "difficulty": "FOUR_STAR",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "息止安所",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
-    }
-  },
-  {
-    "id": "MT-TR-1",
-    "name": "圣城的异常",
-    "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "DIAMOND",
-        "id": "4002",
-        "dropType": "COMPLETE"
-      }
-    ],
-    "zoneId": "act42sre_zone1",
+    "zoneId": "act50side_zone1",
     "apCost": 0,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "众生行记",
-    "subTitle": "瞻望圣堂",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1779436800,
-      "endTs": 1780257599
+      "startTs": 1780268400,
+      "endTs": 1781467199
     }
   },
   {
@@ -8219,6 +7226,150 @@
     "diffGroup": "NONE",
     "zoneNameSecond": "身先士卒",
     "stageType": "DAILY"
+  },
+  {
+    "id": "TD-ST-1",
+    "name": "风沙渐起",
+    "drop": null,
+    "zoneId": "act50side_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-1",
+    "name": "硬壳下的胆小鬼",
+    "drop": null,
+    "zoneId": "act50side_zone1",
+    "apCost": 9,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-TR-1",
+    "name": "狩猎太棒啦！",
+    "drop": null,
+    "zoneId": "act50side_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-2",
+    "name": "还我锅来！",
+    "drop": null,
+    "zoneId": "act50side_zone1",
+    "apCost": 9,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-3",
+    "name": "不能掉以轻心",
+    "drop": null,
+    "zoneId": "act50side_zone1",
+    "apCost": 9,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-4",
+    "name": "赤雪之兆",
+    "drop": null,
+    "zoneId": "act50side_zone1",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-5",
+    "name": "只能成功，不能失败",
+    "drop": null,
+    "zoneId": "act50side_zone1",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-6",
+    "name": "来自过去的亡魂",
+    "drop": null,
+    "zoneId": "act50side_zone1",
+    "apCost": 21,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-7",
+    "name": "为什么全是死脑筋？",
+    "drop": null,
+    "zoneId": "act50side_zone1",
+    "apCost": 21,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-8",
+    "name": "宿命流转，苍霆激荡",
+    "drop": null,
+    "zoneId": "act50side_zone1",
+    "apCost": 21,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-ST-2",
+    "name": "幻梦终醒，猎魂不息",
+    "drop": null,
+    "zoneId": "act50side_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-P-1",
+    "name": "“百兽奔行”",
+    "drop": null,
+    "zoneId": "act50side_zone1",
+    "apCost": 10,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
+    "stageType": "ACTIVITY"
   },
   {
     "id": "17-1",

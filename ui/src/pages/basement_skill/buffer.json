@@ -353,6 +353,12 @@
     "description": "部署费用可降低至部署费用下限；部署费用小于0时部署费用自然回复速度-50%",
     "buffer": []
   },
+  "ba_magicarcane": {
+    "termId": "ba.magicarcane",
+    "termName": "术法充盈",
+    "description": "造成的法术伤害提升（同名效果取最高）",
+    "buffer": []
+  },
   "cc_bd_A_1": {
     "termId": "cc.bd_A_1",
     "termName": "念力",
@@ -816,6 +822,12 @@
     "termId": "cc.tag.dungeon",
     "termName": "莱欧斯小队",
     "description": "包含以下干员\n玛露西尔、莱欧斯、齐尔查克、森西",
+    "buffer": []
+  },
+  "cc_tag_mh2": {
+    "termId": "cc.tag.mh2",
+    "termName": "泡影国狩猎小队",
+    "description": "包含以下干员\n焰狐龙梓兰、雷狼龙S空爆、罗德岛隐秘队",
     "buffer": []
   },
   "cc_gvial": {
