@@ -998,7 +998,7 @@ class Arknights数据处理器:
 
             characters[char_id] = {
                 "name": char_info.get("name", char_id),
-                "rarity": char_info.get("rarity", 0) + 1,
+                "rarity": int(str(char_info["rarity"]).removeprefix("TIER_")),
                 "profession": char_info.get("profession", ""),
                 "skills": skills,
             }
@@ -1010,7 +1010,9 @@ class Arknights数据处理器:
                 items[item_id] = {
                     "name": item_info.get("name", item_id),
                     "icon": item_info.get("iconId", ""),
-                    "rarity": item_info.get("rarity", 0),
+                    "rarity": int(
+                        item_info.get("rarity", "TIER_1").removeprefix("TIER_")
+                    ),
                 }
 
         composite_path = (

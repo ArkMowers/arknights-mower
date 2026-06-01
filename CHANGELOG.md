@@ -1,5 +1,34 @@
 # CHANGELOG
 
+## 4.1.5.5
+
+- 新增全自动专精功能
+- 优化合成方案配置
+- 新增周计划关卡按开放时间过滤（活动期间可手动关闭）
+- 在 基建报表 和 贸易订单分析 中增加可露希尔赤金
+- 修复识别跑单订单价值时模板误匹配
+- 仓库刷新逻辑优化
+- 专精模块修复完善
+- 更新游戏数据
+- 网页文档中新增 专精推荐 和 Docker 部署
+
+详细内容：
+### 新增 feat
+- feat: 完善全自动专精功能 [(#871)@NiceAfternoon](https://github.com/ArkMowers/arknights-mower/commit/2ee0cfd909c277ba5c978d4c2fa20a83ac313ac2)
+- feat: 实现全自动专精功能并优化合成方案配置 [(#862)@mikuzc](https://github.com/ArkMowers/arknights-mower/commit/b54c7a89199fdf8e71731768a39c8be970564bef)
+- feat: add Closure order in report and trade order analysis [(#865)@NiceAfternoon](https://github.com/ArkMowers/arknights-mower/commit/92c2cb2fc95043e816bdca1fbcdbfa2553269890)
+- feat: 周计划关卡按开放时间过滤，活动期间可关闭 [(#860)@clousky2020](https://github.com/ArkMowers/arknights-mower/commit/42a8f6b9e8cdb0f4c662fd4c666dd47567225447)
+- 4.1.6仓库刷新逻辑优化 [(#857)@mikuzc](https://github.com/ArkMowers/arknights-mower/commit/f72c81794102c27cbb762d7635c8181a3f7266fb)
+- 4.1.6专精模块修复完善 [(#855)@mikuzc](https://github.com/ArkMowers/arknights-mower/commit/16e5a818a2119585237c4626f97cc4494243e2b3)
+
+### 修复 fix
+- fix: 修复识别跑单订单价值时模板误匹配 [(#858)@NiceAfternoon](https://github.com/ArkMowers/arknights-mower/commit/067aaffe3be283bf1baab27cf656635eb926560d)
+
+### 文档 doc
+- docs: 为 README 添加 Docker 部署文档链接 [(#866)@dhujsi](https://github.com/ArkMowers/arknights-mower/commit/612797cc15448bdabb02da1922642e9043ded839)
+- 文档更新内容详见 [Commits - doc-pages](https://github.com/ArkMowers/arknights-mower/commits/doc-pages)
+
+
 ## 4.1.5.4
 - 新增专精推荐模块
 - 支持一图流干员练度导入
