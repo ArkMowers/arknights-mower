@@ -164,10 +164,16 @@ def scheduling(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
                         timedelta(minutes=total_execution_time) + time_now
                         > tasks[next_priority_0_index].time
                     ):
+                        if (tasks[next_priority_0_index].time - time_now) > timedelta(
+                            minutes=10
+                        ):
+                            break
                         logger.info("检测到任务可能影响到下次跑单修改任务至跑单之后")
                         logger.debug("||".join([str(t) for t in tasks]))
                         next_priority_0_time = tasks[next_priority_0_index].time
                         for j in range(i, next_priority_0_index):
+                            if tasks[j].adjusted:
+                                continue
                             tasks[j].time = next_priority_0_time + timedelta(seconds=1)
                             next_priority_0_time = tasks[j].time
                         logger.debug("||".join([str(t) for t in tasks]))

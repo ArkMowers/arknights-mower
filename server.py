@@ -1035,6 +1035,34 @@ def workshop_preset():
         return {"success": True}
 
 
+@app.route("/mastery-route", methods=["GET", "POST"])
+def mastery_route():
+    import json as _json
+
+    route_path = get_path("@app/tmp/matery_route.json")
+    if request.method == "GET":
+        if os.path.exists(route_path):
+            try:
+                with open(route_path, "r", encoding="utf-8") as f:
+                    return _json.load(f)
+            except Exception:
+                pass
+        default_path = get_path("@internal/arknights_mower/data/training_route.json")
+        if os.path.exists(default_path):
+            try:
+                with open(default_path, "r", encoding="utf-8") as f:
+                    return _json.load(f)
+            except Exception:
+                pass
+        return {}
+    else:
+        data = request.json or {}
+        route_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(route_path, "w", encoding="utf-8") as f:
+            _json.dump(data, f, ensure_ascii=False)
+        return {"success": True}
+
+
 @app.route("/cultivate-fetch")
 def cultivate_fetch():
     from arknights_mower.solvers.cultivate_depot import cultivate
@@ -1082,7 +1110,7 @@ def add_task():
                         raise Exception("找到同时间任务请勿重复添加")
                     if new_task.type == TaskTypes.SKILL_UPGRADE:
                         supports = []
-                        for s in req["upgrade_support"]:
+                        for s in req.get("upgrade_support", []):
                             if (
                                 s["name"] not in agent_list
                                 or s["swap_name"] not in agent_list

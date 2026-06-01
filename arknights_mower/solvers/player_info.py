@@ -31,6 +31,7 @@ class PlayerInfoSnapshot:
     full_recovery_time: datetime.datetime
     fetched_at: datetime.datetime
     raw_ap: dict
+    building_training: dict | None = None
 
 
 class PlayerInfoClient:
@@ -204,6 +205,7 @@ class PlayerInfoClient:
             full_recovery_time=full_recovery_time,
             fetched_at=datetime.datetime.now(datetime.timezone.utc),
             raw_ap=ap,
+            building_training=resp.get("data", {}).get("building", {}).get("training"),
         )
         cache_key = f"{snapshot.account}:{snapshot.uid}"
         player_info_cache[cache_key] = asdict(snapshot)

@@ -137,13 +137,10 @@ class depotREC(SceneGraphSolver):
                 str(结果[k]) if 结果[k] < 10 else ("万" if 结果[k] == 10 else ".")
             )
 
-        if not 物品个数:
-            return 999999
-        # # 格式化数字
-        格式化数字 = int(
-            float("".join(re.findall(r"\d+\.\d+|\d+", 物品个数)))
-            * (10000 if "万" in 物品个数 else 1)
-        )
+        matches = re.findall(r"\d+\.\d+|\d+", 物品个数)
+        if not matches:
+            return None
+        格式化数字 = int(float("".join(matches)) * (10000 if "万" in 物品个数 else 1))
         return 格式化数字
 
     def 匹配物品一次(self, 物品, 物品灰, 模型名称):
@@ -220,5 +217,8 @@ class depotREC(SceneGraphSolver):
 
         for [物品, 物品灰, id] in 切图列表:
             [物品名称, 物品数字] = self.匹配物品一次(物品, 物品灰, 模型名称)
+            if 物品数字 is None:
+                logger.warning(f"仓库扫描: 无法识别 {物品名称} 的数量，跳过")
+                continue
             logger.debug([物品名称, 物品数字])
             self.结果字典[物品名称] = self.结果字典.get(物品名称, 0) + 物品数字
