@@ -17,28 +17,16 @@
           <template #icon><n-icon :component="SettingsIcon" /></template>
           专精路线
         </n-button>
+        <n-button size="small" @click="showWorkshopSettings = true">
+          <template #icon><n-icon :component="SettingsIcon" /></template>
+          加工站干员设置
+        </n-button>
         <n-button size="small" type="warning" @click="autoWorkshop" :loading="workshopLoading">
           <template #icon><n-icon :component="HammerIcon" /></template>
           自动合成配置
         </n-button>
         <n-button size="small" @click="savePreset">保存合成配置</n-button>
         <n-button size="small" @click="restorePreset">还原合成配置</n-button>
-        <n-select
-          v-model:value="t5Operator"
-          :options="operatorOptions"
-          filterable
-          placeholder="T5合成干员"
-          style="width: 120px"
-          size="small"
-        />
-        <n-select
-          v-model:value="bookOperator"
-          :options="operatorOptions"
-          filterable
-          placeholder="技巧概要干员"
-          style="width: 120px"
-          size="small"
-        />
         <n-button type="primary" size="small" @click="fetchCultivate" :loading="store.loading">
           <template #icon><n-icon :component="RefreshIcon" /></template>
           刷新
@@ -443,6 +431,41 @@
         </n-space>
       </template>
     </n-modal>
+
+    <!-- 加工站干员设置 -->
+    <n-modal
+      v-model:show="showWorkshopSettings"
+      preset="card"
+      title="加工站干员设置"
+      style="width: min(500px, 95vw)"
+      :mask-closable="false"
+    >
+      <n-space vertical>
+        <div>
+          <n-text depth="3">非 T5 材料加工干员</n-text>
+          <help-text>
+            选择 九色鹿 时会自动添加 碳素，碳素组，家具零件_碳素组 作为垫刀材料
+          </help-text>
+        </div>
+        <slick-operator-select
+          v-model="fodderOps"
+          :disabled="false"
+          select_placeholder="选择干员（九色鹿带垫刀材料）"
+        />
+        <n-text depth="3">T5 加工干员</n-text>
+        <slick-operator-select v-model="t5Ops" :disabled="false" select_placeholder="选择干员" />
+        <n-text depth="3">技巧概要加工干员</n-text>
+        <slick-operator-select v-model="bookOps" :disabled="false" select_placeholder="选择干员" />
+      </n-space>
+      <template #footer>
+        <n-space justify="end">
+          <n-button size="small" @click="resetWorkshopDefaults">恢复默认</n-button>
+          <n-button type="primary" size="small" @click="showWorkshopSettings = false"
+            >保存</n-button
+          >
+        </n-space>
+      </template>
+    </n-modal>
   </div>
 </template>
 
@@ -528,9 +551,19 @@ const filterProfession = ref([])
 const filterAchievable = ref(false)
 const showOnlyPlanned = ref(false)
 const decomposeT3 = ref(false)
+const {
+  fodder_operators: fodderOps,
+  t5_operators: t5Ops,
+  book_operators: bookOps
+} = storeToRefs(configStore)
 const workshopLoading = ref(false)
-const t5Operator = ref('年')
-const bookOperator = ref('司霆惊蛰')
+const showWorkshopSettings = ref(false)
+
+function resetWorkshopDefaults() {
+  fodderOps.value = ['九色鹿']
+  t5Ops.value = ['年']
+  bookOps.value = ['司霆惊蛰']
+}
 const workshopT3Summary = ref([])
 
 const emptyText = computed(() => {
@@ -616,10 +649,12 @@ const filteredPlanOperators = computed(() => {
 
 async function savePreset() {
   try {
-    await axios.post(
-      `${import.meta.env.VITE_HTTP_URL}/workshop-preset`,
-      configStore.workshop_settings
-    )
+    await axios.post(`${import.meta.env.VITE_HTTP_URL}/workshop-preset`, {
+      settings: configStore.workshop_settings,
+      fodder_operators: fodderOps.value,
+      t5_operators: t5Ops.value,
+      book_operators: bookOps.value
+    })
     message.success('当前合成配置已保存为默认')
   } catch (e) {
     message.error('保存失败: ' + e.message)
@@ -628,8 +663,12 @@ async function savePreset() {
 async function restorePreset() {
   try {
     const r = await axios.get(`${import.meta.env.VITE_HTTP_URL}/workshop-preset`)
-    if (r.data && r.data.length) {
-      configStore.workshop_settings = r.data
+    const data = r.data
+    if (data && (data.settings?.length || data.length)) {
+      configStore.workshop_settings = data.settings || data
+      if (data.fodder_operators) fodderOps.value = data.fodder_operators
+      if (data.t5_operators) t5Ops.value = data.t5_operators
+      if (data.book_operators) bookOps.value = data.book_operators
       await new Promise((res) => setTimeout(res, 100))
       await axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, configStore.build_config())
       message.success('合成配置已还原')
@@ -647,13 +686,17 @@ async function autoWorkshop() {
     const keys = Object.keys(plan.value).filter((k) => plan.value[k])
     const resp = await axios.post(`${import.meta.env.VITE_HTTP_URL}/workshop-auto-config`, {
       planned_skills: keys,
-      t5_operator: t5Operator.value,
-      book_operator: bookOperator.value
+      fodder_operators: fodderOps.value,
+      t5_operators: t5Ops.value,
+      book_operators: bookOps.value
     })
     const ws = resp.data?.workshop_settings
     if (!ws) {
       message.warning('生成失败')
       return
+    }
+    if (keys.length === 0) {
+      message.success('当前没有专精计划，已自动生成全量合成方案')
     }
     configStore.workshop_settings = ws
 
@@ -748,6 +791,10 @@ function newSupport(p) {
   const def = defaultsCache.value
   if (!def) return null
   if (!routeSettings[p].optimal) {
+    if (i >= 3) {
+      const ref = def[p]?.supports?.find((s) => s.skill_level >= 3)
+      if (ref) return { ...ref, swap: true }
+    }
     const backups = def._backups || {}
     const name = backups[p] || ''
     if (!name) return null

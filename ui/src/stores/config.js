@@ -42,6 +42,9 @@ export const useConfigStore = defineStore('config', () => {
   const rescue_threshold = ref(75)
   const favorite = ref([])
   const workshop_settings = ref([])
+  const fodder_operators = ref(['九色鹿'])
+  const t5_operators = ref(['年'])
+  const book_operators = ref(['司霆惊蛰'])
   const theme = ref('light')
   const tap_to_launch_game = ref(false)
   const exit_game_when_idle = ref(true)
@@ -83,6 +86,7 @@ export const useConfigStore = defineStore('config', () => {
   const free_room = ref(false)
   const merge_interval = ref(10)
   const fia_fool = ref(true)
+  const assistant_follows_schedule = ref(false)
   const sign_in = ref({ enable: true })
   const droidcast = ref({})
   const mumu12IPC = ref(false)
@@ -305,6 +309,7 @@ export const useConfigStore = defineStore('config', () => {
     free_room.value = response.data.free_room
     merge_interval.value = response.data.merge_interval
     fia_fool.value = response.data.fia_fool
+    assistant_follows_schedule.value = response.data.assistant_follows_schedule
     sign_in.value = response.data.sign_in
     droidcast.value = response.data.droidcast
     mumu12IPC.value = response.data.mumu12IPC
@@ -312,6 +317,9 @@ export const useConfigStore = defineStore('config', () => {
     credit_fight.value = response.data.credit_fight
     custom_screenshot.value = response.data.custom_screenshot
     workshop_settings.value = response.data.workshop_settings
+    fodder_operators.value = response.data.fodder_operators || ['九色鹿']
+    t5_operators.value = response.data.t5_operators || ['年']
+    book_operators.value = response.data.book_operators || ['司霆惊蛰']
     check_for_updates.value = response.data.check_for_updates
     notification_level.value = response.data.notification_level
     waiting_scene.value = response.data.waiting_scene
@@ -407,6 +415,7 @@ export const useConfigStore = defineStore('config', () => {
       free_room: free_room.value,
       merge_interval: merge_interval.value,
       fia_fool: fia_fool.value,
+      assistant_follows_schedule: assistant_follows_schedule.value,
       sign_in: sign_in.value,
       droidcast: droidcast.value,
       mumu12IPC: mumu12IPC.value,
@@ -414,6 +423,9 @@ export const useConfigStore = defineStore('config', () => {
       credit_fight: credit_fight.value,
       custom_screenshot: custom_screenshot.value,
       workshop_settings: workshop_settings.value,
+      fodder_operators: fodder_operators.value,
+      t5_operators: t5_operators.value,
+      book_operators: book_operators.value,
       check_for_updates: check_for_updates.value,
       notification_level: notification_level.value,
       waiting_scene: waiting_scene.value,
@@ -496,6 +508,9 @@ export const useConfigStore = defineStore('config', () => {
     rescue_threshold,
     favorite,
     workshop_settings,
+    fodder_operators,
+    t5_operators,
+    book_operators,
     theme,
     tap_to_launch_game,
     exit_game_when_idle,
@@ -537,6 +552,7 @@ export const useConfigStore = defineStore('config', () => {
     free_room,
     merge_interval,
     fia_fool,
+    assistant_follows_schedule,
     sign_in,
     droidcast,
     mumu12IPC,

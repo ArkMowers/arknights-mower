@@ -130,6 +130,9 @@ def simulate(saved):
             base_scheduler.op_data.skill_upgrade_supports = saved[
                 "skill_upgrade_supports"
             ]
+            base_scheduler._completed_masteries = saved.get(
+                "_completed_masteries", set()
+            )
             base_scheduler.tasks = tasks
             if len(base_scheduler.op_data.backup_plans) > 0:
                 # 启动的时候按照条件触发副表
@@ -210,6 +213,21 @@ def simulate(saved):
                             logger.info(
                                 f"仓库扫描未到时间，将在 {config.conf.maa_gap - dt // 3600}小时之内开始扫描"
                             )
+
+                    skip_routine = False
+                    from arknights_mower.utils.scheduler_task import (
+                        TaskTypes as _TaskTypes,
+                    )
+
+                    next_upgrade = base_scheduler.find_next_task(
+                        task_type=_TaskTypes.SKILL_UPGRADE
+                    )
+                    if next_upgrade is not None and next_upgrade.time <= datetime.now():
+                        logger.info("仓库扫描后有专精任务待执行，立即运行后继续日常")
+                        base_scheduler.run()
+                        from arknights_mower.utils.scheduler_task import scheduling
+
+                        scheduling(base_scheduler.tasks)
                     if config.conf.maa_enable != 1:
                         base_scheduler.mower_plan_solver()
                     elif config.conf.maa_enable == 1:
@@ -319,6 +337,7 @@ def simulate(saved):
                     base_scheduler.sleeping = False
                     base_scheduler.check_current_focus()
 
+            base_scheduler._training_sm.gate_sync()
             base_scheduler.run()
             reconnect_tries = 0
         except MowerExit:

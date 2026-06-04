@@ -292,10 +292,18 @@ class RIICPart(ConfModel):
     "替换组心情监视"
     workshop_settings: list[WorkShopSetting] = []
     "工作室设置"
+    t5_operators: list[str] = ["年"]
+    "自动专精 T5 加工干员"
+    book_operators: list[str] = ["司霆惊蛰"]
+    "自动专精 技巧概要加工干员"
+    fodder_operators: list[str] = ["九色鹿"]
+    "自动专精 非 T5 材料加工干员"
     merge_interval: float = 10
     "不养闲人合并间隔"
     dorm_order: str = ""
     "宿舍优先级"
+    assistant_follows_schedule: bool = False
+    "协助位跟随排班（专精时协助位不固定，由排班系统管理）"
 
 
 class SimulatorPart(ConfModel):

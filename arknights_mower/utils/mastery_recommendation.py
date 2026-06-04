@@ -279,8 +279,16 @@ def get_mastery_recommendations():
     return result
 
 
-def compute_workshop_config(t5_operator="年", book_operator="司霆惊蛰"):
+def compute_workshop_config(
+    fodder_operators=None, t5_operators=None, book_operators=None
+):
     """根据当前专精计划和仓库库存，计算合成配置（与前端自动合成配置逻辑一致）"""
+    if fodder_operators is None:
+        fodder_operators = ["九色鹿"]
+    if t5_operators is None:
+        t5_operators = ["年"]
+    if book_operators is None:
+        book_operators = ["司霆惊蛰"]
     from collections import defaultdict
 
     from arknights_mower.data import workshop_formula
@@ -325,59 +333,7 @@ def compute_workshop_config(t5_operator="年", book_operator="司霆惊蛰"):
     }
 
     if not planned_keys:
-        default_t4 = [
-            {"item_names": [n], "children_lower_limit": 20, "self_upper_limit": 20}
-            for n in sorted(t4_names)
-        ]
-        default_t5 = [
-            {"item_names": [n], "children_lower_limit": 20, "self_upper_limit": 20}
-            for n in sorted(t5_names)
-        ]
-        default_book = [
-            {
-                "item_names": ["技巧概要·卷3"],
-                "children_lower_limit": 20,
-                "self_upper_limit": 20,
-            }
-        ]
-        return [
-            {"operator": "九色鹿", "enabled": True, "items": fodder_items + default_t4},
-            {"operator": t5_operator, "enabled": True, "items": default_t5},
-            {"operator": book_operator, "enabled": True, "items": default_book},
-        ]
-
-    t4_names = {
-        n: e
-        for n, e in workshop_formula.items()
-        if e.get("tab") == "精英材料" and e.get("apCost") == 4.0
-    }
-    t5_names = {
-        n: e
-        for n, e in workshop_formula.items()
-        if e.get("tab") == "精英材料" and e.get("apCost") == 8.0
-    }
-
-    if not planned_keys:
-        default_t4 = [
-            {"item_names": [n], "children_lower_limit": 20, "self_upper_limit": 20}
-            for n in sorted(t4_names)
-        ]
-        default_t5 = [
-            {"item_names": [n], "children_lower_limit": 20, "self_upper_limit": 20}
-            for n in sorted(t5_names)
-        ]
-        default_book = [
-            {
-                "item_names": ["技巧概要·卷3"],
-                "children_lower_limit": 20,
-                "self_upper_limit": 20,
-            }
-        ]
-        return [
-            {"operator": "九色鹿", "enabled": True, "items": fodder_items + default_t4},
-            {"operator": "年", "enabled": True, "items": default_t5},
-            {"operator": "司霆惊蛰", "enabled": True, "items": default_book},
-        ]
+        return None
 
     rec_result = get_mastery_recommendations()
     operators = rec_result.get("operators", [])
@@ -469,11 +425,80 @@ def compute_workshop_config(t5_operator="年", book_operator="司霆惊蛰"):
         else []
     )
 
-    return [
-        {"operator": "九色鹿", "enabled": True, "items": fodder_items + t4_items},
-        {"operator": "年", "enabled": True, "items": t5_items},
-        {"operator": "司霆惊蛰", "enabled": True, "items": book_items},
+    return (
+        [
+            {"operator": op, "enabled": True, "items": fodder_items + t4_items}
+            if op == "九色鹿"
+            else {"operator": op, "enabled": True, "items": t4_items}
+            for op in fodder_operators
+        ]
+        + [{"operator": op, "enabled": True, "items": t5_items} for op in t5_operators]
+        + [
+            {"operator": op, "enabled": True, "items": book_items}
+            for op in book_operators
+        ]
+    )
+
+
+def compute_default_workshop_config(
+    fodder_operators=None, t5_operators=None, book_operators=None
+):
+    """无专精计划时的全量默认合成配置（包含全 T4+T5+技巧概要）"""
+    if fodder_operators is None:
+        fodder_operators = ["九色鹿"]
+    if t5_operators is None:
+        t5_operators = ["年"]
+    if book_operators is None:
+        book_operators = ["司霆惊蛰"]
+    from arknights_mower.data import workshop_formula
+
+    t4_names = {
+        n
+        for n, e in workshop_formula.items()
+        if e.get("tab") == "精英材料" and e.get("apCost") == 4.0
+    }
+    t5_names = {
+        n
+        for n, e in workshop_formula.items()
+        if e.get("tab") == "精英材料" and e.get("apCost") == 8.0
+    }
+    fodder_list = ["碳素", "碳素组", "家具零件_碳素组"]
+    fodder_items = [
+        {"item_names": [f], "children_lower_limit": 0, "self_upper_limit": 9999}
+        for f in fodder_list
+        if f in workshop_formula
     ]
+    default_t4 = [
+        {"item_names": [n], "children_lower_limit": 20, "self_upper_limit": 20}
+        for n in sorted(t4_names)
+    ]
+    default_t5 = [
+        {"item_names": [n], "children_lower_limit": 20, "self_upper_limit": 20}
+        for n in sorted(t5_names)
+    ]
+    default_book = [
+        {
+            "item_names": ["技巧概要·卷3"],
+            "children_lower_limit": 20,
+            "self_upper_limit": 20,
+        }
+    ]
+    return (
+        [
+            {"operator": op, "enabled": True, "items": fodder_items + default_t4}
+            if op == "九色鹿"
+            else {"operator": op, "enabled": True, "items": default_t4}
+            for op in fodder_operators
+        ]
+        + [
+            {"operator": op, "enabled": True, "items": default_t5}
+            for op in t5_operators
+        ]
+        + [
+            {"operator": op, "enabled": True, "items": default_book}
+            for op in book_operators
+        ]
+    )
 
 
 _default_route_cache = None
@@ -511,9 +536,7 @@ def _build_route_supports(profession, control_center="none"):
     prof_route = route.get(prof_cn, prof_default)
     supports_data = prof_route.get("supports", []) or prof_default.get("supports", [])
     half_off = prof_route.get("half_off", prof_default.get("half_off", True))
-    cc = control_center or prof_route.get(
-        "controlCenter", prof_default.get("controlCenter", "none")
-    )
+    cc = control_center or route.get("controlCenter", "none")
     bonus = 0 if cc == "none" else 5
     supports = []
     for s in supports_data:
@@ -628,6 +651,7 @@ def auto_schedule_mastery_tasks():
                 "skill_index": rec["skill_index"],
                 "skill_name": rec["skill_name"],
                 "achievable": all_materials_sufficient,
+                "current_level": rec.get("current_level", 0),
             }
             if all_materials_sufficient:
                 result["scheduled"].append(entry)

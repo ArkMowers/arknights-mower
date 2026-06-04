@@ -821,13 +821,29 @@ def mastery_recommendation():
 def workshop_auto_config():
     import traceback
 
-    from arknights_mower.utils.mastery_recommendation import compute_workshop_config
+    from arknights_mower.utils.mastery_recommendation import (
+        compute_default_workshop_config,
+        compute_workshop_config,
+    )
 
     try:
         req = request.json or {}
-        t5_op = req.get("t5_operator", "年")
-        book_op = req.get("book_operator", "司霆惊蛰")
-        settings = compute_workshop_config(t5_operator=t5_op, book_operator=book_op)
+        fodder_ops = req.get("fodder_operators", ["九色鹿"])
+        t5_ops = req.get("t5_operators", ["年"])
+        book_ops = req.get("book_operators", ["司霆惊蛰"])
+        planned_skills = req.get("planned_skills", [])
+        if planned_skills:
+            settings = compute_workshop_config(
+                fodder_operators=fodder_ops,
+                t5_operators=t5_ops,
+                book_operators=book_ops,
+            )
+        else:
+            settings = compute_default_workshop_config(
+                fodder_operators=fodder_ops,
+                t5_operators=t5_ops,
+                book_operators=book_ops,
+            )
         return {"workshop_settings": settings, "t3_summary": []}
     except Exception as e:
         return {"error": str(e), "traceback": traceback.format_exc()}, 500
