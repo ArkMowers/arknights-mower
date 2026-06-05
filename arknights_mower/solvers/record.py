@@ -96,6 +96,7 @@ def save_state(func):
             "daily_mail": base_scheduler.daily_mail,
             "task_count": base_scheduler.task_count,
             "skill_upgrade_supports": base_scheduler.op_data.skill_upgrade_supports,
+            "_completed_masteries": base_scheduler._completed_masteries,
         }
 
         # Call the original function

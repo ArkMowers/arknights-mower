@@ -103,7 +103,7 @@ class ReportSolver(SceneGraphSolver):
                     if k == "龙舌兰":
                         key = "龙舌兰" + "(2500)"
                         value = 2500 * count
-                    if k == "可露希尔":
+                    elif k == "可露希尔":
                         key = "可露希尔" + "(1200)"
                         value = 1200 * count
                     else:

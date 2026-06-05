@@ -42,6 +42,7 @@ const {
   free_room,
   merge_interval,
   fia_fool,
+  assistant_follows_schedule,
   droidcast,
   mumu12IPC,
   maa_adb_path,
@@ -664,6 +665,14 @@ if (return_home_when_idle.value) {
                 菲亚防呆
                 <help-text
                   >当菲亚替换干员心情均超过90%时菲亚等待半小时，不确定菲亚替换心情消耗请启用本选项</help-text
+                >
+              </n-checkbox>
+            </n-form-item>
+            <n-form-item :show-label="false">
+              <n-checkbox v-model:checked="assistant_follows_schedule">
+                训练室协助位总是跟随排班
+                <help-text
+                  >勾选后专精时的协助位不会使用设置的专精工具人，在基建排班时会根据排班表来替换训练室的协助位。</help-text
                 >
               </n-checkbox>
             </n-form-item>
