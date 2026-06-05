@@ -35,6 +35,7 @@ class TrainingStateMachine:
         self._trainee_cid = ""
         self._target_skill = -1
         self._trainer_name = ""
+        self._idle_half_off_protect = False
 
     def gate_sync(self):
         plan = self._scheduler._get_mastery_plan()
@@ -75,6 +76,7 @@ class TrainingStateMachine:
             self._transition_history.clear()
         logger.info(f"训练室状态: {old.name} -> {new_state.name} (来自{caller})")
         if old == TrainingState.IDLE and new_state == TrainingState.TRAINING:
+            self._idle_half_off_protect = False
             if self._trainee_name and self._target_skill >= 0:
                 lvl = self._lit_zones + 1
                 logger.info(
@@ -82,18 +84,26 @@ class TrainingStateMachine:
                     f"技能{self._target_skill + 1} -> 专精{lvl}"
                 )
         if new_state == TrainingState.IDLE:
-            if self._scheduler.op_data.skill_upgrade_supports:
-                logger.info(
-                    f"训练室空闲: 已清除协助位配置 "
-                    f"(之前 {[s.name for s in self._scheduler.op_data.skill_upgrade_supports]})"
-                )
-            self._scheduler.op_data.skill_upgrade_supports = []
-            self._lit_zones = 0
-            self._trainee_plan_key = ""
-            self._trainee_name = ""
-            self._trainee_cid = ""
-            self._target_skill = -1
-            self._trainer_name = ""
+            self._idle_half_off_protect = False
+            if self._scheduler._get_mastery_plan():
+                if self._trainer_name in ("逻各斯", "艾丽妮") and self._trainee_name:
+                    self._idle_half_off_protect = True
+                    logger.info(
+                        f"训练室空闲但有减半干员{self._trainer_name}在岗，保护训练室"
+                    )
+            if not self._idle_half_off_protect:
+                if self._scheduler.op_data.skill_upgrade_supports:
+                    logger.info(
+                        f"训练室空闲: 已清除协助位配置 "
+                        f"(之前 {[s.name for s in self._scheduler.op_data.skill_upgrade_supports]})"
+                    )
+                self._scheduler.op_data.skill_upgrade_supports = []
+                self._lit_zones = 0
+                self._trainee_plan_key = ""
+                self._trainee_name = ""
+                self._trainee_cid = ""
+                self._target_skill = -1
+                self._trainer_name = ""
         self._act_on_state(new_state)
 
     def _determine_state(self):
@@ -121,9 +131,17 @@ class TrainingStateMachine:
         logger.debug(f"_determine_state: plan non-empty, physical={result.name}")
         return result
 
+    def is_operator_protected(self, name):
+        if not self._idle_half_off_protect:
+            return False
+        return name in (self._trainer_name, self._trainee_name)
+
     def should_skip_room(self, task):
         if task.meta_data == "_mastery":
             return False
+        if self._idle_half_off_protect:
+            logger.info("训练室空闲但有减半干员保护，跳过排班")
+            return True
         if self._scheduler.find_next_task(task_type=TaskTypes.SKILL_UPGRADE):
             logger.info("有未完成的专精任务，跳过训练室排班")
             return True
@@ -213,10 +231,19 @@ class TrainingStateMachine:
             char_table = get_skill_data().get("characters", {})
             name = char_table.get(cid, {}).get("name", "")
             if name:
-                return f"{name} 技能{skill_label} -> 专精{lvl} "
+                return f"{name} 技能{skill_label} -> 专精{lvl}"
         except Exception:
             pass
         return skill_label
+
+    def _read_idle_agents(self):
+        try:
+            current = self._scheduler.get_agent_from_room("train")
+            if len(current) >= 2:
+                self._trainer_name = current[0].get("agent", "")
+                self._trainee_name = current[1].get("agent", "")
+        except Exception:
+            pass
 
     def _read_physical_state(self):
         self._scheduler.enter_room("train")
@@ -224,19 +251,31 @@ class TrainingStateMachine:
             scene = self._scheduler.train_scene()
             if scene != Scene.TRAIN_MAIN:
                 self._last_training_countdown = None
+                self._read_idle_agents()
                 return TrainingState.IDLE
             # 先判断状态：检查是否可收集
-            completed_found = self._scheduler.find("training_completed")
-            if completed_found:
+            if self._scheduler.find("training_completed"):
                 self._last_training_countdown = None
                 return TrainingState.WAITING_COLLECT
+            # 模板匹配检测训练室空闲
+            if self._scheduler.find("training_idle"):
+                logger.debug("训练室空闲（模板匹配）")
+                self._last_training_countdown = None
+                self._target_skill = -1
+                self._read_idle_agents()
+                return TrainingState.IDLE
             # 读倒计时确定是否在专精中
             time_in_seconds = self._scheduler.read_time(
                 ((236, 978), (380, 1020)), upperlimit=None
             )
             if time_in_seconds is None:
                 self._last_training_countdown = None
+                self._read_idle_agents()
                 return TrainingState.IDLE
+            if time_in_seconds == 0:
+                logger.debug("训练已完成（倒计时归零），等待收集")
+                self._last_training_countdown = None
+                return TrainingState.WAITING_COLLECT
             execute_time = datetime.now() + timedelta(seconds=time_in_seconds)
             self._last_training_countdown = execute_time
             # 重试进入技能选择页（弹窗可能挡住，最多试 5 次）
@@ -415,15 +454,20 @@ class TrainingStateMachine:
         if trainer_name and trainer_name in half_off_names:
             if self._scheduler.find_next_task(task_type=TaskTypes.SKILL_UPGRADE):
                 return
-            if (
-                self._last_training_countdown
-                and self._last_training_countdown > datetime.now()
-            ):
-                remaining_h = (
-                    self._last_training_countdown - datetime.now()
-                ).total_seconds() / 3600
-                if remaining_h <= 5 + 10 / 60:
-                    return
+            if self._lit_zones < 2:
+                if (
+                    self._last_training_countdown
+                    and self._last_training_countdown > datetime.now()
+                ):
+                    remaining_h = (
+                        self._last_training_countdown - datetime.now()
+                    ).total_seconds() / 3600
+                    if remaining_h <= 6:
+                        logger.debug(
+                            f"协助位{trainer_name}是减半干员，"
+                            f"剩余{remaining_h:.1f}h≤6h，跳过纠错"
+                        )
+                        return
 
         current_level = self._lit_zones
         if current_level == 0:
@@ -504,6 +548,9 @@ class TrainingStateMachine:
             self._last_training_countdown is None
             or self._last_training_countdown <= datetime.now()
         ):
+            return
+        if self._scheduler.find_next_task(task_type=TaskTypes.SKILL_UPGRADE):
+            logger.debug("队列中已有专精任务，跳过减半链恢复")
             return
         try:
             if self._lit_zones == 0:

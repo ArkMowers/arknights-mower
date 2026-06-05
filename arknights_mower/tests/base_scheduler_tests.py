@@ -18,6 +18,8 @@ class TestBaseScheduler(unittest.TestCase):
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_run_order_solver_uses_current_time_for_expired_exhaust_task(self):
         solver = BaseSchedulerSolver()
+        solver._training_sm = MagicMock()
+        solver._training_sm.is_operator_protected.return_value = False
         solver.tasks = []
         solver.drone_room = None
         solver.op_data = MagicMock()

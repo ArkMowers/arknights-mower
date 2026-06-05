@@ -963,6 +963,9 @@ class Recognizer:
             elif res == "training_completed":
                 scope = ((550, 900), (800, 1080))
                 threshold = 0.45
+            elif res == "training_idle":
+                scope = ((655, 965), (765, 1025))
+                threshold = 0.45
 
         res_img = loadres(res, True)
         if thres is not None:

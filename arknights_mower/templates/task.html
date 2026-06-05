@@ -42,10 +42,10 @@
         {% endif %}
         <td>{{ p|join(', ') }}</td>
       </tr>
-      {% endfor %} {% elif task.type %}
+      {% endfor %}       {% elif task.type %}
       <tr>
         <td>{{ task.time.strftime('%H:%M:%S') }}</td>
-        <td colspan="2">{{ task.type }}</td>
+        <td colspan="2">{{ task.type }}{{ ' ' + task.meta_data if task.meta_data else '' }}</td>
       </tr>
       {% else %}
       <tr>
