@@ -214,7 +214,6 @@ def simulate(saved):
                                 f"仓库扫描未到时间，将在 {config.conf.maa_gap - dt // 3600}小时之内开始扫描"
                             )
 
-                    skip_routine = False
                     from arknights_mower.utils.scheduler_task import (
                         TaskTypes as _TaskTypes,
                     )

@@ -1533,15 +1533,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             )
         )
 
-    def _schedule_half_off_swap(self, support, level, skill):
-        if level == 3 or self._training_completion_time is None:
-            return
-        self._schedule_half_off_swap_internal(
-            support,
-            self._training_completion_time,
-            skill,
-        )
-
     def plan_run_order(self, room):
         plan = self.op_data.plan
         if self.find_next_task(meta_data=room, task_type=TaskTypes.RUN_ORDER):
