@@ -1320,11 +1320,20 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             self.tap(completed, interval=3)
                             del tasks[0]
                         else:
-                            logger.info("检测到专精未完成,刷新任务时间")
+                            if self.find("training_idle"):
+                                logger.debug("训练室空闲，移除任务")
+                                del tasks[0]
+                                return
                             execute_time = self.double_read_time(
                                 ((236, 978), (380, 1020))
                             )
                             if (
+                                execute_time is not None
+                                and execute_time <= datetime.now()
+                            ):
+                                logger.debug("训练完成（倒计时归零）")
+                                del tasks[0]
+                            elif (
                                 execute_time is not None
                                 and execute_time > datetime.now()
                                 and execute_time < datetime.now() + timedelta(hours=25)
@@ -1521,7 +1530,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 name = char_table.get(cid, {}).get("name", "")
                 if name:
                     lvl = self._training_sm._lit_zones + 1
-                    enriched = f"{name} 技能{skill_label} -> 专精{lvl} "
+                    enriched = f"{name} 技能{skill_label} -> 专精{lvl}"
         except Exception:
             pass
         self.tasks.append(
@@ -1644,6 +1653,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 )
         for name in self.op_data.exhaust_agent:
             op = self.op_data.operators[name]
+            if self._training_sm.is_operator_protected(name):
+                logger.debug(f"{name} 在受保护训练室中，跳过排气")
+                continue
             if (
                 op.is_resting()
                 or not op.is_high()
@@ -1804,14 +1816,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             try_workshop_tasks(self.op_data, self.tasks)
         if not self.find_next_task(datetime.now() + timedelta(minutes=5)):
             try_add_release_dorm({}, None, self.op_data, self.tasks)
-        if self._get_mastery_plan() and not self.find_next_task(
-            task_type=TaskTypes.SKILL_UPGRADE
+        if (
+            self._get_mastery_plan()
+            and self._training_sm._target_skill >= 0
+            and not self.find_next_task(task_type=TaskTypes.SKILL_UPGRADE)
         ):
-            sk = str(
-                self._training_sm._target_skill + 1
-                if self._training_sm._target_skill >= 0
-                else "1"
-            )
+            sk = str(self._training_sm._target_skill + 1)
             self.tasks.append(
                 SchedulerTask(
                     time=datetime.now(),

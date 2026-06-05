@@ -130,6 +130,7 @@ Res = Literal[
     "terminal_regular",
     "train_main",
     "training_completed",
+    "training_idle",
     "training_support",
     "upgrade",
     "upgrade_failure",

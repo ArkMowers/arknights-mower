@@ -187,7 +187,9 @@ const start_options = [
             <td>
               {{ task.time.split('T')[1].split('.')[0] }}
             </td>
-            <td :colspan="2">{{ task.meta_data }}{{ task.type.display_value }}</td>
+            <td :colspan="2">
+              {{ task.type.display_value }}{{ task.meta_data ? ' ' + task.meta_data : '' }}
+            </td>
           </tr>
         </template>
       </tbody>
