@@ -12,6 +12,10 @@ from arknights_mower.utils.device.adb_client.session import Session
 from arknights_mower.utils.device.scrcpy import Scrcpy
 from arknights_mower.utils.email import send_message, task_template
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.maa_check import (
+    run_maa_connectivity_check,
+    should_check_maa_before_start,
+)
 from arknights_mower.utils.news_checker import NewsChecker
 from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.path import get_path
@@ -23,6 +27,13 @@ base_scheduler = None
 # 执行自动排班
 def main(saved_state):
     logger.info("开始运行Mower")
+    if should_check_maa_before_start():
+        logger.info("启动前测试Maa连接")
+        result = run_maa_connectivity_check()
+        if result["status"] != "success":
+            logger.error(f"启动前Maa连接测试失败：{result['message']}")
+            return
+        logger.info(f"启动前Maa连接测试通过：{result['message']}")
     rapidocr.initialize_ocr()
     data = None
     if saved_state != {}:
