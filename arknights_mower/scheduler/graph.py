@@ -76,6 +76,7 @@ def build_default_graph() -> SceneGraph:
     g.add_transition(Scene.INFRA_CONFIDENTIAL, Scene.NAVIGATION_BAR, "index_nav", 1)
     g.add_transition(Scene.INFRA_ARRANGE, Scene.NAVIGATION_BAR, "index_nav", 1)
     g.add_transition(Scene.INFRA_DETAILS, Scene.NAVIGATION_BAR, "index_nav", 1)
+    g.add_transition(Scene.INFRA_DETAILS_OPEN, Scene.NAVIGATION_BAR, "index_nav", 1)
     g.add_transition(Scene.CTRLCENTER_ASSISTANT, Scene.NAVIGATION_BAR, "index_nav", 1)
     g.add_transition(Scene.CLUE_DAILY, Scene.NAVIGATION_BAR, "index_nav", 1)
     g.add_transition(Scene.CLUE_RECEIVE, Scene.NAVIGATION_BAR, "index_nav", 1)
@@ -132,6 +133,8 @@ def build_default_graph() -> SceneGraph:
     g.add_transition(Scene.INFRA_CONFIDENTIAL, Scene.INFRA_MAIN, "infra_back", 1)
     g.add_transition(Scene.INFRA_ARRANGE, Scene.INFRA_MAIN, "infra_back", 1)
     g.add_transition(Scene.INFRA_DETAILS, Scene.INFRA_MAIN, "infra_back", 1)
+    g.add_transition(Scene.INFRA_DETAILS_OPEN, Scene.INFRA_MAIN, "infra_back", 1)
+    g.add_transition(Scene.INFRA_ROOM_GAP, Scene.INFRA_MAIN, "infra_back", 1)
     g.add_transition(Scene.CTRLCENTER_ASSISTANT, Scene.INFRA_MAIN, "infra_back", 1)
     g.add_transition(Scene.RIIC_OPERATOR_SELECT, Scene.INFRA_DETAILS, "infra_back", 1)
     g.add_transition(Scene.CLUE_DAILY, Scene.INFRA_CONFIDENTIAL, "infra_back", 1)
@@ -214,3 +217,4 @@ class SceneGraph:
             return action_fn
 
         return decorator
+

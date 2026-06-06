@@ -196,8 +196,10 @@ class Recognizer:
             self.scene = Scene.RIIC_REPORT
         elif self._scene_in_whitelist(Scene.CTRLCENTER_ASSISTANT) and self.find("control_central_assistants"):
             self.scene = Scene.CTRLCENTER_ASSISTANT
-        elif self._scene_in_whitelist(Scene.INFRA_MAIN) and self.find("infra_overview"):
+        elif self._scene_in_whitelist(Scene.INFRA_MAIN) and self.find("infra_overview", threshold=0.65):
             self.scene = Scene.INFRA_MAIN
+        elif self._scene_in_whitelist(Scene.INFRA_MAIN) and self.find("infra_overview_gap"):
+            self.scene = Scene.INFRA_ROOM_GAP
         elif self._scene_in_whitelist(Scene.INFRA_TODOLIST) and self.find("infra_todo", scope=((0, 1013), (241, 1080))):
             self.scene = Scene.INFRA_TODOLIST
         elif self._scene_in_whitelist(Scene.INFRA_CONFIDENTIAL) and self.find("clue"):
@@ -347,7 +349,10 @@ class Recognizer:
             or self.find("room_detail")
             or self.find("arrange_check_in_small")
         ):
-            self.scene = Scene.INFRA_DETAILS
+            if self.find("room_detail") or self.find("arrange_check_in_on"):
+                self.scene = Scene.INFRA_DETAILS_OPEN
+            else:
+                self.scene = Scene.INFRA_DETAILS
         elif self._scene_in_whitelist(Scene.OPERATOR_FAILED) and self.find("ope_failed"):
             self.scene = Scene.OPERATOR_FAILED
         elif self._scene_in_whitelist(Scene.MISSION_DAILY) and self.find("mission_daily_on"):
@@ -393,7 +398,6 @@ class Recognizer:
 
         else:
             self.scene = Scene.UNKNOWN
-            self.check_current_focus()
 
         logger.info(f"Scene {self.scene}: {SceneComment[self.scene]}")
         self.check_freeze(current_time)

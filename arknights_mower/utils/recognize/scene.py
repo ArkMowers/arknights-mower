@@ -18,6 +18,7 @@ SCENE_RULES: list[tuple[str, int, object]] = [
     ("riic/report_title", Scene.RIIC_REPORT, None),
     ("control_central_assistants", Scene.CTRLCENTER_ASSISTANT, None),
     ("infra_overview", Scene.INFRA_MAIN, None),
+    ("room_detail", Scene.INFRA_DETAILS_OPEN, None),
     ("clue", Scene.INFRA_CONFIDENTIAL, None),
     ("infra_overview_in", Scene.INFRA_ARRANGE, None),
     ("arrange_confirm", Scene.INFRA_ARRANGE_CONFIRM, None),

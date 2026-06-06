@@ -50,7 +50,7 @@ class AbstractExecutor(ABC):
 
     def safe_execute(self, task: SchedulerTask) -> bool:
         try:
-            self.execute(task)
+            self.execute(task)            
             return True
         except Exception:
             logger.exception(f"executor failed for task: {task}")

@@ -16,6 +16,7 @@ class InfraScanExecutor(AbstractExecutor):
         V2Scene.LOADING,
         V2Scene.INFRA_MAIN,
         V2Scene.INFRA_DETAILS,
+        V2Scene.INFRA_ROOM_GAP,
         V2Scene.INFRA_ARRANGE,
         V2Scene.INFRA_ARRANGE_CONFIRM,
         V2Scene.INFRA_ARRANGE_ORDER,
@@ -57,14 +58,15 @@ class InfraScanExecutor(AbstractExecutor):
                 logger.info(f"scan loop: enter_room({room})")
                 ret = self.infra.navigator.enter_room(room)
                 logger.info(f"scan loop: enter_room returned {ret}")
+            elif scene == V2Scene.INFRA_DETAILS_OPEN:
+                self._read_room_data(room)
+                return
             elif scene == V2Scene.INFRA_DETAILS:
-                if self.infra.navigator._wait_room_detail():
-                    AbstractExecutor._recog.update()
-                    self._read_room_data(room)
-                    return
+                self.infra.navigator._wait_room_detail()
+                continue    
             elif scene in (V2Scene.LOADING, V2Scene.CONNECTING):
                 logger.info(f"scan loop: waiting for scene")
-                pass       
+                pass
             else:
                 logger.info(f"scan loop: unexpected scene {scene}, navigate to INFRA_MAIN")
                 self.infra.navigator.navigate(V2Scene.INFRA_MAIN)    

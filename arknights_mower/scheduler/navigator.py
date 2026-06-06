@@ -232,20 +232,27 @@ class Navigator:
         return False
 
     def _wait_room_detail(self) -> bool:  
-        from arknights_mower.scheduler.scene import Scene as V2Scene                          
-        for _ in range(10):
+        from arknights_mower.scheduler.scene import Scene as V2Scene    
+        success = False                      
+        while True:
             scene = self._get_scene()
-            if scene == V2Scene.INFRA_DETAILS:      
-                if self._recognizer and self._recognizer.find("room_detail"):
-                    return True
-                elif self._recognizer and self._recognizer.find("arrange_check_in"):
+            if scene == V2Scene.INFRA_DETAILS_OPEN:
+                success = True
+                break
+            elif scene == V2Scene.INFRA_DETAILS:      
+                if self._recognizer and self._recognizer.find("arrange_check_in"):
                     self._tap_element("arrange_check_in")
-                    return True                                        
+                    success = True                                        
                 elif self._recognizer and self._recognizer.find("arrange_check_in_small"):
                     self._tap_element("arrange_check_in_small")
-                    return True
-            break                      
-        return False
+                    success = True
+                continue
+            elif scene == V2Scene.INFRA_ROOM_GAP:
+                return False
+            else:
+                break  
+        self._recognizer.update()
+        return success
 
     def _back(self) -> None:
         self._device.back()
