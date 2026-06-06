@@ -184,6 +184,8 @@ class MaaPart(ConfModel):
     maa_path: str = "D:\\MAA-v4.13.0-win-x64"
     maa_conn_preset: str = "General"
     maa_touch_option: str = "maatouch"
+    maa_startup_check: bool = False
+    "启动Mower前测试Maa连通性"
 
 
 class RecruitPart(ConfModel):

@@ -3,8 +3,7 @@ import datetime
 import json
 import mimetypes
 import os
-import pathlib
-import sys
+import subprocess
 import time
 from functools import wraps
 from io import BytesIO
@@ -24,6 +23,12 @@ from arknights_mower.solvers.record import clear_data, load_state, save_state
 from arknights_mower.utils import config
 from arknights_mower.utils.datetime import get_server_time
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.maa_check import (
+    MAA_CHECK_TIMEOUT,
+    maa_check_command,
+    maa_check_timeout_result,
+    parse_maa_check_output,
+)
 from arknights_mower.utils.operators import Operators, build_global_plan
 from arknights_mower.utils.path import get_path
 
@@ -52,6 +57,50 @@ if token := config.conf.webview.token:
 mower_thread = None
 log_lines = []
 ws_connections = []
+maa_check_job = {
+    "id": None,
+    "process": None,
+    "status": "idle",
+    "message": "",
+    "started_at": None,
+}
+
+
+def _collect_maa_check_result():
+    process = maa_check_job.get("process")
+    if process is None:
+        return
+
+    if process.poll() is None:
+        started_at = maa_check_job.get("started_at")
+        if started_at and time.monotonic() - started_at > MAA_CHECK_TIMEOUT:
+            process.kill()
+            try:
+                process.communicate(timeout=1)
+            except Exception:
+                pass
+            result = maa_check_timeout_result(MAA_CHECK_TIMEOUT)
+            maa_check_job.update(
+                {
+                    "process": None,
+                    "status": result["status"],
+                    "message": result["message"],
+                    "started_at": None,
+                }
+            )
+        return
+
+    stdout, stderr = process.communicate()
+    result = parse_maa_check_output(stdout, stderr, process.returncode)
+
+    maa_check_job.update(
+        {
+            "process": None,
+            "status": result["status"],
+            "message": result["message"],
+            "started_at": None,
+        }
+    )
 
 
 def read_log():
@@ -434,26 +483,40 @@ def validate_backup_plans_route():
 @app.route("/check-maa")
 @require_token
 def get_maa_adb_version():
-    try:
-        asst_path = os.path.dirname(
-            pathlib.Path(config.conf.maa_path) / "Python" / "asst"
-        )
-        if asst_path not in sys.path:
-            sys.path.append(asst_path)
-        from asst.asst import Asst
+    _collect_maa_check_result()
+    if maa_check_job["status"] == "running":
+        return {
+            "status": "running",
+            "message": maa_check_job["message"] or "正在测试……",
+        }
 
-        Asst.load(config.conf.maa_path)
-        asst = Asst()
-        version = asst.get_version()
-        asst.set_instance_option(2, config.conf.maa_touch_option)
-        if asst.connect(config.conf.maa_adb_path, config.conf.adb):
-            maa_msg = f"Maa {version} 加载成功"
-        else:
-            maa_msg = "连接失败，请检查Maa日志！"
-    except Exception as e:
-        maa_msg = "Maa加载失败：" + str(e)
-        logger.exception(maa_msg)
-    return maa_msg
+    process = subprocess.Popen(
+        maa_check_command(),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        creationflags=subprocess.CREATE_NO_WINDOW if __system__ == "windows" else 0,
+    )
+    maa_check_job.update(
+        {
+            "id": time.time_ns(),
+            "process": process,
+            "status": "running",
+            "message": "正在测试……",
+            "started_at": time.monotonic(),
+        }
+    )
+    return {"status": "running", "message": "正在测试……"}
+
+
+@app.route("/check-maa/status")
+@require_token
+def get_maa_check_status():
+    _collect_maa_check_result()
+    return {
+        "status": maa_check_job["status"],
+        "message": maa_check_job["message"],
+    }
 
 
 @app.route("/maa-conn-preset")

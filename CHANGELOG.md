@@ -8,11 +8,13 @@
 - 新增基建设置 `训练室协助位总是跟随排班`
 - 新增自动合成配置的默认加工站干员设置
 - 新增无专精计划时可使用自动合成配置添加全量材料合成配置
+- 新增 MAA 连通性测试的子进程执行与启动前检查选项，并在连接配置中提示 MuMu Mac 用户可切换 `MuMuMacStable`
 - 移除专精计划与排班表的冲突检测
 
 详细内容：
 ### 新增 feat
 - feat: 重构全自动专精调度、增加加工站干员配置并修复邮件和无法删除的加工配置问题 [(#873)@NiceAfternoon](https://github.com/ArkMowers/arknights-mower/commit/8a000046167caa90d40c9e526e98f6310d76ed0c)
+- feat: 新增 MAA 连通性测试的子进程执行与启动前检查，并提示 MuMu Mac 用户可切换 `MuMuMacStable` 连接配置 [@ALEXsun0]
 
 ## 4.1.5.5
 
