@@ -154,6 +154,16 @@ class LongTaskPart(ConfModel):
         target: str = "结局A"
         "隐秘战线结局"
 
+    class RclConf(ConfModel):
+        mode: int = 0
+        "模式（0=Tales无存档/1=Tales有存档/16=RA1/32=RA15/48=RA4）"
+        tools_to_craft: list[str] = ["荧光棒"]
+        "自动制造的物品（仅Tales有效）"
+        increment_mode: int = 0
+        "点击类型（0=连点/1=长按，仅Tales有效）"
+        num_craft_batches: int = 16
+        "单次最大制造轮数（仅Tales有效）"
+
     class SignInConf(ConfModel):
         enable: bool = True
         "签到活动开关"
@@ -168,6 +178,10 @@ class LongTaskPart(ConfModel):
     "停止时间"
     maa_rg_theme: str = "Mizuki"
     "肉鸽主题"
+    maa_rcl_theme: str = "Tales"
+    "生息演算主题（Tales/Fire/RelaunchAnchor）"
+    rcl: RclConf
+    "生息演算设置"
     rogue: RogueConf
     "肉鸽设置"
     sss: SSSConf
@@ -464,6 +478,10 @@ class Conf(
     @property
     def SF(self):
         return self.maa_rg_enable == 1 and self.maa_long_task_type == "sf"
+
+    @property
+    def RCL(self):
+        return self.maa_rg_enable == 1 and self.maa_long_task_type == "rcl"
 
     @property
     def run_order_buffer_time(self):

@@ -737,6 +737,134 @@ class BaseSolver:
             f"保全导航成功，用时{(datetime.now() - start_time).total_seconds():.0f}秒"
         )
 
+    def to_reclamation(self, theme, mode):
+        """导航到生息演算，直到MAA可接管"""
+        logger.info("生息演算导航")
+        start_time = datetime.now()
+
+        # 前往终端
+        while self.scene() != Scene.TERMINAL_MAIN:
+            if self.scene() == Scene.INDEX:
+                self.tap_index_element("terminal")
+            if datetime.now() - start_time > timedelta(seconds=30):
+                raise Exception("导航超时（未到达终端）")
+            self.sleep()
+
+        # 长期探索 → 点生息演算入口
+        self.tap_terminal_button("longterm")
+        self.sleep(3)
+        for name in (
+            "terminal_longterm_reclamation_algorithm2",
+            "terminal_longterm_reclamation_algorithm",
+        ):
+            pos = self.find(name)
+            if pos:
+                logger.debug(f"生息演算导航：匹配到 {name}")
+                self.tap(pos, interval=2)
+                break
+        else:
+            raise Exception("未匹配到生息演算入口")
+
+        # 等待进入主页
+        while not self.find("reclamation/reclamation_main"):
+            if datetime.now() - start_time > timedelta(minutes=2):
+                raise Exception("导航超时（未进入生息演算主页）")
+            self.sleep()
+
+        # Tales 主题
+        if theme == "Tales":
+            if not self.find("reclamation/reclamation_tales"):
+                raise Exception("未找到 Tales 入口")
+            self.tap_element("reclamation/reclamation_tales")
+            self.sleep(0.5)
+            self.tap_element("reclamation/reclamation_main")
+            self.sleep(5)
+            btn_scope = ((1340, 915), (1875, 1024))
+            for _ in range(25):
+                s_start = self.recog.score("ra/start_button", scope=btn_scope)
+                s_cont = self.recog.score("ra/continue_button", scope=btn_scope)
+                sc_start = max(s_start) if s_start else 0
+                sc_cont = max(s_cont) if s_cont else 0
+                logger.debug(
+                    f"生息演算导航：start={sc_start:.4f} continue={sc_cont:.4f}"
+                )
+                if max(sc_start, sc_cont) > 0.5:
+                    if sc_start > sc_cont:
+                        logger.info("生息演算导航完成（ra/start_button）")
+                        return
+                    logger.info("匹配到 continue_button（非当前模式预期）")
+                    send_message("生息演算（Maa）导航失败：未正确选择模式")
+                    raise Exception("生息演算（Maa）导航失败：未正确选择模式")
+                self.sleep(1)
+            else:
+                raise Exception("生息演算（Maa）导航失败：未识别到开始/继续按钮")
+
+        # RelaunchAnchor 主题
+        elif theme == "RelaunchAnchor":
+            if not self.find("reclamation/reclamation_anchor"):
+                raise Exception("未找到 RelaunchAnchor 入口")
+            self.tap_element("reclamation/reclamation_anchor")
+            self.sleep(0.5)
+            self.tap_element("reclamation/reclamation_main")
+            for _ in range(30):
+                if self.find("reclamation/anchor_start"):
+                    break
+                self.sleep(1)
+            else:
+                raise Exception("未能进入 RelaunchAnchor 开始页面")
+            self.tap_element("reclamation/anchor_start")
+            for _ in range(30):
+                s, _ = self.template_match("reclamation/reclamation_anchor_main")
+                if s >= 0.45:
+                    break
+                self.sleep(1)
+            else:
+                raise Exception("未进入 RelaunchAnchor 主画面")
+            # 点击(133,975)进入基地列表，等页面切换后back回来
+            for attempt in range(3):
+                self.tap((133, 975), interval=1)
+                for _ in range(20):
+                    if not self.find(
+                        "reclamation/reclamation_anchor_main", judge=False
+                    ):
+                        break
+                    self.sleep(0.5)
+                self.back()
+                self.sleep(0.5)
+                for _ in range(20):
+                    if self.find("reclamation/reclamation_anchor_main", judge=False):
+                        break
+                    self.sleep(0.5)
+                # 滑动找到基地入口
+                for _ in range(5):
+                    self.swipe((65, 670), (0, 160), duration=500)
+                    self.sleep(0.5)
+                    if self.template_match("reclamation/anchor_base")[0] >= 0.45:
+                        break
+                # 根据模式点对应的按钮
+                mode_pos = {16: (1180, 500), 48: (1400, 500), 32: (666, 650)}
+                tap_pos = mode_pos.get(mode)
+                if not tap_pos:
+                    raise Exception(f"未知的 RelaunchAnchor 模式：{mode}")
+                self.tap(tap_pos, interval=1)
+                # 等待基地入口消失（模式选中后页面切换）
+                for _ in range(20):
+                    if self.template_match("reclamation/anchor_base")[0] < 0.75:
+                        break
+                    self.sleep(0.5)
+                self.sleep(0.5)
+                self.tap((960, 590), interval=1)
+                for _ in range(30):
+                    if self.find("reclamation/anchor_startup", judge=False):
+                        logger.info("生息演算导航完成（RelaunchAnchor）")
+                        return
+                    if self.find("reclamation/anchor_unlock", judge=False):
+                        raise Exception("所选的 RelaunchAnchor 模式未解锁")
+                    self.sleep(1)
+                if attempt < 2:
+                    logger.warning(f"RelaunchAnchor 导航第{attempt + 1}次失败，重试")
+            raise Exception("无法找到指定的 RelaunchAnchor 模式")
+
     def waiting_solver(self):
         """需要等待的页面解决方法。触发超时重启会返回False"""
         scene = self.scene()
