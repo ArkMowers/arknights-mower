@@ -59,6 +59,8 @@ export const useConfigStore = defineStore('config', () => {
   const maa_credit_fight = ref(true)
   const maa_depot_enable = ref(false)
   const maa_rg_theme = ref('Mizuki')
+  const maa_rcl_theme = ref('Tales')
+  const rcl = ref({})
   const rogue = ref({})
   const sss = ref({})
   const screenshot = ref(0)
@@ -283,6 +285,8 @@ export const useConfigStore = defineStore('config', () => {
     maa_credit_fight.value = response.data.maa_credit_fight
     maa_depot_enable.value = response.data.maa_depot_enable
     maa_rg_theme.value = response.data.maa_rg_theme
+    maa_rcl_theme.value = response.data.maa_rcl_theme
+    rcl.value = response.data.rcl
     rogue.value = response.data.rogue
     sss.value = response.data.sss
     screenshot.value = response.data.screenshot
@@ -386,6 +390,8 @@ export const useConfigStore = defineStore('config', () => {
       maa_credit_fight: maa_credit_fight.value,
       maa_depot_enable: maa_depot_enable.value,
       maa_rg_theme: maa_rg_theme.value,
+      maa_rcl_theme: maa_rcl_theme.value,
+      rcl: rcl.value,
       rogue: rogue.value,
       sss: sss.value,
       screenshot: screenshot.value,
@@ -528,6 +534,8 @@ export const useConfigStore = defineStore('config', () => {
     maa_credit_fight,
     maa_depot_enable,
     maa_rg_theme,
+    maa_rcl_theme,
+    rcl,
     rogue,
     sss,
     screenshot,

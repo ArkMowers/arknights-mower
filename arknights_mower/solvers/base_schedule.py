@@ -4067,9 +4067,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     rg_sleep = min_time < now_time < max_time
             except ValueError:
                 rg_sleep = False
-            if (conf.RG or conf.SSS) and not rg_sleep:
-                logger.info("准备开始：肉鸽/保全")
-                send_message("启动 肉鸽/保全")
+            if (conf.RG or conf.SSS or conf.RCL) and not rg_sleep:
+                logger.info("准备开始：肉鸽/保全/盐酸")
+                send_message("启动 肉鸽/保全/盐酸")
                 while True:
                     self.MAA = None
                     self.initialize_maa()
@@ -4105,6 +4105,18 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                         self.MAA.append_task(
                             "SSSCopilot",
                             {"filename": str(copilot), "loop_times": 9999999},
+                        )
+                    elif conf.RCL:
+                        self.to_reclamation(conf.maa_rcl_theme, conf.rcl.mode)
+                        self.MAA.append_task(
+                            "Reclamation",
+                            {
+                                "theme": conf.maa_rcl_theme,
+                                "mode": conf.rcl.mode,
+                                "tools_to_craft": conf.rcl.tools_to_craft,
+                                "increment_mode": conf.rcl.increment_mode,
+                                "num_craft_batches": conf.rcl.num_craft_batches,
+                            },
                         )
                     logger.info("启动")
                     self.MAA.start()
