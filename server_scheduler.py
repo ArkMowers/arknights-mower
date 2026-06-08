@@ -47,7 +47,7 @@ def start_scheduler(start_type):
     from arknights_mower.scheduler.bootstrap import run
 
     scheduler_thread = Thread(
-        target=run, kwargs={"pause": scheduler_pause}, daemon=True
+        target=run, kwargs={"pause": scheduler_pause, "start_type": start_type}, daemon=True
     )
     scheduler_thread.start()
     return "true"

@@ -38,6 +38,12 @@ AGENT_SELECT_POSITIONS = [
 ]
 
 
+class StartMode(Enum):
+    FULL = "0"
+    MOOD_ONLY = "1"
+    CLEAN = "2"
+
+
 class FacilityType(Enum):
     TRAIN = "train"
     FACTORY = "factory"

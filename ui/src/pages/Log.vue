@@ -212,20 +212,21 @@ const start_options = [
         新版调度器
       </n-checkbox>
       <template v-if="scheduler_engine">
-        <n-button
-          v-if="!running"
-          type="primary"
-          @click="start_scheduler('0')"
-          :loading="waiting"
-          :disabled="waiting"
-        >
-          <template #icon>
-            <n-icon>
-              <play-icon />
-            </n-icon>
-          </template>
-          开始
-        </n-button>
+        <drop-down v-if="!running" :select="start_scheduler" :options="start_options" type="primary" :up="true">
+          <n-button
+            type="primary"
+            @click="start_scheduler('0')"
+            :loading="waiting"
+            :disabled="waiting"
+          >
+            <template #icon>
+              <n-icon>
+                <play-icon />
+              </n-icon>
+            </template>
+            开始
+          </n-button>
+        </drop-down>
         <n-button
           v-if="running && !is_paused"
           type="warning"

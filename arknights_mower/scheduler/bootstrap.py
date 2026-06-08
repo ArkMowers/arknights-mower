@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+from arknights_mower.scheduler.constants import StartMode
 from arknights_mower.scheduler.device_port import DevicePort
 from arknights_mower.scheduler.dispatch import TaskDispatch
 from arknights_mower.scheduler.domain.task import TaskTypes
@@ -91,6 +92,7 @@ def _build_dispatch() -> TaskDispatch:
 
 def run(
     pause: Optional[PauseController] = None,
+    start_type: str = StartMode.FULL.value,
 ) -> None:
     pause = pause or ThreadPauseController()
 
@@ -105,6 +107,23 @@ def run(
     except ConfigError as e:
         logger.error(f"config error: {e}")
         return
+
+    from arknights_mower.scheduler.database.repositories.state import StateRepository
+    from arknights_mower.scheduler.database.sqlite_storage import SQLiteStorage
+
+    repo = StateRepository(SQLiteStorage())
+
+    if start_type != StartMode.CLEAN.value:
+        snapshot = repo.load("operator_mood")
+        if snapshot:
+            state.restore_snapshot(snapshot)
+            logger.info(f"restored {len(snapshot)} operator snapshots from db")
+    else:
+        logger.info("clean start: skipping snapshot restore")
+
+    if start_type == StartMode.MOOD_ONLY.value:
+        state.task_queue.clear()
+        logger.info("mood only: tasks cleared")
 
     logger.info("initializing device")
     v1_device = _create_device()
@@ -124,3 +143,8 @@ def run(
         logger.warning("device error in main loop, reconnecting...")
         infra.device.reconnect()
         loop.run_forever()
+    finally:
+        snapshot = state.save_snapshot()
+        if snapshot:
+            repo.save("operator_mood", snapshot)
+            logger.info(f"saved {len(snapshot)} operator snapshots on stop")

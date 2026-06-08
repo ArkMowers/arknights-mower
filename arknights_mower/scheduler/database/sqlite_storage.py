@@ -30,9 +30,12 @@ class SQLiteStorage(StoragePort):
         c.commit()
 
     def load(self, key: str) -> Optional[dict[str, Any]]:
-        c = self._ensure()
-        row = c.execute("SELECT data FROM kv_store WHERE key = ?", (key,)).fetchone()
-        return json.loads(row[0]) if row else None
+        try:
+            c = self._ensure()
+            row = c.execute("SELECT data FROM kv_store WHERE key = ?", (key,)).fetchone()
+            return json.loads(row[0]) if row else None
+        except Exception:
+            return None
 
     def delete(self, key: str) -> None:
         c = self._ensure()

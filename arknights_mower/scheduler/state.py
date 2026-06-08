@@ -9,6 +9,7 @@ from arknights_mower.scheduler.constants import DORM_ROOM_PREFIX, FacilityType
 from arknights_mower.scheduler.domain.operators import Dormitory, Operator, OperatorType, RestPriority
 from arknights_mower.scheduler.domain.plan import BaseProduct, Plan, PlanConfig, Room
 from arknights_mower.scheduler.queue import TaskQueue
+from arknights_mower.scheduler.services.operator_service import need_to_refresh
 from arknights_mower.scheduler.services.plan_service import is_refresh_trading, merge_config
 from arknights_mower.utils.log import logger
 
@@ -49,6 +50,35 @@ class SchedulerState:
             from arknights_mower.scheduler.errors import ConfigError
 
             raise ConfigError(error)
+
+    def restore_snapshot(self, data: dict) -> None:
+        """Restore operator mood data from snapshot (mode 0/1)."""
+        for name, fields in data.items():
+            if name not in self.operators:
+                continue
+            op = self.operators[name]
+            op.mood = fields.get("mood", 24.0)
+            ts = fields.get("time_stamp")
+            if ts:
+                op.time_stamp = datetime.fromisoformat(ts)
+            op.current_room = fields.get("current_room", "")
+            op.current_index = fields.get("current_index", -1)
+            op.depletion_rate = fields.get("depletion_rate", 0.0)
+
+    def save_snapshot(self) -> dict:
+        """Serialize operator mood data for persistence."""
+        data = {}
+        for name, op in self.operators.items():
+            if op.time_stamp is None:
+                continue
+            data[name] = {
+                "mood": op.mood,
+                "time_stamp": op.time_stamp.isoformat(),
+                "current_room": op.current_room,
+                "current_index": op.current_index,
+                "depletion_rate": op.depletion_rate,
+            }
+        return data
 
     @property
     def backup_plans(self) -> list[Plan]:
@@ -165,23 +195,6 @@ class SchedulerState:
     def get_dormitory(self, room: str, index: int) -> Optional[Dormitory]:
         return self.dormitories.get((room, index))
 
-    def need_to_refresh(self, operator: Operator, h: float = 2, r: str = "") -> bool:
-        if operator.name in ["歌蕾蒂娅", "见行者"]:
-            h = 0.5
-        if (
-            operator.time_stamp is None
-            or (
-                operator.time_stamp is not None
-                and operator.time_stamp + timedelta(hours=h) < datetime.now()
-            )
-            or (
-                r.startswith(DORM_ROOM_PREFIX)
-                and not operator.room.startswith(DORM_ROOM_PREFIX)
-            )
-        ):
-            return True
-        return False
-
     def not_valid(self, operator: Operator) -> bool:
         if operator.room == FacilityType.TRAIN.value:
             return False
@@ -199,7 +212,7 @@ class SchedulerState:
                 else:
                     return False
             return (
-                self.need_to_refresh(operator, 2.5)
+                need_to_refresh(operator, 2.5)
                 or operator.current_room != operator.room
                 or operator.index != operator.current_index
             )

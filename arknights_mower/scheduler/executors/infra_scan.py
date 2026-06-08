@@ -21,6 +21,7 @@ class InfraScanExecutor(AbstractExecutor):
         V2Scene.INFRA_ARRANGE_CONFIRM,
         V2Scene.INFRA_ARRANGE_ORDER,
         V2Scene.RIIC_OPERATOR_SELECT,
+        V2Scene.CTRLCENTER_ASSISTANT,
     )
 
     def __init__(self, infra, timeout: timedelta = _timeout) -> None:
@@ -40,35 +41,26 @@ class InfraScanExecutor(AbstractExecutor):
             self._current_room = room
             self._scan_single_room(room)
             self._rooms.popleft()
-            logger.info(f"Finished scanning room {room}, {len(self._rooms)} rooms left")
 
             if self._get_scene() != V2Scene.INFRA_MAIN:
-                logger.info(f"Navigating back to INFRA_MAIN...")
                 self.infra.navigator.navigate(V2Scene.INFRA_MAIN)
 
     def _scan_single_room(self, room: str) -> None:
-
-        detail_open = False
         while True:
             self.guard()
 
             scene = self._get_scene()
-            logger.info(f"scan loop: room={room} scene={scene} detail_open={detail_open}")
             if scene == V2Scene.INFRA_MAIN:
-                logger.info(f"scan loop: enter_room({room})")
-                ret = self.infra.navigator.enter_room(room)
-                logger.info(f"scan loop: enter_room returned {ret}")
+                self.infra.navigator.enter_room(room)
             elif scene == V2Scene.INFRA_DETAILS_OPEN:
                 self._read_room_data(room)
                 return
-            elif scene == V2Scene.INFRA_DETAILS:
+            elif scene == V2Scene.INFRA_DETAILS or scene == V2Scene.CTRLCENTER_ASSISTANT:
                 self.infra.navigator._wait_room_detail()
-                continue    
+                continue
             elif scene in (V2Scene.LOADING, V2Scene.CONNECTING):
-                logger.info(f"scan loop: waiting for scene")
                 pass
             else:
-                logger.info(f"scan loop: unexpected scene {scene}, navigate to INFRA_MAIN")
                 self.infra.navigator.navigate(V2Scene.INFRA_MAIN)    
 
     def _tap_at(self, pos) -> None:

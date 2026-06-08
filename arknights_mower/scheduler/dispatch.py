@@ -4,6 +4,7 @@ from datetime import datetime
 
 from arknights_mower.scheduler.domain.task import SchedulerTask, TaskTypes
 from arknights_mower.scheduler.errors import DeviceError, SchedulerError
+from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.scheduler.infra import InfraKit
 from arknights_mower.utils.log import logger
 
@@ -37,6 +38,8 @@ class TaskDispatch:
             try:
                 executor.execute(task)
                 return True
+            except MowerExit:
+                raise
             except DeviceError:
                 logger.warning("DeviceError, reconnecting...")
                 infra.device.reconnect()

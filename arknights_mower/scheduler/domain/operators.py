@@ -72,7 +72,6 @@ class Operator:
                 return predicted
         return self.mood
 
-
 @dataclass
 class Dormitory:
     position: tuple[str, int]

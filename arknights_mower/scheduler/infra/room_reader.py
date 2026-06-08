@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from typing import Optional
 
 import cv2
 import numpy as np
 
+from arknights_mower.scheduler.database.repositories.state import StateRepository
+from arknights_mower.scheduler.database.sqlite_storage import SQLiteStorage
 from arknights_mower.scheduler.state import SchedulerState
 from arknights_mower.utils.image import cropimg
 from arknights_mower.utils.log import logger
@@ -14,17 +17,19 @@ class RoomReader:
     def __init__(self, device, recognizer) -> None:
         self._device = device
         self._recog = recognizer
+        self._storage: Optional[StateRepository] = None
+
+    @property
+    def storage(self) -> StateRepository:
+        if self._storage is None:
+            self._storage = StateRepository(SQLiteStorage())
+        return self._storage
 
     def scan_room(self, room: str, state: SchedulerState) -> None:
-        import time
-        t0 = time.time()
-
         plan_room = state.plan.get(room, [])
         if not plan_room:
-            logger.info(f"RoomReader: {room} has no plan, skip ({time.time()-t0:.2f}s)")
             return
         length = len(plan_room)
-        logger.info(f"RoomReader: scanning {room}, {length} slots")
 
         name_x = (1288, 1869)
         name_y = [(135, 326), (344, 535), (553, 744), (532, 723), (741, 932)]
@@ -38,41 +43,31 @@ class RoomReader:
         time_y = [(270, 305), (480, 515), (690, 725), (668, 703), (877, 912)]
         time_crops = [tuple(zip(time_x, y)) for y in time_y]
 
-        t1 = time.time()
         self._recog.update()
-        logger.info(f"RoomReader: update took {time.time()-t1:.3f}s (first access triggers screenshot)")
-
-        from pathlib import Path
-        debug_dir = Path("debug_room_reader")
-        debug_dir.mkdir(exist_ok=True)
-        cv2.imwrite(str(debug_dir / f"{room}_full_{int(time.time())}.png"), self._recog.img)
-
-        tb = time.time()
 
         swiped = False
+        slots = []
         for i in range(length):
             if i >= 3 and not swiped:
                 if self._recog.img[930, 1800, 0] > 51:
-                    logger.info(f"RoomReader: swipe at i={i}")
                     self._device.swipe(0.8, 0.5, 0.8, 0.05, duration=500)
                     self._recog.update()
                 swiped = True
 
             gray = self._recog.gray
-            ts = time.time()
 
             if self._is_empty_slot(name_crops[i]):
-                logger.info(f"RoomReader: slot {i} empty ({time.time()-ts:.3f}s)")
+                slots.append("空")
                 continue
 
             name = self._read_name(cropimg(gray, name_crops[i]))
             if not name:
-                logger.info(f"RoomReader: slot {i} name not recognized ({time.time()-ts:.3f}s)")
+                slots.append("空")
                 continue
 
             mood = self._read_mood(cropimg(gray, mood_crops[i]))
             update_time = self._read_time(cropimg(self._recog.img, time_crops[i]))
-            logger.info(f"RoomReader: slot {i} name={name} mood={mood:.1f} time={update_time} ({time.time()-ts:.3f}s)")
+            slots.append(f"{name}({mood:.0f})")
 
             if name not in state.operators:
                 from arknights_mower.scheduler.domain.operators import Operator, OperatorType
@@ -88,59 +83,45 @@ class RoomReader:
                 op.current_room = room
                 op.current_index = i
 
-        logger.info(f"RoomReader: {room} scan complete ({time.time()-t0:.2f}s total)")
+        logger.info(f"RoomReader: {room} [{' '.join(slots)}]")
+
         for op_name in list(state.operators.keys()):
             op = state.operators[op_name]
             if op.current_room == room and (op.current_index < 0 or op.current_index >= length):
                 op.current_room = ""
                 op.current_index = -1
 
+        self._persist(state)
+
+    def _persist(self, state: SchedulerState) -> None:
+        data = state.save_snapshot()
+        if data:
+            self.storage.save("operator_mood", data)
+
     def _is_empty_slot(self, crop_box) -> bool:
         return self._recog.find("infra_no_operator", scope=crop_box) is not None
 
     def _read_name(self, img: np.ndarray) -> str:
-        import time
-        from pathlib import Path
         from arknights_mower.solvers.base_mixin import OP_ROOM
         from arknights_mower.utils.image import cropimg
 
-        debug_id = f"{time.time_ns() % 1000000000:09d}"
-        debug_dir = Path("debug_room_reader")
-        debug_dir.mkdir(exist_ok=True)
-        def _dbgsave(name, arr):
-            path = debug_dir / f"{debug_id}_{name}.png"
-            cv2.imwrite(str(path), arr)
-
-        logger.info(f"_read_name[{debug_id}]: input img shape={img.shape} OP_ROOM size={len(OP_ROOM)}")
-        _dbgsave("01_input", img)
-
         img = cropimg(img, ((169, 22), (513, 80)))
-        logger.info(f"_read_name[{debug_id}]: after sub-crop shape={img.shape}")
-        _dbgsave("02_crop", img)
-
         img = cv2.threshold(img, 200, 255, cv2.THRESH_BINARY)[1]
         img = cv2.copyMakeBorder(img, 10, 10, 10, 10, cv2.BORDER_CONSTANT, None, (0,))
-        _dbgsave("03_thres", img)
 
         kernel = np.ones((12, 12), np.uint8)
         dilation = cv2.dilate(img, kernel, iterations=1)
-        _dbgsave("04_dilation", dilation)
-
         contours, _ = cv2.findContours(dilation, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        logger.info(f"_read_name[{debug_id}]: contours={len(contours)}")
         if not contours:
             return ""
         rect = sorted((cv2.boundingRect(c) for c in contours), key=lambda r: r[0])
         x, y, w, h = rect[0]
-        logger.info(f"_read_name[{debug_id}]: rect={rect[0]}")
         img = img[y : y + h, x : x + w]
-        _dbgsave("05_contour", img)
 
         h, w = min(img.shape[0], 46), min(img.shape[1], 265)
         tpl = np.zeros((46, 265), dtype=np.uint8)
         tpl[:h, :w] = img[:h, :w]
         tpl = cv2.copyMakeBorder(tpl, 2, 2, 2, 2, cv2.BORDER_CONSTANT, None, (0,))
-        _dbgsave("06_tpl", tpl)
 
         best, best_score = None, 0
         for operator, template in OP_ROOM.items():
@@ -150,7 +131,6 @@ class RoomReader:
             if max_val > best_score:
                 best_score = max_val
                 best = operator
-        logger.info(f"_read_name[{debug_id}]: best={best} score={best_score:.3f}")
         return best or ""
 
     def _read_mood(self, img: np.ndarray) -> float:

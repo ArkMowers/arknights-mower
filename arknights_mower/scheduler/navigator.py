@@ -9,6 +9,7 @@ from arknights_mower.scheduler.graph import SceneGraph
 from arknights_mower.scheduler.infra.pause_controller import PauseController
 from arknights_mower.scheduler.infra.thread_pause import ThreadPauseController
 from arknights_mower.scheduler.scene import Scene
+from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.log import logger
 
 
@@ -70,6 +71,8 @@ class Navigator:
                 handler()
                 error_count = 0
                 unknown_count = 0
+            except MowerExit:
+                return False
             except Exception:
                 logger.exception(f"navigate action failed: {transition.action}")
                 error_count += 1
@@ -79,34 +82,20 @@ class Navigator:
         return True
 
     def enter_room(self, room: str) -> bool:
-        import time
-        t0 = time.time()
-
         if self._get_scene() != Scene.INFRA_MAIN:
             self.navigate(Scene.INFRA_MAIN)
             self.wait_scene_stable()
 
-        logger.info(f"enter_room({room}): _get_scene + navigate took {time.time()-t0:.2f}s")
-        t1 = time.time()
-
         central = self._recognizer.find("control_central") if self._recognizer else None
         if central is None:
-            logger.warning(f"enter_room({room}): control_central not found ({time.time()-t1:.2f}s)")
             return False
-
-        logger.info(f"enter_room({room}): find control_central took {time.time()-t1:.2f}s")
-        t2 = time.time()
 
         from arknights_mower.utils.segment import base as segment_base
 
         rooms_map = segment_base(self._recognizer.img, central)
         target = rooms_map.get(room)
         if target is None:
-            logger.warning(f"enter_room({room}): room not in segmented map, keys={list(rooms_map.keys())} ({time.time()-t2:.2f}s)")
             return False
-
-        logger.info(f"enter_room({room}): segment took {time.time()-t2:.2f}s")
-        t3 = time.time()
 
         import numpy as np
 
@@ -127,10 +116,8 @@ class Navigator:
             target = np.clip(target, [0, 0], [1920, 1080])
         cx = int((target[0][0] + target[2][0]) // 2)
         cy = int((target[0][1] + target[2][1]) // 2)
-        logger.debug(f"enter_room({room}): tap at ({cx}, {cy})")
         self._device.tap(cx / 1920, cy / 1080)
         self.wait_scene_stable(max_duration=3.0, min_stable=2, crop=((0,0),(1920,162)))
-        logger.info(f"enter_room({room}): TOTAL {time.time()-t0:.2f}s")   
         return True
 
     def _detect_room(self) -> str | None:
@@ -192,18 +179,8 @@ class Navigator:
         import time as _time
 
         t0 = _time.time()
-        debug_dir = Path("debug_ws_stable")
-        debug_dir.mkdir(exist_ok=True)
-        ts = str(int(t0))
-
-        crop_name = ""
-        if crop is not None:
-            crop_name = f" crop{crop[0]}-{crop[1]}"
-        logger.info(f"wait_scene_stable: start max_duration={max_duration} min_stable={min_stable}{crop_name}")
-
         stable = 0
         last = None
-        i = 0
         while _time.time() - t0 < max_duration:
             self._pause.wait_if_paused()
             self._recognizer.update()
@@ -220,15 +197,9 @@ class Navigator:
                     stable += 1
                 else:
                     stable = 0
-                    cv2.imwrite(str(debug_dir / f"gap_{ts}_i{i}_diff{diff:.4f}.png"), gray)
-                logger.info(f"wait_scene_stable: i={i} diff={diff:.4f} stable={stable}/{min_stable}")
             last = current
-            i += 1
             if stable >= min_stable:
-                logger.info(f"wait_scene_stable: done i={i} stable={stable}")
                 return True
-        logger.info(f"wait_scene_stable: TIMEOUT after {_time.time()-t0:.1f}s, {i} checks")
-        cv2.imwrite(str(debug_dir / f"timeout_{ts}.png"), gray if gray is not None else np.zeros((1,1)))
         return False
 
     def _wait_room_detail(self) -> bool:  
@@ -239,7 +210,7 @@ class Navigator:
             if scene == V2Scene.INFRA_DETAILS_OPEN:
                 success = True
                 break
-            elif scene == V2Scene.INFRA_DETAILS:      
+            elif scene == V2Scene.INFRA_DETAILS or scene == V2Scene.CTRLCENTER_ASSISTANT:      
                 if self._recognizer and self._recognizer.find("arrange_check_in"):
                     self._tap_element("arrange_check_in")
                     success = True                                        

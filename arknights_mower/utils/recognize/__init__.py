@@ -194,8 +194,6 @@ class Recognizer:
             self.scene = Scene.OPERATOR_ELIMINATE_AGENCY
         elif self._scene_in_whitelist(Scene.RIIC_REPORT) and self.find("riic/report_title"):
             self.scene = Scene.RIIC_REPORT
-        elif self._scene_in_whitelist(Scene.CTRLCENTER_ASSISTANT) and self.find("control_central_assistants"):
-            self.scene = Scene.CTRLCENTER_ASSISTANT
         elif self._scene_in_whitelist(Scene.INFRA_MAIN) and self.find("infra_overview", threshold=0.65):
             self.scene = Scene.INFRA_MAIN
         elif self._scene_in_whitelist(Scene.INFRA_MAIN) and self.find("infra_overview_gap"):
@@ -353,6 +351,8 @@ class Recognizer:
                 self.scene = Scene.INFRA_DETAILS_OPEN
             else:
                 self.scene = Scene.INFRA_DETAILS
+        elif self._scene_in_whitelist(Scene.CTRLCENTER_ASSISTANT) and self.find("control_central_assistants"):
+            self.scene = Scene.CTRLCENTER_ASSISTANT
         elif self._scene_in_whitelist(Scene.OPERATOR_FAILED) and self.find("ope_failed"):
             self.scene = Scene.OPERATOR_FAILED
         elif self._scene_in_whitelist(Scene.MISSION_DAILY) and self.find("mission_daily_on"):

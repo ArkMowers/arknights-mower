@@ -54,5 +54,8 @@ class TaskQueue:
     def __bool__(self) -> bool:
         return len(self._tasks) > 0
 
+    def clear(self) -> None:
+        self._tasks.clear()
+
     def all_tasks(self) -> list[SchedulerTask]:
         return [t[2] for t in self._tasks]

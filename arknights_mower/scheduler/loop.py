@@ -8,6 +8,7 @@ from arknights_mower.scheduler.errors import TaskNotFoundError
 from arknights_mower.scheduler.infra import InfraKit
 from arknights_mower.scheduler.planners.base import AbstractPlanner
 from arknights_mower.scheduler.state import SchedulerState
+from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.log import logger
 
 
@@ -66,7 +67,12 @@ class MainLoop:
                 time.sleep(1)
                 continue
 
-            ok = self.dispatch.execute(task, self._infra)
+            try:
+                ok = self.dispatch.execute(task, self._infra)
+            except MowerExit:
+                logger.info("mower exiting, stopping main loop")
+                break
+
             try:
                 self.state.task_queue.pop()
             except TaskNotFoundError:
