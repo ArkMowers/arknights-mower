@@ -94,6 +94,7 @@ class AbstractExecutor(ABC):
                 self.infra.device.tap(670 / 1920, 750 / 1080)
                 continue
             step = queue[0]
+            logger.debug(f"step={step.name} scene={scene}")
             if step.start is not None and scene != step.start:
                 self.infra.navigator.navigate(step.start)
                 continue
