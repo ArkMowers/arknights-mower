@@ -130,13 +130,13 @@ def run(
         state.task_queue.clear()
         logger.info("mood only: tasks cleared")
 
-    if start_type == "test":
-        state.task_queue.push(SchedulerTask(
-            time=datetime.now(),
-            type=TaskTypes.SHIFT_ON,
-            plan={"room_1_1": ["月见夜", "空爆", "空"]},
-        ))
-        logger.info("test: pushed SHIFT_ON for room_1_1")
+    # test: arrange room_1_1
+    state.task_queue.push(SchedulerTask(
+        time=datetime.now(),
+        type=TaskTypes.SHIFT_ON,
+        plan={"room_1_1": ["月见夜", "空爆", "空"]},
+    ))
+    logger.info("test: pushed SHIFT_ON for room_1_1")
 
     logger.info("initializing device")
     v1_device = _create_device()
