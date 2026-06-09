@@ -6,7 +6,6 @@ from datetime import datetime, timedelta
 from arknights_mower.scheduler.domain.task import SchedulerTask
 from arknights_mower.scheduler.executors.base import AbstractExecutor, Step, StepRestart, StepRetry
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.log import logger
 
 from arknights_mower.scheduler.scene import Scene as V2Scene
 

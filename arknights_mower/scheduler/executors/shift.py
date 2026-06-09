@@ -45,45 +45,50 @@ class ShiftExecutor(AbstractExecutor):
         self.run_steps([
             Step("enter",   self._enter_step,   self._do_enter,       start=V2Scene.INFRA_MAIN),
             Step("detail",  self._detail_step,  self._do_detail,      start=V2Scene.INFRA_DETAILS),
-            Step("wait",    self._wait_step,    None,                 start=V2Scene.INFRA_DETAILS),
             Step("arrange", self._arrange_step, self._do_arrange,     start=V2Scene.INFRA_DETAILS),
             Step("swap",    self._swap_step,    self._do_swap,        start=V2Scene.RIIC_OPERATOR_SELECT),
             Step("done",    self._done_step,    self._do_confirm,     start=V2Scene.INFRA_DETAILS),
         ])
         self._advance()
 
-    def _detail_step(self, scene: int) -> bool:
-        return scene in (V2Scene.INFRA_DETAILS, V2Scene.INFRA_DETAILS_OPEN)
-
-    def _do_detail(self) -> None:
-        if self._get_scene() == V2Scene.INFRA_DETAILS:
-            if not self.infra.navigator._wait_room_detail():
-                raise StepRestart
-
     def _enter_step(self, scene: int) -> bool:
-        return scene == V2Scene.INFRA_MAIN
+        if scene != V2Scene.INFRA_MAIN:
+            raise StepRestart
+        return True
 
     def _do_enter(self) -> list[Step] | None:
         if not self.infra.navigator.enter_room(self._room):
             raise StepRetry
         return None
 
-    def _wait_step(self, scene: int) -> bool:
-        return scene == V2Scene.INFRA_DETAILS
+    def _detail_step(self, scene: int) -> bool:
+        if scene not in (V2Scene.INFRA_DETAILS, V2Scene.INFRA_DETAILS_OPEN):
+            raise StepRestart
+        return True
+
+    def _do_detail(self) -> list[Step] | None:
+        if self._get_scene() == V2Scene.INFRA_DETAILS:
+            if not self.infra.navigator._wait_room_detail():
+                raise StepRestart
+        return None
 
     def _arrange_step(self, scene: int) -> bool:
-        self._recog.update()
-        return self._recog.find("confirm_blue") is not None
+        if scene not in (V2Scene.INFRA_DETAILS, V2Scene.INFRA_DETAILS_OPEN):
+            raise StepRestart
+        return True
 
     def _do_arrange(self) -> list[Step] | None:
         self._recog.update()
-        if not self._recog.find("confirm_blue"):
-            self.infra.device.tap(0.82, 0.2)
-            self.infra.navigator.wait_scene_stable(max_duration=1.0, min_stable=1)
+        if self._recog.find("confirm_blue"):
+            return None
+        self.infra.device.tap(0.82, 0.2)
+        self.infra.navigator.wait_scene_stable(max_duration=1.0, min_stable=1)
         return None
 
     def _swap_step(self, scene: int) -> bool:
-        return scene == V2Scene.RIIC_OPERATOR_SELECT
+        if scene != V2Scene.RIIC_OPERATOR_SELECT:
+            raise StepRestart
+        return True
 
     def _do_swap(self) -> list[Step] | None:
         current = self._read_current()
@@ -96,6 +101,8 @@ class ShiftExecutor(AbstractExecutor):
         return None
 
     def _done_step(self, scene: int) -> bool:
+        if scene not in (V2Scene.INFRA_DETAILS, V2Scene.INFRA_DETAILS_OPEN):
+            raise StepRestart
         self._recog.update()
         return not self._recog.find("confirm_blue")
 
@@ -114,10 +121,6 @@ class ShiftExecutor(AbstractExecutor):
             logger.info(f"ShiftExecutor: room={self._room} agents={self._agents}")
         else:
             self._room = ""
-
-    def _find(self, name: str):
-        self._recog.update()
-        return self._recog.find(name)
 
     def _read_current(self, slot_count: int = 5) -> list[str]:
         self._recog.update()
