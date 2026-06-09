@@ -134,6 +134,7 @@ def build_default_graph() -> SceneGraph:
     g.add_transition(Scene.INFRA_ARRANGE, Scene.INFRA_MAIN, "infra_back", 1)
     g.add_transition(Scene.INFRA_DETAILS, Scene.INFRA_MAIN, "infra_back", 1)
     g.add_transition(Scene.INFRA_DETAILS_OPEN, Scene.INFRA_MAIN, "infra_back", 1)
+    g.add_transition(Scene.INFRA_DETAILS_OPEN, Scene.INFRA_DETAILS, "infra_back", 1)
     g.add_transition(Scene.INFRA_ROOM_GAP, Scene.INFRA_MAIN, "infra_back", 1)
     g.add_transition(Scene.CTRLCENTER_ASSISTANT, Scene.INFRA_MAIN, "infra_back", 1)
     g.add_transition(Scene.RIIC_OPERATOR_SELECT, Scene.INFRA_DETAILS, "infra_back", 1)
