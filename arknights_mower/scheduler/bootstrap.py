@@ -54,10 +54,10 @@ def _build_planners(state: SchedulerState) -> list:
     planners = []
 
     from arknights_mower.scheduler.planners.workshop import WorkshopPlanner
-    from arknights_mower.scheduler.planners.infra_scan import InfraScanPlanner
+    # from arknights_mower.scheduler.planners.infra_scan import InfraScanPlanner
 
     planners.append(WorkshopPlanner())
-    planners.append(InfraScanPlanner())
+    # planners.append(InfraScanPlanner())
 
     return planners
 
@@ -132,7 +132,7 @@ def run(
 
     if start_type == "test":
         state.task_queue.push(SchedulerTask(
-            time=datetime(2020, 1, 1),
+            time=datetime.now(),
             type=TaskTypes.SHIFT_ON,
             plan={"room_1_1": ["月见夜", "空爆", "空"]},
         ))
