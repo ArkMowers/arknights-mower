@@ -3,14 +3,12 @@ from __future__ import annotations
 from collections import deque
 from datetime import timedelta
 
-import cv2
-import numpy as np
-
 from arknights_mower.scheduler.domain.task import SchedulerTask
 from arknights_mower.scheduler.executors.base import AbstractExecutor, Step, StepRestart, StepRetry
 from arknights_mower.scheduler.infra.room_reader import RoomReader
 from arknights_mower.scheduler.scene import Scene as V2Scene
 from arknights_mower.scheduler.services.agent_swap_service import AgentSwapService
+from arknights_mower.scheduler.services.operator_service import current_operators_in_room
 from arknights_mower.utils.log import logger
 
 
@@ -75,11 +73,7 @@ class ShiftExecutor(AbstractExecutor):
     def _do_enter(self) -> list[Step] | None:
         if not self.infra.navigator.enter_room(self._room):
             raise StepRetry
-        for _ in range(20):
-            scene = self._get_scene()
-            if scene in (V2Scene.INFRA_DETAILS, V2Scene.INFRA_DETAILS_OPEN):
-                return None
-        raise StepRetry
+        return None
 
     def _wait_step(self, scene: int) -> bool:
         if scene not in (V2Scene.INFRA_DETAILS, V2Scene.INFRA_DETAILS_OPEN):
@@ -109,21 +103,28 @@ class ShiftExecutor(AbstractExecutor):
     def _do_arrange(self) -> list[Step] | None:
         self.infra.device.tap(0.82, 0.2)
         self.infra.navigator.wait_scene_stable(max_duration=0.5, min_stable=2)
+        self._recog.update()
         if self._recog.find("confirm_blue"):
+            logger.info("_do_arrange: confirm_blue found, proceed")
             return None
+        logger.info("_do_arrange: confirm_blue not found, restart")
         raise StepRestart        
 
     def _swap_step(self, scene: int) -> bool:
         if scene != V2Scene.INFRA_ARRANGE_ORDER:
+            logger.info(f"_swap_step: scene {scene} != INFRA_ARRANGE_ORDER, restart")
             raise StepRestart
         return True
 
     def _do_swap(self) -> list[Step] | None:
+        current = current_operators_in_room(self.infra.state, self._room)
+        logger.info(f"_do_swap: current={current} agents={self._agents}")
         ok = self.swap_service.run(
             self._room, self._agents,
             current_operators=current if len(current) == len(self._agents) else None,
         )
         if not ok:
+            logger.info("_do_swap: swap_service failed, restart")
             raise StepRestart
         return None
 

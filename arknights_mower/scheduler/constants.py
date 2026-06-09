@@ -43,6 +43,22 @@ DEFAULT_SORT = ("技能", False)
 SPECIAL_AGENT_ALL_FILTER = "阿米娅"
 DEFAULT_FILTER = "ALL"
 
+PROFESSION_LABELS = [
+    "ALL", "PIONEER", "WARRIOR", "TANK",
+    "SNIPER", "CASTER", "MEDIC", "SUPPORT", "SPECIAL",
+]
+PROFESSION_LABEL_POS = [(1918, 135 + i * 110) for i in range(9)]
+
+DORM_ARRANGE_NAMES = ["工作状态", "技能", "心情", "信赖值"]
+DORM_ARRANGE_X = [1070, 1220, 1358, 1490]
+PROD_ARRANGE_NAMES = ["工作状态", "效率", "技能", "心情", "信赖值"]
+PROD_ARRANGE_X = [935, 1072, 1215, 1360, 1495]
+ARRANGE_Y = 60
+
+FILTER_CLOSE_THRESHOLD = 1650
+MAX_PAGE = 50
+MAX_RETRY = 10
+
 
 class StartMode(Enum):
     FULL = "0"

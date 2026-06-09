@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import deque
 from copy import deepcopy
 from typing import Callable, Optional
 
@@ -8,50 +9,31 @@ import numpy as np
 
 from arknights_mower.scheduler.constants import (
     AGENT_SELECT_POSITIONS,
+    ARRANGE_Y,
     DEFAULT_FILTER,
     DEFAULT_SORT,
+    DORM_ARRANGE_NAMES,
+    DORM_ARRANGE_X,
     DORM_SORT,
+    FILTER_CLOSE_THRESHOLD,
+    MAX_PAGE,
+    MAX_RETRY,
+    PROD_ARRANGE_NAMES,
+    PROD_ARRANGE_X,
+    PROFESSION_LABELS,
+    PROFESSION_LABEL_POS,
     SCREEN_H,
     SCREEN_W,
     SPECIAL_AGENT_ALL_FILTER,
 )
 from arknights_mower.scheduler.device_port import DevicePort
+from arknights_mower.scheduler.executors.base import Step, StepRestart, StepRetry
 from arknights_mower.scheduler.infra.pause_controller import PauseController
 from arknights_mower.scheduler.infra.thread_pause import ThreadPauseController
 from arknights_mower.scheduler.scene import Scene
 from arknights_mower.utils.log import logger
-from enum import auto, Enum
 
 _POSITIONS = AGENT_SELECT_POSITIONS
-
-
-class _State(Enum):
-    UNCHECK = auto()
-    PREPARE = auto()
-    SCAN = auto()
-    SELECT = auto()
-    SWIPE = auto()
-    FREE_PREPARE = auto()
-    FREE_SCAN = auto()
-    FREE_SELECT = auto()
-    FREE_SWIPE = auto()
-    DONE = auto()
-
-_PROFESSION_LABELS = [
-    "ALL", "PIONEER", "WARRIOR", "TANK",
-    "SNIPER", "CASTER", "MEDIC", "SUPPORT", "SPECIAL",
-]
-_PROFESSION_LABEL_POS = [(1918, 135 + i * 110) for i in range(9)]
-
-_DORM_ARRANGE_NAMES = ["工作状态", "技能", "心情", "信赖值"]
-_DORM_ARRANGE_X = [1070, 1220, 1358, 1490]
-_PROD_ARRANGE_NAMES = ["工作状态", "效率", "技能", "心情", "信赖值"]
-_PROD_ARRANGE_X = [935, 1072, 1215, 1360, 1495]
-_ARRANGE_Y = 60
-
-_FILTER_CLOSE_THRESHOLD = 1650
-_MAX_PAGE = 50
-_MAX_RETRY = 10
 
 
 class AgentSwapService:
@@ -89,8 +71,9 @@ class AgentSwapService:
         if room == "train":
             return self._run_train(agents, train_index)
 
-        is_dorm = room.startswith("dorm")
-        is_production = room.startswith("room")
+        self._room = room
+        self._is_dorm = room.startswith("dorm")
+        self._is_production = room.startswith("room")
 
         agents = deepcopy(agents)
         seen = set()
@@ -99,163 +82,201 @@ class AgentSwapService:
                 agents[i] = "Free"
             seen.add(n)
         logger.info(f"AgentSwap: after dedup {agents}")
+        self._agents = agents
 
-        to_uncheck = []
+        self._to_uncheck = []
         if current_operators:
             for i, cur in enumerate(current_operators):
                 if cur and cur not in agents:
-                    to_uncheck.append(i)
-            logger.info(f"AgentSwap: current room={current_operators}, uncheck slots={to_uncheck}")
+                    self._to_uncheck.append(i)
+            logger.info(f"AgentSwap: current room={current_operators}, uncheck slots={self._to_uncheck}")
 
-        pending = [a for a in agents if a != "Free"]
-        free_count = agents.count("Free")
-        last_filter = "ALL"
-        page_count = 0
-        last_names: Optional[list[str]] = None
-        cache: list = []
+        self._pending = [a for a in agents if a != "Free"]
+        self._free_count = agents.count("Free")
+        self._last_filter = "ALL"
+        self._page_count = 0
+        self._last_names: Optional[list[str]] = None
+        self._cache: list = []
 
-        state = _State.UNCHECK
-        logger.info(f"AgentSwap: start state={state} pending={pending} free={free_count}")
+        steps = []
+        if self._to_uncheck:
+            steps.append(Step("uncheck", self._scene_check, self._do_uncheck))
+        steps += [
+            Step("prepare", self._scene_check, self._do_prepare),
+            Step("scan",    self._scene_check, self._do_scan),
+            Step("select",  self._scene_check, self._do_select),
+        ]
 
-        while state != _State.DONE:
+        return self._run_steps(steps)
+
+    def _scene_check(self, scene: int) -> bool:
+        return scene in (Scene.RIIC_OPERATOR_SELECT, Scene.INFRA_ARRANGE_ORDER)
+
+    def _run_steps(self, steps: list[Step]) -> bool:
+        initial = list(steps)
+        queue = deque(initial)
+        while queue:
             self._pause.wait_if_paused()
             scene = self._get_scene()
-
-            if scene not in (Scene.RIIC_OPERATOR_SELECT, Scene.LOADING, Scene.CONNECTING):
+            if scene not in (Scene.RIIC_OPERATOR_SELECT, Scene.INFRA_ARRANGE_ORDER, Scene.LOADING, Scene.CONNECTING):
                 logger.warning(f"AgentSwap: unexpected scene {scene}, abort")
                 return False
             if scene in (Scene.LOADING, Scene.CONNECTING):
                 continue
-
-            if state == _State.UNCHECK:
-                if to_uncheck:
-                    idx = to_uncheck.pop(0)
-                    logger.info(f"AgentSwap: uncheck slot {idx}")
-                    self._tap_slot(idx)
+            step = queue[0]
+            if step.enter(scene):
+                try:
+                    extra = step.act() if step.act else None
+                    queue.popleft()
+                    if extra is not None:
+                        queue = deque(extra) + queue
+                except StepRetry:
                     continue
-                logger.info("AgentSwap: uncheck done")
-                state = _State.PREPARE
-
-            elif state == _State.PREPARE:
-                target = pending[0] if pending else None
-                if not target and free_count == 0:
-                    logger.info("AgentSwap: nothing to do, done")
-                    state = _State.DONE
-                    continue
-                if not target and free_count > 0:
-                    logger.info("AgentSwap: switching to free mode")
-                    state = _State.FREE_PREPARE
-                    continue
-
-                need_sort, need_asc = self._get_target_sort(target, is_dorm)
-                cur_sort, cur_asc = self._detect_arrange(room)
-                if cur_sort != need_sort or cur_asc != need_asc:
-                    logger.info(f"AgentSwap: switch sort {cur_sort} -> {need_sort} asc={need_asc}")
-                    self._tap_sort(need_sort, need_asc, room)
-                    continue
-                need_filter = self._get_target_filter(target, is_dorm, is_production)
-                if need_filter != last_filter:
-                    logger.info(f"AgentSwap: switch filter {last_filter} -> {need_filter}")
-                    self._open_filter(need_filter)
-                    last_filter = need_filter
-                    page_count = 0
-                    continue
-                logger.info(f"AgentSwap: ready for target={target}")
-                state = _State.SCAN
-
-            elif state == _State.SCAN:
-                self._recog.update()
-                cache = self._operator_list_fn(self._recog.img, full_scan=(last_filter == "ALL"))
-                names = [r[0] if isinstance(r, tuple) else r for r in cache]
-                logger.info(f"AgentSwap: scan page={page_count} filter={last_filter} names={names}")
-                if cache:
-                    state = _State.SELECT
-                else:
-                    logger.info("AgentSwap: scan returned empty, retry")
-
-            elif state == _State.SELECT:
-                target = pending[0] if pending else None
-                found = self._find_in_cache(cache, pending)
-                if found:
-                    logger.info(f"AgentSwap: tap {found[0]} at {found[1]}")
-                    self._tap_center(found[1])
-                    pending.remove(found[0])
-                    cache = [c for c in cache if c[0] != found[0]]
-                    if found[0] == target:
-                        logger.info(f"AgentSwap: target {target} found, resetting")
-                        self._switch_filter_other(last_filter)
-                        last_filter = self._detect_filter()
-                        page_count = 0
-                        last_names = None
-                        state = _State.PREPARE
-                    continue
-
-                cur_names = [c[0] for c in cache]
-                if cur_names == last_names:
-                    logger.error(f"AgentSwap: reached end of list, target={target} not found")
+                except StepRestart:
+                    queue = deque(initial)
+                except Exception:
+                    logger.exception(f"AgentSwap step {step.name}: unhandled error")
                     return False
-                last_names = cur_names
-                page_count = 0
-                state = _State.SWIPE
-
-            elif state == _State.SWIPE:
-                if page_count < _MAX_PAGE:
-                    logger.info(f"AgentSwap: swipe page={page_count}")
-                    self._swipe_next()
-                    page_count += 1
-                    state = _State.SCAN
-                else:
-                    logger.error("AgentSwap: max page reached")
-                    return False
-
-            elif state == _State.FREE_PREPARE:
-                cur_sort, _ = self._detect_arrange(room)
-                if cur_sort != "心情":
-                    logger.info(f"AgentSwap: free switch sort {cur_sort} -> 心情 asc")
-                    self._tap_sort("心情", True, room)
-                    continue
-                cur_filter = self._detect_filter()
-                if cur_filter != "ALL":
-                    logger.info(f"AgentSwap: free switch filter {cur_filter} -> ALL")
-                    self._open_filter("ALL")
-                    last_filter = "ALL"
-                    continue
-                logger.info("AgentSwap: free ready")
-                state = _State.FREE_SCAN
-
-            elif state == _State.FREE_SCAN:
-                self._recog.update()
-                cache = self._operator_list_fn(self._recog.img, full_scan=True)
-                if cache:
-                    state = _State.FREE_SELECT
-
-            elif state == _State.FREE_SELECT:
-                found = self._find_free_in_cache(cache, free_count)
-                if found:
-                    logger.info(f"AgentSwap: free tap {found[0]}")
-                    self._tap_center(found[1])
-                    free_count -= 1
-                    cache = [c for c in cache if c[0] != found[0]]
-                    if free_count > 0:
-                        continue
-                    logger.info("AgentSwap: free done")
-                    state = _State.DONE
-                    continue
-
-                cur_names = [c[0] for c in cache]
-                if cur_names == last_names:
-                    logger.error("AgentSwap: free end of list")
-                    return False
-                last_names = cur_names
-                state = _State.FREE_SWIPE
-
-            elif state == _State.FREE_SWIPE:
-                logger.info(f"AgentSwap: free swipe page={page_count}")
-                self._swipe_next()
-                state = _State.FREE_SCAN
-
-        logger.info(f"AgentSwap: {room} done")
         return True
+
+    def _do_uncheck(self) -> list[Step] | None:
+        while self._to_uncheck:
+            idx = self._to_uncheck.pop(0)
+            logger.info(f"AgentSwap: uncheck slot {idx}")
+            self._tap_slot(idx)
+        logger.info("AgentSwap: uncheck done")
+        return None
+
+    def _do_prepare(self) -> list[Step] | None:
+        target = self._pending[0] if self._pending else None
+        if not target and self._free_count == 0:
+            logger.info("AgentSwap: nothing to do, done")
+            return []
+        if not target and self._free_count > 0:
+            logger.info("AgentSwap: switching to free mode")
+            return [
+                Step("free_prepare", self._scene_check, self._do_free_prepare),
+                Step("free_scan",    self._scene_check, self._do_free_scan),
+                Step("free_select",  self._scene_check, self._do_free_select),
+            ]
+
+        need_sort, need_asc = self._get_target_sort(target, self._is_dorm)
+        cur_sort, cur_asc = self._detect_arrange(self._room)
+        if cur_sort != need_sort or cur_asc != need_asc:
+            logger.info(f"AgentSwap: switch sort {cur_sort} -> {need_sort} asc={need_asc}")
+            self._tap_sort(need_sort, need_asc, self._room)
+            raise StepRetry
+        need_filter = self._get_target_filter(target, self._is_dorm, self._is_production)
+        if need_filter is not None and need_filter != self._last_filter:
+            logger.info(f"AgentSwap: switch filter {self._last_filter} -> {need_filter}")
+            self._open_filter(need_filter)
+            self._last_filter = need_filter
+            self._page_count = 0
+            raise StepRetry
+        logger.info(f"AgentSwap: ready for target={target}")
+        return None
+
+    def _do_scan(self) -> list[Step] | None:
+        self._recog.update()
+        self._cache = self._operator_list_fn(self._recog.img, full_scan=(self._last_filter == "ALL"))
+        names = [r[0] if isinstance(r, tuple) else r for r in self._cache]
+        logger.info(f"AgentSwap: scan page={self._page_count} filter={self._last_filter} names={names}")
+        if not self._cache:
+            logger.info("AgentSwap: scan returned empty, retry")
+            raise StepRetry
+        return None
+
+    def _do_select(self) -> list[Step] | None:
+        target = self._pending[0] if self._pending else None
+        found = self._find_in_cache(self._cache, self._pending)
+        if found:
+            logger.info(f"AgentSwap: tap {found[0]} at {found[1]}")
+            self._tap_center(found[1])
+            self._pending.remove(found[0])
+            self._cache = [c for c in self._cache if c[0] != found[0]]
+            if found[0] == target:
+                logger.info(f"AgentSwap: target {target} found, resetting")
+                self._switch_filter_other(self._last_filter)
+                self._last_filter = self._detect_filter()
+                self._page_count = 0
+                self._last_names = None
+
+            if self._pending or self._free_count > 0:
+                return [
+                    Step("prepare", self._scene_check, self._do_prepare),
+                    Step("scan",    self._scene_check, self._do_scan),
+                    Step("select",  self._scene_check, self._do_select),
+                ]
+            logger.info(f"AgentSwap: {self._room} done")
+            return []
+
+        cur_names = [c[0] for c in self._cache]
+        if cur_names == self._last_names:
+            logger.error(f"AgentSwap: reached end of list, target={target} not found")
+            return []
+        self._last_names = cur_names
+
+        if self._page_count < MAX_PAGE:
+            logger.info(f"AgentSwap: swipe page={self._page_count}")
+            self._swipe_next()
+            self._page_count += 1
+            return [
+                Step("scan",   self._scene_check, self._do_scan),
+                Step("select", self._scene_check, self._do_select),
+            ]
+
+        logger.error("AgentSwap: max page reached")
+        return []
+
+    def _do_free_prepare(self) -> list[Step] | None:
+        cur_sort, _ = self._detect_arrange(self._room)
+        if cur_sort != "心情":
+            logger.info(f"AgentSwap: free switch sort {cur_sort} -> 心情 asc")
+            self._tap_sort("心情", True, self._room)
+            raise StepRetry
+        cur_filter = self._detect_filter()
+        if cur_filter != "ALL":
+            logger.info(f"AgentSwap: free switch filter {cur_filter} -> ALL")
+            self._open_filter("ALL")
+            self._last_filter = "ALL"
+            raise StepRetry
+        logger.info("AgentSwap: free ready")
+        return None
+
+    def _do_free_scan(self) -> list[Step] | None:
+        self._recog.update()
+        self._cache = self._operator_list_fn(self._recog.img, full_scan=True)
+        if not self._cache:
+            raise StepRetry
+        return None
+
+    def _do_free_select(self) -> list[Step] | None:
+        found = self._find_free_in_cache(self._cache, self._free_count)
+        if found:
+            logger.info(f"AgentSwap: free tap {found[0]}")
+            self._tap_center(found[1])
+            self._free_count -= 1
+            self._cache = [c for c in self._cache if c[0] != found[0]]
+            if self._free_count > 0:
+                return [
+                    Step("free_scan",   self._scene_check, self._do_free_scan),
+                    Step("free_select", self._scene_check, self._do_free_select),
+                ]
+            logger.info(f"AgentSwap: free done, {self._room} done")
+            return []
+
+        cur_names = [c[0] for c in self._cache]
+        if cur_names == self._last_names:
+            logger.error("AgentSwap: free end of list")
+            return []
+        self._last_names = cur_names
+
+        logger.info(f"AgentSwap: free swipe page={self._page_count}")
+        self._swipe_next()
+        return [
+            Step("free_scan",   self._scene_check, self._do_free_scan),
+            Step("free_select", self._scene_check, self._do_free_select),
+        ]
 
     def _run_train(self, agents: list[str], train_index: int) -> bool:
         logger.info(f"AgentSwap train: target={agents}")
@@ -346,14 +367,14 @@ class AgentSwapService:
     def _detect_arrange(self, room: str) -> tuple[Optional[str], bool]:
         img = self._screencap()
         if room.startswith("dorm") or room == "central":
-            names = _DORM_ARRANGE_NAMES
-            x_list = _DORM_ARRANGE_X
+            names = DORM_ARRANGE_NAMES
+            x_list = DORM_ARRANGE_X
         else:
-            names = _PROD_ARRANGE_NAMES
-            x_list = _PROD_ARRANGE_X
+            names = PROD_ARRANGE_NAMES
+            x_list = PROD_ARRANGE_X
         hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
         mask = cv2.inRange(hsv, (95, 100, 100), (105, 255, 255))
-        y = _ARRANGE_Y
+        y = ARRANGE_Y
         for idx, x in enumerate(x_list):
             if np.count_nonzero(mask[y: y + 3, x: x + 5]):
                 return names[idx], False
@@ -363,19 +384,19 @@ class AgentSwapService:
 
     def _arrange_x(self, name: str, room: str) -> int:
         if room.startswith("dorm") or room == "central":
-            mapping = dict(zip(_DORM_ARRANGE_NAMES, _DORM_ARRANGE_X))
+            mapping = dict(zip(DORM_ARRANGE_NAMES, DORM_ARRANGE_X))
         else:
-            mapping = dict(zip(_PROD_ARRANGE_NAMES, _PROD_ARRANGE_X))
-        return mapping.get(name, _PROD_ARRANGE_X[0])
+            mapping = dict(zip(PROD_ARRANGE_NAMES, PROD_ARRANGE_X))
+        return mapping.get(name, PROD_ARRANGE_X[0])
 
     def _tap_sort(self, name: str, ascending: bool, room: str) -> None:
         x = self._arrange_x(name, room)
-        self._device.tap(x / SCREEN_W, _ARRANGE_Y / SCREEN_H)
-        for _ in range(_MAX_RETRY):
+        self._device.tap(x / SCREEN_W, ARRANGE_Y / SCREEN_H)
+        for _ in range(MAX_RETRY):
             n, s = self._detect_arrange(room)
             if n == name and s == ascending:
                 return
-            self._device.tap(x / SCREEN_W, _ARRANGE_Y / SCREEN_H)
+            self._device.tap(x / SCREEN_W, ARRANGE_Y / SCREEN_H)
 
     def _detect_filter(self) -> str:
         self._recog.update()
@@ -383,43 +404,43 @@ class AgentSwapService:
         found_blue = self._find("confirm_blue")
         found_train = self._find("confirm_train")
         panel_open = (
-            found_blue and found_blue[0][0][0] > _FILTER_CLOSE_THRESHOLD
+            found_blue and found_blue[0][0] > FILTER_CLOSE_THRESHOLD
         ) or (
-            found_train and found_train[0][0][0] > _FILTER_CLOSE_THRESHOLD
+            found_train and found_train[0][0] > FILTER_CLOSE_THRESHOLD
         )
         if not panel_open:
             return "ALL"
-        for label, (lx, ly) in zip(_PROFESSION_LABELS, _PROFESSION_LABEL_POS):
+        for label, (lx, ly) in zip(PROFESSION_LABELS, PROFESSION_LABEL_POS):
             if img[ly, lx, 2] >= 240:
                 return label
         return "ALL"
 
     def _open_filter(self, profession: str) -> None:
-        label_pos_map = dict(zip(_PROFESSION_LABELS, _PROFESSION_LABEL_POS))
+        label_pos_map = dict(zip(PROFESSION_LABELS, PROFESSION_LABEL_POS))
 
         if profession == "ALL":
-            for _ in range(_MAX_RETRY):
+            for _ in range(MAX_RETRY):
                 self._recog.update()
                 confirm_blue = self._find("confirm_blue")
                 confirm_train = self._find("confirm_train")
                 is_open = (
-                    confirm_blue and confirm_blue[0][0][0] < _FILTER_CLOSE_THRESHOLD
+                    confirm_blue and confirm_blue[0][0] < FILTER_CLOSE_THRESHOLD
                 ) or (
-                    confirm_train and confirm_train[0][0][0] < _FILTER_CLOSE_THRESHOLD
+                    confirm_train and confirm_train[0][0] < FILTER_CLOSE_THRESHOLD
                 )
                 if not is_open:
                     return
                 self._device.tap(1860 / SCREEN_W, 60 / SCREEN_H)
             return
 
-        for _ in range(_MAX_RETRY):
+        for _ in range(MAX_RETRY):
             self._recog.update()
             confirm_blue = self._find("confirm_blue")
             confirm_train = self._find("confirm_train")
             is_open = (
-                confirm_blue and confirm_blue[0][0][0] > _FILTER_CLOSE_THRESHOLD
+                confirm_blue and confirm_blue[0][0] > FILTER_CLOSE_THRESHOLD
             ) or (
-                confirm_train and confirm_train[0][0][0] > _FILTER_CLOSE_THRESHOLD
+                confirm_train and confirm_train[0][0] > FILTER_CLOSE_THRESHOLD
             )
             if is_open:
                 break
@@ -429,14 +450,14 @@ class AgentSwapService:
         self._device.tap(all_pos[0] / SCREEN_W, all_pos[1] / SCREEN_H)
 
         px, py = label_pos_map[profession]
-        for _ in range(_MAX_RETRY):
+        for _ in range(MAX_RETRY):
             self._recog.update()
             if self._recog.img[py, px, 2] >= 240:
                 return
             self._device.tap(px / SCREEN_W, py / SCREEN_H)
 
     def _switch_filter_other(self, current: str) -> str:
-        other = next((l for l in _PROFESSION_LABELS if l != current and l != "ALL"), "ALL")
+        other = next((l for l in PROFESSION_LABELS if l != current and l != "ALL"), "ALL")
         self._open_filter(other)
         return other
 
@@ -446,8 +467,9 @@ class AgentSwapService:
         if ret and len(ret) >= 2:
             st = ret[-2][1]
             ed = ret[0][1]
-            st_x, st_y = st[0], st[1]
-            ed_x = ed[0]
+            st_x = st[0][0]
+            st_y = st[0][1]
+            ed_x = ed[0][0]
             delta = ed_x - st_x
             if delta < 0:
                 self._device.swipe_noinertia(
@@ -536,7 +558,7 @@ class AgentSwapService:
                     return
                 first_name = ret[0][0] if page == 0 else first_name
             page += 1
-            if page > _MAX_PAGE:
+            if page > MAX_PAGE:
                 return
             st = ret[-2][1][0] if len(ret) >= 2 else 500
             ed = ret[0][1][0]
