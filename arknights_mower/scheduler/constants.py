@@ -38,6 +38,12 @@ AGENT_SELECT_POSITIONS = [
 ]
 
 
+DORM_SORT = ("心情", True)
+DEFAULT_SORT = ("技能", False)
+SPECIAL_AGENT_ALL_FILTER = "阿米娅"
+DEFAULT_FILTER = "ALL"
+
+
 class StartMode(Enum):
     FULL = "0"
     MOOD_ONLY = "1"

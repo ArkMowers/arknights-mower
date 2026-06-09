@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
 from arknights_mower.scheduler.constants import StartMode
 from arknights_mower.scheduler.device_port import DevicePort
 from arknights_mower.scheduler.dispatch import TaskDispatch
-from arknights_mower.scheduler.domain.task import TaskTypes
+from arknights_mower.scheduler.domain.task import SchedulerTask, TaskTypes
 from arknights_mower.scheduler.errors import ConfigError, DeviceError
 from arknights_mower.scheduler.infra import InfraKit
 from arknights_mower.scheduler.infra.pause_controller import PauseController
@@ -118,6 +119,10 @@ def run(
         if snapshot:
             state.restore_snapshot(snapshot)
             logger.info(f"restored {len(snapshot)} operator snapshots from db")
+        tasks = repo.load("tasks")
+        if tasks and start_type == StartMode.FULL.value:
+            state.restore_tasks(tasks)
+            logger.info(f"restored {len(tasks)} pending tasks from db")
     else:
         logger.info("clean start: skipping snapshot restore")
 
@@ -148,3 +153,7 @@ def run(
         if snapshot:
             repo.save("operator_mood", snapshot)
             logger.info(f"saved {len(snapshot)} operator snapshots on stop")
+        tasks = state.save_tasks()
+        if tasks:
+            repo.save("tasks", tasks)
+            logger.info(f"saved {len(tasks)} pending tasks on stop")

@@ -14,9 +14,10 @@ from arknights_mower.utils.log import logger
 
 
 class RoomReader:
-    def __init__(self, device, recognizer) -> None:
+    def __init__(self, device, recognizer, navigator=None) -> None:
         self._device = device
         self._recog = recognizer
+        self._navigator = navigator
         self._storage: Optional[StateRepository] = None
 
     @property
@@ -51,6 +52,8 @@ class RoomReader:
             if i >= 3 and not swiped:
                 if self._recog.img[930, 1800, 0] > 51:
                     self._device.swipe(0.8, 0.5, 0.8, 0.05, duration=500)
+                    if self._navigator:
+                        self._navigator.wait_scene_stable(max_duration=0.5, min_stable=2)
                     self._recog.update()
                 swiped = True
 

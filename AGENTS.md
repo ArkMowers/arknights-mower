@@ -4,6 +4,26 @@
 
 1. **所有 UI 操作必须用 scene-driven 状态机** — 唯一模式：`while True: scene = get_scene(); if scene == A: ... elif scene == B: ...`。每轮先检查当前 scene，根据 scene 决定下一步操作，禁止使用 `State enum + method dispatch` 模式。参考 `solvers/base_schedule.py:generate_product()`。
 
+   对于纯线性流程（无需复杂分支），也可以使用 `run_steps()` 队列模式：
+   ```python
+   self.run_steps([
+       Step("enter",   self._enter_step,   self._do_enter,   start=INFRA_MAIN),
+       Step("arrange", self._arrange_step, self._do_arrange, start=INFRA_DETAILS),
+       Step("read",    self._read_step,    self._do_read,    start=DETAILS_OPEN),
+   ])
+   ```
+   每个 `Step` 包含：
+   - `name` — 步骤名称（仅日志）
+   - `enter(scene) → bool` — 条件方法，判断当前场景是否满足此步骤
+   - `act() → list[Step] | None` — 动作方法，执行后返回额外步骤或 `None`
+   - `start` — 可选，期望的起始场景。不匹配时 `run_steps` 自动 `navigate(start)`
+   
+   控制流通过异常管理：
+   - `raise StepRetry` — 当前步骤原地重试
+   - `raise StepRestart` — 整个队列从头开始
+   
+   `run_steps` 定义在 `scheduler/executors/base.py`，实现队列循环 + 自动导航 + 异常处理。
+
 2. **每个操作只点一次** (tap-once) — 所有 tap/click 在单次循环迭代内只执行一次，不用 for 循环重试。重试由外层 scene-driven 循环控制：`while True: if scene == A: tap_once(); continue`。
 
 3. **任务执行必须异常隔离** — 单个任务执行中的任何异常不得让主循环崩溃。通过 `AbstractExecutor.safe_execute()` 捕获 + 记录异常，主循环 `pop()` 后继续下一个任务。

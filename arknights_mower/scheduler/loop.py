@@ -46,15 +46,17 @@ class MainLoop:
 
     def run_forever(self) -> None:
         _idle_log = 0.0
+        logger.info("MainLoop: enter run_forever")
         while True:
             self._infra.pause.wait_if_paused()
             if self._infra.pause.is_stopped:
-                logger.info("MainLoop stopped")
+                logger.info("MainLoop stopped (is_stopped)")
                 break
 
             self._run_planners()
 
             task = self.state.task_queue.peek()
+            logger.debug(f"MainLoop: task={task}")
             if task is None:
                 now = time.time()
                 if now - _idle_log > self.IDLE_INTERVAL:
@@ -70,7 +72,10 @@ class MainLoop:
             try:
                 ok = self.dispatch.execute(task, self._infra)
             except MowerExit:
-                logger.info("mower exiting, stopping main loop")
+                logger.info("mower exiting, stopping main loop (MowerExit)")
+                break
+            except Exception:
+                logger.exception("MainLoop: unhandled error from dispatch")
                 break
 
             try:

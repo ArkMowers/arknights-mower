@@ -80,6 +80,31 @@ class SchedulerState:
             }
         return data
 
+    def save_tasks(self) -> list:
+        tasks = []
+        for t in self.task_queue.all_tasks():
+            tasks.append({
+                "time": t.time.isoformat(),
+                "type": t.type.value,
+                "plan": t.plan,
+                "meta_data": t.meta_data,
+                "adjusted": t.adjusted,
+            })
+        return tasks
+
+    def restore_tasks(self, data: list) -> None:
+        from arknights_mower.scheduler.domain.task import SchedulerTask, set_type_enum
+
+        for item in data:
+            task = SchedulerTask(
+                time=datetime.fromisoformat(item["time"]),
+                type=set_type_enum(item.get("type", "")),
+                plan=item.get("plan", {}),
+                meta_data=item.get("meta_data", ""),
+                adjusted=item.get("adjusted", False),
+            )
+            self.task_queue.push(task)
+
     @property
     def backup_plans(self) -> list[Plan]:
         return self._backup_plans
