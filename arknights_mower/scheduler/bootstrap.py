@@ -132,7 +132,7 @@ def run(
 
     if start_type == "test":
         state.task_queue.push(SchedulerTask(
-            time=datetime.now(),
+            time=datetime(2020, 1, 1),
             type=TaskTypes.SHIFT_ON,
             plan={"room_1_1": ["月见夜", "空爆", "空"]},
         ))
