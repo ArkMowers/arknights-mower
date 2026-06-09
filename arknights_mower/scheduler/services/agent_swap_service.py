@@ -10,12 +10,16 @@ import numpy as np
 from arknights_mower.scheduler.constants import (
     AGENT_SELECT_POSITIONS,
     ARRANGE_Y,
+    ARRANGE_CONFIRM,
+    CONFIRM_BLUE,
+    CONFIRM_TRAIN,
     DEFAULT_FILTER,
     DEFAULT_SORT,
     DORM_ARRANGE_NAMES,
     DORM_ARRANGE_X,
     DORM_SORT,
     FILTER_CLOSE_THRESHOLD,
+    INFRA_CLEAR_ALL,
     MAX_PAGE,
     MAX_RETRY,
     PROD_ARRANGE_NAMES,
@@ -43,11 +47,13 @@ class AgentSwapService:
         recognizer: object,
         get_scene: Callable[[], int],
         pause: Optional[PauseController] = None,
+        wait_scene_stable: Optional[Callable] = None,
     ) -> None:
         self._device = device
         self._recog = recognizer
         self._get_scene = get_scene
         self._pause = pause or ThreadPauseController()
+        self._wait_scene_stable = wait_scene_stable or (lambda **kwargs: None)
 
         from arknights_mower.data import agent_profession, agent_list
         from arknights_mower.utils.character_recognize import operator_list as _op_list
@@ -90,9 +96,20 @@ class AgentSwapService:
                 if cur and cur not in agents:
                     self._to_uncheck.append(i)
             logger.info(f"AgentSwap: current room={current_operators}, uncheck slots={self._to_uncheck}")
-
+            if not self._to_uncheck and len(current_operators) >= len(agents) and all(
+                current_operators[i] == agents[i] for i in range(len(agents))
+            ):
+                logger.info(f"AgentSwap: room already correct, skip")
+                return True
         self._pending = [a for a in agents if a != "Free"]
         self._free_count = agents.count("Free")
+        self._selected: list[str] = []
+        if current_operators:
+            for i in range(len(current_operators)):
+                if i not in self._to_uncheck and current_operators[i] in self._pending:
+                    self._pending.remove(current_operators[i])
+                    self._selected.append(current_operators[i])
+                    logger.info(f"AgentSwap: skip {current_operators[i]}, already in slot {i}")
         self._last_filter = "ALL"
         self._page_count = 0
         self._last_names: Optional[list[str]] = None
@@ -101,11 +118,7 @@ class AgentSwapService:
         steps = []
         if self._to_uncheck:
             steps.append(Step("uncheck", self._scene_check, self._do_uncheck))
-        steps += [
-            Step("prepare", self._scene_check, self._do_prepare),
-            Step("scan",    self._scene_check, self._do_scan),
-            Step("select",  self._scene_check, self._do_select),
-        ]
+        steps.append(Step("prepare", self._scene_check, self._do_prepare))
 
         return self._run_steps(steps)
 
@@ -124,6 +137,7 @@ class AgentSwapService:
             if scene in (Scene.LOADING, Scene.CONNECTING):
                 continue
             step = queue[0]
+            logger.info(f"AgentSwap step={step.name} scene={scene}")
             if step.enter(scene):
                 try:
                     extra = step.act() if step.act else None
@@ -144,21 +158,20 @@ class AgentSwapService:
             idx = self._to_uncheck.pop(0)
             logger.info(f"AgentSwap: uncheck slot {idx}")
             self._tap_slot(idx)
-        logger.info("AgentSwap: uncheck done")
+        self._selected = [n for n in self._selected if n in self._agents]
+        logger.info(f"AgentSwap: uncheck done, selected={self._selected}")
         return None
 
     def _do_prepare(self) -> list[Step] | None:
         target = self._pending[0] if self._pending else None
         if not target and self._free_count == 0:
+            if not self._to_uncheck and len([a for a in self._agents if a != "Free"]) > 1:
+                return [Step("sort", self._scene_check, self._do_sort)]
             logger.info("AgentSwap: nothing to do, done")
             return []
         if not target and self._free_count > 0:
             logger.info("AgentSwap: switching to free mode")
-            return [
-                Step("free_prepare", self._scene_check, self._do_free_prepare),
-                Step("free_scan",    self._scene_check, self._do_free_scan),
-                Step("free_select",  self._scene_check, self._do_free_select),
-            ]
+            return [Step("scan", self._scene_check, self._do_scan)]
 
         need_sort, need_asc = self._get_target_sort(target, self._is_dorm)
         cur_sort, cur_asc = self._detect_arrange(self._room)
@@ -174,109 +187,84 @@ class AgentSwapService:
             self._page_count = 0
             raise StepRetry
         logger.info(f"AgentSwap: ready for target={target}")
-        return None
+        return [Step("scan", self._scene_check, self._do_scan)]
 
     def _do_scan(self) -> list[Step] | None:
         self._recog.update()
-        self._cache = self._operator_list_fn(self._recog.img, full_scan=(self._last_filter == "ALL"))
-        names = [r[0] if isinstance(r, tuple) else r for r in self._cache]
+        cache = self._operator_list_fn(self._recog.img, full_scan=(self._last_filter == "ALL"))
+        names = [r[0] if isinstance(r, tuple) else r for r in cache]
         logger.info(f"AgentSwap: scan page={self._page_count} filter={self._last_filter} names={names}")
-        if not self._cache:
-            logger.info("AgentSwap: scan returned empty, retry")
+        if not cache:
             raise StepRetry
-        return None
+
+        target = self._pending[0] if self._pending else None
+        self._found_target = False
+        for name, box in cache:
+            if name not in self._pending:
+                continue
+            logger.info(f"AgentSwap: tap {name} at {box}")
+            self._tap_center(box)
+            self._pending.remove(name)
+            self._selected.append(name)
+            if name == target:
+                self._found_target = True
+
+        return [Step("select", self._scene_check, self._do_select)]
 
     def _do_select(self) -> list[Step] | None:
-        target = self._pending[0] if self._pending else None
-        found = self._find_in_cache(self._cache, self._pending)
-        if found:
-            logger.info(f"AgentSwap: tap {found[0]} at {found[1]}")
-            self._tap_center(found[1])
-            self._pending.remove(found[0])
-            self._cache = [c for c in self._cache if c[0] != found[0]]
-            if found[0] == target:
-                logger.info(f"AgentSwap: target {target} found, resetting")
-                self._switch_filter_other(self._last_filter)
-                self._last_filter = self._detect_filter()
-                self._page_count = 0
-                self._last_names = None
-
+        if self._found_target:
+            self._page_count = 0
+            self._last_names = None
             if self._pending or self._free_count > 0:
-                return [
-                    Step("prepare", self._scene_check, self._do_prepare),
-                    Step("scan",    self._scene_check, self._do_scan),
-                    Step("select",  self._scene_check, self._do_select),
-                ]
-            logger.info(f"AgentSwap: {self._room} done")
+                return [Step("prepare", self._scene_check, self._do_prepare)]
+            logger.info(f"AgentSwap: all selected, sort")
+            return [Step("sort", self._scene_check, self._do_sort)]
+
+        if self._free_count > 0 and not self._pending:
+            for name, box in self._cache:
+                if name not in self._agent_list:
+                    continue
+                logger.info(f"AgentSwap: free tap {name}")
+                self._tap_center(box)
+                self._free_count -= 1
+                if self._free_count == 0:
+                    logger.info(f"AgentSwap: free done")
+                    return [Step("sort", self._scene_check, self._do_sort)]
+                return [Step("scan", self._scene_check, self._do_scan)]
+
+        if not self._pending and self._free_count == 0:
+            return [Step("sort", self._scene_check, self._do_sort)]
+
+        if self._page_count >= MAX_PAGE:
+            logger.error("AgentSwap: max page reached")
             return []
 
-        cur_names = [c[0] for c in self._cache]
-        if cur_names == self._last_names:
-            logger.error(f"AgentSwap: reached end of list, target={target} not found")
-            return []
-        self._last_names = cur_names
-
-        if self._page_count < MAX_PAGE:
-            logger.info(f"AgentSwap: swipe page={self._page_count}")
-            self._swipe_next()
-            self._page_count += 1
-            return [
-                Step("scan",   self._scene_check, self._do_scan),
-                Step("select", self._scene_check, self._do_select),
-            ]
-
-        logger.error("AgentSwap: max page reached")
-        return []
-
-    def _do_free_prepare(self) -> list[Step] | None:
-        cur_sort, _ = self._detect_arrange(self._room)
-        if cur_sort != "心情":
-            logger.info(f"AgentSwap: free switch sort {cur_sort} -> 心情 asc")
-            self._tap_sort("心情", True, self._room)
-            raise StepRetry
-        cur_filter = self._detect_filter()
-        if cur_filter != "ALL":
-            logger.info(f"AgentSwap: free switch filter {cur_filter} -> ALL")
-            self._open_filter("ALL")
-            self._last_filter = "ALL"
-            raise StepRetry
-        logger.info("AgentSwap: free ready")
-        return None
-
-    def _do_free_scan(self) -> list[Step] | None:
-        self._recog.update()
-        self._cache = self._operator_list_fn(self._recog.img, full_scan=True)
-        if not self._cache:
-            raise StepRetry
-        return None
-
-    def _do_free_select(self) -> list[Step] | None:
-        found = self._find_free_in_cache(self._cache, self._free_count)
-        if found:
-            logger.info(f"AgentSwap: free tap {found[0]}")
-            self._tap_center(found[1])
-            self._free_count -= 1
-            self._cache = [c for c in self._cache if c[0] != found[0]]
-            if self._free_count > 0:
-                return [
-                    Step("free_scan",   self._scene_check, self._do_free_scan),
-                    Step("free_select", self._scene_check, self._do_free_select),
-                ]
-            logger.info(f"AgentSwap: free done, {self._room} done")
-            return []
-
-        cur_names = [c[0] for c in self._cache]
-        if cur_names == self._last_names:
-            logger.error("AgentSwap: free end of list")
-            return []
-        self._last_names = cur_names
-
-        logger.info(f"AgentSwap: free swipe page={self._page_count}")
+        logger.info(f"AgentSwap: swipe page={self._page_count}")
         self._swipe_next()
-        return [
-            Step("free_scan",   self._scene_check, self._do_free_scan),
-            Step("free_select", self._scene_check, self._do_free_select),
-        ]
+        self._page_count += 1
+        return [Step("scan", self._scene_check, self._do_scan)]
+
+    def _do_sort(self) -> list[Step] | None:
+        agents = [a for a in self._agents if a != "Free"]
+        if len(agents) > 1:
+            self._switch_filter_other(self._last_filter)
+            self._open_filter(DEFAULT_FILTER)
+            self._tap_sort(DEFAULT_SORT[0], DEFAULT_SORT[1], self._room)
+            self._last_names = None
+            exists = self._selected
+            click_order = []
+            for a in agents:
+                if a in exists:
+                    click_order.append(exists.index(a))
+            self._device.tap(INFRA_CLEAR_ALL[0], INFRA_CLEAR_ALL[1])
+            self._recog.update()
+            for p_idx in click_order:
+                pos = _POSITIONS[p_idx]
+                self._device.tap(pos[0], pos[1])
+
+        self._tap_sort(DEFAULT_SORT[0], DEFAULT_SORT[1], self._room)
+        logger.info(f"AgentSwap: {self._room} done")
+        return []
 
     def _run_train(self, agents: list[str], train_index: int) -> bool:
         logger.info(f"AgentSwap train: target={agents}")
@@ -401,8 +389,8 @@ class AgentSwapService:
     def _detect_filter(self) -> str:
         self._recog.update()
         img = self._recog.img
-        found_blue = self._find("confirm_blue")
-        found_train = self._find("confirm_train")
+        found_blue = self._find(CONFIRM_BLUE)
+        found_train = self._find(CONFIRM_TRAIN)
         panel_open = (
             found_blue and found_blue[0][0] > FILTER_CLOSE_THRESHOLD
         ) or (
@@ -421,8 +409,8 @@ class AgentSwapService:
         if profession == "ALL":
             for _ in range(MAX_RETRY):
                 self._recog.update()
-                confirm_blue = self._find("confirm_blue")
-                confirm_train = self._find("confirm_train")
+                confirm_blue = self._find(CONFIRM_BLUE)
+                confirm_train = self._find(CONFIRM_TRAIN)
                 is_open = (
                     confirm_blue and confirm_blue[0][0] < FILTER_CLOSE_THRESHOLD
                 ) or (
@@ -435,8 +423,8 @@ class AgentSwapService:
 
         for _ in range(MAX_RETRY):
             self._recog.update()
-            confirm_blue = self._find("confirm_blue")
-            confirm_train = self._find("confirm_train")
+            confirm_blue = self._find(CONFIRM_BLUE)
+            confirm_train = self._find(CONFIRM_TRAIN)
             is_open = (
                 confirm_blue and confirm_blue[0][0] > FILTER_CLOSE_THRESHOLD
             ) or (
@@ -474,7 +462,7 @@ class AgentSwapService:
             if delta < 0:
                 self._device.swipe_noinertia(
                     (st_x / SCREEN_W, st_y / SCREEN_H),
-                    (delta / SCREEN_W, 0),
+                    (delta, 0),
                 )
             else:
                 self._device.swipe(
@@ -519,13 +507,11 @@ class AgentSwapService:
         return DEFAULT_SORT
 
     def _get_target_filter(self, name: str, is_dorm: bool, is_production: bool) -> Optional[str]:
-        if is_dorm or not is_production:
-            if name == SPECIAL_AGENT_ALL_FILTER:
-                return DEFAULT_FILTER
-            return self._agent_profession.get(name, DEFAULT_FILTER)
-        if name in self._profession_filter_names:
-            return self._agent_profession.get(name, DEFAULT_FILTER)
-        return None
+        if name == SPECIAL_AGENT_ALL_FILTER:
+            return DEFAULT_FILTER
+        ret = self._agent_profession.get(name, DEFAULT_FILTER)
+        logger.info(f"AgentSwap: filter for {name}={ret}")
+        return ret
 
     def _select_one_agent(self, agents: list[str], room: str) -> None:
         self._recog.update()
@@ -571,7 +557,7 @@ class AgentSwapService:
             )
 
     def _tap_confirm_train(self) -> None:
-        for btn in ("confirm_blue", "confirm_train", "arrange_confirm"):
+        for btn in (CONFIRM_BLUE, CONFIRM_TRAIN, ARRANGE_CONFIRM):
             for _ in range(4):
                 if self._find(btn):
                     self._tap_element(btn)

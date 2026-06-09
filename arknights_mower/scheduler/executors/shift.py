@@ -3,6 +3,10 @@ from __future__ import annotations
 from collections import deque
 from datetime import timedelta
 
+from arknights_mower.scheduler.constants import (
+    ARRANGE_CONFIRM, CONFIRM_BLUE, CONFIRM_TRAIN, CURRENT,
+    INFRA_ROOM_SLOT_TAP,
+)
 from arknights_mower.scheduler.domain.task import SchedulerTask
 from arknights_mower.scheduler.executors.base import AbstractExecutor, Step, StepRestart, StepRetry
 from arknights_mower.scheduler.infra.room_reader import RoomReader
@@ -42,6 +46,7 @@ class ShiftExecutor(AbstractExecutor):
             self._swap = AgentSwapService(
                 self.infra.device, self._recog,
                 self.infra.navigator._get_scene, self.infra.pause,
+                self.infra.navigator.wait_scene_stable,
             )
         return self._swap
 
@@ -101,27 +106,26 @@ class ShiftExecutor(AbstractExecutor):
         return True
 
     def _do_arrange(self) -> list[Step] | None:
-        self.infra.device.tap(0.82, 0.2)
-        self.infra.navigator.wait_scene_stable(max_duration=0.5, min_stable=2)
-        self._recog.update()
-        if self._recog.find("confirm_blue"):
-            logger.info("_do_arrange: confirm_blue found, proceed")
-            return None
-        logger.info("_do_arrange: confirm_blue not found, restart")
-        raise StepRestart        
+        self.infra.device.tap(INFRA_ROOM_SLOT_TAP[0], INFRA_ROOM_SLOT_TAP[1])
+        self.infra.navigator.wait_scene_stable(max_duration=1.5, min_stable=3)
+        return None  
 
     def _swap_step(self, scene: int) -> bool:
-        if scene != V2Scene.INFRA_ARRANGE_ORDER:
+        if self._get_scene() != V2Scene.INFRA_ARRANGE_ORDER:
             logger.info(f"_swap_step: scene {scene} != INFRA_ARRANGE_ORDER, restart")
             raise StepRestart
         return True
 
     def _do_swap(self) -> list[Step] | None:
         current = current_operators_in_room(self.infra.state, self._room)
-        logger.info(f"_do_swap: current={current} agents={self._agents}")
+        agents = [
+            current[i] if a == CURRENT else a
+            for i, a in enumerate(self._agents)
+        ]
+        logger.info(f"_do_swap: current={current} agents={agents}")
         ok = self.swap_service.run(
-            self._room, self._agents,
-            current_operators=current if len(current) == len(self._agents) else None,
+            self._room, agents,
+            current_operators=current if len(current) == len(agents) else None,
         )
         if not ok:
             logger.info("_do_swap: swap_service failed, restart")
@@ -129,13 +133,15 @@ class ShiftExecutor(AbstractExecutor):
         return None
 
     def _done_step(self, scene: int) -> bool:
-        if scene not in (V2Scene.INFRA_DETAILS, V2Scene.INFRA_DETAILS_OPEN):
+        if scene not in (V2Scene.INFRA_DETAILS, V2Scene.INFRA_DETAILS_OPEN, V2Scene.INFRA_ARRANGE_ORDER):
             raise StepRestart
+        if scene in (V2Scene.INFRA_ARRANGE_ORDER, V2Scene.RIIC_OPERATOR_SELECT):
+            return True
         self._recog.update()
-        return not self._recog.find("confirm_blue")
+        return not self._recog.find(CONFIRM_BLUE)
 
     def _do_confirm(self) -> list[Step] | None:
-        for btn in ("confirm_blue", "confirm_train", "arrange_confirm"):
+        for btn in (CONFIRM_BLUE, CONFIRM_TRAIN, ARRANGE_CONFIRM):
             pos = self._recog.find(btn)
             if pos:
                 box = pos[0] if isinstance(pos, tuple) else pos

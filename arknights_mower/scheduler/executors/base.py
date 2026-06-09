@@ -94,25 +94,26 @@ class AbstractExecutor(ABC):
                 self.infra.device.tap(670 / 1920, 750 / 1080)
                 continue
             step = queue[0]
-            logger.debug(f"step={step.name} scene={scene}")
+            logger.info(f"step={step.name} scene={scene}")
             if step.start is not None and scene != step.start:
                 self.infra.navigator.navigate(step.start)
                 continue
-            if step.enter(scene):
-                try:
-                    extra = step.act() if step.act else None
-                    queue.popleft()
-                    if extra:
-                        queue = deque(extra) + queue
-                except StepRetry:
-                    logger.info(f"step {step.name}: retry")
+            try:
+                if not step.enter(scene):
                     continue
-                except StepRestart:
-                    logger.info(f"step {step.name}: restart queue")
-                    queue = deque(initial)
-                except Exception:
-                    logger.exception(f"step {step.name}: unhandled error")
-                    raise
+                extra = step.act() if step.act else None
+                queue.popleft()
+                if extra:
+                    queue = deque(extra) + queue
+            except StepRetry:
+                logger.info(f"step {step.name}: retry")
+                continue
+            except StepRestart:
+                logger.info(f"step {step.name}: restart queue")
+                queue = deque(initial)
+            except Exception:
+                logger.exception(f"step {step.name}: unhandled error")
+                raise
         logger.info("run_steps: done")
 
     @abstractmethod

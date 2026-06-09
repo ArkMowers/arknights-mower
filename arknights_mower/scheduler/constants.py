@@ -59,6 +59,15 @@ FILTER_CLOSE_THRESHOLD = 1650
 MAX_PAGE = 50
 MAX_RETRY = 10
 
+INFRA_ROOM_SLOT_TAP = (0.82, 0.2)
+INFRA_CLEAR_ALL = (0.38, 0.95)
+
+CONFIRM_BLUE = "confirm_blue"
+CONFIRM_TRAIN = "confirm_train"
+ARRANGE_CONFIRM = "arrange_confirm"
+
+CURRENT = "Current"
+
 
 class StartMode(Enum):
     FULL = "0"
