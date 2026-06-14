@@ -1054,7 +1054,7 @@ class Arknights数据处理器:
             "composite": composite,
         }
 
-        output_path = "./arknights_mower/resources/skill_data.json"
+        output_path = "./arknights_mower/data/skill_data.json"
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(output, f, ensure_ascii=False, separators=(",", ":"))

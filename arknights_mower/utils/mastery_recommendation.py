@@ -6,9 +6,9 @@ from arknights_mower.utils.path import _install_dir, _internal_dir, get_path
 
 def _find_skill_data():
     candidates = [
-        _internal_dir / "arknights_mower" / "resources" / "skill_data.json",
-        _install_dir / "arknights_mower" / "resources" / "skill_data.json",
-        _install_dir / "resources" / "skill_data.json",
+        _internal_dir / "arknights_mower" / "data" / "skill_data.json",
+        _install_dir / "arknights_mower" / "data" / "skill_data.json",
+        _install_dir / "data" / "skill_data.json",
     ]
     for p in candidates:
         if os.path.exists(p):
@@ -300,6 +300,21 @@ def compute_workshop_config(
             with open(plan_path, "r", encoding="utf-8") as f:
                 plan = json.load(f)
             planned_keys = [k for k, v in plan.items() if v]
+        except Exception:
+            pass
+
+    if planned_keys:
+        try:
+            cultivate_path = get_path("@app/tmp/cultivate.json")
+            if os.path.exists(cultivate_path):
+                with open(cultivate_path, "r", encoding="utf-8") as f:
+                    cdata = json.load(f)
+                m3 = set()
+                for char in cdata.get("data", {}).get("characters", []):
+                    for idx, s in enumerate(char.get("skills", [])):
+                        if s.get("level", 0) >= 3:
+                            m3.add(f"{char.get('id')}_{idx}")
+                planned_keys = [k for k in planned_keys if k not in m3]
         except Exception:
             pass
 
