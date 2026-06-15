@@ -410,9 +410,9 @@ class AgentSwapService:
         found_blue = self._find(CONFIRM_BLUE)
         found_train = self._find(CONFIRM_TRAIN)
         panel_open = (
-            found_blue and found_blue[0][0] > FILTER_CLOSE_THRESHOLD
+            found_blue and found_blue[0][0] < FILTER_CLOSE_THRESHOLD
         ) or (
-            found_train and found_train[0][0] > FILTER_CLOSE_THRESHOLD
+            found_train and found_train[0][0] < FILTER_CLOSE_THRESHOLD
         )
         if not panel_open:
             return "ALL"
@@ -444,9 +444,9 @@ class AgentSwapService:
             confirm_blue = self._find(CONFIRM_BLUE)
             confirm_train = self._find(CONFIRM_TRAIN)
             is_open = (
-                confirm_blue and confirm_blue[0][0] > FILTER_CLOSE_THRESHOLD
+                confirm_blue and confirm_blue[0][0] < FILTER_CLOSE_THRESHOLD
             ) or (
-                confirm_train and confirm_train[0][0] > FILTER_CLOSE_THRESHOLD
+                confirm_train and confirm_train[0][0] < FILTER_CLOSE_THRESHOLD
             )
             if is_open:
                 break

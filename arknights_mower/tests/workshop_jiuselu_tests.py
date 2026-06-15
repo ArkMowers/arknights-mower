@@ -59,6 +59,21 @@ class DummyDevice:
         self.calls.append(("back",))
 
 
+class FilterDevice(DummyDevice):
+    def __init__(self, recognizer):
+        super().__init__()
+        self.recognizer = recognizer
+
+    def tap(self, x, y):
+        super().tap(x, y)
+        px = round(x * 1920)
+        py = round(y * 1080)
+        if px == 1860 and py == 60:
+            self.recognizer.panel_open = not self.recognizer.panel_open
+        elif self.recognizer.panel_open and px == 1918:
+            self.recognizer.selected_y = py
+
+
 class DummyRecognizer:
     def __init__(self, img=None):
         self.img = img if img is not None else np.zeros((1080, 1920, 3), dtype=np.uint8)
@@ -76,6 +91,24 @@ class DummyRecognizer:
 
     def get_scene(self):
         return 225
+
+
+class FilterRecognizer(DummyRecognizer):
+    def __init__(self):
+        super().__init__()
+        self.panel_open = False
+        self.selected_y = None
+
+    def find(self, key):
+        if key == "confirm_blue":
+            x = 1609 if self.panel_open else 1724
+            return ((x, 1000), (x + 80, 1040))
+        return None
+
+    def update(self):
+        self.img = np.zeros((1080, 1920, 3), dtype=np.uint8)
+        if self.panel_open and self.selected_y is not None:
+            self.img[self.selected_y, 1918, 2] = 255
 
 
 class DummyNavigator:
@@ -366,6 +399,25 @@ class AgentSwapSortDetectionTest(unittest.TestCase):
     def test_detects_dorm_heart_sort_up_from_device_screenshot(self):
         service = self._service_for_fixture("agent_sort_heart_up.jpg")
         self.assertEqual(service._detect_arrange("dormitory_1"), ("心情", True))
+
+
+class AgentSwapFilterTest(unittest.TestCase):
+    def test_open_filter_opens_panel_before_tapping_profession(self):
+        recognizer = FilterRecognizer()
+        device = FilterDevice(recognizer)
+        service = AgentSwapService(
+            device,
+            recognizer,
+            lambda: V2Scene.RIIC_OPERATOR_SELECT,
+            pause=SimpleNamespace(wait_if_paused=lambda: None),
+        )
+
+        service._open_filter("SUPPORT")
+
+        self.assertIn(("tap", 0.9688, 0.0556), device.calls)
+        self.assertIn(("tap", 0.999, 0.125), device.calls)
+        self.assertIn(("tap", 0.999, 0.838), device.calls)
+        self.assertEqual(recognizer.selected_y, 905)
 
 
 if __name__ == "__main__":
