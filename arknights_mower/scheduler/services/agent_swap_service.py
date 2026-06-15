@@ -9,6 +9,13 @@ import numpy as np
 
 from arknights_mower.scheduler.constants import (
     AGENT_SELECT_POSITIONS,
+    ARRANGE_ACTIVE_LABEL_MIN_PIXELS,
+    ARRANGE_ACTIVE_LABEL_OFFSET,
+    ARRANGE_ARROW_EDGE_MIN_PIXELS,
+    ARRANGE_ARROW_LEFT_X_OFFSET,
+    ARRANGE_ARROW_LOWER_Y_OFFSET,
+    ARRANGE_ARROW_RIGHT_X_OFFSET,
+    ARRANGE_ARROW_UPPER_Y_OFFSET,
     ARRANGE_Y,
     ARRANGE_CONFIRM,
     CONFIRM_BLUE,
@@ -363,11 +370,22 @@ class AgentSwapService:
         hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
         mask = cv2.inRange(hsv, (95, 100, 100), (105, 255, 255))
         y = ARRANGE_Y
+        label_x1, label_x2, label_y1, label_y2 = ARRANGE_ACTIVE_LABEL_OFFSET
+        left_x1, left_x2 = ARRANGE_ARROW_LEFT_X_OFFSET
+        right_x1, right_x2 = ARRANGE_ARROW_RIGHT_X_OFFSET
+        upper_y1, upper_y2 = ARRANGE_ARROW_UPPER_Y_OFFSET
+        lower_y1, lower_y2 = ARRANGE_ARROW_LOWER_Y_OFFSET
         for idx, x in enumerate(x_list):
-            if np.count_nonzero(mask[y: y + 3, x: x + 5]):
-                return names[idx], False
-            if np.count_nonzero(mask[y + 10: y + 13, x: x + 5]):
-                return names[idx], True
+            label = mask[y + label_y1: y + label_y2, x + label_x1: x + label_x2]
+            if np.count_nonzero(label) < ARRANGE_ACTIVE_LABEL_MIN_PIXELS:
+                continue
+            upper_edges = np.count_nonzero(mask[y + upper_y1: y + upper_y2, x + left_x1: x + left_x2])
+            upper_edges += np.count_nonzero(mask[y + upper_y1: y + upper_y2, x + right_x1: x + right_x2])
+            lower_edges = np.count_nonzero(mask[y + lower_y1: y + lower_y2, x + left_x1: x + left_x2])
+            lower_edges += np.count_nonzero(mask[y + lower_y1: y + lower_y2, x + right_x1: x + right_x2])
+            if upper_edges + lower_edges < ARRANGE_ARROW_EDGE_MIN_PIXELS:
+                continue
+            return names[idx], lower_edges > upper_edges
         return None, False
 
     def _arrange_x(self, name: str, room: str) -> int:

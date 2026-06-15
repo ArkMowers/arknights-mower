@@ -5,9 +5,11 @@ import unittest
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import cv2
 import numpy as np
 
 from arknights_mower.scheduler.constants import (
@@ -19,6 +21,7 @@ fake_log = types.ModuleType("arknights_mower.utils.log")
 fake_log.logger = MagicMock()
 with patch.dict("sys.modules", {"arknights_mower.utils.log": fake_log}):
     from arknights_mower.scheduler.executors.workshop import WorkshopExecutor
+    from arknights_mower.scheduler.services.agent_swap_service import AgentSwapService
     import arknights_mower.scheduler.executors.workshop_support as workshop_support
 from arknights_mower.scheduler.domain.task import SchedulerTask, TaskTypes
 from arknights_mower.scheduler.graph import build_default_graph
@@ -340,6 +343,29 @@ class WorkshopExecutorTest(unittest.TestCase):
         )
         self.assertIn(("back",), self.device.calls)
         self.assertIn("workshop", self.recognizer.saved)
+
+
+class AgentSwapSortDetectionTest(unittest.TestCase):
+    def _service_for_fixture(self, name: str) -> AgentSwapService:
+        fixture = Path(__file__).with_name("fixtures") / name
+        img = cv2.imread(str(fixture))
+        self.assertIsNotNone(img, str(fixture))
+        rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        device = SimpleNamespace(screencap=lambda: rgb)
+        return AgentSwapService(
+            device,
+            SimpleNamespace(),
+            lambda: V2Scene.RIIC_OPERATOR_SELECT,
+            pause=SimpleNamespace(wait_if_paused=lambda: None),
+        )
+
+    def test_detects_dorm_heart_sort_down_from_device_screenshot(self):
+        service = self._service_for_fixture("agent_sort_heart_down.jpg")
+        self.assertEqual(service._detect_arrange("dormitory_1"), ("心情", False))
+
+    def test_detects_dorm_heart_sort_up_from_device_screenshot(self):
+        service = self._service_for_fixture("agent_sort_heart_up.jpg")
+        self.assertEqual(service._detect_arrange("dormitory_1"), ("心情", True))
 
 
 if __name__ == "__main__":
