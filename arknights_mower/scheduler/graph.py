@@ -148,6 +148,7 @@ def build_default_graph() -> SceneGraph:
     g.add_transition(Scene.FACTORY_ROOMS, Scene.INFRA_DETAILS, "infra_back", 1)
     g.add_transition(Scene.DRONE_ACCELERATE, Scene.ORDER_LIST, "infra_back", 1)
     g.add_transition(Scene.FACTORY_DASHBOARD, Scene.FACTORY_ROOM, "infra_back", 1)
+    g.add_transition(Scene.FACTORY_ROOM, Scene.INFRA_MAIN, "infra_back", 1)
 
     g.add_transition(Scene.INFRA_ARRANGE_CONFIRM, Scene.INFRA_DETAILS, "infra_arrange_confirm", 1)
 
