@@ -25,9 +25,12 @@ with patch.dict("sys.modules", {"arknights_mower.utils.log": fake_log}):
     import arknights_mower.scheduler.executors.workshop_support as workshop_support
 from arknights_mower.scheduler.domain.task import SchedulerTask, TaskTypes
 from arknights_mower.scheduler.graph import build_default_graph
+from arknights_mower.scheduler.domain.operators import Operator
 from arknights_mower.scheduler.infra import workshop_scanner
+from arknights_mower.scheduler.infra.room_reader import RoomReader
 from arknights_mower.scheduler.scene import Scene as V2Scene
 from arknights_mower.scheduler.infra.workshop_scanner import FormulaScanItem
+from arknights_mower.scheduler.services.operator_service import current_operators_in_room
 from arknights_mower.scheduler.services.workshop_service import (
     WorkshopCandidate,
     jiuselu_candidate_matches_gap,
@@ -124,6 +127,34 @@ class DummyNavigator:
 
     def wait_scene_stable(self, **kwargs):
         self.calls.append(("wait_scene_stable", kwargs))
+
+
+class DummyRoomReader(RoomReader):
+    def __init__(self, names: list[str]):
+        recognizer = SimpleNamespace(
+            img=np.zeros((1080, 1920, 3), dtype=np.uint8),
+            gray=np.zeros((1080, 1920), dtype=np.uint8),
+            update=lambda: None,
+        )
+        super().__init__(DummyDevice(), recognizer, None)
+        self.names = names
+        self._slot_index = -1
+
+    def _is_empty_slot(self, crop_box) -> bool:
+        self._slot_index += 1
+        return self.names[self._slot_index] == ""
+
+    def _read_name(self, img: np.ndarray) -> str:
+        return self.names[self._slot_index]
+
+    def _read_mood(self, img: np.ndarray) -> float:
+        return 24.0
+
+    def _read_time(self, img: np.ndarray):
+        return datetime.now()
+
+    def _persist(self, state) -> None:
+        return None
 
 
 @dataclass
@@ -279,6 +310,13 @@ class WorkshopExecutorTest(unittest.TestCase):
         )
 
 
+    def test_materiel_confirm_scene_collects_workshop_product(self):
+        from arknights_mower.utils.scene import Scene as LegacyScene
+
+        with patch.object(self.executor, "_update_scene", return_value=LegacyScene.MATERIEL):
+            self.assertEqual(self.executor._get_factory_scene(), "FACTORY_PRODUCT_COLLECT")
+
+
     def test_factory_detail_scene_taps_workshop_entry(self):
         self.executor._tasks = deque(["enter"])
         self.executor._dispatch_scene("INFRA_DETAILS_OPEN")
@@ -376,6 +414,30 @@ class WorkshopExecutorTest(unittest.TestCase):
         )
         self.assertIn(("back",), self.device.calls)
         self.assertIn("workshop", self.recognizer.saved)
+
+
+class RoomReaderScanStateTest(unittest.TestCase):
+    def test_scan_room_clears_stale_operator_missing_from_slots(self):
+        room = "dormitory_1"
+        names = ["闪灵", "歌蕾蒂娅", "絮雨", "乌尔比安", ""]
+        state = SimpleNamespace(
+            plan={room: [object()] * 5},
+            operators={
+                **{
+                    name: Operator(name=name, current_room=room, current_index=index)
+                    for index, name in enumerate(names)
+                    if name
+                },
+                "九色鹿": Operator(name="九色鹿", current_room=room, current_index=4),
+            },
+        )
+        state.save_snapshot = lambda: {}
+
+        DummyRoomReader(names).scan_room(room, state)
+
+        self.assertEqual(current_operators_in_room(state, room), names)
+        self.assertEqual(state.operators["九色鹿"].current_room, "")
+        self.assertEqual(state.operators["九色鹿"].current_index, -1)
 
 
 class AgentSwapSortDetectionTest(unittest.TestCase):

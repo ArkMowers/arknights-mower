@@ -48,6 +48,7 @@ class RoomReader:
 
         swiped = False
         slots = []
+        scanned_names: set[str] = set()
         for i in range(length):
             if i >= 3 and not swiped:
                 if self._recog.img[930, 1800, 0] > 51:
@@ -68,6 +69,7 @@ class RoomReader:
                 slots.append("空")
                 continue
 
+            scanned_names.add(name)
             mood = self._read_mood(cropimg(gray, mood_crops[i]))
             update_time = self._read_time(cropimg(self._recog.img, time_crops[i]))
             slots.append(f"{name}({mood:.0f})")
@@ -90,7 +92,11 @@ class RoomReader:
 
         for op_name in list(state.operators.keys()):
             op = state.operators[op_name]
-            if op.current_room == room and (op.current_index < 0 or op.current_index >= length):
+            if op.current_room == room and (
+                op.current_index < 0
+                or op.current_index >= length
+                or op.name not in scanned_names
+            ):
                 op.current_room = ""
                 op.current_index = -1
 

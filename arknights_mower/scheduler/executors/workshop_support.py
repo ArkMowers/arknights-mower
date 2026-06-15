@@ -165,6 +165,8 @@ class WorkshopExecutorSupportMixin:
             return "FACTORY_DASHBOARD"
         if s == Scene.FACTORY_FORMULA:
             return "FACTORY_FORMULA"
+        if s == Scene.MATERIEL:
+            return "FACTORY_PRODUCT_COLLECT"
         if s == Scene.FACTORY_PRODUCT_COLLECT:
             return "FACTORY_PRODUCT_COLLECT"
         if s == Scene.FACTORY_ROOM:
