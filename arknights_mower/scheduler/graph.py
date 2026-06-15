@@ -147,6 +147,7 @@ def build_default_graph() -> SceneGraph:
     g.add_transition(Scene.ORDER_LIST, Scene.INFRA_DETAILS, "infra_back", 1)
     g.add_transition(Scene.FACTORY_ROOMS, Scene.INFRA_DETAILS, "infra_back", 1)
     g.add_transition(Scene.DRONE_ACCELERATE, Scene.ORDER_LIST, "infra_back", 1)
+    g.add_transition(Scene.FACTORY_FORMULA, Scene.FACTORY_DASHBOARD, "infra_back", 1)
     g.add_transition(Scene.FACTORY_DASHBOARD, Scene.FACTORY_ROOM, "infra_back", 1)
     g.add_transition(Scene.FACTORY_ROOM, Scene.INFRA_MAIN, "infra_back", 1)
 
@@ -219,4 +220,3 @@ class SceneGraph:
             return action_fn
 
         return decorator
-

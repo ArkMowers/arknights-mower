@@ -229,6 +229,19 @@ class WorkshopExecutorTest(unittest.TestCase):
         self.assertIsNotNone(path)
         self.assertEqual([step.target for step in path], [V2Scene.FACTORY_ROOM, V2Scene.INFRA_MAIN])
 
+    def test_graph_can_return_from_formula_to_infra_main(self):
+        graph = build_default_graph()
+        path = graph.find_path(V2Scene.FACTORY_FORMULA, V2Scene.INFRA_MAIN)
+        self.assertIsNotNone(path)
+        self.assertEqual(
+            [step.target for step in path],
+            [
+                V2Scene.FACTORY_DASHBOARD,
+                V2Scene.FACTORY_ROOM,
+                V2Scene.INFRA_MAIN,
+            ],
+        )
+
 
     def test_factory_detail_scene_taps_workshop_entry(self):
         self.executor._tasks = deque(["enter"])
