@@ -319,7 +319,7 @@ class RIICPart(ConfModel):
     dorm_order: str = ""
     "宿舍优先级"
     refresh_backup_plan_after_mood: bool = False
-    "读取心情后先刷新副表再纠错"
+    "缓存清零重启后读取心情并按载入心情数据模式重启"
     assistant_follows_schedule: bool = False
     "协助位跟随排班（专精时协助位不固定，由排班系统管理）"
 

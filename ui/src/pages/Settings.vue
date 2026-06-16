@@ -673,7 +673,7 @@ if (return_home_when_idle.value) {
               <n-checkbox v-model:checked="refresh_backup_plan_after_mood">
                 读取心情后先刷新副表
                 <help-text
-                  >开启后，Mower 读取心情完成会先按最新状态触发副表，再生成排班纠错任务。</help-text
+                  >开启后，仅在缓存清零重启时，Mower 会先读取心情并按载入心情数据模式自动重启，再触发副表和后续排班。</help-text
                 >
               </n-checkbox>
             </n-form-item>

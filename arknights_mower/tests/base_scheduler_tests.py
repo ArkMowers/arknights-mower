@@ -398,12 +398,39 @@ class TestBaseScheduler(unittest.TestCase):
         self.assertEqual([item["agent"] for item in result], ["", ""])
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_agent_get_mood_refreshes_backup_plan_before_self_correction(self):
+    def test_infra_main_requests_restart_after_mood_read(self):
+        solver = BaseSchedulerSolver()
+        solver.task = None
+        solver.planned = False
+        solver.tasks = []
+        solver.restart_after_mood_read = True
+
+        with (
+            patch.object(BaseSchedulerSolver, "find", return_value=True),
+            patch.object(BaseSchedulerSolver, "no_pending_task", return_value=True),
+            patch.object(
+                BaseSchedulerSolver,
+                "agent_get_mood",
+                return_value="self_correction",
+            ) as mock_agent_get_mood,
+            patch.object(BaseSchedulerSolver, "run_order_solver") as mock_run_order,
+            patch.object(BaseSchedulerSolver, "plan_solver") as mock_plan,
+        ):
+            result = solver.infra_main()
+
+        self.assertEqual(result, "restart_after_mood_read")
+        self.assertFalse(solver.restart_after_mood_read)
+        mock_agent_get_mood.assert_called_once_with(skip_dorm=True)
+        mock_run_order.assert_not_called()
+        mock_plan.assert_not_called()
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_agent_get_mood_keeps_self_correction_when_backup_refresh_disabled(self):
         solver, read_meeting = self._create_backup_refresh_solver()
 
         with (
             patch.object(
-                base_schedule.config.conf, "refresh_backup_plan_after_mood", True
+                base_schedule.config.conf, "refresh_backup_plan_after_mood", False
             ),
             patch.object(BaseSchedulerSolver, "enter_room"),
             patch.object(
@@ -415,20 +442,20 @@ class TestBaseScheduler(unittest.TestCase):
         ):
             result = solver.agent_get_mood(skip_dorm=True)
 
-        self.assertIsNone(result)
-        self.assertEqual(solver.op_data.plan_condition, [True])
-        self.assertEqual(solver.op_data.plan["meeting"][0].agent, "见行者")
-        self.assertFalse(
+        self.assertEqual(result, "self_correction")
+        self.assertEqual(solver.op_data.plan_condition, [False])
+        self.assertEqual(solver.op_data.plan["meeting"][0].agent, "伊内丝")
+        self.assertTrue(
             any(task.type == TaskTypes.SELF_CORRECTION for task in solver.tasks)
         )
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_agent_get_mood_keeps_self_correction_when_backup_refresh_disabled(self):
+    def test_agent_get_mood_does_not_refresh_backup_plan_by_default(self):
         solver, read_meeting = self._create_backup_refresh_solver()
 
         with (
             patch.object(
-                base_schedule.config.conf, "refresh_backup_plan_after_mood", False
+                base_schedule.config.conf, "refresh_backup_plan_after_mood", True
             ),
             patch.object(BaseSchedulerSolver, "enter_room"),
             patch.object(

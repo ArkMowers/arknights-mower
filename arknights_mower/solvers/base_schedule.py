@@ -128,6 +128,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self._m3_cache_mtime = 0
         self._m3_cache_set = set()
         self._training_completion_time = None
+        self.restart_after_mood_read = False
 
     def find_next_task(
         self,
@@ -674,6 +675,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.skip(["planned", "todo_task", "collect_notification"])
                 else:
                     mood_result = self.agent_get_mood(skip_dorm=True)
+                    if self.restart_after_mood_read:
+                        self.restart_after_mood_read = False
+                        logger.info("缓存清零重启后心情读取完成，准备载入心情数据重启")
+                        return "restart_after_mood_read"
                     if mood_result is not None:
                         self.skip(["planned", "todo_task", "collect_notification"])
                         return True
@@ -862,10 +867,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.back()
                     continue
             self.back()
-        if config.conf.refresh_backup_plan_after_mood:
-            # 心情读取会更新副表触发条件依赖的实时状态。
-            # 先按新状态切换副表，再基于当前生效排班计算纠错任务。
-            self.backup_plan_solver(append_empty_task=False)
         plan = self.op_data.plan
         fix_plan = {}
         for key in plan:
