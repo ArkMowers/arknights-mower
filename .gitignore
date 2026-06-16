@@ -1,5 +1,14 @@
 FZDYSK.TTF
 
+# macOS metadata
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Local debug output
+/debug/
+
 !main.spec
 *.yaml
 !arknights_mower/templates/*.yaml
