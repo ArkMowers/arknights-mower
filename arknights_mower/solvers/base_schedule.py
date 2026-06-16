@@ -128,6 +128,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self._m3_cache_mtime = 0
         self._m3_cache_set = set()
         self._training_completion_time = None
+        self.restart_after_mood_read = False
 
     def find_next_task(
         self,
@@ -674,6 +675,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.skip(["planned", "todo_task", "collect_notification"])
                 else:
                     mood_result = self.agent_get_mood(skip_dorm=True)
+                    if self.restart_after_mood_read:
+                        self.restart_after_mood_read = False
+                        logger.info("缓存清零重启后心情读取完成，准备载入心情数据重启")
+                        return "restart_after_mood_read"
                     if mood_result is not None:
                         self.skip(["planned", "todo_task", "collect_notification"])
                         return True
@@ -759,6 +764,31 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
         return room
 
+    def should_read_train_in_mood(self):
+        if "train" in self.op_data.plan:
+            return True
+        if self.find_next_task(task_type=TaskTypes.SKILL_UPGRADE):
+            return True
+
+        training_sm = getattr(self, "_training_sm", None)
+        state = getattr(training_sm, "state", TrainingState.IDLE)
+        if isinstance(state, TrainingState) and state != TrainingState.IDLE:
+            return True
+        has_trainee_context = getattr(training_sm, "has_trainee_context", None)
+        if callable(has_trainee_context):
+            try:
+                if has_trainee_context() is True:
+                    return True
+            except Exception:
+                pass
+
+        try:
+            mastery_plan = self._get_mastery_plan()
+            return any(mastery_plan.values()) if mastery_plan else False
+        except Exception as e:
+            logger.debug(f"检查专精计划失败，跳过训练室心情读取: {e}")
+            return False
+
     def agent_get_mood(self, skip_dorm=False, force=False):
         # 暂时规定纠错只适用于主班表
         need_read = set(
@@ -766,7 +796,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             for k, v in self.op_data.operators.items()
             if v.need_to_refresh() and v.room in base_room_list
         )
-        need_read.add("train")
+        if self.should_read_train_in_mood():
+            need_read.add("train")
         for room in need_read:
             error_count = 0
             # 由于训练室不纠错，如果训练室有干员且时间读取过就跳过
@@ -776,14 +807,18 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if value.current_room == room
             ]
 
-            if current_working and all(
-                operator.time_stamp
-                and operator.time_stamp
-                > datetime.now()
-                - timedelta(
-                    hours=0.5 if operator.name in ["歌蕾蒂娅", "见行者"] else 2.5
+            if (
+                room != "train"
+                and current_working
+                and all(
+                    operator.time_stamp
+                    and operator.time_stamp
+                    > datetime.now()
+                    - timedelta(
+                        hours=0.5 if operator.name in ["歌蕾蒂娅", "见行者"] else 2.5
+                    )
+                    for operator in current_working
                 )
-                for operator in current_working
             ):
                 for e in current_working:
                     logger.debug(e.time_stamp)
@@ -1998,7 +2033,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             logger.info(f"生成{_plan}的下班任务")
         return _plan
 
-    def backup_plan_solver(self, timing=None):
+    def backup_plan_solver(self, timing=None, append_empty_task=True):
         if timing is None:
             timing = PlanTriggerTiming.END
         try:
@@ -2030,7 +2065,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     )
                     logger.info(f"新条件列表:{con}")
                     self.op_data.swap_plan(con, refresh=True)
-                    if not new_task:
+                    if append_empty_task and not new_task:
                         self.tasks.append(SchedulerTask(task_plan={}))
             return new_task
         except MowerExit:
@@ -3332,7 +3367,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         while self.detect_product_complete():
             logger.info("检测到产物收取提示")
             self.sleep(1)
-        length = len(self.op_data.plan[room])
+        if room == "train":
+            length = len(self.op_data.plan.get(room, [None, None]))
+        else:
+            length = len(self.op_data.plan[room])
         if length > 3:
             while self.get_color((1800, 138))[0] > 51:
                 self.swipe(

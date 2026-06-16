@@ -278,9 +278,14 @@ def start(start_type):
         saved_state = {}
     if start_type == "1":
         saved_state["tasks"] = []
+    restart_after_mood_read = (
+        start_type == "2" and config.conf.refresh_backup_plan_after_mood
+    )
     from arknights_mower.__main__ import main
 
-    mower_thread = Thread(target=main, args=(saved_state,), daemon=True)
+    mower_thread = Thread(
+        target=main, args=(saved_state, restart_after_mood_read), daemon=True
+    )
     mower_thread.start()
 
     log_lines = []

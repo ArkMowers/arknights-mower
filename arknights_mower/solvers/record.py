@@ -81,63 +81,70 @@ def save_action_to_sqlite_decorator(func):
     return wrapper
 
 
+def current_state():
+    from arknights_mower.__main__ import base_scheduler
+
+    if base_scheduler is None or base_scheduler.op_data is None:
+        return None
+    return {
+        "dorm": base_scheduler.op_data.dorm,
+        "tasks": base_scheduler.tasks,
+        "party_time": base_scheduler.op_data.party_time,
+        "operators": base_scheduler.op_data.operators,
+        "daily_visit_friend": base_scheduler.daily_visit_friend,
+        "daily_report": base_scheduler.daily_report,
+        "daily_skland": base_scheduler.daily_skland,
+        "daily_mail": base_scheduler.daily_mail,
+        "task_count": base_scheduler.task_count,
+        "skill_upgrade_supports": base_scheduler.op_data.skill_upgrade_supports,
+        "_completed_masteries": base_scheduler._completed_masteries,
+    }
+
+
+def save_state_to_db(saved_state):
+    if saved_state is None:
+        logger.debug("没有可保存的Mower状态")
+        return False
+
+    current_time = datetime.now()
+    database_path = get_path("@app/tmp/data.db")
+
+    try:
+        get_path("@app/tmp").mkdir(exist_ok=True)
+
+        connection = sqlite3.connect(database_path)
+        cursor = connection.cursor()
+
+        cursor.execute("CREATE TABLE IF NOT EXISTS saved_state (time TEXT,state BLOB)")
+        cursor.execute("DELETE FROM saved_state")
+        cursor.execute(
+            "INSERT INTO saved_state VALUES (?, ?)",
+            (
+                str(current_time),
+                sqlite3.Binary(pickle.dumps(saved_state)),
+            ),
+        )
+
+        connection.commit()
+        connection.close()
+
+        logger.info(f"储存缓存数据至数据库 {current_time}")
+        return True
+
+    except sqlite3.Error as e:
+        logger.error(f"SQLite error: {e}")
+        return False
+
+
+def save_current_state():
+    return save_state_to_db(current_state())
+
+
 def save_state(func):
     def save_wrapper(*args, **kwargs):
-        from arknights_mower.__main__ import base_scheduler
-
-        saved_state = {
-            "dorm": base_scheduler.op_data.dorm,
-            "tasks": base_scheduler.tasks,
-            "party_time": base_scheduler.op_data.party_time,
-            "operators": base_scheduler.op_data.operators,
-            "daily_visit_friend": base_scheduler.daily_visit_friend,
-            "daily_report": base_scheduler.daily_report,
-            "daily_skland": base_scheduler.daily_skland,
-            "daily_mail": base_scheduler.daily_mail,
-            "task_count": base_scheduler.task_count,
-            "skill_upgrade_supports": base_scheduler.op_data.skill_upgrade_supports,
-            "_completed_masteries": base_scheduler._completed_masteries,
-        }
-
-        # Call the original function
+        saved_state = current_state()
         result = func(*args, **kwargs)
-
-        # Save saved_state to database
-        current_time = datetime.now()
-        database_path = get_path("@app/tmp/data.db")
-
-        try:
-            # Create 'tmp' directory if it doesn't exist
-            get_path("@app/tmp").mkdir(exist_ok=True)
-
-            connection = sqlite3.connect(database_path)
-            cursor = connection.cursor()
-
-            # Create a table if it doesn't exist
-            cursor.execute(
-                "CREATE TABLE IF NOT EXISTS saved_state (time TEXT,state BLOB)"
-            )
-
-            # Delete the previous saved state
-            cursor.execute("DELETE FROM saved_state")
-
-            # Insert data
-            cursor.execute(
-                "INSERT INTO saved_state VALUES (?, ?)",
-                (
-                    str(current_time),
-                    sqlite3.Binary(pickle.dumps(saved_state)),  # Serialize saved_state
-                ),
-            )
-
-            connection.commit()
-            connection.close()
-
-            logger.info(f"储存缓存数据至数据库 {current_time}")
-
-        except sqlite3.Error as e:
-            logger.error(f"SQLite error: {e}")
-
+        save_state_to_db(saved_state)
         return result
 
     return save_wrapper

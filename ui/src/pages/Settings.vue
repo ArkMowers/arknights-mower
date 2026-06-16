@@ -42,6 +42,7 @@ const {
   free_room,
   merge_interval,
   fia_fool,
+  refresh_backup_plan_after_mood,
   assistant_follows_schedule,
   droidcast,
   mumu12IPC,
@@ -665,6 +666,15 @@ if (return_home_when_idle.value) {
                 菲亚防呆
                 <help-text
                   >当菲亚替换干员心情均超过90%时菲亚等待半小时，不确定菲亚替换心情消耗请启用本选项</help-text
+                >
+              </n-checkbox>
+            </n-form-item>
+            <n-form-item :show-label="false">
+              <n-checkbox v-model:checked="refresh_backup_plan_after_mood">
+                读取心情后先刷新副表
+                <help-text
+                  >开启后，仅在缓存清零重启时，Mower
+                  会先读取心情并按载入心情数据模式自动重启，再触发副表和后续排班。</help-text
                 >
               </n-checkbox>
             </n-form-item>
