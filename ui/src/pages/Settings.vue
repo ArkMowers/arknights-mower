@@ -81,8 +81,16 @@ const simulator_types = [
 
 const launch_options = [
   { label: '使用adb命令启动', value: 'adb' },
-  { label: '点击屏幕启动', value: 'tap' }
+  { label: '点击屏幕启动', value: 'tap' },
+  { label: '自定义命令启动', value: 'custom' }
 ]
+
+const defaultLaunchCommand =
+  'input keyevent KEYCODE_WAKEUP; wm dismiss-keyguard; am start -n {package}/{activity}'
+
+function reset_launch_command() {
+  tap_to_launch_game.value.command = defaultLaunchCommand
+}
 
 async function select_simulator_folder() {
   const folder_path = await folder_dialog()
@@ -353,13 +361,29 @@ if (return_home_when_idle.value) {
               />
             </n-form-item>
             <n-form-item label="启动游戏">
-              <n-select v-model:value="tap_to_launch_game.enable" :options="launch_options" />
+              <n-select v-model:value="tap_to_launch_game.mode" :options="launch_options" />
             </n-form-item>
-            <n-form-item v-if="tap_to_launch_game.enable == 'tap'" label="点击坐标">
+            <n-form-item v-if="tap_to_launch_game.mode == 'tap'" label="点击坐标">
               <span class="coord-label">X:</span>
               <n-input-number v-model:value="tap_to_launch_game.x" />
               <span class="coord-label">Y:</span>
               <n-input-number v-model:value="tap_to_launch_game.y" />
+            </n-form-item>
+            <n-form-item v-if="tap_to_launch_game.mode == 'custom'">
+              <template #label>
+                <span>启动命令</span>
+                <help-text>
+                  <div>
+                    在 Android shell 中执行，支持 <code>{package}</code> 和 <code>{activity}</code>
+                  </div>
+                </help-text>
+              </template>
+              <n-input
+                v-model:value="tap_to_launch_game.command"
+                type="textarea"
+                :autosize="true"
+              />
+              <n-button class="dialog-btn" @click="reset_launch_command">预设</n-button>
             </n-form-item>
             <n-form-item>
               <template #label>

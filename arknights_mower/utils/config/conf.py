@@ -5,6 +5,12 @@ from pydantic_core import PydanticUndefined
 
 from arknights_mower import __rootdir__
 
+DEFAULT_LAUNCH_COMMAND = (
+    "input keyevent KEYCODE_WAKEUP; "
+    "wm dismiss-keyguard; "
+    "am start -n {package}/{activity}"
+)
+
 
 class ConfModel(BaseModel):
     @model_validator(mode="before")
@@ -346,10 +352,23 @@ class SimulatorPart(ConfModel):
     class TapToLaunchGameConf(ConfModel):
         enable: bool = False
         "点击屏幕启动游戏"
+        mode: str | None = None
+        "启动游戏方式"
         x: int = 0
         "横坐标"
         y: int = 0
         "纵坐标"
+        command: str = DEFAULT_LAUNCH_COMMAND
+        "自定义启动命令"
+
+        @model_validator(mode="after")
+        def normalize_mode(self):
+            if self.mode not in {"adb", "tap", "custom"}:
+                self.mode = "tap" if self.enable else "adb"
+            self.enable = self.mode == "tap"
+            if not self.command:
+                self.command = DEFAULT_LAUNCH_COMMAND
+            return self
 
     class DroidCastConf(ConfModel):
         enable: bool = True

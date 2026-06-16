@@ -11,6 +11,7 @@ import numpy as np
 
 from arknights_mower import __rootdir__, __system__
 from arknights_mower.utils import config
+from arknights_mower.utils.config.conf import DEFAULT_LAUNCH_COMMAND
 from arknights_mower.utils.csleep import MowerExit, csleep
 from arknights_mower.utils.device.adb_client.core import Client as ADBClient
 from arknights_mower.utils.device.adb_client.session import Session
@@ -135,12 +136,18 @@ class Device:
         """launch the application"""
         logger.info("明日方舟，启动！")
 
-        tap = config.conf.tap_to_launch_game.enable
-        x = config.conf.tap_to_launch_game.x
-        y = config.conf.tap_to_launch_game.y
+        launch_conf = config.conf.tap_to_launch_game
+        mode = launch_conf.mode or ("tap" if launch_conf.enable else "adb")
 
-        if tap:
-            self.run(f"input tap {x} {y}")
+        if mode == "tap":
+            self.run(f"input tap {launch_conf.x} {launch_conf.y}")
+        elif mode == "custom":
+            command = launch_conf.command or DEFAULT_LAUNCH_COMMAND
+            command = command.replace("{package}", config.conf.APPNAME).replace(
+                "{activity}", config.APP_ACTIVITY_NAME
+            )
+            logger.info("执行自定义启动命令")
+            self.run(command)
         else:
             self.run(f"am start -n {config.conf.APPNAME}/{config.APP_ACTIVITY_NAME}")
 
