@@ -376,9 +376,7 @@ class TestBaseScheduler(unittest.TestCase):
         self.assertTrue(
             any(call.args[0] == "train" for call in mock_enter_room.call_args_list)
         )
-        solver._training_sm._read_physical_state.assert_called_once_with(
-            in_place=True
-        )
+        solver._training_sm._read_physical_state.assert_called_once_with(in_place=True)
         solver._training_sm._apply_state.assert_called_once_with("idle")
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
