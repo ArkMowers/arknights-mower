@@ -3,6 +3,8 @@ import { defineStore } from 'pinia'
 import { inject, ref, watch, watchEffect } from 'vue'
 
 export const useConfigStore = defineStore('config', () => {
+  const defaultLaunchCommand =
+    'input keyevent KEYCODE_WAKEUP; wm dismiss-keyguard; am start -n {package}/{activity}'
   const weeklyPlanWeekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
   const adb = ref('')
   const drone_count_limit = ref(0)
@@ -47,7 +49,13 @@ export const useConfigStore = defineStore('config', () => {
   const t5_operators = ref(['年'])
   const book_operators = ref(['司霆惊蛰'])
   const theme = ref('light')
-  const tap_to_launch_game = ref(false)
+  const tap_to_launch_game = ref({
+    enable: false,
+    mode: 'adb',
+    x: 0,
+    y: 0,
+    command: defaultLaunchCommand
+  })
   const exit_game_when_idle = ref(true)
   const return_home_when_idle = ref(false)
   const close_simulator_when_idle = ref(false)
@@ -231,6 +239,18 @@ export const useConfigStore = defineStore('config', () => {
     }
   }
 
+  function normalizeLaunchConfig(config = {}) {
+    const modeOptions = ['adb', 'tap', 'custom']
+    const mode = modeOptions.includes(config.mode) ? config.mode : config.enable ? 'tap' : 'adb'
+    return {
+      enable: mode == 'tap',
+      mode,
+      x: config.x ?? 0,
+      y: config.y ?? 0,
+      command: config.command || defaultLaunchCommand
+    }
+  }
+
   async function load_config() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/conf`)
     adb.value = response.data.adb
@@ -273,8 +293,7 @@ export const useConfigStore = defineStore('config', () => {
     rescue_threshold.value = response.data.rescue_threshold * 100
     favorite.value = response.data.favorite == '' ? [] : response.data.favorite.split(',')
     theme.value = response.data.theme
-    tap_to_launch_game.value = response.data.tap_to_launch_game
-    tap_to_launch_game.value.enable = tap_to_launch_game.value.enable ? 'tap' : 'adb'
+    tap_to_launch_game.value = normalizeLaunchConfig(response.data.tap_to_launch_game)
     exit_game_when_idle.value = response.data.exit_game_when_idle
     return_home_when_idle.value = response.data.return_home_when_idle
     close_simulator_when_idle.value = response.data.close_simulator_when_idle
@@ -377,9 +396,11 @@ export const useConfigStore = defineStore('config', () => {
       rescue_threshold: rescue_threshold.value / 100,
       favorite: favorite.value.join(','),
       tap_to_launch_game: {
-        enable: tap_to_launch_game.value.enable == 'tap',
+        enable: tap_to_launch_game.value.mode == 'tap',
+        mode: tap_to_launch_game.value.mode,
         x: tap_to_launch_game.value.x,
-        y: tap_to_launch_game.value.y
+        y: tap_to_launch_game.value.y,
+        command: tap_to_launch_game.value.command || defaultLaunchCommand
       },
       exit_game_when_idle: exit_game_when_idle.value,
       return_home_when_idle: return_home_when_idle.value,
@@ -515,6 +536,7 @@ export const useConfigStore = defineStore('config', () => {
     item_list,
     maa_gap,
     build_config,
+    defaultLaunchCommand,
     simulator,
     resting_threshold,
     fia_threshold,
