@@ -832,6 +832,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     self.back()
                     continue
             self.back()
+        if config.conf.refresh_backup_plan_after_mood:
+            # 心情读取会更新副表触发条件依赖的实时状态。
+            # 先按新状态切换副表，再基于当前生效排班计算纠错任务。
+            self.backup_plan_solver(append_empty_task=False)
         plan = self.op_data.plan
         fix_plan = {}
         for key in plan:
@@ -1998,7 +2002,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             logger.info(f"生成{_plan}的下班任务")
         return _plan
 
-    def backup_plan_solver(self, timing=None):
+    def backup_plan_solver(self, timing=None, append_empty_task=True):
         if timing is None:
             timing = PlanTriggerTiming.END
         try:
@@ -2030,7 +2034,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     )
                     logger.info(f"新条件列表:{con}")
                     self.op_data.swap_plan(con, refresh=True)
-                    if not new_task:
+                    if append_empty_task and not new_task:
                         self.tasks.append(SchedulerTask(task_plan={}))
             return new_task
         except MowerExit:
