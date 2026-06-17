@@ -6,6 +6,11 @@ from typing import Optional
 import cv2
 import numpy as np
 
+from arknights_mower.scheduler.constants import (
+    ROOM_READER_LOWER_SLOT_SCROLL_INDICATOR_CHANNEL,
+    ROOM_READER_LOWER_SLOT_SCROLL_INDICATOR_POS,
+    ROOM_READER_LOWER_SLOT_SCROLL_INDICATOR_THRESHOLD,
+)
 from arknights_mower.scheduler.database.repositories.state import StateRepository
 from arknights_mower.scheduler.database.sqlite_storage import SQLiteStorage
 from arknights_mower.scheduler.state import SchedulerState
@@ -101,6 +106,12 @@ class RoomReader:
                 or op.current_index >= length
                 or op.name not in scanned_names
             ):
+                logger.info(
+                    "RoomReader: clear stale operator %s from %s index=%s",
+                    op.name,
+                    room,
+                    op.current_index,
+                )
                 op.current_room = ""
                 op.current_index = -1
 
@@ -118,10 +129,11 @@ class RoomReader:
         img = getattr(self._recog, "img", None)
         if img is None or img.ndim < 3:
             return False
-        y, x, channel = 930, 1800, 0
+        x, y = ROOM_READER_LOWER_SLOT_SCROLL_INDICATOR_POS
+        channel = ROOM_READER_LOWER_SLOT_SCROLL_INDICATOR_CHANNEL
         if y >= img.shape[0] or x >= img.shape[1] or channel >= img.shape[2]:
             return False
-        return bool(img[y, x, channel] > 51)
+        return bool(img[y, x, channel] > ROOM_READER_LOWER_SLOT_SCROLL_INDICATOR_THRESHOLD)
 
     def _valid_mood(self, mood: object) -> bool:
         return isinstance(mood, (int, float)) and 0 <= float(mood) <= 24

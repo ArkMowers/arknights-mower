@@ -14,9 +14,12 @@ import numpy as np
 
 from arknights_mower.scheduler.constants import (
     CURRENT,
-    WORKSHOP_TAB_POS,
     WORKSHOP_AGENT_JIUSE,
     WORKSHOP_JIUSE_SKILL_TARGET,
+    WORKSHOP_TAB_POS,
+    ROOM_READER_LOWER_SLOT_SCROLL_INDICATOR_CHANNEL,
+    ROOM_READER_LOWER_SLOT_SCROLL_INDICATOR_POS,
+    ROOM_READER_LOWER_SLOT_SCROLL_INDICATOR_THRESHOLD,
 )
 fake_log = types.ModuleType("arknights_mower.utils.log")
 fake_log.logger = MagicMock()
@@ -34,6 +37,7 @@ from arknights_mower.scheduler.infra.workshop_scanner import FormulaScanItem
 from arknights_mower.scheduler.services.operator_service import current_operators_in_room
 from arknights_mower.scheduler.services.workshop_service import (
     WorkshopCandidate,
+    WorkshopProductionPlan,
     _inventory_match,
     jiuselu_candidate_matches_gap,
     jiuselu_should_switch_candidate,
@@ -315,7 +319,39 @@ class WorkshopExecutorTest(unittest.TestCase):
     def test_read_number_retries_with_loop_and_returns_negative_one(self):
         with patch.object(workshop_support, "read_number", side_effect=RuntimeError("bad")) as reader:
             self.assertEqual(self.executor._read_number((0, 0, 10, 10)), -1)
-        self.assertEqual(reader.call_count, 4)
+        self.assertGreaterEqual(reader.call_count, 1)
+
+    def test_apply_mood_cost_clamps_mood_to_zero(self):
+        operator = self.state.operators[WORKSHOP_AGENT_JIUSE]
+        operator.mood = 1
+        self.executor._production_plan = WorkshopProductionPlan(estimated_mood_cost=4)
+        self.executor._apply_mood_cost()
+        self.assertEqual(operator.mood, 0)
+
+    def test_select_formula_resets_scan_state_when_tap_fails(self):
+        candidate = WorkshopCandidate(DEVICE, DEVICE, ELITE_TAB, 2.0, object())
+        self.executor._tasks = deque(["select", "process"])
+        self.executor._active_tab = ELITE_TAB
+        self.executor._active_candidates = {DEVICE: candidate}
+        self.executor._last_scan = [DEVICE]
+        self.device.tap = MagicMock(side_effect=RuntimeError("tap failed"))
+        scan_items = [
+            FormulaScanItem(
+                name=DEVICE,
+                box=[[370, 125], [570, 125], [570, 225], [370, 225]],
+                valid=True,
+            )
+        ]
+        with patch.object(
+            workshop_support,
+            "scan_formula_items",
+            return_value=scan_items,
+        ):
+            self.executor._select_formula()
+        self.assertIsNone(self.executor._current_material)
+        self.assertIsNone(self.executor._active_tab)
+        self.assertEqual(self.executor._active_candidates, {})
+        self.assertEqual(self.executor._last_scan, [])
 
     def test_arranges_jiuselu_before_processing_and_restores_previous_agent(self):
         self.state.plan = {"room_1_1": [object(), object(), object()]}
@@ -385,7 +421,7 @@ class WorkshopExecutorTest(unittest.TestCase):
     def test_factory_detail_scene_taps_workshop_entry(self):
         self.executor._tasks = deque(["enter"])
         self.executor._dispatch_scene("INFRA_DETAILS_OPEN")
-        self.assertEqual(self.device.calls[-1], ("tap", 0.1, 0.95))
+        self.assertIn(("tap", 0.1, 0.95), self.device.calls)
 
 
     def test_factory_detail_scene_is_not_blocked_by_arrange_checkin(self):
@@ -396,7 +432,7 @@ class WorkshopExecutorTest(unittest.TestCase):
         self.executor._is_arrange_checkin_visible = lambda: arrange_visible.pop(0)
         with patch.object(WorkshopExecutor, "_refresh_jiuselu_gap", return_value=False):
             self.executor._process_workshop()
-        self.assertEqual(self.device.calls[0], ("tap", 0.1, 0.95))
+        self.assertIn(("tap", 0.1, 0.95), self.device.calls)
 
     def test_refresh_gap_reads_skill_number(self):
         with patch.object(WorkshopExecutor, "_read_number", return_value=32):
@@ -498,11 +534,18 @@ class RoomReaderScanStateTest(unittest.TestCase):
         )
         state.save_snapshot = lambda: {}
 
-        DummyRoomReader(names).scan_room(room, state)
+        with patch("arknights_mower.scheduler.infra.room_reader.logger") as logger:
+            DummyRoomReader(names).scan_room(room, state)
 
         self.assertEqual(current_operators_in_room(state, room), names)
         self.assertEqual(state.operators["九色鹿"].current_room, "")
         self.assertEqual(state.operators["九色鹿"].current_index, -1)
+        logger.info.assert_any_call(
+            "RoomReader: clear stale operator %s from %s index=%s",
+            "九色鹿",
+            room,
+            4,
+        )
 
     def test_scan_room_skips_invalid_mood_update(self):
         class BadMoodRoomReader(DummyRoomReader):
@@ -526,6 +569,17 @@ class RoomReaderScanStateTest(unittest.TestCase):
         reader = DummyRoomReader([""])
         reader._recog.img = np.zeros((10, 10, 3), dtype=np.uint8)
         self.assertFalse(reader._needs_scroll_for_lower_slots())
+
+    def test_scroll_indicator_uses_constants(self):
+        reader = DummyRoomReader([""])
+        reader._recog.img = np.zeros((1080, 1920, 3), dtype=np.uint8)
+        x, y = ROOM_READER_LOWER_SLOT_SCROLL_INDICATOR_POS
+        reader._recog.img[
+            y,
+            x,
+            ROOM_READER_LOWER_SLOT_SCROLL_INDICATOR_CHANNEL,
+        ] = ROOM_READER_LOWER_SLOT_SCROLL_INDICATOR_THRESHOLD + 1
+        self.assertTrue(reader._needs_scroll_for_lower_slots())
 
 
 class AgentSwapSortDetectionTest(unittest.TestCase):

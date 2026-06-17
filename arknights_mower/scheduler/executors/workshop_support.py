@@ -37,8 +37,20 @@ class WorkshopExecutorSupportMixin:
         )
         if selected is not None:
             item = next(scan for scan, candidate in candidates if candidate == selected)
-            self.infra.device.tap(*formula_item_center(item.box))
-            self._formula_selected(selected)
+            try:
+                self.infra.device.tap(*formula_item_center(item.box))
+                self._formula_selected(selected)
+            except Exception:
+                logger.exception(
+                    "failed to select workshop material: %s",
+                    selected.formula_name,
+                )
+                self._current_material = None
+                self._production_plan = None
+                self._waiting_collect = False
+                self._active_tab = None
+                self._active_candidates = {}
+                self._last_scan = []
             return
         for _, candidate in candidates:
             self._active_candidates.pop(candidate.formula_name, None)
@@ -100,7 +112,7 @@ class WorkshopExecutorSupportMixin:
         operator = self._agent_operator()
         if operator is None:
             return
-        operator.mood -= self._production_plan.estimated_mood_cost
+        operator.mood = max(0, operator.mood - self._production_plan.estimated_mood_cost)
         operator.time_stamp = datetime.now()
         logger.debug(
             "jiuselu workshop mood cost=%s",
