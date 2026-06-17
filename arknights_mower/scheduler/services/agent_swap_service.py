@@ -9,6 +9,13 @@ import numpy as np
 
 from arknights_mower.scheduler.constants import (
     AGENT_SELECT_POSITIONS,
+    ARRANGE_ACTIVE_LABEL_MIN_PIXELS,
+    ARRANGE_ACTIVE_LABEL_OFFSET,
+    ARRANGE_ARROW_EDGE_MIN_PIXELS,
+    ARRANGE_ARROW_LEFT_X_OFFSET,
+    ARRANGE_ARROW_LOWER_Y_OFFSET,
+    ARRANGE_ARROW_RIGHT_X_OFFSET,
+    ARRANGE_ARROW_UPPER_Y_OFFSET,
     ARRANGE_Y,
     ARRANGE_CONFIRM,
     CONFIRM_BLUE,
@@ -363,12 +370,33 @@ class AgentSwapService:
         hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
         mask = cv2.inRange(hsv, (95, 100, 100), (105, 255, 255))
         y = ARRANGE_Y
+        label_x1, label_x2, label_y1, label_y2 = ARRANGE_ACTIVE_LABEL_OFFSET
+        left_x1, left_x2 = ARRANGE_ARROW_LEFT_X_OFFSET
+        right_x1, right_x2 = ARRANGE_ARROW_RIGHT_X_OFFSET
+        upper_y1, upper_y2 = ARRANGE_ARROW_UPPER_Y_OFFSET
+        lower_y1, lower_y2 = ARRANGE_ARROW_LOWER_Y_OFFSET
         for idx, x in enumerate(x_list):
-            if np.count_nonzero(mask[y: y + 3, x: x + 5]):
-                return names[idx], False
-            if np.count_nonzero(mask[y + 10: y + 13, x: x + 5]):
-                return names[idx], True
+            label = self._safe_slice(mask, y + label_y1, y + label_y2, x + label_x1, x + label_x2)
+            if np.count_nonzero(label) < ARRANGE_ACTIVE_LABEL_MIN_PIXELS:
+                continue
+            upper_edges = np.count_nonzero(self._safe_slice(mask, y + upper_y1, y + upper_y2, x + left_x1, x + left_x2))
+            upper_edges += np.count_nonzero(self._safe_slice(mask, y + upper_y1, y + upper_y2, x + right_x1, x + right_x2))
+            lower_edges = np.count_nonzero(self._safe_slice(mask, y + lower_y1, y + lower_y2, x + left_x1, x + left_x2))
+            lower_edges += np.count_nonzero(self._safe_slice(mask, y + lower_y1, y + lower_y2, x + right_x1, x + right_x2))
+            if upper_edges + lower_edges < ARRANGE_ARROW_EDGE_MIN_PIXELS:
+                continue
+            return names[idx], lower_edges > upper_edges
         return None, False
+
+    def _safe_slice(self, img: np.ndarray, y1: int, y2: int, x1: int, x2: int) -> np.ndarray:
+        h, w = img.shape[:2]
+        sy1 = max(0, min(y1, h))
+        sy2 = max(0, min(y2, h))
+        sx1 = max(0, min(x1, w))
+        sx2 = max(0, min(x2, w))
+        if sy1 >= sy2 or sx1 >= sx2:
+            return img[0:0, 0:0]
+        return img[sy1:sy2, sx1:sx2]
 
     def _arrange_x(self, name: str, room: str) -> int:
         if room.startswith("dorm") or room == "central":
@@ -392,14 +420,20 @@ class AgentSwapService:
         found_blue = self._find(CONFIRM_BLUE)
         found_train = self._find(CONFIRM_TRAIN)
         panel_open = (
-            found_blue and found_blue[0][0] > FILTER_CLOSE_THRESHOLD
+            found_blue and found_blue[0][0] < FILTER_CLOSE_THRESHOLD
         ) or (
-            found_train and found_train[0][0] > FILTER_CLOSE_THRESHOLD
+            found_train and found_train[0][0] < FILTER_CLOSE_THRESHOLD
         )
         if not panel_open:
             return "ALL"
         for label, (lx, ly) in zip(PROFESSION_LABELS, PROFESSION_LABEL_POS):
-            if img[ly, lx, 2] >= 240:
+            if (
+                img.ndim >= 3
+                and 0 <= ly < img.shape[0]
+                and 0 <= lx < img.shape[1]
+                and img.shape[2] > 2
+                and img[ly, lx, 2] >= 240
+            ):
                 return label
         return "ALL"
 
@@ -426,9 +460,9 @@ class AgentSwapService:
             confirm_blue = self._find(CONFIRM_BLUE)
             confirm_train = self._find(CONFIRM_TRAIN)
             is_open = (
-                confirm_blue and confirm_blue[0][0] > FILTER_CLOSE_THRESHOLD
+                confirm_blue and confirm_blue[0][0] < FILTER_CLOSE_THRESHOLD
             ) or (
-                confirm_train and confirm_train[0][0] > FILTER_CLOSE_THRESHOLD
+                confirm_train and confirm_train[0][0] < FILTER_CLOSE_THRESHOLD
             )
             if is_open:
                 break

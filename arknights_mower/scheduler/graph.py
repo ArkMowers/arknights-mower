@@ -147,7 +147,9 @@ def build_default_graph() -> SceneGraph:
     g.add_transition(Scene.ORDER_LIST, Scene.INFRA_DETAILS, "infra_back", 1)
     g.add_transition(Scene.FACTORY_ROOMS, Scene.INFRA_DETAILS, "infra_back", 1)
     g.add_transition(Scene.DRONE_ACCELERATE, Scene.ORDER_LIST, "infra_back", 1)
+    g.add_transition(Scene.FACTORY_FORMULA, Scene.FACTORY_DASHBOARD, "infra_back", 1)
     g.add_transition(Scene.FACTORY_DASHBOARD, Scene.FACTORY_ROOM, "infra_back", 1)
+    g.add_transition(Scene.FACTORY_ROOM, Scene.INFRA_MAIN, "infra_back", 1)
 
     g.add_transition(Scene.INFRA_ARRANGE_CONFIRM, Scene.INFRA_DETAILS, "infra_arrange_confirm", 1)
 
@@ -189,7 +191,13 @@ class SceneGraph:
         action: str,
         weight: float = 1.0,
     ) -> None:
+        self._validate_scene(from_scene, "from_scene")
+        self._validate_scene(to_scene, "to_scene")
         self._graph.add_edge(from_scene, to_scene, action=action, weight=weight)
+
+    def _validate_scene(self, scene: Scene, name: str) -> None:
+        if not isinstance(scene, Scene):
+            raise TypeError(f"{name} must be Scene, got {scene!r}")
 
     def find_path(
         self, current: Scene, target: Scene
@@ -214,8 +222,13 @@ class SceneGraph:
             name = action_fn.__name__
             if name.startswith("_action_"):
                 name = name[8:]
-            self.add_transition(from_scene, to_scene, name, weight)
+            try:
+                self.add_transition(from_scene, to_scene, name, weight)
+            except Exception as exc:
+                raise ValueError(
+                    "failed to register scene transition "
+                    f"{from_scene!r}->{to_scene!r} via {name}"
+                ) from exc
             return action_fn
 
         return decorator
-

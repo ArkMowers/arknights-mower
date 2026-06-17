@@ -6,6 +6,11 @@ from typing import Optional
 import cv2
 import numpy as np
 
+from arknights_mower.scheduler.constants import (
+    ROOM_READER_LOWER_SLOT_SCROLL_INDICATOR_CHANNEL,
+    ROOM_READER_LOWER_SLOT_SCROLL_INDICATOR_POS,
+    ROOM_READER_LOWER_SLOT_SCROLL_INDICATOR_THRESHOLD,
+)
 from arknights_mower.scheduler.database.repositories.state import StateRepository
 from arknights_mower.scheduler.database.sqlite_storage import SQLiteStorage
 from arknights_mower.scheduler.state import SchedulerState
@@ -48,9 +53,10 @@ class RoomReader:
 
         swiped = False
         slots = []
+        scanned_names: set[str] = set()
         for i in range(length):
             if i >= 3 and not swiped:
-                if self._recog.img[930, 1800, 0] > 51:
+                if self._needs_scroll_for_lower_slots():
                     self._device.swipe(0.8, 0.5, 0.8, 0.05, duration=500)
                     if self._navigator:
                         self._navigator.wait_scene_stable(max_duration=0.5, min_stable=2)
@@ -68,8 +74,13 @@ class RoomReader:
                 slots.append("空")
                 continue
 
+            scanned_names.add(name)
             mood = self._read_mood(cropimg(gray, mood_crops[i]))
             update_time = self._read_time(cropimg(self._recog.img, time_crops[i]))
+            if not self._valid_mood(mood):
+                logger.warning("RoomReader: skip invalid mood for %s in %s", name, room)
+                slots.append(f"{name}(?)")
+                continue
             slots.append(f"{name}({mood:.0f})")
 
             if name not in state.operators:
@@ -90,7 +101,17 @@ class RoomReader:
 
         for op_name in list(state.operators.keys()):
             op = state.operators[op_name]
-            if op.current_room == room and (op.current_index < 0 or op.current_index >= length):
+            if op.current_room == room and (
+                op.current_index < 0
+                or op.current_index >= length
+                or op.name not in scanned_names
+            ):
+                logger.info(
+                    "RoomReader: clear stale operator %s from %s index=%s",
+                    op.name,
+                    room,
+                    op.current_index,
+                )
                 op.current_room = ""
                 op.current_index = -1
 
@@ -103,6 +124,19 @@ class RoomReader:
 
     def _is_empty_slot(self, crop_box) -> bool:
         return self._recog.find("infra_no_operator", scope=crop_box) is not None
+
+    def _needs_scroll_for_lower_slots(self) -> bool:
+        img = getattr(self._recog, "img", None)
+        if img is None or img.ndim < 3:
+            return False
+        x, y = ROOM_READER_LOWER_SLOT_SCROLL_INDICATOR_POS
+        channel = ROOM_READER_LOWER_SLOT_SCROLL_INDICATOR_CHANNEL
+        if y >= img.shape[0] or x >= img.shape[1] or channel >= img.shape[2]:
+            return False
+        return bool(img[y, x, channel] > ROOM_READER_LOWER_SLOT_SCROLL_INDICATOR_THRESHOLD)
+
+    def _valid_mood(self, mood: object) -> bool:
+        return isinstance(mood, (int, float)) and 0 <= float(mood) <= 24
 
     def _read_name(self, img: np.ndarray) -> str:
         from arknights_mower.solvers.base_mixin import OP_ROOM
