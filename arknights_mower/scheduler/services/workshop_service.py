@@ -135,11 +135,18 @@ def build_workshop_candidates(
             if metadata is None:
                 logger.warning("unknown workshop material ignored: %s", formula_name)
                 continue
+            if not isinstance(metadata, dict):
+                logger.warning("invalid workshop metadata ignored: %s", formula_name)
+                continue
             inventory_name = workshop_inventory_name(formula_name)
             if not _inventory_match(inventory, inventory_name, item, metadata):
                 logger.debug("workshop material not ready: %s", formula_name)
                 continue
-            ap_cost = float(metadata["apCost"])
+            try:
+                ap_cost = float(metadata.get("apCost"))
+            except (TypeError, ValueError):
+                logger.warning("invalid workshop apCost ignored: %s", formula_name)
+                continue
             if is_jiuselu and ap_cost > WORKSHOP_JIUSE_MAX_AP:
                 logger.warning("skip >4 mood material for jiuselu: %s", formula_name)
                 continue
@@ -155,11 +162,16 @@ def build_workshop_candidates(
 
 
 def _inventory_match(inventory, inventory_name: str, item, metadata) -> bool:
+    if not isinstance(metadata, dict):
+        return False
+    children = metadata.get("items")
+    if not isinstance(children, list):
+        return False
     return (
         inventory_name in inventory
         and inventory[inventory_name] < item.self_upper_limit
         and all(
             child in inventory and inventory[child] > item.children_lower_limit
-            for child in metadata["items"]
+            for child in children
         )
     )

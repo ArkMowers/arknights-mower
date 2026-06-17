@@ -51,7 +51,7 @@ class RoomReader:
         scanned_names: set[str] = set()
         for i in range(length):
             if i >= 3 and not swiped:
-                if self._recog.img[930, 1800, 0] > 51:
+                if self._needs_scroll_for_lower_slots():
                     self._device.swipe(0.8, 0.5, 0.8, 0.05, duration=500)
                     if self._navigator:
                         self._navigator.wait_scene_stable(max_duration=0.5, min_stable=2)
@@ -72,6 +72,10 @@ class RoomReader:
             scanned_names.add(name)
             mood = self._read_mood(cropimg(gray, mood_crops[i]))
             update_time = self._read_time(cropimg(self._recog.img, time_crops[i]))
+            if not self._valid_mood(mood):
+                logger.warning("RoomReader: skip invalid mood for %s in %s", name, room)
+                slots.append(f"{name}(?)")
+                continue
             slots.append(f"{name}({mood:.0f})")
 
             if name not in state.operators:
@@ -109,6 +113,18 @@ class RoomReader:
 
     def _is_empty_slot(self, crop_box) -> bool:
         return self._recog.find("infra_no_operator", scope=crop_box) is not None
+
+    def _needs_scroll_for_lower_slots(self) -> bool:
+        img = getattr(self._recog, "img", None)
+        if img is None or img.ndim < 3:
+            return False
+        y, x, channel = 930, 1800, 0
+        if y >= img.shape[0] or x >= img.shape[1] or channel >= img.shape[2]:
+            return False
+        return bool(img[y, x, channel] > 51)
+
+    def _valid_mood(self, mood: object) -> bool:
+        return isinstance(mood, (int, float)) and 0 <= float(mood) <= 24
 
     def _read_name(self, img: np.ndarray) -> str:
         from arknights_mower.solvers.base_mixin import OP_ROOM

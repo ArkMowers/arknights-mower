@@ -44,7 +44,8 @@ def scan_formula_items(recognizer) -> list[FormulaScanItem]:
         if len(row) < 2:
             continue
         text = row[1]
-        if text == WORKSHOP_FURNITURE_PREFIX and furniture_start_index == -1:
+        is_furniture = text == WORKSHOP_FURNITURE_PREFIX
+        if is_furniture and furniture_start_index == -1:
             furniture_start_index = furniture_idx
         if text not in workshop_formula and text != WORKSHOP_FURNITURE_PREFIX:
             continue
@@ -55,7 +56,7 @@ def scan_formula_items(recognizer) -> list[FormulaScanItem]:
         if valid is not None:
             box = [[x + x1, y + y1] for x, y in row[0]]
             result.append(FormulaScanItem(name=name, box=box, valid=valid))
-        if furniture_idx < len(WORKSHOP_FURNITURE_FORMULA_KEYS) - 1:
+        if is_furniture and furniture_idx < len(WORKSHOP_FURNITURE_FORMULA_KEYS) - 1:
             furniture_idx += 1
     return result
 
@@ -121,5 +122,11 @@ def read_number(recognizer, region: tuple[int, int, int, int]) -> int:
     x1, y1, x2, y2 = region
     img = recognizer.img[y1:y2, x1:x2]
     ocr_result = rapidocr.engine(img, use_det=True, use_cls=False, use_rec=True)
-    text = ocr_result[0][0][1]
-    return int(str(text).split("/")[0])
+    try:
+        text = ocr_result[0][0][1]
+    except (TypeError, IndexError):
+        return -1
+    try:
+        return int(str(text).split("/")[0])
+    except (TypeError, ValueError):
+        return -1

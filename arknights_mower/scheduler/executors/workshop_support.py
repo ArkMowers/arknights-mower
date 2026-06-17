@@ -62,8 +62,8 @@ class WorkshopExecutorSupportMixin:
         pos = WORKSHOP_TAB_POS.get(self._active_tab)
         if pos:
             self.infra.device.tap(*pos)
-            return False
-        return True
+            return True
+        return False
 
     def _visible_candidates(self, scanned_items):
         candidates = []
@@ -119,18 +119,13 @@ class WorkshopExecutorSupportMixin:
             return False
         return True
 
-    def _read_number(
-        self,
-        region: tuple[int, int, int, int],
-        error_count: int = 0,
-    ) -> int:
-        if error_count > 3:
-            return -1
-        try:
-            return read_number(self._recog, region)
-        except Exception as exc:
-            logger.debug("read workshop number failed: %s", exc)
-            return self._read_number(region, error_count + 1)
+    def _read_number(self, region: tuple[int, int, int, int]) -> int:
+        for _ in range(4):
+            try:
+                return read_number(self._recog, region)
+            except Exception as exc:
+                logger.debug("read workshop number failed: %s", exc)
+        return -1
 
     def _item_valid(self) -> bool:
         return dashboard_item_valid(self._recog)

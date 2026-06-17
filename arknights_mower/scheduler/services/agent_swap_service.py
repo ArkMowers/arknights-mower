@@ -376,17 +376,27 @@ class AgentSwapService:
         upper_y1, upper_y2 = ARRANGE_ARROW_UPPER_Y_OFFSET
         lower_y1, lower_y2 = ARRANGE_ARROW_LOWER_Y_OFFSET
         for idx, x in enumerate(x_list):
-            label = mask[y + label_y1: y + label_y2, x + label_x1: x + label_x2]
+            label = self._safe_slice(mask, y + label_y1, y + label_y2, x + label_x1, x + label_x2)
             if np.count_nonzero(label) < ARRANGE_ACTIVE_LABEL_MIN_PIXELS:
                 continue
-            upper_edges = np.count_nonzero(mask[y + upper_y1: y + upper_y2, x + left_x1: x + left_x2])
-            upper_edges += np.count_nonzero(mask[y + upper_y1: y + upper_y2, x + right_x1: x + right_x2])
-            lower_edges = np.count_nonzero(mask[y + lower_y1: y + lower_y2, x + left_x1: x + left_x2])
-            lower_edges += np.count_nonzero(mask[y + lower_y1: y + lower_y2, x + right_x1: x + right_x2])
+            upper_edges = np.count_nonzero(self._safe_slice(mask, y + upper_y1, y + upper_y2, x + left_x1, x + left_x2))
+            upper_edges += np.count_nonzero(self._safe_slice(mask, y + upper_y1, y + upper_y2, x + right_x1, x + right_x2))
+            lower_edges = np.count_nonzero(self._safe_slice(mask, y + lower_y1, y + lower_y2, x + left_x1, x + left_x2))
+            lower_edges += np.count_nonzero(self._safe_slice(mask, y + lower_y1, y + lower_y2, x + right_x1, x + right_x2))
             if upper_edges + lower_edges < ARRANGE_ARROW_EDGE_MIN_PIXELS:
                 continue
             return names[idx], lower_edges > upper_edges
         return None, False
+
+    def _safe_slice(self, img: np.ndarray, y1: int, y2: int, x1: int, x2: int) -> np.ndarray:
+        h, w = img.shape[:2]
+        sy1 = max(0, min(y1, h))
+        sy2 = max(0, min(y2, h))
+        sx1 = max(0, min(x1, w))
+        sx2 = max(0, min(x2, w))
+        if sy1 >= sy2 or sx1 >= sx2:
+            return img[0:0, 0:0]
+        return img[sy1:sy2, sx1:sx2]
 
     def _arrange_x(self, name: str, room: str) -> int:
         if room.startswith("dorm") or room == "central":
@@ -417,7 +427,13 @@ class AgentSwapService:
         if not panel_open:
             return "ALL"
         for label, (lx, ly) in zip(PROFESSION_LABELS, PROFESSION_LABEL_POS):
-            if img[ly, lx, 2] >= 240:
+            if (
+                img.ndim >= 3
+                and 0 <= ly < img.shape[0]
+                and 0 <= lx < img.shape[1]
+                and img.shape[2] > 2
+                and img[ly, lx, 2] >= 240
+            ):
                 return label
         return "ALL"
 

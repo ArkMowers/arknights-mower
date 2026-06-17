@@ -188,6 +188,8 @@ class WorkshopExecutor(WorkshopExecutorSupportMixin, AbstractExecutor):
             self._tasks.clear()
 
     def _handle_dashboard(self) -> None:
+        if not self._tasks:
+            return
         step = self._tasks[0]
         if step == "enter":
             if self._is_9colored and not self._refresh_jiuselu_gap():
@@ -282,7 +284,7 @@ class WorkshopExecutor(WorkshopExecutorSupportMixin, AbstractExecutor):
         else:
             plan = WorkshopProductionPlan(use_max=True, estimated_mood_cost=0)
         self._production_plan = plan
-        self._remaining_add_taps = plan.add_taps
+        self._remaining_add_taps = getattr(plan, "add_taps", 0)
         self._max_tapped = False
         return True
 

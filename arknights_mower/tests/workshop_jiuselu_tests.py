@@ -14,6 +14,7 @@ import numpy as np
 
 from arknights_mower.scheduler.constants import (
     CURRENT,
+    WORKSHOP_TAB_POS,
     WORKSHOP_AGENT_JIUSE,
     WORKSHOP_JIUSE_SKILL_TARGET,
 )
@@ -24,7 +25,7 @@ with patch.dict("sys.modules", {"arknights_mower.utils.log": fake_log}):
     from arknights_mower.scheduler.services.agent_swap_service import AgentSwapService
     import arknights_mower.scheduler.executors.workshop_support as workshop_support
 from arknights_mower.scheduler.domain.task import SchedulerTask, TaskTypes
-from arknights_mower.scheduler.graph import build_default_graph
+from arknights_mower.scheduler.graph import SceneGraph, build_default_graph
 from arknights_mower.scheduler.domain.operators import Operator
 from arknights_mower.scheduler.infra import workshop_scanner
 from arknights_mower.scheduler.infra.room_reader import RoomReader
@@ -33,6 +34,7 @@ from arknights_mower.scheduler.infra.workshop_scanner import FormulaScanItem
 from arknights_mower.scheduler.services.operator_service import current_operators_in_room
 from arknights_mower.scheduler.services.workshop_service import (
     WorkshopCandidate,
+    _inventory_match,
     jiuselu_candidate_matches_gap,
     jiuselu_should_switch_candidate,
     make_jiuselu_production_plan,
@@ -151,7 +153,7 @@ class DummyRoomReader(RoomReader):
         return 24.0
 
     def _read_time(self, img: np.ndarray):
-        return datetime.now()
+        return datetime(2026, 1, 1, 0, 0, 0)
 
     def _persist(self, state) -> None:
         return None
@@ -200,6 +202,34 @@ class WorkshopScannerTest(unittest.TestCase):
         self.assertFalse(items[0].valid)
         save_counts.assert_called_once()
 
+    def test_scan_formula_items_handles_furniture_index_after_non_furniture(self):
+        img = np.zeros((1080, 1920, 3), dtype=np.uint8)
+        for x in (385, 540, 695):
+            img[200, x] = [50, 50, 50]
+            img[330, x] = [50, 50, 50]
+        recognizer = DummyRecognizer(img=img)
+        box1 = [[0, 0], [200, 0], [200, 120], [0, 120]]
+        box2 = [[0, 130], [200, 130], [200, 250], [0, 250]]
+        fake_ocr = [
+            [box1, DEVICE, 0.99],
+            [box2, FURNITURE, 0.99],
+        ]
+        with (
+            patch.object(workshop_scanner.rapidocr, "engine", return_value=[fake_ocr]),
+            patch.object(workshop_scanner, "save_child_inventory_zero"),
+        ):
+            items = workshop_scanner.scan_formula_items(recognizer)
+        self.assertEqual([item.name for item in items], [DEVICE, FURNITURE_CARBON])
+
+    def test_read_number_returns_negative_one_for_bad_ocr(self):
+        recognizer = DummyRecognizer()
+        with patch.object(workshop_scanner.rapidocr, "engine", return_value=[]):
+            self.assertEqual(workshop_scanner.read_number(recognizer, (0, 0, 10, 10)), -1)
+        with patch.object(workshop_scanner.rapidocr, "engine", return_value=[[[]]]):
+            self.assertEqual(workshop_scanner.read_number(recognizer, (0, 0, 10, 10)), -1)
+        with patch.object(workshop_scanner.rapidocr, "engine", return_value=[[[None, "bad"]]]):
+            self.assertEqual(workshop_scanner.read_number(recognizer, (0, 0, 10, 10)), -1)
+
 
 class WorkshopServiceTest(unittest.TestCase):
     def test_inventory_name_for_furniture(self):
@@ -228,6 +258,12 @@ class WorkshopServiceTest(unittest.TestCase):
         self.assertEqual(plan.add_taps, 2)
         self.assertGreater(plan.estimated_mood_cost, 0)
         self.assertIsNone(make_jiuselu_production_plan(gap=41, mood=24, ap_cost=2))
+
+    def test_inventory_match_rejects_bad_children_metadata(self):
+        item = SimpleNamespace(self_upper_limit=99, children_lower_limit=1)
+        inventory = {DEVICE: 1}
+        self.assertFalse(_inventory_match(inventory, DEVICE, item, {"items": "bad"}))
+        self.assertFalse(_inventory_match(inventory, DEVICE, item, {}))
 
 
 class WorkshopExecutorTest(unittest.TestCase):
@@ -258,6 +294,28 @@ class WorkshopExecutorTest(unittest.TestCase):
         self.executor._production_plan = None
         self.executor._gap = 8
 
+    def test_handle_dashboard_ignores_empty_task_queue(self):
+        self.executor._tasks = deque()
+        self.executor._handle_dashboard()
+        self.assertEqual(self.device.calls, [])
+
+    def test_non_jiuselu_plan_defaults_add_taps_to_zero(self):
+        self.executor._is_9colored = False
+        self.assertTrue(self.executor._prepare_production_plan())
+        self.assertEqual(self.executor._remaining_add_taps, 0)
+        self.assertTrue(self.executor._production_plan.use_max)
+
+    def test_open_next_tab_returns_true_after_tapping_tab(self):
+        tab = next(iter(WORKSHOP_TAB_POS))
+        candidate = WorkshopCandidate(DEVICE, DEVICE, tab, 2.0, object())
+        self.executor._tab_queue = deque([(tab, {DEVICE: candidate})])
+        self.assertTrue(self.executor._open_next_tab())
+        self.assertEqual(self.device.calls[-1][0], "tap")
+
+    def test_read_number_retries_with_loop_and_returns_negative_one(self):
+        with patch.object(workshop_support, "read_number", side_effect=RuntimeError("bad")) as reader:
+            self.assertEqual(self.executor._read_number((0, 0, 10, 10)), -1)
+        self.assertEqual(reader.call_count, 4)
 
     def test_arranges_jiuselu_before_processing_and_restores_previous_agent(self):
         self.state.plan = {"room_1_1": [object(), object(), object()]}
@@ -308,6 +366,13 @@ class WorkshopExecutorTest(unittest.TestCase):
                 V2Scene.INFRA_MAIN,
             ],
         )
+
+    def test_graph_rejects_invalid_transition_scene(self):
+        graph = SceneGraph()
+        with self.assertRaises(TypeError):
+            graph.add_transition("bad", V2Scene.INFRA_MAIN, "bad")
+        with self.assertRaises(ValueError):
+            graph.transition("bad", V2Scene.INFRA_MAIN)(lambda: None)
 
 
     def test_materiel_confirm_scene_collects_workshop_product(self):
@@ -439,6 +504,29 @@ class RoomReaderScanStateTest(unittest.TestCase):
         self.assertEqual(state.operators["九色鹿"].current_room, "")
         self.assertEqual(state.operators["九色鹿"].current_index, -1)
 
+    def test_scan_room_skips_invalid_mood_update(self):
+        class BadMoodRoomReader(DummyRoomReader):
+            def _read_mood(self, img: np.ndarray):
+                return None
+
+        room = "dormitory_1"
+        names = ["九色鹿", "", "", "", ""]
+        state = SimpleNamespace(
+            plan={room: [object()]},
+            operators={"九色鹿": Operator(name="九色鹿", current_room="", current_index=-1)},
+        )
+        state.save_snapshot = lambda: {}
+
+        BadMoodRoomReader(names).scan_room(room, state)
+
+        self.assertEqual(state.operators["九色鹿"].current_room, "")
+        self.assertEqual(state.operators["九色鹿"].current_index, -1)
+
+    def test_scroll_indicator_bounds_check(self):
+        reader = DummyRoomReader([""])
+        reader._recog.img = np.zeros((10, 10, 3), dtype=np.uint8)
+        self.assertFalse(reader._needs_scroll_for_lower_slots())
+
 
 class AgentSwapSortDetectionTest(unittest.TestCase):
     def _service_for_fixture(self, name: str) -> AgentSwapService:
@@ -462,6 +550,17 @@ class AgentSwapSortDetectionTest(unittest.TestCase):
         service = self._service_for_fixture("agent_sort_heart_up.jpg")
         self.assertEqual(service._detect_arrange("dormitory_1"), ("心情", True))
 
+    def test_detect_arrange_handles_small_image(self):
+        rgb = np.zeros((10, 10, 3), dtype=np.uint8)
+        device = SimpleNamespace(screencap=lambda: rgb)
+        service = AgentSwapService(
+            device,
+            SimpleNamespace(),
+            lambda: V2Scene.RIIC_OPERATOR_SELECT,
+            pause=SimpleNamespace(wait_if_paused=lambda: None),
+        )
+        self.assertEqual(service._detect_arrange("dormitory_1"), (None, False))
+
 
 class AgentSwapFilterTest(unittest.TestCase):
     def test_open_filter_opens_panel_before_tapping_profession(self):
@@ -480,6 +579,18 @@ class AgentSwapFilterTest(unittest.TestCase):
         self.assertIn(("tap", 0.999, 0.125), device.calls)
         self.assertIn(("tap", 0.999, 0.838), device.calls)
         self.assertEqual(recognizer.selected_y, 905)
+
+    def test_detect_filter_handles_small_image(self):
+        recognizer = FilterRecognizer()
+        recognizer.panel_open = True
+        recognizer.img = np.zeros((10, 10, 3), dtype=np.uint8)
+        service = AgentSwapService(
+            DummyDevice(),
+            recognizer,
+            lambda: V2Scene.RIIC_OPERATOR_SELECT,
+            pause=SimpleNamespace(wait_if_paused=lambda: None),
+        )
+        self.assertEqual(service._detect_filter(), "ALL")
 
 
 if __name__ == "__main__":
