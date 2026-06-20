@@ -5,6 +5,12 @@ from pydantic_core import PydanticUndefined
 
 from arknights_mower import __rootdir__
 
+DEFAULT_LAUNCH_COMMAND = (
+    "input keyevent KEYCODE_WAKEUP; "
+    "wm dismiss-keyguard; "
+    "am start -n {package}/{activity}"
+)
+
 
 class ConfModel(BaseModel):
     @model_validator(mode="before")
@@ -154,6 +160,16 @@ class LongTaskPart(ConfModel):
         target: str = "结局A"
         "隐秘战线结局"
 
+    class RclConf(ConfModel):
+        mode: int = 0
+        "模式（0=Tales无存档/1=Tales有存档/16=RA1/32=RA15/48=RA4）"
+        tools_to_craft: list[str] = ["荧光棒"]
+        "自动制造的物品（仅Tales有效）"
+        increment_mode: int = 0
+        "点击类型（0=连点/1=长按，仅Tales有效）"
+        num_craft_batches: int = 16
+        "单次最大制造轮数（仅Tales有效）"
+
     class SignInConf(ConfModel):
         enable: bool = True
         "签到活动开关"
@@ -168,6 +184,10 @@ class LongTaskPart(ConfModel):
     "停止时间"
     maa_rg_theme: str = "Mizuki"
     "肉鸽主题"
+    maa_rcl_theme: str = "Tales"
+    "生息演算主题（Tales/Fire/RelaunchAnchor）"
+    rcl: RclConf
+    "生息演算设置"
     rogue: RogueConf
     "肉鸽设置"
     sss: SSSConf
@@ -184,6 +204,8 @@ class MaaPart(ConfModel):
     maa_path: str = "D:\\MAA-v4.13.0-win-x64"
     maa_conn_preset: str = "General"
     maa_touch_option: str = "maatouch"
+    maa_startup_check: bool = False
+    "启动Mower前测试Maa连通性"
 
 
 class RecruitPart(ConfModel):
@@ -302,6 +324,8 @@ class RIICPart(ConfModel):
     "不养闲人合并间隔"
     dorm_order: str = ""
     "宿舍优先级"
+    refresh_backup_plan_after_mood: bool = False
+    "缓存清零重启后读取心情并按载入心情数据模式重启"
     assistant_follows_schedule: bool = False
     "协助位跟随排班（专精时协助位不固定，由排班系统管理）"
 
@@ -328,10 +352,23 @@ class SimulatorPart(ConfModel):
     class TapToLaunchGameConf(ConfModel):
         enable: bool = False
         "点击屏幕启动游戏"
+        mode: str | None = None
+        "启动游戏方式"
         x: int = 0
         "横坐标"
         y: int = 0
         "纵坐标"
+        command: str = DEFAULT_LAUNCH_COMMAND
+        "自定义启动命令"
+
+        @model_validator(mode="after")
+        def normalize_mode(self):
+            if self.mode not in {"adb", "tap", "custom"}:
+                self.mode = "tap" if self.enable else "adb"
+            self.enable = self.mode == "tap"
+            if not self.command:
+                self.command = DEFAULT_LAUNCH_COMMAND
+            return self
 
     class DroidCastConf(ConfModel):
         enable: bool = True
@@ -462,6 +499,10 @@ class Conf(
     @property
     def SF(self):
         return self.maa_rg_enable == 1 and self.maa_long_task_type == "sf"
+
+    @property
+    def RCL(self):
+        return self.maa_rg_enable == 1 and self.maa_long_task_type == "rcl"
 
     @property
     def run_order_buffer_time(self):

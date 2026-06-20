@@ -18,6 +18,7 @@ class TrainingState(Enum):
     IDLE = 0
     TRAINING = 1
     WAITING_COLLECT = 2
+    TRAINER_PROTECTED = 3
 
 
 class TrainingStateMachine:
@@ -28,22 +29,36 @@ class TrainingStateMachine:
         self._transition_max_interval = 60
         self._transition_max_count = 5
         self._last_training_countdown = None
-        self._initial_checked = False
         self._lit_zones = 0
         self._trainee_plan_key = ""
         self._trainee_name = ""
         self._trainee_cid = ""
         self._target_skill = -1
         self._trainer_name = ""
-        self._idle_half_off_protect = False
+        self._last_physical_read_time = None
+
+    def reset_cache(self):
+        self._target_skill = -1
+        self._trainee_cid = ""
+        self._last_training_countdown = None
+
+    def has_trainee_context(self):
+        return self._target_skill >= 0 and bool(self._trainee_cid)
 
     def gate_sync(self):
         plan = self._scheduler._get_mastery_plan()
         if plan:
             from arknights_mower.utils.scheduler_task import TaskTypes
 
-            if not self._scheduler.find_next_task(task_type=TaskTypes.SKILL_UPGRADE):
-                self.sync()
+            self._scheduler.tasks = [
+                t
+                for t in self._scheduler.tasks
+                if not (
+                    t.type == TaskTypes.SKILL_UPGRADE
+                    and getattr(t, "plan_key", "")
+                    and t.plan_key in self._scheduler._completed_masteries
+                )
+            ]
 
     @property
     def state(self):
@@ -54,6 +69,17 @@ class TrainingStateMachine:
 
         caller = traceback.extract_stack()[-2].name
         new_state = self._determine_state()
+        self._apply_state(new_state, caller)
+
+    def _apply_state(self, new_state, caller="agent_get_mood"):
+        if new_state == TrainingState.IDLE:
+            if self._scheduler._get_mastery_plan():
+                if self._trainer_name in ("逻各斯", "艾丽妮") and self._trainee_name:
+                    new_state = TrainingState.TRAINER_PROTECTED
+                    logger.info(
+                        f"训练室空闲但有减半干员{self._trainer_name}在岗，保护训练室"
+                    )
+
         if new_state == self._state:
             self._act_on_state(new_state)
             return
@@ -76,7 +102,6 @@ class TrainingStateMachine:
             self._transition_history.clear()
         logger.info(f"训练室状态: {old.name} -> {new_state.name} (来自{caller})")
         if old == TrainingState.IDLE and new_state == TrainingState.TRAINING:
-            self._idle_half_off_protect = False
             if self._trainee_name and self._target_skill >= 0:
                 lvl = self._lit_zones + 1
                 logger.info(
@@ -84,37 +109,24 @@ class TrainingStateMachine:
                     f"技能{self._target_skill + 1} -> 专精{lvl}"
                 )
         if new_state == TrainingState.IDLE:
-            self._idle_half_off_protect = False
-            if self._scheduler._get_mastery_plan():
-                if self._trainer_name in ("逻各斯", "艾丽妮") and self._trainee_name:
-                    self._idle_half_off_protect = True
-                    logger.info(
-                        f"训练室空闲但有减半干员{self._trainer_name}在岗，保护训练室"
-                    )
-            if not self._idle_half_off_protect:
-                if self._scheduler.op_data.skill_upgrade_supports:
-                    logger.info(
-                        f"训练室空闲: 已清除协助位配置 "
-                        f"(之前 {[s.name for s in self._scheduler.op_data.skill_upgrade_supports]})"
-                    )
-                self._scheduler.op_data.skill_upgrade_supports = []
-                self._lit_zones = 0
-                self._trainee_plan_key = ""
-                self._trainee_name = ""
-                self._trainee_cid = ""
-                self._target_skill = -1
-                self._trainer_name = ""
+            if self._scheduler.op_data.skill_upgrade_supports:
+                logger.info(
+                    f"训练室空闲: 已清除协助位配置 "
+                    f"(之前 {[s.name for s in self._scheduler.op_data.skill_upgrade_supports]})"
+                )
+            self._scheduler.op_data.skill_upgrade_supports = []
+            self._lit_zones = 0
+            self._trainee_plan_key = ""
+            self._trainee_name = ""
+            self._trainee_cid = ""
+            self._target_skill = -1
+            self._trainer_name = ""
         self._act_on_state(new_state)
 
     def _determine_state(self):
         plan = self._scheduler._get_mastery_plan()
         if not plan:
             logger.debug("_determine_state: plan empty -> IDLE")
-            return TrainingState.IDLE
-        if self._state == TrainingState.IDLE and self._initial_checked:
-            logger.debug(
-                "_determine_state: IDLE (already checked), skip physical entry"
-            )
             return TrainingState.IDLE
         if (
             self._state == TrainingState.TRAINING
@@ -126,20 +138,31 @@ class TrainingStateMachine:
                 "(countdown valid), cache state=TRAINING"
             )
             return TrainingState.TRAINING
-        self._initial_checked = True
+        if self._state in (TrainingState.IDLE, TrainingState.TRAINER_PROTECTED):
+            if (
+                self._last_physical_read_time is not None
+                and (datetime.now() - self._last_physical_read_time).total_seconds()
+                < 30
+            ):
+                logger.debug(
+                    "_determine_state: IDLE (cached, "
+                    f"{(datetime.now() - self._last_physical_read_time).total_seconds():.0f}s ago)"
+                )
+                return self._state
+        self._last_physical_read_time = datetime.now()
         result = self._read_physical_state()
         logger.debug(f"_determine_state: plan non-empty, physical={result.name}")
         return result
 
     def is_operator_protected(self, name):
-        if not self._idle_half_off_protect:
+        if self._state != TrainingState.TRAINER_PROTECTED:
             return False
         return name in (self._trainer_name, self._trainee_name)
 
     def should_skip_room(self, task):
         if task.meta_data == "_mastery":
             return False
-        if self._idle_half_off_protect:
+        if self._state == TrainingState.TRAINER_PROTECTED:
             logger.info("训练室空闲但有减半干员保护，跳过排班")
             return True
         if self._scheduler.find_next_task(task_type=TaskTypes.SKILL_UPGRADE):
@@ -149,6 +172,12 @@ class TrainingStateMachine:
             TrainingState.TRAINING,
             TrainingState.WAITING_COLLECT,
         }:
+            if self._state == TrainingState.TRAINING:
+                if (
+                    self._last_training_countdown is None
+                    or self._last_training_countdown <= datetime.now()
+                ):
+                    return False
             logger.info("训练室专精进行中，跳过非专精排班")
             return True
         return False
@@ -245,8 +274,10 @@ class TrainingStateMachine:
         except Exception:
             pass
 
-    def _read_physical_state(self):
-        self._scheduler.enter_room("train")
+    def _read_physical_state(self, in_place=False):
+        if not in_place:
+            self._last_physical_read_time = datetime.now()
+            self._scheduler.enter_room("train")
         try:
             scene = self._scheduler.train_scene()
             if scene != Scene.TRAIN_MAIN:
@@ -335,10 +366,11 @@ class TrainingStateMachine:
                         break
             return TrainingState.TRAINING
         finally:
-            self._scheduler.back()
+            if not in_place:
+                self._scheduler.back()
 
     def _act_on_state(self, state):
-        if state == TrainingState.IDLE:
+        if state in (TrainingState.IDLE, TrainingState.TRAINER_PROTECTED):
             return
         try:
             if self._target_skill < 0 or not self._trainee_cid:

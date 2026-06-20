@@ -42,6 +42,7 @@ const {
   free_room,
   merge_interval,
   fia_fool,
+  refresh_backup_plan_after_mood,
   assistant_follows_schedule,
   droidcast,
   mumu12IPC,
@@ -80,8 +81,16 @@ const simulator_types = [
 
 const launch_options = [
   { label: '使用adb命令启动', value: 'adb' },
-  { label: '点击屏幕启动', value: 'tap' }
+  { label: '点击屏幕启动', value: 'tap' },
+  { label: '自定义命令启动', value: 'custom' }
 ]
+
+const defaultLaunchCommand =
+  'input keyevent KEYCODE_WAKEUP; wm dismiss-keyguard; am start -n {package}/{activity}'
+
+function reset_launch_command() {
+  tap_to_launch_game.value.command = defaultLaunchCommand
+}
 
 async function select_simulator_folder() {
   const folder_path = await folder_dialog()
@@ -352,13 +361,29 @@ if (return_home_when_idle.value) {
               />
             </n-form-item>
             <n-form-item label="启动游戏">
-              <n-select v-model:value="tap_to_launch_game.enable" :options="launch_options" />
+              <n-select v-model:value="tap_to_launch_game.mode" :options="launch_options" />
             </n-form-item>
-            <n-form-item v-if="tap_to_launch_game.enable == 'tap'" label="点击坐标">
+            <n-form-item v-if="tap_to_launch_game.mode == 'tap'" label="点击坐标">
               <span class="coord-label">X:</span>
               <n-input-number v-model:value="tap_to_launch_game.x" />
               <span class="coord-label">Y:</span>
               <n-input-number v-model:value="tap_to_launch_game.y" />
+            </n-form-item>
+            <n-form-item v-if="tap_to_launch_game.mode == 'custom'">
+              <template #label>
+                <span>启动命令</span>
+                <help-text>
+                  <div>
+                    在 Android shell 中执行，支持 <code>{package}</code> 和 <code>{activity}</code>
+                  </div>
+                </help-text>
+              </template>
+              <n-input
+                v-model:value="tap_to_launch_game.command"
+                type="textarea"
+                :autosize="true"
+              />
+              <n-button class="dialog-btn" @click="reset_launch_command">预设</n-button>
             </n-form-item>
             <n-form-item>
               <template #label>
@@ -665,6 +690,15 @@ if (return_home_when_idle.value) {
                 菲亚防呆
                 <help-text
                   >当菲亚替换干员心情均超过90%时菲亚等待半小时，不确定菲亚替换心情消耗请启用本选项</help-text
+                >
+              </n-checkbox>
+            </n-form-item>
+            <n-form-item :show-label="false">
+              <n-checkbox v-model:checked="refresh_backup_plan_after_mood">
+                读取心情后先刷新副表
+                <help-text
+                  >开启后，仅在缓存清零重启时，Mower
+                  会先读取心情并按载入心情数据模式自动重启，再触发副表和后续排班。</help-text
                 >
               </n-checkbox>
             </n-form-item>

@@ -226,6 +226,254 @@ class TestBaseScheduler(unittest.TestCase):
                 all(not condition for condition in solver.op_data.plan_condition)
             )
 
+    def _create_backup_refresh_solver(self):
+        agent_base_config = PlanConfig("", "", "")
+        default_plan = {"meeting": [Room("伊内丝", "", ["陈"])]}
+        backup_plan = {"meeting": [Room("见行者", "", ["陈"])]}
+        plan = {
+            "default_plan": Plan(default_plan, agent_base_config),
+            "backup_plans": [
+                Plan(
+                    backup_plan,
+                    agent_base_config,
+                    trigger=LogicExpression(
+                        "op_data.operators['见行者'].current_room", "==", "meeting"
+                    ),
+                )
+            ],
+        }
+
+        solver = BaseSchedulerSolver()
+        solver.global_plan = plan
+        solver.initialize_operators()
+        solver.op_data.add(Operator("见行者", ""))
+        solver.tasks = []
+        solver._training_sm = MagicMock()
+
+        def read_meeting(room, read_time_index):
+            if room == "train":
+                return []
+            op = solver.op_data.operators["见行者"]
+            op.current_room = "meeting"
+            op.current_index = 0
+            op.mood = 5
+            op.time_stamp = datetime.now()
+            return [{"agent": "见行者", "mood": 5}]
+
+        return solver, read_meeting
+
+    def _create_no_train_plan_solver(self):
+        agent_base_config = PlanConfig("", "", "")
+        plan = {
+            "default_plan": Plan(
+                {"meeting": [Room("伊内丝", "", ["陈"])]},
+                agent_base_config,
+            ),
+            "backup_plans": [],
+        }
+
+        solver = BaseSchedulerSolver()
+        solver.global_plan = plan
+        solver.initialize_operators()
+        solver.tasks = []
+        solver._training_sm = MagicMock()
+        return solver
+
+    def _read_no_train_meeting(self, solver, allow_train=False):
+        def read_room(room, read_time_index):
+            if room == "train":
+                if allow_train:
+                    return []
+                self.fail("训练室不应被读取")
+            op = solver.op_data.operators["伊内丝"]
+            op.current_room = "meeting"
+            op.current_index = 0
+            op.mood = 5
+            op.time_stamp = datetime.now()
+            return [{"agent": "伊内丝", "mood": 5}]
+
+        return read_room
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_agent_get_mood_skips_train_without_train_plan_or_mastery(self):
+        solver = self._create_no_train_plan_solver()
+
+        with (
+            patch.object(
+                base_schedule.config.conf, "refresh_backup_plan_after_mood", False
+            ),
+            patch.object(BaseSchedulerSolver, "enter_room") as mock_enter_room,
+            patch.object(BaseSchedulerSolver, "_get_mastery_plan", return_value={}),
+            patch.object(
+                BaseSchedulerSolver,
+                "get_agent_from_room",
+                side_effect=self._read_no_train_meeting(solver),
+            ),
+            patch.object(BaseSchedulerSolver, "back"),
+        ):
+            result = solver.agent_get_mood(skip_dorm=True)
+
+        self.assertIsNone(result)
+        self.assertTrue(
+            all(call.args[0] != "train" for call in mock_enter_room.call_args_list)
+        )
+        solver._training_sm._read_physical_state.assert_not_called()
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_agent_get_mood_skips_train_with_disabled_mastery_plan(self):
+        solver = self._create_no_train_plan_solver()
+
+        with (
+            patch.object(
+                base_schedule.config.conf, "refresh_backup_plan_after_mood", False
+            ),
+            patch.object(BaseSchedulerSolver, "enter_room") as mock_enter_room,
+            patch.object(
+                BaseSchedulerSolver,
+                "_get_mastery_plan",
+                return_value={"char_123_0": False},
+            ),
+            patch.object(
+                BaseSchedulerSolver,
+                "get_agent_from_room",
+                side_effect=self._read_no_train_meeting(solver),
+            ),
+            patch.object(BaseSchedulerSolver, "back"),
+        ):
+            result = solver.agent_get_mood(skip_dorm=True)
+
+        self.assertIsNone(result)
+        self.assertTrue(
+            all(call.args[0] != "train" for call in mock_enter_room.call_args_list)
+        )
+        solver._training_sm._read_physical_state.assert_not_called()
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_agent_get_mood_reads_train_state_for_mastery_without_train_plan(self):
+        solver = self._create_no_train_plan_solver()
+        solver._training_sm._read_physical_state.return_value = "idle"
+
+        with (
+            patch.object(
+                base_schedule.config.conf, "refresh_backup_plan_after_mood", False
+            ),
+            patch.object(BaseSchedulerSolver, "enter_room") as mock_enter_room,
+            patch.object(
+                BaseSchedulerSolver,
+                "_get_mastery_plan",
+                return_value={"char_123_0": True},
+            ),
+            patch.object(
+                BaseSchedulerSolver,
+                "get_agent_from_room",
+                side_effect=self._read_no_train_meeting(solver, allow_train=True),
+            ),
+            patch.object(BaseSchedulerSolver, "back"),
+        ):
+            result = solver.agent_get_mood(skip_dorm=True)
+
+        self.assertIsNone(result)
+        self.assertTrue(
+            any(call.args[0] == "train" for call in mock_enter_room.call_args_list)
+        )
+        solver._training_sm._read_physical_state.assert_called_once_with(in_place=True)
+        solver._training_sm._apply_state.assert_called_once_with("idle")
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_get_agent_from_room_uses_train_slots_without_train_plan(self):
+        solver = self._create_no_train_plan_solver()
+
+        with (
+            patch.object(BaseSchedulerSolver, "turn_on_room_detail"),
+            patch.object(
+                BaseSchedulerSolver,
+                "detect_product_complete",
+                return_value=False,
+            ),
+            patch.object(BaseSchedulerSolver, "find", return_value=True),
+        ):
+            result = solver.get_agent_from_room("train")
+
+        self.assertEqual(len(result), 2)
+        self.assertEqual([item["agent"] for item in result], ["", ""])
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_infra_main_requests_restart_after_mood_read(self):
+        solver = BaseSchedulerSolver()
+        solver.task = None
+        solver.planned = False
+        solver.tasks = []
+        solver.restart_after_mood_read = True
+
+        with (
+            patch.object(BaseSchedulerSolver, "find", return_value=True),
+            patch.object(BaseSchedulerSolver, "no_pending_task", return_value=True),
+            patch.object(
+                BaseSchedulerSolver,
+                "agent_get_mood",
+                return_value="self_correction",
+            ) as mock_agent_get_mood,
+            patch.object(BaseSchedulerSolver, "run_order_solver") as mock_run_order,
+            patch.object(BaseSchedulerSolver, "plan_solver") as mock_plan,
+        ):
+            result = solver.infra_main()
+
+        self.assertEqual(result, "restart_after_mood_read")
+        self.assertFalse(solver.restart_after_mood_read)
+        mock_agent_get_mood.assert_called_once_with(skip_dorm=True)
+        mock_run_order.assert_not_called()
+        mock_plan.assert_not_called()
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_agent_get_mood_keeps_self_correction_when_backup_refresh_disabled(self):
+        solver, read_meeting = self._create_backup_refresh_solver()
+
+        with (
+            patch.object(
+                base_schedule.config.conf, "refresh_backup_plan_after_mood", False
+            ),
+            patch.object(BaseSchedulerSolver, "enter_room"),
+            patch.object(
+                BaseSchedulerSolver,
+                "get_agent_from_room",
+                side_effect=read_meeting,
+            ),
+            patch.object(BaseSchedulerSolver, "back"),
+        ):
+            result = solver.agent_get_mood(skip_dorm=True)
+
+        self.assertEqual(result, "self_correction")
+        self.assertEqual(solver.op_data.plan_condition, [False])
+        self.assertEqual(solver.op_data.plan["meeting"][0].agent, "伊内丝")
+        self.assertTrue(
+            any(task.type == TaskTypes.SELF_CORRECTION for task in solver.tasks)
+        )
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_agent_get_mood_does_not_refresh_backup_plan_by_default(self):
+        solver, read_meeting = self._create_backup_refresh_solver()
+
+        with (
+            patch.object(
+                base_schedule.config.conf, "refresh_backup_plan_after_mood", True
+            ),
+            patch.object(BaseSchedulerSolver, "enter_room"),
+            patch.object(
+                BaseSchedulerSolver,
+                "get_agent_from_room",
+                side_effect=read_meeting,
+            ),
+            patch.object(BaseSchedulerSolver, "back"),
+        ):
+            result = solver.agent_get_mood(skip_dorm=True)
+
+        self.assertEqual(result, "self_correction")
+        self.assertEqual(solver.op_data.plan_condition, [False])
+        self.assertEqual(solver.op_data.plan["meeting"][0].agent, "伊内丝")
+        self.assertTrue(
+            any(task.type == TaskTypes.SELF_CORRECTION for task in solver.tasks)
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

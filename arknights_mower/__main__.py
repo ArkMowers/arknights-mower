@@ -12,6 +12,10 @@ from arknights_mower.utils.device.adb_client.session import Session
 from arknights_mower.utils.device.scrcpy import Scrcpy
 from arknights_mower.utils.email import send_message, task_template
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.maa_check import (
+    run_maa_connectivity_check,
+    should_check_maa_before_start,
+)
 from arknights_mower.utils.news_checker import NewsChecker
 from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.path import get_path
@@ -21,13 +25,27 @@ base_scheduler = None
 
 
 # 执行自动排班
-def main(saved_state):
+def main(saved_state, restart_after_mood_read=False):
     logger.info("开始运行Mower")
+    if should_check_maa_before_start():
+        logger.info("启动前测试Maa连接")
+        result = run_maa_connectivity_check()
+        if result["status"] != "success":
+            logger.error(f"启动前Maa连接测试失败：{result['message']}")
+            return
+        logger.info(f"启动前Maa连接测试通过：{result['message']}")
     rapidocr.initialize_ocr()
     data = None
     if saved_state != {}:
         data = saved_state
-    simulate(data)
+    result = simulate(data, restart_after_mood_read)
+    if result == "restart_after_mood_read":
+        from arknights_mower.solvers.record import load_state
+
+        logger.info("正在按载入心情数据模式重启Mower")
+        saved_state = load_state() or {}
+        saved_state["tasks"] = []
+        simulate(saved_state)
 
 
 def initialize(
@@ -67,7 +85,7 @@ def initialize(
     return base_scheduler
 
 
-def simulate(saved):
+def simulate(saved, restart_after_mood_read=False):
     """
     具体调用方法可见各个函数的参数说明
     """
@@ -80,6 +98,7 @@ def simulate(saved):
     while not success:
         try:
             base_scheduler = initialize([])
+            base_scheduler.restart_after_mood_read = restart_after_mood_read
             success = True
         except MowerExit:
             return
@@ -337,7 +356,13 @@ def simulate(saved):
                     base_scheduler.check_current_focus()
 
             base_scheduler._training_sm.gate_sync()
-            base_scheduler.run()
+            result = base_scheduler.run()
+            if result == "restart_after_mood_read":
+                from arknights_mower.solvers.record import save_current_state
+
+                if save_current_state():
+                    return result
+                logger.warning("心情数据保存失败，继续当前Mower流程")
             reconnect_tries = 0
         except MowerExit:
             return

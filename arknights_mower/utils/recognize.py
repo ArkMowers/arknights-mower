@@ -6,7 +6,6 @@ import cv2
 import numpy as np
 from skimage.metrics import structural_similarity
 
-from arknights_mower import __rootdir__
 from arknights_mower.utils import config
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.csleep import MowerExit
@@ -966,6 +965,12 @@ class Recognizer:
             elif res == "training_idle":
                 scope = ((655, 965), (765, 1025))
                 threshold = 0.45
+            elif res == "ra/start_button":
+                scope = ((1340, 915), (1875, 1024))
+                threshold = 0.60
+            elif res == "ra/continue_button":
+                scope = ((1340, 915), (1875, 1024))
+                threshold = 0.85
 
         res_img = loadres(res, True)
         if thres is not None:
@@ -1003,8 +1008,7 @@ class Recognizer:
 
         :return ret: 若匹配成功，则返回元素在游戏界面中出现的位置，否则返回 None
         """
-        logger.debug(f"find: {res}")
-        res = f"{__rootdir__}/resources/{res}.png"
+        logger.debug(f"score: {res}")
 
         res_img = loadres(res, True)
         if thres is not None:

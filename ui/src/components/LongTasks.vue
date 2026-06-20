@@ -1,19 +1,49 @@
 <script setup>
-import { inject } from 'vue'
+import { inject, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 const config_store = useConfigStore()
-const { maa_rg_enable, maa_long_task_type, maa_rg_sleep_min, maa_rg_sleep_max } =
-  storeToRefs(config_store)
+const {
+  maa_rg_enable,
+  maa_long_task_type,
+  maa_rg_sleep_min,
+  maa_rg_sleep_max,
+  maa_rcl_theme,
+  rcl
+} = storeToRefs(config_store)
 
 const mobile = inject('mobile')
 
 const maa_long_task_options = [
   { label: '集成战略 (Maa)', value: 'rogue' },
   { label: '保全派驻 (Maa)', value: 'sss' },
+  { label: '生息演算 (Maa)', value: 'rcl' },
   { label: '生息演算', value: 'ra' },
   { label: '隐秘战线', value: 'sf' }
 ]
+
+const tool_options = [
+  { label: '荧光棒', value: '荧光棒' },
+  { label: '发电机', value: '发电机' }
+]
+
+watch(maa_rcl_theme, (theme) => {
+  if (theme == 'RelaunchAnchor' && (rcl.value?.mode ?? 0) <= 1) {
+    rcl.value = { ...rcl.value, mode: 16, tools_to_craft: ['荧光棒'], increment_mode: 0 }
+  }
+  if (theme == 'Tales' && (rcl.value?.mode ?? 0) >= 16) {
+    rcl.value = { ...rcl.value, mode: 0, tools_to_craft: ['荧光棒'], increment_mode: 0 }
+  }
+})
+
+watch(
+  () => rcl.value?.mode,
+  (val) => {
+    if (val === 0) {
+      rcl.value = { ...rcl.value, tools_to_craft: ['荧光棒'], increment_mode: 0 }
+    }
+  }
+)
 </script>
 
 <template>
@@ -46,7 +76,75 @@ const maa_long_task_options = [
         </n-form-item-gi>
       </n-grid>
     </n-form>
-    <maa-rogue v-if="maa_long_task_type == 'rogue'" />
+    <template v-if="maa_long_task_type == 'rcl'">
+      <n-form :label-placement="mobile ? 'top' : 'left'" :show-feedback="false">
+        <n-form-item>
+          <template #label>
+            主题
+            <help-text>
+              使用前建议阅读 MAA 文档：
+              <n-button
+                text
+                tag="a"
+                href="https://docs.maa.plus/zh-cn/manual/introduction/reclamation-algorithm.html"
+                target="_blank"
+                type="success"
+                >生息演算</n-button
+              >
+            </help-text>
+          </template>
+          <n-select
+            v-model:value="maa_rcl_theme"
+            :options="[
+              { label: '沙洲遗闻', value: 'Tales' },
+              { label: '重启锚点', value: 'RelaunchAnchor' }
+            ]"
+          />
+        </n-form-item>
+        <n-form-item label="模式">
+          <n-select
+            v-model:value="rcl.mode"
+            :options="
+              maa_rcl_theme == 'Tales'
+                ? [
+                    { label: '默认模式（无存档）', value: 0 },
+                    { label: '制造刷点数（有存档）', value: 1 }
+                  ]
+                : [
+                    { label: 'RA-1（无干员要求）', value: 16 },
+                    { label: 'RA-4（维什戴尔 可借助战）', value: 48 },
+                    { label: 'RA-15（圣聆初雪 可借助战）', value: 32 }
+                  ]
+            "
+          />
+        </n-form-item>
+        <template v-if="maa_rcl_theme == 'Tales'">
+          <n-form-item label="支援道具名称" v-if="rcl.mode == 1">
+            <n-select
+              v-model:value="rcl.tools_to_craft"
+              multiple
+              filterable
+              tag
+              :options="tool_options"
+              placeholder="输入或选择道具名"
+            />
+          </n-form-item>
+          <n-form-item label="增加方式" v-if="rcl.mode == 1">
+            <n-select
+              v-model:value="rcl.increment_mode"
+              :options="[
+                { label: '连点', value: 0 },
+                { label: '长按', value: 1 }
+              ]"
+            />
+          </n-form-item>
+          <n-form-item label="单次最大组装轮数">
+            <n-input-number v-model:value="rcl.num_craft_batches" :min="1" :max="2147483647" />
+          </n-form-item>
+        </template>
+      </n-form>
+    </template>
+    <maa-rogue v-else-if="maa_long_task_type == 'rogue'" />
     <maa-sss v-else-if="maa_long_task_type == 'sss'" />
     <reclamation-algorithm v-else-if="maa_long_task_type == 'ra'" />
     <secret-front v-else-if="maa_long_task_type == 'sf'" />
