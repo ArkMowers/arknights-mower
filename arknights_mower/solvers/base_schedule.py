@@ -46,7 +46,6 @@ from arknights_mower.solvers.report import ReportSolver
 from arknights_mower.solvers.secret_front import SecretFront
 from arknights_mower.solvers.shop import CreditShop
 from arknights_mower.solvers.skland import SKLand
-from arknights_mower.solvers.training_state import TrainingState
 from arknights_mower.utils import config, detector, rapidocr
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.csleep import MowerExit, csleep
@@ -121,13 +120,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         self.drop_send = False
         self.global_plan = {}
         self.local_operation_followup_time = None
-        from arknights_mower.solvers.training_state import TrainingStateMachine
-
-        self._training_sm = TrainingStateMachine(self)
-        self._completed_masteries = set()
-        self._m3_cache_mtime = 0
-        self._m3_cache_set = set()
-        self._training_completion_time = None
         self.restart_after_mood_read = False
 
     def find_next_task(
@@ -177,7 +169,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.task = self.tasks[0]
         else:
             self.task = None
-        if self._training_sm.state == TrainingState.TRAINING and self.task is not None:
+        if self.task is not None:
             if (self.task.time - datetime.now()).total_seconds() > 300:
                 self.task = None
         if self.task is not None and datetime.now() < self.task.time:
@@ -250,11 +242,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 )
                 self.tasks.append(task)
         else:
-            ctx = self._training_sm.get_training_context()
-            if ctx:
-                msg = f"{ctx['name']} 技能{ctx['skill_label']} 专精{ctx['level']} 的协助位排班失败，请检查替换组是否被占用"
-            else:
-                msg = f"无法完成 {self.task.meta_data} 的排班，如果重复接收此邮件请检查替换组是否被占用"
+            msg = f"无法完成 {self.task.meta_data} 的排班，如果重复接收此邮件请检查替换组是否被占用"
             send_message(msg, level="ERROR")
             logger.error(msg)
             # 简单暴力一点，移除所有非回满的
@@ -311,11 +299,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 ):
                     break
             if current_resting - len(remove_name) + required > len(self.op_data.dorm):
-                ctx = self._training_sm.get_training_context()
-                if ctx:
-                    msg = f"{ctx['name']} 技能{ctx['skill_label']} 专精{ctx['level']} 的协助位排班失败，宿舍可用空位不足"
-                else:
-                    msg = f"无法完成 {self.task.meta_data} 的排班，宿舍可用空位不足，请减少使用回满词条"
+                msg = f"无法完成 {self.task.meta_data} 的排班，宿舍可用空位不足，请减少使用回满词条"
                 send_message(msg, level="ERROR")
                 return
             logger.debug(f"需要提前移出宿舍的干员: {remove_name}")
@@ -343,13 +327,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     )
                 )
             else:
-                ctx = self._training_sm.get_training_context()
-                if ctx:
-                    msg = f"{ctx['name']} 技能{ctx['skill_label']} 专精{ctx['level']} 的协助位排班失败，请检查是否有替换组冲突"
-                else:
-                    msg = (
-                        f"无法完成 {self.task.meta_data} 的排班，请检查是否有替换组冲突"
-                    )
+                msg = f"无法完成 {self.task.meta_data} 的排班，请检查是否有替换组冲突"
                 logger.warning(msg)
                 send_message(msg, level="ERROR")
             self.skip()
@@ -517,7 +495,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if self.task is not None:
             try:
                 if self.task.type == TaskTypes.SKILL_UPGRADE:
-                    self._training_sm.sync()
                     self.skill_upgrade(self.task.meta_data)
                 elif len(self.task.plan.keys()) > 0:
                     get_time = False
@@ -623,28 +600,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             task_type=TaskTypes.SKILL_UPGRADE
                         ):
                             self.refresh_skill_time(upgrade)
-                            self._training_completion_time = upgrade.time
-                            try:
-                                level = self._training_sm.get_training_level()
-                                support = next(
-                                    (
-                                        e
-                                        for e in self.op_data.skill_upgrade_supports
-                                        if e.level == level
-                                    ),
-                                    None,
-                                )
-                                if (
-                                    support
-                                    and not config.conf.assistant_follows_schedule
-                                ):
-                                    self._schedule_half_off_swap_internal(
-                                        support,
-                                        self._training_completion_time,
-                                        upgrade.meta_data,
-                                    )
-                            except Exception:
-                                pass
                     else:
                         self.plan_run_order(self.task.meta_data)
                     self.skip(["todo_task", "collect_notification"])
@@ -733,6 +688,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             ):
                 self.reload()
                 logger.info(f"记录本次补货时间为:{datetime.now()}")
+            if self.no_pending_task(5) and not self.find_next_task(
+                task_type=TaskTypes.SKILL_UPGRADE
+            ):
+                try:
+                    from arknights_mower.utils.mastery_sync import MasterySync
+
+                    MasterySync(self).sync_and_schedule()
+                except Exception as e:
+                    logger.exception(f"MasterySync error: {e}")
             self.todo_task = True
         elif not self.collect_notification:
             if self.no_pending_task(1):
@@ -770,21 +734,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         if self.find_next_task(task_type=TaskTypes.SKILL_UPGRADE):
             return True
 
-        training_sm = getattr(self, "_training_sm", None)
-        state = getattr(training_sm, "state", TrainingState.IDLE)
-        if isinstance(state, TrainingState) and state != TrainingState.IDLE:
-            return True
-        has_trainee_context = getattr(training_sm, "has_trainee_context", None)
-        if callable(has_trainee_context):
-            try:
-                if has_trainee_context() is True:
-                    return True
-            except Exception:
-                pass
-
         try:
-            mastery_plan = self._get_mastery_plan()
-            return any(mastery_plan.values()) if mastery_plan else False
+            from arknights_mower.utils.mastery_db import get_pending_plans
+            return len(get_pending_plans()) > 0
         except Exception as e:
             logger.debug(f"检查专精计划失败，跳过训练室心情读取: {e}")
             return False
@@ -828,10 +780,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 try:
                     self.enter_room(room)
                     if room == "train":
-                        new_state = self._training_sm._read_physical_state(
-                            in_place=True
-                        )
-                        self._training_sm._apply_state(new_state)
                         _mood_data = self.get_agent_from_room(room, None)
                         mood_info = [
                             f"干员: '{item['agent']}', 心情: {round(item['mood'], 3)}"
@@ -1445,104 +1393,93 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                 "未获取专精时间倒计时，请确认技能专精材料充足"
                             )
                         else:
-                            self._training_completion_time = execute_time
                             del tasks[0]
                 elif scene == Scene.TRAIN_SKILL_SELECT:
                     if tasks[0] == "upgrade":
-                        skill_idx = int(skill) - 1
-                        lit_zones = self._training_sm.read_mastery_zones(skill_idx)
-                        pk = getattr(self.task, "plan_key", "")
-                        self._training_sm.set_trainee_info(lit_zones, pk)
-                        if lit_zones >= 3:
-                            logger.info(
-                                f"专精技能{skill}已满级（M3完成），lit_zones={lit_zones}"
-                            )
-                            plan_key = getattr(self.task, "plan_key", "")
-                            if not plan_key and self._training_sm._trainee_cid:
-                                plan_key = (
-                                    f"{self._training_sm._trainee_cid}_{skill_idx}"
-                                )
-                            if plan_key:
-                                self._completed_masteries.add(plan_key)
-                                logger.info(f"记录已完成专精: {plan_key}")
-                            self._training_sm.reset_cache()
-                            self.back()
-                            self._schedule_next_from_plan()
-                            return
-                        self.ctap(
-                            (
-                                self.recog.w * 0.33,
-                                self.recog.h * (skill_idx * 0.3 + 0.32),
-                            )
-                        )
+                        height = (int(skill) - 1) * 0.3 + 0.32
+                        self.ctap((self.recog.w * 0.33, self.recog.h * height))
                     else:
                         self.back()
                 elif scene == Scene.TRAIN_SKILL_UPGRADE:
                     if tasks[0] == "upgrade":
-                        level = self._training_sm.get_training_level()
+                        finish_time = self.double_read_time(
+                            ((94, 998), (223, 1048)),
+                            use_digit_reader=True,
+                        )
+                        hours = (finish_time - datetime.now()).total_seconds() / 3600
+                        if hours > 23:
+                            level = 3
+                        elif hours > 15:
+                            level = 2
+                        else:
+                            level = 1
                         logger.info(f"本次专精将提升{skill}技能至{level}")
-                        # 点击确认开始专精
                         self.tap((self.recog.w * 0.87, self.recog.h * 0.9))
                         del tasks[0]
                     elif tasks[0] == "confirm":
-                        # 等待场景从确认过渡回训练室主界面
                         self.sleep(1)
                     else:
                         self.back()
                 elif scene == Scene.TRAIN_SKILL_UPGRADE_ERROR:
-                    # 如果材料不满足则会出现错误
                     if tasks[0] == "confirm":
-                        level = self._training_sm.get_training_level()
-                        ctx = self._training_sm.get_training_context()
-                        if ctx:
-                            msg = f"{ctx['name']} 技能{ctx['skill_label']} 专精{level} 材料不足，将在下次仓库扫描时自动重试"
-                        else:
-                            msg = "专精材料不足，将在下次仓库扫描时自动重试"
+                        level = 1
+                        finish_time = self.double_read_time(
+                            ((94, 998), (223, 1048)),
+                            use_digit_reader=True,
+                        )
+                        if finish_time:
+                            hours = (finish_time - datetime.now()).total_seconds() / 3600
+                            if hours > 23:
+                                level = 3
+                            elif hours > 15:
+                                level = 2
+                        msg = f"专精{skill}技能 level {level} 材料不足，已标记失败"
                         logger.warning(msg)
                         send_message(msg, level="ERROR")
+                        plan_key = getattr(self.task, "plan_key", "")
+                        if plan_key:
+                            parts = plan_key.rsplit("_", 1)
+                            if len(parts) == 2:
+                                from arknights_mower.utils.mastery_db import (
+                                    set_plan_status,
+                                )
+                                set_plan_status(parts[0], int(parts[1]), "failed", f"材料不足 level{level}")
                         self.back()
                         return
                     else:
                         self.back()
-            if (
-                self._training_completion_time
-                and self._training_completion_time > datetime.now()
-            ):
-                t = SchedulerTask(
-                    time=self._training_completion_time,
-                    task_type=TaskTypes.SKILL_UPGRADE,
-                    meta_data=self.task.meta_data,
-                    task_plan=self.task.plan,
-                    adjusted=True,
-                )
-                pk = getattr(self.task, "plan_key", "")
-                if pk:
-                    t.plan_key = pk
-                self.tasks.append(t)
             if len(self.op_data.skill_upgrade_supports) == 0:
                 try:
                     pk = getattr(self.task, "plan_key", "")
                     if pk:
                         cpk = pk.rsplit("_", 1)
                         if len(cpk) == 2:
-                            from arknights_mower.utils.mastery_recommendation import (
-                                _build_route_supports,
-                                _supports_from_dicts,
-                                get_skill_data,
+                            from arknights_mower.utils.mastery_db import (
+                                get_route,
                             )
+                            import json
 
                             cid = cpk[0]
-                            prof = (
+                            from arknights_mower.utils.mastery_recommendation import (
+                                get_skill_data,
+                                _supports_from_dicts,
+                            )
+
+                            prof_en = (
                                 get_skill_data()
                                 .get("characters", {})
                                 .get(cid, {})
                                 .get("profession", "")
                             )
-                            if prof:
-                                route = _build_route_supports(prof)
-                                if route:
+                            if prof_en:
+                                from arknights_mower.utils.mastery_recommendation import (
+                                    PROF_MAP,
+                                )
+                                route_data = get_route(PROF_MAP.get(prof_en, prof_en))
+                                if route_data:
+                                    supports = json.loads(route_data["supports"])
                                     self.op_data.skill_upgrade_supports = (
-                                        _supports_from_dicts(route)
+                                        _supports_from_dicts(supports)
                                     )
                 except Exception:
                     pass
@@ -1585,12 +1522,17 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.back()
         except Exception as e:
             logger.exception(e)
-            ctx = self._training_sm.get_training_context()
-            if ctx:
-                msg = f"{ctx['name']} 技能{ctx['skill_label']} 专精{ctx['level']} 任务失败: {e}"
-            else:
-                msg = f"专精任务失败: {e}"
+            msg = f"专精任务失败: {e}"
             send_message(msg, level="ERROR")
+            plan_key = getattr(self.task, "plan_key", "")
+            if plan_key:
+                parts = plan_key.rsplit("_", 1)
+                if len(parts) == 2:
+                    try:
+                        from arknights_mower.utils.mastery_db import set_plan_status
+                        set_plan_status(parts[0], int(parts[1]), "failed", str(e))
+                    except Exception:
+                        pass
 
     def _schedule_half_off_swap_internal(
         self, support, completion_time, skill_label, check_duplicate=False
@@ -1764,9 +1706,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 )
         for name in self.op_data.exhaust_agent:
             op = self.op_data.operators[name]
-            if self._training_sm.is_operator_protected(name):
-                logger.debug(f"{name} 在受保护训练室中，跳过排气")
-                continue
+            # skip operator_protected check (TrainingStateMachine removed)
             if (
                 op.is_resting()
                 or not op.is_high()
@@ -1927,34 +1867,26 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             try_workshop_tasks(self.op_data, self.tasks)
         if not self.find_next_task(datetime.now() + timedelta(minutes=5)):
             try_add_release_dorm({}, None, self.op_data, self.tasks)
-        if (
-            self._get_mastery_plan()
-            and self._training_sm.has_trainee_context()
-            and not self.find_next_task(task_type=TaskTypes.SKILL_UPGRADE)
-        ):
-            sk = str(self._training_sm._target_skill + 1)
+        pending = []
+        try:
+            from arknights_mower.utils.mastery_db import get_pending_plans
+            pending = get_pending_plans()
+        except Exception:
+            pass
+        if pending and not self.find_next_task(task_type=TaskTypes.SKILL_UPGRADE):
+            from arknights_mower.utils.mastery_recommendation import get_skill_data
+            char_table = get_skill_data().get("characters", {})
+            entry = pending[0]
+            sk = str(entry["skill_index"] + 1)
+            char_info = char_table.get(entry["char_id"], {})
+            name = char_info.get("name", entry["char_id"])
             t = SchedulerTask(
                 time=datetime.now(),
                 task_type=TaskTypes.SKILL_UPGRADE,
-                meta_data=sk,
+                meta_data=f"{name} 技能{sk} -> 专精{entry.get('level', 1)} ",
                 adjusted=True,
             )
-            if self._training_sm._trainee_cid:
-                t.plan_key = (
-                    f"{self._training_sm._trainee_cid}"
-                    f"_{self._training_sm._target_skill}"
-                )
-                from arknights_mower.utils.mastery_recommendation import (
-                    get_skill_data,
-                )
-
-                char_table = get_skill_data().get("characters", {})
-                name = char_table.get(self._training_sm._trainee_cid, {}).get(
-                    "name", ""
-                )
-                if name:
-                    lvl = self._training_sm._lit_zones + 1
-                    t.meta_data = f"{name} 技能{sk} -> 专精{lvl} "
+            t.plan_key = f"{entry['char_id']}_{entry['skill_index']}"
             self.tasks.append(t)
         if self.find_next_task(datetime.now() + timedelta(seconds=15)):
             logger.info("有其他任务,跳过宿舍纠错")
@@ -1990,17 +1922,13 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 break
             if op.name in self.op_data.workaholic_agent:
                 continue
-            protected = self._training_sm.state in {
-                TrainingState.TRAINING,
-                TrainingState.WAITING_COLLECT,
-                TrainingState.TRAINER_PROTECTED,
-            }
+            has_upgrade_task = self.find_next_task(task_type=TaskTypes.SKILL_UPGRADE) is not None
             if (
                 op.is_resting()
                 or op.current_room in ["factory"]
-                or (op.current_room in ["train"] and protected)
+                or (op.current_room in ["train"] and has_upgrade_task)
                 or op.room in ["factory"]
-                or (op.room in ["train"] and protected)
+                or (op.room in ["train"] and has_upgrade_task)
             ):
                 continue
             # 忽略掉心情太高的
@@ -2929,13 +2857,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     idx = select_targets[0][0]
                     self.ctap((self.recog.w * 0.82, self.recog.h * 0.18 * (idx + 1)))
                 continue
-            elif scene in (
-                Scene.TRAIN_SKILL_UPGRADE,
-                Scene.TRAIN_SKILL_SELECT,
-                Scene.TRAIN_FINISH,
-            ):
-                logger.info("训练室专精进行中，跳过换班")
-                return
+            elif scene == Scene.TRAIN_FINISH:
+                self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=0.5)
+                continue
             elif scene == Scene.TRAIN_MAIN:
                 self.tap((self.recog.w * 0.25, self.recog.h * 0.95), interval=0.5)
                 continue
@@ -3592,8 +3516,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             try:
                 error_count = 0
                 if not skip_enter:
-                    if room == "train" and self._training_sm.should_skip_room(
-                        self.task
+                    if room == "train" and self.find_next_task(
+                        task_type=TaskTypes.SKILL_UPGRADE
                     ):
                         if config.conf.assistant_follows_schedule:
                             pass
@@ -3681,7 +3605,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     if room == "train":
                         if (
                             config.conf.assistant_follows_schedule
-                            and self._training_sm.state != TrainingState.IDLE
+                            and self.find_next_task(task_type=TaskTypes.SKILL_UPGRADE)
                             and len(plan[room]) > 1
                         ):
                             train_plan = list(plan[room])
@@ -3769,35 +3693,16 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             self.tap((self.recog.w * 0.25, self.recog.h * 0.25), interval=0.5)
 
     def _get_mastery_plan(self):
-        plan_path = get_path("@app/tmp/matery_plan.json")
-        if not os.path.exists(plan_path):
-            return {}
         try:
-            with open(plan_path, "r", encoding="utf-8") as f:
-                plan = json.load(f)
+            from arknights_mower.utils.mastery_db import get_pending_plans
+            pending = get_pending_plans()
+            result = {}
+            for p in pending:
+                key = f"{p['char_id']}_{p['skill_index']}"
+                result[key] = True
+            return result
         except Exception:
             return {}
-        if not plan:
-            return {}
-        try:
-            cultivate_path = get_path("@app/tmp/cultivate.json")
-            if os.path.exists(cultivate_path):
-                mtime = os.path.getmtime(cultivate_path)
-                if mtime != self._m3_cache_mtime:
-                    with open(cultivate_path, "r", encoding="utf-8") as f:
-                        cdata = json.load(f)
-                    m3 = set()
-                    for char in cdata.get("data", {}).get("characters", []):
-                        for idx, s in enumerate(char.get("skills", [])):
-                            if s.get("level", 0) >= 3:
-                                m3.add(f"{char.get('id')}_{idx}")
-                    self._m3_cache_mtime = mtime
-                    self._m3_cache_set = m3
-                plan = {k: v for k, v in plan.items() if k not in self._m3_cache_set}
-            plan = {k: v for k, v in plan.items() if k not in self._completed_masteries}
-        except Exception:
-            pass
-        return plan
 
     def agent_arrange(self, plan: tp.BasePlan, get_time=False):
         logger.info("基建：排班")
@@ -4865,108 +4770,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             return False
         return True
 
-    def _build_mastery_tasks(self, entry):
-        plan_key = f"{entry['char_id']}_{entry['skill_index']}"
-        sk = str(entry["skill_index"] + 1)
-        if not self.op_data.skill_upgrade_supports:
-            try:
-                from arknights_mower.utils.mastery_recommendation import (
-                    _build_route_supports,
-                    _supports_from_dicts,
-                )
-
-                supports = _supports_from_dicts(
-                    _build_route_supports(entry["profession"])
-                )
-                self.op_data.skill_upgrade_supports = supports
-            except Exception as e:
-                logger.warning(f"加载专精路线失败: {e}")
-        first_support = ""
-        if self.op_data.skill_upgrade_supports:
-            first_support = self.op_data.skill_upgrade_supports[0].name
-        assistant = "Free" if config.conf.assistant_follows_schedule else first_support
-        if assistant:
-            self.tasks.append(
-                SchedulerTask(
-                    task_plan={"train": [assistant, entry["name"]]},
-                    meta_data="_mastery",
-                )
-            )
-        else:
-            logger.warning(f"无法为 {entry['name']} 生成训练室换人任务，支持列表为空")
-        target_lvl = entry.get("current_level", 0) + 1
-        t = SchedulerTask(
-            task_type=TaskTypes.SKILL_UPGRADE,
-            meta_data=f"{entry['name']} 技能{sk} -> 专精{target_lvl} ",
-            adjusted=True,
-        )
-        t.plan_key = plan_key
-        self.tasks.append(t)
-        logger.info(f"自动安排专精: {entry['name']} {entry['skill_name']}")
-
-    def _schedule_next_from_plan(self):
-        try:
-            from arknights_mower.utils.mastery_recommendation import (
-                auto_schedule_mastery_tasks,
-            )
-            from arknights_mower.utils.scheduler_task import TaskTypes
-
-            res = auto_schedule_mastery_tasks()
-            for entry in res.get("scheduled", []):
-                plan_key = f"{entry['char_id']}_{entry['skill_index']}"
-                if plan_key in self._completed_masteries:
-                    continue
-                existing = self.find_next_task(task_type=TaskTypes.SKILL_UPGRADE)
-                if existing and existing is not self.task:
-                    continue
-                self._build_mastery_tasks(entry)
-                break
-            skipped = res.get("skipped", [])
-            if skipped:
-                names = [f"{s['name']}{s['skill_name']}" for s in skipped]
-                logger.info(f"跳过专精（材料不足）: {', '.join(names)}")
-        except Exception as e:
-            logger.exception(f"M3完成后自动排专精失败: {e}")
-
-    def _clean_completed_masteries(self):
-        import json
-        import os
-
-        from arknights_mower.utils.path import get_path
-
-        if not self._completed_masteries:
-            return
-        try:
-            cultivate_path = get_path("@app/tmp/cultivate.json")
-            if not os.path.exists(cultivate_path):
-                return
-            with open(cultivate_path, "r", encoding="utf-8") as f:
-                cdata = json.load(f)
-            char_levels = {}
-            for char in cdata.get("data", {}).get("characters", []):
-                cid = char.get("id")
-                skills = char.get("skills", [])
-                char_levels[cid] = {i: s.get("level", 0) for i, s in enumerate(skills)}
-            cleaned = set()
-            for plan_key in self._completed_masteries:
-                parts = plan_key.rsplit("_", 1)
-                if len(parts) != 2:
-                    continue
-                cid = parts[0]
-                try:
-                    skill_idx = int(parts[1])
-                except ValueError:
-                    continue
-                level = char_levels.get(cid, {}).get(skill_idx, 0)
-                if level >= 3:
-                    cleaned.add(plan_key)
-                    logger.info(
-                        f"清理已完成专精黑名单: {plan_key} (cultivate level={level})"
-                    )
-            self._completed_masteries -= cleaned
-        except Exception as e:
-            logger.warning(f"清理已完成专精黑名单失败: {e}")
-
     def _auto_schedule_mastery_after_scan(self):
         try:
             from arknights_mower.utils.mastery_recommendation import (
@@ -4976,32 +4779,11 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             from arknights_mower.utils.scheduler_task import TaskTypes
 
             res = auto_schedule_mastery_tasks()
-            if res.get("scheduled"):
-                self._training_sm.sync()
             logger.debug(
                 "仓库扫描: 专精调度完毕, "
                 f"scheduled={len(res.get('scheduled', []))}, "
                 f"skipped={len(res.get('skipped', []))}"
             )
-            for entry in res.get("scheduled", []):
-                plan_key = f"{entry['char_id']}_{entry['skill_index']}"
-                if plan_key in self._completed_masteries:
-                    continue
-                sk = str(entry["skill_index"] + 1)
-                has = self.find_next_task(
-                    task_type=TaskTypes.SKILL_UPGRADE,
-                    meta_data=sk,
-                )
-                if not has:
-                    if self.find_next_task(task_type=TaskTypes.SKILL_UPGRADE):
-                        continue
-                    self._build_mastery_tasks(entry)
-            skipped = res.get("skipped", [])
-            if skipped:
-                names = [f"{s['name']}{s['skill_name']}" for s in skipped]
-                logger.info(f"跳过专精（材料不足）: {', '.join(names)}")
-
-            self._clean_completed_masteries()
 
             new_settings = compute_workshop_config(
                 fodder_operators=config.conf.fodder_operators,

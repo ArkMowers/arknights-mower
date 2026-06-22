@@ -536,22 +536,26 @@ def _load_default_route():
 
 
 def _build_route_supports(profession, control_center="none"):
-    defaults = _load_default_route()
-    prof_cn = PROF_MAP.get(profession, "近卫")
-    route_path = get_path("@app/tmp/matery_route.json")
-    if os.path.exists(route_path):
-        try:
-            with open(route_path, "r", encoding="utf-8") as f:
-                route = json.load(f)
-        except Exception:
-            route = {}
-    else:
-        route = {}
-    prof_default = defaults.get(prof_cn, {})
-    prof_route = route.get(prof_cn, prof_default)
-    supports_data = prof_route.get("supports", []) or prof_default.get("supports", [])
-    half_off = prof_route.get("half_off", prof_default.get("half_off", True))
-    cc = control_center or route.get("controlCenter", "none")
+    prof_cn = PROF_MAP.get(profession, "???")
+    supports_data = None
+    half_off = True
+    cc = control_center
+    try:
+        from arknights_mower.utils.mastery_db import get_route
+        route = get_route(prof_cn)
+        if route:
+            import json as _json
+            route_data = _json.loads(route["supports"])
+            supports_data = route_data.get("supports") if isinstance(route_data, dict) else route_data
+            half_off = route_data.get("half_off", True) if isinstance(route_data, dict) else True
+            cc = cc or (route_data.get("controlCenter", "none") if isinstance(route_data, dict) else "none")
+    except Exception:
+        pass
+    if supports_data is None:
+        defaults = _load_default_route()
+        prof_default = defaults.get(prof_cn, {})
+        supports_data = prof_default.get("supports", [])
+        half_off = prof_default.get("half_off", True)
     bonus = 0 if cc == "none" else 5
     supports = []
     for s in supports_data:

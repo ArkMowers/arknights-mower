@@ -13,7 +13,7 @@
             style="margin-left: 4px"
           />
         </n-button>
-        <n-button size="small" @click="showSettings = true">
+        <n-button size="small" @click="openSettings">
           <template #icon><n-icon :component="SettingsIcon" /></template>
           专精路线
         </n-button>
@@ -368,7 +368,6 @@
       <template #footer>
         <n-space justify="end">
           <n-button @click="resetRoute">恢复默认</n-button>
-          <n-button type="primary" @click="saveRoute">保存</n-button>
         </n-space>
       </template>
     </n-modal>
@@ -427,6 +426,7 @@
       <template #footer>
         <n-space justify="end">
           <n-button @click="clearPlan" size="small">清空</n-button>
+          <n-button @click="retryFailed" size="small" type="warning">重试失败项</n-button>
           <n-button type="primary" @click="savePlanFn" size="small">保存</n-button>
         </n-space>
       </template>
@@ -620,6 +620,27 @@ function savePlanFn() {
   showPlan.value = false
 }
 
+async function retryFailed() {
+  try {
+    const r = await axios.get(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`)
+    const data = r.data || {}
+    const failed = {}
+    for (const [key, val] of Object.entries(data.plans || {})) {
+      if (val.status === 'failed') failed[key] = true
+    }
+    if (!Object.keys(failed).length) {
+      message.info('没有失败项需要重试')
+      return
+    }
+    const result = await axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, failed)
+    const results = result.data?.results || []
+    const retried = results.filter((r) => r.status === 'retry' || r.status === 'added')
+    message.success(`已重试 ${retried.length} 项`)
+  } catch (e) {
+    message.error(`重试失败: ${e.message}`)
+  }
+}
+
 const planEntries = computed(() => {
   const entries = []
   for (const k in plan.value) {
@@ -761,8 +782,8 @@ const swap_list = [
   { value: '逻各斯', label: '逻各斯' }
 ]
 const swap_30 = [
-  { value: true, label: '有30%速度加成' },
-  { value: false, label: '无训练速度加成' }
+  { value: 'yes', label: '有30%速度加成' },
+  { value: 'no', label: '无训练速度加成' }
 ]
 const level_list = [
   { value: 1, label: '专一' },
@@ -783,32 +804,56 @@ const defaultsCache = ref(null)
 const routeSettings = reactive(
   Object.fromEntries(profKeys.map((p) => [p, { supports: [], half_off: true }]))
 )
+let _autoSaveReady = false
+let _autoSaveTimer = null
+watch(routeSettings, () => {
+  if (!_autoSaveReady) return
+  if (_autoSaveTimer) clearTimeout(_autoSaveTimer)
+  _autoSaveTimer = setTimeout(() => {
+    _autoSaveTimer = null
+    for (const p of profKeys) {
+      const s = routeSettings[p]
+      if (s?.supports?.length) {
+        const payload = s.supports.map((sup) => ({
+          ...sup,
+          match: sup.match === 'yes',
+        }))
+        axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-route`, {
+          profession: p,
+          supports: JSON.stringify(payload),
+        }).catch((e) => console.error(`auto-save ${p} failed`, e))
+      }
+    }
+  }, 500)
+}, { deep: true })
 
 function newSupport(p) {
   const n = routeSettings[p].supports.length
   if (n >= 3) return null
   const i = n + 1
   const def = defaultsCache.value
-  if (!def) return null
-  if (!routeSettings[p].optimal) {
+  if (def && !routeSettings[p].optimal) {
     if (i >= 3) {
       const ref = def[p]?.supports?.find((s) => s.skill_level >= 3)
       if (ref) return { ...ref, swap: true }
     }
     const backups = def._backups || {}
     const name = backups[p] || ''
-    if (!name) return null
-    return { name, skill_level: i, efficiency: 60, swap: true, swap_name: name, match: false }
+    if (name) {
+      return { name, skill_level: i, efficiency: 60, swap: true, swap_name: name, match: 'no' }
+    }
   }
-  const ref = def[p]?.supports?.find((s) => s.skill_level === i)
-  if (!ref) return null
-  return { ...ref, swap: true }
+  if (def && routeSettings[p].optimal) {
+    const ref = def[p]?.supports?.find((s) => s.skill_level === i)
+    if (ref) return { ...ref, swap: true }
+  }
+  return { name: '', skill_level: i, efficiency: 60, swap: false, swap_name: '', match: 'no' }
 }
 
 function applyRoute(d) {
   for (const p of profKeys) {
     if (d[p]) {
-      routeSettings[p].supports = d[p].supports || routeSettings[p].supports
+      routeSettings[p].supports = (d[p].supports || routeSettings[p].supports).filter(Boolean)
       routeSettings[p].optimal = !!d[p].optimal
       routeSettings[p].half_off = d[p].half_off !== undefined ? d[p].half_off : true
     }
@@ -817,35 +862,108 @@ function applyRoute(d) {
 }
 
 async function loadRoute() {
-  try {
-    const local = JSON.parse(localStorage.getItem(ROUTE_KEY) || '{}')
-    applyRoute(local)
-  } catch {}
-  try {
-    const r = await axios.get(`${import.meta.env.VITE_HTTP_URL}/mastery-route`)
-    const data = r.data || {}
-    defaultsCache.value = data
-    applyRoute(data)
-  } catch {}
-}
-function saveRoute() {
-  const toSave = { ...routeSettings, controlCenter: controlCenter.value }
-  localStorage.setItem(ROUTE_KEY, JSON.stringify(toSave))
-  axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-route`, toSave).catch(() => {})
-  message.success('已保存')
-  showSettings.value = false
-}
-function resetRoute() {
-  const def = defaultsCache.value
-  if (!def) return
-  for (const p of profKeys) {
-    if (def[p]?.supports) {
-      routeSettings[p].supports = def[p].supports.map((s) => ({ ...s }))
-      routeSettings[p].half_off = def[p].half_off !== undefined ? def[p].half_off : true
-      routeSettings[p].optimal = !!def[p].optimal
+  localStorage.removeItem(ROUTE_KEY)
+  const r = await axios.get(`${import.meta.env.VITE_HTTP_URL}/mastery-route`)
+  const routes = r.data?.routes || []
+  const backups = r.data?.backups || {}
+  const jsonDefaults = r.data?.defaults || []
+  const merged = { _backups: backups }
+  for (const rt of routes) {
+    try {
+      const parsed = JSON.parse(rt.supports)
+      const supports = (Array.isArray(parsed) ? parsed : parsed.supports || []).map((s) => ({
+        ...s,
+        match: s.match === true ? 'yes' : s.match === false ? 'no' : s.match,
+      }))
+      merged[rt.profession] = {
+        supports,
+        half_off: true,
+        optimal: false,
+      }
+    } catch (e) {
+      console.error(`loadRoute: failed to parse supports for ${rt.profession}`, e)
     }
   }
-  message.info('已恢复默认')
+  const jsonMap = {}
+  for (const d of jsonDefaults) {
+    try {
+      const parsed = JSON.parse(d.supports)
+      const supports = (Array.isArray(parsed) ? parsed : parsed.supports || []).map((s) => ({
+        ...s,
+        match: s.match === true ? 'yes' : s.match === false ? 'no' : s.match,
+      }))
+      jsonMap[d.profession] = supports
+    } catch (e) {
+      console.error(`loadRoute: failed to parse json default for ${d.profession}`, e)
+    }
+  }
+  merged._jsonDefaults = jsonMap
+  defaultsCache.value = merged
+  applyRoute(merged)
+  _autoSaveReady = true
+}
+async function openSettings() {
+  if (!defaultsCache.value) {
+    try {
+      await loadRoute()
+    } catch (e) {
+      console.error('openSettings: loadRoute failed', e)
+    }
+    if (!defaultsCache.value) {
+      defaultsCache.value = {}
+    }
+  }
+  showSettings.value = true
+}
+watch(showSettings, (val) => {
+  if (!val && _autoSaveTimer) {
+    clearTimeout(_autoSaveTimer)
+    _autoSaveTimer = null
+    for (const p of profKeys) {
+      const s = routeSettings[p]
+      if (s?.supports?.length) {
+        const payload = s.supports.map((sup) => ({
+          ...sup,
+          match: sup.match === 'yes',
+        }))
+        axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-route`, {
+          profession: p,
+          supports: JSON.stringify(payload),
+        }).catch((e) => console.error(`flush-save ${p} failed`, e))
+      }
+    }
+  }
+})
+async function resetRoute() {
+  const p = settingsTab.value
+  if (!p) return
+  const def = defaultsCache.value
+  if (!def) {
+    message.warning('请先关闭再打开专精路线设置')
+    return
+  }
+  const jsonSupports = def._jsonDefaults?.[p]
+  if (!jsonSupports?.length) {
+    message.info('没有默认路线可恢复')
+    return
+  }
+  routeSettings[p].supports = jsonSupports.map((s) => ({ ...s }))
+  routeSettings[p].half_off = true
+  routeSettings[p].optimal = false
+  try {
+    const payload = routeSettings[p].supports.map((sup) => ({
+      ...sup,
+      match: sup.match === 'yes',
+    }))
+    await axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-route`, {
+      profession: p,
+      supports: JSON.stringify(payload),
+    })
+    message.success(`已恢复 ${p} 默认路线并保存`)
+  } catch (e) {
+    console.error(`resetRoute: failed to save ${p}`, e)
+    message.error('保存失败')
+  }
 }
 
 // ─── 显示列表 ───
@@ -996,11 +1114,12 @@ async function doAddTask() {
 
 // ─── 初始化 ───
 onMounted(async () => {
-  loadRoute()
   try {
     const r = await axios.get(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`)
     plan.value = r.data || {}
-  } catch {}
+  } catch (e) {
+    console.error('onMounted: failed to fetch mastery-plan', e)
+  }
   await Promise.all([loadOperators(), store.fetchRecommendations()])
   allOperatorList.value = store.recommendations.map((op) => ({
     char_id: op.char_id,
@@ -1016,16 +1135,12 @@ async function loadOperators() {
   try {
     const r = await axios.get(`${import.meta.env.VITE_HTTP_URL}/operator`)
     operatorOptions.value = (r.data || []).map((n) => ({ label: n, value: n }))
-  } catch {}
+  } catch (e) {
+    console.error('loadOperators: failed', e)
+  }
 }
 
-watch(
-  plan,
-  (v) => {
-    axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, v).catch(() => {})
-  },
-  { deep: true }
-)
+
 </script>
 
 <style scoped>
