@@ -172,7 +172,8 @@ def simulate(saved, restart_after_mood_read=False):
                     logger.info("服务器维护中，DIO大人已为你暂停一切行动。")
                     logger.info("==============================================")
                     base_scheduler.handle_idle_action(remaining_time)
-                    base_scheduler.sleep(remaining_time)
+                    # 服务器维护期间 mower 完全空闲，同样走休眠收口点，让 /status 显示休眠
+                    base_scheduler._idle_sleep(remaining_time)
                     logger.info("时间开始流动了……DIO大人贴心为你重启时间！")
             if len(base_scheduler.tasks) > 0:
                 (base_scheduler.tasks.sort(key=lambda x: x.time, reverse=False))
@@ -261,34 +262,6 @@ def simulate(saved, restart_after_mood_read=False):
                             base_scheduler=base_scheduler,
                         )
                         base_scheduler.maa_plan_solver()
-                    else:
-                        remaining_time = (
-                            base_scheduler.tasks[0].time - datetime.now()
-                        ).total_seconds()
-                        subject = f"休息 {format_time(remaining_time)}，到{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}开始工作"
-                        context = f"下一次任务:{base_scheduler.tasks[0].plan if len(base_scheduler.tasks[0].plan) != 0 else '空任务' if base_scheduler.tasks[0].type == '' else base_scheduler.tasks[0].type}"
-                        logger.info(context)
-                        logger.info(subject)
-                        base_scheduler.task_count += 1
-                        logger.info(f"第{base_scheduler.task_count}次任务结束")
-                        if remaining_time > 0:
-                            base_scheduler.handle_idle_action(remaining_time)
-                            body = task_template.render(
-                                tasks=[
-                                    obj.format(timezone_offset)
-                                    for obj in base_scheduler.tasks
-                                ],
-                                base_scheduler=base_scheduler,
-                            )
-                            send_message(
-                                body,
-                                f"休息 {format_time(remaining_time)}，到{base_scheduler.tasks[0].format(timezone_offset).time.strftime('%H:%M:%S')}开始工作",
-                            )
-                            base_scheduler.recog.last_scene = None
-                            base_scheduler.sleeping = True
-                            base_scheduler.sleep(remaining_time)
-                            base_scheduler.sleeping = False
-                            base_scheduler.check_current_focus()
 
                 elif remaining_time > 0:
                     now_time = datetime.now().time()
@@ -328,32 +301,7 @@ def simulate(saved, restart_after_mood_read=False):
                                 base_scheduler.tasks[0].time - datetime.now()
                             ).total_seconds()
 
-                    subject = f"休息 {format_time(remaining_time)}，到{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}开始工作"
-                    context = f"下一次任务:{base_scheduler.tasks[0].plan}"
-                    logger.info(context)
-                    logger.info(subject)
-                    base_scheduler.task_count += 1
-                    logger.info(f"第{base_scheduler.task_count}次任务结束")
-                    if remaining_time > 300:
-                        if config.conf.close_simulator_when_idle:
-                            restart_simulator(start=False)
-                        elif config.conf.exit_game_when_idle:
-                            base_scheduler.device.exit()
-                    body = task_template.render(
-                        tasks=[
-                            obj.format(timezone_offset) for obj in base_scheduler.tasks
-                        ],
-                        base_scheduler=base_scheduler,
-                    )
-                    send_message(
-                        body,
-                        f"休息 {format_time(remaining_time)}，到{base_scheduler.tasks[0].format(timezone_offset).time.strftime('%H:%M:%S')}开始工作",
-                    )
-                    base_scheduler.recog.last_scene = None
-                    base_scheduler.sleeping = True
-                    base_scheduler.sleep(remaining_time)
-                    base_scheduler.sleeping = False
-                    base_scheduler.check_current_focus()
+                    base_scheduler.rest_until_next_task()
 
             base_scheduler._training_sm.gate_sync()
             result = base_scheduler.run()
