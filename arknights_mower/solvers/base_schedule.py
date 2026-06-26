@@ -186,7 +186,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 logger.info(
                     f"出现任务调度情况休息{reschedule_time}秒等待下一个任务开始"
                 )
-                self.sleep(reschedule_time)
+                # 等待下一个任务开始也是任务间空闲，走唯一的休眠收口点维护 sleeping
+                self._idle_sleep(reschedule_time)
         if self.party_time is not None and self.party_time < datetime.now():
             self.party_time = None
         if self.free_clue is not None and self.free_clue != get_server_weekday():
@@ -4286,34 +4287,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     sf_solver = SecretFront(self.device, self.recog)
                     sf_solver.run(self.tasks[0].time - datetime.now())
 
-            remaining_time = (self.tasks[0].time - datetime.now()).total_seconds()
-            self.handle_idle_action(remaining_time)
-            subject = f"休息 {format_time(remaining_time)}，到{self.tasks[0].time.strftime('%H:%M:%S')}开始工作"
-            context = f"下一次任务:{self.tasks[0].plan if len(self.tasks[0].plan) != 0 else '空任务' if self.tasks[0].type == '' else self.tasks[0].type}"
-            logger.info(context)
-            logger.info(subject)
-            self.task_count += 1
-            logger.info(f"第{self.task_count}次任务结束")
-            timezone_offset = config.conf.timezone_offset
-            body = task_template.render(
-                tasks=[obj.format(timezone_offset) for obj in self.tasks],
-                base_scheduler=self,
-            )
-            send_message(
-                body,
-                f"休息 {format_time(remaining_time)}，到{self.tasks[0].format(timezone_offset).time.strftime('%H:%M:%S')}开始工作",
-            )
-            if remaining_time > 0:
-                if remaining_time > 300:
-                    if config.conf.close_simulator_when_idle:
-                        from arknights_mower.utils.simulator import restart_simulator
-
-                        restart_simulator(start=False)
-                    elif config.conf.exit_game_when_idle:
-                        self.device.exit()
-                self.recog.last_scene = None
-                self.sleep(remaining_time)
-                self.check_current_focus()
+            self.rest_until_next_task()
             self.MAA = None
         except MowerExit:
             if self.MAA is not None:
@@ -4331,7 +4305,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 logger.info(
                     f"休息 {format_time(remaining_time)}，到{self.tasks[0].time.strftime('%H:%M:%S')}开始工作"
                 )
-                self.sleep(remaining_time)
+                self._idle_sleep(remaining_time)
             self.check_current_focus()
 
     def skland_plan_solver(self):
@@ -4786,30 +4760,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     logger.info("local operation finished without executing any stage")
 
             scheduling(self.tasks)
-            remaining_time = (self.tasks[0].time - datetime.now()).total_seconds()
-            self.handle_idle_action(remaining_time)
-            subject = (
-                f"休息 {format_time(remaining_time)}，到"
-                f"{self.tasks[0].time.strftime('%H:%M:%S')}开始工作"
-            )
-            context = f"下一次任务:{self.tasks[0].plan if len(self.tasks[0].plan) != 0 else '空任务' if self.tasks[0].type == '' else self.tasks[0].type}"
-            logger.info(context)
-            logger.info(subject)
-            self.task_count += 1
-            logger.info(f"第{self.task_count}次任务结束")
-            timezone_offset = config.conf.timezone_offset
-            body = task_template.render(
-                tasks=[obj.format(timezone_offset) for obj in self.tasks],
-                base_scheduler=self,
-            )
-            send_message(
-                body,
-                f"休息 {format_time(remaining_time)}，到{self.tasks[0].format(timezone_offset).time.strftime('%H:%M:%S')}开始工作",
-            )
-            if remaining_time > 0:
-                self.recog.last_scene = None
-                self.sleep(remaining_time)
-                self.check_current_focus()
+            self.rest_until_next_task()
         except MowerExit:
             raise
         except Exception as e:
@@ -4822,7 +4773,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 logger.info(
                     f"休息 {format_time(remaining_time)}，到{self.tasks[0].time.strftime('%H:%M:%S')}开始工作"
                 )
-                self.sleep(remaining_time)
+                self._idle_sleep(remaining_time)
             self.check_current_focus()
 
     def mail_plan_solver(self):
@@ -5029,6 +4980,53 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 logger.info("自动更新合成配置完成")
         except Exception as e:
             logger.exception(f"自动安排专精/合成配置失败: {e}")
+
+    def _idle_sleep(self, remaining_time):
+        """任务之间真正的休眠——全工程里唯一维护 `sleeping` 状态的地方。
+
+        所有「等到下一个任务」的等待都必须经过这里，这样 /status 读到的
+        `sleeping` 永远和实际行为一致；以后新增休息路径也不可能再漏设标志。
+        用 try/finally 保证即使被 MowerExit（点停止）打断也能复位。
+        """
+        self.sleeping = True
+        try:
+            self.sleep(remaining_time)
+        finally:
+            self.sleeping = False
+
+    def rest_until_next_task(self):
+        """完成本轮任务后休息到 `tasks[0].time`，是调度器唯一的「任务间空闲」收尾。
+
+        发休息通知、累计任务计数、并真正睡到下个任务。
+        maa_plan_solver / mower_plan_solver / __main__ 主循环此前各自复制了
+        一份几乎相同的实现，其中两份漏掉了 `sleeping`，正是 /status 卡在
+        working 的根因。现在全部收口到这里，只有 `_idle_sleep` 一个状态写入点。
+        """
+        first = self.tasks[0]
+        remaining_time = (first.time - datetime.now()).total_seconds()
+        self.handle_idle_action(remaining_time)
+        timezone_offset = config.conf.timezone_offset
+        subject = (
+            f"休息 {format_time(remaining_time)}，到"
+            f"{first.time.strftime('%H:%M:%S')}开始工作"
+        )
+        context = f"下一次任务:{first.plan if len(first.plan) != 0 else '空任务' if first.type == '' else first.type}"
+        logger.info(context)
+        logger.info(subject)
+        self.task_count += 1
+        logger.info(f"第{self.task_count}次任务结束")
+        body = task_template.render(
+            tasks=[obj.format(timezone_offset) for obj in self.tasks],
+            base_scheduler=self,
+        )
+        send_message(
+            body,
+            f"休息 {format_time(remaining_time)}，到{first.format(timezone_offset).time.strftime('%H:%M:%S')}开始工作",
+        )
+        if remaining_time > 0:
+            self.recog.last_scene = None
+            self._idle_sleep(remaining_time)
+            self.check_current_focus()
 
     def handle_idle_action(self, remaining_time=0):
         if config.conf.close_simulator_when_idle and remaining_time > 300:
