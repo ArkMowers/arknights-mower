@@ -2344,8 +2344,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
             class ClueTaskManager:
                 def __init__(self):
-                    # 操作顺序：领取每日线索、接收好友线索、摆线索、送线索、更新线索交流结束时间
+                    # 操作顺序：信息板信用、领取每日线索、接收好友线索、摆线索、送线索、更新线索交流结束时间
                     self.task_list = [
+                        "message_board",
                         "daily",
                         "receive",
                         "place",
@@ -2399,7 +2400,46 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
                 if scene == Scene.INFRA_DETAILS:
                     logger.info("INFRA_DETAILS")
-                    if ctm.task == "party_time":
+                    if ctm.task == "message_board":
+                        if self.find("clue/title_party"):
+                            self.tap_element("clue/title_party")
+                        self.tap((680, 1000))
+
+                        board_pos = None
+                        for _ in range(3):
+                            self.recog.update()
+                            board_pos = self.find("clue/message_board")
+                            if board_pos:
+                                break
+                            self.sleep(0.5)
+
+                        if board_pos:
+                            logger.info("打开会客室信息板")
+                            self.tap(board_pos)
+                            self.sleep(0.5)
+
+                            for _ in range(3):
+                                self.recog.update()
+
+                                if collect := self.find("clue/message_board_collect"):
+                                    logger.info("领取信息板信用")
+                                    self.tap(collect)
+                                    for _ in range(6):
+                                        self.sleep(0.5)
+                                        self.recog.update()
+                                        if not self.find("clue/message_board_collect"):
+                                            self.tap((680, 1000))
+                                            break
+                                    break
+
+                                if self.find("room/meeting"):
+                                    self.back()
+                                    break
+
+                                self.tap((680, 1000))
+                                self.sleep(0.5)
+                        ctm.complete("message_board")
+                    elif ctm.task == "party_time":
                         if pos := self.find("clue/check_party"):
                             logger.info("tap")
                             self.tap(pos)
