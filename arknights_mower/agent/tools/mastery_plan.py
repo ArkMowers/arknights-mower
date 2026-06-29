@@ -1,20 +1,23 @@
 from arknights_mower.utils.mastery_db import (
-    has_train_group_plan,
-    insert_plan,
-    get_pending_plans,
     get_all_plans,
     get_route,
-    save_route,
+    has_train_group_plan,
+    insert_plan,
     retry_plan,
+    save_route,
 )
-from arknights_mower.utils.log import logger
 
 
 def add_mastery_plan(char_id: str, skill_index: int, skill_name: str = ""):
     """Add a new mastery plan for an operator skill."""
     if has_train_group_plan():
         return "训练室已设置小组轮换，无法添加专精计划"
-    plan_id = insert_plan(char_id, skill_index, "pending", skill_name=skill_name or f"技能{skill_index + 1}")
+    plan_id = insert_plan(
+        char_id,
+        skill_index,
+        "pending",
+        skill_name=skill_name or f"技能{skill_index + 1}",
+    )
     if plan_id > 0:
         return f"已添加专精计划: {char_id} 技能{skill_index + 1}"
     return f"添加专精计划失败: {char_id} 技能{skill_index + 1}"
@@ -72,7 +75,10 @@ add_mastery_plan_tool_def = {
         "parameters": {
             "type": "object",
             "properties": {
-                "char_id": {"type": "string", "description": "干员ID，如 char_103_angel"},
+                "char_id": {
+                    "type": "string",
+                    "description": "干员ID，如 char_103_angel",
+                },
                 "skill_index": {"type": "integer", "description": "技能索引 0/1/2"},
                 "skill_name": {"type": "string", "description": "技能名称（可选）"},
             },
@@ -105,14 +111,20 @@ set_route_tool_def = {
     "function": {
         "name": "set_route",
         "description": "保存某个职业的自定义专精路线",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "profession": {"type": "string", "description": "职业中文名，如 近卫/先锋/术师"},
-                    "supports_json": {"type": "string", "description": "包含 supports/half_off/controlCenter 的完整 JSON 配置"},
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "profession": {
+                    "type": "string",
+                    "description": "职业中文名，如 近卫/先锋/术师",
                 },
-                "required": ["profession", "supports_json"],
+                "supports_json": {
+                    "type": "string",
+                    "description": "包含 supports/half_off/controlCenter 的完整 JSON 配置",
+                },
             },
+            "required": ["profession", "supports_json"],
+        },
     },
 }
 
@@ -124,7 +136,10 @@ get_route_info_tool_def = {
         "parameters": {
             "type": "object",
             "properties": {
-                "profession": {"type": "string", "description": "职业中文名，如 近卫/先锋/术师"},
+                "profession": {
+                    "type": "string",
+                    "description": "职业中文名，如 近卫/先锋/术师",
+                },
             },
             "required": ["profession"],
         },

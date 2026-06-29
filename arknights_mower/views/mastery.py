@@ -6,8 +6,8 @@ from flask import Blueprint, abort, current_app, request
 from flask.views import MethodView
 
 from arknights_mower.utils.mastery_db import (
-    get_all_plans,
     get_all_history,
+    get_all_plans,
     get_all_routes,
     get_current_plan,
     get_history,
@@ -41,6 +41,7 @@ def _require_token(f):
         if token and request.headers.get("token", "") != token:
             abort(403)
         return f(*args, **kwargs)
+
     return wrapper
 
 
@@ -54,12 +55,10 @@ class MasteryPlanView(MethodView):
         plans_dict = {}
         for p in plans:
             key = f"{p['char_id']}_{p['skill_index']}"
-            char_info = char_table.get(p['char_id'], {})
+            char_info = char_table.get(p["char_id"], {})
             plans_dict[key] = {
                 "status": p["status"],
-                "skill_name": p.get(
-                    "skill_name", f"技能{p['skill_index'] + 1}"
-                ),
+                "skill_name": p.get("skill_name", f"技能{p['skill_index'] + 1}"),
                 "name": char_info.get("name", p["char_id"]),
             }
         history_list = []
@@ -72,9 +71,7 @@ class MasteryPlanView(MethodView):
                     "status": h["status"],
                     "failed_reason": h.get("failed_reason"),
                     "level": h.get("level", 1),
-                    "skill_name": h.get(
-                        "skill_name", f"技能{h['skill_index'] + 1}"
-                    ),
+                    "skill_name": h.get("skill_name", f"技能{h['skill_index'] + 1}"),
                     "name": char_info.get("name", h["char_id"]),
                     "time": h.get("created_at", ""),
                 }
@@ -83,7 +80,10 @@ class MasteryPlanView(MethodView):
 
     def post(self):
         if has_train_group_plan():
-            return {"results": [], "error": "训练室已设置小组轮换，请先清理后再添加专精计划"}
+            return {
+                "results": [],
+                "error": "训练室已设置小组轮换，请先清理后再添加专精计划",
+            }
         data = request.json or {}
         char_table = get_skill_data().get("characters", {})
         name_to_id = {}
@@ -113,7 +113,13 @@ class MasteryPlanView(MethodView):
                 )
                 continue
             char_info = char_table.get(char_id, {})
-            skill_name = char_info.get("skills", [{}])[skill_index].get("name", f"技能{skill_index + 1}") if len(char_info.get("skills", [])) > skill_index else f"技能{skill_index + 1}"
+            skill_name = (
+                char_info.get("skills", [{}])[skill_index].get(
+                    "name", f"技能{skill_index + 1}"
+                )
+                if len(char_info.get("skills", [])) > skill_index
+                else f"技能{skill_index + 1}"
+            )
             existing = get_current_plan(char_id, skill_index)
             if existing is None:
                 insert_plan(
@@ -245,9 +251,7 @@ class MasteryHistoryView(MethodView):
         return {"history": history}
 
 
-mastery_bp.add_url_rule(
-    Routes.PLAN, view_func=MasteryPlanView.as_view("mastery_plan")
-)
+mastery_bp.add_url_rule(Routes.PLAN, view_func=MasteryPlanView.as_view("mastery_plan"))
 mastery_bp.add_url_rule(
     Routes.ROUTE, view_func=MasteryRouteView.as_view("mastery_route")
 )

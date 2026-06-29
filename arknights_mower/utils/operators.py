@@ -101,7 +101,6 @@ class SkillUpgradeSupport:
     support_class = None
     level = 1
     efficiency = 0
-    half_off = False
     match = False
     use_booster = True
     name = ""
@@ -603,6 +602,21 @@ class Operators:
             if agent.current_room == "train" and agent.current_index == 0:
                 return agent.name
         return None
+
+    def calculate_switch_time(self, support: SkillUpgradeSupport, hour):
+        match = support.match
+        efficiency = support.efficiency
+        same = support.name == support.swap_name
+        basic = 5
+        current_speed = 100 + efficiency + basic
+        base_h = hour * current_speed / 100
+        if same:
+            return hour
+        swap_share = 5 * (100 + basic + (30 if match else 0)) / 100
+        left = base_h - swap_share
+        if left < 0:
+            return 0
+        return left * 100 / current_speed
 
     def get_refresh_index(self, room, plan):
         ret = []

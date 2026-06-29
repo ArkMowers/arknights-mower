@@ -21,18 +21,6 @@ from arknights_mower.agent.tools.analyze_missed_order import (
     analyze_missed_order_tool_def,
 )
 from arknights_mower.agent.tools.call_db import call_db, call_db_tool_def
-from arknights_mower.agent.tools.mastery_plan import (
-    add_mastery_plan,
-    add_mastery_plan_tool_def,
-    list_plans,
-    list_plans_tool_def,
-    set_route,
-    set_route_tool_def,
-    get_route_info,
-    get_route_info_tool_def,
-    retry_plan_tool,
-    retry_plan_tool_def,
-)
 from arknights_mower.agent.tools.extract_stack_paths import (
     extract_stack_paths,
     extract_stack_paths_tool_def,
@@ -41,6 +29,18 @@ from arknights_mower.agent.tools.faq import faq_tool_def, get_faq
 from arknights_mower.agent.tools.get_source_snippet import (
     get_source_snippet,
     get_source_snippet_tool_def,
+)
+from arknights_mower.agent.tools.mastery_plan import (
+    add_mastery_plan,
+    add_mastery_plan_tool_def,
+    get_route_info,
+    get_route_info_tool_def,
+    list_plans,
+    list_plans_tool_def,
+    retry_plan_tool,
+    retry_plan_tool_def,
+    set_route,
+    set_route_tool_def,
 )
 from arknights_mower.agent.tools.submit_issue import submit_issue, submit_issue_tool_def
 from arknights_mower.utils import config

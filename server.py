@@ -1113,8 +1113,7 @@ def cultivate_fetch():
 @app.route("/task", methods=["GET", "POST"])
 def add_task():
     from arknights_mower.__main__ import base_scheduler
-    from arknights_mower.utils.mastery_db import has_train_group_plan, get_route
-    from arknights_mower.utils.operators import SkillUpgradeSupport
+    from arknights_mower.utils.mastery_db import get_route, has_train_group_plan
     from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
     if request.method == "POST":
@@ -1155,8 +1154,11 @@ def add_task():
                             raise Exception("plan_key 格式错误")
                         char_id = parts[0]
                         from arknights_mower.utils.mastery_recommendation import (
-                            PROF_MAP, get_skill_data, _supports_from_dicts,
+                            PROF_MAP,
+                            _supports_from_dicts,
+                            get_skill_data,
                         )
+
                         char_table = get_skill_data().get("characters", {})
                         prof_en = char_table.get(char_id, {}).get("profession", "")
                         if not prof_en:
@@ -1168,8 +1170,13 @@ def add_task():
                                 f"未配置 {prof_cn} 的专精路线，请先在专精路线设置中保存"
                             )
                         import json as _json
+
                         parsed = _json.loads(route["supports"])
-                        supports_list = parsed.get("supports", []) if isinstance(parsed, dict) else parsed
+                        supports_list = (
+                            parsed.get("supports", [])
+                            if isinstance(parsed, dict)
+                            else parsed
+                        )
                         if not supports_list:
                             raise Exception(f"{prof_cn} 的专精路线为空")
                         supports = _supports_from_dicts(supports_list)
@@ -1314,4 +1321,3 @@ def ws_chat(ws):
 
 
 app.register_blueprint(mastery_bp)
-

@@ -538,24 +538,31 @@ def _load_default_route():
 def _build_route_supports(profession, control_center="none"):
     prof_cn = PROF_MAP.get(profession, "???")
     supports_data = None
-    half_off = True
     cc = control_center
     try:
         from arknights_mower.utils.mastery_db import get_route
+
         route = get_route(prof_cn)
         if route:
             import json as _json
+
             route_data = _json.loads(route["supports"])
-            supports_data = route_data.get("supports") if isinstance(route_data, dict) else route_data
-            half_off = route_data.get("half_off", True) if isinstance(route_data, dict) else True
-            cc = cc or (route_data.get("controlCenter", "none") if isinstance(route_data, dict) else "none")
+            supports_data = (
+                route_data.get("supports")
+                if isinstance(route_data, dict)
+                else route_data
+            )
+            cc = cc or (
+                route_data.get("controlCenter", "none")
+                if isinstance(route_data, dict)
+                else "none"
+            )
     except Exception:
         pass
     if supports_data is None:
         defaults = _load_default_route()
         prof_default = defaults.get(prof_cn, {})
         supports_data = prof_default.get("supports", [])
-        half_off = prof_default.get("half_off", True)
     bonus = 0 if cc == "none" else 5
     supports = []
     for s in supports_data:
@@ -566,7 +573,6 @@ def _build_route_supports(profession, control_center="none"):
                 "efficiency": min(100, s["efficiency"] + bonus),
                 "match": s.get("match", False),
                 "swap_name": s.get("swap_name") if s.get("swap") else s["name"],
-                "half_off": half_off,
             }
         )
     return supports
@@ -584,7 +590,6 @@ def _supports_from_dicts(supports_data):
             match=s.get("match", False),
             swap_name=s.get("swap_name", s["name"]),
         )
-        sup.half_off = s.get("half_off", True)
         supports.append(sup)
     return supports
 

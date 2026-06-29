@@ -1,5 +1,4 @@
 import sqlite3
-from datetime import datetime
 from typing import Optional
 
 from arknights_mower.utils.log import logger
@@ -23,6 +22,7 @@ def _ensure_tables(conn: sqlite3.Connection):
         "failed_reason TEXT,"
         "level INTEGER DEFAULT 1,"
         "skill_name TEXT,"
+        "expires_at TEXT,"
         "created_at TEXT DEFAULT (datetime('now','localtime'))"
         ")"
     )
@@ -44,14 +44,23 @@ def insert_plan(
     failed_reason: Optional[str] = None,
     level: int = 1,
     skill_name: Optional[str] = None,
+    expires_at: Optional[str] = None,
 ) -> int:
     conn = _db()
     try:
         _ensure_tables(conn)
         cursor = conn.execute(
-            "INSERT INTO mastery_plan (char_id, skill_index, status, failed_reason, level, skill_name) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (char_id, skill_index, status, failed_reason, level, skill_name),
+            "INSERT INTO mastery_plan (char_id, skill_index, status, failed_reason, level, skill_name, expires_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                char_id,
+                skill_index,
+                status,
+                failed_reason,
+                level,
+                skill_name,
+                expires_at,
+            ),
         )
         conn.commit()
         return cursor.lastrowid
@@ -135,6 +144,42 @@ def get_pending_only() -> list[dict]:
         conn.close()
 
 
+def has_in_progress_plan() -> bool:
+    conn = _db()
+    try:
+        _ensure_tables(conn)
+        row = conn.execute(
+            "SELECT 1 FROM mastery_plan WHERE id IN ("
+            "SELECT MAX(id) FROM mastery_plan GROUP BY char_id, skill_index"
+            ") AND status='in_progress' "
+            "AND (expires_at IS NULL OR expires_at > datetime('now','localtime'))"
+            " LIMIT 1"
+        ).fetchone()
+        return row is not None
+    except Exception:
+        return False
+    finally:
+        conn.close()
+
+
+def get_in_progress_plan() -> Optional[dict]:
+    conn = _db()
+    try:
+        _ensure_tables(conn)
+        row = conn.execute(
+            "SELECT * FROM mastery_plan WHERE id IN ("
+            "SELECT MAX(id) FROM mastery_plan GROUP BY char_id, skill_index"
+            ") AND status='in_progress' "
+            "AND (expires_at IS NULL OR expires_at > datetime('now','localtime'))"
+            " LIMIT 1"
+        ).fetchone()
+        return dict(row) if row else None
+    except Exception:
+        return None
+    finally:
+        conn.close()
+
+
 def get_history(char_id: str, skill_index: int) -> list[dict]:
     conn = _db()
     try:
@@ -174,8 +219,11 @@ def set_plan_status(
     failed_reason: Optional[str] = None,
     level: int = 1,
     skill_name: Optional[str] = None,
+    expires_at: Optional[str] = None,
 ) -> int:
-    return insert_plan(char_id, skill_index, new_status, failed_reason, level, skill_name)
+    return insert_plan(
+        char_id, skill_index, new_status, failed_reason, level, skill_name, expires_at
+    )
 
 
 def save_route(
@@ -240,9 +288,7 @@ def get_user_routes() -> list[dict]:
     conn = _db()
     try:
         _ensure_tables(conn)
-        rows = conn.execute(
-            "SELECT * FROM mastery_route WHERE is_default=0"
-        ).fetchall()
+        rows = conn.execute("SELECT * FROM mastery_route WHERE is_default=0").fetchall()
         return [dict(r) for r in rows]
     except Exception as e:
         logger.error(f"get_user_routes failed: {e}")
@@ -258,6 +304,7 @@ def retry_plan(char_id: str, skill_index: int, skill_name: Optional[str] = None)
 def has_train_group_plan() -> bool:
     try:
         from arknights_mower.utils.config import plan
+
         train_plan = plan.plan1.train
         if train_plan and train_plan.plans:
             for p in train_plan.plans:
