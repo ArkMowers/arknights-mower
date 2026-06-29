@@ -722,20 +722,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
         return room
 
-    def should_read_train_in_mood(self):
-        if "train" in self.op_data.plan:
-            return True
-        if self.find_next_task(task_type=TaskTypes.SKILL_UPGRADE):
-            return True
-
-        try:
-            from arknights_mower.utils.mastery_db import get_pending_plans
-
-            return len(get_pending_plans()) > 0
-        except Exception as e:
-            logger.debug(f"检查专精计划失败，跳过训练室心情读取: {e}")
-            return False
-
     def agent_get_mood(self, skip_dorm=False, force=False):
         # 暂时规定纠错只适用于主班表
         need_read = set(
@@ -743,8 +729,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             for k, v in self.op_data.operators.items()
             if v.need_to_refresh() and v.room in base_room_list
         )
-        if self.should_read_train_in_mood():
-            need_read.add("train")
+
         for room in need_read:
             error_count = 0
             # 由于训练室不纠错，如果训练室有干员且时间读取过就跳过
@@ -1494,33 +1479,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             del tasks[0]
                         else:
                             if self.find("training_idle"):
-                                pk = getattr(self.task, "plan_key", "")
-                                if pk:
-                                    parts = pk.rsplit("_", 1)
-                                    if len(parts) == 2:
-                                        from arknights_mower.utils.mastery_recommendation import (
-                                            get_skill_data,
-                                        )
-
-                                        char_table = get_skill_data().get(
-                                            "characters", {}
-                                        )
-                                        expected = char_table.get(parts[0], {}).get(
-                                            "name", ""
-                                        )
-                                        current = self.get_agent_from_room("train")
-                                        if (
-                                            expected
-                                            and len(current) >= 2
-                                            and current[1].get("agent", "") == expected
-                                        ):
-                                            logger.debug(
-                                                f"训练室空闲但受训干员"
-                                                f"{expected}已在位，"
-                                                f"跳过收集阶段"
-                                            )
-                                            del tasks[0]
-                                            continue
                                 logger.debug("训练室空闲，移除任务")
                                 del tasks[0]
                                 return
@@ -3850,19 +3808,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self.order_reader.save(self.recog.img)
                 not_take = False
             self.tap((self.recog.w * 0.25, self.recog.h * 0.25), interval=0.5)
-
-    def _get_mastery_plan(self):
-        try:
-            from arknights_mower.utils.mastery_db import get_pending_plans
-
-            pending = get_pending_plans()
-            result = {}
-            for p in pending:
-                key = f"{p['char_id']}_{p['skill_index']}"
-                result[key] = True
-            return result
-        except Exception:
-            return {}
 
     def agent_arrange(self, plan: tp.BasePlan, get_time=False):
         logger.info("基建：排班")
