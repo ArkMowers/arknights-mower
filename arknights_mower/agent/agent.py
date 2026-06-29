@@ -30,6 +30,18 @@ from arknights_mower.agent.tools.get_source_snippet import (
     get_source_snippet,
     get_source_snippet_tool_def,
 )
+from arknights_mower.agent.tools.mastery_plan import (
+    add_mastery_plan,
+    add_mastery_plan_tool_def,
+    get_route_info,
+    get_route_info_tool_def,
+    list_plans,
+    list_plans_tool_def,
+    retry_plan_tool,
+    retry_plan_tool_def,
+    set_route,
+    set_route_tool_def,
+)
 from arknights_mower.agent.tools.submit_issue import submit_issue, submit_issue_tool_def
 from arknights_mower.utils import config
 from arknights_mower.utils.log import logger
@@ -55,6 +67,11 @@ def get_tools():
         extract_stack_paths_tool_def,
         get_source_snippet_tool_def,
         analyze_missed_order_tool_def,
+        add_mastery_plan_tool_def,
+        list_plans_tool_def,
+        set_route_tool_def,
+        get_route_info_tool_def,
+        retry_plan_tool_def,
     ]
 
 
@@ -65,6 +82,11 @@ tool_func_map = {
     "extract_stack_paths": extract_stack_paths,
     "get_source_snippet": get_source_snippet,
     "analyze_missed_order": analyze_missed_order,
+    "add_mastery_plan": add_mastery_plan,
+    "list_plans": list_plans,
+    "set_route": set_route,
+    "get_route_info": get_route_info,
+    "retry_plan_tool": retry_plan_tool,
 }
 tool_message_map = {
     "get_faq": "从知识黑洞中召唤最靠谱的废话锦集",
@@ -73,6 +95,11 @@ tool_message_map = {
     "extract_stack_paths": "提取智商2000用户提交的错误堆栈路径",
     "get_source_snippet": "获取某个傻逼写的全是bug的源代码片段",
     "analyze_missed_order": "翻检漏单相关的订单和任务时间线",
+    "add_mastery_plan": "新增一个干员技能的专精计划",
+    "list_plans": "列出所有专精计划及其状态",
+    "set_route": "保存某个职业的自定义专精路线",
+    "get_route_info": "查询某个职业保存的专精路线",
+    "retry_plan_tool": "重试一个失败的专精计划",
 }
 
 

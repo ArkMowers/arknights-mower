@@ -294,7 +294,6 @@ def simulate(saved, restart_after_mood_read=False):
 
                     base_scheduler.rest_until_next_task()
 
-            base_scheduler._training_sm.gate_sync()
             result = base_scheduler.run()
             if result == "restart_after_mood_read":
                 from arknights_mower.solvers.record import save_current_state

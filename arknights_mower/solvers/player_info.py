@@ -196,6 +196,7 @@ class PlayerInfoClient:
                     ap.get("completeRecoveryTime"),
                 )
 
+        building_training = resp.get("data", {}).get("building", {}).get("training")
         snapshot = PlayerInfoSnapshot(
             account=item.account,
             uid=uid,
@@ -205,8 +206,16 @@ class PlayerInfoClient:
             full_recovery_time=full_recovery_time,
             fetched_at=datetime.datetime.now(datetime.timezone.utc),
             raw_ap=ap,
-            building_training=resp.get("data", {}).get("building", {}).get("training"),
+            building_training=building_training,
         )
+        logger.info(f"player_info building_training: {building_training}")
+        if building_training is None:
+            building_full = resp.get("data", {}).get("building", {})
+            logger.info(f"player_info building full node: {building_full}")
+            if not building_full:
+                logger.info(
+                    f"player_info building keys: {list(resp.get('data', {}).keys())}"
+                )
         cache_key = f"{snapshot.account}:{snapshot.uid}"
         player_info_cache[cache_key] = asdict(snapshot)
         player_info_cache["latest"] = player_info_cache[cache_key]
