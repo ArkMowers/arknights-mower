@@ -149,9 +149,6 @@ def simulate(saved, restart_after_mood_read=False):
             base_scheduler.op_data.skill_upgrade_supports = saved[
                 "skill_upgrade_supports"
             ]
-            base_scheduler._completed_masteries = saved.get(
-                "_completed_masteries", set()
-            )
             base_scheduler.tasks = tasks
             if len(base_scheduler.op_data.backup_plans) > 0:
                 # 启动的时候按照条件触发副表
