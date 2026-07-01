@@ -111,9 +111,15 @@ class MuMu12IPC:
         )
 
         # Manager path (CLI JSON for version/status)
-        self._manager = os.path.join(
+        manager_path = os.path.join(
             config.conf.simulator.simulator_folder, "MuMuManager.exe"
         )
+        if not os.path.isfile(manager_path):
+            raise MuMuIpcError(
+                f"MuMuManager.exe 不存在，请检查 simulator.simulator_folder "
+                f"配置是否正确: {manager_path}"
+            )
+        self._manager = manager_path
         self._setting_info = None
 
         # Lazy-initialized members

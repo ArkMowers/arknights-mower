@@ -31,6 +31,7 @@ from arknights_mower.utils.maa_check import (
 )
 from arknights_mower.utils.operators import Operators, build_global_plan
 from arknights_mower.utils.path import get_path
+from arknights_mower.views.mastery import mastery_bp
 
 mimetypes.add_type("text/html", ".html")
 mimetypes.add_type("text/css", ".css")
@@ -1056,27 +1057,6 @@ def mastery_t3_summary():
     return {"t3_summary": t3_summary}
 
 
-@app.route("/mastery-plan", methods=["GET", "POST"])
-def mastery_plan():
-    import json as _json
-
-    plan_path = get_path("@app/tmp/matery_plan.json")
-    if request.method == "GET":
-        if os.path.exists(plan_path):
-            try:
-                with open(plan_path, "r", encoding="utf-8") as f:
-                    return _json.load(f)
-            except Exception:
-                pass
-        return {}
-    else:
-        data = request.json or {}
-        plan_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(plan_path, "w", encoding="utf-8") as f:
-            _json.dump(data, f, ensure_ascii=False)
-        return {"success": True}
-
-
 @app.route("/mastery-t3-debug", methods=["POST"])
 def mastery_t3_debug():
 
@@ -1119,34 +1099,6 @@ def workshop_preset():
         return {"success": True}
 
 
-@app.route("/mastery-route", methods=["GET", "POST"])
-def mastery_route():
-    import json as _json
-
-    route_path = get_path("@app/tmp/matery_route.json")
-    if request.method == "GET":
-        if os.path.exists(route_path):
-            try:
-                with open(route_path, "r", encoding="utf-8") as f:
-                    return _json.load(f)
-            except Exception:
-                pass
-        default_path = get_path("@internal/arknights_mower/data/training_route.json")
-        if os.path.exists(default_path):
-            try:
-                with open(default_path, "r", encoding="utf-8") as f:
-                    return _json.load(f)
-            except Exception:
-                pass
-        return {}
-    else:
-        data = request.json or {}
-        route_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(route_path, "w", encoding="utf-8") as f:
-            _json.dump(data, f, ensure_ascii=False)
-        return {"success": True}
-
-
 @app.route("/cultivate-fetch")
 def cultivate_fetch():
     from arknights_mower.solvers.cultivate_depot import cultivate
@@ -1161,8 +1113,7 @@ def cultivate_fetch():
 @app.route("/task", methods=["GET", "POST"])
 def add_task():
     from arknights_mower.__main__ import base_scheduler
-    from arknights_mower.data import agent_list
-    from arknights_mower.utils.operators import SkillUpgradeSupport
+    from arknights_mower.utils.mastery_db import get_route, has_train_group_plan
     from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
     if request.method == "POST":
@@ -1193,26 +1144,44 @@ def add_task():
                     ):
                         raise Exception("找到同时间任务请勿重复添加")
                     if new_task.type == TaskTypes.SKILL_UPGRADE:
-                        supports = []
-                        for s in req.get("upgrade_support", []):
-                            if (
-                                s["name"] not in agent_list
-                                or s["swap_name"] not in agent_list
-                            ):
-                                raise Exception("干员名不正确")
-                            sup = SkillUpgradeSupport(
-                                name=s["name"],
-                                skill_level=s["skill_level"],
-                                efficiency=s["efficiency"],
-                                match=s["match"],
-                                swap_name=s["swap_name"],
+                        if has_train_group_plan():
+                            raise Exception("训练室已设置小组轮换，无法添加专精任务")
+                        pk = task.get("plan_key", "")
+                        if not pk:
+                            raise Exception("专精任务缺少 plan_key")
+                        parts = pk.rsplit("_", 1)
+                        if len(parts) != 2:
+                            raise Exception("plan_key 格式错误")
+                        char_id = parts[0]
+                        from arknights_mower.utils.mastery_recommendation import (
+                            PROF_MAP,
+                            _supports_from_dicts,
+                            get_skill_data,
+                        )
+
+                        char_table = get_skill_data().get("characters", {})
+                        prof_en = char_table.get(char_id, {}).get("profession", "")
+                        if not prof_en:
+                            raise Exception(f"未找到干员 {char_id} 的职业信息")
+                        prof_cn = PROF_MAP.get(prof_en, prof_en)
+                        route = get_route(prof_cn)
+                        if not route:
+                            raise Exception(
+                                f"未配置 {prof_cn} 的专精路线，请先在专精路线设置中保存"
                             )
-                            sup.half_off = s["half_off"]
-                            supports.append(sup)
-                        if len(supports) == 0:
-                            raise Exception("请添加专精工具人")
+                        import json as _json
+
+                        parsed = _json.loads(route["supports"])
+                        supports_list = (
+                            parsed.get("supports", [])
+                            if isinstance(parsed, dict)
+                            else parsed
+                        )
+                        if not supports_list:
+                            raise Exception(f"{prof_cn} 的专精路线为空")
+                        supports = _supports_from_dicts(supports_list)
                         base_scheduler.op_data.skill_upgrade_supports = supports
-                        logger.info("更新专精工具人完毕")
+                        logger.info(f"从数据库加载 {prof_cn} 专精路线完毕")
                     base_scheduler.tasks.append(new_task)
                     logger.debug(f"成功：{str(new_task)}")
                     return "添加任务成功！"
@@ -1349,3 +1318,6 @@ def ws_chat(ws):
         except Exception as e:
             logger.exception(f"WebSocket处理错误：{str(e)}")
             ws.send(json.dumps({"error": str(e)}))
+
+
+app.register_blueprint(mastery_bp)

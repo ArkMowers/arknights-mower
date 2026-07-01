@@ -238,8 +238,8 @@ if __name__ == "__main__":
     update_dir = os.path.join(PROJECT_ROOT, "dist", "update")
 
     # compare_all_subfolders(new_dir, old_dir, update_dir)
-    remove_empty_folders(update_dir)
-    compare_and_update(new_dir, old_dir, update_dir)
+    # remove_empty_folders(update_dir)
+    # compare_and_update(new_dir, old_dir, update_dir)
     process_files(PROJECT_ROOT)
     verify_python_ruff_check()
     verify_python_ruff_format()

@@ -219,3 +219,7 @@ MAA
 
 *.ipynb
 .rgignore
+
+# opencode
+.opencode/
+openspec/
