@@ -1,5 +1,53 @@
 # CHANGELOG
 
+[Unrelease]
+- fix: 修复启动前 MAA 连通性检查时序 [#889](https://github.com/ArkMowers/arknights-mower/pull/889/changes#diff-d6ca44bc67dfb7f8f8516a6b8d8fb0a6ac79dcdb080452b3e86a594b57998eaf) [@ALEXsun0](https://github.com/alexsun0)
+
+## v4.1.5.7 - 2026-07-10
+
+### 新增
+
+- 新增 MAA 连通性测试的子进程执行与启动前检查选项，并在连接配置中提示 MuMu Mac 用户可切换 `MuMuMacStable`
+- 新增调用 MAA 刷生息演算，支持的主题有 `沙洲遗闻` 和 `重启锚点`
+- 新增基建设置 `读取心情后先刷新副表`，开启后缓存清零重启会先读取心情并按载入心情数据模式自动重启，再触发副表和后续排班
+- 新增启动游戏自定义命令选项，并预设唤醒无锁屏设备后启动游戏的命令
+- 新增领取会客室信息板信用
+
+### 修复
+
+- 修复训练室空闲检测误判，优化全自动专精稳定性
+- 优化全自动专精状态机，整合训练室状态检测到心情读取
+- 统一任务间休眠收口，修复休息期间 /status 的 sleeping 状态
+- 专精路线设置 - 默认值从JSON读取、自动保存、恢复默认修复
+
+### 其他
+
+- 更新游戏数据至故事集 `丛林症结`
+
+### 详细内容
+
+#### 新增 feat
+
+* add MAA mac compatibility check [#877](https://github.com/ArkMowers/arknights-mower/pull/877) [@ALEXsun0](https://github.com/alexsun0)
+
+* 初步实现调用 MAA 刷生息演算 [#878](https://github.com/ArkMowers/arknights-mower/pull/878) [@NiceAfternoon](https://github.com/NiceAfternoon)
+
+* 新增缓存清零后刷新副表开关并修复训练室读取条件 [#881](https://github.com/ArkMowers/arknights-mower/pull/881) [@ALEXsun0](https://github.com/alexsun0)
+
+* 新增启动游戏自定义命令选项 [#883](https://github.com/ArkMowers/arknights-mower/pull/883) [@ALEXsun0](https://github.com/alexsun0)
+
+* 新增领取会客室信息板信用 [#885](https://github.com/ArkMowers/arknights-mower/pull/885) [@NiceAfternoon](https://github.com/NiceAfternoon)
+
+#### 修复 fix
+
+* 修复训练室空闲检测误判，优化全自动专精稳定性 [#875](https://github.com/ArkMowers/arknights-mower/pull/875) [@NiceAfternoon](https://github.com/NiceAfternoon)
+
+* 优化全自动专精状态机，整合训练室状态检测到心情读取 [#880](https://github.com/ArkMowers/arknights-mower/pull/880) [@NiceAfternoon](https://github.com/NiceAfternoon)
+
+* 统一任务间休眠收口，修复休息期间 /status 的 sleeping 状态 [#884](https://github.com/ArkMowers/arknights-mower/pull/884) [@djkcyl](https://github.com/djkcyl)
+
+* 专精路线设置 - 默认值从JSON读取、自动保存、恢复默认修复 [#886](https://github.com/ArkMowers/arknights-mower/pull/886) [@Shawnsdaddy](https://github.com/Shawnsdaddy)
+
 ## 4.1.5.6
 
 - 修复在无专精计划时重复添加加工站配置的问题
@@ -7,18 +55,14 @@
 - 优化全自动专精功能
 - 新增基建设置 `训练室协助位总是跟随排班`
 - 新增自动合成配置的默认加工站干员设置
-- 新增基建设置 `读取心情后先刷新副表`，开启后缓存清零重启会先读取心情并按载入心情数据模式自动重启，再触发副表和后续排班
 - 新增无专精计划时可使用自动合成配置添加全量材料合成配置
-- 新增 MAA 连通性测试的子进程执行与启动前检查选项，并在连接配置中提示 MuMu Mac 用户可切换 `MuMuMacStable`
-- 新增启动游戏自定义命令选项，并预设唤醒无锁屏设备后启动游戏的命令
 - 移除专精计划与排班表的冲突检测
 
 详细内容：
 ### 新增 feat
+
 - feat: 重构全自动专精调度、增加加工站干员配置并修复邮件和无法删除的加工配置问题 [(#873)@NiceAfternoon](https://github.com/ArkMowers/arknights-mower/commit/8a000046167caa90d40c9e526e98f6310d76ed0c)
-- feat: 新增 MAA 连通性测试的子进程执行与启动前检查，并提示 MuMu Mac 用户可切换 `MuMuMacStable` 连接配置 [@ALEXsun0]
-- feat: 新增缓存清零重启后读取心情再刷新副表的基建设置开关 [@ALEXsun0]
-- feat: 新增启动游戏自定义命令选项，支持唤醒设备后启动游戏 [@ALEXsun0]
+
 
 ## 4.1.5.5
 
@@ -34,6 +78,7 @@
 
 详细内容：
 ### 新增 feat
+
 - feat: 完善全自动专精功能 [(#871)@NiceAfternoon](https://github.com/ArkMowers/arknights-mower/commit/2ee0cfd909c277ba5c978d4c2fa20a83ac313ac2)
 - feat: 实现全自动专精功能并优化合成方案配置 [(#862)@mikuzc](https://github.com/ArkMowers/arknights-mower/commit/b54c7a89199fdf8e71731768a39c8be970564bef)
 - feat: add Closure order in report and trade order analysis [(#865)@NiceAfternoon](https://github.com/ArkMowers/arknights-mower/commit/92c2cb2fc95043e816bdca1fbcdbfa2553269890)
@@ -42,14 +87,17 @@
 - 4.1.6专精模块修复完善 [(#855)@mikuzc](https://github.com/ArkMowers/arknights-mower/commit/16e5a818a2119585237c4626f97cc4494243e2b3)
 
 ### 修复 fix
+
 - fix: 修复识别跑单订单价值时模板误匹配 [(#858)@NiceAfternoon](https://github.com/ArkMowers/arknights-mower/commit/067aaffe3be283bf1baab27cf656635eb926560d)
 
 ### 文档 doc
+
 - docs: 为 README 添加 Docker 部署文档链接 [(#866)@dhujsi](https://github.com/ArkMowers/arknights-mower/commit/612797cc15448bdabb02da1922642e9043ded839)
 - 文档更新内容详见 [Commits - doc-pages](https://github.com/ArkMowers/arknights-mower/commits/doc-pages)
 
 
 ## 4.1.5.4
+
 - 新增专精推荐模块
 - 支持一图流干员练度导入
 - 适配最大理智上限改为 210
@@ -58,14 +106,17 @@
 
 详细内容：
 ### 新增 feat
+
 - 专精推荐模块 [@Shawnsdaddy]
 - 一图流干员练度导入 [@Shawnsdaddy]
 - 4.1.6专精模块 [(#854)@mikuzc]
 
 ### 修复 fix
+
 - 适配最大理智上限 210 [@Shawnsdaddy]
 
 ## 4.1.5.3
+
 - 新增可露希尔跑单
 - 处理闪断更新公告中不合法的结束时间
 - 修复跑单订单类型识别不正确的问题
