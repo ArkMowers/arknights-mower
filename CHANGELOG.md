@@ -1,5 +1,8 @@
 # CHANGELOG
 
+[Unrelease]
+- fix: 修复启动前 MAA 连通性检查时序 [#889](https://github.com/ArkMowers/arknights-mower/pull/889/changes#diff-d6ca44bc67dfb7f8f8516a6b8d8fb0a6ac79dcdb080452b3e86a594b57998eaf) [@ALEXsun0](https://github.com/alexsun0)
+
 ## v4.1.5.7 - 2026-07-10
 
 ### 新增
@@ -25,13 +28,13 @@
 
 #### 新增 feat
 
-* add MAA mac compatibility check [#877](https://github.com/ArkMowers/arknights-mower/pull/877) [@Alexsun0](https://github.com/alexsun0)
+* add MAA mac compatibility check [#877](https://github.com/ArkMowers/arknights-mower/pull/877) [@ALEXsun0](https://github.com/alexsun0)
 
 * 初步实现调用 MAA 刷生息演算 [#878](https://github.com/ArkMowers/arknights-mower/pull/878) [@NiceAfternoon](https://github.com/NiceAfternoon)
 
-* 新增缓存清零后刷新副表开关并修复训练室读取条件 [#881](https://github.com/ArkMowers/arknights-mower/pull/881) [@Alexsun0](https://github.com/alexsun0)
+* 新增缓存清零后刷新副表开关并修复训练室读取条件 [#881](https://github.com/ArkMowers/arknights-mower/pull/881) [@ALEXsun0](https://github.com/alexsun0)
 
-* 新增启动游戏自定义命令选项 [#883](https://github.com/ArkMowers/arknights-mower/pull/883) [@Alexsun0](https://github.com/alexsun0)
+* 新增启动游戏自定义命令选项 [#883](https://github.com/ArkMowers/arknights-mower/pull/883) [@ALEXsun0](https://github.com/alexsun0)
 
 * 新增领取会客室信息板信用 [#885](https://github.com/ArkMowers/arknights-mower/pull/885) [@NiceAfternoon](https://github.com/NiceAfternoon)
 
