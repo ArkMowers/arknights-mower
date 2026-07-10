@@ -13,9 +13,57 @@
     "endTs": -1
   },
   {
-    "id": "TD-1",
-    "name": "硬壳下的胆小鬼",
+    "id": "BD-1",
+    "name": "消耗品",
     "drop": [
+      {
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act21mini_token_shred",
+        "dropType": "COMPLETE"
+      },
+      {
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act21mini_token_shred",
+        "dropType": "SPECIAL"
+      },
+      {
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30031",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30061",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30041",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30051",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30021",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "USUAL",
+        "type": "MATERIAL",
+        "id": "30011",
+        "dropType": "NORMAL"
+      },
       {
         "occPercent": "ALWAYS",
         "type": "DIAMOND",
@@ -23,22 +71,28 @@
         "dropType": "COMPLETE"
       }
     ],
-    "zoneId": "act50side_zone1",
+    "zoneId": "act21mini_zone1",
     "apCost": 9,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "泡影苍霆",
-    "subTitle": "竞逐苍霆",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1780268400,
-      "endTs": 1781467199
+      "startTs": 1783638000,
+      "endTs": 1784231999
     }
   },
   {
-    "id": "TD-2",
-    "name": "还我锅来！",
+    "id": "BD-1 突袭",
+    "name": "消耗品",
     "drop": [
+      {
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act21mini_token_shred",
+        "dropType": "ONCE"
+      },
       {
         "occPercent": "ALWAYS",
         "type": "DIAMOND",
@@ -46,22 +100,99 @@
         "dropType": "COMPLETE"
       }
     ],
-    "zoneId": "act50side_zone1",
+    "zoneId": "act21mini_zone1",
+    "apCost": 9,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1783638000,
+      "endTs": 1784231999
+    }
+  },
+  {
+    "id": "BD-2",
+    "name": "门后世界",
+    "drop": [
+      {
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act21mini_token_shred",
+        "dropType": "COMPLETE"
+      },
+      {
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act21mini_token_shred",
+        "dropType": "SPECIAL"
+      },
+      {
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30031",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30061",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30041",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30051",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30021",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "USUAL",
+        "type": "MATERIAL",
+        "id": "30011",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "ALWAYS",
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act21mini_zone1",
     "apCost": 9,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "泡影苍霆",
-    "subTitle": "竞逐苍霆",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1780268400,
-      "endTs": 1781467199
+      "startTs": 1783638000,
+      "endTs": 1784231999
     }
   },
   {
-    "id": "TD-3",
-    "name": "不能掉以轻心",
+    "id": "BD-2 突袭",
+    "name": "门后世界",
     "drop": [
+      {
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act21mini_token_shred",
+        "dropType": "ONCE"
+      },
       {
         "occPercent": "ALWAYS",
         "type": "DIAMOND",
@@ -69,22 +200,99 @@
         "dropType": "COMPLETE"
       }
     ],
-    "zoneId": "act50side_zone1",
+    "zoneId": "act21mini_zone1",
     "apCost": 9,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1783638000,
+      "endTs": 1784231999
+    }
+  },
+  {
+    "id": "BD-3",
+    "name": "“嘀嗒嘀嗒”",
+    "drop": [
+      {
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act21mini_token_shred",
+        "dropType": "COMPLETE"
+      },
+      {
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act21mini_token_shred",
+        "dropType": "SPECIAL"
+      },
+      {
+        "occPercent": "USUAL",
+        "type": "MATERIAL",
+        "id": "30031",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30061",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30041",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30051",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "USUAL",
+        "type": "MATERIAL",
+        "id": "30021",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "ALMOST",
+        "type": "MATERIAL",
+        "id": "30011",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "ALWAYS",
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act21mini_zone1",
+    "apCost": 12,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "泡影苍霆",
-    "subTitle": "竞逐苍霆",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1780268400,
-      "endTs": 1781467199
+      "startTs": 1783638000,
+      "endTs": 1784231999
     }
   },
   {
-    "id": "TD-4",
-    "name": "赤雪之兆",
+    "id": "BD-3 突袭",
+    "name": "“嘀嗒嘀嗒”",
     "drop": [
+      {
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act21mini_token_shred",
+        "dropType": "ONCE"
+      },
       {
         "occPercent": "ALWAYS",
         "type": "DIAMOND",
@@ -92,22 +300,211 @@
         "dropType": "COMPLETE"
       }
     ],
-    "zoneId": "act50side_zone1",
+    "zoneId": "act21mini_zone1",
+    "apCost": 12,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1783638000,
+      "endTs": 1784231999
+    }
+  },
+  {
+    "id": "BD-4",
+    "name": "失控沙盒",
+    "drop": [
+      {
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act21mini_token_shred",
+        "dropType": "COMPLETE"
+      },
+      {
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act21mini_token_shred",
+        "dropType": "SPECIAL"
+      },
+      {
+        "occPercent": "USUAL",
+        "type": "MATERIAL",
+        "id": "30031",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30061",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30041",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30051",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "USUAL",
+        "type": "MATERIAL",
+        "id": "30021",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "ALMOST",
+        "type": "MATERIAL",
+        "id": "30011",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "ALWAYS",
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act21mini_zone1",
+    "apCost": 12,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1783638000,
+      "endTs": 1784231999
+    }
+  },
+  {
+    "id": "BD-4 突袭",
+    "name": "失控沙盒",
+    "drop": [
+      {
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act21mini_token_shred",
+        "dropType": "ONCE"
+      },
+      {
+        "occPercent": "ALWAYS",
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act21mini_zone1",
+    "apCost": 12,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1783638000,
+      "endTs": 1784231999
+    }
+  },
+  {
+    "id": "BD-5",
+    "name": "入职邀请",
+    "drop": [
+      {
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act21mini_token_shred",
+        "dropType": "COMPLETE"
+      },
+      {
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act21mini_token_shred",
+        "dropType": "SPECIAL"
+      },
+      {
+        "occPercent": "ALWAYS",
+        "type": "MATERIAL",
+        "id": "30012",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30011",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "MATERIAL",
+        "id": "30031",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "MATERIAL",
+        "id": "30061",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "MATERIAL",
+        "id": "3003",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30012",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "MATERIAL",
+        "id": "30032",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "MATERIAL",
+        "id": "30062",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "ALWAYS",
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act21mini_zone1",
     "apCost": 15,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "泡影苍霆",
-    "subTitle": "竞逐苍霆",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1780268400,
-      "endTs": 1781467199
+      "startTs": 1783638000,
+      "endTs": 1784231999
     }
   },
   {
-    "id": "TD-5",
-    "name": "只能成功，不能失败",
+    "id": "BD-5 突袭",
+    "name": "入职邀请",
     "drop": [
+      {
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act21mini_token_shred",
+        "dropType": "ONCE"
+      },
       {
         "occPercent": "ALWAYS",
         "type": "DIAMOND",
@@ -115,22 +512,117 @@
         "dropType": "COMPLETE"
       }
     ],
-    "zoneId": "act50side_zone1",
+    "zoneId": "act21mini_zone1",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1783638000,
+      "endTs": 1784231999
+    }
+  },
+  {
+    "id": "BD-6",
+    "name": "实验守则",
+    "drop": [
+      {
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act21mini_token_shred",
+        "dropType": "COMPLETE"
+      },
+      {
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act21mini_token_shred",
+        "dropType": "SPECIAL"
+      },
+      {
+        "occPercent": "ALMOST",
+        "type": "MATERIAL",
+        "id": "30062",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "MATERIAL",
+        "id": "30021",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "MATERIAL",
+        "id": "30041",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "MATERIAL",
+        "id": "30051",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "CARD_EXP",
+        "id": "2001",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "MATERIAL",
+        "id": "30022",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "MATERIAL",
+        "id": "30042",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "MATERIAL",
+        "id": "30052",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "CARD_EXP",
+        "id": "2002",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "ALWAYS",
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act21mini_zone1",
     "apCost": 15,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "泡影苍霆",
-    "subTitle": "竞逐苍霆",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1780268400,
-      "endTs": 1781467199
+      "startTs": 1783638000,
+      "endTs": 1784231999
     }
   },
   {
-    "id": "TD-6",
-    "name": "来自过去的亡魂",
+    "id": "BD-6 突袭",
+    "name": "实验守则",
     "drop": [
+      {
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act21mini_token_shred",
+        "dropType": "ONCE"
+      },
       {
         "occPercent": "ALWAYS",
         "type": "DIAMOND",
@@ -138,22 +630,135 @@
         "dropType": "COMPLETE"
       }
     ],
-    "zoneId": "act50side_zone1",
+    "zoneId": "act21mini_zone1",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1783638000,
+      "endTs": 1784231999
+    }
+  },
+  {
+    "id": "BD-7",
+    "name": "不断电",
+    "drop": [
+      {
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act21mini_token_shred",
+        "dropType": "COMPLETE"
+      },
+      {
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act21mini_token_shred",
+        "dropType": "SPECIAL"
+      },
+      {
+        "occPercent": "USUAL",
+        "type": "MATERIAL",
+        "id": "30013",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30011",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "MATERIAL",
+        "id": "30061",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30012",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "MATERIAL",
+        "id": "30062",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "MATERIAL",
+        "id": "30013",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "MATERIAL",
+        "id": "30063",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "MATERIAL",
+        "id": "30073",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "MATERIAL",
+        "id": "31013",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "MATERIAL",
+        "id": "31073",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "MATERIAL",
+        "id": "31103",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "MATERIAL",
+        "id": "3003",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "ALWAYS",
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act21mini_zone1",
     "apCost": 21,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "泡影苍霆",
-    "subTitle": "竞逐苍霆",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1780268400,
-      "endTs": 1781467199
+      "startTs": 1783638000,
+      "endTs": 1784231999
     }
   },
   {
-    "id": "TD-7",
-    "name": "为什么全是死脑筋？",
+    "id": "BD-7 突袭",
+    "name": "不断电",
     "drop": [
+      {
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act21mini_token_shred",
+        "dropType": "ONCE"
+      },
       {
         "occPercent": "ALWAYS",
         "type": "DIAMOND",
@@ -161,22 +766,153 @@
         "dropType": "COMPLETE"
       }
     ],
-    "zoneId": "act50side_zone1",
+    "zoneId": "act21mini_zone1",
+    "apCost": 21,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1783638000,
+      "endTs": 1784231999
+    }
+  },
+  {
+    "id": "BD-8",
+    "name": "演算的终点",
+    "drop": [
+      {
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act21mini_token_shred",
+        "dropType": "COMPLETE"
+      },
+      {
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act21mini_token_shred",
+        "dropType": "SPECIAL"
+      },
+      {
+        "occPercent": "USUAL",
+        "type": "MATERIAL",
+        "id": "30043",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "MATERIAL",
+        "id": "30021",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "MATERIAL",
+        "id": "30041",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "CARD_EXP",
+        "id": "2001",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30022",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "MATERIAL",
+        "id": "30042",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "CARD_EXP",
+        "id": "2002",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "MATERIAL",
+        "id": "30023",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "MATERIAL",
+        "id": "30043",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "MATERIAL",
+        "id": "30083",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "MATERIAL",
+        "id": "31023",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "MATERIAL",
+        "id": "31063",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "MATERIAL",
+        "id": "31093",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "SOMETIMES",
+        "type": "CARD_EXP",
+        "id": "2003",
+        "dropType": "ADDITIONAL"
+      },
+      {
+        "occPercent": "ALWAYS",
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act21mini_zone1",
     "apCost": 21,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "泡影苍霆",
-    "subTitle": "竞逐苍霆",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1780268400,
-      "endTs": 1781467199
+      "startTs": 1783638000,
+      "endTs": 1784231999
     }
   },
   {
-    "id": "TD-8",
-    "name": "宿命流转，苍霆激荡",
+    "id": "BD-8 突袭",
+    "name": "演算的终点",
     "drop": [
+      {
+        "occPercent": "ALWAYS",
+        "type": "FURN",
+        "id": "furni_terracommericials_boutique_01",
+        "dropType": "ONCE"
+      },
+      {
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act21mini_token_shred",
+        "dropType": "ONCE"
+      },
       {
         "occPercent": "ALWAYS",
         "type": "DIAMOND",
@@ -184,21 +920,21 @@
         "dropType": "COMPLETE"
       }
     ],
-    "zoneId": "act50side_zone1",
+    "zoneId": "act21mini_zone1",
     "apCost": 21,
-    "difficulty": "NORMAL",
+    "difficulty": "FOUR_STAR",
     "diffGroup": "NONE",
-    "zoneNameSecond": "泡影苍霆",
-    "subTitle": "竞逐苍霆",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1780268400,
-      "endTs": 1781467199
+      "startTs": 1783638000,
+      "endTs": 1784231999
     }
   },
   {
-    "id": "TD-P-1",
-    "name": "“百兽奔行”",
+    "id": "BD-S-1",
+    "name": "“绝不后退”",
     "drop": [
       {
         "occPercent": "ALWAYS",
@@ -207,39 +943,39 @@
         "dropType": "COMPLETE"
       }
     ],
-    "zoneId": "act50side_zone1",
-    "apCost": 10,
-    "difficulty": "NORMAL",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "泡影苍霆",
-    "subTitle": "竞逐苍霆",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1780268400,
-      "endTs": 1781467199
-    }
-  },
-  {
-    "id": "TD-TR-1",
-    "name": "狩猎太棒啦！",
-    "drop": [
-      {
-        "occPercent": "ALWAYS",
-        "type": "DIAMOND",
-        "id": "4002",
-        "dropType": "COMPLETE"
-      }
-    ],
-    "zoneId": "act50side_zone1",
+    "zoneId": "act21mini_zone1",
     "apCost": 0,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "泡影苍霆",
-    "subTitle": "竞逐苍霆",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1780268400,
-      "endTs": 1781467199
+      "startTs": 1783638000,
+      "endTs": 1784231999
+    }
+  },
+  {
+    "id": "BD-S-2",
+    "name": "“试启动”",
+    "drop": [
+      {
+        "occPercent": "ALWAYS",
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act21mini_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1783638000,
+      "endTs": 1784231999
     }
   },
   {
@@ -7228,6 +7964,390 @@
     "stageType": "DAILY"
   },
   {
+    "id": "BD-1",
+    "name": "消耗品",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 9,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-1",
+    "name": "消耗品",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 9,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-2",
+    "name": "门后世界",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 9,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-2",
+    "name": "门后世界",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 9,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-3",
+    "name": "“嘀嗒嘀嗒”",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 12,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-3",
+    "name": "“嘀嗒嘀嗒”",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 12,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-4",
+    "name": "失控沙盒",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 12,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-4",
+    "name": "失控沙盒",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 12,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-5",
+    "name": "入职邀请",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-5",
+    "name": "入职邀请",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-6",
+    "name": "实验守则",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-6",
+    "name": "实验守则",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-7",
+    "name": "不断电",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 21,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-7",
+    "name": "不断电",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 21,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-8",
+    "name": "演算的终点",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 21,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-8",
+    "name": "演算的终点",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 21,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-S-1",
+    "name": "“绝不后退”",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-S-2",
+    "name": "“试启动”",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PF-TR-1",
+    "name": "首次训练",
+    "drop": null,
+    "zoneId": "act1football_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "阵地足球锦标",
+    "subTitle": "晋级赛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PF-1",
+    "name": "揭幕之战",
+    "drop": null,
+    "zoneId": "act1football_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "阵地足球锦标",
+    "subTitle": "晋级赛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PF-2",
+    "name": "把握良机",
+    "drop": null,
+    "zoneId": "act1football_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "阵地足球锦标",
+    "subTitle": "晋级赛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PF-3",
+    "name": "渐入佳境",
+    "drop": null,
+    "zoneId": "act1football_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "阵地足球锦标",
+    "subTitle": "晋级赛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PF-4",
+    "name": "客场连战",
+    "drop": null,
+    "zoneId": "act1football_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "阵地足球锦标",
+    "subTitle": "晋级赛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PF-5",
+    "name": "争分夺球",
+    "drop": null,
+    "zoneId": "act1football_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "阵地足球锦标",
+    "subTitle": "晋级赛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PF-6",
+    "name": "胜负难分",
+    "drop": null,
+    "zoneId": "act1football_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "阵地足球锦标",
+    "subTitle": "晋级赛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PF-7",
+    "name": "出线之争",
+    "drop": null,
+    "zoneId": "act1football_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "阵地足球锦标",
+    "subTitle": "晋级赛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PF-EX-1",
+    "name": "球风对撞",
+    "drop": null,
+    "zoneId": "act1football_zone2",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "阵地足球锦标",
+    "subTitle": "淘汰赛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PF-EX-2",
+    "name": "先声夺人",
+    "drop": null,
+    "zoneId": "act1football_zone2",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "阵地足球锦标",
+    "subTitle": "淘汰赛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PF-EX-3",
+    "name": "小心脚下",
+    "drop": null,
+    "zoneId": "act1football_zone2",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "阵地足球锦标",
+    "subTitle": "淘汰赛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PF-EX-4",
+    "name": "冠军之路",
+    "drop": null,
+    "zoneId": "act1football_zone2",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "阵地足球锦标",
+    "subTitle": "淘汰赛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PF-S-1",
+    "name": "耐力拉练",
+    "drop": null,
+    "zoneId": "act1football_zone3",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "阵地足球锦标",
+    "subTitle": "特训赛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PF-S-2",
+    "name": "盘带练习",
+    "drop": null,
+    "zoneId": "act1football_zone3",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "阵地足球锦标",
+    "subTitle": "特训赛",
+    "stageType": "ACTIVITY"
+  },
+  {
     "id": "TD-ST-1",
     "name": "风沙渐起",
     "drop": null,
@@ -7369,6 +8489,210 @@
     "diffGroup": "NONE",
     "zoneNameSecond": "泡影苍霆",
     "subTitle": "竞逐苍霆",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-EX-1",
+    "name": "为了泡影国的未来？",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 10,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-EX-1",
+    "name": "为了泡影国的未来？",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 10,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-EX-2",
+    "name": "迁徙季",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 10,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-EX-2",
+    "name": "迁徙季",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 10,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-EX-3",
+    "name": "完美的训练场",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-EX-3",
+    "name": "完美的训练场",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-EX-4",
+    "name": "保护“御轮”",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-EX-4",
+    "name": "保护“御轮”",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-EX-5",
+    "name": "新的岗哨",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-EX-5",
+    "name": "新的岗哨",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-EX-6",
+    "name": "新的兽潮？",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-EX-6",
+    "name": "新的兽潮？",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-EX-7",
+    "name": "最后的“诅咒”",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 20,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-EX-7",
+    "name": "最后的“诅咒”",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 20,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-EX-8",
+    "name": "山河一闪，雷鸣响彻",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 20,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-EX-8",
+    "name": "山河一闪，雷鸣响彻",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 20,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-S-1",
+    "name": "群山震颤，百龙夜行",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 10,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
     "stageType": "ACTIVITY"
   },
   {
@@ -23730,7 +25054,7 @@
     "id": "CF-ST-1",
     "name": "噩梦",
     "drop": null,
-    "zoneId": "act24side_zone1",
+    "zoneId": "act24sre_zone1",
     "apCost": 0,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
@@ -23742,7 +25066,7 @@
     "id": "CF-1",
     "name": "森林里的麻烦家伙",
     "drop": null,
-    "zoneId": "act24side_zone1",
+    "zoneId": "act24sre_zone1",
     "apCost": 9,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
@@ -23754,7 +25078,7 @@
     "id": "CF-TR-1",
     "name": "来袭！天空王者！",
     "drop": null,
-    "zoneId": "act24side_zone1",
+    "zoneId": "act24sre_zone1",
     "apCost": 0,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
@@ -23766,7 +25090,7 @@
     "id": "CF-2",
     "name": "坚硬磐石",
     "drop": null,
-    "zoneId": "act24side_zone1",
+    "zoneId": "act24sre_zone1",
     "apCost": 9,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
@@ -23778,7 +25102,7 @@
     "id": "CF-3",
     "name": "迎头痛击",
     "drop": null,
-    "zoneId": "act24side_zone1",
+    "zoneId": "act24sre_zone1",
     "apCost": 9,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
@@ -23790,7 +25114,7 @@
     "id": "CF-4",
     "name": "破空的飞羽",
     "drop": null,
-    "zoneId": "act24side_zone1",
+    "zoneId": "act24sre_zone1",
     "apCost": 15,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
@@ -23802,7 +25126,7 @@
     "id": "CF-ST-2",
     "name": "林昏焰明",
     "drop": null,
-    "zoneId": "act24side_zone1",
+    "zoneId": "act24sre_zone1",
     "apCost": 0,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
@@ -23814,7 +25138,7 @@
     "id": "CF-5",
     "name": "野蛮肇事者",
     "drop": null,
-    "zoneId": "act24side_zone1",
+    "zoneId": "act24sre_zone1",
     "apCost": 15,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
@@ -23826,7 +25150,7 @@
     "id": "CF-6",
     "name": "禁飞区",
     "drop": null,
-    "zoneId": "act24side_zone1",
+    "zoneId": "act24sre_zone1",
     "apCost": 21,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
@@ -23838,7 +25162,7 @@
     "id": "CF-7",
     "name": "锥心之刺",
     "drop": null,
-    "zoneId": "act24side_zone1",
+    "zoneId": "act24sre_zone1",
     "apCost": 21,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
@@ -23850,7 +25174,7 @@
     "id": "CF-8",
     "name": "奸诈者必自食恶果",
     "drop": null,
-    "zoneId": "act24side_zone1",
+    "zoneId": "act24sre_zone1",
     "apCost": 21,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
@@ -23862,7 +25186,7 @@
     "id": "CF-9",
     "name": "决战！燃烧的狩魂！",
     "drop": null,
-    "zoneId": "act24side_zone1",
+    "zoneId": "act24sre_zone1",
     "apCost": 10,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
@@ -23874,7 +25198,7 @@
     "id": "CF-ST-3",
     "name": "晨曦",
     "drop": null,
-    "zoneId": "act24side_zone1",
+    "zoneId": "act24sre_zone1",
     "apCost": 0,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
@@ -23886,7 +25210,7 @@
     "id": "CF-EX-1",
     "name": "山地的震颤",
     "drop": null,
-    "zoneId": "act24side_zone2",
+    "zoneId": "act24sre_zone2",
     "apCost": 10,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
@@ -23898,7 +25222,7 @@
     "id": "CF-EX-1",
     "name": "山地的震颤",
     "drop": null,
-    "zoneId": "act24side_zone2",
+    "zoneId": "act24sre_zone2",
     "apCost": 10,
     "difficulty": "FOUR_STAR",
     "diffGroup": "NONE",
@@ -23910,7 +25234,7 @@
     "id": "CF-EX-2",
     "name": "深林大大大暴乱",
     "drop": null,
-    "zoneId": "act24side_zone2",
+    "zoneId": "act24sre_zone2",
     "apCost": 10,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
@@ -23922,7 +25246,7 @@
     "id": "CF-EX-2",
     "name": "深林大大大暴乱",
     "drop": null,
-    "zoneId": "act24side_zone2",
+    "zoneId": "act24sre_zone2",
     "apCost": 10,
     "difficulty": "FOUR_STAR",
     "diffGroup": "NONE",
@@ -23934,7 +25258,7 @@
     "id": "CF-EX-3",
     "name": "对对碰，硬邦邦",
     "drop": null,
-    "zoneId": "act24side_zone2",
+    "zoneId": "act24sre_zone2",
     "apCost": 15,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
@@ -23946,7 +25270,7 @@
     "id": "CF-EX-3",
     "name": "对对碰，硬邦邦",
     "drop": null,
-    "zoneId": "act24side_zone2",
+    "zoneId": "act24sre_zone2",
     "apCost": 15,
     "difficulty": "FOUR_STAR",
     "diffGroup": "NONE",
@@ -23958,7 +25282,7 @@
     "id": "CF-EX-4",
     "name": "当心坠落",
     "drop": null,
-    "zoneId": "act24side_zone2",
+    "zoneId": "act24sre_zone2",
     "apCost": 15,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
@@ -23970,7 +25294,7 @@
     "id": "CF-EX-4",
     "name": "当心坠落",
     "drop": null,
-    "zoneId": "act24side_zone2",
+    "zoneId": "act24sre_zone2",
     "apCost": 15,
     "difficulty": "FOUR_STAR",
     "diffGroup": "NONE",
@@ -23982,7 +25306,7 @@
     "id": "CF-EX-5",
     "name": "此路不通",
     "drop": null,
-    "zoneId": "act24side_zone2",
+    "zoneId": "act24sre_zone2",
     "apCost": 15,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
@@ -23994,7 +25318,7 @@
     "id": "CF-EX-5",
     "name": "此路不通",
     "drop": null,
-    "zoneId": "act24side_zone2",
+    "zoneId": "act24sre_zone2",
     "apCost": 15,
     "difficulty": "FOUR_STAR",
     "diffGroup": "NONE",
@@ -24006,7 +25330,7 @@
     "id": "CF-EX-6",
     "name": "登高必经险途",
     "drop": null,
-    "zoneId": "act24side_zone2",
+    "zoneId": "act24sre_zone2",
     "apCost": 15,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
@@ -24018,7 +25342,7 @@
     "id": "CF-EX-6",
     "name": "登高必经险途",
     "drop": null,
-    "zoneId": "act24side_zone2",
+    "zoneId": "act24sre_zone2",
     "apCost": 15,
     "difficulty": "FOUR_STAR",
     "diffGroup": "NONE",
@@ -24030,7 +25354,7 @@
     "id": "CF-EX-7",
     "name": "英雄的诞生",
     "drop": null,
-    "zoneId": "act24side_zone2",
+    "zoneId": "act24sre_zone2",
     "apCost": 20,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
@@ -24042,7 +25366,7 @@
     "id": "CF-EX-7",
     "name": "英雄的诞生",
     "drop": null,
-    "zoneId": "act24side_zone2",
+    "zoneId": "act24sre_zone2",
     "apCost": 20,
     "difficulty": "FOUR_STAR",
     "diffGroup": "NONE",
@@ -24054,7 +25378,7 @@
     "id": "CF-EX-8",
     "name": "炬火燎原",
     "drop": null,
-    "zoneId": "act24side_zone2",
+    "zoneId": "act24sre_zone2",
     "apCost": 20,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
@@ -24066,7 +25390,7 @@
     "id": "CF-EX-8",
     "name": "炬火燎原",
     "drop": null,
-    "zoneId": "act24side_zone2",
+    "zoneId": "act24sre_zone2",
     "apCost": 20,
     "difficulty": "FOUR_STAR",
     "diffGroup": "NONE",
@@ -24078,7 +25402,7 @@
     "id": "CF-S-1",
     "name": "终极斗技之战",
     "drop": null,
-    "zoneId": "act24side_zone2",
+    "zoneId": "act24sre_zone2",
     "apCost": 10,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",

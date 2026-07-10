@@ -345,26 +345,6 @@
         "sortWithinYear": 3
     },
     {
-        "name": "喧闹法则",
-        "sortByYear": 1,
-        "sortWithinYear": 10
-    },
-    {
-        "name": "不义之财",
-        "sortByYear": 5,
-        "sortWithinYear": 4
-    },
-    {
-        "name": "红丝绒",
-        "sortByYear": 7,
-        "sortWithinYear": 1
-    },
-    {
-        "name": "雅赛努斯复仇记",
-        "sortByYear": 7,
-        "sortWithinYear": 7
-    },
-    {
         "name": "战地秘闻",
         "sortByYear": 1,
         "sortWithinYear": 9
@@ -385,6 +365,11 @@
         "sortWithinYear": 8
     },
     {
+        "name": "喧闹法则",
+        "sortByYear": 1,
+        "sortWithinYear": 10
+    },
+    {
         "name": "灯火序曲",
         "sortByYear": 3,
         "sortWithinYear": 1
@@ -400,11 +385,6 @@
         "sortWithinYear": 3
     },
     {
-        "name": "眠于树影之中",
-        "sortByYear": 5,
-        "sortWithinYear": 2
-    },
-    {
         "name": "去咧嘴谷",
         "sortByYear": 5,
         "sortWithinYear": 8
@@ -412,6 +392,31 @@
     {
         "name": "熔炉“还魂”记",
         "sortByYear": 6,
+        "sortWithinYear": 2
+    },
+    {
+        "name": "不义之财",
+        "sortByYear": 5,
+        "sortWithinYear": 4
+    },
+    {
+        "name": "红丝绒",
+        "sortByYear": 7,
+        "sortWithinYear": 1
+    },
+    {
+        "name": "眠于树影之中",
+        "sortByYear": 5,
+        "sortWithinYear": 2
+    },
+    {
+        "name": "雅赛努斯复仇记",
+        "sortByYear": 7,
+        "sortWithinYear": 7
+    },
+    {
+        "name": "丛林症结",
+        "sortByYear": 8,
         "sortWithinYear": 2
     }
 ]
