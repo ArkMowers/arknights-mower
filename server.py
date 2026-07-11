@@ -109,15 +109,33 @@ def read_log():
     global ws_connections
 
     while True:
-        msg = config.log_queue.get()
-        log_lines.append(msg)
-        log_lines = log_lines[-100:]
-        for ws in ws_connections:
-            ws.send(
-                json.dumps(
-                    {"type": "log", "data": msg, "screenshot": get_latest_screenshot()}
-                )
+        # 推送线程绝不能死：死连接 send / 启动期 NameError 都会让 WebUI 日志永久冻结
+        try:
+            msg = config.log_queue.get()
+            log_lines.append(msg)
+            log_lines = log_lines[-100:]
+            from arknights_mower.utils.log import last_screenshot
+
+            payload = json.dumps(
+                {
+                    "type": "log",
+                    "data": msg,
+                    "screenshot": last_screenshot or "",
+                }
             )
+            dead = []
+            for ws in list(ws_connections):
+                try:
+                    ws.send(payload)
+                except Exception:
+                    dead.append(ws)
+            for ws in dead:
+                try:
+                    ws_connections.remove(ws)
+                except ValueError:
+                    pass
+        except Exception:
+            time.sleep(0.1)
 
 
 Thread(target=read_log, daemon=True).start()
