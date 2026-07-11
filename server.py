@@ -1147,41 +1147,43 @@ def add_task():
                         if has_train_group_plan():
                             raise Exception("训练室已设置小组轮换，无法添加专精任务")
                         pk = task.get("plan_key", "")
-                        if not pk:
-                            raise Exception("专精任务缺少 plan_key")
-                        parts = pk.rsplit("_", 1)
-                        if len(parts) != 2:
-                            raise Exception("plan_key 格式错误")
-                        char_id = parts[0]
-                        from arknights_mower.utils.mastery_recommendation import (
-                            PROF_MAP,
-                            _supports_from_dicts,
-                            get_skill_data,
-                        )
-
-                        char_table = get_skill_data().get("characters", {})
-                        prof_en = char_table.get(char_id, {}).get("profession", "")
-                        if not prof_en:
-                            raise Exception(f"未找到干员 {char_id} 的职业信息")
-                        prof_cn = PROF_MAP.get(prof_en, prof_en)
-                        route = get_route(prof_cn)
-                        if not route:
-                            raise Exception(
-                                f"未配置 {prof_cn} 的专精路线，请先在专精路线设置中保存"
+                        if pk:
+                            parts = pk.rsplit("_", 1)
+                            if len(parts) != 2:
+                                raise Exception("plan_key 格式错误")
+                            char_id = parts[0]
+                            from arknights_mower.utils.mastery_recommendation import (
+                                PROF_MAP,
+                                _supports_from_dicts,
+                                get_skill_data,
                             )
-                        import json as _json
 
-                        parsed = _json.loads(route["supports"])
-                        supports_list = (
-                            parsed.get("supports", [])
-                            if isinstance(parsed, dict)
-                            else parsed
-                        )
-                        if not supports_list:
-                            raise Exception(f"{prof_cn} 的专精路线为空")
-                        supports = _supports_from_dicts(supports_list)
-                        base_scheduler.op_data.skill_upgrade_supports = supports
-                        logger.info(f"从数据库加载 {prof_cn} 专精路线完毕")
+                            char_table = get_skill_data().get("characters", {})
+                            prof_en = char_table.get(char_id, {}).get("profession", "")
+                            if not prof_en:
+                                raise Exception(f"未找到干员 {char_id} 的职业信息")
+                            prof_cn = PROF_MAP.get(prof_en, prof_en)
+                            route = get_route(prof_cn)
+                            if not route:
+                                raise Exception(
+                                    f"未配置 {prof_cn} 的专精路线，请先在专精路线设置中保存"
+                                )
+                            import json as _json
+
+                            parsed = _json.loads(route["supports"])
+                            supports_list = (
+                                parsed.get("supports", [])
+                                if isinstance(parsed, dict)
+                                else parsed
+                            )
+                            if not supports_list:
+                                raise Exception(f"{prof_cn} 的专精路线为空")
+                            supports = _supports_from_dicts(supports_list)
+                            base_scheduler.op_data.skill_upgrade_supports = supports
+                            new_task.plan_key = pk
+                            logger.info(f"从数据库加载 {prof_cn} 专精路线完毕")
+                        else:
+                            logger.info("plan_key 未提供，跳过专精路线自动加载")
                     base_scheduler.tasks.append(new_task)
                     logger.debug(f"成功：{str(new_task)}")
                     return "添加任务成功！"

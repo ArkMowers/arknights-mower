@@ -149,12 +149,15 @@ class MasterySync:
                 )
                 return
 
+        # 先同步 cultivate.json 到 DB（自动完成已达成的等级）
+        # 必须在 SKILL_UPGRADE 检查之前，否则队列里残留的 SKILL_UPGRADE
+        # 会导致这里永远 return，_auto_complete_level3 不执行
+        pending = get_pending_only()
+        self._auto_complete_level3(pending)
+
         if self._scheduler.find_next_task(task_type=TaskTypes.SKILL_UPGRADE):
             logger.debug("MasterySync: queue already has SKILL_UPGRADE, skip cycle")
             return
-
-        pending = get_pending_only()
-        self._auto_complete_level3(pending)
 
         remaining = get_pending_only()
         if not remaining:
@@ -242,6 +245,11 @@ class MasterySync:
             logger.warning(f"MasterySync: check building_training failed: {e}")
 
     def _auto_complete_level3(self, pending):
+        """根据 cultivate.json 中的实际专精等级，自动完成已达成 level 的计划。
+
+        如果干员当前专精等级高于计划目标等级，自动补完中间等级并创建下一级 pending。
+        例如：干员已是专精2，计划 level=1 → 自动完成 level=1，创建 pending level=3。
+        """
         cultivate_path = get_path("@app/tmp/cultivate.json")
         if not _os.path.exists(cultivate_path):
             return
@@ -256,12 +264,35 @@ class MasterySync:
             for idx, s in enumerate(char.get("skills", [])):
                 lvl = s.get("level", 0) or 0
                 char_levels[f"{cid}_{idx}"] = lvl
+
+        def _skip_to_level(p, target_lvl: int):
+            plan_lvl = p.get("level", 1)
+            if target_lvl >= 3:
+                logger.info(
+                    f"MasterySync: {p['char_id']}_{p['skill_index']} "
+                    f"already at level={target_lvl} >= 3, marking completed"
+                )
+                insert_plan(
+                    p["char_id"], p["skill_index"], "completed", level=target_lvl
+                )
+            elif target_lvl >= plan_lvl:
+                logger.info(
+                    f"MasterySync: {p['char_id']}_{p['skill_index']} "
+                    f"already at level={target_lvl} (plan level={plan_lvl}), "
+                    f"auto-completing and adding pending level={target_lvl + 1}"
+                )
+                insert_plan(
+                    p["char_id"], p["skill_index"], "completed", level=target_lvl
+                )
+                insert_plan(
+                    p["char_id"], p["skill_index"], "pending", level=target_lvl + 1
+                )
+
         for p in pending:
             key = f"{p['char_id']}_{p['skill_index']}"
             lvl = char_levels.get(key, 0)
-            if lvl >= 3:
-                logger.info(f"MasterySync: {key} level={lvl} >= 3, marking completed")
-                insert_plan(p["char_id"], p["skill_index"], "completed", level=lvl)
+            if lvl >= p.get("level", 1):
+                _skip_to_level(p, lvl)
 
         in_progress = [p for p in get_all_plans() if p["status"] == "in_progress"]
         if in_progress:
@@ -325,7 +356,8 @@ class MasterySync:
                 adjusted=True,
             )
             t.plan_key = f"{char_id}_{skill_index}"
-            self._scheduler.tasks.insert(0, t)
+            # 专精任务必须在上班任务之后执行，否则训练室没人
+            self._scheduler.tasks.append(t)
             logger.info(f"MasterySync: scheduled {name} 技能{sk}")
         except Exception as e:
             logger.exception(

@@ -115,7 +115,7 @@ def get_pending_plans() -> list[dict]:
             "SELECT char_id, skill_index, MAX(id) as max_id "
             "FROM mastery_plan GROUP BY char_id, skill_index"
             ") latest ON p.id = latest.max_id "
-            "WHERE p.status IN ('pending', 'failed')"
+            "WHERE p.status = 'pending'"
         ).fetchall()
         return [dict(r) for r in rows]
     except Exception as e:
