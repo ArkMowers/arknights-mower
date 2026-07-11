@@ -831,9 +831,7 @@ const controlCenterBonus = computed(() => (controlCenter.value === 'none' ? 0 : 
 
 const defaultsCache = ref(null)
 
-const routeSettings = reactive(
-  Object.fromEntries(profKeys.map((p) => [p, { supports: [] }]))
-)
+const routeSettings = reactive(Object.fromEntries(profKeys.map((p) => [p, { supports: [] }])))
 let _autoSaveReady = false
 let _autoSaveTimer = null
 watch(
@@ -1097,7 +1095,7 @@ function buildSupports(op) {
     swap_name: sup.swap ? sup.swap_name || sup.name : sup.name,
     skill_level: sup.skill_level,
     efficiency: Math.min(100, (sup.efficiency || 45) + bonus),
-    match: sup.swap ? !!sup.match : false,
+    match: sup.swap ? !!sup.match : false
   }))
 }
 

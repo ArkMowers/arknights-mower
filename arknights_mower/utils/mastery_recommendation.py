@@ -297,7 +297,8 @@ def compute_workshop_config(
     db_plans = get_all_plans()
     planned_keys = [
         f"{p['char_id']}_{p['skill_index']}"
-        for p in db_plans if p.get("status") != "completed"
+        for p in db_plans
+        if p.get("status") != "completed"
     ]
 
     skill_data_path = _find_skill_data()
@@ -305,7 +306,7 @@ def compute_workshop_config(
         skill_data = json.load(f)
     items = skill_data.get("items", {})
 
-    def item_rarity(name):        
+    def item_rarity(name):
         for iid, info in items.items():
             if info.get("name") == name:
                 return info.get("rarity", 0)

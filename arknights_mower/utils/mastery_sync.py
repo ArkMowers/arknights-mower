@@ -177,21 +177,25 @@ class MasterySync:
             if training and isinstance(training.get("trainee"), dict):
                 if (
                     training["trainee"]["charId"] == char_id
-                    and (training["trainee"]["targetSkill"] == -1
-                         or training["trainee"]["targetSkill"] == skill_index)
-                    and (training.get("remainSecs", 0) <= 0
-                         or training.get("slotState", 0) == 2)
+                    and (
+                        training["trainee"]["targetSkill"] == -1
+                        or training["trainee"]["targetSkill"] == skill_index
+                    )
+                    and (
+                        training.get("remainSecs", 0) <= 0
+                        or training.get("slotState", 0) == 2
+                    )
                 ):
                     training_completed = True
                     logger.info(
                         f"MasterySync: API confirms training completed for "
-                        f"{char_id} skill{skill_index+1}"
+                        f"{char_id} skill{skill_index + 1}"
                     )
 
             if not training_completed:
                 logger.warning(
                     f"MasterySync: expired plan but API shows training not complete, "
-                    f"skipping: {char_id} skill{skill_index+1}"
+                    f"skipping: {char_id} skill{skill_index + 1}"
                 )
                 continue
 
@@ -200,12 +204,12 @@ class MasterySync:
                 insert_plan(char_id, skill_index, "pending", level=plan_level + 1)
                 logger.info(
                     f"MasterySync: expired plan promoted: lv{plan_level} done "
-                    f"→ pending(lv{plan_level+1}) {char_id} skill{skill_index+1}"
+                    f"→ pending(lv{plan_level + 1}) {char_id} skill{skill_index + 1}"
                 )
             else:
                 logger.info(
                     f"MasterySync: expired plan done: lv{plan_level} "
-                    f"{char_id} skill{skill_index+1}"
+                    f"{char_id} skill{skill_index + 1}"
                 )
         if self._scheduler.find_next_task(task_type=TaskTypes.SKILL_UPGRADE):
             logger.debug("MasterySync: queue already has SKILL_UPGRADE, skip cycle")
