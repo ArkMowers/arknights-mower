@@ -280,7 +280,10 @@ def get_mastery_recommendations():
 
 
 def compute_workshop_config(
-    fodder_operators=None, t5_operators=None, book_operators=None
+    fodder_operators=None,
+    t5_operators=None,
+    book_operators=None,
+    planned_skills=None,
 ):
     """根据当前专精计划和仓库库存，计算合成配置（与前端自动合成配置逻辑一致）"""
     if fodder_operators is None:
@@ -293,15 +296,19 @@ def compute_workshop_config(
 
     from arknights_mower.data import workshop_formula
 
-    plan_path = get_path("@app/tmp/matery_plan.json")
-    planned_keys = []
-    if os.path.exists(plan_path):
-        try:
-            with open(plan_path, "r", encoding="utf-8") as f:
-                plan = json.load(f)
-            planned_keys = [k for k, v in plan.items() if v]
-        except Exception:
-            pass
+    # 优先用前端传入的 planned_skills；否则回退读文件（文件名历史拼写 matery）
+    if planned_skills is not None:
+        planned_keys = list(planned_skills)
+    else:
+        plan_path = get_path("@app/tmp/matery_plan.json")
+        planned_keys = []
+        if os.path.exists(plan_path):
+            try:
+                with open(plan_path, "r", encoding="utf-8") as f:
+                    plan = json.load(f)
+                planned_keys = [k for k, v in plan.items() if v]
+            except Exception:
+                pass
 
     if planned_keys:
         try:
@@ -589,6 +596,7 @@ def _supports_from_dicts(supports_data):
             efficiency=s["efficiency"],
             match=s.get("match", False),
             swap_name=s.get("swap_name", s["name"]),
+            swap=s.get("swap", True),
         )
         supports.append(sup)
     return supports

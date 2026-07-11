@@ -105,13 +105,17 @@ class SkillUpgradeSupport:
     use_booster = True
     name = ""
     swap_name = ""
+    swap = True
 
-    def __init__(self, name, skill_level, efficiency, match, swap_name="艾丽妮"):
+    def __init__(
+        self, name, skill_level, efficiency, match, swap_name="艾丽妮", swap=True
+    ):
         self.name = name
         self.level = skill_level
         self.efficiency = efficiency
         self.match = match
         self.swap_name = swap_name
+        self.swap = swap
 
 
 class Operators:
