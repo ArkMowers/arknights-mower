@@ -657,20 +657,6 @@
         "NORMAL",
         40001
     ],
-    "LINKAGE_TKT_GACHA_10_7401": [
-        "LINKAGE_TKT_GACHA_10_7401",
-        "LINKAGE_TKT_GACHA_10_7401",
-        "弓吟空跃寻访凭证",
-        "NORMAL",
-        40003
-    ],
-    "弓吟空跃寻访凭证": [
-        "LINKAGE_TKT_GACHA_10_7401",
-        "LINKAGE_TKT_GACHA_10_7401",
-        "弓吟空跃寻访凭证",
-        "NORMAL",
-        40003
-    ],
     "7003": [
         "7003",
         "TKT_GACHA",
@@ -7902,6 +7888,20 @@
         "MATERIAL",
         700190
     ],
+    "p_char_4234_pedro": [
+        "p_char_4234_pedro",
+        "p_char_4234_pedro",
+        "佩德洛的信物",
+        "MATERIAL",
+        700191
+    ],
+    "佩德洛的信物": [
+        "p_char_4234_pedro",
+        "p_char_4234_pedro",
+        "佩德洛的信物",
+        "MATERIAL",
+        700191
+    ],
     "p_char_103_angel": [
         "p_char_103_angel",
         "p_char_103_angel",
@@ -9735,6 +9735,20 @@
         "焰狐龙梓兰的信物",
         "MATERIAL",
         600131
+    ],
+    "p_char_4229_aphris": [
+        "p_char_4229_aphris",
+        "p_char_4229_aphris",
+        "谬因的信物",
+        "MATERIAL",
+        600132
+    ],
+    "谬因的信物": [
+        "p_char_4229_aphris",
+        "p_char_4229_aphris",
+        "谬因的信物",
+        "MATERIAL",
+        600132
     ],
     "class_p_char_123_fang": [
         "class_p_char_123_fang",
@@ -12353,5 +12367,19 @@
         "“AMa-10”",
         "NORMAL",
         10605
+    ],
+    "SINGLE_75_0_1_GACHA": [
+        "SINGLE_75_0_1_GACHA",
+        "SINGLE_75_0_1_GACHA",
+        "确定性混沌寻访凭证",
+        "NORMAL",
+        40003
+    ],
+    "确定性混沌寻访凭证": [
+        "SINGLE_75_0_1_GACHA",
+        "SINGLE_75_0_1_GACHA",
+        "确定性混沌寻访凭证",
+        "NORMAL",
+        40003
     ]
 }

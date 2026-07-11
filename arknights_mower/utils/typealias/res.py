@@ -291,6 +291,8 @@ Res = Literal[
     "clue/filter_all",
     "clue/give_away",
     "clue/icon_notification",
+    "clue/message_board",
+    "clue/message_board_collect",
     "clue/label_give_away",
     "clue/receive",
     "clue/summary",

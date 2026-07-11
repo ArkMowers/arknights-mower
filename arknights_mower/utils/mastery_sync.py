@@ -207,7 +207,6 @@ class MasterySync:
                     f"MasterySync: expired plan done: lv{plan_level} "
                     f"{char_id} skill{skill_index+1}"
                 )
-
         if self._scheduler.find_next_task(task_type=TaskTypes.SKILL_UPGRADE):
             logger.debug("MasterySync: queue already has SKILL_UPGRADE, skip cycle")
             return

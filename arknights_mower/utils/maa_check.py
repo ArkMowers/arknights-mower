@@ -38,11 +38,11 @@ print(json.dumps(result, ensure_ascii=False))
 """
 
 
-def maa_check_params() -> dict[str, str]:
+def maa_check_params(adb: str | None = None) -> dict[str, str]:
     return {
         "maa_path": str(config.conf.maa_path),
         "maa_adb_path": str(config.conf.maa_adb_path),
-        "adb": str(config.conf.adb),
+        "adb": str(config.conf.adb if adb is None else adb),
         "maa_conn_preset": str(config.conf.maa_conn_preset),
         "maa_touch_option": str(config.conf.maa_touch_option),
     }
@@ -87,10 +87,11 @@ def maa_check_timeout_result(timeout: int = MAA_CHECK_TIMEOUT) -> dict[str, str]
 
 def run_maa_connectivity_check(
     timeout: int = MAA_CHECK_TIMEOUT,
+    adb: str | None = None,
 ) -> dict[str, str]:
     try:
         result = subprocess.run(
-            maa_check_command(),
+            maa_check_command(maa_check_params(adb)),
             capture_output=True,
             text=True,
             timeout=timeout,
