@@ -20,6 +20,7 @@ from arknights_mower import __system__
 from arknights_mower.agent.agent import ask_llm
 from arknights_mower.agent.tools.submit_issue import submit_issue
 from arknights_mower.solvers.record import clear_data, load_state, save_state
+from arknights_mower.solvers.report import read_csv_with_encoding_fallback
 from arknights_mower.utils import config
 from arknights_mower.utils.datetime import get_server_time
 from arknights_mower.utils.log import logger
@@ -636,7 +637,7 @@ def get_report_data():
         if os.path.exists(record_path) is False:
             logger.debug("基报不存在")
             return False
-        df = pd.read_csv(record_path, encoding="gbk")
+        df = read_csv_with_encoding_fallback(record_path, on_bad_lines="skip")
         data = df.to_dict("records")
         earliest_date = str2date(data[0]["Unnamed: 0"])
 
@@ -675,6 +676,10 @@ def get_report_data():
         return format_data
     except PermissionError:
         logger.info("report.csv正在被占用")
+        return False
+    except (UnicodeDecodeError, pd.errors.ParserError) as e:
+        logger.warning(f"report.csv 编码无法识别或格式损坏: {e}")
+        return False
 
 
 @app.route("/report/getOrundumData")
@@ -687,7 +692,7 @@ def get_orundum_data():
         if os.path.exists(record_path) is False:
             logger.debug("基报不存在")
             return False
-        df = pd.read_csv(record_path, encoding="gbk")
+        df = read_csv_with_encoding_fallback(record_path, on_bad_lines="skip")
         data = df.to_dict("records")
         earliest_date = datetime.datetime.now()
 
@@ -741,6 +746,10 @@ def get_orundum_data():
         return format_data
     except PermissionError:
         logger.info("report.csv正在被占用")
+        return False
+    except (UnicodeDecodeError, pd.errors.ParserError) as e:
+        logger.warning(f"report.csv 编码无法识别或格式损坏: {e}")
+        return False
 
 
 @app.route("/test-email")
@@ -1059,7 +1068,6 @@ def mastery_t3_summary():
 
 @app.route("/mastery-t3-debug", methods=["POST"])
 def mastery_t3_debug():
-
     from arknights_mower.utils.mastery_recommendation import (
         _find_skill_data,
         get_mastery_recommendations,
