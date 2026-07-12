@@ -2,6 +2,7 @@
 
 [Unrelease]
 - fix: 修复启动前 MAA 连通性检查时序 [#889](https://github.com/ArkMowers/arknights-mower/pull/889/changes#diff-d6ca44bc67dfb7f8f8516a6b8d8fb0a6ac79dcdb080452b3e86a594b57998eaf) [@ALEXsun0](https://github.com/alexsun0)
+- fix: verify_agent 识别不匹配时重试读屏，避免基建换班反复报「检测到干员选择错误」 [#898](https://github.com/ArkMowers/arknights-mower/pull/898) [@clousky2020](https://github.com/clousky2020)
 
 ## v4.1.5.7 - 2026-07-10
 
