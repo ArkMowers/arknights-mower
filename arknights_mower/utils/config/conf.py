@@ -400,6 +400,8 @@ class SimulatorPart(ConfModel):
     "关闭MuMu模拟器12时结束adb进程"
     touch_method: str = "scrcpy"
     "触控模式"
+    touch_fallback: bool = False
+    "scrcpy触控失效时使用input tap作为保底（适用于AVD等环境）"
     droidcast: DroidCastConf
     "DroidCast截图设置"
     mumu12IPC: bool = False

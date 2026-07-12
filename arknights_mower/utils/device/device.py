@@ -123,11 +123,35 @@ class Device:
         self.touch_device = touch_device
         self.client = None
         self.control = None
+        self.avd_mode = False  # AVD 环境自动检测标记（实例级，不写入用户配置）
+        # 登录阶段强制使用 ADB input tap（AVD 下 scrcpy 注入可能失效）；
+        # 登录成功并重启 scrcpy 后由 solver.login 置回 False，恢复 scrcpy 主通道。
+        self.force_input_tap = False
         self.start()
 
     def start(self) -> None:
         self.client = ADBClient(self.device_id, self.connect)
         self.control = Device.Control(self, self.client)
+        self._auto_detect_avd()
+
+    def _auto_detect_avd(self) -> None:
+        """检测是否运行在 AVD 等模拟器环境，自动启用 touch_fallback 行为
+
+        注意：仅设置实例级标记 self.avd_mode，不修改用户配置（conf.yml），
+        避免切换设备后误把 touch_fallback 持久化为 True。
+        """
+        try:
+            output = self.client.run("getprop ro.kernel.qemu")
+            if output and output.strip() == b"1":
+                logger.info("检测到 AVD 模拟器环境，自动启用 touch_fallback 行为")
+                self.avd_mode = True
+        except Exception as e:
+            logger.debug(f"AVD 自动检测失败（非模拟器环境）: {e}")
+
+    @property
+    def is_avd_like(self) -> bool:
+        """scrcpy 触控可能失效的环境（手动配置 touch_fallback 或运行时自动检测到 AVD）"""
+        return config.conf.touch_fallback or self.avd_mode
 
     def run(self, cmd: str) -> Optional[bytes]:
         return self.client.run(cmd)
@@ -150,6 +174,14 @@ class Device:
             self.run(command)
         else:
             self.run(f"am start -n {config.conf.APPNAME}/{config.APP_ACTIVITY_NAME}")
+            # AVD 环境下 am start 可能导致游戏卡在加载页面，
+            # 发送 Overview 键激活 Activity 解决此问题（仅 touch_fallback / AVD 模式时）
+            if self.is_avd_like:
+                time.sleep(2)
+                logger.debug("发送 Overview 键激活游戏 Activity")
+                self.send_keyevent(187)  # KEYCODE_APP_SWITCH (Overview)
+                time.sleep(0.5)
+                self.send_keyevent(4)  # KEYCODE_BACK
 
     def exit(self) -> None:
         """exit the application"""
@@ -376,17 +408,66 @@ class Device:
         res = line.strip().replace("=", " ").split(" ")
         return int(res[2]), int(res[4]), int(res[6])
 
+    def _control_with_retry(self, method_name: str, *args) -> None:
+        """通过主触控通道（scrcpy/maatouch/mumu）执行触控。
+
+        AVD 环境下，若 scrcpy 触控抛出异常，自动停止并重启 scrcpy-server 后重试，
+        以恢复设备端坐标映射（正确的触控做法），而非退回到坐标错位的 input tap。
+        非 AVD 或 scrcpy 不可用时直接调用，保持原有行为不变。
+        """
+        if not (self.is_avd_like and self.control.scrcpy is not None):
+            getattr(self.control, method_name)(*args)
+            return
+        try:
+            getattr(self.control, method_name)(*args)
+        except MowerExit:
+            raise
+        except Exception as e:
+            logger.warning(
+                f"{method_name} 触控失败（{e}），尝试重启 scrcpy-server 后重试"
+            )
+            for _ in range(2):
+                try:
+                    try:
+                        self.control.scrcpy.stop()
+                    except Exception:
+                        pass
+                    self.control.scrcpy.start()
+                    getattr(self.control, method_name)(*args)
+                    logger.info(f"{method_name} 经 scrcpy 重启后重试成功")
+                    return
+                except MowerExit:
+                    raise
+                except Exception as e2:
+                    logger.warning(f"scrcpy 重启后 {method_name} 仍失败：{e2}")
+            logger.error(
+                f"{method_name} 多次重启 scrcpy 后仍失败，触控通道不可用，"
+                f"请重启 mower 以重新初始化 scrcpy-server 后重试"
+            )
+            raise
+
     def tap(self, point: tuple[int, int]) -> None:
         """tap"""
         logger.debug(f"tap: {point}")
-        self.control.tap(point)
+        if self.is_avd_like and (self.force_input_tap or self.control.scrcpy is None):
+            # AVD 等环境下，登录阶段 scrcpy 触控注入可能失效，改用 ADB input tap 保底；
+            # 登录成功并重启 scrcpy 后由 solver.login 清除 force_input_tap，恢复使用 scrcpy
+            # 主通道（scrcpy 在设备端完成坐标映射，避免横竖屏错位导致的点击偏移）。
+            self.run(f"input tap {int(point[0])} {int(point[1])}")
+        else:
+            self._control_with_retry("tap", point)
 
     def swipe(
         self, start: tuple[int, int], end: tuple[int, int], duration: int = 100
     ) -> None:
         """swipe"""
         logger.debug(f"swipe: {start} -> {end}, duration={duration}")
-        self.control.swipe(start, end, duration)
+        if self.is_avd_like and (self.force_input_tap or self.control.scrcpy is None):
+            self.run(
+                f"input swipe {int(start[0])} {int(start[1])} {int(end[0])} {int(end[1])} {int(duration)}"
+            )
+        else:
+            self._control_with_retry("swipe", start, end, duration)
 
     def swipe_ext(
         self, points: list[tuple[int, int]], durations: list[int], up_wait: int = 200
@@ -395,7 +476,16 @@ class Device:
         logger.debug(
             f"swipe_ext: points={points}, durations={durations}, up_wait={up_wait}"
         )
-        self.control.swipe_ext(points, durations, up_wait)
+        if self.is_avd_like and (self.force_input_tap or self.control.scrcpy is None):
+            # AVD 下多段手势退化为首尾两点的 input swipe，并补上抬手等待
+            start = points[0]
+            end = points[-1]
+            duration = int(sum(durations)) + up_wait
+            self.run(
+                f"input swipe {int(start[0])} {int(start[1])} {int(end[0])} {int(end[1])} {duration}"
+            )
+        else:
+            self._control_with_retry("swipe_ext", points, durations, up_wait)
 
     def check_current_focus(self) -> bool:
         """check if the application is in the foreground"""

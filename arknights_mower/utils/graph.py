@@ -9,7 +9,11 @@ from arknights_mower.utils.device.scrcpy import Scrcpy
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.scene import Scene, SceneComment
 from arknights_mower.utils.simulator import restart_simulator
-from arknights_mower.utils.solver import BaseSolver
+from arknights_mower.utils.solver import (
+    AVD_LOGIN_QUICKLY_TAP,
+    AVD_LOGIN_START_TAP,
+    BaseSolver,
+)
 
 DG = nx.DiGraph()
 
@@ -64,7 +68,22 @@ def dont_download_voice(solver: BaseSolver):
 
 @edge(Scene.LOGIN_QUICKLY, Scene.INDEX)
 def login_quickly(solver: BaseSolver):
-    solver.tap_element("login_awake")
+    if solver.device.is_avd_like:
+        # AVD 登录阶段强制 input tap（scrcpy 触控注入可能失效），与 solver.login 行为一致；
+        # 登录成功（已抵达 INDEX）后重启 scrcpy 并恢复主通道。
+        solver.device.force_input_tap = True
+        solver.device.tap(AVD_LOGIN_QUICKLY_TAP)
+        solver.sleep(3)
+        scrcpy = solver.device.control.scrcpy
+        if scrcpy:
+            try:
+                scrcpy.stop()
+                scrcpy.start()
+            except Exception as e:
+                logger.warning(f"scrcpy-server 重新初始化失败: {e}")
+        solver.device.force_input_tap = False
+    else:
+        solver.tap_element("login_awake")
 
 
 @edge(Scene.LOGIN_CAPTCHA, Scene.INDEX)
@@ -400,7 +419,13 @@ def get_scene(solver: BaseSolver):
 
 @edge(Scene.LOGIN_START, Scene.LOGIN_QUICKLY)
 def login_start(solver: BaseSolver):
-    solver.tap((665, 741))
+    if solver.device.is_avd_like:
+        # AVD 登录阶段强制 input tap（scrcpy 触控注入可能失效），与 solver.login 行为一致
+        solver.device.force_input_tap = True
+        solver.device.tap(AVD_LOGIN_START_TAP)
+        solver.sleep(3)
+    else:
+        solver.tap((665, 741))
 
 
 @edge(Scene.CONFIRM, Scene.LOGIN_START)
