@@ -13,6 +13,7 @@ from arknights_mower.utils.solver import (
     AVD_LOGIN_QUICKLY_TAP,
     AVD_LOGIN_START_TAP,
     BaseSolver,
+    StrategyError,
 )
 
 DG = nx.DiGraph()
@@ -79,9 +80,10 @@ def login_quickly(solver: BaseSolver):
             try:
                 scrcpy.stop()
                 scrcpy.start()
+                solver.device.force_input_tap = False
             except Exception as e:
-                logger.warning(f"scrcpy-server 重新初始化失败: {e}")
-        solver.device.force_input_tap = False
+                logger.error(f"scrcpy-server 重新初始化失败: {e}")
+                raise StrategyError("scrcpy-server 重新初始化失败") from e
     else:
         solver.tap_element("login_awake")
 

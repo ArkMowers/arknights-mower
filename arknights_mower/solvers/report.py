@@ -170,7 +170,7 @@ class ReportSolver(SceneGraphSolver):
             if os.path.exists(self.record_path) is False:
                 logger.debug("基报不存在")
                 return False
-            df = read_csv_with_encoding_fallback(self.record_path, on_bad_lines="skip")
+            df = read_csv_with_encoding_fallback(self.record_path, on_bad_lines="warn")
             for item in df.iloc:
                 if item[0] == self.date:
                     return True
@@ -301,7 +301,7 @@ def get_report_data():
         if os.path.exists(record_path) is False:
             logger.debug("基报不存在")
             return False
-        df = read_csv_with_encoding_fallback(record_path, on_bad_lines="skip")
+        df = read_csv_with_encoding_fallback(record_path, on_bad_lines="warn")
         return df.to_dict("dict")
     except PermissionError:
         logger.info("report.csv正在被占用")

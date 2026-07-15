@@ -119,7 +119,7 @@ class TestGetReportDataEncoding(unittest.TestCase):
 
             # get_report_data 已无 print，能正常返回 dict 即说明编码回退工作正常
             # 只要不抛出异常就说明编码回退正常工作
-            result = get_report_data()
+            get_report_data()
             mock_logger.debug.assert_not_called()
         finally:
             os.unlink(path)
@@ -138,7 +138,7 @@ class TestGetReportDataEncoding(unittest.TestCase):
             df.to_csv(path, encoding="gbk")
             mock_get_path.return_value = path
 
-            result = get_report_data()
+            get_report_data()
             mock_logger.debug.assert_not_called()
         finally:
             os.unlink(path)

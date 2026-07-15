@@ -2,7 +2,7 @@
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
 import { storeToRefs } from 'pinia'
-import { computed, inject } from 'vue'
+import { computed, inject, watch } from 'vue'
 
 import { pinyin_match } from '@/utils/common'
 
@@ -39,6 +39,7 @@ const {
   webview,
   fix_mumu12_adb_disconnect,
   touch_method,
+  touch_fallback,
   free_room,
   merge_interval,
   fia_fool,
@@ -151,7 +152,21 @@ const tested = ref(false)
 const image = ref('')
 const elapsed = ref(0)
 const loading = ref(false)
-const axios = inject('axios')
+
+const test_screenshot = async () => {
+  loading.value = true
+  try {
+    const resp = await fetch(`${import.meta.env.VITE_HTTP_URL || 'http://localhost:8000'}/test-custom-screenshot`)
+    const data = await resp.json()
+    image.value = data.screenshot
+    elapsed.value = data.elapsed
+    tested.value = true
+  } catch (e) {
+    console.error('Screenshot test failed:', e)
+  } finally {
+    loading.value = false
+  }
+}
 
 const scene_name = {
   CONNECTING: '正在提交反馈至神经',
@@ -297,6 +312,19 @@ if (return_home_when_idle.value) {
                   <n-radio value="maatouch">MaaTouch-1.1.0</n-radio>
                 </n-space>
               </n-radio-group>
+            </n-form-item>
+            <n-form-item
+              :show-label="false"
+              v-if="['Waydroid', 'ReDroid', 'Genymotion'].includes(simulator.name)"
+            >
+              <n-checkbox v-model:checked="touch_fallback">
+                AVD 兼容模式
+                <help-text>
+                  <div>在 AVD 环境下启用 ADB input tap 作为触控回退。</div>
+                  <div>自动检测已覆盖真 AVD / Genymotion，但无法覆盖 Waydroid / ReDroid。</div>
+                  <div>在非 AVD 环境下开启，可能在启动时误触 Overview+BACK 按键事件。</div>
+                </help-text>
+              </n-checkbox>
             </n-form-item>
             <n-form-item label="模拟器">
               <n-select
@@ -492,7 +520,6 @@ if (return_home_when_idle.value) {
                   </tr>
                 </tbody>
               </n-table>
-              <!-- {{ waiting_scene }} -->
             </n-form-item>
             <n-form-item label="界面缩放">
               <n-slider

@@ -1,5 +1,5 @@
 import unittest
-from datetime import datetime
+from contextlib import suppress
 from unittest.mock import MagicMock, call, patch
 
 from arknights_mower.utils.device.device import Device
@@ -56,10 +56,8 @@ class TestTouchFallback(unittest.TestCase):
             mock_conf.stop_mower.is_set.return_value = False
             mock_conf.MAX_RETRYTIME = 1
             # login 方法会调用 tap
-            try:
+            with suppress(AttributeError, TypeError):
                 solver.login()
-            except Exception:
-                pass
 
         # touch_fallback=False 时，不调用 device.tap(AVD_LOGIN_START_TAP)
         from arknights_mower.utils.solver import AVD_LOGIN_START_TAP
@@ -88,10 +86,8 @@ class TestTouchFallback(unittest.TestCase):
             mock_conf.stop_mower = MagicMock()
             mock_conf.stop_mower.is_set.return_value = False
             mock_conf.MAX_RETRYTIME = 1
-            try:
+            with suppress(AttributeError, TypeError):
                 solver.login()
-            except Exception:
-                pass
 
         from arknights_mower.utils.solver import AVD_LOGIN_START_TAP
 
@@ -114,10 +110,8 @@ class TestTouchFallback(unittest.TestCase):
             mock_conf.stop_mower = MagicMock()
             mock_conf.stop_mower.is_set.return_value = False
             mock_conf.MAX_RETRYTIME = 1
-            try:
+            with suppress(AttributeError, TypeError):
                 solver.login()
-            except Exception:
-                pass
 
         from arknights_mower.utils.solver import AVD_LOGIN_START_TAP
 
