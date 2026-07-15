@@ -202,7 +202,7 @@ class SKLand:
             sign_endfield_official = False
             sign_endfield_bilibili = False
 
-            for item in df.iloc:
+            for item in df.values:
                 if (item[0] == datetime.datetime.now().strftime("%Y/%m/%d")) and (
                     str(item[1]) == phone
                 ):
