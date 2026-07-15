@@ -4,6 +4,7 @@ import os
 import pandas as pd
 import requests
 
+from arknights_mower.solvers.report import read_csv_with_encoding_fallback
 from arknights_mower.utils import config
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
@@ -18,7 +19,6 @@ from arknights_mower.utils.skland import (
     sign_url,
     token_password_url,
 )
-from arknights_mower.solvers.report import read_csv_with_encoding_fallback
 
 
 class SKLand:
@@ -204,7 +204,7 @@ class SKLand:
 
             for item in df.iloc:
                 if (item[0] == datetime.datetime.now().strftime("%Y/%m/%d")) and (
-                    item[1].astype(str) == phone
+                    str(item[1]) == phone
                 ):
                     for game in config.conf.skland_info:
                         if (phone == game.account) and not game.sign_in_official:

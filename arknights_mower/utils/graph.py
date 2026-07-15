@@ -92,12 +92,30 @@ def login_quickly(solver: BaseSolver):
 def login_captcha(solver: BaseSolver):
     solver.solve_captcha()
     solver.sleep(5)
+    if solver.device.is_avd_like and solver.device.control.scrcpy:
+        scrcpy = solver.device.control.scrcpy
+        try:
+            scrcpy.stop()
+            scrcpy.start()
+            solver.device.force_input_tap = False
+        except Exception as e:
+            logger.error(f"scrcpy-server 重新初始化失败: {e}")
+            raise StrategyError("scrcpy-server 重新初始化失败") from e
 
 
 @edge(Scene.LOGIN_BILIBILI, Scene.INDEX)
 @edge(Scene.LOGIN_BILIBILI_PRIVACY, Scene.INDEX)
 def login_bilibili(solver: BaseSolver):
     solver.bilibili()
+    if solver.device.is_avd_like and solver.device.control.scrcpy:
+        scrcpy = solver.device.control.scrcpy
+        try:
+            scrcpy.stop()
+            scrcpy.start()
+            solver.device.force_input_tap = False
+        except Exception as e:
+            logger.error(f"scrcpy-server 重新初始化失败: {e}")
+            raise StrategyError("scrcpy-server 重新初始化失败") from e
 
 
 @edge(Scene.EXIT_GAME, Scene.INDEX)
