@@ -194,7 +194,7 @@ class SKLand:
                 logger.debug("无森空岛记录")
                 return False
             df = read_csv_with_encoding_fallback(
-                self.record_path, header=None, on_bad_lines="warn"
+                self.record_path, header=None, on_bad_lines="warn", dtype=str
             )
 
             sign_arknights_official = False
