@@ -697,7 +697,7 @@ def get_orundum_data():
         earliest_date = datetime.datetime.now()
 
         begin_make_orundum = (earliest_date + datetime.timedelta(days=1)).date()
-        print(begin_make_orundum)
+        logger.debug(begin_make_orundum)
         if len(data) >= 15:
             for i in range(len(data) - 1, -1, -1):
                 if 0 < i < len(data) - 15:

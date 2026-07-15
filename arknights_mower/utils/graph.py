@@ -93,6 +93,7 @@ def login_captcha(solver: BaseSolver):
     solver.solve_captcha()
     solver.sleep(5)
     if solver.device.is_avd_like and solver.device.control.scrcpy:
+        solver.device.force_input_tap = True
         scrcpy = solver.device.control.scrcpy
         try:
             scrcpy.stop()
@@ -108,6 +109,7 @@ def login_captcha(solver: BaseSolver):
 def login_bilibili(solver: BaseSolver):
     solver.bilibili()
     if solver.device.is_avd_like and solver.device.control.scrcpy:
+        solver.device.force_input_tap = True
         scrcpy = solver.device.control.scrcpy
         try:
             scrcpy.stop()
