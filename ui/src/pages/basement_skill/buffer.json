@@ -365,6 +365,12 @@
     "description": "施加于敌方/友方单位的一次性减益/增益效果，该效果仅在满足特定条件时触发",
     "buffer": []
   },
+  "ba_dt_rampage": {
+    "termId": "ba.dt.rampage",
+    "termName": "狂躁损伤",
+    "description": "狂躁损伤累计至1000时，15秒内攻击速度+50，但每秒受到100点真实伤害（每次攻击时提升50，最多600）",
+    "buffer": []
+  },
   "cc_bd_A_1": {
     "termId": "cc.bd_A_1",
     "termName": "念力",
