@@ -9750,6 +9750,20 @@
         "MATERIAL",
         600132
     ],
+    "p_char_4230_mcnist": [
+        "p_char_4230_mcnist",
+        "p_char_4230_mcnist",
+        "机械师的信物",
+        "MATERIAL",
+        600133
+    ],
+    "机械师的信物": [
+        "p_char_4230_mcnist",
+        "p_char_4230_mcnist",
+        "机械师的信物",
+        "MATERIAL",
+        600133
+    ],
     "class_p_char_123_fang": [
         "class_p_char_123_fang",
         "class_p_char_123_fang",

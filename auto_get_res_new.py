@@ -534,8 +534,12 @@ class Arknights数据处理器:
 
             if 干员名 in recruit_list:
                 tag = 干员数据["tagList"]
-                # 数据中稀有度从0-5
-                干员数据["rarity"] = int(干员数据["rarity"].removeprefix("TIER_"))
+                # 兼容稀有度字段：旧版 0-5 数字，新版 "TIER_x" 字符串
+                rarity = 干员数据["rarity"]
+                if isinstance(rarity, str):
+                    干员数据["rarity"] = int(rarity.removeprefix("TIER_"))
+                else:
+                    干员数据["rarity"] = int(rarity) + 1
                 if len(干员名) <= 4:
                     recruit_result_data[len(干员名)].append(干员代码)
                 else:
@@ -909,8 +913,12 @@ class Arknights数据处理器:
                         干员技能详情["skill_key"] = skill_key
                         干员技能详情["skill_level"] = skill_level
                         skill_level += 1
+                        # 兼容精英阶段字段：旧版 0/1/2 数字，新版 "PHASE_x" 字符串
+                        phase = item2["cond"]["phase"]
+                        if isinstance(phase, str):
+                            phase = phase.removeprefix("PHASE_")
                         干员技能详情["phase_level"] = (
-                            f"精{item2['cond']['phase'].removeprefix('PHASE_')} {item2['cond']['level']}级"
+                            f"精{phase} {item2['cond']['level']}级"
                         )
                         干员技能详情["skillname"] = buff_table[item2["buffId"]][0]
                         text = buff_table[item2["buffId"]][1]
@@ -996,9 +1004,14 @@ class Arknights数据处理器:
                 skipped += 1
                 continue
 
+            rarity = char_info["rarity"]
+            if isinstance(rarity, str):
+                rarity = int(rarity.removeprefix("TIER_"))
+            else:
+                rarity = int(rarity) + 1
             characters[char_id] = {
                 "name": char_info.get("name", char_id),
-                "rarity": int(str(char_info["rarity"]).removeprefix("TIER_")),
+                "rarity": rarity,
                 "profession": char_info.get("profession", ""),
                 "skills": skills,
             }
@@ -1007,12 +1020,15 @@ class Arknights数据处理器:
         items = {}
         for item_id, item_info in self.物品表.get("items", {}).items():
             if item_info.get("classifyType") == "MATERIAL":
+                item_rarity = item_info.get("rarity", 0)
+                if isinstance(item_rarity, str):
+                    item_rarity = int(item_rarity.removeprefix("TIER_"))
+                else:
+                    item_rarity = int(item_rarity) + 1
                 items[item_id] = {
                     "name": item_info.get("name", item_id),
                     "icon": item_info.get("iconId", ""),
-                    "rarity": int(
-                        item_info.get("rarity", "TIER_1").removeprefix("TIER_")
-                    ),
+                    "rarity": item_rarity,
                 }
 
         composite_path = (
