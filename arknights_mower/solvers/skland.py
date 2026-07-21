@@ -4,6 +4,7 @@ import os
 import pandas as pd
 import requests
 
+from arknights_mower.solvers.report import read_csv_with_encoding_fallback
 from arknights_mower.utils import config
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
@@ -179,7 +180,9 @@ class SKLand:
         try:
             for item in self.reward:
                 res_df = pd.DataFrame(item, index=[date_str])
-                res_df.to_csv(self.record_path, mode="a", header=False, encoding="gbk")
+                res_df.to_csv(
+                    self.record_path, mode="a", header=False, encoding="gbk"
+                )
         except Exception as e:
             self.test_writecsv = False
             logger.exception(e)
@@ -190,8 +193,8 @@ class SKLand:
             if os.path.exists(self.record_path) is False:
                 logger.debug("无森空岛记录")
                 return False
-            df = pd.read_csv(
-                self.record_path, header=None, encoding="gbk", on_bad_lines="skip"
+            df = read_csv_with_encoding_fallback(
+                self.record_path, header=None, on_bad_lines="warn", dtype=str
             )
 
             sign_arknights_official = False
@@ -199,9 +202,9 @@ class SKLand:
             sign_endfield_official = False
             sign_endfield_bilibili = False
 
-            for item in df.iloc:
+            for item in df.values:
                 if (item[0] == datetime.datetime.now().strftime("%Y/%m/%d")) and (
-                    item[1].astype(str) == phone
+                    str(item[1]) == phone
                 ):
                     for game in config.conf.skland_info:
                         if (phone == game.account) and not game.sign_in_official:

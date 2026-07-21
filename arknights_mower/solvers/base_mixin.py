@@ -172,6 +172,7 @@ class BaseMixin:
         max_agent_count=-1,
         full_scan=True,
         train=False,
+        retry=0,
     ):
         try:
             # 识别干员
@@ -189,6 +190,24 @@ class BaseMixin:
                 if index >= len(agent):
                     return True
                 if name != agent[index]:
+                    # 单次识别可能因界面动画未稳定 / 模板匹配置信度低（operator_list 低置信返回空串）
+                    # 而误判为选择错误，这里重试读屏而非直接判定失败
+                    if retry < 2:
+                        logger.debug(
+                            f"verify_agent 第 {retry + 1} 次匹配失败"
+                            f"({name!r} != {agent[index]!r})，重试读屏"
+                        )
+                        self.sleep(0.5)
+                        self.recog.update()
+                        return self.verify_agent(
+                            agent,
+                            room,
+                            error_count,
+                            max_agent_count,
+                            full_scan=False,
+                            train=train,
+                            retry=retry + 1,
+                        )
                     return False
                 index += 1
             return True
@@ -198,7 +217,13 @@ class BaseMixin:
                 self.switch_arrange_order("技能", room)
             if error_count < 3:
                 return self.verify_agent(
-                    agent, room, error_count, max_agent_count, full_scan=False
+                    agent,
+                    room,
+                    error_count,
+                    max_agent_count,
+                    full_scan=False,
+                    train=train,
+                    retry=retry,
                 )
             else:
                 logger.exception(e)

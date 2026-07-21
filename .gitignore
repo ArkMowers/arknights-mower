@@ -223,3 +223,5 @@ MAA
 # opencode
 .opencode/
 openspec/
+.sisyphus/
+.playwright-mcp/

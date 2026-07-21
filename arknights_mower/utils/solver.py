@@ -30,6 +30,12 @@ class StrategyError(Exception):
     pass
 
 
+# AVD 等 scrcpy 触控失效环境下，登录流程使用的专用坐标（设备像素）
+# 这些值在 AVD 上经实测可用，切勿改用元素定位/自适应坐标，否则可能点偏
+AVD_LOGIN_START_TAP = (1600, 900)
+AVD_LOGIN_QUICKLY_TAP = (958, 766)
+
+
 class BaseSolver:
     """Base class, provide basic operation"""
 
@@ -524,24 +530,41 @@ class BaseSolver:
         """
         登录进游戏
         """
+        # AVD 环境下登录阶段强制使用 ADB input tap（scrcpy 触控注入可能失效），
+        # 登录成功并重启 scrcpy 后再恢复 scrcpy 主通道（自带坐标映射）。
+        self.device.force_input_tap = True
         retry_times = config.MAX_RETRYTIME
         while retry_times and not self.is_login():
             try:
                 if (scene := self.scene()) == Scene.LOGIN_START:
                     # 应对两种情况：
                     # 1. 点击左上角“网络检测”后出现“您即将进行一次网络拨测，该操作将采集您的网络状态并上报，点击确认继续”，点x
-                    # 2. 点击左上角“清除缓存”之后取消
-                    self.tap((665, 741))
+                    # 2. 点击左上角"清除缓存"之后取消
+                    if self.device.is_avd_like:
+                        # AVD环境下scrcpy注入的触摸事件可能无效，使用ADB input tap命令
+                        self.device.tap(AVD_LOGIN_START_TAP)
+                        self.sleep(3)
+                    else:
+                        self.tap((665, 741))
                 elif scene == Scene.LOGIN_NEW:
                     self.tap_element("login_new")
+                    self._avd_sleep()
                 elif scene == Scene.LOGIN_BILIBILI:
                     self.bilibili()
+                    self._avd_sleep()
                 elif scene == Scene.LOGIN_BILIBILI_PRIVACY:
                     self.bilibili()
+                    self._avd_sleep()
                 elif scene == Scene.LOGIN_QUICKLY:
-                    self.tap_element("login_awake")
+                    if self.device.is_avd_like:
+                        # AVD环境下scrcpy注入的触摸事件可能无效，使用ADB input tap命令
+                        self.device.tap(AVD_LOGIN_QUICKLY_TAP)
+                        self.sleep(3)
+                    else:
+                        self.tap_element("login_awake")
                 elif scene == Scene.LOGIN_MAIN:
                     self.tap_element("login_account", 0.25)
+                    self._avd_sleep()
                 elif scene == Scene.LOGIN_REGISTER:
                     self.back(2)
                 elif scene == Scene.LOGIN_CAPTCHA:
@@ -603,6 +626,27 @@ class BaseSolver:
 
         if not self.is_login():
             raise StrategyError
+
+        # 登录成功后重新初始化 scrcpy-server
+        # 在 AVD 环境下，使用 ADB input tap 登录后 scrcpy 触摸注入可能失效
+        if self.device.is_avd_like and self.device.control.scrcpy:
+            logger.info("登录成功，重新初始化 scrcpy-server")
+            try:
+                self.device.control.scrcpy.stop()
+                self.device.control.scrcpy.start()
+                # 恢复 scrcpy 主通道：后续游戏/基建阶段改用 scrcpy，由其设备端完成坐标映射，
+                # 避免 AVD 横竖屏方向下 input tap 物理坐标错位的问题
+                self.device.force_input_tap = False
+            except Exception as e:
+                logger.error(
+                    f"scrcpy-server 重新初始化失败，停止执行: {e}"
+                )
+                raise StrategyError("scrcpy-server 重新初始化失败") from e
+
+    def _avd_sleep(self, seconds: float = 3) -> None:
+        """AVD 环境下等待页面过渡，普通环境直接返回"""
+        if self.device.is_avd_like:
+            self.sleep(seconds)
 
     def get_navigation(self):
         """

@@ -94,6 +94,7 @@ export const useConfigStore = defineStore('config', () => {
   const ra_timeout = ref(30)
   const sf_target = ref('结局A')
   const touch_method = ref('scrcpy')
+  const touch_fallback = ref(false)
   const free_room = ref(false)
   const merge_interval = ref(10)
   const fia_fool = ref(true)
@@ -332,6 +333,7 @@ export const useConfigStore = defineStore('config', () => {
     ra_timeout.value = response.data.reclamation_algorithm.timeout
     sf_target.value = response.data.secret_front.target
     touch_method.value = response.data.touch_method
+    touch_fallback.value = response.data.touch_fallback
     free_room.value = response.data.free_room
     merge_interval.value = response.data.merge_interval
     fia_fool.value = response.data.fia_fool
@@ -444,6 +446,7 @@ export const useConfigStore = defineStore('config', () => {
         target: sf_target.value
       },
       touch_method: touch_method.value,
+      touch_fallback: touch_fallback.value,
       free_room: free_room.value,
       merge_interval: merge_interval.value,
       fia_fool: fia_fool.value,
@@ -586,6 +589,7 @@ export const useConfigStore = defineStore('config', () => {
     ra_timeout,
     sf_target,
     touch_method,
+    touch_fallback,
     free_room,
     merge_interval,
     fia_fool,

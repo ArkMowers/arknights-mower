@@ -2,6 +2,9 @@
 
 [Unrelease]
 - fix: 修复启动前 MAA 连通性检查时序 [#889](https://github.com/ArkMowers/arknights-mower/pull/889/changes#diff-d6ca44bc67dfb7f8f8516a6b8d8fb0a6ac79dcdb080452b3e86a594b57998eaf) [@ALEXsun0](https://github.com/alexsun0)
+- fix: AVD 环境下登录后恢复 scrcpy 触控主通道，避免 `input tap` 在横竖屏方向下坐标错位导致基建换班点击偏移；scrcpy 触控失败时自动重启 scrcpy-server 并重试，全程使用设备端坐标映射 (feat/avd-support-and-encoding-fix) [@clousky2020](https://github.com/clousky2020)
+- fix: verify_agent 识别不匹配时重试读屏，避免基建换班反复报「检测到干员选择错误」 (feat/avd-support-and-encoding-fix) [@clousky2020](https://github.com/clousky2020)
+- fix: report.csv 读取新增 UTF-8-BOM / GBK 编码回退，并以 `utf-8-sig` 优先以正确去除 BOM，避免 Windows 用户导出的带 BOM 报表首列名残留 `\ufeff` 前缀导致读取报错 (feat/avd-support-and-encoding-fix) [@clousky2020](https://github.com/clousky2020)
 
 ## v4.1.5.7 - 2026-07-10
 
