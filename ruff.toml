@@ -51,6 +51,9 @@ unfixable = []
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
 [format]
+# 规划文档中的代码块是示意伪代码，不参与源码格式化。
+exclude = ["plan/**"]
+
 # Like Black, use double quotes for strings.
 quote-style = "double"
 

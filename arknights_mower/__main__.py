@@ -10,11 +10,9 @@ from arknights_mower.utils.datetime import get_server_time
 from arknights_mower.utils.depot import 创建csv, 创建json
 from arknights_mower.utils.device.adb_client.session import Session
 from arknights_mower.utils.device.scrcpy import Scrcpy
+from arknights_mower.utils.email import send_message
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.maa_check import (
-    run_maa_connectivity_check,
-    should_check_maa_before_start,
-)
+from arknights_mower.utils.maa_check import is_maa_connectivity_check_enabled
 from arknights_mower.utils.news_checker import NewsChecker
 from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.path import get_path
@@ -26,12 +24,11 @@ base_scheduler = None
 # 执行自动排班
 def main(saved_state, restart_after_mood_read=False):
     logger.info("开始运行Mower")
-    startup_maa_check = should_check_maa_before_start()
     rapidocr.initialize_ocr()
     data = None
     if saved_state != {}:
         data = saved_state
-    result = simulate(data, restart_after_mood_read, startup_maa_check)
+    result = simulate(data, restart_after_mood_read)
     if result == "restart_after_mood_read":
         from arknights_mower.solvers.record import load_state
 
@@ -78,7 +75,7 @@ def initialize(
     return base_scheduler
 
 
-def simulate(saved, restart_after_mood_read=False, startup_maa_check=False):
+def simulate(saved, restart_after_mood_read=False):
     """
     具体调用方法可见各个函数的参数说明
     """
@@ -111,14 +108,18 @@ def simulate(saved, restart_after_mood_read=False, startup_maa_check=False):
                 continue
             else:
                 raise e
-    if startup_maa_check:
-        device_id = base_scheduler.device.client.device_id
-        logger.info(f"ADB连接已确认，启动前测试Maa连接：{device_id}")
-        result = run_maa_connectivity_check(adb=device_id)
-        if result["status"] != "success":
-            logger.error(f"启动前Maa连接测试失败：{result['message']}")
+    if is_maa_connectivity_check_enabled():
+        try:
+            base_scheduler.check_maa_connectivity("启动预检")
+        except RuntimeError as e:
+            message = str(e)
+            logger.error(message)
+            send_message(
+                message,
+                "Mower启动中止：Maa连接测试失败",
+                level="ERROR",
+            )
             return
-        logger.info(f"启动前Maa连接测试通过：{result['message']}")
     # base_scheduler.仓库扫描() #别删了 方便我找
     validation_msg = base_scheduler.initialize_operators()
     if validation_msg is not None:

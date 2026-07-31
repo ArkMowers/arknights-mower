@@ -59,6 +59,10 @@ from arknights_mower.utils.email import maa_template, send_message, task_templat
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.maa_check import (
+    is_maa_connectivity_check_enabled,
+    run_maa_connectivity_check,
+)
 from arknights_mower.utils.operators import Operator, Operators
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.plan import PlanTriggerTiming
@@ -4032,8 +4036,23 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         #     logger.info(f"开始扫描仓库（MAA）")
         #     process_itemlist(d)
 
+    def check_maa_connectivity(self, context: str) -> None:
+        device_id = self.device.client.device_id
+        logger.info(f"{context}测试Maa连接：{device_id}")
+        result = run_maa_connectivity_check(adb=device_id)
+        if result["status"] != "success":
+            raise RuntimeError(f"{context}Maa连接测试失败：{result['message']}")
+        logger.info(f"{context}Maa连接测试通过：{result['message']}")
+
     def initialize_maa(self):
         config.stop_maa.clear()
+        if is_maa_connectivity_check_enabled():
+            # 上一个 Assistant 即使已停止任务仍保持设备连接，会让
+            # 调用前检测变成“第二条 Maa 连接”并造成误报。仅在启用
+            # 自动检测时提前释放，关闭开关时保持原有连接生命周期。
+            if getattr(self, "MAA", None) is not None:
+                self.MAA = None
+            self.check_maa_connectivity("调用前")
         conf = config.conf
         path = pathlib.Path(conf.maa_path)
         asst_path = os.path.dirname(path / "Python" / "asst")
@@ -4085,6 +4104,16 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         else:
             logger.info("MAA 连接失败")
             raise Exception("MAA 连接失败")
+
+    def rest_after_maa(self):
+        # 自动检测开启时，休眠期间也允许手动发起独立连通性测试；
+        # 关闭时则保留原逻辑，在休眠结束后才释放 Assistant。
+        release_maa_before_rest = is_maa_connectivity_check_enabled()
+        if release_maa_before_rest:
+            self.MAA = None
+        self.rest_until_next_task()
+        if not release_maa_before_rest:
+            self.MAA = None
 
     def append_maa_task(self, type):
         if type in ["StartUp", "Visit"]:
@@ -4337,8 +4366,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     sf_solver = SecretFront(self.device, self.recog)
                     sf_solver.run(self.tasks[0].time - datetime.now())
 
-            self.rest_until_next_task()
-            self.MAA = None
+            self.rest_after_maa()
         except MowerExit:
             if self.MAA is not None:
                 self.maa_stop()

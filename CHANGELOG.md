@@ -1,13 +1,13 @@
 # CHANGELOG
 
 [Unrelease]
-- fix: 修复启动前 MAA 连通性检查时序 [#889](https://github.com/ArkMowers/arknights-mower/pull/889/changes#diff-d6ca44bc67dfb7f8f8516a6b8d8fb0a6ac79dcdb080452b3e86a594b57998eaf) [@ALEXsun0](https://github.com/alexsun0)
+- 优化 MAA 连通性检测 [#901](https://github.com/ArkMowers/arknights-mower/pull/901) [@ALEXsun0](https://github.com/ALEXsun0)
 
 ## v4.1.5.7 - 2026-07-10
 
 ### 新增
 
-- 新增 MAA 连通性测试的子进程执行与启动前检查选项，并在连接配置中提示 MuMu Mac 用户可切换 `MuMuMacStable`
+- 新增 MAA 连通性测试与启动前检查
 - 新增调用 MAA 刷生息演算，支持的主题有 `沙洲遗闻` 和 `重启锚点`
 - 新增基建设置 `读取心情后先刷新副表`，开启后缓存清零重启会先读取心情并按载入心情数据模式自动重启，再触发副表和后续排班
 - 新增启动游戏自定义命令选项，并预设唤醒无锁屏设备后启动游戏的命令
