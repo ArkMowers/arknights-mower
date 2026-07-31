@@ -205,7 +205,7 @@ class MaaPart(ConfModel):
     maa_conn_preset: str = "General"
     maa_touch_option: str = "maatouch"
     maa_startup_check: bool = False
-    "启动Mower前测试Maa连通性"
+    "Mower启动及每次初始化Maa前测试连接"
 
 
 class RecruitPart(ConfModel):

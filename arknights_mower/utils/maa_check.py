@@ -23,16 +23,19 @@ try:
         pass
 
     callback_func = Asst.CallBackType(callback)
-    Asst.load(str(maa_path))
+    Asst.load(path=maa_path, incremental_path=maa_path / "cache")
     asst = Asst(callback=callback_func)
     version = asst.get_version()
     asst.set_instance_option(2, params["maa_touch_option"])
     if asst.connect(params["maa_adb_path"], params["adb"], params["maa_conn_preset"]):
         result = {"status": "success", "message": f"Maa {version} 连接成功"}
     else:
-        result = {"status": "failed", "message": "连接失败，请检查Maa日志！"}
+        result = {
+            "status": "connection_failed",
+            "message": "连接失败，请检查Maa日志！",
+        }
 except Exception as e:
-    result = {"status": "failed", "message": "Maa加载失败：" + str(e)}
+    result = {"status": "error", "message": "Maa测试异常：" + str(e)}
 
 print(json.dumps(result, ensure_ascii=False))
 """
@@ -64,7 +67,7 @@ def parse_maa_check_output(
         try:
             result = json.loads(line)
             return {
-                "status": result.get("status", "failed"),
+                "status": result.get("status", "error"),
                 "message": result.get("message", ""),
             }
         except json.JSONDecodeError:
@@ -75,12 +78,12 @@ def parse_maa_check_output(
         message += f"：{returncode}"
     if stderr.strip():
         message += f"，{stderr.strip().splitlines()[-1]}"
-    return {"status": "failed", "message": message}
+    return {"status": "error", "message": message}
 
 
 def maa_check_timeout_result(timeout: int = MAA_CHECK_TIMEOUT) -> dict[str, str]:
     return {
-        "status": "failed",
+        "status": "timeout",
         "message": f"Maa连通性测试超时（{timeout}秒），已终止测试进程",
     }
 
@@ -89,23 +92,31 @@ def run_maa_connectivity_check(
     timeout: int = MAA_CHECK_TIMEOUT,
     adb: str | None = None,
 ) -> dict[str, str]:
+    subprocess_options: dict[str, int | bool]
+    if __system__ == "windows":
+        # Windows 由 CreateProcess 创建检测器，并隐藏控制台窗口。
+        subprocess_options = {"creationflags": subprocess.CREATE_NO_WINDOW}
+    else:
+        # 长期运行的 Mower 已加载 Maa/OpenCV 等原生库，不应再通过 fork
+        # 派生检测器。POSIX 会因此走 posix_spawn；Python 文件描述符默认
+        # 不可继承。
+        subprocess_options = {"close_fds": False}
+
     try:
         result = subprocess.run(
             maa_check_command(maa_check_params(adb)),
             capture_output=True,
             text=True,
             timeout=timeout,
-            creationflags=(
-                subprocess.CREATE_NO_WINDOW if __system__ == "windows" else 0
-            ),
+            **subprocess_options,
         )
     except subprocess.TimeoutExpired:
         return maa_check_timeout_result(timeout)
     except Exception as e:
-        return {"status": "failed", "message": "Maa测试启动失败：" + str(e)}
+        return {"status": "error", "message": "Maa测试启动失败：" + str(e)}
 
     return parse_maa_check_output(result.stdout, result.stderr, result.returncode)
 
 
-def should_check_maa_before_start() -> bool:
-    return bool(getattr(config.conf, "maa_startup_check", False))
+def is_maa_connectivity_check_enabled() -> bool:
+    return bool(config.conf.maa_startup_check)

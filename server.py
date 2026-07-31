@@ -7,7 +7,7 @@ import subprocess
 import time
 from functools import wraps
 from io import BytesIO
-from threading import Thread
+from threading import RLock, Thread
 
 import pytz
 from flask import Flask, abort, request, send_file, send_from_directory
@@ -65,43 +65,45 @@ maa_check_job = {
     "message": "",
     "started_at": None,
 }
+maa_check_lock = RLock()
 
 
 def _collect_maa_check_result():
-    process = maa_check_job.get("process")
-    if process is None:
-        return
+    with maa_check_lock:
+        process = maa_check_job.get("process")
+        if process is None:
+            return
 
-    if process.poll() is None:
-        started_at = maa_check_job.get("started_at")
-        if started_at and time.monotonic() - started_at > MAA_CHECK_TIMEOUT:
-            process.kill()
-            try:
-                process.communicate(timeout=1)
-            except Exception:
-                pass
-            result = maa_check_timeout_result(MAA_CHECK_TIMEOUT)
-            maa_check_job.update(
-                {
-                    "process": None,
-                    "status": result["status"],
-                    "message": result["message"],
-                    "started_at": None,
-                }
-            )
-        return
+        if process.poll() is None:
+            started_at = maa_check_job.get("started_at")
+            if started_at and time.monotonic() - started_at > MAA_CHECK_TIMEOUT:
+                process.kill()
+                try:
+                    process.communicate(timeout=1)
+                except Exception:
+                    pass
+                result = maa_check_timeout_result(MAA_CHECK_TIMEOUT)
+                maa_check_job.update(
+                    {
+                        "process": None,
+                        "status": result["status"],
+                        "message": result["message"],
+                        "started_at": None,
+                    }
+                )
+            return
 
-    stdout, stderr = process.communicate()
-    result = parse_maa_check_output(stdout, stderr, process.returncode)
+        stdout, stderr = process.communicate()
+        result = parse_maa_check_output(stdout, stderr, process.returncode)
 
-    maa_check_job.update(
-        {
-            "process": None,
-            "status": result["status"],
-            "message": result["message"],
-            "started_at": None,
-        }
-    )
+        maa_check_job.update(
+            {
+                "process": None,
+                "status": result["status"],
+                "message": result["message"],
+                "started_at": None,
+            }
+        )
 
 
 def read_log():
@@ -489,30 +491,41 @@ def validate_backup_plans_route():
 @app.route("/check-maa")
 @require_token
 def get_maa_adb_version():
-    _collect_maa_check_result()
-    if maa_check_job["status"] == "running":
-        return {
-            "status": "running",
-            "message": maa_check_job["message"] or "正在测试……",
-        }
+    with maa_check_lock:
+        _collect_maa_check_result()
+        if maa_check_job["status"] == "running":
+            return {
+                "status": "running",
+                "message": maa_check_job["message"] or "正在测试……",
+            }
 
-    process = subprocess.Popen(
-        maa_check_command(),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        creationflags=subprocess.CREATE_NO_WINDOW if __system__ == "windows" else 0,
-    )
-    maa_check_job.update(
-        {
-            "id": time.time_ns(),
-            "process": process,
-            "status": "running",
-            "message": "正在测试……",
-            "started_at": time.monotonic(),
-        }
-    )
-    return {"status": "running", "message": "正在测试……"}
+        try:
+            process = subprocess.Popen(
+                maa_check_command(),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                close_fds=False,
+                creationflags=(
+                    subprocess.CREATE_NO_WINDOW if __system__ == "windows" else 0
+                ),
+            )
+        except Exception as e:
+            logger.exception(e)
+            return {
+                "status": "error",
+                "message": f"Maa测试启动失败：{e}",
+            }
+        maa_check_job.update(
+            {
+                "id": time.time_ns(),
+                "process": process,
+                "status": "running",
+                "message": "正在测试……",
+                "started_at": time.monotonic(),
+            }
+        )
+        return {"status": "running", "message": "正在测试……"}
 
 
 @app.route("/check-maa/status")
@@ -534,7 +547,7 @@ def get_maa_conn_presets():
             "r",
             encoding="utf-8",
         ) as f:
-            presets = [i["configName"] for i in json.load(f)["connection"]]
+            presets = [item["configName"] for item in json.load(f)["connection"]]
     except Exception as e:
         logger.exception(e)
         presets = []
