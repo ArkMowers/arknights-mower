@@ -371,6 +371,18 @@
     "description": "狂躁损伤累计至1000时，15秒内攻击速度+50，但每秒受到100点真实伤害（每次攻击时提升50，最多600）",
     "buffer": []
   },
+  "ba_groundbind": {
+    "termId": "ba.groundbind",
+    "termName": "缚地",
+    "description": "目标变为地面单位，无法移动；使部分近地悬浮敌人掉落；对重量大于3的单位持续时间减半",
+    "buffer": []
+  },
+  "ba_airprotect": {
+    "termId": "ba.airprotect",
+    "termName": "对空庇护",
+    "description": "受到来自空中的物理和法术伤害降低相应比例（同名效果取最高）",
+    "buffer": []
+  },
   "cc_bd_A_1": {
     "termId": "cc.bd_A_1",
     "termName": "念力",
