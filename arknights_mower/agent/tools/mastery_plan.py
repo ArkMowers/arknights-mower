@@ -120,7 +120,7 @@ set_route_tool_def = {
                 },
                 "supports_json": {
                     "type": "string",
-                    "description": "包含 supports/half_off/controlCenter 的完整 JSON 配置",
+                    "description": "包含 supports/controlCenter 的完整 JSON 配置",
                 },
             },
             "required": ["profession", "supports_json"],

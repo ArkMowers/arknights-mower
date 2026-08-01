@@ -349,7 +349,6 @@
           </n-scrollbar>
           <div style="display: flex; gap: 12px; margin-top: 16px; align-items: center">
             <n-checkbox v-model:checked="routeSettings[prof].optimal">最优协助干员</n-checkbox>
-            <n-checkbox v-model:checked="routeSettings[prof].half_off">有减半加成</n-checkbox>
           </div>
           <n-divider />
           <n-text depth="2">中枢干员加成</n-text>
@@ -832,9 +831,7 @@ const controlCenterBonus = computed(() => (controlCenter.value === 'none' ? 0 : 
 
 const defaultsCache = ref(null)
 
-const routeSettings = reactive(
-  Object.fromEntries(profKeys.map((p) => [p, { supports: [], half_off: true }]))
-)
+const routeSettings = reactive(Object.fromEntries(profKeys.map((p) => [p, { supports: [] }])))
 let _autoSaveReady = false
 let _autoSaveTimer = null
 watch(
@@ -892,7 +889,6 @@ function applyRoute(d) {
     if (d[p]) {
       routeSettings[p].supports = (d[p].supports || routeSettings[p].supports).filter(Boolean)
       routeSettings[p].optimal = !!d[p].optimal
-      routeSettings[p].half_off = d[p].half_off !== undefined ? d[p].half_off : true
     }
   }
   if (d.controlCenter) controlCenter.value = d.controlCenter
@@ -914,7 +910,6 @@ async function loadRoute() {
       }))
       merged[rt.profession] = {
         supports,
-        half_off: true,
         optimal: false
       }
     } catch (e) {
@@ -987,7 +982,6 @@ async function resetRoute() {
     return
   }
   routeSettings[p].supports = jsonSupports.map((s) => ({ ...s }))
-  routeSettings[p].half_off = true
   routeSettings[p].optimal = false
   try {
     const payload = routeSettings[p].supports.map((sup) => ({
@@ -1101,8 +1095,7 @@ function buildSupports(op) {
     swap_name: sup.swap ? sup.swap_name || sup.name : sup.name,
     skill_level: sup.skill_level,
     efficiency: Math.min(100, (sup.efficiency || 45) + bonus),
-    match: sup.swap ? !!sup.match : false,
-    half_off: s.half_off
+    match: sup.swap ? !!sup.match : false
   }))
 }
 

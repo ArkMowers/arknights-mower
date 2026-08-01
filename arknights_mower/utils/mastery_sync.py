@@ -149,6 +149,68 @@ class MasterySync:
                 )
                 return
 
+        # 处理 in_progress 但 expires_at 已过的计划（重启断链兜底）
+        from arknights_mower.solvers.player_info import player_info_cache
+
+        for p in get_all_plans():
+            if p.get("status") != "in_progress":
+                continue
+            expires_at = p.get("expires_at")
+            if not expires_at:
+                continue
+            try:
+                if datetime.fromisoformat(expires_at) > datetime.now():
+                    continue
+            except Exception:
+                continue
+
+            char_id = p["char_id"]
+            skill_index = p["skill_index"]
+            plan_level = p.get("level", 1)
+
+            # 用 building_training API 数据确认训练是否已完成
+            latest = player_info_cache.get("latest", {})
+            training = (
+                latest.get("building_training") if isinstance(latest, dict) else None
+            )
+            training_completed = False
+            if training and isinstance(training.get("trainee"), dict):
+                if (
+                    training["trainee"]["charId"] == char_id
+                    and (
+                        training["trainee"]["targetSkill"] == -1
+                        or training["trainee"]["targetSkill"] == skill_index
+                    )
+                    and (
+                        training.get("remainSecs", 0) <= 0
+                        or training.get("slotState", 0) == 2
+                    )
+                ):
+                    training_completed = True
+                    logger.info(
+                        f"MasterySync: API confirms training completed for "
+                        f"{char_id} skill{skill_index + 1}"
+                    )
+
+            if not training_completed:
+                logger.warning(
+                    f"MasterySync: expired plan but API shows training not complete, "
+                    f"skipping: {char_id} skill{skill_index + 1}"
+                )
+                continue
+
+            insert_plan(char_id, skill_index, "completed", level=plan_level)
+            if plan_level < 3:
+                insert_plan(char_id, skill_index, "pending", level=plan_level + 1)
+                logger.info(
+                    f"MasterySync: expired plan promoted: lv{plan_level} done "
+                    f"→ pending(lv{plan_level + 1}) {char_id} skill{skill_index + 1}"
+                )
+            else:
+                logger.info(
+                    f"MasterySync: expired plan done: lv{plan_level} "
+                    f"{char_id} skill{skill_index + 1}"
+                )
         if self._scheduler.find_next_task(task_type=TaskTypes.SKILL_UPGRADE):
             logger.debug("MasterySync: queue already has SKILL_UPGRADE, skip cycle")
             return
