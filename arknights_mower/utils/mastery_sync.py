@@ -139,6 +139,15 @@ class MasterySync:
         if plan:
             expires_at = plan.get("expires_at")
             if not expires_at or datetime.fromisoformat(expires_at) > datetime.now():
+                # 队列中已存在 train REFRESH_TIME 时不重复插入，避免每轮空转产生重复任务
+                existing = self._scheduler.find_next_task(
+                    task_type=TaskTypes.REFRESH_TIME, meta_data="train"
+                )
+                if existing:
+                    logger.debug(
+                        "MasterySync: train REFRESH_TIME already in queue, skip add"
+                    )
+                    return
                 logger.info("MasterySync: in_progress plan found, adding REFRESH_TIME")
                 self._scheduler.tasks.append(
                     SchedulerTask(
@@ -283,13 +292,16 @@ class MasterySync:
 
             self._scheduler.op_data.skill_upgrade_supports = supports
 
-            self._scheduler.tasks.append(
-                SchedulerTask(
-                    time=datetime.now(),
-                    task_type=TaskTypes.REFRESH_TIME,
-                    meta_data="train",
+            if not self._scheduler.find_next_task(
+                task_type=TaskTypes.REFRESH_TIME, meta_data="train"
+            ):
+                self._scheduler.tasks.append(
+                    SchedulerTask(
+                        time=datetime.now(),
+                        task_type=TaskTypes.REFRESH_TIME,
+                        meta_data="train",
+                    )
                 )
-            )
 
             # 从 building_training 数据或 op_data 获取当前助理
             current_assistant = self._scheduler.op_data.get_train_support()
@@ -353,9 +365,11 @@ class MasterySync:
 
         try:
             plan_level = plan.get("level", 1)
-            insert_plan(char_id, skill_index, "in_progress", level=plan_level)
+            # 不在这里提前标记 in_progress：只有 skill_upgrade 真正读取到训练倒计时
+            # （确认开始升级）后才会 set_plan_status(in_progress) 并写入 expires_at。
+            # 否则训练尚未启动，MasterySync 会误判为进行中并反复添加 REFRESH_TIME。
             logger.debug(
-                f"MasterySync: insert plan in_progress char={char_id} skill={skill_index} level={plan_level}"
+                f"MasterySync: schedule plan char={char_id} skill={skill_index} level={plan_level}"
             )
 
             parsed = _json.loads(route["supports"])
@@ -372,7 +386,7 @@ class MasterySync:
             name = char_info.get("name", char_id)
             sk = str(skill_index + 1)
 
-            if supports:
+            if supports and plan_level < 3:
                 self._scheduler.tasks.append(
                     SchedulerTask(
                         task_plan={"train": [supports[0].name, name]},

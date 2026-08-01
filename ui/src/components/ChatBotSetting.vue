@@ -4,10 +4,8 @@ import { storeToRefs } from 'pinia'
 const store = useConfigStore()
 const { ai_key, ai_type } = storeToRefs(store)
 const type_options = [
-  { label: 'Deepseek', value: 'deepseek' },
-  { label: 'Deepseek 深度推理', value: 'deepseek_reasoner' },
-  { label: 'Deepseek V4 Pro (深度思考)', value: 'deepseek_v4_pro' },
-  { label: 'Deepseek Flash', value: 'deepseek_flash' }
+  { label: 'Deepseek V4 Flash', value: 'deepseek-v4-flash' },
+  { label: 'Deepseek V4 Pro', value: 'deepseek-v4-pro' }
 ]
 </script>
 <template>
