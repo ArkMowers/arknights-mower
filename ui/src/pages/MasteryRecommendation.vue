@@ -1139,7 +1139,8 @@ async function doAddTask() {
         time: new Date(Date.now() + 120000).toISOString(),
         plan: {},
         task_type: '技能专精',
-        meta_data: '' + skillNum
+        meta_data: '' + skillNum,
+        plan_key: planKey(op.char_id, rec.skill_index)
       },
       upgrade_support: supports
     })

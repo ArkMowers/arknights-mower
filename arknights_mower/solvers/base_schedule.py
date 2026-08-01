@@ -1979,35 +1979,8 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             try_workshop_tasks(self.op_data, self.tasks)
         if not self.find_next_task(datetime.now() + timedelta(minutes=5)):
             try_add_release_dorm({}, None, self.op_data, self.tasks)
-        pending = []
-        try:
-            from arknights_mower.utils.mastery_db import (
-                get_pending_plans,
-                has_in_progress_plan,
-            )
-
-            if has_in_progress_plan():
-                pass
-            else:
-                pending = get_pending_plans()
-        except Exception:
-            pass
-        if pending and not self.find_next_task(task_type=TaskTypes.SKILL_UPGRADE):
-            from arknights_mower.utils.mastery_recommendation import get_skill_data
-
-            char_table = get_skill_data().get("characters", {})
-            entry = pending[0]
-            sk = str(entry["skill_index"] + 1)
-            char_info = char_table.get(entry["char_id"], {})
-            name = char_info.get("name", entry["char_id"])
-            t = SchedulerTask(
-                time=datetime.now(),
-                task_type=TaskTypes.SKILL_UPGRADE,
-                meta_data=f"{name} 技能{sk} -> 专精{entry.get('level', 1)} ",
-                adjusted=True,
-            )
-            t.plan_key = f"{entry['char_id']}_{entry['skill_index']}"
-            self.tasks.append(t)
+        # 专精计划由 MasterySync 统一调度（会同时生成上班任务和 SKILL_UPGRADE 任务）
+        # plan_solver 不再裸加 SKILL_UPGRADE 任务，避免和 MasterySync 冲突导致死循环
         if self.find_next_task(datetime.now() + timedelta(seconds=15)):
             logger.info("有其他任务,跳过宿舍纠错")
             return
