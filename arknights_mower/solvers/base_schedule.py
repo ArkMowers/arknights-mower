@@ -1151,7 +1151,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 ),
                 None,
             )
-            if not support or support.name == support.swap_name:
+            if not support or not support.swap:
                 return
 
             h = self.op_data.calculate_switch_time(support, hour=remaining_h)

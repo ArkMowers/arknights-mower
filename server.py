@@ -919,6 +919,7 @@ def workshop_auto_config():
                 fodder_operators=fodder_ops,
                 t5_operators=t5_ops,
                 book_operators=book_ops,
+                planned_skills=planned_skills,
             )
         else:
             settings = compute_default_workshop_config(
