@@ -1,8 +1,48 @@
 # CHANGELOG
 
-[Unrelease]
-- 优化 MAA 连通性检测 [#901](https://github.com/ArkMowers/arknights-mower/pull/901) [@ALEXsun0](https://github.com/ALEXsun0)
+## v4.1.5.8 - 2026-08-07
+
+### 修复
+
+- 修复 MAA 连通性检测误报
+- 修复日志无输出的问题
+- 修复专精 level 3 训练误插入换人任务的问题
+- 专精升级改为读取倒计时成功后才标记 in_progress
+- 修复活动关卡导航失败的问题
+- 新增关卡体力消耗（AP）fallback 配置
+- 修复 local operation 体力消耗为 None 导致的报错
+- 游戏在后台时不强制退出，直接拉起前台
+- MAA 配置缺失时友好降级
+- 专精路线设置 - 默认值从JSON读取、自动保存、恢复默认修复
+
+### 其他
+
 - 更新游戏数据至SideStory `直到大地变为一颗酸橙`
+- 优化打包体积
+
+### 详细内容
+
+#### 修复 fix
+
+* 修复 mower 无法停止的问题（`/stop` 状态快照缺失字段导致接口报错） [#892](https://github.com/ArkMowers/arknights-mower/pull/892) [@ALEXsun0](https://github.com/ALEXsun0)
+
+* 修复 Maa 连通性检测误报，补充启动前检查测试 [#901](https://github.com/ArkMowers/arknights-mower/pull/901) [@ALEXsun0](https://github.com/ALEXsun0)
+
+* 修复专精调度、导航、日志等问题（训练时间读取真实倒计时、level 3 不再换人、导航失败、新增 AP fallback） [#902](https://github.com/ArkMowers/arknights-mower/pull/902) [@Shawnsdaddy](https://github.com/Shawnsdaddy)
+
+* 修复专精路线设置默认值，专精计划改为从数据库读取 [#895](https://github.com/ArkMowers/arknights-mower/pull/895) [@Shawnsdaddy](https://github.com/Shawnsdaddy)
+
+#### 清理 cleanup
+
+* 删除 training_idle 死代码块与 half_off 剩余引用 [#895](https://github.com/ArkMowers/arknights-mower/pull/895) [@Shawnsdaddy](https://github.com/Shawnsdaddy)
+
+#### 更新 update
+
+* 更新游戏数据（新增干员机械师）及补充机械师基建技能描述 [#899](https://github.com/ArkMowers/arknights-mower/pull/899) [@WufeiHalf](https://github.com/WufeiHalf)
+
+* 更新游戏数据，修复专精调度/导航/日志等问题 [#902](https://github.com/ArkMowers/arknights-mower/pull/902) [@Shawnsdaddy](https://github.com/Shawnsdaddy)
+
+* 更新 CHANGELOG 至 4.1.5.8 并优化打包体积 [#903](https://github.com/ArkMowers/arknights-mower/pull/903) [@NiceAfternoon](https://github.com/NiceAfternoon)
 
 ## v4.1.5.7 - 2026-07-10
 
