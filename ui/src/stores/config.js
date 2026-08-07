@@ -18,6 +18,7 @@ export const useConfigStore = defineStore('config', () => {
   const maa_path = ref('')
   const maa_startup_check = ref(false)
   const maa_expiring_medicine = ref(true)
+  const ap_fallback = ref(0)
   const maa_weekly_plan = ref([])
   const maa_weekly_plan_options = ref([])
   const maa_weekly_plan_active = ref('')
@@ -56,7 +57,7 @@ export const useConfigStore = defineStore('config', () => {
     y: 0,
     command: defaultLaunchCommand
   })
-  const exit_game_when_idle = ref(true)
+  const exit_game_when_idle = ref(false)
   const return_home_when_idle = ref(false)
   const close_simulator_when_idle = ref(false)
   const maa_conn_preset = ref('General')
@@ -268,6 +269,7 @@ export const useConfigStore = defineStore('config', () => {
     maa_rg_enable.value = response.data.maa_rg_enable == 1
     maa_long_task_type.value = response.data.maa_long_task_type
     maa_expiring_medicine.value = response.data.maa_expiring_medicine
+    ap_fallback.value = Number(response.data.ap_fallback) || 0
     maa_weekly_plan.value = normalizeWeeklyPlan(response.data.maa_weekly_plan)
     maa_weekly_plan_active.value = response.data.maa_weekly_plan_active || ''
     mail_enable.value = response.data.mail_enable != 0
@@ -376,6 +378,7 @@ export const useConfigStore = defineStore('config', () => {
       maa_rg_enable: maa_rg_enable.value ? 1 : 0,
       maa_long_task_type: maa_long_task_type.value,
       maa_expiring_medicine: maa_expiring_medicine.value,
+      ap_fallback: ap_fallback.value,
       mail_enable: mail_enable.value ? 1 : 0,
       package_type: package_type.value == 'official' ? 1 : 0,
       pass_code: pass_code.value,
@@ -514,6 +517,7 @@ export const useConfigStore = defineStore('config', () => {
     maa_rg_enable,
     maa_long_task_type,
     maa_expiring_medicine,
+    ap_fallback,
     maa_weekly_plan,
     maa_weekly_plan_options,
     maa_weekly_plan_active,

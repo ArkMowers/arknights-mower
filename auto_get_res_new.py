@@ -235,6 +235,12 @@ class Arknights数据处理器:
         )
         zoneToActivity = activity_table.get("zoneToActivity", {})
         activityBasicInfo = activity_table.get("basicInfo", {})
+        retro_act_names = {}
+        for _retro in self.加载json(
+            "./ArknightsGameResource/gamedata/excel/retro_table.json"
+        )["retroActList"].values():
+            for _act in _retro.get("linkedActId", []):
+                retro_act_names.setdefault(_act, _retro.get("name", ""))
 
         def _pick_text(*values):
             for value in values:
@@ -265,9 +271,12 @@ class Arknights数据处理器:
             if not activity_id:
                 return ""
             info = activityBasicInfo.get(activity_id, {})
-            return clean_zone_name(
-                _pick_text(info.get("name"), info.get("id"), activity_id)
-            )
+            name = _pick_text(info.get("name"), info.get("id"))
+            if not name:
+                name = story_review.get(activity_id, "")
+            if not name:
+                name = retro_act_names.get(activity_id, "")
+            return clean_zone_name(name or activity_id)
 
         for 键, _ in 还未结束的非常驻关卡.items():
             关卡代码 = self.关卡表["stages"][键]["code"]

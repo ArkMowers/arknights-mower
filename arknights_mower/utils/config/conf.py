@@ -240,6 +240,8 @@ class RegularTaskPart(ConfModel):
     "自动使用将要过期（约3天）的理智药"
     exipring_medicine_on_weekend: bool = False
     "仅在周末使用将要过期的理智药"
+    ap_fallback: int = 0
+    "关卡体力消耗默认值（数据中找不到关卡时的兜底，0 表示不启用）"
     maa_eat_stone: bool = False
     "无限吃源石"
     maa_weekly_plan: list[MaaDailyPlan] = [
@@ -390,7 +392,7 @@ class SimulatorPart(ConfModel):
     "自定义截图"
     tap_to_launch_game: TapToLaunchGameConf
     "点击屏幕启动游戏"
-    exit_game_when_idle: bool = True
+    exit_game_when_idle: bool = False
     "任务结束后退出游戏"
     return_home_when_idle: bool = False
     "任务结束后返回首页"

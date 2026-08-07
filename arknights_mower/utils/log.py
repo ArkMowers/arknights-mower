@@ -1,5 +1,4 @@
 import logging
-import os
 import shutil
 import sys
 import time
@@ -22,14 +21,6 @@ COLOR_FORMAT = f"%(log_color)s{BASIC_FORMAT}"
 DATE_FORMAT = None
 basic_formatter = logging.Formatter(BASIC_FORMAT, DATE_FORMAT)
 color_formatter = colorlog.ColoredFormatter(COLOR_FORMAT, DATE_FORMAT)
-
-
-def _is_flask_reloader_parent() -> bool:
-    # `flask --reload` starts a watchdog parent process and a serving child process.
-    return (
-        os.environ.get("FLASK_RUN_FROM_CLI") == "true"
-        and os.environ.get("WERKZEUG_RUN_MAIN") != "true"
-    )
 
 
 class PackagePathFilter(logging.Filter):
@@ -74,22 +65,18 @@ whlr.setLevel(logging.INFO)
 log_queue = Queue()
 listener = None
 
-if _is_flask_reloader_parent():
-    logger.addHandler(logging.NullHandler())
-else:
-    # Create the file handler only in the serving process to avoid log file locks.
-    folder = Path(get_path("@app/log"))
-    folder.mkdir(exist_ok=True, parents=True)
-    fhlr = TimedRotatingFileHandler(
-        folder.joinpath("runtime.log"), encoding="utf8", backupCount=168
-    )
-    fhlr.setFormatter(basic_formatter)
-    fhlr.setLevel("DEBUG")
-    fhlr.addFilter(filter)
-    queue_handler = QueueHandler(log_queue)
-    logger.addHandler(queue_handler)
-    listener = QueueListener(log_queue, dhlr, fhlr, whlr, respect_handler_level=True)
-    listener.start()
+folder = Path(get_path("@app/log"))
+folder.mkdir(exist_ok=True, parents=True)
+fhlr = TimedRotatingFileHandler(
+    folder.joinpath("runtime.log"), encoding="utf8", backupCount=168
+)
+fhlr.setFormatter(basic_formatter)
+fhlr.setLevel("DEBUG")
+fhlr.addFilter(filter)
+queue_handler = QueueHandler(log_queue)
+logger.addHandler(queue_handler)
+listener = QueueListener(log_queue, dhlr, fhlr, whlr, respect_handler_level=True)
+listener.start()
 
 screenshot_folder = get_path("@app/screenshot")
 screenshot_folder.mkdir(exist_ok=True, parents=True)
@@ -135,8 +122,7 @@ def screenshot_worker():
                 last_screenshot = filename
 
 
-if not _is_flask_reloader_parent():
-    Thread(target=screenshot_worker, daemon=True).start()
+Thread(target=screenshot_worker, daemon=True).start()
 
 
 def save_screenshot(img: bytes, sub_folder=None) -> None:

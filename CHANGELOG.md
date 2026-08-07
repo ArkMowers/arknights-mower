@@ -2,6 +2,7 @@
 
 [Unrelease]
 - 优化 MAA 连通性检测 [#901](https://github.com/ArkMowers/arknights-mower/pull/901) [@ALEXsun0](https://github.com/ALEXsun0)
+- 更新游戏数据至SideStory `直到大地变为一颗酸橙`
 
 ## v4.1.5.7 - 2026-07-10
 

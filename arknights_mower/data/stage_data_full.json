@@ -13,1128 +13,535 @@
     "endTs": -1
   },
   {
-    "id": "AD-1",
-    "name": "彩排日",
+    "id": "TO-1",
+    "name": "收信地：终点",
     "drop": [
       {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act53side_token_photo",
+        "dropType": "COMPLETE"
       },
       {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act53side_token_photo",
+        "dropType": "NORMAL"
       },
       {
-        "occPercent": 3,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30031",
+        "dropType": "NORMAL"
       },
       {
-        "occPercent": 3,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30061",
+        "dropType": "NORMAL"
       },
       {
-        "occPercent": 3,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30041",
+        "dropType": "NORMAL"
       },
       {
-        "occPercent": 3,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30051",
+        "dropType": "NORMAL"
       },
       {
-        "occPercent": 3,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30021",
+        "dropType": "NORMAL"
       },
       {
-        "occPercent": 2,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "USUAL",
+        "type": "MATERIAL",
+        "id": "30011",
+        "dropType": "NORMAL"
       },
       {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "ALWAYS",
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
       }
     ],
-    "zoneId": "act43sre_zone1",
+    "zoneId": "act53side_zone1",
     "apCost": 9,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "红丝绒",
-    "subTitle": "演出开始",
+    "zoneNameSecond": "直到大地变成一颗酸橙",
+    "subTitle": "驶向大地尽头",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1784491200,
-      "endTs": 1785355199
+      "startTs": 1785538800,
+      "endTs": 1787342399
     }
   },
   {
-    "id": "AD-2",
-    "name": "排演一出悲剧",
+    "id": "TO-2",
+    "name": "记新友的混乱",
     "drop": [
       {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act53side_token_photo",
+        "dropType": "COMPLETE"
       },
       {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act53side_token_photo",
+        "dropType": "NORMAL"
       },
       {
-        "occPercent": 3,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30031",
+        "dropType": "NORMAL"
       },
       {
-        "occPercent": 3,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30061",
+        "dropType": "NORMAL"
       },
       {
-        "occPercent": 3,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30041",
+        "dropType": "NORMAL"
       },
       {
-        "occPercent": 3,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30051",
+        "dropType": "NORMAL"
       },
       {
-        "occPercent": 3,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30021",
+        "dropType": "NORMAL"
       },
       {
-        "occPercent": 2,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "USUAL",
+        "type": "MATERIAL",
+        "id": "30011",
+        "dropType": "NORMAL"
       },
       {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "ALWAYS",
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
       }
     ],
-    "zoneId": "act43sre_zone1",
+    "zoneId": "act53side_zone1",
     "apCost": 9,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "红丝绒",
-    "subTitle": "演出开始",
+    "zoneNameSecond": "直到大地变成一颗酸橙",
+    "subTitle": "驶向大地尽头",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1784491200,
-      "endTs": 1785355199
+      "startTs": 1785538800,
+      "endTs": 1787342399
     }
   },
   {
-    "id": "AD-3",
-    "name": "戏剧性",
+    "id": "TO-3",
+    "name": "露营奇“叽”",
     "drop": [
       {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act53side_token_photo",
+        "dropType": "COMPLETE"
       },
       {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act53side_token_photo",
+        "dropType": "NORMAL"
       },
       {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30031",
+        "dropType": "NORMAL"
       },
       {
-        "occPercent": 3,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30061",
+        "dropType": "NORMAL"
       },
       {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30041",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30051",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30021",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "USUAL",
+        "type": "MATERIAL",
+        "id": "30011",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "ALWAYS",
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
       }
     ],
-    "zoneId": "act43sre_zone1",
+    "zoneId": "act53side_zone1",
+    "apCost": 9,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "直到大地变成一颗酸橙",
+    "subTitle": "驶向大地尽头",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1785538800,
+      "endTs": 1787342399
+    }
+  },
+  {
+    "id": "TO-4",
+    "name": "谷里升起太阳",
+    "drop": [
+      {
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act53side_token_photo",
+        "dropType": "COMPLETE"
+      },
+      {
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act53side_token_photo",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "ALMOST",
+        "type": "MATERIAL",
+        "id": "30042",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "ALMOST",
+        "type": "MATERIAL",
+        "id": "30012",
+        "dropType": "NORMAL"
+      },
+      {
+        "occPercent": "ALWAYS",
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act53side_zone1",
     "apCost": 12,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "红丝绒",
-    "subTitle": "演出开始",
+    "zoneNameSecond": "直到大地变成一颗酸橙",
+    "subTitle": "驶向大地尽头",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1784491200,
-      "endTs": 1785355199
+      "startTs": 1785538800,
+      "endTs": 1787342399
     }
   },
   {
-    "id": "AD-4",
-    "name": "一个荒唐的早晨",
+    "id": "TO-5",
+    "name": "勇敢的短耳朵",
     "drop": [
       {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act53side_token_photo",
+        "dropType": "COMPLETE"
       },
       {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act53side_token_photo",
+        "dropType": "NORMAL"
       },
       {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "USUAL",
+        "type": "MATERIAL",
+        "id": "30062",
+        "dropType": "NORMAL"
       },
       {
-        "occPercent": 3,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "OFTEN",
+        "type": "MATERIAL",
+        "id": "30052",
+        "dropType": "NORMAL"
       },
       {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "ALWAYS",
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
       }
     ],
-    "zoneId": "act43sre_zone1",
+    "zoneId": "act53side_zone1",
     "apCost": 12,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "红丝绒",
-    "subTitle": "演出开始",
+    "zoneNameSecond": "直到大地变成一颗酸橙",
+    "subTitle": "驶向大地尽头",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1784491200,
-      "endTs": 1785355199
+      "startTs": 1785538800,
+      "endTs": 1787342399
     }
   },
   {
-    "id": "AD-5",
-    "name": "终将重逢",
+    "id": "TO-6",
+    "name": "最难坦诚",
     "drop": [
       {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act53side_token_photo",
+        "dropType": "COMPLETE"
       },
       {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act53side_token_photo",
+        "dropType": "NORMAL"
       },
       {
-        "occPercent": 2,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "ALWAYS",
+        "type": "MATERIAL",
+        "id": "30032",
+        "dropType": "NORMAL"
       },
       {
-        "occPercent": 2,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "USUAL",
+        "type": "MATERIAL",
+        "id": "30022",
+        "dropType": "NORMAL"
       },
       {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "ALWAYS",
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
       }
     ],
-    "zoneId": "act43sre_zone1",
+    "zoneId": "act53side_zone1",
     "apCost": 12,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "红丝绒",
-    "subTitle": "演出开始",
+    "zoneNameSecond": "直到大地变成一颗酸橙",
+    "subTitle": "驶向大地尽头",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1784491200,
-      "endTs": 1785355199
+      "startTs": 1785538800,
+      "endTs": 1787342399
     }
   },
   {
-    "id": "AD-6",
-    "name": "倒带独白",
+    "id": "TO-7",
+    "name": "谎言的重量",
     "drop": [
       {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act53side_token_photo",
+        "dropType": "COMPLETE"
       },
       {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act53side_token_photo",
+        "dropType": "NORMAL"
       },
       {
-        "occPercent": 2,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "ALMOST",
+        "type": "MATERIAL",
+        "id": "30023",
+        "dropType": "NORMAL"
       },
       {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "ALWAYS",
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
       }
     ],
-    "zoneId": "act43sre_zone1",
+    "zoneId": "act53side_zone1",
     "apCost": 21,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "红丝绒",
-    "subTitle": "演出开始",
+    "zoneNameSecond": "直到大地变成一颗酸橙",
+    "subTitle": "驶向大地尽头",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1784491200,
-      "endTs": 1785355199
+      "startTs": 1785538800,
+      "endTs": 1787342399
     }
   },
   {
-    "id": "AD-7",
-    "name": "“血钻”的歌声",
+    "id": "TO-8",
+    "name": "以决心做邮戳",
     "drop": [
       {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act53side_token_photo",
+        "dropType": "COMPLETE"
       },
       {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act53side_token_photo",
+        "dropType": "NORMAL"
       },
       {
-        "occPercent": 1,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "USUAL",
+        "type": "MATERIAL",
+        "id": "31013",
+        "dropType": "NORMAL"
       },
       {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "ALWAYS",
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
       }
     ],
-    "zoneId": "act43sre_zone1",
+    "zoneId": "act53side_zone1",
     "apCost": 21,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "红丝绒",
-    "subTitle": "演出开始",
+    "zoneNameSecond": "直到大地变成一颗酸橙",
+    "subTitle": "驶向大地尽头",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1784491200,
-      "endTs": 1785355199
+      "startTs": 1785538800,
+      "endTs": 1787342399
     }
   },
   {
-    "id": "AD-8",
-    "name": "登台致礼",
+    "id": "TO-9",
+    "name": "绘我们的黎明",
     "drop": [
       {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act53side_token_photo",
+        "dropType": "COMPLETE"
       },
       {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "ALWAYS",
+        "type": "ACTIVITY_ITEM",
+        "id": "act53side_token_photo",
+        "dropType": "NORMAL"
       },
       {
-        "occPercent": 1,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "ALMOST",
+        "type": "MATERIAL",
+        "id": "31033",
+        "dropType": "NORMAL"
       },
       {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
+        "occPercent": "ALWAYS",
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
       }
     ],
-    "zoneId": "act43sre_zone1",
+    "zoneId": "act53side_zone1",
     "apCost": 21,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "红丝绒",
-    "subTitle": "演出开始",
+    "zoneNameSecond": "直到大地变成一颗酸橙",
+    "subTitle": "驶向大地尽头",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1784491200,
-      "endTs": 1785355199
+      "startTs": 1785538800,
+      "endTs": 1787342399
     }
   },
   {
-    "id": "AD-EX-1",
-    "name": "灰尘道具间",
-    "drop": [
-      {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
-      },
-      {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
-      }
-    ],
-    "zoneId": "act43sre_zone2",
-    "apCost": 10,
-    "difficulty": "NORMAL",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "红丝绒",
-    "subTitle": "为戏剧，为永恒",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1784491200,
-      "endTs": 1785355199
-    }
-  },
-  {
-    "id": "AD-EX-1 突袭",
-    "name": "灰尘道具间",
-    "drop": [
-      {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
-      }
-    ],
-    "zoneId": "act43sre_zone2",
-    "apCost": 10,
-    "difficulty": "FOUR_STAR",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "红丝绒",
-    "subTitle": "为戏剧，为永恒",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1784491200,
-      "endTs": 1785355199
-    }
-  },
-  {
-    "id": "AD-EX-2",
-    "name": "演员化妆间",
-    "drop": [
-      {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
-      },
-      {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
-      }
-    ],
-    "zoneId": "act43sre_zone2",
-    "apCost": 10,
-    "difficulty": "NORMAL",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "红丝绒",
-    "subTitle": "为戏剧，为永恒",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1784491200,
-      "endTs": 1785355199
-    }
-  },
-  {
-    "id": "AD-EX-2 突袭",
-    "name": "演员化妆间",
-    "drop": [
-      {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
-      }
-    ],
-    "zoneId": "act43sre_zone2",
-    "apCost": 10,
-    "difficulty": "FOUR_STAR",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "红丝绒",
-    "subTitle": "为戏剧，为永恒",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1784491200,
-      "endTs": 1785355199
-    }
-  },
-  {
-    "id": "AD-EX-3",
-    "name": "摄影棚场区",
-    "drop": [
-      {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
-      },
-      {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
-      }
-    ],
-    "zoneId": "act43sre_zone2",
-    "apCost": 15,
-    "difficulty": "NORMAL",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "红丝绒",
-    "subTitle": "为戏剧，为永恒",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1784491200,
-      "endTs": 1785355199
-    }
-  },
-  {
-    "id": "AD-EX-3 突袭",
-    "name": "摄影棚场区",
-    "drop": [
-      {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
-      }
-    ],
-    "zoneId": "act43sre_zone2",
-    "apCost": 15,
-    "difficulty": "FOUR_STAR",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "红丝绒",
-    "subTitle": "为戏剧，为永恒",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1784491200,
-      "endTs": 1785355199
-    }
-  },
-  {
-    "id": "AD-EX-4",
-    "name": "外景拍摄区",
-    "drop": [
-      {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
-      },
-      {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
-      }
-    ],
-    "zoneId": "act43sre_zone2",
-    "apCost": 15,
-    "difficulty": "NORMAL",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "红丝绒",
-    "subTitle": "为戏剧，为永恒",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1784491200,
-      "endTs": 1785355199
-    }
-  },
-  {
-    "id": "AD-EX-4 突袭",
-    "name": "外景拍摄区",
-    "drop": [
-      {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
-      }
-    ],
-    "zoneId": "act43sre_zone2",
-    "apCost": 15,
-    "difficulty": "FOUR_STAR",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "红丝绒",
-    "subTitle": "为戏剧，为永恒",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1784491200,
-      "endTs": 1785355199
-    }
-  },
-  {
-    "id": "AD-EX-5",
-    "name": "电影放映房",
-    "drop": [
-      {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
-      },
-      {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
-      }
-    ],
-    "zoneId": "act43sre_zone2",
-    "apCost": 15,
-    "difficulty": "NORMAL",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "红丝绒",
-    "subTitle": "为戏剧，为永恒",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1784491200,
-      "endTs": 1785355199
-    }
-  },
-  {
-    "id": "AD-EX-5 突袭",
-    "name": "电影放映房",
-    "drop": [
-      {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
-      }
-    ],
-    "zoneId": "act43sre_zone2",
-    "apCost": 15,
-    "difficulty": "FOUR_STAR",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "红丝绒",
-    "subTitle": "为戏剧，为永恒",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1784491200,
-      "endTs": 1785355199
-    }
-  },
-  {
-    "id": "AD-EX-6",
-    "name": "自助移动酒吧",
-    "drop": [
-      {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
-      },
-      {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
-      }
-    ],
-    "zoneId": "act43sre_zone2",
-    "apCost": 15,
-    "difficulty": "NORMAL",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "红丝绒",
-    "subTitle": "为戏剧，为永恒",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1784491200,
-      "endTs": 1785355199
-    }
-  },
-  {
-    "id": "AD-EX-6 突袭",
-    "name": "自助移动酒吧",
-    "drop": [
-      {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
-      }
-    ],
-    "zoneId": "act43sre_zone2",
-    "apCost": 15,
-    "difficulty": "FOUR_STAR",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "红丝绒",
-    "subTitle": "为戏剧，为永恒",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1784491200,
-      "endTs": 1785355199
-    }
-  },
-  {
-    "id": "AD-EX-7",
-    "name": "群演集合区",
-    "drop": [
-      {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
-      },
-      {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
-      }
-    ],
-    "zoneId": "act43sre_zone2",
-    "apCost": 20,
-    "difficulty": "NORMAL",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "红丝绒",
-    "subTitle": "为戏剧，为永恒",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1784491200,
-      "endTs": 1785355199
-    }
-  },
-  {
-    "id": "AD-EX-7 突袭",
-    "name": "群演集合区",
-    "drop": [
-      {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
-      }
-    ],
-    "zoneId": "act43sre_zone2",
-    "apCost": 20,
-    "difficulty": "FOUR_STAR",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "红丝绒",
-    "subTitle": "为戏剧，为永恒",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1784491200,
-      "endTs": 1785355199
-    }
-  },
-  {
-    "id": "AD-EX-8",
-    "name": "舞台与无尽的阶梯",
-    "drop": [
-      {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
-      },
-      {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
-      }
-    ],
-    "zoneId": "act43sre_zone2",
-    "apCost": 20,
-    "difficulty": "NORMAL",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "红丝绒",
-    "subTitle": "为戏剧，为永恒",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1784491200,
-      "endTs": 1785355199
-    }
-  },
-  {
-    "id": "AD-EX-8 突袭",
-    "name": "舞台与无尽的阶梯",
-    "drop": [
-      {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
-      }
-    ],
-    "zoneId": "act43sre_zone2",
-    "apCost": 20,
-    "difficulty": "FOUR_STAR",
-    "diffGroup": "NONE",
-    "zoneNameSecond": "红丝绒",
-    "subTitle": "为戏剧，为永恒",
-    "stageType": "ACTIVITY",
-    "endTs": {
-      "startTs": 1784491200,
-      "endTs": 1785355199
-    }
-  },
-  {
-    "id": "AD-TR-1",
-    "name": "幕间曲",
-    "drop": [
-      {
-        "occPercent": 0,
-        "GetPercent": 0.0,
-        "CannotGetPercent": 0.0,
-        "Expectation": 0.0,
-        "SumOfCountWeight": 0.0,
-        "type": 0,
-        "id": null,
-        "dropType": 0
-      }
-    ],
-    "zoneId": "act43sre_zone1",
+    "id": "TO-P-1",
+    "name": "冒昧的请求",
+    "drop": [],
+    "zoneId": "act53side_zone4",
     "apCost": 0,
     "difficulty": "NORMAL",
     "diffGroup": "NONE",
-    "zoneNameSecond": "红丝绒",
-    "subTitle": "演出开始",
+    "zoneNameSecond": "直到大地变成一颗酸橙",
+    "subTitle": "RPG关卡（不展示）",
     "stageType": "ACTIVITY",
     "endTs": {
-      "startTs": 1784491200,
-      "endTs": 1785355199
+      "startTs": 1785538800,
+      "endTs": 1787342399
+    }
+  },
+  {
+    "id": "TO-P-2",
+    "name": "信使的素养",
+    "drop": [],
+    "zoneId": "act53side_zone4",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "直到大地变成一颗酸橙",
+    "subTitle": "RPG关卡（不展示）",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1785538800,
+      "endTs": 1787342399
+    }
+  },
+  {
+    "id": "TO-TR-1",
+    "name": "写临行的迷惘",
+    "drop": [
+      {
+        "occPercent": "ALWAYS",
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act53side_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "直到大地变成一颗酸橙",
+    "subTitle": "驶向大地尽头",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1785538800,
+      "endTs": 1787342399
     }
   },
   {
@@ -8123,6 +7530,918 @@
     "stageType": "DAILY"
   },
   {
+    "id": "TO-ST-1",
+    "name": "一封想写的信",
+    "drop": null,
+    "zoneId": "act53side_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "直到大地变成一颗酸橙",
+    "subTitle": "驶向大地尽头",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TO-1",
+    "name": "收信地：终点",
+    "drop": null,
+    "zoneId": "act53side_zone1",
+    "apCost": 9,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "直到大地变成一颗酸橙",
+    "subTitle": "驶向大地尽头",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TO-TR-1",
+    "name": "写临行的迷惘",
+    "drop": null,
+    "zoneId": "act53side_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "直到大地变成一颗酸橙",
+    "subTitle": "驶向大地尽头",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TO-2",
+    "name": "记新友的混乱",
+    "drop": null,
+    "zoneId": "act53side_zone1",
+    "apCost": 9,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "直到大地变成一颗酸橙",
+    "subTitle": "驶向大地尽头",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TO-3",
+    "name": "露营奇“叽”",
+    "drop": null,
+    "zoneId": "act53side_zone1",
+    "apCost": 9,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "直到大地变成一颗酸橙",
+    "subTitle": "驶向大地尽头",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TO-4",
+    "name": "谷里升起太阳",
+    "drop": null,
+    "zoneId": "act53side_zone1",
+    "apCost": 12,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "直到大地变成一颗酸橙",
+    "subTitle": "驶向大地尽头",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TO-5",
+    "name": "勇敢的短耳朵",
+    "drop": null,
+    "zoneId": "act53side_zone1",
+    "apCost": 12,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "直到大地变成一颗酸橙",
+    "subTitle": "驶向大地尽头",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TO-6",
+    "name": "最难坦诚",
+    "drop": null,
+    "zoneId": "act53side_zone1",
+    "apCost": 12,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "直到大地变成一颗酸橙",
+    "subTitle": "驶向大地尽头",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TO-ST-2",
+    "name": "糖纸星星",
+    "drop": null,
+    "zoneId": "act53side_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "直到大地变成一颗酸橙",
+    "subTitle": "驶向大地尽头",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TO-7",
+    "name": "谎言的重量",
+    "drop": null,
+    "zoneId": "act53side_zone1",
+    "apCost": 21,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "直到大地变成一颗酸橙",
+    "subTitle": "驶向大地尽头",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TO-8",
+    "name": "以决心做邮戳",
+    "drop": null,
+    "zoneId": "act53side_zone1",
+    "apCost": 21,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "直到大地变成一颗酸橙",
+    "subTitle": "驶向大地尽头",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TO-9",
+    "name": "绘我们的黎明",
+    "drop": null,
+    "zoneId": "act53side_zone1",
+    "apCost": 21,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "直到大地变成一颗酸橙",
+    "subTitle": "驶向大地尽头",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TO-ST-3",
+    "name": "祝好 终途的我",
+    "drop": null,
+    "zoneId": "act53side_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "直到大地变成一颗酸橙",
+    "subTitle": "驶向大地尽头",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TO-P-1",
+    "name": "冒昧的请求",
+    "drop": null,
+    "zoneId": "act53side_zone4",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "直到大地变成一颗酸橙",
+    "subTitle": "RPG关卡（不展示）",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TO-P-2",
+    "name": "信使的素养",
+    "drop": null,
+    "zoneId": "act53side_zone4",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "直到大地变成一颗酸橙",
+    "subTitle": "RPG关卡（不展示）",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-1",
+    "name": "消耗品",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 9,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-1",
+    "name": "消耗品",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 9,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-2",
+    "name": "门后世界",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 9,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-2",
+    "name": "门后世界",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 9,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-3",
+    "name": "“嘀嗒嘀嗒”",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 12,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-3",
+    "name": "“嘀嗒嘀嗒”",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 12,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-4",
+    "name": "失控沙盒",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 12,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-4",
+    "name": "失控沙盒",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 12,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-5",
+    "name": "入职邀请",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-5",
+    "name": "入职邀请",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-6",
+    "name": "实验守则",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-6",
+    "name": "实验守则",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-7",
+    "name": "不断电",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 21,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-7",
+    "name": "不断电",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 21,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-8",
+    "name": "演算的终点",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 21,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-8",
+    "name": "演算的终点",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 21,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-S-1",
+    "name": "“绝不后退”",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "BD-S-2",
+    "name": "“试启动”",
+    "drop": null,
+    "zoneId": "act21mini_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "丛林症结",
+    "subTitle": "生长痛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PF-TR-1",
+    "name": "首次训练",
+    "drop": null,
+    "zoneId": "act1football_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "阵地足球锦标",
+    "subTitle": "晋级赛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PF-1",
+    "name": "揭幕之战",
+    "drop": null,
+    "zoneId": "act1football_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "阵地足球锦标",
+    "subTitle": "晋级赛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PF-2",
+    "name": "把握良机",
+    "drop": null,
+    "zoneId": "act1football_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "阵地足球锦标",
+    "subTitle": "晋级赛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PF-3",
+    "name": "渐入佳境",
+    "drop": null,
+    "zoneId": "act1football_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "阵地足球锦标",
+    "subTitle": "晋级赛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PF-4",
+    "name": "客场连战",
+    "drop": null,
+    "zoneId": "act1football_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "阵地足球锦标",
+    "subTitle": "晋级赛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PF-5",
+    "name": "争分夺球",
+    "drop": null,
+    "zoneId": "act1football_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "阵地足球锦标",
+    "subTitle": "晋级赛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PF-6",
+    "name": "胜负难分",
+    "drop": null,
+    "zoneId": "act1football_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "阵地足球锦标",
+    "subTitle": "晋级赛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PF-7",
+    "name": "出线之争",
+    "drop": null,
+    "zoneId": "act1football_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "阵地足球锦标",
+    "subTitle": "晋级赛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PF-EX-1",
+    "name": "球风对撞",
+    "drop": null,
+    "zoneId": "act1football_zone2",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "阵地足球锦标",
+    "subTitle": "淘汰赛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PF-EX-2",
+    "name": "先声夺人",
+    "drop": null,
+    "zoneId": "act1football_zone2",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "阵地足球锦标",
+    "subTitle": "淘汰赛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PF-EX-3",
+    "name": "小心脚下",
+    "drop": null,
+    "zoneId": "act1football_zone2",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "阵地足球锦标",
+    "subTitle": "淘汰赛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PF-EX-4",
+    "name": "冠军之路",
+    "drop": null,
+    "zoneId": "act1football_zone2",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "阵地足球锦标",
+    "subTitle": "淘汰赛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PF-S-1",
+    "name": "耐力拉练",
+    "drop": null,
+    "zoneId": "act1football_zone3",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "阵地足球锦标",
+    "subTitle": "特训赛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PF-S-2",
+    "name": "盘带练习",
+    "drop": null,
+    "zoneId": "act1football_zone3",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "阵地足球锦标",
+    "subTitle": "特训赛",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-ST-1",
+    "name": "风沙渐起",
+    "drop": null,
+    "zoneId": "act50side_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-1",
+    "name": "硬壳下的胆小鬼",
+    "drop": null,
+    "zoneId": "act50side_zone1",
+    "apCost": 9,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-TR-1",
+    "name": "狩猎太棒啦！",
+    "drop": null,
+    "zoneId": "act50side_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-2",
+    "name": "还我锅来！",
+    "drop": null,
+    "zoneId": "act50side_zone1",
+    "apCost": 9,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-3",
+    "name": "不能掉以轻心",
+    "drop": null,
+    "zoneId": "act50side_zone1",
+    "apCost": 9,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-4",
+    "name": "赤雪之兆",
+    "drop": null,
+    "zoneId": "act50side_zone1",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-5",
+    "name": "只能成功，不能失败",
+    "drop": null,
+    "zoneId": "act50side_zone1",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-6",
+    "name": "来自过去的亡魂",
+    "drop": null,
+    "zoneId": "act50side_zone1",
+    "apCost": 21,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-7",
+    "name": "为什么全是死脑筋？",
+    "drop": null,
+    "zoneId": "act50side_zone1",
+    "apCost": 21,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-8",
+    "name": "宿命流转，苍霆激荡",
+    "drop": null,
+    "zoneId": "act50side_zone1",
+    "apCost": 21,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-ST-2",
+    "name": "幻梦终醒，猎魂不息",
+    "drop": null,
+    "zoneId": "act50side_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-P-1",
+    "name": "“百兽奔行”",
+    "drop": null,
+    "zoneId": "act50side_zone1",
+    "apCost": 10,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "竞逐苍霆",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-EX-1",
+    "name": "为了泡影国的未来？",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 10,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-EX-1",
+    "name": "为了泡影国的未来？",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 10,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-EX-2",
+    "name": "迁徙季",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 10,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-EX-2",
+    "name": "迁徙季",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 10,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-EX-3",
+    "name": "完美的训练场",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-EX-3",
+    "name": "完美的训练场",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-EX-4",
+    "name": "保护“御轮”",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-EX-4",
+    "name": "保护“御轮”",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-EX-5",
+    "name": "新的岗哨",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-EX-5",
+    "name": "新的岗哨",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-EX-6",
+    "name": "新的兽潮？",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-EX-6",
+    "name": "新的兽潮？",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-EX-7",
+    "name": "最后的“诅咒”",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 20,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-EX-7",
+    "name": "最后的“诅咒”",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 20,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-EX-8",
+    "name": "山河一闪，雷鸣响彻",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 20,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-EX-8",
+    "name": "山河一闪，雷鸣响彻",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 20,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "TD-S-1",
+    "name": "群山震颤，百龙夜行",
+    "drop": null,
+    "zoneId": "act50side_zone2",
+    "apCost": 10,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "泡影苍霆",
+    "subTitle": "踏破泡影",
+    "stageType": "ACTIVITY"
+  },
+  {
     "id": "17-1",
     "name": "大地的呼吸",
     "drop": null,
@@ -8517,6 +8836,354 @@
     "diffGroup": "NONE",
     "zoneNameSecond": "相变临界",
     "stageType": "MAIN"
+  },
+  {
+    "id": "VS-1",
+    "name": "争锋对决！",
+    "drop": null,
+    "zoneId": "act3enemyduel_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "争锋频道：绿藤城",
+    "subTitle": "act3enemyduel_zone1",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "VS-1",
+    "name": "争锋对决！",
+    "drop": null,
+    "zoneId": "act3enemyduel_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "争锋频道：绿藤城",
+    "subTitle": "act3enemyduel_zone1",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PA-ST-1",
+    "name": "群氓",
+    "drop": null,
+    "zoneId": "act51side_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "人们，我们",
+    "subTitle": "告别天真年代",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PA-1",
+    "name": "“卡托加区欢迎你”",
+    "drop": null,
+    "zoneId": "act51side_zone1",
+    "apCost": 9,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "人们，我们",
+    "subTitle": "告别天真年代",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PA-TR-1",
+    "name": "卑劣与繁荣",
+    "drop": null,
+    "zoneId": "act51side_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "人们，我们",
+    "subTitle": "告别天真年代",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PA-2",
+    "name": "枷锁之中",
+    "drop": null,
+    "zoneId": "act51side_zone1",
+    "apCost": 9,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "人们，我们",
+    "subTitle": "告别天真年代",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PA-3",
+    "name": "阳光照耀圣骏堡",
+    "drop": null,
+    "zoneId": "act51side_zone1",
+    "apCost": 12,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "人们，我们",
+    "subTitle": "告别天真年代",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PA-4",
+    "name": "一墙之隔",
+    "drop": null,
+    "zoneId": "act51side_zone1",
+    "apCost": 12,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "人们，我们",
+    "subTitle": "告别天真年代",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PA-5",
+    "name": "高尚的背叛",
+    "drop": null,
+    "zoneId": "act51side_zone1",
+    "apCost": 12,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "人们，我们",
+    "subTitle": "告别天真年代",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PA-6",
+    "name": "各自流亡",
+    "drop": null,
+    "zoneId": "act51side_zone1",
+    "apCost": 21,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "人们，我们",
+    "subTitle": "告别天真年代",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PA-7",
+    "name": "死结两端",
+    "drop": null,
+    "zoneId": "act51side_zone1",
+    "apCost": 21,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "人们，我们",
+    "subTitle": "告别天真年代",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PA-8",
+    "name": "一千年后",
+    "drop": null,
+    "zoneId": "act51side_zone1",
+    "apCost": 21,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "人们，我们",
+    "subTitle": "告别天真年代",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PA-ST-2",
+    "name": "完整的缺损",
+    "drop": null,
+    "zoneId": "act51side_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "人们，我们",
+    "subTitle": "告别天真年代",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PA-EX-1",
+    "name": "在底层",
+    "drop": null,
+    "zoneId": "act51side_zone2",
+    "apCost": 10,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "人们，我们",
+    "subTitle": "踏入新生黎明",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PA-EX-1",
+    "name": "在底层",
+    "drop": null,
+    "zoneId": "act51side_zone2",
+    "apCost": 10,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "人们，我们",
+    "subTitle": "踏入新生黎明",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PA-EX-2",
+    "name": "活尸",
+    "drop": null,
+    "zoneId": "act51side_zone2",
+    "apCost": 10,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "人们，我们",
+    "subTitle": "踏入新生黎明",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PA-EX-2",
+    "name": "活尸",
+    "drop": null,
+    "zoneId": "act51side_zone2",
+    "apCost": 10,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "人们，我们",
+    "subTitle": "踏入新生黎明",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PA-EX-3",
+    "name": "母亲",
+    "drop": null,
+    "zoneId": "act51side_zone2",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "人们，我们",
+    "subTitle": "踏入新生黎明",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PA-EX-3",
+    "name": "母亲",
+    "drop": null,
+    "zoneId": "act51side_zone2",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "人们，我们",
+    "subTitle": "踏入新生黎明",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PA-EX-4",
+    "name": "长子",
+    "drop": null,
+    "zoneId": "act51side_zone2",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "人们，我们",
+    "subTitle": "踏入新生黎明",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PA-EX-4",
+    "name": "长子",
+    "drop": null,
+    "zoneId": "act51side_zone2",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "人们，我们",
+    "subTitle": "踏入新生黎明",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PA-EX-5",
+    "name": "三姐妹",
+    "drop": null,
+    "zoneId": "act51side_zone2",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "人们，我们",
+    "subTitle": "踏入新生黎明",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PA-EX-5",
+    "name": "三姐妹",
+    "drop": null,
+    "zoneId": "act51side_zone2",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "人们，我们",
+    "subTitle": "踏入新生黎明",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PA-EX-6",
+    "name": "钦差大臣",
+    "drop": null,
+    "zoneId": "act51side_zone2",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "人们，我们",
+    "subTitle": "踏入新生黎明",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PA-EX-6",
+    "name": "钦差大臣",
+    "drop": null,
+    "zoneId": "act51side_zone2",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "人们，我们",
+    "subTitle": "踏入新生黎明",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PA-EX-7",
+    "name": "乐观的悲剧",
+    "drop": null,
+    "zoneId": "act51side_zone2",
+    "apCost": 20,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "人们，我们",
+    "subTitle": "踏入新生黎明",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PA-EX-7",
+    "name": "乐观的悲剧",
+    "drop": null,
+    "zoneId": "act51side_zone2",
+    "apCost": 20,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "人们，我们",
+    "subTitle": "踏入新生黎明",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PA-EX-8",
+    "name": "樱桃园",
+    "drop": null,
+    "zoneId": "act51side_zone2",
+    "apCost": 20,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "人们，我们",
+    "subTitle": "踏入新生黎明",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "PA-EX-8",
+    "name": "樱桃园",
+    "drop": null,
+    "zoneId": "act51side_zone2",
+    "apCost": 20,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "人们，我们",
+    "subTitle": "踏入新生黎明",
+    "stageType": "ACTIVITY"
   },
   {
     "id": "CG-1",
@@ -13188,6 +13855,342 @@
     "stageType": "ACTIVITY"
   },
   {
+    "id": "AD-ST-1",
+    "name": "唆使一场死亡",
+    "drop": null,
+    "zoneId": "act43sre_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "红丝绒",
+    "subTitle": "演出开始",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "AD-TR-1",
+    "name": "幕间曲",
+    "drop": null,
+    "zoneId": "act43sre_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "红丝绒",
+    "subTitle": "演出开始",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "AD-1",
+    "name": "彩排日",
+    "drop": null,
+    "zoneId": "act43sre_zone1",
+    "apCost": 9,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "红丝绒",
+    "subTitle": "演出开始",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "AD-2",
+    "name": "排演一出悲剧",
+    "drop": null,
+    "zoneId": "act43sre_zone1",
+    "apCost": 9,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "红丝绒",
+    "subTitle": "演出开始",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "AD-3",
+    "name": "戏剧性",
+    "drop": null,
+    "zoneId": "act43sre_zone1",
+    "apCost": 12,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "红丝绒",
+    "subTitle": "演出开始",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "AD-4",
+    "name": "一个荒唐的早晨",
+    "drop": null,
+    "zoneId": "act43sre_zone1",
+    "apCost": 12,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "红丝绒",
+    "subTitle": "演出开始",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "AD-ST-2",
+    "name": "焦点",
+    "drop": null,
+    "zoneId": "act43sre_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "红丝绒",
+    "subTitle": "演出开始",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "AD-5",
+    "name": "终将重逢",
+    "drop": null,
+    "zoneId": "act43sre_zone1",
+    "apCost": 12,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "红丝绒",
+    "subTitle": "演出开始",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "AD-6",
+    "name": "倒带独白",
+    "drop": null,
+    "zoneId": "act43sre_zone1",
+    "apCost": 21,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "红丝绒",
+    "subTitle": "演出开始",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "AD-7",
+    "name": "“血钻”的歌声",
+    "drop": null,
+    "zoneId": "act43sre_zone1",
+    "apCost": 21,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "红丝绒",
+    "subTitle": "演出开始",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "AD-8",
+    "name": "登台致礼",
+    "drop": null,
+    "zoneId": "act43sre_zone1",
+    "apCost": 21,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "红丝绒",
+    "subTitle": "演出开始",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "AD-ST-3",
+    "name": "致观众",
+    "drop": null,
+    "zoneId": "act43sre_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "红丝绒",
+    "subTitle": "演出开始",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "AD-EX-1",
+    "name": "灰尘道具间",
+    "drop": null,
+    "zoneId": "act43sre_zone2",
+    "apCost": 10,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "红丝绒",
+    "subTitle": "为戏剧，为永恒",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "AD-EX-1",
+    "name": "灰尘道具间",
+    "drop": null,
+    "zoneId": "act43sre_zone2",
+    "apCost": 10,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "红丝绒",
+    "subTitle": "为戏剧，为永恒",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "AD-EX-2",
+    "name": "演员化妆间",
+    "drop": null,
+    "zoneId": "act43sre_zone2",
+    "apCost": 10,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "红丝绒",
+    "subTitle": "为戏剧，为永恒",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "AD-EX-2",
+    "name": "演员化妆间",
+    "drop": null,
+    "zoneId": "act43sre_zone2",
+    "apCost": 10,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "红丝绒",
+    "subTitle": "为戏剧，为永恒",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "AD-EX-3",
+    "name": "摄影棚场区",
+    "drop": null,
+    "zoneId": "act43sre_zone2",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "红丝绒",
+    "subTitle": "为戏剧，为永恒",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "AD-EX-3",
+    "name": "摄影棚场区",
+    "drop": null,
+    "zoneId": "act43sre_zone2",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "红丝绒",
+    "subTitle": "为戏剧，为永恒",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "AD-EX-4",
+    "name": "外景拍摄区",
+    "drop": null,
+    "zoneId": "act43sre_zone2",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "红丝绒",
+    "subTitle": "为戏剧，为永恒",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "AD-EX-4",
+    "name": "外景拍摄区",
+    "drop": null,
+    "zoneId": "act43sre_zone2",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "红丝绒",
+    "subTitle": "为戏剧，为永恒",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "AD-EX-5",
+    "name": "电影放映房",
+    "drop": null,
+    "zoneId": "act43sre_zone2",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "红丝绒",
+    "subTitle": "为戏剧，为永恒",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "AD-EX-5",
+    "name": "电影放映房",
+    "drop": null,
+    "zoneId": "act43sre_zone2",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "红丝绒",
+    "subTitle": "为戏剧，为永恒",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "AD-EX-6",
+    "name": "自助移动酒吧",
+    "drop": null,
+    "zoneId": "act43sre_zone2",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "红丝绒",
+    "subTitle": "为戏剧，为永恒",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "AD-EX-6",
+    "name": "自助移动酒吧",
+    "drop": null,
+    "zoneId": "act43sre_zone2",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "红丝绒",
+    "subTitle": "为戏剧，为永恒",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "AD-EX-7",
+    "name": "群演集合区",
+    "drop": null,
+    "zoneId": "act43sre_zone2",
+    "apCost": 20,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "红丝绒",
+    "subTitle": "为戏剧，为永恒",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "AD-EX-7",
+    "name": "群演集合区",
+    "drop": null,
+    "zoneId": "act43sre_zone2",
+    "apCost": 20,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "红丝绒",
+    "subTitle": "为戏剧，为永恒",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "AD-EX-8",
+    "name": "舞台与无尽的阶梯",
+    "drop": null,
+    "zoneId": "act43sre_zone2",
+    "apCost": 20,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "红丝绒",
+    "subTitle": "为戏剧，为永恒",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "AD-EX-8",
+    "name": "舞台与无尽的阶梯",
+    "drop": null,
+    "zoneId": "act43sre_zone2",
+    "apCost": 20,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "红丝绒",
+    "subTitle": "为戏剧，为永恒",
+    "stageType": "ACTIVITY"
+  },
+  {
     "id": "VEC-01",
     "name": "横冲直进",
     "drop": null,
@@ -13569,6 +14572,498 @@
     "diffGroup": "NONE",
     "zoneNameSecond": "矢量突破：无机物",
     "subTitle": "特别战线",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-ST-1",
+    "name": "“堕天”",
+    "drop": null,
+    "zoneId": "act42sre_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "瞻望圣堂",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-1",
+    "name": "圣秩",
+    "drop": null,
+    "zoneId": "act42sre_zone1",
+    "apCost": 9,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "瞻望圣堂",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-TR-1",
+    "name": "圣城的异常",
+    "drop": null,
+    "zoneId": "act42sre_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "瞻望圣堂",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-2",
+    "name": "祈祷",
+    "drop": null,
+    "zoneId": "act42sre_zone1",
+    "apCost": 9,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "瞻望圣堂",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-3",
+    "name": "礼拜",
+    "drop": null,
+    "zoneId": "act42sre_zone1",
+    "apCost": 9,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "瞻望圣堂",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-4",
+    "name": "求道",
+    "drop": null,
+    "zoneId": "act42sre_zone1",
+    "apCost": 12,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "瞻望圣堂",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-ST-2",
+    "name": "启圣",
+    "drop": null,
+    "zoneId": "act42sre_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "瞻望圣堂",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-5",
+    "name": "共融",
+    "drop": null,
+    "zoneId": "act42sre_zone1",
+    "apCost": 12,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "瞻望圣堂",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-6",
+    "name": "告解",
+    "drop": null,
+    "zoneId": "act42sre_zone1",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "瞻望圣堂",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-7",
+    "name": "丧礼",
+    "drop": null,
+    "zoneId": "act42sre_zone1",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "瞻望圣堂",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-8",
+    "name": "朝圣",
+    "drop": null,
+    "zoneId": "act42sre_zone1",
+    "apCost": 21,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "瞻望圣堂",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-9",
+    "name": "解经",
+    "drop": null,
+    "zoneId": "act42sre_zone1",
+    "apCost": 21,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "瞻望圣堂",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-10",
+    "name": "降生",
+    "drop": null,
+    "zoneId": "act42sre_zone1",
+    "apCost": 21,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "瞻望圣堂",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-ST-3",
+    "name": "重逢",
+    "drop": null,
+    "zoneId": "act42sre_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "瞻望圣堂",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-ST-4",
+    "name": "远行",
+    "drop": null,
+    "zoneId": "act42sre_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "瞻望圣堂",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-EX-1",
+    "name": "萨科塔生态园",
+    "drop": null,
+    "zoneId": "act42sre_zone2",
+    "apCost": 10,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "谒见神祇",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-EX-1",
+    "name": "萨科塔生态园",
+    "drop": null,
+    "zoneId": "act42sre_zone2",
+    "apCost": 10,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "谒见神祇",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-EX-2",
+    "name": "甜梦大会堂",
+    "drop": null,
+    "zoneId": "act42sre_zone2",
+    "apCost": 10,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "谒见神祇",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-EX-2",
+    "name": "甜梦大会堂",
+    "drop": null,
+    "zoneId": "act42sre_zone2",
+    "apCost": 10,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "谒见神祇",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-EX-3",
+    "name": "万众圣餐厅",
+    "drop": null,
+    "zoneId": "act42sre_zone2",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "谒见神祇",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-EX-3",
+    "name": "万众圣餐厅",
+    "drop": null,
+    "zoneId": "act42sre_zone2",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "谒见神祇",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-EX-4",
+    "name": "羽兽栖脚台",
+    "drop": null,
+    "zoneId": "act42sre_zone2",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "谒见神祇",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-EX-4",
+    "name": "羽兽栖脚台",
+    "drop": null,
+    "zoneId": "act42sre_zone2",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "谒见神祇",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-EX-5",
+    "name": "圣徒祈祷区",
+    "drop": null,
+    "zoneId": "act42sre_zone2",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "谒见神祇",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-EX-5",
+    "name": "圣徒祈祷区",
+    "drop": null,
+    "zoneId": "act42sre_zone2",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "谒见神祇",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-EX-6",
+    "name": "信仰蒸馏房",
+    "drop": null,
+    "zoneId": "act42sre_zone2",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "谒见神祇",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-EX-6",
+    "name": "信仰蒸馏房",
+    "drop": null,
+    "zoneId": "act42sre_zone2",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "谒见神祇",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-EX-7",
+    "name": "原初育婴室",
+    "drop": null,
+    "zoneId": "act42sre_zone2",
+    "apCost": 20,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "谒见神祇",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-EX-7",
+    "name": "原初育婴室",
+    "drop": null,
+    "zoneId": "act42sre_zone2",
+    "apCost": 20,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "谒见神祇",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-EX-8",
+    "name": "“拉特兰拼图”",
+    "drop": null,
+    "zoneId": "act42sre_zone2",
+    "apCost": 20,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "谒见神祇",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-EX-8",
+    "name": "“拉特兰拼图”",
+    "drop": null,
+    "zoneId": "act42sre_zone2",
+    "apCost": 20,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "谒见神祇",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-S-1",
+    "name": "甜品展会",
+    "drop": null,
+    "zoneId": "act42sre_zone3",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "息止安所",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-S-1",
+    "name": "甜品展会",
+    "drop": null,
+    "zoneId": "act42sre_zone3",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "息止安所",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-S-2",
+    "name": "布道演习",
+    "drop": null,
+    "zoneId": "act42sre_zone3",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "息止安所",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-S-2",
+    "name": "布道演习",
+    "drop": null,
+    "zoneId": "act42sre_zone3",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "息止安所",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-S-3",
+    "name": "全民阅兵",
+    "drop": null,
+    "zoneId": "act42sre_zone3",
+    "apCost": 20,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "息止安所",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-S-3",
+    "name": "全民阅兵",
+    "drop": null,
+    "zoneId": "act42sre_zone3",
+    "apCost": 20,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "息止安所",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-S-4",
+    "name": "万国峰会",
+    "drop": null,
+    "zoneId": "act42sre_zone3",
+    "apCost": 20,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "息止安所",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-S-4",
+    "name": "万国峰会",
+    "drop": null,
+    "zoneId": "act42sre_zone3",
+    "apCost": 20,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "息止安所",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-S-5",
+    "name": "授律圣事",
+    "drop": null,
+    "zoneId": "act42sre_zone3",
+    "apCost": 25,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "息止安所",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "MT-S-5",
+    "name": "授律圣事",
+    "drop": null,
+    "zoneId": "act42sre_zone3",
+    "apCost": 25,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "众生行记",
+    "subTitle": "息止安所",
     "stageType": "ACTIVITY"
   },
   {
@@ -23299,6 +24794,366 @@
     "diffGroup": "NONE",
     "zoneNameSecond": "孤星",
     "subTitle": "紧握当下",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "CF-ST-1",
+    "name": "噩梦",
+    "drop": null,
+    "zoneId": "act24sre_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "落叶逐火",
+    "subTitle": "苍暮山地",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "CF-1",
+    "name": "森林里的麻烦家伙",
+    "drop": null,
+    "zoneId": "act24sre_zone1",
+    "apCost": 9,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "落叶逐火",
+    "subTitle": "苍暮山地",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "CF-TR-1",
+    "name": "来袭！天空王者！",
+    "drop": null,
+    "zoneId": "act24sre_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "落叶逐火",
+    "subTitle": "苍暮山地",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "CF-2",
+    "name": "坚硬磐石",
+    "drop": null,
+    "zoneId": "act24sre_zone1",
+    "apCost": 9,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "落叶逐火",
+    "subTitle": "苍暮山地",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "CF-3",
+    "name": "迎头痛击",
+    "drop": null,
+    "zoneId": "act24sre_zone1",
+    "apCost": 9,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "落叶逐火",
+    "subTitle": "苍暮山地",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "CF-4",
+    "name": "破空的飞羽",
+    "drop": null,
+    "zoneId": "act24sre_zone1",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "落叶逐火",
+    "subTitle": "苍暮山地",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "CF-ST-2",
+    "name": "林昏焰明",
+    "drop": null,
+    "zoneId": "act24sre_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "落叶逐火",
+    "subTitle": "苍暮山地",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "CF-5",
+    "name": "野蛮肇事者",
+    "drop": null,
+    "zoneId": "act24sre_zone1",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "落叶逐火",
+    "subTitle": "苍暮山地",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "CF-6",
+    "name": "禁飞区",
+    "drop": null,
+    "zoneId": "act24sre_zone1",
+    "apCost": 21,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "落叶逐火",
+    "subTitle": "苍暮山地",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "CF-7",
+    "name": "锥心之刺",
+    "drop": null,
+    "zoneId": "act24sre_zone1",
+    "apCost": 21,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "落叶逐火",
+    "subTitle": "苍暮山地",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "CF-8",
+    "name": "奸诈者必自食恶果",
+    "drop": null,
+    "zoneId": "act24sre_zone1",
+    "apCost": 21,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "落叶逐火",
+    "subTitle": "苍暮山地",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "CF-9",
+    "name": "决战！燃烧的狩魂！",
+    "drop": null,
+    "zoneId": "act24sre_zone1",
+    "apCost": 10,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "落叶逐火",
+    "subTitle": "苍暮山地",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "CF-ST-3",
+    "name": "晨曦",
+    "drop": null,
+    "zoneId": "act24sre_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "落叶逐火",
+    "subTitle": "苍暮山地",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "CF-EX-1",
+    "name": "山地的震颤",
+    "drop": null,
+    "zoneId": "act24sre_zone2",
+    "apCost": 10,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "落叶逐火",
+    "subTitle": "艾露猫的委托柜台",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "CF-EX-1",
+    "name": "山地的震颤",
+    "drop": null,
+    "zoneId": "act24sre_zone2",
+    "apCost": 10,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "落叶逐火",
+    "subTitle": "艾露猫的委托柜台",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "CF-EX-2",
+    "name": "深林大大大暴乱",
+    "drop": null,
+    "zoneId": "act24sre_zone2",
+    "apCost": 10,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "落叶逐火",
+    "subTitle": "艾露猫的委托柜台",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "CF-EX-2",
+    "name": "深林大大大暴乱",
+    "drop": null,
+    "zoneId": "act24sre_zone2",
+    "apCost": 10,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "落叶逐火",
+    "subTitle": "艾露猫的委托柜台",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "CF-EX-3",
+    "name": "对对碰，硬邦邦",
+    "drop": null,
+    "zoneId": "act24sre_zone2",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "落叶逐火",
+    "subTitle": "艾露猫的委托柜台",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "CF-EX-3",
+    "name": "对对碰，硬邦邦",
+    "drop": null,
+    "zoneId": "act24sre_zone2",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "落叶逐火",
+    "subTitle": "艾露猫的委托柜台",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "CF-EX-4",
+    "name": "当心坠落",
+    "drop": null,
+    "zoneId": "act24sre_zone2",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "落叶逐火",
+    "subTitle": "艾露猫的委托柜台",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "CF-EX-4",
+    "name": "当心坠落",
+    "drop": null,
+    "zoneId": "act24sre_zone2",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "落叶逐火",
+    "subTitle": "艾露猫的委托柜台",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "CF-EX-5",
+    "name": "此路不通",
+    "drop": null,
+    "zoneId": "act24sre_zone2",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "落叶逐火",
+    "subTitle": "艾露猫的委托柜台",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "CF-EX-5",
+    "name": "此路不通",
+    "drop": null,
+    "zoneId": "act24sre_zone2",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "落叶逐火",
+    "subTitle": "艾露猫的委托柜台",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "CF-EX-6",
+    "name": "登高必经险途",
+    "drop": null,
+    "zoneId": "act24sre_zone2",
+    "apCost": 15,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "落叶逐火",
+    "subTitle": "艾露猫的委托柜台",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "CF-EX-6",
+    "name": "登高必经险途",
+    "drop": null,
+    "zoneId": "act24sre_zone2",
+    "apCost": 15,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "落叶逐火",
+    "subTitle": "艾露猫的委托柜台",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "CF-EX-7",
+    "name": "英雄的诞生",
+    "drop": null,
+    "zoneId": "act24sre_zone2",
+    "apCost": 20,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "落叶逐火",
+    "subTitle": "艾露猫的委托柜台",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "CF-EX-7",
+    "name": "英雄的诞生",
+    "drop": null,
+    "zoneId": "act24sre_zone2",
+    "apCost": 20,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "落叶逐火",
+    "subTitle": "艾露猫的委托柜台",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "CF-EX-8",
+    "name": "炬火燎原",
+    "drop": null,
+    "zoneId": "act24sre_zone2",
+    "apCost": 20,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "落叶逐火",
+    "subTitle": "艾露猫的委托柜台",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "CF-EX-8",
+    "name": "炬火燎原",
+    "drop": null,
+    "zoneId": "act24sre_zone2",
+    "apCost": 20,
+    "difficulty": "FOUR_STAR",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "落叶逐火",
+    "subTitle": "艾露猫的委托柜台",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "CF-S-1",
+    "name": "终极斗技之战",
+    "drop": null,
+    "zoneId": "act24sre_zone2",
+    "apCost": 10,
+    "difficulty": "NORMAL",
+    "diffGroup": "NONE",
+    "zoneNameSecond": "落叶逐火",
+    "subTitle": "艾露猫的委托柜台",
     "stageType": "ACTIVITY"
   },
   {

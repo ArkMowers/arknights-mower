@@ -541,12 +541,12 @@ def get_maa_check_status():
 @app.route("/maa-conn-preset")
 @require_token
 def get_maa_conn_presets():
+    config_path = os.path.join(config.conf.maa_path, "resource", "config.json")
+    if not os.path.exists(config_path):
+        logger.warning(f"MAA 配置文件不存在，返回空预设: {config_path}")
+        return []
     try:
-        with open(
-            os.path.join(config.conf.maa_path, "resource", "config.json"),
-            "r",
-            encoding="utf-8",
-        ) as f:
+        with open(config_path, "r", encoding="utf-8") as f:
             presets = [item["configName"] for item in json.load(f)["connection"]]
     except Exception as e:
         logger.exception(e)

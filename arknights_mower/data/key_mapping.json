@@ -335,6 +335,20 @@
         "NORMAL",
         10205
     ],
+    "LMTGS_COIN_7601": [
+        "LMTGS_COIN_7601",
+        "LMTGS_COIN_7601",
+        "寻访数据契约",
+        "NORMAL",
+        10326
+    ],
+    "寻访数据契约": [
+        "LMTGS_COIN_7601",
+        "LMTGS_COIN_7601",
+        "寻访数据契约",
+        "NORMAL",
+        10326
+    ],
     "EPGS_COIN": [
         "EPGS_COIN",
         "EPGS_COIN",
@@ -657,6 +671,20 @@
         "NORMAL",
         40001
     ],
+    "LIMITED_TKT_GACHA_10_7601": [
+        "LIMITED_TKT_GACHA_10_7601",
+        "LIMITED_TKT_GACHA_10_7601",
+        "搭车漫游寻访凭证",
+        "NORMAL",
+        40003
+    ],
+    "搭车漫游寻访凭证": [
+        "LIMITED_TKT_GACHA_10_7601",
+        "LIMITED_TKT_GACHA_10_7601",
+        "搭车漫游寻访凭证",
+        "NORMAL",
+        40003
+    ],
     "7003": [
         "7003",
         "TKT_GACHA",
@@ -826,11 +854,11 @@
         50014
     ],
     "高级干员活动调用凭证": [
-        "voucher_recruitR6_pick6401",
-        "voucher_recruitR6_pick6401",
+        "voucher_recruitR6_pick7601",
+        "voucher_recruitR6_pick7601",
         "高级干员活动调用凭证",
         "CONSUME",
-        50014
+        50059
     ],
     "voucher_item_pick6701": [
         "voucher_item_pick6701",
@@ -985,6 +1013,13 @@
         "特殊活动调用凭证",
         "CONSUME",
         50058
+    ],
+    "voucher_recruitR6_pick7601": [
+        "voucher_recruitR6_pick7601",
+        "voucher_recruitR6_pick7601",
+        "高级干员活动调用凭证",
+        "CONSUME",
+        50059
     ],
     "voucher_levelmax_6": [
         "voucher_levelmax_6",
@@ -1825,6 +1860,34 @@
         "生命标本",
         "CONSUME",
         60122
+    ],
+    "randomMaterial_act53side": [
+        "randomMaterial_act53side",
+        "randomMaterial_act53side",
+        "“幸福在途”补给包",
+        "CONSUME",
+        60123
+    ],
+    "“幸福在途”补给包": [
+        "randomMaterial_act53side",
+        "randomMaterial_act53side",
+        "“幸福在途”补给包",
+        "CONSUME",
+        60123
+    ],
+    "randomMaterial_message4": [
+        "randomMaterial_message4",
+        "randomMaterial_message4",
+        "“神秘动物的口袋”",
+        "CONSUME",
+        60124
+    ],
+    "“神秘动物的口袋”": [
+        "randomMaterial_message4",
+        "randomMaterial_message4",
+        "“神秘动物的口袋”",
+        "CONSUME",
+        60124
     ],
     "2001": [
         "2001",
@@ -7902,6 +7965,34 @@
         "MATERIAL",
         700191
     ],
+    "p_char_4237_jcinta": [
+        "p_char_4237_jcinta",
+        "p_char_4237_jcinta",
+        "嘉辛塔的信物",
+        "MATERIAL",
+        700192
+    ],
+    "嘉辛塔的信物": [
+        "p_char_4237_jcinta",
+        "p_char_4237_jcinta",
+        "嘉辛塔的信物",
+        "MATERIAL",
+        700192
+    ],
+    "p_char_4236_tmslot": [
+        "p_char_4236_tmslot",
+        "p_char_4236_tmslot",
+        "时隙的信物",
+        "MATERIAL",
+        700193
+    ],
+    "时隙的信物": [
+        "p_char_4236_tmslot",
+        "p_char_4236_tmslot",
+        "时隙的信物",
+        "MATERIAL",
+        700193
+    ],
     "p_char_103_angel": [
         "p_char_103_angel",
         "p_char_103_angel",
@@ -9763,6 +9854,34 @@
         "机械师的信物",
         "MATERIAL",
         600133
+    ],
+    "p_char_1015_aglna2": [
+        "p_char_1015_aglna2",
+        "p_char_1015_aglna2",
+        "予愿安洁莉娜的信物",
+        "MATERIAL",
+        600134
+    ],
+    "予愿安洁莉娜的信物": [
+        "p_char_1015_aglna2",
+        "p_char_1015_aglna2",
+        "予愿安洁莉娜的信物",
+        "MATERIAL",
+        600134
+    ],
+    "p_char_4235_thumpy": [
+        "p_char_4235_thumpy",
+        "p_char_4235_thumpy",
+        "珊比的信物",
+        "MATERIAL",
+        600135
+    ],
+    "珊比的信物": [
+        "p_char_4235_thumpy",
+        "p_char_4235_thumpy",
+        "珊比的信物",
+        "MATERIAL",
+        600135
     ],
     "class_p_char_123_fang": [
         "class_p_char_123_fang",
@@ -12382,18 +12501,18 @@
         "NORMAL",
         10605
     ],
-    "SINGLE_75_0_1_GACHA": [
-        "SINGLE_75_0_1_GACHA",
-        "SINGLE_75_0_1_GACHA",
-        "确定性混沌寻访凭证",
+    "ark_odc_act53side_spitem_1": [
+        "ark_odc_act53side_spitem_1",
+        "ark_odc_act53side_spitem",
+        "温泉度假村体验券",
         "NORMAL",
-        40003
+        10606
     ],
-    "确定性混沌寻访凭证": [
-        "SINGLE_75_0_1_GACHA",
-        "SINGLE_75_0_1_GACHA",
-        "确定性混沌寻访凭证",
+    "温泉度假村体验券": [
+        "ark_odc_act53side_spitem_1",
+        "ark_odc_act53side_spitem",
+        "温泉度假村体验券",
         "NORMAL",
-        40003
+        10606
     ]
 }

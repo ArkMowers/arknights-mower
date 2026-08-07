@@ -6,8 +6,13 @@ import { useConfigStore } from '@/stores/config'
 import WeeklyPlanSelector from './WeeklyPlanSelector.vue'
 
 const store = useConfigStore()
-const { maa_weekly_plan, maa_enable, maa_expiring_medicine, exipring_medicine_on_weekend } =
-  storeToRefs(store)
+const {
+  maa_weekly_plan,
+  maa_enable,
+  maa_expiring_medicine,
+  exipring_medicine_on_weekend,
+  ap_fallback
+} = storeToRefs(store)
 
 const mobile = inject('mobile')
 
@@ -348,6 +353,16 @@ function cancelCopyDialogLongPress() {
           </n-flex>
           <n-flex>
             <n-checkbox v-model:checked="filterStageByAvailability">只显示当日开放关卡</n-checkbox>
+            <n-input-number
+              v-model:value="ap_fallback"
+              :min="0"
+              :max="999"
+              :show-button="false"
+              placeholder="体力"
+              style="width: 90px"
+            >
+              <template #suffix>体力</template>
+            </n-input-number>
           </n-flex>
         </n-flex>
       </n-form-item>

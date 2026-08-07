@@ -349,7 +349,17 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
                 self.stageType,
                 self._activity_end_ts(),
             )
+            logger.info(
+                "在线构建导航 | 目标=%s | 类别=%s | 走 LLM 路径",
+                self.name,
+                self.stageType or "UNKNOWN",
+            )
             return self.build_unknown_nav_steps_via_llm()
+        logger.info(
+            "在线构建导航 | 目标=%s | 类别=%s | 走规则路径",
+            self.name,
+            self.stageType or "UNKNOWN",
+        )
         if self.stageType == "DAILY":
             return self.build_daily_nav_steps()
         return self.build_activity_or_main_nav_steps()

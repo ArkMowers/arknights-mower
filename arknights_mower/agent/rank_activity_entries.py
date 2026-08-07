@@ -9,8 +9,8 @@ from arknights_mower.utils import config
 from arknights_mower.utils.log import logger
 
 model_name_map = {
-    "deepseek": ["deepseek-chat", "https://api.deepseek.com/v1"],
-    "deepseek_reasoner": ["deepseek-reasoner", "https://api.deepseek.com/v1"],
+    "deepseek-v4-flash": ["deepseek-v4-flash", "https://api.deepseek.com"],
+    "deepseek-v4-pro": ["deepseek-v4-pro", "https://api.deepseek.com"],
 }
 
 
