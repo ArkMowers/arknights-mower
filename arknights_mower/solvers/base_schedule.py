@@ -2005,21 +2005,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         except Exception:
             pass
         if pending and not self.find_next_task(task_type=TaskTypes.SKILL_UPGRADE):
-            from arknights_mower.utils.mastery_recommendation import get_skill_data
+            from arknights_mower.utils.mastery_sync import MasterySync
 
-            char_table = get_skill_data().get("characters", {})
-            entry = pending[0]
-            sk = str(entry["skill_index"] + 1)
-            char_info = char_table.get(entry["char_id"], {})
-            name = char_info.get("name", entry["char_id"])
-            t = SchedulerTask(
-                time=datetime.now(),
-                task_type=TaskTypes.SKILL_UPGRADE,
-                meta_data=f"{name} 技能{sk} -> 专精{entry.get('level', 1)} ",
-                adjusted=True,
-            )
-            t.plan_key = f"{entry['char_id']}_{entry['skill_index']}"
-            self.tasks.append(t)
+            MasterySync(self)._schedule_next(pending[0])
         if self.find_next_task(datetime.now() + timedelta(seconds=15)):
             logger.info("有其他任务,跳过宿舍纠错")
             return
