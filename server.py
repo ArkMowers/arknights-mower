@@ -17,10 +17,9 @@ from tzlocal import get_localzone
 from werkzeug.exceptions import NotFound
 
 from arknights_mower import __system__
-from arknights_mower.agent.agent import ask_llm
-from arknights_mower.agent.tools.submit_issue import submit_issue
 from arknights_mower.solvers.record import clear_data, load_state, save_state
 from arknights_mower.utils import config
+from arknights_mower.utils.csv_utils import read_dicts, to_num
 from arknights_mower.utils.datetime import get_server_time
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.maa_check import (
@@ -138,6 +137,29 @@ def require_token(f):
 @app.route("/<path:path>")
 def serve_index(path):
     return send_from_directory("ui/dist", path)
+
+
+@app.after_request
+def gzip_static(response):
+    # ui/dist 里的文本类静态资源由 Flask 静态路由直接服务，
+    # 通过 after_request 统一对支持 gzip 的客户端返回预压缩 .gz 文件。
+    path = request.path.lstrip("/")
+    gz_path = path + ".gz"
+    if (
+        path.endswith((".js", ".css", ".html", ".json", ".svg", ".map"))
+        and response.status_code == 200
+        and "gzip" in request.headers.get("Accept-Encoding", "")
+        and os.path.exists(os.path.join("ui/dist", gz_path))
+    ):
+        with open(os.path.join("ui/dist", gz_path), "rb") as f:
+            response.set_data(f.read())
+        response.headers["Content-Encoding"] = "gzip"
+        response.headers["Content-Type"] = mimetypes.guess_type(path)[0] or (
+            "application/octet-stream"
+        )
+        # ETag 基于原始文件字节数，压缩后失效，直接移除
+        response.headers.pop("ETag", None)
+    return response
 
 
 @app.errorhandler(404)
@@ -641,16 +663,18 @@ def date2str(target: datetime.date):
 
 @app.route("/report/getReportData")
 def get_report_data():
-    import pandas as pd
-
     record_path = get_path("@app/tmp/report.csv")
     try:
         format_data = []
         if os.path.exists(record_path) is False:
             logger.debug("基报不存在")
             return False
-        df = pd.read_csv(record_path, encoding="gbk")
-        data = df.to_dict("records")
+        data = read_dicts(record_path, encoding="gbk")
+        for row in data:
+            row["赤金"] = to_num(row["赤金"])
+            row["作战录像"] = to_num(row["作战录像"])
+            row["龙门币订单"] = to_num(row["龙门币订单"])
+            row["龙门币订单数"] = to_num(row["龙门币订单数"])
         earliest_date = str2date(data[0]["Unnamed: 0"])
 
         for item in data:
@@ -661,11 +685,23 @@ def get_report_data():
                     ),
                     "作战录像": item["作战录像"],
                     "赤金": item["赤金"],
-                    "制造总数": int(item["赤金"] + item["作战录像"]),
+                    "制造总数": (
+                        item["赤金"] + item["作战录像"]
+                        if item["赤金"] is not None and item["作战录像"] is not None
+                        else None
+                    ),
                     "龙门币订单": item["龙门币订单"],
-                    "反向作战录像": -item["作战录像"],
+                    "反向作战录像": (
+                        -item["作战录像"] if item["作战录像"] is not None else None
+                    ),
                     "龙门币订单数": item["龙门币订单数"],
-                    "每单获取龙门币": int(item["龙门币订单"] / item["龙门币订单数"]),
+                    "每单获取龙门币": (
+                        int(item["龙门币订单"] / item["龙门币订单数"])
+                        if item["龙门币订单"] is not None
+                        and item["龙门币订单数"]
+                        and item["龙门币订单数"] != 0
+                        else None
+                    ),
                 }
             )
 
@@ -692,16 +728,16 @@ def get_report_data():
 
 @app.route("/report/getOrundumData")
 def get_orundum_data():
-    import pandas as pd
-
     record_path = get_path("@app/tmp/report.csv")
     try:
         format_data = []
         if os.path.exists(record_path) is False:
             logger.debug("基报不存在")
             return False
-        df = pd.read_csv(record_path, encoding="gbk")
-        data = df.to_dict("records")
+        data = read_dicts(record_path, encoding="gbk")
+        for row in data:
+            row["合成玉"] = to_num(row["合成玉"])
+            row["合成玉订单数量"] = to_num(row["合成玉订单数量"])
         earliest_date = datetime.datetime.now()
 
         begin_make_orundum = (earliest_date + datetime.timedelta(days=1)).date()
@@ -1301,6 +1337,8 @@ def submit_feedback():
     start_time = ts_to_str(req.get("startTime"))
     end_time = ts_to_str(req.get("endTime"))
 
+    from arknights_mower.agent.tools.submit_issue import submit_issue
+
     return submit_issue(
         req.get("description", ""), req.get("type", ""), start_time, end_time
     )
@@ -1321,6 +1359,8 @@ def ws_chat(ws):
                 context.append({"role": "user", "content": user_input})
                 logger.debug(f"收到llm请求：{user_input}")
                 # 用流式生成器
+                from arknights_mower.agent.agent import ask_llm
+
                 for reply in ask_llm(
                     user_input, context=context, api_key=config.conf.resolved_ai_key
                 ):

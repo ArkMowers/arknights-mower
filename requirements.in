@@ -27,9 +27,6 @@ PyYAML==6.0.1
 yamlcore==0.0.2
 pydantic==2.8.2
 
-# CSV
-pandas==2.2.2
-
 # 日志
 colorlog==6.8.2
 
@@ -65,4 +62,5 @@ cryptography==43.0.1
 langchain-core==0.3.66
 langchain-openai==0.3.24
 langgraph==0.5.1
-jieba>=0.42.1
+# Rust 实现的中文分词，替代 jieba（体积更小、性能更快）
+rjieba>=0.2.0

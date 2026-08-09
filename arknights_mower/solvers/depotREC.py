@@ -8,7 +8,6 @@ from datetime import datetime
 
 import cv2
 import numpy as np
-import pandas as pd
 from skimage.feature import hog
 
 from arknights_mower.utils import depot
@@ -186,10 +185,10 @@ class depotREC(SceneGraphSolver):
                 json.dumps(self.结果字典, ensure_ascii=False),
                 {"森空岛输出仅占位": ""},
             ]
-            depotinfo = pd.DataFrame([result], columns=["Timestamp", "Data", "json"])
-            depotinfo.to_csv(
-                self.仓库输出, mode="a", index=False, header=False, encoding="utf-8"
-            )
+            import csv
+
+            with open(self.仓库输出, "a", encoding="utf-8", newline="") as f:
+                csv.writer(f).writerow(result)
         else:
             self.back_to_index()
         ## 读取的时候会存入数据库

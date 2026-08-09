@@ -206,12 +206,13 @@ def simulate(saved, restart_after_mood_read=False):
 
                     # 应该在maa任务之后
                     def _is_depotscan():
-                        import pandas as pd
+                        import csv
 
                         path = get_path("@app/tmp/depotresult.csv")
                         if os.path.exists(path):
-                            depotinfo = pd.read_csv(path)
-                            仓库识别时间戳 = depotinfo.iloc[-1, 0]
+                            with open(path, encoding="utf-8", newline="") as f:
+                                rows = [row for row in csv.reader(f)]
+                            仓库识别时间戳 = rows[-1][0]
                             return int(仓库识别时间戳)
                         else:
                             logger.info(f"{path} 不存在,新建一个存储仓库物品的csv")

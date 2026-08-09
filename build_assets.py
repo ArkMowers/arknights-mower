@@ -61,11 +61,26 @@ def _collect_arknights_mower_datas():
     return result
 
 
+def _collect_ui_dist_datas():
+    # ui/dist 逐文件收集，跳过预压缩的 .gz 副本——它们在运行时由
+    # server.py 按 Accept-Encoding 提供，放进发布包只会白白增大体积。
+    src_root = PROJECT_ROOT / "ui" / "dist"
+    result = []
+    for path in sorted(src_root.rglob("*")):
+        if path.is_dir() or path.suffix == ".gz":
+            continue
+        rel = path.relative_to(src_root).as_posix()
+        parent = Path(rel).parent.as_posix()
+        dest = "./ui/dist" if parent == "." else f"./ui/dist/{parent}"
+        result.append((str(path), dest))
+    return result
+
+
 def get_pyinstaller_common_datas():
     ensure_frontend_built()
     return [
         *[(src, dst) for src, dst in _collect_arknights_mower_datas()],
         (_require_path("logo.png"), "."),
         (_require_path("CHANGELOG.md"), "."),
-        (_require_path("ui/dist"), "./ui/dist"),
+        *[(src, dst) for src, dst in _collect_ui_dist_datas()],
     ]

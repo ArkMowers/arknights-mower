@@ -1,9 +1,8 @@
-import jieba
+import rjieba
 
 
 def get_faq(question: str) -> str:
-    q_words = set(jieba.lcut(question))
-    print(q_words)
+    q_words = set(rjieba.cut(question))
     candidates = []
     for item in FAQ_LIST:
         kw_set = set(item["keywords"])
@@ -13,7 +12,6 @@ def get_faq(question: str) -> str:
         return (
             "[FAQ未命中] 未找到相关常见问题，请使用extract_stack_paths进行进一步分析。"
         )
-    print("找到相关常见问题：", candidates)
     result = "为你找到以下相关常见问题，请选择最符合的：\n"
     for idx, item in enumerate(candidates, 1):
         result += f"{idx}. {item['question']}\n{item['answer']}\n"

@@ -2,13 +2,9 @@ import json
 import os
 from datetime import datetime
 
-import pandas as pd
-
-# from .log import logger
 from arknights_mower.data import key_mapping, workshop_formula
-
-# from typing import Dict, List, Union
 from arknights_mower.solvers.record import save_inventory_counts
+from arknights_mower.utils.csv_utils import read_csv_rows
 from arknights_mower.utils.path import get_path
 
 
@@ -30,10 +26,10 @@ def 读取仓库():
         创建csv()
 
     # 读取CSV文件
-    depotinfo = pd.read_csv(csv_path)
+    _, depotinfo = read_csv_rows(csv_path)
 
     # 取出最后一行数据中的物品信息并进行合并
-    最后一行物品 = json.loads(depotinfo.iloc[-1, 1])
+    最后一行物品 = json.loads(depotinfo[-1][1])
     新物品 = {**最后一行物品, **新物品1}  # 合并字典
     新物品json = {}
     db_dict = {}
@@ -42,7 +38,7 @@ def 读取仓库():
     for item in 新物品:
         新物品json[key_mapping[item][0]] = 新物品[item]
         db_dict[key_mapping[item][2]] = 新物品[item]
-    time = depotinfo.iloc[-1, 0]
+    time = depotinfo[-1][0]
     save_inventory_counts(db_dict)
     sort = {
         "A常用": [
@@ -226,6 +222,8 @@ def 读取仓库():
 
 
 def 创建csv():
+    import csv
+
     path = get_path("@app/tmp/depotresult.csv")
     now_time = int(datetime.now().timestamp()) - 24 * 3600
     result = [
@@ -233,8 +231,10 @@ def 创建csv():
         json.dumps({"还未开始过扫描": 0}, ensure_ascii=False),
         json.dumps({"空": ""}, ensure_ascii=False),
     ]
-    depotinfo = pd.DataFrame([result], columns=["Timestamp", "Data", "json"])
-    depotinfo.to_csv(path, mode="a", index=False, header=True, encoding="utf-8")
+    with open(path, "a", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Timestamp", "Data", "json"])
+        writer.writerow(result)
 
 
 def 创建json():
