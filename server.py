@@ -19,7 +19,7 @@ from werkzeug.exceptions import NotFound
 from arknights_mower import __system__
 from arknights_mower.solvers.record import clear_data, load_state, save_state
 from arknights_mower.utils import config
-from arknights_mower.utils.csv_utils import read_dicts, to_num
+from arknights_mower.utils.csv_utils import parse_cell_num, read_dicts
 from arknights_mower.utils.datetime import get_server_time
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.maa_check import (
@@ -144,6 +144,9 @@ def gzip_static(response):
     # ui/dist 里的文本类静态资源由 Flask 静态路由直接服务，
     # 通过 after_request 统一对支持 gzip 的客户端返回预压缩 .gz 文件。
     path = request.path.lstrip("/")
+    # 根入口 / 对应 index.html，同样预压缩
+    if not path:
+        path = "index.html"
     gz_path = path + ".gz"
     if (
         path.endswith((".js", ".css", ".html", ".json", ".svg", ".map"))
@@ -151,6 +154,9 @@ def gzip_static(response):
         and "gzip" in request.headers.get("Accept-Encoding", "")
         and os.path.exists(os.path.join("ui/dist", gz_path))
     ):
+        # 响应内容取决于 Accept-Encoding，必须声明，避免共享缓存把 gzip 响应
+        # 复用于不支持 gzip 的客户端
+        response.vary.add("Accept-Encoding")
         with open(os.path.join("ui/dist", gz_path), "rb") as f:
             response.set_data(f.read())
         response.headers["Content-Encoding"] = "gzip"
@@ -671,10 +677,10 @@ def get_report_data():
             return False
         data = read_dicts(record_path, encoding="gbk")
         for row in data:
-            row["赤金"] = to_num(row["赤金"])
-            row["作战录像"] = to_num(row["作战录像"])
-            row["龙门币订单"] = to_num(row["龙门币订单"])
-            row["龙门币订单数"] = to_num(row["龙门币订单数"])
+            row["赤金"] = parse_cell_num(row["赤金"])
+            row["作战录像"] = parse_cell_num(row["作战录像"])
+            row["龙门币订单"] = parse_cell_num(row["龙门币订单"])
+            row["龙门币订单数"] = parse_cell_num(row["龙门币订单数"])
         earliest_date = str2date(data[0]["Unnamed: 0"])
 
         for item in data:
@@ -735,29 +741,45 @@ def get_orundum_data():
             logger.debug("基报不存在")
             return False
         data = read_dicts(record_path, encoding="gbk")
-        for row in data:
-            row["合成玉"] = to_num(row["合成玉"])
-            row["合成玉订单数量"] = to_num(row["合成玉订单数量"])
         earliest_date = datetime.datetime.now()
 
         begin_make_orundum = (earliest_date + datetime.timedelta(days=1)).date()
-        print(begin_make_orundum)
+        for item in data:
+            # 脏数据（读取失败为 None）保留行但置空，避免被当作 0 污染累计总量
+            item["合成玉"] = parse_cell_num(item["合成玉"])
+            item["合成玉订单数量"] = parse_cell_num(item["合成玉订单数量"])
+            if item["合成玉"] is None:
+                logger.debug("合成玉读取失败：{}".format(item.get("Unnamed: 0")))
         if len(data) >= 15:
             for i in range(len(data) - 1, -1, -1):
                 if 0 < i < len(data) - 15:
                     data.pop(i)
                 else:
                     logger.debug("合成玉{}".format(data[i]["合成玉"]))
-                    if data[i]["合成玉"] > 0:
+                    if data[i]["合成玉"] is not None and data[i]["合成玉"] > 0:
                         begin_make_orundum = str2date(data[i]["Unnamed: 0"])
         else:
             for item in data:
-                if item["合成玉"] > 0:
+                if item["合成玉"] is not None and item["合成玉"] > 0:
                     begin_make_orundum = str2date(item["Unnamed: 0"])
         if begin_make_orundum > earliest_date.date():
             return format_data
         total_orundum = 0
         for item in data:
+            if item["合成玉"] is None:
+                # 脏行保留、累计值断开，与赤金等字段的 null 表现一致
+                format_data.append(
+                    {
+                        "日期": date2str(
+                            str2date(item["Unnamed: 0"]) - datetime.timedelta(days=1)
+                        ),
+                        "合成玉": None,
+                        "合成玉订单数量": None,
+                        "抽数": None,
+                        "累计制造合成玉": None,
+                    }
+                )
+                continue
             total_orundum = total_orundum + item["合成玉"]
             format_data.append(
                 {

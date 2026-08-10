@@ -211,7 +211,7 @@ def simulate(saved, restart_after_mood_read=False):
                         path = get_path("@app/tmp/depotresult.csv")
                         if os.path.exists(path):
                             with open(path, encoding="utf-8", newline="") as f:
-                                rows = [row for row in csv.reader(f)]
+                                rows = [row for row in csv.reader(f) if row]
                             仓库识别时间戳 = rows[-1][0]
                             return int(仓库识别时间戳)
                         else:

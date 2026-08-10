@@ -177,14 +177,13 @@ class SKLand:
         date_str = datetime.datetime.now().strftime("%Y/%m/%d")
         logger.info(f"存入{date_str}的数据{self.reward}")
         try:
-            from arknights_mower.utils.csv_utils import append_dict_rows
+            from arknights_mower.utils.csv_utils import append_dated_row
 
             for item in self.reward:
-                row = {"": date_str, **item}
-                append_dict_rows(
+                append_dated_row(
                     self.record_path,
-                    row,
-                    fieldnames=["", *item.keys()],
+                    date_str,
+                    item,
                     header=False,
                     encoding="gbk",
                 )
@@ -198,14 +197,14 @@ class SKLand:
             if os.path.exists(self.record_path) is False:
                 logger.debug("无森空岛记录")
                 return False
-            df = read_csv_rows(self.record_path, header=False, encoding="gbk")
+            rows = read_csv_rows(self.record_path, header=False, encoding="gbk")
 
             sign_arknights_official = False
             sign_arknights_bilbili = False
             sign_endfield_official = False
             sign_endfield_bilibili = False
 
-            for item in df:
+            for item in rows:
                 if (item[0] == datetime.datetime.now().strftime("%Y/%m/%d")) and (
                     str(item[1]) == phone
                 ):

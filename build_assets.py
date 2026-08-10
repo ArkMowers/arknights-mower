@@ -62,12 +62,12 @@ def _collect_arknights_mower_datas():
 
 
 def _collect_ui_dist_datas():
-    # ui/dist 逐文件收集，跳过预压缩的 .gz 副本——它们在运行时由
-    # server.py 按 Accept-Encoding 提供，放进发布包只会白白增大体积。
+    # ui/dist 逐文件收集，含预压缩 .gz 副本——server.py 运行时按
+    # Accept-Encoding 返回它们，发布版 gzip 才能生效。
     src_root = PROJECT_ROOT / "ui" / "dist"
     result = []
     for path in sorted(src_root.rglob("*")):
-        if path.is_dir() or path.suffix == ".gz":
+        if path.is_dir():
             continue
         rel = path.relative_to(src_root).as_posix()
         parent = Path(rel).parent.as_posix()

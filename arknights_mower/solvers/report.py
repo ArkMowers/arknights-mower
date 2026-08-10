@@ -123,13 +123,12 @@ class ReportSolver(SceneGraphSolver):
     def record_report(self):
         logger.info(f"存入{self.date}的数据{self.report_res}")
         try:
-            from arknights_mower.utils.csv_utils import append_dict_rows
+            from arknights_mower.utils.csv_utils import append_dated_row
 
-            row = {"": self.date, **self.report_res}
-            append_dict_rows(
+            append_dated_row(
                 self.record_path,
-                row,
-                fieldnames=["", *self.report_res.keys()],
+                self.date,
+                self.report_res,
                 header=True,
                 encoding="gbk",
             )
@@ -278,21 +277,3 @@ class ReportSolver(SceneGraphSolver):
                 score.append(min_val)
             value = value * 10 + score.index(min(score))
         return value
-
-
-def get_report_data():
-    record_path = get_path("@app/tmp/report.csv")
-    try:
-        data = {}
-        if os.path.exists(record_path) is False:
-            logger.debug("基报不存在")
-            return False
-        from arknights_mower.utils.csv_utils import read_dicts
-
-        records = read_dicts(record_path, encoding="gbk")
-        data = {
-            col: {i: r.get(col) for i, r in enumerate(records)} for col in records[0]
-        }
-        print(data)
-    except PermissionError:
-        logger.info("report.csv正在被占用")

@@ -25,7 +25,7 @@ def read_csv_rows(path, encoding="utf-8", header="infer"):
     """
     with open(path, encoding=encoding, newline="") as f:
         reader = csv.reader(f)
-        rows = [row for row in reader]
+        rows = [row for row in reader if row]
     if header == "infer":
         header = True
     if header:
@@ -68,7 +68,23 @@ def append_dict_rows(path, rows, fieldnames=None, header=True, encoding="utf-8")
             writer.writerow(r)
 
 
-def to_num(value):
+def append_dated_row(path, date, row, header=True, encoding="utf-8"):
+    """追加一条以日期为首列的 CSV 行。
+
+    report/skland 报表共用：日期写入首列（列名为空串，与 pandas 的
+    index 列行为一致），后续为数据列。header 仅首次创建时生效。
+    """
+    data = {"": date, **row}
+    append_dict_rows(
+        path,
+        data,
+        fieldnames=["", *[k for k in data if k != ""]],
+        header=header,
+        encoding=encoding,
+    )
+
+
+def parse_cell_num(value):
     """把 CSV 读出的字符串安全转数值。
 
     空串/空白/无法解析的值返回 None（对应 pandas 的 NaN），
@@ -94,28 +110,31 @@ def read_dicts(path, encoding="utf-8"):
     等价 pd.read_csv(path).to_dict('records')：
     - 空表头列命名为 Unnamed: N（与 pandas 一致）
     - 空文件/只有表头抛 EmptyDataError（与 pandas 一致）
+    - 用 csv.reader 按位置读取，避免空/重复表头列名覆盖导致丢列
     """
-    import os
-
     if os.path.getsize(path) == 0:
         raise EmptyDataError
     with open(path, encoding=encoding, newline="") as f:
-        reader = csv.DictReader(f)
-        if not reader.fieldnames:
+        reader = csv.reader(f)
+        try:
+            raw_headers = next(reader)
+        except StopIteration:
             raise EmptyDataError
-        col_names = reader.fieldnames
-        # 空表头列重命名为 Unnamed: N，复刻 pandas read_csv
-        unnamed_map = {}
+        # 空/重复表头列命名 Unnamed: N，构造位置唯一的列名
+        col_names = []
         seen = set()
-        for i, name in enumerate(col_names):
-            if name == "" or name in seen:
-                unnamed_map[name] = f"Unnamed: {i}"
-            seen.add(name)
+        for i, name in enumerate(raw_headers):
+            if not name or name in seen:
+                new_name = f"Unnamed: {i}"
+            else:
+                new_name = name
+            seen.add(new_name)
+            col_names.append(new_name)
         rows = []
         for row in reader:
-            r = {}
-            for name in col_names:
-                r[unnamed_map.get(name, name)] = row[name]
+            if not row:
+                continue
+            r = {col_names[i]: row[i] for i in range(min(len(col_names), len(row)))}
             rows.append(r)
         if not rows:
             raise EmptyDataError

@@ -42,7 +42,7 @@
             </n-layout-sider>
             <n-layout-content class="layout-content-container">
               <router-view v-if="loaded" />
-              <ChatBot v-model:show="showChatBot" />
+              <ChatBot v-if="chatBotMounted" v-model:show="showChatBot" />
               <Feedback />
               <n-modal
                 v-model:show="showUpdateNoticeModal"
@@ -223,8 +223,10 @@ function renderIcon(icon) {
   return () => h(NIcon, null, { default: () => h(icon) })
 }
 const showChatBot = ref(false)
+const chatBotMounted = ref(false)
 function handleMenuClick(key) {
   if (key === 'chatbot') {
+    chatBotMounted.value = true
     showChatBot.value = true
   }
 }
