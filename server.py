@@ -15,6 +15,7 @@ from flask_cors import CORS
 from flask_sock import Sock
 from tzlocal import get_localzone
 from werkzeug.exceptions import NotFound
+from werkzeug.security import safe_join
 
 from arknights_mower import __system__
 from arknights_mower.solvers.record import clear_data, load_state, save_state
@@ -147,24 +148,34 @@ def gzip_static(response):
     # 根入口 / 对应 index.html，同样预压缩
     if not path:
         path = "index.html"
-    gz_path = path + ".gz"
+    if not path.endswith((".js", ".css", ".html", ".json", ".svg", ".map")):
+        return response
+    static_path = safe_join(app.static_folder, path)
     if (
-        path.endswith((".js", ".css", ".html", ".json", ".svg", ".map"))
-        and response.status_code == 200
-        and "gzip" in request.headers.get("Accept-Encoding", "")
-        and os.path.exists(os.path.join("ui/dist", gz_path))
+        response.status_code != 200
+        or static_path is None
+        or not os.path.isfile(static_path)
     ):
-        # 响应内容取决于 Accept-Encoding，必须声明，避免共享缓存把 gzip 响应
-        # 复用于不支持 gzip 的客户端
-        response.vary.add("Accept-Encoding")
-        with open(os.path.join("ui/dist", gz_path), "rb") as f:
-            response.set_data(f.read())
-        response.headers["Content-Encoding"] = "gzip"
-        response.headers["Content-Type"] = mimetypes.guess_type(path)[0] or (
-            "application/octet-stream"
-        )
-        # ETag 基于原始文件字节数，压缩后失效，直接移除
-        response.headers.pop("ETag", None)
+        return response
+    gz_path = static_path + ".gz"
+    if not os.path.isfile(gz_path):
+        return response
+
+    # 同一 URL 有 gzip 与 identity 两种表示，两类响应都必须声明 Vary。
+    response.vary.add("Accept-Encoding")
+    if request.accept_encodings["gzip"] <= 0:
+        return response
+
+    # send_from_directory 可能返回 direct_passthrough 响应；替换内容前先关闭。
+    response.direct_passthrough = False
+    with open(gz_path, "rb") as f:
+        response.set_data(f.read())
+    response.headers["Content-Encoding"] = "gzip"
+    response.headers["Content-Type"] = mimetypes.guess_type(path)[0] or (
+        "application/octet-stream"
+    )
+    # ETag 基于原始文件，压缩表示不能复用。
+    response.headers.pop("ETag", None)
     return response
 
 

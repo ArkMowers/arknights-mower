@@ -6,6 +6,7 @@ from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
 from arknights_mower.solvers.secret_front import SecretFront
 from arknights_mower.utils import config, path, rapidocr
 from arknights_mower.utils.csleep import MowerExit
+from arknights_mower.utils.csv_utils import EmptyDataError, read_csv_rows
 from arknights_mower.utils.datetime import get_server_time
 from arknights_mower.utils.depot import 创建csv, 创建json
 from arknights_mower.utils.device.adb_client.session import Session
@@ -19,6 +20,14 @@ from arknights_mower.utils.path import get_path
 from arknights_mower.utils.simulator import restart_simulator
 
 base_scheduler = None
+
+
+def _read_depot_scan_timestamp(path):
+    try:
+        _, rows = read_csv_rows(path)
+        return int(rows[-1][0])
+    except (EmptyDataError, IndexError, ValueError):
+        return None
 
 
 # 执行自动排班
@@ -206,14 +215,17 @@ def simulate(saved, restart_after_mood_read=False):
 
                     # 应该在maa任务之后
                     def _is_depotscan():
-                        import csv
-
                         path = get_path("@app/tmp/depotresult.csv")
                         if os.path.exists(path):
-                            with open(path, encoding="utf-8", newline="") as f:
-                                rows = [row for row in csv.reader(f) if row]
-                            仓库识别时间戳 = rows[-1][0]
-                            return int(仓库识别时间戳)
+                            timestamp = _read_depot_scan_timestamp(path)
+                            if timestamp is not None:
+                                return timestamp
+                            logger.warning(f"{path} 没有有效仓库记录，重新初始化")
+                            创建csv()
+                            return (
+                                int(datetime.now().timestamp())
+                                - config.conf.maa_gap * 3600
+                            )
                         else:
                             logger.info(f"{path} 不存在,新建一个存储仓库物品的csv")
                             now_time = (

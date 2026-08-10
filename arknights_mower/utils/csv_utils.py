@@ -125,16 +125,21 @@ def read_dicts(path, encoding="utf-8"):
         seen = set()
         for i, name in enumerate(raw_headers):
             if not name or name in seen:
-                new_name = f"Unnamed: {i}"
-            else:
-                new_name = name
+                name = f"Unnamed: {i}"
+            new_name = name
+            suffix = 1
+            while new_name in seen:
+                new_name = f"{name}.{suffix}"
+                suffix += 1
             seen.add(new_name)
             col_names.append(new_name)
         rows = []
         for row in reader:
             if not row:
                 continue
-            r = {col_names[i]: row[i] for i in range(min(len(col_names), len(row)))}
+            r = {
+                name: row[i] if i < len(row) else "" for i, name in enumerate(col_names)
+            }
             rows.append(r)
         if not rows:
             raise EmptyDataError

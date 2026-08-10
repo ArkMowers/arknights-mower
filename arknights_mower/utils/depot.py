@@ -231,9 +231,11 @@ def 创建csv():
         json.dumps({"还未开始过扫描": 0}, ensure_ascii=False),
         json.dumps({"空": ""}, ensure_ascii=False),
     ]
+    write_header = not os.path.exists(path) or os.path.getsize(path) == 0
     with open(path, "a", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["Timestamp", "Data", "json"])
+        if write_header:
+            writer.writerow(["Timestamp", "Data", "json"])
         writer.writerow(result)
 
 
