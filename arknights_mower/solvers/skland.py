@@ -204,7 +204,14 @@ class SKLand:
             sign_endfield_official = False
             sign_endfield_bilibili = False
 
-            for item in rows:
+            for line_no, item in enumerate(rows, start=1):
+                if len(item) < 3:
+                    logger.warning(
+                        "跳过不完整的森空岛签到记录：第%s行，仅%s列",
+                        line_no,
+                        len(item),
+                    )
+                    continue
                 if (item[0] == datetime.datetime.now().strftime("%Y/%m/%d")) and (
                     str(item[1]) == phone
                 ):
