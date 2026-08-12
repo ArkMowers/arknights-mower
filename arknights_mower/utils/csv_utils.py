@@ -5,6 +5,7 @@ read_csv / DataFrame.to_csv / iloc 迭代 / to_dict 等少量 CSV 能力。
 """
 
 import csv
+import math
 import os
 
 
@@ -87,7 +88,7 @@ def append_dated_row(path, date, row, header=True, encoding="utf-8"):
 def parse_cell_num(value):
     """把 CSV 读出的字符串安全转数值。
 
-    空串/空白/无法解析的值返回 None（对应 pandas 的 NaN），
+    空串/空白/无法解析或非有限的值返回 None（对应 pandas 的 NaN），
     避免 getReportData 等场景 int('') 抛 ValueError 导致接口 500。
     """
     if value is None:
@@ -99,7 +100,8 @@ def parse_cell_num(value):
         return int(s)
     except ValueError:
         try:
-            return float(s)
+            number = float(s)
+            return number if math.isfinite(number) else None
         except ValueError:
             return None
 
@@ -120,11 +122,11 @@ def read_dicts(path, encoding="utf-8"):
             raw_headers = next(reader)
         except StopIteration:
             raise EmptyDataError
-        # 空/重复表头列命名 Unnamed: N，构造位置唯一的列名
+        # 空表头命名 Unnamed: N；重复表头使用 .N 后缀，构造位置唯一的列名
         col_names = []
         seen = set()
         for i, name in enumerate(raw_headers):
-            if not name or name in seen:
+            if not name:
                 name = f"Unnamed: {i}"
             new_name = name
             suffix = 1
