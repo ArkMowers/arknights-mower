@@ -2,9 +2,9 @@ import datetime
 import os
 
 import cv2
-import pandas as pd
 
 from arknights_mower.models import noto_sans
+from arknights_mower.utils.csv_utils import EmptyDataError, read_csv_rows
 from arknights_mower.utils.datetime import get_server_time
 from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.digit_reader import DigitReader
@@ -123,11 +123,13 @@ class ReportSolver(SceneGraphSolver):
     def record_report(self):
         logger.info(f"存入{self.date}的数据{self.report_res}")
         try:
-            res_df = pd.DataFrame(self.report_res, index=[self.date])
-            res_df.to_csv(
+            from arknights_mower.utils.csv_utils import append_dated_row
+
+            append_dated_row(
                 self.record_path,
-                mode="a",
-                header=not os.path.exists(self.record_path),
+                self.date,
+                self.report_res,
+                header=True,
                 encoding="gbk",
             )
         except Exception as e:
@@ -152,14 +154,14 @@ class ReportSolver(SceneGraphSolver):
             if os.path.exists(self.record_path) is False:
                 logger.debug("基报不存在")
                 return False
-            df = pd.read_csv(self.record_path, encoding="gbk", on_bad_lines="skip")
-            for item in df.iloc:
+            _, rows = read_csv_rows(self.record_path, encoding="gbk")
+            for item in rows:
                 if item[0] == self.date:
                     return True
             return False
         except PermissionError:
             logger.info("report.csv正在被占用")
-        except pd.errors.EmptyDataError:
+        except EmptyDataError:
             return False
 
     def crop_report(self):
@@ -275,17 +277,3 @@ class ReportSolver(SceneGraphSolver):
                 score.append(min_val)
             value = value * 10 + score.index(min(score))
         return value
-
-
-def get_report_data():
-    record_path = get_path("@app/tmp/report.csv")
-    try:
-        data = {}
-        if os.path.exists(record_path) is False:
-            logger.debug("基报不存在")
-            return False
-        df = pd.read_csv(record_path, encoding="gbk")
-        data = df.to_dict("dict")
-        print(data)
-    except PermissionError:
-        logger.info("report.csv正在被占用")

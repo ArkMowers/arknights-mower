@@ -42,7 +42,7 @@
             </n-layout-sider>
             <n-layout-content class="layout-content-container">
               <router-view v-if="loaded" />
-              <ChatBot v-model:show="showChatBot" />
+              <ChatBot v-if="chatBotMounted" v-model:show="showChatBot" />
               <Feedback />
               <n-modal
                 v-model:show="showUpdateNoticeModal"
@@ -210,15 +210,11 @@ import RoseOutline from '@vicons/ionicons5/RoseOutline'
 import Coffee from '@vicons/tabler/Coffee'
 import { NIcon } from 'naive-ui'
 import { storeToRefs } from 'pinia'
-import { h, inject, onMounted, provide, ref } from 'vue'
+import { computed, defineAsyncComponent, h, inject, onMounted, provide, ref } from 'vue'
 import Feedback from '@/components/Feedback.vue'
-import markdownit from 'markdown-it'
-import externalLink from 'markdown-it-external-link'
 
-const md = markdownit({ html: true, breaks: true }).use(externalLink, {
-  externalTarget: '_blank',
-  rel: 'noopener noreferrer'
-})
+const ChatBot = defineAsyncComponent(() => import('@/components/ChatBot.vue'))
+
 const showModal = ref(false)
 const showModal2 = ref(false)
 const showFeedback = ref(false)
@@ -227,8 +223,10 @@ function renderIcon(icon) {
   return () => h(NIcon, null, { default: () => h(icon) })
 }
 const showChatBot = ref(false)
+const chatBotMounted = ref(false)
 function handleMenuClick(key) {
   if (key === 'chatbot') {
+    chatBotMounted.value = true
     showChatBot.value = true
   }
 }
@@ -425,9 +423,21 @@ provide('mobile', mobile)
 
 const loaded = inject('loaded')
 
-const renderedChangelog = computed(() => {
-  return md.render(updateNotice.value.changelog)
-})
+const renderedChangelog = ref('')
+let changelogRendered = false
+async function renderChangelog() {
+  if (changelogRendered) return
+  changelogRendered = true
+  const [{ default: markdownit }, { default: externalLink }] = await Promise.all([
+    import('markdown-it'),
+    import('markdown-it-external-link')
+  ])
+  const md = markdownit({ html: true, breaks: true }).use(externalLink, {
+    externalTarget: '_blank',
+    rel: 'noopener noreferrer'
+  })
+  renderedChangelog.value = md.render(updateNotice.value.changelog)
+}
 
 async function handleUpdateNoticeAck() {
   if (!updateNotice.value.current_version) {
@@ -460,6 +470,12 @@ onMounted(async () => {
   const instanceName = params.get('instance_name')
   provide('token', token)
   axios.defaults.headers.common['token'] = token
+  // getwatermarkinfo 独立并行，失败不影响主流程（watermark 仅装饰用途）
+  getwatermarkinfo()
+    .then((info) => {
+      watermarkData.value = info
+    })
+    .catch(() => {})
   await Promise.all([load_config(), load_shop(), load_item(), load_operators(), get_running()])
 
   document.title = instanceName
@@ -474,6 +490,9 @@ onMounted(async () => {
     try {
       const notice = await loadUpdateNotice()
       showUpdateNoticeModal.value = notice.should_show
+      if (notice.should_show) {
+        renderChangelog()
+      }
     } catch (error) {
       console.error('failed to load update notice', error)
       showUpdateNoticeModal.value = false
@@ -533,8 +552,6 @@ onMounted(async () => {
   if (start_automatically.value) {
     start()
   }
-
-  watermarkData.value = await getwatermarkinfo()
 })
 
 watch(

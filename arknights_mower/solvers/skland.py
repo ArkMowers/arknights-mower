@@ -1,10 +1,10 @@
 import datetime
 import os
 
-import pandas as pd
 import requests
 
 from arknights_mower.utils import config
+from arknights_mower.utils.csv_utils import EmptyDataError, read_csv_rows
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.skland import (
@@ -177,9 +177,16 @@ class SKLand:
         date_str = datetime.datetime.now().strftime("%Y/%m/%d")
         logger.info(f"存入{date_str}的数据{self.reward}")
         try:
+            from arknights_mower.utils.csv_utils import append_dated_row
+
             for item in self.reward:
-                res_df = pd.DataFrame(item, index=[date_str])
-                res_df.to_csv(self.record_path, mode="a", header=False, encoding="gbk")
+                append_dated_row(
+                    self.record_path,
+                    date_str,
+                    item,
+                    header=False,
+                    encoding="gbk",
+                )
         except Exception as e:
             self.test_writecsv = False
             logger.exception(e)
@@ -190,18 +197,23 @@ class SKLand:
             if os.path.exists(self.record_path) is False:
                 logger.debug("无森空岛记录")
                 return False
-            df = pd.read_csv(
-                self.record_path, header=None, encoding="gbk", on_bad_lines="skip"
-            )
+            rows = read_csv_rows(self.record_path, header=False, encoding="gbk")
 
             sign_arknights_official = False
             sign_arknights_bilbili = False
             sign_endfield_official = False
             sign_endfield_bilibili = False
 
-            for item in df.iloc:
+            for line_no, item in enumerate(rows, start=1):
+                if len(item) < 3:
+                    logger.warning(
+                        "跳过不完整的森空岛签到记录：第%s行，仅%s列",
+                        line_no,
+                        len(item),
+                    )
+                    continue
                 if (item[0] == datetime.datetime.now().strftime("%Y/%m/%d")) and (
-                    item[1].astype(str) == phone
+                    str(item[1]) == phone
                 ):
                     for game in config.conf.skland_info:
                         if (phone == game.account) and not game.sign_in_official:
@@ -235,7 +247,7 @@ class SKLand:
             return False
         except PermissionError:
             logger.info("skland.csv正在被占用")
-        except pd.errors.EmptyDataError:
+        except EmptyDataError:
             return False
 
     # 用于测试连接
