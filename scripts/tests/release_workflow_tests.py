@@ -195,20 +195,31 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
             step = find_step(self.jobs[job_name], "Inject version from tag")
             self.assertEqual(step["run"], command, msg=f"{job_name} inject step")
 
-    def test_windows_build_syncs_dlls_and_verifies_pe_arch(self):
+    def test_windows_build_verifies_pe_arch_before_packaging(self):
         job = self.jobs["build-windows"]
         names = [step.get("name") for step in job["steps"]]
         build_index = names.index("Build with PyInstaller")
-        sync_index = names.index("Synchronize Windows runtime DLLs")
         pe_index = names.index("Verify PE architecture")
         package_index = names.index("Package into zip")
-        self.assertLess(build_index, sync_index)
-        self.assertLess(sync_index, pe_index)
+        self.assertLess(build_index, pe_index)
         self.assertLess(pe_index, package_index)
-        self.assertEqual(
-            job["steps"][sync_index]["run"], "python scripts/fix_runtime_dlls.py"
-        )
         self.assertIn("--arch x64", job["steps"][pe_index]["run"])
+
+    def test_builds_prune_opencv_between_install_and_pyinstaller(self):
+        for job_name in ("build-windows", "build-linux", "build-macos"):
+            job = self.jobs[job_name]
+            names = [step.get("name") for step in job["steps"]]
+            install_index = names.index("Install Python dependencies")
+            prune_index = names.index("Prune unused OpenCV assets")
+            build_index = names.index("Build with PyInstaller")
+            self.assertLess(install_index, prune_index, msg=f"{job_name} prune order")
+            self.assertLess(prune_index, build_index, msg=f"{job_name} prune order")
+            self.assertEqual(
+                job["steps"][prune_index]["run"],
+                "python scripts/prune_opencv.py",
+                msg=f"{job_name} prune step",
+            )
+        self.assertNotIn("fix_runtime_dlls", all_run_commands(self.workflow))
 
     def test_windows_installs_verified_upx_before_pyinstaller(self):
         self.assertEqual(self.workflow["env"]["UPX_VERSION"], "5.2.0")
