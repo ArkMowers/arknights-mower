@@ -4,9 +4,8 @@ from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
-from skimage.metrics import structural_similarity
 
-from arknights_mower.utils import config
+from arknights_mower.utils import config, vision_np
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.device.device import Device
@@ -832,7 +831,7 @@ class Recognizer:
                 if cmatch(img, res_img, draw=draw):
                     gray = cropimg(self.gray, scope)
                     res_img = cv2.cvtColor(res_img, cv2.COLOR_RGB2GRAY)
-                    ssim = structural_similarity(gray, res_img)
+                    ssim = vision_np.ssim(gray, res_img)
                     logger.debug(f"{ssim=}")
                     threshold = 0.9
                     if res in template_matching_score:

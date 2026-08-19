@@ -73,8 +73,12 @@ Release 任务在全部平台构建成功后附加五个产物，并生成统一
 
 ## 构建检查
 
+- 三个平台的构建都在安装依赖之后、PyInstaller 打包之前运行
+  `scripts/prune_opencv.py`，移除 OpenCV 中不使用的 videoio FFmpeg 插件和
+  级联分类器数据。脚本先把候选文件移到暂存目录并冒烟调用核心识别 API，通过
+  后才真正删除，失败则回滚。
 - Windows 构建下载并校验固定版本的 UPX，PyInstaller 通过 `PATH` 使用它压缩
-  支持的 PE 文件。构建在打包前同步运行时 DLL，并检查可执行文件的 PE 架构。
+  支持的 PE 文件。构建在打包前检查可执行文件的 PE 架构。
 - Linux 构建检查主程序、`CHANGELOG.md` 和必要资源，验证 ELF 架构及动态库
   解析结果，再通过 Xvfb 运行 30 秒 GUI 冒烟。
 - macOS spec 显式收集 pywebview Cocoa 后端依赖和当前 wheel 中存在的

@@ -1,11 +1,10 @@
 from time import sleep
 
 import cv2
-from scipy.signal import argrelmax
-from skimage.metrics import structural_similarity
 
 from arknights_mower.models import avatar, secret_front
 from arknights_mower.utils import typealias as tp
+from arknights_mower.utils import vision_np
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.solver import BaseSolver
@@ -142,7 +141,7 @@ class AutoFight(BaseSolver):
         mask = loadres("fight/c_mask", True)
         result = cv2.matchTemplate(img, c, cv2.TM_CCOEFF_NORMED, None, mask)[0]
         op = []
-        for i in argrelmax(result, order=50)[0]:
+        for i in vision_np.argrelmax(result, order=50):
             if result[i] > threshold:
                 op.append(i)
         self.operators = {}
@@ -192,7 +191,7 @@ class AutoFight(BaseSolver):
         img = cropimg(self.recog.gray, ((740, 480), (1180, 665)))
         img = thres2(img, 250)
         res = loadres("fight/pause", True)
-        ssim = structural_similarity(img, res)
+        ssim = vision_np.ssim(img, res)
         logger.debug(ssim)
         self.playing = ssim <= 0.9
 
