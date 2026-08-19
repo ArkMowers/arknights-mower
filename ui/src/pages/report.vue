@@ -268,7 +268,7 @@ const option_manufactor = computed(() => {
     grid: {
       left: '3%',
       right: '4%',
-      bottom: '3%',
+      bottom: 60,
       containLabel: true
     },
     legend: {

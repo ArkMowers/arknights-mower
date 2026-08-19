@@ -8,7 +8,8 @@
     "build": "vite build && node copy.js",
     "preview": "vite preview",
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs --fix --ignore-path .gitignore",
-    "format": "prettier --write src/"
+    "format": "prettier --write src/",
+    "test": "vitest run"
   },
   "dependencies": {
     "@vicons/fluent": "^0.12.0",
@@ -21,7 +22,7 @@
     "chart.js": "^4.4.2",
     "chartjs-adapter-luxon": "^1.3.1",
     "chartjs-plugin-datalabels": "^2.2.0",
-    "echarts": "^5.5.0",
+    "echarts": "^6.1.0",
     "highlight.js": "^11.9.0",
     "html-to-image": "^1.11.11",
     "luxon": "^3.4.4",
@@ -34,7 +35,7 @@
     "vue": "^3.4.27",
     "vue-axios": "^3.5.2",
     "vue-chartjs": "^5.3.0",
-    "vue-echarts": "^6.6.9",
+    "vue-echarts": "^8.1.0",
     "vue-router": "^4.3.0",
     "vue-slicksort": "^2.0.5",
     "vuedraggable": "^4.1.0"
@@ -43,7 +44,7 @@
     "@rushstack/eslint-patch": "^1.10.1",
     "@vicons/carbon": "^0.12.0",
     "@vicons/fa": "^0.12.0",
-    "@vitejs/plugin-vue": "^5.0.4",
+    "@vitejs/plugin-vue": "^6.0.8",
     "@vitejs/plugin-vue-jsx": "^5.1.5",
     "@vue/eslint-config-prettier": "^9.0.0",
     "eslint": "^8.57.0",
@@ -51,9 +52,10 @@
     "naive-ui": "^2.38.1",
     "sass": "^1.74.1",
     "typescript": "^5.4.4",
-    "unplugin-auto-import": "^0.17.5",
-    "unplugin-vue-components": "^0.26.0",
-    "vite": "^5.2.4",
-    "vite-plugin-inspect": "^0.8.3"
+    "unplugin-auto-import": "^21.1.0",
+    "unplugin-vue-components": "^32.1.0",
+    "vite": "^8.2.1",
+    "vite-plugin-inspect": "^12.0.2",
+    "vitest": "^4.1.10"
   }
 }
