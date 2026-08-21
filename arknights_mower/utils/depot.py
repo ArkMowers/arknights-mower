@@ -4,6 +4,7 @@ from datetime import datetime
 
 from arknights_mower.data import key_mapping, workshop_formula
 from arknights_mower.solvers.record import save_inventory_counts
+from arknights_mower.utils.config import atomic_write
 from arknights_mower.utils.csv_utils import read_csv_rows
 from arknights_mower.utils.path import get_path
 
@@ -247,5 +248,9 @@ def 创建json():
         "timestamp": "1719065002",
         "data": {"items": [{"id": "31063", "count": "0"}]},
     }
-    with open(path, "w", encoding="utf-8") as f:
+
+    def dump(f):
         json.dump(a, f)
+
+    # 与 cultivate_depot.py 共用写点，原子写防撕裂（web 刷新线程并发）
+    atomic_write(path, dump)

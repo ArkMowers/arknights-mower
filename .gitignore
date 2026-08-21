@@ -199,6 +199,9 @@ dmypy.json
 ### 命令行运行产生的/tmp/data.db
 /tmp/
 
+# 运行期配置文件（@app/config/，2026-08-21 由 @app/ 迁移而来）
+/config/
+
 # End of https://www.toptal.com/developers/gitignore/api/visualstudiocode
 /*.json
 dist

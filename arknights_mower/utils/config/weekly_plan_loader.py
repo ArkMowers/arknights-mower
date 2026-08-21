@@ -2,15 +2,15 @@ from typing import Optional
 
 import yaml
 
+from arknights_mower.utils.config import atomic_write, weekly_plans_path
 from arknights_mower.utils.config.app_state import read_app_state, write_app_state
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.path import get_path
 
 
 class WeeklyPlanManager:
     """Persist weekly plan presets and keep the active plan synced to runtime config."""
 
-    WEEKLY_PLANS_FILE = get_path("@app/weekly_plans.yml")
+    WEEKLY_PLANS_FILE = weekly_plans_path
     DEFAULT_PLAN_KEY = "默认"
 
     def __init__(self):
@@ -92,9 +92,10 @@ class WeeklyPlanManager:
             return yaml.safe_load(f) or {"plans": {}}
 
     def _write_weekly_plans(self, data: dict):
-        self.WEEKLY_PLANS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with self.WEEKLY_PLANS_FILE.open("w", encoding="utf-8") as f:
+        def dump(f):
             yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False)
+
+        atomic_write(self.WEEKLY_PLANS_FILE, dump)
 
     def _read_state(self) -> dict:
         return read_app_state()
