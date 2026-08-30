@@ -249,11 +249,22 @@ class MasteryRouteView(MethodView):
         supports = data.get("supports", "[]")
         if not profession:
             return {"error": "profession is required"}, 400
-        save_route(
-            profession,
+        # #114：写入端校验 supports 是合法 JSON 且形态是数组/包装对象/旧字典之一，
+        # 不合法拒绝保存（读取端 json.loads 无守卫，#91 review 决策——坏数据不得进库，
+        # 否则该职业全无路线 operator/减半）。
+        from arknights_mower.solvers.mastery import validate_route_supports
+
+        supports_str = (
             supports
             if isinstance(supports, str)
-            else json.dumps(supports, ensure_ascii=False),
+            else json.dumps(supports, ensure_ascii=False)
+        )
+        err = validate_route_supports(supports_str)
+        if err:
+            return {"error": err}, 400
+        save_route(
+            profession,
+            supports_str,
             is_default=0,
             optimal=bool(data.get("optimal", False)),
             half_off=bool(data.get("half_off", True)),

@@ -1,4 +1,4 @@
-from arknights_mower.solvers.mastery import get_char_name
+from arknights_mower.solvers.mastery import get_char_name, validate_route_supports
 from arknights_mower.utils.mastery_db import (
     add_plan_checked,
     get_all_plans,
@@ -54,6 +54,11 @@ def set_route(profession: str, supports_json: str):
     swap, swap_name, match}, ...]）或含 supports 的包装对象；中枢加成/换人缓冲是全局
     设置（POST /mastery-route/settings），不在路线 JSON 里。
     """
+    # #114：写入端校验 supports 是合法 JSON 且形态是数组/包装对象/旧字典之一，
+    # 不合法拒绝保存（读取端 json.loads 无守卫，#91 review 决策，坏数据不得进库）。
+    err = validate_route_supports(supports_json)
+    if err:
+        return f"保存 {profession} 路线失败: {err}"
     save_route(profession, supports_json, is_default=0)
     return f"已保存 {profession} 路线的专精路线"
 

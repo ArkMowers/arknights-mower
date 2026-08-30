@@ -36,6 +36,53 @@ class TestMasteryRouteView(unittest.TestCase):
             half_off=False,
         )
 
+    @patch("arknights_mower.views.mastery.save_route")
+    def test_route_post_rejects_invalid_json(self, save_route_mock):
+        # #114：supports 不是合法 JSON → 400 拒绝保存（坏数据不得进库，读取端无守卫）
+        for bad in ("not json", "{", "", '"broken'):
+            r = self.client.post(
+                "/mastery-route", json={"profession": "近卫", "supports": bad}
+            )
+            self.assertEqual(r.status_code, 400, f"supports={bad!r} 应 400")
+            self.assertIn("合法 JSON", r.get_json()["error"])
+        save_route_mock.assert_not_called()
+
+    @patch("arknights_mower.views.mastery.save_route")
+    def test_route_post_rejects_wrong_shape(self, save_route_mock):
+        # #114：合法 JSON 但形态不是数组/包装对象/旧字典 → 400
+        # （读取端 _route_entry_from_supports 返回 None 静默回退默认路线）；
+        # level_N 值非 dict（如字符串）能过 json.loads 却在读取端 dict() 抛 ValueError
+        # 被 _get_plan_route 吞掉静默回退 → 同样拒绝
+        for bad in (
+            "42",
+            '"hello"',
+            "null",
+            '{"foo": 1}',
+            "true",
+            '{"level_1": "garbage"}',
+            '{"level_1": 42}',
+        ):
+            r = self.client.post(
+                "/mastery-route", json={"profession": "近卫", "supports": bad}
+            )
+            self.assertEqual(r.status_code, 400, f"supports={bad!r} 应 400")
+        save_route_mock.assert_not_called()
+
+    @patch("arknights_mower.views.mastery.save_route")
+    def test_route_post_accepts_valid_shapes(self, save_route_mock):
+        # #114：三种合法形态（数组/包装对象/旧字典）都放行保存
+        valid = (
+            '[{"name": "银灰", "skill_level": 1}]',
+            '{"supports": [{"name": "银灰", "skill_level": 1}]}',
+            '{"level_1": {"operator": "赤冬"}}',
+        )
+        for good in valid:
+            r = self.client.post(
+                "/mastery-route", json={"profession": "近卫", "supports": good}
+            )
+            self.assertEqual(r.status_code, 200, f"supports={good!r} 应 200")
+        self.assertEqual(save_route_mock.call_count, len(valid))
+
     @patch("arknights_mower.views.mastery.get_route_settings")
     @patch("arknights_mower.views.mastery.get_all_routes")
     def test_route_get_includes_settings(self, routes_mock, settings_mock):

@@ -454,7 +454,7 @@
               />
               <n-text strong style="font-size: 13px">{{ op.name }}</n-text>
               <n-text depth="3" style="font-size: 11px">{{ op.rarity }}★</n-text>
-              <n-button size="tiny" quaternary @click="addAllToPlan(op)">全加</n-button>
+              <n-button size="tiny" quaternary @click="addAllToPlan(op, true)">全加</n-button>
             </n-space>
             <n-space :size="4" style="margin-left: 8px">
               <n-button
@@ -721,13 +721,49 @@ async function toggleSkillPlan(op, rec, draft = false) {
   }
 }
 
-function addAllToPlan(op) {
-  for (const rec of op.recommendations) {
-    const k = planKey(op.char_id, rec.skill_index)
-    plan.value[k] = true
-    draftRemoved.value.delete(k)
+async function addAllToPlan(op, draft = false) {
+  const recs = op.recommendations
+  if (draft) {
+    // 计划弹窗内草稿：只动本地，保存时 POST
+    for (const rec of recs) {
+      const k = planKey(op.char_id, rec.skill_index)
+      plan.value[k] = true
+      draftRemoved.value.delete(k)
+    }
+    message.success(`${op.name} 全部技能已加入计划`)
+    return
   }
-  message.success(`${op.name} 全部技能已加入计划`)
+  // 主列表 quick-add：立即写后端（跳过已计划技能，后端无 (char,skill) 唯一约束，重复 POST 会建重复行）
+  const toAdd = recs.filter((rec) => !plan.value[planKey(op.char_id, rec.skill_index)])
+  if (!toAdd.length) {
+    message.info(`${op.name} 所有推荐技能都已在计划中`)
+    return
+  }
+  try {
+    const r = await axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, {
+      items: toAdd.map((rec) => ({ name: op.name, skill_index: rec.skill_index }))
+    })
+    const results = r.data?.results || []
+    const errs = []
+    results.forEach((res, i) => {
+      const rec = toAdd[i]
+      if (res.status === 'added') {
+        const k = planKey(op.char_id, rec.skill_index)
+        plan.value[k] = true
+        // #65：target_level 由服务端默认专三（与推荐一致）
+        planStatus.value[k] = { id: res.id, status: 'idle', target_level: 3, priority: 0 }
+      } else {
+        errs.push(res.reason || '添加失败')
+      }
+    })
+    if (errs.length) {
+      message.warning(`${op.name} 有 ${errs.length} 项未加入: ${errs.join('；')}`)
+    } else {
+      message.success(`${op.name} 全部技能已加入计划`)
+    }
+  } catch (e) {
+    message.error(`保存失败: ${e.message}`)
+  }
 }
 
 function removePlanEntry(e) {
@@ -1020,6 +1056,7 @@ const routeSettings = reactive(
 let _autoSaveReady = false
 let _routeSaveChain = Promise.resolve()
 const _dirtyRouteProfessions = new Set()
+let _dirtyMasterySettings = false
 const routeSaving = ref(false)
 
 function persistRouteSettings() {
@@ -1069,6 +1106,14 @@ for (const profession of profKeys) {
     { deep: true }
   )
 }
+
+// #115：modal 级中枢加成/缓冲与逐职业路线同源走草稿语义——改了不保存关掉要还原
+watch(
+  () => [masterySettings.central_bonus, masterySettings.mastery_swap_buffer],
+  () => {
+    if (_autoSaveReady) _dirtyMasterySettings = true
+  }
+)
 
 function newSupport(p) {
   const n = routeSettings[p].supports.length
@@ -1152,6 +1197,7 @@ async function discardRouteChanges() {
   // _autoSaveReady 先置 false，避免还原过程（applyRoute 触发 watcher）被误标记 dirty。
   _autoSaveReady = false
   _dirtyRouteProfessions.clear()
+  _dirtyMasterySettings = false
   try {
     await loadRoute()
   } catch (e) {
@@ -1160,7 +1206,7 @@ async function discardRouteChanges() {
   }
 }
 watch(showSettings, (val) => {
-  if (!val && _dirtyRouteProfessions.size) {
+  if (!val && (_dirtyRouteProfessions.size || _dirtyMasterySettings)) {
     discardRouteChanges()
       .then(() => message.warning('专精路线修改未保存，已还原'))
       .catch((e) => console.error('discard route changes failed', e))
@@ -1176,6 +1222,7 @@ async function saveRouteAndClose() {
         mastery_swap_buffer: masterySettings.mastery_swap_buffer
       })
     ])
+    _dirtyMasterySettings = false // 已落库，关弹窗不再触发「未保存还原」
     showSettings.value = false
     message.success('专精路线设置已保存')
   } catch (e) {

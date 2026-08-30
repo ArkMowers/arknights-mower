@@ -252,6 +252,31 @@ def _route_entry_from_supports(parsed, level: int) -> dict | None:
     return None
 
 
+def validate_route_supports(supports_json: str) -> str | None:
+    """写入端校验路线 supports JSON（#114）：合法 JSON 且形态是数组/包装对象/旧字典之一。
+
+    读取端 json.loads 故意无 try/except（#91 review 决策——防坏数据静默回退
+    DEFAULT_ROUTES、掩盖「自定义路线从未生效」的症状），校验只能放写入端：
+    不合法拒绝保存并报错，坏数据不得进库（否则该职业全无路线 operator/减半）。
+    旧字典形态的 level_N 值须为对象——非 dict 值（如字符串）能过 json.loads 却在
+    读取端 `dict(parsed[level_key])` 抛 ValueError，被 _get_plan_route 吞掉静默回退。
+    """
+    try:
+        parsed = json.loads(supports_json)
+    except (TypeError, ValueError):
+        return "supports 不是合法 JSON"
+    if isinstance(parsed, list):
+        return None
+    if isinstance(parsed, dict):
+        if isinstance(parsed.get("supports"), list):
+            return None
+        if any(
+            isinstance(parsed.get(f"level_{lvl}"), dict) for lvl in (1, 2, 3)
+        ):
+            return None
+    return "supports 形态需为数组/包装对象/旧字典"
+
+
 def get_route_config(profession_cn: str, level: int) -> dict | None:
     from arknights_mower.utils.mastery_db import get_route, get_route_settings
 
