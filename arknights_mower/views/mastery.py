@@ -67,19 +67,38 @@ def _purge_plan_tasks(plan_id):
     tasks[:] = [
         t for t in tasks if t is current or getattr(t, "plan_key", None) not in keys
     ]
+    # #147：删计划同步清持久化队列——saved_state 快照里旧队列没清，重启 load_state
+    # 会把已删计划的任务复活（plan_key 派发到已删计划 + blocked 通知重发）。这里把
+    # 清完的当前状态重新落库覆盖旧快照；持久化失败不阻塞删除（活队列已清）。
+    # #147 边界：被删计划的任务此刻正被派发（t is current 保留在 live 队列，主循环
+    # 执行完才 del tasks[0]）时，快照仍含它 → 重启复活。live 队列不能动（del tasks[0]
+    # 靠 current 占位），只在持久化快照里剔除。
+    try:
+        from arknights_mower.solvers.record import current_state, save_state_to_db
+
+        state = current_state()
+        if state is not None:
+            state["tasks"] = [
+                t for t in state["tasks"] if getattr(t, "plan_key", None) not in keys
+            ]
+            save_state_to_db(state)
+    except Exception as e:
+        logger.debug(f"删除计划后持久化队列同步失败（忽略）: {e}")
 
 
-def _refresh_cultivate_if_stale():
+def _refresh_cultivate_if_stale(force=False):
     """cultivate.json 缺失/过期（> maa_gap）时刷新（森空岛，纯网络，web 线程安全）。
 
     #141：立即派发依赖 cultivate.json 新鲜度做材料核算——数据过期/缺失时
     `auto_schedule_mastery_tasks` 返回空、静默空转（只加计划、不开始训练）。这里在
     派发前刷新，**尊重 maa_gap 间隔**（新鲜则跳过，不绕过间隔打森空岛）；缺 skland
     配置时 cultivate.start 内部直接返回（材料数据缺，计划等下次自然扫描兜底）。
+    #141 review 跟进：`force=True` 用于「新干员不在本地数据」——用户显式点了该干员
+    一键专精，强制拉一次让推荐数据包含它（不受 maa_gap 新鲜度跳过）。
     """
     try:
         path = get_path("@app/tmp/cultivate.json")
-        if os.path.exists(path):
+        if not force and os.path.exists(path):
             mtime = datetime.fromtimestamp(os.path.getmtime(path))
             if datetime.now() - mtime < timedelta(hours=config.conf.maa_gap):
                 return
@@ -90,15 +109,34 @@ def _refresh_cultivate_if_stale():
         logger.exception(f"一键专精刷新 cultivate.json 失败: {e}")
 
 
-def _dispatch_new_plans_immediately():
+def _chars_missing_from_cultivate(char_ids) -> set:
+    """char_ids 中不在 cultivate.json `data.characters` 里的（#141 review 跟进：
+    新干员未录入本地数据——cultivate.json 新鲜但干员是刚获得的）。只在确实缺失时返回
+    非空（在数据里的干员，含被推荐过滤的非精二，不算缺失——避免无谓拉取）。
+    """
+    try:
+        path = get_path("@app/tmp/cultivate.json")
+        if not os.path.exists(path):
+            return set(char_ids)
+        with open(path, "r", encoding="utf-8") as f:
+            cdata = json.load(f)
+        have = {c.get("id") for c in cdata.get("data", {}).get("characters", [])}
+        return {cid for cid in char_ids if cid not in have}
+    except Exception:
+        return set(char_ids)
+
+
+def _dispatch_new_plans_immediately(chars=None):
     """一键专精建计划后立即尝试开始——刷新库存数据后复用仓库扫描的派发逻辑。
 
     #141（用户拍板方案 A）：建计划成功后**刷新 cultivate.json**（缺失/过期才拉，
     尊重 maa_gap）→ auto_schedule 用新鲜数据核算材料 → `_dispatch_scan_start_tasks`
     把材料足够的 idle 计划入队 now 的 SKILL_UPGRADE（plan_key=计划ID），并设
     `wake_scheduler` 事件唤醒调度休眠——调度器下一轮就执行，**确认后真的开始训练**。
-    材料不足不派发（继续等下次扫描）；受 enable_mastery 门控（OFF 停专精自动化）；
-    base_scheduler 未运行（None）时防御按无任务处理。
+    #141 review 跟进：`chars` = 本次新增计划的干员 id——若某干员不在本地 cultivate
+    数据（新获得、cultivate.json 还新鲜），强制拉一次让推荐数据包含它再重算，否则
+    新干员一键仍会静默空转。材料不足不派发（继续等下次扫描）；受 enable_mastery 门控
+    （OFF 停专精自动化）；base_scheduler 未运行（None）时防御按无任务处理。
     """
     if not config.conf.enable_mastery:
         return
@@ -117,6 +155,10 @@ def _dispatch_new_plans_immediately():
 
         _refresh_cultivate_if_stale()
         res = auto_schedule_mastery_tasks()
+        if chars and _chars_missing_from_cultivate(chars):
+            # 新干员不在本地数据 → 强制拉一次再重算（用户显式点了一键专精）
+            _refresh_cultivate_if_stale(force=True)
+            res = auto_schedule_mastery_tasks()
         base_scheduler._dispatch_scan_start_tasks(res.get("scheduled", []))
         if res.get("scheduled"):
             config.wake_scheduler.set()
@@ -178,6 +220,7 @@ class MasteryPlanView(MethodView):
 
         results = []
         added = False
+        added_char_ids = []
         items = (
             data.get("items", [])
             if isinstance(data, dict) and "items" in data
@@ -212,6 +255,7 @@ class MasteryPlanView(MethodView):
                 if plan_id > 0:
                     results.append({"key": name, "status": "added", "id": plan_id})
                     added = True
+                    added_char_ids.append(char_id)
                 else:
                     results.append({"key": name, "status": "error", "reason": reason})
         else:
@@ -253,10 +297,11 @@ class MasteryPlanView(MethodView):
                 if plan_id > 0:
                     results.append({"key": name, "status": "added", "id": plan_id})
                     added = True
+                    added_char_ids.append(char_id)
                 else:
                     results.append({"key": name, "status": "error", "reason": reason})
         if added:
-            _dispatch_new_plans_immediately()
+            _dispatch_new_plans_immediately(chars=added_char_ids)
         return {"results": results}
 
     def delete(self):

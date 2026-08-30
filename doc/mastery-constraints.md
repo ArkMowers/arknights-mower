@@ -130,7 +130,7 @@
 ## 6. 收取流程与通知
 
 ### `collect_flow`（固定顺序，不得重排）（C-34）
-主面板已读 → 点完成标记（模板 `skill_collect_confirm`/`training_completed` 优先，旧坐标 `(0.05w,0.95h)` 仅兜底）→ sleep ~2s → 点任意处跳过动画 → **截图**（收集页不读文本）→ 专3 才邮件（截图 + 面板信息）→ 对账 → 点勾确认。**#106（2026-08-17）**：`collect_flow` 函数体止于专3 邮件，对账/点勾确认由调用方 `_collect_plan`/`_collect_silent` 在 `collect_flow` 返回后按此顺序执行（对账先、确认后，不得重排）——崩溃窗口里 DB 先收敛，不会把已收的 target 计划误当 training 重开。
+主面板已读 → 点完成标记（模板 `skill_collect_confirm`/`training_completed` 优先，旧坐标 `(0.05w,0.95h)` 仅兜底）→ sleep 1.5s（**#145**，2026-08-19 由 ~2s 缩短，防截图截晚漏帧） → 点任意处跳过动画 → **截图**（收集页不读文本）→ 专3 才邮件（截图 + 面板信息）→ 对账 → 点勾确认（**#145**：截图后先 sleep 1s 再点，动画稳定后点确认）。**#106（2026-08-17）**：`collect_flow` 函数体止于专3 邮件，对账/点勾确认由调用方 `_collect_plan`/`_collect_silent` 在 `collect_flow` 返回后按此顺序执行（对账先、确认后，不得重排）——崩溃窗口里 DB 先收敛，不会把已收的 target 计划误当 training 重开。
 - 对账档位**只用主面板第 1 步读取值**（`panel.mastery_tier`），收集页不重读。（C-33）
 - 专3 邮件条件：命中计划（plan 非 None）且档位 == 3。（C-13）
 
@@ -194,11 +194,15 @@
    陌生人分支与 `run_swap_support` 纠错分支前（后者必须整段 return，防 did_swap 用路线
    效率误判直接换减半）。非保护陌生人（含专三）照旧纠（只纠不换减半对象，不变）。
 
-### `calc_swap_threshold` 公式（`mastery.py:238-271`）
-- `target_minutes = 300 + buffer`（buffer 默认 10）。
-- `swap_total = 100 + 5 + (30 if job_match else 0) + central_bonus`；`current_total = 100 + current_efficiency + 5 + central_bonus`。（+5 是协助位基数，central_bonus 进分子分母两侧）
+### `calc_swap_threshold` 公式（`mastery.py`）
+
+**减半机制（#142 查证，2026-08-19）**：艾丽妮「精神锻炼」/逻各斯「女妖之力」是**顺延减半**——协助位累计辅助专精 **超过 5 小时 → 下一次同干员专精时间减半**（不是换入时把当前剩余 ×0.5）。`target_minutes = 300 + buffer`（默认 310）就是「5 小时积累 + 缓冲」：换人时机让减半对象在本级剩余时间里累计满 5h+，从而**下一级**开始即减半（用户实测：专一积累 5h → 专二 16h 直接变 8h）。
+
+- `swap_total = 100 + 5 + (30 if job_match else 0) + central_bonus`（减半对象真实速度，**含中枢**）；
+  `current_total = 100 + current_efficiency + 5`（路线协助干员速度，**不含中枢**——#142 保守口径）。
+- **#142 保守口径（2026-08-19 用户拍板）**：中枢 +5% 只给减半对象、不给路线干员。中枢加成干员（阿斯卡纶/烛煌/斩业星熊）不一定在上班，屏幕倒计时反映**实际**速度而公式用**固定** `central_bonus` 设置——静态设置与实际中枢状态对不上时（如设置 5 但中枢没开），旧口径换人偏晚 ~9 分钟、艾丽妮累计被压到 5h 边缘。保守口径让换人**只早不晚**（阈值更大），累计保住 ≥5h 稳定触发下一级减半；代价是中枢真开着时换人提前几分钟、邮件完成时间差 ~10 分钟（无害）。设置 `central_bonus=0` 时两口径相同。
 - `threshold = target_minutes × swap_total / current_total`。
-- **永不换当 `real_time_after_swap = remaining × current_total / swap_total < 300`**（边界 ==300 换）。
+- **永不换当 `real_time_after_swap = remaining × current_total / swap_total < 301`**（换后真实剩余不足 5h1m，减半对象累计不满 5h → 换人无收益）。
 - `should_swap = remaining_minutes <= threshold`。
 
 ### 换人前置门（`run_swap_support`，C-16/S-09）
@@ -245,8 +249,8 @@ idx1 在 `select_targets` 里时，先跑 `train_slot_locked`（截图权威）�
 无倒计时 + 训练位坐错人 → 只换训练位：`choose_train(['Current', 目标])`，idx0 恒 Current 保协助位。（C-22）
 
 ### 其它
-- 错误清理（>15 分钟清空）必须保留 `SKILL_UPGRADE`/`REFRESH_TIME` 两类任务；错误空任务仅在「无 next 任务 且 无 SKILL_UPGRADE 任务」时才生成。（C-17）
-- **keepalive 已删（#74 第3段）**：不再有「DB 有计划就**周期**自动入队 now-task」的逻辑（含 #66 的 60s 守卫 `_skill_upgrade_just_dispatched`）。开始训练有**两个入口**（都受 `enable_mastery` 门控、都复用同一套派发）：① **扫描派发**——`_auto_schedule_mastery_after_scan`（`base_schedule.py`）在 `retry_failed_plans` + `auto_schedule_mastery_tasks` 之后，对**材料足够（scheduled 结果）的 idle 计划**入队一条 `SKILL_UPGRADE`（`plan_key=计划id`，`meta_data` 仅描述性标签、无逻辑标记，`_schedule_scan_start`）；② **一键专精立即派发（2026-08-18 方案 A 定稿）**——`POST /mastery-plan` 建计划成功（added）后立即复用同一套派发（`views/mastery.py` `_dispatch_new_plans_immediately`），但先**刷新 cultivate.json**（缺失/过期 >`maa_gap` 才拉，尊重间隔铁律；新鲜则用缓存）再 `auto_schedule_mastery_tasks` → `_dispatch_scan_start_tasks`，材料足够即入队 now-task、并设 `wake_scheduler` 事件**唤醒调度休眠**（`_idle_sleep` 轮询检查，清事件提前返回）——**确认后真的开始训练（#141 AC），不再静默只加计划**；材料不足不派发、不唤醒（继续等扫描）。这是对 #74「无自动 now-task」的**有意部分反转**（用户拍板）：区别于 keepalive 的「有计划就自动入队」，立即派发是**事件驱动**（用户点了一键专精的即时响应）+ 材料核算门控，不是周期后台动作。重启恢复：active 计划靠排班 gate 进房顺路 `reconcile_short` 重排收取（用户确认「靠排班收取、等待可接受」）；idle 计划靠扫描派发兜底。
+- 错误清理（>15 分钟清空）必须保留 `SKILL_UPGRADE`/`REFRESH_TIME` 两类任务；错误空任务在「无 next 任务 且 无 SKILL_UPGRADE 任务」时生成（原条件），**清队后也补一条立即空任务**（**#144**：清队后队列只剩远期专精重检时，立即空任务让下一轮 run() 走正常 planned 分支重读心情/换班/跑单，而不是睡到远期任务开始——缓解「睡死」症状，选人失败根因 #146 另查；两分支互斥，单次调用内不双补）。（C-17）
+- **keepalive 已删（#74 第3段）**：不再有「DB 有计划就**周期**自动入队 now-task」的逻辑（含 #66 的 60s 守卫 `_skill_upgrade_just_dispatched`）。开始训练有**两个入口**（都受 `enable_mastery` 门控、都复用同一套派发）：① **扫描派发**——`_auto_schedule_mastery_after_scan`（`base_schedule.py`）在 `retry_failed_plans` + `auto_schedule_mastery_tasks` 之后，对**材料足够（scheduled 结果）的 idle 计划**入队一条 `SKILL_UPGRADE`（`plan_key=计划id`，`meta_data` 仅描述性标签、无逻辑标记，`_schedule_scan_start`）；② **一键专精立即派发（2026-08-18 方案 A 定稿）**——`POST /mastery-plan` 建计划成功（added）后立即复用同一套派发（`views/mastery.py` `_dispatch_new_plans_immediately`），但先**刷新 cultivate.json**（缺失/过期 >`maa_gap` 才拉，尊重间隔铁律；新鲜则用缓存）再 `auto_schedule_mastery_tasks` → `_dispatch_scan_start_tasks`，材料足够即入队 now-task、并设 `wake_scheduler` 事件**唤醒调度休眠**（`_idle_sleep` 轮询检查，清事件提前返回）——**确认后真的开始训练（#141 AC），不再静默只加计划**；材料不足不派发、不唤醒（继续等扫描）。**#141 review 跟进（2026-08-19）**：新增计划干员**不在本地 cultivate 数据**（新获得、cultivate.json 还新鲜）时，强制拉一次让推荐数据包含它再重算（`_refresh_cultivate_if_stale(force=True)`，用户显式点了一键、不算绕过间隔；在数据里的干员不触发）。这是对 #74「无自动 now-task」的**有意部分反转**（用户拍板）：区别于 keepalive 的「有计划就自动入队」，立即派发是**事件驱动**（用户点了一键专精的即时响应）+ 材料核算门控，不是周期后台动作。重启恢复：active 计划靠排班 gate 进房顺路 `reconcile_short` 重排收取（用户确认「靠排班收取、等待可接受」）；idle 计划靠扫描派发兜底。
 
 ## 9. 全局开关 `enable_mastery`
 
@@ -280,7 +284,7 @@ idx1 在 `select_targets` 里时，先跑 `train_slot_locked`（截图权威）�
 - **通知去重表** `mastery_notify`：(notify_type, dedup_key) 主键 + `INSERT OR IGNORE`；`should_notify` fail open。（NTFY-01/03）
 - **懒填充**：所有把计划交给消费者的读路径（`get_all_plans`/`get_plan_by_id`/`get_active_plan`/`get_next_idle_plan`）都必须过 `lazy_fill_plan_names`，消费者永不看到 NULL char_name 或占位 skill_name。（LZ-02）
 - **建表只跑一次（#82，2026-08-15）**：`_ensure_tables` 按库路径进程内只跑一次（模块级 `_tables_created` 集合），连接仍每次新开；库文件被删/被清空（0 字节）→ 重置该库标记，下次连接重建表（#86 同款守卫，防运行中丢库后 no-such-table）。
-- **队列不变量**：`SKILL_UPGRADE` 同形状任务恒 ≤1（按 plan_key 去重，到点改期不新增）；`plan_key=None` 是占用重检，`meta_data` 留空；`plan_key=计划id` 是收取任务或**开始任务**（扫描派发 / 一键专精立即派发，均无逻辑标记，meta_data 仅描述性标签；房间状态决定行为：空闲→开始、待收取→收集+继续本级当场开）。开始任务在计划开始后按 plan_key 原位升级为收取任务（`_schedule_collect` 去重命中）。（TASK-01/C-32）
+- **队列不变量**：`SKILL_UPGRADE` 同形状任务恒 ≤1（按 plan_key 去重，到点改期不新增）；`plan_key=None` 是占用重检，`meta_data` 为描述性标签（**#153**，2026-08-19 起不再留空——`干员（技能） 专N 占用中`，纯描述、无逻辑标记）；`plan_key=计划id` 是收取任务或**开始任务**（扫描派发 / 一键专精立即派发，均无逻辑标记，meta_data 仅描述性标签；房间状态决定行为：空闲→开始、待收取→收集+继续本级当场开）。开始任务在计划开始后按 plan_key 原位升级为收取任务（`_schedule_collect` 去重命中）。（TASK-01/C-32）
 - `expires_at` 存 localtime 文本 `%Y-%m-%d %H:%M:%S`，仅用于调度重查，改格式会破坏比较。
 
 ## 12. 推荐 / 自动排程
@@ -308,8 +312,8 @@ idx1 在 `select_targets` 里时，先跑 `train_slot_locked`（截图权威）�
 | 端点 | 契约 |
 |---|---|
 | `GET /mastery-plan` | `{plans:[...], history:[...]}`；plans 每项含 id/char_id/name/skill_index/skill_name/target_level/status/priority/expires_at/failed_reason；history 含 char_id/name/skill_index/skill_name/target_level/status/failed_reason/time。⚠️ **#69 展示约定**：plans = `get_all_plans()`（非终态）**追接** `get_failed_plans()`（failed，带 failed_reason）——failed 计划也返回给前端显示，不"凭空消失"；执行循环仍只读非终态（#4 SM-09） |
-| `POST /mastery-plan` | 两种 body：`{'items':[{name, skill_index, target_level}]}` 或扁平 `{name: skill_index}`；扁平路径 skill_index 必须 ∈ {0,1,2} 否则 `invalid skill_index`；未知干员 → `{status:'error', reason:'operator not found'}`；成功 → `{status:'added', id}`。⚠️ **#65/B7 target_level 统一校验**（两路径都走 `add_plan_checked`）：缺省/默认 专三（与推荐一致）；越界（非 1/2/3，含非整数、布尔 `true`）→ `reason='目标专精等级无效: ...'`；干员 cultivate.json 当前等级 ≥ target → 拒绝（`reason='...已专N...'`，不落库；cultivate 读不到则跳过等级校验，执行层已到target检测兜底）。⚠️ bulk `items` 路径**不校验** skill_index ∈ (0,1,2)（open_risks）。✅ **2026-08-18 立即派发（方案 A）**：任一计划成功创建（added）后触发 `_dispatch_new_plans_immediately()`——先刷新 cultivate.json（缺失/过期 >`maa_gap` 才拉，尊重间隔）、再复用扫描派发（`auto_schedule_mastery_tasks` → `_dispatch_scan_start_tasks`）把**材料足够的 idle 计划**入队 now 的 `SKILL_UPGRADE` 并设 `wake_scheduler` 唤醒调度休眠（确认后真的开始训练）；材料不足不派发不唤醒。受 `enable_mastery` 门控；`base_scheduler` 未运行（None）→ 跳过。batch 多计划只派发一次（覆盖全部 added） |
-| `DELETE /mastery-plan` | body 需 id（缺 → 400；**#113** 非数字 id / bool → 400）；`delete_plan` 失败 → 500。**#97 清理**：删除后顺带清该计划 `plan_key=计划ID`（#101 补位已并入同一键，无独立 fill-{id}）的队列任务（SKILL_UPGRADE/SWAP）+ `mastery_notify` 中 `dedup_key=str(id)` 的去重行——残留任务不再按 plan_key 派发到已删计划 |
+| `POST /mastery-plan` | 两种 body：`{'items':[{name, skill_index, target_level}]}` 或扁平 `{name: skill_index}`；扁平路径 skill_index 必须 ∈ {0,1,2} 否则 `invalid skill_index`；未知干员 → `{status:'error', reason:'operator not found'}`；成功 → `{status:'added', id}`。⚠️ **#65/B7 target_level 统一校验**（两路径都走 `add_plan_checked`）：缺省/默认 专三（与推荐一致）；越界（非 1/2/3，含非整数、布尔 `true`）→ `reason='目标专精等级无效: ...'`；干员 cultivate.json 当前等级 ≥ target → 拒绝（`reason='...已专N...'`，不落库；cultivate 读不到则跳过等级校验，执行层已到target检测兜底）。⚠️ bulk `items` 路径**不校验** skill_index ∈ (0,1,2)（open_risks）。✅ **2026-08-18 立即派发（方案 A）**：任一计划成功创建（added）后触发 `_dispatch_new_plans_immediately(chars=新增干员id)`——先刷新 cultivate.json（缺失/过期 >`maa_gap` 才拉，尊重间隔；**新增干员不在本地数据则强制拉一次**）、再复用扫描派发（`auto_schedule_mastery_tasks` → `_dispatch_scan_start_tasks`）把**材料足够的 idle 计划**入队 now 的 `SKILL_UPGRADE` 并设 `wake_scheduler` 唤醒调度休眠（确认后真的开始训练）；材料不足不派发不唤醒。受 `enable_mastery` 门控；`base_scheduler` 未运行（None）→ 跳过。batch 多计划只派发一次（覆盖全部 added） |
+| `DELETE /mastery-plan` | body 需 id（缺 → 400；**#113** 非数字 id / bool → 400）；`delete_plan` 失败 → 500。**#97 清理**：删除后顺带清该计划 `plan_key=计划ID`（#101 补位已并入同一键，无独立 fill-{id}）的队列任务（SKILL_UPGRADE/SWAP）+ `mastery_notify` 中 `dedup_key=str(id)` 的去重行——残留任务不再按 plan_key 派发到已删计划。**#147（2026-08-19）**：并同步清持久化队列——`saved_state` 快照里旧队列没清会让重启 `load_state` 复活已删计划的任务（plan_key 派发到已删计划 + blocked 通知重发），`_purge_plan_tasks` 清完活队列后取 `current_state()` 快照、剔除该 plan_key 任务再 `save_state_to_db(state)` 覆盖——**不用 `save_current_state()`**（它持久化含 `t is current` 占位的 live 队列，删除计划的任务正被派发时会把它写回快照，重启仍复活） |
 | `PATCH /mastery-plan/order` | body 是 `[{id, priority}]`；未知/缺失 id 容忍；**#113** id/priority 非整数（含 bool、数字字符串）→ 400；返回 `{'status':'ok'}` |
 | `GET /mastery-route` | `{routes, defaults}`，defaults = `solvers.mastery.DEFAULT_ROUTES` |
 | `POST /mastery-route` | profession 非空（否则 400）；supports 接受 str 或 list；**#114 写入端校验：supports 须是合法 JSON 且形态是数组/包装对象/旧字典之一（level_N 值须为对象），否则 400 拒绝保存**；`is_default` 恒 0；optimal/half_off 透传，half_off 默认 True |
@@ -332,6 +336,7 @@ API 只增删计划与调优先级，**不得直写 status**（状态由执行�
 ## 14. 待办 / 已知风险（实机校准等）
 
 ### 像素/坐标待实机校准
+- **主页面三个读取区（1080p 实测坐标，改动前先在此留基线）**：`PANEL_REGION`=((235,930),(755,972))（左下角 `[干员名]技能名` 文本区，#61 钉、**#149 2026-08-19 实测校准整体下移**，旧值 ((239,878),(776,977))）；`COUNTDOWN_REGION`=((236,978),(380,1020))（训练位倒计时）；`MASTERY_ICON_REGION`=((337,833),(373,866))（专精图标区，亮 N 颗=专N/专N完成）。
 - 专精图标亮灯计数（主面板 `MASTERY_ICON_PIPS`）已从"按宽度 3 列分槽"改为**逐框判亮**：三颗星 12×12 框（专一顶/专二右下/专三左下，1080p 实测校准），复用 `_box_is_lit`（`PIP_BRIGHTNESS=150`、`PIP_LIT_RATIO=0.45`、`PIP_INSET=2`，已实机校准）。旧 `_count_lit_from_region`/`MASTERY_ICON_BRIGHTNESS`/`MASTERY_ICON_LIT_RATIO` 已删。（C-39）
 - **「已到target检测」已启用**：`SKILL_SLOT_PIPS`（技能选择页，每技能 3 颗星坐标，点亮顺序 顶→右下→左下：专一顶/专二右下/专三左下）已按实机坐标填入；`_read_slot_mastery_tier` 逐框判亮计数（阈值同上）。读失败（无此技能/无截图/异常）→ None，#70 起调用方**保守处理**：保持 idle 重排退出，**绝不盲点技能行开始**（档位不可读 = 无法确认是否已到 target，可能重训已完成的档位）；档位读到 0（明确低于 target）才正常开始。（C-30 / #70）
 - **#72 页面模型**：219（TRAIN_SKILL_SELECT）只读得到 `SKILL_SLOT_PIPS` 星星，无倒计时、读不到主面板 `[干员名]技能名`——**219 分支不再读主面板区域（COUNTDOWN/PANEL）当占用探针**。`_start_new_training` 用 `identity_confirmed` 标志做数星星前的身份确认：只在 TRAIN_MAIN 训练位校验通过并主动点开技能选择页时置位；未置位就出现 219（重启停在技能选择页/手动进入）→ 保守 idle 重排退出（重排到 now+2min 重检，不读倒计时/不数星星、不点技能行——219 读不到主面板/倒计时，无法确认星星归属；下次 dispatch 正确判为 TRAIN_MAIN 时按「倒计时+2min」收敛）。（C-30 / #72）

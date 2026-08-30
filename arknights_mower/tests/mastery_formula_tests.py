@@ -22,11 +22,21 @@ class TestSwapFormula(unittest.TestCase):
         self.assertGreater(threshold_match, threshold_no_match)
 
     def test_with_central_bonus(self):
-        # 中枢加成5%, threshold 变化
+        # #142 保守口径：中枢+5% 只给减半对象（swap_total），路线协助干员（current_total）
+        # 不加——中枢加成干员（阿斯卡纶/烛煌/斩业星熊）不一定在上班，静态设置与实际中枢
+        # 状态对不上时，换人只早不晚（艾丽妮累计 ≥5h 稳定触发下一级减半）
         _, threshold_5 = calc_swap_threshold(75, False, 5, 500)
         _, threshold_0 = calc_swap_threshold(75, False, 0, 500)
-        # 中枢加成同时影响分子分母, 但分子增比更大(基底更小), 所以threshold略大
-        self.assertNotEqual(threshold_5, threshold_0)
+        # 分子（swap_total）含中枢 → threshold_5 > threshold_0 → 换得更早，保守
+        self.assertGreater(threshold_5, threshold_0)
+
+    def test_conservative_central_swap_earlier(self):
+        # #142：史尔特尔路线（效率60）+ 减半对象职业匹配 + 中枢设置5——
+        # swap_total = 100+5+30+5 = 140，current_total = 100+60+5 = 165（不含中枢）
+        # threshold = 310 × 140 / 165 ≈ 263（旧口径 310×140/170 ≈ 255 → 换得更早，
+        # 中枢实际没开时换人不再偏晚、艾丽妮累计保住 ≥5h）
+        _, threshold = calc_swap_threshold(60, True, 5, 500)
+        self.assertAlmostEqual(threshold, 310 * 140 / 165)
 
     def test_not_enough_time_no_swap(self):
         # 剩余真实时间不足5小时 → 不换

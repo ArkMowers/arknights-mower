@@ -374,6 +374,10 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                     for t in self.tasks
                     if t.type in (TaskTypes.SKILL_UPGRADE, TaskTypes.REFRESH_TIME)
                 ]
+                # #144：清队后补立即空任务——队列只剩远期专精重检时，让下一次
+                # run() 走正常 planned 分支重读心情/换班/跑单，而不是睡到远期任务开始
+                logger.debug("清队后补立即空任务，下一轮走正常流程重读心情/换班/跑单")
+                self.tasks.append(SchedulerTask())
         elif self.find_next_task(datetime.now() + timedelta(hours=2.5)) is None:
             logger.debug("2.5小时内没有其他任务，生成一个空任务")
             self.tasks.append(SchedulerTask(time=datetime.now() + timedelta(hours=2.5)))
@@ -4614,7 +4618,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if config.wake_scheduler.is_set():
                     config.wake_scheduler.clear()
                     break
-                csleep(min(1, max(0.01, (end_time - datetime.now()).total_seconds())))
+                csleep(min(1, (end_time - datetime.now()).total_seconds()))
             self.recog.update()
         finally:
             self.sleeping = False

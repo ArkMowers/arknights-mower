@@ -384,6 +384,19 @@ class TestArrangingConvergence(unittest.TestCase):
         )
         self.assertFalse(solver.ctap.called, "档位不可读时不应点技能行")
 
+    def test_exit_occupied_recheck_task_labeled(self):
+        """#153：_exit_occupied 的 plan_key=None 重检任务带描述性 meta_data
+        （计划干员+技能+「占用中」），任务列表不再只显示类型名。"""
+        solver = self.make_solver()
+        plan = make_plan(char_name="测试干员", skill_name="测试技能")
+        with patch("arknights_mower.utils.mastery_db.update_plan_status"):
+            mastery._exit_occupied(solver, plan, None, trigger="档位读取失败")
+        self.assertEqual(len(solver.tasks), 1)
+        task = solver.tasks[0]
+        self.assertIsNone(task.plan_key)
+        self.assertEqual(task.meta_data, "测试干员（测试技能） 占用中")
+        self.assertTrue(solver.back.called)
+
     def test_read_tier_zero_proceeds_to_start(self):
         """经训练位确认进入真 219，档位读到 0（明确低于 target）→ 正常开始流程
         （点技能行），不保守退出。"""
@@ -1308,7 +1321,7 @@ class TestSwapCollectGating(unittest.TestCase):
         # #101：空位 + calc_swap_threshold(0,...) 的 should_swap（含 301 值得门）= True
         # → 直接放 swap_target，不先放 operator 再立刻换（不白放、不走 did_swap 绕过阈值）
         solver = self._swap_solver()
-        solver.read_time.return_value = 23400  # 390 分钟 ∈ [383, 394] 值得窗
+        solver.read_time.return_value = 24300  # 405 分钟 ∈ [401, 413] 值得窗
         solver.get_agent_from_room.return_value = self._slots("")
         plan = make_plan(status="training", swap_frozen=0, target_level=2)
         with (
@@ -1335,7 +1348,7 @@ class TestSwapCollectGating(unittest.TestCase):
         # #101 review 修复：空位 + remaining<=threshold 但 should_swap=False（301 值得门
         # 不满足，swap_target 速率 ≤ operator）→ 不放 swap_target、补 operator + 重排阈值
         solver = self._swap_solver()
-        solver.read_time.return_value = 15000  # 250 分钟 ≤ 阈值≈394 但值得门不满足
+        solver.read_time.return_value = 15000  # 250 分钟 ≤ 阈值≈413 但值得门不满足
         solver.get_agent_from_room.return_value = self._slots("")
         plan = make_plan(status="training", swap_frozen=0, target_level=2)
         with (
@@ -1405,7 +1418,7 @@ class TestSwapCollectGating(unittest.TestCase):
         # #101：空位 + 剩余 > 阈值 → 放 operator（拿前半程加成），**不立刻换**——
         # 重排阈值时刻换人任务（阈值时机不丢），不再 did_swap 绕过阈值
         solver = self._swap_solver()
-        solver.read_time.return_value = 30000  # 500 分钟 > 阈值 ≈394（效率0）
+        solver.read_time.return_value = 30000  # 500 分钟 > 阈值 ≈413（效率0）
         solver.get_agent_from_room.return_value = self._slots("")
         plan = make_plan(status="training", swap_frozen=0, target_level=2)
         with (
@@ -2056,13 +2069,19 @@ class TestRouteStepLevel(unittest.TestCase):
                     }
                 ),
             ),
-            patch.object(mastery, "_schedule_collect"),
+            patch.object(mastery, "_schedule_collect") as sc,
             patch.object(config_mod.conf, "assistant_follows_schedule", False),
             patch.object(config_mod.conf, "enable_mastery", True),
         ):
             mastery.run_swap_support(solver)
         solver.choose_train.assert_called_once_with(["艾丽妮", "Current"])
         self.assertEqual(route_calls, [2], "run_swap_support 应进房读图标得当前步级")
+        sc.assert_called_once()
+        self.assertEqual(
+            sc.call_args.kwargs.get("tier"),
+            2,
+            "#150 收取任务档位标签用实际步级（panel.mastery_tier），不恒为专三",
+        )
 
     def test_run_swap_support_m3_step_no_swap(self):
         # 专三步：倒计时 active + 主面板亮 3 颗 → level_3 路线无 swap_target → 不换人、退出房间

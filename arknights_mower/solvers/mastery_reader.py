@@ -31,14 +31,15 @@ from arknights_mower.utils.log import logger
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 from arknights_mower.utils.skill_label import (
+    _resolve_operator_char_id,
     format_skill_label,
     is_placeholder_skill_name,
     panel_skill_matches,
     resolve_panel_skill,
 )
 
-# 主页面面板坐标（#61 已钉）
-PANEL_REGION = ((239, 878), (776, 977))  # `[干员名]技能名`
+# 主页面面板坐标（#61 已钉，#149 2026-08-19 实测校准：面板整体下移）
+PANEL_REGION = ((235, 930), (755, 972))  # `[干员名]技能名`
 COUNTDOWN_REGION = ((236, 978), (380, 1020))  # 训练位倒计时
 MASTERY_ICON_REGION = ((337, 833), (373, 866))  # 专精图标（亮N颗=在专N/专N完成）
 # 主面板专精图标区内三颗星（1080p 实测校准）。点亮顺序 顶→右下→左下。
@@ -569,9 +570,7 @@ def _plan_matches_room(plan, room: RoomState) -> bool:
         return True
     if not _plan_operator_matches(plan, room.panel.operator_name):
         return False
-    return _plan_skill_matches(
-        plan, room.panel.operator_name, room.panel.skill_name
-    )
+    return _plan_skill_matches(plan, room.panel.operator_name, room.panel.skill_name)
 
 
 def _match_plan(plans, room: RoomState):
@@ -688,7 +687,8 @@ def _find_swap_task(solver, plan_key):
 def _upsert_skill_upgrade_task(solver, target_time, meta_data="", plan_key=None):
     """入队/改期一条 SKILL_UPGRADE 任务，队列恒 ≤1 条同形任务（#62 Q3 收敛）。
 
-    - plan_key=None：占用重检（meta_data 留空，任务列表仅显示类型名）；
+    - plan_key=None：占用重检（meta_data 为描述性「占用中」标签，#153 起不再留空，
+      任务列表不再只显示类型名）；
     - plan_key=计划ID：某计划的到点收取任务 或 仓库扫描驱动的「开始训练」任务
       （meta_data 均为描述性标签，无逻辑标记；去重按 plan_key，房间状态决定开始/收集）。
       keepalive 已删（#74 第3段），不再有「DB 有计划就自动入队 now-task」。
@@ -1012,6 +1012,50 @@ def _upsert_swap_task_now(solver, plan, operator):
     )
 
 
+def _panel_skill_label(op, skill) -> str:
+    """#152/#153：面板干员名 + 技能文本 → 展示技能标签。
+
+    对照 skill_data 解析序号（resolve_panel_skill，数据缓存、热路径复用，成本低）：
+    唯一命中 → `{序数}技能·真名`（skill_data 真名，去 OCR 噪声）；解析不出/查无 →
+    回退面板原文。
+    """
+    if not skill:
+        return "技能未知"
+    if op:
+        try:
+            idx = resolve_panel_skill(op, skill)
+            if idx is not None:
+                char_id = _resolve_operator_char_id(op)
+                if char_id is not None:
+                    from arknights_mower.utils.mastery_recommendation import (
+                        get_skill_real_name,
+                    )
+
+                    real = get_skill_real_name(char_id, idx)
+                    if real:
+                        return format_skill_label(idx, real)
+        except Exception:
+            pass
+    return skill
+
+
+def _occupancy_recheck_label(room) -> str:
+    """#153：占用重检（plan_key=None）任务的描述性 meta_data。
+
+    纯描述、不影响逻辑——面板干员名 + 解析后的完整技能标签（含序数）+ 专精档位 +
+    「占用中」，让任务列表能看出重检针对谁。面板不可读时退化为仅「占用中」。
+    """
+    op = room.panel.operator_name
+    if not op:
+        return "占用中"
+    sk = _panel_skill_label(op, room.panel.skill_name)
+    label = f"{op}（{sk}）" if sk != "技能未知" else op
+    tier = room.panel.mastery_tier
+    if tier:
+        label = f"{label} 专{tier}"
+    return f"{label} 占用中"
+
+
 def _wait_for_training(solver, room):
     """idle×🔴 命中：保持 idle，静默等它练完（重排到倒计时+2min），级联靠后续收取。"""
     countdown = room.panel.countdown
@@ -1020,7 +1064,11 @@ def _wait_for_training(solver, room):
     logger.info(
         f"训练室使用中，计划保持待执行，任务重排到 {countdown + ARRANGING_RETRY_BUFFER}"
     )
-    _upsert_skill_upgrade_task(solver, countdown + ARRANGING_RETRY_BUFFER)
+    _upsert_skill_upgrade_task(
+        solver,
+        countdown + ARRANGING_RETRY_BUFFER,
+        meta_data=_occupancy_recheck_label(room),
+    )
 
 
 def _notify_blocked(solver, room):
@@ -1037,8 +1085,11 @@ def _notify_blocked(solver, room):
         tail = f"至 {key}"
     if should_notify("blocked", key):
         op = room.panel.operator_name or "未知干员"
+        skill = _panel_skill_label(op, room.panel.skill_name)
+        tier = room.panel.mastery_tier
+        tier_text = f"专{tier}" if tier else "专精等级未知"
         msg = (
-            f"训练室被计划外训练占用{tail}（{op}），"
+            f"训练室被计划外训练占用{tail}（{op}（{skill}）{tier_text}），"
             "mower 会在其完成后帮忙收取，期间队列保持待执行"
         )
         send_message(msg, level="WARNING")
@@ -1127,6 +1178,8 @@ def _tap_finish_mark(solver):
 
 def _tap_collect_confirm(solver):
     """收取后点勾确认收尾：优先 confirm_train 模板。位置实机校准待办。"""
+    # #145：截图后先等 1s 再点勾——收取动画/收集页稳定后再点确认，防点早漏帧
+    solver.sleep(1)
     pos = solver.find("confirm_train")
     if pos:
         solver.tap(pos, interval=0.5)
@@ -1154,7 +1207,7 @@ def collect_flow(solver, plan, panel: RoomPanel):
     from arknights_mower.utils.mastery_db import should_notify
 
     _tap_finish_mark(solver)
-    solver.sleep(2)
+    solver.sleep(1.5)  # #145：等 1.5s 再跳动画，缩短等待，防截图截晚漏帧
     solver.tap((solver.recog.w * 0.5, solver.recog.h * 0.5), interval=1)
     solver.recog.update()
     screenshot = solver.recog.img
@@ -1162,9 +1215,12 @@ def collect_flow(solver, plan, panel: RoomPanel):
     tier = panel.mastery_tier
     if tier == 3 and plan is not None:
         if should_notify("m3_collect", str(plan["id"])):
+            # #151：技能名用计划真名（面板 OCR 可能带噪声，如「破坏与滋养A」）
+            from arknights_mower.solvers.mastery import _plan_char_label
+
             body = (
                 f"{_plan_label(plan)} 专精三级完成收取\n"
-                f"干员：{panel.operator_name}｜技能：{panel.skill_name}｜档位：专{tier}"
+                f"干员：{_plan_char_label(plan)}｜技能：{plan['skill_name']}｜档位：专{tier}"
             )
             send_message(body, level="INFO", attach_image=screenshot)
     return screenshot
@@ -1389,7 +1445,11 @@ def _reconcile_training(solver, room, active, plans):
         if countdown is not None:
             _wait_for_training(solver, room)
         else:
-            _upsert_skill_upgrade_task(solver, datetime.now() + ARRANGING_RETRY_BUFFER)
+            _upsert_skill_upgrade_task(
+                solver,
+                datetime.now() + ARRANGING_RETRY_BUFFER,
+                meta_data=_occupancy_recheck_label(room),
+            )
     else:
         # 干员名不可读（B8）：不判计划外、不排重检，静默等排班下次自然进房重读
         logger.debug("训练室占用但面板干员名不可读，不排重检，静默等待")

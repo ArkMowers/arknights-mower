@@ -1,12 +1,19 @@
+import json
 import sys
 import types
 import unittest
 from datetime import datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 from flask import Flask
 
-from arknights_mower.views.mastery import mastery_bp
+# base_schedule 导入链（cultivate_depot→skland）在 skland 模块加载时调用
+# SecuritySm.get_d_id() 发网络请求（§14 环境性 flake，与测试无关）。与
+# base_scheduler_tests 同款 stub。refresh 测试的 lazy import 在 os.path.exists
+# 被 patch 的窗口内触发 skland 加载，不 stub 会误伤 requests 的 CA bundle 检查。
+sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
+
+from arknights_mower.views.mastery import mastery_bp  # noqa: E402
 
 
 class TestMasteryRouteView(unittest.TestCase):
@@ -412,6 +419,42 @@ class TestMasteryPlanView(unittest.TestCase):
         with patch.dict(sys.modules, {"arknights_mower.__main__": fake}):
             _purge_plan_tasks(5)  # 不应抛异常
 
+    def test_purge_plan_tasks_snapshot_excludes_current_deleted_plan(self):
+        # #147 边界：被删计划的任务当前正被派发（base_scheduler.task）→ live 队列保留
+        # （del self.tasks[0] 占位），但持久化快照必须剔除它——否则重启 load_state 复活
+        from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+        from arknights_mower.views.mastery import _purge_plan_tasks
+
+        fake = types.ModuleType("arknights_mower.__main__")
+        sched = types.SimpleNamespace()
+        t1 = SchedulerTask(time=datetime.now(), task_type=TaskTypes.SKILL_UPGRADE)
+        t1.plan_key = "5"
+        t2 = SchedulerTask(time=datetime.now(), task_type=TaskTypes.SKILL_UPGRADE)
+        t2.plan_key = "9"
+        sched.tasks = [t1, t2]
+        sched.task = t1  # 计划5 的任务正在派发
+        fake.base_scheduler = sched
+        saved = {}
+        with patch.dict(sys.modules, {"arknights_mower.__main__": fake}):
+            with (
+                patch(
+                    "arknights_mower.solvers.record.current_state",
+                    return_value={"tasks": list(sched.tasks)},
+                ) as cs,
+                patch(
+                    "arknights_mower.solvers.record.save_state_to_db",
+                    side_effect=lambda st: saved.update(st) or True,
+                ),
+            ):
+                _purge_plan_tasks(5)
+        cs.assert_called_once()
+        persisted = [getattr(t, "plan_key", None) for t in saved["tasks"]]
+        self.assertEqual(persisted, ["9"], "快照应剔除被删计划的当前派发任务")
+        live = [getattr(t, "plan_key", None) for t in sched.tasks]
+        self.assertEqual(
+            live, ["5", "9"], "live 队列仍保留 current（del tasks[0] 占位）"
+        )
+
     # --- 一键专精立即派发 ---
 
     @patch("arknights_mower.views.mastery._dispatch_new_plans_immediately")
@@ -475,6 +518,8 @@ class TestMasteryPlanView(unittest.TestCase):
                 "arknights_mower.utils.mastery_recommendation.auto_schedule_mastery_tasks",
                 return_value={"scheduled": scheduled, "skipped": []},
             ),
+            patch("arknights_mower.views.mastery._refresh_cultivate_if_stale"),
+            patch("arknights_mower.utils.config.wake_scheduler", MagicMock()),
         ):
             _dispatch_new_plans_immediately()
         sched._dispatch_scan_start_tasks.assert_called_once_with(scheduled)
@@ -497,6 +542,8 @@ class TestMasteryPlanView(unittest.TestCase):
                     "skipped": [{"char_id": "char_a", "skill_index": 1}],
                 },
             ),
+            patch("arknights_mower.views.mastery._refresh_cultivate_if_stale"),
+            patch("arknights_mower.utils.config.wake_scheduler", MagicMock()),
         ):
             _dispatch_new_plans_immediately()
         sched._dispatch_scan_start_tasks.assert_called_once_with([])
@@ -519,9 +566,7 @@ class TestMasteryPlanView(unittest.TestCase):
             patch(
                 "arknights_mower.views.mastery._refresh_cultivate_if_stale"
             ) as refresh,
-            patch(
-                "arknights_mower.utils.config.wake_scheduler", MagicMock()
-            ) as wake,
+            patch("arknights_mower.utils.config.wake_scheduler", MagicMock()) as wake,
         ):
             _dispatch_new_plans_immediately()
         refresh.assert_called_once()
@@ -542,9 +587,7 @@ class TestMasteryPlanView(unittest.TestCase):
                 return_value={"scheduled": [], "skipped": [{"char_id": "a"}]},
             ),
             patch("arknights_mower.views.mastery._refresh_cultivate_if_stale"),
-            patch(
-                "arknights_mower.utils.config.wake_scheduler", MagicMock()
-            ) as wake,
+            patch("arknights_mower.utils.config.wake_scheduler", MagicMock()) as wake,
         ):
             _dispatch_new_plans_immediately()
         wake.set.assert_not_called()
@@ -579,6 +622,104 @@ class TestMasteryPlanView(unittest.TestCase):
         ):
             _refresh_cultivate_if_stale()
         start.assert_called_once()
+
+    def test_chars_missing_from_cultivate(self):
+        # #141 review 跟进：新干员不在本地 cultivate.json characters → 缺失；在数据里
+        # （含被推荐过滤的非精二）不算缺失
+        from arknights_mower.views.mastery import _chars_missing_from_cultivate
+
+        fake_path = "C:/fake/cultivate.json"
+        with (
+            patch("arknights_mower.views.mastery.get_path", return_value=fake_path),
+            patch("os.path.exists", return_value=True),
+            patch(
+                "builtins.open",
+                unittest.mock.mock_open(
+                    read_data=json.dumps(
+                        {
+                            "data": {
+                                "characters": [
+                                    {"id": "char_old", "name": "旧干员"},
+                                    {"id": "char_new", "name": "新干员"},
+                                ]
+                            }
+                        }
+                    )
+                ),
+            ),
+        ):
+            self.assertEqual(
+                _chars_missing_from_cultivate(["char_old", "char_new"]), set()
+            )
+            self.assertEqual(
+                _chars_missing_from_cultivate(["char_ghost"]), {"char_ghost"}
+            )
+
+    def test_chars_missing_no_file_returns_all(self):
+        from arknights_mower.views.mastery import _chars_missing_from_cultivate
+
+        with (
+            patch(
+                "arknights_mower.views.mastery.get_path",
+                return_value="C:/fake/cultivate.json",
+            ),
+            patch("os.path.exists", return_value=False),
+        ):
+            self.assertEqual(_chars_missing_from_cultivate(["char_a"]), {"char_a"})
+
+    def test_dispatch_forces_refresh_when_new_char_missing(self):
+        # #141 review 跟进：新增干员不在本地 cultivate 数据（新获得）→ 强制拉一次再重算
+        from arknights_mower.views.mastery import _dispatch_new_plans_immediately
+
+        fake = types.ModuleType("arknights_mower.__main__")
+        sched = MagicMock()
+        fake.base_scheduler = sched
+        scheduled = [{"char_id": "char_new", "skill_index": 1}]
+        with (
+            patch.dict(sys.modules, {"arknights_mower.__main__": fake}),
+            patch("arknights_mower.views.mastery.config.conf.enable_mastery", True),
+            patch(
+                "arknights_mower.utils.mastery_recommendation.auto_schedule_mastery_tasks",
+                return_value={"scheduled": scheduled, "skipped": []},
+            ),
+            patch(
+                "arknights_mower.views.mastery._chars_missing_from_cultivate",
+                return_value={"char_new"},
+            ),
+            patch(
+                "arknights_mower.views.mastery._refresh_cultivate_if_stale"
+            ) as refresh,
+            patch("arknights_mower.utils.config.wake_scheduler", MagicMock()),
+        ):
+            _dispatch_new_plans_immediately(chars=["char_new"])
+        # 第一次 stale 刷新 + 新干员缺失强制刷新，各一次
+        self.assertEqual(refresh.call_count, 2)
+        self.assertEqual(refresh.call_args_list[1], call(force=True))
+
+    def test_dispatch_no_force_when_char_in_data(self):
+        # 干员已在本地数据（非精二等被过滤的不算缺失）→ 不强制刷新
+        from arknights_mower.views.mastery import _dispatch_new_plans_immediately
+
+        fake = types.ModuleType("arknights_mower.__main__")
+        fake.base_scheduler = MagicMock()
+        with (
+            patch.dict(sys.modules, {"arknights_mower.__main__": fake}),
+            patch("arknights_mower.views.mastery.config.conf.enable_mastery", True),
+            patch(
+                "arknights_mower.utils.mastery_recommendation.auto_schedule_mastery_tasks",
+                return_value={"scheduled": [], "skipped": []},
+            ),
+            patch(
+                "arknights_mower.views.mastery._chars_missing_from_cultivate",
+                return_value=set(),
+            ),
+            patch(
+                "arknights_mower.views.mastery._refresh_cultivate_if_stale"
+            ) as refresh,
+            patch("arknights_mower.utils.config.wake_scheduler", MagicMock()),
+        ):
+            _dispatch_new_plans_immediately(chars=["char_old"])
+        refresh.assert_called_once()  # 只有 stale 刷新，无强制刷新
 
     def test_dispatch_new_plans_immediately_gated_off(self):
         # enable_mastery=OFF 不派发（与扫描派发一致，铁律10「留」半边）
