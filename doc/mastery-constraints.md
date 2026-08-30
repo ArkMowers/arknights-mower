@@ -64,7 +64,7 @@
 5. **协助位只动在训练确认开始之后**；确认开始之前不得改协助位。（#16 §8）
 6. **协助位安排无守卫例外（2026-08-17 #103 删减半守卫）**：路线 operator 每次开始照常安排，**跨「收取 → 下一次开始」边界也不例外**——`arrange_support` 恒 True，收集级联不再传 False；「专三不换减半对象」由路线数据保证（level_3 路线 `swap_target=None`，见铁律 7），不靠「不动协助位」。（#63 → #103；详见 §7 C-15）
 7. **专三（当前步）永不换人**（调度侧与执行侧都要挡）：由 level_3 路线 `swap_target=None` 保证（#76 2026-08-15 用户定案删显式 `target_level==3` 守卫、靠路线数据；自定义路线若给专三填 swap_target 会打破该保证）。
-8. **通知只三类、各至多一次**：① blocked、② fake_reset、③ m3_collect，用 `mastery_notify` 表去重。（#61）
+8. **通知共 8 类（①-⑧，完整清单见 §16.9）、各至多一次**，用 `mastery_notify` 表去重。（#61/#73/#79/#81）
 9. **ARRANGING 超时/失败必须置 `failed`**（不得置 `idle`，否则 infra 主循环每轮重派 idle 刷屏）；**不得在 ARRANGING 内重试**，重试只走仓库扫描 `retry_failed_plans()`。（#15/#19）
 10. **`enable_mastery=False` 时任何训练室动作/通知/守卫都不执行**（dispatch/reconcile/swap 直接返回）；但 N 小时仓库材料扫描 + DB 自动排程**保留**。（#55 ②）
 11. **排班永不写锁定训练位（idx1）**，与 `enable_mastery` 开关无关：`assistant_follows_schedule=False` 整房跳过，`True` 冻结 idx1=Current。（#59）
@@ -130,11 +130,11 @@
 ## 6. 收取流程与通知
 
 ### `collect_flow`（固定顺序，不得重排）（C-34）
-主面板已读 → 点完成标记（模板 `skill_collect_confirm`/`training_completed` 优先，旧坐标 `(0.05w,0.95h)` 仅兜底）→ sleep ~2s → 点任意处跳过动画 → **截图**（收集页不读文本）→ 专3 才邮件（截图 + 面板信息）→ 对账 → 点勾确认。
+主面板已读 → 点完成标记（模板 `skill_collect_confirm`/`training_completed` 优先，旧坐标 `(0.05w,0.95h)` 仅兜底）→ sleep ~2s → 点任意处跳过动画 → **截图**（收集页不读文本）→ 专3 才邮件（截图 + 面板信息）→ 对账 → 点勾确认。**#106（2026-08-17）**：`collect_flow` 函数体止于专3 邮件，对账/点勾确认由调用方 `_collect_plan`/`_collect_silent` 在 `collect_flow` 返回后按此顺序执行（对账先、确认后，不得重排）——崩溃窗口里 DB 先收敛，不会把已收的 target 计划误当 training 重开。
 - 对账档位**只用主面板第 1 步读取值**（`panel.mastery_tier`），收集页不重读。（C-33）
 - 专3 邮件条件：命中计划（plan 非 None）且档位 == 3。（C-13）
 
-### 三类通知（`mastery_notify` 表，`INSERT OR IGNORE` 去重）
+### 通知清单（8 类，①-⑧ 完整清单见 §16.9；`mastery_notify` 表，`INSERT OR IGNORE` 去重）
 | 类型 | 触发 | dedup_key |
 |---|---|---|
 | ① blocked | 计划外训练占用训练室 | 倒计时结束时刻字符串（不可读 → `'unknown'`，训练未变不重发） |
@@ -144,7 +144,7 @@
 （NTFY-01/02、C-11）
 - 所有通知必须走 `should_notify`；`should_notify` **fail open**：DB 出错返回 True（宁可多发不可漏发）。（NTFY-03）
 - 新增通知类型必须刻意为之并沿用同样 key 约定，否则会过度/漏通知。
-- ✅ #73 已实现 ⑥ 类通知（§16.9，2026-08-14）：④帮收（key=`{干员}:{技能}`）、⑤训练室受保护（key=`{协助位}:{训练位}`）、⑥已到target（key=plan id），均已按本契约补 dedup key。完整清单见 §16.9。
+- ✅ 通知已扩到 8 类（①-⑧ 完整清单见 §16.9）：#73 加 ④帮收（key=`{干员}:{技能}`）、⑤训练室受保护（key=`{协助位}:{训练位}`）、⑥已到target（key=plan id）；#79 加 ⑦协助位纠错失败、#81 加 ⑧换人失败放弃（均 key=plan id，WARNING），均已按本契约补 dedup key。
 
 ## 7. 减半换人（协助位）
 

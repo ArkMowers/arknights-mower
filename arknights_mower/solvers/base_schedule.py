@@ -1580,7 +1580,9 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         try:
             from arknights_mower.utils.mastery_db import get_active_plan
 
-            has_active_mastery = config.conf.enable_mastery and get_active_plan() is not None
+            has_active_mastery = (
+                config.conf.enable_mastery and get_active_plan() is not None
+            )
         except Exception:
             has_active_mastery = False
         _replacement = []

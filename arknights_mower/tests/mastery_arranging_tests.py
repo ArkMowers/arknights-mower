@@ -1349,7 +1349,11 @@ class TestSwapCollectGating(unittest.TestCase):
         # #101 review 修复：补位后重读面板失败（倒计时读不到）→ 轻量重试读成功 → 重排
         # 阈值任务（防合并后阈值任务被本 dispatch 消费、只排收取丢减半）
         solver = self._solver()
-        solver.read_time.side_effect = [None, None, 15000]  # 初读失败→补位→重读失败→重试成功
+        solver.read_time.side_effect = [
+            None,
+            None,
+            15000,
+        ]  # 初读失败→补位→重读失败→重试成功
         solver.get_agent_from_room.return_value = self._slots("")
         plan = make_plan(status="training", swap_frozen=0, target_level=2)
         with (
@@ -1444,7 +1448,10 @@ class TestSwapCollectGating(unittest.TestCase):
         solver = self._solver()
         solver.read_time.return_value = 30000  # 500 分钟 > 阈值 → 放 operator
         solver.get_agent_from_room.return_value = self._slots("")
-        solver.choose_train.side_effect = [Exception("选人流程超时"), None]  # 补位失败→换人成功
+        solver.choose_train.side_effect = [
+            Exception("选人流程超时"),
+            None,
+        ]  # 补位失败→换人成功
         plan = make_plan(status="training", swap_frozen=0, target_level=2)
         with (
             patch(

@@ -1114,8 +1114,7 @@ def collect_flow(solver, plan, panel: RoomPanel):
     4. 点任意处 → 跳过动画 → 稳定页
     5. 截图（收集页不读文本）
     6. 档位==专3 → 邮件（截图 + 第1步信息）
-    7. 对账（用第1步档位）：档位==target completed级联 / ≠target 继续（#67，见 _reconcile_after_collect）
-    8. 点勾确认
+    7. 对账、8. 点勾确认：由调用方按 C-34 固定顺序执行（先对账后确认，#106）
     """
     from arknights_mower.utils.email import send_message
     from arknights_mower.utils.mastery_db import should_notify
@@ -1134,8 +1133,6 @@ def collect_flow(solver, plan, panel: RoomPanel):
                 f"干员：{panel.operator_name}｜技能：{panel.skill_name}｜档位：专{tier}"
             )
             send_message(body, level="INFO", attach_image=screenshot)
-    # 8. 点勾确认收尾
-    _tap_collect_confirm(solver)
     return screenshot
 
 
@@ -1173,9 +1170,11 @@ def _reconcile_after_collect(solver, plan, panel: RoomPanel):
 
 
 def _collect_plan(solver, plan, room: RoomState):
-    """命中计划：收集 + 对账。返回继续本级需要开始的计划或 None（收取完成不级联）。"""
+    """命中计划：收集 + 对账 + 点勾确认（C-34 固定顺序，#106）。返回继续本级需要开始的计划或 None（收取完成不级联）。"""
     collect_flow(solver, plan, room.panel)
-    return _reconcile_after_collect(solver, plan, room.panel)
+    result = _reconcile_after_collect(solver, plan, room.panel)
+    _tap_collect_confirm(solver)
+    return result
 
 
 def _collect_silent(solver, room: RoomState, suppress_help=False):
@@ -1190,6 +1189,7 @@ def _collect_silent(solver, room: RoomState, suppress_help=False):
     if not suppress_help and room.panel.mastery_tier in (1, 2):
         _notify_help_collect(solver, room)
     collect_flow(solver, None, room.panel)
+    _tap_collect_confirm(solver)
 
 
 def _next_idle_to_start(solver):

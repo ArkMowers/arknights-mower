@@ -904,32 +904,37 @@ class TestScanDispatchMastery(unittest.TestCase):
 
     @patch.object(base_schedule.BaseSchedulerSolver, "__init__", lambda x: None)
     def test_auto_schedule_mastery_after_scan_gates_on_enable_mastery(self):
-        # §16.11：OFF 时仓库扫描保留（retry/auto_schedule/workshop 照跑），
-        # 但不入队开始训练任务
+        # §16.11 铁律 10「留」半边：OFF 时仓库扫描钩子（retry/auto_schedule/workshop）
+        # 照跑，只有派发受 enable_mastery 门控。三个钩子无条件被调 + dispatch 不被调
+        # 钉死结构——把门误提到钩子前（failed 计划永不重置、idle 永不重排）套件会红。
         solver = self._solver()
-        idle = self._idle_plan()
         with (
             patch(
-                "arknights_mower.utils.mastery_db.retry_failed_plans", return_value=0
-            ),
+                "arknights_mower.utils.mastery_db.retry_failed_plans",
+                return_value=0,
+            ) as mock_retry,
             patch(
                 "arknights_mower.utils.mastery_recommendation.auto_schedule_mastery_tasks",
                 return_value={
                     "scheduled": [{"char_id": "char_a", "skill_index": 1}],
                     "skipped": [],
                 },
-            ),
+            ) as mock_auto,
             patch(
                 "arknights_mower.utils.mastery_recommendation.compute_workshop_config",
                 return_value=None,
-            ),
-            patch(
-                "arknights_mower.utils.mastery_db.get_all_plans", return_value=[idle]
-            ),
+            ) as mock_workshop,
+            patch.object(
+                base_schedule.BaseSchedulerSolver, "_dispatch_scan_start_tasks"
+            ) as mock_dispatch,
             patch.object(base_schedule.config.conf, "enable_mastery", False),
         ):
             solver._auto_schedule_mastery_after_scan()
         self.assertEqual(solver.tasks, [], "OFF 时不入队开始训练任务")
+        mock_retry.assert_called()
+        mock_auto.assert_called()
+        mock_workshop.assert_called()
+        mock_dispatch.assert_not_called()
 
     @patch.object(base_schedule.BaseSchedulerSolver, "__init__", lambda x: None)
     def test_auto_schedule_mastery_after_scan_enqueues_when_on(self):

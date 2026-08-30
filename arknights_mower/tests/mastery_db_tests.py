@@ -93,7 +93,9 @@ class TestMasteryDb(unittest.TestCase):
         p_idle_lo = insert_plan("char_idle", 0, 1, priority=1, path=self.db_path)
         p_train = insert_plan("char_train", 1, 2, path=self.db_path)  # priority 0
         p_done = insert_plan("char_done", 0, 1, priority=3, path=self.db_path)
-        update_plan_status(p_fail_hi, "failed", failed_reason="材料不足", path=self.db_path)
+        update_plan_status(
+            p_fail_hi, "failed", failed_reason="材料不足", path=self.db_path
+        )
         update_plan_status(p_train, "training", path=self.db_path)
         update_plan_status(p_done, "completed", path=self.db_path)
         plans = get_reconcile_plans(path=self.db_path)
@@ -147,7 +149,9 @@ class TestMasteryDb(unittest.TestCase):
         # 避免孤儿 dedup 残留
         pid = insert_plan("char_001", 0, 1, path=self.db_path)
         self.assertTrue(should_notify("fake_reset", str(pid), path=self.db_path))
-        self.assertFalse(should_notify("fake_reset", str(pid), path=self.db_path), "首轮已去重")
+        self.assertFalse(
+            should_notify("fake_reset", str(pid), path=self.db_path), "首轮已去重"
+        )
         delete_plan(pid, path=self.db_path)
         self.assertTrue(
             should_notify("fake_reset", str(pid), path=self.db_path),

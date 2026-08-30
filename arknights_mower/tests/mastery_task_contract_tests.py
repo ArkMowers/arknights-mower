@@ -154,7 +154,9 @@ class TestTaskEndpointContract(unittest.TestCase):
         app.register_blueprint(task_bp)
         client = app.test_client()
         # 无 token 头 → 403
-        self.assertEqual(client.post("/task", json=_task_payload("空任务")).status_code, 403)
+        self.assertEqual(
+            client.post("/task", json=_task_payload("空任务")).status_code, 403
+        )
         self.assertEqual(client.get("/task").status_code, 403)
         # 错误 token → 403
         self.assertEqual(

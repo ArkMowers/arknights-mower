@@ -270,9 +270,7 @@ def validate_route_supports(supports_json: str) -> str | None:
     if isinstance(parsed, dict):
         if isinstance(parsed.get("supports"), list):
             return None
-        if any(
-            isinstance(parsed.get(f"level_{lvl}"), dict) for lvl in (1, 2, 3)
-        ):
+        if any(isinstance(parsed.get(f"level_{lvl}"), dict) for lvl in (1, 2, 3)):
             return None
     return "supports 形态需为数组/包装对象/旧字典"
 
@@ -1086,7 +1084,7 @@ def run_swap_support(solver):
     # 主页面）。协助位 ∉ {operator, swap_target}（陌生人/空位）→ 坐错人纠错成 operator
     # （#80）、空位一步定夺（#101）。只在倒计时 active（训练确认）时动协助位——
     # 00:00:00 收取边界不动（铁律 6）；读失败（reliable=False，OCR 坏名等）不动作
-    #（稳为先：读不到就不动，防基于不可靠读撤销已减半）。
+    # （稳为先：读不到就不动，防基于不可靠读撤销已减半）。
     support_slot, _, _, reliable = _read_slots_checked(solver)
     if operator and reliable and support_slot not in (operator, swap_target):
         # #107 保护门（2026-08-17）：逻各斯/艾丽妮在协助位（非路线干员/减半对象）且
@@ -1189,9 +1187,12 @@ def run_swap_support(solver):
                     # 有换人目标 → 排阈值时刻任务（排了换人就不排收取，§16.10 等 SWAP
                     # 完成后重读再排）；专三/无减半目标 → 直接排收取
                     step_level = panel.mastery_tier if panel is not None else None
-                    if _schedule_swap_if_needed(
-                        solver, plan, panel.countdown, step_level
-                    ) is None:
+                    if (
+                        _schedule_swap_if_needed(
+                            solver, plan, panel.countdown, step_level
+                        )
+                        is None
+                    ):
                         _schedule_collect_after_swap(solver, plan)
                 else:
                     # 重读失败 → 轻量倒计时重试读（_read_countdown_with_retry）重排阈值
