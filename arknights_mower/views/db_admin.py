@@ -11,6 +11,7 @@ from flask import Blueprint, abort, current_app, request
 
 from arknights_mower.solvers import record
 from arknights_mower.utils.log import logger
+from arknights_mower.views.mastery import _purge_plan_tasks
 
 db_admin_bp = Blueprint("db_admin", __name__)
 
@@ -91,8 +92,18 @@ def delete():
     if invalid:
         return {"error": f"未知类别: {invalid}"}, 400
     deleted = {}
+    plan_ids = []
     try:
         with record._conn() as conn:
+            if "mastery_plan" in keys:
+                # #118：批量删计划后清 #97 队列残留任务（plan_key=旧id 的
+                # SKILL_UPGRADE/SWAP 照常派发到已删计划），先记下要删的 id
+                try:
+                    plan_ids = [
+                        r[0] for r in conn.execute("SELECT id FROM mastery_plan")
+                    ]
+                except Exception:
+                    plan_ids = []  # 表未创建 → 无数据可删，也无任务可清
             for key in keys:
                 table = CATEGORY_TABLES[key]  # 白名单校验过，表名安全
                 try:
@@ -106,5 +117,7 @@ def delete():
     except Exception as e:
         logger.error(f"db-admin delete 失败: {e}")
         return {"error": str(e)}, 500
+    for pid in plan_ids:
+        _purge_plan_tasks(pid)
     logger.info(f"[db-admin] 删除 {len(keys)} 类数据 {deleted}")
     return {"deleted": deleted}

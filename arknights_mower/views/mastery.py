@@ -160,7 +160,13 @@ class MasteryPlanView(MethodView):
                         {"key": name, "status": "error", "reason": "operator not found"}
                     )
                     continue
-                if not isinstance(skill_index, int) or skill_index not in (0, 1, 2):
+                # #112：bool 是 int 子类（True in (0,1,2) 为真），显式拒绝，否则
+                # JSON true 会被静默当成二技能建错计划
+                if (
+                    isinstance(skill_index, bool)
+                    or not isinstance(skill_index, int)
+                    or skill_index not in (0, 1, 2)
+                ):
                     results.append(
                         {
                             "key": name,
@@ -193,7 +199,10 @@ class MasteryPlanView(MethodView):
         plan_id = data.get("id")
         if not plan_id:
             return {"error": "id is required"}, 400
-        plan_id = int(plan_id)
+        # #113：非数字 id（如 "abc"）直接 int() → ValueError → 500；bool 是 int 子类
+        # （True==1）也不得静默接受。对齐 #97 retry 畸形 id 400 的校验。
+        if isinstance(plan_id, bool) or not isinstance(plan_id, int):
+            return {"error": f"invalid id: {plan_id}"}, 400
         if delete_plan(plan_id):
             # #97：删计划清残留队列任务（该 plan_key 的 SKILL_UPGRADE/SWAP/fill），
             # 否则残留任务仍会按 plan_key 派发到已删计划。
@@ -211,7 +220,13 @@ class MasteryPlanOrderView(MethodView):
             plan_id = item.get("id")
             priority = item.get("priority")
             if plan_id is not None and priority is not None:
-                update_plan_priority(int(plan_id), int(priority))
+                # #113：int() 对非数字（"abc"）抛 ValueError → 500，id/priority 同型；
+                # bool 是 int 子类也不得静默接受。对齐 #97 retry 畸形 id 400 的校验。
+                if isinstance(plan_id, bool) or not isinstance(plan_id, int):
+                    return {"error": f"invalid id: {plan_id}"}, 400
+                if isinstance(priority, bool) or not isinstance(priority, int):
+                    return {"error": f"invalid priority: {priority}"}, 400
+                update_plan_priority(plan_id, priority)
         return {"status": "ok"}
 
 

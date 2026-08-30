@@ -146,6 +146,34 @@ class TestTaskEndpointContract(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertIn("请确保Mower正在运行", r.data.decode("utf-8"))
 
+    def test_token_required_when_configured(self):
+        # #104：/task 是唯一未走 _require_token 的状态变更路由——webview 配置 token 时
+        # 服务绑定 0.0.0.0，任意 LAN 对等端可 POST 注入调度任务 / GET 读任务队列。
+        app = Flask(__name__)
+        app.token = "secret"
+        app.register_blueprint(task_bp)
+        client = app.test_client()
+        # 无 token 头 → 403
+        self.assertEqual(client.post("/task", json=_task_payload("空任务")).status_code, 403)
+        self.assertEqual(client.get("/task").status_code, 403)
+        # 错误 token → 403
+        self.assertEqual(
+            client.post(
+                "/task", json=_task_payload("空任务"), headers={"token": "wrong"}
+            ).status_code,
+            403,
+        )
+        # 正确 token → 照常执行
+        self.assertEqual(
+            client.post(
+                "/task", json=_task_payload("空任务"), headers={"token": "secret"}
+            ).status_code,
+            200,
+        )
+        self.assertEqual(
+            client.get("/task", headers={"token": "secret"}).status_code, 200
+        )
+
 
 class TestFrontendFlowContract(unittest.TestCase):
     def _read(self, rel_path):

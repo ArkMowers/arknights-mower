@@ -248,6 +248,19 @@ class TestMasteryPlanView(unittest.TestCase):
         self.assertIn("已专", res["reason"])
         insert.assert_not_called()
 
+    @patch("arknights_mower.utils.mastery_db.insert_plan")
+    @patch("arknights_mower.views.mastery.get_skill_data")
+    def test_flat_rejects_bool_skill_index(self, get_skill, insert):
+        # #112：bool 是 int 子类（True in (0,1,2) 为真）——JSON true 必须被拒绝为
+        # invalid skill_index，不得静默当成二技能建错计划
+        get_skill.return_value = self._char_table()
+        for bad in (True, False):
+            r = self.client.post("/mastery-plan", json={"阿米娅": bad})
+            res = r.get_json()["results"][0]
+            self.assertEqual(res["status"], "error")
+            self.assertEqual(res["reason"], "invalid skill_index")
+        insert.assert_not_called()
+
     # --- #97 删除清理 ---
 
     @patch("arknights_mower.views.mastery._purge_plan_tasks")
@@ -266,6 +279,35 @@ class TestMasteryPlanView(unittest.TestCase):
         r = self.client.delete("/mastery-plan", json={})
         self.assertEqual(r.status_code, 400)
         delete_mock.assert_not_called()
+
+    @patch("arknights_mower.views.mastery.delete_plan")
+    def test_delete_rejects_non_numeric_id(self, delete_mock):
+        # #113：非数字 id 不再 int() ValueError → 500，应 400（对齐 #97 retry）
+        for bad in ("abc", True, 1.5):
+            r = self.client.delete("/mastery-plan", json={"id": bad})
+            self.assertEqual(r.status_code, 400, f"id={bad!r} 应 400")
+            self.assertIn("invalid id", r.get_json()["error"])
+        delete_mock.assert_not_called()
+
+    @patch("arknights_mower.views.mastery.update_plan_priority")
+    def test_order_rejects_non_numeric_id(self, update_mock):
+        # #113：PATCH order 非数字 id → 400（不再 int() ValueError → 500）
+        r = self.client.patch(
+            "/mastery-plan/order", json=[{"id": "abc", "priority": 1}]
+        )
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("invalid id", r.get_json()["error"])
+        update_mock.assert_not_called()
+
+    @patch("arknights_mower.views.mastery.update_plan_priority")
+    def test_order_rejects_non_numeric_priority(self, update_mock):
+        # #113：PATCH order 非数字 priority → 400（与 id 同型）
+        r = self.client.patch(
+            "/mastery-plan/order", json=[{"id": 3, "priority": "abc"}]
+        )
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("invalid priority", r.get_json()["error"])
+        update_mock.assert_not_called()
 
     def test_purge_plan_tasks_removes_plan_key_tasks(self):
         # #97：_purge_plan_tasks 清掉该计划 plan_key 的队列任务（SKILL_UPGRADE/SWAP，

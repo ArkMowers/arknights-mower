@@ -8,9 +8,10 @@
 
 import json
 from datetime import datetime
+from functools import wraps
 
 import pytz
-from flask import Blueprint, request
+from flask import Blueprint, abort, current_app, request
 from tzlocal import get_localzone
 
 from arknights_mower.utils.log import logger
@@ -27,7 +28,19 @@ def set_mower_thread(thread):
     mower_thread = thread
 
 
+def _require_token(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        token = getattr(current_app, "token", None)
+        if token and request.headers.get("token", "") != token:
+            abort(403)
+        return f(*args, **kwargs)
+
+    return wrapper
+
+
 @task_bp.route("/task", methods=["GET", "POST"])
+@_require_token
 def add_task():
     from arknights_mower.__main__ import base_scheduler
 
