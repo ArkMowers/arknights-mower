@@ -69,8 +69,7 @@ export function parseMasteryRoute(route) {
       ? Boolean(wrapped.half_off)
       : route?.half_off === undefined
         ? true
-        : Boolean(route.half_off),
-    legacyControlCenter: wrapped?.controlCenter || wrapped?.control_center || null
+        : Boolean(route.half_off)
   }
 }
 

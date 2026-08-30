@@ -1,3 +1,4 @@
+import json
 import unittest
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
@@ -145,7 +146,7 @@ class TestArrangingConvergence(unittest.TestCase):
         现在：经训练位确认进入 219 后若一直卡在 219（ctap 不导航），5 分钟
         deadline 后走统一超时出口 → 置 failed + back() 退出。时钟每轮推进，
         否则 `now() > deadline` 永不成立、测试会真的挂死。
-        未确认身份的 219（误判的运行页）不走 deadline、立即保守退出——见
+        未确认身份的 219（重启停在技能选择页/手动进入）不走 deadline、立即保守退出——见
         test_misjudged_skill_select_no_identity_exits。
         """
         scenes = [
@@ -260,7 +261,7 @@ class TestArrangingConvergence(unittest.TestCase):
             patch("arknights_mower.utils.mastery_db.update_plan_status"),
             patch("arknights_mower.utils.email.send_message"),
             patch.object(mastery, "_arrange_support"),
-            patch.object(mastery, "_schedule_swap_if_needed"),
+            patch.object(mastery, "_schedule_swap_if_needed", return_value=None),
             patch.object(mastery, "_schedule_collect"),
         ):
             mastery._start_new_training(solver, plan)
@@ -274,15 +275,17 @@ class TestArrangingConvergence(unittest.TestCase):
             "不应再用会错过按钮的旧坐标 (0.87w, 0.9h)",
         )
 
-    def test_confirm_then_read_countdown_on_skill_select(self):
-        """#53 实机：确认升级后训练已开始，但运行页被识别成 TRAIN_SKILL_SELECT，
-        此时也要能读到倒计时、确认训练开始（而不是一直等 TRAIN_MAIN 到超时）。
+    def test_confirm_after_skill_select_backs_to_main_before_countdown(self):
+        """#89：确认升级后游戏自动退回技能选择页（真 219，读不出倒计时）——必须 back
+        一次回训练室主页面（217）再读倒计时（§16.10 第 3 步「再退出一次」），否则 219
+        左下角是协助位天赋文本、会被 OCR 当倒计时反复读甚至假确认开始。
         """
         solver = MagicMock()
         solver.find.return_value = ((1563, 832), (1880, 1048))  # skill_confirm
         solver.train_scene.side_effect = [
             Scene.TRAIN_SKILL_UPGRADE,  # 确认页 → tap 确认
-            Scene.TRAIN_SKILL_SELECT,  # 训练运行页（被误识别成选择技能页）
+            Scene.TRAIN_SKILL_SELECT,  # 确认后自动退回技能选择页 → back
+            Scene.TRAIN_MAIN,  # back 回主页面 → 读倒计时确认开始
         ]
         solver.read_time.return_value = 7200
         solver.read_screen.return_value = "[测试干员]测试技能"
@@ -296,18 +299,22 @@ class TestArrangingConvergence(unittest.TestCase):
             patch("arknights_mower.utils.mastery_db.update_plan_status") as upd,
             patch("arknights_mower.utils.email.send_message"),
             patch.object(mastery, "_arrange_support"),
-            patch.object(mastery, "_schedule_swap_if_needed"),
+            patch.object(mastery, "_schedule_swap_if_needed", return_value=None),
             patch.object(mastery, "_schedule_collect"),
         ):
             mastery._start_new_training(solver, plan)
         training_calls = [c for c in upd.call_args_list if c.args[1] == "training"]
         self.assertTrue(
-            training_calls, "在 TRAIN_SKILL_SELECT 上读到有效倒计时也应确认训练开始"
+            training_calls, "确认后 back 回主页面读到有效倒计时也应确认训练开始"
         )
+        # 219 上必须先 back 再读倒计时：read_time 只在回主页面后被调用一次
+        call_names = [c[0] for c in solver.method_calls]
+        self.assertLess(call_names.index("back"), call_names.index("read_time"))
+        self.assertEqual(solver.read_time.call_count, 1)
 
-    # --- #72：运行中的训练页被误判成 219（未经过训练位确认）→ 不数星星、不点技能行 ---
+    # --- #72：未经身份确认的 219（重启停在技能选择页/手动进入）→ 不数星星、不点技能行 ---
     def test_misjudged_skill_select_no_identity_exits(self):
-        """误判的 219：倒计时、面板文字都不可读（真技能选择页读不到主面板区域）
+        """未经身份确认的 219：倒计时、面板文字都不可读（技能选择页读不到主面板区域）
         → 数星星前无身份确认，星星可能误读非零值（误开训练/误判完成）→ 保持 idle
         重排退出，绝不 ctap/tap。这是 #72 的核心红测试（旧代码在此会 ctap）。"""
         solver = self.make_solver(
@@ -330,7 +337,7 @@ class TestArrangingConvergence(unittest.TestCase):
         self.assertFalse(solver.tap.called, "未确认身份时不应点技能选择按钮")
 
     def test_misjudged_skill_select_with_readable_countdown_exits(self):
-        """误判的 219 即使倒计时可读（物理上仍是运行页）也因未确认身份而保守退出。
+        """未经身份确认的 219 即使倒计时「可读」也因未确认身份而保守退出。
 
         旧守卫靠"在 219 上读主面板倒计时/面板当探针"判占用（#69/B4）；#72 起 219
         不再读主面板区域，身份确认只认 TRAIN_MAIN 训练位校验这一步，与倒计时是否
@@ -565,7 +572,7 @@ class TestMasteryMailOperatorName(unittest.TestCase):
             patch("arknights_mower.utils.mastery_db.update_plan_status"),
             patch("arknights_mower.utils.email.send_message") as send,
             patch.object(mastery, "_arrange_support"),
-            patch.object(mastery, "_schedule_swap_if_needed"),
+            patch.object(mastery, "_schedule_swap_if_needed", return_value=None),
             patch.object(mastery, "_schedule_collect"),
         ):
             result = mastery._confirm_training_started(
@@ -585,7 +592,7 @@ class TestMasteryMailOperatorName(unittest.TestCase):
             patch("arknights_mower.utils.mastery_db.update_plan_status"),
             patch("arknights_mower.utils.email.send_message") as send,
             patch.object(mastery, "_arrange_support"),
-            patch.object(mastery, "_schedule_swap_if_needed"),
+            patch.object(mastery, "_schedule_swap_if_needed", return_value=None),
             patch.object(mastery, "_schedule_collect"),
             patch.object(mastery, "get_char_name", return_value="兜底干员") as gcn,
         ):
@@ -595,6 +602,213 @@ class TestMasteryMailOperatorName(unittest.TestCase):
         self.assertEqual(result, "started")
         self.assertIn("兜底干员", send.call_args[0][0])
         gcn.assert_called_once_with("char_test")
+
+
+class TestStartTrainingMail(unittest.TestCase):
+    """#90：开始训练邮件——协助位安排后重读倒计时再发；真名/目标级档位；两情况完成时间。
+
+    邮件发送点从确认倒计时时刻移到协助位安排 + 换人判定之后（§16.10 第7步以当前读取
+    为准）；档位 = 左下角专精图标读数（step_level，不加1）；真名 = plan["skill_name"]；
+    完成时间：无减半 = 重读倒计时、有减半 = 换人任务时刻 + (300 + mastery_swap_buffer)。
+    """
+
+    def setUp(self):
+        FixedDateTime.now_value = START
+
+    def _solver(self):
+        solver = MagicMock()
+        solver.train_scene.return_value = Scene.TRAIN_MAIN
+        solver.read_time.return_value = 7200
+        solver.read_screen.return_value = "[测试干员]测试技能"
+        solver.recog.w = 1920
+        solver.recog.h = 1080
+        solver.tasks = []
+        solver.task = None
+        solver.recog.img = np.zeros((1080, 1920, 3), dtype=np.uint8)
+        solver.recog.update = MagicMock()
+        return solver
+
+    def _lit_solver(self, lit):
+        solver = self._solver()
+        solver.recog.img = _mastery_canvas(lit)
+        return solver
+
+    def test_mail_after_arrange_and_swap_uses_skill_name_and_step_tier(self):
+        # 时机：协助位安排 → 换人判定 → 才发邮件；档位=图标读数（专二），真名=skill_name
+        solver = self._lit_solver(lit=2)
+        plan = make_plan(target_level=3)  # 专三计划，当前步=专二（图标亮2颗）
+        order = []
+        mail_msgs = []
+
+        def fake_arrange(s, p, step_level=None):
+            order.append("arrange")
+
+        def fake_swap(s, p, execute_time, step_level=None):
+            order.append("swap")
+            return None
+
+        def fake_send(msg, **kw):
+            order.append("mail")
+            mail_msgs.append(msg)
+
+        with (
+            patch.object(mastery, "datetime", FixedDateTime),
+            patch.object(mastery_reader, "datetime", FixedDateTime),
+            patch("arknights_mower.utils.mastery_db.update_plan_status"),
+            patch("arknights_mower.utils.email.send_message", side_effect=fake_send),
+            patch.object(mastery, "_arrange_support", side_effect=fake_arrange),
+            patch.object(mastery, "_schedule_swap_if_needed", side_effect=fake_swap),
+            patch.object(mastery, "_schedule_collect"),
+        ):
+            result = mastery._confirm_training_started(
+                solver, plan, START + timedelta(minutes=10)
+            )
+        self.assertEqual(result, "started")
+        self.assertEqual(
+            order, ["arrange", "swap", "mail"], "邮件应在协助位安排+换人判定之后发"
+        )
+        msg = mail_msgs[0]
+        self.assertIn("测试干员", msg)
+        self.assertIn("测试技能", msg)  # 真名，不是「技能2」下标
+        self.assertNotIn("技能2", msg)
+        self.assertIn("专2", msg)  # 目标级 = 图标读数（专二），不是 plan target_level=3
+        self.assertNotIn("专3", msg)
+        self.assertIn("预计 14:00 完成", msg)  # 无减半 → 重读倒计时 START+2h
+
+    def test_mail_swap_case_completion_uses_swap_time_plus_buffer(self):
+        # 有减半：完成 = 换人任务时刻 + (300 + 缓冲) 分钟，附「将于 X 换入减半干员」；
+        # 且排了换人则不排收取
+        solver = self._lit_solver(lit=2)
+        plan = make_plan()
+        swap_time = START + timedelta(hours=1)
+        with (
+            patch.object(mastery, "datetime", FixedDateTime),
+            patch.object(mastery_reader, "datetime", FixedDateTime),
+            patch("arknights_mower.utils.mastery_db.update_plan_status"),
+            patch("arknights_mower.utils.email.send_message") as send,
+            patch.object(mastery, "_arrange_support"),
+            patch.object(mastery, "_schedule_swap_if_needed", return_value=swap_time),
+            patch.object(
+                mastery,
+                "_get_plan_route",
+                return_value={
+                    "swap_target": "逻各斯",
+                    "efficiency": 75,
+                    "mastery_swap_buffer": 10,
+                },
+            ),
+            patch.object(mastery, "_schedule_collect") as sc,
+        ):
+            result = mastery._confirm_training_started(
+                solver, plan, START + timedelta(minutes=10)
+            )
+        self.assertEqual(result, "started")
+        sc.assert_not_called()  # 排了换人则不排收取
+        msg = send.call_args.args[0]
+        # 将于 swap_time 13:00 换入逻各斯；完成 = 13:00 + 310min → 18:10（300+缓冲=310）
+        self.assertIn("将于 13:00 换入逻各斯", msg)
+        self.assertIn("预计 18:10 完成", msg)
+
+    def test_mail_rereads_countdown_after_arrange_for_swap_and_collect(self):
+        # §16.10 第7步：协助位安排后重读倒计时，换人/收取/邮件完成时间都以此为准
+        solver = self._lit_solver(lit=2)
+        solver.read_time.side_effect = [7200, 5400]  # 初始 2h → 安排后 1.5h
+        plan = make_plan()
+        swap_calls = []
+        collect_calls = []
+
+        def fake_swap(s, p, execute_time, step_level=None):
+            swap_calls.append(execute_time)
+            return None
+
+        def fake_collect(s, p, execute_time, tier=None):
+            collect_calls.append(execute_time)
+
+        with (
+            patch.object(mastery, "datetime", FixedDateTime),
+            patch.object(mastery_reader, "datetime", FixedDateTime),
+            patch("arknights_mower.utils.mastery_db.update_plan_status") as upd,
+            patch("arknights_mower.utils.email.send_message") as send,
+            patch.object(mastery, "_arrange_support"),
+            patch.object(mastery, "_schedule_swap_if_needed", side_effect=fake_swap),
+            patch.object(mastery, "_schedule_collect", side_effect=fake_collect),
+        ):
+            result = mastery._confirm_training_started(
+                solver, plan, START + timedelta(minutes=10)
+            )
+        self.assertEqual(result, "started")
+        expected = START + timedelta(seconds=5400)  # 12:00 + 1.5h = 13:30
+        self.assertEqual(swap_calls, [expected], "换人判定用重读后的倒计时")
+        self.assertEqual(collect_calls, [expected], "收取任务用重读后的倒计时")
+        self.assertIn("预计 13:30 完成", send.call_args.args[0])
+        # expires_at 也用换协助位后的最终倒计时（fresh≠安排前值 → 刷新一次 DB）
+        expiry_calls = [c for c in upd.call_args_list if c.args[1] == "training"]
+        self.assertEqual(len(expiry_calls), 2, "确认写一次 + 重读后刷新一次")
+        self.assertEqual(
+            expiry_calls[1].kwargs["expires_at"],
+            expected.strftime("%Y-%m-%d %H:%M:%S"),
+        )
+
+    def test_mail_falls_back_to_initial_countdown_when_reread_unreadable(self):
+        # 重读失败（不在训练室主页面）→ 回退安排前倒计时，邮件仍发
+        solver = self._lit_solver(lit=2)
+        solver.train_scene.side_effect = [Scene.TRAIN_MAIN, Scene.INFRA_MAIN]
+        plan = make_plan()
+        with (
+            patch.object(mastery, "datetime", FixedDateTime),
+            patch.object(mastery_reader, "datetime", FixedDateTime),
+            patch("arknights_mower.utils.mastery_db.update_plan_status"),
+            patch("arknights_mower.utils.email.send_message") as send,
+            patch.object(mastery, "_arrange_support"),
+            patch.object(mastery, "_schedule_swap_if_needed", return_value=None),
+            patch.object(mastery, "_schedule_collect"),
+        ):
+            result = mastery._confirm_training_started(
+                solver, plan, START + timedelta(minutes=10)
+            )
+        self.assertEqual(result, "started")
+        self.assertIn("预计 14:00 完成", send.call_args.args[0])  # 回退初始倒计时
+
+    def test_mail_tier_unknown_when_icon_unreadable(self):
+        # 档位（左下角专精图标）读不到 → 邮件显示「专精等级未知」，不回退 target_level
+        solver = self._solver()  # 图标全灭 → step_level=0（读不到）
+        plan = make_plan(target_level=3)
+        with (
+            patch.object(mastery, "datetime", FixedDateTime),
+            patch.object(mastery_reader, "datetime", FixedDateTime),
+            patch("arknights_mower.utils.mastery_db.update_plan_status"),
+            patch("arknights_mower.utils.email.send_message") as send,
+            patch.object(mastery, "_arrange_support"),
+            patch.object(mastery, "_schedule_swap_if_needed", return_value=None),
+            patch.object(mastery, "_schedule_collect"),
+        ):
+            result = mastery._confirm_training_started(
+                solver, plan, START + timedelta(minutes=10)
+            )
+        self.assertEqual(result, "started")
+        msg = send.call_args.args[0]
+        self.assertIn("专精等级未知", msg)
+        self.assertNotIn("专3", msg)
+        self.assertNotIn("专2", msg)
+
+    def test_re_read_closes_detail_window_and_reads(self):
+        # 协助位安排后停在进驻详情浮窗 → 先关浮窗回主页面再读倒计时（back 内部已重置缓存）
+        solver = self._solver()
+        solver.train_scene.side_effect = [Scene.INFRA_DETAILS, Scene.TRAIN_MAIN]
+        with (
+            patch.object(mastery, "datetime", FixedDateTime),
+            patch.object(mastery_reader, "datetime", FixedDateTime),
+        ):
+            result = mastery._re_read_train_countdown(solver)
+        self.assertEqual(result, START + timedelta(hours=2))
+        solver.back.assert_called_once()  # 关掉进驻详情浮窗
+        solver.read_time.assert_called_once()  # 关浮窗后重读倒计时
+
+    def test_re_read_not_main_returns_none(self):
+        # 不在训练室主页面 → None（调用方回退安排前倒计时）
+        solver = self._solver()
+        solver.train_scene.return_value = Scene.INFRA_MAIN
+        self.assertIsNone(mastery._re_read_train_countdown(solver))
 
 
 class TestSwapCollectGating(unittest.TestCase):
@@ -625,7 +839,9 @@ class TestSwapCollectGating(unittest.TestCase):
             patch("arknights_mower.utils.email.send_message"),
             patch.object(mastery, "_arrange_support"),
             patch.object(
-                mastery, "_schedule_swap_if_needed", return_value=swap_scheduled
+                mastery,
+                "_schedule_swap_if_needed",
+                return_value=(START + timedelta(hours=1)) if swap_scheduled else None,
             ),
             patch.object(mastery, "_schedule_collect") as sc,
         ):
@@ -666,11 +882,11 @@ class TestSwapCollectGating(unittest.TestCase):
             scheduled = mastery._schedule_swap_if_needed(
                 solver, plan, START + timedelta(hours=2)
             )
-        self.assertTrue(scheduled, "立即换人应排 SWAP_SUPPORT")
+        self.assertIsNotNone(scheduled, "立即换人应排 SWAP_SUPPORT")
         self.assertEqual(len(solver.tasks), 1)
         self.assertEqual(solver.tasks[0].type, TaskTypes.SWAP_SUPPORT)
 
-    def test_schedule_swap_delayed_returns_true(self):
+    def test_schedule_swap_delayed_returns_swap_time(self):
         solver = self._solver()
         plan = make_plan(target_level=2)
         with (
@@ -691,7 +907,7 @@ class TestSwapCollectGating(unittest.TestCase):
             scheduled = mastery._schedule_swap_if_needed(
                 solver, plan, START + timedelta(hours=2)
             )
-        self.assertTrue(scheduled)
+        self.assertIsNotNone(scheduled)
         self.assertEqual(len(solver.tasks), 1)
         self.assertEqual(solver.tasks[0].type, TaskTypes.SWAP_SUPPORT)
 
@@ -718,7 +934,7 @@ class TestSwapCollectGating(unittest.TestCase):
             scheduled = mastery._schedule_swap_if_needed(
                 solver, plan, START + timedelta(hours=2)
             )
-        self.assertFalse(scheduled, "步级未知回退专三 → 不换人")
+        self.assertIsNone(scheduled, "步级未知回退专三 → 不换人")
         self.assertEqual(route_calls, [None], "应把缺省 step_level 传给路线加载")
 
     def test_run_swap_support_schedules_collect_after_swap(self):
@@ -1082,7 +1298,7 @@ class TestSwapCollectGating(unittest.TestCase):
             scheduled = mastery._schedule_swap_if_needed(
                 solver, plan, START + timedelta(hours=2)
             )
-        self.assertTrue(scheduled)
+        self.assertIsNotNone(scheduled)
         self.assertEqual(solver.tasks[0].type, TaskTypes.SWAP_SUPPORT)
         self.assertEqual(solver.tasks[0].plan_key, str(plan["id"]))
 
@@ -1190,7 +1406,7 @@ class TestRouteStepLevel(unittest.TestCase):
             scheduled = mastery._schedule_swap_if_needed(
                 solver, plan, START + timedelta(hours=2), step_level=1
             )
-        self.assertTrue(scheduled, "专三计划专一步应减半换人")
+        self.assertIsNotNone(scheduled, "专三计划专一步应减半换人")
         self.assertEqual(route_calls, [1], "路线应按当前步级（专一）加载")
         self.assertEqual(len(solver.tasks), 1)
         self.assertEqual(solver.tasks[0].type, TaskTypes.SWAP_SUPPORT)
@@ -1214,7 +1430,7 @@ class TestRouteStepLevel(unittest.TestCase):
             scheduled = mastery._schedule_swap_if_needed(
                 solver, plan, START + timedelta(hours=2), step_level=3
             )
-        self.assertFalse(scheduled, "专三步路线无 swap_target → 不换人")
+        self.assertIsNone(scheduled, "专三步路线无 swap_target → 不换人")
 
     # --- _confirm_training_started：确认后读图标当前步级，传给协助位/换人安排 ---
     def test_confirm_passes_step_level_to_arrange_and_swap(self):
@@ -1228,7 +1444,7 @@ class TestRouteStepLevel(unittest.TestCase):
 
         def fake_swap(s, p, execute_time, step_level=None):
             swap_calls.append(step_level)
-            return False
+            return None
 
         with (
             patch.object(mastery, "datetime", FixedDateTime),
@@ -1245,17 +1461,21 @@ class TestRouteStepLevel(unittest.TestCase):
         self.assertEqual(arrange_calls, [2], "协助位安排应按图标当前步级（专二）")
         self.assertEqual(swap_calls, [2], "换人判断应按图标当前步级（专二）")
 
-    def test_confirm_passes_step_level_on_run_page_219(self):
-        # #53/#72：确认后的运行页被识别成 TRAIN_SKILL_SELECT（219）——step_level 读取
-        # 必须覆盖它，否则实机永远读不到步级、专三计划专一/专二步不减半换人
+    def test_confirm_backs_out_of_skill_select_before_reading(self):
+        # #89：确认后的 219 是真技能选择页（读不出倒计时）。必须先在 219 上 back 回
+        # 主页面（217）再读倒计时/图标——绝不能直接在 219 上读倒计时（左下角是协助位
+        # 天赋文本，会被 OCR 当倒计时反复读，甚至偶然读出类时间文本 → 假确认开始）。
         solver = self._lit_solver(lit=2)
-        solver.train_scene.return_value = Scene.TRAIN_SKILL_SELECT
+        solver.train_scene.side_effect = [
+            Scene.TRAIN_SKILL_SELECT,  # 确认后自动退回技能选择页 → back
+            Scene.TRAIN_MAIN,  # back 回主页面 → 读倒计时/图标
+        ]
         plan = make_plan()
         swap_calls = []
 
         def fake_swap(s, p, execute_time, step_level=None):
             swap_calls.append(step_level)
-            return False
+            return None
 
         with (
             patch.object(mastery, "datetime", FixedDateTime),
@@ -1269,7 +1489,37 @@ class TestRouteStepLevel(unittest.TestCase):
                 solver, plan, START + timedelta(minutes=10)
             )
         self.assertEqual(result, "started")
-        self.assertEqual(swap_calls, [2], "运行页(219)也应读到图标当前步级（专二）")
+        solver.back.assert_called_once()
+        # 219 上必须先 back 再读倒计时（read_time），杜绝假确认风险
+        call_names = [c[0] for c in solver.method_calls]
+        self.assertLess(call_names.index("back"), call_names.index("read_time"))
+        self.assertEqual(
+            swap_calls, [2], "back 回主页面后按图标当前步级（专二）换人判断"
+        )
+
+    def test_confirm_does_not_double_back_on_persistent_219(self):
+        # #89 review：219 back 后若仍被读成 219（动画/识别抖动）→ 只 back 一次、
+        # 不连发 BACK（否则会把已在主页面 217 的误读成 219 而误退训练室 → 超时假失败）。
+        solver = self._lit_solver(lit=2)
+        solver.train_scene.side_effect = [
+            Scene.TRAIN_SKILL_SELECT,
+            Scene.TRAIN_SKILL_SELECT,  # back 后仍读到 219 → 不再 back
+            Scene.TRAIN_MAIN,  # 稳定回主页面 → 读倒计时/图标
+        ]
+        plan = make_plan()
+        with (
+            patch.object(mastery, "datetime", FixedDateTime),
+            patch("arknights_mower.utils.mastery_db.update_plan_status"),
+            patch("arknights_mower.utils.email.send_message"),
+            patch.object(mastery, "_arrange_support"),
+            patch.object(mastery, "_schedule_swap_if_needed", return_value=None),
+            patch.object(mastery, "_schedule_collect"),
+        ):
+            result = mastery._confirm_training_started(
+                solver, plan, START + timedelta(minutes=10)
+            )
+        self.assertEqual(result, "started")
+        solver.back.assert_called_once()
 
     def test_arrange_support_uses_step_level_route(self):
         # 近卫 level_1 路线：协助位=赤冬。专三计划专一步按当前步级安排协助位。
@@ -1576,6 +1826,139 @@ class TestAtTargetNotifyAndMaterialGate(unittest.TestCase):
         self.assertTrue(solver.back.called, "完成后应退出训练室")
 
 
+class TestStartWithReconciledRoom(unittest.TestCase):
+    """#93：dispatch 已由 reconcile_and_act 进房读完全部状态（room），开始流程直接复用——
+
+    不再重复 enter_room、不再开进驻详情浮窗重读槽位（消除重复进房与重复浮窗开关）。
+    room.train_slot 为空串时无法区分「真空」与「读浮窗失败」——重读一次兜底（读失败恢复
+    「空闲但训练位坐错人」换人校验、真空重读仍空无害）。
+    """
+
+    def setUp(self):
+        FixedDateTime.now_value = START
+
+    def _solver(self, scenes, slots=None):
+        solver = MagicMock()
+        it = iter(scenes)
+        solver.train_scene.side_effect = lambda: next(it, Scene.TRAIN_MAIN)
+        solver.read_time.return_value = None  # 无倒计时（空房）
+        solver.read_screen.return_value = "[测试干员]测试技能"
+        if slots is not None:
+            solver.get_agent_from_room.return_value = slots
+        solver.recog.w = 1920
+        solver.recog.h = 1080
+        solver.recog.update = MagicMock()
+        solver.recog.img = None  # 技能页档位读失败 → 保守退出（干净收尾）
+        solver.tasks = []
+        solver.task = None
+        return solver
+
+    def _run(self, solver, plan, room):
+        with (
+            patch.object(mastery, "datetime", FixedDateTime),
+            patch.object(mastery_reader, "datetime", FixedDateTime),
+            patch("arknights_mower.utils.mastery_db.update_plan_status") as upd,
+            patch("arknights_mower.utils.email.send_message"),
+        ):
+            mastery._start_new_training(solver, plan, room=room)
+        return solver, upd
+
+    def test_reuses_room_slot_skips_reentry_and_slot_read(self):
+        scenes = [
+            Scene.TRAIN_MAIN,  # 读倒计时(无) → 复用 room.train_slot（==计划干员，不换）→ continue
+            Scene.TRAIN_MAIN,  # 训练位已确认 → 点开技能选择页
+            Scene.TRAIN_SKILL_SELECT,  # 读档位(None) → 档位读取失败保守退出
+        ]
+        solver = self._solver(scenes)
+        room = mastery_reader.RoomState("empty", train_slot="测试干员")
+        plan = make_plan()
+        _, upd = self._run(solver, plan, room)
+
+        solver.enter_room.assert_not_called()
+        solver.get_agent_from_room.assert_not_called()
+        solver.choose_train.assert_not_called()
+        statuses = [c.args[1] for c in upd.call_args_list]
+        self.assertIn("idle", statuses, "档位读取失败 → 保持 idle 重排退出")
+
+    def test_wrong_room_train_slot_swaps_without_reentry(self):
+        # 真实流：choose_train 换完训练位后停在进驻详情浮窗（INFRA_DETAILS），循环里
+        # back() 关浮窗回 TRAIN_MAIN 再点技能——测试建模这个中间场景（#93 对抗 review）。
+        scenes = [
+            Scene.TRAIN_MAIN,  # 读倒计时(无) → 复用 room.train_slot=错误干员 → 换人
+            Scene.INFRA_DETAILS,  # choose_train 后浮窗开着 → 循环 back() 关闭
+            Scene.TRAIN_MAIN,  # 训练位已确认 → 点开技能选择页
+            Scene.TRAIN_SKILL_SELECT,  # 读档位(None) → 保守退出
+        ]
+        solver = self._solver(scenes)
+        room = mastery_reader.RoomState("empty", train_slot="错误干员")
+        plan = make_plan()
+        self._run(solver, plan, room)
+
+        solver.choose_train.assert_called_once_with(["Current", "测试干员"])
+        solver.enter_room.assert_not_called()
+        solver.get_agent_from_room.assert_not_called()
+
+    def test_unread_room_slots_fall_back_to_fresh_read(self):
+        # room.train_slot 空串（读浮窗失败 / 真空）无法区分 → 重读一次兜底：保持旧
+        # 「开始时刻第二次读」的换人校验，不因复用 room 静默丢掉。重读路径自己 back()
+        # 关浮窗，换人后停在 TRAIN_MAIN。
+        scenes = [
+            Scene.TRAIN_MAIN,  # 读倒计时(无) → room.train_slot=空 → 重读(错误干员) → 换人 → back 关浮窗
+            Scene.TRAIN_MAIN,  # 训练位已确认 → 点开技能选择页
+            Scene.TRAIN_SKILL_SELECT,  # 读档位(None) → 保守退出
+        ]
+        solver = self._solver(scenes, slots=[{"agent": ""}, {"agent": "错误干员"}])
+        room = mastery_reader.RoomState("empty")  # train_slot 空串 → 触发重读
+        plan = make_plan()
+        self._run(solver, plan, room)
+
+        solver.get_agent_from_room.assert_called()  # 空串 → 重读一次兜底
+        solver.choose_train.assert_called_once_with(["Current", "测试干员"])
+        solver.enter_room.assert_not_called()  # 仍不重复进房（room 非 None）
+
+    def test_collect_continue_room_reused_through_dispatch(self):
+        """#93 主场景接线：run_mastery_task → 真实 reconcile_and_act（mock 读房与对账）
+        → 真实 _start_new_training 复用 waiting_collect room 槽位（arrange_support=False）。"""
+        from arknights_mower.utils.scheduler_task import SchedulerTask
+
+        solver = self._solver(
+            [
+                Scene.TRAIN_MAIN,  # 读倒计时(无) → 复用 room.train_slot（==计划干员）→ continue
+                Scene.TRAIN_MAIN,  # 训练位已确认 → 点开技能选择页
+                Scene.TRAIN_SKILL_SELECT,  # 读档位(None) → 保守退出
+            ]
+        )
+        task = SchedulerTask(
+            time=datetime.now(),
+            task_type=TaskTypes.SKILL_UPGRADE,
+            meta_data="测试计划 收取",
+        )
+        task.plan_key = "1"
+        solver.task = task
+        plan = make_plan()
+        room = mastery_reader.RoomState("waiting_collect", train_slot="测试干员")
+        with (
+            patch.object(config_mod.conf, "enable_mastery", True),
+            patch("arknights_mower.utils.mastery_db.get_plan_by_id", return_value=plan),
+            patch.object(mastery_reader, "read_room_state", return_value=room),
+            patch(
+                "arknights_mower.utils.mastery_db.get_active_plan", return_value=None
+            ),
+            patch("arknights_mower.utils.mastery_db.get_all_plans", return_value=[]),
+            patch.object(mastery_reader, "_reconcile", return_value=(plan, False)),
+            patch.object(mastery, "datetime", FixedDateTime),
+            patch.object(mastery_reader, "datetime", FixedDateTime),
+            patch("arknights_mower.utils.mastery_db.update_plan_status") as upd,
+            patch("arknights_mower.utils.email.send_message"),
+        ):
+            mastery.run_mastery_task(solver)
+        solver.enter_room.assert_not_called()
+        solver.get_agent_from_room.assert_not_called()
+        solver.choose_train.assert_not_called()
+        statuses = [c.args[1] for c in upd.call_args_list]
+        self.assertIn("idle", statuses, "档位读取失败 → 保持 idle 重排退出")
+
+
 class TestRunMasteryTaskDispatch(unittest.TestCase):
     """#74 第3段（2026-08-14 用户拍板「都去掉」）：run_mastery_task 对任何带 plan_key 的
     SKILL_UPGRADE 任务都解析其指定计划为 scan_plan（空闲格是否开始由 _reconcile 按 idle
@@ -1603,17 +1986,18 @@ class TestRunMasteryTaskDispatch(unittest.TestCase):
         solver = self._solver()
         solver.task = self._plan_key_task("3")
         plan = make_plan(id=3)
+        room = mastery_reader.RoomState("empty", train_slot="测试干员")
         g.return_value = plan
         with (
             patch.object(config_mod.conf, "enable_mastery", True),
             patch.object(
-                mastery_reader, "reconcile_and_act", return_value=(plan, True)
+                mastery_reader, "reconcile_and_act", return_value=(plan, True, room)
             ) as ra,
             patch.object(mastery, "_start_new_training") as snt,
         ):
             mastery.run_mastery_task(solver)
         ra.assert_called_once_with(solver, scan_plan=plan)
-        snt.assert_called_once_with(solver, plan, arrange_support=True)
+        snt.assert_called_once_with(solver, plan, arrange_support=True, room=room)
 
     @patch("arknights_mower.utils.mastery_db.get_plan_by_id")
     def test_collect_task_also_resolves_scan_plan(self, g):
@@ -1629,17 +2013,18 @@ class TestRunMasteryTaskDispatch(unittest.TestCase):
         collect_task.plan_key = "1"
         solver.task = collect_task
         plan = make_plan()
+        room = mastery_reader.RoomState("empty", train_slot="测试干员")
         g.return_value = plan
         with (
             patch.object(config_mod.conf, "enable_mastery", True),
             patch.object(
-                mastery_reader, "reconcile_and_act", return_value=(plan, False)
+                mastery_reader, "reconcile_and_act", return_value=(plan, False, room)
             ) as ra,
             patch.object(mastery, "_start_new_training") as snt,
         ):
             mastery.run_mastery_task(solver)
         ra.assert_called_once_with(solver, scan_plan=plan)
-        snt.assert_called_once_with(solver, plan, arrange_support=False)
+        snt.assert_called_once_with(solver, plan, arrange_support=False, room=room)
 
     def test_recheck_task_passes_no_scan_plan(self):
         # plan_key=None（占用重检）→ 无指定计划 → scan_plan=None
@@ -1652,7 +2037,7 @@ class TestRunMasteryTaskDispatch(unittest.TestCase):
         with (
             patch.object(config_mod.conf, "enable_mastery", True),
             patch.object(
-                mastery_reader, "reconcile_and_act", return_value=(None, True)
+                mastery_reader, "reconcile_and_act", return_value=(None, True, None)
             ) as ra,
         ):
             mastery.run_mastery_task(solver)
@@ -1669,7 +2054,7 @@ class TestRunMasteryTaskDispatch(unittest.TestCase):
         with (
             patch.object(config_mod.conf, "enable_mastery", True),
             patch.object(
-                mastery_reader, "reconcile_and_act", return_value=(None, True)
+                mastery_reader, "reconcile_and_act", return_value=(None, True, None)
             ) as ra,
         ):
             mastery.run_mastery_task(solver)
@@ -1683,7 +2068,7 @@ class TestRunMasteryTaskDispatch(unittest.TestCase):
         with (
             patch.object(config_mod.conf, "enable_mastery", True),
             patch.object(
-                mastery_reader, "reconcile_and_act", return_value=(None, True)
+                mastery_reader, "reconcile_and_act", return_value=(None, True, None)
             ) as ra,
         ):
             mastery.run_mastery_task(solver)
@@ -1723,6 +2108,208 @@ class TestTrainingSlotsFloatingWindow(unittest.TestCase):
         solver.get_agent_from_room.return_value = [{"agent": "逻各斯"}]
         self.assertEqual(mastery._training_slots(solver), ("", ""))
         solver.back.assert_not_called()
+
+
+class TestRouteConfigSupportsFormat(unittest.TestCase):
+    """#91：get_route_config 兼容前端数组格式的自定义路线。
+
+    旧代码把 supports 当 {"level_N": {}} 字典读，数组上 "level_1" in parsed 恒 False →
+    自定义路线永远回退 DEFAULT_ROUTES（本次协助位失败直接根因：自定义特种路线
+    缄默德克萨斯 从未生效，实测 get_route_config('特种',1) = DEFAULT 罗宾）。
+    #91 修订：central_bonus（0/5）+ 缓冲统一从全局设置行读（默认 0/10），自定义与回退共用。
+    """
+
+    def _route(self, supports, profession="特种"):
+        return {
+            "profession": profession,
+            "supports": json.dumps(supports, ensure_ascii=False),
+            "is_default": 0,
+        }
+
+    def _settings(self, **overrides):
+        s = {"central_bonus": 0, "mastery_swap_buffer": 10}
+        s.update(overrides)
+        return s
+
+    def _config(self, profession, level, route_row, settings=None):
+        with (
+            patch("arknights_mower.utils.mastery_db.get_route", return_value=route_row),
+            patch(
+                "arknights_mower.utils.mastery_db.get_route_settings",
+                return_value=self._settings(**(settings or {})),
+            ),
+        ):
+            return mastery.get_route_config(profession, level)
+
+    def test_custom_array_takes_precedence_over_default(self):
+        # #91 回归锚点：自定义特种路线 level_1 = 缄默德克萨斯，不再回退 DEFAULT 罗宾
+        custom = self._route(
+            [
+                {
+                    "name": "缄默德克萨斯",
+                    "skill_level": 1,
+                    "efficiency": 30,
+                    "swap": False,
+                    "swap_name": "",
+                    "match": False,
+                }
+            ]
+        )
+        entry = self._config("特种", 1, custom)
+        self.assertEqual(entry["operator"], "缄默德克萨斯")
+        self.assertEqual(entry["efficiency"], 30)
+        self.assertIsNone(entry["swap_target"])
+        self.assertEqual(entry["central_bonus"], 0, "中枢加成缺省=0（#91 修订）")
+        self.assertEqual(entry["mastery_swap_buffer"], 10)
+
+    def test_central_bonus_from_settings(self):
+        # central_bonus 从全局设置行读（0/5），自定义与 DEFAULT 回退共用同一值
+        custom = self._route(
+            [
+                {
+                    "name": "缄默德克萨斯",
+                    "skill_level": 1,
+                    "efficiency": 30,
+                    "swap": True,
+                    "swap_name": "艾丽妮",
+                    "match": False,
+                }
+            ]
+        )
+        entry = self._config("特种", 1, custom, {"central_bonus": 5})
+        self.assertEqual(entry["central_bonus"], 5)
+        fallback = self._config("特种", 1, None, {"central_bonus": 5})
+        self.assertEqual(fallback["central_bonus"], 5, "DEFAULT 回退也用全局设置值")
+
+    def test_custom_array_matches_step_level(self):
+        custom = self._route(
+            [
+                {
+                    "name": "罗宾",
+                    "skill_level": 1,
+                    "efficiency": 75,
+                    "swap": True,
+                    "swap_name": "逻各斯",
+                    "match": "yes",
+                },
+                {
+                    "name": "缄默德克萨斯",
+                    "skill_level": 2,
+                    "efficiency": 80,
+                    "swap": True,
+                    "swap_name": "艾丽妮",
+                    "match": False,
+                },
+            ]
+        )
+        l1 = self._config("特种", 1, custom)
+        l2 = self._config("特种", 2, custom)
+        self.assertEqual(l1["operator"], "罗宾")
+        self.assertEqual(l1["job_match"], True, "match='yes' 字符串也应判 True")
+        self.assertEqual(l2["operator"], "缄默德克萨斯")
+        self.assertEqual(l2["swap_target"], "艾丽妮")
+
+    def test_custom_array_swap_false_ignores_swap_name(self):
+        custom = self._route(
+            [
+                {
+                    "name": "缄默德克萨斯",
+                    "skill_level": 1,
+                    "efficiency": 30,
+                    "swap": False,
+                    "swap_name": "艾丽妮",
+                    "match": False,
+                }
+            ]
+        )
+        entry = self._config("特种", 1, custom)
+        self.assertIsNone(entry["swap_target"], "swap=false 时 swap_name 不生效")
+
+    def test_custom_array_missing_level_falls_back_to_default(self):
+        custom = self._route(
+            [
+                {
+                    "name": "缄默德克萨斯",
+                    "skill_level": 1,
+                    "efficiency": 30,
+                    "swap": False,
+                    "swap_name": "",
+                    "match": False,
+                }
+            ]
+        )
+        entry = self._config("特种", 3, custom)
+        self.assertEqual(
+            entry["operator"], mastery.DEFAULT_ROUTES["特种"]["level_3"]["operator"]
+        )
+        self.assertIsNone(
+            entry["swap_target"], "回退默认 level_3 swap_target=None 保住铁律 7"
+        )
+
+    def test_custom_array_empty_falls_back_to_default(self):
+        entry = self._config("特种", 1, self._route([]))
+        self.assertEqual(
+            entry["operator"], mastery.DEFAULT_ROUTES["特种"]["level_1"]["operator"]
+        )
+
+    def test_custom_array_swap_true_empty_name_is_none(self):
+        # swap=true 但 swap_name 空 → swap_target=None（shape 契约：None=不换）；match='no' → False
+        custom = self._route(
+            [
+                {
+                    "name": "缄默德克萨斯",
+                    "skill_level": 1,
+                    "efficiency": 30,
+                    "swap": True,
+                    "swap_name": "",
+                    "match": "no",
+                }
+            ]
+        )
+        entry = self._config("特种", 1, custom)
+        self.assertIsNone(entry["swap_target"], "swap_name 空等同不换（铁律 7 语义）")
+        self.assertEqual(entry["job_match"], False)
+
+    def test_legacy_dict_still_works(self):
+        legacy = self._route(
+            {
+                "level_1": {
+                    "operator": "赤冬",
+                    "efficiency": 75,
+                    "job_match": True,
+                    "swap_target": "艾丽妮",
+                }
+            },
+            profession="近卫",
+        )
+        entry = self._config("近卫", 1, legacy)
+        self.assertEqual(entry["operator"], "赤冬")
+        self.assertEqual(entry["swap_target"], "艾丽妮")
+        self.assertEqual(entry["job_match"], True)
+
+    def test_wrapped_supports_array_still_parses(self):
+        # agent set_route 文档形态 {"supports": [...], "central_bonus": N}：数组仍按
+        # skill_level 解析，但 central_bonus 一律从全局设置行读（包装里的值不再生效）
+        wrapped = self._route(
+            {
+                "supports": [
+                    {
+                        "name": "缄默德克萨斯",
+                        "skill_level": 1,
+                        "efficiency": 30,
+                        "swap": True,
+                        "swap_name": "艾丽妮",
+                        "match": False,
+                    }
+                ],
+                "central_bonus": 7,
+            }
+        )
+        entry = self._config("特种", 1, wrapped, {"central_bonus": 0})
+        self.assertEqual(entry["operator"], "缄默德克萨斯")
+        self.assertEqual(
+            entry["central_bonus"], 0, "包装里 central_bonus=7 被忽略，读设置行 0"
+        )
 
 
 if __name__ == "__main__":

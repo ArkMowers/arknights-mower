@@ -74,6 +74,14 @@
         size="small"
         clearable
       />
+    </n-space>
+    <n-space style="margin-top: 4px" :size="8" align="center" wrap>
+      <n-select
+        v-model:value="idleFilter"
+        :options="idleFilterOptions"
+        size="small"
+        style="min-width: 100px"
+      />
       <n-checkbox v-model:checked="showOnlyPlanned">只看计划</n-checkbox>
       <n-checkbox v-model:checked="filterAchievable">材料充足</n-checkbox>
       <n-checkbox v-model:checked="decomposeT3">缺料拆解为T3</n-checkbox>
@@ -362,32 +370,34 @@
             <n-checkbox v-model:checked="routeSettings[prof].optimal">最优协助干员</n-checkbox>
             <n-checkbox v-model:checked="routeSettings[prof].half_off">有减半加成</n-checkbox>
           </div>
-          <n-divider />
-          <n-text depth="2">中枢干员加成</n-text>
-          <n-radio-group v-model:value="controlCenter" style="margin-top: 4px">
-            <n-space vertical>
-              <n-radio v-for="opt in controlCenterOptions" :key="opt.value" :value="opt.value">
-                {{ opt.label }}
-              </n-radio>
-            </n-space>
-          </n-radio-group>
-          <n-text v-if="controlCenterBonus > 0" depth="2" style="font-size: 12px; margin-top: 4px">
-            中枢加成: +{{ controlCenterBonus }}%
-          </n-text>
-          <n-divider />
-          <n-text depth="2">减半换人缓冲时间（分钟）</n-text>
-          <n-input-number
-            v-model:value="configStore.mastery_swap_buffer"
-            :min="0"
-            :max="60"
-            size="small"
-            style="width: 120px; margin-top: 4px"
-          />
-          <n-text depth="3" style="font-size: 11px; margin-top: 2px">
-            减半对象需在位时间 = 5小时 + 缓冲时间，缓冲越大越保守
-          </n-text>
         </n-tab-pane>
       </n-tabs>
+      <n-divider />
+      <n-text depth="2">中枢干员加成</n-text>
+      <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px">
+        <n-switch
+          v-model:value="masterySettings.central_bonus"
+          :checked-value="5"
+          :unchecked-value="0"
+        >
+          <template #checked>+5%</template>
+          <template #unchecked>无</template>
+        </n-switch>
+        <n-text depth="3" style="font-size: 11px">
+          阿斯卡纶 / 烛煌 / 斩业星熊 入驻控制中枢时训练速度 +5%
+        </n-text>
+      </div>
+      <n-text depth="2" style="margin-top: 10px">减半换人缓冲时间（分钟）</n-text>
+      <n-input-number
+        v-model:value="masterySettings.mastery_swap_buffer"
+        :min="0"
+        :max="60"
+        size="small"
+        style="width: 120px; margin-top: 4px"
+      />
+      <n-text depth="3" style="font-size: 11px; margin-top: 2px">
+        减半对象需在位时间 = 5小时 + 缓冲时间，缓冲越大越保守
+      </n-text>
       <template #footer>
         <n-space justify="end">
           <n-button @click="resetRoute" :disabled="routeSaving">恢复默认</n-button>
@@ -533,8 +543,6 @@ import {
   NText,
   NThing,
   NDynamicInput,
-  NRadio,
-  NRadioGroup,
   useMessage
 } from 'naive-ui'
 import { Settings, List } from '@vicons/carbon'
@@ -579,8 +587,7 @@ const professionName = (p) => profMap[p] || p
 const rarityOptions = [
   { label: '6★', value: 6 },
   { label: '5★', value: 5 },
-  { label: '4★', value: 4 },
-  { label: '3★', value: 3 }
+  { label: '4★', value: 4 }
 ]
 const professionOptions = profKeys.map((p) => ({ label: p, value: p }))
 
@@ -590,11 +597,17 @@ const filterProfession = ref([])
 const filterAchievable = ref(false)
 const showOnlyPlanned = ref(false)
 const decomposeT3 = ref(false)
+// 空闲状态三态：all=全部 idle=空闲 busy=非空闲
+const idleFilter = ref('all')
+const idleFilterOptions = [
+  { label: '全部', value: 'all' },
+  { label: '空闲', value: 'idle' },
+  { label: '非空闲', value: 'busy' }
+]
 const {
   fodder_operators: fodderOps,
   t5_operators: t5Ops,
-  book_operators: bookOps,
-  mastery_control_center: controlCenter
+  book_operators: bookOps
 } = storeToRefs(configStore)
 const workshopLoading = ref(false)
 const showWorkshopSettings = ref(false)
@@ -609,6 +622,8 @@ const workshopT3Summary = ref([])
 const emptyText = computed(() => {
   if (searchQuery.value || filterRarity.value.length || filterProfession.value.length)
     return '没有匹配的干员'
+  if (idleFilter.value === 'idle') return '没有空闲干员'
+  if (idleFilter.value === 'busy') return '没有非空闲干员'
   if (showOnlyPlanned.value) return '没有计划中的专精项'
   return '没有推荐项'
 })
@@ -971,13 +986,8 @@ const level_list = [
   { value: 2, label: '专二' },
   { value: 3, label: '专三' }
 ]
-const controlCenterOptions = [
-  { label: '无加成', value: 'none' },
-  { label: '阿斯卡纶 (+5%)', value: 'ascalon' },
-  { label: '烛煌 (+5%)', value: 'zhuhuang' },
-  { label: '斩业星熊 (+5%)', value: 'star_bear' }
-]
-const controlCenterBonus = computed(() => (controlCenter.value === 'none' ? 0 : 5))
+// 全局路线设置（#91 修订）：中枢加成（0/5）+ 换人缓冲时间，存路线配置设置行，不走 conf。
+const masterySettings = reactive({ central_bonus: 0, mastery_swap_buffer: 10 })
 
 const defaultsCache = ref(null)
 
@@ -985,7 +995,6 @@ const routeSettings = reactive(
   Object.fromEntries(profKeys.map((p) => [p, { supports: [], half_off: true }]))
 )
 let _autoSaveReady = false
-let _autoSaveTimer = null
 let _routeSaveChain = Promise.resolve()
 const _dirtyRouteProfessions = new Set()
 const routeSaving = ref(false)
@@ -1020,28 +1029,20 @@ function persistRouteSettings() {
   return savePromise
 }
 
-function scheduleRouteSave(profession) {
+// 编辑只改内存，持久化仅在「保存并关闭」触发（改错可关掉弹窗还原，不被自动保存覆盖）
+function markRouteDirty(profession) {
   if (!_autoSaveReady) return
   _dirtyRouteProfessions.add(profession)
-  if (_autoSaveTimer) clearTimeout(_autoSaveTimer)
-  _autoSaveTimer = setTimeout(() => {
-    _autoSaveTimer = null
-    persistRouteSettings().catch((e) => console.error('auto-save mastery routes failed', e))
-  }, 500)
 }
 
 function flushRouteSettings() {
-  if (_autoSaveTimer) {
-    clearTimeout(_autoSaveTimer)
-    _autoSaveTimer = null
-  }
   return persistRouteSettings()
 }
 
 for (const profession of profKeys) {
   watch(
     () => routeSettings[profession],
-    () => scheduleRouteSave(profession),
+    () => markRouteDirty(profession),
     { deep: true }
   )
 }
@@ -1077,7 +1078,6 @@ function applyRoute(d) {
       routeSettings[p].half_off = d[p].half_off !== undefined ? d[p].half_off : true
     }
   }
-  if (d.controlCenter) controlCenter.value = d.controlCenter
 }
 
 async function loadRoute() {
@@ -1085,14 +1085,14 @@ async function loadRoute() {
   const routes = r.data?.routes || []
   const backups = r.data?.backups || {}
   const routeDefaults = r.data?.defaults || {}
+  const settings = r.data?.settings || {}
+  masterySettings.central_bonus = settings.central_bonus ?? 0
+  masterySettings.mastery_swap_buffer = settings.mastery_swap_buffer ?? 10
   const merged = { _backups: backups }
   for (const rt of routes) {
     const parsed = parseMasteryRoute(rt)
     if (!parsed.profession) continue
     merged[parsed.profession] = parsed
-    if (parsed.legacyControlCenter && controlCenter.value === 'none') {
-      controlCenter.value = parsed.legacyControlCenter
-    }
   }
   merged._jsonDefaults = normalizeMasteryRouteDefaults(routeDefaults)
   // DB 未保存过此职业路线时，用默认配置兜底显示（不自动写库，编辑后由保存流程落库）
@@ -1124,9 +1124,23 @@ async function openSettings() {
   }
   showSettings.value = true
 }
+async function discardRouteChanges() {
+  // 关闭弹窗未保存：丢弃内存修改，从 DB 重载还原。
+  // _autoSaveReady 先置 false，避免还原过程（applyRoute 触发 watcher）被误标记 dirty。
+  _autoSaveReady = false
+  _dirtyRouteProfessions.clear()
+  try {
+    await loadRoute()
+  } catch (e) {
+    _autoSaveReady = true
+    throw e
+  }
+}
 watch(showSettings, (val) => {
-  if (!val && (_autoSaveTimer || _dirtyRouteProfessions.size)) {
-    flushRouteSettings().catch((e) => console.error('flush-save mastery routes failed', e))
+  if (!val && _dirtyRouteProfessions.size) {
+    discardRouteChanges()
+      .then(() => message.warning('专精路线修改未保存，已还原'))
+      .catch((e) => console.error('discard route changes failed', e))
   }
 })
 
@@ -1134,7 +1148,10 @@ async function saveRouteAndClose() {
   try {
     await Promise.all([
       flushRouteSettings(),
-      axios.post(`${import.meta.env.VITE_HTTP_URL}/conf`, configStore.build_config())
+      axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-route/settings`, {
+        central_bonus: masterySettings.central_bonus,
+        mastery_swap_buffer: masterySettings.mastery_swap_buffer
+      })
     ])
     showSettings.value = false
     message.success('专精路线设置已保存')
@@ -1144,7 +1161,7 @@ async function saveRouteAndClose() {
   }
 }
 
-async function resetRoute() {
+function resetRoute() {
   const p = settingsTab.value
   if (!p) return
   const def = defaultsCache.value
@@ -1161,21 +1178,60 @@ async function resetRoute() {
   routeSettings[p].half_off = true
   routeSettings[p].optimal = false
   _dirtyRouteProfessions.add(p)
-  try {
-    await flushRouteSettings()
-    message.success(`已恢复 ${p} 默认路线并保存`)
-  } catch (e) {
-    console.error(`resetRoute: failed to save ${p}`, e)
-    message.error('保存失败')
-  }
+  message.success(`已恢复 ${p} 默认路线（保存并关闭后生效）`)
 }
 
 // ─── 显示列表 ───
 const allOperatorList = ref([])
 
+// ─── 空闲干员筛选 ───
+// 空闲 = 不在排班表（主/副表槽位 + 候补 replacement）& 不在专精路线配置（协助位 name/换人 swap_name）
+// & 不在加工站工具人 & 不在宿舍黑名单。
+// 与「是否有专精计划」正交：空闲/非空闲只看基地占用，计划状态由「只看计划」管——
+// 否则空闲却有计划（可正常训练）的干员会和真正非空闲却有计划（错计划）的混在一起。
+// 排班由 App 启动时全局 load（router-view 以 loaded 门控，进入本页必然已加载）。
+const scheduledOperatorSet = computed(() => {
+  const busy = new Set()
+  const plans = [planStore.plan, ...(planStore.backup_plans || []).map((b) => b.plan)]
+  for (const p of plans) {
+    for (const facility in p || {}) {
+      for (const slot of p[facility]?.plans || []) {
+        for (const agent of [slot.agent, ...(slot.replacement || [])]) {
+          if (agent && agent !== 'Free' && agent !== 'Current') busy.add(agent)
+        }
+      }
+    }
+  }
+  return busy
+})
+const routeOperatorSet = computed(() => {
+  const busy = new Set()
+  for (const p of profKeys) {
+    for (const sup of routeSettings[p]?.supports || []) {
+      if (sup.name) busy.add(sup.name)
+      if (sup.swap_name) busy.add(sup.swap_name)
+    }
+  }
+  return busy
+})
+const workshopOperators = computed(() => [
+  ...(fodderOps.value || []),
+  ...(t5Ops.value || []),
+  ...(bookOps.value || [])
+])
+function isIdleOperator(op) {
+  if (scheduledOperatorSet.value.has(op.name)) return false
+  if (routeOperatorSet.value.has(op.name)) return false
+  if (workshopOperators.value.includes(op.name)) return false
+  if ((configStore.free_blacklist || []).includes(op.name)) return false
+  return true
+}
+
 const displayList = computed(() => {
   let list = store.recommendations
   if (showOnlyPlanned.value) list = list.filter((op) => hasPlannedSkill(op))
+  if (idleFilter.value === 'idle') list = list.filter((op) => isIdleOperator(op))
+  if (idleFilter.value === 'busy') list = list.filter((op) => !isIdleOperator(op))
   if (searchQuery.value.trim()) {
     const q = searchQuery.value.trim().toLowerCase()
     list = list.filter((op) => op.name.toLowerCase().includes(q))
@@ -1257,7 +1313,7 @@ function buildSupports(op) {
   const p = profMap[op.profession] || '近卫'
   const s = routeSettings[p]
   if (!s?.supports?.length) return []
-  const bonus = controlCenterBonus.value
+  const bonus = masterySettings.central_bonus || 0
   return s.supports.map((sup) => ({
     name: sup.name,
     swap_name: sup.swap ? sup.swap_name || sup.name : sup.name,
@@ -1302,6 +1358,14 @@ async function doAddTask() {
 onMounted(async () => {
   await refreshPlanFromServer()
   await Promise.all([loadOperators(), store.fetchRecommendations()])
+  // 空闲干员筛选需要路线配置：提前加载（defaultsCache 去重，openSettings 不再重复拉取）
+  if (!defaultsCache.value) {
+    try {
+      await loadRoute()
+    } catch (e) {
+      console.error('mount: loadRoute failed', e)
+    }
+  }
   allOperatorList.value = store.recommendations.map((op) => ({
     char_id: op.char_id,
     name: op.name,

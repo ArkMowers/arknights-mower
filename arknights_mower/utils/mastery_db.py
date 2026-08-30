@@ -1,3 +1,4 @@
+import json
 import os
 import sqlite3
 from contextlib import contextmanager
@@ -473,6 +474,61 @@ def save_route(
         logger.error(f"save_route failed: {e}")
 
 
+# 全局路线设置的保留职业行（#91 修订）：中枢加成 + 换人缓冲时间，存 supports JSON。
+# 归在「路线配置」里——DB 管理删「专精路线配置」会一起清掉（回默认）；get_all_routes 排除。
+_SETTINGS_PROFESSION = "__mastery_settings__"
+_SETTINGS_DEFAULTS = {"central_bonus": 0, "mastery_swap_buffer": 10}
+
+
+def get_route_settings(path: Optional[str] = None) -> dict:
+    """全局路线设置：central_bonus（0/5）+ mastery_swap_buffer（分钟）。
+
+    存 `mastery_route` 保留行（_SETTINGS_PROFESSION 的 supports JSON），缺行回默认
+    (0, 10)。不再走 conf（旧 `mastery_control_center`/`mastery_swap_buffer` 已废弃）。
+    """
+    defaults = dict(_SETTINGS_DEFAULTS)
+    try:
+        with _conn(path) as conn:
+            row = conn.execute(
+                "SELECT * FROM mastery_route WHERE profession=? AND is_default=0",
+                (_SETTINGS_PROFESSION,),
+            ).fetchone()
+            if row:
+                try:
+                    parsed = json.loads(row["supports"])
+                except (TypeError, ValueError):
+                    parsed = {}
+                if isinstance(parsed, dict):
+                    defaults.update({k: parsed[k] for k in defaults if k in parsed})
+    except Exception as e:
+        logger.error(f"get_route_settings failed: {e}")
+    return defaults
+
+
+def save_route_settings(
+    central_bonus: int = 0,
+    mastery_swap_buffer: int = 10,
+    path: Optional[str] = None,
+):
+    try:
+        payload = json.dumps(
+            {
+                "central_bonus": int(central_bonus),
+                "mastery_swap_buffer": int(mastery_swap_buffer),
+            },
+            ensure_ascii=False,
+        )
+        with _conn(path) as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO mastery_route "
+                "(profession, supports, is_default) VALUES (?, ?, 0)",
+                (_SETTINGS_PROFESSION, payload),
+            )
+            conn.commit()
+    except Exception as e:
+        logger.error(f"save_route_settings failed: {e}")
+
+
 def get_route(profession: str, path: Optional[str] = None) -> Optional[dict]:
     try:
         with _conn(path) as conn:
@@ -496,7 +552,8 @@ def get_all_routes(path: Optional[str] = None) -> list[dict]:
     try:
         with _conn(path) as conn:
             rows = conn.execute(
-                "SELECT * FROM mastery_route ORDER BY profession"
+                "SELECT * FROM mastery_route WHERE profession != ? ORDER BY profession",
+                (_SETTINGS_PROFESSION,),
             ).fetchall()
             return [dict(r) for r in rows]
     except Exception as e:

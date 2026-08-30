@@ -547,7 +547,7 @@ class TestReconcileRecoverSwap(unittest.TestCase):
         room = self._room(tier=2)
         with patch(
             "arknights_mower.solvers.mastery._schedule_swap_if_needed",
-            return_value=True,
+            return_value=NOW + timedelta(hours=4),
         ) as sched:
             reader._maybe_recover_swap(solver, plan, room)
         sched.assert_called_once_with(solver, plan, room.panel.countdown, 2)
@@ -607,7 +607,7 @@ class TestReconcileRecoverSwap(unittest.TestCase):
         room = self._room(tier=0)
         with patch(
             "arknights_mower.solvers.mastery._schedule_swap_if_needed",
-            return_value=False,
+            return_value=None,
         ) as sched:
             reader._maybe_recover_swap(solver, plan, room)
         sched.assert_called_once_with(solver, plan, room.panel.countdown, None)
@@ -680,7 +680,7 @@ class TestReconcileRecoverSwap(unittest.TestCase):
             ),
             patch(
                 "arknights_mower.solvers.mastery._schedule_swap_if_needed",
-                return_value=True,
+                return_value=NOW + timedelta(hours=4),
             ) as sched,
         ):
             result = reader._maybe_recover_swap(solver, plan, room)
@@ -1560,14 +1560,18 @@ class TestReconcileAndAct(unittest.TestCase):
     def test_returns_reconcile_plan_unchanged(self):
         solver = self._solver()
         plan = make_plan()
+        room = make_room("empty")
         with (
             self._enable(),
-            patch.object(reader, "read_room_state", return_value=make_room("empty")),
+            patch.object(reader, "read_room_state", return_value=room),
             patch.object(reader, "_reconcile", return_value=(plan, True)),
         ):
-            result, arrange_support = reader.reconcile_and_act(solver)
+            result, arrange_support, returned_room = reader.reconcile_and_act(solver)
         self.assertIs(result, plan, "对账返回的开始计划应原样透传给 dispatch 开始")
         self.assertTrue(arrange_support)
+        self.assertIs(
+            returned_room, room, "#93：已读房间状态应原样透传，供开始流程复用"
+        )
         solver.back.assert_not_called()
 
     def test_passes_scan_plan_to_reconcile(self):
@@ -1584,11 +1588,12 @@ class TestReconcileAndAct(unittest.TestCase):
             patch("arknights_mower.utils.mastery_db.get_all_plans", return_value=[]),
             patch.object(reader, "_reconcile", return_value=(scan_plan, True)) as rec,
         ):
-            result, arrange_support = reader.reconcile_and_act(
+            result, arrange_support, returned_room = reader.reconcile_and_act(
                 solver, scan_plan=scan_plan
             )
         rec.assert_called_once_with(solver, room, None, [], scan_plan=scan_plan)
         self.assertIs(result, scan_plan)
+        self.assertIs(returned_room, room)
 
 
 class TestCollectFlow(unittest.TestCase):
@@ -1733,7 +1738,7 @@ class TestGetTrainSceneFloatingWindow(unittest.TestCase):
         self.assertEqual(rec.get_train_scene(), Scene.TRAIN_MAIN)
 
     def test_room_detail_closed_returns_219(self):
-        # 验收"关掉后返回 217/219"：运行页（training_support 命中）也要正常识别
+        # 技能选择页（training_support 命中）也要正常识别
         rec = self._recog({"training_support"})
         self.assertEqual(rec.get_train_scene(), Scene.TRAIN_SKILL_SELECT)
 

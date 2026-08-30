@@ -30,8 +30,7 @@ test('parseMasteryRoute reads persisted columns and normalizes match values', ()
     profession: '近卫',
     supports: [{ name: '赤冬', match: 'yes' }],
     optimal: true,
-    half_off: false,
-    legacyControlCenter: null
+    half_off: false
   })
 })
 
@@ -50,7 +49,6 @@ test('parseMasteryRoute remains compatible with wrapped legacy settings', () => 
 
   assert.equal(route.optimal, true)
   assert.equal(route.half_off, false)
-  assert.equal(route.legacyControlCenter, 'ascalon')
 })
 
 test('normalizeMasteryRouteDefaults accepts the legacy DEFAULT_ROUTES object', () => {

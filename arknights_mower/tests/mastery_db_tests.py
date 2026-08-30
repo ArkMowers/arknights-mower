@@ -10,13 +10,16 @@ from arknights_mower.utils.mastery_db import (
     delete_plan,
     get_active_plan,
     get_all_plans,
+    get_all_routes,
     get_failed_plans,
     get_next_idle_plan,
     get_plan_by_id,
     get_route,
+    get_route_settings,
     insert_plan,
     is_operator_busy,
     save_route,
+    save_route_settings,
     should_notify,
     update_plan_priority,
     update_plan_status,
@@ -239,6 +242,37 @@ class TestMasteryDb(unittest.TestCase):
         self.assertEqual(route["supports"], "[]")
         self.assertEqual(route["optimal"], 1)
         self.assertEqual(route["half_off"], 0)
+
+    def test_route_settings_defaults(self):
+        # #91 修订：无设置行 → 中枢加成默认 0（不是 5）、缓冲默认 10
+        self.assertEqual(
+            get_route_settings(path=self.db_path),
+            {"central_bonus": 0, "mastery_swap_buffer": 10},
+        )
+
+    def test_route_settings_save_and_read(self):
+        save_route_settings(central_bonus=5, mastery_swap_buffer=15, path=self.db_path)
+        self.assertEqual(
+            get_route_settings(path=self.db_path),
+            {"central_bonus": 5, "mastery_swap_buffer": 15},
+        )
+        # 再存回 0 也生效
+        save_route_settings(central_bonus=0, mastery_swap_buffer=10, path=self.db_path)
+        self.assertEqual(
+            get_route_settings(path=self.db_path),
+            {"central_bonus": 0, "mastery_swap_buffer": 10},
+        )
+
+    def test_get_all_routes_excludes_settings_row(self):
+        # 设置行（__mastery_settings__）是全局配置，不该出现在职业路线列表里
+        save_route("近卫", '{"level_1": {"operator": "赤冬"}}', path=self.db_path)
+        save_route_settings(central_bonus=5, mastery_swap_buffer=15, path=self.db_path)
+        routes = get_all_routes(path=self.db_path)
+        self.assertEqual([r["profession"] for r in routes], ["近卫"])
+        self.assertEqual(
+            get_route("近卫", path=self.db_path)["supports"],
+            '{"level_1": {"operator": "赤冬"}}',
+        )
 
     def test_route_schema_migrates_existing_database(self):
         conn = sqlite3.connect(self.db_path)

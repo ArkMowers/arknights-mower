@@ -1,5 +1,6 @@
 import json
 from datetime import datetime, timedelta
+from typing import Optional
 
 from arknights_mower.solvers.mastery_reader import (
     RoomPanel,
@@ -200,16 +201,69 @@ PROF_MAP = {
 }
 
 
-def get_route_config(profession_cn: str, level: int) -> dict | None:
-    from arknights_mower.utils.mastery_db import get_route
+def _route_entry_from_array(entry: dict) -> dict:
+    """前端数组条目 → 路线入口。
 
+    #91：前端存自定义路线 supports 为 JSON 数组
+    [{name, skill_level, efficiency, swap, swap_name, match}, ...]，与后端消费的
+    {operator, efficiency, job_match, swap_target} 字段名不同。swap=false（或
+    swap_name 空）→ swap_target=None；match 兼容 bool 与 'yes'/'no' 字符串。
+    central_bonus / mastery_swap_buffer 由 get_route_config 统一从全局设置行填。
+    """
+    match = entry.get("match", False)
+    return {
+        "operator": entry.get("name", ""),
+        "efficiency": entry.get("efficiency", 60),
+        "job_match": match is True or match == "yes",
+        "swap_target": (entry.get("swap_name") or None) if entry.get("swap") else None,
+    }
+
+
+def _match_array_entry(entries: list, level: int) -> dict | None:
+    """数组里按 skill_level 找当前步级条目并转路线入口（裸数组/包装对象共用）。"""
+    for entry in entries:
+        if isinstance(entry, dict) and entry.get("skill_level") == level:
+            return _route_entry_from_array(entry)
+    return None
+
+
+def _route_entry_from_supports(parsed, level: int) -> dict | None:
+    """从 supports JSON 取当前步级（level_N）的路线入口。
+
+    #91 主因：旧代码把 supports 当 {"level_N": {}} 字典读，数组（前端实际产出）上
+    "level_1" in parsed 恒 False → 自定义路线永远回退 DEFAULT_ROUTES。现按三种形态
+    解析：数组（前端产出）、包装对象 {"supports": [...], ...}（agent set_route 文档
+    形态）、旧字典 {"level_N": {...}}。数组按 skill_level 匹配当前步级（#76 语义：
+    step_level = 当前步目标级，不加 1）。
+    """
+    if isinstance(parsed, list):
+        return _match_array_entry(parsed, level)
+    if not isinstance(parsed, dict):
+        return None
+    wrapped_supports = parsed.get("supports")
+    if isinstance(wrapped_supports, list):
+        return _match_array_entry(wrapped_supports, level)
+    level_key = f"level_{level}"
+    if level_key in parsed:
+        return dict(parsed[level_key])
+    return None
+
+
+def get_route_config(profession_cn: str, level: int) -> dict | None:
+    from arknights_mower.utils.mastery_db import get_route, get_route_settings
+
+    # #91 修订：central_bonus（0/5）+ 缓冲统一从全局设置行读（默认 0 / 10），自定义与
+    # DEFAULT_ROUTES 回退共用同一值——旧代码 hardcode 5、conf 值被忽略。
+    settings = get_route_settings()
     route_data = get_route(profession_cn)
     if route_data:
         parsed = json.loads(route_data["supports"])
-        level_key = f"level_{level}"
-        if level_key in parsed:
-            config_entry = dict(parsed[level_key])
-            config_entry["central_bonus"] = parsed.get("central_bonus", 5)
+        config_entry = _route_entry_from_supports(parsed, level)
+        if config_entry is not None:
+            config_entry.update(
+                central_bonus=settings["central_bonus"],
+                mastery_swap_buffer=settings["mastery_swap_buffer"],
+            )
             return config_entry
 
     default = DEFAULT_ROUTES.get(profession_cn)
@@ -217,7 +271,10 @@ def get_route_config(profession_cn: str, level: int) -> dict | None:
         entry = default.get(f"level_{level}")
         if entry:
             config_entry = dict(entry)
-            config_entry["central_bonus"] = 5
+            config_entry.update(
+                central_bonus=settings["central_bonus"],
+                mastery_swap_buffer=settings["mastery_swap_buffer"],
+            )
             return config_entry
     return None
 
@@ -241,6 +298,13 @@ def _plan_char_label(plan) -> str:
     需要 get_char_name 兜底。
     """
     return plan.get("char_name") or get_char_name(plan["char_id"])
+
+
+def _fmt_completion_time(dt: datetime) -> str:
+    """#90：邮件完成时间展示——当天 HH:MM，跨天带日期（防跨午夜歧义）。"""
+    if dt.date() == datetime.now().date():
+        return dt.strftime("%H:%M")
+    return dt.strftime("%m-%d %H:%M")
 
 
 def calc_swap_threshold(
@@ -324,9 +388,10 @@ def run_mastery_task(solver):
             scan_plan = None
 
     logger.debug("[mastery] 训练室动作 触发源=定时任务 动作=dispatch")
-    plan, arrange_support = reconcile_and_act(solver, scan_plan=scan_plan)
+    plan, arrange_support, room = reconcile_and_act(solver, scan_plan=scan_plan)
     if plan:
-        _start_new_training(solver, plan, arrange_support=arrange_support)
+        # #93：reconcile 已进房读完全部状态（room），开始流程直接复用，不再重复进房。
+        _start_new_training(solver, plan, arrange_support=arrange_support, room=room)
 
 
 def _training_slots(solver):
@@ -473,13 +538,16 @@ def _exit_occupied(solver, plan, countdown, trigger="训练室占用"):
     solver.back()
 
 
-def _start_new_training(solver, plan, arrange_support=True):
+def _start_new_training(solver, plan, arrange_support=True, room=None):
     """开始新一级训练：IDLE → ARRANGING → TRAINING
 
     #16 决议：进房先读倒计时定分支，不盲点技能按钮。
     #15 决议：全程纯墙钟 5 分钟 deadline，各分支短处理、超时走统一退出路径。
     #63 减半守卫：跨「收取→下一次开始」边界不动协助位（保留驻留/激活），
     调用方在「收取→下一次开始」边界传 arrange_support=False（收取后不重新安排协助位）。
+    #93：room 是 dispatch 的 reconcile_and_act 已读的房间状态（截图权威，含槽位）——
+    开始流程直接复用，不再重复 enter_room、不再开进驻详情浮窗重读槽位（消除重复进房
+    与重复浮窗开关）。room=None（冷启动/直接调用）保持旧行为：进房 + 现读槽位。
     """
     from arknights_mower.solvers.mastery_reader import _read_slot_mastery_tier
     from arknights_mower.utils.mastery_db import update_plan_status
@@ -501,10 +569,11 @@ def _start_new_training(solver, plan, arrange_support=True):
     checked_slot = False
     checked_target = False
     # #72：数星星前的身份/归属确认。只在 TRAIN_MAIN 训练位校验通过并主动点开技能
-    # 选择页时置位；未置位就出现 219（运行页被误判成 219 等）→ 219 分支保守退出。
+    # 选择页时置位；未置位就出现 219（重启停在技能选择页 / 手动进入）→ 219 分支保守退出。
     identity_confirmed = False
 
-    solver.enter_room("train")
+    if room is None:
+        solver.enter_room("train")
 
     while True:
         scene = solver.train_scene()
@@ -535,10 +604,15 @@ def _start_new_training(solver, plan, arrange_support=True):
                 _exit_occupied(solver, plan, execute_time)
                 return
             if not checked_slot:
-                # 无倒计时：检查训练位是否坐错人（#16 决议）。
-                # get_agent_from_room 会打开房间详情浮层，读完后关掉再回主界面。
-                support_slot, trainer_slot = _training_slots(solver)
                 checked_slot = True
+                # #93：复用 reconcile 读房已读的槽位（省重复浮窗开关）。槽位读到空串时
+                # 无法区分「真空」与「读浮窗失败」——重读一次兜底（读失败恢复换人校验、
+                # 真空重读仍空无害）。冷启动（room=None）保持旧行为现读。
+                if room is not None and room.train_slot:
+                    trainer_slot = room.train_slot
+                else:
+                    trainer_slot = _training_slots(solver)[1]
+                    solver.back()  # 关闭 _training_slots 打开的房间详情浮层
                 char_name = _plan_char_label(plan)
                 if trainer_slot and trainer_slot != char_name:
                     # 无倒计时 + 训练位坐错人 → 换人；失败统一以 choose_train 异常为判据
@@ -549,18 +623,17 @@ def _start_new_training(solver, plan, arrange_support=True):
                         logger.warning(f"换人失败: {e}")
                         _exit_failed(solver, plan, "训练位被占用且换人失败")
                         return
-                solver.back()  # 关闭房间详情浮层，回到训练室主界面
                 continue
             # 训练位已确认（空/已是计划干员）→ 身份确认成立，点开技能选择页。
             # #72：数星星前唯一合法的身份/归属确认点——经训练位校验后主动进入技能
-            # 选择页；运行页被误判成 219（不经此路径）在 219 分支直接保守退出。
+            # 选择页；未置位就出现 219 在 219 分支直接保守退出。
             identity_confirmed = True
             solver.tap((solver.recog.w * 0.05, solver.recog.h * 0.95), interval=0.5)
         elif scene == Scene.TRAIN_SKILL_SELECT:
             if not identity_confirmed:
                 # #72：真技能选择页只有 SKILL_SLOT_PIPS 星星可读，没有倒计时、读不到
                 # `[干员名]技能名`——不能在 219 上读主面板区域（COUNTDOWN/PANEL）当占用
-                # 探针（那只在"运行页被误判成 219"时才成立）。未经过 TRAIN_MAIN 训练位
+                # 探针（219 上没有主面板，读了也读不到）。未经过 TRAIN_MAIN 训练位
                 # 校验就出现 219 → 数星星前无法确认干员身份，星星可能误读非零值
                 # （误开训练/误判完成，#70 只挡 None）→ 保守保持 idle 重排退出。
                 logger.info(
@@ -643,14 +716,24 @@ def _confirm_training_started(solver, plan, deadline, arrange_support=True):
     from arknights_mower.utils.email import send_message
     from arknights_mower.utils.mastery_db import update_plan_status
 
+    backed_from_skill_select = False
     while datetime.now() < deadline:
         scene = solver.train_scene()
-        # #53 实机：确认升级后训练已开始，但训练运行页会被识别成 TRAIN_SKILL_SELECT
-        # （页面含协助位 training_support、不匹配 train_main）。#72 页面模型：这里出现
-        # 的 219 是「运行页被误判」（物理上仍是主页面，倒计时/面板可读）——读倒计时是确认
-        # 训练开始的正当读取，不是探针；真技能选择页无倒计时，读不到返回 now，
-        # >now+30min 判定必为假 → 继续等（训练未开始），直到 deadline 走统一失败出口。
-        if scene in (Scene.TRAIN_MAIN, Scene.TRAIN_SKILL_SELECT):
+        # #89：219 是技能选择页，读不出倒计时。确认升级后游戏自动退回 219，必须先
+        # back 一次回训练室主页面（217）再读倒计时（§16.10 第 3 步「再退出一次」）。
+        # 旧注释「运行页被误判成 219」写反语义：219 左下角是协助位天赋文本，会被 OCR
+        # 当倒计时反复读（卡 ~15 秒），甚至偶然读出类时间文本 → 假确认开始。
+        # 只允许 back 一次：back 后再读到 219 是动画/识别抖动，继续 back 会把已在
+        # 主页面（217）的误读成 219 而误退训练室（超时假失败）。
+        if scene == Scene.TRAIN_SKILL_SELECT:
+            if not backed_from_skill_select:
+                backed_from_skill_select = True
+                logger.info(
+                    f"{_plan_char_label(plan)} 确认后回到技能选择页，退出回主页面再读倒计时"
+                )
+                solver.back()
+            continue
+        if scene == Scene.TRAIN_MAIN:
             execute_time = _read_train_countdown(solver)
             if execute_time and execute_time > datetime.now() + timedelta(minutes=30):
                 # #69/B2 归属校验：写入 training 前，面板干员/技能必须与计划一致。
@@ -680,34 +763,59 @@ def _confirm_training_started(solver, plan, deadline, arrange_support=True):
                     expires_at=expires_at,
                     swap_frozen=0,
                 )
-                remaining_hours = (execute_time - datetime.now()).total_seconds() / 3600
-                msg = (
-                    f"{_plan_char_label(plan)} 技能{plan['skill_index'] + 1} "
-                    f"专{plan['target_level']} 开始训练，预计 {remaining_hours:.1f} 小时后完成"
-                )
-                logger.info(msg)
-                send_message(msg, level="INFO")
-
                 # #76：主面板专精图标在训练中 = 当前步目标级（亮 N 颗=专N）。确认开始
                 # 后先读图标作当前步级，传给协助位/换人安排（专三计划专一/专二步用
                 # level_1/2 路线减半换人）；同值复用作收取任务目标档位（原 tier）。
-                # 运行页会被识别成 TRAIN_SKILL_SELECT（#53/#72：含 training_support、
-                # 不匹配 train_main），但物理上仍是主页面——此分支已确认倒计时有效，
-                # 217/219 都在主页面，图标可读。
+                # #89：走到这里已 back 回 217 主页面，图标可读。
                 step_level = None
-                if scene in (Scene.TRAIN_MAIN, Scene.TRAIN_SKILL_SELECT):
-                    try:
-                        step_level = _count_lit_mastery_icons(solver)
-                    except Exception:
-                        step_level = None
+                try:
+                    step_level = _count_lit_mastery_icons(solver)
+                except Exception:
+                    step_level = None
                 if arrange_support:
                     _arrange_support(solver, plan, step_level)
+                # #90 §16.10 第7步「以当前读取为准」：协助位安排（换效率干员）后倒计时
+                # 会变，重读一次——换人/收取/邮件完成时间都以此为准；读不到回退安排前值。
+                fresh_execute_time = _re_read_train_countdown(solver) or execute_time
                 # §16.10：排了换人任务则不排收取；等 SWAP_SUPPORT 完成后重读倒计时再排收取。
-                swap_scheduled = _schedule_swap_if_needed(
-                    solver, plan, execute_time, step_level
+                # #90：返回 SWAP 任务触发时刻（None=不换人），邮件完成时间据此分两情况。
+                swap_time = _schedule_swap_if_needed(
+                    solver, plan, fresh_execute_time, step_level
                 )
-                if not swap_scheduled:
-                    _schedule_collect(solver, plan, execute_time, tier=step_level)
+                # #90：DB 里的 expires_at 也要用换协助位后的最终倒计时（安排前的倒计时
+                # 基于旧效率、不是最终完成时间）；同值跳过 DB 写（#82 同款）。
+                if fresh_execute_time != execute_time:
+                    update_plan_status(
+                        plan["id"],
+                        "training",
+                        expires_at=fresh_execute_time.strftime("%Y-%m-%d %H:%M:%S"),
+                    )
+                # #90：邮件移到协助位安排 + 换人判定之后发（此时效率/倒计时已确定）；
+                # 真名 = plan["skill_name"]；档位 = 目标级（step_level，不加1），读不到
+                # 显示「专精等级未知」（不回退 target_level）；完成时间两情况——无减半 =
+                # 重读倒计时、有减半 = 换人任务时刻 + (300 + 缓冲) 分钟，附换入干员名。
+                tier_text = f"专{step_level}" if step_level else "专精等级未知"
+                if swap_time is not None:
+                    route = _get_plan_route(plan, step_level)
+                    swap_target = route.get("swap_target") if route else None
+                    buffer = route.get("mastery_swap_buffer", 10) if route else 10
+                    completion = swap_time + timedelta(minutes=300 + buffer)
+                    swap_clause = (
+                        f"，将于 {_fmt_completion_time(swap_time)} 换入{swap_target}"
+                        if swap_target
+                        else ""
+                    )
+                else:
+                    completion = fresh_execute_time
+                    swap_clause = ""
+                msg = (
+                    f"{_plan_char_label(plan)} {plan['skill_name']} {tier_text} "
+                    f"开始训练{swap_clause}，预计 {_fmt_completion_time(completion)} 完成"
+                )
+                logger.info(msg)
+                send_message(msg, level="INFO")
+                if swap_time is None:
+                    _schedule_collect(solver, plan, fresh_execute_time, tier=step_level)
                 return "started"
         elif scene == Scene.TRAIN_SKILL_UPGRADE_ERROR:
             msg = f"{_plan_char_label(plan)} 技能{plan['skill_index'] + 1} 专{plan['target_level']} 材料不足"
@@ -746,25 +854,48 @@ def _arrange_support(solver, plan, step_level=None):
         logger.debug(f"[mastery] 协助位判定 id={plan['id']} 结果=失败 err={e}")
 
 
-def _schedule_swap_if_needed(solver, plan, execute_time, step_level=None) -> bool:
+def _re_read_train_countdown(solver) -> Optional[datetime]:
+    """#90 §16.10 第7步「以当前读取为准」：协助位安排后重读倒计时。
+
+    choose_train 换协助位后停在进驻详情浮窗（INFRA_DETAILS），先关浮窗回主页面再读
+    （back() 内部 sleep→recog.update 已重置场景缓存，与 _swap_still_worthwhile/
+    _schedule_collect_after_swap 同款关浮窗读法）；不在训练室主页面 / 读失败 → None
+    （调用方回退安排前倒计时）。
+    """
+    try:
+        scene = solver.train_scene()
+        if scene == Scene.INFRA_DETAILS:
+            solver.back()
+            scene = solver.train_scene()
+        if scene != Scene.TRAIN_MAIN:
+            return None
+        return _read_train_countdown(solver)
+    except Exception:
+        return None
+
+
+def _schedule_swap_if_needed(
+    solver, plan, execute_time, step_level=None
+) -> Optional[datetime]:
     """训练开始后计算是否需要换人，需要则插入 SWAP_SUPPORT 任务。
 
-    §16.10：返回是否排了换人任务——排了则不排收取（等 SWAP_SUPPORT 完成后重读
-    倒计时再排收取）。立即换人（remaining ≤ threshold）也排任务（修旧 silent-drop）。
+    §16.10：返回 SWAP 任务触发时刻（None=不排换人）——排了换人则不排收取（等
+    SWAP_SUPPORT 完成后重读倒计时再排收取）。立即换人（remaining ≤ threshold）也排
+    任务（修旧 silent-drop）。#90 邮件「有减半」的完成时间 = 返回时刻 + (300+缓冲) 分。
     #76：路线按当前步目标级加载（step_level）；「专三不换人」由 level_3 路线
     swap_target=None 保证（铁律 7，用户 08-15 定案删显式 ==3 守卫、靠路线数据）。
     """
     from arknights_mower.utils import config
 
     if config.conf.assistant_follows_schedule:
-        return False
+        return None
 
     route = _get_plan_route(plan, step_level)
     if not route or not route.get("swap_target"):
-        return False
+        return None
 
-    central_bonus = route.get("central_bonus", 5)
-    buffer = config.conf.mastery_swap_buffer
+    central_bonus = route.get("central_bonus", 0)
+    buffer = route.get("mastery_swap_buffer", 10)
 
     remaining = (execute_time - datetime.now()).total_seconds() / 60
     should_swap, threshold = calc_swap_threshold(
@@ -785,10 +916,10 @@ def _schedule_swap_if_needed(solver, plan, execute_time, step_level=None) -> boo
     elif remaining > threshold:
         swap_delay_seconds = (remaining - threshold) * 60
         if swap_delay_seconds <= 0:
-            return False
+            return None
         swap_time = datetime.now() + timedelta(seconds=swap_delay_seconds)
     else:
-        return False
+        return None
 
     from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
@@ -804,7 +935,7 @@ def _schedule_swap_if_needed(solver, plan, execute_time, step_level=None) -> boo
     task.plan_key = str(plan["id"])
     solver.tasks.append(task)
     logger.info(f"已安排换人任务，预计 {swap_time.strftime('%H:%M:%S')} 执行")
-    return True
+    return swap_time
 
 
 def run_swap_support(solver):
@@ -1018,7 +1149,7 @@ def _swap_worthwhileness(remaining_minutes, route) -> bool:
     与 calc_swap_threshold 的 real_time_after_swap 守卫一致；供 run_swap_support
     纠错/换人前用当前倒计时判定（#80：纠错不触发不该发生的减半换人）。
     """
-    central_bonus = route.get("central_bonus", 5)
+    central_bonus = route.get("central_bonus", 0)
     swap_total = 100 + 5 + (30 if route.get("job_match") else 0) + central_bonus
     current_total = 100 + route["efficiency"] + 5 + central_bonus
     real_time_after_swap = remaining_minutes * current_total / swap_total

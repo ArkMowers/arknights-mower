@@ -749,7 +749,7 @@ def _maybe_recover_swap(solver, plan, room) -> bool:
             # 已减半（协助位已是 swap_target）→ 不再排换人，调用方排收取
             return False
 
-    if _schedule_swap_if_needed(solver, plan, countdown, step_level):
+    if _schedule_swap_if_needed(solver, plan, countdown, step_level) is not None:
         logger.info(f"[mastery] #77 重启恢复：补排换人任务 id={plan['id']}")
         return True
     return False
@@ -997,9 +997,11 @@ def _next_idle_to_start(solver):
 def reconcile_and_act(solver, scan_plan=None):
     """共享读取器主入口：进房读全部 + 状态矩阵对账执行。
 
-    返回 (start_plan, arrange_support)：
+    返回 (start_plan, arrange_support, room)：
     - start_plan：需要开始训练的计划（长动作由 SKILL_UPGRADE dispatch 执行），无则 None；
-    - arrange_support：False 表示是「收取→下一次开始」边界（减半守卫：不重排协助位）。
+    - arrange_support：False 表示是「收取→下一次开始」边界（减半守卫：不重排协助位）；
+    - room：本次进房读取的 RoomState（截图权威）。dispatch 把它传给 _start_new_training，
+      开始流程直接复用已读的槽位/面板，不再重复进房、重复开浮窗（#93）。
     一次进房做完全部动作；无开始计划时保证离开训练室。
 
     scan_plan：任务 plan_key 指定的开始计划（#74 第3段）——任何带 plan_key 的
@@ -1011,7 +1013,7 @@ def reconcile_and_act(solver, scan_plan=None):
     from arknights_mower.utils.mastery_db import get_active_plan, get_all_plans
 
     if not config.conf.enable_mastery:
-        return None, True
+        return None, True, None
     room = read_room_state(solver)
     active = get_active_plan()
     plans = get_all_plans()
@@ -1024,7 +1026,7 @@ def reconcile_and_act(solver, scan_plan=None):
                 solver.back()
         except Exception:
             pass
-    return plan, arrange_support
+    return plan, arrange_support, room
 
 
 def _reconcile(

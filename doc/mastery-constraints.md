@@ -148,7 +148,9 @@
 ## 7. 减半换人（协助位）
 
 ### 触发点（三条，都要守卫）
-1. 训练确认开始后：`_schedule_swap_if_needed` 计算，需要时排 `SWAP_SUPPORT` 任务。
+1. 训练确认开始后：`_schedule_swap_if_needed` 计算，需要时排 `SWAP_SUPPORT` 任务并
+   返回其触发时刻（#90：None=不换人；开始训练邮件「有减半」的完成时间 = 触发时刻 +
+   `300 + 换人缓冲` 分钟，缓冲值见 §7 路线配置的全局设置行）。
 2. `SWAP_SUPPORT` dispatch：`run_swap_support` 执行换人。
 3. **#77 重启恢复补排（2026-08-15）**：`_reconcile_training` training×一致 时
    `_maybe_recover_swap` 补排丢失的 SWAP_SUPPORT（短动作，不碰房间、不退出，铁律 4）。
@@ -189,6 +191,8 @@
 
 ### 路线配置（`_get_plan_route` → `get_route_config`）
 - 查找链：自定义路线（`is_default=0`）→ 默认路线（`is_default=1`）→ 硬编码 `DEFAULT_ROUTES`；None = 不安排协助位 / 不换人。（TASK-04 / RTE-01）
+- **#91（2026-08-16）自定义路线 `supports` 存 JSON 数组**：前端 `buildMasteryRoutePayload`（ui/src/masteryRoute.js）产出 `[{name, skill_level, efficiency, swap, swap_name, match}, ...]`，`get_route_config` 按 `skill_level` 匹配当前步级（旧代码按 `{"level_N":{}}` 字典读、数组恒回退 DEFAULT——自定义路线从未生效的根因）。兼容三种形态：数组、包装对象 `{"supports":[...], "central_bonus":N}`（agent `set_route` 文档形态）、旧字典 `{"level_N":{...}}`；数组条目映射 `name→operator`、`match(bool/'yes'/'no')→job_match`、`swap+swap_name→swap_target`（swap=false 或 swap_name 空 → None）。level_3 若在自定义路线里填了 swap_target 仍会打破铁律 7（数据驱动，用户负责）。
+- **#91 修订（2026-08-16）中枢加成 + 换人缓冲进路线配置全局设置行，不再存 conf**：`central_bonus`（0/5，**默认 0**——无中枢 buff 不假设 +5%）与 `mastery_swap_buffer`（分钟，**默认 10**）存 `mastery_route` 保留行 `__mastery_settings__`（supports JSON），`get_route_config` 统一从 `get_route_settings()` 读并注入自定义/回退两条路径——**改一处全职业生效**，且归在「路线配置」里（DB 管理删「专精路线配置」会一起清掉、回默认）。`conf.py` 的 `mastery_control_center`/`mastery_swap_buffer` 已删（旧 conf.yml 残留字段被 pydantic 忽略）。前端路线设置弹窗：中枢加成改**单个开关**（阿斯卡纶/烛煌/斩业星熊 +5% 提示）+ 缓冲输入，modal 级（全职业共用）。API：`GET/POST /mastery-route/settings`；`get_all_routes` 排除设置行。换人公式 `central_bonus` 默认从 5 改 0。
 - **#76（2026-08-15）路线按「当前步目标级」加载**：`_get_plan_route(plan, step_level)` 用 step_level（确认后/换人前进房读主面板专精图标 = 当前步目标级，亮 N 颗=专N），step_level 缺省/读失败回退 `plan["target_level"]`（=旧行为，保守）。专三计划 专一→专二→专三 三步分别用 level_1/2/3 路线：专一/专二步正常减半换人，专三步由 level_3 swap_target=None 挡住（铁律 7）。三个消费点：`_arrange_support` / `_schedule_swap_if_needed`（确认开始后，`_confirm_training_started` 内读图标传参）、`run_swap_support`（SWAP 派发，进房读图标）。
 - `DEFAULT_ROUTES` 按 8 职业 × level_1..3 键控，每条必带 operator/efficiency/job_match/swap_target（swap_target=None 表示该级不换）。（RTE-02）
 
@@ -222,7 +226,7 @@ idx1 在 `select_targets` 里时，先跑 `train_slot_locked`（截图权威）�
   - **关**：`run_mastery_task`、`run_swap_support`、`reconcile_and_act` 全部直接返回；扫描派发入队（`_dispatch_scan_start_tasks`）也被 gate；排班内联 `reconcile_short` 不运行。
   - **留**：N 小时仓库扫描钩子（`retry_failed_plans` + `auto_schedule_mastery_tasks` + `compute_workshop_config`）照跑。
   - **且**：排班永不触碰锁定训练位（L0/L1 freeze/skip）**不受开关影响**，必须保持。
-- 相关配置：`assistant_follows_schedule`（默认 False）、`mastery_swap_buffer`（默认 10）。
+- 相关配置：`assistant_follows_schedule`（默认 False）。中枢加成（0/5）与换人缓冲时间已迁到路线配置全局设置行（§7 #91 修订），不再在 conf。
 - ✅ **2026-08-14 定案并已实现**（#73 §16.11）：OFF = 自动收取/开始/换人/保护/通知全停；排班照常，**保留「被占用就不硬塞」防卡检查**（即上一条「排班永不写锁定训练位」，防排班硬写训练中训练位卡超时饿死其它任务）。实现：`_compute_protected` 在 OFF 时恒返回 False（保护全停）、`reconcile_and_act`/`run_mastery_task`/`run_swap_support` 直接返回，`reconcile_short` 受 gate 的 `enable_mastery` 门控。
 
 ## 10. 技能名规范
@@ -297,9 +301,11 @@ API 只增删计划与调优先级，**不得直写 status**（状态由执行�
 ### 像素/坐标待实机校准
 - 专精图标亮灯计数（主面板 `MASTERY_ICON_PIPS`）已从"按宽度 3 列分槽"改为**逐框判亮**：三颗星 12×12 框（专一顶/专二右下/专三左下，1080p 实测校准），复用 `_box_is_lit`（`PIP_BRIGHTNESS=150`、`PIP_LIT_RATIO=0.45`、`PIP_INSET=2`，已实机校准）。旧 `_count_lit_from_region`/`MASTERY_ICON_BRIGHTNESS`/`MASTERY_ICON_LIT_RATIO` 已删。（C-39）
 - **「已到target检测」已启用**：`SKILL_SLOT_PIPS`（技能选择页，每技能 3 颗星坐标，点亮顺序 顶→右下→左下：专一顶/专二右下/专三左下）已按实机坐标填入；`_read_slot_mastery_tier` 逐框判亮计数（阈值同上）。读失败（无此技能/无截图/异常）→ None，#70 起调用方**保守处理**：保持 idle 重排退出，**绝不盲点技能行开始**（档位不可读 = 无法确认是否已到 target，可能重训已完成的档位）；档位读到 0（明确低于 target）才正常开始。（C-30 / #70）
-- **#72 页面模型**：219（TRAIN_SKILL_SELECT）只读得到 `SKILL_SLOT_PIPS` 星星，无倒计时、读不到主面板 `[干员名]技能名`——**219 分支不再读主面板区域（COUNTDOWN/PANEL）当占用探针**。`_start_new_training` 用 `identity_confirmed` 标志做数星星前的身份确认：只在 TRAIN_MAIN 训练位校验通过并主动点开技能选择页时置位；未置位就出现 219（运行页被误判成 219 等）→ 保守 idle 重排退出（重排到 now+2min 重检，不读倒计时——即便误判运行页倒计时可读也不读，符合验收 2；下次 dispatch 正确判为 TRAIN_MAIN 时按「倒计时+2min」收敛），不数星星、不点技能行。（C-30 / #72）
-- **`_confirm_training_started` 的 219 是「运行页被误判」**（物理上仍是主页面，倒计时/面板可读）——那里读倒计时是确认训练开始的正当读取（#53 实机），非探针；真技能选择页无倒计时 → 读不到返回 now → 继续等直到 deadline 走统一失败出口。（C-30 / #72）
+- **#72 页面模型**：219（TRAIN_SKILL_SELECT）只读得到 `SKILL_SLOT_PIPS` 星星，无倒计时、读不到主面板 `[干员名]技能名`——**219 分支不再读主面板区域（COUNTDOWN/PANEL）当占用探针**。`_start_new_training` 用 `identity_confirmed` 标志做数星星前的身份确认：只在 TRAIN_MAIN 训练位校验通过并主动点开技能选择页时置位；未置位就出现 219（重启停在技能选择页/手动进入）→ 保守 idle 重排退出（重排到 now+2min 重检，不读倒计时/不数星星、不点技能行——219 读不到主面板/倒计时，无法确认星星归属；下次 dispatch 正确判为 TRAIN_MAIN 时按「倒计时+2min」收敛）。（C-30 / #72）
+- **#89 `_confirm_training_started` 的 219 = 真技能选择页（读不出倒计时）**：确认升级后游戏自动退回 219，须先 `back()` 一次回训练室主页面（217）再读倒计时（§16.10 第 3 步「再退出一次」）。旧表述「运行页被误判成 219」写反语义——219 左下角是协助位天赋文本，会被 OCR 当倒计时反复读（卡 ~15 秒），甚至偶然读出类时间文本 → 假确认开始。（C-30 / #89）
 - `_tap_finish_mark` 兜底坐标 `(0.05w,0.95h)` 实机疑似打不中（#63）；`_tap_collect_confirm` 兜底 `(0.5w,0.85h)` 未验证；模板优先路径未实机验证。（C-35）
+- **#92 换协助位坐标（2026-08-16 已修）**：`choose_train` 在训练室主页面开进驻信息浮窗的旧坐标 `(0.25w,0.95h)`=(480,1026) 落在左下角技能/进度面板、点出技能详情浮窗（Scene -1 空转 7s 后出房重进）——改 `_open_check_in_detail` 用 `arrange_check_in` 模板（屏幕左侧 ~(101,441)）开（`base_schedule.py`，INFRA_DETAILS 浮窗未开与 TRAIN_MAIN 两分支共用；换人语义=主页带进驻信息浮窗右侧换）。
+- **#93 训练室开始流程收敛（2026-08-16 已修）**：dispatch 的 `reconcile_and_act` 返回已读的 `RoomState`（`(plan, arrange_support, room)`），`run_mastery_task` 传给 `_start_new_training`——开始流程复用 reconcile 已读的槽位，不再重复 `enter_room`、不再 `_training_slots` 重开进驻浮窗读槽位（消除双进房 + 一次重复浮窗开关；浮窗 4→3：reconcile 保护读槽位 + choose_train 换协助位扫描/确认为必需）。**槽位复用**：`room.train_slot` 非空直接复用；读到空串无法区分「真空」与「读浮窗失败」→ 重读一次兜底（读失败恢复「空闲但训练位坐错人」换人校验、真空重读仍空无害）。注：TRAIN_FINISH=220 只靠主动点左下角完成标记（`skill_collect_confirm`）才进得去，进房必是 217（`train_main`），练完未收也是 217 + `training_completed` 模板照常读槽位。**技能选择页进 2 次保留为残留**：保护深读（§16.5 逻各斯/艾丽妮空房判专一/专二）与开始流程自身的技能页进入（数星星 + 点技能行开始）语义上都需要——合并需把保护深读的逐技能档位透传到开始流程、且仅 train_slot==计划干员 时有效，收益仅限该场景、over-engineering（用户「最简实现」取向）。**未做 #92 已拒绝的「调用方先开浮窗」大重构**（choose_train 换协助位的两次浮窗开关为换人必需，保持现状）。
 - `TRAIN_MAIN` 区分「空」与「刚完成」仅靠 `training_completed` 模板；模板/OCR 漏判会误分类房间、可能误触发重置。（open_risks）
 
 ### 行为/契约风险
@@ -455,7 +461,9 @@ python -m ruff check arknights_mower/solvers/ arknights_mower/utils/ arknights_m
 4. 打开进驻详情读协助位。
 5. 按「当前等级+1」路线配置（= 当前步目标级；#76 2026-08-15：`_get_plan_route(plan, step_level)` 按 step_level 加载，不再用整体 target_level——专三计划专一/专二步用 level_1/2 路线减半换人）比对，非配置干员 → 换协助位。
 6. 换人后回到进驻详情浮窗 → 关浮窗回主界面。
-7. 重读左下角倒计时+干员名+技能名+图标，**以当前读取为准**。
+7. 重读左下角倒计时+干员名+技能名+图标，**以当前读取为准**（✅ #90 已实现：协助位
+   安排后 `_re_read_train_countdown` 重读倒计时，换人判定/收取/`expires_at`/开始训练
+   邮件完成时间都以重读值为准；读失败回退安排前值）。
 8. 判断是否创建中途换人任务（减半）：是 → 排换人任务（路线 swap_target + 效率 + buffer + 倒计时，`calc_swap_threshold`）且**不排收取**，等 `SWAP_SUPPORT` 完成后重读倒计时再排收取；否（当前步路线无 swap_target，如专三）→ 直接排收取任务。
 
 ### 16.11 enable_mastery OFF（2026-08-14 定案）
@@ -463,3 +471,24 @@ python -m ruff check arknights_mower/solvers/ arknights_mower/utils/ arknights_m
 - 自动收取 / 开始训练 / 换人 / 保护 / 通知 → 全停。
 - 排班照常排训练室，**保留「被占用就不硬塞」防卡检查**（#59 gate，铁律 11 不变：排班永不写锁定训练位）——防排班硬写训练中的训练位卡到超时饿死其它任务。
 - 与现状 §9 一致；本次定案补明确「防卡检查保留」语义。
+
+### 16.12 开始训练邮件（#90，2026-08-16）
+
+每级训练确认开始后发一封 INFO 邮件（`_confirm_training_started`，mastery.py）。改文案/时机前先读：
+- **时机**：协助位安排（`_arrange_support`）之后、`_schedule_swap_if_needed` 判定之后才发
+  （§16.10 第7步重读倒计时后，此时效率/倒计时已确定）。旧发送点在确认倒计时处、协助位安排之前。
+- **档位 = 目标级** = 主界面左下角专精图标读数（`step_level`，亮 N 颗=专N，**不加 1**）；
+  读不到显示「专精等级未知」（**不回退** `target_level`）。litzones/技能页星星 = 当前级、
+  +1 才是目标级，是另一种来源。
+- **真名**：`plan["skill_name"]`（如「二技能·破坏与滋养」），不用 `skill_index+1`。
+- **完成时间两情况**：
+  - 无减半换人 → 用重读的倒计时（`_re_read_train_countdown` 结果，读失败回退安排前值）；
+  - 有减半换人 → SWAP_SUPPORT 任务触发时刻 + `(300 + mastery_swap_buffer)` 分钟
+    （UI 文案「减半对象需在位时间 = 5小时 + 缓冲时间」；触发时刻 = remaining 降到
+    `calc_swap_threshold` 阈值时，`_schedule_swap_if_needed` 的返回值），邮件附
+    「将于 {触发时刻} 换入{路线 swap_target 干员}」（swap_target 读不到则省略该子句）。
+- **`expires_at` 也用换协助位后的最终倒计时**：确认时先写安排前的倒计时（SM-03），
+  重读后若与安排前不同则刷新 DB（同值跳过写，#82 同款）——安排前的倒计时基于旧效率，
+  不是最终完成时间。
+- 日志 INFO 用同一 msg 字符串（一起修正）。
+

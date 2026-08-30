@@ -11,7 +11,9 @@ from arknights_mower.utils.mastery_db import (
     get_all_plans,
     get_all_routes,
     get_failed_plans,
+    get_route_settings,
     save_route,
+    save_route_settings,
     update_plan_priority,
 )
 from arknights_mower.utils.mastery_recommendation import get_skill_data
@@ -21,6 +23,7 @@ class Routes:
     PLAN = "/mastery-plan"
     PLAN_ORDER = "/mastery-plan/order"
     ROUTE = "/mastery-route"
+    ROUTE_SETTINGS = "/mastery-route/settings"
     HISTORY = "/mastery-history"
 
 
@@ -192,7 +195,11 @@ class MasteryRouteView(MethodView):
         from arknights_mower.solvers.mastery import DEFAULT_ROUTES
 
         routes = get_all_routes()
-        return {"routes": routes, "defaults": DEFAULT_ROUTES}
+        return {
+            "routes": routes,
+            "defaults": DEFAULT_ROUTES,
+            "settings": get_route_settings(),
+        }
 
     def post(self):
         data = request.json or {}
@@ -212,6 +219,18 @@ class MasteryRouteView(MethodView):
         return {"status": "ok"}
 
 
+class MasteryRouteSettingsView(MethodView):
+    decorators = [_require_token]
+
+    def post(self):
+        data = request.json or {}
+        save_route_settings(
+            central_bonus=int(data.get("central_bonus", 0)),
+            mastery_swap_buffer=int(data.get("mastery_swap_buffer", 10)),
+        )
+        return {"status": "ok"}
+
+
 class MasteryHistoryView(MethodView):
     decorators = [_require_token]
 
@@ -226,6 +245,10 @@ mastery_bp.add_url_rule(
 )
 mastery_bp.add_url_rule(
     Routes.ROUTE, view_func=MasteryRouteView.as_view("mastery_route")
+)
+mastery_bp.add_url_rule(
+    Routes.ROUTE_SETTINGS,
+    view_func=MasteryRouteSettingsView.as_view("mastery_route_settings"),
 )
 mastery_bp.add_url_rule(
     Routes.HISTORY, view_func=MasteryHistoryView.as_view("mastery_history")

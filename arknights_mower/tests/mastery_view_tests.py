@@ -33,6 +33,39 @@ class TestMasteryRouteView(unittest.TestCase):
             half_off=False,
         )
 
+    @patch("arknights_mower.views.mastery.get_route_settings")
+    @patch("arknights_mower.views.mastery.get_all_routes")
+    def test_route_get_includes_settings(self, routes_mock, settings_mock):
+        # #91 修订：GET /mastery-route 带全局设置（中枢加成 + 换人缓冲），前端一个开关读它
+        routes_mock.return_value = []
+        settings_mock.return_value = {"central_bonus": 5, "mastery_swap_buffer": 15}
+        response = self.client.get("/mastery-route")
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(
+            data["settings"], {"central_bonus": 5, "mastery_swap_buffer": 15}
+        )
+        self.assertEqual(data["routes"], [])
+
+    @patch("arknights_mower.views.mastery.save_route_settings")
+    def test_route_settings_post_forwards_values(self, save_mock):
+        response = self.client.post(
+            "/mastery-route/settings",
+            json={"central_bonus": 5, "mastery_swap_buffer": 15},
+        )
+        self.assertEqual(response.status_code, 200)
+        save_mock.assert_called_once_with(central_bonus=5, mastery_swap_buffer=15)
+
+    @patch("arknights_mower.views.mastery.save_route_settings")
+    def test_route_settings_post_keeps_zero_buffer(self, save_mock):
+        # review 修复：显式 buffer=0 合法（UI min=0），不得被 or 10 吞成 10
+        response = self.client.post(
+            "/mastery-route/settings",
+            json={"central_bonus": 0, "mastery_swap_buffer": 0},
+        )
+        self.assertEqual(response.status_code, 200)
+        save_mock.assert_called_once_with(central_bonus=0, mastery_swap_buffer=0)
+
 
 class TestMasteryPlanView(unittest.TestCase):
     def setUp(self):

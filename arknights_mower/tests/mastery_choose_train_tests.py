@@ -1,4 +1,5 @@
 import sys
+import types
 import unittest
 from unittest.mock import MagicMock
 
@@ -153,6 +154,116 @@ class TestChooseTrainD4LockSkip(unittest.TestCase):
         )
         choose_train(solver, ["Current", "若叶睦"])
         solver.choose_train_ope.assert_called_once_with("若叶睦")
+
+
+class TestChooseTrainOpensCheckInDetail(unittest.TestCase):
+    """#92 换协助位坐标：训练室主页面（TRAIN_MAIN/INFRA_DETAILS-no-room_detail）
+    开进驻信息浮窗必须用 arrange_check_in 位置，不能用旧死坐标 (0.25w, 0.95h)。
+
+    旧代码 tap((0.25w, 0.95h))=(480,1026) 在训练室落在左下角技能/进度面板 → 点出
+    技能详情浮窗（非进驻信息浮窗）→ Scene -1 空转 7s → 出房重进。正确入口与
+    turn_on_room_detail 同源：find("arrange_check_in")（屏幕左侧 ~(101,441)）。
+    """
+
+    def _make_solver(self, scenes, scan_results, locked=False):
+        """fake solver：脚本化场景 + 分次返回槽位扫描。find 侧状态化——room_detail
+        在 arrange_check_in 被点过一次前视为浮窗未开（这正是 #92 的触发前提）。
+        """
+        solver = MagicMock()
+        solver.scene.side_effect = list(scenes)
+        solver.get_agent_from_room.side_effect = list(scan_results)
+        state = {"detail_open": False}
+
+        def fake_find(res, *args, **kwargs):
+            if res == "training_completed":
+                return None
+            if res == "arrange_check_in":
+                # 屏幕左侧进驻按钮（真实识别约 (65,384)-(139,452)）
+                return ((80, 380), (140, 460))
+            if res == "room_detail":
+                # 浮窗没点开之前找不到；点过 arrange_check_in 后视为已开
+                return True if state["detail_open"] else None
+            return True
+
+        def fake_tap(pos, *args, **kwargs):
+            if pos == ((80, 380), (140, 460)):
+                state["detail_open"] = True
+
+        solver.find.side_effect = fake_find
+        solver.tap.side_effect = fake_tap
+        # solver 是 MagicMock，self._open_check_in_detail 会自动 mock 成空方法——
+        # 绑定真实方法（#92 新增的 `_open_check_in_detail` 走 find/tap/sleep）。
+        solver._open_check_in_detail = types.MethodType(
+            BaseSchedulerSolver._open_check_in_detail, solver
+        )
+        solver.train_scene.return_value = Scene.TRAIN_MAIN
+        solver.read_time.return_value = 7200 if locked else None
+        solver.recog.w = 1920
+        solver.recog.h = 1080
+        solver.tasks = []
+        solver.task = None
+        return solver
+
+    def test_train_main_taps_arrange_check_in(self):
+        """TRAIN_MAIN 分支：点 arrange_check_in 位置开进驻信息浮窗，不再点 (0.25w,0.95h)。"""
+        solver = self._make_solver(
+            scenes=[
+                Scene.TRAIN_MAIN,
+                Scene.INFRA_DETAILS,
+                Scene.INFRA_ARRANGE_ORDER,
+                Scene.INFRA_DETAILS,
+            ],
+            scan_results=[
+                [{"agent": "褐果"}, {"agent": "桃金娘"}],
+                [{"agent": "夜莺"}, {"agent": "桃金娘"}],
+            ],
+        )
+        choose_train(solver, ["夜莺", "Current"])
+
+        def _taps():
+            return [c.args[0] for c in solver.tap.call_args_list]
+
+        # 必须点过 arrange_check_in 位置
+        self.assertTrue(
+            any(call == ((80, 380), (140, 460)) for call in _taps()),
+            "TRAIN_MAIN 分支应点 arrange_check_in 开进驻信息浮窗",
+        )
+        # 绝不能再点旧死坐标 (0.25w, 0.95h) = (480, 1026)
+        self.assertFalse(
+            any(call == (480, 1026) for call in _taps()),
+            "不得再点 (0.25w, 0.95h) 死坐标",
+        )
+        solver.choose_agent.assert_called_once_with(["夜莺"], "train", True)
+
+    def test_infra_details_no_room_detail_taps_arrange_check_in(self):
+        """INFRA_DETAILS 但浮窗未开分支（#92 实机路径：general get_scene 标 205、
+        room_detail 找不到）：同样点 arrange_check_in 而非死坐标。"""
+        solver = self._make_solver(
+            scenes=[
+                Scene.INFRA_DETAILS,
+                Scene.INFRA_DETAILS,
+                Scene.INFRA_ARRANGE_ORDER,
+                Scene.INFRA_DETAILS,
+            ],
+            scan_results=[
+                [{"agent": "褐果"}, {"agent": "桃金娘"}],
+                [{"agent": "夜莺"}, {"agent": "桃金娘"}],
+            ],
+        )
+        choose_train(solver, ["夜莺", "Current"])
+
+        def _taps():
+            return [c.args[0] for c in solver.tap.call_args_list]
+
+        self.assertTrue(
+            any(call == ((80, 380), (140, 460)) for call in _taps()),
+            "INFRA_DETAILS 浮窗未开分支应点 arrange_check_in",
+        )
+        self.assertFalse(
+            any(call == (480, 1026) for call in _taps()),
+            "不得再点 (0.25w, 0.95h) 死坐标",
+        )
+        solver.choose_agent.assert_called_once_with(["夜莺"], "train", True)
 
 
 if __name__ == "__main__":

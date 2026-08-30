@@ -101,8 +101,6 @@ export const useConfigStore = defineStore('config', () => {
   const refresh_backup_plan_after_mood = ref(false)
   const assistant_follows_schedule = ref(false)
   const enable_mastery = ref(true)
-  const mastery_swap_buffer = ref(10)
-  const mastery_control_center = ref('none')
   const sign_in = ref({ enable: true })
   const droidcast = ref({})
   const mumu12IPC = ref(false)
@@ -343,8 +341,6 @@ export const useConfigStore = defineStore('config', () => {
     refresh_backup_plan_after_mood.value = response.data.refresh_backup_plan_after_mood ?? false
     assistant_follows_schedule.value = response.data.assistant_follows_schedule
     enable_mastery.value = response.data.enable_mastery ?? true
-    mastery_swap_buffer.value = response.data.mastery_swap_buffer ?? 10
-    mastery_control_center.value = response.data.mastery_control_center ?? 'none'
     sign_in.value = response.data.sign_in
     droidcast.value = response.data.droidcast
     mumu12IPC.value = response.data.mumu12IPC
@@ -459,8 +455,6 @@ export const useConfigStore = defineStore('config', () => {
       refresh_backup_plan_after_mood: refresh_backup_plan_after_mood.value,
       assistant_follows_schedule: assistant_follows_schedule.value,
       enable_mastery: enable_mastery.value,
-      mastery_swap_buffer: mastery_swap_buffer.value,
-      mastery_control_center: mastery_control_center.value,
       sign_in: sign_in.value,
       droidcast: droidcast.value,
       mumu12IPC: mumu12IPC.value,
@@ -605,8 +599,6 @@ export const useConfigStore = defineStore('config', () => {
     refresh_backup_plan_after_mood,
     assistant_follows_schedule,
     enable_mastery,
-    mastery_swap_buffer,
-    mastery_control_center,
     sign_in,
     droidcast,
     mumu12IPC,

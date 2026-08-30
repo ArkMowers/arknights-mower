@@ -332,10 +332,7 @@ class RIICPart(ConfModel):
     "协助位跟随排班（专精时协助位不固定，由排班系统管理）"
     enable_mastery: bool = True
     "全自动专精全局开关：OFF 时禁用全部训练室动作/通知/守卫，仅保留仓库材料扫描"
-    mastery_swap_buffer: int = 10
-    "减半换人缓冲时间（分钟）"
-    mastery_control_center: str = "none"
-    "专精训练中枢干员加成"
+    # 中枢加成（0/5）与换人缓冲时间已迁到路线配置全局设置行（#91 修订），不再存 conf
 
 
 class SimulatorPart(ConfModel):

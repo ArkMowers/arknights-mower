@@ -48,7 +48,12 @@ def list_plans(status_filter: str = ""):
 
 
 def set_route(profession: str, supports_json: str):
-    """Save a user-customized mastery route for a profession."""
+    """Save a user-customized mastery route for a profession.
+
+    supports_json 为该职业路线的 supports 数组（[{name, skill_level, efficiency,
+    swap, swap_name, match}, ...]）或含 supports 的包装对象；中枢加成/换人缓冲是全局
+    设置（POST /mastery-route/settings），不在路线 JSON 里。
+    """
     save_route(profession, supports_json, is_default=0)
     return f"已保存 {profession} 路线的专精路线"
 
@@ -127,7 +132,7 @@ set_route_tool_def = {
                 },
                 "supports_json": {
                     "type": "string",
-                    "description": "包含 supports/controlCenter 的完整 JSON 配置",
+                    "description": "该职业路线的 supports JSON 数组 [{name, skill_level, efficiency, swap, swap_name, match}]",
                 },
             },
             "required": ["profession", "supports_json"],
