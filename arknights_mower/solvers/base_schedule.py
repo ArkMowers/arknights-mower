@@ -1813,17 +1813,27 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             (int(self.recog.w * 815 / 2496), int(self.recog.h * 710 / 1404)),
         )
 
+    def _wait_drone_interface(self, interval=0.5):
+        """#85：等待进入无人机界面（出现 制造站/贸易站 加速按钮）。
+
+        5 处副本抽出的单一 helper：点击坐标/重试上限统一，调用方只传重试节奏。
+        """
+        error_count = 0
+        while (
+            self.find("factory_accelerate") is None
+            and self.find("bill_accelerate") is None
+        ):
+            if error_count > 5:
+                raise Exception("未成功进入无人机界面")
+            self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=interval)
+            error_count += 1
+
     def get_run_order_time(self, room):
         logger.info("基建：读取插拔时间")
         # 点击进入该房间
         self.enter_room(room)
         # 进入房间详情
-        error_count = 0
-        while self.find("bill_accelerate") is None:
-            if error_count > 5:
-                raise Exception("未成功进入无人机界面")
-            self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=1)
-            error_count += 1
+        self._wait_drone_interface(interval=1)
         execute_time = self.double_read_time(
             self._run_order_time_region(),
             use_digit_reader=True,
@@ -2226,7 +2236,6 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
             return
 
     def adjust_order_time(self, accelerate, room):
-        error_count = 0
         action_required_task = scheduling(self.tasks)
         # logger.error(f"action_required_task:{action_required_task}")
         logger.debug(f"room:{room}")
@@ -2258,11 +2267,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 if not self.waiting_solver():
                     return None
 
-            while self.find("bill_accelerate") is None:
-                if error_count > 5:
-                    raise Exception("未成功进入订单界面")
-                self.tap((self.recog.w // 20, self.recog.h * 19 // 20), interval=1)
-                error_count += 1
+            self._wait_drone_interface(interval=1)
 
             _time = self.double_read_time(
                 (
@@ -2303,15 +2308,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
         self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3)
         # 关闭掉房间总览
-        error_count = 0
-        while (
-            self.find("factory_accelerate") is None
-            and self.find("bill_accelerate") is None
-        ):
-            if error_count > 5:
-                raise Exception("未成功进入无人机界面")
-            self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=3)
-            error_count += 1
+        self._wait_drone_interface(interval=3)
 
         accelerate = self.find("factory_accelerate")
         if accelerate:
@@ -3162,15 +3159,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         return _current_room
 
     def get_order_remaining_time(self):
-        error_count = 0
-        while (
-            self.find("factory_accelerate") is None
-            and self.find("bill_accelerate") is None
-        ):
-            if error_count > 5:
-                raise Exception("未成功进入无人机界面")
-            self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=0.5)
-            error_count += 1
+        self._wait_drone_interface()
         # 订单剩余时间
         execute_time = self.double_read_time(
             self._run_order_time_region(),
@@ -3503,15 +3492,7 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 self.drone(room, not_customize=True)
             else:
                 # 葛朗台跑单模式
-                error_count = 0
-                while (
-                    self.find("factory_accelerate") is None
-                    and self.find("bill_accelerate") is None
-                ):
-                    if error_count > 5:
-                        raise Exception("未成功进入无人机界面")
-                    self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=0.5)
-                    error_count += 1
+                self._wait_drone_interface()
                 # 订单剩余时间
                 execute_time = self.double_read_time(
                     self._run_order_time_region(),
