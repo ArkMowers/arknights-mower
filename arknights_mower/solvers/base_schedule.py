@@ -1575,10 +1575,12 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         logger.debug(f"当前理想休息人数是{self.ideal_resting_count}")
         # #59：训练室干员跳过休息规划改为「DB 有没有 active 计划」，
         # 不再依赖队列里的 SKILL_UPGRADE（重启后队列可能没补回来 → 失真）。
+        # #109：再挂 enable_mastery 门——OFF 时恒 False（残留 active DB 计划
+        # 不得让训练室干员永不 SHIFT_OFF 耗光心情，§9 OFF 语义）。
         try:
             from arknights_mower.utils.mastery_db import get_active_plan
 
-            has_active_mastery = get_active_plan() is not None
+            has_active_mastery = config.conf.enable_mastery and get_active_plan() is not None
         except Exception:
             has_active_mastery = False
         _replacement = []

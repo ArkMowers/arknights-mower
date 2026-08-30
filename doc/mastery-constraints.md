@@ -62,7 +62,7 @@
 3. **一次进房做完全部**：读全部状态 + 做全部动作，不拆成两次进房。（#61/#63）
 4. **开始训练（长动作）只由 `SKILL_UPGRADE` dispatch（`run_mastery_task`）执行**；排班路径 / `reconcile_short` 只做短动作（核实/帮收/重置/对账），**永不开始训练、永不退出房间**（退出由调用方 gate 负责）。（#61/#63）
 5. **协助位只动在训练确认开始之后**；确认开始之前不得改协助位。（#16 §8）
-6. **减半守卫**：跨「收取 → 下一次开始」边界**不动协助位**；收集级联、已到target完成级联必须传 `arrange_support=False`。（#63）
+6. **协助位安排无守卫例外（2026-08-17 #103 删减半守卫）**：路线 operator 每次开始照常安排，**跨「收取 → 下一次开始」边界也不例外**——`arrange_support` 恒 True，收集级联不再传 False；「专三不换减半对象」由路线数据保证（level_3 路线 `swap_target=None`，见铁律 7），不靠「不动协助位」。（#63 → #103；详见 §7 C-15）
 7. **专三（当前步）永不换人**（调度侧与执行侧都要挡）：由 level_3 路线 `swap_target=None` 保证（#76 2026-08-15 用户定案删显式 `target_level==3` 守卫、靠路线数据；自定义路线若给专三填 swap_target 会打破该保证）。
 8. **通知只三类、各至多一次**：① blocked、② fake_reset、③ m3_collect，用 `mastery_notify` 表去重。（#61）
 9. **ARRANGING 超时/失败必须置 `failed`**（不得置 `idle`，否则 infra 主循环每轮重派 idle 刷屏）；**不得在 ARRANGING 内重试**，重试只走仓库扫描 `retry_failed_plans()`。（#15/#19）
@@ -237,7 +237,7 @@
 idx1 在 `select_targets` 里时，先跑 `train_slot_locked`（截图权威）判锁定，锁定则丢弃 idx1，避免 2 分钟超时空转；**若 idx1 是唯一待换槽位（调用方明确要换训练位，如 `_swap_into_wrong_slot`）则抛异常**（#69/B3：换人失败不得静默 return，否则流程误以为换人成功继续点错干员开始）。详情浮层开着时先关详情读倒计时再重开，防动画中误退房。（C-10 / CS-04 / #69）
 
 ### `resting()` 用 DB active，不用队列
-`resting()` 跳过训练室干员的休息规划，依据 `get_active_plan()`（重启后队列可能为空，队列失真不影响休息规划）。（C-27）
+`resting()` 跳过训练室干员的休息规划，依据 `get_active_plan()`（重启后队列可能为空，队列失真不影响休息规划），且**只在 `enable_mastery=True` 时跳过**（**#109**：OFF 恒放行休息，残留 active 计划不得把训练室干员耗到心情尽；§9 OFF 清单）。（C-27）
 
 ### 槽位约定（固定）
 `get_agent_from_room('train')` scan[0] = 上排 = 协助位，scan[1] = 下排 = 训练位；`choose_train` idx0 → `choose_agent`，idx1 → `choose_train_ope`。（CS-01/CS-05）
@@ -250,8 +250,8 @@ idx1 在 `select_targets` 里时，先跑 `train_slot_locked`（截图权威）�
 
 ## 9. 全局开关 `enable_mastery`
 
-- 默认 `True`（`conf.py:331`）。OFF 语义边界（conf.py:332 注释原文：仅保留仓库材料扫描）：
-  - **关**：`run_mastery_task`、`run_swap_support`、`reconcile_and_act` 全部直接返回；扫描派发入队（`_dispatch_scan_start_tasks`）也被 gate；排班内联 `reconcile_short` 不运行。
+- 默认 `True`（`conf.py:333`）。OFF 语义边界（conf.py:332 注释原文：仅保留仓库材料扫描）：
+  - **关**：`run_mastery_task`、`run_swap_support`、`reconcile_and_act` 全部直接返回；扫描派发入队（`_dispatch_scan_start_tasks`）也被 gate；排班内联 `reconcile_short` 不运行；排班 `resting()` 不再因 active DB 计划跳过训练室干员休息规划（**#109**，OFF 恒放行休息）。
   - **留**：N 小时仓库扫描钩子（`retry_failed_plans` + `auto_schedule_mastery_tasks` + `compute_workshop_config`）照跑。
   - **且**：排班永不触碰锁定训练位（L0/L1 freeze/skip）**不受开关影响**，必须保持。
 - 相关配置：`assistant_follows_schedule`（默认 False）。中枢加成（0/5）与换人缓冲时间已迁到路线配置全局设置行（§7 #91 修订），不再在 conf。
@@ -352,7 +352,7 @@ API 只增删计划与调优先级，**不得直写 status**（状态由执行�
 - 读倒计时失败返回 `now` 会把 `TRAIN_MAIN` 分类为空（靠模板补）。
 - **#72 残留边缘**：TRAIN_MAIN 倒计时 OCR 失败 + 训练位恰为计划干员（DB 过期，实际在训练）→ 训练位校验通过、点开该干员真实技能页数星星。这是旧代码同样存在的边缘（旧 219 守卫在真技能页上同样读不到倒计时/面板，`identity_confirmed` 并未弱化它）；档位 ≥ target 仍正确判完成，target > 当前档位时可能误点技能行重开训练。#69 换人失败置 failed 已挡「训练位坐错人」情形。（open_risks / #72）
 - 确认开始门槛 `>now+30min` + 纯墙钟 5 分钟 deadline（2026-08-14 用户把 10 分钟改为 5 分钟）：慢设备/模拟器可能 false-fail。
-- `resting()` 的跳过只 gate 在 `get_active_plan()`，未 gate `enable_mastery`——开关 OFF 但存在 active DB 计划时干员仍被屏蔽休息规划，确认是否符合 OFF 语义。
+- ✅ **#109（2026-08-17 已修）**：原风险「`resting()` 的跳过只 gate 在 `get_active_plan()`，未 gate `enable_mastery`——开关 OFF 但存在 active DB 计划时干员仍被屏蔽休息规划，确认是否符合 OFF 语义」定案为**不符合**，已修：`has_active_mastery = config.conf.enable_mastery and get_active_plan() is not None`——OFF 时恒 False，训练室干员正常排 SHIFT_OFF，残留 active DB 计划不再把训练室干员耗到心情尽。
 - **#74 第3段 扫描派发（2026-08-14 实现）**：
   - keepalive 已删（含 #66 的 60s 守卫 `_skill_upgrade_just_dispatched`）：不再有「DB 有计划就自动入队 now-task」。空闲 idle 计划开始入口 = **扫描派发**（`_dispatch_scan_start_tasks`，材料足够才入队）；普通重启会从 data.db 恢复任务队列（含已入队的扫描任务），缓存清零重启则清空队列。
   - **「都去掉」定案（2026-08-14 用户拍板）**：扫描任务标记（`SCAN_START_MARKER`）与进程内存记号（`_scan_started_plan_ids`）**均已删除**。设计退化为最简：任何带 `plan_key` 的 SKILL_UPGRADE 任务在空闲×未保护格都会开始其指定计划（房间状态决定分支：空闲→开始、待收取→收集+继续本级当场开）；继续本级一律当场开，重启后也不保守等扫描。**已知代价**（用户接受，出问题再回来）：重启后材料不足 → 确认页 fail-fast → 临时 failed + 报错邮件；残留/时间错任务在空闲房会直接开计划（触发时机不可控）；瞬时 completed/空跑噪音更频繁。安全性由 #69 面板归属校验 / #70 档位读失败保守 / 已到target检测兜底（不会开错训练）。
