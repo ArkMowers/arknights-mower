@@ -32,6 +32,7 @@ from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 from arknights_mower.utils.skill_label import (
     format_skill_label,
+    is_placeholder_skill_name,
     panel_skill_matches,
     resolve_panel_skill,
 )
@@ -331,13 +332,34 @@ def _read_slots_checked(solver):
     #100：reliable=False（读失败）时返回 ("", "", scan, False)——调用方不得把读失败
     当真空位做补位/纠错 mutation（与「真空」区分，稳为先：读不到就不动作）。
     scan 为 get_agent_from_room 原始列表（want_mood 用，含 mood）。
+    #140 场景闸门：开浮窗前先确认在训练室主页面（TRAIN_MAIN=217，浮窗开着先关回）；
+    浮窗读取后再确认浮窗确实开了（INFRA_DETAILS=205）才消费——turn_on_room_detail 只靠
+    room_detail 模板 + 单像素颜色确认浮窗、不判场景，非 205 的槽位读取是垃圾（读之前
+    场景未确认，垃圾读已被消费）。场景不符/读失败 → ("", "", scan, False)（稳为先）。
     """
+    try:
+        scene = solver.train_scene()
+        if scene == Scene.INFRA_DETAILS:
+            _close_room_detail(solver)
+            scene = solver.train_scene()
+        if scene != Scene.TRAIN_MAIN:
+            logger.debug(f"[mastery] 读槽位前置场景不符：{scene}，不读")
+            return "", "", [], False
+    except Exception:
+        return "", "", [], False
     scan, reliable = _read_slots_raw(solver)
     try:
         if solver.train_scene() == Scene.INFRA_DETAILS:
             _close_room_detail(solver)
+        elif reliable:
+            # 浮窗没开/开错（get_agent_from_room 未确认 205）→ 槽位数据来自非目标场景，
+            # 不消费并清空（_read_slots 等调用方丢弃 reliable，必须让槽位为空防误用）
+            logger.debug("[mastery] 读槽位后场景非 INFRA_DETAILS，浮窗未确认，不消费")
+            reliable = False
+            scan = []
     except Exception:
-        pass
+        reliable = False
+        scan = []
     if len(scan) < 2:
         return "", "", scan, reliable
     return scan[0].get("agent", ""), scan[1].get("agent", ""), scan, reliable
@@ -493,8 +515,11 @@ def read_room_state(solver, enter=True, want_mood=False):
             mood = _fill_slots_and_protection(solver, room, want_mood=want_mood)
             return (room, mood) if want_mood else room
         return room
-    # 其他房内场景（技能选择/确认/未知）→ 保守视为占用，面板尽力读
-    room = RoomState("training", _safe_read_panel(solver))
+    # 其他房内场景（技能选择/确认/未知/浮窗残留）→ 保守视为占用，**不读左下角面板**
+    # （#140：非 TRAIN_MAIN/220 时面板区域可能是协助位天赋文本或浮窗遮挡，读了是垃圾
+    # 身份/假倒计时——219 尤其会反复 OCR 出类时间文本；空面板 = 不可读 = 匹配保守，
+    # 不消费假干员/假倒计时，等下次自然进房到主页面再读）。
+    room = RoomState("training", RoomPanel())
     return (room, []) if want_mood else room
 
 
@@ -517,8 +542,26 @@ def _plan_operator_matches(plan, operator_name: str) -> bool:
     )
 
 
+def _plan_skill_matches(plan, operator_name, panel_skill) -> bool:
+    """计划 skill_name 与面板技能文本是否一致（panel_skill 为空 → True，不可读=匹配）。
+
+    解析器唯一命中 → 对照计划 skill_index（占位计划也能与面板真名对照）；
+    计划 skill_name 是占位 `技能{N}`（真名未知）且面板解析不出 → 不算不符（#139：
+    占位符不应否决真实面板技能名；干员名已全等匹配，技能无法证伪时稳为先）；
+    否则归一化包含匹配（panel ⊂ plan，容忍长名截断与 OCR 尾噪声）。
+    """
+    if not panel_skill:
+        return True
+    resolved = resolve_panel_skill(operator_name, panel_skill)
+    if resolved is not None:
+        return resolved == plan.get("skill_index")
+    if is_placeholder_skill_name(plan.get("skill_name")):
+        return True
+    return panel_skill_matches(panel_skill, plan.get("skill_name"))
+
+
 def _plan_matches_room(plan, room: RoomState) -> bool:
-    """active 计划与截图是否一致：干员名必须匹配；技能名可读时须 ⊂ 计划 skill_name。
+    """active 计划与截图是否一致：干员名必须匹配；技能可读时经 `_plan_skill_matches`。
 
     干员名/技能名不可读（OCR 失败）时不判不一致，防误重置（铁律：截图为准，稳为先）。
     """
@@ -526,13 +569,9 @@ def _plan_matches_room(plan, room: RoomState) -> bool:
         return True
     if not _plan_operator_matches(plan, room.panel.operator_name):
         return False
-    sk = room.panel.skill_name
-    if not sk:
-        return True
-    resolved = resolve_panel_skill(room.panel.operator_name, sk)
-    if resolved is not None:
-        return resolved == plan.get("skill_index")
-    return panel_skill_matches(sk, plan.get("skill_name"))
+    return _plan_skill_matches(
+        plan, room.panel.operator_name, room.panel.skill_name
+    )
 
 
 def _match_plan(plans, room: RoomState):
@@ -552,13 +591,8 @@ def _match_plan(plans, room: RoomState):
             continue
         if not _plan_operator_matches(p, op):
             continue
-        if sk:
-            resolved = resolve_panel_skill(op, sk)
-            if resolved is not None:
-                if resolved != p.get("skill_index"):
-                    continue
-            elif not panel_skill_matches(sk, p.get("skill_name")):
-                continue
+        if not _plan_skill_matches(p, op, sk):
+            continue
         return p
     return None
 

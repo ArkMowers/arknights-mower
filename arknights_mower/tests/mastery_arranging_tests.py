@@ -952,6 +952,25 @@ class TestSwapCollectGating(unittest.TestCase):
         solver.recog.update = MagicMock()
         return solver
 
+    def _swap_solver(self):
+        """run_swap_support 用 solver：场景模拟 217 读槽位 → 浮窗 205 → 关回，后续回 217。
+
+        #140：_read_slots_checked 读槽位前确认 217、读后确认浮窗开了（205）——测试 mock
+        必须模拟 get_agent_from_room 开浮窗后场景变 205，否则读被判不可靠、换人分支不触发。
+        """
+        solver = self._solver()
+        scenes = [
+            Scene.TRAIN_MAIN,  # run_swap_support 场景检测（217）
+            Scene.TRAIN_MAIN,  # 读槽位前置：主页面
+            Scene.INFRA_DETAILS,  # 读槽位后：浮窗已开 → 关回
+        ]
+
+        def _scene():
+            return scenes.pop(0) if scenes else Scene.TRAIN_MAIN
+
+        solver.train_scene.side_effect = _scene
+        return solver
+
     def _confirm(self, swap_scheduled, **kw):
         solver = self._solver()
         plan = make_plan()
@@ -1062,7 +1081,7 @@ class TestSwapCollectGating(unittest.TestCase):
     def test_run_swap_support_schedules_collect_after_swap(self):
         # §16.10：SWAP_SUPPORT 完成后重读倒计时再排收取。倒计时得「值得换」
         # （换后真实 ≥ 301，read_time=15000→250 分钟）才会真正执行换人。
-        solver = self._solver()
+        solver = self._swap_solver()
         solver.read_time.return_value = 15000  # 250 分钟，换后真实 ≈ 330 分钟
         solver.get_agent_from_room.return_value = self._slots("夜半")
         plan = make_plan(status="training", swap_frozen=0, target_level=2)
@@ -1127,7 +1146,7 @@ class TestSwapCollectGating(unittest.TestCase):
 
     def _fail_solver(self, read_seconds, task=None):
         """换人失败的 solver：choose_train 抛异常 + 指定倒计时读取。"""
-        solver = self._solver()
+        solver = self._swap_solver()
         solver.read_time.return_value = read_seconds
         solver.task = task
         solver.choose_train.side_effect = Exception("选人流程超时")
@@ -1158,7 +1177,7 @@ class TestSwapCollectGating(unittest.TestCase):
     def test_swap_support_corrects_stranger_slot(self):
         # #79：协助位是陌生人（非 operator 非 swap_target）→ 先纠错成 operator 再换人。
         # 倒计时得「值得换」（read_time=15000→250 分钟）才会换 swap_target。
-        solver = self._solver()
+        solver = self._swap_solver()
         solver.read_time.return_value = 15000  # 250 分钟，换后真实 ≈ 330 分钟
         solver.get_agent_from_room.return_value = self._slots("陌生人")
         plan = make_plan(status="training", swap_frozen=0, target_level=2)
@@ -1219,7 +1238,7 @@ class TestSwapCollectGating(unittest.TestCase):
 
     def test_swap_support_protected_stranger_high_countdown_corrects(self):
         # #107 保护门：逻各斯在协助位 + 剩余 ≥ 5h+缓冲 → 照常纠成路线人再换减半对象
-        solver = self._solver()
+        solver = self._swap_solver()
         solver.read_time.return_value = 23400  # 390 分钟 ≥ 310
         solver.get_agent_from_room.return_value = self._slots("逻各斯")
         plan = make_plan(status="training", swap_frozen=0, target_level=2)
@@ -1288,7 +1307,7 @@ class TestSwapCollectGating(unittest.TestCase):
     def test_swap_support_empty_slot_places_swap_target_directly(self):
         # #101：空位 + calc_swap_threshold(0,...) 的 should_swap（含 301 值得门）= True
         # → 直接放 swap_target，不先放 operator 再立刻换（不白放、不走 did_swap 绕过阈值）
-        solver = self._solver()
+        solver = self._swap_solver()
         solver.read_time.return_value = 23400  # 390 分钟 ∈ [383, 394] 值得窗
         solver.get_agent_from_room.return_value = self._slots("")
         plan = make_plan(status="training", swap_frozen=0, target_level=2)
@@ -1315,7 +1334,7 @@ class TestSwapCollectGating(unittest.TestCase):
     def test_swap_support_empty_slot_not_worthwhile_places_operator(self):
         # #101 review 修复：空位 + remaining<=threshold 但 should_swap=False（301 值得门
         # 不满足，swap_target 速率 ≤ operator）→ 不放 swap_target、补 operator + 重排阈值
-        solver = self._solver()
+        solver = self._swap_solver()
         solver.read_time.return_value = 15000  # 250 分钟 ≤ 阈值≈394 但值得门不满足
         solver.get_agent_from_room.return_value = self._slots("")
         plan = make_plan(status="training", swap_frozen=0, target_level=2)
@@ -1348,7 +1367,7 @@ class TestSwapCollectGating(unittest.TestCase):
     def test_swap_support_empty_slot_reread_failure_rearms_halving(self):
         # #101 review 修复：补位后重读面板失败（倒计时读不到）→ 轻量重试读成功 → 重排
         # 阈值任务（防合并后阈值任务被本 dispatch 消费、只排收取丢减半）
-        solver = self._solver()
+        solver = self._swap_solver()
         solver.read_time.side_effect = [
             None,
             None,
@@ -1385,7 +1404,7 @@ class TestSwapCollectGating(unittest.TestCase):
     def test_swap_support_empty_slot_places_operator_no_immediate_swap(self):
         # #101：空位 + 剩余 > 阈值 → 放 operator（拿前半程加成），**不立刻换**——
         # 重排阈值时刻换人任务（阈值时机不丢），不再 did_swap 绕过阈值
-        solver = self._solver()
+        solver = self._swap_solver()
         solver.read_time.return_value = 30000  # 500 分钟 > 阈值 ≈394（效率0）
         solver.get_agent_from_room.return_value = self._slots("")
         plan = make_plan(status="training", swap_frozen=0, target_level=2)
@@ -1418,7 +1437,7 @@ class TestSwapCollectGating(unittest.TestCase):
     def test_swap_support_empty_slot_countdown_failed_places_operator(self):
         # #101 验收：倒计时读失败（failed）→ 保守补 operator（不判 S/E）；重读仍失败 →
         # 保守排收取退出（00:00:00 zero 才不动，failed 仍补）
-        solver = self._solver()
+        solver = self._swap_solver()
         solver.read_time.return_value = None  # 倒计时读失败
         solver.get_agent_from_room.return_value = self._slots("")
         plan = make_plan(status="training", swap_frozen=0, target_level=2)
@@ -1445,7 +1464,7 @@ class TestSwapCollectGating(unittest.TestCase):
     def test_swap_support_empty_fill_failure_swap_still_happens(self):
         # #100 review 修复（major：补位失败不阻塞减半）：空位放 operator 失败 → 直接
         # 尝试换入 swap_target（减半收益不丢）
-        solver = self._solver()
+        solver = self._swap_solver()
         solver.read_time.return_value = 30000  # 500 分钟 > 阈值 → 放 operator
         solver.get_agent_from_room.return_value = self._slots("")
         solver.choose_train.side_effect = [
@@ -1510,7 +1529,7 @@ class TestSwapCollectGating(unittest.TestCase):
     def test_swap_support_correction_not_worthwhile_no_swap(self):
         # #80 acceptance 2：时间不足（换后真实 < 301）的步，纠错只纠成 operator，
         # **不触发不该发生的减半换人**（只排收取退出）
-        solver = self._solver()
+        solver = self._swap_solver()
         solver.read_time.return_value = 3600  # 60 分钟，换后真实 ≈ 79 分钟
         solver.get_agent_from_room.return_value = self._slots("陌生人")
         plan = make_plan(status="training", swap_frozen=0, target_level=2)
@@ -1560,7 +1579,7 @@ class TestSwapCollectGating(unittest.TestCase):
 
     def test_swap_support_correction_failure_notifies(self):
         # #79：纠错失败 → 邮件通知 + 不换人 + 排收取退出
-        solver = self._solver()
+        solver = self._swap_solver()
         solver.get_agent_from_room.return_value = self._slots("陌生人")
         solver.choose_train.side_effect = Exception("选人流程超时")
         plan = make_plan(status="training", swap_frozen=0, target_level=2)
@@ -1660,7 +1679,7 @@ class TestSwapCollectGating(unittest.TestCase):
 
     def test_swap_retry_succeeds_marks_frozen(self):
         # 暂时性失败可被救回：首次失败、重试成功 → swap_frozen=1，不通知
-        solver = self._solver()
+        solver = self._swap_solver()
         solver.read_time.return_value = 15000
         solver.get_agent_from_room.return_value = self._slots("夜半")
         attempts = {"n": 0}
@@ -1752,12 +1771,17 @@ class TestSwapCollectGating(unittest.TestCase):
 
     def test_schedule_collect_after_swap_closes_detail_before_read(self):
         # 读倒计时前若停在主页面带进驻详情浮窗（INFRA_DETAILS）→ 先关浮窗回主页面再读
-        solver = self._solver()
+        solver = self._swap_solver()
         solver.read_time.return_value = (
             15000  # 250 分钟，值得换（否则 worth 门跳过换人）
         )
         solver.get_agent_from_room.return_value = self._slots("夜半")
-        solver.train_scene.side_effect = [Scene.INFRA_DETAILS, Scene.TRAIN_MAIN]
+        solver.train_scene.side_effect = [
+            Scene.INFRA_DETAILS,  # run_swap_support 场景检测：浮窗开着 → 先关回 217
+            Scene.TRAIN_MAIN,
+            Scene.TRAIN_MAIN,  # 读槽位前置：主页面
+            Scene.INFRA_DETAILS,  # 读槽位后：浮窗已开 → 关回
+        ]
         plan = make_plan(status="training", swap_frozen=0, target_level=2)
         with (
             patch(
@@ -2002,7 +2026,11 @@ class TestRouteStepLevel(unittest.TestCase):
     def test_run_swap_support_m3_plan_m2_step_swaps(self):
         # 专三计划专二步：倒计时 active + 主面板亮 2 颗 → 路线按 step_level=2 → 减半换人
         solver = self._lit_solver(lit=2)
-        solver.train_scene.return_value = Scene.TRAIN_MAIN
+        solver.train_scene.side_effect = [
+            Scene.TRAIN_MAIN,  # run_swap_support 场景检测
+            Scene.TRAIN_MAIN,  # 读槽位前置：主页面
+            Scene.INFRA_DETAILS,  # 读槽位后：浮窗已开 → 关回
+        ]
         solver.read_time.return_value = 15000  # 250 分钟，值得换（否则 worth 门跳过）
         solver.get_agent_from_room.return_value = [
             {"agent": "夜半"},

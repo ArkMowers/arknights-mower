@@ -432,6 +432,62 @@ class TestResolvePanelSkillIntegration(unittest.TestCase):
         room = make_room("training", operator_name="陌生干员", skill_name="测试技能")
         self.assertEqual(reader._match_plan([plan], room), plan)
 
+    def test_placeholder_plan_matches_when_panel_resolves_same_index(self):
+        # #139：计划 skill_name 是占位「技能N」，面板技能解析出序号 == 计划 skill_index
+        plan = make_plan(
+            char_id="char_test",
+            char_name="测试干员",
+            skill_index=1,
+            skill_name="技能2",  # 占位：真名未知
+        )
+        room = make_room("training", skill_name="破坏与滋养")  # resolve → 1
+        self.assertTrue(reader._plan_matches_room(plan, room))
+
+    def test_placeholder_plan_rejects_different_resolved_skill(self):
+        # #139：占位计划也不放过「面板解析出的是另一技能」
+        plan = make_plan(
+            char_id="char_test",
+            char_name="测试干员",
+            skill_index=0,
+            skill_name="技能1",  # 占位
+        )
+        room = make_room("training", skill_name="破坏与滋养")  # resolve → 1 ≠ 0
+        self.assertFalse(reader._plan_matches_room(plan, room))
+
+    def test_placeholder_plan_matches_nameless_operator_panel(self):
+        # #139：干员技能表无真名（resolve → None）+ 计划占位 → 不算不符（干员已全等匹配）
+        plan = make_plan(
+            char_id="char_nameless",
+            char_name="无命名干员",
+            skill_index=1,
+            skill_name="技能2",
+        )
+        room = make_room("training", operator_name="无命名干员", skill_name="任意文本")
+        self.assertTrue(reader._plan_matches_room(plan, room))
+        self.assertEqual(reader._match_plan([plan], room), plan)
+
+    def test_nameless_operator_operator_mismatch_still_rejected(self):
+        # #139：干员名不匹配仍拒绝（陌生人防护不削弱）
+        plan = make_plan(
+            char_id="char_nameless",
+            char_name="无命名干员",
+            skill_index=1,
+            skill_name="技能2",
+        )
+        room = make_room("training", operator_name="测试干员", skill_name="任意文本")
+        self.assertFalse(reader._plan_matches_room(plan, room))
+
+    def test_recovery_gate_stays_strict_for_nameless(self):
+        # #139：#98 恢复门不受占位豁免影响——resolve 不出序号 → 不恢复
+        plan = make_plan(
+            char_id="char_nameless",
+            char_name="无命名干员",
+            skill_index=1,
+            skill_name="技能2",
+        )
+        room = make_room("training", operator_name="无命名干员", skill_name="任意文本")
+        self.assertFalse(reader._can_recover_plan(plan, room))
+
 
 class TestCanAdoptExpiry(unittest.TestCase):
     """B8 采纳门：只有面板干员名可读且匹配时才可采纳倒计时。"""
@@ -538,7 +594,11 @@ class TestReadRoomState(unittest.TestCase):
         self, countdown_seconds, panel_text="[测试干员]测试技能", tier_columns=(0, 1, 2)
     ):
         solver = MagicMock()
-        solver.train_scene.side_effect = [Scene.TRAIN_MAIN]
+        solver.train_scene.side_effect = [
+            Scene.TRAIN_MAIN,  # _settle_in_room 收敛
+            Scene.TRAIN_MAIN,  # 读槽位前置：主页面
+            Scene.INFRA_DETAILS,  # 读槽位后：浮窗已开
+        ]
         # #73 三态倒计时：read_time 返回秒（None=读失败 / 0=00:00:00 / >0=有值）
         solver.read_time.return_value = countdown_seconds
         solver.read_screen.return_value = panel_text
@@ -655,6 +715,18 @@ class TestReadRoomState(unittest.TestCase):
         solver = self._solver(7200)
         room = reader.read_room_state(solver)
         self.assertIsInstance(room, reader.RoomState)
+
+    def test_other_scene_does_not_read_panel(self):
+        # #140：非 217/220 房内场景（技能选择页 219/未知）→ 不读左下角面板——
+        # 219 面板区域是协助位天赋文本，读了是垃圾身份/假倒计时；空面板 = 不可读 = 保守
+        solver = self._solver(7200)
+        solver.train_scene.side_effect = [Scene.TRAIN_SKILL_SELECT]
+        room = reader.read_room_state(solver)
+        self.assertEqual(room.state, "training")  # 保守视为占用
+        self.assertEqual(room.panel.operator_name, "")
+        self.assertEqual(room.panel.skill_name, "")
+        self.assertIsNone(room.panel.countdown)
+        solver.read_screen.assert_not_called()  # 面板区域根本没读
 
     def test_off_mode_skips_slot_read_for_waiting_collect(self):
         # 审计修复：enable_mastery OFF 时槽位/保护无人消费，待收取态不白开进驻浮窗
@@ -906,7 +978,10 @@ class TestReconcileRecoverSwap(unittest.TestCase):
 
     def _slots(self, support):
         solver = self._solver()
-        solver.train_scene.return_value = Scene.TRAIN_MAIN
+        solver.train_scene.side_effect = [
+            Scene.TRAIN_MAIN,  # 读槽位前置：主页面
+            Scene.INFRA_DETAILS,  # 读槽位后：浮窗已开 → 关回
+        ]
         solver.get_agent_from_room.return_value = [
             {"agent": support},
             {"agent": "能天使"},
@@ -1047,6 +1122,10 @@ class TestReconcileRecoverSwap(unittest.TestCase):
         # calc_swap_threshold(0,...) 一步定夺放 operator/swap_target），不再排独立
         # fill-{id} 补位任务
         solver = self._solver()
+        solver.train_scene.side_effect = [
+            Scene.TRAIN_MAIN,  # 读槽位前置：主页面
+            Scene.INFRA_DETAILS,  # 读槽位后：浮窗已开 → 关回
+        ]
         solver.get_agent_from_room.return_value = [{"agent": ""}, {"agent": "能天使"}]
         plan = self._training_plan()
         room = self._room()
@@ -1075,6 +1154,10 @@ class TestReconcileRecoverSwap(unittest.TestCase):
         # #101：队列已有该计划的半程换人任务 → 空位时把它改到「现在」执行（不排独立
         # fill-{id} 补位任务、不并存）——dispatch 自决放 operator/swap_target
         solver = self._solver()
+        solver.train_scene.side_effect = [
+            Scene.TRAIN_MAIN,  # 读槽位前置：主页面
+            Scene.INFRA_DETAILS,  # 读槽位后：浮窗已开 → 关回
+        ]
         solver.get_agent_from_room.return_value = [{"agent": ""}, {"agent": "能天使"}]
         plan = self._training_plan()
         room = self._room()
@@ -2362,7 +2445,10 @@ class TestReadSlotsCloseFloatingWindow(unittest.TestCase):
             {"agent": "逻各斯"},
             {"agent": "能天使"},
         ]
-        solver.train_scene.return_value = Scene.INFRA_DETAILS
+        solver.train_scene.side_effect = [
+            Scene.TRAIN_MAIN,  # 读槽位前置：主页面
+            Scene.INFRA_DETAILS,  # 读槽位后：浮窗已开 → 关回
+        ]
         support, train = reader._read_slots(solver)
         self.assertEqual((support, train), ("逻各斯", "能天使"))
         # 205 放大视角关浮窗应点关闭按钮（arrange_check_in_on），不是 back（会退到基建）
@@ -2386,6 +2472,54 @@ class TestReadSlotsCloseFloatingWindow(unittest.TestCase):
         solver.get_agent_from_room.side_effect = Exception("read fail")
         self.assertEqual(reader._read_slots(solver), ("", ""))
         solver.back.assert_not_called()
+
+
+class TestReadSlotsSceneGate(unittest.TestCase):
+    """#140：读槽位前确认训练室主页面（217）、读后确认浮窗是进驻详情（205）。
+
+    场景不符 → 不消费槽位数据（稳为先：读不到不动）。
+    """
+
+    def _solver(self, scenes):
+        solver = MagicMock()
+        solver.train_scene.side_effect = scenes
+        solver.get_agent_from_room.return_value = [
+            {"agent": "支援干员"},
+            {"agent": "训练干员"},
+        ]
+        return solver
+
+    def test_reads_when_main_then_popup_open(self):
+        solver = self._solver([Scene.TRAIN_MAIN, Scene.INFRA_DETAILS])
+        support, train, scan, reliable = reader._read_slots_checked(solver)
+        self.assertTrue(reliable)
+        self.assertEqual((support, train), ("支援干员", "训练干员"))
+        solver.get_agent_from_room.assert_called_once_with("train")
+
+    def test_skips_when_not_main_scene(self):
+        # 前置场景不是 217（技能选择页/其他房内场景）→ 不读槽位、不消费
+        solver = self._solver([Scene.TRAIN_SKILL_SELECT])
+        support, train, scan, reliable = reader._read_slots_checked(solver)
+        self.assertFalse(reliable)
+        self.assertEqual((support, train), ("", ""))
+        solver.get_agent_from_room.assert_not_called()
+
+    def test_skips_when_popup_did_not_open(self):
+        # 读后场景非 205（turn_on_room_detail 未确认浮窗开）→ 槽位数据不消费
+        solver = self._solver([Scene.TRAIN_MAIN, Scene.TRAIN_MAIN])
+        support, train, scan, reliable = reader._read_slots_checked(solver)
+        self.assertFalse(reliable)
+        self.assertEqual((support, train), ("", ""))
+        solver.get_agent_from_room.assert_called_once_with("train")
+
+    def test_closes_open_popup_then_reads(self):
+        # 前置浮窗已开（205）→ 先关回 217 再读；读后确认 205 关回
+        solver = self._solver(
+            [Scene.INFRA_DETAILS, Scene.TRAIN_MAIN, Scene.INFRA_DETAILS]
+        )
+        support, train, scan, reliable = reader._read_slots_checked(solver)
+        self.assertTrue(reliable)
+        self.assertEqual((support, train), ("支援干员", "训练干员"))
 
 
 class TestUpdateExpirySkipWrite(unittest.TestCase):

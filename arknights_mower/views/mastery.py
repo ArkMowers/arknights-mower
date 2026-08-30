@@ -1,9 +1,13 @@
 import json
+import os
+from datetime import datetime, timedelta
 from functools import wraps
 
 from flask import Blueprint, abort, current_app, request
 from flask.views import MethodView
 
+from arknights_mower.utils import config
+from arknights_mower.utils.log import logger
 from arknights_mower.utils.mastery_db import (
     add_plan_checked,
     delete_plan,
@@ -17,6 +21,7 @@ from arknights_mower.utils.mastery_db import (
     update_plan_priority,
 )
 from arknights_mower.utils.mastery_recommendation import get_skill_data
+from arknights_mower.utils.path import get_path
 
 
 class Routes:
@@ -62,6 +67,61 @@ def _purge_plan_tasks(plan_id):
     tasks[:] = [
         t for t in tasks if t is current or getattr(t, "plan_key", None) not in keys
     ]
+
+
+def _refresh_cultivate_if_stale():
+    """cultivate.json 缺失/过期（> maa_gap）时刷新（森空岛，纯网络，web 线程安全）。
+
+    #141：立即派发依赖 cultivate.json 新鲜度做材料核算——数据过期/缺失时
+    `auto_schedule_mastery_tasks` 返回空、静默空转（只加计划、不开始训练）。这里在
+    派发前刷新，**尊重 maa_gap 间隔**（新鲜则跳过，不绕过间隔打森空岛）；缺 skland
+    配置时 cultivate.start 内部直接返回（材料数据缺，计划等下次自然扫描兜底）。
+    """
+    try:
+        path = get_path("@app/tmp/cultivate.json")
+        if os.path.exists(path):
+            mtime = datetime.fromtimestamp(os.path.getmtime(path))
+            if datetime.now() - mtime < timedelta(hours=config.conf.maa_gap):
+                return
+        from arknights_mower.solvers.cultivate_depot import cultivate
+
+        cultivate().start()
+    except Exception as e:
+        logger.exception(f"一键专精刷新 cultivate.json 失败: {e}")
+
+
+def _dispatch_new_plans_immediately():
+    """一键专精建计划后立即尝试开始——刷新库存数据后复用仓库扫描的派发逻辑。
+
+    #141（用户拍板方案 A）：建计划成功后**刷新 cultivate.json**（缺失/过期才拉，
+    尊重 maa_gap）→ auto_schedule 用新鲜数据核算材料 → `_dispatch_scan_start_tasks`
+    把材料足够的 idle 计划入队 now 的 SKILL_UPGRADE（plan_key=计划ID），并设
+    `wake_scheduler` 事件唤醒调度休眠——调度器下一轮就执行，**确认后真的开始训练**。
+    材料不足不派发（继续等下次扫描）；受 enable_mastery 门控（OFF 停专精自动化）；
+    base_scheduler 未运行（None）时防御按无任务处理。
+    """
+    if not config.conf.enable_mastery:
+        return
+    try:
+        from arknights_mower.__main__ import base_scheduler
+    except ImportError:
+        return
+    if base_scheduler is None or not hasattr(
+        base_scheduler, "_dispatch_scan_start_tasks"
+    ):
+        return
+    try:
+        from arknights_mower.utils.mastery_recommendation import (
+            auto_schedule_mastery_tasks,
+        )
+
+        _refresh_cultivate_if_stale()
+        res = auto_schedule_mastery_tasks()
+        base_scheduler._dispatch_scan_start_tasks(res.get("scheduled", []))
+        if res.get("scheduled"):
+            config.wake_scheduler.set()
+    except Exception as e:
+        logger.exception(f"一键专精立即派发失败: {e}")
 
 
 class MasteryPlanView(MethodView):
@@ -117,6 +177,7 @@ class MasteryPlanView(MethodView):
         }
 
         results = []
+        added = False
         items = (
             data.get("items", [])
             if isinstance(data, dict) and "items" in data
@@ -150,6 +211,7 @@ class MasteryPlanView(MethodView):
                 )
                 if plan_id > 0:
                     results.append({"key": name, "status": "added", "id": plan_id})
+                    added = True
                 else:
                     results.append({"key": name, "status": "error", "reason": reason})
         else:
@@ -190,8 +252,11 @@ class MasteryPlanView(MethodView):
                 )
                 if plan_id > 0:
                     results.append({"key": name, "status": "added", "id": plan_id})
+                    added = True
                 else:
                     results.append({"key": name, "status": "error", "reason": reason})
+        if added:
+            _dispatch_new_plans_immediately()
         return {"results": results}
 
     def delete(self):
