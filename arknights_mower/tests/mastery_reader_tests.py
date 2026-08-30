@@ -975,9 +975,10 @@ class TestReconcileRecoverSwap(unittest.TestCase):
         self.assertFalse(result)
         sched.assert_not_called()
 
-    def test_recover_empty_assist_slot_fills(self):
-        # #100：协助位空着 → 排补位任务（填路线 operator，独立 fill-{id} 去重键）+
-        # 半程换人照常排（补位现在、减半阈值时刻，两件事不互斥——review 修复）
+    def test_recover_empty_assist_slot_upserts_swap_task_now(self):
+        # #101：协助位空着 → 确保一条 plan_key=id SWAP 任务现在执行（dispatch 时按
+        # calc_swap_threshold(0,...) 一步定夺放 operator/swap_target），不再排独立
+        # fill-{id} 补位任务
         solver = self._solver()
         solver.get_agent_from_room.return_value = [{"agent": ""}, {"agent": "能天使"}]
         plan = self._training_plan()
@@ -994,19 +995,19 @@ class TestReconcileRecoverSwap(unittest.TestCase):
         ):
             result = reader._maybe_recover_swap(solver, plan, room)
         self.assertTrue(result, "排了补位任务 → 调用方不排收取")
-        sched.assert_called_once_with(solver, plan, room.panel.countdown, 2)
-        fills = [
+        sched.assert_not_called()  # now-task 带 plan_key=id → 尾部去重不重复排阈值
+        swaps = [
             t
             for t in solver.tasks
             if t.type == reader.TaskTypes.SWAP_SUPPORT
-            and t.plan_key == f"fill-{plan['id']}"
+            and t.plan_key == str(plan["id"])
         ]
-        self.assertEqual(len(fills), 1)
-        self.assertIn("补位为 夜半", fills[0].meta_data)
+        self.assertEqual(len(swaps), 1)
+        self.assertIn("补位为 夜半", swaps[0].meta_data)
 
-    def test_recover_empty_assist_slot_fills_despite_queued_swap(self):
-        # #100 review 修复（major：去重掩盖）：已排半程换人任务**不掩盖**空位补位——
-        # 补位用独立 fill-{id} 去重键，不被阈值时刻的半程换人任务挡住
+    def test_recover_empty_assist_slot_retimes_queued_swap(self):
+        # #101：队列已有该计划的半程换人任务 → 空位时把它改到「现在」执行（不排独立
+        # fill-{id} 补位任务、不并存）——dispatch 自决放 operator/swap_target
         solver = self._solver()
         solver.get_agent_from_room.return_value = [{"agent": ""}, {"agent": "能天使"}]
         plan = self._training_plan()
@@ -1028,14 +1029,13 @@ class TestReconcileRecoverSwap(unittest.TestCase):
         ):
             result = reader._maybe_recover_swap(solver, plan, room)
         self.assertTrue(result)
-        sched.assert_not_called()  # 队列已有半程换人 → 不重复排
-        fills = [
-            t
-            for t in solver.tasks
-            if t.type == reader.TaskTypes.SWAP_SUPPORT
-            and t.plan_key == f"fill-{plan['id']}"
-        ]
-        self.assertEqual(len(fills), 1, "半程换人在队不掩盖空位补位")
+        sched.assert_not_called()  # 已有 now-task → 不重复排阈值
+        self.assertEqual(len(solver.tasks), 1, "不新增补位任务（改到 now 而非并存）")
+        self.assertEqual(solver.tasks[0].plan_key, str(plan["id"]))
+        self.assertLess(
+            abs((solver.tasks[0].time - datetime.now()).total_seconds()), 5,
+            "已有半程换人任务被改到 now",
+        )
 
     def test_recover_unreliable_slot_read_no_fill(self):
         # #100 review 修复（major：读失败当空位）：get_agent_from_room 异常（OCR 坏名
@@ -1056,13 +1056,13 @@ class TestReconcileRecoverSwap(unittest.TestCase):
         ):
             result = reader._maybe_recover_swap(solver, plan, room)
         self.assertFalse(result, "读失败不算空位 → 无任务可排")
-        fills = [
+        swaps = [
             t
             for t in solver.tasks
             if t.type == reader.TaskTypes.SWAP_SUPPORT
-            and t.plan_key == f"fill-{plan['id']}"
+            and t.plan_key == str(plan["id"])
         ]
-        self.assertEqual(len(fills), 0, "读失败不补位（稳为先）")
+        self.assertEqual(len(swaps), 0, "读失败不补位（稳为先）")
         sched.assert_called_once()
 
     def test_recover_route_no_operator_no_correction(self):
@@ -1735,16 +1735,16 @@ class TestReconcileMatrix(unittest.TestCase):
             reader._reconcile(solver, room, None, [])
         cs.assert_called_once()
 
-    def test_collect_return_no_arrange_support(self):
-        # 继续本级（#74 第3段「都去掉」后一律当场开）→ 返回计划 + arrange_support=False
-        # （减半守卫：跨「收取→下一次开始」边界不重排协助位）
+    def test_collect_continue_returns_arrange_support(self):
+        # 继续本级（#74 第3段「都去掉」后一律当场开）→ 返回计划 + arrange_support=True
+        # （2026-08-17 用户拍板：收取→开下一级边界也照常安排路线 operator）
         solver = MagicMock()
         room = make_room("waiting_collect")
         plan = make_plan()
         with patch.object(reader, "_collect_plan", return_value=make_plan()):
             start, arrange_support = reader._reconcile(solver, room, None, [plan])
         self.assertIsNotNone(start)
-        self.assertFalse(arrange_support)
+        self.assertTrue(arrange_support)
 
 
 class TestReconcile73(unittest.TestCase):
@@ -1766,14 +1766,15 @@ class TestReconcile73(unittest.TestCase):
         self.assertIsNone(start)
 
     def test_waiting_collect_m3_matched_no_cascade(self):
-        # 专三 + 都在计划 → 正常收取对账（收取完成不级联，#74 第2段）
+        # 专三 + 都在计划 → 正常收取对账（收取完成不级联，#74 第2段；plan=None 无开始，
+        # arrange_support 恒 True 但未消费）
         solver = MagicMock()
         room = make_room("waiting_collect", mastery_tier=3)
         plan = make_plan(target_level=3)
         with patch.object(reader, "_collect_plan", return_value=None) as cp:
             start, arrange_support = reader._reconcile(solver, room, None, [plan])
         cp.assert_called_once()
-        self.assertFalse(arrange_support, "收集 → 减半守卫不重排协助位")
+        self.assertTrue(arrange_support)
         self.assertIsNone(start, "收取完成不级联开始下一个计划")
 
     def test_waiting_collect_below_m3_unmatched_help_collect(self):
@@ -1790,7 +1791,7 @@ class TestReconcile73(unittest.TestCase):
 
     def test_waiting_collect_below_m3_matched_recovers_and_promotes(self):
         # 非专三 + 都在计划 → 恢复流程（§16.6）：收取 + 优先级排前 + 继续本级当场开
-        # （#74 第3段「都去掉」后一律当场开，不分扫描链/重启）
+        # （#74 第3段「都去掉」后一律当场开，不分扫描链/重启；路线 operator 照常安排）
         solver = MagicMock()
         room = make_room("waiting_collect", mastery_tier=2)
         plan = make_plan(target_level=3)
@@ -1801,7 +1802,7 @@ class TestReconcile73(unittest.TestCase):
             start, arrange_support = reader._reconcile(solver, room, None, [plan])
         cp.assert_called_once()
         pp.assert_called_once()
-        self.assertFalse(arrange_support)
+        self.assertTrue(arrange_support)
         self.assertIsNotNone(start)
 
     def test_waiting_collect_m3_completed_does_not_promote(self):

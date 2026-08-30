@@ -41,6 +41,29 @@ def _require_token(f):
     return wrapper
 
 
+def _purge_plan_tasks(plan_id):
+    """#97：删除计划后清理队列残留任务（SKILL_UPGRADE/SWAP 按 plan_key 派发到已删计划）。
+
+    #101：补位不再用独立 fill-{id} 键（空位与半程换人共用 plan_key=计划ID），只需清
+    plan_key=计划ID。in-place 改列表（不重绑引用，避免与主循环
+    `self.tasks[0]`/`del self.tasks[0]` 竞争）；**跳过当前派发任务**——主循环 dispatch
+    完按 `del self.tasks[0]` 删除它，若把它移走，del 会误删下一个排队任务（review 修复）。
+    base_scheduler 未运行（None）或 tasks 不可迭代时防御按无任务处理。
+    """
+    try:
+        from arknights_mower.__main__ import base_scheduler
+    except ImportError:
+        return
+    tasks = getattr(base_scheduler, "tasks", None)
+    if not isinstance(tasks, list):
+        return
+    current = getattr(base_scheduler, "task", None)
+    keys = {str(plan_id)}
+    tasks[:] = [
+        t for t in tasks if t is current or getattr(t, "plan_key", None) not in keys
+    ]
+
+
 class MasteryPlanView(MethodView):
     decorators = [_require_token]
 
@@ -170,7 +193,11 @@ class MasteryPlanView(MethodView):
         plan_id = data.get("id")
         if not plan_id:
             return {"error": "id is required"}, 400
-        if delete_plan(int(plan_id)):
+        plan_id = int(plan_id)
+        if delete_plan(plan_id):
+            # #97：删计划清残留队列任务（该 plan_key 的 SKILL_UPGRADE/SWAP/fill），
+            # 否则残留任务仍会按 plan_key 派发到已删计划。
+            _purge_plan_tasks(plan_id)
             return {"status": "ok"}
         return {"error": "delete failed"}, 500
 

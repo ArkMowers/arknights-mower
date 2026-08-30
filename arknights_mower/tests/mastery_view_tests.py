@@ -1,4 +1,7 @@
+import sys
+import types
 import unittest
+from datetime import datetime
 from unittest.mock import patch
 
 from flask import Flask
@@ -244,6 +247,81 @@ class TestMasteryPlanView(unittest.TestCase):
         self.assertEqual(res["status"], "error")
         self.assertIn("已专", res["reason"])
         insert.assert_not_called()
+
+    # --- #97 删除清理 ---
+
+    @patch("arknights_mower.views.mastery._purge_plan_tasks")
+    @patch("arknights_mower.views.mastery.delete_plan")
+    def test_delete_purges_queued_tasks(self, delete_mock, purge_mock):
+        # #97：删除计划后清残留队列任务（该 plan_key 的 SKILL_UPGRADE/SWAP/fill）
+        delete_mock.return_value = True
+        r = self.client.delete("/mastery-plan", json={"id": 3})
+        self.assertEqual(r.status_code, 200)
+        delete_mock.assert_called_once_with(3)
+        purge_mock.assert_called_once_with(3)
+
+    @patch("arknights_mower.views.mastery.delete_plan")
+    def test_delete_requires_id(self, delete_mock):
+        # 存量：无 id → 400
+        r = self.client.delete("/mastery-plan", json={})
+        self.assertEqual(r.status_code, 400)
+        delete_mock.assert_not_called()
+
+    def test_purge_plan_tasks_removes_plan_key_tasks(self):
+        # #97：_purge_plan_tasks 清掉该计划 plan_key 的队列任务（SKILL_UPGRADE/SWAP，
+        # #101 补位不再有独立 fill-{id} 键），保留其它
+        from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+        from arknights_mower.views.mastery import _purge_plan_tasks
+
+        fake = types.ModuleType("arknights_mower.__main__")
+        sched = types.SimpleNamespace()
+        t1 = SchedulerTask(time=datetime.now(), task_type=TaskTypes.SKILL_UPGRADE)
+        t1.plan_key = "5"
+        t2 = SchedulerTask(time=datetime.now(), task_type=TaskTypes.SWAP_SUPPORT)
+        t2.plan_key = "5"
+        t3 = SchedulerTask(time=datetime.now(), task_type=TaskTypes.SKILL_UPGRADE)
+        t3.plan_key = "9"
+        sched.tasks = [t1, t2, t3]
+        fake.base_scheduler = sched
+        with patch.dict(sys.modules, {"arknights_mower.__main__": fake}):
+            _purge_plan_tasks(5)
+        remaining = [getattr(t, "plan_key", None) for t in sched.tasks]
+        self.assertEqual(remaining, ["9"], "plan_key=5 应清掉，plan_key=9 保留")
+
+    def test_purge_plan_tasks_keeps_current_dispatch(self):
+        # #97 review 修复：当前派发任务（base_scheduler.task）不删——主循环 dispatch 完
+        # 按 `del self.tasks[0]` 删除它，若移走会误删下一个排队任务
+        from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+        from arknights_mower.views.mastery import _purge_plan_tasks
+
+        fake = types.ModuleType("arknights_mower.__main__")
+        sched = types.SimpleNamespace()
+        t1 = SchedulerTask(time=datetime.now(), task_type=TaskTypes.SKILL_UPGRADE)
+        t1.plan_key = "5"
+        t2 = SchedulerTask(time=datetime.now(), task_type=TaskTypes.SWAP_SUPPORT)
+        t2.plan_key = "5"
+        t3 = SchedulerTask(time=datetime.now(), task_type=TaskTypes.SKILL_UPGRADE)
+        t3.plan_key = "9"
+        sched.tasks = [t1, t2, t3]
+        sched.task = t1  # t1（计划5 的任务）正在派发
+        fake.base_scheduler = sched
+        with patch.dict(sys.modules, {"arknights_mower.__main__": fake}):
+            _purge_plan_tasks(5)
+        remaining = [getattr(t, "plan_key", None) for t in sched.tasks]
+        self.assertEqual(
+            remaining,
+            ["5", "9"],
+            "当前派发任务(plan_key=5)保留（del self.tasks[0] 会删它），另一条 plan_key=5 清掉",
+        )
+
+    def test_purge_plan_tasks_guards_no_scheduler(self):
+        # #97：base_scheduler 未运行（None）→ 防御不崩
+        from arknights_mower.views.mastery import _purge_plan_tasks
+
+        fake = types.ModuleType("arknights_mower.__main__")
+        fake.base_scheduler = None
+        with patch.dict(sys.modules, {"arknights_mower.__main__": fake}):
+            _purge_plan_tasks(5)  # 不应抛异常
 
 
 if __name__ == "__main__":

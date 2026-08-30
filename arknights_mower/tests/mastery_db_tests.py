@@ -142,6 +142,18 @@ class TestMasteryDb(unittest.TestCase):
         self.assertTrue(delete_plan(pid, path=self.db_path))
         self.assertIsNone(get_plan_by_id(pid, path=self.db_path))
 
+    def test_delete_plan_cleans_notify_dedup(self):
+        # #97：删计划顺带清通知去重（②③⑥⑦⑧ 用 str(plan_id) 作 dedup_key），
+        # 避免孤儿 dedup 残留
+        pid = insert_plan("char_001", 0, 1, path=self.db_path)
+        self.assertTrue(should_notify("fake_reset", str(pid), path=self.db_path))
+        self.assertFalse(should_notify("fake_reset", str(pid), path=self.db_path), "首轮已去重")
+        delete_plan(pid, path=self.db_path)
+        self.assertTrue(
+            should_notify("fake_reset", str(pid), path=self.db_path),
+            "删除后该计划通知可重发（去重行已清）",
+        )
+
     def test_ensure_tables_once_per_path(self):
         # #82：同一库路径进程内只建表一次（_tables_created 记录已建库路径）
         from arknights_mower.utils import mastery_db

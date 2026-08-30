@@ -569,8 +569,10 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
 
     #16 决议：进房先读倒计时定分支，不盲点技能按钮。
     #15 决议：全程纯墙钟 5 分钟 deadline，各分支短处理、超时走统一退出路径。
-    #63 减半守卫：跨「收取→下一次开始」边界不动协助位（保留驻留/激活），
-    调用方在「收取→下一次开始」边界传 arrange_support=False（收取后不重新安排协助位）。
+    #103：路线 operator 每次开始照常安排（2026-08-17 用户拍板）——原 #63 减半守卫在
+    「收取→下一次开始」边界传 arrange_support=False、不动协助位，把「专三不换减半对象」
+    过度实现成「完全不动协助位」（路线 operator 也没放，专三只留上一级减半干员）；
+    减半与否由路线 swap_target + _schedule_swap_if_needed 管，与 arrange_support 无关。
     #93：room 是 dispatch 的 reconcile_and_act 已读的房间状态（截图权威，含槽位）——
     开始流程直接复用，不再重复 enter_room、不再开进驻详情浮窗重读槽位（消除重复进房
     与重复浮窗开关）。room=None（冷启动/直接调用）保持旧行为：进房 + 现读槽位。
@@ -742,7 +744,8 @@ def _confirm_training_started(
     - started: 已转入 TRAINING 并完成协助位/收取安排
     - failed: 材料不足 或 #69/B2 面板干员/技能与计划不符，已标记 failed + 通知 + 退出训练室
     - timeout: deadline 内未确认训练开始（含面板不可读无法校验归属），由调用方走统一超时出口
-    #63 减半守卫：arrange_support=False（收取后级联）不重新安排协助位。
+    #103：路线 operator 每次开始照常安排（2026-08-17 用户拍板，原 #63 减半守卫的
+    arrange_support=False 已删——「收取后级联」也安排路线 operator，见 _start_new_training）。
     """
     from arknights_mower.utils.email import send_message
     from arknights_mower.utils.mastery_db import update_plan_status
@@ -1006,10 +1009,14 @@ def run_swap_support(solver):
     swap_target}（陌生人/坐错）先 choose_train 纠错成 operator，纠错成功重读倒计时
     （此时效率已知 = route["efficiency"]）才算换人；纠错失败 → 邮件通知 + 不换人 +
     排收取退出。协助位已 = swap_target（已减半）→ 不再换、不置 swap_frozen。
-    #100：协助位**空着**同样补 operator（填路线 operator，不碰训练位）——只在
-    countdown active 时动（00:00:00 收取边界不动，铁律 6）且读可靠（reliable，
-    OCR 坏名读失败不算空，稳为先）；空位补位失败 → 不阻塞减半（落到 did_swap 直接
-    换 swap_target，pre-#100 行为）。
+    #101：协助位**空着**一步定夺（当前效率已知=0）——calc_swap_threshold(0,...) 判
+    「放 operator 还是 swap_target」：should_swap（含 301 值得门）→ 直接换入减半对象
+    （不先放 operator 再立刻换的浪费；仅剩余≤阈值不够——低剩余窗 swap_target 速率 ≤
+    路线 operator）；should_swap=False（剩余 > 阈值 / 值得门不满足 / 倒计时读失败）→
+    放路线 operator 拿前半程加成，**不立刻换**（重读倒计时排阈值时刻的换人任务；重读
+    失败 → 轻量重试读重排阈值，防丢减半）。只在倒计时 active 或 failed 时动（00:00:00
+    收取边界不动，铁律 6）且读协助位可靠（reliable，OCR 坏名读失败不算空，稳为先）；
+    空位补位失败 → 不阻塞减半（直接尝试换入 swap_target）。
     换人公式/路线沿用稳定方案，只加协助位确认 + 倒计时门。
     """
     from arknights_mower.utils import config
@@ -1051,55 +1058,155 @@ def run_swap_support(solver):
 
     # #79 协助位确认：开进驻浮窗读实际协助位（_read_slots_checked 读后自动关浮窗回
     # 主页面）。协助位 ∉ {operator, swap_target}（陌生人/空位）→ 坐错人纠错成 operator
-    # （#80）、空位补 operator（#100）。只在倒计时 active（训练确认）时动协助位——
+    # （#80）、空位一步定夺（#101）。只在倒计时 active（训练确认）时动协助位——
     # 00:00:00 收取边界不动（铁律 6）；读失败（reliable=False，OCR 坏名等）不动作
     #（稳为先：读不到就不动，防基于不可靠读撤销已减半）。
     support_slot, _, _, reliable = _read_slots_checked(solver)
-    if (
-        countdown_active
-        and operator
-        and reliable
-        and support_slot not in (operator, swap_target)
-    ):
-        if support_slot:
+    if operator and reliable and support_slot not in (operator, swap_target):
+        if not support_slot:
+            # #101 空位一步定夺（当前效率已知=0）：calc_swap_threshold(0,...) 判
+            # 「放 operator 还是 swap_target」——should_swap（含 301 值得门）→ 直接放
+            # 减半对象；否则（剩余 > 阈值 / 值得门不满足 / 倒计时读失败）→ 放 operator
+            # 拿前半程加成，不立刻换（重排阈值时刻的换人任务，阈值时机不丢）。只在训练
+            # 确认（countdown active）或读失败（failed，保守补 operator）时动；00:00:00
+            # （zero，收取边界）不动（铁律 6）。
+            if countdown_active or (
+                panel is not None and panel.countdown_state == "failed"
+            ):
+                remaining = None
+                if panel is not None and panel.countdown is not None:
+                    remaining = (panel.countdown - datetime.now()).total_seconds() / 60
+                place_swap_target = False
+                if remaining is not None and swap_target:
+                    # should_swap 含 301 值得门（real_time_after_swap≥301）——低剩余窗口
+                    # swap_target 速率 ≤ 路线 operator，直接换入比补 operator 更慢且错置
+                    # swap_frozen=1（#101 review 修复；仅 remaining<=threshold 会踩该窗）
+                    should_swap, _ = calc_swap_threshold(
+                        0,
+                        route.get("job_match", False),
+                        route.get("central_bonus", 0),
+                        remaining,
+                        route.get("mastery_swap_buffer", 10),
+                    )
+                    place_swap_target = should_swap
+                if place_swap_target:
+                    # 已到减半时刻 → 直接换入 swap_target（等价于一次减半换人）
+                    logger.info(f"协助位空着且已到减半时刻，直接换入 {swap_target}")
+                    did_swap = _try_swap(solver, plan, swap_target)
+                    if not did_swap:
+                        did_swap = _retry_swap_in_place(
+                            solver, plan, route, swap_target
+                        )
+                    _schedule_collect_after_swap(solver, plan)
+                    if not did_swap:
+                        solver.back()
+                    return
+                # 剩余 > 阈值（或倒计时读失败）→ 放路线 operator，不立刻换
+                logger.info(f"协助位空着，补位为 {operator}")
+                logger.debug(
+                    f"[mastery] 协助位补位 id={plan['id']} 期望={operator} 动作=补位"
+                )
+                try:
+                    solver.choose_train([operator, "Current"])
+                except Exception as e:
+                    logger.warning(f"协助位补位失败: {e}")
+                    logger.debug(
+                        f"[mastery] 协助位补位 id={plan['id']} 结果=失败 err={e}"
+                    )
+                    # #100 语义：空位补位失败 → 不阻塞减半，直接尝试换入 swap_target
+                    _notify_swap_correction_failed(
+                        solver, plan, "", operator, fallback_swap=True
+                    )
+                    did_swap = False
+                    if swap_target:
+                        did_swap = _try_swap(solver, plan, swap_target)
+                        if not did_swap:
+                            did_swap = _retry_swap_in_place(
+                                solver, plan, route, swap_target
+                            )
+                    _schedule_collect_after_swap(solver, plan)
+                    solver.back()
+                    return
+                logger.debug(f"[mastery] 协助位补位 id={plan['id']} 结果=ok")
+                # 补位消耗时间 → 重读倒计时（铁律 1 动作前先读房），排阈值时刻换人任务
+                scene = solver.train_scene()
+                if scene == Scene.INFRA_DETAILS:
+                    _close_room_detail(solver)
+                    scene = solver.train_scene()
+                panel = None
+                if scene == Scene.TRAIN_MAIN:
+                    try:
+                        panel = read_main_panel(solver)
+                    except Exception as e:
+                        logger.debug(f"主面板重读失败: {e}")
+                if panel is not None and panel.countdown is not None:
+                    # 有换人目标 → 排阈值时刻任务（排了换人就不排收取，§16.10 等 SWAP
+                    # 完成后重读再排）；专三/无减半目标 → 直接排收取
+                    step_level = panel.mastery_tier if panel is not None else None
+                    if _schedule_swap_if_needed(
+                        solver, plan, panel.countdown, step_level
+                    ) is None:
+                        _schedule_collect_after_swap(solver, plan)
+                else:
+                    # 重读失败 → 轻量倒计时重试读（_read_countdown_with_retry）重排阈值
+                    # 任务——#101 合并后阈值任务已被本 dispatch 消费，重读失败只排收取会
+                    # 丢减半（review 修复）；重试也读不到 → 保守排收取（下次进房再读）
+                    countdown = _read_countdown_with_retry(solver)
+                    step_level = panel.mastery_tier if panel is not None else None
+                    if (
+                        countdown is not None
+                        and route
+                        and route.get("swap_target")
+                        and _schedule_swap_if_needed(
+                            solver, plan, countdown, step_level
+                        )
+                        is not None
+                    ):
+                        pass  # 已重排换人任务，不排收取
+                    else:
+                        _schedule_collect_after_swap(solver, plan)
+                solver.back()
+                return
+        elif countdown_active:
+            # 陌生人（协助位非空且不是 operator/swap_target）→ 纠错成 operator（#79/#80）
             logger.info(f"协助位坐着 {support_slot}，纠错为 {operator}")
-            logger.debug(f"[mastery] 协助位纠错 id={plan['id']} 期望={operator} 动作=纠错")
-        else:
-            logger.info(f"协助位空着，补位为 {operator}")
-            logger.debug(f"[mastery] 协助位补位 id={plan['id']} 期望={operator} 动作=补位")
-        try:
-            solver.choose_train([operator, "Current"])
-        except Exception as e:
-            logger.warning(f"协助位补位/纠错失败: {e}")
-            logger.debug(f"[mastery] 协助位补位/纠错 id={plan['id']} 结果=失败 err={e}")
-            _notify_swap_correction_failed(
-                solver, plan, support_slot, operator, fallback_swap=not support_slot
+            logger.debug(
+                f"[mastery] 协助位纠错 id={plan['id']} 期望={operator} 动作=纠错"
             )
-            if support_slot:
+            try:
+                solver.choose_train([operator, "Current"])
+            except Exception as e:
+                logger.warning(f"协助位补位/纠错失败: {e}")
+                logger.debug(
+                    f"[mastery] 协助位补位/纠错 id={plan['id']} 结果=失败 err={e}"
+                )
+                _notify_swap_correction_failed(
+                    solver, plan, support_slot, operator, fallback_swap=False
+                )
                 # #79 坐错人纠错失败 → 维持语义：不换人、排收取退出
                 _schedule_collect_after_swap(solver, plan)
                 solver.back()
                 return
-            # #100 空位补位失败 → 不阻塞减半：落到 did_swap 直接换 swap_target
-            #（pre-#100 空位行为，减半收益不丢；support_slot 仍空 → did_swap 判换）
-        else:
-            logger.debug(f"[mastery] 协助位补位/纠错 id={plan['id']} 结果=ok")
-            support_slot = operator
-            # 补位/纠错消耗时间 → 重读倒计时（铁律 1 动作前先读房）
-            scene = solver.train_scene()
-            if scene == Scene.INFRA_DETAILS:
-                _close_room_detail(solver)
+            else:
+                logger.debug(f"[mastery] 协助位补位/纠错 id={plan['id']} 结果=ok")
+                support_slot = operator
+                # 纠错消耗时间 → 重读倒计时（铁律 1 动作前先读房）
                 scene = solver.train_scene()
-            panel = None
-            if scene == Scene.TRAIN_MAIN:
-                try:
-                    panel = read_main_panel(solver)
-                except Exception as e:
-                    logger.debug(f"主面板重读失败: {e}")
-            countdown_active = bool(panel is not None and panel.countdown_state == "active")
-            step_level = panel.mastery_tier if panel is not None else None
-            route = _get_plan_route(plan, step_level)
-            swap_target = route.get("swap_target") if route else None
+                if scene == Scene.INFRA_DETAILS:
+                    _close_room_detail(solver)
+                    scene = solver.train_scene()
+                panel = None
+                if scene == Scene.TRAIN_MAIN:
+                    try:
+                        panel = read_main_panel(solver)
+                    except Exception as e:
+                        logger.debug(f"主面板重读失败: {e}")
+                countdown_active = bool(
+                    panel is not None and panel.countdown_state == "active"
+                )
+                step_level = panel.mastery_tier if panel is not None else None
+                route = _get_plan_route(plan, step_level)
+                swap_target = route.get("swap_target") if route else None
 
     # #80：换人前用当前倒计时判「值不值得换」（_swap_worthwhileness = calc_swap_threshold
     # 的 301 守卫，换后真实剩余 <5h 不值得）——纠错任务由 reconcile 排（排程时不做值得
@@ -1265,12 +1372,9 @@ def _swap_still_worthwhile(solver, plan, route) -> bool:
         return True
 
 
-def _schedule_collect_after_swap(solver, plan):
-    """§16.10：SWAP_SUPPORT 完成后重读倒计时再排收取。
-
-    读倒计时前先确认在训练室主页面（TRAIN_MAIN）；若是主页面带进驻详情浮窗
-    （INFRA_DETAILS），先关浮窗再读。最多原地重试 5 次；仍读不到 → 保守重排到
-    now+缓冲（下次进房再读）。
+def _read_countdown_with_retry(solver) -> Optional[datetime]:
+    """轻量倒计时读取 + 原地重试（至多 5 次）：先确认在训练室主页面（TRAIN_MAIN），
+    浮窗先关再读；仍读不到 → None（调用方保守处理）。
     """
     countdown = None
     for _ in range(5):
@@ -1286,6 +1390,17 @@ def _schedule_collect_after_swap(solver, plan):
         except Exception:
             pass
         solver.sleep(1)
+    return countdown
+
+
+def _schedule_collect_after_swap(solver, plan):
+    """§16.10：SWAP_SUPPORT 完成后重读倒计时再排收取。
+
+    读倒计时前先确认在训练室主页面（TRAIN_MAIN）；若是主页面带进驻详情浮窗
+    （INFRA_DETAILS），先关浮窗再读。最多原地重试 5 次；仍读不到 → 保守重排到
+    now+缓冲（下次进房再读）。
+    """
+    countdown = _read_countdown_with_retry(solver)
     if countdown is None:
         countdown = datetime.now() + ARRANGING_RETRY_BUFFER
     _schedule_collect(solver, plan, countdown)

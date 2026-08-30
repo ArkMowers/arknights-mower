@@ -651,30 +651,6 @@ def _find_swap_task(solver, plan_key):
         return None
 
 
-def _find_fill_task(solver, plan_id):
-    """#100：队列中该计划的补位任务（plan_key=f"fill-{id}"），无则 None。
-
-    补位与半程换人都是 SWAP_SUPPORT 且共用 plan_key=计划ID 会互相掩盖——已排的
-    半程换人任务（确认时排到阈值时刻）会让 `_find_swap_task` 恒命中 → 空协助位补位
-    永远排不上。补位任务用独立 plan_key 前缀 `fill-`，去重互不干扰。
-    """
-    current = getattr(solver, "task", None)
-    try:
-        tasks = solver.tasks
-        return next(
-            (
-                t
-                for t in tasks
-                if t.type == TaskTypes.SWAP_SUPPORT
-                and t is not current
-                and getattr(t, "plan_key", None) == f"fill-{plan_id}"
-            ),
-            None,
-        )
-    except (AttributeError, TypeError):
-        return None
-
-
 def _upsert_skill_upgrade_task(solver, target_time, meta_data="", plan_key=None):
     """入队/改期一条 SKILL_UPGRADE 任务，队列恒 ≤1 条同形任务（#62 Q3 收敛）。
 
@@ -881,10 +857,10 @@ def _maybe_recover_swap(solver, plan, room) -> bool:
     run_swap_support：先纠成路线 operator，重读倒计时判值不值得再换 swap_target）。
     专三/时间不足的步也纠（swap_target=None / <5h 只是不换减半对象，协助位仍要纠成
     路线人）。已减半（协助位 == swap_target）→ 不再排换人，只排收取。
-    #100：协助位**可靠地空着**（`_read_slots_checked` 读成功，读失败不算空）同样需纠——
-    排补位任务填路线 operator（不碰训练位）；补位与半程换人独立（fill-{id} 去重键，
-    不被阈值时刻的半程换人任务掩盖），补位后仍落到半程换人去重/排程。减半与否由
-    dispatch 时再判（空位先补 operator，再按值得门换 swap_target）。
+    #101：协助位**可靠地空着**（`_read_slots_checked` 读成功，读失败不算空）同样需纠——
+    确保一条 plan_key=id SWAP 任务现在执行（`_upsert_swap_task_now`，已有则改到 now）；
+    dispatch 时按 calc_swap_threshold(0,...) 一步定夺放 operator 还是 swap_target
+    （不再排独立 fill-{id} 补位任务）。已减半（协助位 == swap_target）→ 不排换人。
     返回 True = 已排补位/换人任务（或队列已有）→ 调用方不排收取。
     """
     from arknights_mower.utils import config
@@ -911,12 +887,12 @@ def _maybe_recover_swap(solver, plan, room) -> bool:
         operator = route["operator"]
         swap_target = route.get("swap_target")
         support_slot, _, _, reliable = _read_slots_checked(solver)
-        if reliable and not support_slot and _find_fill_task(solver, plan["id"]) is None:
-            # #100：协助位**可靠地**空着（读失败不算空）→ 排补位任务（填路线 operator，
-            # 不碰训练位）。独立去重键 fill-{id} 不被半程换人任务掩盖——补位（现在）
-            # 与减半换人（阈值时刻）是两件事，都要排。受管理计划训练中空协助位得不到
-            # 任何加成（若叶睦 15:08–08-17 06:39 协助位一直空着）。
-            _schedule_fill_support(solver, plan, operator)
+        if reliable and not support_slot:
+            # #101：协助位**可靠地**空着（读失败不算空）→ 确保一条 plan_key=id SWAP
+            # 任务现在执行（已有则改到 now）。空位当前效率已知=0，dispatch 时按
+            # calc_swap_threshold(0,...) 一步定夺放 operator 还是 swap_target——不再排
+            # 独立 fill-{id} 补位任务（补位与半程换人共用一条任务、顺序执行）。
+            _upsert_swap_task_now(solver, plan, operator)
             scheduled = True
         elif (
             reliable
@@ -931,8 +907,9 @@ def _maybe_recover_swap(solver, plan, room) -> bool:
             # 已减半（协助位已是 swap_target）→ 不再排换人，调用方排收取
             return False
 
-    # 半程换人（减半）：队列已有同计划 SWAP 任务 → 不重复排（#77 去重）。空位补位
-    # 后仍落到这里——补位失败不阻塞减半（dispatch 时 did_swap 兜底）。
+    # 半程换人（减半）：队列已有同计划 SWAP 任务 → 不重复排（#77 去重）。空位补位的
+    # now-task 也带 plan_key=id，这里一并挡住（dispatch 自决放 operator/swap_target，
+    # 不再单独排阈值任务）。
     if _find_swap_task(solver, str(plan["id"])) is not None:
         return True
     if _schedule_swap_if_needed(solver, plan, countdown, step_level) is not None:
@@ -962,24 +939,30 @@ def _schedule_correction_swap(solver, plan, operator):
     )
 
 
-def _schedule_fill_support(solver, plan, operator):
-    """#100：协助位空着 → 排补位任务（填路线 operator，不碰训练位）。
+def _upsert_swap_task_now(solver, plan, operator):
+    """#101：协助位空着 → 确保一条 plan_key=id SWAP 任务现在执行（已有则改到 now）。
 
-    与 #80 纠错同形（SWAP_SUPPORT，但 plan_key 用独立前缀 `fill-{id}`——补位与半程
-    换人共用 plan_key=计划ID 会互相掩盖，见 `_find_fill_task`）。派发走
-    run_swap_support：空位先填 operator，再按值得门换 swap_target。
+    空位当前效率已知=0，dispatch（run_swap_support）用 calc_swap_threshold(0,...)
+    一步定夺放 operator 还是 swap_target——补位与半程换人共用一条 plan_key=id 任务、
+    顺序执行，不再排独立 fill-{id} 补位任务（原独立键 #100 已删）。
     """
     from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
-    task = SchedulerTask(
-        time=datetime.now(),
-        task_type=TaskTypes.SWAP_SUPPORT,
-        meta_data=f"{_plan_label(plan)} 协助位补位为 {operator}",
-    )
-    task.plan_key = f"fill-{plan['id']}"  # 独立去重键，不与半程换人（plan_key=计划id）互掩
-    solver.tasks.append(task)
+    meta_data = f"{_plan_label(plan)} 协助位补位为 {operator}"
+    task = _find_swap_task(solver, str(plan["id"]))
+    if task is None:
+        task = SchedulerTask(
+            time=datetime.now(),
+            task_type=TaskTypes.SWAP_SUPPORT,
+            meta_data=meta_data,
+        )
+        task.plan_key = str(plan["id"])
+        solver.tasks.append(task)
+    else:
+        task.time = datetime.now()
+        task.meta_data = meta_data
     logger.info(
-        f"[mastery] #100 协助位补位：排换人任务 id={plan['id']} 期望={operator}"
+        f"[mastery] #101 协助位补位：SWAP 任务改到 now id={plan['id']} 期望={operator}"
     )
 
 
@@ -1210,7 +1193,9 @@ def reconcile_and_act(solver, scan_plan=None):
 
     返回 (start_plan, arrange_support, room)：
     - start_plan：需要开始训练的计划（长动作由 SKILL_UPGRADE dispatch 执行），无则 None；
-    - arrange_support：False 表示是「收取→下一次开始」边界（减半守卫：不重排协助位）；
+    - arrange_support：是否安排路线 operator（2026-08-17 用户拍板恒 True——「收取→
+      下一次开始」边界也照常安排；减半与否由路线 swap_target 决定，不再有减半守卫的
+      False）；
     - room：本次进房读取的 RoomState（截图权威）。dispatch 把它传给 _start_new_training，
       开始流程直接复用已读的槽位/面板，不再重复进房、重复开浮窗（#93）。
     一次进房做完全部动作；无开始计划时保证离开训练室。
@@ -1246,7 +1231,8 @@ def _reconcile(
     """#61/#73 状态矩阵。行=DB 状态，列=截图房间状态。
 
     返回 (start_plan, arrange_support)：start_plan 为需要开始训练的计划或 None；
-    arrange_support=False 表示「收取→下一次开始」边界（减半守卫：不重排协助位）。
+    arrange_support 是否安排路线 operator（2026-08-17 用户拍板恒 True——「收取→下一
+    次开始」边界也照常安排，不再有减半守卫的 False）。
 
     §16.2 矩阵：待收取/空闲/训练中；OCR 失败 5 次仍不一致 → 保守训练中。
     scan_plan：任务 plan_key 指定的开始计划（#74 第3段）；None 表示无指定（plan_key=None）。
@@ -1421,15 +1407,19 @@ def _reconcile_waiting_collect(solver, room, active, plans, defer_collect=False)
             保护=protective,
         )
         if hit is not None:
-            return _collect_plan(solver, hit, room), False
+            return _collect_plan(solver, hit, room), True
         _collect_silent(solver, room)
         return None, True
 
     if hit is not None:
         # 干员+技能都在计划（非专三）：恢复流程（§16.6）——正常收取 → 优先级排前 +
         # 置 idle → 继续本级**当场开下一级**（2026-08-14 用户拍板「都去掉」：不再区分
-        # 扫描链/重启，一律当场开；重启后也不保守等扫描）。减半守卫：跨「收取→下一次
-        # 开始」边界不动协助位。
+        # 扫描链/重启，一律当场开；重启后也不保守等扫描）。**路线 operator 照常安排**
+        # （2026-08-17 用户拍板：原「减半守卫」跨「收取→下一次开始」边界传
+        # arrange_support=False、不重排协助位，把「专三不换减半对象」过度实现成「完全
+        # 不动协助位」——路线 operator 也没放，专三只留上一级减半换入的干员；减半与否
+        # 由路线 swap_target + _schedule_swap_if_needed 管，专三 swap_target=None 本
+        # 就不排换人，路线 operator 照常进协助位拿加成）。
         _log_judgment(
             solver,
             room,
@@ -1441,9 +1431,9 @@ def _reconcile_waiting_collect(solver, room, active, plans, defer_collect=False)
         plan = _collect_plan(solver, hit, room)
         if plan is not None and plan["id"] == hit["id"]:
             _promote_plan(solver, plan)  # 非专三继续本级 → 排前
-            return plan, False
+            return plan, True
         # 收取完成（档位==target）不级联，等扫描
-        return plan, False
+        return plan, True
 
     # 干员不在计划 / 干员在技能不在：收取 + 通知④帮收（非专三，无论保护与否）
     _log_judgment(

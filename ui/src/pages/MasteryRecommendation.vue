@@ -849,6 +849,7 @@ const planEntries = computed(() => {
       if (rec)
         entries.push({
           key: k,
+          id: info.id,
           char_id: cid,
           skill_index: si,
           name: op.name,

@@ -378,6 +378,11 @@ def delete_plan(plan_id: int, path: Optional[str] = None) -> bool:
     try:
         with _conn(path) as conn:
             conn.execute("DELETE FROM mastery_plan WHERE id=?", (plan_id,))
+            # #97：删计划顺带清通知去重（②③⑥⑦⑧ 用 str(plan_id) 作 dedup_key）——
+            # 避免孤儿 dedup 残留；重加同计划（新 id）本就会重新通知，这里是卫生清理。
+            conn.execute(
+                "DELETE FROM mastery_notify WHERE dedup_key=?", (str(plan_id),)
+            )
             conn.commit()
             return True
     except Exception as e:

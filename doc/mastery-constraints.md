@@ -171,13 +171,20 @@
    run_swap_support 减半换人失败 → **立刻原地重试**（无 +5min 间隔，不排新任务），
    连续 SWAP_RETRY_LIMIT 次仍失败 / 剩余不足 5h → 放弃 + ⑧ 通知，**不再置
    swap_frozen=1**——reconcile 下次进房重新补排再试一轮，暂时性失败可被救回。
-   **#100 空协助位补位（2026-08-16）**：受管理计划训练中协助位**空着**同样需纠——
+   **#101 空协助位一步定夺（2026-08-16）**：受管理计划训练中协助位**空着**同样需纠——
    `_maybe_recover_swap` 读协助位**可靠地空着**（`_read_slots_checked`，读失败不算空）
-   → 排补位任务（`_schedule_fill_support`，填路线 operator、不碰训练位）；补位与半程
-   换人**独立去重**（fill-{id} 键，不被阈值时刻的半程换人任务掩盖），补位后仍落半程
-   换人去重/排程。run_swap_support 空位先补 operator 再按值得门换 swap_target；**只在
-   倒计时 active 时动协助位**（00:00:00 收取边界不动，铁律 6）、**读失败不动**（稳为先）；
-   空位补位失败 → 不阻塞减半（落到 did_swap 直接换 swap_target）。
+   → 确保一条 `plan_key=计划ID` 的 SWAP 任务现在执行（`_upsert_swap_task_now`，已有则
+   改到 now，不再排独立 `fill-{id}` 补位任务、两条不并存）。空位当前效率已知=0，
+   dispatch（run_swap_support）按 `calc_swap_threshold(0,...)` **一步定夺**：**should_swap
+   （含 301 值得门，= 剩余≤阈值 且 换后真实≥301）= True → 直接放 swap_target**（等价一次
+   减半换人，不先放 operator 再立刻换的浪费；仅剩余≤阈值不够——低剩余窗 swap_target 速率
+   ≤ 路线 operator，直接换反而更慢，review 修复）；**should_swap=False（剩余 > 阈值 或
+   值得门不满足，或倒计时读失败 failed）→ 放路线 operator** 拿加成、**不立刻换**（补位后
+   重读倒计时排阈值时刻的换人任务，阈值时机不丢；**重读失败 → 轻量重试读
+   `_read_countdown_with_retry` 重排阈值任务**，防 #101 合并后阈值任务被本 dispatch 消费、
+   只排收取丢减半；重试也读不到 → 保守排收取）。**只在倒计时 active 或 failed 时动协助位**
+   （00:00:00 zero 收取边界不动，铁律 6）、**读协助位失败不动**（稳为先：读不到就不动作）。
+   空位放 operator 失败 → 不阻塞减半（直接尝试换入 swap_target）。
    门控：enable_mastery 开、非跟随排班、swap_frozen=0；已减半（协助位 == swap_target）/
    保护（逻各斯/艾丽妮在协助位）→ 不补。
 
@@ -194,9 +201,14 @@
 **#79 协助位确认（2026-08-15）**：倒计时确认后开进驻浮窗（`_read_slots`，读后自动关）读实际协助位——**协助位 ∉ {operator, swap_target}（陌生人/坐错）先 `choose_train([operator, "Current"])` 纠错**，纠错成功重读倒计时（此时效率已知 = route["efficiency"]）才算换人；**纠错失败 → ⑦ 邮件通知 + 不换人 + 排收取退出**。**协助位已 = swap_target（已减半）→ 不再换、不置 swap_frozen**（防跨步残留重复换）。换人公式/路线仍沿用稳定方案。
 **#80/#81 换人值得门（2026-08-15）**：`did_swap` 追加 **`_swap_worthwhileness` 判定**（= calc_swap_threshold 的 301 守卫，换后真实剩余 <5h 不值得）——纠错任务由 reconcile 排（排程时不做值得判定，专三/时间不足的步也纠），派发到这里守住「纠错不触发不该发生的减半换人」（#80 acceptance 2）；正常减半任务排程时已判值得，这里复查只更保守，无回归。
 
-### 减半守卫（C-15）
+### 协助位安排（C-15，2026-08-17 修订）
+- **路线 operator 每次开始照常安排**：`_arrange_support` 在每次确认开始后把路线
+  operator 放进协助位——包括「收取 → 下一次开始」级联边界（2026-08-17 用户拍板，
+  原 #63 减半守卫的 `arrange_support=False` 已删：它把「专三不换减半对象」过度实现成
+  「完全不动协助位」，路线 operator 也没放，专三只留上一级减半干员）。
+- **减半换人**由路线 `swap_target` + `_schedule_swap_if_needed` 决定：专一/专二步
+  swap_target 非空 → 阈值时刻换减半对象；专三步 swap_target=None → 不换（铁律 7）。
 - 协助位换人**只在训练确认开始之后**（读到有效倒计时、DB 已置 training）。
-- 跨「收取 → 下一次开始」**不动协助位**：收集级联、已到target完成级联传 `arrange_support=False`。
 - `assistant_follows_schedule=True` 时跳过全部协助位安排与换人（协助位归排班系统管）。（C-21 / C-28）
 
 ### 路线配置（`_get_plan_route` → `get_route_config`）
@@ -252,6 +264,7 @@ idx1 在 `select_targets` 里时，先跑 `train_slot_locked`（截图权威）�
 ## 11. DB 契约
 
 - **计划字段**：id、char_id、char_name、skill_index、skill_name、target_level、status、priority、expires_at、failed_reason。
+- **计划 id（#102 定案）**：`mastery_plan.id` 由 `INTEGER PRIMARY KEY AUTOINCREMENT` 生成，**单调递增、删除后不复用**——日志中的高 id 是历史编号，不代表现存计划数（删 1、2、4 后现存计划从 3 开始属正常）。**切勿改成普通 `INTEGER PRIMARY KEY`（rowid 别名）**：删掉最大行后 id 会被复用，使残留的 `plan_key=旧id` 队列任务 / `dedup_key=旧id` 通知去重行指向新计划。
 - **状态唯一写法** `update_plan_status`；优先级 `update_plan_priority`。（DB-02）
 - **`is_operator_busy`**（`mastery_db.py:302-325`）：
   - busy 状态集 = 恒 {arranging, training, waiting_collect}（waiting_collect 的干员仍在房内，不得被排走）；增删状态必须同步改此集合。（BUSY-01）
@@ -289,7 +302,7 @@ idx1 在 `select_targets` 里时，先跑 `train_slot_locked`（截图权威）�
 |---|---|
 | `GET /mastery-plan` | `{plans:[...], history:[...]}`；plans 每项含 id/char_id/name/skill_index/skill_name/target_level/status/priority/expires_at/failed_reason；history 含 char_id/name/skill_index/skill_name/target_level/status/failed_reason/time。⚠️ **#69 展示约定**：plans = `get_all_plans()`（非终态）**追接** `get_failed_plans()`（failed，带 failed_reason）——failed 计划也返回给前端显示，不"凭空消失"；执行循环仍只读非终态（#4 SM-09） |
 | `POST /mastery-plan` | 两种 body：`{'items':[{name, skill_index, target_level}]}` 或扁平 `{name: skill_index}`；扁平路径 skill_index 必须 ∈ {0,1,2} 否则 `invalid skill_index`；未知干员 → `{status:'error', reason:'operator not found'}`；成功 → `{status:'added', id}`。⚠️ **#65/B7 target_level 统一校验**（两路径都走 `add_plan_checked`）：缺省/默认 专三（与推荐一致）；越界（非 1/2/3，含非整数、布尔 `true`）→ `reason='目标专精等级无效: ...'`；干员 cultivate.json 当前等级 ≥ target → 拒绝（`reason='...已专N...'`，不落库；cultivate 读不到则跳过等级校验，执行层已到target检测兜底）。⚠️ bulk `items` 路径**不校验** skill_index ∈ (0,1,2)（open_risks） |
-| `DELETE /mastery-plan` | body 需 id（缺 → 400）；`delete_plan` 失败 → 500 |
+| `DELETE /mastery-plan` | body 需 id（缺 → 400）；`delete_plan` 失败 → 500。**#97 清理**：删除后顺带清该计划 `plan_key=计划ID`（#101 补位已并入同一键，无独立 fill-{id}）的队列任务（SKILL_UPGRADE/SWAP）+ `mastery_notify` 中 `dedup_key=str(id)` 的去重行——残留任务不再按 plan_key 派发到已删计划 |
 | `PATCH /mastery-plan/order` | body 是 `[{id, priority}]`；未知/缺失 id 容忍；返回 `{'status':'ok'}` |
 | `GET /mastery-route` | `{routes, defaults}`，defaults = `solvers.mastery.DEFAULT_ROUTES` |
 | `POST /mastery-route` | profession 非空（否则 400）；supports 接受 str 或 list；`is_default` 恒 0；optimal/half_off 透传，half_off 默认 True |
