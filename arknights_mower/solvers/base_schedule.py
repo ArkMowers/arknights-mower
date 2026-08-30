@@ -782,6 +782,24 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                             logger.info(
                                 f"房间 {self.translate_room(room)}  {mood_info}"
                             )
+                        # 重启后训练室可能停在待收取（专精练完但没人收）：进训练室读心情时
+                        # 顺便 reconcile——发现待收取就收（defer_collect=False 此刻就是要收），
+                        # 修正 DB（截图为准），打破「不收→等级不刷新→材料不够→不调度→更不收」
+                        # 死锁。enable_mastery 关闭时不干扰通用心情读取。
+                        if config.conf.enable_mastery:
+                            from arknights_mower.solvers.mastery_reader import (
+                                read_room_state,
+                                reconcile_short,
+                            )
+
+                            try:
+                                room_state = read_room_state(self, enter=False)
+                                if room_state is not None:
+                                    reconcile_short(
+                                        self, room_state, defer_collect=False
+                                    )
+                            except Exception as e:
+                                logger.warning(f"训练室顺路对账失败: {e}")
                     else:
                         num = len(self.op_data.plan[room])
                         _mood_data = self.get_agent_from_room(
@@ -4530,16 +4548,20 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
         from arknights_mower.solvers.mastery_reader import _schedule_scan_start
         from arknights_mower.utils.mastery_db import get_all_plans
 
+        # 带 current_level 的扫描条目：安排步级 = 当前级 + 1（森空岛数据，最可靠）
         confirmed = {
-            (entry.get("char_id"), entry.get("skill_index")) for entry in scheduled
+            (entry.get("char_id"), entry.get("skill_index")): entry
+            for entry in scheduled
         }
         dispatched = 0
         for plan in get_all_plans():  # 非终态，按 priority, id 排序
             if plan["status"] != "idle":
                 continue
-            if (plan["char_id"], plan["skill_index"]) not in confirmed:
+            entry = confirmed.get((plan["char_id"], plan["skill_index"]))
+            if entry is None:
                 continue
-            _schedule_scan_start(self, plan)
+            step_level = entry.get("current_level", 0) + 1
+            _schedule_scan_start(self, plan, step_level=step_level)
             dispatched += 1
         if dispatched:
             logger.info(

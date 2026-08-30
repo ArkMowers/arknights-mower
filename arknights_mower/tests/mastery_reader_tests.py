@@ -71,6 +71,11 @@ class TestSkillLabel(unittest.TestCase):
         self.assertTrue(panel_skill_matches("秘杖", "二技能·秘杖·反重力模式"))
         # 分隔符归一化：・ vs ·
         self.assertTrue(panel_skill_matches("冲锋号令・α型", "一技能·冲锋号令·α型"))
+        # OCR 尾部多读一个拉丁字母/数字 → 去尾兜底仍匹配
+        self.assertTrue(panel_skill_matches("破坏与滋养A", "二技能·破坏与滋养"))
+        self.assertTrue(panel_skill_matches("飞翔瞪射2", "二技能·飞翔瞪射"))
+        # 合法尾部字母（红桃K）直接命中，不走兜底也不误伤
+        self.assertTrue(panel_skill_matches("红桃K", "一技能·红桃K"))
 
 
 class TestPanelParse(unittest.TestCase):
@@ -1760,7 +1765,10 @@ class TestReadSlotsCloseFloatingWindow(unittest.TestCase):
         solver.train_scene.return_value = Scene.INFRA_DETAILS
         support, train = reader._read_slots(solver)
         self.assertEqual((support, train), ("逻各斯", "能天使"))
-        solver.back.assert_called_once()
+        # 205 放大视角关浮窗应点关闭按钮（arrange_check_in_on），不是 back（会退到基建）
+        solver.find.assert_any_call("arrange_check_in_on")
+        solver.tap.assert_called()
+        solver.back.assert_not_called()
 
     def test_no_double_back_when_window_closed(self):
         solver = MagicMock()
@@ -1771,6 +1779,7 @@ class TestReadSlotsCloseFloatingWindow(unittest.TestCase):
         solver.train_scene.return_value = Scene.TRAIN_MAIN
         reader._read_slots(solver)
         solver.back.assert_not_called()
+        solver.tap.assert_not_called()
 
     def test_read_failure_returns_empty_no_back(self):
         solver = MagicMock()

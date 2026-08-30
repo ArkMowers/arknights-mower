@@ -604,6 +604,125 @@ class TestMasteryMailOperatorName(unittest.TestCase):
         gcn.assert_called_once_with("char_test")
 
 
+class TestPlanFailLabel(unittest.TestCase):
+    """失败/超时邮件标签：技能真名 + 实际步级；步级未知不带档位（不用「技能序号 + 整体目标」。"""
+
+    def test_uses_skill_name_and_actual_step(self):
+        plan = make_plan(
+            char_name="若叶睦", skill_name="二技能·破坏与滋养", target_level=3
+        )
+        self.assertEqual(
+            mastery._plan_fail_label(plan, step_level=2), "若叶睦 二技能·破坏与滋养 专2"
+        )
+
+    def test_omits_tier_without_step(self):
+        # 占用者非本计划干员 / 图标读失败 → 步级未知，不写档位（宁缺毋滥，不回退 target_level）
+        plan = make_plan(
+            char_name="若叶睦", skill_name="二技能·破坏与滋养", target_level=3
+        )
+        self.assertEqual(
+            mastery._plan_fail_label(plan, step_level=None), "若叶睦 二技能·破坏与滋养"
+        )
+
+    def test_falls_back_to_skill_index_without_name(self):
+        plan = make_plan(
+            char_name="若叶睦", skill_name=None, skill_index=1, target_level=3
+        )
+        self.assertEqual(
+            mastery._plan_fail_label(plan, step_level=2), "若叶睦 技能2 专2"
+        )
+
+    def test_exit_failed_email_uses_actual_step(self):
+        solver = MagicMock()
+        plan = make_plan(
+            char_name="若叶睦", skill_name="二技能·破坏与滋养", target_level=3
+        )
+        with (
+            patch("arknights_mower.utils.mastery_db.update_plan_status"),
+            patch("arknights_mower.utils.email.send_message") as send,
+        ):
+            mastery._exit_failed(
+                solver, plan, "训练室面板干员/技能与计划不符，未开始训练", step_level=2
+            )
+        msg = send.call_args[0][0]
+        self.assertIn("若叶睦 二技能·破坏与滋养 专2", msg)
+        self.assertNotIn("技能2", msg)
+        self.assertNotIn("专3", msg)
+
+    def test_ownership_check_stranger_reports_occupier(self):
+        """占用者非本计划干员（路人）：读图标档位进「实际占用」，不作计划步级。"""
+        solver = MagicMock()
+        solver.train_scene.return_value = Scene.TRAIN_MAIN
+        solver.read_time.return_value = 7200  # 有倒计时
+        solver.read_screen.return_value = "[路人干员]别的技能"  # 干员/技能都不匹配
+        solver.recog.w = 1920
+        solver.recog.h = 1080
+        plan = make_plan(char_name="测试干员", skill_name="测试技能")
+        with (
+            patch.object(mastery, "datetime", FixedDateTime),
+            patch("arknights_mower.utils.mastery_db.update_plan_status"),
+            patch("arknights_mower.utils.email.send_message") as send,
+            patch.object(mastery, "_count_lit_mastery_icons", return_value=2) as cnt,
+        ):
+            result = mastery._confirm_training_started(
+                solver, plan, START + timedelta(minutes=10)
+            )
+        self.assertEqual(result, "failed")
+        cnt.assert_called_once()  # 路人档位也要读，供「实际占用」展示
+        msg = send.call_args[0][0]
+        self.assertIn("测试干员 测试技能", msg)  # 计划标签
+        self.assertIn("路人干员（别的技能，专2）", msg)  # 实际占用
+        self.assertNotIn("测试干员 测试技能 专", msg)  # 路人档位不作计划步级
+
+    def test_ownership_check_own_operator_tier_is_plan_step(self):
+        """占用者即本计划干员（仅技能不符）：档位作计划步级 + 实际占用都写。"""
+        solver = MagicMock()
+        solver.train_scene.return_value = Scene.TRAIN_MAIN
+        solver.read_time.return_value = 7200
+        solver.read_screen.return_value = (
+            "[测试干员]一技能·多首野兽"  # 干员匹配、技能不符
+        )
+        solver.recog.w = 1920
+        solver.recog.h = 1080
+        plan = make_plan(char_name="测试干员", skill_name="测试技能")
+        with (
+            patch.object(mastery, "datetime", FixedDateTime),
+            patch("arknights_mower.utils.mastery_db.update_plan_status"),
+            patch("arknights_mower.utils.email.send_message") as send,
+            patch.object(mastery, "_count_lit_mastery_icons", return_value=2),
+        ):
+            result = mastery._confirm_training_started(
+                solver, plan, START + timedelta(minutes=10)
+            )
+        self.assertEqual(result, "failed")
+        msg = send.call_args[0][0]
+        self.assertIn("测试干员 测试技能 专2", msg)  # 档位作计划步级
+        self.assertIn("测试干员（一技能·多首野兽，专2）", msg)
+
+    def test_ownership_check_uses_scan_step_for_stranger(self):
+        """扫描带的安排步级（专2）在路人占用时也报给用户：邮件=计划标签带专2 + 实际占用。"""
+        solver = MagicMock()
+        solver.train_scene.return_value = Scene.TRAIN_MAIN
+        solver.read_time.return_value = 7200
+        solver.read_screen.return_value = "[路人干员]别的技能"
+        solver.recog.w = 1920
+        solver.recog.h = 1080
+        plan = make_plan(char_name="测试干员", skill_name="测试技能")
+        with (
+            patch.object(mastery, "datetime", FixedDateTime),
+            patch("arknights_mower.utils.mastery_db.update_plan_status"),
+            patch("arknights_mower.utils.email.send_message") as send,
+            patch.object(mastery, "_count_lit_mastery_icons", return_value=1),
+        ):
+            result = mastery._confirm_training_started(
+                solver, plan, START + timedelta(minutes=10), True, step_level=2
+            )
+        self.assertEqual(result, "failed")
+        msg = send.call_args[0][0]
+        self.assertIn("测试干员 测试技能 专2", msg)  # 扫描步级=本次安排目标
+        self.assertIn("路人干员（别的技能，专1）", msg)  # 实际占用（图标=1）
+
+
 class TestStartTrainingMail(unittest.TestCase):
     """#90：开始训练邮件——协助位安排后重读倒计时再发；真名/目标级档位；两情况完成时间。
 
@@ -792,7 +911,7 @@ class TestStartTrainingMail(unittest.TestCase):
         self.assertNotIn("专2", msg)
 
     def test_re_read_closes_detail_window_and_reads(self):
-        # 协助位安排后停在进驻详情浮窗 → 先关浮窗回主页面再读倒计时（back 内部已重置缓存）
+        # 协助位安排后停在进驻详情浮窗 → 先关浮窗回主页面再读倒计时（点 arrange_check_in_on 关）
         solver = self._solver()
         solver.train_scene.side_effect = [Scene.INFRA_DETAILS, Scene.TRAIN_MAIN]
         with (
@@ -801,7 +920,10 @@ class TestStartTrainingMail(unittest.TestCase):
         ):
             result = mastery._re_read_train_countdown(solver)
         self.assertEqual(result, START + timedelta(hours=2))
-        solver.back.assert_called_once()  # 关掉进驻详情浮窗
+        # 205 放大视角关浮窗应点关闭按钮（arrange_check_in_on），不是 back（会退到基建）
+        solver.find.assert_any_call("arrange_check_in_on")
+        solver.tap.assert_called()
+        solver.back.assert_not_called()  # 关掉进驻详情浮窗
         solver.read_time.assert_called_once()  # 关浮窗后重读倒计时
 
     def test_re_read_not_main_returns_none(self):
@@ -1323,7 +1445,10 @@ class TestSwapCollectGating(unittest.TestCase):
             patch.object(mastery_reader, "datetime", FixedDateTime),
         ):
             mastery.run_swap_support(solver)
-        solver.back.assert_called_once()  # 关掉进驻详情浮窗
+        # 205 放大视角关浮窗应点关闭按钮（arrange_check_in_on），不是 back（会退到基建）
+        solver.find.assert_any_call("arrange_check_in_on")
+        solver.tap.assert_called()
+        solver.back.assert_not_called()  # 关掉进驻详情浮窗
         sc.assert_called_once()
 
 
@@ -1997,7 +2122,31 @@ class TestRunMasteryTaskDispatch(unittest.TestCase):
         ):
             mastery.run_mastery_task(solver)
         ra.assert_called_once_with(solver, scan_plan=plan)
-        snt.assert_called_once_with(solver, plan, arrange_support=True, room=room)
+        snt.assert_called_once_with(
+            solver, plan, arrange_support=True, room=room, step_level=None
+        )
+
+    @patch("arknights_mower.utils.mastery_db.get_plan_by_id")
+    def test_scan_task_carries_step_level_to_start(self, g):
+        # 扫描派发任务带 step_level（current_level+1）→ 传给安排流程（失败邮件报「本次要练的专几」）
+        solver = self._solver()
+        task = self._plan_key_task("3")
+        task.step_level = 2
+        solver.task = task
+        plan = make_plan(id=3)
+        room = mastery_reader.RoomState("empty", train_slot="测试干员")
+        g.return_value = plan
+        with (
+            patch.object(config_mod.conf, "enable_mastery", True),
+            patch.object(
+                mastery_reader, "reconcile_and_act", return_value=(plan, True, room)
+            ),
+            patch.object(mastery, "_start_new_training") as snt,
+        ):
+            mastery.run_mastery_task(solver)
+        snt.assert_called_once_with(
+            solver, plan, arrange_support=True, room=room, step_level=2
+        )
 
     @patch("arknights_mower.utils.mastery_db.get_plan_by_id")
     def test_collect_task_also_resolves_scan_plan(self, g):
@@ -2024,7 +2173,9 @@ class TestRunMasteryTaskDispatch(unittest.TestCase):
         ):
             mastery.run_mastery_task(solver)
         ra.assert_called_once_with(solver, scan_plan=plan)
-        snt.assert_called_once_with(solver, plan, arrange_support=False, room=room)
+        snt.assert_called_once_with(
+            solver, plan, arrange_support=False, room=room, step_level=None
+        )
 
     def test_recheck_task_passes_no_scan_plan(self):
         # plan_key=None（占用重检）→ 无指定计划 → scan_plan=None

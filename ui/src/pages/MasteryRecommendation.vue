@@ -3,7 +3,7 @@
     <div class="page-header">
       <h1 class="page-title">专精推荐</h1>
       <n-space align="center" :size="8">
-        <n-button size="small" @click="showPlan = true">
+        <n-button size="small" @click="openPlanModal">
           <template #icon><n-icon :component="ListIcon" /></template>
           专精计划
           <n-badge
@@ -415,6 +415,7 @@
       title="专精计划"
       style="width: min(600px, 95vw)"
       :mask-closable="false"
+      @update:show="onPlanModalShow"
     >
       <n-space vertical>
         <n-input v-model:value="planSearch" placeholder="搜索干员" clearable size="small" />
@@ -461,7 +462,7 @@
                 :key="rec.skill_index"
                 size="tiny"
                 :type="isSkillPlanned(op.char_id, rec.skill_index) ? 'success' : 'default'"
-                @click="toggleSkillPlan(op, rec)"
+                @click="toggleSkillPlan(op, rec, true)"
               >
                 {{ rec.skill_name }}
               </n-button>
@@ -470,7 +471,7 @@
         </n-scrollbar>
       </n-space>
       <template #footer>
-        <n-space justify="end">
+        <n-space justify="space-between">
           <n-button @click="clearPlan" size="small">清空</n-button>
           <n-button type="primary" @click="savePlanFn" size="small">保存</n-button>
         </n-space>
@@ -634,6 +635,10 @@ const plan = ref({})
 const planStatus = ref({}) // { "charId_skillIndex": {id, status, target_level, priority, expires_at} }
 const showPlan = ref(false)
 const planSearch = ref('')
+// 草稿式编辑：弹层内移除的 planStatus key，保存时才删后端；re-add 会移出该集合
+const draftRemoved = ref(new Set())
+// 保存后主动关闭弹层，不触发「关闭不保存即丢弃」的重载
+let planJustSaved = false
 
 function planKey(cid, si) {
   return `${cid}_${si}`
@@ -672,12 +677,12 @@ function getStatusType(status) {
   return map[status] || 'default'
 }
 
-async function toggleSkillPlan(op, rec) {
+async function toggleSkillPlan(op, rec, draft = false) {
   const k = planKey(op.char_id, rec.skill_index)
   if (plan.value[k]) {
     // 删除计划
     const info = planStatus.value[k]
-    if (info && info.id) {
+    if (!draft && info && info.id) {
       try {
         await axios.delete(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, {
           data: { id: info.id }
@@ -688,9 +693,17 @@ async function toggleSkillPlan(op, rec) {
       }
     }
     delete plan.value[k]
-    delete planStatus.value[k]
+    if (draft) {
+      draftRemoved.value.add(k) // 草稿：保留 id，保存时删后端
+    } else {
+      delete planStatus.value[k] // 主列表 quick-add：已删后端，同步本地
+    }
+  } else if (draft) {
+    // 弹层内草稿：只动本地，保存时 POST
+    plan.value[k] = true
+    draftRemoved.value.delete(k)
   } else {
-    // 添加计划
+    // 主列表 quick-add：立即写后端
     try {
       const body = { items: [{ name: op.name, skill_index: rec.skill_index }] }
       const r = await axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, body)
@@ -710,68 +723,72 @@ async function toggleSkillPlan(op, rec) {
 
 function addAllToPlan(op) {
   for (const rec of op.recommendations) {
-    plan.value[planKey(op.char_id, rec.skill_index)] = true
+    const k = planKey(op.char_id, rec.skill_index)
+    plan.value[k] = true
+    draftRemoved.value.delete(k)
   }
   message.success(`${op.name} 全部技能已加入计划`)
 }
 
-async function removePlanEntry(e) {
-  const info = planStatus.value[e.key]
-  if (info && info.id) {
-    try {
-      await axios.delete(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, { data: { id: info.id } })
-    } catch (err) {
-      message.error(`删除失败: ${err.message}`)
-      return
-    }
-  }
+function removePlanEntry(e) {
+  // 弹层内草稿式删除：只动本地，保存时删后端（planStatus 保留 id）
   delete plan.value[e.key]
-  delete planStatus.value[e.key]
+  draftRemoved.value.add(e.key)
 }
-async function clearPlan() {
-  for (const k in planStatus.value) {
-    const info = planStatus.value[k]
-    if (info && info.id) {
-      try {
-        await axios.delete(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, {
-          data: { id: info.id }
-        })
-      } catch (e) {
-        /* ignore */
-      }
-    }
-  }
+function clearPlan() {
+  // 草稿式清空：只清本地视图，保存时才删后端计划（已挪到左侧，远离保存）
+  for (const k in planStatus.value) draftRemoved.value.add(k)
   plan.value = {}
-  planStatus.value = {}
 }
 async function savePlanFn() {
-  const items = []
+  const toAdd = []
   for (const k in plan.value) {
+    if (planStatus.value[k]?.id) continue // 已是后端计划
     const [cid, si] = parsePlanKey(k)
     const op = store.recommendations.find((o) => o.char_id === cid)
     if (op && si !== undefined) {
-      if (!planStatus.value[k]?.id) {
-        // #65：不传 target_level，服务端默认专三
-        items.push({ name: op.name, skill_index: parseInt(si) })
-      }
+      // #65：不传 target_level，服务端默认专三
+      toAdd.push({ name: op.name, skill_index: parseInt(si) })
     }
   }
-  if (!items.length) {
-    message.info('没有新计划需要保存')
+  // 草稿中被移除且未重新加回的计划（清空/单删/技能反选）
+  const toDel = [...draftRemoved.value].filter((k) => !plan.value[k] && planStatus.value[k]?.id)
+  const orderUpdates = sortablePlanEntries.value
+    .map((e, idx) => ({ id: planStatus.value[e.key]?.id, priority: idx }))
+    .filter((u) => u.id)
+  if (!toAdd.length && !toDel.length && !orderUpdates.length) {
+    message.info('没有变更需要保存')
     showPlan.value = false
     return
   }
-  const r = await axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, { items })
-  const results = r.data?.results || []
-  const ok = results.filter((x) => x.status === 'added')
-  const err = results.filter((x) => x.status === 'error')
-  if (err.length) {
-    message.warning(`保存完成，${err.length} 项失败: ${err.map((x) => x.reason).join('；')}`)
-  } else {
-    message.success(`计划已保存，新增 ${ok.length} 项`)
+  if (toAdd.length) {
+    const r = await axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, { items: toAdd })
+    const results = r.data?.results || []
+    const err = results.filter((x) => x.status === 'error')
+    if (err.length) {
+      message.warning(`保存完成，${err.length} 项失败: ${err.map((x) => x.reason).join('；')}`)
+    }
   }
+  for (const k of toDel) {
+    try {
+      await axios.delete(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, {
+        data: { id: planStatus.value[k].id }
+      })
+    } catch (e) {
+      message.error(`删除失败: ${e.message}`)
+    }
+  }
+  if (orderUpdates.length) {
+    try {
+      await axios.patch(`${import.meta.env.VITE_HTTP_URL}/mastery-plan/order`, orderUpdates)
+    } catch (e) {
+      message.error(`排序失败: ${e.message}`)
+    }
+  }
+  planJustSaved = true
   await refreshPlanFromServer()
   showPlan.value = false
+  message.success(`计划已保存${toAdd.length ? `（新增 ${toAdd.length} 项）` : ''}`)
 }
 
 async function refreshPlanFromServer() {
@@ -797,9 +814,23 @@ async function refreshPlanFromServer() {
     }
     plan.value = p
     planStatus.value = ps
+    draftRemoved.value.clear() // 以服务端为准，丢弃未落库的删除意图
   } catch (e) {
     console.error('refreshPlanFromServer failed', e)
   }
+}
+
+async function openPlanModal() {
+  // 打开即重载：丢弃上次未保存的草稿（与路线编辑「关闭不保存即丢弃」一致）
+  await refreshPlanFromServer()
+  showPlan.value = true
+}
+
+function onPlanModalShow(show) {
+  if (!show && !planJustSaved) {
+    refreshPlanFromServer() // 未保存关闭 → 还原草稿
+  }
+  planJustSaved = false
 }
 
 function parsePlanKey(k) {
@@ -846,20 +877,11 @@ watch(
   { immediate: true }
 )
 
-async function onPlanReorder() {
-  const updates = sortablePlanEntries.value
-    .map((e, idx) => ({ id: planStatus.value[e.key]?.id, priority: idx }))
-    .filter((u) => u.id)
-  if (!updates.length) return
-  try {
-    await axios.patch(`${import.meta.env.VITE_HTTP_URL}/mastery-plan/order`, updates)
-    for (const u of updates) {
-      const entry = sortablePlanEntries.value.find((e) => planStatus.value[e.key]?.id === u.id)
-      if (entry) planStatus.value[entry.key].priority = u.priority
-    }
-  } catch (e) {
-    message.error(`排序失败: ${e.message}`)
-  }
+function onPlanReorder() {
+  // 草稿式排序：只更新本地优先级，保存时才写后端
+  sortablePlanEntries.value.forEach((e, idx) => {
+    if (planStatus.value[e.key]) planStatus.value[e.key].priority = idx
+  })
 }
 
 const filteredPlanOperators = computed(() => {

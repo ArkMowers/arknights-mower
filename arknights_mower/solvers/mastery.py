@@ -5,10 +5,12 @@ from typing import Optional
 from arknights_mower.solvers.mastery_reader import (
     RoomPanel,
     RoomState,
+    _close_room_detail,
     _count_lit_mastery_icons,
     _notify_at_target,
     _plan_label,
     _plan_matches_room,
+    _plan_operator_matches,
     _read_panel_text,
     _read_slots,
     _read_train_countdown,
@@ -390,8 +392,17 @@ def run_mastery_task(solver):
     logger.debug("[mastery] 训练室动作 触发源=定时任务 动作=dispatch")
     plan, arrange_support, room = reconcile_and_act(solver, scan_plan=scan_plan)
     if plan:
+        # 扫描派发时算出的本次安排步级（current_level+1，森空岛数据）——安排失败邮件
+        # 需要「这次要练的专几」，不依赖现场图标（图标可能是占用者的）。
+        step_level = getattr(task, "step_level", None) if task is not None else None
         # #93：reconcile 已进房读完全部状态（room），开始流程直接复用，不再重复进房。
-        _start_new_training(solver, plan, arrange_support=arrange_support, room=room)
+        _start_new_training(
+            solver,
+            plan,
+            arrange_support=arrange_support,
+            room=room,
+            step_level=step_level,
+        )
 
 
 def _training_slots(solver):
@@ -423,18 +434,30 @@ def _swap_into_wrong_slot(solver, plan):
     solver.choose_train(["Current", _plan_char_label(plan)])
 
 
-def _exit_failed(solver, plan, reason):
+def _plan_fail_label(plan, step_level=None) -> str:
+    """失败/超时邮件的计划标签：技能真名 + 实际步级。
+
+    不用「技能{序号} + target_level」——后者是最终目标（专三计划每步都写专三），
+    实际在排的步级（专一→专二→专三）才是用户该看到的。步级未知时不写档位
+    （占用者非本计划干员 / 图标读失败时，任何档位数字都是误导，宁缺毋滥）。
+    """
+    skill = plan.get("skill_name") or f"技能{plan['skill_index'] + 1}"
+    base = f"{_plan_char_label(plan)} {skill}"
+    return f"{base} 专{step_level}" if step_level else base
+
+
+def _exit_failed(solver, plan, reason, step_level=None):
     """ARRANGING 失败统一出口：标记 failed + 一次通知 + 退出训练室，不在 ARRANGING 内重试。"""
     from arknights_mower.utils.email import send_message
     from arknights_mower.utils.mastery_db import update_plan_status
 
     update_plan_status(plan["id"], "failed", failed_reason=reason)
-    label = f"{_plan_char_label(plan)} 技能{plan['skill_index'] + 1} 专{plan['target_level']}"
+    label = _plan_fail_label(plan, step_level)
     send_message(f"{label} {reason}", level="ERROR")
     solver.back()
 
 
-def _exit_arranging_timeout(solver, plan, stats, stuck_scene):
+def _exit_arranging_timeout(solver, plan, stats, stuck_scene, step_level=None):
     """#15 决议的统一超时出口：标记 failed + 可读失败原因 + 一次通知 + 结构化轨迹诊断。
 
     用户已定案（#19 实现时与 #15「置 idle」矛盾）：置 failed，避免 infra 主循环
@@ -452,7 +475,7 @@ def _exit_arranging_timeout(solver, plan, stats, stuck_scene):
         f"原因={reason}"
     )
     update_plan_status(plan["id"], "failed", failed_reason=reason)
-    label = f"{_plan_char_label(plan)} 技能{plan['skill_index'] + 1} 专{plan['target_level']}"
+    label = _plan_fail_label(plan, step_level)
     logger.warning(
         f"ARRANGING 超时退出: {reason} | 诊断: 最后持续停留在『{scene_name}』页面 | "
         f"轨迹: {stats}"
@@ -538,8 +561,11 @@ def _exit_occupied(solver, plan, countdown, trigger="训练室占用"):
     solver.back()
 
 
-def _start_new_training(solver, plan, arrange_support=True, room=None):
+def _start_new_training(solver, plan, arrange_support=True, room=None, step_level=None):
     """开始新一级训练：IDLE → ARRANGING → TRAINING
+
+    step_level：扫描派发算出的本次安排步级（current_level+1）；None=非扫描路径
+    （collect 续练/重检），失败邮件回落现场图标/占用者判断。
 
     #16 决议：进房先读倒计时定分支，不盲点技能按钮。
     #15 决议：全程纯墙钟 5 分钟 deadline，各分支短处理、超时走统一退出路径。
@@ -593,8 +619,8 @@ def _start_new_training(solver, plan, arrange_support=True, room=None):
         elif scene == Scene.INFRA_MAIN:
             solver.enter_room("train")
         elif scene == Scene.INFRA_DETAILS:
-            # 房间详情浮层（get_agent_from_room 会打开它）→ 关掉回房间主界面
-            solver.back()
+            # 房间详情浮层（get_agent_from_room 会打开它）→ 点关闭按钮回房间主界面
+            _close_room_detail(solver)
         elif scene == Scene.TRAIN_FINISH:
             solver.tap((solver.recog.w * 0.05, solver.recog.h * 0.95), interval=0.5)
         elif scene == Scene.TRAIN_MAIN:
@@ -678,13 +704,15 @@ def _start_new_training(solver, plan, arrange_support=True, room=None):
             else:
                 solver.tap((solver.recog.w * 0.87, solver.recog.h * 0.9))
             solver.sleep(2)
-            result = _confirm_training_started(solver, plan, deadline, arrange_support)
+            result = _confirm_training_started(
+                solver, plan, deadline, arrange_support, step_level=step_level
+            )
             if result == "started":
                 return
             if result == "failed":
                 return
         elif scene == Scene.TRAIN_SKILL_UPGRADE_ERROR:
-            msg = f"{_plan_char_label(plan)} 技能{skill_index} 专{plan['target_level']} 材料不足"
+            msg = f"{_plan_fail_label(plan)} 材料不足"
             logger.warning(msg)
             _log_transition(plan, "failed", "材料不足")
             update_plan_status(plan["id"], "failed", failed_reason="材料不足")
@@ -703,10 +731,13 @@ def _start_new_training(solver, plan, arrange_support=True, room=None):
             return
 
 
-def _confirm_training_started(solver, plan, deadline, arrange_support=True):
+def _confirm_training_started(
+    solver, plan, deadline, arrange_support=True, step_level=None
+):
     """确认训练已开始（读到有效倒计时）→ 转入 TRAINING，然后安排协助位。
 
     并入 #15 的全局 10 分钟 deadline（由调用方传入），不单独分段计时。
+    step_level：扫描派发算出的本次安排步级，供归属校验失败邮件报「本次要练的专几」。
     返回 "started" / "failed" / "timeout"：
     - started: 已转入 TRAINING 并完成协助位/收取安排
     - failed: 材料不足 或 #69/B2 面板干员/技能与计划不符，已标记 failed + 通知 + 退出训练室
@@ -745,8 +776,30 @@ def _confirm_training_started(solver, plan, deadline, arrange_support=True):
                 if panel.operator_name and not _plan_matches_room(
                     plan, RoomState("training", panel)
                 ):
+                    # 面板可读但与计划不符：占用者的干员/技能/档位都读出来，一并告知
+                    # 用户实际占房者（面板信息不该浪费）。占用者即本计划干员（仅技能名
+                    # 不符，如 OCR 噪声）时，档位可作计划步级写进标签；占用者是路人时
+                    # 档位属于路人，只出现在「实际占用」里，不作计划步级。
+                    tier = None
+                    try:
+                        tier = _count_lit_mastery_icons(solver)
+                    except Exception:
+                        tier = None
+                    actual = f"{panel.operator_name}（{panel.skill_name or '技能未知'}"
+                    actual += f"，专{tier}）" if tier else "）"
+                    # 计划步级：优先扫描带的本安排步级（最可靠，森空岛 current_level+1）；
+                    # 无则占用者即本计划干员时读图标回退；占用者是路人时步级未知（不作
+                    # 计划步级，只出现在「实际占用」）。
+                    plan_step = step_level
+                    if plan_step is None and _plan_operator_matches(
+                        plan, panel.operator_name
+                    ):
+                        plan_step = tier
                     _exit_failed(
-                        solver, plan, "训练室面板干员/技能与计划不符，未开始训练"
+                        solver,
+                        plan,
+                        f"训练室面板干员/技能与计划不符，实际占用：{actual}",
+                        step_level=plan_step,
                     )
                     return "failed"
                 if not panel.operator_name:
@@ -818,7 +871,7 @@ def _confirm_training_started(solver, plan, deadline, arrange_support=True):
                     _schedule_collect(solver, plan, fresh_execute_time, tier=step_level)
                 return "started"
         elif scene == Scene.TRAIN_SKILL_UPGRADE_ERROR:
-            msg = f"{_plan_char_label(plan)} 技能{plan['skill_index'] + 1} 专{plan['target_level']} 材料不足"
+            msg = f"{_plan_fail_label(plan)} 材料不足"
             _log_transition(plan, "failed", "材料不足")
             update_plan_status(plan["id"], "failed", failed_reason="材料不足")
             logger.warning(msg)
@@ -865,7 +918,7 @@ def _re_read_train_countdown(solver) -> Optional[datetime]:
     try:
         scene = solver.train_scene()
         if scene == Scene.INFRA_DETAILS:
-            solver.back()
+            _close_room_detail(solver)
             scene = solver.train_scene()
         if scene != Scene.TRAIN_MAIN:
             return None
@@ -977,7 +1030,7 @@ def run_swap_support(solver):
     solver.enter_room("train")
     scene = solver.train_scene()
     if scene == Scene.INFRA_DETAILS:
-        solver.back()
+        _close_room_detail(solver)
         scene = solver.train_scene()
     panel = None
     if scene == Scene.TRAIN_MAIN:
@@ -1013,7 +1066,7 @@ def run_swap_support(solver):
         # 纠错消耗时间 → 重读倒计时（铁律 1 动作前先读房）
         scene = solver.train_scene()
         if scene == Scene.INFRA_DETAILS:
-            solver.back()
+            _close_room_detail(solver)
             scene = solver.train_scene()
         panel = None
         if scene == Scene.TRAIN_MAIN:
@@ -1093,7 +1146,7 @@ def _notify_swap_correction_failed(solver, plan, support_slot, operator):
 
     if not should_notify("swap_correction_failed", str(plan["id"])):
         return
-    label = f"{_plan_char_label(plan)} 技能{plan['skill_index'] + 1} 专{plan['target_level']}"
+    label = _plan_fail_label(plan)
     msg = (
         f"{label} 协助位 {support_slot} 纠错失败（未能换入 {operator}），"
         "本次跳过减半换人，减半收益可能丢失"
@@ -1138,7 +1191,7 @@ def _notify_swap_giveup(solver, plan):
 
     if not should_notify("swap_failed_giveup", str(plan["id"])):
         return
-    label = f"{_plan_char_label(plan)} 技能{plan['skill_index'] + 1} 专{plan['target_level']}"
+    label = _plan_fail_label(plan)
     msg = f"{label} 换人失败已放弃，减半收益可能丢失"
     send_message(msg, level="WARNING")
 
@@ -1166,7 +1219,7 @@ def _swap_still_worthwhile(solver, plan, route) -> bool:
     try:
         scene = solver.train_scene()
         if scene == Scene.INFRA_DETAILS:
-            solver.back()
+            _close_room_detail(solver)
             scene = solver.train_scene()
         if scene != Scene.TRAIN_MAIN:
             return True
@@ -1191,7 +1244,7 @@ def _schedule_collect_after_swap(solver, plan):
         try:
             scene = solver.train_scene()
             if scene == Scene.INFRA_DETAILS:
-                solver.back()
+                _close_room_detail(solver)
                 scene = solver.train_scene()
             if scene == Scene.TRAIN_MAIN:
                 countdown = _read_train_countdown(solver)

@@ -263,6 +263,22 @@ def read_main_panel(solver, img=None) -> RoomPanel:
     return panel
 
 
+def _close_room_detail(solver, max_retries=3):
+    """关进驻详情浮窗回训练室主界面：点浮窗关闭按钮（arrange_check_in_on）。
+
+    205 是基建放大视角，back() 会退到基建主界面而非训练室主界面（graph.py:
+    INFRA_DETAILS→INFRA_MAIN），专精流程一律用点关闭按钮的方式关浮窗。
+    浮窗开着时画面出现 arrange_check_in_on（浮窗上的关闭按钮），点它关浮窗。
+    """
+    for _ in range(max_retries):
+        pos = solver.find("arrange_check_in_on")
+        if pos:
+            solver.tap(pos, interval=0.5)
+            return True
+        solver.sleep(0.5)
+    return False
+
+
 def _settle_in_room(solver, max_iters=15) -> int:
     """把场景稳定到房内可判定状态（TRAIN_MAIN / TRAIN_FINISH / 其他房内场景）。
 
@@ -281,7 +297,7 @@ def _settle_in_room(solver, max_iters=15) -> int:
         if scene == Scene.INFRA_MAIN:
             solver.enter_room("train")
         elif scene == Scene.INFRA_DETAILS:
-            solver.back()
+            _close_room_detail(solver)
         else:
             solver.sleep()
     return solver.train_scene()
@@ -300,7 +316,7 @@ def _read_slots(solver):
         return "", ""
     try:
         if solver.train_scene() == Scene.INFRA_DETAILS:
-            solver.back()
+            _close_room_detail(solver)
     except Exception:
         pass
     if len(scan) < 2:
@@ -588,13 +604,16 @@ def _schedule_collect(solver, plan, execute_time, tier=None):
     )
 
 
-def _schedule_scan_start(solver, plan):
+def _schedule_scan_start(solver, plan, step_level=None):
     """#74 第3段：仓库扫描确认材料后，为材料足够的 idle 计划入队「开始训练」任务。
 
     时间=now（扫描完尽快开练）；plan_key=计划ID 定位 + 复用 TASK-01 按 plan_key 去重
     （每计划恒 ≤1 条 SKILL_UPGRADE，重复扫描原地刷新不新增）。开始/收取/重检任务
     同形（均 plan_key 定位，房间状态决定行为：空闲→开始、待收取→收集），故无专门
     标记。计划开始训练后该任务按 plan_key 原位升级为收取任务（_schedule_collect 去重命中）。
+
+    step_level：扫描算出的本次安排步级（current_level+1，森空岛数据），存在任务上，
+    供 dispatch 传给安排流程——失败邮件要报「这次要练的专几」，不依赖现场图标。
     """
     _upsert_skill_upgrade_task(
         solver,
@@ -602,6 +621,9 @@ def _schedule_scan_start(solver, plan):
         meta_data=f"{_plan_label(plan)} 开始训练",
         plan_key=str(plan["id"]),
     )
+    task = _find_plan_task(solver, str(plan["id"]))
+    if task is not None:
+        task.step_level = step_level
 
 
 # --- 矩阵动作 ---
@@ -816,8 +838,10 @@ def _notify_help_collect(solver, room):
     op = room.panel.operator_name or "未知干员"
     key = f"{op}:{room.panel.skill_name or ''}"
     if should_notify("help_collect", key):
+        tier = room.panel.mastery_tier
+        tier_text = f"专{tier}" if tier else "专精等级未知"
         msg = (
-            f"训练室 {op}（{room.panel.skill_name or '技能未知'}）训练完成，"
+            f"训练室 {op}（{room.panel.skill_name or '技能未知'}）{tier_text} 训练完成，"
             "不在专精计划中，mower 已帮忙收取"
         )
         send_message(msg, level="INFO")
@@ -1157,7 +1181,9 @@ def _reconcile_waiting_collect(solver, room, active, plans, defer_collect=False)
     """
     hit = _match_plan(plans, room)  # 干员+技能都在计划
     tier = room.panel.mastery_tier
-    protective = room.support_slot in PROTECT_OPERATORS
+    # 日志用真实保护状态（_compute_protected 已按档位/状态算好）：专三待收取即使协助位
+    # 是逻各斯/艾丽妮也不保护（§16.3 第1格），只看协助位会误报保护=True。
+    protective = room.protected
 
     # 截图权威：DB active 与待收取房内干员不一致 → 假记录重置
     if active is not None and not _plan_matches_room(active, room):
@@ -1260,7 +1286,7 @@ def train_slot_locked(solver) -> bool:
     """
     scene = solver.train_scene()
     if scene == Scene.INFRA_DETAILS:
-        solver.back(interval=0.5)
+        _close_room_detail(solver)
         scene = solver.train_scene()
     if scene == Scene.TRAIN_FINISH:
         return True

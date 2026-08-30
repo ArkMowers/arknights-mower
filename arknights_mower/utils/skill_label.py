@@ -54,9 +54,15 @@ def panel_skill_matches(panel_skill, plan_skill_name) -> bool:
 
     面板可能因长名截断只显示前缀，故用包含而非全等；
     同一干员内技能名不重复，无歧义（#63）。
+    OCR 偶尔在技能名后多读一个拉丁字母/数字（如「破坏与滋养」→「破坏与滋养A」），
+    直接比不中；去掉尾部 ASCII 再比一次兜底。合法含尾字母的「红桃K」等先直接命中，
+    不受影响。
     """
     if not panel_skill or not plan_skill_name:
         return False
     panel = normalize_skill_text(panel_skill)
     plan = normalize_skill_text(plan_skill_name)
-    return bool(panel and plan and panel in plan)
+    if panel and plan and panel in plan:
+        return True
+    stripped = re.sub(r"[A-Za-z0-9]+$", "", panel)
+    return bool(stripped and plan and stripped in plan)
