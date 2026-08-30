@@ -74,6 +74,14 @@
         size="small"
         clearable
       />
+    </n-space>
+    <n-space style="margin-top: 4px" :size="8" align="center" wrap>
+      <n-select
+        v-model:value="idleFilter"
+        :options="idleFilterOptions"
+        size="small"
+        style="min-width: 100px"
+      />
       <n-checkbox v-model:checked="showOnlyPlanned">只看计划</n-checkbox>
       <n-checkbox v-model:checked="filterAchievable">材料充足</n-checkbox>
       <n-checkbox v-model:checked="decomposeT3">缺料拆解为T3</n-checkbox>
@@ -580,8 +588,7 @@ const professionName = (p) => profMap[p] || p
 const rarityOptions = [
   { label: '6★', value: 6 },
   { label: '5★', value: 5 },
-  { label: '4★', value: 4 },
-  { label: '3★', value: 3 }
+  { label: '4★', value: 4 }
 ]
 const professionOptions = profKeys.map((p) => ({ label: p, value: p }))
 
