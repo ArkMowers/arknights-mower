@@ -744,25 +744,26 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
 
         for room in need_read:
             error_count = 0
-            # 由于训练室不纠错，如果训练室有干员且时间读取过就跳过
+            # 训练室与其他房间一致：当前房内干员都近期读过则跳过（2026-08-16 审计——
+            # 原 room != "train" 免除使训练室在「计划在训练室但未进驻的陈旧干员」把
+            # 训练室推进待读集合时每轮循环都强制进房读心情，2h 内十多次）。训练室进房
+            # 时的顺路 reconcile（破重启待收取死锁）不受影响：重启后无 current_room=
+            # "train" 的干员 → current_working 空 → 不跳过；平时占用干员心情 2.5h
+            # 陈旧 → 不跳过 → 照常读+reconcile。
             current_working = [
                 value
                 for key, value in self.op_data.operators.items()
                 if value.current_room == room
             ]
 
-            if (
-                room != "train"
-                and current_working
-                and all(
-                    operator.time_stamp
-                    and operator.time_stamp
-                    > datetime.now()
-                    - timedelta(
-                        hours=0.5 if operator.name in ["歌蕾蒂娅", "见行者"] else 2.5
-                    )
-                    for operator in current_working
+            if current_working and all(
+                operator.time_stamp
+                and operator.time_stamp
+                > datetime.now()
+                - timedelta(
+                    hours=0.5 if operator.name in ["歌蕾蒂娅", "见行者"] else 2.5
                 )
+                for operator in current_working
             ):
                 for e in current_working:
                     logger.debug(e.time_stamp)
@@ -772,34 +773,53 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                 try:
                     self.enter_room(room)
                     if room == "train":
-                        _mood_data = self.get_agent_from_room(room, None)
-                        mood_info = [
-                            f"干员: '{item['agent']}', 心情: {round(item['mood'], 3)}"
-                            for item in _mood_data
-                            if item.get("agent")
-                        ]
-                        if mood_info:
-                            logger.info(
-                                f"房间 {self.translate_room(room)}  {mood_info}"
-                            )
-                        # 重启后训练室可能停在待收取（专精练完但没人收）：进训练室读心情时
-                        # 顺便 reconcile——发现待收取就收（defer_collect=False 此刻就是要收），
-                        # 修正 DB（截图为准），打破「不收→等级不刷新→材料不够→不调度→更不收」
-                        # 死锁。enable_mastery 关闭时不干扰通用心情读取。
                         if config.conf.enable_mastery:
+                            # #94 统一读取：一次 read_room_state(want_mood=True) 开一次
+                            # 浮窗读全（协助位+训练位+心情）+ 左下角面板，消除原来
+                            # get_agent_from_room（读心情）后再 read_room_state（_read_slots
+                            # 再开一次浮窗读槽位）的重复浮窗开关（铁律 3 一次进房做全部）。
                             from arknights_mower.solvers.mastery_reader import (
                                 read_room_state,
                                 reconcile_short,
                             )
 
                             try:
-                                room_state = read_room_state(self, enter=False)
+                                room_state, mood_data = read_room_state(
+                                    self, enter=False, want_mood=True
+                                )
+                                mood_info = [
+                                    f"干员: '{item['agent']}', 心情: {round(item['mood'], 3)}"
+                                    for item in mood_data
+                                    if item.get("agent")
+                                ]
+                                if mood_info:
+                                    logger.info(
+                                        f"房间 {self.translate_room(room)}  {mood_info}"
+                                    )
+                                # 重启后训练室可能停在待收取（专精练完但没人收）：进训练室读
+                                # 心情时顺便 reconcile——发现待收取就收（defer_collect=False
+                                # 此刻就是要收），修正 DB（截图为准），打破「不收→等级不刷新
+                                # →材料不够→不调度→更不收」死锁。enable_mastery 关闭时不跑
+                                # 读取器（铁律 10），保留通用心情读取。
                                 if room_state is not None:
                                     reconcile_short(
                                         self, room_state, defer_collect=False
                                     )
                             except Exception as e:
                                 logger.warning(f"训练室顺路对账失败: {e}")
+                        else:
+                            # enable_mastery 关闭：不跑 mastery 读取器（铁律 10），保留
+                            # 通用心情读取。
+                            _mood_data = self.get_agent_from_room(room, None)
+                            mood_info = [
+                                f"干员: '{item['agent']}', 心情: {round(item['mood'], 3)}"
+                                for item in _mood_data
+                                if item.get("agent")
+                            ]
+                            if mood_info:
+                                logger.info(
+                                    f"房间 {self.translate_room(room)}  {mood_info}"
+                                )
                     else:
                         num = len(self.op_data.plan[room])
                         _mood_data = self.get_agent_from_room(
@@ -3262,11 +3282,15 @@ class BaseSchedulerSolver(SceneGraphSolver, BaseMixin):
                                 reconcile_short(self, room_state, defer_collect=True)
                             except Exception as e:
                                 logger.warning(f"训练室顺路对账失败: {e}")
-                            # 对账后房间状态可能变化（帮收后空出），重读状态决定 gate
-                            try:
-                                room_state = read_room_state(self, enter=False)
-                            except Exception:
-                                room_state = None
+                            # 对账后房间状态可能变化（帮收后空出），重读状态决定 gate。
+                            # 只有待收取态 reconcile 会收走房间（变空）；训练/空闲态
+                            # reconcile 只改 DB，物理房间不变，重读纯浪费（面板 OCR +
+                            # 可能重开进驻浮窗/技能页深读）。
+                            if room_state.state == "waiting_collect":
+                                try:
+                                    room_state = read_room_state(self, enter=False)
+                                except Exception:
+                                    room_state = None
                         # §16.5 保护检查：locked（训练中/待收取）或 protected（逻各斯/
                         # 艾丽妮 保护训练室）都算「不能排班」→ 冻结/跳过。
                         if room_state is not None and (

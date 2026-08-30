@@ -5,10 +5,12 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 
 from arknights_mower.solvers import mastery_reader as reader
+from arknights_mower.utils import skill_label as skill_label_mod
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.skill_label import (
     format_skill_label,
     panel_skill_matches,
+    resolve_panel_skill,
 )
 
 NOW = datetime(2026, 8, 1, 12, 0, 0)
@@ -50,6 +52,29 @@ def make_room(state="empty", support_slot="", train_slot="", **panel_kwargs):
     )
 
 
+# #95 resolve_panel_skill 用合成 skill_data（模拟 skill_data.json 结构，确定性）
+SYNTH_SKILL_DATA = {
+    "characters": {
+        "char_test": {
+            "name": "测试干员",
+            "skills": [{"name": "多首野兽"}, {"name": "破坏与滋养"}],
+        },
+        "char_trunc": {
+            "name": "截断干员",
+            "skills": [{"name": "攻击力强化·γ型"}, {"name": "秘杖·反重力模式"}],
+        },
+        "char_ambiguous": {
+            "name": "含混干员",
+            "skills": [{"name": "破坏与滋养"}, {"name": "破坏之光"}],
+        },
+        "char_nameless": {
+            "name": "无命名干员",
+            "skills": [{"skillId": "sk_a"}, {"skillId": "sk_b"}],
+        },
+    }
+}
+
+
 class TestSkillLabel(unittest.TestCase):
     def test_canonical_format(self):
         self.assertEqual(format_skill_label(1, "飞翔瞪射"), "二技能·飞翔瞪射")
@@ -76,6 +101,71 @@ class TestSkillLabel(unittest.TestCase):
         self.assertTrue(panel_skill_matches("飞翔瞪射2", "二技能·飞翔瞪射"))
         # 合法尾部字母（红桃K）直接命中，不走兜底也不误伤
         self.assertTrue(panel_skill_matches("红桃K", "一技能·红桃K"))
+
+
+def _patch_synth_skill_data():
+    """patch get_skill_data 为合成数据，并重置 skill_label 反查缓存（setUp 用）。"""
+    patcher = patch(
+        "arknights_mower.utils.mastery_recommendation.get_skill_data",
+        return_value=SYNTH_SKILL_DATA,
+    )
+    patcher.start()
+    skill_label_mod._name_to_char_id_cache = None
+    return patcher
+
+
+class TestResolvePanelSkill(unittest.TestCase):
+    """#95：面板技能文本对照干员已知技能表解析（互含，命中唯一才采纳）。"""
+
+    def setUp(self):
+        self._patcher = _patch_synth_skill_data()
+        self.addCleanup(self._patcher.stop)
+
+    def tearDown(self):
+        skill_label_mod._name_to_char_id_cache = None
+
+    def test_tail_noise_resolves_to_skill(self):
+        # 事故案例：OCR 多读尾部拉丁字母 → 真名 ⊂ 面板 → 命中
+        self.assertEqual(resolve_panel_skill("测试干员", "破坏与滋养A"), 1)
+
+    def test_clean_name_resolves(self):
+        self.assertEqual(resolve_panel_skill("测试干员", "破坏与滋养"), 1)
+        self.assertEqual(resolve_panel_skill("测试干员", "多首野兽"), 0)
+
+    def test_head_noise_resolves(self):
+        self.assertEqual(resolve_panel_skill("测试干员", "X破坏与滋养"), 1)
+
+    def test_truncated_name_resolves(self):
+        self.assertEqual(resolve_panel_skill("截断干员", "秘杖"), 1)
+
+    def test_unknown_operator_returns_none(self):
+        self.assertIsNone(resolve_panel_skill("路人干员", "破坏与滋养"))
+
+    def test_empty_inputs_return_none(self):
+        self.assertIsNone(resolve_panel_skill("", "破坏与滋养"))
+        self.assertIsNone(resolve_panel_skill("测试干员", ""))
+
+    def test_no_named_skills_returns_none(self):
+        self.assertIsNone(resolve_panel_skill("无命名干员", "任意文本"))
+
+    def test_ambiguous_multiple_candidates_returns_none(self):
+        # 「破坏」是两个已知技能共享的子串 → 含混不采纳（保守回退）
+        self.assertIsNone(resolve_panel_skill("含混干员", "破坏"))
+
+    def test_direct_char_id_supported(self):
+        # dev 模式面板干员名可能直接是 char_id
+        self.assertEqual(resolve_panel_skill("char_test", "破坏与滋养"), 1)
+
+
+class TestResolvePanelSkillRealData(unittest.TestCase):
+    """真实 skill_data.json 冒烟：#95 事故干员（char_4183_mortis，技能 [多首野兽, 破坏与滋养]）。"""
+
+    def test_wakaba_musubi_tail_noise(self):
+        self.assertEqual(resolve_panel_skill("若叶睦", "破坏与滋养A"), 1)
+
+    def test_wakaba_musubi_clean(self):
+        self.assertEqual(resolve_panel_skill("若叶睦", "破坏与滋养"), 1)
+        self.assertEqual(resolve_panel_skill("若叶睦", "多首野兽"), 0)
 
 
 class TestPanelParse(unittest.TestCase):
@@ -282,6 +372,61 @@ class TestMatchPlan(unittest.TestCase):
         self.assertIsNone(reader._match_plan([done], room))
 
 
+class TestResolvePanelSkillIntegration(unittest.TestCase):
+    """#95 集成：_plan_matches_room / _match_plan 优先用技能表解析，回退包含匹配。"""
+
+    def setUp(self):
+        self._patcher = _patch_synth_skill_data()
+        self.addCleanup(self._patcher.stop)
+
+    def tearDown(self):
+        skill_label_mod._name_to_char_id_cache = None
+
+    def test_plan_matches_room_tail_noise_resolves(self):
+        plan = make_plan(
+            char_id="char_test",
+            char_name="测试干员",
+            skill_index=1,
+            skill_name="二技能·破坏与滋养",
+        )
+        room = make_room("training", skill_name="破坏与滋养A")
+        self.assertTrue(reader._plan_matches_room(plan, room))
+
+    def test_plan_matches_room_wrong_skill_mismatch(self):
+        plan = make_plan(
+            char_id="char_test",
+            char_name="测试干员",
+            skill_index=0,
+            skill_name="一技能·多首野兽",
+        )
+        room = make_room("training", skill_name="破坏与滋养A")
+        self.assertFalse(reader._plan_matches_room(plan, room))
+
+    def test_match_plan_finds_correct_skill_plan(self):
+        plan1 = make_plan(
+            id=1,
+            char_id="char_test",
+            char_name="测试干员",
+            skill_index=0,
+            skill_name="一技能·多首野兽",
+        )
+        plan2 = make_plan(
+            id=2,
+            char_id="char_test",
+            char_name="测试干员",
+            skill_index=1,
+            skill_name="二技能·破坏与滋养",
+        )
+        room = make_room("training", skill_name="破坏与滋养A")
+        self.assertEqual(reader._match_plan([plan1, plan2], room), plan2)
+
+    def test_match_plan_falls_back_for_unknown_operator(self):
+        # 干员不在技能表 → resolve None → 回退 panel_skill_matches（现行为）
+        plan = make_plan(char_name="陌生干员", skill_name="二技能·测试技能")
+        room = make_room("training", operator_name="陌生干员", skill_name="测试技能")
+        self.assertEqual(reader._match_plan([plan], room), plan)
+
+
 class TestCanAdoptExpiry(unittest.TestCase):
     """B8 采纳门：只有面板干员名可读且匹配时才可采纳倒计时。"""
 
@@ -392,6 +537,59 @@ class TestReadRoomState(unittest.TestCase):
         room = reader.read_room_state(solver)
         self.assertEqual(room.state, "training")
         self.assertFalse(room.read_failed)
+
+    def test_want_mood_collects_slots_and_mood_once(self):
+        # #94：待收取开浮窗读槽位时顺带收集心情——get_agent_from_room 只开一次
+        solver = self._solver(0)
+        scan = [
+            {"agent": "支援干员", "mood": 20.1234},
+            {"agent": "训练干员", "mood": 15.5678},
+        ]
+        solver.get_agent_from_room.return_value = scan
+        room, mood = reader.read_room_state(solver, want_mood=True)
+        self.assertEqual(room.state, "waiting_collect")
+        self.assertEqual(room.support_slot, "支援干员")
+        self.assertEqual(room.train_slot, "训练干员")
+        self.assertEqual(mood, scan)
+        solver.get_agent_from_room.assert_called_once_with("train")
+
+    def test_want_mood_training_state_reads_mood(self):
+        # 训练中（倒计时非 0）也要读心情：开一次浮窗读全再关回 TRAIN_MAIN
+        solver = self._solver(7200)
+        scan = [
+            {"agent": "支援干员", "mood": 20.1234},
+            {"agent": "训练干员", "mood": 15.5678},
+        ]
+        solver.get_agent_from_room.return_value = scan
+        room, mood = reader.read_room_state(solver, want_mood=True)
+        self.assertEqual(room.state, "training")
+        self.assertEqual(room.support_slot, "支援干员")
+        self.assertEqual(room.train_slot, "训练干员")
+        self.assertEqual(mood, scan)
+        solver.get_agent_from_room.assert_called_once_with("train")
+
+    def test_want_mood_finish_scene_empty_mood(self):
+        # TRAIN_FINISH（完成横幅页）只读面板：浮窗不可靠 → 心情返回空列表
+        solver = self._solver(0)
+        solver.train_scene.side_effect = [Scene.TRAIN_FINISH]
+        room, mood = reader.read_room_state(solver, want_mood=True)
+        self.assertEqual(room.state, "waiting_collect")
+        self.assertEqual(mood, [])
+        solver.get_agent_from_room.assert_not_called()
+
+    def test_want_mood_default_returns_room_only(self):
+        # 不破坏现有调用：默认 want_mood=False 返回 RoomState（非元组）
+        solver = self._solver(7200)
+        room = reader.read_room_state(solver)
+        self.assertIsInstance(room, reader.RoomState)
+
+    def test_off_mode_skips_slot_read_for_waiting_collect(self):
+        # 审计修复：enable_mastery OFF 时槽位/保护无人消费，待收取态不白开进驻浮窗
+        solver = self._solver(0)
+        with patch.object(reader.config.conf, "enable_mastery", False):
+            room = reader.read_room_state(solver)
+        self.assertEqual(room.state, "waiting_collect")
+        solver.get_agent_from_room.assert_not_called()
 
 
 class TestReconcileShort(unittest.TestCase):

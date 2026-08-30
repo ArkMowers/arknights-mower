@@ -122,7 +122,7 @@
 ### 读取与匹配的稳为先规则
 - 面板干员名/技能名 **OCR 不可读 → 一律视为匹配**，不判不一致、不 reset、不发 blocked。（C-36 / MX-06）
 - **B8 采纳门（#68，2026-08-15；用户 08-15 定案修订）**：`_update_expiry` 只在面板**干员名+技能名都可读且与计划匹配**时采纳倒计时（`_can_adopt_expiry`）；任一不可读 → 不采纳（不刷新、不改写状态）、**不排重检**，静默等排班系统下次自然进房重读——幻影/外人倒计时不得「祝福」计划，`waiting_collect` 不被无校验刷新降回 `training`。C-36 的「不可读=匹配」仍用于 reset/通知守卫（load-bearing），**不宽恕采纳**。
-- 匹配 = 干员名一致 且（技能名可读时）面板技能名 ⊂ 计划 skill_name（包含匹配，兼容长名截断）。（LBL-04）
+- 匹配 = 干员名一致 且（技能名可读时）面板技能名 ⊂ 计划 skill_name（包含匹配，兼容长名截断；面板技能名先经 `resolve_panel_skill` 对照已知技能表解析，见 §10 LBL-06）。（LBL-04）
 - `_settle_in_room` 对瞬态场景循环收敛（INFRA_MAIN→enter_room、INFRA_DETAILS→back、CONNECTING/UNKNOWN→sleep），至多 15 次，不在瞬态场景上动作。（C-38）
 - 进房先读倒计时定分支，**不盲点技能按钮**。（C-04）
 
@@ -236,6 +236,7 @@ idx1 在 `select_targets` 里时，先跑 `train_slot_locked`（截图权威）�
 - **占位符**：`技能{N}`（匹配 `^技能[0-9]+$`）表示「真名未知」，必须懒填充，永不作最终存储值。（LBL-02）
 - **比较前先 `normalize_skill_text`**：去 `[]`、统一分隔符族 `·．.。 ` 与全角空格/Tab 为 `·`。（LBL-05）
 - **匹配 = 包含**，不是相等：面板技能名 ⊂ 计划 skill_name（面板可能显示截断前缀）；只对当前计划判，**无全局反查表**（技能名在干员内不重复，无歧义）。（LBL-04）
+- **面板技能名先经 `resolve_panel_skill` 解析（#95，2026-08-16）**：面板技能文本对照干员已知技能表（skill_data.json `characters[char_id].skills[].name`，每干员 ≤3 技能）做归一化互含匹配（面板 ⊂ 真名 或 真名 ⊂ 面板，容忍截断与 OCR 首尾噪声），命中**唯一**技能才返回序号；查无干员 / 无命名技能 / 多候选含混 → 返回 None 回退包含匹配（LBL-04）。调用点 `_plan_matches_room` / `_match_plan`（mastery_reader.py），归属校验（mastery.py #69/B2）与 B8 采纳门（`_can_adopt_expiry`）一并受益。干员名反查 char_id 用 `_resolve_operator_char_id`（撞名保守不采纳）；`get_skill_data` 函数内懒加载避免循环导入。（LBL-06）
 - **`insert_plan` 必须存规范 skill_name + 非 NULL char_name**；存量计划（NULL char_name / 占位 skill_name）读取时懒填充（`lazy_fill_plan_names`，写回仅在传入 connection 时发生，不改行为）。（LZ-01/LZ-03）
 
 ## 11. DB 契约
@@ -306,6 +307,8 @@ API 只增删计划与调优先级，**不得直写 status**（状态由执行�
 - `_tap_finish_mark` 兜底坐标 `(0.05w,0.95h)` 实机疑似打不中（#63）；`_tap_collect_confirm` 兜底 `(0.5w,0.85h)` 未验证；模板优先路径未实机验证。（C-35）
 - **#92 换协助位坐标（2026-08-16 已修）**：`choose_train` 在训练室主页面开进驻信息浮窗的旧坐标 `(0.25w,0.95h)`=(480,1026) 落在左下角技能/进度面板、点出技能详情浮窗（Scene -1 空转 7s 后出房重进）——改 `_open_check_in_detail` 用 `arrange_check_in` 模板（屏幕左侧 ~(101,441)）开（`base_schedule.py`，INFRA_DETAILS 浮窗未开与 TRAIN_MAIN 两分支共用；换人语义=主页带进驻信息浮窗右侧换）。
 - **#93 训练室开始流程收敛（2026-08-16 已修）**：dispatch 的 `reconcile_and_act` 返回已读的 `RoomState`（`(plan, arrange_support, room)`），`run_mastery_task` 传给 `_start_new_training`——开始流程复用 reconcile 已读的槽位，不再重复 `enter_room`、不再 `_training_slots` 重开进驻浮窗读槽位（消除双进房 + 一次重复浮窗开关；浮窗 4→3：reconcile 保护读槽位 + choose_train 换协助位扫描/确认为必需）。**槽位复用**：`room.train_slot` 非空直接复用；读到空串无法区分「真空」与「读浮窗失败」→ 重读一次兜底（读失败恢复「空闲但训练位坐错人」换人校验、真空重读仍空无害）。注：TRAIN_FINISH=220 只靠主动点左下角完成标记（`skill_collect_confirm`）才进得去，进房必是 217（`train_main`），练完未收也是 217 + `training_completed` 模板照常读槽位。**技能选择页进 2 次保留为残留**：保护深读（§16.5 逻各斯/艾丽妮空房判专一/专二）与开始流程自身的技能页进入（数星星 + 点技能行开始）语义上都需要——合并需把保护深读的逐技能档位透传到开始流程、且仅 train_slot==计划干员 时有效，收益仅限该场景、over-engineering（用户「最简实现」取向）。**未做 #92 已拒绝的「调用方先开浮窗」大重构**（choose_train 换协助位的两次浮窗开关为换人必需，保持现状）。
+- **#94 统一训练室读取（2026-08-16 已修）**：`agent_get_mood` 训练室分支原为 `get_agent_from_room`（开浮窗读心情）+ `read_room_state`（`_read_slots` 再开一次浮窗读槽位）→ 一次进房开两次浮窗。现统一走 `read_room_state(want_mood=True)` 一次进房读全（协助位+训练位+心情+左下角面板）→ `reconcile_short` → 返回心情（对齐 mood_info）。`read_room_state`/`_read_slots`/`_fill_slots_and_protection` 加 `want_mood` 参数：浮窗读槽位顺带收集心情返回 `(RoomState, mood_data)`（mood_data=浮窗槽位扫描，含 mood）；心情取不到的状态（TRAIN_FINISH 横幅页浮窗不可靠 / OCR 失败保守训练中只读面板）返回空列表 `[]`；默认 `want_mood=False` 返回 `RoomState` 不破坏现有调用（gate/reconcile_and_act 不变）。`enable_mastery` OFF 分支保留旧 `get_agent_from_room` 通用心情读取（铁律 10）。
+- **训练室心情读取频率与其它房间对齐（2026-08-16 已修）**：`agent_get_mood` 原 `room != "train"` 跳过免除（#881 为配合 `should_read_train_in_mood` gate 加的，gate 已在 #886 删）使训练室永不跳过 → 计划在训练室但未进驻（等待中）的陈旧干员把训练室永远留在待读集合 → 2h 内读心情十多次。已移除免除，训练室与其他房间一致（当前房内干员都近期读过则跳过）。**行为变更**：训练室进房时顺路 reconcile（破重启待收取死锁，522b7fa1）的触发从「每轮循环」降为「~2.5h 占用干员心情陈旧 / 重启后 current_working 空」。正常收取由 dispatch 收取任务覆盖，死锁兜底保留（重启必触发）。
 - `TRAIN_MAIN` 区分「空」与「刚完成」仅靠 `training_completed` 模板；模板/OCR 漏判会误分类房间、可能误触发重置。（open_risks）
 
 ### 行为/契约风险

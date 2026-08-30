@@ -395,6 +395,97 @@ class TestBaseScheduler(unittest.TestCase):
         )
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_agent_get_mood_train_branch_unified_reader(self):
+        # #94：训练室分支统一走 read_room_state(want_mood=True) 一次读全（含心情）
+        # + reconcile_short，不再 get_agent_from_room 与 read_room_state 各开一次浮窗。
+        solver = BaseSchedulerSolver()
+        solver.global_plan = MagicMock()
+        solver.initialize_operators()
+        solver.op_data.add(Operator("艾雅法拉", "train"))
+        solver.tasks = []
+        solver._training_sm = MagicMock()
+
+        room_state = MagicMock()
+        mood_data = [{"agent": "艾雅法拉", "mood": 20.1234}]
+        with (
+            patch.object(BaseSchedulerSolver, "enter_room"),
+            patch.object(BaseSchedulerSolver, "back"),
+            patch.object(
+                mastery_reader,
+                "read_room_state",
+                return_value=(room_state, mood_data),
+            ) as mock_read,
+            patch.object(mastery_reader, "reconcile_short") as mock_reconcile,
+        ):
+            result = solver.agent_get_mood()
+
+        self.assertIsNone(result)
+        mock_read.assert_called_once_with(solver, enter=False, want_mood=True)
+        mock_reconcile.assert_called_once_with(solver, room_state, defer_collect=False)
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_agent_get_mood_train_skips_when_occupants_fresh(self):
+        # 审计修正（2026-08-16）：训练室与其他房间一致——当前房内干员都近期读过则跳过，
+        # 不再被「计划在训练室但未进驻（等待中）的陈旧干员」每轮循环强制进房读心情
+        # （10+ 次/2h 根因：get_agent_from_room 只刷房里干员的 time_stamp，等位干员
+        # 永远陈旧 → 训练室永远在待读集合 → 原 room != "train" 免除永不跳过）。
+        solver = BaseSchedulerSolver()
+        solver.global_plan = MagicMock()
+        solver.initialize_operators()
+        solver.op_data.add(
+            Operator(
+                "艾雅法拉", "train", current_room="train", time_stamp=datetime.now()
+            )
+        )
+        solver.op_data.add(
+            Operator("能天使", "train", time_stamp=datetime.now() - timedelta(hours=3))
+        )
+        solver.tasks = []
+        solver._training_sm = MagicMock()
+        with (
+            patch.object(BaseSchedulerSolver, "enter_room"),
+            patch.object(BaseSchedulerSolver, "back"),
+            patch.object(mastery_reader, "read_room_state") as mock_read,
+            patch.object(mastery_reader, "reconcile_short"),
+        ):
+            result = solver.agent_get_mood()
+        self.assertIsNone(result)
+        mock_read.assert_not_called()  # 占用者新鲜 → 跳过，不进训练室
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_agent_get_mood_train_reads_when_occupant_stale(self):
+        # 对照：当前房内占用者心情陈旧 → 不跳过，照常进房读 + reconcile（死锁兜底保留）
+        solver = BaseSchedulerSolver()
+        solver.global_plan = MagicMock()
+        solver.initialize_operators()
+        solver.op_data.add(
+            Operator(
+                "艾雅法拉",
+                "train",
+                current_room="train",
+                time_stamp=datetime.now() - timedelta(hours=3),
+            )
+        )
+        solver.tasks = []
+        solver._training_sm = MagicMock()
+        room_state = MagicMock()
+        mood_data = [{"agent": "艾雅法拉", "mood": 20.0}]
+        with (
+            patch.object(BaseSchedulerSolver, "enter_room"),
+            patch.object(BaseSchedulerSolver, "back"),
+            patch.object(
+                mastery_reader,
+                "read_room_state",
+                return_value=(room_state, mood_data),
+            ) as mock_read,
+            patch.object(mastery_reader, "reconcile_short") as mock_reconcile,
+        ):
+            result = solver.agent_get_mood()
+        self.assertIsNone(result)
+        mock_read.assert_called_once_with(solver, enter=False, want_mood=True)
+        mock_reconcile.assert_called_once_with(solver, room_state, defer_collect=False)
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_no_keepalive_enqueue_for_idle_plan(self):
         # #74 第3段：keepalive 完全删除——DB 有 idle 计划也不再每轮补 now-task
         # SKILL_UPGRADE（开始训练只由扫描派发；重启恢复靠 gate 顺路重读 + 扫描派发兜底）。
@@ -688,6 +779,47 @@ class TestTrainGateReadThenJudge(unittest.TestCase):
         rec.assert_not_called()
         solver.turn_on_room_detail.assert_called_with("train")
         self.assertEqual(result, {})
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_gate_no_second_read_for_training_state(self):
+        # 审计修复：training/空闲态 reconcile 只改 DB，物理房间不变——不二次读
+        # read_room_state（面板 OCR + 可能重开进驻浮窗/技能页深读是纯浪费）。
+        plan = {"train": ["干员A", "干员B"]}
+        solver = self._make_solver(plan)
+        with (
+            patch.object(base_schedule.config.conf, "enable_mastery", True),
+            patch.object(
+                base_schedule.config.conf, "assistant_follows_schedule", False
+            ),
+            patch(
+                "arknights_mower.solvers.mastery_reader.read_room_state",
+                return_value=self._training_room(),
+            ) as mock_read,
+            patch("arknights_mower.solvers.mastery_reader.reconcile_short"),
+        ):
+            solver.agent_arrange_room({}, "train", plan)
+        self.assertEqual(mock_read.call_count, 1)
+        self.assertNotIn("train", plan)  # 锁定 → 跳过
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_gate_second_read_only_for_waiting_collect(self):
+        # 待收取：reconcile 可能收走房间（变空）→ 需重读决定 gate（正对照）
+        plan = {"train": ["干员A", "干员B"]}
+        solver = self._make_solver(plan)
+        wc = mastery_reader.RoomState("waiting_collect", mastery_reader.RoomPanel())
+        with (
+            patch.object(base_schedule.config.conf, "enable_mastery", True),
+            patch.object(
+                base_schedule.config.conf, "assistant_follows_schedule", False
+            ),
+            patch(
+                "arknights_mower.solvers.mastery_reader.read_room_state",
+                return_value=wc,
+            ) as mock_read,
+            patch("arknights_mower.solvers.mastery_reader.reconcile_short"),
+        ):
+            solver.agent_arrange_room({}, "train", plan)
+        self.assertEqual(mock_read.call_count, 2)
 
 
 class TestScanDispatchMastery(unittest.TestCase):

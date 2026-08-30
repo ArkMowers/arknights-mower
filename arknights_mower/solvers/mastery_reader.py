@@ -30,7 +30,11 @@ from arknights_mower.utils import config
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
-from arknights_mower.utils.skill_label import format_skill_label, panel_skill_matches
+from arknights_mower.utils.skill_label import (
+    format_skill_label,
+    panel_skill_matches,
+    resolve_panel_skill,
+)
 
 # 主页面面板坐标（#61 已钉）
 PANEL_REGION = ((239, 878), (776, 977))  # `[干员名]技能名`
@@ -303,25 +307,31 @@ def _settle_in_room(solver, max_iters=15) -> int:
     return solver.train_scene()
 
 
-def _read_slots(solver):
+def _read_slots(solver, want_mood=False):
     """读进驻详情浮窗：返回 (协助位, 训练位)。读后关浮窗回训练室主界面。
 
+    want_mood=True 时返回 ((协助位, 训练位), mood_data)，mood_data 为浮窗槽位扫描
+    （get_agent_from_room 返回值，含 mood，对齐 agent_get_mood 的 mood_info 数据源）。
     槽位约定：scan[0]=上排=协助位，scan[1]=下排=训练位（与 choose_train 一致）。
-    读失败/无两人 → ("", "")。
+    读失败/无两人 → ("", "")；want_mood 时 mood_data 为空列表。
     """
     try:
         scan = solver.get_agent_from_room("train")
     except Exception as e:
         logger.debug(f"进驻详情读取失败: {e}")
-        return "", ""
+        scan = []
     try:
         if solver.train_scene() == Scene.INFRA_DETAILS:
             _close_room_detail(solver)
     except Exception:
         pass
     if len(scan) < 2:
-        return "", ""
-    return scan[0].get("agent", ""), scan[1].get("agent", "")
+        slots = "", ""
+    else:
+        slots = scan[0].get("agent", ""), scan[1].get("agent", "")
+    if want_mood:
+        return slots, scan
+    return slots
 
 
 def _train_slot_has_mastery(solver) -> bool:
@@ -389,9 +399,21 @@ def _classify_panel(solver, panel) -> str:
     return state
 
 
-def _fill_slots_and_protection(solver, room):
-    room.support_slot, room.train_slot = _read_slots(solver)
+def _fill_slots_and_protection(solver, room, want_mood=False):
+    # enable_mastery OFF：槽位/保护无人消费（reconcile 被 gate、_compute_protected 恒 False），
+    # 不白开进驻浮窗（§16.11 防卡检查只看 locked，面板态即可）。
+    if config.conf.enable_mastery:
+        if want_mood:
+            (room.support_slot, room.train_slot), mood = _read_slots(
+                solver, want_mood=True
+            )
+        else:
+            room.support_slot, room.train_slot = _read_slots(solver)
+            mood = None
+    else:
+        mood = None
     room.protected = _compute_protected(solver, room)
+    return mood
 
 
 def _retry_ocr(solver) -> RoomState:
@@ -415,12 +437,17 @@ def _retry_ocr(solver) -> RoomState:
     return RoomState("training", first or RoomPanel(), read_failed=True)
 
 
-def read_room_state(solver, enter=True) -> RoomState:
+def read_room_state(solver, enter=True, want_mood=False):
     """进房读全部状态。enter=False 表示已在房内（排班 gate 用）。
 
     §16.1 读全：进驻详情浮窗（协助位/训练位）+ 左下角（干员/技能/倒计时/图标）；
     按 §16.2 状态矩阵判定；OCR 失败组合原地重试 5 次，仍不一致保守训练中。
     房间停留在 TRAIN_MAIN / TRAIN_FINISH；返回 RoomState（截图权威）。
+
+    want_mood=True 时浮窗读槽位顺带收集心情，返回 (RoomState, mood_data)——mood_data
+    为进驻浮窗槽位扫描（get_agent_from_room 返回值，含 mood，供 agent_get_mood 格式化
+    mood_info）；心情取不到的状态返回空列表 []（TRAIN_FINISH 横幅页浮窗不可靠 /
+    OCR 失败保守训练中只读面板）。否则返回 RoomState（不破坏现有调用）。
     """
     if enter:
         solver.enter_room("train")
@@ -428,18 +455,23 @@ def read_room_state(solver, enter=True) -> RoomState:
     if scene == Scene.TRAIN_FINISH:
         # 完成横幅页：只读左下角面板供收取，不读进驻详情/不算保护（该页 get_agent_from_room
         # 不可靠）。保护判定等收取完成回 TRAIN_MAIN 后再读（§16.1 读全以主页面为主）。
-        return RoomState("waiting_collect", _safe_read_panel(solver))
+        room = RoomState("waiting_collect", _safe_read_panel(solver))
+        return (room, []) if want_mood else room
     if scene == Scene.TRAIN_MAIN:
         panel = read_main_panel(solver)
         state = _classify_panel(solver, panel)
         if state == "ocr_fail":
-            return _retry_ocr(solver)
+            room = _retry_ocr(solver)
+            # OCR 失败路径（含重试成功后的槽位填，未带心情）→ 心情取不到
+            return (room, []) if want_mood else room
         room = RoomState(state, panel)
-        if state in ("waiting_collect", "empty"):
-            _fill_slots_and_protection(solver, room)
+        if want_mood or state in ("waiting_collect", "empty"):
+            mood = _fill_slots_and_protection(solver, room, want_mood=want_mood)
+            return (room, mood) if want_mood else room
         return room
     # 其他房内场景（技能选择/确认/未知）→ 保守视为占用，面板尽力读
-    return RoomState("training", _safe_read_panel(solver))
+    room = RoomState("training", _safe_read_panel(solver))
+    return (room, []) if want_mood else room
 
 
 def _safe_read_panel(solver) -> RoomPanel:
@@ -473,6 +505,9 @@ def _plan_matches_room(plan, room: RoomState) -> bool:
     sk = room.panel.skill_name
     if not sk:
         return True
+    resolved = resolve_panel_skill(room.panel.operator_name, sk)
+    if resolved is not None:
+        return resolved == plan.get("skill_index")
     return panel_skill_matches(sk, plan.get("skill_name"))
 
 
@@ -487,8 +522,13 @@ def _match_plan(plans, room: RoomState):
             continue
         if not _plan_operator_matches(p, op):
             continue
-        if sk and not panel_skill_matches(sk, p.get("skill_name")):
-            continue
+        if sk:
+            resolved = resolve_panel_skill(op, sk)
+            if resolved is not None:
+                if resolved != p.get("skill_index"):
+                    continue
+            elif not panel_skill_matches(sk, p.get("skill_name")):
+                continue
         return p
     return None
 
