@@ -591,6 +591,13 @@ const filterProfession = ref([])
 const filterAchievable = ref(false)
 const showOnlyPlanned = ref(false)
 const decomposeT3 = ref(false)
+// 空闲状态三态：all=全部 idle=空闲 busy=非空闲
+const idleFilter = ref('all')
+const idleFilterOptions = [
+  { label: '全部', value: 'all' },
+  { label: '空闲', value: 'idle' },
+  { label: '非空闲', value: 'busy' }
+]
 const {
   fodder_operators: fodderOps,
   t5_operators: t5Ops,
@@ -609,6 +616,8 @@ const workshopT3Summary = ref([])
 const emptyText = computed(() => {
   if (searchQuery.value || filterRarity.value.length || filterProfession.value.length)
     return '没有匹配的干员'
+  if (idleFilter.value === 'idle') return '没有空闲干员'
+  if (idleFilter.value === 'busy') return '没有非空闲干员'
   if (showOnlyPlanned.value) return '没有计划中的专精项'
   return '没有推荐项'
 })
@@ -1238,9 +1247,54 @@ function resetRoute() {
 // ─── 显示列表 ───
 const allOperatorList = ref([])
 
+// ─── 空闲干员筛选 ───
+// 空闲 = 不在排班表（主/副表槽位 + 候补 replacement）& 不在专精路线配置（协助位 name/换人 swap_name）
+// & 不在加工站工具人 & 不在宿舍黑名单。
+// 与「是否有专精计划」正交：空闲/非空闲只看基地占用，计划状态由「只看计划」管——
+// 否则空闲却有计划（可正常训练）的干员会和真正非空闲却有计划（错计划）的混在一起。
+// 排班由 App 启动时全局 load（router-view 以 loaded 门控，进入本页必然已加载）。
+const scheduledOperatorSet = computed(() => {
+  const busy = new Set()
+  const plans = [planStore.plan, ...(planStore.backup_plans || []).map((b) => b.plan)]
+  for (const p of plans) {
+    for (const facility in p || {}) {
+      for (const slot of p[facility]?.plans || []) {
+        for (const agent of [slot.agent, ...(slot.replacement || [])]) {
+          if (agent && agent !== 'Free' && agent !== 'Current') busy.add(agent)
+        }
+      }
+    }
+  }
+  return busy
+})
+const routeOperatorSet = computed(() => {
+  const busy = new Set()
+  for (const p of profKeys) {
+    for (const sup of routeSettings[p]?.supports || []) {
+      if (sup.name) busy.add(sup.name)
+      if (sup.swap_name) busy.add(sup.swap_name)
+    }
+  }
+  return busy
+})
+const workshopOperators = computed(() => [
+  ...(fodderOps.value || []),
+  ...(t5Ops.value || []),
+  ...(bookOps.value || [])
+])
+function isIdleOperator(op) {
+  if (scheduledOperatorSet.value.has(op.name)) return false
+  if (routeOperatorSet.value.has(op.name)) return false
+  if (workshopOperators.value.includes(op.name)) return false
+  if ((configStore.free_blacklist || []).includes(op.name)) return false
+  return true
+}
+
 const displayList = computed(() => {
   let list = store.recommendations
   if (showOnlyPlanned.value) list = list.filter((op) => hasPlannedSkill(op))
+  if (idleFilter.value === 'idle') list = list.filter((op) => isIdleOperator(op))
+  if (idleFilter.value === 'busy') list = list.filter((op) => !isIdleOperator(op))
   if (searchQuery.value.trim()) {
     const q = searchQuery.value.trim().toLowerCase()
     list = list.filter((op) => op.name.toLowerCase().includes(q))
@@ -1367,6 +1421,14 @@ async function doAddTask() {
 onMounted(async () => {
   await refreshPlanFromServer()
   await Promise.all([loadOperators(), store.fetchRecommendations()])
+  // 空闲干员筛选需要路线配置：提前加载（defaultsCache 去重，openSettings 不再重复拉取）
+  if (!defaultsCache.value) {
+    try {
+      await loadRoute()
+    } catch (e) {
+      console.error('mount: loadRoute failed', e)
+    }
+  }
   allOperatorList.value = store.recommendations.map((op) => ({
     char_id: op.char_id,
     name: op.name,
